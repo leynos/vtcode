@@ -288,9 +288,12 @@ update for a task is a tool call with id `task:<taskId>`; later updates are
 tool-call updates for that same id. The standard `title`, `kind` (`think`),
 `status`, and `content` fields carry the task state, and `_meta.lody.task`
 carries the Lody snapshot: `version`, `taskId`, `kind`, `status`, `description`,
-`actor`, start and end times, and optional `summary` or `error`. The adapter
-filters updates by parent session, drops superseded revisions by `updated_at`,
-and replays still-active tasks when the observer is registered.
+`actor`, start and end times, and optional `summary` or `error`. Queued
+sub-agents and starting background processes report `pending`; running work
+reports `in_progress`; completion, failure, closure, stop, or error reports the
+corresponding terminal status. The adapter filters updates by parent session,
+drops superseded revisions by `updated_at`, and replays still-active tasks when
+the observer is registered.
 
 Forwarding is best-effort. Live observers publish with a bounded, non-blocking
 send, so if the lifecycle queue is full the snapshot is dropped rather than
