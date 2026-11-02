@@ -9,11 +9,11 @@ Status: COMPLETE
 
 ## Purpose / big picture
 
-After this change, a Lody client connected to VTCode over the Agent Client
+After this change, a Lody client connected to Diapason over the Agent Client
 Protocol (ACP) can negotiate exactly the usage, background-task and subagent
-features that VTCode implements. Lody will receive provider token usage, render
+features that Diapason implements. Lody will receive provider token usage, render
 delegated agents and managed background processes as first-class tasks, and
-list, cancel or inspect output for those tasks. VTCode's model-facing task
+list, cancel or inspect output for those tasks. Diapason's model-facing task
 tracker remains a standard ACP `Plan`; this work does not create a second task
 tracker.
 
@@ -30,10 +30,10 @@ management requests return only tasks owned by the requested ACP session.
 - Preserve ACP 1.x interoperability. Lody-specific data must live under the
   `_meta.lody` namespace or `_lody/*` extension methods; other ACP clients must
   continue to work when they ignore those extensions.
-- Use `vtcode-exec-events::ThreadEvent` and the existing
-  `vtcode_core::subagents::SubagentController`; do not introduce a parallel
+- Use `diapason-exec-events::ThreadEvent` and the existing
+  `diapason_core::subagents::SubagentController`; do not introduce a parallel
   runtime event or task registry.
-- Keep VTCode's `task_tracker` output on the standard ACP `Plan` path. Lody's
+- Keep Diapason's `task_tracker` output on the standard ACP `Plan` path. Lody's
   `tasks` capability describes background or scheduled work, not plan entries.
 - Advertise only implemented operations. Omit `scheduled`, and omit any
   `subagents` management flag whose request handler is not present and tested.
@@ -106,7 +106,7 @@ management requests return only tasks owned by the requested ACP session.
   Likelihood: medium. Mitigation: emit no usage notification when a provider
   supplies none, never invent token counts, and represent unavailable optional
   fields by omission.
-- Risk: Baseten streaming usage is currently absent because VTCode does not
+- Risk: Baseten streaming usage is currently absent because Diapason does not
   request it for custom providers. Severity: high for the user's providers.
   Likelihood: certain. Mitigation: add an opt-in `supports_stream_usage`
   profile capability, exercise a Baseten-shaped final usage chunk with
@@ -120,14 +120,14 @@ management requests return only tasks owned by the requested ACP session.
 - [x] (2026-08-28 11:08Z) Create
   `fix/acp-lody-task-lifecycle-negotiation` from PR #13 in an independent
   worktree.
-- [x] (2026-08-28 11:20Z) Verify the VTCode event/controller paths and the
+- [x] (2026-08-28 11:20Z) Verify the Diapason event/controller paths and the
   current Lody extension contract.
 - [x] (2026-08-28 11:28Z) Confirm Baseten's streamed-usage contract and the
   current custom-provider opt-in gap.
 - [x] (2026-08-28 12:39Z) Obtain approval for this ExecPlan and begin EP-M1.
 - [x] (2026-08-28 13:28Z) Complete EP-M1 red and focused green tests for
   standard task lifecycle updates, conditional negotiation and stable IDs.
-- [x] (2026-08-28 15:24Z) EP-M1: replace `_vtcode/taskLifecycle` with standard
+- [x] (2026-08-28 15:24Z) EP-M1: replace `_diapason/taskLifecycle` with standard
   task-carrying ACP tool updates and negotiate subagent lifecycle.
 - [x] (2026-08-28 16:02Z) Resolve the EP-M2 security tolerance:
   persisted background records do not carry an explicit owning ACP session, so
@@ -158,8 +158,8 @@ management requests return only tasks owned by the requested ACP session.
     new content.
   - Both user-level Baseten profiles now opt into streamed usage.
   - The final release gate passed with 6,588 tests and 16 skips; the user-level
-    binary was reinstalled and resolves through `/home/leynos/.local/bin/vtcode`.
-  - Draft PR [#14](https://github.com/leynos/vtcode/pull/14) targets
+    binary was reinstalled and resolves through `/home/leynos/.local/bin/diapason`.
+  - Draft PR [#14](https://github.com/leynos/diapason/pull/14) targets
     `fix/acp-unresolved-tool-recovery`. PRs #11 through #14 form stack #16,
     preserving the intended four-layer base chain.
 - [x] (2026-10-31) EP-M5 review repair: close the three CodeRabbit correctness
@@ -189,7 +189,7 @@ management requests return only tasks owned by the requested ACP session.
     duplex assertion that an already-running background task is published when
     the forwarder attaches. Assembled provider-stream usage was already covered
     end to end by `streamed_audit.rs`; the Baseten parser and opt-in paths stay
-    covered by `vtcode-llm/tests/vidaimock_streaming.rs`.
+    covered by `diapason-llm/tests/vidaimock_streaming.rs`.
 - [x] (2026-11-01) EP-M5 second review repair: close the findings from
   Assessment-ID ACP-LODY-EP-20261031-2.
   - Attach-time snapshots now share the live path's queue accounting.
@@ -262,8 +262,8 @@ management requests return only tasks owned by the requested ACP session.
     observation point is known to discriminate the old ordering.
   - Committed as `80eb649ed51fa856609f7c766a7a29f332a24716` and pushed. The
     release gates ran again on that commit and installation from the worktree
-    succeeded; the resolved binary is `/home/leynos/.cargo/bin/vtcode`
-    reporting `vtcode-core 0.156.1`. Evidence bundle recorded below.
+    succeeded; the resolved binary is `/home/leynos/.cargo/bin/diapason`
+    reporting `diapason-core 0.156.1`. Evidence bundle recorded below.
 - [x] (2026-11-01) EP-M5 fifth review repair: close the two Codex P2 findings.
   - **Owner-derived ids collided.** `background_record_id` derived the record
     id from the agent name alone, so two sessions in one workspace that both
@@ -392,9 +392,9 @@ management requests return only tasks owned by the requested ACP session.
 
 - [x] (2026-11-07) Ported onto the Diapason rename.
   - The base branch adopted commit `70d92ddde "Adopt Diapason naming across
-    the VTCode fork (#188)"`, which renamed every crate (`vtcode-*` →
-    `diapason-*`), the workspace directory (`.vtcode` → `.diapason`), the
-    config type (`VTCodeConfig` → `DiapasonConfig`), and the `colour` spelling.
+    the Diapason fork (#188)"`, which renamed every crate (`diapason-*` →
+    `diapason-*`), the workspace directory (`.diapason` → `.diapason`), the
+    config type (`DiapasonConfig` → `DiapasonConfig`), and the `colour` spelling.
     The feature branch predates it, so PR #14 reported `CONFLICTING`/`DIRTY`
     across roughly 3000 files.
   - The feature was squashed to one commit and replayed onto
@@ -406,17 +406,17 @@ management requests return only tasks owned by the requested ACP session.
     feature's new fields; the base's earlier `_diapason/taskLifecycle`
     iteration was superseded by the feature's standard `session/update`
     projection and `_lody/*` management requests.
-  - Stale identifiers were swept (`vtcode_core::` → `diapason_core::`,
-    `VTCodeConfig`/`VTCodeSessionLifecycleState` → `Diapason*`,
-    `.vtcode/state` → `.diapason/state`, `vtcode acp` → `diapason acp`), the
+  - Stale identifiers were swept (`diapason_core::` → `diapason_core::`,
+    `DiapasonConfig`/`DiapasonSessionLifecycleState` → `Diapason*`,
+    `.diapason/state` → `.diapason/state`, `diapason acp` → `diapason acp`), the
     proptest regression seed was relocated under `diapason-acp`, and
     `Cargo.lock` was regenerated so `diapason-acp` records its `wiremock`
     dev-dependency. Ported head: `d1834e73a` on `port/lody-on-diapason`.
 
 ## Surprises & discoveries
 
-- Observation: the repository identity changed mid-flight. `leynos/vtcode` is
-  now "Diapason, a df12 Productions hard fork of VTCode focused on ACP control
+- Observation: the repository identity changed mid-flight. `leynos/diapason` is
+  now "Diapason, a df12 Productions hard fork of Diapason focused on ACP control
   and observability". Evidence: `70d92ddde` and the `diapason-*` crate tree on
   the base branch. Impact: the feature could not be merged as authored; it had
   to be replayed onto the renamed tree, which is what the port above records.
@@ -430,13 +430,13 @@ management requests return only tasks owned by the requested ACP session.
   mitigation.
 - Observation: the EP-M1 red run failed at compile time because
   `lody_task_session_update` was intentionally absent. Evidence:
-  `/tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out` reports
+  `/tmp/red-diapason-fix-acp-lody-task-lifecycle-negotiation-epm1.out` reports
   `E0425` from the new task lifecycle unit test. Impact: the red test directly
   proves that the new standard ACP adapter is required; the existing private
   notification cannot satisfy it.
 - Observation: EP-M1 passed the complete repository release gate and was
   committed as `16ba7b5160a28aab2fcf1d47cb8d37bc9c28892f`. Evidence:
-  `/tmp/check-VTCode-fix-acp-lody-task-lifecycle-negotiation-2.out` records
+  `/tmp/check-Diapason-fix-acp-lody-task-lifecycle-negotiation-2.out` records
   rustfmt, policy checks, Clippy, build, 6,582 tests, harness regressions and
   rustdoc passing. Impact: the standard lifecycle repair is a complete,
   independently releasable plateau.
@@ -481,44 +481,44 @@ management requests return only tasks owned by the requested ACP session.
 
 - Observation: EP-M2's red tests exposed absent ownership and management
   plumbing; the expanded core and ACP suites then passed the contract. Evidence:
-  `/tmp/red-vtcode-core-epm2.out`, `/tmp/green-vtcode-core-epm2-final.out`
+  `/tmp/red-diapason-core-epm2.out`, `/tmp/green-diapason-core-epm2-final.out`
   (5/5),
-  `/tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-acp.out`, and
-  `/tmp/test-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-final.out`
+  `/tmp/red-diapason-fix-acp-lody-task-lifecycle-negotiation-epm2-acp.out`, and
+  `/tmp/test-diapason-fix-acp-lody-task-lifecycle-negotiation-epm2-final.out`
   (6/6). Impact: EP-M2 is complete; provider usage and custom-provider
   streaming opt-in are the remaining implementation work.
 
-- Observation: VTCode already emits the model's task tracker as a standard ACP
+- Observation: Diapason already emits the model's task tracker as a standard ACP
   `Plan`, including blocked-task labels and durable replay. Evidence:
-  `crates/codegen/vtcode-acp/src/zed/agent/task_progress.rs` and its duplex
+  `crates/codegen/diapason-acp/src/zed/agent/task_progress.rs` and its duplex
   tests in `zed/agent/handlers.rs`. Impact: no new plan/task-tracker protocol
   is required. The Lody `tasks` capability will advertise only enabled
   background-subagent work.
-- Observation: `_vtcode/taskLifecycle` is neither a standard ACP task update nor
+- Observation: `_diapason/taskLifecycle` is neither a standard ACP task update nor
   a Lody-recognized legacy extension, and its discriminator is incompatible
   with Lody's Claude compatibility parser. Evidence:
-  `crates/codegen/vtcode-acp/src/zed/agent/task_lifecycle.rs` uses
+  `crates/codegen/diapason-acp/src/zed/agent/task_lifecycle.rs` uses
   `message.type`; Lody commit `dd241fd4108ba5de2f7e2d8d627713152d812a06`
   recognizes only `_claude/taskLifecycle` and `_kimi/taskLifecycle` legacy
   carriers using a different shape. Impact: the custom notification must be
   removed rather than renamed.
 - Observation: the existing `SubagentController` already exposes status,
   close/cancel, child snapshots and background output previews. Evidence:
-  `vtcode-core/src/subagents/mod.rs`, `controller_spawn_run.rs` and
+  `diapason-core/src/subagents/mod.rs`, `controller_spawn_run.rs` and
   `controller_background_ops.rs`. Impact: Lody management is an ACP adapter
   concern, not a new core subsystem.
 - Observation: Baseten documents per-request token usage, cached input tokens
   and final streamed usage, but the final usage chunk is conditional on
   `stream_options.include_usage: true`. Evidence: Baseten's Chat Completions
-  reference and GLM-5.3 Flash model page; VTCode currently adds the option only
-  for native OpenAI in `vtcode-llm/src/providers/openai/provider/streaming.rs`.
+  reference and GLM-5.3 Flash model page; Diapason currently adds the option only
+  for native OpenAI in `diapason-llm/src/providers/openai/provider/streaming.rs`.
   Impact: negotiated Lody usage would remain empty for the user's Baseten
   sessions without a provider-profile opt-in.
 - Observation: Lody's canonical usage extension is the version-1
-  `_lody/session/usage_update` method, and VTCode must advertise
+  `_lody/session/usage_update` method, and Diapason must advertise
   `usage: {version: 1}` even when a provider does not return usage. Evidence:
   the Lody Core usage method and the EP-M3 capability and mapping tests;
-  `/tmp/test-vtcode-acp-fix-acp-lody-task-lifecycle-negotiation-epm3-final.out`.
+  `/tmp/test-diapason-acp-fix-acp-lody-task-lifecycle-negotiation-epm3-final.out`.
   Impact: usage negotiation is stable across providers, while a response with
   no normalized usage produces no notification rather than invented counts.
 - Observation: usage is emitted once per provider response, including each
@@ -532,15 +532,15 @@ management requests return only tasks owned by the requested ACP session.
   to false; resolved profile precedence controls the request, while native
   OpenAI request behaviour is unchanged. Evidence: the configuration precedence
   and request-shape tests in
-  `/tmp/test-vtcode-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out` and
-  `/tmp/test-vtcode-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out`.
+  `/tmp/test-diapason-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out` and
+  `/tmp/test-diapason-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out`.
   Impact: existing proxy configurations remain safe, and only an explicitly
   opted-in compatible endpoint receives `stream_options.include_usage`.
 - Observation: the first standalone ACP usage duplex check exposed timing and
   extension-method normalization assumptions; the final test uses the official
   ACP extension channel and passes after those boundaries were made explicit.
   Evidence: the final green transcript is
-  `/tmp/test-vtcode-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3-green.out`.
+  `/tmp/test-diapason-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3-green.out`.
   Impact: the behavioural test validates the wire contract rather than a
   direct helper invocation.
 - Observation: Baseten's aggregate `/v1/model_apis/usage` endpoint is bucketed
@@ -677,16 +677,16 @@ scheduled tasks remain explicitly independent follow-ups.
 
 ## Context and orientation
 
-VTCode's ACP server lives in `crates/codegen/vtcode-acp`. The SACP handler
+Diapason's ACP server lives in `crates/codegen/diapason-acp`. The SACP handler
 registration and initialization response are in `src/zed/agent/handlers.rs`;
 standard session notifications are sent through `src/zed/agent/updates.rs` and
 `src/zed/connection.rs`. Per-session runtime state is in `src/zed/types.rs`.
 
 `src/zed/agent/task_lifecycle.rs` subscribes to
-`vtcode_core::subagents::SubagentProgressEvent`, filters events by parent ACP
-session and currently emits the ignored `_vtcode/taskLifecycle` notification.
+`diapason_core::subagents::SubagentProgressEvent`, filters events by parent ACP
+session and currently emits the ignored `_diapason/taskLifecycle` notification.
 The controller that owns those events is in
-`crates/codegen/vtcode-core/src/subagents`. It already provides status lists,
+`crates/codegen/diapason-core/src/subagents`. It already provides status lists,
 child shutdown, child transcript snapshots, background shutdown and background
 output previews.
 
@@ -697,13 +697,13 @@ through `_lody/session/usage_update`. Management uses `_lody/subagents/list`,
 not use a custom method: it is a standard ACP tool call whose `_meta.lody.task`
 value is a complete task snapshot.
 
-The word "task" has three distinct meanings here. VTCode's model-facing
+The word "task" has three distinct meanings here. Diapason's model-facing
 `task_tracker` is an ACP `Plan`. Lody's `tasks` capability says whether the
 agent supports managed background or scheduled work. Lody task metadata is the
 UI/history representation for subagents, background work or scheduled work.
 Only the latter two are changed by this plan.
 
-Provider responses carry `vtcode_commons::llm::Usage` with prompt, completion,
+Provider responses carry `diapason_commons::llm::Usage` with prompt, completion,
 cache-read and cache-creation counts. OpenAI-compatible streams expose usage in
 a terminal SSE chunk only when requested. The custom-provider OpenAI router
 already parses a received usage chunk, but it does not request one from Baseten
@@ -722,7 +722,7 @@ today.
   `dd241fd4108ba5de2f7e2d8d627713152d812a06` in `/home/leynos/Projects/Lody`.
 - Baseten Chat Completions, model API pricing/limits, observability and GLM-5.3
   Flash documentation as observed on 2026-08-28.
-- No separate VTCode technical design or ADR governs Lody extensions. This
+- No separate Diapason technical design or ADR governs Lody extensions. This
   ExecPlan is the lightweight architecture contract for this branch.
 
 Trace links:
@@ -741,7 +741,7 @@ USER-USAGE -> EP-M3 -> baseten_usage_reaches_lody
   and no unimplemented scheduled support is advertised. Method: parameterized
   unit tests plus official ACP duplex behavioural tests. Rationale: the state
   space is the finite cross-product of controller absent, controller present
-  and background disabled/enabled. Domain: all capability combinations VTCode
+  and background disabled/enabled. Domain: all capability combinations Diapason
   can construct. Artefact: tests beside `advertised_agent_capabilities` and in
   the ACP duplex harness in `zed/agent/handlers.rs`. Evidence: the red test
   observes missing `_meta.lody`; the green test parses exact versioned
@@ -749,7 +749,7 @@ USER-USAGE -> EP-M3 -> baseten_usage_reaches_lody
   include witnesses for no controller, child-only controller and
   child-plus-background controller; a negative control advertises no
   `scheduled` key and rejects an unknown `_lody` method.
-- Obligation: `TASK-IDENTITY`. Every lifecycle update for one VTCode task uses
+- Obligation: `TASK-IDENTITY`. Every lifecycle update for one Diapason task uses
   one stable `task:<id>` tool-call identifier, carries a complete valid
   `_meta.lody.task` snapshot and maps terminal state monotonically. Method:
   table tests for the finite status enums and a property test over generated
@@ -760,7 +760,7 @@ USER-USAGE -> EP-M3 -> baseten_usage_reaches_lody
   32. Artefact: `task_lifecycle.rs` unit/property tests and official ACP duplex
   lifecycle test. Evidence: the existing custom-notification assertion fails
   after the red expectation is changed; green observes an initial `ToolCall`,
-  subsequent `ToolCallUpdate` values and no `_vtcode/taskLifecycle`
+  subsequent `ToolCallUpdate` values and no `_diapason/taskLifecycle`
   notification. Non-vacuity: classify child/background and
   pending/running/terminal cases; include a seeded ID-changing mapper that the
   stable-ID property rejects.
@@ -870,15 +870,15 @@ EP-M5 evidence addendum (2026-10-31):
   statuses and assert status, completion/end timestamps and error text survive
   a cancel.
 - `USAGE-DELTA` assembled coverage is
-  `crates/codegen/vtcode-acp/src/zed/agent/handlers/tests/tools/baseten_usage.rs`,
+  `crates/codegen/diapason-acp/src/zed/agent/handlers/tests/tools/baseten_usage.rs`,
   which starts a real custom-provider profile against a wiremock
   OpenAI-compatible origin, drives the ACP prompt pipeline, and asserts the
   terminal-usage chunk produces exactly one `_lody/session/usage_update` while
   a usage-free stream publishes no delta; the same test also asserts the opt-in
   `stream_options.include_usage` request shape.
-  `crates/codegen/vtcode-acp/src/zed/agent/tests/streamed_audit.rs` remains the
+  `crates/codegen/diapason-acp/src/zed/agent/tests/streamed_audit.rs` remains the
   synthetic-provider projection check, and
-  `crates/codegen/vtcode-llm/tests/vidaimock_streaming.rs` remains the parser
+  `crates/codegen/diapason-llm/tests/vidaimock_streaming.rs` remains the parser
   boundary check.
 
 ## Plan of work
@@ -937,7 +937,7 @@ commit and a user-level binary installation before the next milestone begins.
   check: existing event/filter/lifetime contracts remain intact, and no
   management handler is advertised prematurely. Recovery: revert the lifecycle
   commit; no persisted migration exists. Remaining gaps: management and usage.
-  Compatibility decision: no compatibility layer for `_vtcode/taskLifecycle`;
+  Compatibility decision: no compatibility layer for `_diapason/taskLifecycle`;
   it had no documented consumer and Lody ignored it.
 - Identifier and outcome: EP-M2, session-scoped Lody subagent/background-task
   management and truthful management/task negotiation. Requirements and gaps:
@@ -973,7 +973,7 @@ commit and a user-level binary installation before the next milestone begins.
 Work from:
 
 ```bash
-cd /home/leynos/Projects/VTCode.worktrees/lody-task-lifecycle-negotiation
+cd /home/leynos/Projects/Diapason.worktrees/lody-task-lifecycle-negotiation
 ```
 
 At each red/green/refactor stage, capture output under `/tmp` using the action,
@@ -981,8 +981,8 @@ project and branch naming convention. Use focused nextest filters during TDD;
 never run `cargo test`.
 
 ```bash
-cargo nextest run -p vtcode-acp -E 'test(lody)' 2>&1 \
-  | tee /tmp/test-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+cargo nextest run -p diapason-acp -E 'test(lody)' 2>&1 \
+  | tee /tmp/test-diapason-fix-acp-lody-task-lifecycle-negotiation.out
 ```
 
 Run all full commit gates sequentially through the `scrutineer` subagent. It
@@ -993,9 +993,9 @@ After every code commit, install and verify the user binary:
 
 ```bash
 cargo install --path . --locked --force 2>&1 \
-  | tee /tmp/install-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
-readlink -f /home/leynos/.local/bin/vtcode
-/home/leynos/.local/bin/vtcode --version
+  | tee /tmp/install-diapason-fix-acp-lody-task-lifecycle-negotiation.out
+readlink -f /home/leynos/.local/bin/diapason
+/home/leynos/.local/bin/diapason --version
 ```
 
 Before publication, inspect and submit the complete stack non-interactively:
@@ -1018,7 +1018,7 @@ milestone. The final branch is accepted only when:
   capabilities;
 - standard ACP plans from `task_tracker` remain unchanged;
 - lifecycle produces stable standard tool calls with valid task metadata and
-  never emits `_vtcode/taskLifecycle`;
+  never emits `_diapason/taskLifecycle`;
 - list/cancel/output succeed for owned foreground and background tasks and
   reject foreign IDs;
 - usage deltas preserve all available normalized counts and absent usage emits
@@ -1027,7 +1027,7 @@ milestone. The final branch is accepted only when:
   opt-in and reaches Lody through local playback/physics tests;
 - `./scripts/check.sh` passes through `scrutineer` before every code commit and
   once more at the final branch tip;
-- the installed user binary resolves through `/home/leynos/.local/bin/vtcode`;
+- the installed user binary resolves through `/home/leynos/.local/bin/diapason`;
 - the pushed local and remote SHA match; and
 - the new draft PR targets `fix/acp-unresolved-tool-recovery` and is linked to
   the stack containing PR #13.
@@ -1046,7 +1046,7 @@ controller's cancellation semantics or read an arbitrary transcript path.
 
 Focused tests, gates and binary installation are idempotent. Extension
 notifications are observational and do not change durable session history in
-VTCode. List and output are read-only; cancel is intentionally idempotent for a
+Diapason. List and output are read-only; cancel is intentionally idempotent for a
 terminal owned task and never automatically replays work.
 
 If a rebase or stack operation conflicts, stop, inspect both intents and use
@@ -1068,9 +1068,9 @@ Lody client: dd241fd4108ba5de2f7e2d8d627713152d812a06
 EP-M1 Red-Green-Refactor evidence:
 
 ```plaintext
-RED:   /tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out
+RED:   /tmp/red-diapason-fix-acp-lody-task-lifecycle-negotiation-epm1.out
        E0425: lody_task_session_update was absent.
-GREEN: /tmp/green-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out
+GREEN: /tmp/green-diapason-fix-acp-lody-task-lifecycle-negotiation-epm1.out
        5 passed: status mapping, stable-ID property, official ACP duplex and
        capability present/absent tests.
 ```
@@ -1078,12 +1078,12 @@ GREEN: /tmp/green-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm1.out
 EP-M2 Robust Core Expansion and Management evidence:
 
 ```plaintext
-RED:   /tmp/red-vtcode-core-epm2.out
-GREEN: /tmp/green-vtcode-core-epm2-final.out
+RED:   /tmp/red-diapason-core-epm2.out
+GREEN: /tmp/green-diapason-core-epm2-final.out
        5/5 core tests passed, including owner persistence, legacy loading and
        bounded output-tail properties.
-RED:   /tmp/red-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-acp.out
-GREEN: /tmp/test-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm2-final.out
+RED:   /tmp/red-diapason-fix-acp-lody-task-lifecycle-negotiation-epm2-acp.out
+GREEN: /tmp/test-diapason-fix-acp-lody-task-lifecycle-negotiation-epm2-final.out
        6/6 ACP tests passed, including real duplex negotiation, owned
        list/output/cancel and foreign-task indistinguishability from unknown.
 GREEN: /tmp/rgr-core-owner-scope-green.out
@@ -1099,31 +1099,31 @@ GREEN: /tmp/rgr-acp-owner-scope-green.out
 EP-M3 Provider Usage evidence:
 
 ```plaintext
-GREEN: /tmp/test-vtcode-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+GREEN: /tmp/test-diapason-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out
        4/4 configuration parsing and profile-precedence tests passed.
-GREEN: /tmp/test-vtcode-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+GREEN: /tmp/test-diapason-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out
        1/1 custom-provider request-shape and terminal-usage playback test passed.
-GREEN: /tmp/test-vtcode-acp-fix-acp-lody-task-lifecycle-negotiation-epm3-final.out
+GREEN: /tmp/test-diapason-acp-fix-acp-lody-task-lifecycle-negotiation-epm3-final.out
        9/9 ACP capability, usage-mapping, tool-loop and recovery tests passed.
-GREEN: /tmp/test-vtcode-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3-green.out
+GREEN: /tmp/test-diapason-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3-green.out
        1/1 official ACP extension-channel usage duplex test passed.
-GREEN: /tmp/test-vtcode-llm-vidaimock-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+GREEN: /tmp/test-diapason-llm-vidaimock-fix-acp-lody-task-lifecycle-negotiation-epm3.out
        1/1 Baseten-shaped terminal usage physics test passed.
-FORMAT: /tmp/fmt-check-VTCode-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+FORMAT: /tmp/fmt-check-Diapason-fix-acp-lody-task-lifecycle-negotiation-epm3.out
         Captured the EP-M3 formatting check and its rustfmt diagnostics; the
         final release gate remains the authoritative clean-format check.
-RED:   /tmp/test-vtcode-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+RED:   /tmp/test-diapason-acp-usage-duplex-fix-acp-lody-task-lifecycle-negotiation-epm3.out
        The initial duplex assertion exposed ACP's normalized extension method
        name (the leading underscore is stripped) and notification timing.
        The official-channel green rerun above covers the corrected boundary.
-GATE:  /tmp/check-VTCode-fix-acp-lody-task-lifecycle-negotiation-epm3-2.out
+GATE:  /tmp/check-Diapason-fix-acp-lody-task-lifecycle-negotiation-epm3-2.out
        Full release gate passed: 6588 tests passed and 16 were skipped, with
        formatting, security, logging, governance, Clippy, build, PTY/TUI and
        documentation checks green.
-INSTALL: /tmp/install-vtcode-fix-acp-lody-task-lifecycle-negotiation-epm3.out
+INSTALL: /tmp/install-diapason-fix-acp-lody-task-lifecycle-negotiation-epm3.out
          Commit b18a674dc installed successfully at user level; the existing
          locked-yanked chacha20 0.10.1 warning was non-fatal.
-SCHEMA: /tmp/generate-config-reference-VTCode-fix-acp-lody-task-lifecycle-negotiation-epm4.out
+SCHEMA: /tmp/generate-config-reference-Diapason-fix-acp-lody-task-lifecycle-negotiation-epm4.out
         Exported 836 schema fields successfully; only the two feature-specific
         reference rows are retained because the remaining generated diff was
         unrelated pre-existing drift.
@@ -1134,58 +1134,58 @@ EP-M5 second review repair release-gate evidence (2026-11-01, candidate =
 each, by the scrutineer):
 
 ```plaintext
-FORMAT:  /tmp/check-fmt-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+FORMAT:  /tmp/check-fmt-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 8s. rustfmt clean; mdtablefix left 365 files unchanged.
-LINT:    /tmp/lint-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+LINT:    /tmp/lint-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 227s. Shell syntax, repository policy scripts, workspace
          Clippy with --all-targets --all-features -D warnings, and cargo doc.
-TYPE:    /tmp/typecheck-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+TYPE:    /tmp/typecheck-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 158s. cargo check --locked --workspace --all-targets
          --all-features.
-TEST:    /tmp/test-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+TEST:    /tmp/test-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 317s. 10,521 tests run, 10,521 passed, 23 skipped.
-BUILD:   /tmp/build-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+BUILD:   /tmp/build-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 221s.
-HARNESS: /tmp/test-harness-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+HARNESS: /tmp/test-harness-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 589s. 8 PTY, 10 pipe and 49 inline-event harness tests passed.
-AST-GREP: /tmp/check-ast-grep-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+AST-GREP: /tmp/check-ast-grep-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0 through the Makefile's optional-skip branch. The only installed
          ast-grep binary (/home/leynos/.local/bin/ast-grep, mode 0600) is not
          executable, so the repository scan did not run on this host. Recorded
          as an environment limitation, not as passing scan evidence.
-ADVISORY: /tmp/advisory-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+ADVISORY: /tmp/advisory-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 2s. File-length, unwrap/expect, zen-allowlist and
          agent-legibility advisories completed in warn mode; the unwrap/expect
          scan reported 0 findings across 1,990 files.
-INSTALL: /tmp/install-r7-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+INSTALL: /tmp/install-r7-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          cargo install --path . --locked --force replaced the user binary with
-         vtcode-core 0.156.1 in 21m50s; /home/leynos/.local/bin/vtcode
-         resolves to /home/leynos/.cargo/bin/vtcode and reports 0.156.1.
+         diapason-core 0.156.1 in 21m50s; /home/leynos/.local/bin/diapason
+         resolves to /home/leynos/.cargo/bin/diapason and reports 0.156.1.
 ```
 
 EP-M5 third review repair release-gate evidence (2026-11-01, candidate =
 `60b2c4cc5`; gates run sequentially, once each, by the scrutineer):
 
 ```plaintext
-FORMAT:  /tmp/check-fmt-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+FORMAT:  /tmp/check-fmt-r8-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, under 1s. rustfmt clean; mdtablefix left 365 files unchanged.
-LINT:    /tmp/lint-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+LINT:    /tmp/lint-r8-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. Workspace Clippy with --all-targets --all-features
          -D warnings and cargo doc finished clean.
-TYPE:    /tmp/typecheck-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+TYPE:    /tmp/typecheck-r8-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 303s. cargo check --workspace --all-targets --all-features;
          sccache was not serving, so the check compiled uncached.
-TEST:    /tmp/test-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+TEST:    /tmp/test-r8-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 103s. 10,523 tests run, 10,523 passed, 23 skipped.
-BUILD:   /tmp/build-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+BUILD:   /tmp/build-r8-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0, 195s. cargo build --locked --workspace.
-HARNESS: /tmp/test-harness-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+HARNESS: /tmp/test-harness-r8-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. 8 PTY, 10 pipe and 49 inline-event harness tests passed.
-AST-GREP: /tmp/check-ast-grep-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+AST-GREP: /tmp/check-ast-grep-r8-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0 through the Makefile's optional-skip branch. The installed
          ast-grep binary remains mode 0600, so no scan ran; recorded as an
          environment limitation, not as passing scan evidence.
-ADVISORY: /tmp/advisory-r8-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+ADVISORY: /tmp/advisory-r8-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. File-length, unwrap/expect, zen-allowlist and
          agent-legibility advisories completed in warn mode with 0
          unwrap/expect findings and 0 allowlist or legibility gaps.
@@ -1195,28 +1195,28 @@ EP-M5 fourth review repair release-gate and installation evidence (2026-11-01,
 candidate = `80eb649ed`; gates run sequentially, once each, by the scrutineer):
 
 ```plaintext
-FORMAT:  /tmp/check-fmt-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+FORMAT:  /tmp/check-fmt-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. rustfmt clean; mdtablefix left 365 files unchanged.
-LINT:    /tmp/lint-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+LINT:    /tmp/lint-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. Shell, policy, Clippy (-D warnings) and documentation checks.
-TYPE:    /tmp/typecheck-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+TYPE:    /tmp/typecheck-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. sccache was not serving; the workspace check compiled uncached.
-TEST:    /tmp/test-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+TEST:    /tmp/test-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. 10,524 tests run, 10,524 passed (1 leaky), 23 skipped.
-BUILD:   /tmp/build-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+BUILD:   /tmp/build-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0.
-HARNESS: /tmp/test-harness-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+HARNESS: /tmp/test-harness-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. 8 PTY, 10 pipe and 49 inline-event harness tests passed.
-AST-GREP: /tmp/check-ast-grep-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+AST-GREP: /tmp/check-ast-grep-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0 through the Makefile's optional-skip branch; the guard found
          no executable ast-grep, so no scan ran.
-ADVISORY: /tmp/advisory-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+ADVISORY: /tmp/advisory-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. Warn mode; 0 unwrap/expect findings, 0 allowlist or
          legibility gaps.
-INSTALL: /tmp/install-r9-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
+INSTALL: /tmp/install-r9-diapason-fix-acp-lody-task-lifecycle-negotiation.out
          EXIT 0. cargo install --path . --locked --force replaced the user
-         binary from this worktree; /home/leynos/.cargo/bin/vtcode reports
-         vtcode-core 0.156.1.
+         binary from this worktree; /home/leynos/.cargo/bin/diapason reports
+         diapason-core 0.156.1.
 ```
 
 Baseten's documented streamed-usage request is:
@@ -1235,7 +1235,7 @@ terminal delta this plan consumes.
 
 ## Interfaces and dependencies
 
-Define private Serde DTOs in `crates/codegen/vtcode-acp/src/zed/agent/lody.rs`
+Define private Serde DTOs in `crates/codegen/diapason-acp/src/zed/agent/lody.rs`
 for the version-1 capability map, task metadata, session usage update and three
 management request/response shapes. The serialized field names must match Lody
 Core revision `23c792b9` exactly. These types are an adapter boundary, not a
@@ -1252,7 +1252,7 @@ The extension dispatcher will accept `acp::ExtRequest` and respond with
 `force_cancel_background`, `snapshot_for_thread` and `background_snapshot`.
 
 Add `supports_stream_usage: Option<bool>` to
-`vtcode_config::core::CustomProviderProfileConfig` and
+`diapason_config::core::CustomProviderProfileConfig` and
 `ResolvedCustomProviderProfile`. The custom OpenAI-chat provider will consult
 the resolved profile for the request model before adding
 `stream_options.include_usage`; native OpenAI keeps its existing behaviour.
@@ -1295,15 +1295,15 @@ three warnings, and this revision repairs each one:
   `background_output_tail_reads_without_refreshing_background_state` pins the
   query's non-mutating contract, including unchanged persisted bytes.
 - User-Facing and Developer Documentation: a users-guide section covers
-  `vtcode acp`, capability negotiation, standard lifecycle projection,
+  `diapason acp`, capability negotiation, standard lifecycle projection,
   `_lody/subagents/*`, and usage deltas; the developers guide gains an ACP/Lody
   pointer; `docs/development/acp-runtime.md` replaces the stale
-  `_vtcode/taskLifecycle` text with controller resolution, lifecycle
+  `_diapason/taskLifecycle` text with controller resolution, lifecycle
   projection, management RPC, and usage subsections; `docs/ARCHITECTURE.md` and
   `docs/releases/0.157.0.md` are corrected to match.
 - Observability: management RPCs carry an `acp_lody_subagent_management` span
   (bounded operation, session correlation hash, outcome, elapsed time, error
-  category) and feed a new `AcpExtensionMetrics` snapshot in `vtcode-core`
+  category) and feed a new `AcpExtensionMetrics` snapshot in `diapason-core`
   (management started/succeeded/failed/in-flight/total duration, usage
   notification sent/failed, initial snapshots published/failed). Usage
   publication has its own span and no longer logs the raw session ID.
@@ -1313,7 +1313,7 @@ three warnings, and this revision repairs each one:
   bounded task kind and reason.
 - Docstring Coverage (inconclusive): disposition is a rebuttal. `-D warnings`
   does not enforce documentation for public items in this workspace: both
-  `vtcode-core/src/lib.rs` and `vtcode-acp/src/lib.rs` allow `missing_docs`
+  `diapason-core/src/lib.rs` and `diapason-acp/src/lib.rs` allow `missing_docs`
   explicitly, overriding the workspace `rust.missing_docs = "warn"` setting.
   Documentation adequacy is therefore assessed separately from the 80% coverage
   metric, which counts every diff-touched function, including private ones, and
@@ -1344,7 +1344,7 @@ batch:
 
 Lesson: compile the working tree before dispatching gates or crossing a context
 boundary, and never batch unvalidated repairs.
-`cargo check -p vtcode-acp --all-targets --locked` reports 0 errors on the
+`cargo check -p diapason-acp --all-targets --locked` reports 0 errors on the
 corrected tree.
 
 Release-gate evidence for this candidate, run sequentially by the scrutineer on
@@ -1367,7 +1367,7 @@ the branch was replayed onto the new base. Recovery refs: old head
 Resolution decisions:
 
 - `session_state/archive.rs` and `session_state_tests.rs`: kept the target side,
-  which already contains a superset of the r16 lease-release and `VTCodeConfig`
+  which already contains a superset of the r16 lease-release and `DiapasonConfig`
   import changes, so replaying them would duplicate work.
 - `handlers/tests/session.rs`: the replay's commit had moved the
   concurrent-prompt test into `session_prompt_race.rs`, so the block was
@@ -1381,7 +1381,7 @@ Resolution decisions:
 `git range-diff 114ed96e9..6df4620f5 f837738e3..628387243` shows only the two
 expected differences: the archive/import hunks that the new base already
 carries, and the re-arranged test move. New head: `628387243`.
-`cargo check --locked -p vtcode-acp -p vtcode-core --all-targets --all-features`
+`cargo check --locked -p diapason-acp -p diapason-core --all-targets --all-features`
 reports EXIT=0 on the rebased tree.
 
 ### Revision note (2026-11-02, r18 large-file invariant repair)
@@ -1445,7 +1445,7 @@ absent from the host, so it produced no structural-scan evidence. Hosted checks
 are green apart from the expected skips.
 
 Both outside-diff findings were dispositioned in a
-[top-level comment](https://github.com/leynos/vtcode/pull/14#issuecomment-6573272558),
+[top-level comment](https://github.com/leynos/diapason/pull/14#issuecomment-6573272558),
 the two inline threads against the earlier candidate were replied to and are
 resolved, and every review thread on the PR is now resolved.
 
@@ -1514,7 +1514,7 @@ assessment reply (2026-11-02T00:15:39Z) are now closed:
   `refresh_background_processes` remains an explicit command for the CLI and
   the output path.
 - `docs/guides/zed-acp.md` no longer documents the removed
-  `_vtcode/taskLifecycle` extension; it points at the standard `session/update`
+  `_diapason/taskLifecycle` extension; it points at the standard `session/update`
   contract already described in the same guide.
 - `publish_initial_task_snapshots` records the snapshots queued before a
   partial queue rejection, so `initial_snapshots_published` no longer drops
@@ -1531,9 +1531,9 @@ had raised earlier: **Testing (Overall)** (error) and **Domain Architecture**
 
 **Domain Architecture — transport policy lived in the domain.** The output-tail
 default (200 lines), the hard cap (10,000 lines) and the request validation
-were defined in `vtcode-core::subagents`, so the domain controller owned an ACP
+were defined in `diapason-core::subagents`, so the domain controller owned an ACP
 transport contract. They now live in the ACP adapter
-(`crates/codegen/vtcode-acp/src/zed/agent/lody_management.rs`), and
+(`crates/codegen/diapason-acp/src/zed/agent/lody_management.rs`), and
 `SubagentController::background_output_tail` takes an already-validated
 `max_lines` and documents that transport limits belong to the adapter that owns
 the transport. The core constants and `normalize_output_tail_lines` are
@@ -1560,3 +1560,28 @@ bound.
 **Gate state (r24).** The first gate run stopped at `make check-fmt` on ten
 rustfmt diffs in the new test code; `cargo fmt --all` was applied and the full
 sequence re-dispatched on the corrected candidate.
+
+### Revision note (2026-11-02, r21 restack onto `271a5cebf`)
+
+The base advanced once more to `271a5cebf`, which adds the r19 publication and
+queue-wait note above. The 18-commit series was replayed onto it with
+`--merge --no-fork-point --no-update-refs --no-autostash
+--reapply-cherry-picks --keep-empty --empty=stop`
+and `zdiff3` conflict markers. Only this document conflicted, because the
+base's r19 paragraph and this branch's r20 note occupy the same position at the
+end of the file; both are retained, with the base's paragraph first.
+
+`git range-diff f52e811c9..aec962ef0 271a5cebf..HEAD` shows commits 1-16 and 18
+identical and only the r20 note changed, as intended. `git diff --check` is
+clean, the replay adds no file deletions, and the diffstat is 84 files changed,
+4482 insertions, 664 deletions.
+
+Gates on the replayed head `cfe0c6bbe`: `make check-fmt`, `make typecheck`,
+`make lint`, and `make test` all pass. The test gate ran 10,629 tests with
+10,629 passed and 23 skipped.
+
+GitHub still reports the PR as `CONFLICTING`/`DIRTY` even though `271a5cebf` is
+an ancestor of the head (`behind_by: 0`, `git merge-tree` exit 0) and
+`refs/pull/17/merge` has not been rebuilt since 2026-10-30. The stale
+mergeability is a GitHub-side cache; this documentation commit is pushed to
+give the service a new head to recompute against.
