@@ -43,6 +43,8 @@ Last reviewed: 2026-08-28
   rails.
 - [Defuddle Fetch](tools/defuddle_fetch.md) - Markdown extraction fallback for
   complex pages.
+- [Custom Providers](user-guide/custom-providers.md) - Per-model profiles and
+  Responses function-call ID remapping for OpenAI-compatible endpoints.
 - [Scheduled Tasks](user-guide/scheduled-tasks.md) - Reminder and durable
   scheduler flows.
 - [WebMCP Browser Bridge User Guide](user-guide/webmcp.md) - Connect a browser

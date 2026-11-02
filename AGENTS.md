@@ -69,7 +69,8 @@ The required
 [agent workflow reference](docs/development/agent-workflow-reference.md)
 contains workspace and per-module catalogues, detailed guide links, and build
 and test commands. Read it when a task touches those paths, crate conventions,
-or verification gates.
+or verification gates. The [developer guide](docs/developers-guide.md) is the
+entry point for canonical contributor contracts and specialized guides.
 
 ## Project memory
 

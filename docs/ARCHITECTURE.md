@@ -55,6 +55,19 @@ event type in a consumer crate.
   ACP-specific payloads. The ACP task-lifecycle forwarder filters updates by
   parent session and projects them into client extension notifications.
 
+### Private module extractions
+
+The scheduler's session-language recognition remains a private
+[`language.rs`](../crates/codegen/vtcode-core/src/scheduler/language.rs) module
+beneath the public scheduler API, and ACP first-output timing and token-usage
+estimation remain private to
+[`provider/telemetry.rs`](../crates/codegen/vtcode-acp/src/zed/agent/handlers/provider/telemetry.rs)
+and
+[`provider_telemetry.rs`](../crates/codegen/vtcode-acp/src/zed/agent/provider_telemetry.rs).
+These extractions do not widen either component's public surface. See
+[Internal Module Ownership](./development/README.md#internal-module-ownership)
+for the ownership contract.
+
 ## Model + Harness
 
 VT Code treats the model as the reasoning engine and the harness as the runtime

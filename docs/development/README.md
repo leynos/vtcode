@@ -93,12 +93,15 @@ Entry point for VT Code contributor workflows.
 - ACP prompt streaming is orchestrated in
   [`handlers.rs`](../../crates/codegen/vtcode-acp/src/zed/agent/handlers.rs).
   Its private
-  [`generation_telemetry.rs`](../../crates/codegen/vtcode-acp/src/zed/agent/handlers/generation_telemetry.rs)
-  module owns first-output timing, token usage estimates, and bounded failure
-  projection.
+  [`provider/telemetry.rs`](../../crates/codegen/vtcode-acp/src/zed/agent/handlers/provider/telemetry.rs)
+  module owns first-output timing and token usage estimates, while
+  [`provider_telemetry.rs`](../../crates/codegen/vtcode-acp/src/zed/agent/provider_telemetry.rs)
+  owns bounded failure projection.
 
 ## Navigation
 
+- [Developer Guide](../developers-guide.md) - Entry point for canonical
+  contributor contracts and specialized guides.
 - [Documentation Hub](../README.md)
 - [Docs Index](../INDEX.md)
 - [Contributing](../CONTRIBUTING.md)

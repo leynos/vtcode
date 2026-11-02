@@ -37,6 +37,8 @@ Behavior:
 - Due prompts are injected only at idle boundaries, after the current turn
   finishes, so human input stays higher priority
 - Times are interpreted in your local timezone
+- Relative durations and their resulting deadlines outside the supported
+  calendar range are rejected without scheduling a task
 - A session can hold at most 50 scheduled tasks
 - One-shot tasks scheduled at `:00` or `:30` may fire up to 90 seconds early
 
