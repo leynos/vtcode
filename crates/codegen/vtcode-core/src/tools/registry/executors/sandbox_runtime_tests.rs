@@ -503,7 +503,12 @@ fn prepare_exec_command_detects_shell_command_flag_variants() {
         ("/bin/bash", vec!["/bin/bash", "-ec", "echo hi"]),
         ("/bin/bash", vec!["/bin/bash", "-l", "-c", "echo hi"]),
         ("cmd", vec!["cmd", "/c", "echo hi"]),
+        ("cmd", vec!["cmd", "/k", "echo hi"]),
         ("powershell", vec!["powershell", "-command", "echo hi"]),
+        // Options that merely contain `c` must not be mistaken for the
+        // command flag; the source is the token after `-Command`.
+        ("powershell", vec!["powershell", "-NonInteractive", "-Command", "echo hi"]),
+        ("powershell", vec!["powershell", "-ExecutionPolicy", "Bypass", "-Command", "echo hi"]),
     ] {
         let command: Vec<String> = command.into_iter().map(str::to_string).collect();
         let prepared = prepare_exec_command(payload, shell, false, command, None);
@@ -513,6 +518,53 @@ fn prepare_exec_command_detects_shell_command_flag_variants() {
     let script = vec!["/bin/bash".to_string(), "script.sh".to_string()];
     let prepared = prepare_exec_command(payload, "/bin/bash", false, script, None);
     assert_eq!(prepared.executed_shell_source, None);
+}
+
+/// A requested argv that is itself a shell invocation exposes its inner source
+/// as a separate policy representation.
+#[test]
+fn explicit_shell_source_extracts_nested_source() {
+    let command = vec![
+        "bash".to_string(),
+        "-lc".to_string(),
+        "curl https://example.com".to_string(),
+    ];
+    assert_eq!(super::exec_command::explicit_shell_source(&command).as_deref(), Some("curl https://example.com"));
+
+    let command = vec!["echo".to_string(), "hi".to_string()];
+    assert_eq!(super::exec_command::explicit_shell_source(&command), None);
+}
+
+/// The nested source of a caller-supplied shell invocation is evaluated on its
+/// own even when the selected shell differs from the requested one.
+#[tokio::test]
+async fn prepare_exec_run_request_denies_nested_shell_source() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    // Admit the outer `bash` invocation so only the nested source can deny.
+    let mut config = vtcode_config::CommandsConfig::default();
+    config.allow_list.push("bash".to_string());
+    registry.apply_commands_config(&config);
+
+    reset_exec_command_rate_limit();
+    let args = serde_json::json!({
+        "command": ["bash", "-lc", "curl https://example.com"],
+        "shell": "/bin/sh",
+    });
+    let error = match super::ToolRegistry::prepare_exec_run_request(
+        &registry,
+        &args,
+        super::ExecRunBackendKind::Pipe,
+        "missing command",
+        "empty command",
+    )
+    .await
+    {
+        Ok(_) => panic!("nested shell source must be evaluated"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("curl"), "denial should name the nested program: {error}");
 }
 
 /// The executor rate limiter is process-global. Reset its bucket before each

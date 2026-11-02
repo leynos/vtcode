@@ -57,6 +57,9 @@ fn command_session_fixture_commands_config() -> CommandsConfig {
         // contains a space, so it is allow-listed in that form as well.
         r"^/bin/sh -lc printf vtcode-terminal$".to_owned(),
         r"^/bin/sh -lc 'printf vtcode-terminal'$".to_owned(),
+        // The nested source of the caller-supplied shell invocation is
+        // evaluated on its own as well.
+        r"^printf vtcode-terminal$".to_owned(),
     ];
     config
 }
