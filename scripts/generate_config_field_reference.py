@@ -83,6 +83,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Read a previously captured schema JSON instead of invoking Cargo.",
     )
+    parser.add_argument(
+        "--home-dir",
+        type=Path,
+        help=(
+            "Home directory to normalise absolute defaults against. Supply the "
+            "snapshot host's home when --schema was captured elsewhere; defaults "
+            "to the current user's home."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -117,6 +126,23 @@ def load_schema_from_cargo() -> dict[str, Any]:
 
 
 def load_schema_from_snapshot(schema_path: Path) -> dict[str, Any]:
+    """Load a configuration schema snapshot captured from `vtcode-config`.
+
+    Parameters
+    ----------
+    schema_path : Path
+        Path to a JSON schema snapshot.
+
+    Returns
+    -------
+    dict[str, Any]
+        The decoded schema document.
+
+    Raises
+    ------
+    RuntimeError
+        If the snapshot cannot be read or is not valid JSON.
+    """
     try:
         return json.loads(schema_path.read_text(encoding="utf-8"))
     except OSError as exc:
@@ -193,14 +219,15 @@ def normalize_schema_node(
 
 
 def _normalise_home_prefix(value: Any, home_dir: str) -> Any:
-    home_root = os.path.normpath(home_dir)
+    home_root = Path(home_dir)
     if isinstance(value, str):
-        if value == home_root:
+        try:
+            relative = Path(value).relative_to(home_root)
+        except ValueError:
+            return value
+        if not relative.parts:
             return "$HOME"
-        prefix = f"{home_root}{os.sep}"
-        if value.startswith(prefix):
-            return f"$HOME{value[len(home_root) :]}"
-        return value
+        return f"$HOME/{relative.as_posix()}"
     if isinstance(value, list):
         return [_normalise_home_prefix(item, home_dir) for item in value]
     if isinstance(value, dict):
@@ -318,8 +345,9 @@ def _prefer_known_type_name(primary: str, fallback: str) -> str:
 
 
 class _FieldCollector:
-    def __init__(self, root_schema: dict[str, Any]) -> None:
+    def __init__(self, root_schema: dict[str, Any], home_dir: str | None = None) -> None:
         self.root_schema = root_schema
+        self.home_dir = home_dir
         self.field_map: dict[str, FieldEntry] = {}
 
     def collect(self) -> list[FieldEntry]:
@@ -348,7 +376,9 @@ class _FieldCollector:
         normalized = normalize_schema_node(node, self.root_schema)
         description = normalize_description(normalized.get("description"))
         default = (
-            format_default(normalized["default"], normalized.get("format"))
+            format_default(
+                normalized["default"], normalized.get("format"), self.home_dir
+            )
             if "default" in normalized
             else ""
         )
@@ -444,8 +474,25 @@ class _FieldCollector:
         self._upsert_field(entry)
 
 
-def collect_fields(root_schema: dict[str, Any]) -> list[FieldEntry]:
-    return _FieldCollector(root_schema).collect()
+def collect_fields(
+    root_schema: dict[str, Any], home_dir: str | None = None
+) -> list[FieldEntry]:
+    """Collect every documented field from a schema.
+
+    Parameters
+    ----------
+    root_schema : dict[str, Any]
+        Decoded `vtcode-config` schema, either exported or read from a snapshot.
+    home_dir : str or None, optional
+        Home directory used to normalise absolute defaults. When omitted, the
+        generator host's home is used.
+
+    Returns
+    -------
+    list[FieldEntry]
+        Field entries sorted by configuration path.
+    """
+    return _FieldCollector(root_schema, home_dir).collect()
 
 
 def apply_reference_overrides(entries: list[FieldEntry]) -> None:
@@ -538,8 +585,6 @@ def format_code_span(value: str) -> str:
     return f"{delimiter}{content}{delimiter}"
 
 
-
-
 def render_markdown(entries: list[FieldEntry]) -> str:
     lines = [
         "# Config Field Reference",
@@ -586,7 +631,8 @@ def main() -> int:
             if not schema_path.is_absolute():
                 schema_path = REPO_ROOT / schema_path
             schema = load_schema_from_snapshot(schema_path)
-        entries = collect_fields(schema)
+        home_dir = str(args.home_dir.expanduser()) if args.home_dir else None
+        entries = collect_fields(schema, home_dir=home_dir)
         apply_reference_overrides(entries)
         markdown = render_markdown(entries)
     except RuntimeError as exc:
@@ -605,4 +651,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+# weave: run 'weave explain scripts/generate_config_field_reference.py' for per-hunk detail, 'weave check' to verify your resolution
 # weave: run 'weave explain scripts/generate_config_field_reference.py' for per-hunk detail, 'weave check' to verify your resolution

@@ -16,7 +16,8 @@ fn parse_retry_after_header_at(raw: &str, now: SystemTime) -> Option<Duration> {
     }
 
     let retry_at = httpdate::parse_http_date(raw).ok()?;
-    Some(retry_at.duration_since(now).unwrap_or(Duration::ZERO))
+    let delay = retry_at.duration_since(now).unwrap_or(Duration::ZERO);
+    Some(delay.min(MAX_RETRY_AFTER))
 }
 
 fn parse_delta_seconds(raw: &str) -> Option<Duration> {
@@ -152,6 +153,14 @@ mod tests {
             parse_retry_after_header_at("18446744073709551615.9999999999", SystemTime::UNIX_EPOCH),
             Some(MAX_RETRY_AFTER)
         );
+    }
+
+    #[test]
+    fn retry_after_http_date_cap_far_future_values() {
+        let now = SystemTime::UNIX_EPOCH;
+        let far_future = "Fri, 01 Jan 2100 00:00:00 GMT";
+
+        assert_eq!(parse_retry_after_header_at(far_future, now), Some(MAX_RETRY_AFTER));
     }
 
     #[test]

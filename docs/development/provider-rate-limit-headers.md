@@ -87,7 +87,7 @@ Notices use the existing standard `session/update` notification with
       "notice": {
         "level": "warning",
         "source": "provider_rate_limit",
-        "message": "baseten returned HTTP 429 (rate limited); request limit/min: 60; requests remaining/min: 0; Diapason will retry in 15.0s"
+        "message": "baseten returned HTTP 429 (rate limited); provider Retry-After: 15; request limit/min: 60; requests remaining/min: 0; Diapason will retry in 15.0s"
       }
     }
   }

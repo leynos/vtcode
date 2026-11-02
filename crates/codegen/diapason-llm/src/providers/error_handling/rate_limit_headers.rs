@@ -1,3 +1,6 @@
+//! Maps configured response headers to bounded, typed `RateLimitMetadata` and
+//! rejects malformed values.
+
 use super::ApiResponseMetadata;
 use crate::providers::common::extract_header;
 use reqwest::header::{HeaderMap, HeaderName};

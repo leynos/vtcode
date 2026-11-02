@@ -274,6 +274,10 @@ pub(crate) async fn handle_openai_http_error(
     response: Response,
     provider_name: &'static str,
 ) -> Result<Response, LLMError> {
+    if response.status().is_success() {
+        return Ok(response);
+    }
+
     // Keep response bodies out of logs: providers may include customer prompts
     // or other sensitive content in their error messages.
     tracing::warn!(

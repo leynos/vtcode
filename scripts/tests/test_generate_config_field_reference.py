@@ -267,6 +267,36 @@ def test_render_markdown_keeps_the_state_locations_section() -> None:
     assert not missing, f"the generated reference dropped its hand-written section: {missing!r}"
 
 
+def test_snapshot_host_home_normalises_absolute_defaults() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "state_path": {
+                "type": "string",
+                "default": "/build/agent/.state/vtcode",
+            }
+        },
+    }
+
+    entries = generator.collect_fields(schema, home_dir="/build/agent")
+
+    assert [entry.default for entry in entries] == ['"$HOME/.state/vtcode"']
+
+
+def test_home_prefix_requires_a_path_component_boundary() -> None:
+    rendered = generator.format_default("/build/agent-other/state", home_dir="/build/agent")
+
+    assert json.loads(rendered) == "/build/agent-other/state"
+
+
+def test_home_prefix_matches_the_home_directory_itself() -> None:
+    rendered = generator.format_default("/build/agent", home_dir="/build/agent")
+
+    assert json.loads(rendered) == "$HOME"
+
+
+
+
 def test_render_markdown_escapes_pipes_inside_backtick_safe_code_span() -> None:
     """A pipe stays escaped even when the value also needs a wider delimiter."""
     entry = generator.FieldEntry(

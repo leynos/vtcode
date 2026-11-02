@@ -5,10 +5,12 @@
 //! router gate in `diapason-llm` so child and ACP requests use one permit pool.
 
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use diapason_commons::provider::Provider;
 use diapason_config::TimeoutsConfig;
 use diapason_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
 use diapason_core::metrics::MetricsCollector;
@@ -369,10 +371,15 @@ impl ProviderRuntimeRegistry {
     }
 
     pub(crate) fn for_provider(&self, provider_name: &str) -> ProviderRequestRuntime {
-        self.custom_runtimes
-            .get(&provider_name.to_ascii_lowercase())
-            .cloned()
-            .unwrap_or_else(|| self.default_runtime.clone())
+        if let Some(runtime) = self.custom_runtimes.get(&provider_name.to_ascii_lowercase()) {
+            return runtime.clone();
+        }
+        if Provider::from_str(provider_name).is_ok() {
+            let mut runtime = self.default_runtime.clone();
+            runtime.provider_class = ProviderClass::Builtin;
+            return runtime;
+        }
+        self.default_runtime.clone()
     }
 }
 

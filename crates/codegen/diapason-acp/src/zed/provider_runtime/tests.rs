@@ -128,3 +128,28 @@ fn provider_runtime_classifies_custom_and_fallback_metrics_without_names() {
     assert!(!custom.provider_class().as_str().contains(provider_name));
     assert!(!fallback.provider_class().as_str().contains("default"));
 }
+
+#[test]
+fn provider_runtime_classifies_builtin_provider_names() {
+    let registry = ProviderRuntimeRegistry::new(&[], &TimeoutsConfig::default(), Arc::new(MetricsCollector::new()));
+
+    for provider_name in ["openai", "Anthropic", "ollama-cloud"] {
+        let runtime = registry.for_provider(provider_name);
+        assert_eq!(runtime.provider_class(), ProviderClass::Builtin, "{provider_name}");
+    }
+
+    let unknown = registry.for_provider("vendor-gateway");
+    assert_eq!(unknown.provider_class(), ProviderClass::Unknown);
+}
+
+#[test]
+fn configured_custom_provider_keeps_custom_class_when_named_like_a_builtin() {
+    let provider = CustomProviderConfig {
+        name: "openai".to_string(),
+        ..CustomProviderConfig::default()
+    };
+    let registry =
+        ProviderRuntimeRegistry::new(&[provider], &TimeoutsConfig::default(), Arc::new(MetricsCollector::new()));
+
+    assert_eq!(registry.for_provider("openai").provider_class(), ProviderClass::Custom);
+}

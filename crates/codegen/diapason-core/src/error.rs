@@ -280,7 +280,7 @@ impl From<anyhow::Error> for DiapasonError {
     }
 }
 
-/// Boundary adapter converting an [`LLMError`] into a [`VtCodeError`].
+/// Boundary adapter converting an [`LLMError`] into a [`DiapasonError`].
 ///
 /// A `From` implementation cannot accept an observation instant, so this
 /// adapter reads the wall clock. It only classifies the error and copies its
