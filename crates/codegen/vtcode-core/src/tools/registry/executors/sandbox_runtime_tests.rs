@@ -838,3 +838,12 @@ async fn require_escalated_accepts_justified_request() {
     assert_eq!(sandbox_permissions, SandboxPermissions::RequireEscalated);
     assert!(additional_permissions.is_none());
 }
+
+#[test]
+fn pty_policy_denial_names_only_the_program() {
+    let error = super::exec_support::enforce_pty_command_policy("vim /workspace/secret.txt")
+        .expect_err("interactive editors are refused for PTY execution");
+    let message = error.to_string();
+    assert!(message.contains("'vim'"), "unexpected error: {message}");
+    assert!(!message.contains("/workspace/secret.txt"), "PTY denial leaked an argument: {message}");
+}
