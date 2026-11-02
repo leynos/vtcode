@@ -666,4 +666,3 @@ async fn streaming_retry_records_bounded_perf_metrics() {
     .assert_events(&events);
     assert!(recorder.drain().await.is_empty());
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/tests/provider.rs' for per-hunk detail, 'weave check' to verify your resolution

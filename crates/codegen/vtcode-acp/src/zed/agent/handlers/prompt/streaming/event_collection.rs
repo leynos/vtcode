@@ -255,4 +255,3 @@ async fn emit_response_fallback(turn: &PromptExecution, output: &mut ProviderOut
         output.assistant_reasoning.push_str(reasoning);
     }
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt/streaming/event_collection.rs' for per-hunk detail, 'weave check' to verify your resolution

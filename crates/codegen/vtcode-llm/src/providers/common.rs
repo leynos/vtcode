@@ -1837,4 +1837,3 @@ mod tests {
         );
     }
 }
-// weave: run 'weave explain crates/codegen/vtcode-llm/src/providers/common.rs' for per-hunk detail, 'weave check' to verify your resolution

@@ -518,6 +518,3 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
         }
     }
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution

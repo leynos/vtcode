@@ -462,5 +462,3 @@ mod tests {
         );
     }
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt/streaming.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt/streaming.rs' for per-hunk detail, 'weave check' to verify your resolution

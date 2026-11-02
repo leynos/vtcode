@@ -347,5 +347,3 @@ mod tests {
         assert!(rate_limit_notice_update("baseten", &error, None).is_some());
     }
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_notice.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_notice.rs' for per-hunk detail, 'weave check' to verify your resolution

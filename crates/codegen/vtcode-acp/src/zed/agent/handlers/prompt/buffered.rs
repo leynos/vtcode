@@ -292,5 +292,3 @@ async fn process_buffered_response(
     turn.stop_hook_checked = false;
     Ok(BufferedResponseOutcome::Continue)
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt/buffered.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt/buffered.rs' for per-hunk detail, 'weave check' to verify your resolution

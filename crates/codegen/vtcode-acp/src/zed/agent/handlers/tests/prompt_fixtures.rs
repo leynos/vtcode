@@ -377,5 +377,3 @@ pub(super) fn compaction_config(enabled: bool) -> VTCodeConfig {
     config.agent.harness.auto_compaction_threshold_tokens = Some(1);
     config
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/tests/prompt_fixtures.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/tests/prompt_fixtures.rs' for per-hunk detail, 'weave check' to verify your resolution
