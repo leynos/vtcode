@@ -489,6 +489,7 @@ fn prepare_exec_command_keeps_existing_shell_invocation() {
     assert_eq!(prepared.command, command);
     assert_eq!(prepared.requested_command_display, "/bin/zsh -c 'echo hi'");
     assert_eq!(prepared.display_command, "/bin/zsh -c 'echo hi'");
+    assert_eq!(prepared.executed_shell_source.as_deref(), Some("echo hi"));
 }
 
 /// The executor rate limiter is process-global. Reset its bucket before each
@@ -526,6 +527,59 @@ async fn prepare_exec_run_request_allows_gh_version_queries() {
             assert_eq!(prepared.prepared_command.requested_command, command);
         }
     }
+}
+
+/// A caller-supplied shell invocation is not exempt from the policy: the
+/// source the shell runs must pass on its own, not only the wrapper argv that
+/// carries it.
+#[tokio::test]
+async fn prepare_exec_run_request_checks_explicit_shell_source() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    let mut config = vtcode_config::CommandsConfig::default();
+    config.allow_list = vec!["bash".to_string(), "git status".to_string()];
+    registry.apply_commands_config(&config);
+
+    for confirm in [false, true] {
+        reset_exec_command_rate_limit();
+        let args = serde_json::json!({
+            "command": ["bash", "-lc", "curl https://example.com"],
+            "shell": "bash",
+            "confirm": confirm,
+        });
+        let error = match super::ToolRegistry::prepare_exec_run_request(
+            &registry,
+            &args,
+            super::ExecRunBackendKind::Pipe,
+            "missing command",
+            "empty command",
+        )
+        .await
+        {
+            Ok(_) => panic!("an unlisted shell source must be denied (confirm={confirm})"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("not permitted by the execution policy"),
+            "confirm={confirm}: unexpected error: {error}"
+        );
+    }
+
+    reset_exec_command_rate_limit();
+    let allowed = serde_json::json!({
+        "command": ["bash", "-lc", "git status"],
+        "shell": "bash",
+    });
+    super::ToolRegistry::prepare_exec_run_request(
+        &registry,
+        &allowed,
+        super::ExecRunBackendKind::Pipe,
+        "missing command",
+        "empty command",
+    )
+    .await
+    .expect("a shell source that matches an allow rule is permitted");
 }
 
 /// Only the two exact version queries are exempt. Every other `gh` shape,

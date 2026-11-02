@@ -109,10 +109,11 @@ When all three allow collections are empty, the configured policy falls back to
 allowing unmatched commands. The shipped defaults configure allow rules, so an
 unmatched command is denied. When a request carries both an argv and a distinct
 raw shell source, both representations are evaluated and the command runs only
-when both pass. The executor quotes arguments when it builds the shell line, so
-a rule may need to match the quoted source as well as the argv form.
-Composition, aliases, wrappers such as `bash -lc`, and leading environment
-prefixes do not inherit an exact match.
+when both pass. A caller-supplied `bash -lc "<source>"` is checked the same
+way: the source must match a rule on its own. The executor quotes arguments
+when it builds the shell line, so a rule may need to match the quoted source as
+well as the argv form. Composition, aliases, wrappers such as `bash -lc`, and
+leading environment prefixes do not inherit an exact match.
 
 ### GitHub CLI
 

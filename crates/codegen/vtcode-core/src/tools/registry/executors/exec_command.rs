@@ -20,9 +20,12 @@ pub(in crate::tools::registry) struct PreparedExecCommand {
     pub(in crate::tools::registry) requested_command: Vec<String>,
     pub(in crate::tools::registry) display_command: String,
     pub(in crate::tools::registry) requested_command_display: String,
-    /// Raw shell source handed to the shell when the argv was wrapped in a
-    /// shell invocation. `None` when the requested argv already starts with
-    /// the selected shell and is executed as provided.
+    /// Raw shell source the shell will actually run.
+    ///
+    /// Set when the executor wraps the argv in a shell invocation, and also
+    /// when the requested argv already spells out a shell command flag so the
+    /// source still needs its own policy check. `None` when no shell parses a
+    /// command string.
     pub(in crate::tools::registry) executed_shell_source: Option<String>,
 }
 
@@ -197,6 +200,19 @@ fn shell_command_flag(shell_program: &str, normalized_shell: &str) -> String {
     }
 }
 
+/// Source string carried by an explicit shell invocation.
+///
+/// Only called when the first token is the selected shell, so the command flag
+/// is the shell's own and the next token is the text the shell will run. The
+/// flag forms are the ones this module builds plus their Windows variants.
+fn explicit_shell_source(command: &[String]) -> Option<String> {
+    let flag_index = command
+        .iter()
+        .position(|part| matches!(part.as_str(), "-c" | "-lc" | "/C" | "-Command"))?;
+    let source = command.get(flag_index + 1)?.trim();
+    (!source.is_empty()).then(|| source.to_string())
+}
+
 fn command_display_for_shell(parts: &[String], shell_program: &str) -> String {
     if should_use_windows_command_tokenizer(Some(shell_program)) {
         join_windows_command(parts)
@@ -238,6 +254,11 @@ pub(super) fn prepare_exec_command(
         shell_invocation.push(shell_command_flag(shell_program, &normalized_shell));
         shell_invocation.push(command_string);
         command = shell_invocation;
+    } else if let Some(source) = explicit_shell_source(&command) {
+        // The caller supplied the shell invocation itself, so the executor
+        // does not wrap it. Record the source anyway: policy must evaluate the
+        // text the shell runs, not only the joined argv that contains it.
+        executed_shell_source = Some(source);
     }
 
     PreparedExecCommand {
