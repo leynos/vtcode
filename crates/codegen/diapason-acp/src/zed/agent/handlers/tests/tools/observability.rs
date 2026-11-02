@@ -25,6 +25,7 @@ where
     });
 }
 
+/// Records the `acp_tool_execution` span and one replaced-call counter.
 #[test]
 fn successful_tool_round_emits_acp_tool_execution_span_and_replaced_counter() {
     let capture = TraceCapture::default();
@@ -119,6 +120,7 @@ fn successful_tool_round_emits_acp_tool_execution_span_and_replaced_counter() {
     });
 }
 
+/// Emits the span, bounded error category, and one interruption counter.
 #[test]
 fn interrupted_tool_round_emits_span_and_fixed_error_category() {
     let capture = TraceCapture::default();

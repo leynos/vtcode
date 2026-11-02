@@ -21,6 +21,8 @@ mod streaming;
 
 pub(super) use buffered::response_reasoning_update;
 
+/// Persists the session checkpoint and transcript path, logging failures
+/// without failing the prompt.
 #[tracing::instrument(skip_all, fields(boundary = boundary))]
 pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
     if let Err(error) = agent.checkpoint_session(session).await {

@@ -113,6 +113,8 @@ async fn write_stdin_losing_session_after_delivery_reports_partial_state(
     Ok(())
 }
 
+/// Maps input, poll, and wait modes of a stale session to non-partial-state
+/// errors.
 #[rstest]
 #[tokio::test]
 async fn stale_write_stdin_modes_are_resource_not_found_without_partial_state(

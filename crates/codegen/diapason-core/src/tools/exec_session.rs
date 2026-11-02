@@ -796,6 +796,7 @@ mod tests {
         .await?
     }
 
+    /// Reports a missing session as the typed `ExecSessionNotFound` error.
     #[tokio::test]
     async fn missing_session_preserves_typed_identity() -> anyhow::Result<()> {
         let temp_dir = tempdir()?;

@@ -567,12 +567,12 @@ impl MetricsCollector {
         self.patch_safety.lock().record_evaluation(duration_ms);
     }
 
-    /// Record one bounded ACP tool-recovery event.
+    /// Record one bounded tool-recovery event.
     pub fn record_tool_recovery(&self, event: ToolRecoveryEvent) {
         self.tool_recovery.lock().record(event);
     }
 
-    /// Record `count` occurrences of one bounded ACP tool-recovery event.
+    /// Record `count` occurrences of one bounded tool-recovery event.
     pub fn record_tool_recovery_events(&self, event: ToolRecoveryEvent, count: usize) {
         self.tool_recovery.lock().record_many(event, count);
     }
@@ -649,7 +649,7 @@ impl MetricsCollector {
         self.patch_safety.lock().clone()
     }
 
-    /// Get the current ACP tool-recovery metrics snapshot.
+    /// Get the current tool-recovery metrics snapshot.
     pub fn get_tool_recovery_metrics(&self) -> ToolRecoveryMetrics {
         self.tool_recovery.lock().clone()
     }
@@ -947,13 +947,17 @@ impl PrometheusMetricsSnapshot {
         );
     }
 
-    /// Append the bounded ACP tool-recovery event counters.
+    /// Append the bounded tool-recovery event counters.
+    ///
+    /// The event vocabulary is transport-neutral: core records the events it
+    /// originates and adapters map their own observations onto the same
+    /// variants, so the series carries no ACP-specific label.
     fn append_tool_recovery(&self, output: &mut String) {
         // Labels are fixed event variants, so neither tool names nor call
         // identifiers can reach the series.
         let _ = writeln!(
             output,
-            "# HELP vtcode_tool_recovery_total Total ACP interrupted tool-recovery events\n\
+            "# HELP vtcode_tool_recovery_total Total tool-recovery events recorded by the agent runtime\n\
              # TYPE vtcode_tool_recovery_total counter"
         );
         for event in ToolRecoveryEvent::ALL {

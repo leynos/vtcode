@@ -13,6 +13,19 @@ use serde_json::{Value, json};
 use std::future::Future;
 use std::time::{Duration, Instant};
 
+
+//! Command-session operations for the unified exec tools.
+//!
+//! Implements `exec_command` session start, `write_stdin` write/poll/wait, and
+//! the shared settle/prune helpers that keep a session's spool consistent with
+//! its terminal state. Session lookup resolves process-local identifiers
+//! against the registry's execution-session store and returns typed
+//! [`ExecSessionNotFound`] and [`ExecSessionLostAfterInput`] errors so the
+//! registry can classify a stale continuation without parsing messages. This
+//! module performs no ACP-specific work: the adapter consumes the typed errors
+//! and the transport-neutral recovery counters.
+};
+
 struct ResolvedExecSession {
     metadata: DiapasonExecSession,
     command_display: String,
@@ -156,7 +169,9 @@ impl ToolRegistry {
                 "session_id is required for command session write",
                 "command session write",
             )
-            .await?;
+            .await;
+        record_stale_write_stdin_lookup(&session, &self.metrics_collector());
+        let session = session?;
         let input = crate::tools::command_args::interactive_input_text(&args)
             .ok_or_else(|| anyhow!("input is required for command session write"))?;
 
@@ -205,7 +220,9 @@ impl ToolRegistry {
                 "session_id is required for command session read",
                 "command session read",
             )
-            .await?;
+            .await;
+        record_stale_write_stdin_lookup(&session, &self.metrics_collector());
+        let session = session?;
         let yield_time_ms = clamp_exec_yield_ms(payload.get("yield_time_ms").and_then(Value::as_u64), 1000);
         let max_tokens = max_output_tokens_from_payload(payload);
 
@@ -230,7 +247,9 @@ impl ToolRegistry {
                 "session_id is required for command session wait",
                 "command session wait",
             )
-            .await?;
+            .await;
+        record_stale_write_stdin_lookup(&session, &self.metrics_collector());
+        let session = session?;
         let ceiling = self
             .timeout_policy()
             .ceiling_for(ToolTimeoutCategory::LongRunningCommand)
@@ -724,6 +743,10 @@ impl ToolRegistry {
     }
 
     /// Parses and validates the session identifier plus its live metadata.
+    ///
+    /// This is a read-only lookup. Recovery accounting for a missing session
+    /// belongs to the command path that requested it, so callers record the
+    /// stale-continuation event themselves.
     async fn resolve_exec_session(
         &self,
         args: &Value,
@@ -732,16 +755,24 @@ impl ToolRegistry {
         validation_context: &str,
     ) -> Result<ResolvedExecSession> {
         let session_id = resolve_exec_session_id(args, object_error, session_id_error, validation_context)?;
-        let metadata = self.exec_session_metadata(&session_id).await.inspect_err(|error| {
-            // A missing session is the stale-continuation case: the model is
-            // referring to an exec session that has already terminated, so it
-            // is counted separately from validation failures.
-            if error.downcast_ref::<ExecSessionNotFound>().is_some() {
-                self.metrics_collector()
-                    .record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
-            }
-        })?;
+        let metadata = self.exec_session_metadata(&session_id).await?;
         Ok(ResolvedExecSession::new(metadata))
+    }
+}
+
+/// Records a stale `write_stdin` continuation when session lookup fails.
+///
+/// Only a typed [`ExecSessionNotFound`] counts; validation failures and other
+/// lookup errors stay unclassified. The command paths call this explicitly so
+/// the externally visible counter is owned by the operation that observed the
+/// stale request rather than by the read-only lookup helper.
+fn record_stale_write_stdin_lookup(session: &Result<ResolvedExecSession>, metrics: &crate::metrics::MetricsCollector) {
+    let missing = session
+        .as_ref()
+        .err()
+        .is_some_and(|error| error.downcast_ref::<ExecSessionNotFound>().is_some());
+    if missing {
+        metrics.record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
     }
 }
 

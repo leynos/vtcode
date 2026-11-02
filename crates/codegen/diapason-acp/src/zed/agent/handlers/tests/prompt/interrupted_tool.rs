@@ -13,26 +13,32 @@ struct BufferedToolCallProvider {
 
 #[async_trait]
 impl LLMProvider for BufferedToolCallProvider {
+    /// Returns the provider name used by the wire test harness.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Advertises the single wire test model.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Reports that this provider never streams.
     fn supports_streaming(&self) -> bool {
         false
     }
 
+    /// Reports tool support for every model.
     fn supports_tools(&self, _model: &str) -> bool {
         true
     }
 
+    /// Accepts any request unchanged.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Fails streaming so the test exercises the buffered turn path.
     async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         Err(LLMError::InvalidRequest {
             message: "buffered ACP tool turn must not stream".to_string(),
@@ -40,6 +46,7 @@ impl LLMProvider for BufferedToolCallProvider {
         })
     }
 
+    /// Emits one `apply_patch` tool call, then answers on the follow-up.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
         if response_index == 0 {
@@ -76,6 +83,8 @@ fn assert_single_incomplete_result(results: &[(Option<String>, String)], origin:
     assert_eq!(payload["state"], "uncertain", "{origin} must record the uncertain side effects");
 }
 
+/// Keeps the interrupted call as one unreplayed incomplete result in history
+/// and in the archive.
 #[tokio::test]
 async fn interrupted_tool_execution_keeps_one_unreplayed_incomplete_result() {
     let _history_test_guard = lock_history_test_guard().await;

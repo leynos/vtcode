@@ -289,22 +289,27 @@ struct BlockingPromptProvider {
 
 #[async_trait]
 impl LLMProvider for BlockingPromptProvider {
+    /// Returns the provider name used by the wire test harness.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Advertises the single wire test model.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Reports that this provider streams responses.
     fn supports_streaming(&self) -> bool {
         true
     }
 
+    /// Accepts any request unchanged.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Blocks until released, then completes one response.
     async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         self.started.notify_one();
         self.release.notified().await;
@@ -312,6 +317,7 @@ impl LLMProvider for BlockingPromptProvider {
         Ok(Box::pin(futures::stream::iter([Ok(LLMStreamEvent::Completed { response: Box::new(response) })])))
     }
 
+    /// Panics because this provider only streams.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         panic!("blocking prompt test must use streaming")
     }
@@ -358,6 +364,7 @@ async fn reject_concurrent_prompt(
     Ok(())
 }
 
+/// Rejects a concurrent prompt over the wire and leaves only one user message.
 #[tokio::test]
 async fn concurrent_prompt_is_rejected_over_official_acp_transport() {
     let _history_test_guard = lock_history_test_guard().await;

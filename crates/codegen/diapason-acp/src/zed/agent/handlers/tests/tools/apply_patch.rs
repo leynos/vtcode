@@ -125,6 +125,7 @@ fn assert_completed_diff(updates: &[acp::SessionNotification], expected_path: &s
     assert_eq!(diff.new_text, "created over ACP\n");
 }
 
+/// Executes an approved patch and emits its preview and native diff over ACP.
 #[tokio::test]
 async fn approved_apply_patch_executes_and_emits_preview_and_diff_over_acp() {
     let _history_test_guard = lock_history_test_guard().await;

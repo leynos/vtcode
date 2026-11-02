@@ -22,6 +22,7 @@ pub(crate) async fn lock_history_test_guard() -> MutexGuard<'static, ()> {
 pub(crate) struct HistorySettingsGuard;
 
 impl HistorySettingsGuard {
+    /// Applies the requested history settings for the guard's lifetime.
     pub(crate) fn set(persistence: HistoryPersistence, max_bytes: Option<usize>) -> Self {
         let mut config = diapason_core::config::DiapasonConfig::default();
         config.history.persistence = persistence;
@@ -32,6 +33,7 @@ impl HistorySettingsGuard {
 }
 
 impl Drop for HistorySettingsGuard {
+    /// Restores the default history settings when the guard drops.
     fn drop(&mut self) {
         diapason_core::utils::session_archive::apply_session_history_config_from_diapason(
             &diapason_core::config::DiapasonConfig::default(),
