@@ -98,9 +98,9 @@ that completes with no assistant message returns an `internal_error` with
 cancellation returns `internal_error` with
 `data.reason = "tool_execution_failed"`. A provider stream that ends before a
 completion event, after retries are exhausted and with no assistant text or
-reasoning shown, also returns `empty_response`. Neither case is acknowledged as a silent
-`EndTurn`. `Refusal` and `MaxTokens` turns keep their own stop reason even when
-they carry no assistant text.
+reasoning shown, also returns `empty_response`. Neither case is acknowledged as
+a silent `EndTurn`. `Refusal` and `MaxTokens` turns keep their own stop reason
+even when they carry no assistant text.
 
 ### Provider rate limits
 
