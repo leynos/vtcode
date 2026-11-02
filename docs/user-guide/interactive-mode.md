@@ -192,7 +192,7 @@ enabled and compact display is the default.
   history budget is the hard limit. An interrupted trailing tool call is
   omitted rather than replayed.
 - If the original task and latest user instructions exceed that hard limit,
-  compaction is refused and the history is left unchanged. Choose a model with
+  compaction is refused, and the history is left unchanged. Choose a model with
   a larger context window or start a new session with a smaller request. This
   cannot restore instructions already missing from the history.
 - Switching the main session model or provider mid-conversation (via `/model`)

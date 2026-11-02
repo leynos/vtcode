@@ -8,7 +8,9 @@ use std::sync::Mutex;
 use vtcode_commons::llm::ToolCall;
 use vtcode_commons::message_metadata::MessageMetadata;
 
-struct RecordingProvider {
+mod protocol_tests;
+
+pub(super) struct RecordingProvider {
     context_size: usize,
     requests: Mutex<Vec<LLMRequest>>,
 }
@@ -33,11 +35,11 @@ impl LLMProvider for RecordingProvider {
     }
 }
 
-fn provider(context_size: usize) -> RecordingProvider {
+pub(super) fn provider(context_size: usize) -> RecordingProvider {
     RecordingProvider { context_size, requests: Mutex::new(Vec::new()) }
 }
 
-fn task_message(content: String, intent_id: &str) -> Message {
+pub(super) fn task_message(content: String, intent_id: &str) -> Message {
     let mut message = Message::user(content);
     message.metadata = Some(MessageMetadata::user_input(1, message.estimate_tokens()).with_intent_id(intent_id));
     message
@@ -58,7 +60,7 @@ fn append_work(history: &mut Vec<Message>, target_len: usize) {
     }
 }
 
-fn assert_correlated(history: &[Message]) {
+pub(super) fn assert_correlated(history: &[Message]) {
     for (index, message) in history.iter().enumerate() {
         if let Some(calls) = message.tool_calls.as_ref() {
             let result_ids = history[index + 1..]
@@ -221,75 +223,6 @@ async fn prefix_user_before_continuity_tail_stays_subject_to_optional_budget() {
     );
 }
 
-#[test]
-fn native_normalization_restores_full_source_instructions_with_duplicate_intents() {
-    let original = task_message("Keep the full instructions END-SENTINEL".into(), "original");
-    let first = task_message("same steering".into(), "first-steering");
-    let second = task_message("same steering".into(), "second-steering");
-    let source = vec![original.clone(), first.clone(), second.clone()];
-    let native = vec![
-        Message::system("native summary".into()),
-        Message::user("Keep the full".into()),
-    ];
-    let normalized = normalize_provider_compacted_history(native, &source);
-    assert_eq!(&normalized[1..], source.as_slice());
-}
-
-#[test]
-fn bounded_parallel_tool_previews_retain_ids_and_are_labelled() {
-    let mut history = vec![
-        Message::user("task".into()),
-        Message::assistant_with_tools(
-            "working".into(),
-            vec![
-                ToolCall::function("one".into(), "run".into(), "{}".into()),
-                ToolCall::function("two".into(), "run".into(), "{}".into()),
-            ],
-        ),
-        Message::tool_response("two".into(), "large output ".repeat(10_000)),
-        Message::tool_response("one".into(), "large output ".repeat(10_000)),
-    ];
-    history.extend([Message::assistant("latest".into())]);
-    let tail = bounded_protocol_group(&history, 1_024);
-    assert_correlated(&tail);
-    assert!(tail.iter().map(Message::estimate_tokens).sum::<usize>() <= 1_024);
-    assert!(
-        tail.iter()
-            .filter(|message| message.role == MessageRole::Tool)
-            .all(|message| message.content.as_text().starts_with("[Compaction preview:"))
-    );
-    assert_eq!(tail.iter().filter(|message| message.role == MessageRole::Tool).count(), 2);
-}
-
-#[rstest::rstest]
-#[case::duplicate_calls(&["one", "one"], vec![], 1)]
-#[case::empty_call_id(&[""], vec![], 1)]
-#[case::unknown_result(&["one"], vec![Message::tool_response("other".into(), "output".into())], 1)]
-#[case::missing_result_id(&["one"], vec![{ let mut result = Message::tool_response("one".into(), "output".into()); result.tool_call_id = None; result }], 1)]
-#[case::repeated_result(&["one", "two"], vec![Message::tool_response("one".into(), "output".into()), Message::tool_response("one".into(), "duplicate".into())], 1)]
-#[case::non_tool_interrupt(&["one"], vec![Message::assistant("interrupted".into())], 1)]
-#[case::out_of_order_results(&["one", "two"], vec![Message::tool_response("two".into(), "second".into()), Message::tool_response("one".into(), "first".into())], 4)]
-#[case::legacy_orphan(&[], vec![Message::tool_response("legacy".into(), "output".into())], 3)]
-fn protocol_prefix_preserves_only_complete_correlatable_batches(
-    #[case] call_ids: &[&str],
-    #[case] results: Vec<Message>,
-    #[case] expected_prefix: usize,
-) {
-    let mut history = vec![
-        Message::user("task".into()),
-        Message::assistant_with_tools(
-            "working".into(),
-            call_ids
-                .iter()
-                .map(|id| ToolCall::function((*id).into(), "run".into(), "{}".into()))
-                .collect(),
-        ),
-    ];
-    history.extend(results);
-
-    assert_eq!(complete_protocol_prefix(&history), expected_prefix);
-}
-
 #[tokio::test]
 async fn hierarchical_summary_includes_active_work_and_keeps_complete_task() {
     let provider = provider(32_768);
@@ -321,55 +254,6 @@ fn final_context_bound_fails_closed_for_protected_instructions() {
         bound_compacted_history_to_context(compacted, &provider, "test").expect_err("protected prompt cannot fit");
     assert!(error.to_string().contains("exceeding the model context length budget"));
     assert!(original.content.as_text().ends_with("preserve instruction "));
-}
-
-#[test]
-fn native_noop_preserves_repeated_reads_protocol_order_and_user_metadata() {
-    let provider = provider(32_768);
-    let mut history = vec![Message::system("session instructions".into())];
-    for (call_id, result) in [("older-read", "older contents"), ("newer-read", "newer contents")] {
-        history.push(Message::assistant_with_tools(
-            "Inspecting the same file".into(),
-            vec![ToolCall::function(
-                call_id.into(),
-                "read_file".into(),
-                r#"{"path":"src/lib.rs","start_line":1,"end_line":40}"#.into(),
-            )],
-        ));
-        history.push(Message::tool_response_with_origin(call_id.into(), result.into(), "read_file".into()));
-    }
-    history.push(task_message("Complete task END-NOOP-TASK".into(), "original-task"));
-    history.push(Message::assistant("Latest completed work".into()));
-    history.push(task_message("Keep the latest steering".into(), "latest-steering"));
-    history.push(Message::assistant("Acknowledged".into()));
-
-    let normalized = normalize_provider_compacted_history(history.clone(), &history);
-    let bounded = bound_compacted_history_to_context(normalized, &provider, "test").expect("history fits model budget");
-
-    assert_eq!(bounded, history, "an unchanged provider response must remain an exact no-op");
-    assert_correlated(&bounded);
-}
-
-#[test]
-fn native_echo_drops_an_incomplete_parallel_tool_batch() {
-    let original = task_message("Complete both checks END-PARALLEL-TASK".into(), "parallel-task");
-    let source = vec![
-        Message::system("session instructions".into()),
-        original.clone(),
-        Message::assistant_with_tools(
-            "Checking both files".into(),
-            vec![
-                ToolCall::function("first-check".into(), "read_file".into(), "{}".into()),
-                ToolCall::function("second-check".into(), "read_file".into(), "{}".into()),
-            ],
-        ),
-        Message::tool_response("first-check".into(), "First check completed".into()),
-    ];
-
-    let normalized = normalize_provider_compacted_history(source.clone(), &source);
-
-    assert_eq!(normalized, vec![source[0].clone(), original]);
-    assert_correlated(&normalized);
 }
 
 #[tokio::test]

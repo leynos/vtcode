@@ -105,18 +105,23 @@ pub(super) fn normalize_provider_compacted_history(
     // repeated tool reads and metadata so callers can recognize that no
     // compaction occurred. Incomplete echoed tool batches still require
     // normalization, and the caller still enforces the model budget.
-    if compacted == fallback_history && complete_protocol_prefix(fallback_history) == fallback_history.len() {
+    let echoed = compacted == fallback_history;
+    if echoed && complete_protocol_prefix(fallback_history) == fallback_history.len() {
         return compacted;
     }
 
     // Provider compaction may rewrite or omit user instructions. Its prefix is
     // useful summary state, but the source history owns the authoritative task
-    // and sequence of steering messages.
+    // and sequence of steering messages. An echoed source contributes only its
+    // system messages and the source tail owns the retained turns; only a
+    // provider-authored prefix may also contribute its plain assistant reports.
     let mut normalized = compacted
         .into_iter()
         .filter(|message| {
             message.role == MessageRole::System
-                || (message.role == MessageRole::Assistant && message.tool_calls.as_ref().is_none_or(Vec::is_empty))
+                || (!echoed
+                    && message.role == MessageRole::Assistant
+                    && message.tool_calls.as_ref().is_none_or(Vec::is_empty))
         })
         .collect::<Vec<_>>();
     let tail_start = continuity_tail_selection(fallback_history)
