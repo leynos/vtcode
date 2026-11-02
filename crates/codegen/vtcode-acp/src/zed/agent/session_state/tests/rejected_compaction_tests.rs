@@ -48,6 +48,8 @@ struct RejectedCompactionFixture {
 }
 
 impl RejectedCompactionFixture {
+    /// Build a session whose protected task fits the core budget but exceeds
+    /// the stricter ACP admission budget, capturing the pre-refusal state.
     async fn new(workspace: &Path) -> Self {
         let mut config = VTCodeConfig::default();
         config.agent.harness.auto_compaction_enabled = true;
@@ -118,6 +120,8 @@ impl RejectedCompactionFixture {
     }
 }
 
+/// Append correlated read tool calls and results so the summary
+/// short-circuit is exceeded by real work.
 fn populate_correlated_admission_work(agent: &ZedAgent, handle: &SessionHandle) {
     // Exceed the summary short-circuit using actual correlated work.
     for step in 0..12 {

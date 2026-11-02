@@ -73,6 +73,8 @@ fn protocol_prefix_preserves_only_complete_correlatable_batches(
     assert_eq!(complete_protocol_prefix(&history), expected_prefix);
 }
 
+/// A native no-op must preserve repeated reads, protocol order, and user
+/// metadata.
 #[test]
 fn native_noop_preserves_repeated_reads_protocol_order_and_user_metadata() {
     let provider = provider(32_768);

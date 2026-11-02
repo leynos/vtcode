@@ -286,6 +286,8 @@ proptest! {
             .is_some_and(|calls| calls.iter().any(|call| call.id.starts_with("fault-")))));
     }
 
+    /// The hard finalizer admits fitting anchors and stays within the model
+    /// budget.
     #[test]
     fn hard_finalizer_admits_fitting_anchors_within_model_budget(
         case in histories(), capacity in 2_048usize..=8_192,
@@ -306,6 +308,7 @@ proptest! {
         check_protocol(&case, &bounded)?;
     }
 
+    /// Oversized anchors refuse without mutating the borrowed history.
     #[test]
     fn oversized_anchors_refuse_without_changing_borrowed_history(
         mut case in histories(), capacity in 1_024usize..=4_096, oversized_first in any::<bool>(),

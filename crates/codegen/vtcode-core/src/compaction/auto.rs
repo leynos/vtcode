@@ -11,7 +11,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::telemetry::{AutoCompactionMetricSink, AutoCompactionTelemetry};
+use super::telemetry::{AutoCompactionObserver, AutoCompactionTelemetry, MonotonicClock};
 use crate::compaction::memory_envelope::{MemoryEnvelopePlacement, SessionMemoryEnvelopeUpdate};
 use crate::compaction::two_pass::fingerprint_prefix;
 use crate::compaction::{
@@ -75,24 +75,32 @@ pub struct AutoCompactionInput<'a> {
 /// compacted history (with envelope injected) replaces `history` and an
 /// [`AutoCompactionOutcome`] is returned; the caller is responsible for
 /// emitting the `thread.compact_boundary` event and resetting token accounting.
+///
+/// `observer` receives bounded, payload-free observations, and `clock` supplies
+/// the monotonic instants used for duration measurement. Runtime adapters pass
+/// their process observer and [`super::SystemClock`]; tests pass deterministic
+/// implementations.
 pub async fn auto_compact_messages(
     input: AutoCompactionInput<'_>,
     history: &mut Vec<Message>,
+    observer: &dyn AutoCompactionObserver,
+    clock: &dyn MonotonicClock,
 ) -> Result<Option<AutoCompactionOutcome>> {
-    auto_compact_messages_with_metrics(input, history, &AutoCompactionMetricSink::Process).await
+    auto_compact_messages_with_observer(input, history, observer, clock).await
 }
 
 /// Observe only eligible automatic passes; skipped triggers emit no attempt.
-async fn auto_compact_messages_with_metrics(
+async fn auto_compact_messages_with_observer(
     input: AutoCompactionInput<'_>,
     history: &mut Vec<Message>,
-    metrics: &AutoCompactionMetricSink,
+    observer: &dyn AutoCompactionObserver,
+    clock: &dyn MonotonicClock,
 ) -> Result<Option<AutoCompactionOutcome>> {
     if !input.is_eligible() {
         return Ok(None);
     }
 
-    let observation = AutoCompactionTelemetry::start(metrics, history);
+    let observation = AutoCompactionTelemetry::start(observer, clock, history);
     let mut attempt = AutoCompactionAttempt::new(input, history);
     let compaction_result: Result<Option<AutoCompactionOutcome>> = async {
         let Some(candidate) = attempt.produce_candidate().await? else {

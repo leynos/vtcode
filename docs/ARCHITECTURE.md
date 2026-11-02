@@ -93,11 +93,16 @@ Harness primitives in VT Code map to the runtime like this:
   resumable sessions.
 - **Compaction / offloading**: split tool results, spool files, and
   provider-aware auto-compaction reduce context rot while preserving compaction
-  recovery state on disk. Durable session archives and checkpoints provide
-  resumable ACP/CLI sessions separately. On VT Code's local compaction path,
-  older repeated single-file reads are deduplicated before summarization so the
-  summary prompt keeps the newest copy and avoids re-injecting stale file
-  payloads.
+  recovery state on disk. The core engine owns candidate construction,
+  protected-prompt and context-budget admission, and the bounded observation
+  ports; runtime adapters own process telemetry and publish a candidate only
+  after their own admission boundary accepts it. Durable session archives and
+  checkpoints provide resumable ACP/CLI sessions separately. On VT Code's local
+  compaction path, older repeated single-file reads are deduplicated before
+  summarization so the summary prompt keeps the newest copy and avoids
+  re-injecting stale file payloads. See the
+  [compaction architecture](./developers-guide.md#compaction-architecture)
+  section for module ownership and the candidate lifecycle.
 - **Hooks / middleware**: lifecycle hooks, tool middleware, guard rails,
   duplicate-call protection, and planning-workflow enforcement add
   deterministic control around the model loop.

@@ -45,6 +45,7 @@ pub(super) fn task_message(content: String, intent_id: &str) -> Message {
     message
 }
 
+/// Append correlated read work until the history reaches `target_len`.
 fn append_work(history: &mut Vec<Message>, target_len: usize) {
     while history.len() + 1 < target_len {
         let call_id = format!("boundary-{}", history.len());
@@ -60,6 +61,8 @@ fn append_work(history: &mut Vec<Message>, target_len: usize) {
     }
 }
 
+/// Assert every tool call has a matching result and every result a matching
+/// call.
 pub(super) fn assert_correlated(history: &[Message]) {
     for (index, message) in history.iter().enumerate() {
         if let Some(calls) = message.tool_calls.as_ref() {
@@ -86,6 +89,7 @@ pub(super) fn assert_correlated(history: &[Message]) {
     }
 }
 
+/// Repeated compaction at 152 and 457 messages must retain the complete task.
 #[tokio::test]
 async fn repeated_compaction_retains_complete_task_after_152_and_457_messages() {
     let provider = provider(200_000);

@@ -1,12 +1,13 @@
 //! Real automatic-orchestration contracts for cached prefire and private metrics.
 
 use super::*;
-use crate::compaction::{AsyncCompactionCache, PrefireState, SUPPRESS_NONE};
+use crate::compaction::{AsyncCompactionCache, PrefireState, SUPPRESS_NONE, TestClock};
 use crate::llm::provider::{LLMError, LLMResponse, MessageRole, ResponsesCompactionOptions};
 use crate::telemetry::TelemetryEvent;
+use crate::telemetry::compaction::RecordingAutoCompactionObserver;
 use async_trait::async_trait;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 
 mod metrics_tests;
 
@@ -30,6 +31,7 @@ impl LLMProvider for RecordingProvider {
         "PROVIDER_PAYLOAD-private-provider"
     }
 
+    /// Record the request, then return the configured failure or summary.
     async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
         self.requests.lock().expect("request recorder lock").push(request);
         match &self.failure {
@@ -77,7 +79,7 @@ struct AutoScenario {
     history: Vec<Message>,
     suppressed: u8,
     engine: CompactionConfig,
-    metrics: Arc<Mutex<Vec<TelemetryEvent>>>,
+    observer: RecordingAutoCompactionObserver,
 }
 
 impl AutoScenario {
@@ -110,7 +112,7 @@ impl AutoScenario {
                 keep_last_messages: 0,
                 ..CompactionConfig::default()
             },
-            metrics: Arc::new(Mutex::new(Vec::new())),
+            observer: RecordingAutoCompactionObserver::new(),
         }
     }
 
@@ -125,18 +127,23 @@ impl AutoScenario {
     }
 
     async fn run(&mut self, force: bool) -> Result<Option<AutoCompactionOutcome>> {
-        let sink = AutoCompactionMetricSink::Test(Arc::clone(&self.metrics));
-        self.execute(force, Some(&sink)).await
+        let observer = self.observer.clone();
+        let clock = TestClock::new();
+        self.execute(force, Some(&observer), &clock).await
     }
 
     async fn run_public(&mut self, force: bool) -> Result<Option<AutoCompactionOutcome>> {
-        self.execute(force, None).await
+        let clock = TestClock::new();
+        self.execute(force, None, &clock).await
     }
 
+    /// Run the automatic entry point with an optional recording observer and a
+    /// deterministic clock.
     async fn execute(
         &mut self,
         force: bool,
-        metrics: Option<&AutoCompactionMetricSink>,
+        observer: Option<&RecordingAutoCompactionObserver>,
+        clock: &TestClock,
     ) -> Result<Option<AutoCompactionOutcome>> {
         let input = AutoCompactionInput {
             provider: &self.provider,
@@ -154,14 +161,22 @@ impl AutoScenario {
             force_compaction: force,
             steering_update: None,
         };
-        match metrics {
-            Some(sink) => auto_compact_messages_with_metrics(input, &mut self.history, sink).await,
-            None => auto_compact_messages(input, &mut self.history).await,
+        match observer {
+            Some(observer) => auto_compact_messages_with_observer(input, &mut self.history, observer, clock).await,
+            None => {
+                auto_compact_messages(
+                    input,
+                    &mut self.history,
+                    &crate::telemetry::PROCESS_AUTO_COMPACTION_OBSERVER,
+                    clock,
+                )
+                .await
+            }
         }
     }
 
     fn recorded_metrics(&self) -> Vec<TelemetryEvent> {
-        self.metrics.lock().expect("metric recorder lock").clone()
+        self.observer.events()
     }
 }
 
@@ -213,6 +228,7 @@ fn assert_terminal_labels(event: &TelemetryEvent, expected_outcome: &str, expect
     assert_eq!(event.tags.get("error_category").map(String::as_str), Some(expected_category));
 }
 
+/// Map a terminal outcome label to its counter metric name.
 fn terminal_counter_name(outcome: &str) -> &'static str {
     match outcome {
         "success" => "vtcode.compaction.auto_success_total",
@@ -320,6 +336,8 @@ async fn oversized_prefire_pass_two_falls_back_to_one_single_pass_request() {
     assert_eq!(outcome.mode, CompactionMode::Local);
 }
 
+/// A populated prefire cache must preserve the protected prompts and keep the
+/// final context within its bound.
 #[tokio::test]
 async fn successful_populated_prefire_preserves_prompts_and_final_context_bound() {
     let mut scenario = AutoScenario::new(8_192);

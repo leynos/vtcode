@@ -27,6 +27,8 @@ impl Drop for RunningVidaiMock {
 }
 
 impl RunningVidaiMock {
+    /// Start the version-checked fixture on a free loopback port and return its
+    /// chat-completions URL once it accepts connections.
     pub(super) async fn start() -> (Self, String) {
         let version = Command::new("vidaimock").arg("--version").output().expect("VidaiMock version");
         assert!(version.status.success());
@@ -71,6 +73,7 @@ struct RecordingProxy {
     normal_requests: Arc<AtomicUsize>,
 }
 
+/// Recognize a summary request by its single summary-prompt message.
 pub(super) fn is_summary(body: &Value) -> bool {
     body["messages"].as_array().is_some_and(|messages| {
         messages.len() == 1
@@ -80,6 +83,8 @@ pub(super) fn is_summary(body: &Value) -> bool {
     })
 }
 
+/// Record the request, tag it with its step, and forward it unchanged to the
+/// local fixture.
 async fn forward_request(
     State(proxy): State<RecordingProxy>,
     bytes: Bytes,
@@ -113,6 +118,7 @@ pub(super) struct RecordingProxyServer {
 }
 
 impl RecordingProxyServer {
+    /// Serve the recording proxy on a free loopback port.
     pub(super) async fn start(upstream: String, requests: Arc<Mutex<Vec<Value>>>) -> Self {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.expect("recording proxy");
         let url = format!("http://{}/v1", listener.local_addr().expect("proxy address"));
@@ -135,6 +141,7 @@ impl RecordingProxyServer {
         Self { url, task }
     }
 
+    /// Stop the proxy and join its task.
     pub(super) async fn finish(self) {
         self.task.abort();
         // Borrow the handle so Drop still owns panic-path cleanup.
@@ -144,6 +151,7 @@ impl RecordingProxyServer {
 }
 
 impl Drop for RecordingProxyServer {
+    /// Abort the proxy task on panic paths.
     fn drop(&mut self) {
         self.task.abort();
     }

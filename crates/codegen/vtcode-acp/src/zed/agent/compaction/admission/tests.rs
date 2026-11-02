@@ -4,6 +4,7 @@ use super::{AdmissionCandidate, AdmissionMetricSink, AdmissionOutcome, admit_and
 use hashbrown::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use vtcode_core::compaction::TestClock;
 use vtcode_core::core::threads::{ThreadBootstrap, ThreadManager};
 use vtcode_core::llm::provider::Message;
 use vtcode_core::telemetry::TelemetryEvent;
@@ -37,7 +38,7 @@ async fn run_admission(changed: bool, budget: Option<usize>) -> AdmissionRun {
         admission_budget: budget,
         changed,
     };
-    let result = admit_and_publish(candidate, &sink).await;
+    let result = admit_and_publish(candidate, &sink, &TestClock::new()).await;
     AdmissionRun {
         result,
         original_history,
@@ -47,6 +48,7 @@ async fn run_admission(changed: bool, budget: Option<usize>) -> AdmissionRun {
     }
 }
 
+/// Assert the exact metric names, closed label set, and payload-free property.
 fn assert_metric_vocabulary(events: &[TelemetryEvent], outcome: &str, reason: &str) {
     assert_eq!(
         events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>(),
@@ -67,6 +69,8 @@ fn assert_metric_vocabulary(events: &[TelemetryEvent], outcome: &str, reason: &s
     assert!(!format!("{events:?}").contains(PRIVATE_MARKER), "private request data must not enter telemetry");
 }
 
+/// Assert each boundary contributes one counter and a finite, nonnegative
+/// duration.
 fn assert_metric_values(events: &[TelemetryEvent]) {
     for event in &events[..2] {
         assert_eq!(event.value.to_bits(), 1.0_f64.to_bits(), "each boundary contributes exactly one counter");

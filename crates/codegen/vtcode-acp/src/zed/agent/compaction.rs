@@ -18,9 +18,10 @@ use vtcode_core::compaction::auto::{AutoCompactionInput, AutoCompactionOutcome, 
 use vtcode_core::compaction::memory_envelope::{
     MemoryEnvelopePlacement, effective_compaction_threshold, local_compaction_config,
 };
-use vtcode_core::compaction::{CompactionStrategy, ManualCompactionOptions, manual_compaction_strategy};
+use vtcode_core::compaction::{CompactionStrategy, ManualCompactionOptions, SYSTEM_CLOCK, manual_compaction_strategy};
 use vtcode_core::exec::events::{CompactionMode, CompactionTrigger};
 use vtcode_core::llm::provider::{LLMProvider, Message, ToolDefinition};
+use vtcode_core::telemetry::PROCESS_AUTO_COMPACTION_OBSERVER;
 use vtcode_core::{config::VTCodeConfig, core::threads::ThreadRuntimeHandle};
 
 mod admission;
@@ -30,12 +31,14 @@ const DEFAULT_OUTPUT_RESERVE_TOKENS: usize = 16_384;
 const ADMISSION_SAFETY_MARGIN_TOKENS: usize = 1_024;
 const COMPACTION_SUMMARY_MAX_TOKENS: u32 = 4_096;
 
+/// Estimate the tokens the serialized tool definitions add to a provider prompt.
 fn estimated_tool_tokens(tools: Option<&Arc<Vec<ToolDefinition>>>) -> usize {
     tools
         .and_then(|definitions| serde_json::to_vec(definitions.as_ref()).ok())
         .map_or(0, |encoded| encoded.len().div_ceil(4))
 }
 
+/// Estimate the full prompt size, including message history and tool overhead.
 fn estimated_prompt_tokens(messages: &[Message], tools: Option<&Arc<Vec<ToolDefinition>>>) -> usize {
     messages
         .iter()
@@ -44,6 +47,8 @@ fn estimated_prompt_tokens(messages: &[Message], tools: Option<&Arc<Vec<ToolDefi
         .saturating_add(estimated_tool_tokens(tools))
 }
 
+/// Reserve provider output and safety headroom, returning the prompt budget left
+/// for admission. A provider that reports no context size has no budget.
 fn admission_prompt_budget(provider: &dyn LLMProvider, model: &str) -> Option<usize> {
     let context_size = provider.effective_context_size(model);
     if context_size == 0 {
@@ -55,6 +60,7 @@ fn admission_prompt_budget(provider: &dyn LLMProvider, model: &str) -> Option<us
     Some(context_size.saturating_sub(output_reserve).saturating_sub(safety_margin).max(1))
 }
 
+/// Test helper mirroring the production trigger comparison.
 #[cfg(test)]
 fn should_compact(provider: &dyn LLMProvider, model: &str, prompt_tokens: usize) -> bool {
     let threshold = effective_compaction_threshold(None, provider, model);
@@ -139,6 +145,8 @@ impl ZedAgent {
             .map(|messages| estimated_prompt_tokens(&messages, tools))
     }
 
+    /// Run one automatic ACP compaction attempt when the prompt crosses the
+    /// configured or admission threshold, returning whether history changed.
     pub(super) async fn maybe_compact_session(&self, request: CompactionRequest<'_>) -> Result<bool> {
         let CompactionRequest { session, provider, runtime, model, tools } = request;
         let Some(vt_config) = self.vt_config.as_deref() else {
@@ -211,6 +219,7 @@ impl ZedAgent {
         compaction_result
     }
 
+    /// Produce the candidate history for one session without publishing it.
     async fn run_compaction(&self, run: CompactionRun<'_>) -> Result<CompactionAttempt> {
         let CompactionRun {
             session,
@@ -267,6 +276,8 @@ impl ZedAgent {
                     steering_update: None,
                 },
                 &mut history,
+                &PROCESS_AUTO_COMPACTION_OBSERVER,
+                &SYSTEM_CLOCK,
             );
             tokio::pin!(compaction);
             await_compaction(session, total_deadline, compaction).await
@@ -285,6 +296,8 @@ impl ZedAgent {
         Ok(CompactionAttempt { outcome, thread, history })
     }
 
+    /// Admit the candidate, publish accepted history, and checkpoint the
+    /// session. A refusal leaves both history and checkpoint untouched.
     async fn commit_compacted_history(&self, commit: CompactionCommit<'_>) -> Result<usize> {
         let CompactionCommit {
             session,
@@ -305,6 +318,7 @@ impl ZedAgent {
                 changed,
             },
             &AdmissionMetricSink::Process,
+            &SYSTEM_CLOCK,
         )
         .await?;
         if !changed {
@@ -331,6 +345,8 @@ struct CompactionDecision {
 }
 
 impl CompactionDecision {
+    /// Decide whether the prompt crosses the configured or admission threshold,
+    /// and whether admission pressure alone forces the attempt.
     fn for_prompt(
         vt_config: Option<&VTCodeConfig>,
         provider: &dyn LLMProvider,
@@ -363,6 +379,8 @@ struct CompactionSessionSnapshot {
 }
 
 impl CompactionSessionSnapshot {
+    /// Capture the thread, session identity, history, and suppression state
+    /// under one lock so the attempt works from a consistent snapshot.
     fn load(session: &SessionHandle) -> Result<Self> {
         let data = session
             .data
@@ -402,6 +420,8 @@ struct CompactionCommit<'a> {
     changed: bool,
 }
 
+/// Run the session's PreCompact lifecycle hooks, treating hook messages as
+/// warnings rather than compaction failures.
 async fn run_pre_compact_hooks(
     session: &SessionHandle,
     provider: &dyn LLMProvider,
@@ -426,6 +446,8 @@ async fn run_pre_compact_hooks(
     Ok(())
 }
 
+/// Await compaction while honouring session cancellation and the provider's
+/// total-generation deadline.
 async fn await_compaction<F>(
     session: &SessionHandle,
     total_deadline: Option<Instant>,
@@ -448,6 +470,7 @@ where
     }
 }
 
+/// Map the provider strategy to the mode reported to lifecycle hooks.
 fn lifecycle_compaction_mode(strategy: CompactionStrategy) -> CompactionMode {
     match strategy {
         CompactionStrategy::Local => CompactionMode::Local,

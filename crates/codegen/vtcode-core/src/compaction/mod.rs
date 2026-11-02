@@ -26,6 +26,12 @@ mod protocol;
 mod telemetry;
 pub mod two_pass;
 
+#[cfg(any(test, feature = "telemetry-test-support"))]
+pub use telemetry::TestClock;
+pub use telemetry::{
+    AutoCompactionEvent, AutoCompactionObserver, FailureCategory, MonotonicClock, Outcome, SYSTEM_CLOCK, SystemClock,
+};
+
 #[cfg(test)]
 use bounded_history::{bounded_protocol_group, select_bounded_history};
 pub(super) use context_budget::is_protected_user_budget_error;
@@ -58,6 +64,8 @@ pub(crate) enum SuppressReason {
 }
 
 impl SuppressReason {
+    /// Map the reason to its sticky, until-success, or per-turn suppression
+    /// state.
     fn suppress_state(self) -> u8 {
         match self {
             SuppressReason::Size | SuppressReason::Schema => SUPPRESS_STICKY,
@@ -739,6 +747,7 @@ mod tests {
             "inline-rejecting"
         }
 
+        /// Reject inline compaction while allowing the local summary request.
         async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
             // Reject only the inline compaction request (carries the Anthropic
             // `compact_20260112` edit); the Local summary request must succeed.
@@ -1145,6 +1154,7 @@ mod tests {
         assert_eq!(compacted[3].content.as_text(), "newest request");
     }
 
+    /// Compacted history must fit the model's context budget.
     #[tokio::test]
     async fn compacted_history_respects_model_context_budget() {
         let mut history = Vec::new();
@@ -1279,6 +1289,7 @@ mod tests {
         assert_eq!(tail[0].content.as_text(), "run both");
     }
 
+    /// The continuity tail keeps the newest complete groups that fit.
     #[test]
     fn continuity_tail_keeps_newest_complete_groups_within_budget() {
         let mut history = Vec::new();
@@ -1480,6 +1491,7 @@ mod tests {
         assert_eq!(indices, vec![1, 2]);
     }
 
+    /// Coherence drops tool results whose assistant call was not retained.
     #[test]
     fn coherence_drops_orphaned_tool_results_of_unretained_assistant() {
         use super::coherence_tool_call_pairs;

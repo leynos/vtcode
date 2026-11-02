@@ -1,8 +1,10 @@
 //! Telemetry pipeline for real-time KPIs and historical benchmarking.
 
+pub mod compaction;
 pub mod perf;
 mod pipeline;
 
+pub use compaction::{PROCESS_AUTO_COMPACTION_OBSERVER, ProcessAutoCompactionObserver};
 pub use pipeline::{TelemetryEvent, TelemetryPipeline};
 
 /// Memory pool performance telemetry

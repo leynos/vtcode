@@ -102,6 +102,8 @@ impl FailureScenario {
                 steering_update: None,
             },
             &mut self.history,
+            &crate::telemetry::PROCESS_AUTO_COMPACTION_OBSERVER,
+            &crate::compaction::SYSTEM_CLOCK,
         )
         .await
     }
@@ -180,6 +182,8 @@ async fn automatic_compaction_persists_live_steering_snapshot() {
             steering_update: Some(&steering_update),
         },
         &mut history,
+        &crate::telemetry::PROCESS_AUTO_COMPACTION_OBSERVER,
+        &crate::compaction::SYSTEM_CLOCK,
     )
     .await
     .expect("automatic compaction should succeed")

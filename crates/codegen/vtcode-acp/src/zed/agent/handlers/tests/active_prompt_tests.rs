@@ -46,6 +46,8 @@ impl LLMProvider for BufferedHttpProvider {
     }
 }
 
+/// Build a task large enough to force repeated compaction, ending in a unique
+/// acceptance marker that must survive every summary and reload.
 fn original_task() -> String {
     let mut task = format!("Work on branch `{BRANCH}`. Preserve this complete task verbatim.\n");
     for criterion in 0..110 {
@@ -78,6 +80,8 @@ struct WireSessionTurn {
     session_tx: tokio::sync::oneshot::Sender<acp::SessionId>,
 }
 
+/// Drive one client-side ACP turn: initialize, create or load the session,
+/// select the model, and send the prompt.
 async fn drive_wire_session(cx: ConnectionTo<Agent>, turn: WireSessionTurn) -> agent_client_protocol::Result<()> {
     let WireSessionTurn { workspace, loaded_session_id, task, session_tx } = turn;
     drop(
@@ -119,6 +123,8 @@ async fn drive_wire_session(cx: ConnectionTo<Agent>, turn: WireSessionTurn) -> a
     Ok(())
 }
 
+/// Run one full ACP turn over a duplex connection and collect the session id
+/// and every notification the agent emitted.
 async fn run_wire_turn(
     agent: Arc<ZedAgent>,
     workspace: PathBuf,
@@ -156,6 +162,7 @@ async fn run_wire_turn(
     (session_id, notifications)
 }
 
+/// Assert the request carries the exact task text as a user message.
 fn assert_complete_task(body: &Value, task: &str) {
     assert!(
         body["messages"]
@@ -177,6 +184,8 @@ struct VidaiCompactionScenario {
 }
 
 impl VidaiCompactionScenario {
+    /// Start VidaiMock, the recording proxy, and a workspace wired to the
+    /// custom-provider HTTP adapter.
     async fn start() -> Self {
         let (vidaimock, upstream) = RunningVidaiMock::start().await;
         let requests = Arc::new(Mutex::new(Vec::new()));
@@ -206,6 +215,8 @@ impl VidaiCompactionScenario {
     }
 }
 
+/// Install a provider factory that routes the test provider through the real
+/// custom-provider HTTP adapter.
 fn install_http_provider_factory(provider: &CustomProviderConfig) -> PromptProviderFactoryGuard {
     let factory_config = provider.clone();
     PromptProviderFactoryGuard::install(
@@ -229,6 +240,8 @@ fn install_http_provider_factory(provider: &CustomProviderConfig) -> PromptProvi
     )
 }
 
+/// Assert every task request keeps the complete task, each summary describes
+/// the active work, and the next request installs the generated summary.
 fn assert_compaction_wire_requests(captured: &[Value], task: &str) {
     for request in captured.iter().filter(|body| !is_summary(body)) {
         assert_complete_task(request, task);
@@ -257,6 +270,8 @@ struct SavedArchive {
 }
 
 impl SavedArchive {
+    /// Capture the durable archive path and assert the checkpoint retains the
+    /// complete task.
     fn from_session(agent: &ZedAgent, session_id: &acp::SessionId, task: &str) -> Self {
         let session = agent
             .session_handle(session_id)
@@ -284,6 +299,7 @@ impl SavedArchive {
         archive
     }
 
+    /// Remove the archive now, disarming the drop guard.
     fn remove(mut self) {
         let path = self.path.take().expect("saved archive path");
         std::fs::remove_file(path).expect("remove test archive");
@@ -291,6 +307,7 @@ impl SavedArchive {
 }
 
 impl Drop for SavedArchive {
+    /// Best-effort cleanup of the archive when the test does not remove it.
     fn drop(&mut self) {
         if let Some(path) = self.path.as_ref() {
             drop(std::fs::remove_file(path));
@@ -298,12 +315,16 @@ impl Drop for SavedArchive {
     }
 }
 
+/// Assert the first request after reload carries both the original task and
+/// the steering message.
 fn assert_resumed_request(captured: &[Value], task: &str) {
     let resumed_request = captured.iter().find(|body| !is_summary(body)).expect("resumed HTTP request");
     assert_complete_task(resumed_request, task);
     assert_complete_task(resumed_request, STEERING);
 }
 
+/// End-to-end acceptance: repeated automatic compaction and a checkpoint
+/// reload must preserve the complete original task and the steering message.
 #[tokio::test]
 #[ignore = "requires VidaiMock 0.3.1 or 0.4.0; exercises real ACP, HTTP, automatic compaction and session/load"]
 async fn vidaimock_preserves_complete_task_across_repeated_auto_compaction_and_reload() {

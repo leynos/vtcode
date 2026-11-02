@@ -8,8 +8,9 @@
 use super::admit_compacted_history;
 use anyhow::Result;
 use hashbrown::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::warn;
+use vtcode_core::compaction::MonotonicClock;
 use vtcode_core::core::threads::ThreadRuntimeHandle;
 use vtcode_core::llm::provider::Message;
 
@@ -28,6 +29,8 @@ pub(super) struct AdmissionCandidate {
 }
 
 impl AdmissionCandidate {
+    /// Validate the candidate against the provider admission budget, returning
+    /// the prompt size to publish or a refusal error.
     fn admit(&self) -> Result<usize> {
         if self.changed {
             return admit_compacted_history(
@@ -56,11 +59,16 @@ impl AdmissionCandidate {
 /// The same boundary serves runtime and recorder-owned tests. Admission remains
 /// pure; observation is awaited before successful history publication, and the
 /// caller checkpoints only after this boundary returns an accepted candidate.
-pub(super) async fn admit_and_publish(candidate: AdmissionCandidate, sink: &AdmissionMetricSink) -> Result<usize> {
-    let started_at = Instant::now();
+/// `clock` supplies the monotonic instants used for the duration metric.
+pub(super) async fn admit_and_publish(
+    candidate: AdmissionCandidate,
+    sink: &AdmissionMetricSink,
+    clock: &dyn MonotonicClock,
+) -> Result<usize> {
+    let started_at = clock.now();
     let result = candidate.admit();
     let outcome = AdmissionOutcome::from_decision(candidate.changed, result.is_ok());
-    sink.record(outcome, started_at.elapsed()).await;
+    sink.record(outcome, clock.now().saturating_duration_since(started_at)).await;
     let prompt_tokens = result?;
     if candidate.changed {
         candidate.thread.replace_messages(candidate.history);
@@ -77,6 +85,8 @@ enum AdmissionOutcome {
 }
 
 impl AdmissionOutcome {
+    /// Classify the boundary decision from whether history changed and whether
+    /// admission accepted it.
     const fn from_decision(changed: bool, admitted: bool) -> Self {
         match (changed, admitted) {
             (true, true) => Self::Accepted,
@@ -86,6 +96,7 @@ impl AdmissionOutcome {
         }
     }
 
+    /// Stable `outcome` label for the closed metric vocabulary.
     const fn outcome(self) -> &'static str {
         match self {
             Self::Accepted => "accepted",
@@ -94,6 +105,7 @@ impl AdmissionOutcome {
         }
     }
 
+    /// Stable `reason` label for the closed metric vocabulary.
     const fn reason(self) -> &'static str {
         match self {
             Self::Accepted => "within_budget",
@@ -103,6 +115,7 @@ impl AdmissionOutcome {
         }
     }
 
+    /// Build the finite label set attached to result and duration metrics.
     fn tags(self) -> HashMap<String, String> {
         HashMap::from([
             ("outcome".to_owned(), self.outcome().to_owned()),
@@ -120,6 +133,7 @@ pub(super) enum AdmissionMetricSink {
 }
 
 impl AdmissionMetricSink {
+    /// Emit the attempt, result, and duration metrics for one boundary decision.
     async fn record(&self, outcome: AdmissionOutcome, elapsed: Duration) {
         self.record_value(ATTEMPT_TOTAL, 1.0, HashMap::new()).await;
         self.record_value(RESULT_TOTAL, 1.0, outcome.tags()).await;
@@ -127,6 +141,7 @@ impl AdmissionMetricSink {
             .await;
     }
 
+    /// Route one metric to the process pipeline or the test recorder.
     async fn record_value(&self, name: &'static str, value: f64, tags: HashMap<String, String>) {
         match self {
             Self::Process => vtcode_core::telemetry::perf::record_value(name, value, tags),

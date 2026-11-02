@@ -14,6 +14,7 @@ use vtcode_core::llm::provider::MessageRole;
 struct TraceCapture(Arc<Mutex<Vec<String>>>);
 
 impl TraceCapture {
+    /// Record the fields of a storage span, ignoring unrelated spans.
     fn record_storage_fields(&self, span_name: &str, record: impl FnOnce(&mut CapturedFields)) {
         if span_name != "acp_session_storage" {
             return;
@@ -41,6 +42,7 @@ where
         self.record_storage_fields(span.name(), |fields| values.record(fields));
     }
 
+    /// Capture events emitted inside the storage span, including their fields.
     fn on_event(&self, event: &tracing::Event<'_>, context: Context<'_, S>) {
         let Some(span) = context.lookup_current() else { return };
         if span.name() != "acp_session_storage" {
@@ -70,6 +72,8 @@ impl Visit for CapturedFields {
     }
 }
 
+/// Assert the storage trace carries the required fields and leaks none of the
+/// forbidden values.
 fn assert_storage_trace(captured: &str, operation: &str, outcome: &str, forbidden_values: &[&str]) {
     let operation_field = format!("operation={operation:?}");
     let outcome_field = format!("outcome={outcome:?}");
@@ -249,6 +253,8 @@ fn archived_workspace_matching_distinguishes_resolution_mismatch_and_match() {
     assert!(!formatted_error.contains(&missing_workspace.display().to_string()));
 }
 
+/// Attachment must accept a matching workspace, report a mismatch, and
+/// surface resolution errors.
 #[tokio::test]
 async fn active_session_attachment_distinguishes_resolution_mismatch_and_match() {
     let workspace = TempDir::new().unwrap();
@@ -416,6 +422,8 @@ fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
     assert_eq!(repaired[2].role, MessageRole::User);
 }
 
+/// Repairing a legacy archive must mark the mutating call unresolved without
+/// replaying it.
 #[tokio::test]
 async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
@@ -464,6 +472,8 @@ async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     assert_eq!(persisted.messages[1].role, MessageRole::Tool);
 }
 
+/// A resumed session is registered only after its repaired history is durably
+/// checkpointed.
 #[tokio::test]
 async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     // Reviews 3791762677 and 3944816962: a resumed session is visible to
@@ -506,6 +516,8 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     );
 }
 
+/// An ambiguous archive with a duplicate result must be rejected before any
+/// replay or rewrite.
 #[tokio::test]
 async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive() {
     // A duplicate result has a known external-effect record, but no safe

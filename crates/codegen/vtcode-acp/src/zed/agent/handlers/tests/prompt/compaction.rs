@@ -2,6 +2,8 @@
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
 
+/// A streamed ACP prompt must compact accumulated history, persist the summary,
+/// and restore it on reload without the raw oldest context.
 #[tokio::test]
 async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
     let _history_test_guard = lock_history_test_guard().await;
@@ -211,6 +213,8 @@ async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
     std::fs::remove_file(archive_path).expect("remove persisted ACP compaction archive");
 }
 
+/// An over-budget prompt must fail closed when compaction is disabled and
+/// makes no change.
 #[tokio::test]
 async fn prompt_over_budget_fails_closed_when_compaction_makes_no_change() {
     let _history_test_guard = lock_history_test_guard().await;
@@ -245,6 +249,8 @@ async fn prompt_over_budget_fails_closed_when_compaction_makes_no_change() {
     assert!(requests.lock().expect("compaction requests").is_empty());
 }
 
+/// A compacted prompt that still exceeds the admission budget must fail closed
+/// before the answer request.
 #[tokio::test]
 async fn prompt_over_budget_fails_closed_when_compaction_stays_over_budget() {
     let _history_test_guard = lock_history_test_guard().await;
@@ -281,6 +287,7 @@ async fn prompt_over_budget_fails_closed_when_compaction_stays_over_budget() {
     assert!(!requests[0].stream, "the provider request must be compaction, not an answer turn");
 }
 
+/// Session cancellation must abort an in-flight compaction provider request.
 #[tokio::test]
 async fn cancelled_acp_compaction_aborts_the_pending_provider_request() {
     let _history_test_guard = lock_history_test_guard().await;

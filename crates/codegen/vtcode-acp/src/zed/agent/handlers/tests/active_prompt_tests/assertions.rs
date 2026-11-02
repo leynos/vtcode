@@ -5,6 +5,7 @@ use crate::acp;
 use serde_json::Value;
 use vtcode_core::llm::provider::Message;
 
+/// Assert every fixture read tool call completed successfully.
 pub(super) fn assert_completed_reads(notifications: &[acp::AgentNotification]) {
     let successful_reads = notifications
         .iter()
@@ -23,6 +24,7 @@ pub(super) fn assert_completed_reads(notifications: &[acp::AgentNotification]) {
     assert_eq!(successful_reads.len(), 12, "all fixture reads must actually succeed");
 }
 
+/// Assert at least two production automatic compactions completed in the turn.
 pub(super) fn assert_completed_compactions(notifications: &[acp::AgentNotification]) {
     let completed_compactions = notifications
         .iter()
@@ -43,6 +45,7 @@ pub(super) fn assert_completed_compactions(notifications: &[acp::AgentNotificati
     );
 }
 
+/// Assert the summary input contains the completed work and the task identity.
 pub(super) fn assert_summary_describes_active_work(summary: &Value) {
     let text = summary["messages"][0]["content"].as_str().expect("summary input");
     assert!(text.contains("ISSUE164_WORK"), "summary input must include actual completed work");
@@ -52,6 +55,8 @@ pub(super) fn assert_summary_describes_active_work(summary: &Value) {
     );
 }
 
+/// Assert the next provider request carries the generated summary as a system
+/// message.
 pub(super) fn assert_generated_summary_installed(request: &Value) {
     assert!(
         request["messages"]
@@ -68,6 +73,7 @@ pub(super) fn assert_generated_summary_installed(request: &Value) {
     );
 }
 
+/// Assert the active messages exceed the old 20k continuity allowance.
 pub(super) fn assert_old_continuity_budget_exceeded(request: &Value) {
     // A BPE estimate establishes actual pressure on the old 20k allowance.
     let active_tokens: usize = request["messages"]

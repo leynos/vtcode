@@ -73,6 +73,7 @@ impl LLMProvider for StreamToolThenAnswerProvider {
         Ok(())
     }
 
+    /// Emit a tool call on the first turn and a streamed answer afterwards.
     async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
         self.requests.lock().expect("stream requests").push(request);
         let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
@@ -258,6 +259,7 @@ impl LLMProvider for FailThenSucceedProvider {
         Ok(())
     }
 
+    /// Fail the first turn with an ANSI-coloured error, then succeed.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             Err(LLMError::InvalidRequest {
@@ -289,6 +291,8 @@ pub(in crate::zed::agent::handlers) async fn build_wire_test_agent_with_provider
     build_wire_test_agent_with_providers_and_options(workspace, providers, None, None).await
 }
 
+/// Build a wire-test agent with explicit custom providers, config, and audit
+/// logger, initializing the audit logger from config when none is supplied.
 pub(super) async fn build_wire_test_agent_with_providers_and_options(
     workspace: &std::path::Path,
     providers: &[CustomProviderConfig],
@@ -352,6 +356,8 @@ pub(super) async fn build_wire_test_agent_with_providers_and_options(
     .expect("build test ACP agent")
 }
 
+/// Create a session with enough historical pressure to reach summary
+/// generation while keeping protected instructions inside the budget.
 pub(super) async fn large_compaction_session(agent: &ZedAgent, workspace: &std::path::Path) -> SessionHandle {
     let response = agent
         .new_session(NewSessionRequest::new(workspace))

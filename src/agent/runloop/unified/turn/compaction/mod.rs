@@ -29,11 +29,13 @@ pub(crate) use vtcode_core::persistent_memory::{GroundedFactRecord, dedup_latest
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::path::Path;
+use vtcode_core::compaction::SYSTEM_CLOCK;
 use vtcode_core::compaction::auto::{AutoCompactionInput, auto_compact_messages};
 use vtcode_core::config::loader::VTCodeConfig;
 use vtcode_core::hooks::LifecycleHookEngine;
 use vtcode_core::llm::provider::{LLMProvider, Message, MessageRole};
 use vtcode_core::persistent_memory::normalize_whitespace;
+use vtcode_core::telemetry::PROCESS_AUTO_COMPACTION_OBSERVER;
 
 use crate::agent::runloop::unified::context_manager::ContextManager;
 use crate::agent::runloop::unified::inline_events::harness::{HarnessEventEmitter, compact_boundary_event};
@@ -815,6 +817,8 @@ pub(crate) async fn maybe_auto_compact_history(
             steering_update: steering_update.as_ref(),
         },
         &mut compacted_history,
+        &PROCESS_AUTO_COMPACTION_OBSERVER,
+        &SYSTEM_CLOCK,
     )
     .await?
     else {

@@ -1,53 +1,90 @@
 //! Bounded, payload-free observations of eligible automatic compaction passes.
 //!
+//! The compaction domain owns the observation vocabulary and the timing
+//! boundary. Runtime adapters implement [`AutoCompactionObserver`] to project
+//! those events into their own telemetry pipeline, and supply a
+//! [`MonotonicClock`] so duration measurement is deterministic in tests.
+//!
 //! Metrics cover this automatic orchestration entry point and its terminal
 //! result. Attempts use `unknown` before strategy selection. Terminal results
 //! use the selected branch, overridden by the actual mode on success.
 
 use std::time::Instant;
 
-use hashbrown::HashMap;
-
 use super::auto::AutoCompactionOutcome;
 use crate::exec::events::CompactionMode;
 use crate::llm::provider::{LLMError, Message};
 
-/// Metric names are closed here rather than supplied by runtime inputs.
-#[derive(Clone, Copy, Debug)]
-enum Metric {
-    Attempt,
-    Success,
-    NoChange,
-    Failure,
-    ProtectedBudgetRefusal,
-    Duration,
+/// Narrow monotonic clock used by telemetry boundaries.
+pub trait MonotonicClock: Send + Sync {
+    /// Return the current monotonic instant.
+    fn now(&self) -> Instant;
 }
 
-impl Metric {
-    /// Keep automatic-compaction event names stable across providers and sessions.
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Attempt => "vtcode.compaction.auto_attempt_total",
-            Self::Success => "vtcode.compaction.auto_success_total",
-            Self::NoChange => "vtcode.compaction.auto_no_change_total",
-            Self::Failure => "vtcode.compaction.auto_failure_total",
-            Self::ProtectedBudgetRefusal => "vtcode.compaction.auto_protected_budget_refusal_total",
-            Self::Duration => "vtcode.compaction.auto_duration_ms",
-        }
+/// Production clock backed by the process monotonic timer.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SystemClock;
+
+impl MonotonicClock for SystemClock {
+    fn now(&self) -> Instant {
+        Instant::now()
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Outcome {
+/// Shared production clock for call sites that do not own one.
+pub static SYSTEM_CLOCK: SystemClock = SystemClock;
+
+/// Deterministic clock for tests and downstream test support.
+#[cfg(any(test, feature = "telemetry-test-support"))]
+#[derive(Debug)]
+pub struct TestClock {
+    now: std::sync::Mutex<Instant>,
+}
+
+#[cfg(any(test, feature = "telemetry-test-support"))]
+impl TestClock {
+    /// Start at the current process instant.
+    pub fn new() -> Self {
+        Self { now: std::sync::Mutex::new(Instant::now()) }
+    }
+
+    /// Advance the clock by `duration`.
+    pub fn advance(&self, duration: std::time::Duration) {
+        let mut now = self.now.lock().expect("test clock lock");
+        *now = now.checked_add(duration).unwrap_or(*now);
+    }
+}
+
+#[cfg(any(test, feature = "telemetry-test-support"))]
+impl Default for TestClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(any(test, feature = "telemetry-test-support"))]
+impl MonotonicClock for TestClock {
+    fn now(&self) -> Instant {
+        *self.now.lock().expect("test clock lock")
+    }
+}
+
+/// Terminal outcome label for automatic-compaction observations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    /// An eligible pass started.
     Attempt,
+    /// The pass produced a compacted history.
     Success,
+    /// The pass completed without changing history.
     NoChange,
+    /// The pass failed.
     Failure,
 }
 
 impl Outcome {
-    /// Terminal labels distinguish skipped work from failures without payload text.
-    const fn as_str(self) -> &'static str {
+    /// Stable label used by runtime metric adapters.
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Attempt => "attempt",
             Self::Success => "success",
@@ -59,17 +96,22 @@ impl Outcome {
 
 /// Classify typed causes; provider text never determines metric labels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FailureCategory {
+pub enum FailureCategory {
+    /// No failure occurred.
     None,
+    /// Protected user instructions exceed the model budget.
     ProtectedUserBudget,
+    /// The provider rejected or failed the request.
     Provider,
+    /// A storage or filesystem operation failed.
     Storage,
+    /// Any other operation failed.
     Operation,
 }
 
 impl FailureCategory {
     /// Recognize wrapped typed causes without interpreting raw error messages.
-    fn from_error(error: &anyhow::Error) -> Self {
+    pub fn from_error(error: &anyhow::Error) -> Self {
         if super::is_protected_user_budget_error(error) {
             Self::ProtectedUserBudget
         } else if error.is::<LLMError>() {
@@ -81,8 +123,8 @@ impl FailureCategory {
         }
     }
 
-    /// Export the finite failure vocabulary used by metrics and boundary logs.
-    const fn as_str(self) -> &'static str {
+    /// Stable label used by runtime metric adapters.
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
             Self::ProtectedUserBudget => "protected_user_budget",
@@ -93,86 +135,75 @@ impl FailureCategory {
     }
 }
 
-#[derive(Clone, Copy)]
-struct MetricContext {
-    mode: CompactionMode,
-    outcome: Outcome,
-    error_category: FailureCategory,
+/// Bounded, payload-free observation of one automatic-compaction pass.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AutoCompactionEvent {
+    /// An eligible pass started.
+    Attempt,
+    /// The pass produced a compacted history.
+    Success {
+        /// Mode that produced the compacted history.
+        mode: CompactionMode,
+    },
+    /// The pass completed without changing history.
+    NoChange {
+        /// Mode selected for the pass.
+        mode: CompactionMode,
+    },
+    /// The pass failed.
+    Failure {
+        /// Mode selected for the pass.
+        mode: CompactionMode,
+        /// Typed failure classification.
+        category: FailureCategory,
+    },
+    /// The pass refused because protected user instructions exceed the budget.
+    ProtectedBudgetRefusal {
+        /// Mode selected for the pass.
+        mode: CompactionMode,
+        /// Typed failure classification.
+        category: FailureCategory,
+    },
+    /// The pass duration in milliseconds.
+    Duration {
+        /// Mode selected for the pass.
+        mode: CompactionMode,
+        /// Terminal outcome of the pass.
+        outcome: Outcome,
+        /// Typed failure classification.
+        category: FailureCategory,
+        /// Elapsed milliseconds measured by the injected clock.
+        millis: f64,
+    },
 }
 
-struct MetricObservation {
-    metric: Metric,
-    context: MetricContext,
-}
-
-impl MetricObservation {
-    /// Bind each observation to closed metric and context values.
-    fn new(metric: Metric, mode: CompactionMode, outcome: Outcome, error_category: FailureCategory) -> Self {
-        Self {
-            metric,
-            context: MetricContext { mode, outcome, error_category },
-        }
-    }
-}
-
-impl MetricContext {
-    /// Only finite mode, outcome, and error-category values enter tags.
-    fn tags(self) -> HashMap<String, String> {
-        HashMap::from([
-            ("mode".to_owned(), self.mode.as_str().to_owned()),
-            ("outcome".to_owned(), self.outcome.as_str().to_owned()),
-            ("error_category".to_owned(), self.error_category.as_str().to_owned()),
-        ])
-    }
-}
-
-/// Invocation-owned sink; tests do not alter the process perf recorder.
-pub(super) enum AutoCompactionMetricSink {
-    Process,
-    #[cfg(test)]
-    Test(std::sync::Arc<std::sync::Mutex<Vec<crate::telemetry::TelemetryEvent>>>),
-}
-
-impl AutoCompactionMetricSink {
-    /// Share one projection between the perf pipeline and invocation-owned tests.
-    fn record(&self, metric: Metric, value: f64, context: MetricContext) {
-        let name = metric.name();
-        let tags = context.tags();
-        match self {
-            Self::Process => crate::telemetry::perf::record_value(name, value, tags),
-            #[cfg(test)]
-            Self::Test(recorder) => {
-                let mut event = crate::telemetry::TelemetryEvent::new(name, value);
-                event.tags = tags;
-                recorder.lock().expect("test metric recorder lock").push(event);
-            }
-        }
-    }
+/// Domain-shaped observation port for automatic compaction.
+pub trait AutoCompactionObserver: Send + Sync {
+    /// Record one bounded, payload-free observation.
+    fn observe(&self, event: AutoCompactionEvent);
 }
 
 /// Measures one admitted automatic attempt through its publication boundary.
 pub(super) struct AutoCompactionTelemetry<'a> {
-    sink: &'a AutoCompactionMetricSink,
+    observer: &'a dyn AutoCompactionObserver,
+    clock: &'a dyn MonotonicClock,
     tokens_before: usize,
     started: Instant,
 }
 
 impl<'a> AutoCompactionTelemetry<'a> {
     /// Begin after enablement, trigger, and suppression checks have passed.
-    pub(super) fn start(sink: &'a AutoCompactionMetricSink, history: &[Message]) -> Self {
-        sink.record(
-            Metric::Attempt,
-            1.0,
-            MetricContext {
-                mode: CompactionMode::Unknown,
-                outcome: Outcome::Attempt,
-                error_category: FailureCategory::None,
-            },
-        );
+    pub(super) fn start(
+        observer: &'a dyn AutoCompactionObserver,
+        clock: &'a dyn MonotonicClock,
+        history: &[Message],
+    ) -> Self {
+        observer.observe(AutoCompactionEvent::Attempt);
         Self {
-            sink,
+            observer,
+            clock,
             tokens_before: history.iter().map(Message::estimate_tokens).sum(),
-            started: Instant::now(),
+            started: clock.now(),
         }
     }
 
@@ -183,18 +214,26 @@ impl<'a> AutoCompactionTelemetry<'a> {
         history: &[Message],
         selected_mode: CompactionMode,
     ) {
-        let MetricObservation { metric, context } = Self::result_observation(result, selected_mode);
-        self.sink.record(metric, 1.0, context);
-        self.sink
-            .record(Metric::Duration, self.started.elapsed().as_secs_f64() * 1000.0, context);
-        if context.error_category == FailureCategory::ProtectedUserBudget {
-            self.sink.record(Metric::ProtectedBudgetRefusal, 1.0, context);
+        let observation = Self::result_observation(result, selected_mode);
+        self.observer.observe(observation.event);
+        let millis = self.clock.now().saturating_duration_since(self.started).as_secs_f64() * 1000.0;
+        self.observer.observe(AutoCompactionEvent::Duration {
+            mode: observation.mode,
+            outcome: observation.outcome,
+            category: observation.error_category,
+            millis,
+        });
+        if observation.error_category == FailureCategory::ProtectedUserBudget {
+            self.observer.observe(AutoCompactionEvent::ProtectedBudgetRefusal {
+                mode: observation.mode,
+                category: observation.error_category,
+            });
         }
         if result.is_err() {
             let tokens_after: usize = history.iter().map(Message::estimate_tokens).sum();
             tracing::warn!(
-                mode = context.mode.as_str(),
-                error_category = context.error_category.as_str(),
+                mode = observation.mode.as_str(),
+                error_category = observation.error_category.as_str(),
                 tokens_before = self.tokens_before,
                 tokens_after,
                 "Automatic compaction failed"
@@ -208,18 +247,59 @@ impl<'a> AutoCompactionTelemetry<'a> {
         selected_mode: CompactionMode,
     ) -> MetricObservation {
         match result {
-            Ok(Some(compacted)) => {
-                MetricObservation::new(Metric::Success, compacted.mode, Outcome::Success, FailureCategory::None)
+            Ok(Some(compacted)) => MetricObservation {
+                event: AutoCompactionEvent::Success { mode: compacted.mode },
+                mode: compacted.mode,
+                outcome: Outcome::Success,
+                error_category: FailureCategory::None,
+            },
+            Ok(None) => MetricObservation {
+                event: AutoCompactionEvent::NoChange { mode: selected_mode },
+                mode: selected_mode,
+                outcome: Outcome::NoChange,
+                error_category: FailureCategory::None,
+            },
+            Err(error) => {
+                let category = FailureCategory::from_error(error);
+                MetricObservation {
+                    event: AutoCompactionEvent::Failure { mode: selected_mode, category },
+                    mode: selected_mode,
+                    outcome: Outcome::Failure,
+                    error_category: category,
+                }
             }
-            Ok(None) => {
-                MetricObservation::new(Metric::NoChange, selected_mode, Outcome::NoChange, FailureCategory::None)
-            }
-            Err(error) => MetricObservation::new(
-                Metric::Failure,
-                selected_mode,
-                Outcome::Failure,
-                FailureCategory::from_error(error),
-            ),
         }
+    }
+}
+
+struct MetricObservation {
+    event: AutoCompactionEvent,
+    mode: CompactionMode,
+    outcome: Outcome,
+    error_category: FailureCategory,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::telemetry::compaction::RecordingAutoCompactionObserver;
+
+    #[test]
+    fn duration_uses_the_injected_clock() {
+        let clock = TestClock::new();
+        let observer = RecordingAutoCompactionObserver::new();
+        let history = vec![Message::user("task".into())];
+        let telemetry = AutoCompactionTelemetry::start(&observer, &clock, &history);
+        clock.advance(std::time::Duration::from_millis(250));
+        let result: anyhow::Result<Option<AutoCompactionOutcome>> = Ok(None);
+
+        telemetry.finish(&result, &history, CompactionMode::Local);
+
+        let events = observer.events();
+        let duration = events
+            .iter()
+            .find(|event| event.name == "vtcode.compaction.auto_duration_ms")
+            .expect("duration metric");
+        assert_eq!(duration.value.to_bits(), 250.0_f64.to_bits());
     }
 }

@@ -1,4 +1,5 @@
 use super::AgentRunner;
+use crate::compaction::SYSTEM_CLOCK;
 use crate::compaction::auto::{AutoCompactionInput, auto_compact_messages};
 use crate::compaction::memory_envelope::{MemoryEnvelopePlacement, local_compaction_config};
 use crate::core::agent::compaction_checkpoint::write_compaction_checkpoint_async;
@@ -6,6 +7,7 @@ use crate::core::agent::context_reset::maybe_write_reset_after_compaction_async;
 use crate::core::agent::conversation::conversation_from_messages;
 use crate::core::agent::session::AgentSessionState;
 use crate::exec::events::CompactionTrigger;
+use crate::telemetry::PROCESS_AUTO_COMPACTION_OBSERVER;
 use std::sync::Arc;
 use tracing::{info, warn};
 
@@ -48,6 +50,8 @@ impl AgentRunner {
                 steering_update: None,
             },
             Arc::make_mut(&mut session_state.messages),
+            &PROCESS_AUTO_COMPACTION_OBSERVER,
+            &SYSTEM_CLOCK,
         )
         .await
         {
