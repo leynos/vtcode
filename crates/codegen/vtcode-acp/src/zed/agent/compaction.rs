@@ -94,6 +94,51 @@ fn admit_compacted_history(
 }
 
 impl ZedAgent {
+    /// Publish one compaction activity lifecycle update, treating serialization
+    /// and transport failures as non-fatal for the compaction outcome.
+    async fn publish_compaction_activity(
+        &self,
+        session_id: &crate::acp::SessionId,
+        phase: &'static str,
+        update: Result<crate::acp::SessionUpdate>,
+    ) {
+        match update {
+            Ok(update) => {
+                if let Err(error) = self.send_update(session_id, update).await {
+                    warn!(
+                        %error,
+                        session_id = %session_id,
+                        phase,
+                        "Failed to publish ACP compaction activity update"
+                    );
+                }
+            }
+            Err(error) => {
+                warn!(
+                    %error,
+                    session_id = %session_id,
+                    phase,
+                    "Failed to serialize ACP compaction activity update"
+                );
+            }
+        }
+    }
+
+    /// Re-estimate the resolved prompt size, but only after a successful attempt.
+    fn used_prompt_tokens_after(
+        &self,
+        session: &SessionHandle,
+        tools: Option<&Arc<Vec<ToolDefinition>>>,
+        compaction_result: &Result<bool>,
+    ) -> Option<usize> {
+        if compaction_result.is_err() {
+            return None;
+        }
+        self.resolved_messages(session)
+            .ok()
+            .map(|messages| estimated_prompt_tokens(&messages, tools))
+    }
+
     pub(super) async fn maybe_compact_session(&self, request: CompactionRequest<'_>) -> Result<bool> {
         let CompactionRequest { session, provider, runtime, model, tools } = request;
         let Some(vt_config) = self.vt_config.as_deref() else {
@@ -109,16 +154,8 @@ impl ZedAgent {
         let snapshot = CompactionSessionSnapshot::load(session)?;
         let acp_session_id = crate::acp::SessionId::new(snapshot.session_id.clone());
         let activity = super::lody_activity::CompactionActivity::begin(&acp_session_id, prompt_tokens);
-        match activity.started_update() {
-            Ok(update) => {
-                if let Err(error) = self.send_update(&acp_session_id, update).await {
-                    warn!(%error, session_id = %acp_session_id, "Failed to publish ACP compaction start update");
-                }
-            }
-            Err(error) => {
-                warn!(%error, session_id = %acp_session_id, "Failed to serialize ACP compaction start update")
-            }
-        }
+        self.publish_compaction_activity(&acp_session_id, "start", activity.started_update())
+            .await;
         let compaction_result: Result<bool> = async {
             let original_len = snapshot.history.len();
             let original_history_tokens = snapshot.history.iter().map(Message::estimate_tokens).sum();
@@ -163,22 +200,14 @@ impl ZedAgent {
             Ok(true)
         }
         .await;
-        let used_tokens_after = compaction_result.as_ref().ok().and_then(|_| {
-            self.resolved_messages(session)
-                .ok()
-                .map(|messages| estimated_prompt_tokens(&messages, tools))
-        });
+        let used_tokens_after = self.used_prompt_tokens_after(session, tools, &compaction_result);
         let failure_reason = compaction_result.as_ref().err().map(ToString::to_string);
-        match activity.finished_update(used_tokens_after, failure_reason.as_deref()) {
-            Ok(update) => {
-                if let Err(error) = self.send_update(&acp_session_id, update).await {
-                    warn!(%error, session_id = %acp_session_id, "Failed to publish ACP compaction terminal update");
-                }
-            }
-            Err(error) => {
-                warn!(%error, session_id = %acp_session_id, "Failed to serialize ACP compaction terminal update")
-            }
-        }
+        self.publish_compaction_activity(
+            &acp_session_id,
+            "terminal",
+            activity.finished_update(used_tokens_after, failure_reason.as_deref()),
+        )
+        .await;
         compaction_result
     }
 

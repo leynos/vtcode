@@ -65,6 +65,55 @@ async fn configured_agent(workspace: &Path, provider: &CustomProviderConfig) -> 
     Arc::new(agent)
 }
 
+/// Inputs for one ACP wire turn: a fresh session or a checkpoint reload.
+struct WireSessionTurn {
+    workspace: PathBuf,
+    loaded_session_id: Option<acp::SessionId>,
+    task: String,
+    session_tx: tokio::sync::oneshot::Sender<acp::SessionId>,
+}
+
+async fn drive_wire_session(cx: ConnectionTo<Agent>, turn: WireSessionTurn) -> agent_client_protocol::Result<()> {
+    let WireSessionTurn { workspace, loaded_session_id, task, session_tx } = turn;
+    drop(
+        cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+            .block_task()
+            .await?,
+    );
+    let session_id = if let Some(session_id) = loaded_session_id {
+        drop(
+            cx.send_request(LoadSessionRequest::new(session_id.clone(), workspace))
+                .block_task()
+                .await?,
+        );
+        session_id
+    } else {
+        cx.send_request(NewSessionRequest::new(workspace))
+            .block_task()
+            .await?
+            .session_id
+    };
+    drop(
+        cx.send_request(SetSessionConfigOptionRequest::new(
+            session_id.clone(),
+            crate::zed::helpers::SESSION_CONFIG_MODEL_ID,
+            "wire-model",
+        ))
+        .block_task()
+        .await?,
+    );
+    let response = cx
+        .send_request(PromptRequest::new(
+            session_id.clone(),
+            vec![acp::ContentBlock::Text(acp::TextContent::new(task))],
+        ))
+        .block_task()
+        .await?;
+    assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+    drop(session_tx.send(session_id));
+    Ok(())
+}
+
 async fn run_wire_turn(
     agent: Arc<ZedAgent>,
     workspace: PathBuf,
@@ -80,6 +129,7 @@ async fn run_wire_turn(
     let agent_task = tokio::spawn(agent_connection);
     let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
     let (session_tx, session_rx) = tokio::sync::oneshot::channel();
+    let turn = WireSessionTurn { workspace, loaded_session_id, task, session_tx };
     let client_connection = Client
         .builder()
         .on_receive_notification(
@@ -89,45 +139,7 @@ async fn run_wire_turn(
             },
             on_receive_notification!(),
         )
-        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
-            drop(
-                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
-                    .block_task()
-                    .await?,
-            );
-            let session_id = if let Some(session_id) = loaded_session_id {
-                drop(
-                    cx.send_request(LoadSessionRequest::new(session_id.clone(), workspace))
-                        .block_task()
-                        .await?,
-                );
-                session_id
-            } else {
-                cx.send_request(NewSessionRequest::new(workspace))
-                    .block_task()
-                    .await?
-                    .session_id
-            };
-            drop(
-                cx.send_request(SetSessionConfigOptionRequest::new(
-                    session_id.clone(),
-                    crate::zed::helpers::SESSION_CONFIG_MODEL_ID,
-                    "wire-model",
-                ))
-                .block_task()
-                .await?,
-            );
-            let response = cx
-                .send_request(PromptRequest::new(
-                    session_id.clone(),
-                    vec![acp::ContentBlock::Text(acp::TextContent::new(task))],
-                ))
-                .block_task()
-                .await?;
-            assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
-            drop(session_tx.send(session_id));
-            Ok(())
-        });
+        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| drive_wire_session(cx, turn).await);
     let result = tokio::time::timeout(Duration::from_secs(40), client_connection).await;
     agent_task.abort();
     drop(agent_task.await);
