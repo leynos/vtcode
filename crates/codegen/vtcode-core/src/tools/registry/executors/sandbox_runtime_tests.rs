@@ -492,6 +492,29 @@ fn prepare_exec_command_keeps_existing_shell_invocation() {
     assert_eq!(prepared.executed_shell_source.as_deref(), Some("echo hi"));
 }
 
+/// Every spelling of the shell's command flag must expose the source string,
+/// otherwise an allow-listed shell would admit an unchecked source.
+#[test]
+fn prepare_exec_command_detects_shell_command_flag_variants() {
+    let payload = json!({});
+    let payload = payload.as_object().expect("payload object");
+
+    for (shell, command) in [
+        ("/bin/bash", vec!["/bin/bash", "-ec", "echo hi"]),
+        ("/bin/bash", vec!["/bin/bash", "-l", "-c", "echo hi"]),
+        ("cmd", vec!["cmd", "/c", "echo hi"]),
+        ("powershell", vec!["powershell", "-command", "echo hi"]),
+    ] {
+        let command: Vec<String> = command.into_iter().map(str::to_string).collect();
+        let prepared = prepare_exec_command(payload, shell, false, command, None);
+        assert_eq!(prepared.executed_shell_source.as_deref(), Some("echo hi"), "shell={shell}");
+    }
+
+    let script = vec!["/bin/bash".to_string(), "script.sh".to_string()];
+    let prepared = prepare_exec_command(payload, "/bin/bash", false, script, None);
+    assert_eq!(prepared.executed_shell_source, None);
+}
+
 /// The executor rate limiter is process-global. Reset its bucket before each
 /// policy probe so these assertions measure the configured policy rather than
 /// token exhaustion shared with tests running in parallel.

@@ -200,15 +200,27 @@ fn shell_command_flag(shell_program: &str, normalized_shell: &str) -> String {
     }
 }
 
+/// Whether a token is a shell flag that makes the next token a source string.
+///
+/// Covers the forms this module builds (`-c`, `/C`, `-Command`) plus the
+/// variants a caller may spell: combined short flags such as `-lc` or `-ec`,
+/// and case-insensitive Windows forms such as `/c` or `-command`.
+fn is_shell_command_flag(part: &str) -> bool {
+    if matches!(part.to_ascii_lowercase().as_str(), "/c" | "/k" | "-command" | "--command") {
+        return true;
+    }
+    part.strip_prefix('-').is_some_and(|flags| {
+        !flags.is_empty() && flags.chars().all(|ch| ch.is_ascii_alphabetic()) && flags.contains('c')
+    })
+}
+
 /// Source string carried by an explicit shell invocation.
 ///
 /// Only called when the first token is the selected shell, so the command flag
 /// is the shell's own and the next token is the text the shell will run. The
-/// flag forms are the ones this module builds plus their Windows variants.
+/// program name is skipped so an operand cannot be mistaken for the flag.
 fn explicit_shell_source(command: &[String]) -> Option<String> {
-    let flag_index = command
-        .iter()
-        .position(|part| matches!(part.as_str(), "-c" | "-lc" | "/C" | "-Command"))?;
+    let flag_index = command.iter().skip(1).position(|part| is_shell_command_flag(part))? + 1;
     let source = command.get(flag_index + 1)?.trim();
     (!source.is_empty()).then(|| source.to_string())
 }

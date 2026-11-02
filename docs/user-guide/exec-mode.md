@@ -40,9 +40,9 @@ while still respecting explicit denies and policy blocks. Neither flag relaxes
 the configured `[commands]` policy, the curated command validator, or an active
 sandbox; see
 [Granular Permissions](../guides/permissions.md#execution-policy-and-skip-permissions).
-You can capture the final summary separately with `--last-message-file` or
-persist the raw JSON stream with `--events`. Use `--json` when you want to see
-the live JSONL feed on stdout.
+Capture the final summary separately with `--last-message-file` or persist the
+raw JSON stream with `--events`. Use `--json` to display the live JSONL feed on
+stdout.
 
 ### Granting workspace trust
 
