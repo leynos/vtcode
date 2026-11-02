@@ -200,27 +200,58 @@ fn shell_command_flag(shell_program: &str, normalized_shell: &str) -> String {
     }
 }
 
+/// Whether a program name is a shell whose command flag introduces a source.
+pub(super) fn is_known_shell_program(program: &str) -> bool {
+    matches!(
+        normalized_shell_name(program).as_str(),
+        "sh" | "bash"
+            | "zsh"
+            | "dash"
+            | "ksh"
+            | "ksh93"
+            | "mksh"
+            | "fish"
+            | "cmd"
+            | "cmd.exe"
+            | "powershell"
+            | "powershell.exe"
+            | "pwsh"
+            | "pwsh.exe"
+    )
+}
+
 /// Whether a token is a shell flag that makes the next token a source string.
 ///
-/// Covers the forms this module builds (`-c`, `/C`, `-Command`) plus the
-/// variants a caller may spell: combined short flags such as `-lc` or `-ec`,
-/// and case-insensitive Windows forms such as `/c` or `-command`.
-fn is_shell_command_flag(part: &str) -> bool {
-    if matches!(part.to_ascii_lowercase().as_str(), "/c" | "/k" | "-command" | "--command") {
-        return true;
+/// Recognition is shell-dependent so an option that merely contains `c` is not
+/// mistaken for the command flag. POSIX shells accept `-c` and combined short
+/// flags such as `-lc` or `-ec`. `cmd` accepts only `/c` and `/k`, and
+/// PowerShell only its named forms, so options such as `-NonInteractive` or
+/// `-ExecutionPolicy` are skipped.
+fn is_shell_command_flag(shell_program: &str, part: &str) -> bool {
+    let lower = part.to_ascii_lowercase();
+    match normalized_shell_name(shell_program).as_str() {
+        "cmd" | "cmd.exe" => matches!(lower.as_str(), "/c" | "/k"),
+        "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe" => {
+            matches!(lower.as_str(), "-c" | "-command" | "--command")
+        }
+        _ => part.strip_prefix('-').is_some_and(|flags| {
+            !flags.is_empty() && flags.chars().all(|ch| ch.is_ascii_alphabetic()) && flags.contains('c')
+        }),
     }
-    part.strip_prefix('-').is_some_and(|flags| {
-        !flags.is_empty() && flags.chars().all(|ch| ch.is_ascii_alphabetic()) && flags.contains('c')
-    })
 }
 
 /// Source string carried by an explicit shell invocation.
 ///
-/// Only called when the first token is the selected shell, so the command flag
-/// is the shell's own and the next token is the text the shell will run. The
-/// program name is skipped so an operand cannot be mistaken for the flag.
-fn explicit_shell_source(command: &[String]) -> Option<String> {
-    let flag_index = command.iter().skip(1).position(|part| is_shell_command_flag(part))? + 1;
+/// The first token names the shell, so the command flag is that shell's own
+/// and the next token is the text the shell will run. The program name is
+/// skipped so an operand cannot be mistaken for the flag.
+pub(super) fn explicit_shell_source(command: &[String]) -> Option<String> {
+    let shell_program = command.first()?;
+    let flag_index = command
+        .iter()
+        .skip(1)
+        .position(|part| is_shell_command_flag(shell_program, part))?
+        + 1;
     let source = command.get(flag_index + 1)?.trim();
     (!source.is_empty()).then(|| source.to_string())
 }
