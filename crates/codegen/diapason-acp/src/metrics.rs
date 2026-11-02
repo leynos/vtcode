@@ -119,7 +119,10 @@ impl CompactionCounters {
 
 /// Increment a counter, saturating instead of wrapping at `u64::MAX`.
 fn saturating_add(counter: &AtomicU64, amount: u64) {
-    let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| Some(current.saturating_add(amount)));
+    // A saturated counter is a terminal state for the process lifetime, so the
+    // previous value is intentionally discarded rather than reported.
+    let _previous =
+        counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| Some(current.saturating_add(amount)));
 }
 
 static COMPACTION_COUNTERS: CompactionCounters = CompactionCounters::new();
