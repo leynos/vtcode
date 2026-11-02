@@ -1,3 +1,9 @@
+//! Build script for the vendored `tree-sitter-bash` 0.25.1 package.
+//!
+//! It compiles `src/parser.c` and `src/scanner.c` into the native library
+//! loaded by `bindings/rust/lib.rs`, and emits the Cargo rerun directives for
+//! both inputs.
+
 fn main() {
     let src_dir = std::path::Path::new("src");
 

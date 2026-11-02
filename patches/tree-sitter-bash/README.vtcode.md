@@ -28,7 +28,9 @@ range, apart from `EOF`.
 The second source-code adaptation replaces the two `to_str().unwrap()` calls in
 `bindings/rust/build.rs` with `Path::display()` for VTCode's unwrap policy. The
 paths are fixed relative ASCII names, `src/parser.c` and `src/scanner.c`, so
-the Cargo rerun directives and C build inputs remain unchanged.
+the Cargo rerun directives and C build inputs remain unchanged. The same file
+carries a module-level comment describing those two inputs; it is documentation
+only and does not alter the build.
 
 Repository formatting may normalize published Markdown without changing the
 scanner backport.
