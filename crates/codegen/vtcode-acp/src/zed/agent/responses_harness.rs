@@ -175,7 +175,8 @@ impl AcpRunCapture {
             let data = session.data.lock().expect("Responses session data");
             (data.thread.messages(), data.archive.as_ref().map(|archive| archive.path().to_path_buf()))
         };
-        let checkpoint_json = checkpoint_path.and_then(|path| std::fs::read_to_string(path).ok());
+        let checkpoint_json =
+            checkpoint_path.map(|path| std::fs::read_to_string(path).expect("Responses checkpoint archive"));
         let active_acp_requests = agent
             .provider_runtime
             .for_provider(PROVIDER)
