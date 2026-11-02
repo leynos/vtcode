@@ -129,6 +129,16 @@ HEAD lookup succeeded. Validate any operational report before treating this as
 an abandoned or unavailable repository. The absent `mac_address` 1.1.8 and
 `redox_users` 0.5.2 entries remain unchanged pending platform reconciliation.
 
+### Reviewed baseline addition (2026-11-02)
+
+`terminfo` 0.9.0 is recorded as inactive lockfile debt for issue #108. It is
+reachable only through `termwiz`, which no workspace package selects, and 0.9.0
+is its latest release. Because the family is not a build input, its stale `nom`
+`^7` and `phf`/`phf_codegen` `^0.11` requirements cannot be updated from this
+workspace. The entry shares the `inactive-locked-resolution-debt`
+classification and rationale of the existing `mac_address` 1.1.8 entry from the
+same inactive `ratatui-termwiz` lockfile family.
+
 ### GitHub Token (Optional)
 
 To check if repositories are archived, you can set a GitHub token:
