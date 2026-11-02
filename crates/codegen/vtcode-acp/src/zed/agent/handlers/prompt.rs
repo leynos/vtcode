@@ -392,4 +392,3 @@ async fn require_session_checkpoint(
     }
     Ok(())
 }
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/prompt.rs' for per-hunk detail, 'weave check' to verify your resolution
