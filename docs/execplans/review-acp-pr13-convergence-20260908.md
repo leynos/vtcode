@@ -139,6 +139,12 @@ an archive with ambiguous terminal results is rejected before continuation.
   from the rendered `details` before any policy decision, and a round-trip
   regression test covers it. The other failure was a test still reading the
   client-facing `details` field instead of `rendered_details()`.
+- [x] (2026-11-02) Re-ran the four gates sequentially on the repaired tree and
+  published it as `228a5d9f8`. `make check-fmt` passed (364 Markdown files
+  unchanged), `make lint` passed (shell, policy, structured-logging, Clippy with
+  `-D warnings`, and `cargo doc`), `make typecheck` passed, and `make test`
+  passed 10,524 tests with 22 skipped and no failures. The remote head was
+  verified with `ls-remote` and the tracking ref refreshed.
 
 ## Surprises & discoveries
 
