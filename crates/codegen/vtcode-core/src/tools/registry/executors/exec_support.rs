@@ -369,8 +369,22 @@ pub(super) fn enforce_pty_command_policy(display_command: &str) -> Result<()> {
     let standalone_denied = is_standalone && PTY_DENY_STANDALONE.contains(&trimmed);
 
     if deny_match || standalone_denied {
-        return Err(anyhow!("Command '{display_command}' is blocked by PTY safety policy."));
+        return Err(anyhow!("Command '{}' is blocked by PTY safety policy.", pty_diagnostic_program(display_command)));
     }
 
     Ok(())
+}
+
+/// Program name used in PTY policy diagnostics.
+///
+/// Arguments are never echoed, and leading environment assignments are skipped
+/// so an assignment value cannot leak into the error.
+fn pty_diagnostic_program(display_command: &str) -> String {
+    let words = shell_words::split(display_command).unwrap_or_default();
+    crate::tools::command_args::command_words_after_environment_prefix(&words)
+        .first()
+        .and_then(|word| Path::new(word).file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown")
+        .to_string()
 }
