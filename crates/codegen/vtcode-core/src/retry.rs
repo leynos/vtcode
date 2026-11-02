@@ -12,7 +12,9 @@ use std::result::Result as StdResult;
 use std::time::{Duration, SystemTime};
 
 use crate::error::{ErrorCategory, VtCodeError};
-use crate::retry_after::{retry_after_from_llm_metadata_at, retry_after_is_http_date};
+use crate::retry_after::{
+    retry_after_from_llm_metadata_at, retry_after_from_llm_metadata_clock_free, retry_after_is_http_date,
+};
 use crate::tools::registry::ToolExecutionError;
 use crate::tools::tool_intent::is_command_tool;
 use crate::tools::unified_error::UnifiedToolError;
@@ -74,12 +76,13 @@ pub trait RetryPolicyCoreExt {
     /// downcast chain but never extracts a provider `Retry-After` value.
     fn is_retryable_anyhow(&self, error: &anyhow::Error, attempt_index: u32, tool_name: Option<&str>) -> bool;
 
-    /// Classify an LLM error using the compatibility wall-clock observation.
+    /// Classify an LLM error without reading the wall clock.
     ///
-    /// This is a compatibility adapter over the deterministic
-    /// [`Self::decision_for_llm_error_at`]: it observes `SystemTime::now()` and
-    /// delegates. Callers that already know when the failure was observed
-    /// should use `decision_for_llm_error_at` (or the backoff variant) directly.
+    /// A numeric `Retry-After` delta and a configured reset interval set the
+    /// retry floor, but an absolute HTTP date is ignored because it cannot be
+    /// interpreted without an observation instant. Callers that know when the
+    /// failure was observed must use [`Self::decision_for_llm_error_at`] (or the
+    /// backoff variant) so the date contributes to the delay.
     fn decision_for_llm_error(&self, error: &LLMError, attempt_index: u32) -> RetryDecision;
 
     /// Classify an LLM error against the time at which it was observed.
@@ -188,7 +191,8 @@ impl RetryPolicyCoreExt for RetryPolicy {
     }
 
     fn decision_for_llm_error(&self, error: &LLMError, attempt_index: u32) -> RetryDecision {
-        self.decision_for_llm_error_at(error, attempt_index, SystemTime::now())
+        let retry_after = llm_metadata(error).and_then(retry_after_from_llm_metadata_clock_free);
+        decision_for_category_with_tool(self, ErrorCategory::from(error), attempt_index, retry_after, None)
     }
 
     fn decision_for_llm_error_at(

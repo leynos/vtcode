@@ -15,6 +15,8 @@ use super::{
 };
 use crate::zed::provider_runtime::ProviderClass;
 
+const NOTICE_OPERATION: &str = "rate_limit_notice";
+
 /// Request-local inputs for a bounded ACP rate-limit notification.
 pub(super) struct RateLimitNotice<'a> {
     pub(super) session_id: &'a acp::SessionId,
@@ -82,7 +84,10 @@ impl ZedAgent {
                 provider,
                 limits,
                 observed_epoch_seconds,
-            });
+                metric_sink,
+                provider_class,
+            })
+            .await;
         }
         let Some(update) = rate_limit_notice_update(provider, error, retry_delay) else {
             return;
@@ -90,7 +95,7 @@ impl ZedAgent {
         if self.send_update(session_id, update).await.is_err() {
             metric_sink
                 .record(ProviderMetricObservation::RateLimitNotificationFailure(
-                    ProviderMetricContext::rate_limit_notification_failure(provider_class),
+                    ProviderMetricContext::rate_limit_notification_failure(provider_class, NOTICE_OPERATION),
                 ))
                 .await;
             warn!(
@@ -342,4 +347,5 @@ mod tests {
         assert!(rate_limit_notice_update("baseten", &error, None).is_some());
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_notice.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_notice.rs' for per-hunk detail, 'weave check' to verify your resolution

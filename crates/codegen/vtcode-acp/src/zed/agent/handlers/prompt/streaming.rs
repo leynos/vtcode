@@ -236,7 +236,7 @@ async fn retry_stream_attempt(
         ?delay,
         "Retrying transient ACP provider stream"
     );
-    match cancellable_backoff(delay, &turn.session.cancellation).await {
+    match cancellable_backoff(delay, &turn.session.cancellation, turn.provider_runtime.provider_class()).await {
         Ok(()) => Ok(StreamingTurnOutcome::Retry),
         Err(ProviderCallError::Cancelled) => {
             Ok(StreamingTurnOutcome::Finished(ProviderTurnOutcome::StopReason(acp::StopReason::Cancelled)))
@@ -290,11 +290,12 @@ async fn start_provider_stream(request: StreamStartRequest<'_>) -> Result<LLMStr
 }
 
 /// Instrumentation span for one provider stream attempt.
-fn stream_attempt_span(provider_runtime: &ProviderRequestRuntime) -> Span {
+fn stream_attempt_span(provider_runtime: &ProviderRequestRuntime, attempt_index: u32) -> Span {
     tracing::info_span!(
         "acp_provider_stream_attempt",
         operation = "provider_stream_attempt",
         provider_class = provider_runtime.provider_class().as_str(),
+        attempt = attempt_index,
         outcome = tracing::field::Empty,
         elapsed_ms = tracing::field::Empty,
     )
@@ -321,7 +322,7 @@ async fn collect_streaming_attempt(request: StreamAttemptRequest<'_>) -> Result<
     telemetry.record_attempt(provider_runtime).await;
     let mut deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
     let started_at = Instant::now();
-    let span = stream_attempt_span(provider_runtime);
+    let span = stream_attempt_span(provider_runtime, attempt_index);
     let mut stream = match start_provider_stream(StreamStartRequest {
         turn,
         request,
@@ -443,7 +444,7 @@ mod tests {
         let capture = TraceCapture::default();
         let subscriber = Registry::default().with(capture.clone());
         tracing::subscriber::with_default(subscriber, || {
-            let _span = stream_attempt_span(&retry_runtime());
+            let _span = stream_attempt_span(&retry_runtime(), 2);
         });
 
         let captured = capture.0.lock().expect("trace capture lock").join("\n");
@@ -453,6 +454,7 @@ mod tests {
             .expect("the stream attempt span should be captured");
         assert!(span_line.contains("operation=\"provider_stream_attempt\""));
         assert!(span_line.contains("provider_class=\"custom\""));
+        assert!(span_line.contains("attempt=2"));
         assert!(
             !span_line.contains("provider=\"retry-test\""),
             "stream attempt spans must not record the raw provider name"

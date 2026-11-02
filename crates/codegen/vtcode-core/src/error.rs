@@ -4,10 +4,10 @@
 //! contextual information while reusing the shared `vtcode_commons`
 //! classification system.
 
-use crate::llm::provider::LLMError;
+use crate::llm::provider::{LLMError, LLMErrorMetadata};
 use std::time::SystemTime;
 
-use crate::retry_after::retry_after_from_llm_metadata_at;
+use crate::retry_after::{retry_after_from_llm_metadata_at, retry_after_from_llm_metadata_clock_free};
 use crate::tools::registry::{ToolErrorType, ToolExecutionError};
 use crate::tools::unified_error::{UnifiedErrorKind, UnifiedToolError};
 use serde::{Deserialize, Serialize};
@@ -282,19 +282,29 @@ impl From<anyhow::Error> for VtCodeError {
 /// Boundary adapter converting an [`LLMError`] into a [`VtCodeError`].
 ///
 /// A `From` implementation cannot accept an observation instant, so this
-/// adapter reads the wall clock. It only classifies the error and copies its
-/// metadata; no retry decision is made here. `from_llm_error_at` is the
-/// deterministic core used by tests and by callers that already know when the
-/// failure was observed.
+/// adapter never reads the wall clock: numeric `Retry-After` deltas and
+/// configured reset intervals are copied, while an absolute HTTP date is
+/// ignored. Callers that know when the failure was observed use
+/// [`VtCodeError::from_llm_error_at`] so the date contributes to the delay.
 impl From<LLMError> for VtCodeError {
     fn from(err: LLMError) -> Self {
-        from_llm_error_at(err, SystemTime::now())
+        let retry_after = llm_retry_after_clock_free(&err);
+        from_llm_error(err, retry_after)
     }
 }
 
-/// Deterministic conversion core shared by the [`From`] boundary adapter and
-/// tests; `observed_at` anchors absolute `Retry-After` HTTP dates.
-fn from_llm_error_at(err: LLMError, observed_at: SystemTime) -> VtCodeError {
+impl VtCodeError {
+    /// Convert an [`LLMError`] using an explicit observation instant.
+    ///
+    /// `observed_at` anchors absolute `Retry-After` HTTP dates; numeric deltas
+    /// and configured reset intervals are unaffected.
+    pub fn from_llm_error_at(err: LLMError, observed_at: SystemTime) -> VtCodeError {
+        let retry_after = llm_retry_after(&err, observed_at);
+        from_llm_error(err, retry_after)
+    }
+}
+
+fn from_llm_error(err: LLMError, retry_after: Option<std::time::Duration>) -> VtCodeError {
     let category = ErrorCategory::from(&err);
     let code = match &err {
         LLMError::Authentication { .. } => ErrorCode::AuthenticationFailed,
@@ -331,7 +341,6 @@ fn from_llm_error_at(err: LLMError, observed_at: SystemTime) -> VtCodeError {
         }
     };
     let message = llm_error_message(&err);
-    let retry_after = llm_retry_after(&err, observed_at);
 
     let error = VtCodeError::new(category, code, message).with_source(err);
     if let Some(retry_after) = retry_after {
@@ -396,16 +405,22 @@ fn llm_error_message(error: &LLMError) -> String {
     }
 }
 
-fn llm_retry_after(error: &LLMError, observed_at: SystemTime) -> Option<std::time::Duration> {
-    let metadata = match error {
+fn llm_metadata(error: &LLMError) -> Option<&LLMErrorMetadata> {
+    match error {
         LLMError::Authentication { metadata, .. }
         | LLMError::RateLimit { metadata }
         | LLMError::InvalidRequest { metadata, .. }
         | LLMError::Network { metadata, .. }
-        | LLMError::Provider { metadata, .. } => metadata.as_ref(),
-    }?;
+        | LLMError::Provider { metadata, .. } => metadata.as_deref(),
+    }
+}
 
-    retry_after_from_llm_metadata_at(metadata, observed_at)
+fn llm_retry_after(error: &LLMError, observed_at: SystemTime) -> Option<std::time::Duration> {
+    llm_metadata(error).and_then(|metadata| retry_after_from_llm_metadata_at(metadata, observed_at))
+}
+
+fn llm_retry_after_clock_free(error: &LLMError) -> Option<std::time::Duration> {
+    llm_metadata(error).and_then(retry_after_from_llm_metadata_clock_free)
 }
 
 #[cfg(test)]
@@ -502,11 +517,9 @@ mod tests {
         assert_eq!(converted.retry_after(), Some(std::time::Duration::from_millis(500)));
     }
 
-    #[test]
-    fn explicit_llm_conversion_interprets_http_date_at_its_observation_time() {
-        let observed_at = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_445_412_420);
+    fn llm_error_with_http_retry_after(observed_at: SystemTime) -> LLMError {
         let retry_at = httpdate::fmt_http_date(observed_at + std::time::Duration::from_secs(60));
-        let err = LLMError::RateLimit {
+        LLMError::RateLimit {
             metadata: Some(LLMErrorMetadata::new(
                 "OpenAI",
                 Some(429),
@@ -516,10 +529,25 @@ mod tests {
                 Some(retry_at),
                 Some("try again later".to_string()),
             )),
-        };
+        }
+    }
 
-        let converted = from_llm_error_at(err, observed_at);
+    #[test]
+    fn explicit_llm_conversion_interprets_http_date_at_its_observation_time() {
+        let observed_at = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_445_412_420);
+
+        let converted = VtCodeError::from_llm_error_at(llm_error_with_http_retry_after(observed_at), observed_at);
+
         assert_eq!(converted.retry_after(), Some(std::time::Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn llm_conversion_ignores_http_dates_without_an_observation_time() {
+        let observed_at = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_445_412_420);
+
+        let converted = VtCodeError::from(llm_error_with_http_retry_after(observed_at));
+
+        assert_eq!(converted.retry_after(), None);
     }
 
     #[test]

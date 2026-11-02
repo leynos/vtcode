@@ -5,10 +5,16 @@ use std::sync::Arc;
 use serde::Serialize;
 use vtcode_commons::llm::RateLimitMetadata;
 
-use super::{ZedAgent, lody::lody_capabilities_mut};
+use super::{
+    ZedAgent,
+    lody::lody_capabilities_mut,
+    provider_telemetry::{ProviderMetricContext, ProviderMetricObservation, ProviderMetricSink},
+};
 use crate::acp;
+use crate::zed::provider_runtime::ProviderClass;
 
 const UPDATE_METHOD: &str = "_lody/rate_limits/update";
+const SNAPSHOT_OPERATION: &str = "rate_limit_snapshot";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,15 +179,27 @@ pub(super) struct LodyRateLimitObservation<'a> {
     pub(super) provider: &'a str,
     pub(super) limits: &'a RateLimitMetadata,
     pub(super) observed_epoch_seconds: u64,
+    pub(super) metric_sink: &'a ProviderMetricSink,
+    pub(super) provider_class: ProviderClass,
+}
+
+async fn record_snapshot_failure(metric_sink: &ProviderMetricSink, provider_class: ProviderClass) {
+    metric_sink
+        .record(ProviderMetricObservation::RateLimitNotificationFailure(
+            ProviderMetricContext::rate_limit_notification_failure(provider_class, SNAPSHOT_OPERATION),
+        ))
+        .await;
 }
 
 impl ZedAgent {
-    pub(super) fn publish_lody_rate_limits_at(&self, observation: LodyRateLimitObservation<'_>) {
+    pub(super) async fn publish_lody_rate_limits_at(&self, observation: LodyRateLimitObservation<'_>) {
         let LodyRateLimitObservation {
             session_id,
             provider,
             limits,
             observed_epoch_seconds,
+            metric_sink,
+            provider_class,
         } = observation;
         let Some(client) = self.client() else {
             return;
@@ -205,11 +223,13 @@ impl ZedAgent {
             Ok(params) => params,
             Err(error) => {
                 tracing::warn!(%error, "Failed to serialize Lody rate-limit observations");
+                record_snapshot_failure(metric_sink, provider_class).await;
                 return;
             }
         };
         if let Err(error) = client.send_ext_notification(acp::ExtNotification::new(UPDATE_METHOD, Arc::from(params))) {
             tracing::warn!(%error, %session_id, "Failed to publish Lody rate-limit observations");
+            record_snapshot_failure(metric_sink, provider_class).await;
         }
     }
 }

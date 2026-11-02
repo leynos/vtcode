@@ -108,8 +108,9 @@ the stack lead owns publication and review replies.
   `custom_providers.rate_limit_headers` example, links to the existing
   developer reference for provider tables, distinguishes `Retry-After` from
   configured quota resets, and documents ACP/Lody notices without inferring
-  utilisation or account data from incomplete headers. Shared Markdown, link,
-  and spelling validation remains pending.
+  utilisation or account data from incomplete headers. The shared Markdown,
+  link, and spelling checks passed when the batch landed on the PR #103
+  rate-limit branch.
 
 ## Decisions and discoveries
 
@@ -142,7 +143,7 @@ API, dependency, persistent format, or architecture change.
 
 ## Outcome and retrospective
 
-The original documentation plateau remains pending its recorded shared
-validation and integration. D1 additionally awaits the shared Markdown, local
-link, and spelling checks; it has no code, configuration, or wire-contract
-change.
+Completed and integrated. The original documentation plateau and D1 landed on
+the PR #103 rate-limit branch, and the shared serial gate runner passed the
+repository's Markdown, link, and spelling checks for that candidate. The batch
+introduced no code, configuration, or wire-contract change.

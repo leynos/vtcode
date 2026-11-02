@@ -138,6 +138,47 @@ admission router records current queue depth, in-flight permits, cumulative
 queue wait time, and timeout count across ACP and child-agent requests, so user
 configured provider names cannot create unbounded metric series.
 
+### Provider rate limits and retry floors
+
+Provider quota headers become typed `RateLimitMetadata` in `vtcode-llm` rather
+than free-form diagnostics. Custom providers map response header names under
+`[custom_providers.rate_limit_headers]`, and known provider names supply their
+provider-specific defaults. Mapping precedence, provider vocabulary, and
+malformed-value handling are in the
+[provider rate-limit header reference](./provider-rate-limit-headers.md); the
+user-facing configuration is in the
+[rate-limit guide](../user-guide/provider-rate-limits.md).
+
+`Retry-After` and a configured reset interval produce a retry floor: the
+decision delay is the larger of the ordinary exponential backoff and the
+provider minimum. `RetryBackoff` owns that floor for one logical retry
+generation. It retains the largest provider minimum seen so far across later
+failures that omit the header, and resets at the start of the next generation,
+including the next tool-loop segment. Jitter can lengthen a wait but never
+shorten the floor, and the local maximum backoff cannot undercut it.
+
+Absolute `Retry-After` HTTP dates are meaningful only relative to the instant
+the failure was observed, so retry decisions take an explicit observation time.
+`RetryPolicyCoreExt::decision_for_llm_error_at` and
+`decision_for_llm_error_with_backoff_at` accept a `SystemTime` or
+`LlmRetryAttempt`, and `VtCodeError::from_llm_error_at` converts with the same
+instant. The clock-free compatibility adapters (`decision_for_llm_error`,
+`decision_for_anyhow`, and `From<LLMError> for VtCodeError`) honour numeric
+deltas and configured reset intervals but ignore absolute dates: reading the
+wall clock inside a decision would classify the same error differently across
+calls. New code at a boundary that knows the observation time must use the
+explicit-time method.
+
+ACP projects the same metadata twice. The warning notice carries the retry
+instruction and configured quota values in `_meta.lody.notice`; the optional
+push-only `_lody/rate_limits/update` notification carries a snapshot with a
+stable `limitId`, provider/model scope, and bounded utilisation. Neither path
+infers an account identity, a quota query API, or a reset time from
+`Retry-After`. Failures to deliver either notification are counted by the
+bounded `vtcode.acp.rate_limit_notification_failure_total` metric, tagged by
+provider class and notification operation, and never logged with a provider
+name or response body.
+
 ## MCP, tools and audit
 
 ACP initializes the session's enabled MCP providers before the first prompt, so

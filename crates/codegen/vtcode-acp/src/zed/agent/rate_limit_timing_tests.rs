@@ -11,7 +11,10 @@ use vtcode_core::llm::provider::LLMErrorMetadata;
 use super::provider::*;
 use super::tests::{PROMPT_PROVIDER_TEST_LOCK, PromptProviderFactoryGuard, build_wire_test_agent_with_providers};
 use super::*;
-use crate::zed::{provider_runtime::ProviderRuntimeRegistry, types::SessionCancellation};
+use crate::zed::{
+    provider_runtime::{ProviderClass, ProviderRuntimeRegistry},
+    types::SessionCancellation,
+};
 
 #[derive(Default)]
 struct RateLimitedProvider {
@@ -92,7 +95,7 @@ async fn unrepresentable_backoff_remains_cancellable_without_timer_overflow() {
         tokio::time::sleep(Duration::from_secs(1)).await;
         cancellation.cancel();
     };
-    let (result, ()) = tokio::join!(cancellable_backoff(Duration::MAX, &cancellation), cancel);
+    let (result, ()) = tokio::join!(cancellable_backoff(Duration::MAX, &cancellation, ProviderClass::Unknown), cancel);
     assert!(matches!(result, Err(ProviderCallError::Cancelled)));
 }
 

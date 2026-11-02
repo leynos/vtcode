@@ -1,6 +1,7 @@
 //! Covers provider attempt telemetry, deadline phases, retry policy, and failure classification.
 use super::super::prompt::RateLimitNoticeSink;
 use super::*;
+use crate::zed::provider_runtime::ProviderClass;
 use crate::zed::types::SessionCancellation;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use rstest::rstest;
@@ -48,14 +49,16 @@ fn stream_poll_runs_inside_safe_attempt_span() {
     });
 
     let captured = capture.0.lock().expect("trace capture lock").join("\n");
-    assert!(captured.contains("span=acp_provider_stream_attempt"));
-    assert!(captured.contains("span=Some(\"acp_provider_stream_attempt\")"));
+    assert!(
+        captured.contains("span=acp_provider_stream_attempt")
+            && captured.contains("span=Some(\"acp_provider_stream_attempt\")")
+    );
     assert!(captured.contains("marker=\"stream_poll\""));
-    assert!(captured.contains("outcome=\"completion\""));
-    assert!(captured.contains("elapsed_ms="));
-    assert!(!captured.contains("prompt"));
-    assert!(!captured.contains("api_key"));
-    assert!(!captured.contains("/home/"));
+    assert!(captured.contains("outcome=\"completion\"") && captured.contains("elapsed_ms="));
+    assert!(
+        !captured.contains("prompt") && !captured.contains("api_key") && !captured.contains("/home/"),
+        "stream attempt traces must not leak prompts, credentials, or filesystem paths"
+    );
 }
 
 /// One completion path of [`cancellable_backoff`] and the span fields it must record.
@@ -99,7 +102,7 @@ fn cancellable_backoff_records_retry_wait_span(#[case] case: RetryWaitCase) {
         let cancellation = SessionCancellation::default();
         match case {
             RetryWaitCase::Elapsed { delay, .. } => {
-                let result = cancellable_backoff(delay, &cancellation).await;
+                let result = cancellable_backoff(delay, &cancellation, ProviderClass::Custom).await;
                 assert!(result.is_ok(), "an uncancelled retry wait should elapse");
             }
             RetryWaitCase::Cancelled { delay, cancel_after, .. } => {
@@ -107,15 +110,19 @@ fn cancellable_backoff_records_retry_wait_span(#[case] case: RetryWaitCase) {
                     tokio::time::sleep(cancel_after).await;
                     cancellation.cancel();
                 };
-                let (result, ()) = tokio::join!(cancellable_backoff(delay, &cancellation), cancel);
+                let (result, ()) =
+                    tokio::join!(cancellable_backoff(delay, &cancellation, ProviderClass::Custom), cancel);
                 assert!(matches!(result, Err(ProviderCallError::Cancelled)));
             }
         }
     });
 
-    assert!(captured.contains("span=acp_retry_wait"));
-    assert!(captured.contains(&format!("retry_delay_ms={}", case.expected_delay_ms())));
+    assert!(captured.contains(&format!(
+        "span=acp_retry_wait provider_class=\"custom\" retry_delay_ms={}",
+        case.expected_delay_ms()
+    )));
     assert!(captured.contains(&format!("outcome={:?}", case.expected_outcome())));
+    assert!(captured.contains("elapsed_ms="), "retry waits must record their elapsed time");
 }
 
 #[test]
@@ -145,11 +152,14 @@ fn buffered_attempt_span_uses_bounded_provider_class() {
         .lines()
         .find(|line| line.starts_with("span=acp_provider_generate"))
         .expect("the provider generate span should be captured");
-    assert!(span_line.contains("provider_class=\"custom\""));
     assert!(
-        !span_line.contains("provider=\"retry-test\""),
-        "attempt spans must not record the raw provider name"
+        span_line.contains("provider_class=\"custom\"")
+            && span_line.contains("attempt=0")
+            && !span_line.contains("provider=\"retry-test\""),
+        "attempt spans must carry the bounded provider class and attempt index, never the raw provider name: {span_line}"
     );
+    assert!(captured.contains("outcome=\"completed\""));
+    assert!(captured.contains("elapsed_ms="));
 }
 
 /// Assert network error metadata maps to stable telemetry fields.
@@ -454,10 +464,22 @@ impl<'a> RetryMetricWitness<'a> {
                     && !value.contains(self.forbidden_marker)
             })
         }));
-        assert_eq!(events[0].tags.get("mode").map(String::as_str), Some(self.mode));
-        assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some(self.provider_class));
-        assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some(self.error_category));
-        assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some(self.retry_disposition));
+        assert_eq!(
+            (
+                (
+                    events[0].tags.get("mode").map(String::as_str),
+                    events[0].tags.get("provider_class").map(String::as_str),
+                ),
+                (
+                    events[1].tags.get("error_category").map(String::as_str),
+                    events[1].tags.get("retry_disposition").map(String::as_str),
+                ),
+            ),
+            (
+                (Some(self.mode), Some(self.provider_class)),
+                (Some(self.error_category), Some(self.retry_disposition)),
+            )
+        );
     }
 }
 

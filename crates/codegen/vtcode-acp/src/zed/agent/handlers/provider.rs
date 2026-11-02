@@ -107,9 +107,17 @@ impl From<ProviderAdmissionError> for ProviderCallError {
 pub(super) async fn cancellable_backoff(
     delay: Duration,
     cancellation: &SessionCancellation,
+    provider_class: ProviderClass,
 ) -> Result<(), ProviderCallError> {
     let retry_delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
-    let span = tracing::info_span!("acp_retry_wait", retry_delay_ms = retry_delay_ms, outcome = tracing::field::Empty);
+    let span = tracing::info_span!(
+        "acp_retry_wait",
+        provider_class = provider_class.as_str(),
+        retry_delay_ms = retry_delay_ms,
+        outcome = tracing::field::Empty,
+        elapsed_ms = tracing::field::Empty
+    );
+    let started_at = Instant::now();
     let wait = async {
         tokio::select! {
             () = cancellation.cancelled() => Err(ProviderCallError::Cancelled),
@@ -118,6 +126,7 @@ pub(super) async fn cancellable_backoff(
     };
     let result = wait.instrument(span.clone()).await;
     let _ = span.record("outcome", if result.is_ok() { "elapsed" } else { "cancelled" });
+    let _ = span.record("elapsed_ms", duration_millis(started_at.elapsed()));
     result
 }
 
@@ -366,29 +375,47 @@ enum GenerateOutcome {
 }
 
 /// Runs one buffered provider request under the total-generation deadline.
-async fn generate_once(
-    provider: &dyn LLMProvider,
-    request: &LLMRequest,
-    runtime: &ProviderRequestRuntime,
-    cancellation: &SessionCancellation,
-) -> GenerateOutcome {
+async fn generate_once(retry_request: &RetryRequest<'_>, attempt_index: u32) -> GenerateOutcome {
+    let RetryRequest { provider, request, runtime, cancellation, .. } = retry_request;
     let deadline_policy = runtime.deadline_policy();
     let total_deadline = deadline_after(deadline_policy.total_generation);
-    tokio::select! {
+    let span = tracing::info_span!(
+        "acp_provider_generate",
+        provider_class = runtime.provider_class().as_str(),
+        attempt = attempt_index,
+        outcome = tracing::field::Empty,
+        status = tracing::field::Empty,
+        elapsed_ms = tracing::field::Empty
+    );
+    let started_at = Instant::now();
+    let outcome = tokio::select! {
         () = cancellation.cancelled() => GenerateOutcome::Cancelled,
         () = sleep_until_optional(total_deadline) => GenerateOutcome::Failed(provider_timeout_error(
             runtime.provider_name(),
             StreamTimeoutPhase::TotalGeneration,
             deadline_policy.total_generation,
         )),
-        result = provider.generate(request.clone()).instrument(tracing::info_span!(
-            "acp_provider_generate",
-            provider_class = runtime.provider_class().as_str()
-        )) => match result {
+        result = provider.generate(request.clone()).instrument(span.clone()) => match result {
             Ok(response) => GenerateOutcome::Completed(Box::new(response)),
             Err(error) => GenerateOutcome::Failed(error),
         },
+    };
+    let _ = span.record("elapsed_ms", duration_millis(started_at.elapsed()));
+    match &outcome {
+        GenerateOutcome::Completed(_) => {
+            let _ = span.record("outcome", "completed");
+        }
+        GenerateOutcome::Failed(error) => {
+            let _ = span.record("outcome", "failed");
+            if let Some(status) = SafeProviderProjection::from_llm_error(error).status() {
+                let _ = span.record("status", status);
+            }
+        }
+        GenerateOutcome::Cancelled => {
+            let _ = span.record("outcome", "cancelled");
+        }
     }
+    outcome
 }
 
 fn observe_buffered_response(
@@ -421,13 +448,9 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
     retry_observed_at: &RetryObservationClock<'_>,
     metric_sink: &ProviderMetricSink,
 ) -> Result<LLMResponse, ProviderCallError> {
-    let RetryRequest {
-        provider,
-        request,
-        runtime,
-        cancellation,
-        failure_sink,
-    } = retry_request;
+    let runtime = retry_request.runtime;
+    let cancellation = retry_request.cancellation;
+    let failure_sink = retry_request.failure_sink;
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
     let mut backoff = RetryBackoff::new();
@@ -436,7 +459,7 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
         let permit = runtime.acquire(cancellation).await?;
         let mut telemetry = GenerationTelemetry::start(runtime, metric_sink.clone(), ProviderMode::Buffered);
         telemetry.record_attempt(runtime).await;
-        match generate_once(provider, &request, runtime, cancellation).await {
+        match generate_once(&retry_request, attempt_index).await {
             GenerateOutcome::Cancelled => return Err(ProviderCallError::Cancelled),
             GenerateOutcome::Completed(response) => {
                 observe_buffered_response(&mut telemetry, runtime, &response, attempt_index);
@@ -482,10 +505,11 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
                 }
                 let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(AttemptIndex::new(attempt_index)));
                 log_retry_scheduled(runtime, &policy, attempt_index, delay);
-                cancellable_backoff(delay, cancellation).await?;
+                cancellable_backoff(delay, cancellation, runtime.provider_class()).await?;
                 attempt_index = attempt_index.saturating_add(1);
             }
         }
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution

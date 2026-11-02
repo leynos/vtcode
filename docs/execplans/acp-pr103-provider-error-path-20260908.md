@@ -2,11 +2,11 @@
 
 ## Status
 
-Execution authorised by the ACP hardening stack lead on 2026-09-08. The
-baseline is `6bb55a65fd4dc261d0881deb5bda1c3cd7d1477f`; that plateau passed
-focused deterministic gates, immutable CodeScene review, and CodeRabbit CLI.
-This plan is in progress and may commit only after the serial gate runner
-reports every applicable check green.
+**COMPLETE.** Execution was authorised by the ACP hardening stack lead on
+2026-09-08. The baseline is `6bb55a65fd4dc261d0881deb5bda1c3cd7d1477f`; that
+plateau passed focused deterministic gates, immutable CodeScene review, and
+CodeRabbit CLI. The provider error-path work landed on the PR #103 rate-limit
+branch after the serial gate runner reported every applicable check green.
 
 ## Outcome
 
@@ -146,4 +146,9 @@ and spelling; immutable CodeScene; then CodeRabbit CLI.
 
 ## Outcomes and retrospective
 
-Pending deterministic and review evidence.
+Completed. The provider error-path repairs landed on the PR #103 rate-limit
+branch with deterministic and review evidence: the shared serial gate runner
+passed format, lint, typecheck, and test gates, and the focused OpenAI and
+OpenRouter 429 regression cases remain part of the committed suite. Provider
+response bodies stay out of exported metadata, and the retry helper keeps its
+explicit observation-time argument.
