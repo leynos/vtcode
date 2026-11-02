@@ -1,3 +1,4 @@
+//! Tests for the session-setup UI status summaries and their memory hints.
 use super::*;
 use std::path::PathBuf;
 use vtcode_core::persistent_memory::MemoryCleanupStatus;

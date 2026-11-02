@@ -5,6 +5,8 @@ use agent_client_protocol::Error as SdkError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::Instant;
+use tracing::{Instrument, field, info_span, warn};
 use vtcode_core::subagents::{
     BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentController, SubagentStatus, SubagentStatusEntry,
     extract_tail_lines, normalize_output_tail_lines,
@@ -14,7 +16,63 @@ use super::super::types::SessionHandle;
 use super::{
     ZedAgent,
     lody::{owned_background_ids, owned_child_ids},
+    task_lifecycle::bounded_session_correlation,
 };
+
+/// The bounded set of Lody subagent management RPCs.
+///
+/// The identity is deliberately a closed enum: it becomes a span field and
+/// metrics dimension, so a client-supplied method name must never reach either.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ManagementOperation {
+    List,
+    Cancel,
+    Output,
+}
+
+impl ManagementOperation {
+    fn of(method: &str) -> Self {
+        match method {
+            super::lody::LODY_SUBAGENTS_CANCEL_METHOD => Self::Cancel,
+            super::lody::LODY_SUBAGENTS_OUTPUT_METHOD => Self::Output,
+            _ => Self::List,
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Cancel => "cancel",
+            Self::Output => "output",
+        }
+    }
+}
+
+/// Bounded failure categories recorded on the management span.
+const MANAGEMENT_FAILURE_CATEGORY: &str = "management_failed";
+
+/// Correlates a management request with its session without logging the ID.
+fn request_session_correlation(params: &Value) -> String {
+    params
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .map(|session_id| bounded_session_correlation(&acp::SessionId::new(Arc::from(session_id))))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Maps a management error to one of the extension's bounded reason strings.
+fn management_error_reason(error: &SdkError) -> &'static str {
+    let reason = error.data.as_ref().and_then(|data| data.get("reason")).and_then(Value::as_str);
+    match reason {
+        Some("invalid_lody_subagent_params") => "invalid_lody_subagent_params",
+        Some("unknown_session") => "unknown_session",
+        Some("subagent_management_unavailable") => "subagent_management_unavailable",
+        Some("unknown_task") => "unknown_task",
+        Some("invalid_tail") => "invalid_tail",
+        Some("subagent_management_failed") => "subagent_management_failed",
+        _ => MANAGEMENT_FAILURE_CATEGORY,
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,12 +129,41 @@ pub(super) async fn handle_lody_subagent_management(
     method: &str,
     params: Value,
 ) -> Result<Value, SdkError> {
-    match method {
-        super::lody::LODY_SUBAGENTS_LIST_METHOD => list_subagents(agent, parse_params(params)?).await,
-        super::lody::LODY_SUBAGENTS_CANCEL_METHOD => cancel_subagent(agent, parse_params(params)?).await,
-        super::lody::LODY_SUBAGENTS_OUTPUT_METHOD => subagent_output(agent, parse_params(params)?).await,
-        _ => Err(SdkError::method_not_found()),
+    let operation = ManagementOperation::of(method);
+    let span = info_span!(
+        "acp_lody_subagent_management",
+        operation = operation.as_str(),
+        session_correlation = %request_session_correlation(&params),
+        outcome = field::Empty,
+        elapsed_ms = field::Empty,
+        error_category = field::Empty
+    );
+    let metrics = agent.local_tool_registry.metrics_collector();
+    metrics.record_acp_management_started();
+    let started_at = Instant::now();
+    let result = async {
+        match method {
+            super::lody::LODY_SUBAGENTS_LIST_METHOD => list_subagents(agent, parse_params(params)?).await,
+            super::lody::LODY_SUBAGENTS_CANCEL_METHOD => cancel_subagent(agent, parse_params(params)?).await,
+            super::lody::LODY_SUBAGENTS_OUTPUT_METHOD => subagent_output(agent, parse_params(params)?).await,
+            _ => Err(SdkError::method_not_found()),
+        }
     }
+    .instrument(span.clone())
+    .await;
+    let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let _outcome_recorded = span.record("outcome", if result.is_ok() { "succeeded" } else { "failed" });
+    let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
+    if let Err(error) = &result {
+        let error_category = management_error_reason(error);
+        let _error_category_recorded = span.record("error_category", error_category);
+        warn!(
+            operation = operation.as_str(),
+            error_category, elapsed_ms, "Lody subagent management request failed"
+        );
+    }
+    metrics.record_acp_management_finished(result.is_ok(), elapsed_ms);
+    result
 }
 
 fn parse_params<T: for<'de> Deserialize<'de>>(params: Value) -> Result<T, SdkError> {
@@ -266,6 +353,15 @@ async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Re
         else {
             return Err(unknown_task_error());
         };
+        // Refreshing is a command with side effects (exit detection, lifecycle
+        // publication, persistence), so it stays an explicit step here while
+        // the output read remains a pure query.
+        drop(
+            controller
+                .refresh_background_processes()
+                .await
+                .map_err(internal_management_error)?,
+        );
         controller
             .background_output_tail(&request.task_id, Some(tail))
             .await

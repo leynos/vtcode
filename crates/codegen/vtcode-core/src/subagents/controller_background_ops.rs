@@ -19,7 +19,7 @@ use crate::core::agent::task::Task;
 use crate::core::threads::{ThreadBootstrap, ThreadId, ThreadRuntimeHandle, ThreadSnapshot};
 use crate::hooks::{LifecycleHookEngine, SessionStartTrigger};
 use crate::llm::provider::Message;
-use crate::tools::exec_session::ExecSessionManager;
+use crate::tools::exec_session::{ExecSessionManager, ExecSessionNotFound};
 use crate::tools::pty::{PtyManager, PtySize};
 use crate::utils::session_archive::{SessionArchive, find_session_by_identifier};
 use vtcode_config::SubagentSpec;
@@ -66,6 +66,16 @@ enum BackgroundCancellationMode {
 
 fn usable_background_parent_session_id(owner: Option<String>) -> Option<String> {
     owner.filter(|owner| !owner.is_empty())
+}
+
+/// Reports whether a live-output read failed because the exec session is gone.
+///
+/// That is the expected end state for a background subprocess whose output has
+/// already been archived, so it is the only read failure that falls back to the
+/// archive. Any other error is an environmental fault and is returned to the
+/// caller.
+fn is_missing_exec_session(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| cause.is::<ExecSessionNotFound>())
 }
 
 struct PreparedBackgroundSubprocess {
@@ -175,13 +185,17 @@ impl SubagentController {
 
     /// Returns a caller-selected tail of background output.
     ///
+    /// This is a read-only query: it reads the cached record and the live exec
+    /// session output without refreshing process state, publishing lifecycle
+    /// updates, or persisting state. Callers that need exit detection run
+    /// [`Self::refresh_background_processes`] first as an explicit command.
+    ///
     /// `None` requests the 200-line default. Values above
     /// [`MAX_SUBAGENT_OUTPUT_TAIL_LINES`] are rejected to keep ACP responses
     /// bounded; the existing [`Self::background_snapshot`] 24-line preview is
     /// unchanged.
     pub async fn background_output_tail(&self, target: &str, max_lines: Option<usize>) -> Result<String> {
         let max_lines = normalize_output_tail_lines(max_lines)?;
-        let _ = self.refresh_background_processes().await?;
 
         let entry = {
             let state = self.state.read().await;
@@ -203,14 +217,32 @@ impl SubagentController {
             .await
         {
             Ok(Some(output)) => Ok(extract_tail_lines(&output, max_lines)),
-            Ok(None) | Err(_) => {
-                if let Some(path) = entry.transcript_path.as_ref().or(entry.archive_path.as_ref()) {
-                    load_archive_output_tail(path, max_lines).await
-                } else {
-                    Ok(String::new())
-                }
+            Ok(None) => self.archived_output_tail(&entry, max_lines, "live_output_not_ready").await,
+            Err(error) if is_missing_exec_session(&error) => {
+                self.archived_output_tail(&entry, max_lines, "live_session_missing").await
             }
+            // A failed live read is an environmental fault, not the expected
+            // end of the exec session: report it instead of hiding it behind
+            // archive output.
+            Err(error) => Err(error).with_context(|| format!("read background output for {target}")),
         }
+    }
+
+    /// Reads the archived tail after live output is unavailable.
+    async fn archived_output_tail(
+        &self,
+        entry: &BackgroundSubprocessEntry,
+        max_lines: usize,
+        reason: &'static str,
+    ) -> Result<String> {
+        let Some(path) = entry.transcript_path.as_ref().or(entry.archive_path.as_ref()) else {
+            return Ok(String::new());
+        };
+        // A fallback is a degraded read the caller cannot otherwise observe:
+        // it returns archive output that may lag the live process. Log the
+        // decision with bounded shape only, never the task, session, or path.
+        tracing::info!(task_kind = "background_subagent", reason, "Background output fell back to the session archive");
+        load_archive_output_tail(path, max_lines).await
     }
 
     /// Returns whether background subagents are enabled in the configuration.
@@ -384,6 +416,15 @@ impl SubagentController {
         let Some(record) = state.background_children.get_mut(record_id) else {
             return Ok(None);
         };
+        // A settled record already carries its terminal outcome, and refresh
+        // exists to settle records that are still active. Cancellation clears
+        // `desired_enabled` while preserving an `Error` and its message, so
+        // letting refresh rewrite it would relabel a failure as `Stopped` —
+        // which clients project as "completed" — or relaunch it. Guarding here
+        // covers every refresh arm at once.
+        if !record.status.is_active() {
+            return Ok(None);
+        }
         record.updated_at = Utc::now();
 
         let Some(snapshot) = snapshot else {
@@ -1080,7 +1121,8 @@ impl SubagentController {
 
 #[cfg(test)]
 mod background_owner_tests {
-    use super::usable_background_parent_session_id;
+    use super::{is_missing_exec_session, usable_background_parent_session_id};
+    use crate::tools::exec_session::ExecSessionNotFound;
 
     #[test]
     fn empty_legacy_parent_owner_falls_back_to_the_current_session() {
@@ -1088,5 +1130,16 @@ mod background_owner_tests {
         let current_owner = "current-session".to_owned();
 
         assert_eq!(previous_owner.unwrap_or(current_owner), "current-session");
+    }
+
+    #[test]
+    fn only_a_missing_exec_session_falls_back_to_archive_output() {
+        let missing = anyhow::Error::new(ExecSessionNotFound { session_id: "exec-1".to_string() });
+
+        assert!(is_missing_exec_session(&missing.context("read background output")));
+        assert!(
+            !is_missing_exec_session(&anyhow::anyhow!("permission denied reading output")),
+            "an environmental read fault must stay visible to the caller"
+        );
     }
 }

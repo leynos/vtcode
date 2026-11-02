@@ -37,3 +37,27 @@ than silently accepted:
 Any patch that does change the files, or a materially different patch, resets
 the sequence. The full behaviour, including how conflict and stale-file details
 reach an ACP client, is in the [patch safety guide](./guides/patch-safety.md).
+
+## Lody ACP extensions in brief
+
+`vtcode acp` serves the Agent Client Protocol over stdio. During `initialize`,
+VT Code advertises Lody extensions under `_meta.lody`: `usage` is always
+present, and subagent `lifecycle`, `list`, `cancel`, and `output` are
+advertised when a subagent controller exists for the launch workspace.
+`_meta.lody.tasks.background` appears only when background subagents are
+enabled. These capabilities describe the launch workspace. Management is
+session-scoped, so a request can still fail with
+`subagent_management_unavailable`.
+
+Subagent and background-process lifecycle is published as standard ACP
+`session/update` tool calls and tool-call updates, with the task snapshot under
+`_meta.lody.task`. When management is available, the `_lody/subagents/list`,
+`_lody/subagents/cancel`, and `_lody/subagents/output` requests operate only on
+tasks owned by the calling session. Provider usage is reported through
+`_lody/session/usage_update` as a per-response delta. Custom providers opt in
+to streamed usage with `supports_stream_usage`; VT Code only requests it when
+the provider declares that support.
+
+For the full contract, see
+[ACP capability negotiation and Lody extensions](./guides/zed-acp.md#acp-capability-negotiation-and-lody-extensions)
+and the [ACP runtime guide](./development/acp-runtime.md).

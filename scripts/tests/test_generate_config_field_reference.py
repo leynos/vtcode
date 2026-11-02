@@ -32,11 +32,11 @@ def test_override_requires_every_configured_schema_field() -> None:
 
 
 def test_format_code_span_pads_a_leading_backtick() -> None:
-    assert generator.format_code_span("`value") == "`` `value ``"
+    assert generator.format_code_span("`value") == "`` `value ``", "a leading backtick must be padded"
 
 
 def test_format_code_span_pads_a_trailing_backtick() -> None:
-    assert generator.format_code_span("value`") == "`` value` ``"
+    assert generator.format_code_span("value`") == "`` value` ``", "a trailing backtick must be padded"
 
 
 def test_long_default_remains_parseable_json() -> None:
@@ -44,7 +44,7 @@ def test_long_default_remains_parseable_json() -> None:
 
     rendered = generator.format_default(value)
 
-    assert json.loads(rendered) == value
+    assert json.loads(rendered) == value, "a long default must stay parseable as JSON"
 
 
 def test_render_markdown_escapes_pipes_inside_backtick_safe_code_span() -> None:
@@ -62,9 +62,8 @@ def test_render_markdown_escapes_pipes_inside_backtick_safe_code_span() -> None:
         if line.startswith("| `example.path`")
     ]
 
-    assert rows == [
-        "| `example.path` | `string` | no | ``value\\|with`tick`` | Example value. |"
-    ]
+    expected_rows = ["| `example.path` | `string` | no | ``value\\|with`tick`` | Example value. |"]
+    assert rows == expected_rows, "a pipe inside a backtick-safe span must stay escaped"
 
 
 if __name__ == "__main__":

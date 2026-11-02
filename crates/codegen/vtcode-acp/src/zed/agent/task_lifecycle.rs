@@ -36,7 +36,7 @@ use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver
 const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
 const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
-fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
+pub(super) fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
     vtcode_commons::utils::calculate_sha256(session_id.to_string().as_bytes())
         .chars()
         .take(SESSION_CORRELATION_HEX_LENGTH)
@@ -317,7 +317,10 @@ impl ZedAgent {
             .map(|runtime| runtime.local_tool_registry.metrics_collector())
             .unwrap_or_else(|| self.local_tool_registry.metrics_collector());
         let (sender, receiver) = mpsc::channel(128);
-        let queue = Arc::new(LifecycleQueueTracker::new(metrics));
+        // The tracker holds the observer as a trait object so tests can
+        // substitute a counting double, so the collector Arc is coerced here.
+        let queue_metrics = Arc::clone(&metrics) as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+        let queue = Arc::new(LifecycleQueueTracker::new(queue_metrics));
         let observer = Arc::new(AcpTaskLifecycleObserver {
             sender: sender.clone(),
             queue: Arc::clone(&queue),
@@ -333,9 +336,16 @@ impl ZedAgent {
         let initial_session_id = session_id.clone();
         let initial_controller = Arc::clone(&controller);
         let initial_queue = queue;
+        let initial_metrics = Arc::clone(&metrics);
         let _initial_snapshot_task = tokio::spawn(async move {
-            publish_initial_task_snapshots(&initial_controller, &initial_session_id, &initial_sender, &initial_queue)
-                .await;
+            publish_initial_task_snapshots(
+                &initial_controller,
+                &initial_session_id,
+                &initial_sender,
+                &initial_queue,
+                &initial_metrics,
+            )
+            .await;
         });
 
         let mut data = match session
@@ -367,12 +377,62 @@ impl ZedAgent {
 /// closes that gap without replaying terminal history the client never saw,
 /// and because the observer is already registered, any later transition still
 /// arrives as a regular update.
+///
+/// This runs unattended in a spawned task, so it owns both its span and its
+/// failure accounting: a queue that is already closed leaves the client with
+/// no record of the task, and that must be visible in the bounded metrics.
 async fn publish_initial_task_snapshots(
     controller: &Arc<vtcode_core::subagents::SubagentController>,
     session_id: &acp::SessionId,
     sender: &mpsc::Sender<LifecycleUpdate>,
     queue: &LifecycleQueueTracker,
+    metrics: &Arc<vtcode_core::metrics::MetricsCollector>,
 ) {
+    let session_correlation = bounded_session_correlation(session_id);
+    let span = info_span!(
+        "acp_task_snapshot_publication",
+        session_correlation = %session_correlation,
+        outcome = field::Empty,
+        elapsed_ms = field::Empty,
+        snapshots_published = 0_u64,
+        publish_failures = 0_u64
+    );
+    let started_at = Instant::now();
+    let result = queue_initial_task_snapshots(controller, session_id, sender, queue)
+        .instrument(span.clone())
+        .await;
+    let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
+    match result {
+        Ok(published) => {
+            metrics.record_acp_initial_snapshots_published(published);
+            let _outcome_recorded = span.record("outcome", "published");
+            let _published_recorded = span.record("snapshots_published", u64::try_from(published).unwrap_or(u64::MAX));
+        }
+        Err(kind) => {
+            let cumulative_count = queue.record_drop(kind);
+            metrics.record_acp_initial_snapshot_publish_failure();
+            let _outcome_recorded = span.record("outcome", "queue_closed");
+            let _failures_recorded = span.record("publish_failures", 1_u64);
+            warn!(
+                session_correlation,
+                drop_kind = kind.as_str(),
+                cumulative_count,
+                elapsed_ms,
+                "ACP initial task snapshot could not be queued"
+            );
+        }
+    }
+}
+
+/// Counts the snapshots this pass queued, or the first queue rejection.
+async fn queue_initial_task_snapshots(
+    controller: &Arc<vtcode_core::subagents::SubagentController>,
+    session_id: &acp::SessionId,
+    sender: &mpsc::Sender<LifecycleUpdate>,
+    queue: &LifecycleQueueTracker,
+) -> Result<usize, LifecycleQueueDropKind> {
+    let mut published = 0_usize;
     let mut controllers = vec![Arc::clone(controller)];
     controllers.extend(controller.descendant_controllers().await);
 
@@ -392,9 +452,8 @@ async fn publish_initial_task_snapshots(
             parent_session_id: session_id.0.to_string(),
             task: entry,
         };
-        if queue.send(sender, update).await.is_err() {
-            return;
-        }
+        queue.send(sender, update).await?;
+        published = published.saturating_add(1);
     }
 
     for controller in &controllers {
@@ -407,11 +466,11 @@ async fn publish_initial_task_snapshots(
                 parent_session_id: session_id.0.to_string(),
                 task: entry,
             };
-            if queue.send(sender, update).await.is_err() {
-                return;
-            }
+            queue.send(sender, update).await?;
+            published = published.saturating_add(1);
         }
     }
+    Ok(published)
 }
 
 struct AcpTaskLifecycleObserver {

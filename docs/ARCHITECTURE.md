@@ -52,8 +52,11 @@ event type in a consumer crate.
   execution policy and safety checks.
 - Core publishes sub-agent progress through `SubagentProgressObserver` using
   `SubagentStatusEntry` and `BackgroundSubprocessEntry` snapshots without
-  ACP-specific payloads. The ACP task-lifecycle forwarder filters updates by
-  parent session and projects them into client extension notifications.
+  ACP-specific payloads. The ACP adapter filters by owning session and projects
+  each snapshot into a standard ACP `session/update` tool call or tool-call
+  update, with task metadata under `_meta.lody.task`. The `_lody/*` extension
+  surface carries session-scoped subagent management requests and
+  `_lody/session/usage_update` usage deltas.
 
 ## Model + Harness
 

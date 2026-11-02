@@ -7,7 +7,11 @@ use crate::zed::connection::ConnectionHandle;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Instant;
+use tracing::{field, info_span, warn};
 use vtcode_core::llm::Usage;
+
+use super::task_lifecycle::bounded_session_correlation;
 
 use super::{ZedAgent, lody::lody_capabilities_mut};
 
@@ -83,6 +87,30 @@ fn send_usage_update(
         .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
 
+fn usage_elapsed_ms(started_at: Instant) -> u64 {
+    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// Records a failed usage publication on its span and in the bounded metrics.
+///
+/// The session is identified only by its bounded correlation hash, and the
+/// error text carries no usage payload, so the log stays safe to retain.
+fn record_usage_failure(
+    span: &tracing::Span,
+    started_at: Instant,
+    metrics: &vtcode_core::metrics::MetricsCollector,
+    error_category: &'static str,
+    session_correlation: &str,
+    error: &dyn std::fmt::Display,
+) {
+    let elapsed_ms = usage_elapsed_ms(started_at);
+    let _outcome_recorded = span.record("outcome", "failed");
+    let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
+    let _error_category_recorded = span.record("error_category", error_category);
+    metrics.record_acp_usage_notification(false);
+    warn!(session_correlation, error_category, elapsed_ms, %error, "Failed to publish Lody ACP usage update");
+}
+
 impl ZedAgent {
     pub(super) fn publish_lody_usage(
         &self,
@@ -93,17 +121,36 @@ impl ZedAgent {
         let Some(client) = self.client() else {
             return;
         };
+        let metrics = self.local_tool_registry.metrics_collector();
+        let session_correlation = bounded_session_correlation(session_id);
+        let span = info_span!(
+            "acp_lody_usage_notification",
+            session_correlation = %session_correlation,
+            outcome = field::Empty,
+            elapsed_ms = field::Empty,
+            error_category = field::Empty
+        );
+        let _span_entered = span.enter();
+        let started_at = Instant::now();
         let notification = match response_usage_notification(session_id, fallback_model, response) {
             Ok(Some(notification)) => notification,
-            Ok(None) => return,
+            Ok(None) => {
+                let _outcome_recorded = span.record("outcome", "no_usage");
+                let _elapsed_ms_recorded = span.record("elapsed_ms", usage_elapsed_ms(started_at));
+                return;
+            }
             Err(error) => {
-                tracing::warn!(%error, %session_id, "Failed to serialize Lody ACP usage update");
+                record_usage_failure(&span, started_at, &metrics, "serialization_failed", &session_correlation, &error);
                 return;
             }
         };
         if let Err(error) = client.send_ext_notification(notification) {
-            tracing::warn!(%error, %session_id, "Failed to publish Lody ACP usage update");
+            record_usage_failure(&span, started_at, &metrics, "notification_send_failed", &session_correlation, &error);
+            return;
         }
+        let _outcome_recorded = span.record("outcome", "sent");
+        let _elapsed_ms_recorded = span.record("elapsed_ms", usage_elapsed_ms(started_at));
+        metrics.record_acp_usage_notification(true);
     }
 }
 

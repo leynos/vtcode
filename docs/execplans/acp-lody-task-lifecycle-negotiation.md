@@ -1235,3 +1235,90 @@ updates, custom-provider streamed-usage opt-in, wiremock playback, vidai-mock
 physics and official ACP duplex coverage are recorded above. The complete
 release gate and user installation passed, and draft PR #14 is the fourth layer
 of stack #16.
+
+Revision note (2026-11-01, exceptional restack and pre-merge row
+reconciliation): the parent branch `fix/acp-unresolved-tool-recovery` was
+force-updated from `51aa49eb6` to `114ed96e9`, leaving PR #14 `CONFLICTING`.
+The child was not merged forward. Its exclusive replay boundary `51aa49eb6` was
+established, 28 child commits were replayed with
+`git rebase --onto 114ed96e9 51aa49eb6` under
+`-c core.attributesFile=/dev/null -c merge.conflictStyle=zdiff3` (the host
+carries an ambient `*.rs merge=weave` rule; no tracked `.gitattributes` opts
+in), and the replay completed without conflicts. `git range-diff` shows 27
+commits identical and only the checkpoint-cleanup commit adapted, preserving
+its intent. New head: `7c21e5667`. The pre-restack head `51247a592` remains the
+remote head until the force-with-lease publication.
+
+CodeRabbit's pre-merge walkthrough on the previous head produced two errors and
+three warnings, and this revision repairs each one:
+
+- Module-Level Documentation: `//!` headers added to `background.rs`,
+  `constants.rs`, `tools/registry/subagent_facade.rs`,
+  `session_setup/ui/tests.rs`, and `slash_commands/agents/tests.rs`.
+- Unit Architecture: `SubagentController::background_output_tail` is now a
+  pure query. It no longer refreshes, persists, or publishes; the ACP
+  `subagent_output` handler runs `refresh_background_processes` as an explicit
+  command first. Only a typed `ExecSessionNotFound` (chain-classified by
+  `is_missing_exec_session`) falls back to the archive; any other read fault
+  propagates. A new core test
+  `background_output_tail_reads_without_refreshing_background_state` pins the
+  query's non-mutating contract, including unchanged persisted bytes.
+- User-Facing and Developer Documentation: a users-guide section covers
+  `vtcode acp`, capability negotiation, standard lifecycle projection,
+  `_lody/subagents/*`, and usage deltas; the developers guide gains an ACP/Lody
+  pointer; `docs/development/acp-runtime.md` replaces the stale
+  `_vtcode/taskLifecycle` text with controller resolution, lifecycle
+  projection, management RPC, and usage subsections; `docs/ARCHITECTURE.md` and
+  `docs/releases/0.157.0.md` are corrected to match.
+- Observability: management RPCs carry an `acp_lody_subagent_management` span
+  (bounded operation, session correlation hash, outcome, elapsed time, error
+  category) and feed a new `AcpExtensionMetrics` snapshot in `vtcode-core`
+  (management started/succeeded/failed/in-flight/total duration, usage
+  notification sent/failed, initial snapshots published/failed). Usage
+  publication has its own span and no longer logs the raw session ID.
+  Attach-time snapshot publication has its own span, counts awaited queue-send
+  failures through the existing queue metrics and the new failure counter, and
+  logs the bounded drop kind. The core archive-fallback log now records the
+  bounded task kind and reason.
+- Docstring Coverage (inconclusive): disposition is a rebuttal. The repository
+  enforces documentation through `rust.missing_docs = "warn"` plus CI's
+  `-D warnings` for public items; the 80% metric counts every diff-touched
+  function, including private ones, and is not a repository gate.
+
+Revision note (2026-11-01, r16 compile repair and gate evidence): the repairs
+described above were applied to the working tree but were neither committed nor
+compiled; `7c21e5667` contains only this note, so the batch reached the review
+round as unvalidated work. Compiling it surfaced four defects, all in that
+batch:
+
+- `ManagementOperation::of` was written as a `const fn` matching on `&str`.
+  String comparison is not const-stable, so it failed with E0658 and
+  "`PartialEq` is not yet stable as a const trait". `const` is dropped; the
+  sole call site runs in a normal async context.
+- `LifecycleQueueTracker::new` takes the observer as a trait object. An
+  explicit type annotation on
+  `let queue_metrics: Arc<dyn Trait> = Arc::clone(&metrics)` does not help: the
+  expected type propagates into the generic `Arc::clone`, so `T` is inferred as
+  `dyn Trait` and the argument no longer matches. The fix is the crate's
+  existing pattern, an explicit unsizing cast:
+  `Arc::clone(&metrics) as Arc<dyn
+  TaskLifecycleNotificationQueueMetricsObserver>`.
+- `StreamToolThenAnswerProvider` gained an `emit_usage` field, and two test
+  initializers were not updated: `handlers/tests/tools/terminal_create_wire.rs`
+  and the delete/rename case in `handlers/tests/tools/apply_patch.rs`. Both now
+  pass `emit_usage: false`, matching the other five initializers.
+
+Lesson: compile the working tree before dispatching gates or crossing a context
+boundary, and never batch unvalidated repairs.
+`cargo check -p vtcode-acp --all-targets --locked` reports 0 errors on the
+corrected tree.
+
+Release-gate evidence for this candidate, run sequentially by the scrutineer on
+the corrected working tree: `make check-fmt` EXIT=0 (13s), `make lint` EXIT=0
+(3359s, clippy `--workspace --all-targets --all-features -D warnings` plus
+shell, policy, and rustdoc checks), `make typecheck` EXIT=0 (206s), `make test`
+EXIT=0 (5202s), `make build` EXIT=0 (1543s), `make test-harness` EXIT=0 (427s;
+pty 8 passed, pipe 10 passed, inline_events 49 passed, 2723 filtered),
+`make check-ast-grep` EXIT=0, and `make advisory` EXIT=0. Long elapsed times
+reflect a saturated shared compiler-admission pool (about 50 concurrent peer
+sessions), not retries.

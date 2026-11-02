@@ -179,20 +179,62 @@ Notification regressions need a waiter that is registered before the final
 departure. A waiter created afterwards completes from the counter alone and
 therefore does not detect a missing final-guard notification.
 
-## Task updates
+## Subagent controller and task updates
 
 `vtcode-core` publishes protocol-neutral sub-agent and background-process
-status snapshots through its progress observer. The ACP adapter forwards those
-snapshots as extension notifications using the method `_vtcode/taskLifecycle`.
-Notification parameters have `sessionId`, `acpSessionId`, and `message` fields.
-`message` uses `task_started`, `task_progress`, or `task_updated` with
-`task_id`, `task_type`, `subagent_type`, and the status/details for that
-snapshot. Terminal updates place status and details under `patch`; non-terminal
-updates place them at the message top level. A queued task or starting
-background process maps to `task_started`; active work maps to `task_progress`;
-completion, failure, closure, stop, or error maps to `task_updated` with its
-terminal status in the patch. This is a VT Code extension notification rather
-than a standard ACP session update.
+status snapshots through `SubagentProgressObserver`. The ACP adapter owns all
+protocol projection.
+
+### Session-scoped controller resolution
+
+A session resolves its own `SubagentController` from its `SessionHandle`. If
+none is available, management requests return
+`subagent_management_unavailable`. Management operations walk the root
+controller and every reachable descendant controller, so a session can list,
+cancel, or read output for any task it owns, including grandchildren. A session
+lists and manipulates only tasks it owns: child agents are selected through
+their `parent_thread_id` chain, while managed background records are selected
+by their explicit `owner_session_id`. A task id outside that owned set and an
+id that does not exist both return the same `unknown_task` error, so the
+boundary does not disclose another session's tasks.
+
+### Lifecycle projection
+
+Each snapshot is projected into a standard ACP `session/update`. The first
+update for a task is a tool call with id `task:<taskId>`; later updates are
+tool-call updates for that same id. The standard `title`, `kind` (`think`),
+`status`, and `content` fields carry the task state, and `_meta.lody.task`
+carries the Lody snapshot: `version`, `taskId`, `kind`, `status`, `description`,
+`actor`, start and end times, and optional `summary` or `error`. The adapter
+filters updates by parent session, drops superseded revisions by `updated_at`,
+and replays still-active tasks when the observer is registered.
+
+### Management RPCs
+
+When management is advertised, `_lody/subagents/list`,
+`_lody/subagents/cancel`, and `_lody/subagents/output` accept a `sessionId`
+plus their operation fields. `list` accepts `activeOnly` and refreshes
+background records from the exec-session manager before projecting, so an
+exited process is not reported as running. `cancel` closes a child agent or
+force-cancels a background record. `output` returns a bounded tail: `tail`
+defaults to 200 lines, and values above the configured maximum are rejected with
+`invalid_tail`. Each request re-resolves the session's controller tree.
+
+### Usage publication
+
+After each provider response, ACP sends `_lody/session/usage_update` with
+`sessionId`, a per-response `usage` delta (`inputTokens`, `outputTokens`,
+`cacheReadInputTokens`, and optional `cacheCreationInputTokens`), and
+`modelUsage` keyed by the responding model. The notification is omitted when
+the response carries no usage. The delta covers that response, not a running
+session total.
+
+Custom providers opt in to streamed usage with `supports_stream_usage` in their
+provider defaults or model profile. The OpenAI-compatible provider requests
+usage from the stream only for native OpenAI or when the resolved profile sets
+it, so a provider that does not declare support is never asked.
+
+### Task tracker plans
 
 The model-facing `task_tracker` tool remains implemented by core. The ACP
 adapter converts each successful checklist result to a standard ACP plan

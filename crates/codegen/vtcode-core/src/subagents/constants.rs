@@ -1,3 +1,5 @@
+//! Bounded limits shared by subagent transcripts, memory notes, prompts, and
+//! caller-selected output tails.
 use crate::config::constants::tools;
 
 pub(crate) const SUBAGENT_TRANSCRIPT_LINE_LIMIT: usize = 200;

@@ -1,3 +1,5 @@
+//! Exposes the shared subagent controller to tools through [`ToolRegistry`]
+//! without copying the workspace-owned controller into each registry clone.
 use std::sync::Arc;
 
 use super::ToolRegistry;

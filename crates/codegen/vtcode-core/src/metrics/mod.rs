@@ -133,6 +133,24 @@ pub struct TaskLifecycleNotificationQueueMetrics {
     pub queue_dropped_closed: u64,
 }
 
+/// Bounded aggregate metrics for the Lody ACP extension surface.
+///
+/// The counters deliberately carry no session, task, model, or payload labels,
+/// and the operation identity is bounded to the fixed management RPC set, so
+/// the same snapshot is safe to expose through JSON and Prometheus.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcpExtensionMetrics {
+    pub management_requests_started: u64,
+    pub management_requests_succeeded: u64,
+    pub management_requests_failed: u64,
+    pub management_requests_in_flight: u64,
+    pub management_total_duration_ms: u64,
+    pub usage_notifications_sent: u64,
+    pub usage_notifications_failed: u64,
+    pub initial_snapshots_published: u64,
+    pub initial_snapshot_publish_failures: u64,
+}
+
 /// Bounded client startup outcomes without integration-specific provider data.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ServiceClientStartupOutcome {
@@ -204,6 +222,7 @@ pub struct MetricsCollector {
     provider_requests: Arc<Mutex<ProviderRequestMetrics>>,
     service_startup: Arc<Mutex<ServiceStartupMetrics>>,
     task_lifecycle_notification_queue: Arc<Mutex<TaskLifecycleNotificationQueueMetrics>>,
+    acp_extension: Arc<Mutex<AcpExtensionMetrics>>,
     workspace_runtime_cache_entries: Arc<AtomicU64>,
     admission_metrics_source: Arc<dyn ProviderAdmissionMetricsSource>,
     start_time: Instant,
@@ -227,6 +246,8 @@ pub struct MetricsSummary {
     pub mcp_startup: ServiceStartupMetrics,
     #[serde(default)]
     pub task_lifecycle_notification_queue: TaskLifecycleNotificationQueueMetrics,
+    #[serde(default)]
+    pub acp_extension: AcpExtensionMetrics,
     #[serde(default)]
     pub workspace_runtime_cache_entries: u64,
 }
@@ -263,6 +284,7 @@ impl MetricsCollector {
             provider_requests: Arc::new(Mutex::new(ProviderRequestMetrics::default())),
             service_startup: Arc::new(Mutex::new(ServiceStartupMetrics::default())),
             task_lifecycle_notification_queue: Arc::new(Mutex::new(TaskLifecycleNotificationQueueMetrics::default())),
+            acp_extension: Arc::new(Mutex::new(AcpExtensionMetrics::default())),
             workspace_runtime_cache_entries: Arc::new(AtomicU64::new(0)),
             admission_metrics_source: source,
             start_time: Instant::now(),
@@ -346,6 +368,53 @@ impl MetricsCollector {
     /// Get aggregate measurements for the task-lifecycle notification queue.
     pub fn get_task_lifecycle_notification_queue_metrics(&self) -> TaskLifecycleNotificationQueueMetrics {
         self.task_lifecycle_notification_queue.lock().clone()
+    }
+
+    /// Record a Lody ACP management RPC entering its handler.
+    pub fn record_acp_management_started(&self) {
+        let mut metrics = self.acp_extension.lock();
+        metrics.management_requests_started = metrics.management_requests_started.saturating_add(1);
+        metrics.management_requests_in_flight = metrics.management_requests_in_flight.saturating_add(1);
+    }
+
+    /// Record a Lody ACP management RPC leaving its handler.
+    pub fn record_acp_management_finished(&self, succeeded: bool, duration_ms: u64) {
+        let mut metrics = self.acp_extension.lock();
+        if succeeded {
+            metrics.management_requests_succeeded = metrics.management_requests_succeeded.saturating_add(1);
+        } else {
+            metrics.management_requests_failed = metrics.management_requests_failed.saturating_add(1);
+        }
+        metrics.management_total_duration_ms = metrics.management_total_duration_ms.saturating_add(duration_ms);
+        metrics.management_requests_in_flight = metrics.management_requests_in_flight.saturating_sub(1);
+    }
+
+    /// Record the outcome of one Lody ACP usage notification publication.
+    pub fn record_acp_usage_notification(&self, succeeded: bool) {
+        let mut metrics = self.acp_extension.lock();
+        if succeeded {
+            metrics.usage_notifications_sent = metrics.usage_notifications_sent.saturating_add(1);
+        } else {
+            metrics.usage_notifications_failed = metrics.usage_notifications_failed.saturating_add(1);
+        }
+    }
+
+    /// Record snapshots queued by one attach-time initial publication pass.
+    pub fn record_acp_initial_snapshots_published(&self, snapshots: usize) {
+        let mut metrics = self.acp_extension.lock();
+        let snapshots = u64::try_from(snapshots).unwrap_or(u64::MAX);
+        metrics.initial_snapshots_published = metrics.initial_snapshots_published.saturating_add(snapshots);
+    }
+
+    /// Record an initial task snapshot that could not be queued.
+    pub fn record_acp_initial_snapshot_publish_failure(&self) {
+        let mut metrics = self.acp_extension.lock();
+        metrics.initial_snapshot_publish_failures = metrics.initial_snapshot_publish_failures.saturating_add(1);
+    }
+
+    /// Get the bounded aggregate Lody ACP extension metrics snapshot.
+    pub fn get_acp_extension_metrics(&self) -> AcpExtensionMetrics {
+        self.acp_extension.lock().clone()
     }
 
     /// Set the current number of cached entries for a runtime cache kind.
@@ -632,6 +701,7 @@ impl MetricsCollector {
             provider_requests: self.get_provider_request_metrics(),
             mcp_startup: self.get_service_startup_metrics(),
             task_lifecycle_notification_queue: self.get_task_lifecycle_notification_queue_metrics(),
+            acp_extension: self.get_acp_extension_metrics(),
             workspace_runtime_cache_entries: self.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
         }
     }
