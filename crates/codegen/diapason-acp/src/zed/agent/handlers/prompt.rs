@@ -1,4 +1,6 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
+use std::collections::HashSet;
+
 use super::super::log_suppressed_error;
 use super::super::tool_config::SessionToolDefinitionRequest;
 use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
@@ -204,6 +206,19 @@ pub(super) struct PromptExecution {
     stop_hook_checked: bool,
 }
 
+/// Rejects a provider batch whose tool-call IDs are not unique.
+///
+/// Duplicate IDs make placeholder replacement ambiguous: the second result
+/// overwrites the first, leaving one placeholder unresolved, and archive repair
+/// then refuses the batch. Rejecting before staging keeps history consistent.
+pub(super) fn validate_tool_call_ids(tool_calls: &[LLMToolCall]) -> Result<(), SdkError> {
+    let mut call_ids = HashSet::with_capacity(tool_calls.len());
+    if tool_calls.iter().any(|call| !call_ids.insert(call.id.as_str())) {
+        return Err(SdkError::internal_error().data("Provider returned duplicate tool-call IDs"));
+    }
+    Ok(())
+}
+
 /// Executes one assistant tool-call round and records every result.
 ///
 /// The assistant message is appended before the tool calls run so an
@@ -225,6 +240,7 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     if agent.tool_loop_limit_reached(*tool_loop_count) {
         return Ok(ToolRoundOutcome::LimitReached(agent.tool_loop_limit_message()));
     }
+    validate_tool_call_ids(tool_calls)?;
     *tool_loop_count = tool_loop_count.saturating_add(1);
 
     let assistant_tool_message = if streamed {

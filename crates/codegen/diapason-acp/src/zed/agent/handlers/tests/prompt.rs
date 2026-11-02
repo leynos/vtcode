@@ -41,6 +41,23 @@ fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
 }
 
 #[test]
+fn duplicate_tool_call_ids_are_rejected_before_staging() {
+    let call = |id: &str| {
+        vtcode_core::llm::provider::ToolCall::function(id.to_string(), "read_file".to_string(), "{}".to_string())
+    };
+
+    let error = validate_tool_call_ids(&[call("call-1"), call("call-1")])
+        .expect_err("a batch with duplicate tool-call IDs must be rejected");
+    assert!(
+        error.to_string().contains("duplicate tool-call IDs"),
+        "rejection must name the duplicate-ID cause: {error}"
+    );
+
+    validate_tool_call_ids(&[call("call-1"), call("call-2")]).expect("unique tool-call IDs must be accepted");
+}
+
+
+#[test]
 fn reasoning_remains_visible_when_response_requests_a_tool() {
     let response = LLMResponse {
         reasoning: Some("Inspect the call graph before editing.".to_string()),
