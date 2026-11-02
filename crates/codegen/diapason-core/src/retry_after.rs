@@ -106,11 +106,26 @@ pub(crate) fn retry_after_is_http_date(metadata: &LLMErrorMetadata) -> bool {
     })
 }
 
+/// Provider minimum delay that needs no observation instant.
+///
+/// Numeric `Retry-After` deltas and configured reset intervals are relative
+/// durations. An absolute HTTP date can only be interpreted against the instant
+/// the failure was observed, so this adapter ignores it; callers that know that
+/// instant use [`retry_after_from_llm_metadata_at`].
+pub(crate) fn retry_after_from_llm_metadata_clock_free(metadata: &LLMErrorMetadata) -> Option<Duration> {
+    metadata_retry_floor(metadata, parse_delta_seconds)
+}
+
 pub(crate) fn retry_after_from_llm_metadata_at(metadata: &LLMErrorMetadata, now: SystemTime) -> Option<Duration> {
-    let retry_after = metadata
-        .retry_after
-        .as_deref()
-        .and_then(|raw| parse_retry_after_header_at(raw, now));
+    metadata_retry_floor(metadata, |raw| parse_retry_after_header_at(raw, now))
+}
+
+/// Combines a parsed `Retry-After` value with any configured reset interval.
+fn metadata_retry_floor(
+    metadata: &LLMErrorMetadata,
+    parse_retry_after: impl Fn(&str) -> Option<Duration>,
+) -> Option<Duration> {
+    let retry_after = metadata.retry_after.as_deref().and_then(|raw| parse_retry_after(raw.trim()));
     let reset_after = metadata
         .rate_limit
         .as_ref()
@@ -213,6 +228,25 @@ mod tests {
             retry_after_from_llm_metadata_at(&metadata, SystemTime::UNIX_EPOCH),
             Some(Duration::from_millis(750))
         );
+    }
+
+    #[test]
+    fn clock_free_metadata_honours_relative_values_but_ignores_http_dates() {
+        let delta = metadata_with("7", 0);
+        let date = metadata_with("Wed, 21 Oct 2015 07:28:00 GMT", 500);
+        let only_date = LLMErrorMetadata::new(
+            "Together",
+            Some(429),
+            None,
+            None,
+            None,
+            Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
+            None,
+        );
+
+        assert_eq!(retry_after_from_llm_metadata_clock_free(&delta), Some(Duration::from_secs(7)));
+        assert_eq!(retry_after_from_llm_metadata_clock_free(&date), Some(Duration::from_millis(500)));
+        assert_eq!(retry_after_from_llm_metadata_clock_free(&only_date), None);
     }
 
     #[test]

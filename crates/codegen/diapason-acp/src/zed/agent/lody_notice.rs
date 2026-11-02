@@ -13,7 +13,8 @@ use super::ZedAgent;
 use super::provider_telemetry::{ProviderMetricContext, ProviderMetricObservation, ProviderMetricSink};
 use super::redaction::{elapsed_millis, log_notice_publish_failure, session_correlation};
 use crate::zed::provider_runtime::ProviderClass;
-use diapason_commons::ErrorCategory;
+
+const NOTICE_OPERATION: &str = "rate_limit_notice";
 
 /// Request-local inputs for a bounded ACP rate-limit notification.
 pub(super) struct RateLimitNotice<'a> {
@@ -101,7 +102,10 @@ impl ZedAgent {
                 provider,
                 limits,
                 observed_epoch_seconds,
-            });
+                metric_sink,
+                provider_class,
+            })
+            .await;
         }
         let Some(update) = rate_limit_notice_update(provider, error, retry_delay) else {
             return;
@@ -127,7 +131,7 @@ impl ZedAgent {
             if let Err(error) = &result {
                 metric_sink
                     .record(ProviderMetricObservation::RateLimitNotificationFailure(
-                        ProviderMetricContext::rate_limit_notification_failure(provider_class),
+                        ProviderMetricContext::rate_limit_notification_failure(provider_class, NOTICE_OPERATION),
                     ))
                     .await;
                 // The transport error and the raw session id are both

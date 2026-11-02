@@ -79,6 +79,7 @@ pub(super) struct ProviderMetricContext {
     provider_class: ProviderClass,
     error_category: Option<ErrorCategory>,
     retry_disposition: Option<RetryDisposition>,
+    operation: Option<&'static str>,
 }
 
 impl ProviderMetricContext {
@@ -88,6 +89,7 @@ impl ProviderMetricContext {
             provider_class,
             error_category: None,
             retry_disposition: None,
+            operation: None,
         }
     }
 
@@ -102,15 +104,20 @@ impl ProviderMetricContext {
             provider_class,
             error_category: Some(error_category),
             retry_disposition: Some(retry_disposition),
+            operation: None,
         }
     }
 
-    pub(super) const fn rate_limit_notification_failure(provider_class: ProviderClass) -> Self {
+    pub(super) const fn rate_limit_notification_failure(
+        provider_class: ProviderClass,
+        operation: &'static str,
+    ) -> Self {
         Self {
             mode: None,
             provider_class,
             error_category: Some(ErrorCategory::ExecutionError),
             retry_disposition: None,
+            operation: Some(operation),
         }
     }
 
@@ -127,6 +134,9 @@ impl ProviderMetricContext {
         if let Some(retry_disposition) = self.retry_disposition {
             let _previous_retry_disposition =
                 tags.insert("retry_disposition".to_owned(), retry_disposition.as_str().to_owned());
+        }
+        if let Some(operation) = self.operation {
+            let _previous_operation = tags.insert("operation".to_owned(), operation.to_owned());
         }
         tags
     }
@@ -356,5 +366,17 @@ mod tests {
         assert_eq!(tags.get("error_category").map(String::as_str), Some("Rate limit exceeded"));
         assert_eq!(tags.get("retry_disposition").map(String::as_str), Some("partial_output_visible"));
         assert!(tags.iter().all(|(key, value)| !key.contains(marker) && !value.contains(marker)));
+    }
+
+    #[test]
+    fn notification_failure_tags_name_the_bounded_operation() {
+        let tags =
+            ProviderMetricContext::rate_limit_notification_failure(ProviderClass::Builtin, "rate_limit_snapshot")
+                .into_map();
+
+        assert_eq!(tags.len(), 3);
+        assert_eq!(tags.get("provider_class").map(String::as_str), Some("builtin"));
+        assert_eq!(tags.get("operation").map(String::as_str), Some("rate_limit_snapshot"));
+        assert_eq!(tags.get("error_category").map(String::as_str), Some("Execution failed"));
     }
 }

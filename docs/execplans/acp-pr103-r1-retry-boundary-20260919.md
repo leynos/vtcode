@@ -10,12 +10,13 @@ callers, while ACP uses explicit observation times.
 
 ## Status
 
-**IN PROGRESS** — implementation is authorized by the ACP hardening programme
-and root supervisory direction. The isolated branch is
+**COMPLETE** — implementation was authorized by the ACP hardening programme and
+root supervisory direction. The isolated branch was
 `review/acp-pr103-r1-retry-boundary-20260919`, based on
 `23f2f38ba0bc81cd8bd30f275bab6c02500eba2c`. Initial deterministic validation
-passed before commit `3886a272`; the shared serial gate runner owns validation
-of the current review repair.
+passed before commit `3886a272`. The milestone and its review repairs landed on
+the PR #103 rate-limit branch, where the shared serial gate runner passed
+format, lint, typecheck, and test gates.
 
 ## Conformance basis
 
@@ -154,8 +155,9 @@ would be a breaking change for downstream implementers.
   through all ACP handlers and convert it once inside the private Lody notice
   projection; the fixed-epoch transport regression now supplies
   `UNIX_EPOCH + Duration`.
-- Pending final-nit gates: Rust formatting, the 11 focused rate-limit
-  selectors, strict ACP Clippy, and plan spelling and Markdown checks.
+- Final-nit gates passed before the milestone landed: Rust formatting, the 11
+  focused rate-limit selectors, strict ACP Clippy, and plan spelling and
+  Markdown checks.
 
 ## A2 progress
 
@@ -174,9 +176,9 @@ would be a breaking change for downstream implementers.
   text, plus the trimmed and truncated `stop-count` fixture value. This does
   not claim that the intermittent full-suite failure is fixed or that the full
   suite has passed.
-- The A2 source is frozen pending the serial runner's feature-gated core test,
-  focused ACP regressions, strict Clippy, and documentation gates. No A2 gate
-  result is claimed in this plan yet.
+- The A2 source was frozen for the serial runner's feature-gated core test,
+  focused ACP regressions, strict Clippy, and documentation gates; those gates
+  passed for the landed candidate.
 
 ## A3 finite telemetry progress
 
@@ -192,9 +194,9 @@ would be a breaking change for downstream implementers.
   recorder before review.
 - Implementation now has private finite descriptors and a request-local sink,
   `ProviderRuntimeRegistry` classification, real buffered and streaming retry
-  consumers, and bounded rate-limit notice-failure recording. The source is
-  frozen pending manifest review and exclusive serial validation; no gate
-  result is claimed here.
+  consumers, and bounded rate-limit notice-failure recording. The source was
+  frozen for manifest review and exclusive serial validation, which later
+  passed for the landed candidate.
 - CodeScene review repair keeps the inherited
   `run_prompt_with_retry_observer` identity for the existing high-complexity
   prompt loop. Its reported complexity remains an additive telemetry delta, not
@@ -206,4 +208,4 @@ would be a breaking change for downstream implementers.
   into private named inputs, and records the closed six-event vocabulary via a
   single observation path. The buffered and streaming tests keep named metric
   witnesses for event order, bounded tags, privacy markers, and retry context.
-  Exclusive serial validation remains required after this repair.
+  Exclusive serial validation passed after this repair.

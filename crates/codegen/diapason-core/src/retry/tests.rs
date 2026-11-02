@@ -47,6 +47,20 @@ fn retry_after_header_overrides_backoff_delay_for_typed_and_wrapped_errors() {
 }
 
 #[test]
+fn compatibility_llm_decision_ignores_http_dates_but_keeps_relative_deltas() {
+    let policy = floor_policy();
+    let date = httpdate::fmt_http_date(SystemTime::UNIX_EPOCH + Duration::from_secs(3_600));
+
+    let with_date = policy.decision_for_llm_error(&rate_limit_error(Some(&date)), 0);
+    let with_delta = policy.decision_for_llm_error(&rate_limit_error(Some("7")), 0);
+
+    assert_eq!(with_date.retry_after, None);
+    assert_eq!(with_date.delay, Some(Duration::from_secs(1)));
+    assert_eq!(with_delta.retry_after, Some(Duration::from_secs(7)));
+    assert_eq!(with_delta.delay, Some(Duration::from_secs(7)));
+}
+
+#[test]
 fn retry_backoff_retains_floor_when_later_provider_error_omits_header() {
     let policy = floor_policy();
     let mut backoff = RetryBackoff::new();

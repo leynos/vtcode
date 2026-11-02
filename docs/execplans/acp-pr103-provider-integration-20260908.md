@@ -143,5 +143,8 @@ contracts.
 
 ## Outcome and retrospective
 
-Pending source composition and shared validation. No commit, push, comments, or
-hosted action has occurred from this integration worktree.
+Completed. The three frozen batches composed in the planned order (B1, Batch A,
+B2) and landed on the PR #103 rate-limit branch. The shared serial gate runner
+passed the repository's format, lint, typecheck, and test gates for that
+candidate, and the final review repair additionally made the clock-free retry
+adapters explicit about ignoring absolute `Retry-After` dates.
