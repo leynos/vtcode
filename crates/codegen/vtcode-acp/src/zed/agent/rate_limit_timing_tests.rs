@@ -2,7 +2,8 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
+use tokio::time::Instant;
 
 use async_trait::async_trait;
 use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};

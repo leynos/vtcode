@@ -243,20 +243,48 @@ struct RetryMetricWitness<'a> {
     retry_disposition: &'a str,
 }
 
+/// Whether `name` belongs to the provider retry metric family.
+fn is_provider_metric(name: &str) -> bool {
+    name.starts_with("vtcode.acp.provider_") || name == "vtcode.acp.rate_limit_notification_failure_total"
+}
+
+/// Whether `name` is one of the fixed prompt scheduling/completion metrics.
+fn is_prompt_metric(name: &str) -> bool {
+    matches!(
+        name,
+        "vtcode.acp.prompt_gate_queue_depth" | "vtcode.acp.prompt_gate_wait_ms" | "vtcode.acp.prompt_outcome_total"
+    )
+}
+
 impl<'a> RetryMetricWitness<'a> {
+    /// Asserts the provider metric subsequence and its bounded labels.
+    ///
+    /// A prompt turn also emits its own scheduling and outcome metrics through
+    /// the same sink, so the witness matches the provider events in order and
+    /// rejects any other event that is not a fixed prompt metric.
     fn assert_events(&self, events: &[TelemetryEvent]) {
-        let names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
+        assert!(
+            events
+                .iter()
+                .all(|event| is_provider_metric(&event.name) || is_prompt_metric(&event.name)),
+            "unexpected metric outside the provider and prompt vocabularies"
+        );
+        let provider_events = events
+            .iter()
+            .filter(|event| is_provider_metric(&event.name))
+            .collect::<Vec<_>>();
+        let names = provider_events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
         assert_eq!(names.as_slice(), self.expected_names);
-        assert!(events.iter().all(|event| {
+        assert!(provider_events.iter().all(|event| {
             event.tags.iter().all(|(key, value)| {
                 (!self.forbid_marker_in_tag_keys || !key.contains(self.forbidden_marker))
                     && !value.contains(self.forbidden_marker)
             })
         }));
-        assert_eq!(events[0].tags.get("mode").map(String::as_str), Some(self.mode));
-        assert_eq!(events[0].tags.get("provider_class").map(String::as_str), Some(self.provider_class));
-        assert_eq!(events[1].tags.get("error_category").map(String::as_str), Some(self.error_category));
-        assert_eq!(events[1].tags.get("retry_disposition").map(String::as_str), Some(self.retry_disposition));
+        assert_eq!(provider_events[0].tags.get("mode").map(String::as_str), Some(self.mode));
+        assert_eq!(provider_events[0].tags.get("provider_class").map(String::as_str), Some(self.provider_class));
+        assert_eq!(provider_events[1].tags.get("error_category").map(String::as_str), Some(self.error_category));
+        assert_eq!(provider_events[1].tags.get("retry_disposition").map(String::as_str), Some(self.retry_disposition));
     }
 }
 
@@ -403,5 +431,26 @@ async fn streaming_retry_records_bounded_perf_metrics() {
         retry_disposition: "retry_scheduled",
     }
     .assert_events(&events);
+    // Prompt scheduling is measured before the turn and its outcome after it,
+    // so a stalled gate and the client-visible result are both observable.
+    let all_names = events.iter().map(|event| event.name.as_str()).collect::<Vec<_>>();
+    assert_eq!(
+        all_names.first().copied(),
+        Some("vtcode.acp.prompt_gate_queue_depth"),
+        "gate depth must be recorded at acquisition"
+    );
+    assert_eq!(all_names.get(1).copied(), Some("vtcode.acp.prompt_gate_wait_ms"));
+    assert_eq!(
+        all_names.last().copied(),
+        Some("vtcode.acp.prompt_outcome_total"),
+        "every prompt records exactly one trailing outcome"
+    );
+    assert_eq!(
+        all_names
+            .iter()
+            .filter(|name| **name == "vtcode.acp.prompt_outcome_total")
+            .count(),
+        1
+    );
     assert!(recorder.drain().await.is_empty());
 }
