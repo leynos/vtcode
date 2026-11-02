@@ -24,7 +24,6 @@ fn skip_serializing_custom_provider_api_format(api_format: &CustomProviderApiFor
     api_format.is_auto()
 }
 
-
 /// Typed API format used by custom providers.
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]

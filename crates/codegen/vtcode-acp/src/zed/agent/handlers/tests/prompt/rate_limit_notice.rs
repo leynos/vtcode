@@ -3,6 +3,26 @@
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 
+/// Build the wire-test provider policy with a short retry floor.
+///
+/// The configured initial backoff is a floor alongside the provider's
+/// `Retry-After`, so the default ten-second backoff would dominate the
+/// fixture's half-second hint. Aligning the configured floor with the hint
+/// keeps the scheduled retry observable within the test's timeout.
+fn wire_test_provider() -> CustomProviderConfig {
+    CustomProviderConfig {
+        name: "wire-test".to_string(),
+        request_policy: CustomProviderRequestPolicyConfig {
+            max_retries: 2,
+            retry_initial_backoff_ms: 500,
+            retry_max_backoff_ms: 500,
+            retry_jitter: false,
+            ..CustomProviderRequestPolicyConfig::default()
+        },
+        ..CustomProviderConfig::default()
+    }
+}
+
 /// Drive one prompt through a duplex ACP connection and return every session
 /// update the client received.
 async fn prompt_updates(factory: Arc<PromptProviderFactory>) -> Vec<serde_json::Value> {
@@ -12,7 +32,7 @@ async fn prompt_updates(factory: Arc<PromptProviderFactory>) -> Vec<serde_json::
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
     let _factory_guard = PromptProviderFactoryGuard::install("wire-test", factory);
     let workspace = TempDir::new().expect("wire test workspace");
-    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let agent = Arc::new(build_wire_test_agent_with_providers(workspace.path(), &[wire_test_provider()]).await);
     let (agent_channel, client_channel) = Channel::duplex();
     let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
 

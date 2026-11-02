@@ -11,6 +11,7 @@ mod lody_nested_management;
 mod lody_support;
 mod prompt;
 mod provider;
+mod provider_transport;
 mod session;
 mod session_prompt_race;
 mod tools;

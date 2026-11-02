@@ -191,6 +191,20 @@ mod tests {
     use super::*;
     use vtcode_core::llm::provider::LLMErrorMetadata;
 
+    /// Assert the notice envelope carries the expected update kind, level, and source.
+    fn assert_notice_envelope(value: &Value, level: &str, source: &str) {
+        assert_eq!(value["sessionUpdate"], "session_info_update");
+        assert_eq!(value["_meta"]["lody"]["notice"]["level"], level);
+        assert_eq!(value["_meta"]["lody"]["notice"]["source"], source);
+    }
+
+    /// Assert every fragment appears in `message`.
+    fn assert_contains_all(message: &str, fragments: &[&str]) {
+        for fragment in fragments {
+            assert!(message.contains(fragment), "expected {fragment:?} in {message:?}");
+        }
+    }
+
     /// Assert retry metadata is reported without inventing a quota window.
     #[test]
     fn rate_limit_notice_preserves_retry_after_without_fabricating_a_window() {
@@ -209,13 +223,9 @@ mod tests {
             rate_limit_notice_update("baseten", &error, Some(Duration::from_secs(20))).expect("rate-limit notice");
         let value = serde_json::to_value(update).expect("notice JSON");
 
-        assert_eq!(value["sessionUpdate"], "session_info_update");
-        assert_eq!(value["_meta"]["lody"]["notice"]["level"], "warning");
-        assert_eq!(value["_meta"]["lody"]["notice"]["source"], "provider_rate_limit");
+        assert_notice_envelope(&value, "warning", "provider_rate_limit");
         let message = value["_meta"]["lody"]["notice"]["message"].as_str().expect("notice message");
-        assert!(message.contains("HTTP 429"));
-        assert!(message.contains("Retry-After: 17"));
-        assert!(message.contains("retry in 20.0s"));
+        assert_contains_all(message, &["HTTP 429", "Retry-After: 17", "retry in 20.0s"]);
         assert!(value["_meta"]["lody"].get("rateLimits").is_none());
     }
 
@@ -227,11 +237,12 @@ mod tests {
         let value = serde_json::to_value(update).expect("notice JSON");
         let message = value["_meta"]["lody"]["notice"]["message"].as_str().expect("notice message");
 
-        assert_eq!(value["_meta"]["lody"]["notice"]["source"], "provider_rate_limit");
-        assert!(message.contains("rate limit"));
-        assert!(!message.contains("HTTP"), "a missing status must not be reported as HTTP 429: {message}");
-        assert!(!message.contains("Retry-After"));
-        assert!(message.contains("no further automatic retry is scheduled"));
+        assert_notice_envelope(&value, "warning", "provider_rate_limit");
+        assert_contains_all(message, &["rate limit", "no further automatic retry is scheduled"]);
+        assert!(
+            !message.contains("HTTP") && !message.contains("Retry-After"),
+            "a missing status must not be reported as HTTP 429 or Retry-After: {message}"
+        );
     }
 
     /// Assert a missing HTTP status is not reported as a 429.
@@ -287,10 +298,15 @@ mod tests {
             tokens_remaining_per_minute: Some(1_000),
             ..Default::default()
         }));
-        assert!(message.contains("request limit/min: 60"));
-        assert!(message.contains("requests remaining/min: 0"));
-        assert!(message.contains("token limit/min: 100000"));
-        assert!(message.contains("tokens remaining/min: 1000"));
+        assert_contains_all(
+            &message,
+            &[
+                "request limit/min: 60",
+                "requests remaining/min: 0",
+                "token limit/min: 100000",
+                "tokens remaining/min: 1000",
+            ],
+        );
         assert!(!message.contains("limit/s:"));
     }
 
@@ -304,11 +320,16 @@ mod tests {
             cached_prompt_tokens: Some(40),
             ..Default::default()
         }));
-        assert!(message.contains("prompt token limit/s: 500"));
-        assert!(message.contains("cache-adjusted prompt token limit/s: 250"));
-        assert!(message.contains("generated token limit/s: 50"));
-        assert!(message.contains("request prompt tokens: 101"));
-        assert!(message.contains("request cached prompt tokens: 40"));
+        assert_contains_all(
+            &message,
+            &[
+                "prompt token limit/s: 500",
+                "cache-adjusted prompt token limit/s: 250",
+                "generated token limit/s: 50",
+                "request prompt tokens: 101",
+                "request cached prompt tokens: 40",
+            ],
+        );
         assert!(!message.contains("/min:"));
     }
 

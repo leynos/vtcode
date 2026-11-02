@@ -188,7 +188,7 @@ pub(super) struct IncompleteProviderTurn {
 }
 
 impl IncompleteProviderTurn {
-/// Build an incomplete-turn message, visible notice, and response from a failure.
+    /// Build an incomplete-turn message, visible notice, and response from a failure.
     pub(super) fn from_failure(content: &str, reasoning: &str, error: SafeProviderProjection) -> Self {
         let error_detail = error.client_message();
         let notice = format!("The provider could not complete this turn. You can retry the prompt.\n\n{error_detail}");

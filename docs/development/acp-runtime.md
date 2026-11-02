@@ -344,12 +344,12 @@ Provider retry orchestration reports attempt failures through the narrow
 generation path constructs a `RateLimitNoticeSink`, the ACP adapter that
 implements the port, and attaches it to the `RetryRequest` that
 `generate_with_retry` consumes; the streaming path calls
-`publish_rate_limit_notice_with_context` directly. The adapter
-turns a classified retryable or terminal rate limit into a session-info notice
-carrying `_meta.lody.notice`, reporting only the status, `Retry-After` value,
-and scheduled delay the provider actually supplied. It is a presentation
-adapter, not the JSON-RPC transport: it neither retries the request nor changes
-retry policy.
+`publish_rate_limit_notice_with_context` directly. The adapter turns a
+classified retryable or terminal rate limit into a session-info notice carrying
+`_meta.lody.notice`, reporting only the status, `Retry-After` value, and
+scheduled delay the provider actually supplied. It is a presentation adapter,
+not the JSON-RPC transport: it neither retries the request nor changes retry
+policy.
 
 `publish_lody_usage` emits the `_lody/session/usage_update` extension
 notification for each provider response. It resolves the effective model first:
