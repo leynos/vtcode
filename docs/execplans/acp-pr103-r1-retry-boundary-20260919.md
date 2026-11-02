@@ -220,18 +220,26 @@ selectors.
   already introduced the `AttemptFailureSink` port, the `GenerationFailure`
   input, and the `RateLimitNotice`/`ObservedRateLimitNotice` split, so the
   rebase keeps the parent's port and threads this branch's observation instant
-  and metric sink through it rather than restoring the earlier
-  `notice_target` tuple.
+  and metric sink through it rather than restoring the earlier `notice_target`
+  tuple.
 - `RetryRequest` now carries `failure_sink: Option<&dyn AttemptFailureSink>`
   and is built with `with_failure_sink`; the retry loop announces failures
   through `AttemptFailureSink::announce(AttemptFailure { .. })`. The
   intermediate `RetryFailureNotice`/`publish_retry_notice` pair was dropped
   because the port already owns notice construction.
 - The parent's `rate_limit_metadata` shape (outer "is a rate limit", inner
-  optional metadata) and its status-aware notice text are preserved, so a
-  rate limit without a status still publishes a notice without claiming
-  HTTP 429. The parent's `redact_detail` helper is not needed here: this
-  branch's operator logs carry only closed categories and attempt counters.
+  optional metadata) and its status-aware notice text are preserved, so a rate
+  limit without a status still publishes a notice without claiming HTTP 429.
+  The parent's `redact_detail` helper is not needed here: this branch's
+  operator logs carry only closed categories and attempt counters.
 - `record_stream_attempt` keeps the parent's `status` parameter, and
   `publish_lody_rate_limits_at` keeps the parent's metric sink and provider
   class so snapshot delivery failures stay attributed.
+- The inherited streaming notice regression asserted the parent's delay
+  contract, where a provider `Retry-After` replaced the local backoff. This
+  branch treats both the provider hint and the configured initial backoff as
+  floors, so the default ten-second backoff dominated the fixture's half-second
+  hint and the retry outlived the test's five-second timeout. The regression
+  now registers the wire-test provider with a half-second request policy, which
+  keeps the scheduled delay equal to the provider hint and preserves the
+  assertion that the notice advertises the delay actually scheduled.
