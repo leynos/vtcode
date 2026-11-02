@@ -1322,3 +1322,30 @@ pty 8 passed, pipe 10 passed, inline_events 49 passed, 2723 filtered),
 `make check-ast-grep` EXIT=0, and `make advisory` EXIT=0. Long elapsed times
 reflect a saturated shared compiler-admission pool (about 50 concurrent peer
 sessions), not retries.
+
+### Revision note (2026-11-02, r17 restack onto the advanced base)
+
+The base advanced from `114ed96e9` to `f837738e3` after r16 was published, so
+the branch was replayed onto the new base. Recovery refs: old head
+`refs/recovery/r16-pre-restack2` (`6df4620f5`), old base
+`refs/recovery/r16-base2`, target `refs/recovery/r16-target2`.
+
+Resolution decisions:
+
+- `session_state/archive.rs` and `session_state_tests.rs`: kept the target side,
+  which already contains a superset of the r16 lease-release and `VTCodeConfig`
+  import changes, so replaying them would duplicate work.
+- `handlers/tests/session.rs`: the replay's commit had moved the
+  concurrent-prompt test into `session_prompt_race.rs`, so the block was
+  deleted from `session.rs`. The three target-added guard lines
+  (`lock_history_test_guard`, temporary session archive `TempDir`, and
+  `EnvGuard` for `SESSION_DIR_ENV`) were re-applied to the moved test so the
+  target's isolation intent survives the move.
+- `docs/users-guide.md` and `docs/developers-guide.md`: both sides added an
+  independent section on an empty base; both sections are kept.
+
+`git range-diff 114ed96e9..6df4620f5 f837738e3..628387243` shows only the two
+expected differences: the archive/import hunks that the new base already
+carries, and the re-arranged test move. New head: `628387243`.
+`cargo check --locked -p vtcode-acp -p vtcode-core --all-targets --all-features`
+reports EXIT=0 on the rebased tree.
