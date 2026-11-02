@@ -25,4 +25,7 @@ resources/logo/vtcode_logo.png=1_200_000
 
 # Generated field reference: `make fmt` (mdtablefix) pads its 900-row table
 # to the widest cell, which multiplies the file size; the content is unchanged.
-docs/config/CONFIG_FIELD_REFERENCE.md=1_000_000
+# The widest cell is the full JSON default of `permissions.auto.block_rules`
+# (1111 bytes), so the padded table measures 1_688_237 bytes. The ceiling is a
+# cap, not an exemption: a further widening still fails the invariant.
+docs/config/CONFIG_FIELD_REFERENCE.md=1_800_000
