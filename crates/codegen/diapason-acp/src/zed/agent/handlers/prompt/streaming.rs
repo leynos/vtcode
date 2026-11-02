@@ -274,7 +274,7 @@ async fn start_provider_stream(request: StreamStartRequest<'_>) -> Result<LLMStr
     let next_deadline = deadlines.next();
     let stream_result = tokio::select! {
         () = turn.session.cancellation.cancelled() => {
-            record_stream_attempt(span, started_at, "cancelled");
+            record_stream_attempt(span, started_at, "cancelled", None);
             return Err(StreamStartError::Cancelled);
         }
         phase = sleep_until_stream_deadline(next_deadline) => {
@@ -297,6 +297,7 @@ fn stream_attempt_span(provider_runtime: &ProviderRequestRuntime, attempt_index:
         provider_class = provider_runtime.provider_class().as_str(),
         attempt = attempt_index,
         outcome = tracing::field::Empty,
+        status = tracing::field::Empty,
         elapsed_ms = tracing::field::Empty,
     )
 }
@@ -336,7 +337,12 @@ async fn collect_streaming_attempt(request: StreamAttemptRequest<'_>) -> Result<
         Ok(stream) => stream,
         Err(StreamStartError::Cancelled) => return Ok(StreamAttemptOutcome::Cancelled),
         Err(StreamStartError::Failed(error)) => {
-            record_stream_attempt(&span, started_at, "failure");
+            record_stream_attempt(
+                &span,
+                started_at,
+                "failure",
+                SafeProviderProjection::from_llm_error(&error).status(),
+            );
             return Ok(classify_stream_failure(StreamFailureRequest {
                 turn,
                 telemetry: &mut telemetry,

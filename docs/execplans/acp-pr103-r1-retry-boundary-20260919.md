@@ -141,9 +141,12 @@ test-harness scope expansion rather than introducing global mutable time.
 
 ## Outcomes and retrospective
 
-Implementation is awaiting shared-runner evidence. The explicit-time trait
-methods are defaulted because a required method on the public extension trait
-would be a breaking change for downstream implementers.
+Implementation is complete. The explicit-time trait methods are defaulted
+because a required method on the public extension trait would be a breaking
+change for downstream implementers. Verified on head `ca4eff5bf` by
+`make check-fmt`, `make lint`, `make typecheck`, and `make test` (10622 passed,
+24 skipped), together with the focused ACP rate-limit and retry-boundary
+selectors.
 
 ## A1 progress
 

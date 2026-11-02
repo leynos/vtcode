@@ -13,7 +13,7 @@ pub(super) async fn collect_stream_events(
     loop {
         match poll_next_stream_event(stream, &request).await {
             StreamPollOutcome::Cancelled => {
-                record_stream_attempt(request.span, request.started_at, "cancelled");
+                record_stream_attempt(request.span, request.started_at, "cancelled", None);
                 return StreamAttemptOutcome::Cancelled;
             }
             StreamPollOutcome::Deadline(phase) => {
@@ -62,7 +62,12 @@ async fn classify_stream_poll_failure(
     request: &mut StreamCollectionRequest<'_>,
     error: LLMError,
 ) -> StreamAttemptOutcome {
-    record_stream_attempt(request.span, request.started_at, "failure");
+    record_stream_attempt(
+        request.span,
+        request.started_at,
+        "failure",
+        SafeProviderProjection::from_llm_error(&error).status(),
+    );
     classify_stream_failure(StreamFailureRequest {
         turn: request.turn,
         telemetry: &mut *request.telemetry,
@@ -117,7 +122,7 @@ async fn complete_stream_response(
     request: &mut StreamCollectionRequest<'_>,
     response: LLMResponse,
 ) -> StreamAttemptOutcome {
-    record_stream_attempt(request.span, request.started_at, "completion");
+    record_stream_attempt(request.span, request.started_at, "completion", None);
     if request.telemetry.first_output_at.is_none() {
         observe_response_output(request, &response);
     }
