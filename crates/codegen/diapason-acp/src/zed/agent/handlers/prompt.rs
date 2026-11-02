@@ -371,7 +371,6 @@ impl PromptExecution {
     }
 }
 
-
 /// Build an internal error naming the session operation that failed.
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
     SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
