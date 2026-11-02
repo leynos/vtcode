@@ -342,8 +342,9 @@ SHA-256 digest, never the raw session identifier.
 Provider retry orchestration reports attempt failures through the narrow
 `AttemptFailureSink` port rather than through ACP types. The buffered
 generation path constructs a `RateLimitNoticeSink`, the ACP adapter that
-implements the port, and passes it into `generate_with_retry`; the streaming
-path calls the same `publish_rate_limit_notice` helper directly. The adapter
+implements the port, and attaches it to the `RetryRequest` that
+`generate_with_retry` consumes; the streaming path calls
+`publish_rate_limit_notice_with_context` directly. The adapter
 turns a classified retryable or terminal rate limit into a session-info notice
 carrying `_meta.lody.notice`, reporting only the status, `Retry-After` value,
 and scheduled delay the provider actually supplied. It is a presentation
