@@ -296,20 +296,19 @@ impl ToolRegistry {
     /// This stays synchronous so the decision payload does not enlarge the
     /// async state machine of the command executor.
     fn enforce_exec_command_policy(&self, prepared_command: &PreparedExecCommand) -> Result<()> {
-        let requested_program = prepared_command
-            .requested_command
-            .first()
-            .map(String::as_str)
-            .unwrap_or_default();
+        // The first argv element may be an environment assignment whose value
+        // is a secret, so the diagnostic name comes from the shared helper.
+        let requested_program =
+            crate::tools::command_args::diagnostic_program_name_from_words(&prepared_command.requested_command);
         let requested_decision = self.inventory.command_policy_decision(&prepared_command.requested_command);
-        if let Some(message) = requested_decision.denial_message(requested_program) {
+        if let Some(message) = requested_decision.denial_message(&requested_program) {
             return Err(anyhow!("{message}"));
         }
         if let Some(source) = prepared_command.executed_shell_source.as_deref() {
             let joined_requested = prepared_command.requested_command.join(" ");
             if source.trim() != joined_requested.trim() {
                 let source_decision = self.inventory.command_policy_decision_text(source);
-                if let Some(message) = source_decision.denial_message(requested_program) {
+                if let Some(message) = source_decision.denial_message(&requested_program) {
                     return Err(anyhow!("{message}"));
                 }
             }
