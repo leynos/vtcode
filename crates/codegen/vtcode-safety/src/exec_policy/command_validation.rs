@@ -1215,13 +1215,17 @@ mod tests {
 
     #[tokio::test]
     async fn validate_command_allows_only_exact_gh_version_queries() {
-        let workspace = tempdir().unwrap();
+        let workspace = tempdir().expect("workspace tempdir");
         let root = workspace.path();
 
         for query in ["--version", "version"] {
             let command = vec!["gh".to_owned(), query.to_owned()];
-            validate_command(&command, root, root, false).await.unwrap();
-            validate_command(&command, root, root, true).await.unwrap();
+            validate_command(&command, root, root, false)
+                .await
+                .unwrap_or_else(|error| panic!("{command:?} must be allowed (confirm=false): {error}"));
+            validate_command(&command, root, root, true)
+                .await
+                .unwrap_or_else(|error| panic!("{command:?} must be allowed (confirm=true): {error}"));
         }
 
         let rejected: [&[&str]; 7] = [
