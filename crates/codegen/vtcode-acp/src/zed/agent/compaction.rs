@@ -18,8 +18,10 @@ use vtcode_core::exec::events::{CompactionMode, CompactionTrigger};
 use vtcode_core::llm::provider::{LLMProvider, ToolDefinition};
 
 mod failure;
+mod outcome;
 mod plan;
 use failure::{CompactionFailure, classify};
+use outcome::compaction_outcome_label;
 pub(super) use plan::{
     CompactionAttempt, CompactionCommit, CompactionDecision, CompactionRun, CompactionSessionSnapshot,
     estimated_prompt_tokens,
@@ -140,13 +142,7 @@ impl ZedAgent {
         // Clients only ever see this closed-set category; the originating
         // error is detailed through the redacted debug helper below.
         let failure_category = compaction_result.as_ref().err().map(|error| classify(error).category());
-        let outcome = if failure_category.is_some() {
-            "failed"
-        } else if compacted {
-            "compacted"
-        } else {
-            "no_change"
-        };
+        let outcome = compaction_outcome_label(failure_category.is_some(), compacted);
         let finished_at = std::time::Instant::now();
         let elapsed_ms = activity.elapsed_millis(finished_at);
         let _ = span.record("outcome", outcome);

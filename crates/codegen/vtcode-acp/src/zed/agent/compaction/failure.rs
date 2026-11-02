@@ -51,13 +51,33 @@ pub(super) struct CompactionFailure {
     /// module controls, never from a provider or filesystem error.
     message: Cow<'static, str>,
     /// Untrusted detail, emitted only through the redacted debug helper.
-    detail: Option<String>,
+    detail: Option<CompactionDetail>,
 }
+
+/// Untrusted operator-facing detail carried as an error source.
+///
+/// [`CompactionFailure`] deliberately keeps this out of its client-safe
+/// `Display`, but exposing it through [`std::error::Error::source`] lets the
+/// redacted debug helper render it with `{:#}`.
+#[derive(Debug)]
+struct CompactionDetail(String);
+
+impl fmt::Display for CompactionDetail {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for CompactionDetail {}
 
 impl CompactionFailure {
     /// Assemble a failure from its category, client-safe message and detail.
     fn new(kind: CompactionFailureKind, message: impl Into<Cow<'static, str>>, detail: Option<String>) -> Self {
-        Self { kind, message: message.into(), detail }
+        Self {
+            kind,
+            message: message.into(),
+            detail: detail.map(CompactionDetail),
+        }
     }
 
     /// Create a failure for a session cancelled during compaction.
@@ -116,7 +136,13 @@ impl fmt::Display for CompactionFailure {
     }
 }
 
-impl std::error::Error for CompactionFailure {}
+impl std::error::Error for CompactionFailure {
+    /// Surface untrusted detail to the `{:#}` chain without widening the
+    /// client-facing `Display`.
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.detail.as_ref().map(|detail| detail as &(dyn std::error::Error + 'static))
+    }
+}
 
 /// Classify a compaction pipeline error into its closed-set category.
 ///
@@ -178,5 +204,20 @@ mod tests {
         assert_eq!(message, "ACP automatic context compaction failed");
         assert!(!message.contains("/secret"), "detail must stay out of the client message");
         assert_eq!(failure.kind().category(), "provider");
+    }
+
+    /// Assert the detail reaches the `{:#}` error chain the redacted debug
+    /// helper renders, while `Display` stays client-safe.
+    #[test]
+    fn error_chain_exposes_untrusted_detail_to_operators() {
+        let failure = CompactionFailure::provider_detail("/secret/workspace/archive.json failed");
+        let client_message = failure.to_string();
+        let operator_chain = format!("{:#}", failure.into_error());
+
+        assert_eq!(client_message, "ACP automatic context compaction failed");
+        assert!(
+            operator_chain.contains("/secret/workspace/archive.json"),
+            "operator chain must carry the detail, got {operator_chain}"
+        );
     }
 }
