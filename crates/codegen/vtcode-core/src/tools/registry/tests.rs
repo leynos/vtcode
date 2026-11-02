@@ -52,7 +52,11 @@ fn command_session_fixture_commands_config() -> CommandsConfig {
     config.allow_regex = vec![
         r"^cat$".to_owned(),
         r"^sleep 0\.4 && printf second && sleep 0\.4 && printf third && sleep 0\.4 && printf done$".to_owned(),
+        // The configured policy checks both the normalized argv and the raw
+        // shell source that actually runs. The source quotes the argument that
+        // contains a space, so it is allow-listed in that form as well.
         r"^/bin/sh -lc printf vtcode-terminal$".to_owned(),
+        r"^/bin/sh -lc 'printf vtcode-terminal'$".to_owned(),
     ];
     config
 }
