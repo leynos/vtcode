@@ -417,6 +417,36 @@ Common cases:
 
 ## Runtime behaviour
 
+### Prompt serialization, steering, and cancellation
+
+Zed sends a follow-up `session/prompt` to steer a turn that is still running.
+VT Code serializes prompts per session: the active turn finishes before a
+queued steer starts, so a steer never races the turn it was sent to and each
+prompt receives its own response. Steers are queued, not rejected, so a client
+may send several while a long turn runs.
+
+Cancellation is scoped to the turn that was active when `session/cancel`
+arrived. A steer queued before the cancel still runs as a fresh turn, and the
+cancellation flag is cleared only after the previous turn has fully completed.
+
+Every cancelled turn answers with the ACP `cancelled` stop reason, including
+when the provider fails after the cancel was observed. Assistant text the
+client already saw is not sent twice: a buffered draft is published once when
+the turn is finalized, streamed text is left alone, and either draft is
+appended to durable session history so the transcript matches the client. If a
+turn that was not cancelled would finish without assistant content, VT Code
+returns an internal error with reason `empty_response` instead of a silent
+`end_turn`; tool execution that fails before producing results reports reason
+`tool_execution_failed`.
+
+Prompt scheduling and completion emit bounded metrics with fixed labels:
+`vtcode.acp.prompt_gate_queue_depth` and `vtcode.acp.prompt_gate_wait_ms` for
+the per-session queue, and `vtcode.acp.prompt_outcome_total` tagged with
+`mode` (`buffered` or `stream`) and `outcome` (`end_turn`, `max_tokens`,
+`max_turn_requests`, `refusal`, `cancelled`, `empty_response`,
+`tool_execution_failed`, or `failed`). No prompt text or provider diagnostics
+are attached.
+
 ### Storage boundaries
 
 ACP continuity uses three independent stores:

@@ -10,13 +10,19 @@ mod cancelled;
 mod finish;
 #[cfg(test)]
 mod flush_tests;
+#[cfg(test)]
+mod gate_clock_tests;
 mod input;
 mod lifecycle;
 mod output;
+#[cfg(test)]
+mod prompt_outcome_tests;
 mod provider_context;
 mod streaming;
 
 pub(super) use buffered::response_reasoning_update;
+#[cfg(test)]
+pub(crate) use cancelled::commit_cancelled_draft_for_test;
 pub(super) use cancelled::{finish_cancelled_output, finish_failed_or_cancelled_output};
 pub(super) use finish::{
     finish_failed_output, finish_failed_provider_turn, persist_session_checkpoint, require_session_checkpoint,
@@ -28,6 +34,7 @@ pub(super) struct TurnGuard {
 }
 
 impl TurnGuard {
+    /// Starts the turn guard that rejects a concurrent turn on the thread.
     pub(super) fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
         let _submission_id = thread.begin_turn().map_err(|error| {
             warn!(thread_id = %thread.thread_id(), prompt_outcome = "turn_in_progress_rejected", "Rejected concurrent ACP prompt");
@@ -53,6 +60,7 @@ pub(super) struct PromptToolState {
 }
 
 impl PromptToolState {
+    /// Builds the per-turn tool state before provider capabilities are known.
     pub(super) fn new(enabled_tools: Vec<SupportedTool>, primary_agent: String, provider_supports_tools: bool) -> Self {
         Self {
             enabled_tools,
@@ -64,6 +72,8 @@ impl PromptToolState {
         }
     }
 
+    /// Re-reads session configuration and refreshes tool availability after
+    /// a tool round or provider switch.
     pub(super) fn refresh_availability(
         &mut self,
         agent: &ZedAgent,
@@ -154,6 +164,11 @@ pub(super) struct PromptExecution {
     stop_hook_checked: bool,
 }
 
+/// Executes one provider-requested tool round and commits its recovery data.
+///
+/// A cancellation observed before or after execution returns
+/// [`ToolRoundOutcome::Cancelled`]; any other failure becomes the sanitized
+/// `tool_execution_failed` error.
 pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<ToolRoundOutcome, SdkError> {
     let ToolRoundRequest {
         agent,
@@ -214,6 +229,7 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     })
 }
 
+/// Resolves provider runtime, tool state and streaming policy for a prompt.
 async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {
     let provider = provider_context::create_prompt_provider_context(&input)?;
     let tool_state = provider_context::initialize_prompt_tool_state(&input, &provider).await?;
@@ -254,23 +270,37 @@ pub(super) struct PromptProviderContext {
     supports_tools: bool,
 }
 
-pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
-    run_prompt_with_retry_observer(agent, args, SystemTime::now, ProviderMetricSink::production()).await
+/// Milliseconds between two samples of the prompt-gate clock.
+///
+/// Saturates instead of wrapping so a pathological wait stays observable.
+fn gate_wait_ms(started: Instant, finished: Instant) -> u64 {
+    u64::try_from(finished.saturating_duration_since(started).as_millis()).unwrap_or(u64::MAX)
 }
 
+/// Runs a prompt with production clocks and metrics.
+pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
+    run_prompt_with_retry_observer(agent, args, SystemTime::now, Instant::now, ProviderMetricSink::production()).await
+}
+
+/// Test entry point that substitutes the provider metric sink.
 #[cfg(test)]
 pub(super) async fn run_prompt_with_metric_sink(
     agent: Arc<ZedAgent>,
     args: PromptRequest,
     metric_sink: ProviderMetricSink,
 ) -> Result<PromptResponse, SdkError> {
-    run_prompt_with_retry_observer(agent, args, SystemTime::now, metric_sink).await
+    run_prompt_with_retry_observer(agent, args, SystemTime::now, Instant::now, metric_sink).await
 }
 
+/// Prepares a prompt and runs its provider turn behind the per-session gate.
+///
+/// `retry_observed_at` supplies provider retry timestamps and `gate_clock`
+/// samples gate-queue waits, so tests can make both deterministic.
 pub(super) async fn run_prompt_with_retry_observer(
     agent: Arc<ZedAgent>,
     args: PromptRequest,
     retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
+    gate_clock: impl Fn() -> Instant + Send + Sync,
     metric_sink: ProviderMetricSink,
 ) -> Result<PromptResponse, SdkError> {
     let session = agent
@@ -287,7 +317,7 @@ pub(super) async fn run_prompt_with_retry_observer(
     // alongside the wait keeps a stalled turn visible without capping steers,
     // which ACP deliberately allows.
     let queued_prompts = session.admitted_prompt_count().saturating_sub(1);
-    let gate_wait_started = Instant::now();
+    let gate_wait_started = gate_clock();
     if queued_prompts > 0 {
         // Emit before waiting: a turn stalled on the gate must be visible
         // while it is stalled, not only once it finally runs.
@@ -298,10 +328,17 @@ pub(super) async fn run_prompt_with_retry_observer(
         );
     }
     let _prompt_gate = session.acquire_prompt_gate().await;
+    let wait_ms = gate_wait_ms(gate_wait_started, gate_clock());
+    metric_sink
+        .record_prompt(PromptMetricObservation::GateQueueDepth { depth: queued_prompts })
+        .await;
+    metric_sink
+        .record_prompt(PromptMetricObservation::GateWait { duration: Duration::from_millis(wait_ms) })
+        .await;
     debug!(
         session_id = %args.session_id,
         queued_prompts,
-        wait_ms = u64::try_from(gate_wait_started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        wait_ms,
         "Acquired ACP prompt gate"
     );
     // Clear cancellation only once the previous turn has fully completed. A
@@ -322,7 +359,29 @@ pub(super) async fn run_prompt_with_retry_observer(
 }
 
 impl PromptExecution {
-    async fn run(
+    /// Executes the provider turn and records its bounded outcome.
+    ///
+    /// Every exit path, including preparation failures, is counted once so the
+    /// outcome series never disagrees with the prompt responses clients saw.
+    async fn run(self, retry_observed_at: &provider::RetryObservationClock<'_>) -> Result<PromptResponse, SdkError> {
+        let metric_sink = self.metric_sink.clone();
+        let mode = if self.allow_streaming {
+            ProviderMode::Stream
+        } else {
+            ProviderMode::Buffered
+        };
+        let result = self.run_turn(retry_observed_at).await;
+        metric_sink
+            .record_prompt(PromptMetricObservation::Outcome { mode, outcome: prompt_outcome(&result) })
+            .await;
+        result
+    }
+
+    /// Drives one provider turn and finalizes its outcome.
+    ///
+    /// Cancellation is re-checked after the last await so a cancel that lands
+    /// during finalization still answers `Cancelled`.
+    async fn run_turn(
         mut self,
         retry_observed_at: &provider::RetryObservationClock<'_>,
     ) -> Result<PromptResponse, SdkError> {
@@ -349,6 +408,34 @@ impl PromptExecution {
         result
     }
 }
+/// Classifies a finished prompt into the closed outcome vocabulary.
+///
+/// The two sanitized failure reasons ACP produces itself are reported
+/// separately; every other error collapses to `failed`.
+fn prompt_outcome(result: &Result<PromptResponse, SdkError>) -> PromptOutcome {
+    match result {
+        Ok(response) => match response.stop_reason {
+            acp::StopReason::EndTurn => PromptOutcome::EndTurn,
+            acp::StopReason::MaxTokens => PromptOutcome::MaxTokens,
+            acp::StopReason::MaxTurnRequests => PromptOutcome::MaxTurnRequests,
+            acp::StopReason::Refusal => PromptOutcome::Refusal,
+            acp::StopReason::Cancelled => PromptOutcome::Cancelled,
+            _ => PromptOutcome::Failed,
+        },
+        Err(error) => match error
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("empty_response") => PromptOutcome::EmptyResponse,
+            Some("tool_execution_failed") => PromptOutcome::ToolExecutionFailed,
+            _ => PromptOutcome::Failed,
+        },
+    }
+}
+
+/// Builds the sanitized internal error for a session-state access failure.
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
     SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
 }
@@ -372,6 +459,8 @@ pub(super) fn tool_execution_failed_error() -> SdkError {
     }))
 }
 
+/// Appends a message to durable session history, mapping storage errors to a
+/// sanitized session-access failure.
 pub(super) fn push_session_message(
     agent: &ZedAgent,
     session: &SessionHandle,
@@ -389,6 +478,8 @@ pub(super) fn should_allow_streaming(supports_streaming: bool, _tools_allowed: b
     supports_streaming && !has_stop_hooks
 }
 
+/// Buffered turns emit the completed draft as one final chunk; streaming turns
+/// already sent it.
 pub(super) fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
 }

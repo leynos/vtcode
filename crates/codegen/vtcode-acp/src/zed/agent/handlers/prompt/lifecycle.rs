@@ -3,6 +3,7 @@ use super::super::super::{warn_hook_block_reason, warn_hook_message};
 use super::*;
 
 impl PromptExecution {
+    /// Applies Stop hooks and commits a non-cancelled turn's response.
     pub(super) async fn finish(self, stop_reason: acp::StopReason) -> Result<PromptResponse, SdkError> {
         if stop_reason == acp::StopReason::Cancelled {
             return Ok(PromptResponse::new(stop_reason));
@@ -62,6 +63,7 @@ fn require_assistant_content(stop_reason: acp::StopReason, assistant_emitted: bo
 }
 
 impl ZedAgent {
+    /// Runs the session's Stop hook and returns a block reason when present.
     pub(super) async fn run_stop_hook(
         &self,
         session: &SessionHandle,

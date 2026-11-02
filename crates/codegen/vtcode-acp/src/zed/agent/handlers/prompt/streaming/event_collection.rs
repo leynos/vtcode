@@ -1,6 +1,8 @@
 //! Collects provider stream events and records their user-visible outcomes.
 use super::*;
 
+/// Collects provider stream events until the stream finishes, fails or is
+/// cancelled.
 pub(super) async fn collect_stream_events(
     stream: &mut LLMStream,
     request: StreamCollectionRequest<'_>,
@@ -68,6 +70,7 @@ enum StreamPollOutcome {
     Item(Option<Result<LLMStreamEvent, LLMError>>),
 }
 
+/// Races the next stream event against cancellation and the phase deadline.
 async fn poll_next_stream_event(stream: &mut LLMStream, request: &StreamCollectionRequest<'_>) -> StreamPollOutcome {
     let next_deadline = request.deadlines.next();
     tokio::select! {
@@ -77,6 +80,7 @@ async fn poll_next_stream_event(stream: &mut LLMStream, request: &StreamCollecti
     }
 }
 
+/// Completes tool previews and classifies a stream poll failure.
 async fn classify_stream_poll_failure(
     request: &mut StreamCollectionRequest<'_>,
     error: LLMError,
@@ -103,6 +107,8 @@ async fn classify_stream_poll_failure(
     .await
 }
 
+/// Applies one stream event, returning a terminal attempt outcome when it
+/// completes or cancels the attempt.
 async fn process_stream_event(
     event: LLMStreamEvent,
     request: &mut StreamCollectionRequest<'_>,
@@ -167,6 +173,7 @@ async fn process_stream_event(
     }
 }
 
+/// Records a completed stream and exposes any content the deltas missed.
 async fn complete_stream_response(
     request: &mut StreamCollectionRequest<'_>,
     response: LLMResponse,
@@ -198,6 +205,7 @@ async fn complete_stream_response(
     StreamAttemptOutcome::Completed(Box::new(response))
 }
 
+/// Records completion content when no streamed delta observed output.
 fn observe_response_output(request: &mut StreamCollectionRequest<'_>, response: &LLMResponse) {
     if let Some(content) = response.content.as_deref() {
         request
@@ -211,6 +219,8 @@ fn observe_response_output(request: &mut StreamCollectionRequest<'_>, response: 
     }
 }
 
+/// Decides whether a stream failure is retryable, terminal, or already has
+/// visible output.
 pub(super) async fn classify_stream_failure(request: StreamFailureRequest<'_>) -> StreamAttemptOutcome {
     let StreamFailureRequest {
         turn,
@@ -248,6 +258,7 @@ pub(super) async fn classify_stream_failure(request: StreamFailureRequest<'_>) -
     }
 }
 
+/// Sends a streamed delta to the client and records it in the turn output.
 async fn append_stream_delta(request: StreamDeltaRequest<'_>) {
     let StreamDeltaRequest {
         turn,
@@ -275,6 +286,7 @@ async fn append_stream_delta(request: StreamDeltaRequest<'_>) {
     drop(turn.agent.send_update(&turn.args.session_id, update).await);
 }
 
+/// Sends completion content or reasoning the stream never delivered as deltas.
 async fn emit_response_fallback(turn: &PromptExecution, output: &mut ProviderOutput, response: &LLMResponse) {
     if output.assistant_message.is_empty()
         && let Some(content) = response.content.as_deref().filter(|content| !content.is_empty())

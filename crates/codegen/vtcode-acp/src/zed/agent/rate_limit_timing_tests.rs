@@ -2,7 +2,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 use async_trait::async_trait;
 use vtcode_config::core::{CustomProviderConfig, CustomProviderRequestPolicyConfig};
@@ -271,6 +271,7 @@ async fn streaming_acp_retry_uses_fixed_http_date_observation_and_drops_it_after
         agent,
         PromptRequest::new(session_id, vec![acp::ContentBlock::Text(acp::TextContent::new("retry the stream"))]),
         fixed_observation_time,
+        tokio::time::Instant::now,
         ProviderMetricSink::production(),
     )
     .await

@@ -349,3 +349,5 @@ async fn reasoning_only_completion_reports_empty_response() {
 
     assert!(assistant_messages(&notifications).is_empty(), "reasoning alone must not emit assistant content");
 }
+
+mod cancelled_draft;

@@ -2,6 +2,10 @@
 use super::super::super::{warn_hook_block_reason, warn_hook_message};
 use super::*;
 
+/// Resolves an incoming prompt and admits it to the session's turn guard.
+///
+/// Cancellation observed while resolving returns `Cancelled` without running
+/// the turn.
 pub(super) async fn prepare_prompt_input(
     agent: Arc<ZedAgent>,
     args: PromptRequest,
@@ -38,6 +42,7 @@ pub(super) async fn prepare_prompt_input(
     }))
 }
 
+/// Restarts the tool safety budget for a new turn.
 fn start_prompt_safety_budget(
     agent: &ZedAgent,
     session: &SessionHandle,
@@ -54,6 +59,9 @@ fn start_prompt_safety_budget(
     Ok(())
 }
 
+/// Applies user-prompt hooks and records the accepted user message.
+///
+/// Returns `false` when a lifecycle hook blocks the prompt.
 pub(super) async fn accept_user_prompt(input: &PromptInput) -> Result<bool, SdkError> {
     let PromptInput { agent, args, session, user_message, .. } = input;
     if let Some(reason) = apply_user_prompt_hooks(input).await? {
@@ -69,6 +77,8 @@ pub(super) async fn accept_user_prompt(input: &PromptInput) -> Result<bool, SdkE
     Ok(true)
 }
 
+/// Runs UserPromptSubmit hooks, appending their context and reporting a block
+/// reason.
 async fn apply_user_prompt_hooks(input: &PromptInput) -> Result<Option<String>, SdkError> {
     let PromptInput { agent, args, session, user_message, .. } = input;
     let Some(hooks) = session

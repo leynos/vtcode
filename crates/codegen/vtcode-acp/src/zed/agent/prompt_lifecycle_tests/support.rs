@@ -39,6 +39,8 @@ fn unique_provider_name() -> String {
     format!("issue160-lifecycle-{}", NEXT_PROVIDER_ID.fetch_add(1, Ordering::SeqCst))
 }
 
+/// Registers the scripted provider under a process-unique name so tests in
+/// the same binary cannot collide.
 fn register_scripted_provider(name: &str, provider: ScriptedProvider) {
     get_factory()
         .lock()
@@ -46,6 +48,7 @@ fn register_scripted_provider(name: &str, provider: ScriptedProvider) {
         .register_provider(name, move |_config: ProviderConfig| Box::new(provider.clone()));
 }
 
+/// Builds an ACP agent configured for the scripted provider and workspace.
 async fn build_lifecycle_agent(provider_name: &str, workspace: &Path) -> ZedAgent {
     let core_config = CoreAgentConfig {
         model: MODEL.to_string(),
@@ -96,12 +99,14 @@ async fn build_lifecycle_agent(provider_name: &str, workspace: &Path) -> ZedAgen
     .expect("build lifecycle ACP agent")
 }
 
+/// An agent, its scripted provider, and the temporary workspace they share.
 pub(super) struct LifecycleHarness {
     pub(super) agent: Arc<ZedAgent>,
     pub(super) provider: ScriptedProvider,
     pub(super) workspace: TempDir,
 }
 
+/// Builds a buffered-provider lifecycle harness.
 pub(super) async fn lifecycle_harness(steps: Vec<ScriptedStep>, hold_first: bool) -> LifecycleHarness {
     lifecycle_harness_with_mode(steps, hold_first, false).await
 }
@@ -112,6 +117,7 @@ pub(super) async fn streaming_lifecycle_harness(steps: Vec<ScriptedStep>, hold_f
     lifecycle_harness_with_mode(steps, hold_first, true).await
 }
 
+/// Builds a lifecycle harness, selecting streaming or buffered generation.
 async fn lifecycle_harness_with_mode(steps: Vec<ScriptedStep>, hold_first: bool, streaming: bool) -> LifecycleHarness {
     let workspace = TempDir::new().expect("create lifecycle workspace");
     let provider_name = unique_provider_name();
@@ -121,6 +127,8 @@ async fn lifecycle_harness_with_mode(steps: Vec<ScriptedStep>, hold_first: bool,
     LifecycleHarness { agent, provider, workspace }
 }
 
+/// Connects a fresh in-process agent to a duplex channel and returns the
+/// client end of the transport.
 fn spawn_agent_connection(
     agent: Arc<ZedAgent>,
 ) -> (tokio::task::JoinHandle<agent_client_protocol::Result<()>>, Channel) {
@@ -135,10 +143,12 @@ fn spawn_agent_connection(
     (tokio::spawn(connection), client_channel)
 }
 
+/// Builds a text `session/prompt` request for `session_id`.
 pub(super) fn prompt_request(session_id: &acp::SessionId, text: &str) -> PromptRequest {
     PromptRequest::new(session_id.clone(), vec![acp::ContentBlock::Text(acp::TextContent::new(text))])
 }
 
+/// Extracts assistant `AgentMessageChunk` text from client notifications.
 pub(super) fn assistant_messages(notifications: &[SessionNotification]) -> Vec<String> {
     notifications
         .iter()
@@ -154,6 +164,7 @@ pub(super) fn assistant_messages(notifications: &[SessionNotification]) -> Vec<S
         .collect()
 }
 
+/// Reads the sanitized `data.reason` from an ACP error.
 pub(super) fn error_reason(error: &acp::Error) -> Option<&str> {
     error
         .data
@@ -213,6 +224,7 @@ pub(super) async fn poll_once<F: Future + Unpin>(mut future: F) -> Poll<F::Outpu
     std::future::poll_fn(|cx| Poll::Ready(Pin::new(&mut future).poll(cx))).await
 }
 
+/// Initializes the protocol and creates a session in `workspace`.
 pub(super) async fn initialize_and_create_session(
     cx: &ConnectionTo<Agent>,
     workspace: PathBuf,

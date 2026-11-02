@@ -69,6 +69,7 @@ enum StreamingTurnOutcome {
     Finished(ProviderTurnOutcome),
 }
 
+/// Runs streaming provider attempts and tool rounds until the turn finishes.
 pub(super) async fn run_streaming_provider_turn(
     turn: &mut PromptExecution,
     retry_observed_at: &RetryObservationClock<'_>,
@@ -100,6 +101,7 @@ pub(super) async fn run_streaming_provider_turn(
     }
 }
 
+/// Stores streaming output back into the turn when a stop reason ends it.
 fn preserve_streaming_output(
     turn: &mut PromptExecution,
     output: ProviderOutput,
@@ -111,6 +113,7 @@ fn preserve_streaming_output(
     outcome
 }
 
+/// Dispatches one completed, retryable, failed or cancelled stream attempt.
 async fn handle_streaming_attempt(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -172,6 +175,7 @@ async fn handle_streaming_attempt(
     }
 }
 
+/// Waits a cancellable retry delay and reports the resulting step.
 async fn retry_stream_attempt(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -199,6 +203,7 @@ async fn retry_stream_attempt(
     }
 }
 
+/// Builds the streaming provider request from the current tool state.
 fn streaming_request(turn: &PromptExecution) -> LLMRequest {
     LLMRequest {
         messages: Arc::new(turn.tool_state.messages.clone()),
@@ -211,6 +216,7 @@ fn streaming_request(turn: &PromptExecution) -> LLMRequest {
     }
 }
 
+/// Admits one streaming attempt, collects its events, and classifies failure.
 async fn collect_streaming_attempt(
     turn: &PromptExecution,
     request: &LLMRequest,
@@ -291,6 +297,7 @@ async fn collect_streaming_attempt(
     Ok(outcome)
 }
 
+/// Finishes a completed stream, executing tool calls when the provider asks.
 async fn process_stream_response(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -341,6 +348,7 @@ async fn process_stream_response(
     Ok(StreamResponseOutcome::StopReason(ZedAgent::stop_reason_from_finish(response.finish_reason)))
 }
 
+/// Refreshes resolved tool state, compacting the session when configured.
 async fn refresh_stream_tool_state(turn: &mut PromptExecution) -> Result<(), SdkError> {
     refresh_resolved_tool_state(turn)?;
     if turn

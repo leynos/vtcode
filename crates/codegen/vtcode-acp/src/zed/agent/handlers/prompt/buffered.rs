@@ -1,4 +1,6 @@
 //! Handles complete provider responses, including reasoning updates and buffered tool calls.
+/// Maps a buffered response's reasoning to the ACP thought chunk that exposes
+/// it to the client.
 pub(in crate::zed::agent::handlers) fn response_reasoning_update(response: &LLMResponse) -> Option<acp::SessionUpdate> {
     response
         .reasoning
@@ -7,6 +9,8 @@ pub(in crate::zed::agent::handlers) fn response_reasoning_update(response: &LLMR
         .map(|reasoning| acp::SessionUpdate::AgentThoughtChunk(text_chunk(reasoning.to_string())))
 }
 
+/// Sends buffered provider reasoning to the client, logging delivery failure
+/// without failing the turn.
 async fn emit_response_reasoning(agent: &ZedAgent, session_id: &acp::SessionId, response: &LLMResponse) {
     let has_tool_calls = response.tool_calls.as_ref().is_some_and(|calls| !calls.is_empty());
     let Some(update) = response_reasoning_update(response) else {
@@ -59,6 +63,7 @@ enum BufferedTurnStep {
     Finished(ProviderTurnOutcome),
 }
 
+/// Runs provider generation and tool rounds until the turn finishes.
 pub(super) async fn run_buffered_provider_turn(
     turn: &mut PromptExecution,
     retry_observed_at: &RetryObservationClock<'_>,
@@ -74,6 +79,7 @@ pub(super) async fn run_buffered_provider_turn(
     }
 }
 
+/// Advances one buffered generation or tool round.
 async fn buffered_turn_step(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -106,6 +112,8 @@ async fn buffered_turn_step(
     }
 }
 
+/// Runs a buffered generation, honoring cancellation observed before or after
+/// the provider call.
 async fn next_buffered_generation(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -145,10 +153,12 @@ async fn next_buffered_generation(
     Ok(BufferedGenerationStep::Ready(Box::new(response)))
 }
 
+/// Moves buffered output back into the turn before the turn ends.
 fn store_buffered_output(turn: &mut PromptExecution, output: &mut ProviderOutput) {
     std::mem::replace(output, ProviderOutput::empty()).store_in(turn);
 }
 
+/// Issues one buffered provider request and classifies its outcome.
 async fn generate_buffered_response(
     turn: &mut PromptExecution,
     retry_observed_at: &RetryObservationClock<'_>,
@@ -171,6 +181,7 @@ async fn generate_buffered_response(
     }
 }
 
+/// Compacts the session if needed and builds the buffered provider request.
 async fn prepare_buffered_request(turn: &mut PromptExecution) -> Result<LLMRequest, SdkError> {
     if turn
         .agent
@@ -199,6 +210,7 @@ async fn prepare_buffered_request(turn: &mut PromptExecution) -> Result<LLMReque
     })
 }
 
+/// Executes buffered tool calls, reporting whether the turn must finish.
 async fn execute_buffered_tool_calls(
     turn: &mut PromptExecution,
     response: &LLMResponse,
@@ -235,6 +247,7 @@ async fn execute_buffered_tool_calls(
     }
 }
 
+/// Reloads resolved session messages and tool availability after a tool round.
 pub(super) fn refresh_resolved_tool_state(turn: &mut PromptExecution) -> Result<(), SdkError> {
     turn.tool_state.messages = turn
         .agent
@@ -248,6 +261,7 @@ pub(super) fn refresh_resolved_tool_state(turn: &mut PromptExecution) -> Result<
     )
 }
 
+/// Applies a buffered response's content, Stop hook and stop reason.
 async fn process_buffered_response(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,

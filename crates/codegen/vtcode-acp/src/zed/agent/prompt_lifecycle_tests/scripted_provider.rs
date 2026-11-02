@@ -22,6 +22,9 @@ pub(super) enum ScriptedStep {
     /// No completion event at all: a truncated stream, or an empty buffered
     /// response.
     Empty,
+    /// Streams assistant text and then fails, so the client has already seen a
+    /// partial draft when the turn fails.
+    PartialThenFailure(&'static str),
     Failure,
 }
 
@@ -39,6 +42,7 @@ struct ScriptedShared {
 }
 
 #[derive(Clone)]
+/// Scripted provider shared by the lifecycle transport tests.
 pub(super) struct ScriptedProvider {
     name: String,
     shared: Arc<ScriptedShared>,
@@ -47,6 +51,7 @@ pub(super) struct ScriptedProvider {
 }
 
 impl ScriptedProvider {
+    /// Builds a provider that answers with the scripted steps in order.
     pub(super) fn new(name: &str, steps: Vec<ScriptedStep>, hold_first: bool, streaming: bool) -> Self {
         Self {
             name: name.to_string(),
@@ -62,6 +67,7 @@ impl ScriptedProvider {
         }
     }
 
+    /// Pops the next scripted step, defaulting to an empty response.
     fn take_step(&self) -> ScriptedStep {
         // Pop before waiting so a cancelled generation still consumes its
         // scripted step and cannot shift the next turn's response.
@@ -97,14 +103,17 @@ impl ScriptedProvider {
         step
     }
 
+    /// Signalled when a provider call is entered.
     pub(super) fn call_started(&self) -> &Notify {
         &self.shared.call_started
     }
 
+    /// Releases a provider call held by `hold_first`.
     pub(super) fn release_call(&self) {
         self.shared.call_release.notify_one();
     }
 
+    /// Number of provider calls entered so far.
     pub(super) fn call_count(&self) -> usize {
         self.shared.calls.load(Ordering::SeqCst)
     }
@@ -155,7 +164,7 @@ impl LLMProvider for ScriptedProvider {
                 model: MODEL.to_string(),
                 ..LLMResponse::default()
             }),
-            ScriptedStep::Failure => Err(LLMError::InvalidRequest {
+            ScriptedStep::PartialThenFailure(_) | ScriptedStep::Failure => Err(LLMError::InvalidRequest {
                 message: "scripted lifecycle provider failure".to_string(),
                 metadata: None,
             }),
@@ -203,6 +212,13 @@ impl LLMProvider for ScriptedProvider {
             // An empty stream ends before the completion event, which is the
             // truncated-stream shape the retry policy must classify.
             ScriptedStep::Empty => Ok(Box::pin(futures::stream::iter(Vec::new()))),
+            ScriptedStep::PartialThenFailure(text) => Ok(Box::pin(futures::stream::iter([
+                Ok(LLMStreamEvent::Token { delta: text.to_string() }),
+                Err(LLMError::Network {
+                    message: "scripted lifecycle stream failure".to_string(),
+                    metadata: None,
+                }),
+            ]))),
             ScriptedStep::Failure => Err(LLMError::InvalidRequest {
                 message: "scripted lifecycle provider failure".to_string(),
                 metadata: None,
