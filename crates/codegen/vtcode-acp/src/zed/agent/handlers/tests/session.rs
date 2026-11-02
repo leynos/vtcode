@@ -284,6 +284,3 @@ async fn blocked_stop_draft_is_not_visible_until_hook_allows_it() {
     assert_eq!(history[0].content.as_text(), "blocked draft");
     assert_eq!(history[1].content.as_text(), "retry the draft");
 }
-
-
-

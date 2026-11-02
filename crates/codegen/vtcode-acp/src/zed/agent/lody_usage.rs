@@ -279,4 +279,3 @@ impl ZedAgent {
 #[cfg(test)]
 #[path = "lody_usage/tests.rs"]
 mod tests;
-// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_usage.rs' for per-hunk detail, 'weave check' to verify your resolution
