@@ -450,13 +450,13 @@ mod tests {
         .collect();
 
         assert_eq!(records[0].0, "vtcode.acp.prompt_gate_queue_depth");
-        assert_eq!(records[0].1, 2.0);
+        assert_eq!(records[0].1.to_bits(), 2.0_f64.to_bits());
         assert!(records[0].2.is_empty());
         assert_eq!(records[1].0, "vtcode.acp.prompt_gate_wait_ms");
-        assert_eq!(records[1].1, 250.0);
+        assert_eq!(records[1].1.to_bits(), 250.0_f64.to_bits());
         assert!(records[1].2.is_empty());
         assert_eq!(records[2].0, "vtcode.acp.prompt_outcome_total");
-        assert_eq!(records[2].1, 1.0);
+        assert_eq!(records[2].1.to_bits(), 1.0_f64.to_bits());
         assert_eq!(records[2].2.len(), 2);
         assert_eq!(records[2].2.get("mode").map(String::as_str), Some("stream"));
         assert_eq!(records[2].2.get("outcome").map(String::as_str), Some("cancelled"));
