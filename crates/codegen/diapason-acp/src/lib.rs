@@ -17,6 +17,7 @@ pub mod discovery;
 pub mod error;
 pub mod jsonrpc;
 pub mod messages;
+pub mod metrics;
 pub mod permissions;
 pub mod reports;
 pub mod session;

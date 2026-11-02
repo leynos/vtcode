@@ -1,3 +1,5 @@
+//! OpenAI Responses API provider implementation, payload conversion, and streaming.
+
 use crate::error_display;
 use crate::provider::{
     AssistantPhase, ContentPart, FinishReason, LLMError, LLMRequest, LLMResponse, MessageContent, MessageRole,
