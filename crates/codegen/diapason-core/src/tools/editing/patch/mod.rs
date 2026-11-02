@@ -1,3 +1,13 @@
+//! The apply-patch facade: parsing and applying agent-supplied patch text.
+//!
+//! [`Patch::apply`] is the mutation entry point used by the patch pipeline and
+//! the Codex-style handler. The submodules split the work: `parser` turns text
+//! into operations, `applicator` owns the journaled mutation engine, `matcher`
+//! decides where a hunk's anchors land, `semantic` bridges to the ast-grep
+//! binary, and `error` carries [`PatchError`]. Rebase assessment renders
+//! through the applicator's text helpers so it matches the apply path instead
+//! of approximating it.
+
 use std::path::Path;
 
 use anyhow::anyhow;

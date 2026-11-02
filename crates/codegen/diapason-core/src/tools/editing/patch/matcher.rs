@@ -1,3 +1,11 @@
+//! Anchor matching for update hunks.
+//!
+//! [`PatchContextMatcher`] seeks a hunk's anchor lines through a file, and
+//! [`MatchPolicy`] selects how strict that search is: the historical sequenced
+//! policy for application, or [`MatchPolicy::StrictUnique`] for rebase
+//! assessment so a merely similar or ambiguous anchor is never reported as
+//! safely rebasable.
+
 /// How a hunk's anchors are matched against the current file.
 ///
 /// `Sequenced` is the historical apply path: exact, then whitespace-tolerant,

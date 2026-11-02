@@ -1,3 +1,12 @@
+//! The patch mutation engine.
+//!
+//! [`apply`] first proves every operation target stays inside the workspace,
+//! then plans the operations against the original snapshot and replays them in
+//! order through a journal so a failure part-way can restore earlier writes.
+//! `operations` holds one module per operation kind, `text` handles rendering
+//! and atomic writes, and `planner`/`runner` separate deciding what to write
+//! from performing it.
+
 use std::future::Future;
 use std::path::Path;
 

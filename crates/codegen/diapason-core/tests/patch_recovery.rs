@@ -1,3 +1,9 @@
+//! Journal rollback coverage for multi-file patch application.
+//!
+//! A batch that fails part-way must restore the writes it already committed, so
+//! these tests drive real files through `Patch::apply` and assert the on-disk
+//! state after a failure rather than the internal journal representation.
+
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."

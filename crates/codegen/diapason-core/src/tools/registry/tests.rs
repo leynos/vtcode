@@ -1911,6 +1911,57 @@ async fn stale_unrebasable_patch_reports_bounded_anchor_context() -> Result<()> 
     Ok(())
 }
 
+/// Check every excerpt and the anchor are bounded for oversized failing hunks.
+///
+/// The payload is model-visible, so an arbitrarily long anchor or line must not
+/// reach the transcript, and the failure list must stay capped even when more
+/// than three hunks fail.
+#[tokio::test]
+async fn stale_patch_bounds_oversized_anchor_context_and_caps_failures() -> Result<()> {
+    const EXCERPT_BUDGET: usize = 240;
+    let temp_dir = TempDir::new()?;
+    let path = temp_dir.path().join("versioned.txt");
+    let current_line = format!("current-{}", "c".repeat(EXCERPT_BUDGET + 40));
+    fs::write(&path, format!("{current_line}\n"))?;
+    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+
+    let mut patch = String::from("*** Begin Patch\n*** Update File: versioned.txt\n");
+    for index in 0..4 {
+        let anchor = format!("anchor-{index}-{}", "a".repeat(EXCERPT_BUDGET + 40));
+        let expected = format!("expected-{index}-{}", "e".repeat(EXCERPT_BUDGET + 40));
+        patch.push_str(&format!("@@ {anchor}\n-{expected}\n+replacement-{index}\n"));
+    }
+    patch.push_str("*** End Patch\n");
+    let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(patch.as_bytes()));
+
+    let outcome = registry
+        .execute_public_tool_request(ToolExecutionRequest::new(
+            tools::APPLY_PATCH,
+            json!({ "input": patch, "expected_content_hash": expected_hash }),
+        ))
+        .await;
+
+    let details = outcome.error.and_then(|error| error.details).expect("mismatch details");
+    assert_eq!(details["can_safely_rebase"], false);
+    let failures = details["anchor_failures"].as_array().expect("anchor failures");
+    assert_eq!(failures.len(), 3, "failures must stay capped at three");
+    for failure in failures {
+        for field in ["anchor", "expected_excerpt", "current_excerpt"] {
+            let excerpt = failure[field]
+                .as_str()
+                .unwrap_or_else(|| panic!("{field} must be a string, got {}", failure[field]));
+            assert!(
+                excerpt.chars().count() <= EXCERPT_BUDGET,
+                "{field} must be bounded to {EXCERPT_BUDGET} characters, got {}",
+                excerpt.chars().count()
+            );
+        }
+    }
+    assert_eq!(fs::read_to_string(path)?, format!("{current_line}\n"));
+    Ok(())
+}
+
 /// Check a matching hash lets the write proceed.
 #[tokio::test]
 async fn matching_apply_patch_hash_allows_the_write() -> Result<()> {

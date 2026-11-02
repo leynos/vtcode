@@ -1,3 +1,10 @@
+//! End-to-end coverage of `apply_patch` through a real `ToolRegistry`.
+//!
+//! Each test writes a workspace, submits patch text, and asserts on the
+//! model-visible result: applied content, diff preview, structured rejection
+//! payloads, and the guarantee that a batch is rejected before any write when a
+//! later section fails preflight.
+
 #![allow(
     missing_docs,
     clippy::expect_used,

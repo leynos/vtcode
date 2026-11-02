@@ -1,3 +1,10 @@
+//! The [`PatchError`] type shared by patch parsing and application.
+//!
+//! `Display` embeds the failing context or snippet, so an error from this
+//! module must never be formatted into a log record. Log
+//! [`PatchError::reason_code`] instead, and [`PatchError::embedded_text_bytes`]
+//! when the size of the embedded text matters.
+
 use std::path::PathBuf;
 
 use thiserror::Error;

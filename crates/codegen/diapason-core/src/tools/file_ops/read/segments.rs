@@ -1,3 +1,10 @@
+//! Line-window projection and paged text reads for the `read_file` tool.
+//!
+//! [`line_window`] is the pure projection used both by the read tool and by the
+//! ACP adapter's on-disk certification, so a windowed read describes exactly
+//! the bytes the model received. The `FileOpsTool` helpers layer byte-range and
+//! line-range paging on top of it.
+
 use super::super::read_byte_range;
 use super::FileOpsTool;
 use crate::config::constants::tools;

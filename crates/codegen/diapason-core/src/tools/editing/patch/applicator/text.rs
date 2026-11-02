@@ -1,3 +1,11 @@
+//! Text loading, rendering, and atomic writing for update operations.
+//!
+//! `load_file_lines` reads the current file into lines, `compute_replacements`
+//! projects the chunks onto a line window, and `write_patched_content` replaces
+//! the file through [`AtomicWriter`]. `render_patched_text_from_content` and
+//! its strict variant expose the same rendering over already-read content so
+//! rebase assessment can reuse it without a second read.
+
 use std::io::ErrorKind;
 use std::path::Path;
 

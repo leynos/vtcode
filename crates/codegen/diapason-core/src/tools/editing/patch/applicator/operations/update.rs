@@ -1,3 +1,9 @@
+//! The update-file operation.
+//!
+//! Applies a file's hunks to the lines loaded by `applicator::text`, then hands
+//! the rendered content back for an atomic write. The existing permission bits
+//! are carried across the rewrite, so patching a file does not change its mode.
+
 use std::fs::Permissions;
 use std::path::Path;
 

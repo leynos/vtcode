@@ -262,11 +262,19 @@ impl ZedAgent {
             match Self::windowed_disk_hash(&path, line, limit, &truncated_content).await {
                 Ok(Some(content_hash)) => Some(content_hash),
                 Ok(None) => {
-                    warn!(path = ?path, "ACP read window does not match the on-disk file version");
+                    warn!(
+                        operation = "read_file",
+                        outcome = "window_projection_mismatch",
+                        "ACP read window does not match the on-disk file version"
+                    );
                     None
                 }
-                Err(error) => {
-                    warn!(%error, path = ?path, "Failed to verify the ACP read window against disk");
+                Err(_error) => {
+                    warn!(
+                        operation = "read_file",
+                        outcome = "window_verification_failed",
+                        "Failed to verify the ACP read window against disk"
+                    );
                     None
                 }
             }
@@ -296,11 +304,19 @@ impl ZedAgent {
                 match record_result {
                     Ok(Some(content_hash)) => json!(content_hash),
                     Ok(None) => {
-                        warn!(path = ?path, "ACP read content does not match the on-disk file version");
+                        warn!(
+                            operation = "read_file",
+                            outcome = "read_content_mismatch",
+                            "ACP read content does not match the on-disk file version"
+                        );
                         Value::Null
                     }
-                    Err(error) => {
-                        warn!(%error, path = ?path, "Failed to capture ACP read file version");
+                    Err(_error) => {
+                        warn!(
+                            operation = "read_file",
+                            outcome = "read_version_capture_failed",
+                            "Failed to capture ACP read file version"
+                        );
                         Value::Null
                     }
                 }
@@ -333,11 +349,12 @@ impl ZedAgent {
         limit: Option<u32>,
         returned: &str,
     ) -> Result<Option<String>> {
+        // Keep the error chain path-free: the caller logs a bounded outcome
+        // category, and this error is never shown to the model.
         let disk_bytes = tokio::fs::read(path)
             .await
-            .with_context(|| format!("Failed to read back file for version certification: {}", path.display()))?;
-        let disk_text = std::str::from_utf8(&disk_bytes)
-            .with_context(|| format!("File content is not valid UTF-8: {}", path.display()))?;
+            .context("Failed to read back file for version certification")?;
+        let disk_text = std::str::from_utf8(&disk_bytes).context("File content is not valid UTF-8")?;
         let projected = vtcode_core::line_window(disk_text, line, limit);
         if !window_matches_projection(projected, returned) {
             return Ok(None);
@@ -379,7 +396,22 @@ fn window_matches_projection(projected: &str, returned: &str) -> bool {
 
 #[cfg(test)]
 mod window_match_tests {
-    use super::window_matches_projection;
+    use super::{ZedAgent, window_matches_projection};
+
+    /// A failed disk read must not carry the file path into its error chain.
+    ///
+    /// The caller logs a fixed outcome category, and the chain is never shown
+    /// to the model, so a path here would be unbounded log context.
+    #[tokio::test]
+    async fn windowed_disk_hash_error_omits_the_path() {
+        let workspace = assert_fs::TempDir::new().expect("temp dir");
+        let path = workspace.path().join("private-notes.txt");
+        let error = ZedAgent::windowed_disk_hash(&path, None, None, "")
+            .await
+            .expect_err("missing file must fail");
+        let rendered = format!("{error:#}");
+        assert!(!rendered.contains("private-notes.txt"), "error chain leaked the path: {rendered}");
+    }
 
     /// An identical window always matches.
     #[test]
