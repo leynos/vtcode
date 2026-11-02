@@ -1,15 +1,26 @@
 //! Covers the versioned read/patch guard flow over the official ACP transport.
 use super::*;
+use crate::zed::agent::test_log_capture::capturing_async;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use rstest::rstest;
 use std::path::PathBuf;
+use tracing_subscriber::filter::LevelFilter;
+
+/// A fixture change applied before a scripted model turn.
+#[derive(Debug, Clone)]
+pub(super) enum FixtureMutation {
+    /// Replace the file's contents before the turn at `index`.
+    Write { index: usize, content: String },
+    /// Delete the file before the turn at `index`, so the next read fails.
+    Remove { index: usize },
+}
 
 /// Scripted provider that replays one tool call per model turn.
-struct ScriptedToolCallProvider {
+pub(super) struct ScriptedToolCallProvider {
     calls: Arc<AtomicUsize>,
     requests: Arc<Mutex<Vec<LLMRequest>>>,
     tool_calls: Vec<(String, String)>,
-    mutation_before_call: Option<(usize, PathBuf, String)>,
+    mutation_before_call: Option<(FixtureMutation, PathBuf)>,
 }
 
 #[async_trait]
@@ -46,11 +57,18 @@ impl LLMProvider for ScriptedToolCallProvider {
     async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
         self.requests.lock().expect("stream requests").push(request);
         let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
-        if let Some((index, path, content)) = self.mutation_before_call.as_ref()
-            && *index == response_index
-        {
-            std::fs::write(path, content)
-                .map_err(|error| LLMError::Provider { message: error.to_string(), metadata: None })?;
+        if let Some((mutation, path)) = self.mutation_before_call.as_ref() {
+            match mutation {
+                FixtureMutation::Write { index, content } if *index == response_index => {
+                    std::fs::write(path, content)
+                        .map_err(|error| LLMError::Provider { message: error.to_string(), metadata: None })?;
+                }
+                FixtureMutation::Remove { index } if *index == response_index => {
+                    std::fs::remove_file(path)
+                        .map_err(|error| LLMError::Provider { message: error.to_string(), metadata: None })?;
+                }
+                _ => {}
+            }
         }
         let events = if let Some((tool_name, tool_arguments)) = self.tool_calls.get(response_index) {
             let response = LLMResponse {
@@ -95,7 +113,7 @@ impl LLMProvider for ScriptedToolCallProvider {
 
 /// How the scripted client answers a windowed read request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClientWindowMode {
+pub(super) enum ClientWindowMode {
     /// Slice the requested `line`/`limit` the way a conforming editor does.
     Honours,
     /// Return the whole client-visible content, ignoring the requested window.
@@ -128,7 +146,7 @@ fn windowed_read_response(
 }
 
 /// Read the structured tool-result payload at `index` from a recorded request.
-fn tool_result_payload(requests: &[LLMRequest], index: usize) -> serde_json::Value {
+pub(super) fn tool_result_payload(requests: &[LLMRequest], index: usize) -> serde_json::Value {
     let message = requests[index]
         .messages
         .iter()
@@ -139,20 +157,22 @@ fn tool_result_payload(requests: &[LLMRequest], index: usize) -> serde_json::Val
 }
 
 /// One completed scripted read/patch sequence over the official ACP transport.
-struct WindowedReadFlow {
+pub(super) struct WindowedReadFlow {
     _workspace: TempDir,
-    path: PathBuf,
-    calls: usize,
-    requests: Arc<Mutex<Vec<LLMRequest>>>,
+    pub(super) path: PathBuf,
+    pub(super) calls: usize,
+    pub(super) requests: Arc<Mutex<Vec<LLMRequest>>>,
     /// Certification counters from the registry this session actually used.
-    metrics: Arc<vtcode_core::metrics::MetricsCollector>,
+    pub(super) metrics: Arc<vtcode_core::metrics::MetricsCollector>,
+    /// Warnings captured while the ACP connection ran.
+    pub(super) events: Vec<String>,
     _test_lock: tokio::sync::MutexGuard<'static, ()>,
     _factory_guard: PromptProviderFactoryGuard,
 }
 
 impl WindowedReadFlow {
     /// Read the certification counters for this flow.
-    fn certification(&self) -> vtcode_core::metrics::PatchSafetyMetrics {
+    pub(super) fn certification(&self) -> vtcode_core::metrics::PatchSafetyMetrics {
         self.metrics.get_patch_safety_metrics()
     }
 }
@@ -175,12 +195,12 @@ fn certification_metrics(agent: &ZedAgent, session_id: &acp::SessionId) -> Arc<v
 ///
 /// The client honours the requested `line`/`limit` from `client_buffer` when
 /// that unsaved buffer is supplied, and from the on-disk file otherwise.
-async fn run_windowed_read_flow(
+pub(super) async fn run_windowed_read_flow(
     file_name: &str,
     disk_content: &str,
     client_buffer: Option<&str>,
     tool_calls: Vec<(String, String)>,
-    mutation_before_call: Option<(usize, &str)>,
+    mutation_before_call: Option<FixtureMutation>,
     window_mode: ClientWindowMode,
 ) -> WindowedReadFlow {
     run_windowed_read_flow_with_bytes(
@@ -197,13 +217,13 @@ async fn run_windowed_read_flow(
 
 /// As [`run_windowed_read_flow`], but `disk_bytes` overrides the on-disk
 /// fixture so a test can write content that is not valid UTF-8.
-async fn run_windowed_read_flow_with_bytes(
+pub(super) async fn run_windowed_read_flow_with_bytes(
     file_name: &str,
     disk_content: &str,
     disk_bytes: Option<&[u8]>,
     client_buffer: Option<&str>,
     tool_calls: Vec<(String, String)>,
-    mutation_before_call: Option<(usize, &str)>,
+    mutation_before_call: Option<FixtureMutation>,
     window_mode: ClientWindowMode,
 ) -> WindowedReadFlow {
     let test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
@@ -218,7 +238,7 @@ async fn run_windowed_read_flow_with_bytes(
     let factory_calls = Arc::clone(&calls);
     let factory_requests = Arc::clone(&requests);
     let mutation_path = path.clone();
-    let mutation_before_call = mutation_before_call.map(|(index, content)| (index, mutation_path, content.to_string()));
+    let mutation_before_call = mutation_before_call.map(|mutation| (mutation, mutation_path));
     let factory_guard = PromptProviderFactoryGuard::install(
         "wire-test",
         Arc::new(move || {
@@ -280,8 +300,14 @@ async fn run_windowed_read_flow_with_bytes(
             Ok(())
         });
 
-    tokio::time::timeout(Duration::from_secs(5), client_connection)
-        .await
+    // The agent task is polled by the same current-thread runtime, so a
+    // thread-local default subscriber installed here captures the warnings it
+    // emits while this connection is driven.
+    let (client_result, events) = capturing_async(LevelFilter::WARN, async {
+        tokio::time::timeout(Duration::from_secs(5), client_connection).await
+    })
+    .await;
+    client_result
         .expect("client connection should finish")
         .expect("versioned patch protocol flow should succeed");
 
@@ -304,6 +330,7 @@ async fn run_windowed_read_flow_with_bytes(
         calls: call_count,
         requests,
         metrics,
+        events,
         _test_lock: test_lock,
         _factory_guard: factory_guard,
     }
@@ -339,7 +366,7 @@ async fn file_versions_and_no_op_guard_survive_the_official_acp_transport() {
         "before\n",
         None,
         tool_calls,
-        Some((1, "current\n")),
+        Some(FixtureMutation::Write { index: 1, content: "current\n".to_string() }),
         ClientWindowMode::Honours,
     )
     .await;

@@ -19,17 +19,24 @@ fn update_patch() -> &'static str {
     "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n"
 }
 
-/// Assert the export carries counters only, never patch text or a hash.
+/// Assert both exports carry counters only, never content or failure detail.
+///
+/// Paths, patch text, hashes, signatures, and error strings are all
+/// caller-supplied, so neither export may echo any of them.
 fn assert_export_is_content_free(metrics: &MetricsCollector) {
-    let json = metrics.export_json().expect("metrics JSON should serialize");
-    let rendered = json.to_string();
-    assert!(!rendered.contains("*** Begin Patch"), "patch text leaked into JSON: {rendered}");
-    assert!(!rendered.contains("sha256:"), "content hash leaked into JSON: {rendered}");
-
+    let json = metrics.export_json().expect("metrics JSON should serialize").to_string();
     let prometheus = metrics.export_prometheus();
-    assert!(!prometheus.contains("*** Begin Patch"), "patch text leaked into Prometheus");
-    assert!(!prometheus.contains("sha256:"), "content hash leaked into Prometheus");
-    assert!(!prometheus.contains("versioned.txt"), "path leaked into Prometheus");
+    for (format, rendered) in [("JSON", &json), ("Prometheus", &prometheus)] {
+        for sentinel in [
+            "versioned.txt",
+            "*** Begin Patch",
+            "sha256:",
+            "signature",
+            "Unable to version",
+        ] {
+            assert!(!rendered.contains(sentinel), "{sentinel:?} leaked into the {format} export: {rendered}");
+        }
+    }
 }
 
 fn patch_safety(metrics: &MetricsCollector) -> PatchSafetyMetrics {
@@ -228,4 +235,42 @@ async fn direct_runtime_records_its_own_evaluation_and_revalidation() {
     assert_eq!(safety.precondition_matched, 0, "a direct runtime has no handler preflight to count");
     assert_export_is_content_free(&metrics);
     assert!(metrics.export_prometheus().contains("vtcode_apply_patch_evaluations_total 1"));
+}
+
+/// A stale hash fails the direct runtime's own revalidation. The failure is
+/// counted, the evaluation is still recorded exactly once, and neither export
+/// picks up the rejected hash.
+#[tokio::test]
+async fn direct_runtime_counts_a_failed_revalidation() {
+    let workspace = TempDir::new().expect("workspace should be created");
+    versioned_fixture(&workspace, "current\n");
+    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+    let metrics = Arc::new(MetricsCollector::new());
+    let tool_ctx = direct_runtime_ctx_with_metrics(&workspace, Some(Arc::clone(&metrics)));
+    let policy = SandboxConfig::default();
+    let attempt = sandbox_attempt(&policy, &workspace);
+    let request = ApplyPatchRequest {
+        patch: update_patch().to_string(),
+        expected_content_hash: Some(stale_hash),
+        cwd: workspace.path().to_path_buf(),
+        timeout_ms: None,
+        user_explicitly_approved: true,
+    };
+
+    ApplyPatchRuntime::new()
+        .run(&request, &attempt, &tool_ctx)
+        .await
+        .expect_err("a stale hash must fail the direct runtime's revalidation");
+
+    let safety = patch_safety(&metrics);
+    assert_eq!(safety.runtime_revalidation_mismatch, 1);
+    assert_eq!(safety.runtime_revalidation_matched, 0);
+    assert_eq!(safety.evaluations, 1, "a failed revalidation still counts one evaluation");
+    assert_eq!(safety.precondition_content_hash_mismatch, 0, "a direct runtime has no preflight");
+    assert_export_is_content_free(&metrics);
+    assert!(
+        metrics
+            .export_prometheus()
+            .contains(r#"vtcode_apply_patch_runtime_revalidation_total{outcome="mismatch"} 1"#)
+    );
 }

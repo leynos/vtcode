@@ -260,12 +260,21 @@ Each outcome is counted once, at the stage that decided it:
   constructed directly by the registry records its own, keeping the counter
   honest when there is no handler above it.
 - **Certification** — one `certification_*` outcome per ACP read that withheld
-  a version. A read that certifies records nothing: the counters exist to
-  explain withheld versions, so their sum is the withheld-version count.
+  a version for a certification reason. A read that certifies records nothing,
+  so the counters explain why a version was withheld. A read truncated by the
+  output limit also returns no version, but truncation is reported separately
+  in the tool payload's `truncated` field and is not a certification outcome;
+  it does not increment these counters. The sum of the certification counters
+  is therefore the withheld-version count excluding truncation, not every
+  absent version.
 
-Duration covers the handler's evaluation only, measured by a guard that fires
-on drop so every early return is counted. It does not include the runtime's
-write.
+Duration is the wall-clock time from the start of the measured entry point to
+the guard's drop, so every early return is counted. The handler's timer spans
+payload decoding, the preflight, `orchestrator.run(...)` (including the
+runtime's write), and `emitter.finish(...)`. A directly driven runtime's timer
+spans its own `run(...)`, including `patch.apply(...)`. Exactly one timer
+counts per logical request: the runtime the handler constructs suppresses its
+own.
 
 Every label is a fixed enum variant. Paths, patch signatures, patch text, and
 error strings never become a label or a log value, so a session editing private
@@ -312,15 +321,21 @@ When changing any of the above, the following are the minimum checks:
   only when its text matches the on-disk projection. A dirty buffer and a
   response wider or shorter than the requested slice must count
   `window_projection_mismatch`, a non-UTF-8 file must count `window_not_utf8`,
-  and a certified read must leave every certification counter at zero.
+  a removed file must count `window_read_failed` for a windowed read and
+  `read_version_capture_failed` for a whole-file read, a dirty whole-file
+  buffer must count `read_content_mismatch`, and a certified read must leave
+  every certification counter at zero. Each failure path must also emit one
+  bounded warning carrying only `operation` and `outcome`, with no path, hash,
+  patch text, or error string.
 - **Observability** — the `patch_safety` metrics tests must keep asserting the
   summary fields, the Prometheus series, and that neither export can contain
-  patch text or a hash. Handler tests must also prove the counting semantics
-  above: a matching request counts one preflight match, one runtime
-  revalidation, and exactly one evaluation; a stale hash counts one preflight
-  mismatch and no revalidation; a removed source file counts `missing_file`
-  rather than `content_hash_mismatch`; and a directly driven runtime counts its
-  own evaluation and revalidation with no preflight counter moving.
+  patch text, a hash, a path, a signature, or an error string. Handler tests
+  must also prove the counting semantics above: a matching request counts one
+  preflight match, one runtime revalidation, and exactly one evaluation; a
+  stale hash counts one preflight mismatch and no revalidation; a removed
+  source file counts `missing_file` rather than `content_hash_mismatch`; and a
+  directly driven runtime counts its own evaluation and revalidation with no
+  preflight counter moving, including when its revalidation fails.
 
 Assert on the observable contract (file unchanged, `reason` present, occurrence
 counted) rather than on internal state, so refactors inside the guard do not
