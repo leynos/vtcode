@@ -537,8 +537,10 @@ async fn prepare_exec_run_request_checks_explicit_shell_source() {
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
 
-    let mut config = vtcode_config::CommandsConfig::default();
-    config.allow_list = vec!["bash".to_string(), "git status".to_string()];
+    let config = vtcode_config::CommandsConfig {
+        allow_list: vec!["bash".to_string(), "git status".to_string()],
+        ..Default::default()
+    };
     registry.apply_commands_config(&config);
 
     for confirm in [false, true] {
