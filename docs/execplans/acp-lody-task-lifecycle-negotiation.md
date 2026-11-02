@@ -1402,3 +1402,43 @@ on and which the system interpreter does not provide; the one `pytest.raises`
 assertion is now a plain `try`/`except`, so
 `python3 -I scripts/tests/test_generate_config_field_reference.py` runs the
 whole suite and reports `all tests passed`.
+
+### Revision note (2026-11-02, r20 restack onto `957b4bb37` and `f52e811c9`)
+
+The base recorded in r17 above (`f837738e3`, replayed against tip `6df4620f5`)
+was itself rewritten: `origin/fix/acp-lody-task-lifecycle-negotiation` now
+points at `957b4bb37`, adding 34 commits of interrupted-tool-recovery work —
+write-ahead placeholder staging, `tool_recovery`, strict checkpoints, and the
+`tool_recovery` metrics counters. The r17 target commit is therefore orphaned,
+and the 15-commit series `6df4620f5..HEAD` was replayed onto `957b4bb37`.
+
+Conflict and repair decisions:
+
+- `handlers/prompt.rs`: the only textual conflicts were doc comments on
+  `TurnGuard::begin`, `execute_tool_round`, and `assistant_tool_call_message`.
+  All three resolved in favour of the new base, which documents the write-ahead
+  and recovery-join-key behaviour the replay predates. Losing the child's older
+  wording is intended: the child's code is unchanged and the base text
+  describes it more accurately.
+- `task_lifecycle.rs` carried a duplicated module-level `use` block from the
+  replay (25 × `E0252`). The second copy was removed.
+- Weave advisory comments left by the merge driver were removed from
+  `session_state/archive.rs` and `handlers/prompt.rs`, and a stray
+  blank-line-at-EOF was trimmed from `handlers/tests/session.rs`.
+
+Shared-helper decision: the base's
+`task_lifecycle::bounded_session_correlation` is the same scheme as this
+branch's `redaction::session_correlation` — the wrapper delegates to it. The
+wrapper is adopted rather than duplicated, and `redaction::redact_detail` is
+applied to the usage-failure log detail so retained error text is bounded and
+secret-masked. No second correlation or redaction implementation exists.
+
+Semantic audit on the new head: no file deletions, no removed
+`tool_recovery`/`CheckpointFailure`/`require_session_checkpoint` lines, no
+duplicate `use` statements in changed Rust files, and `git diff --check` is
+clean.
+
+The series was then replayed once more onto `f52e811c9`, which added the
+unscoped subagent-ledger merge, the large-file invariant repair, and their
+regressions. Those base changes are independent of this layer and needed no
+conflict resolution outside this file.
