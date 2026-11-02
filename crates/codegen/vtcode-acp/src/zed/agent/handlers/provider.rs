@@ -72,9 +72,12 @@ pub(super) fn create_prompt_provider(
     create_provider_with_config(provider_name, config)
 }
 
-/// Record the attempt outcome and elapsed time on its span.
-pub(super) fn record_stream_attempt(span: &Span, started_at: Instant, outcome: &'static str) {
+/// Record the attempt outcome, status, and elapsed time on its span.
+pub(super) fn record_stream_attempt(span: &Span, started_at: Instant, outcome: &'static str, status: Option<u16>) {
     let _ = span.record("outcome", outcome);
+    if let Some(status) = status {
+        let _ = span.record("status", status);
+    }
     let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
     let _ = span.record("elapsed_ms", elapsed_ms);
 }
@@ -511,5 +514,6 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
         }
     }
 }
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/handlers/provider.rs' for per-hunk detail, 'weave check' to verify your resolution

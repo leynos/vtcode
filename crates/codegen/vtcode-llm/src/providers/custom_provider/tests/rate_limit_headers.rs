@@ -56,6 +56,7 @@ async fn anthropic_custom_provider_maps_configured_rate_limit_header_overrides()
                 .insert_header("x-proxy-request-limit", "120")
                 .insert_header("x-proxy-request-remaining", "42")
                 .insert_header("x-proxy-reset-after", "2.5")
+                .insert_header("x-unmapped-token-limit", "999")
                 .set_body_string(r#"{"type":"error","error":{"message":"rate limit reached"}}"#),
         )
         .expect(1)
@@ -98,6 +99,10 @@ async fn anthropic_custom_provider_maps_configured_rate_limit_header_overrides()
     assert_eq!(rate_limit.reset_after_millis, Some(2_500));
     assert_eq!(
         rate_limit.tokens_limit_per_minute, None,
+        "the present but unmapped x-unmapped-token-limit header must not populate metadata"
+    );
+    assert_eq!(
+        rate_limit.tokens_remaining_per_minute, None,
         "native Anthropic header names must not be required when overrides are configured"
     );
 }

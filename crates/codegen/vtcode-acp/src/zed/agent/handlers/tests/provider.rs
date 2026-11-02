@@ -36,6 +36,7 @@ fn stream_poll_runs_inside_safe_attempt_span() {
                     operation = "provider_stream_attempt",
                     provider = "test-provider",
                     outcome = tracing::field::Empty,
+                    status = tracing::field::Empty,
                     elapsed_ms = tracing::field::Empty,
                 );
                 let mut stream = futures::stream::poll_fn(|_context| {
@@ -44,7 +45,7 @@ fn stream_poll_runs_inside_safe_attempt_span() {
                 });
                 let started_at = Instant::now();
                 assert_eq!(poll_provider_stream(&mut stream, span.clone()).await, Some(()));
-                record_stream_attempt(&span, started_at, "completion");
+                record_stream_attempt(&span, started_at, "completion", None);
             });
     });
 
@@ -58,6 +59,48 @@ fn stream_poll_runs_inside_safe_attempt_span() {
     assert!(
         !captured.contains("prompt") && !captured.contains("api_key") && !captured.contains("/home/"),
         "stream attempt traces must not leak prompts, credentials, or filesystem paths"
+    );
+}
+
+#[test]
+fn stream_attempt_span_records_rate_limit_status() {
+    let capture = TraceCapture::default();
+    let subscriber = Registry::default().with(capture.clone());
+    tracing::subscriber::with_default(subscriber, || {
+        let span = tracing::info_span!(
+            "acp_provider_stream_attempt",
+            operation = "provider_stream_attempt",
+            provider_class = "custom",
+            attempt = 0,
+            outcome = tracing::field::Empty,
+            status = tracing::field::Empty,
+            elapsed_ms = tracing::field::Empty,
+        );
+        let error = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "proxy-gateway",
+                Some(429),
+                Some("rate_limit_error".to_string()),
+                None,
+                None,
+                Some("7".to_string()),
+                None,
+            )),
+        };
+        record_stream_attempt(
+            &span,
+            Instant::now(),
+            "failure",
+            SafeProviderProjection::from_llm_error(&error).status(),
+        );
+    });
+
+    let captured = capture.0.lock().expect("trace capture lock").join("\n");
+    assert!(
+        captured.contains("span=acp_provider_stream_attempt")
+            && captured.contains("outcome=\"failure\"")
+            && captured.contains("status=429"),
+        "stream attempt traces must record the provider HTTP status: {captured}"
     );
 }
 
