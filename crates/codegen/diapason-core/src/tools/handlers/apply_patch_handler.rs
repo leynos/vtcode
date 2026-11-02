@@ -39,7 +39,8 @@ mod specs;
 #[cfg(test)]
 mod tests;
 
-use preconditions::{PatchPreconditionFailure, validate_request_content_hash};
+use crate::metrics::PatchPreconditionOutcome;
+use preconditions::{PatchHandlerEvaluationTimer, validate_request_content_hash};
 pub(crate) use specs::parse_apply_patch_command;
 pub use specs::{create_apply_patch_freeform_tool, create_apply_patch_json_tool};
 
@@ -72,13 +73,31 @@ pub struct ApplyPatchApprovalKey {
     cwd: PathBuf,
 }
 
-/// Apply patch runtime for orchestrated execution
-#[derive(Default)]
-pub struct ApplyPatchRuntime;
+/// Apply patch runtime for orchestrated execution.
+///
+/// The handler and the runtime are two entry points to the same request. The
+/// handler counts one evaluation per call, so the runtime it drives must not
+/// count a second one; a runtime constructed directly counts its own.
+pub struct ApplyPatchRuntime {
+    records_evaluation: bool,
+}
+
+impl Default for ApplyPatchRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ApplyPatchRuntime {
+    /// Construct a runtime that records its own evaluation, for direct calls.
     pub fn new() -> Self {
-        Self
+        Self { records_evaluation: true }
+    }
+
+    /// Construct the runtime the handler drives: the handler already owns the
+    /// single evaluation counter for this logical request.
+    fn within_handler() -> Self {
+        Self { records_evaluation: false }
     }
 }
 
@@ -145,6 +164,12 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
         _attempt: &SandboxAttempt<'_>,
         ctx: &ToolCtx,
     ) -> Result<ExecToolCallOutput, ToolError> {
+        // A directly driven runtime owns its evaluation counter; the handler's
+        // runtime leaves it to the handler so one request is counted once.
+        let _evaluation_timer = self
+            .records_evaluation
+            .then(|| PatchHandlerEvaluationTimer::new(ctx.session.metrics_collector()));
+        let runtime_metrics = ctx.session.metrics_collector();
         diapason_commons::paths::ensure_path_within_workspace_resolved(&req.cwd, ctx.session.workspace_root())
             .await
             .map_err(|error| {
@@ -165,6 +190,20 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
                 exit_code: 0,
             });
         }
+        {
+            Ok(Some(_)) => {
+                if let Some(metrics) = runtime_metrics.as_ref() {
+                    metrics.record_runtime_revalidation(true);
+                }
+            }
+            Ok(None) => {}
+            Err(failure) => {
+                if let Some(metrics) = runtime_metrics.as_ref() {
+                    metrics.record_runtime_revalidation(false);
+                }
+                return Err(failure.into_tool_error());
+            }
+        }
 
         // Re-validate the version precondition immediately before mutating. The
         // handler checked it already, but a concurrent writer can change the
@@ -173,14 +212,13 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
         // verdict keeps the same shape the preflight would have returned, so a
         // structured failure stays a model-facing envelope rather than becoming
         // an approval rejection.
-        validate_request_content_hash(
+        match validate_request_content_hash(
             req.expected_content_hash.as_deref(),
             &patch,
             &req.cwd,
             ctx.session.workspace_root(),
         )
         .await
-        .map_err(PatchPreconditionFailure::into_tool_error)?;
 
         // Apply the patch
         match patch.apply(&req.cwd).await {
@@ -226,14 +264,25 @@ impl ToolHandler for ApplyPatchHandler {
             payload,
         } = invocation;
 
+        // `ApplyPatchHandler` runs outside the registry pipeline, so its
+        // telemetry comes from the owning session's collector. The guard
+        // counts the evaluation even when a decode or precondition rejects the
+        // request before any mutation.
+        let metrics = session.metrics_collector();
+        let _evaluation_timer = PatchHandlerEvaluationTimer::new(metrics.clone());
+
         // Extract patch input from payload
         let (patch_input, expected_content_hash) = match payload {
             ToolPayload::Function { arguments } => {
                 let args: Value = serde_json::from_str(&arguments)
                     .map_err(|e| ToolCallError::respond(format!("Failed to parse function arguments: {e}")))?;
-                let expected_content_hash = crate::tools::apply_patch::expected_content_hash_from_args(&args)
-                    .map_err(|e| ToolCallError::respond(format!("Invalid expected_content_hash: {e}")))?
-                    .map(ToOwned::to_owned);
+                let expected_content_hash = match crate::tools::apply_patch::expected_content_hash_from_args(&args) {
+                    Ok(value) => value.map(ToOwned::to_owned),
+                    Err(error) => {
+                        record_handler_precondition(&metrics, PatchPreconditionOutcome::MalformedHash);
+                        return Err(ToolCallError::respond(format!("Invalid expected_content_hash: {error}")));
+                    }
+                };
                 let patch_input = crate::tools::apply_patch::decode_apply_patch_input(&args)
                     .map_err(|e| ToolCallError::respond(format!("Failed to decode patch input: {e}")))?
                     .map(|input| input.text)
@@ -267,9 +316,21 @@ impl ToolHandler for ApplyPatchHandler {
         // Enforce the version precondition before any mutation event is emitted
         // so a rejection reaches the model as the registry's structured
         // envelope rather than a flat `ToolError::Rejected` string.
-        validate_request_content_hash(req.expected_content_hash.as_deref(), &patch, &req.cwd, session.workspace_root())
-            .await
-            .map_err(PatchPreconditionFailure::into_tool_call_error)?;
+        match validate_request_content_hash(
+            req.expected_content_hash.as_deref(),
+            &patch,
+            &req.cwd,
+            session.workspace_root(),
+        )
+        .await
+        {
+            Ok(Some(outcome)) => record_handler_precondition(&metrics, outcome),
+            Ok(None) => {}
+            Err(failure) => {
+                record_handler_precondition(&metrics, failure.outcome());
+                return Err(failure.into_tool_call_error());
+            }
+        }
 
         // Convert patch operations to file changes for tracking
         let changes = convert_patch_to_changes(&patch, &turn.cwd);
@@ -281,7 +342,7 @@ impl ToolHandler for ApplyPatchHandler {
 
         // Execute using orchestrator
         let mut orchestrator = ToolOrchestrator::new();
-        let mut runtime = ApplyPatchRuntime::new();
+        let mut runtime = ApplyPatchRuntime::within_handler();
         let tool_ctx = ToolCtx {
             session: session.clone(),
             turn: turn.clone(),
@@ -335,6 +396,16 @@ fn convert_patch_to_changes(patch: &Patch, cwd: &Path) -> HashMap<PathBuf, FileC
     }
 
     changes
+}
+
+/// Record one handler-surface precondition outcome when telemetry is wired.
+fn record_handler_precondition(
+    metrics: &Option<std::sync::Arc<crate::metrics::MetricsCollector>>,
+    outcome: PatchPreconditionOutcome,
+) {
+    if let Some(metrics) = metrics.as_ref() {
+        metrics.record_patch_precondition(outcome);
+    }
 }
 
 fn map_approval_policy(policy: ApprovalPolicy) -> AskForApproval {

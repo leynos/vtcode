@@ -52,7 +52,7 @@ pub(super) async fn validate_patch_content_hash(
                 format!("Source file no longer exists: {source_path}"),
                 content_hash_mismatch_details(source_path, expected_hash, None, false, json!([])),
             ),
-            outcome: PatchPreconditionOutcome::ContentHashMismatch,
+            outcome: PatchPreconditionOutcome::MissingFile,
         }));
     }
     let current_hash = format!("sha256:{}", snapshot.sha256);

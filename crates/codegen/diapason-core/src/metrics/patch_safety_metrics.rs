@@ -17,6 +17,11 @@ pub enum PatchPreconditionOutcome {
     InvalidScope,
     /// `expected_content_hash` was not a canonical `sha256:<hex>` value.
     MalformedHash,
+    /// The source file disappeared after its version was captured.
+    MissingFile,
+    /// The precondition could not be evaluated because the read or the
+    /// workspace containment check failed.
+    ValidationFailed,
 }
 
 impl PatchPreconditionOutcome {
@@ -27,6 +32,39 @@ impl PatchPreconditionOutcome {
             Self::ContentHashMismatch => "content_hash_mismatch",
             Self::InvalidScope => "invalid_scope",
             Self::MalformedHash => "malformed_hash",
+            Self::MissingFile => "missing_file",
+            Self::ValidationFailed => "validation_failed",
+        }
+    }
+}
+
+/// The outcome of one ACP read-version certification attempt.
+///
+/// These categories only describe why a minted `content_hash` was withheld.
+/// They never carry the path, the bytes, or the verification error chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchCertificationOutcome {
+    /// The returned window was not the projection of the on-disk bytes.
+    WindowProjectionMismatch,
+    /// The on-disk file could not be read back for comparison.
+    WindowReadFailed,
+    /// The on-disk bytes were not UTF-8, so no projection was possible.
+    WindowNotUtf8,
+    /// The registry refused to record the verified content hash.
+    ReadContentMismatch,
+    /// The registry failed while recording the verified content hash.
+    ReadVersionCaptureFailed,
+}
+
+impl PatchCertificationOutcome {
+    /// Stable Prometheus label and log field for this outcome.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WindowProjectionMismatch => "window_projection_mismatch",
+            Self::WindowReadFailed => "window_read_failed",
+            Self::WindowNotUtf8 => "window_not_utf8",
+            Self::ReadContentMismatch => "read_content_mismatch",
+            Self::ReadVersionCaptureFailed => "read_version_capture_failed",
         }
     }
 }
@@ -68,6 +106,28 @@ pub struct PatchSafetyMetrics {
     pub precondition_invalid_scope: u64,
     /// Preconditions rejected because the supplied hash was malformed.
     pub precondition_malformed_hash: u64,
+    /// Preconditions rejected because the source file no longer existed.
+    pub precondition_missing_file: u64,
+    /// Preconditions that could not be evaluated because a read or containment
+    /// check failed.
+    pub precondition_validation_failed: u64,
+    /// Runtime rechecks that matched the current file version.
+    pub runtime_revalidation_matched: u64,
+    /// Runtime rechecks that rejected a changed, missing, or unreadable file.
+    pub runtime_revalidation_mismatch: u64,
+    /// ACP certification attempts withheld because the returned window did not
+    /// match the on-disk projection.
+    pub certification_window_projection_mismatch: u64,
+    /// ACP certification attempts withheld because the on-disk read failed.
+    pub certification_window_read_failed: u64,
+    /// ACP certification attempts withheld because the on-disk bytes were not
+    /// UTF-8.
+    pub certification_window_not_utf8: u64,
+    /// ACP certification attempts whose verified hash the registry refused.
+    pub certification_read_content_mismatch: u64,
+    /// ACP certification attempts that failed while recording the verified
+    /// hash.
+    pub certification_read_version_capture_failed: u64,
     /// Patches that changed at least one file.
     pub no_op_execute: u64,
     /// First identical no-op in a row.
@@ -90,6 +150,32 @@ impl PatchSafetyMetrics {
             PatchPreconditionOutcome::ContentHashMismatch => &mut self.precondition_content_hash_mismatch,
             PatchPreconditionOutcome::InvalidScope => &mut self.precondition_invalid_scope,
             PatchPreconditionOutcome::MalformedHash => &mut self.precondition_malformed_hash,
+            PatchPreconditionOutcome::MissingFile => &mut self.precondition_missing_file,
+            PatchPreconditionOutcome::ValidationFailed => &mut self.precondition_validation_failed,
+        };
+        *counter = counter.saturating_add(1);
+    }
+
+    /// Count one runtime recheck, which is a distinct stage from the handler
+    /// preflight and therefore has its own counter rather than reusing the
+    /// preflight series.
+    pub fn record_runtime_revalidation(&mut self, matched: bool) {
+        let counter = if matched {
+            &mut self.runtime_revalidation_matched
+        } else {
+            &mut self.runtime_revalidation_mismatch
+        };
+        *counter = counter.saturating_add(1);
+    }
+
+    /// Count one ACP read-version certification outcome.
+    pub fn record_certification(&mut self, outcome: PatchCertificationOutcome) {
+        let counter = match outcome {
+            PatchCertificationOutcome::WindowProjectionMismatch => &mut self.certification_window_projection_mismatch,
+            PatchCertificationOutcome::WindowReadFailed => &mut self.certification_window_read_failed,
+            PatchCertificationOutcome::WindowNotUtf8 => &mut self.certification_window_not_utf8,
+            PatchCertificationOutcome::ReadContentMismatch => &mut self.certification_read_content_mismatch,
+            PatchCertificationOutcome::ReadVersionCaptureFailed => &mut self.certification_read_version_capture_failed,
         };
         *counter = counter.saturating_add(1);
     }

@@ -144,8 +144,31 @@ struct WindowedReadFlow {
     path: PathBuf,
     calls: usize,
     requests: Arc<Mutex<Vec<LLMRequest>>>,
+    /// Certification counters from the registry this session actually used.
+    metrics: Arc<vtcode_core::metrics::MetricsCollector>,
     _test_lock: tokio::sync::MutexGuard<'static, ()>,
     _factory_guard: PromptProviderFactoryGuard,
+}
+
+impl WindowedReadFlow {
+    /// Read the certification counters for this flow.
+    fn certification(&self) -> vtcode_core::metrics::PatchSafetyMetrics {
+        self.metrics.get_patch_safety_metrics()
+    }
+}
+
+/// Resolve the collector the session's read certification writes to.
+///
+/// `run_read_file` prefers the session's workspace registry and falls back to
+/// the agent's launch registry, so the test reads the same one.
+fn certification_metrics(agent: &ZedAgent, session_id: &acp::SessionId) -> Arc<vtcode_core::metrics::MetricsCollector> {
+    match agent.session_handle(session_id) {
+        Ok(Some(handle)) => match handle.workspace_runtime() {
+            Ok(Some(runtime)) => runtime.local_tool_registry.metrics_collector(),
+            _ => agent.local_tool_registry.metrics_collector(),
+        },
+        _ => agent.local_tool_registry.metrics_collector(),
+    }
 }
 
 /// Run a scripted provider turn sequence with an editor-style read client.
@@ -160,10 +183,36 @@ async fn run_windowed_read_flow(
     mutation_before_call: Option<(usize, &str)>,
     window_mode: ClientWindowMode,
 ) -> WindowedReadFlow {
+    run_windowed_read_flow_with_bytes(
+        file_name,
+        disk_content,
+        None,
+        client_buffer,
+        tool_calls,
+        mutation_before_call,
+        window_mode,
+    )
+    .await
+}
+
+/// As [`run_windowed_read_flow`], but `disk_bytes` overrides the on-disk
+/// fixture so a test can write content that is not valid UTF-8.
+async fn run_windowed_read_flow_with_bytes(
+    file_name: &str,
+    disk_content: &str,
+    disk_bytes: Option<&[u8]>,
+    client_buffer: Option<&str>,
+    tool_calls: Vec<(String, String)>,
+    mutation_before_call: Option<(usize, &str)>,
+    window_mode: ClientWindowMode,
+) -> WindowedReadFlow {
     let test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
     let workspace = TempDir::new().expect("wire test workspace");
     let path = workspace.path().join(file_name);
-    std::fs::write(&path, disk_content).expect("write wire fixture");
+    match disk_bytes {
+        Some(bytes) => std::fs::write(&path, bytes).expect("write binary wire fixture"),
+        None => std::fs::write(&path, disk_content).expect("write wire fixture"),
+    }
     let calls = Arc::new(AtomicUsize::new(0));
     let requests = Arc::new(Mutex::new(Vec::new()));
     let factory_calls = Arc::clone(&calls);
@@ -186,6 +235,8 @@ async fn run_windowed_read_flow(
     let client_file_name = file_name.to_string();
     let prompt_file_name = file_name.to_string();
     let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let session_id_slot = Arc::new(Mutex::new(None::<acp::SessionId>));
+    let session_id_capture = Arc::clone(&session_id_slot);
     let (agent_channel, client_channel) = Channel::duplex();
 
     let agent_connection = install_handlers(Agent.builder().name("vtcode-read-file-version-test"), Arc::clone(&agent))
@@ -215,6 +266,7 @@ async fn run_windowed_read_flow(
                     .await?,
             );
             let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
+            *session_id_capture.lock().expect("capture session id") = Some(session.session_id.clone());
             let response = cx
                 .send_request(PromptRequest::new(
                     session.session_id,
@@ -232,6 +284,16 @@ async fn run_windowed_read_flow(
         .await
         .expect("client connection should finish")
         .expect("versioned patch protocol flow should succeed");
+
+    // Read the counters before the agent task is dropped; the session's
+    // registry lives behind the handle the connection would tear down.
+    let session_id = session_id_slot
+        .lock()
+        .expect("read session id")
+        .clone()
+        .expect("the client registered a session");
+    let metrics = certification_metrics(&agent, &session_id);
+
     agent_task.abort();
     drop(agent_task.await);
 
@@ -241,6 +303,7 @@ async fn run_windowed_read_flow(
         path,
         calls: call_count,
         requests,
+        metrics,
         _test_lock: test_lock,
         _factory_guard: factory_guard,
     }
@@ -315,6 +378,15 @@ async fn windowed_read_certifies_the_whole_file_and_patches_with_its_hash() {
     assert_eq!(tool_result_payload(&requests, 1)["content_hash"], whole_hash);
     assert_eq!(tool_result_payload(&requests, 2)["result"]["success"], true);
     assert_eq!(std::fs::read_to_string(&flow.path).expect("read final fixture"), "alpha\nbeta2\ngamma\n");
+
+    // A certified read is not a failure outcome, so no certification counter
+    // may move: the counters exist to explain withheld versions.
+    let certification = flow.certification();
+    assert_eq!(certification.certification_window_projection_mismatch, 0);
+    assert_eq!(certification.certification_window_read_failed, 0);
+    assert_eq!(certification.certification_window_not_utf8, 0);
+    assert_eq!(certification.certification_read_content_mismatch, 0);
+    assert_eq!(certification.certification_read_version_capture_failed, 0);
 }
 
 /// A dirty buffer window never certifies the on-disk file, and its stale hash
@@ -345,6 +417,13 @@ async fn windowed_read_of_a_dirty_buffer_returns_no_version_and_rejects_the_stal
     );
     assert_eq!(tool_result_payload(&requests, 2)["error"]["details"]["reason"], "content_hash_mismatch");
     assert_eq!(std::fs::read_to_string(&flow.path).expect("read final fixture"), disk);
+
+    let certification = flow.certification();
+    assert_eq!(
+        certification.certification_window_projection_mismatch, 1,
+        "a dirty buffer window must be counted as a projection mismatch"
+    );
+    assert_eq!(certification.certification_window_not_utf8, 0);
 }
 
 /// A client that returns a different amount of text than the requested window
@@ -393,4 +472,47 @@ async fn read_window_outside_the_requested_slice_returns_no_version(
     let payload = tool_result_payload(&requests, 1);
     assert!(payload["content_hash"].is_null(), "{rejection_message}");
     assert_eq!(std::fs::read_to_string(&flow.path).expect("read final fixture"), disk);
+
+    let certification = flow.certification();
+    assert_eq!(
+        certification.certification_window_projection_mismatch, 1,
+        "a response outside the requested slice must be counted as a projection mismatch: {rejection_message}"
+    );
+    assert_eq!(certification.certification_window_not_utf8, 0);
+    assert_eq!(certification.certification_window_read_failed, 0);
+}
+
+/// The on-disk bytes being non-UTF-8 gets its own counter, distinct from a
+/// projection mismatch, so an operator can tell a binary file from an editor
+/// returning the wrong window.
+#[tokio::test]
+async fn windowed_read_of_a_non_utf8_file_counts_the_not_utf8_outcome() {
+    let read = serde_json::json!({"path": "binary.bin", "line": 1, "limit": 1}).to_string();
+    let tool_calls = vec![("read_file".to_string(), read)];
+
+    // The client answers with valid UTF-8 while the file on disk is not, which
+    // is exactly the case the on-disk UTF-8 check exists for.
+    let flow = run_windowed_read_flow_with_bytes(
+        "binary.bin",
+        "",
+        Some(&[0xff, 0xfe, b'\n']),
+        Some("alpha\n"),
+        tool_calls,
+        None,
+        ClientWindowMode::Honours,
+    )
+    .await;
+
+    assert_eq!(flow.calls, 2, "one result per tool call plus the final turn");
+    let requests = flow.requests.lock().expect("stream requests");
+    let payload = tool_result_payload(&requests, 1);
+    assert!(payload["content_hash"].is_null(), "a non-UTF-8 file must not be certified");
+
+    let certification = flow.certification();
+    assert_eq!(
+        certification.certification_window_not_utf8, 1,
+        "non-UTF-8 on-disk content must be counted separately from a mismatch"
+    );
+    assert_eq!(certification.certification_window_projection_mismatch, 0);
+    assert_eq!(certification.certification_window_read_failed, 0);
 }

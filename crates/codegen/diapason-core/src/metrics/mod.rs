@@ -18,18 +18,27 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 pub mod discovery_metrics;
+
 pub mod execution_metrics;
+
 pub mod filtering_metrics;
+
 pub mod patch_safety_metrics;
+
 pub mod planning_metrics;
+
 pub mod sdk_metrics;
+
 pub mod security_metrics;
+
 pub mod skill_metrics;
 
 pub use discovery_metrics::DiscoveryMetrics;
 pub use execution_metrics::ExecutionMetrics;
 pub use filtering_metrics::FilteringMetrics;
-pub use patch_safety_metrics::{PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics};
+pub use patch_safety_metrics::{
+    PatchCertificationOutcome, PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics,
+};
 pub use planning_metrics::{PlanValidationRejectionReason, PlanningValidationMetrics};
 pub use sdk_metrics::SdkMetrics;
 pub use security_metrics::SecurityMetrics;
@@ -524,6 +533,18 @@ impl MetricsCollector {
         self.patch_safety.lock().record_precondition(outcome);
     }
 
+    /// Record one runtime `apply_patch` recheck, which is counted separately
+    /// from the handler preflight so one logical request is never double
+    /// counted in the preflight series.
+    pub fn record_runtime_revalidation(&self, matched: bool) {
+        self.patch_safety.lock().record_runtime_revalidation(matched);
+    }
+
+    /// Record one ACP read-version certification outcome.
+    pub fn record_patch_certification(&self, outcome: PatchCertificationOutcome) {
+        self.patch_safety.lock().record_certification(outcome);
+    }
+
     /// Record one bounded repeated no-op ladder decision.
     pub fn record_patch_no_op(&self, decision: PatchNoOpOutcome) {
         self.patch_safety.lock().record_no_op(decision);
@@ -823,11 +844,15 @@ impl PrometheusMetricsSnapshot {
              vtcode_apply_patch_precondition_total{{outcome=\"matched\"}} {}\n\
              vtcode_apply_patch_precondition_total{{outcome=\"content_hash_mismatch\"}} {}\n\
              vtcode_apply_patch_precondition_total{{outcome=\"invalid_scope\"}} {}\n\
-             vtcode_apply_patch_precondition_total{{outcome=\"malformed_hash\"}} {}\n\n",
+             vtcode_apply_patch_precondition_total{{outcome=\"malformed_hash\"}} {}\n\
+             vtcode_apply_patch_precondition_total{{outcome=\"missing_file\"}} {}\n\
+             vtcode_apply_patch_precondition_total{{outcome=\"validation_failed\"}} {}\n\n",
             self.patch_safety.precondition_matched,
             self.patch_safety.precondition_content_hash_mismatch,
             self.patch_safety.precondition_invalid_scope,
-            self.patch_safety.precondition_malformed_hash
+            self.patch_safety.precondition_malformed_hash,
+            self.patch_safety.precondition_missing_file,
+            self.patch_safety.precondition_validation_failed
         );
 
         let _ = write!(
@@ -842,6 +867,31 @@ impl PrometheusMetricsSnapshot {
             self.patch_safety.no_op_first,
             self.patch_safety.no_op_repeated,
             self.patch_safety.no_op_blocked
+        );
+
+        let _ = write!(
+            output,
+            "# HELP vtcode_apply_patch_runtime_revalidation_total Total apply_patch runtime rechecks\n\
+             # TYPE vtcode_apply_patch_runtime_revalidation_total counter\n\
+             vtcode_apply_patch_runtime_revalidation_total{{outcome=\"matched\"}} {}\n\
+             vtcode_apply_patch_runtime_revalidation_total{{outcome=\"mismatch\"}} {}\n\n",
+            self.patch_safety.runtime_revalidation_matched, self.patch_safety.runtime_revalidation_mismatch
+        );
+
+        let _ = write!(
+            output,
+            "# HELP vtcode_apply_patch_certification_total Total ACP read-version certification outcomes\n\
+             # TYPE vtcode_apply_patch_certification_total counter\n\
+             vtcode_apply_patch_certification_total{{outcome=\"window_projection_mismatch\"}} {}\n\
+             vtcode_apply_patch_certification_total{{outcome=\"window_read_failed\"}} {}\n\
+             vtcode_apply_patch_certification_total{{outcome=\"window_not_utf8\"}} {}\n\
+             vtcode_apply_patch_certification_total{{outcome=\"read_content_mismatch\"}} {}\n\
+             vtcode_apply_patch_certification_total{{outcome=\"read_version_capture_failed\"}} {}\n\n",
+            self.patch_safety.certification_window_projection_mismatch,
+            self.patch_safety.certification_window_read_failed,
+            self.patch_safety.certification_window_not_utf8,
+            self.patch_safety.certification_read_content_mismatch,
+            self.patch_safety.certification_read_version_capture_failed
         );
 
         let _ = write!(

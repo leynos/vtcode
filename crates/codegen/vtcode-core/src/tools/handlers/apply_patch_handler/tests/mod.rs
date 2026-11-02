@@ -15,6 +15,7 @@ use tempfile::TempDir;
 
 mod direct_runtime;
 mod handler_runtime;
+mod telemetry;
 
 #[test]
 fn test_parse_apply_patch_command_direct() {
@@ -82,11 +83,32 @@ pub(super) fn precondition_envelope(error: &ToolCallError) -> Value {
     }
 }
 
+/// Build the session a handler test runs against, optionally with telemetry.
+pub(super) fn test_session(
+    workspace: &Path,
+    metrics: Option<Arc<crate::metrics::MetricsCollector>>,
+) -> Arc<DefaultToolSession> {
+    let session = DefaultToolSession::with_workspace(workspace.to_path_buf(), workspace.to_path_buf());
+    Arc::new(match metrics {
+        Some(metrics) => session.with_metrics_collector(metrics),
+        None => session,
+    })
+}
+
 /// Builds a `ToolInvocation` whose session and turn both point at
 /// `workspace`, so the handler exercises the same workspace-containment and
 /// precondition path a real turn would use.
 pub(super) fn test_invocation(workspace: PathBuf, arguments: String) -> ToolInvocation {
-    let session = Arc::new(DefaultToolSession::with_workspace(workspace.clone(), workspace.clone()));
+    test_invocation_with_metrics(workspace, arguments, None)
+}
+
+/// Build an invocation whose session reports `metrics` to its handler.
+pub(super) fn test_invocation_with_metrics(
+    workspace: PathBuf,
+    arguments: String,
+    metrics: Option<Arc<crate::metrics::MetricsCollector>>,
+) -> ToolInvocation {
+    let session = test_session(&workspace, metrics);
     let turn = Arc::new(TurnContext {
         cwd: workspace,
         turn_id: "apply-patch-handler-runtime-test".to_string(),
@@ -108,8 +130,15 @@ pub(super) fn test_invocation(workspace: PathBuf, arguments: String) -> ToolInvo
 
 /// Build the direct `ToolCtx` a runtime test needs for `workspace`.
 pub(super) fn direct_runtime_ctx(workspace: &TempDir) -> ToolCtx {
-    let session =
-        Arc::new(DefaultToolSession::with_workspace(workspace.path().to_path_buf(), workspace.path().to_path_buf()));
+    direct_runtime_ctx_with_metrics(workspace, None)
+}
+
+/// Build a direct `ToolCtx` whose session reports `metrics` to the runtime.
+pub(super) fn direct_runtime_ctx_with_metrics(
+    workspace: &TempDir,
+    metrics: Option<Arc<crate::metrics::MetricsCollector>>,
+) -> ToolCtx {
+    let session = test_session(workspace.path(), metrics);
     let turn = Arc::new(TurnContext {
         cwd: workspace.path().to_path_buf(),
         turn_id: "direct-apply-patch-test".to_string(),

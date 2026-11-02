@@ -207,20 +207,65 @@ the signature is even computed.
 
 ## Observability
 
-Both guards report through `metrics::patch_safety_metrics`, which keeps two
+Both guards report through `metrics::patch_safety_metrics`, which keeps five
 bounded counter sets and one timer:
 
 - precondition outcomes: `matched`, `content_hash_mismatch`, `invalid_scope`,
-  `malformed_hash`;
+  `malformed_hash`, `missing_file`, `validation_failed`;
+- runtime revalidation outcomes: `matched`, `mismatch`;
+- ACP certification outcomes: `window_projection_mismatch`,
+  `window_read_failed`, `window_not_utf8`, `read_content_mismatch`,
+  `read_version_capture_failed`;
 - no-op decisions: `execute`, `no_op_first`, `no_op_repeated`, `no_op_blocked`;
 - `evaluations` plus `total_duration_ms`, from which `avg_duration_ms` is
   derived.
 
 The snapshot appears as `patch_safety` in the metrics summary JSON and as
 `vtcode_apply_patch_precondition_total{outcome=...}`,
+`vtcode_apply_patch_runtime_revalidation_total{outcome=...}`,
+`vtcode_apply_patch_certification_total{outcome=...}`,
 `vtcode_apply_patch_no_op_total{decision=...}`,
 `vtcode_apply_patch_evaluations_total`, and
 `vtcode_apply_patch_avg_duration_ms` in the Prometheus export.
+
+### Where the counters come from
+
+`PatchSafetyMetrics` lives on the `ToolRegistry`, and the two apply-patch
+surfaces reach it differently:
+
+- The registry pipeline records through its own `ToolRegistry` collector.
+- `ApplyPatchHandler` runs outside that pipeline, so it reads the collector
+  from its `ToolSession` via `ToolSession::metrics_collector()`. The default
+  implementation returns `None`; `DefaultToolSession` carries an optional
+  collector and returns it. A session without telemetry therefore pays no cost
+  and silently skips the counters.
+- ACP read certification uses the session's workspace registry when the session
+  has one and falls back to the agent's launch registry, matching the fallback
+  the lifecycle observer already uses.
+
+### Counting semantics
+
+Each outcome is counted once, at the stage that decided it:
+
+- **Preflight** — one `precondition_*` outcome per handler or pipeline request
+  that carries an `expected_content_hash`. A request that omits the hash
+  records nothing. A malformed hash is counted before decoding and still counts
+  the evaluation.
+- **Runtime revalidation** — one `runtime_revalidation_*` outcome per runtime
+  recheck that carries a hash. It is a distinct stage from the preflight, not a
+  second count of the same decision; a request rejected by the preflight never
+  reaches it.
+- **Evaluation** — one `evaluations` count per logical request. The handler
+  owns it, so the runtime it drives must not count a second. A runtime
+  constructed directly by the registry records its own, keeping the counter
+  honest when there is no handler above it.
+- **Certification** — one `certification_*` outcome per ACP read that withheld
+  a version. A read that certifies records nothing: the counters exist to
+  explain withheld versions, so their sum is the withheld-version count.
+
+Duration covers the handler's evaluation only, measured by a guard that fires
+on drop so every early return is counted. It does not include the runtime's
+write.
 
 Every label is a fixed enum variant. Paths, patch signatures, patch text, and
 error strings never become a label or a log value, so a session editing private
@@ -264,10 +309,18 @@ When changing any of the above, the following are the minimum checks:
   anchor failures.
 - **Read certification** — a growing file must yield no version rather than an
   inconsistent one, and a windowed ACP read must certify the whole-file hash
-  only when its text matches the on-disk projection.
-- **Observability** — the `patch_safety` metrics test must keep asserting the
+  only when its text matches the on-disk projection. A dirty buffer and a
+  response wider or shorter than the requested slice must count
+  `window_projection_mismatch`, a non-UTF-8 file must count `window_not_utf8`,
+  and a certified read must leave every certification counter at zero.
+- **Observability** — the `patch_safety` metrics tests must keep asserting the
   summary fields, the Prometheus series, and that neither export can contain
-  patch text or a hash.
+  patch text or a hash. Handler tests must also prove the counting semantics
+  above: a matching request counts one preflight match, one runtime
+  revalidation, and exactly one evaluation; a stale hash counts one preflight
+  mismatch and no revalidation; a removed source file counts `missing_file`
+  rather than `content_hash_mismatch`; and a directly driven runtime counts its
+  own evaluation and revalidation with no preflight counter moving.
 
 Assert on the observable contract (file unchanged, `reason` present, occurrence
 counted) rather than on internal state, so refactors inside the guard do not
