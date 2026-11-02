@@ -243,3 +243,38 @@ selectors.
   now registers the wire-test provider with a half-second request policy, which
   keeps the scheduled delay equal to the provider hint and preserves the
   assertion that the notice advertises the delay actually scheduled.
+
+## Rebase onto the advanced Lody usage/activity head
+
+- 2026-11-02: The parent branch advanced from `d67379e2f` to `aec962ef0`
+  while this layer was being validated, so the layer was replayed again onto
+  the new head. The exclusive boundary stayed `d67379e2f`; all 33 layer
+  commits were replayed, and the resulting head is `2fb665cb9` plus the
+  post-rebase repair `6271743e9`.
+- The first replay attempt used the user-wide Weave merge driver. Weave
+  truncated `crates/codegen/vtcode-llm/src/providers/openai/provider.rs` to
+  four lines while replaying the test-module extraction, which corrupted every
+  later commit in the chain. The replay was aborted and restarted with
+  `core.attributesFile=/dev/null`, which disables the user-wide
+  `*.rs merge=weave` enrolment and uses Git's built-in merge backend with
+  `zdiff3`. The built-in backend replayed the same series with only four
+  conflicts, all resolved by hand.
+- Conflict resolutions:
+  - `openai/provider.rs`: the parent moved the inherent `impl OpenAIProvider`
+    block; this layer's `provider_error_with_headers` was inserted into the
+    parent's block instead of restoring the pre-split file.
+  - `scripts/generate_config_field_reference.py`: this layer deletes
+    `format_code_span` and inlines simple spans; the parent's backtick-padding
+    fix is preserved by this layer's later `code_span` helper, so the deletion
+    was kept.
+  - `handlers/tests/prompt.rs`: kept the parent's `mod interrupted_tool;`
+    alongside this layer's module declarations.
+  - `handlers/tests/session.rs`: the parent split the file; this layer's
+    `assert_first_stop_hook_block` helper and its call site were applied to the
+    parent's smaller file.
+  - `scripts/large_file_allowlist.txt`: kept the parent's tighter 1.8 MB
+    ceiling and removed the duplicate 2 MB entry in `6271743e9`.
+- The parent's `format_code_span` padding fix and its `--locked` schema
+  invocation are retained. The generated `docs/config/CONFIG_FIELD_REFERENCE.md`
+  was not regenerated: the generator still drops the three custom-provider
+  pricing and rate-limit-header rows.
