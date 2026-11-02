@@ -85,6 +85,14 @@ example a `raw_command` field), both representations are evaluated against this
 same pipeline. The command runs only when both pass, so a shell source cannot
 smuggle an allowlisted command past the configured policy and vice versa.
 
+When the executor wraps an argv in a shell, it joins the argv with
+`shell_words::join`, which quotes arguments that contain spaces or shell
+metacharacters. The executed source then differs from the unquoted argv form,
+and both must pass. This is a compatibility change for policies that matched
+only the argv form: an `allow_list` prefix or anchored `allow_regex` may need
+an additional pattern for the quoted source, such as
+`/bin/sh -lc 'printf value with space'`.
+
 Permission modes are a separate gate: `--dangerously-skip-permissions`,
 `--skip-confirmations`, and `--full-auto` auto-approve promptable actions but
 do not override a configured deny rule, an allowlist miss, the curated command
