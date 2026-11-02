@@ -634,3 +634,12 @@ detects a missing lock by construction rather than by timing. The partial-state
 test now formats the timeout error into its message: `-D warnings` promotes
 `clippy::map_err_ignore`, so discarding the source error fails the lint gate
 rather than only losing diagnostics.
+
+2026-11-02: Second review round on `f837738e3`. `execute_tool_round` now
+rejects a provider batch whose tool-call IDs are not unique before staging or
+execution, because duplicate IDs make placeholder replacement ambiguous and
+leave the archive unresumable; a focused unit test covers the rejection and the
+unique-ID path. The tool-recovery tests replace their remaining `.unwrap()`
+calls with step-naming `.expect()` messages. `docs/development/acp-runtime.md`
+now scopes the fixed-variant guarantee to metric labels and exported metric
+values, and states that structured logs may still carry session identifiers.

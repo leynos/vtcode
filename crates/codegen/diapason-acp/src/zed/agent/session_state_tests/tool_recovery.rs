@@ -13,7 +13,7 @@ use diapason_core::llm::provider::{MessageRole, ToolCall};
 
 #[test]
 fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
     let mut listing = archived_listing("legacy-unresolved", temp.path(), "continue");
     let unresolved = Message::assistant_with_tools(
         String::new(),
@@ -42,7 +42,7 @@ fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
 
 #[test]
 fn relocation_only_repair_is_persisted_to_the_archive() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
     let mut listing = archived_listing("relocation-only", temp.path(), "continue");
     listing.snapshot.messages = vec![
         SessionMessage::from(&Message::assistant_with_tools(
@@ -75,7 +75,7 @@ fn relocation_only_repair_is_persisted_to_the_archive() {
 fn truncated_archive_prefix_resumes_without_ambiguity() {
     // Front compaction can retain tool results whose assistant request was
     // trimmed away; that shape must resume rather than being rejected.
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
     let mut listing = archived_listing("truncated-prefix", temp.path(), "continue");
     listing.snapshot.messages = vec![
         SessionMessage::from(&Message::tool_response("trimmed-call".to_string(), "earlier result".to_string())),
@@ -101,9 +101,9 @@ fn truncated_archive_prefix_resumes_without_ambiguity() {
 async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
     let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
     let target = temp.path().join("must-not-change.txt");
-    fs::write(&target, "original\n").unwrap();
+    fs::write(&target, "original\n").expect("seed the file the replayed patch would modify");
     let patch =
         format!("*** Begin Patch\n*** Update File: {}\n@@\n-original\n+replayed\n*** End Patch\n", target.display());
     let unresolved = Message::assistant_with_tools(
@@ -123,14 +123,16 @@ async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     let handle = agent
         .attach_thread_from_listing(
             &acp::SessionId::new("loaded-legacy-mutating"),
-            &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
             listing,
         )
         .await
-        .unwrap();
+        .expect("attach the legacy archive without replaying its mutating call");
 
-    assert_eq!(fs::read_to_string(&target).unwrap(), "original\n");
-    let messages = handle.data.lock().unwrap().thread.messages();
+    assert_eq!(fs::read_to_string(&target).expect("read the file the replayed patch would modify"), "original\n");
+    let messages = handle.data.lock().expect("lock the attached session data").thread.messages();
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, MessageRole::Assistant);
     assert_eq!(messages[1].role, MessageRole::Tool);
@@ -139,7 +141,9 @@ async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     assert!(recovery.contains("Verify the current workspace state"));
     assert!(recovery.contains("resubmit the tool call only if"));
 
-    let persisted: SessionSnapshot = serde_json::from_str(&fs::read_to_string(archive_path).unwrap()).unwrap();
+    let persisted: SessionSnapshot =
+        serde_json::from_str(&fs::read_to_string(archive_path).expect("read the repaired archive after attach"))
+            .expect("parse the repaired archive snapshot");
     assert_eq!(persisted.messages.len(), 2);
     assert_eq!(persisted.messages[1].role, MessageRole::Tool);
 }
@@ -150,7 +154,7 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     // callers only after its repaired history has been durably written.
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
     let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
     let agent = build_agent(temp.path()).await;
     let mut listing = archived_listing("repair-checkpoint-failure", temp.path(), "continue");
     let unresolved = Message::assistant_with_tools(
@@ -163,13 +167,15 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     );
     listing.snapshot.messages = vec![SessionMessage::from(&unresolved)];
     listing.snapshot.total_messages = 1;
-    fs::create_dir(&listing.path).unwrap();
+    fs::create_dir(&listing.path).expect("occupy the archive path with a directory");
 
     let session_id = acp::SessionId::new("repair-checkpoint-failure-session");
     let error = match agent
         .attach_thread_from_listing(
             &session_id,
-            &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
             listing,
         )
         .await
@@ -180,7 +186,10 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
 
     assert!(error.to_string().contains("Failed to persist repaired ACP tool-call history"));
     assert!(
-        agent.session_handle(&session_id).unwrap().is_none(),
+        agent
+            .session_handle(&session_id)
+            .expect("query the session registry after the failed repair checkpoint")
+            .is_none(),
         "failed repair checkpoints must not leave a partially registered session"
     );
 }
@@ -192,9 +201,9 @@ async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive(
     // rewritten or the session becomes eligible for a prompt/tool call.
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
     let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
     let target = temp.path().join("must-not-change.txt");
-    fs::write(&target, "original\n").unwrap();
+    fs::write(&target, "original\n").expect("seed the file the replayed patch would modify");
     let patch =
         format!("*** Begin Patch\n*** Update File: {}\n@@\n-original\n+replayed\n*** End Patch\n", target.display());
     let call = ToolCall::function(
@@ -216,15 +225,17 @@ async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive(
     ];
     listing.snapshot.total_messages = listing.snapshot.messages.len();
     let archive_path = listing.path.clone();
-    let original_archive = serde_json::to_vec(&listing.snapshot).unwrap();
-    fs::write(&archive_path, &original_archive).unwrap();
+    let original_archive = serde_json::to_vec(&listing.snapshot).expect("serialize the ambiguous archive");
+    fs::write(&archive_path, &original_archive).expect("write the ambiguous archive to disk");
     let agent = build_agent(temp.path()).await;
     let session_id = acp::SessionId::new("ambiguous-legacy-session");
 
     let error = match agent
         .attach_thread_from_listing(
             &session_id,
-            &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
             listing,
         )
         .await
@@ -235,18 +246,21 @@ async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive(
 
     assert!(error.to_string().contains("ambiguous tool-result history"));
     assert!(
-        agent.session_handle(&session_id).unwrap().is_none(),
+        agent
+            .session_handle(&session_id)
+            .expect("query the session registry after the ambiguous archive rejection")
+            .is_none(),
         "an ambiguous archive must not become a provider/tool continuation session"
     );
-    assert_eq!(fs::read(&archive_path).unwrap(), original_archive);
-    assert_eq!(fs::read_to_string(&target).unwrap(), "original\n");
+    assert_eq!(fs::read(&archive_path).expect("read the archive after the ambiguous rejection"), original_archive);
+    assert_eq!(fs::read_to_string(&target).expect("read the file the replayed patch would modify"), "original\n");
 }
 
 #[tokio::test]
 async fn repeated_call_ids_in_separate_completed_batches_remain_resumable() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
     let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
     let mut listing = archived_listing("reused-call-id", temp.path(), "continue");
     listing.snapshot.messages = vec![
         SessionMessage::from(&Message::assistant_with_tools(
@@ -276,12 +290,28 @@ async fn repeated_call_ids_in_separate_completed_batches_remain_resumable() {
     let handle = agent
         .attach_thread_from_listing(
             &session_id,
-            &AcpSessionWorkspace::from_client_cwd(temp.path()).await.unwrap(),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
             listing,
         )
         .await
         .expect("separate completed batches must remain resumable");
 
-    assert!(agent.session_handle(&session_id).unwrap().is_some());
-    assert_eq!(handle.data.lock().unwrap().thread.messages().len(), 5);
+    assert!(
+        agent
+            .session_handle(&session_id)
+            .expect("query the session registry after resuming reused call IDs")
+            .is_some()
+    );
+    assert_eq!(
+        handle
+            .data
+            .lock()
+            .expect("lock the resumed session data")
+            .thread
+            .messages()
+            .len(),
+        5
+    );
 }
