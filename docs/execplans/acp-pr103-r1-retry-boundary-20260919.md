@@ -212,3 +212,26 @@ selectors.
   single observation path. The buffered and streaming tests keep named metric
   witnesses for event order, bounded tags, privacy markers, and retry context.
   Exclusive serial validation passed after this repair.
+
+## Rebase onto the Lody usage/activity branch
+
+- 2026-11-02: The rate-limit branch was rebased onto
+  `feat/acp-lody-usage-activity-metadata` at `d67379e2f`. That parent had
+  already introduced the `AttemptFailureSink` port, the `GenerationFailure`
+  input, and the `RateLimitNotice`/`ObservedRateLimitNotice` split, so the
+  rebase keeps the parent's port and threads this branch's observation instant
+  and metric sink through it rather than restoring the earlier
+  `notice_target` tuple.
+- `RetryRequest` now carries `failure_sink: Option<&dyn AttemptFailureSink>`
+  and is built with `with_failure_sink`; the retry loop announces failures
+  through `AttemptFailureSink::announce(AttemptFailure { .. })`. The
+  intermediate `RetryFailureNotice`/`publish_retry_notice` pair was dropped
+  because the port already owns notice construction.
+- The parent's `rate_limit_metadata` shape (outer "is a rate limit", inner
+  optional metadata) and its status-aware notice text are preserved, so a
+  rate limit without a status still publishes a notice without claiming
+  HTTP 429. The parent's `redact_detail` helper is not needed here: this
+  branch's operator logs carry only closed categories and attempt counters.
+- `record_stream_attempt` keeps the parent's `status` parameter, and
+  `publish_lody_rate_limits_at` keeps the parent's metric sink and provider
+  class so snapshot delivery failures stay attributed.
