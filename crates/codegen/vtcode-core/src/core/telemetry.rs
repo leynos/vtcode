@@ -1,3 +1,5 @@
+//! Session-scoped telemetry counters for turns, tool calls, and model usage.
+
 use anyhow::{Context, Result};
 use hashbrown::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

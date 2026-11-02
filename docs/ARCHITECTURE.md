@@ -58,6 +58,13 @@ event type in a consumer crate.
   surface carries session-scoped subagent management requests and
   `_lody/session/usage_update` usage deltas.
 
+**Implementation decisions.** Retry notices flow through the
+`AttemptFailureSink` port (`RateLimitNoticeSink` in ACP) rather than being
+emitted from retry logic, so retry policy stays transport-agnostic. Compaction
+activity is a derived client projection: `vtcode-exec-events::ThreadEvent`
+remains the authoritative runtime event contract, and ACP compaction
+diagnostics are redacted and bounded before they reach clients or logs.
+
 ## Model + Harness
 
 VT Code treats the model as the reasoning engine and the harness as the runtime

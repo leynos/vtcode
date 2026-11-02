@@ -1,3 +1,5 @@
+//! Unit tests for the unified runloop turn loop, including post-tool recovery.
+
 use super::post_tool_recovery::complete_turn_after_failed_tool_free_recovery;
 use super::post_tool_recovery::prepare_post_tool_tool_free_recovery;
 use super::post_tool_recovery::{ensure_post_tool_resume_directive, has_tool_response_since};

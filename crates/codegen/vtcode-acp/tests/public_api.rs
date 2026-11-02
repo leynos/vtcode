@@ -2,10 +2,13 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use vtcode_commons::llm::Usage;
+use vtcode_config::core::CustomProviderPricingConfig;
 use vtcode_core::config::VTCodeConfig;
 use vtcode_core::config::core::PromptCachingConfig;
 use vtcode_core::config::types::{AgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
 use vtcode_core::core::interfaces::AcpLaunchParams;
+use vtcode_core::llm::usage_cost::normalized_turn_usage_with_input_semantics;
 use vtcode_llm::providers::{CustomProviderAdmissionMetrics, custom_provider_admission_metrics};
 use vtcode_safety::audit_log::{ToolAuditInvocation, ToolAuditStatus};
 
@@ -54,4 +57,32 @@ fn public_types_are_usable_from_an_external_crate() {
 
     let metrics: CustomProviderAdmissionMetrics = custom_provider_admission_metrics();
     assert_eq!(metrics.queue_depth, 0);
+}
+
+/// Compile and exercise the usage and pricing APIs added by the ACP usage work.
+#[test]
+fn usage_and_pricing_apis_are_usable_from_an_external_crate() {
+    let pricing = CustomProviderPricingConfig {
+        input_per_million_usd: Some(3.0),
+        output_per_million_usd: Some(15.0),
+        cache_read_per_million_usd: Some(0.3),
+        cache_write_per_million_usd: None,
+    };
+    let per_token = pricing.model_pricing().expect("complete input and output pricing");
+    assert_eq!(per_token.input, Some(3.0e-6));
+    assert_eq!(per_token.output, Some(15.0e-6));
+    assert_eq!(per_token.cache_read, Some(0.3e-6));
+    assert_eq!(per_token.cache_write, None);
+
+    let usage = Usage {
+        prompt_tokens: 13,
+        completion_tokens: 5,
+        reasoning_output_tokens: Some(2),
+        ..Usage::default()
+    };
+    assert_eq!(usage.reasoning_output_tokens, Some(2));
+
+    let normalized = normalized_turn_usage_with_input_semantics(true, &usage);
+    assert_eq!(normalized.input_tokens, 13);
+    assert_eq!(normalized.output_tokens, 5);
 }

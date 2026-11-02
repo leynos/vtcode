@@ -1,3 +1,5 @@
+//! Resolves configured model identifiers into provider, pricing, and availability metadata.
+
 use std::borrow::Cow;
 use std::str::FromStr;
 

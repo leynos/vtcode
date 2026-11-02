@@ -1,3 +1,5 @@
+//! Provider-neutral response, stream-event, and stream alias types shared by LLM providers.
+
 use std::pin::Pin;
 
 pub use vtcode_commons::llm::{FinishReason, LLMError, LLMResponse, Usage};

@@ -17,8 +17,8 @@ use vtcode_core::llm::usage_cost::{
     estimate_session_costs_with_pricing, normalized_turn_usage_with_input_semantics, provider_reports_exclusive_input,
 };
 
+use super::redaction::redact_detail;
 use super::task_lifecycle::bounded_session_correlation;
-
 use super::{ZedAgent, lody::lody_capabilities_mut};
 
 const LODY_EXTENSION_VERSION: u8 = 1;
@@ -180,7 +180,13 @@ fn record_usage_failure(
     let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
     let _error_category_recorded = span.record("error_category", error_category);
     metrics.record_acp_usage_notification(false);
-    warn!(session_correlation, error_category, elapsed_ms, %error, "Failed to publish Lody ACP usage update");
+    warn!(
+        session_correlation,
+        error_category,
+        elapsed_ms,
+        detail = %redact_detail(&error.to_string()),
+        "Failed to publish Lody ACP usage update"
+    );
 }
 
 /// Resolve the usage profile of the backend that served `provider`.
@@ -248,9 +254,6 @@ impl ZedAgent {
         let started_at = Instant::now();
         let model = effective_model(fallback_model, response);
         let profile = self.lody_usage_profile(provider, model);
-        let _outcome_recorded = span.record("outcome", "sent");
-        let _elapsed_ms_recorded = span.record("elapsed_ms", usage_elapsed_ms(started_at));
-        metrics.record_acp_usage_notification(true);
         let notification = match response_usage_notification(session_id, model, response, profile) {
             Ok(Some(notification)) => notification,
             Ok(None) => {
@@ -267,9 +270,13 @@ impl ZedAgent {
             record_usage_failure(&span, started_at, &metrics, "notification_send_failed", &session_correlation, &error);
             return;
         }
+        let _outcome_recorded = span.record("outcome", "sent");
+        let _elapsed_ms_recorded = span.record("elapsed_ms", usage_elapsed_ms(started_at));
+        metrics.record_acp_usage_notification(true);
     }
 }
 
 #[cfg(test)]
 #[path = "lody_usage/tests.rs"]
 mod tests;
+// weave: run 'weave explain crates/codegen/vtcode-acp/src/zed/agent/lody_usage.rs' for per-hunk detail, 'weave check' to verify your resolution
