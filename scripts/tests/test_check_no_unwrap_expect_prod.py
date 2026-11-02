@@ -248,6 +248,19 @@ class ProductionScannerTests(ScannerHarness):
         )
         self.assertTrue(CHECKER.is_test_path(self.files[0]))
 
+    def test_reported_source_text_matches_newline_line_numbers(self) -> None:
+        # A form feed splits str.splitlines() but not the scanner's newline
+        # count, so the reported line and its text must use the same separator.
+        path = self.rust(
+            "src/lib.rs",
+            'fn first() {\n\x0c}\nfn production() { value.expect("required"); }\n',
+        )
+
+        self.assertEqual(
+            CHECKER.scan_file(path, []),
+            [("src/lib.rs", 3, 'fn production() { value.expect("required"); }')],
+        )
+
     def test_warn_and_enforce_exit_statuses_keep_production_control(self) -> None:
         self.rust("src/lib.rs", 'fn production() { value.expect("required"); }\n')
         for mode, expected in (("warn", 0), ("enforce", 1)):

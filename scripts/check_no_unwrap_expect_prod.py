@@ -293,7 +293,9 @@ def scan_file(path: Path, rules: list[AllowRule]) -> list[tuple[str, int, str]]:
     """
     rel_path = path.relative_to(REPO_ROOT).as_posix()
     source = RustSource.read(path)
-    lines = source.source.splitlines()
+    # production_call_lines() counts "\n" only; split on the same separator so
+    # the printed text always matches the reported one-based line.
+    lines = source.source.split("\n")
     findings: list[tuple[str, int, str]] = []
     for line_no in source.production_call_lines():
         if not is_allowlisted(rel_path, line_no, rules):
