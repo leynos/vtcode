@@ -1583,5 +1583,14 @@ Gates on the replayed head `cfe0c6bbe`: `make check-fmt`, `make typecheck`,
 GitHub still reports the PR as `CONFLICTING`/`DIRTY` even though `271a5cebf` is
 an ancestor of the head (`behind_by: 0`, `git merge-tree` exit 0) and
 `refs/pull/17/merge` has not been rebuilt since 2026-10-30. The stale
-mergeability is a GitHub-side cache; this documentation commit is pushed to
-give the service a new head to recompute against.
+mergeability is a GitHub-side cache.
+
+Pushing the documentation commit did not clear it. For the new head
+`332d92c72`, GitHub's compare API reports `ahead_by: 19`, `behind_by: 0` and
+merge base `271a5cebf`, while `refs/pull/17/merge` remains at the 2026-10-30
+merge `59fb9031b`; 25 minutes of polling after the push stayed
+`CONFLICTING`/`DIRTY`. Editing the PR body did not rebuild it either. The
+mergeability job is not re-running for this PR, so a push cannot clear it;
+clearing it needs a base retarget or a close and reopen. Both are outside the
+agent's current permission policy, which refused them pending explicit user
+authorization, so the merge stays blocked until the user authorizes one of them.
