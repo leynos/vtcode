@@ -22,7 +22,6 @@ mod projection_tests;
 mod queue_accounting_tests;
 use diapason_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
 use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
-
 use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
 use crate::acp;
@@ -36,24 +35,6 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 use tracing::{Span, debug, field, info_span, warn};
-use diapason_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
-use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
-
-use super::super::types::{SessionHandle, lock_poison_error};
-use super::ZedAgent;
-use crate::acp;
-use crate::zed::connection::ConnectionHandle;
-use chrono::{DateTime, Utc};
-use hashbrown::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TrySendError;
-use tokio::task::JoinHandle;
-use tracing::Instrument;
-use tracing::{Span, debug, field, info_span, warn};
-use diapason_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
-use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 
 use super::redaction::SESSION_CORRELATION_HEX_LENGTH;
 
