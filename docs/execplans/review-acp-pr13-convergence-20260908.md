@@ -167,7 +167,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   the comment-token pool. The `CodeRabbit` check for the new head reads
   "Skipped - Review paused"; the existing queue request `25da8dc2` remains
   pending and is reused rather than duplicated.
-- [ ] (2026-11-03) Reconciling the second pre-merge walkthrough (comment
+- [x] (2026-11-03) Reconciled the second pre-merge walkthrough (comment
   `5307347085`, updated on head `1baf4aea5`). Module-level documentation: added
   the `//!` contract to `exec_sessions.rs`. Unit architecture: made
   `resolve_exec_session` a pure read and moved `StaleWriteStdinRequest`
@@ -177,9 +177,18 @@ an archive with ambiguous terminal results is rejected before continuation.
   field, removed the `details` rehydration path, and made the Prometheus family
   transport-neutral. User-facing documentation: added the ACP recovery, archive
   repair, and stale `write_stdin` entries to `docs/releases/0.157.0.md`.
-  Docstring coverage: documenting every diff-touched function the 71.70%
-  measurement flagged. The candidate awaits the shared scrutineer's four-gate
-  run.
+  Docstring coverage: added doc comments to the 68 diff-touched functions the
+  71.70% measurement flagged.
+- [x] (2026-11-03) Rebased the branch onto the advanced parent
+  `4e8642a5d` (`feat/model-visible-file-versions-noop-patch-guard`), which the
+  PR had reported as `CONFLICTING`. The only textual conflict was the
+  `metrics/mod.rs` re-export block: the parent added
+  `PatchCertificationOutcome` plus `record_runtime_revalidation` and
+  `record_patch_certification`, while this branch added
+  `tool_recovery_metrics`. Both sides were retained. Weave auto-resolved the
+  remaining sibling changes and reported no residual conflict markers. The
+  rebased candidate is `df8d04104`; its four-gate run is pending on the shared
+  scrutineer.
 
 ## Surprises & discoveries
 
