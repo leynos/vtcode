@@ -88,9 +88,12 @@ smuggle an allowlisted command past the configured policy and vice versa.
 When the executor wraps an argv in a shell, it joins the argv with
 `shell_words::join`, which quotes arguments that contain spaces or shell
 metacharacters. The executed source then differs from the unquoted argv form,
-and both must pass. This is a compatibility change for policies that matched
-only the argv form: an `allow_list` prefix or anchored `allow_regex` may need
-an additional pattern for the quoted source, such as
+and both must pass. A caller-supplied shell invocation such as
+`bash -lc "<source>"` is checked the same way: the argv must pass, and the
+source the shell actually runs is evaluated on its own, so the wrapper cannot
+lend its allowance to that source. This is a compatibility change for policies
+that matched only the argv form: an `allow_list` prefix or anchored
+`allow_regex` may need an additional pattern for the quoted source, such as
 `/bin/sh -lc 'printf value with space'`.
 
 Permission modes are a separate gate: `--dangerously-skip-permissions`,
