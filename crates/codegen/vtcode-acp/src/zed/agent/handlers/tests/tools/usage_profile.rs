@@ -185,7 +185,10 @@ async fn empty_response_model_uses_session_model_profile_pricing() {
         ..LLMResponse::default()
     };
 
-    let update = usage_update(&published_usage_updates(WIRE_MODEL, response).await);
+    // The duplex harness future is large enough to trip `large_futures`; pin it
+    // on the heap rather than growing the test's stack frame.
+    let notifications = Box::pin(published_usage_updates(WIRE_MODEL, response)).await;
+    let update = usage_update(&notifications);
 
     assert_eq!(update["sessionId"], "session-usage-profile");
     assert_eq!(
@@ -217,7 +220,8 @@ async fn unprofiled_model_uses_provider_default_pricing() {
         ..LLMResponse::default()
     };
 
-    let update = usage_update(&published_usage_updates(OTHER_MODEL, response).await);
+    let notifications = Box::pin(published_usage_updates(OTHER_MODEL, response)).await;
+    let update = usage_update(&notifications);
 
     assert_eq!(update["modelUsage"][OTHER_MODEL]["inputTokens"], 13);
     assert_eq!(
