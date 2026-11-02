@@ -54,3 +54,5 @@ pub mod tools;
 pub mod ui;
 /// URL constants for API endpoints
 pub mod urls;
+
+pub use commands::DEFAULT_RM_DENY_REGEX;

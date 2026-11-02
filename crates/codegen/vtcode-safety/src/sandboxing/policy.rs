@@ -282,7 +282,7 @@ fn vtcode_sensitive_paths(environment: &[(&str, &str)]) -> anyhow::Result<Vec<Se
     Ok(paths)
 }
 
-const PROTECTED_WRITABLE_ROOT_DIR_NAMES: &[&str] = &[".git", ".vtcode", ".codex", ".agents"];
+pub(crate) const PROTECTED_WRITABLE_ROOT_DIR_NAMES: &[&str] = &[".git", ".vtcode", ".codex", ".agents"];
 
 fn protected_writable_root_sensitive_paths(writable_roots: &[WritableRoot]) -> Vec<SensitivePath> {
     let mut paths = Vec::new();

@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::oneshot;
 
+mod deletion;
+
 #[derive(Clone, Copy)]
 enum ClientDecision {
     Allow,
@@ -46,6 +48,40 @@ fn permission_client_action(decision: ClientDecision) -> PermissionClientAction 
         ClientDecision::Unknown => PermissionClientAction::Select("unsupported-option"),
         ClientDecision::RequestFailure => PermissionClientAction::Fail,
     }
+}
+
+fn permission_response(action: PermissionClientAction) -> Option<RequestPermissionResponse> {
+    match action {
+        PermissionClientAction::Select(option_id) => Some(RequestPermissionResponse::new(
+            RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id)),
+        )),
+        PermissionClientAction::Cancel => Some(RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled)),
+        PermissionClientAction::Fail => None,
+    }
+}
+
+/// Build and connect a permission client that answers with `decision` and
+/// counts every permission request it receives.
+fn permission_client(
+    decision: ClientDecision,
+    request_count: Arc<AtomicUsize>,
+    client_channel: impl agent_client_protocol::ConnectTo<Client> + 'static,
+) -> impl Future<Output = Result<(), agent_client_protocol::Error>> {
+    let client_request_count = Arc::clone(&request_count);
+    Client
+        .builder()
+        .on_receive_request(
+            async move |request: RequestPermissionRequest, responder, _connection| {
+                let _previous_count = client_request_count.fetch_add(1, Ordering::Relaxed);
+                assert_eq!(request.options.len(), 4);
+                match permission_response(permission_client_action(decision)) {
+                    Some(response) => responder.respond(response),
+                    None => responder.respond_with_internal_error("simulated permission request failure"),
+                }
+            },
+            on_receive_request!(),
+        )
+        .connect_to(client_channel)
 }
 
 fn test_prompter() -> DefaultPermissionPrompter<AcpToolRegistry> {
@@ -105,37 +141,8 @@ async fn run_permission_flow(decision: ClientDecision) -> Option<ToolExecutionRe
             Ok(())
         });
 
-    let client = Client
-        .builder()
-        .on_receive_request(
-            async move |request: RequestPermissionRequest, responder, _connection| {
-                assert_eq!(request.options.len(), 4);
-                let response = match decision {
-                    ClientDecision::Allow => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new(TOOL_PERMISSION_ALLOW_OPTION_ID),
-                    )),
-                    ClientDecision::AllowAlways => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new(TOOL_PERMISSION_ALLOW_ALWAYS_OPTION_ID),
-                    )),
-                    ClientDecision::Deny => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new(TOOL_PERMISSION_DENY_OPTION_ID),
-                    )),
-                    ClientDecision::DenyAlways => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new(TOOL_PERMISSION_DENY_ALWAYS_OPTION_ID),
-                    )),
-                    ClientDecision::Cancel => RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled),
-                    ClientDecision::Unknown => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
-                        SelectedPermissionOutcome::new("unsupported-option"),
-                    )),
-                    ClientDecision::RequestFailure => {
-                        return responder.respond_with_internal_error("simulated permission request failure");
-                    }
-                };
-                responder.respond(response)
-            },
-            on_receive_request!(),
-        )
-        .connect_to(client_channel);
+    // The request counter is discarded: this flow asserts only the outcome.
+    let client = permission_client(decision, Arc::new(AtomicUsize::new(0)), client_channel);
 
     let (agent_result, client_result) = tokio::join!(agent, client);
     agent_result.expect("agent duplex connection should complete");
@@ -184,27 +191,7 @@ async fn run_repeated_permission_flow(
             Ok(())
         });
 
-    let client = Client
-        .builder()
-        .on_receive_request(
-            async move |request: RequestPermissionRequest, responder, _connection| {
-                let _previous_count = client_request_count.fetch_add(1, Ordering::Relaxed);
-                assert_eq!(request.options.len(), 4);
-                match permission_client_action(decision) {
-                    PermissionClientAction::Select(option_id) => responder.respond(RequestPermissionResponse::new(
-                        RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(option_id)),
-                    )),
-                    PermissionClientAction::Cancel => {
-                        responder.respond(RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled))
-                    }
-                    PermissionClientAction::Fail => {
-                        responder.respond_with_internal_error("simulated permission request failure")
-                    }
-                }
-            },
-            on_receive_request!(),
-        )
-        .connect_to(client_channel);
+    let client = permission_client(decision, client_request_count, client_channel);
 
     let (agent_result, client_result) = tokio::join!(agent, client);
     agent_result.expect("agent duplex connection should complete");

@@ -247,6 +247,45 @@ mod tests {
         assert!(evaluator.allows_text("bun run check"));
     }
 
+    /// The default policy allows `rm` only as a whole command token, so
+    /// `rmdir`-style neighbours stay fail-closed, and the shipped deny rules
+    /// still win over the allow glob.
+    #[test]
+    fn default_policy_allows_workspace_rm_without_widening_similar_commands() {
+        let config = CommandsConfig::default();
+        let evaluator = CommandPolicyEvaluator::from_config(&config);
+
+        assert!(evaluator.allows_text("rm -f scratch/tmp.txt"));
+        assert!(evaluator.allows_text("rm scratch/tmp.txt"));
+        assert!(!evaluator.allows_text("rmdir scratch"));
+        assert!(!evaluator.allows_text("rmx scratch"));
+        assert!(!evaluator.allows_text("rm -rf /"));
+        assert!(!evaluator.allows_text("rm --force scratch/tmp.txt"));
+        // Recursive and forced removals stay denied in any flag order.
+        for command in [
+            "rm -r scratch",
+            "rm -fr scratch",
+            "rm -Rf scratch",
+            "rm -f -r scratch",
+            "rm --recursive scratch",
+        ] {
+            assert!(!evaluator.allows_text(command), "expected denial: {command}");
+        }
+    }
+
+    /// The default deny regex matches `rm` as a command word, not as the
+    /// suffix of another command name such as `terraform`.
+    #[test]
+    fn default_deny_regex_matches_rm_as_a_word_only() {
+        let mut config = CommandsConfig::default();
+        config.allow_glob.push("terraform *".to_string());
+        let evaluator = CommandPolicyEvaluator::from_config(&config);
+
+        assert!(evaluator.allows_text("terraform -r apply"));
+        assert!(!evaluator.allows_text("rm -r scratch"));
+        assert!(!evaluator.allows_text("ls && rm -r scratch"));
+    }
+
     #[test]
     fn allow_list_allows_exact_git_and_cargo_commands() {
         let mut config = CommandsConfig::default();

@@ -163,6 +163,10 @@ allow_glob = [
 - **Home deletion**: `rm -rf ~`
 - **Filesystem tools**: `mkfs`, `mkfs.ext4`, `fdisk`, `dd if=/dev/*`
 
+Workspace-scoped deletion is not blanket-denied; see
+[Workspace-scoped deletion](#workspace-scoped-deletion). A bare `rm` prefix in
+a user-defined `deny_list` still blocks every deletion.
+
 #### 2. System Shutdown/Reboot
 
 - `shutdown`, `reboot`, `halt`, `poweroff`
@@ -221,6 +225,128 @@ VT Code supports automation through internal scheduling primitives instead:
 - `kubectl *` - Kubernetes operations (admin access)
 - `docker run *` - Container creation (requires careful review)
 
+## Workspace-scoped deletion
+
+`exec_command` (including its PTY and pipe backends) accepts one simple `rm`
+invocation when all of these hold:
+
+1. The argument `confirm` is `true`. Without it, preflight fails with
+   `Deletion via exec_command requires confirm=true`.
+2. The command is exactly one static `rm` with literal operands. Chains, pipes,
+   redirects, background operators, wrappers (`sudo`, `env`, `command`, `nohup`,
+   `xargs`), environment prefixes, nested shell bodies, globs, and shell
+   expansion are refused and reported as unsupported shapes. When a call
+   supplies more than one representation of the command (`command`, `cmd`, or
+   `raw_command`), every representation must describe the same supported `rm`;
+   mixing a deletion with other command text is refused, because the executor
+   may run a different field from the one preflight inspected. Operands must be
+   unquoted and unescaped; quote and escape characters are rejected because the
+   shell removes them before deleting, so the assessed text would differ from
+   the deleted path.
+3. Options are limited to `-f`, `-r`, `-R`, `-d`, `-v`, `-i`, `-I` (stacked
+   short groups included), their long forms, and `--`. `--no-preserve-root` and
+   unknown options are rejected.
+4. Every operand resolves inside the launch workspace. The executor rejects the
+   workspace root and its aliases, lexical `..` or absolute escapes, symlink
+   escapes (including a symlink as the final component), the home directory,
+   and paths inside protected metadata directories (`.git`, `.vtcode`, `.codex`,
+   `.agents`). A nonexistent in-workspace operand is allowed.
+
+Each recognized operand is also reported to the dotfile guardian as a delete
+target, so protected files such as `.env` and `.gitignore` still require
+approval even though `rm *` is allowed.
+
+Target assessment is a path check performed immediately before launch, not a
+filesystem transaction. A process that replaces a checked parent directory with
+a symlink between assessment and `rm` opening the path could redirect the
+deletion outside the workspace. Closing that window needs descriptor-relative
+deletion (`openat`/`unlinkat` with `RESOLVE_BENEATH`) or a kernel sandbox that
+confines writes; neither can be added without replacing the real `rm` execution
+or forcing the optional execution sandbox. The window is limited to the launch
+sequence and requires concurrent filesystem mutation. Explicit confirmation,
+workspace containment, and, when enabled, the execution sandbox remain the
+compensating controls.
+
+Configured denials still win. The shipped defaults allow `rm *` but keep the
+absolute-path denies and the
+`\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)` deny
+regex, so recursive spellings and the long `--force` option stay blocked by
+default in any flag order or grouping (`rm -rf`, `rm -fr`, `rm -Rf`, `rm -f -r`,
+`rm -r`, `--recursive`, `--force`). The short `-f` is not matched by that
+regex, so a plain `rm -f file` remains allowed. Relaxing the configured
+`deny_regex` permits the blocked spellings.
+
+Under `--dangerously-skip-permissions`, a confirmed supported deletion is
+auto-approved by the runloop; the executor still performs the target assessment.
+
+The decision flow for one call is shown below.
+
+```mermaid
+stateDiagram-v2
+    accTitle: Workspace-scoped rm decision flow
+    accDescr {
+        A call that does not invoke rm is ignored. Unsupported rm shapes are refused.
+        A supported rm requires confirm=true and target assessment, which denies
+        escapes, the workspace root, home, and protected metadata, sends protected
+        dotfiles for guardian approval, and launches only when every target is allowed.
+    }
+    [*] --> InspectCommand
+    InspectCommand --> NotDeletion: no rm invocation
+    InspectCommand --> Unsupported: chain, wrapper, expansion, glob, unknown option
+    InspectCommand --> Supported: one static rm with literal operands
+    Supported --> NeedsConfirmation: confirm != true
+    Supported --> AssessTargets: confirm == true
+    AssessTargets --> Denied: outside workspace, symlink escape, root, home, metadata
+    AssessTargets --> GuardianApproval: protected dotfile target
+    AssessTargets --> ReadyToLaunch: all targets allowed
+    GuardianApproval --> ReadyToLaunch: approved
+    GuardianApproval --> Denied: refused
+    ReadyToLaunch --> [*]
+    NotDeletion --> [*]
+    NeedsConfirmation --> [*]
+    Unsupported --> [*]
+    Denied --> [*]
+```
+
+The sequence below shows where each check runs for a confirmed deletion.
+
+```mermaid
+sequenceDiagram
+    accTitle: Confirmed rm through safety gateway, preflight, and executor
+    accDescr {
+        The safety gateway applies the command policy and auto-approves under
+        skip-permissions. Preflight classifies the deletion and defers a supported
+        shape. The executor rechecks policy, assesses the operands against the
+        launch working directory, and runs the static workspace rm.
+    }
+    participant Caller
+    participant SafetyGateway
+    participant Preflight
+    participant CommandPolicy
+    participant Executor
+    participant TargetAssessment
+    participant RM
+
+    Caller->>SafetyGateway: exec_command(rm, confirm=true)
+    SafetyGateway->>CommandPolicy: allows_text(command)
+    CommandPolicy-->>SafetyGateway: allowed
+    SafetyGateway-->>Caller: auto-approved under skip-permissions
+    Caller->>Preflight: validate command
+    Preflight->>Preflight: classify_deletion_commands
+    Preflight-->>Caller: defer supported deletion
+    Caller->>Executor: launch command
+    Executor->>Executor: command_policy_allows
+    Executor->>TargetAssessment: assess_deletion_targets(operands, launch_working_dir)
+    TargetAssessment-->>Executor: Allowed or Denied
+    Executor->>RM: execute static workspace rm
+```
+
+Deletion text typed into an already-running session (`write_stdin`,
+`send_pty_input`, or a command-session `write`/`continue` action) is refused by
+the safety gateway. That path never reaches the executor gate, so it could not
+enforce `confirm=true` or assess targets; deletion must go through
+`exec_command`.
+
 ## Validation Rules (Configuration Reference)
 
 ### `allow_list` - Explicit Commands
@@ -259,6 +385,7 @@ allow_glob = [
   "git *",        # All git commands
   "cargo *",      # All cargo commands
   "npm run *",    # NPM scripts
+  "rm *",         # Workspace-scoped deletion; still needs confirm=true
 ]
 ```
 
@@ -268,7 +395,6 @@ Blocks entire command families.
 
 ```toml
 deny_glob = [
-  "rm *",         # All rm variations
   "sudo *",       # All sudo usage
   "chmod *",      # All chmod variations
 ]
@@ -291,7 +417,7 @@ Regular expressions to block patterns.
 
 ```toml
 deny_regex = [
-  r"rm\s+(-rf|--force|--recursive)",
+  r"\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)",
   r"sudo\s+.*",
   r"docker\s+run\s+.*--privileged",
 ]

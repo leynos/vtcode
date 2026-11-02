@@ -224,6 +224,7 @@ pub fn exec_command_parameters() -> Value {
             "max_output_tokens": {"type": "integer", "minimum": 1, "maximum": 50000, "default": 10000, "description": "Output token cap. Large or truncated output can return a spool_path; an active session may set spool_complete=false for a readable partial snapshot, while an exited pending spool is withheld until a later wait."},
             "workdir": {"type": "string", "description": "Working directory."},
             "tty": {"type": "boolean", "description": "Run the command in PTY mode for interactive or terminal-sensitive commands.", "default": false},
+            "confirm": {"type": "boolean", "default": false, "description": "Explicit confirmation. Required for a workspace-scoped `rm` deletion; the deletable paths are still assessed against the workspace."},
             "sandbox_permissions": {
                 "type": "string",
                 "enum": ["use_default", "with_additional_permissions", "require_escalated", "bypass_sandbox"],
@@ -439,6 +440,14 @@ mod tests {
         );
         assert_eq!(exec_params["properties"]["tty"]["type"], "boolean");
         assert_eq!(exec_params["properties"]["tty"]["default"], false);
+        assert_eq!(exec_params["properties"]["confirm"]["type"], "boolean");
+        assert_eq!(exec_params["properties"]["confirm"]["default"], false);
+        assert!(
+            exec_params["properties"]["confirm"]["description"]
+                .as_str()
+                .expect("confirm description")
+                .contains("workspace-scoped `rm`")
+        );
         assert_eq!(exec_params["properties"]["yield_time_ms"]["default"], 10000);
         assert_eq!(
             exec_params["properties"]["sandbox_permissions"]["enum"],

@@ -360,7 +360,7 @@ pub(super) fn sanitize_subagent_tool_output_paths(workspace_root: &Path, value: 
     }
 }
 
-pub(super) fn enforce_pty_command_policy(display_command: &str, confirm: bool) -> Result<()> {
+pub(super) fn enforce_pty_command_policy(display_command: &str) -> Result<()> {
     let lower = display_command.to_ascii_lowercase();
     let trimmed = lower.trim();
     let is_standalone = trimmed.split_whitespace().count() == 1;
@@ -369,12 +369,7 @@ pub(super) fn enforce_pty_command_policy(display_command: &str, confirm: bool) -
     let standalone_denied = is_standalone && PTY_DENY_STANDALONE.contains(&trimmed);
 
     if deny_match || standalone_denied {
-        if confirm {
-            return Ok(());
-        }
-        return Err(anyhow!(
-            "Command '{display_command}' is blocked by PTY safety policy. Set confirm=true to force execution."
-        ));
+        return Err(anyhow!("Command '{display_command}' is blocked by PTY safety policy."));
     }
 
     Ok(())
