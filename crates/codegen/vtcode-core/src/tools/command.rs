@@ -155,10 +155,13 @@ impl CommandTool {
 
         if !eval_result.allowed {
             if !policy_allowed {
-                if let Some(message) = policy_decision.denial_message(program) {
+                // The first argv element may be an environment assignment whose
+                // value is a secret, so diagnostics use the shared redaction.
+                let diagnostic_program = crate::tools::command_args::diagnostic_program_name_from_words(command);
+                if let Some(message) = policy_decision.denial_message(&diagnostic_program) {
                     return Err(anyhow!("{message}"));
                 }
-                return Err(anyhow!("command '{program}' is not permitted by the execution policy"));
+                return Err(anyhow!("command '{diagnostic_program}' is not permitted by the execution policy"));
             }
             // If unified evaluator denied, still allow explicitly confirmed risky commands
             // when they are permitted by the configured policy.
