@@ -643,3 +643,12 @@ unique-ID path. The tool-recovery tests replace their remaining `.unwrap()`
 calls with step-naming `.expect()` messages. `docs/development/acp-runtime.md`
 now scopes the fixed-variant guarantee to metric labels and exported metric
 values, and states that structured logs may still carry session identifiers.
+
+2026-11-02: Committed the second review round as `c89e005f6` and pushed it over
+SSH; the remote head matches and the branch tracks
+`origin/fix/acp-unresolved-tool-recovery`. All four gates passed on the
+candidate (`check-fmt` 8s, `lint` 615s, `typecheck` 1657s, `test` 1327s with
+10523 passed). The three inline threads are answered and resolved, and
+CodeRabbit confirmed each fix. A fresh review is queued through `comenq`
+(request `25da8dc2`, ETA about 10h29m) because auto-review is paused and the
+included-review allowance is one per hour. CI on `c89e005f6` is in progress.
