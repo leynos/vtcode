@@ -1349,3 +1349,54 @@ expected differences: the archive/import hunks that the new base already
 carries, and the re-arranged test move. New head: `628387243`.
 `cargo check --locked -p vtcode-acp -p vtcode-core --all-targets --all-features`
 reports EXIT=0 on the rebased tree.
+
+### Revision note (2026-11-02, r18 large-file invariant repair)
+
+The hosted `Check Custom Invariants` job failed on `957b4bb37`:
+
+```text
+docs/config/CONFIG_FIELD_REFERENCE.md: 1688237 bytes
+```
+
+Root cause: the reference is generated, and `make fmt` (mdtablefix) pads every
+row of its 928-row table to the widest cell. Commit `3a946ae04` deliberately
+restored the full JSON defaults that the checked-in reference had truncated, so
+the widest cell became the 1111-byte `permissions.auto.block_rules` default
+instead of the previous 120-byte preview. Padding then multiplied the file from
+768,785 bytes on the base to 1,688,237 bytes, which exceeded the scoped
+allowlist ceiling of 1,000,000 bytes.
+
+The content decision is retained: truncating the defaults again would restore
+the misleading, unparseable JSON that
+`test_long_default_remains_parseable_json` guards against. The stale ceiling is
+the defect, so `scripts/large_file_allowlist.txt` now caps this generated file
+at 1,800,000 bytes and records the measured size and the cause. The entry
+remains a cap, not an exemption: any further widening still fails the invariant.
+`python3 scripts/check_large_files.py 400000` reports EXIT=0.
+
+### Revision note (2026-11-02, r19 outside-diff review repairs)
+
+Two CodeRabbit findings were outside the diff and therefore had no inline
+thread. Both are repaired here.
+
+**Major — an unscoped save replaced the shared ledger.** An unscoped controller
+loads every owner-scoped record so it can list and route them, but its save
+wrote that snapshot back as the whole file. A record another owner created
+after the load was deleted, and a record the controller held a stale copy of
+was restored over a newer write. `save_background_state` now reloads the ledger
+in the unscoped branch and merges through `merge_unscoped_background_records`,
+which keys on the canonical id and keeps the copy with the newest `updated_at`.
+The scoped branch already preserved other owners' records and is unchanged. Two
+regressions cover the behaviour:
+`unscoped_save_preserves_records_written_by_other_owners_after_load` and
+`unscoped_save_persists_its_own_newer_state`.
+
+**Minor — the direct-entry path ran two of five tests.** The `__main__` block of
+`scripts/tests/test_generate_config_field_reference.py` called two tests by
+name, so a direct run could report success while the override and
+boundary-backtick tests failed. It now runs every `test_*` function in the
+module. The module also imported `pytest`, which the repository does not depend
+on and which the system interpreter does not provide; the one `pytest.raises`
+assertion is now a plain `try`/`except`, so
+`python3 -I scripts/tests/test_generate_config_field_reference.py` runs the
+whole suite and reports `all tests passed`.
