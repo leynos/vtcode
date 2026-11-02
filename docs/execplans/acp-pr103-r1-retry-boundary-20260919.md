@@ -248,9 +248,9 @@ selectors.
 
 - 2026-11-02: The parent branch advanced from `d67379e2f` to `aec962ef0`
   while this layer was being validated, so the layer was replayed again onto
-  the new head. The exclusive boundary stayed `d67379e2f`; all 33 layer
-  commits were replayed, and the resulting head is `2fb665cb9` plus the
-  post-rebase repair `6271743e9`.
+  the new head. The exclusive boundary stayed `d67379e2f`; all 33 layer commits
+  were replayed, and the resulting head is `2fb665cb9` plus the post-rebase
+  repair `6271743e9`.
 - The first replay attempt used the user-wide Weave merge driver. Weave
   truncated `crates/codegen/vtcode-llm/src/providers/openai/provider.rs` to
   four lines while replaying the test-module extraction, which corrupted every
@@ -275,6 +275,6 @@ selectors.
   - `scripts/large_file_allowlist.txt`: kept the parent's tighter 1.8 MB
     ceiling and removed the duplicate 2 MB entry in `6271743e9`.
 - The parent's `format_code_span` padding fix and its `--locked` schema
-  invocation are retained. The generated `docs/config/CONFIG_FIELD_REFERENCE.md`
-  was not regenerated: the generator still drops the three custom-provider
-  pricing and rate-limit-header rows.
+  invocation are retained. The generated
+  `docs/config/CONFIG_FIELD_REFERENCE.md` was not regenerated: the generator
+  still drops the three custom-provider pricing and rate-limit-header rows.
