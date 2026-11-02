@@ -214,7 +214,7 @@ mod acp_logging_tests {
         assert!(captured.contains("operation=\"session_checkpoint\""));
         assert!(captured.contains("error_category=\"archive_write_failed\""));
         assert!(
-            captured.contains("error=checkpointing ACP session: archive write failed"),
+            captured.contains("detail=checkpointing ACP session: archive write failed"),
             "the debug event must retain the source chain, got {captured}"
         );
     }
