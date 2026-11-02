@@ -304,14 +304,33 @@ impl ToolRegistry {
         if let Some(message) = requested_decision.denial_message(&requested_program) {
             return Err(anyhow!("{message}"));
         }
-        if let Some(source) = prepared_command.executed_shell_source.as_deref() {
-            let joined_requested = prepared_command.requested_command.join(" ");
-            if source.trim() != joined_requested.trim() {
-                let source_decision = self.inventory.command_policy_decision_text(source);
-                if let Some(message) = source_decision.denial_message(&requested_program) {
-                    return Err(anyhow!("{message}"));
-                }
+        // The same request can reach the shell in more than one textual form.
+        // Evaluate each distinct representation so a wrapper or a nested shell
+        // invocation cannot inherit an exact match from the outer argv.
+        let nested_source = prepared_command
+            .requested_command
+            .first()
+            .filter(|program| is_known_shell_program(program))
+            .and_then(|_| explicit_shell_source(&prepared_command.requested_command));
+        let joined_requested = prepared_command.requested_command.join(" ");
+        let mut evaluated = vec![joined_requested.trim()];
+        for source in [
+            prepared_command.executed_shell_source.as_deref(),
+            nested_source.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let source = source.trim();
+            if source.is_empty() || evaluated.contains(&source) {
+                continue;
             }
+            let source_program = crate::tools::command_args::diagnostic_program_name(source);
+            let source_decision = self.inventory.command_policy_decision_text(source);
+            if let Some(message) = source_decision.denial_message(&source_program) {
+                return Err(anyhow!("{message}"));
+            }
+            evaluated.push(source);
         }
         Ok(())
     }
