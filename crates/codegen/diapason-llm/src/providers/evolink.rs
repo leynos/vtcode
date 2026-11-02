@@ -1,7 +1,13 @@
+<<<<<<< ours
 //! The Evolink OpenAI-compatible provider.
 //!
 //! Sends chat and streaming requests, normalises the curated `evolink/` model
 //! prefix, and extracts reasoning traces and token usage.
+||||||| original
+=======
+//! Evolink provider client, OpenAI-compatible request shaping, and streaming support.
+>>>>>>> theirs
+
 
 use serde_json::{Map, Value};
 

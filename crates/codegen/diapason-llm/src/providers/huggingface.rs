@@ -28,6 +28,18 @@ use super::common::{
 };
 use super::error_handling::{format_network_error, format_parse_error};
 
+use vtcode_commons::sanitizer::sanitize_provider_diagnostic;
+use vtcode_config::TimeoutsConfig;
+use vtcode_config::constants::{env_vars, models, urls};
+use vtcode_config::core::{AnthropicConfig, ModelConfig, PromptCachingConfig};
+
+//! Hugging Face Inference API provider client and streaming support.
+#![allow(
+    reason = "Intentional compatibility, platform, or test-only suppression."
+};
+};
+};
+
 const PROVIDER_NAME: &str = "HuggingFace";
 
 const PROVIDER_KEY: &str = "huggingface";
