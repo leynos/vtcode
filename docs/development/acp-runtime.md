@@ -164,6 +164,67 @@ blocked items are pending and marked `[blocked]`. On `session/load`,
 re-emits the plan. Replay sends a plan update only: it does not fabricate a
 model-visible tool call or repeat a tool side effect.
 
+## Compaction activity and failure reporting
+
+Automatic compaction publishes a paired activity over standard ACP session
+updates. `lody_activity::CompactionActivity` projects a started `tool_call` and
+a terminal `tool_call_update`, both carrying `_meta.lody.activity` with
+`kind = "context_compaction"`. The terminal update sets `status = failed` when
+a failure category is present; otherwise it reports `completed`, with
+`compacted` distinguishing a reduction from a no-op. Failures carry a
+`failureReason` drawn from a closed set: `cancelled`, `timeout`,
+`admission_budget`, `pre_compact_hook`, or `provider`.
+
+`vtcode-exec-events::ThreadEvent` remains the authoritative runtime event
+contract, including its compaction boundary events. The ACP activity is a
+client projection of that runtime outcome, not a parallel event type: keep new
+compaction facts in the core event contract and translate them at the adapter.
+
+`compaction::failure::CompactionFailure` keeps the closed-set category
+separate from any untrusted provider or hook detail. Its `Display` renders
+only a fixed, client-safe message, so `failureReason` cannot leak a provider
+payload, workspace path, or archive name. The retained detail is exposed
+through the error source chain and is rendered only by the redacted detail
+helper, which collapses path-like tokens, masks recognised secrets, and bounds
+the result to 512 bytes; `log_suppressed_error` emits that rendering at `debug`
+level.
+
+Bounded, process-local counters accumulate across compaction attempts:
+`started`, `compacted`, `no_change`, `failed`, `cancelled`,
+`elapsed_ms_total`, and `elapsed_ms_max`. Read them with
+`vtcode_acp::metrics::compaction_metrics()`; the snapshot is cumulative and
+never reset, and `cancelled` is a subset of `failed`. Cardinality is fixed by
+construction: no session, provider, model, or path value is recorded. Spans
+and logs correlate attempts with `session_correlation`, a deterministic,
+truncated SHA-256 digest, never the raw session identifier.
+
+## Retry notices and usage publication
+
+Provider retry orchestration reports attempt failures through the narrow
+`AttemptFailureSink` port rather than through ACP types. The buffered
+generation path constructs a `RateLimitNoticeSink`, the ACP adapter that
+implements the port, and passes it into `generate_with_retry`; the streaming
+path calls the same `publish_rate_limit_notice` helper directly. The adapter
+turns a classified retryable or terminal rate limit into a session-info notice
+carrying `_meta.lody.notice`, reporting only the status, `Retry-After` value,
+and scheduled delay the provider actually supplied. It is a presentation
+adapter, not the JSON-RPC transport: it neither retries the request nor
+changes retry policy.
+
+`publish_lody_usage` emits the `_lody/session/usage_update` extension
+notification for each provider response. It resolves the effective model
+first: the model named by the response wins, and the session model is the
+fallback. That single model then selects the usage profile: for a configured
+custom provider, `resolved_profile` layers the exact model profile over the
+provider defaults for context window, pricing, and API format; otherwise the
+built-in model catalogue supplies what it knows. Reasoning tokens are reported
+in `reasoningOutputTokens` and subtracted from `outputTokens`, so the two
+fields describe disjoint token sets. Cost is omitted when the profile supplies
+no pricing. For the user-facing contract, see
+[ACP usage, compaction, and
+subagents](../users-guide.md#acp-usage-compaction-and-subagents); the wire
+shape is in the [ACP integration guide](../acp/ACP_INTEGRATION.md).
+
 ## Focused verification
 
 Run the ACP and provider crate suites when changing these boundaries:

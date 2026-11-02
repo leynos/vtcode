@@ -1,3 +1,5 @@
+//! Evolink provider client, OpenAI-compatible request shaping, and streaming support.
+
 use serde_json::{Map, Value};
 
 use crate::client::LLMClient;

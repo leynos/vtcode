@@ -1,3 +1,6 @@
+//! Shared server-sent-event decoding for OpenAI-compatible Responses streams,
+//! including reasoning and cache-usage accounting.
+
 use crate::error_display;
 use crate::provider::{LLMError, LLMNormalizedStream, LLMResponse, NormalizedStreamEvent};
 use crate::providers::shared::responses_adapter::{ResponsesStreamAdapter, ResponsesStreamEvent};

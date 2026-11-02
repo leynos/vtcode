@@ -8,3 +8,4 @@ mod exec_command_wire;
 mod read_file_version;
 mod streamed_audit;
 mod task_plan;
+mod usage_profile;

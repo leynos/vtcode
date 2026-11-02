@@ -4,7 +4,9 @@
 //! automatic, provider-native, and hook-assisted compaction.
 
 use super::super::types::SessionHandle;
+use super::redaction::{log_compaction_update_failure, session_correlation};
 use super::{ZedAgent, log_suppressed_error, warn_hook_message};
+use crate::metrics::{CompactionOutcome, record_compaction_finished, record_compaction_started};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
 use std::future::Future;
@@ -18,10 +20,8 @@ use vtcode_core::exec::events::{CompactionMode, CompactionTrigger};
 use vtcode_core::llm::provider::{LLMProvider, ToolDefinition};
 
 mod failure;
-mod outcome;
 mod plan;
 use failure::{CompactionFailure, classify};
-use outcome::compaction_outcome_label;
 pub(super) use plan::{
     CompactionAttempt, CompactionCommit, CompactionDecision, CompactionRun, CompactionSessionSnapshot,
     estimated_prompt_tokens,
@@ -59,6 +59,9 @@ impl ZedAgent {
 
         let snapshot = CompactionSessionSnapshot::load(session)?;
         let acp_session_id = crate::acp::SessionId::new(snapshot.session_id.clone());
+        // Logs and spans correlate on a bounded key rather than the raw id.
+        let session_key = session_correlation(&snapshot.session_id);
+        record_compaction_started();
         // The edge supplies the identity and clock so the activity projection
         // stays a pure function of explicit inputs.
         let activity = super::lody_activity::CompactionActivity::begin(
@@ -70,15 +73,15 @@ impl ZedAgent {
         match activity.started_update() {
             Ok(update) => {
                 if let Err(error) = self.send_update(&acp_session_id, update).await {
-                    log_activity_update_failure(&error, &acp_session_id, "publish_started");
+                    log_compaction_update_failure(&error, &session_key, "publish_started");
                 }
             }
-            Err(error) => log_activity_update_failure(&error, &acp_session_id, "serialize_started"),
+            Err(error) => log_compaction_update_failure(&error, &session_key, "serialize_started"),
         }
         let span = tracing::info_span!(
             "acp_lody_compaction",
             operation = "context_compaction",
-            session_id = %acp_session_id,
+            session_correlation = %session_key,
             provider = provider.name(),
             model,
             prompt_tokens,
@@ -142,10 +145,11 @@ impl ZedAgent {
         // Clients only ever see this closed-set category; the originating
         // error is detailed through the redacted debug helper below.
         let failure_category = compaction_result.as_ref().err().map(|error| classify(error).category());
-        let outcome = compaction_outcome_label(failure_category.is_some(), compacted);
+        let outcome = CompactionOutcome::for_result(failure_category.is_some(), compacted);
         let finished_at = std::time::Instant::now();
         let elapsed_ms = activity.elapsed_millis(finished_at);
-        let _ = span.record("outcome", outcome);
+        record_compaction_finished(outcome, failure_category == Some("cancelled"), elapsed_ms);
+        let _ = span.record("outcome", outcome.as_str());
         let _ = span.record("elapsed_ms", elapsed_ms);
         if let (Some(error), Some(category)) = (compaction_result.as_ref().err(), failure_category) {
             let _ = span.record("error_category", category);
@@ -155,23 +159,30 @@ impl ZedAgent {
                 model,
                 prompt_tokens,
                 elapsed_ms,
-                outcome,
+                session_correlation = %session_key,
+                outcome = outcome.as_str(),
                 error_category = category,
                 "ACP automatic context compaction failed"
             );
         } else {
             info!(
                 provider = provider.name(),
-                model, prompt_tokens, compacted, elapsed_ms, outcome, "ACP automatic context compaction finished"
+                model,
+                prompt_tokens,
+                compacted,
+                elapsed_ms,
+                session_correlation = %session_key,
+                outcome = outcome.as_str(),
+                "ACP automatic context compaction finished"
             );
         }
         match activity.finished_update(finished_at, compacted, used_tokens_after, failure_category) {
             Ok(update) => {
                 if let Err(error) = self.send_update(&acp_session_id, update).await {
-                    log_activity_update_failure(&error, &acp_session_id, "publish_finished");
+                    log_compaction_update_failure(&error, &session_key, "publish_finished");
                 }
             }
-            Err(error) => log_activity_update_failure(&error, &acp_session_id, "serialize_finished"),
+            Err(error) => log_compaction_update_failure(&error, &session_key, "serialize_finished"),
         }
         compaction_result
     }
@@ -280,27 +291,6 @@ impl ZedAgent {
         }
         Ok(compacted_prompt_tokens)
     }
-}
-
-/// Report a compaction activity update that could not be serialized or sent.
-///
-/// A failed update never fails the compaction itself, but the raw transport
-/// or serialization error may embed workspace or archive detail, so only the
-/// fixed category reaches the warning and the detail goes to the redacted
-/// debug helper.
-fn log_activity_update_failure(
-    error: &impl std::fmt::Display,
-    session_id: &crate::acp::SessionId,
-    stage: &'static str,
-) {
-    log_suppressed_error(error, "context_compaction_update", "compaction_update_failed");
-    warn!(
-        session_id = %session_id,
-        stage,
-        operation = "context_compaction_update",
-        error_category = "compaction_update_failed",
-        "Failed to publish an ACP compaction activity update"
-    );
 }
 
 /// Run the session's pre-compaction hooks for an automatic attempt.

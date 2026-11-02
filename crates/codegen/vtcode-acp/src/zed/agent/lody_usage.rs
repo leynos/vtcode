@@ -15,6 +15,7 @@ use vtcode_core::llm::usage_cost::{
     estimate_session_costs_with_pricing, normalized_turn_usage_with_input_semantics, provider_reports_exclusive_input,
 };
 
+use super::redaction::{redact_detail, session_correlation};
 use super::{ZedAgent, lody::lody_capabilities_mut};
 
 const LODY_EXTENSION_VERSION: u8 = 1;
@@ -212,12 +213,20 @@ impl ZedAgent {
             Ok(Some(notification)) => notification,
             Ok(None) => return,
             Err(error) => {
-                tracing::warn!(%error, %session_id, "Failed to serialize Lody ACP usage update");
+                tracing::warn!(
+                    session_correlation = %session_correlation(session_id.0.as_ref()),
+                    detail = %redact_detail(&error.to_string()),
+                    "Failed to serialize Lody ACP usage update"
+                );
                 return;
             }
         };
         if let Err(error) = client.send_ext_notification(notification) {
-            tracing::warn!(%error, %session_id, "Failed to publish Lody ACP usage update");
+            tracing::warn!(
+                session_correlation = %session_correlation(session_id.0.as_ref()),
+                detail = %redact_detail(&error.to_string()),
+                "Failed to publish Lody ACP usage update"
+            );
         }
     }
 }

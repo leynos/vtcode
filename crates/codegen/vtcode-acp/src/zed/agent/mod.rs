@@ -27,6 +27,7 @@ use super::types::SessionHandle;
 use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 
 mod optional_setup;
+mod redaction;
 mod session_workspace;
 use optional_setup::{
     AcpMcpClientAttacher, AcpSubagentControllerAttacher, AcpSubagentControllerSetup, DefaultAcpMcpClientAttacher,
@@ -52,16 +53,6 @@ fn warn_hook_block_reason(hook_event: &'static str, reason: &str) {
     tracing::warn!(hook_event, reason_bytes = reason.len(), "ACP hook blocked an operation");
 }
 
-/// Renders an error through its source chain, deferring formatting until the
-/// event is actually enabled.
-struct ErrorChain<'a>(&'a dyn std::fmt::Display);
-
-impl std::fmt::Display for ErrorChain<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{:#}", self.0)
-    }
-}
-
 /// Record the originating error for a redacted ACP failure.
 ///
 /// ACP clients only ever see the closed-set `operation`/`error_category`
@@ -74,7 +65,7 @@ fn log_suppressed_error(error: &impl std::fmt::Display, operation: &'static str,
     tracing::debug!(
         operation,
         error_category,
-        error = %ErrorChain(error),
+        detail = %redaction::redact_detail(&format!("{error:#}")),
         "Suppressed ACP failure detail"
     );
 }

@@ -1,3 +1,5 @@
+//! Hugging Face Inference API provider client and streaming support.
+
 #![allow(
     clippy::bind_instead_of_map,
     clippy::collapsible_if,

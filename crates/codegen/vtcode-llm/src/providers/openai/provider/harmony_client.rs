@@ -1,3 +1,5 @@
+//! OpenAI Harmony-encoded client used for Harmony-format chat models.
+
 use super::super::errors::format_openai_error;
 use super::super::harmony;
 use super::super::headers;

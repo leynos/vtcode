@@ -29,14 +29,12 @@ use tracing::{Span, debug, field, info_span, warn};
 use vtcode_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
 use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 
-const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
+use super::redaction::SESSION_CORRELATION_HEX_LENGTH;
+
 const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
 fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
-    vtcode_commons::utils::calculate_sha256(session_id.to_string().as_bytes())
-        .chars()
-        .take(SESSION_CORRELATION_HEX_LENGTH)
-        .collect()
+    super::redaction::session_correlation(&session_id.to_string())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
