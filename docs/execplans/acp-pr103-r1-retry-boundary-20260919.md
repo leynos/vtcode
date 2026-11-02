@@ -286,3 +286,17 @@ selectors.
   invocation are retained. The generated
   `docs/config/CONFIG_FIELD_REFERENCE.md` was not regenerated: the generator
   still drops the three custom-provider pricing and rate-limit-header rows.
+
+## Rebase onto the rewritten Lody usage/activity head
+
+- 2026-11-02: The parent branch was rewritten again, moving from
+  `aec962ef0` to `cfe0c6bbe`. The new head is not a descendant of the old head,
+  but the tree delta between the two is confined to the parent's own
+  `docs/execplans/acp-lody-task-lifecycle-negotiation.md`, a file this layer
+  never modifies. The exclusive replay boundary is therefore the old parent head
+  `aec962ef0`, and all 37 child commits (33 layer commits and four post-rebase
+  repairs) were replayed onto `cfe0c6bbe`.
+- The built-in merge backend with `zdiff3` replayed the whole series without a
+  conflict. `git range-diff` matches all 37 commits, and the parent-to-child
+  diff is byte-identical to the previous replay, so no code, test, or
+  documentation content changed. The new head is `99e96d923`.
