@@ -1,6 +1,7 @@
 //! Stale exec-session continuations map to typed, non-retryable errors.
 
 use super::*;
+use crate::metrics::ToolRecoveryEvent;
 
 /// Loses the session after its input was consumed but before the response is collected.
 ///
@@ -31,6 +32,12 @@ async fn write_stdin_losing_session_after_delivery_reports_partial_state(
         .or_else(|| start.get("session_id").and_then(Value::as_str))
         .ok_or_else(|| anyhow::anyhow!("expected an execution session ID"))?
         .to_owned();
+    // The start call must not itself count as a stale continuation; take the
+    // baseline only after it has resolved a live session.
+    let stale_baseline = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
     let session_manager = registry.exec_session_manager();
     let mut activity_rx = session_manager
         .activity_receiver(&session_id)
@@ -93,6 +100,16 @@ async fn write_stdin_losing_session_after_delivery_reports_partial_state(
     assert!(message.contains("Partial changes may still exist"), "unexpected message: {message}");
     assert!(message.contains("Start a new exec_command"), "unexpected message: {message}");
 
+    let stale_after = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
+    assert_eq!(
+        stale_after,
+        stale_baseline + 1,
+        "losing the session after input delivery must record exactly one stale write_stdin request"
+    );
+
     Ok(())
 }
 
@@ -110,6 +127,10 @@ async fn stale_write_stdin_modes_are_resource_not_found_without_partial_state(
         json!({"action": "poll", "session_id": "run-stale"}),
         json!({"action": "wait", "session_id": "run-stale", "yield_time_ms": 1}),
     ];
+    let stale_baseline = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
 
     for args in modes {
         let policy = ExecutionPolicySnapshot::default()
@@ -149,6 +170,16 @@ async fn stale_write_stdin_modes_are_resource_not_found_without_partial_state(
             "a stale continuation must not claim that partial changes may exist"
         );
     }
+
+    let stale_after = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
+    assert_eq!(
+        stale_after,
+        stale_baseline + 3,
+        "each stale write_stdin mode (input, poll, wait) must record one stale request"
+    );
 
     Ok(())
 }
