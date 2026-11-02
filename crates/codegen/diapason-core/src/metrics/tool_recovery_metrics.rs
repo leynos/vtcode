@@ -1,12 +1,17 @@
-//! Bounded counters for ACP interrupted tool-call recovery.
+//! Bounded counters for interrupted tool-call recovery.
 //!
-//! Every dimension is a fixed event variant. Session identifiers, tool names,
-//! call identifiers, and tool output never become a label, so an export cannot
-//! leak the content or names of the tools a session invoked.
+//! This vocabulary is transport-neutral: it names recovery states shared by
+//! the core agent loop and any adapter, and it imports no protocol schema
+//! types. Core records the events it originates (a stale `write_stdin`
+//! continuation); an adapter records the events it observes (staging,
+//! replacement, archive repair). Every dimension is a fixed event variant.
+//! Session identifiers, tool names, call identifiers, and tool output never
+//! become a label, so an export cannot leak the content or names of the tools
+//! a session invoked.
 
 use serde::{Deserialize, Serialize};
 
-/// One bounded ACP tool-recovery event.
+/// One bounded tool-recovery event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolRecoveryEvent {
     /// An incomplete placeholder was staged before its tool call executed.

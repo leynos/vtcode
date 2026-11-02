@@ -76,6 +76,7 @@ async fn run_approved_patch_flow(
     std::iter::from_fn(|| updates_rx.try_recv().ok()).collect()
 }
 
+/// Asserts the provider continuation saw a terminal result, not a placeholder.
 fn assert_tool_continuation_saw_completed_result(requests: &[LLMRequest]) {
     let tool_response = requests[1]
         .messages
@@ -90,6 +91,7 @@ fn assert_tool_continuation_saw_completed_result(requests: &[LLMRequest]) {
     );
 }
 
+/// Asserts the initial ACP tool call exposes the patch text as a preview.
 fn assert_patch_preview_visible(updates: &[acp::SessionNotification], patch: &str) {
     let preview_visible = updates.iter().any(|notification| {
         let acp::SessionUpdate::ToolCall(call) = &notification.update else {
@@ -106,6 +108,7 @@ fn assert_patch_preview_visible(updates: &[acp::SessionNotification], patch: &st
     assert!(preview_visible, "the initial ACP tool call must expose the patch text");
 }
 
+/// Asserts the completed ACP tool update carries the standardized diff.
 fn assert_completed_diff(updates: &[acp::SessionNotification], expected_path: &std::path::Path) {
     let diff = updates.iter().find_map(|notification| {
         let acp::SessionUpdate::ToolCallUpdate(update) = &notification.update else {

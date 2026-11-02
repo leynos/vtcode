@@ -6,6 +6,7 @@ use super::super::tool_config::SessionToolDefinitionRequest;
 use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use super::provider::IncompleteProviderTurn;
 use super::*;
+use tracing::Instrument;
 use vtcode_core::metrics::ToolRecoveryEvent;
 
 mod buffered;
@@ -263,29 +264,83 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
           tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
     require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
 
-    let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
-        Ok(results) => results,
-        Err(error) => {
-            warn!(%error, session_id = %session_id, tool_call_count,
-                  tool_recovery_outcome = "execution_interrupted", "Tool execution failed");
-            persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
-            return Err(error);
-        }
-    };
+    let execution_span = tracing::info_span!(
+        "acp_tool_execution",
+        operation = "execute_tool_round",
+        tool_call_count,
+        tool_loop_count = *tool_loop_count,
+        outcome = tracing::field::Empty,
+        finalized_tool_count = tracing::field::Empty,
+        elapsed_ms = tracing::field::Empty,
+    );
+    let started = std::time::Instant::now();
+    async {
+        let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
+            Ok(results) => results,
+            Err(error) => {
+                let _ = execution_span.record("outcome", "execution_interrupted");
+                let _ = execution_span.record("elapsed_ms", elapsed_ms(started));
+                agent
+                    .recovery_metrics()
+                    .record_tool_recovery_events(ToolRecoveryEvent::InterruptedCall, tool_call_count);
+                // The raw error is not logged: its message can embed client
+                // detail. A fixed category and the retry contract are enough
+                // to diagnose the interruption.
+                warn!(
+                    session_id = %session_id,
+                    tool_call_count,
+                    error_category = execution_error_category(&error),
+                    retryable = false,
+                    tool_recovery_outcome = "execution_interrupted",
+                    "Tool execution failed"
+                );
+                persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
+                return Err(error);
+            }
+        };
 
-    let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
-    agent
-        .recovery_metrics()
-        .record_tool_recovery_events(ToolRecoveryEvent::ReplacedCall, finalized_tool_count);
-    info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
-          finalized_tool_count, tool_recovery_outcome = "results_replaced", "ACP tool recovery results replaced");
-    persist_session_checkpoint(agent, session, "tool_results").await;
+        let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+        agent
+            .recovery_metrics()
+            .record_tool_recovery_events(ToolRecoveryEvent::ReplacedCall, finalized_tool_count);
+        let _ = execution_span.record("outcome", "results_replaced");
+        let _ = execution_span.record("finalized_tool_count", finalized_tool_count);
+        let _ = execution_span.record("elapsed_ms", elapsed_ms(started));
+        info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
+              finalized_tool_count, tool_recovery_outcome = "results_replaced", "ACP tool recovery results replaced");
+        persist_session_checkpoint(agent, session, "tool_results").await;
 
-    Ok(if session.cancellation.is_cancelled() {
-        ToolRoundOutcome::Cancelled
-    } else {
-        ToolRoundOutcome::Continue
-    })
+        Ok(if session.cancellation.is_cancelled() {
+            ToolRoundOutcome::Cancelled
+        } else {
+            ToolRoundOutcome::Continue
+        })
+    }
+    .instrument(execution_span.clone())
+    .await
+}
+
+/// Bounded category for an ACP tool-execution failure.
+///
+/// The category is a fixed variant so it is safe to log and to use as a span
+/// field; the raw error message is not.
+fn execution_error_category(error: &SdkError) -> &'static str {
+    match error.code {
+        acp::ErrorCode::ParseError => "parse_error",
+        acp::ErrorCode::InvalidRequest => "invalid_request",
+        acp::ErrorCode::MethodNotFound => "method_not_found",
+        acp::ErrorCode::InvalidParams => "invalid_params",
+        acp::ErrorCode::InternalError => "internal_error",
+        acp::ErrorCode::RequestCancelled => "request_cancelled",
+        acp::ErrorCode::AuthRequired => "auth_required",
+        acp::ErrorCode::ResourceNotFound => "resource_not_found",
+        _ => "other",
+    }
+}
+
+/// Elapsed milliseconds, saturating rather than wrapping.
+fn elapsed_ms(started: std::time::Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {

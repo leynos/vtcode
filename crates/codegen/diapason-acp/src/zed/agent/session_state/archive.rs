@@ -43,6 +43,11 @@ use vtcode_core::utils::session_archive::{
 //! without replaying calls or registering a resumable session.
 };
 
+/// Runs one session-storage operation inside a bounded telemetry span.
+///
+/// The span records the fixed operation name, a success/failure outcome, and
+/// elapsed milliseconds; it never records paths, session identifiers, or
+/// payloads.
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,
     future: F,

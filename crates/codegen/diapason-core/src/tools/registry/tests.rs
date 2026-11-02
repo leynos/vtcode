@@ -56,6 +56,7 @@ const MUTUAL_REENTRANT_TOOL_B: &str = "mutual_reentrant_tool_b";
 
 const REPLACE_DISPATCH_TOOL_NAME: &str = "replace_dispatch_test_tool";
 
+/// Commands config that permits only the fixture's deterministic commands.
 fn command_session_fixture_commands_config() -> CommandsConfig {
     let mut config = CommandsConfig::default();
     config.allow_list.clear();

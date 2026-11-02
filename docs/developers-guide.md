@@ -41,3 +41,44 @@ session lost after the input write reports `partial_state_possible` through
 `ExecSessionLostAfterInput`, while a pre-write resolution failure does not.
 Design rationale and focused test commands are in the
 [ACP runtime guide](./development/acp-runtime.md).
+
+### History mutation and turn admission
+
+`ThreadRuntimeHandle::mutate_messages` applies a short, synchronous callback
+while holding the session lock. The callback must not call back into the
+handle, perform I/O, or await; that keeps placeholder staging and result
+replacement atomic without creating a second owner of session state. Use
+`replace_messages` only when the new history does not depend on the current one.
+
+`TurnGuard::begin` claims the thread's single in-flight turn before a prompt
+mutates history. A concurrent prompt is rejected with `turn_in_progress`
+instead of interleaving tool results with the turn that already owns the
+thread. The guard releases the slot on drop, including on an error path.
+
+### Archive registration boundary
+
+`session/load` and `session/resume` repair the archive, then checkpoint the
+repaired history with `CheckpointDurability::Required`, and only then register
+the session. A failed repair checkpoint releases the workspace lease and
+returns an error, so a partially repaired session never becomes visible to a
+prompt or tool call. Ambiguous history is rejected before any archive write.
+
+### Stale exec-session error contract
+
+`ExecSessionNotFound` and `ExecSessionLostAfterInput` are typed causes in
+`vtcode-core`. `ToolExecutionError::from_anyhow` maps both to a non-retryable
+`ResourceNotFound` classification and records a typed `stale_exec_session`
+state on the error. Policy decisions read that typed state; the client-facing
+`details` payload (`reason: "stale_exec_session"`, `session_id`, and
+`input_delivered` when applicable) is rendered only when the error is
+serialized. Do not parse `details` to decide recovery behaviour. The one
+wire-format read is `ToolExecutionError::from_error_payload`, which rehydrates
+the typed state from the rendered payload because the registry returns tool
+failures as a JSON envelope and the retry loop parses them back.
+
+Related design records and protocol references:
+
+- [ACP interrupted tool recovery ExecPlan](./execplans/acp-unresolved-tool-recovery.md)
+- [ACP PR convergence ExecPlan](./execplans/review-acp-pr13-convergence-20260908.md)
+- [Zed ACP guide](./guides/zed-acp.md)
+- [Tool specifications](./tools/TOOL_SPECS.md)
