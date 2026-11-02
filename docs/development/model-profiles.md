@@ -47,7 +47,7 @@ context_window = 131072 supports_tools = true supports_vision = false
 supports_structured_output = true supports_parallel_tool_calls = true
 
 `supports_stream_usage` only affects OpenAI Chat Completions streams. In a
-Responses profile it has no effect, so set it on an
+Responses profile, it has no effect, so set it on an
 `api_format = "openai-chat"` profile (or provider entry) whose endpoint emits a
 terminal usage chunk instead.
 

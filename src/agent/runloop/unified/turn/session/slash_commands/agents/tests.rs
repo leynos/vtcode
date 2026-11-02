@@ -1,3 +1,4 @@
+//! Tests for the `/agents` slash command's listing, summaries, and actions.
 use super::{
     DEFAULT_AGENT_TOOL_IDS, active_subagent_entries, background_subprocess_summary, scaffold_agent_markdown,
     subprocess_action_prompt, summarize_thread_event_preview, visible_subagent_entries,

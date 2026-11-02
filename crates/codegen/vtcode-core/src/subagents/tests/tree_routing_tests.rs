@@ -396,7 +396,12 @@ async fn cancelling_a_settled_background_record_keeps_it_out_of_restore() {
         .find(|entry| entry.id == record_id)
         .expect("the cancelled record stays in the ledger");
     assert!(!record.desired_enabled, "restoring must keep the cleared flag");
-    assert!(!record.status.is_active(), "a cancelled record must not be relaunched on restore");
+    assert_eq!(
+        record.status,
+        BackgroundSubprocessStatus::Error,
+        "restore and its trailing refresh must preserve the settled error instead of relabelling it as a stopped exit"
+    );
+    assert_eq!(record.error.as_deref(), Some("exited with status 3"), "the settled error text must survive");
     restored.signal_shutdown().await;
 }
 

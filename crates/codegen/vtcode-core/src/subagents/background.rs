@@ -1,3 +1,5 @@
+//! Persists and loads background subagent state, and provides the launch
+//! specifications and bounded output-tail helpers the controller uses.
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use tokio::fs;

@@ -180,6 +180,7 @@ async fn approved_delete_and_rename_patches_deliver_hashed_diffs_over_acp() {
         "wire-test",
         Arc::new(move || {
             Box::new(StreamToolThenAnswerProvider {
+                emit_usage: false,
                 calls: Arc::clone(&factory_calls),
                 requests: Arc::clone(&factory_requests),
                 tool_name: "apply_patch",
