@@ -1,11 +1,18 @@
 //! Regression coverage for buffered tool turns surfacing reasoning and commentary.
 use super::*;
-use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
+use agent_client_protocol::schema::v1::{CancelNotification, InitializeRequest, NewSessionRequest};
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Poll;
+use tokio::sync::Notify;
 
 /// Replays buffered responses produced by a call-indexed script.
 struct ScriptedProvider {
     calls: Arc<AtomicUsize>,
     respond: fn(usize) -> LLMResponse,
+    /// Signals that a generation started and then never completes, so the test
+    /// can cancel a buffered turn while its provider request is in flight.
+    held: Option<Arc<Notify>>,
 }
 
 #[async_trait]
@@ -39,7 +46,42 @@ impl LLMProvider for ScriptedProvider {
 
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         let index = self.calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(held) = &self.held {
+            held.notify_one();
+            std::future::pending::<()>().await;
+        }
         Ok((self.respond)(index))
+    }
+}
+
+/// Replays two executed tool rounds followed by a final answer.
+fn two_tool_rounds_then_answer(index: usize) -> LLMResponse {
+    let (content, reasoning, call_id) = match index {
+        0 => ("Round one.", "Reasoning one.", "call-1"),
+        1 => ("Round two.", "Reasoning two.", "call-2"),
+        _ => ("Final answer.", "Final reasoning.", ""),
+    };
+    if index < 2 {
+        LLMResponse {
+            content: Some(content.to_string()),
+            reasoning: Some(reasoning.to_string()),
+            tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+                call_id.to_string(),
+                "list_files".to_string(),
+                r#"{"path":""}"#.to_string(),
+            )]),
+            finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
+            model: "wire-model".to_string(),
+            ..LLMResponse::default()
+        }
+    } else {
+        LLMResponse {
+            content: Some(content.to_string()),
+            reasoning: Some(reasoning.to_string()),
+            finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+            model: "wire-model".to_string(),
+            ..LLMResponse::default()
+        }
     }
 }
 
@@ -159,6 +201,38 @@ async fn run_buffered_wire_prompt(
     vt_config: Option<&VTCodeConfig>,
     configure: impl FnOnce(&mut ZedAgent),
 ) -> WirePromptRun {
+    run_wire_prompt(factory, calls, vt_config, configure, |cx, workspace_path| async move {
+        drop(
+            cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                .block_task()
+                .await?,
+        );
+        let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
+        let response = cx
+            .send_request(PromptRequest::new(
+                session.session_id,
+                vec![acp::ContentBlock::Text(acp::TextContent::new("Inspect the workspace"))],
+            ))
+            .block_task()
+            .await?;
+        assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
+        Ok(())
+    })
+    .await
+}
+
+/// Drives one buffered prompt with a caller-supplied client flow.
+async fn run_wire_prompt<F, Fut>(
+    factory: Arc<PromptProviderFactory>,
+    calls: Arc<AtomicUsize>,
+    vt_config: Option<&VTCodeConfig>,
+    configure: impl FnOnce(&mut ZedAgent),
+    client_flow: F,
+) -> WirePromptRun
+where
+    F: FnOnce(ConnectionTo<Agent>, std::path::PathBuf) -> Fut,
+    Fut: Future<Output = agent_client_protocol::Result<()>>,
+{
     let _history_test_guard = lock_history_test_guard().await;
     let session_dir = TempDir::new().expect("temporary ACP session archive directory");
     let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
@@ -194,23 +268,7 @@ async fn run_buffered_wire_prompt(
             },
             on_receive_notification!(),
         )
-        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
-            drop(
-                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
-                    .block_task()
-                    .await?,
-            );
-            let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
-            let response = cx
-                .send_request(PromptRequest::new(
-                    session.session_id,
-                    vec![acp::ContentBlock::Text(acp::TextContent::new("Inspect the workspace"))],
-                ))
-                .block_task()
-                .await?;
-            assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
-            Ok(())
-        });
+        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| client_flow(cx, workspace_path).await);
 
     tokio::time::timeout(Duration::from_secs(5), client_connection)
         .await
@@ -225,6 +283,11 @@ async fn run_buffered_wire_prompt(
     }
 }
 
+/// Polls a future once so a request frame is written without awaiting a reply.
+async fn poll_once<F: Future + Unpin>(mut future: F) -> Poll<F::Output> {
+    std::future::poll_fn(|cx| Poll::Ready(Pin::new(&mut future).poll(cx))).await
+}
+
 #[tokio::test]
 async fn buffered_tool_turns_emit_reasoning_and_commentary_before_tool_lifecycle() {
     let calls = Arc::new(AtomicUsize::new(0));
@@ -234,6 +297,7 @@ async fn buffered_tool_turns_emit_reasoning_and_commentary_before_tool_lifecycle
             Box::new(ScriptedProvider {
                 calls: Arc::clone(&factory_calls),
                 respond: tool_then_answer,
+                held: None,
             })
         }),
         Arc::clone(&calls),
@@ -288,6 +352,7 @@ async fn buffered_tool_limit_relays_the_refused_response_before_the_limit_messag
             Box::new(ScriptedProvider {
                 calls: Arc::clone(&factory_calls),
                 respond: always_tool_call,
+                held: None,
             })
         }),
         Arc::clone(&calls),
@@ -323,6 +388,7 @@ async fn stop_hook_blocked_draft_reasoning_reaches_the_client_before_the_retry()
             Box::new(ScriptedProvider {
                 calls: Arc::clone(&factory_calls),
                 respond: blocked_draft_then_answer,
+                held: None,
             })
         }),
         Arc::clone(&calls),
@@ -349,4 +415,138 @@ async fn stop_hook_blocked_draft_reasoning_reaches_the_client_before_the_retry()
         "a Stop-hook-blocked draft's commentary must stay hidden from the client"
     );
     assert_eq!(run.calls.load(Ordering::SeqCst), 2, "one blocked draft and one retried answer");
+}
+
+/// A buffered tool-bearing turn cancelled while the provider request is in
+/// flight must not relay stale reasoning or commentary, and must not start a
+/// tool lifecycle the client can no longer follow.
+#[tokio::test]
+async fn cancelled_buffered_tool_turn_sends_no_assistant_updates() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let started = Arc::new(Notify::new());
+    let factory_calls = Arc::clone(&calls);
+    let factory_started = Arc::clone(&started);
+    let client_started = Arc::clone(&started);
+    let run = run_wire_prompt(
+        Arc::new(move || {
+            Box::new(ScriptedProvider {
+                calls: Arc::clone(&factory_calls),
+                respond: tool_then_answer,
+                held: Some(Arc::clone(&factory_started)),
+            })
+        }),
+        Arc::clone(&calls),
+        None,
+        |_| {},
+        move |cx: ConnectionTo<Agent>, workspace_path: std::path::PathBuf| async move {
+            drop(
+                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                    .block_task()
+                    .await?,
+            );
+            let session = cx.send_request(NewSessionRequest::new(workspace_path)).block_task().await?;
+            let mut prompt = Box::pin(
+                cx.send_request(PromptRequest::new(
+                    session.session_id.clone(),
+                    vec![acp::ContentBlock::Text(acp::TextContent::new("Inspect the workspace"))],
+                ))
+                .block_task(),
+            );
+            // Writing the prompt frame first keeps the cancel ordered after the
+            // request that it is meant to interrupt.
+            let _first_poll = poll_once(prompt.as_mut()).await;
+            client_started.notified().await;
+            cx.send_notification(CancelNotification::new(session.session_id))?;
+            let response = prompt.await?;
+            assert_eq!(response.stop_reason, acp::StopReason::Cancelled);
+            Ok(())
+        },
+    )
+    .await;
+
+    assert!(
+        run.updates
+            .iter()
+            .all(|notification| thought_text(&notification.update).is_none()
+                && message_text(&notification.update).is_none()
+                && !matches!(&notification.update, acp::SessionUpdate::ToolCall(_))),
+        "a cancelled buffered turn must not relay assistant updates or start the tool lifecycle"
+    );
+    assert_eq!(run.calls.load(Ordering::SeqCst), 1, "one provider request was cancelled in flight");
+}
+
+/// Each executed tool round must relay its own response before the tool
+/// lifecycle for that round, without duplicating an earlier round's channels.
+#[tokio::test]
+async fn consecutive_tool_rounds_relay_each_response_before_its_tool_lifecycle() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let factory_calls = Arc::clone(&calls);
+    let run = run_buffered_wire_prompt(
+        Arc::new(move || {
+            Box::new(ScriptedProvider {
+                calls: Arc::clone(&factory_calls),
+                respond: two_tool_rounds_then_answer,
+                held: None,
+            })
+        }),
+        Arc::clone(&calls),
+        None,
+        |agent| agent.tool_loop_limit = 4,
+    )
+    .await;
+    let updates = &run.updates;
+    let thought = |text: &str| {
+        updates
+            .iter()
+            .position(|notification| thought_text(&notification.update) == Some(text))
+    };
+    let commentary = |text: &str| {
+        updates
+            .iter()
+            .position(|notification| message_text(&notification.update) == Some(text))
+    };
+
+    let first_reasoning = thought("Reasoning one.").expect("the first round's reasoning must reach ACP");
+    let first_commentary = commentary("Round one.").expect("the first round's commentary must reach ACP");
+    let second_reasoning = thought("Reasoning two.").expect("the second round's reasoning must reach ACP");
+    let second_commentary = commentary("Round two.").expect("the second round's commentary must reach ACP");
+    let final_message = commentary("Final answer.").expect("the final commentary must reach ACP");
+    let pending_tool_calls: Vec<usize> = updates
+        .iter()
+        .enumerate()
+        .filter(|(_index, notification)| {
+            matches!(&notification.update, acp::SessionUpdate::ToolCall(call) if call.status == acp::ToolCallStatus::Pending)
+        })
+        .map(|(index, _notification)| index)
+        .collect();
+
+    assert_eq!(pending_tool_calls.len(), 2, "both executed tool rounds must start a tool lifecycle");
+    assert!(first_reasoning < first_commentary, "reasoning must precede commentary for the first round");
+    assert!(first_commentary < pending_tool_calls[0], "the first round must reach ACP before its tool call");
+    assert!(pending_tool_calls[0] < second_reasoning, "the second round must follow the first tool lifecycle");
+    assert!(second_reasoning < second_commentary, "reasoning must precede commentary for the second round");
+    assert!(second_commentary < pending_tool_calls[1], "the second round must reach ACP before its tool call");
+    assert!(pending_tool_calls[1] < final_message, "final commentary must follow the last tool lifecycle");
+
+    let reasoning_one_count = updates
+        .iter()
+        .filter(|notification| thought_text(&notification.update) == Some("Reasoning one."))
+        .count();
+    let commentary_one_count = updates
+        .iter()
+        .filter(|notification| message_text(&notification.update) == Some("Round one."))
+        .count();
+    let reasoning_two_count = updates
+        .iter()
+        .filter(|notification| thought_text(&notification.update) == Some("Reasoning two."))
+        .count();
+    let commentary_two_count = updates
+        .iter()
+        .filter(|notification| message_text(&notification.update) == Some("Round two."))
+        .count();
+    assert_eq!(reasoning_one_count, 1, "the first round's reasoning must be sent exactly once");
+    assert_eq!(commentary_one_count, 1, "the first round's commentary must be sent exactly once");
+    assert_eq!(reasoning_two_count, 1, "the second round's reasoning must be sent exactly once");
+    assert_eq!(commentary_two_count, 1, "the second round's commentary must be sent exactly once");
+    assert_eq!(run.calls.load(Ordering::SeqCst), 3, "two executed tool rounds and one final turn");
 }
