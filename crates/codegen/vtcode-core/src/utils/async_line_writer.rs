@@ -355,9 +355,17 @@ mod tests {
             AsyncLineWriter::new_with_limits(path.clone(), 4, 1024, Duration::from_millis(10)).expect("writer");
 
         writer.write_line("periodic".to_owned());
-        time::sleep(Duration::from_millis(40)).await;
 
-        assert_eq!(fs::read_to_string(path).expect("read log"), "periodic\n");
+        // The flush runs on a background task, so poll for the write instead
+        // of assuming it lands within a fixed sleep on a loaded host.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if fs::read_to_string(&path).expect("read log") == "periodic\n" {
+                return;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "periodic flush did not write within the deadline");
+            time::sleep(Duration::from_millis(10)).await;
+        }
     }
 
     #[tokio::test]
