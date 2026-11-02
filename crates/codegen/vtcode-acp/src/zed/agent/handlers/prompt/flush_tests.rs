@@ -19,8 +19,8 @@ fn output(message: &str, assistant_emitted: bool) -> ProviderOutput {
     }
 }
 
-#[test]
 /// An unstreamed buffered draft becomes visible exactly once.
+#[test]
 fn unemitted_draft_is_flushed_exactly_once() {
     let mut draft = output("partial draft", false);
 
@@ -29,8 +29,8 @@ fn unemitted_draft_is_flushed_exactly_once() {
     assert_eq!(draft.take_unemitted_assistant_text(), None, "the draft must not be sent twice");
 }
 
-#[test]
 /// A draft the client already streamed is not sent again on cancel.
+#[test]
 fn streamed_draft_is_not_resent_on_cancel() {
     let mut streamed = output("streamed draft", true);
 
@@ -38,8 +38,8 @@ fn streamed_draft_is_not_resent_on_cancel() {
     assert_eq!(streamed.assistant_message, "streamed draft");
 }
 
-#[test]
 /// Cancelling with no draft emits no assistant chunk.
+#[test]
 fn empty_draft_sends_nothing() {
     let mut empty = output("", false);
 
@@ -47,8 +47,8 @@ fn empty_draft_sends_nothing() {
     assert!(!empty.assistant_emitted);
 }
 
-#[test]
 /// A flushed draft stays marked visible across a tool-round reset.
+#[test]
 fn flushed_visibility_survives_a_tool_round_reset() {
     let mut draft = output("partial draft", false);
 

@@ -442,10 +442,12 @@ returns an internal error with reason `empty_response` instead of a silent
 Prompt scheduling and completion emit bounded metrics with fixed labels:
 `vtcode.acp.prompt_gate_queue_depth` and `vtcode.acp.prompt_gate_wait_ms` for
 the per-session queue, and `vtcode.acp.prompt_outcome_total` tagged with `mode`
-(`buffered` or `stream`) and `outcome` (`end_turn`, `max_tokens`,
-`max_turn_requests`, `refusal`, `cancelled`, `empty_response`,
-`tool_execution_failed`, or `failed`). No prompt text or provider diagnostics
-are attached.
+(`buffered`, `stream`, or `pre_init` for a prompt that finishes during
+admission before a provider turn starts) and `outcome` (`end_turn`,
+`max_tokens`, `max_turn_requests`, `refusal`, `cancelled`, `empty_response`,
+`tool_execution_failed`, or `failed`). Every admitted prompt records exactly
+one outcome, including cancellation, hook refusal, and preparation or
+initialization failures. No prompt text or provider diagnostics are attached.
 
 ### Storage boundaries
 

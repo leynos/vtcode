@@ -454,3 +454,38 @@ async fn streaming_retry_records_bounded_perf_metrics() {
     );
     assert!(recorder.drain().await.is_empty());
 }
+
+#[tokio::test]
+async fn pre_init_exit_records_exactly_one_pre_init_outcome() {
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+    let workspace = TempDir::new().expect("pre-init workspace");
+    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let session_id = agent.register_session().expect("register pre-init session");
+    let session = agent
+        .session_handle(&session_id)
+        .expect("look up pre-init session")
+        .expect("pre-init session exists");
+    // A closed session cannot clear cancellation, so admission answers
+    // `Cancelled` before any provider turn is initialized. A plain `cancel()`
+    // would be cleared by `reset()` and would not exercise this path.
+    session.cancellation.close();
+    let recorder = Arc::new(TestPerfRecorder::new());
+
+    let response = run_prompt_with_metric_sink(
+        Arc::clone(&agent),
+        PromptRequest::new(session_id, vec![acp::ContentBlock::Text(acp::TextContent::new("cancelled before start"))]),
+        ProviderMetricSink::test(Arc::clone(&recorder)),
+    )
+    .await
+    .expect("a cancelled prompt still answers");
+
+    assert_eq!(response.stop_reason, acp::StopReason::Cancelled);
+    let events = recorder.drain().await;
+    let outcomes = events
+        .iter()
+        .filter(|event| event.name == "vtcode.acp.prompt_outcome_total")
+        .collect::<Vec<_>>();
+    assert_eq!(outcomes.len(), 1, "an admitted prompt records exactly one outcome");
+    assert_eq!(outcomes[0].tags.get("mode").map(String::as_str), Some("pre_init"));
+    assert_eq!(outcomes[0].tags.get("outcome").map(String::as_str), Some("cancelled"));
+}

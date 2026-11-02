@@ -140,7 +140,13 @@ impl GenerationTelemetry {
                 .first_output_at
                 .map(|first| duration_millis(first.duration_since(self.started_at)))
                 .unwrap_or(elapsed_ms),
-            ttft_observation = match self.mode { ProviderMode::Buffered => "buffered_response", ProviderMode::Stream => "stream_event" },
+            ttft_observation = match self.mode {
+                ProviderMode::Buffered => "buffered_response",
+                ProviderMode::Stream => "stream_event",
+                // Generation telemetry only starts for a provider turn, so a
+                // pre-initialization prompt never reaches this span.
+                ProviderMode::PreInit => "pre_init",
+            },
             output_tokens,
             token_count_source,
             tokens_per_second,

@@ -7,6 +7,7 @@ use super::*;
 
 mod buffered;
 mod cancelled;
+mod entry;
 mod finish;
 #[cfg(test)]
 mod flush_tests;
@@ -14,6 +15,7 @@ mod flush_tests;
 mod gate_clock_tests;
 mod input;
 mod lifecycle;
+mod outcome;
 mod output;
 #[cfg(test)]
 mod prompt_outcome_tests;
@@ -24,9 +26,13 @@ pub(super) use buffered::response_reasoning_update;
 #[cfg(test)]
 pub(crate) use cancelled::commit_cancelled_draft_for_test;
 pub(super) use cancelled::{finish_cancelled_output, finish_failed_or_cancelled_output};
+#[cfg(test)]
+pub(super) use entry::run_prompt_with_metric_sink;
+pub(super) use entry::{gate_wait_ms, run_prompt, run_prompt_with_retry_observer};
 pub(super) use finish::{
     finish_failed_output, finish_failed_provider_turn, persist_session_checkpoint, require_session_checkpoint,
 };
+pub(super) use outcome::prompt_outcome;
 pub(super) use output::{ProviderOutput, assistant_tool_call_message};
 
 pub(super) struct TurnGuard {
@@ -270,99 +276,12 @@ pub(super) struct PromptProviderContext {
     supports_tools: bool,
 }
 
-/// Milliseconds between two samples of the prompt-gate clock.
-///
-/// Saturates instead of wrapping so a pathological wait stays observable.
-fn gate_wait_ms(started: Instant, finished: Instant) -> u64 {
-    u64::try_from(finished.saturating_duration_since(started).as_millis()).unwrap_or(u64::MAX)
-}
-
-/// Runs a prompt with production clocks and metrics.
-pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
-    run_prompt_with_retry_observer(agent, args, SystemTime::now, Instant::now, ProviderMetricSink::production()).await
-}
-
-/// Test entry point that substitutes the provider metric sink.
-#[cfg(test)]
-pub(super) async fn run_prompt_with_metric_sink(
-    agent: Arc<ZedAgent>,
-    args: PromptRequest,
-    metric_sink: ProviderMetricSink,
-) -> Result<PromptResponse, SdkError> {
-    run_prompt_with_retry_observer(agent, args, SystemTime::now, Instant::now, metric_sink).await
-}
-
-/// Prepares a prompt and runs its provider turn behind the per-session gate.
-///
-/// `retry_observed_at` supplies provider retry timestamps and `gate_clock`
-/// samples gate-queue waits, so tests can make both deterministic.
-pub(super) async fn run_prompt_with_retry_observer(
-    agent: Arc<ZedAgent>,
-    args: PromptRequest,
-    retry_observed_at: impl Fn() -> SystemTime + Send + Sync,
-    gate_clock: impl Fn() -> Instant + Send + Sync,
-    metric_sink: ProviderMetricSink,
-) -> Result<PromptResponse, SdkError> {
-    let session = agent
-        .session_handle(&args.session_id)
-        .map_err(|error| session_access_error(&args.session_id, "looking up session", error))?
-        .ok_or_else(|| SdkError::invalid_params().data(json!({ "reason": "unknown_session" })))?;
-    // ACP lets a client steer an active turn by sending another
-    // `session/prompt`. Serialize the turns per session instead of rejecting
-    // the steer or racing the active turn's state; this is only awaited here,
-    // inside the spawned prompt task.
-    //
-    // Sample the admitted count before waiting: it is the queue depth this
-    // prompt joined, including any turn already holding the gate. Reporting it
-    // alongside the wait keeps a stalled turn visible without capping steers,
-    // which ACP deliberately allows.
-    let queued_prompts = session.admitted_prompt_count().saturating_sub(1);
-    let gate_wait_started = gate_clock();
-    if queued_prompts > 0 {
-        // Emit before waiting: a turn stalled on the gate must be visible
-        // while it is stalled, not only once it finally runs.
-        info!(
-            session_id = %args.session_id,
-            queued_prompts,
-            "Waiting for the ACP prompt gate"
-        );
-    }
-    let _prompt_gate = session.acquire_prompt_gate().await;
-    let wait_ms = gate_wait_ms(gate_wait_started, gate_clock());
-    metric_sink
-        .record_prompt(PromptMetricObservation::GateQueueDepth { depth: queued_prompts })
-        .await;
-    metric_sink
-        .record_prompt(PromptMetricObservation::GateWait { duration: Duration::from_millis(wait_ms) })
-        .await;
-    debug!(
-        session_id = %args.session_id,
-        queued_prompts,
-        wait_ms,
-        "Acquired ACP prompt gate"
-    );
-    // Clear cancellation only once the previous turn has fully completed. A
-    // queued steer must not clear a cancel aimed at the turn it waited for.
-    if !session.cancellation.reset() {
-        return Ok(PromptResponse::new(acp::StopReason::Cancelled));
-    }
-    let input = match input::prepare_prompt_input(agent, args).await? {
-        PromptInputOutcome::Response(response) => return Ok(response),
-        PromptInputOutcome::Ready(input) => input,
-    };
-    if !input::accept_user_prompt(&input).await? {
-        return Ok(PromptResponse::new(acp::StopReason::Refusal));
-    }
-    let mut execution = initialize_prompt_execution(input).await?;
-    execution.metric_sink = metric_sink;
-    execution.run(&retry_observed_at).await
-}
-
 impl PromptExecution {
     /// Executes the provider turn and records its bounded outcome.
     ///
-    /// Every exit path, including preparation failures, is counted once so the
-    /// outcome series never disagrees with the prompt responses clients saw.
+    /// This is the only path that labels an outcome with the provider mode;
+    /// prompts that finish during admission are counted by the caller under
+    /// the fixed pre-initialization mode.
     async fn run(self, retry_observed_at: &provider::RetryObservationClock<'_>) -> Result<PromptResponse, SdkError> {
         let metric_sink = self.metric_sink.clone();
         let mode = if self.allow_streaming {
@@ -406,32 +325,6 @@ impl PromptExecution {
             return Ok(PromptResponse::new(acp::StopReason::Cancelled));
         }
         result
-    }
-}
-/// Classifies a finished prompt into the closed outcome vocabulary.
-///
-/// The two sanitized failure reasons ACP produces itself are reported
-/// separately; every other error collapses to `failed`.
-fn prompt_outcome(result: &Result<PromptResponse, SdkError>) -> PromptOutcome {
-    match result {
-        Ok(response) => match response.stop_reason {
-            acp::StopReason::EndTurn => PromptOutcome::EndTurn,
-            acp::StopReason::MaxTokens => PromptOutcome::MaxTokens,
-            acp::StopReason::MaxTurnRequests => PromptOutcome::MaxTurnRequests,
-            acp::StopReason::Refusal => PromptOutcome::Refusal,
-            acp::StopReason::Cancelled => PromptOutcome::Cancelled,
-            _ => PromptOutcome::Failed,
-        },
-        Err(error) => match error
-            .data
-            .as_ref()
-            .and_then(|data| data.get("reason"))
-            .and_then(serde_json::Value::as_str)
-        {
-            Some("empty_response") => PromptOutcome::EmptyResponse,
-            Some("tool_execution_failed") => PromptOutcome::ToolExecutionFailed,
-            _ => PromptOutcome::Failed,
-        },
     }
 }
 
