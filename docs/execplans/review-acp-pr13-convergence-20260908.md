@@ -5,7 +5,7 @@ pull request #13 only. Its required living sections are `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`, `Decision log`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`.
 
-Status: COMPLETE (2026-11-02)
+Status: IN PROGRESS (2026-11-03)
 
 ## Purpose / big picture
 
@@ -167,6 +167,19 @@ an archive with ambiguous terminal results is rejected before continuation.
   the comment-token pool. The `CodeRabbit` check for the new head reads
   "Skipped - Review paused"; the existing queue request `25da8dc2` remains
   pending and is reused rather than duplicated.
+- [ ] (2026-11-03) Reconciling the second pre-merge walkthrough (comment
+  `5307347085`, updated on head `1baf4aea5`). Module-level documentation: added
+  the `//!` contract to `exec_sessions.rs`. Unit architecture: made
+  `resolve_exec_session` a pure read and moved `StaleWriteStdinRequest`
+  recording into the three `execute_command_session_*` command paths through
+  the named `record_stale_write_stdin_lookup` helper. Domain architecture:
+  serialised the typed `stale_exec_session` classification as its own envelope
+  field, removed the `details` rehydration path, and made the Prometheus family
+  transport-neutral. User-facing documentation: added the ACP recovery, archive
+  repair, and stale `write_stdin` entries to `docs/releases/0.157.0.md`.
+  Docstring coverage: documenting every diff-touched function the 71.70%
+  measurement flagged. The candidate awaits the shared scrutineer's four-gate
+  run.
 
 ## Surprises & discoveries
 

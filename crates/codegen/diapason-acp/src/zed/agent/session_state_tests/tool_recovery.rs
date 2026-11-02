@@ -11,6 +11,8 @@ use assert_fs::TempDir;
 use diapason_core::core::threads::messages_from_session_listing;
 use diapason_core::llm::provider::{MessageRole, ToolCall};
 
+/// Closes a legacy tool call with an incomplete result before a later user
+/// message.
 #[test]
 fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
     let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
@@ -40,6 +42,7 @@ fn legacy_archive_repair_closes_tool_call_before_later_user_message() {
     assert_eq!(repaired[2].role, MessageRole::User);
 }
 
+/// Persists a relocation-only repair to the archive.
 #[test]
 fn relocation_only_repair_is_persisted_to_the_archive() {
     let temp = TempDir::new().expect("create temporary workspace for tool-recovery test");
@@ -71,6 +74,8 @@ fn relocation_only_repair_is_persisted_to_the_archive() {
     assert_eq!(repaired[2].role, MessageRole::User);
 }
 
+/// Resumes when front compaction leaves tool results without their assistant
+/// request.
 #[test]
 fn truncated_archive_prefix_resumes_without_ambiguity() {
     // Front compaction can retain tool results whose assistant request was
@@ -97,6 +102,7 @@ fn truncated_archive_prefix_resumes_without_ambiguity() {
     assert_eq!(report.repaired_calls, 0);
 }
 
+/// Repairs a legacy archive on attach without replaying its mutating call.
 #[tokio::test]
 async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
@@ -148,6 +154,7 @@ async fn attaching_legacy_archive_repairs_without_replaying_mutating_call() {
     assert_eq!(persisted.messages[1].role, MessageRole::Tool);
 }
 
+/// Leaves the session unregistered when the repair checkpoint fails.
 #[tokio::test]
 async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     // Reviews 3791762677 and 3944816962: a resumed session is visible to
@@ -194,6 +201,7 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     );
 }
 
+/// Rejects an ambiguous archive without rewriting it or replaying its call.
 #[tokio::test]
 async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive() {
     // A duplicate result has a known external-effect record, but no safe
@@ -256,6 +264,7 @@ async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive(
     assert_eq!(fs::read_to_string(&target).expect("read the file the replayed patch would modify"), "original\n");
 }
 
+/// Resumes separate completed batches that reuse the same call ID.
 #[tokio::test]
 async fn repeated_call_ids_in_separate_completed_batches_remain_resumable() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;

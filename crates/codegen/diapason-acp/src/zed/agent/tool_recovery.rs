@@ -38,6 +38,7 @@ impl RecoveryReport {
 pub(super) struct AmbiguousToolResultHistory;
 
 impl std::fmt::Display for AmbiguousToolResultHistory {
+    /// Writes the fixed ambiguity description.
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("ambiguous tool-result attribution")
     }

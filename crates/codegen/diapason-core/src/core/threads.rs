@@ -549,6 +549,8 @@ mod tests {
         handle.begin_turn().expect("turn after finish");
     }
 
+    /// Keeps a concurrent append that starts while a message mutation holds the
+    /// lock.
     #[test]
     fn mutate_messages_keeps_an_append_started_during_the_mutation() {
         use std::sync::{Arc, Barrier, mpsc};

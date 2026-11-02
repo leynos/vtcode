@@ -40,6 +40,7 @@ fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
     assert_eq!(archived["reasoning_details"][2], serde_json::json!(raw_reasoning));
 }
 
+/// Rejects duplicate tool-call IDs before any placeholder is staged.
 #[test]
 fn duplicate_tool_call_ids_are_rejected_before_staging() {
     let call = |id: &str| {

@@ -17,26 +17,33 @@ struct InvalidateArchiveBeforeToolProvider {
 
 #[async_trait]
 impl LLMProvider for InvalidateArchiveBeforeToolProvider {
+    /// Returns the provider name used by the wire test harness.
     fn name(&self) -> &str {
         "wire-test"
     }
 
+    /// Advertises the single wire test model.
     fn supported_models(&self) -> Vec<String> {
         vec!["wire-model".to_string()]
     }
 
+    /// Reports that this provider streams responses.
     fn supports_streaming(&self) -> bool {
         true
     }
 
+    /// Reports tool support for every model.
     fn supports_tools(&self, _model: &str) -> bool {
         true
     }
 
+    /// Accepts any request unchanged.
     fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
         Ok(())
     }
 
+    /// Breaks the archive on the first response, then returns a tool call
+    /// followed by a final answer.
     async fn stream(&self, _request: LLMRequest) -> Result<LLMStream, LLMError> {
         let response_index = self.calls.fetch_add(1, Ordering::SeqCst);
         let events = if response_index == 0 {
@@ -68,11 +75,14 @@ impl LLMProvider for InvalidateArchiveBeforeToolProvider {
         Ok(Box::pin(futures::stream::iter(events)))
     }
 
+    /// Panics because this provider only streams.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         panic!("write-ahead checkpoint test must use streaming")
     }
 }
 
+/// Fails the prompt before execution when the write-ahead checkpoint cannot be
+/// persisted.
 #[tokio::test]
 async fn failed_write_ahead_checkpoint_prevents_acp_tool_execution() {
     // Review 3791762676: a tool call cannot cross the execution boundary
@@ -146,6 +156,8 @@ struct FailedWriteAheadCheckpointFixture {
     session_id: acp::SessionId,
 }
 
+/// Builds a registered session whose archive path fails the write-ahead
+/// checkpoint.
 async fn failed_write_ahead_checkpoint_fixture() -> FailedWriteAheadCheckpointFixture {
     let workspace = TempDir::new().expect("wire test workspace");
     let archive_path = workspace.path().join("checkpoint.json");

@@ -12,18 +12,22 @@ use std::collections::BTreeSet;
 use diapason_core::llm::provider::MessageContent;
 use diapason_safety::audit_log::ToolAuditStatus;
 
+/// Builds an `apply_patch` tool call with the given ID.
 fn call(id: &str) -> ToolCall {
     ToolCall::function(id.to_string(), "apply_patch".to_string(), "{}".to_string())
 }
 
+/// Builds an assistant message carrying the given tool calls.
 fn assistant(calls: impl IntoIterator<Item = ToolCall>) -> Message {
     Message::assistant_with_tools(String::new(), calls.into_iter().collect())
 }
 
+/// Builds a tool response message for the given call ID.
 fn tool_result(id: &str, content: &str) -> Message {
     Message::tool_response(id.to_string(), content.to_string())
 }
 
+/// Builds a successful terminal result for the given call ID.
 fn finalized_result(id: &str, content: &str) -> ToolCallResult {
     ToolCallResult {
         tool_call_id: id.to_string(),
@@ -33,6 +37,7 @@ fn finalized_result(id: &str, content: &str) -> ToolCallResult {
     }
 }
 
+/// Returns the contiguous tool-result IDs following an assistant message.
 fn tool_ids_after(messages: &[Message], assistant_index: usize) -> Vec<String> {
     messages
         .iter()
@@ -42,6 +47,7 @@ fn tool_ids_after(messages: &[Message], assistant_index: usize) -> Vec<String> {
         .collect()
 }
 
+/// Returns the text content of the tool result for a call ID.
 fn content_for<'a>(messages: &'a [Message], call_id: &str) -> Option<&'a str> {
     messages
         .iter()
@@ -52,6 +58,7 @@ fn content_for<'a>(messages: &'a [Message], call_id: &str) -> Option<&'a str> {
         })
 }
 
+/// Inserts one incomplete result before a later user message.
 #[test]
 fn repair_inserts_incomplete_result_before_later_messages() {
     let mut messages = vec![assistant([call("call-1")]), Message::user("continue".to_string())];
@@ -73,6 +80,7 @@ fn repair_inserts_incomplete_result_before_later_messages() {
     assert!(next_action.contains("resubmit"));
 }
 
+/// Leaves a complete history unchanged.
 #[test]
 fn complete_history_is_preserved() {
     let mut messages = vec![assistant([call("call-1")]), tool_result("call-1", "real result")];
@@ -84,6 +92,7 @@ fn complete_history_is_preserved() {
     assert_eq!(messages, expected);
 }
 
+/// Rejects duplicate results while keeping both as durable evidence.
 #[test]
 fn recovery_rejects_duplicate_result_without_discarding_terminal_evidence() {
     // Review 3944816968: duplicate terminal results cannot be safely
@@ -111,6 +120,7 @@ fn recovery_rejects_duplicate_result_without_discarding_terminal_evidence() {
     assert!(content_for(&messages, "call-2").is_some_and(|content| content.contains("\"status\":\"incomplete\"")));
 }
 
+/// Relocates a unique late result beside its request batch.
 #[test]
 fn recovery_preserves_and_relocates_unique_non_contiguous_result() {
     // Review 3944816968: results arriving after an unrelated message are
@@ -132,6 +142,7 @@ fn recovery_preserves_and_relocates_unique_non_contiguous_result() {
     assert_eq!(messages.iter().filter(|message| message.role == MessageRole::Tool).count(), 2);
 }
 
+/// Stages exactly one incomplete result per tool call.
 #[test]
 fn stage_writes_one_incomplete_result_per_call() {
     let mut messages = vec![Message::user("edit files".to_string())];
@@ -142,6 +153,7 @@ fn stage_writes_one_incomplete_result_per_call() {
     assert_eq!(tool_ids_after(&messages, 1), ["call-1", "call-2"]);
 }
 
+/// Accepts reused call IDs across separate completed batches.
 #[test]
 fn recovery_accepts_repeated_call_ids_in_separate_completed_batches() {
     let mut messages = vec![
@@ -160,6 +172,7 @@ fn recovery_accepts_repeated_call_ids_in_separate_completed_batches() {
     assert_eq!(tool_ids_after(&messages, 3), ["reused-call"]);
 }
 
+/// Replaces a staged placeholder with its terminal result.
 #[test]
 fn successful_results_replace_incomplete_results() {
     let mut messages = Vec::new();
@@ -172,6 +185,7 @@ fn successful_results_replace_incomplete_results() {
     assert_eq!(content_for(&messages, "call-1"), Some("real result"));
 }
 
+/// Replaces the newest placeholder when a call ID is reused.
 #[test]
 fn replace_tool_results_updates_the_latest_staged_result_for_a_reused_call_id() {
     // Reused ids across separate completed batches are accepted, so a later
@@ -201,6 +215,7 @@ fn replace_tool_results_updates_the_latest_staged_result_for_a_reused_call_id() 
     assert_eq!(messages[3].content.as_text(), "second result", "the newest placeholder is the one replaced");
 }
 
+/// Accepts a leading run of tool results left by front compaction.
 #[test]
 fn recovery_accepts_a_truncated_leading_tool_result_run() {
     // Front compaction can retain tool results whose assistant request was
@@ -222,6 +237,7 @@ fn recovery_accepts_a_truncated_leading_tool_result_run() {
     assert_eq!(messages, expected);
 }
 
+/// Rejects an orphan result that follows a later user message.
 #[test]
 fn recovery_rejects_an_orphan_result_after_a_later_user_message() {
     // Only the leading run is exempt. An orphan result inside the retained
@@ -248,6 +264,7 @@ fn recovery_rejects_an_orphan_result_after_a_later_user_message() {
     );
 }
 
+/// Reports a relocation without inserting any placeholders.
 #[test]
 fn recovery_reports_relocation_without_inserting_placeholders() {
     let mut messages = vec![
@@ -271,6 +288,8 @@ fn recovery_reports_relocation_without_inserting_placeholders() {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(1_024))]
 
+    /// Repairs generated histories completely and idempotently while
+    /// preserving real results.
     #[test]
     fn repair_is_complete_idempotent_and_preserves_real_results(
         cases in btree_map("[a-z][a-z0-9]{0,7}", (any::<bool>(), "[ -~]{0,32}"), 1..9),

@@ -71,10 +71,10 @@ prompt or tool call. Ambiguous history is rejected before any archive write.
 state on the error. Policy decisions read that typed state; the client-facing
 `details` payload (`reason: "stale_exec_session"`, `session_id`, and
 `input_delivered` when applicable) is rendered only when the error is
-serialized. Do not parse `details` to decide recovery behaviour. The one
-wire-format read is `ToolExecutionError::from_error_payload`, which rehydrates
-the typed state from the rendered payload because the registry returns tool
-failures as a JSON envelope and the retry loop parses them back.
+serialized. Do not parse `details` to decide recovery behaviour. The JSON
+envelope carries the typed `stale_exec_session` field alongside `details`, so
+`ToolExecutionError::from_error_payload` restores policy state through serde
+when the retry loop parses a tool failure back into a structured error.
 
 Related design records and protocol references:
 

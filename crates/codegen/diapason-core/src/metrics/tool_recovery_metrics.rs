@@ -21,7 +21,7 @@ pub enum ToolRecoveryEvent {
     ReplacedCall,
     /// A tool call was interrupted before its terminal result was recorded.
     ///
-    /// Archive repair records one event per repaired call. A live ACP round
+    /// Archive repair records one event per repaired call. A live adapter round
     /// records one event per call in the interrupted batch.
     InterruptedCall,
     /// A uniquely attributable late result was moved beside its request batch.
@@ -68,7 +68,7 @@ impl ToolRecoveryEvent {
     }
 }
 
-/// Bounded ACP tool-recovery counters.
+/// Bounded tool-recovery counters.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ToolRecoveryMetrics {
@@ -78,7 +78,7 @@ pub struct ToolRecoveryMetrics {
     pub replaced_calls: u64,
     /// Interrupted calls, counted per call.
     ///
-    /// Archive repair and live ACP interruption both increment this counter.
+    /// Archive repair and live interruption both increment this counter.
     /// It counts calls, not unique call identifiers, so a batch that is
     /// interrupted twice contributes twice.
     pub interrupted_calls: u64,
@@ -142,6 +142,7 @@ mod tests {
     use super::{ToolRecoveryEvent, ToolRecoveryMetrics};
     use crate::metrics::MetricsCollector;
 
+    /// Exports bounded recovery counters in summary JSON and Prometheus.
     #[test]
     fn tool_recovery_events_are_bounded_in_summary_json_and_prometheus() {
         let collector = MetricsCollector::new();
@@ -166,6 +167,7 @@ mod tests {
         assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="interrupted_call"} 3"#));
     }
 
+    /// Saturates counters at `u64::MAX` instead of wrapping.
     #[test]
     fn counts_saturate_instead_of_wrapping() {
         let mut metrics = ToolRecoveryMetrics {
