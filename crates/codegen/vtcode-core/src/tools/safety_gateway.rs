@@ -23,7 +23,7 @@ use crate::config::CommandsConfig;
 use crate::config::constants::tools;
 use crate::dotfile_protection::{AccessContext, AccessType, DotfileGuardian, ProtectionDecision, get_global_guardian};
 use crate::tools::apply_patch::{Patch, PatchOperation, decode_apply_patch_input};
-use crate::tools::command_args::command_words_after_environment_prefix;
+use crate::tools::command_args::diagnostic_program_name;
 use crate::tools::command_policy::CommandPolicyEvaluator;
 use crate::tools::invocation::ToolInvocationId;
 use crate::tools::rate_limit_config::{tool_calls_per_minute_from_env, tool_calls_per_second_from_env};
@@ -260,19 +260,6 @@ fn command_text_for_tool(tool_name: &str, args: &Value) -> Option<String> {
         }
         _ => None,
     }
-}
-
-/// Program named in command-policy diagnostics.
-///
-/// The first raw whitespace token may be an environment assignment whose value
-/// is a secret, so parse the words and skip leading assignments before naming
-/// the program. Only this name is reported; arguments are never included.
-fn diagnostic_program(command_text: &str) -> String {
-    let words = shell_words::split(command_text).unwrap_or_default();
-    command_words_after_environment_prefix(&words)
-        .first()
-        .cloned()
-        .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Whether the tool's command text is input typed into a running session.
@@ -703,7 +690,7 @@ impl SafetyGateway {
 
             if let Some(ref policy) = self.command_policy {
                 let decision = policy.decision_text(&command);
-                let program = diagnostic_program(&command);
+                let program = diagnostic_program_name(&command);
                 if let Some(reason) = decision.denial_message(&program) {
                     tracing::info!(
                         invocation_id = %inv_id,

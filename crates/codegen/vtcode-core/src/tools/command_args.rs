@@ -356,6 +356,25 @@ pub(crate) fn command_words_after_environment_prefix(words: &[String]) -> &[Stri
     &words[start..]
 }
 
+/// Program name used in command-policy diagnostics.
+///
+/// The first raw whitespace token may be an environment assignment whose value
+/// is a secret, so the words are parsed and leading assignments skipped before
+/// naming the program. Only the name is returned; arguments never are.
+///
+/// The result is reduced to a basename so a full executable path is not echoed
+/// either. Every diagnostic that names a program goes through this helper, so
+/// the redaction rule cannot drift between call sites.
+pub(crate) fn diagnostic_program_name(command_text: &str) -> String {
+    let words = shell_words::split(command_text).unwrap_or_default();
+    command_words_after_environment_prefix(&words)
+        .first()
+        .and_then(|word| Path::new(word).file_name())
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 /// Return whether a parsed command uses an option that can turn an otherwise
 /// read-only inspection program into a writer or command launcher.
 ///
