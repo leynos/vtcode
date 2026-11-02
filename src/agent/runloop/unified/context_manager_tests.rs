@@ -5,6 +5,13 @@ use diapason_core::{
 use std::borrow::Cow;
 use std::path::PathBuf;
 
+use vtcode_core::{
+    EditorContextSnapshot, EditorFileContext, EditorLineRange, EditorSelectionContext, EditorSelectionRange,
+};
+
+//! Unit tests for the unified runloop context manager.
+};
+
 #[test]
 fn normalize_history_for_request_borrows_clean_history() {
     let manager = ContextManager::new("sys".into(), (), Arc::new(RwLock::new(HashMap::new())), None);

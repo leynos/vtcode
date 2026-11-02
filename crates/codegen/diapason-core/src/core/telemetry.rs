@@ -1,3 +1,5 @@
+//! Session-scoped telemetry counters for turns, tool calls, and model usage.
+
 use anyhow::{Context, Result};
 use diapason_config::constants::tools;
 use hashbrown::HashMap;

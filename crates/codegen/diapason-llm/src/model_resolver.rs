@@ -14,6 +14,26 @@ use diapason_config::models::{
     model_catalogue_entry,
 };
 
+use vtcode_config::api_keys::api_key_env_var;
+use vtcode_config::auth::AuthCredentialsStoreMode;
+use vtcode_config::models::{
+    ModelCatalogEntry, ModelId, ModelPricing, Provider, ProviderModelSupport, catalog_provider_keys,
+    model_catalog_entry,
+};
+
+<<<<<<< ours
+//! Resolution of configured and dynamic models into provider-ready selections.
+//!
+//! Reports credential availability, merges catalogue and dynamic metadata, and
+//! exposes the pricing and context-window facts used by model pickers.
+||||||| original
+=======
+};
+};
+//! Resolves configured model identifiers into provider, pricing, and availability metadata.
+>>>>>>> theirs
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelAvailability {
     Available,
