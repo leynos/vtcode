@@ -42,6 +42,9 @@ Last reviewed: 2026-11-03
   runtime experiments, correctness gates, and density qualification.
 - [Instruction Discovery Boundary](development/instruction-discovery.md) -
   Home-directory injection, test isolation, and include/exclude error contracts.
+- [Stale exec sessions](users-guide.md#stale-write_stdin-sessions) -
+  Process-local exec-session identifiers and the non-retryable stale-session
+  error.
 - [Config Field Reference](config/CONFIG_FIELD_REFERENCE.md) - Field-level
   schema reference.
 - [Tool Specifications](tools/TOOL_SPECS.md) - Canonical tool surface reference.

@@ -4,7 +4,8 @@
 //! the core agent loop and any adapter, and it imports no protocol schema
 //! types. Core records the events it originates (a stale `write_stdin`
 //! continuation); an adapter records the events it observes (staging,
-//! replacement, archive repair). Every dimension is a fixed event variant.
+//! replacement, live interruption, archive repair). Every dimension is a fixed
+//! event variant.
 //! Session identifiers, tool names, call identifiers, and tool output never
 //! become a label, so an export cannot leak the content or names of the tools
 //! a session invoked.
@@ -18,8 +19,10 @@ pub enum ToolRecoveryEvent {
     StagedCall,
     /// A staged placeholder was replaced by its terminal tool result.
     ReplacedCall,
-    /// An archived call without a terminal result received an explicit
-    /// incomplete result instead of being replayed.
+    /// A tool call was interrupted before its terminal result was recorded.
+    ///
+    /// Archive repair records one event per repaired call. A live ACP round
+    /// records one event per call in the interrupted batch.
     InterruptedCall,
     /// A uniquely attributable late result was moved beside its request batch.
     RelocatedResult,
@@ -73,7 +76,11 @@ pub struct ToolRecoveryMetrics {
     pub staged_calls: u64,
     /// Placeholders replaced by terminal results.
     pub replaced_calls: u64,
-    /// Archived calls repaired with an explicit incomplete result.
+    /// Interrupted calls, counted per call.
+    ///
+    /// Archive repair and live ACP interruption both increment this counter.
+    /// It counts calls, not unique call identifiers, so a batch that is
+    /// interrupted twice contributes twice.
     pub interrupted_calls: u64,
     /// Late results relocated beside their request batch.
     pub relocated_results: u64,

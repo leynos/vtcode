@@ -145,6 +145,18 @@ an archive with ambiguous terminal results is rejected before continuation.
   `-D warnings`, and `cargo doc`), `make typecheck` passed, and `make test`
   passed 10,524 tests with 22 skipped and no failures. The remote head was
   verified with `ls-remote` and the tracking ref refreshed.
+- [x] (2026-11-02) Closed the review's remaining observability and
+  documentation packet.
+  `successful_tool_round_emits_acp_tool_execution_span_and_replaced_counter`
+  asserts the `acp_tool_execution` span, the `results_replaced` outcome,
+  `elapsed_ms`, and the `ReplacedCall` counter;
+  `interrupted_tool_round_emits_span_and_fixed_error_category` asserts the
+  `execution_interrupted` outcome, `elapsed_ms`, a fixed `error_category` with
+  no raw error field, and the `InterruptedCall` counter. The stale-session
+  tests now assert `StaleWriteStdinRequest` for both the pre-input modes and
+  the post-input session loss. The ExecPlan, ACP runtime guide, metric
+  documentation, README, and documentation index were reconciled with the
+  completed state. The candidate awaits the shared scrutineer's four-gate run.
 
 ## Surprises & discoveries
 
@@ -425,8 +437,9 @@ acceptance evidence is no tool fake call on checkpoint error, no registered
 failed repair, preserved concurrent history, canonical unambiguous repaired
 messages, and fail-closed ambiguous archive continuation. The conformance check
 confirms no wire/archive schema change and only the approved minimal public
-`ThreadRuntimeHandle::mutate_messages<T>` addition. Remaining work is the
-ACP/core relevant gates, Clippy, documentation checks and external review.
+`ThreadRuntimeHandle::mutate_messages<T>` addition. At the time `EP-M2` closed,
+the remaining work was the ACP/core relevant gates, Clippy, documentation
+checks and external review; the Progress section records that work as completed.
 
 `EP-M3` ends after root-scheduled gates and review convergence. Its recovery is
 to retain the focused commit and re-run the gate packet; publication is outside
@@ -459,9 +472,10 @@ Run all commands in
 The original red-stage expectations remain the design oracle, but no valid
 clean-worktree Red result exists. The shared scrutineer has instead recorded
 focused green behaviour for the completed repair. A successful formatter alone
-is not acceptance. Completion requires the remaining ACP/core relevant
-behavioural evidence, Clippy, documentation checks, a committed exact head, and
-review-thread replies with `@coderabbitai` after the commit exists.
+is not acceptance. At the time this plan was written, completion required the
+remaining ACP/core relevant behavioural evidence, Clippy, documentation checks,
+a committed exact head, and review-thread replies with `@coderabbitai` after
+the commit exists. The Progress section records each of those as obtained.
 
 ## Idempotence and recovery
 

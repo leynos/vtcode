@@ -88,11 +88,14 @@ mutating tools:
   resolution failure and a poll or wait failure do not.
 
 Recovery never executes a tool a second time. Related failures carry typed
-outcomes: a `write_stdin` continuation for a terminated exec session becomes a
-non-retryable resource-not-found error with no partial-state claim, and a
-checkpoint failure is logged with its operation and error category before the
-prompt is rejected. Prompt admission remains single-turn, so a concurrent
-prompt is rejected without mutating history.
+outcomes. A `write_stdin` continuation whose session is already gone before the
+input is written becomes a non-retryable resource-not-found error with no
+partial-state claim. If the session is lost after the input was delivered, the
+same non-retryable classification reports `input_delivered: true` and
+`partial_state_possible: true`, because the bytes may already have been
+consumed. A checkpoint failure is logged with its operation and error category
+before the prompt is rejected. Prompt admission remains single-turn, so a
+concurrent prompt is rejected without mutating history.
 
 Focused verification:
 
