@@ -82,6 +82,10 @@ pub(super) fn record_stream_attempt(span: &Span, started_at: Instant, outcome: &
     let _ = span.record("elapsed_ms", elapsed_ms);
 }
 
+pub(super) fn record_stream_failure(span: &Span, started_at: Instant, error: &LLMError) {
+    record_stream_attempt(span, started_at, "failure", SafeProviderProjection::from_llm_error(error).status());
+}
+
 /// Poll the next item from a provider stream inside the attempt span.
 pub(super) fn poll_provider_stream<S>(stream: &mut S, span: Span) -> impl Future<Output = Option<S::Item>> + '_
 where

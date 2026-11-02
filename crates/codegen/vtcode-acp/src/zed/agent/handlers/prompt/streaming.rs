@@ -337,12 +337,7 @@ async fn collect_streaming_attempt(request: StreamAttemptRequest<'_>) -> Result<
         Ok(stream) => stream,
         Err(StreamStartError::Cancelled) => return Ok(StreamAttemptOutcome::Cancelled),
         Err(StreamStartError::Failed(error)) => {
-            record_stream_attempt(
-                &span,
-                started_at,
-                "failure",
-                SafeProviderProjection::from_llm_error(&error).status(),
-            );
+            record_stream_failure(&span, started_at, &error);
             return Ok(classify_stream_failure(StreamFailureRequest {
                 turn,
                 telemetry: &mut telemetry,

@@ -62,12 +62,7 @@ async fn classify_stream_poll_failure(
     request: &mut StreamCollectionRequest<'_>,
     error: LLMError,
 ) -> StreamAttemptOutcome {
-    record_stream_attempt(
-        request.span,
-        request.started_at,
-        "failure",
-        SafeProviderProjection::from_llm_error(&error).status(),
-    );
+    record_stream_failure(request.span, request.started_at, &error);
     classify_stream_failure(StreamFailureRequest {
         turn: request.turn,
         telemetry: &mut *request.telemetry,
