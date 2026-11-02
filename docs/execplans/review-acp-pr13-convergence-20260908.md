@@ -126,7 +126,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   complete. Domain architecture: replaced the JSON-reading
   `is_stale_exec_session` policy check with a typed
   `ToolExecutionError::stale_exec_session` field and rendered `details` only at
-  serialisation time. Observability: added the `acp_tool_execution` span, a
+  serialization time. Observability: added the `acp_tool_execution` span, a
   bounded error category, `InterruptedCall` for live interruptions, and
   `StaleWriteStdinRequest` for post-input session loss. The candidate awaits
   the shared scrutineer's four-gate run.
