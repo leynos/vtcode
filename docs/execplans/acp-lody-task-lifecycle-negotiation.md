@@ -1594,3 +1594,12 @@ mergeability job is not re-running for this PR, so a push cannot clear it;
 clearing it needs a base retarget or a close and reopen. Both are outside the
 agent's current permission policy, which refused them pending explicit user
 authorization, so the merge stays blocked until the user authorizes one of them.
+
+The stale merge ref explains the cache. `59fb9031b` is
+`Merge e133f32a1 into 3d6acb02e`: `e133f32a1` is the 2026-10-30 version of this
+feature head and `3d6acb02e` is that day's merge ref for the base PR, itself
+`Merge de10a59d7 into 2f278cc5`. Neither parent is reachable from the current
+base `271a5cebf` or the current head, so GitHub is still reporting the
+mergeability of a stack that was rewritten out of existence. A further head push
+(`20d52d712`) left both the merge ref and the `CONFLICTING`/`DIRTY` state
+unchanged.
