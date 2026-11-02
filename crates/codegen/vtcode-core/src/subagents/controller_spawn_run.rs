@@ -616,7 +616,18 @@ impl SubagentController {
             persisted_records.extend(records);
             persist_background_state(&self.config.workspace_root, persisted_records).await
         } else {
-            persist_background_state(&self.config.workspace_root, records).await
+            // An unscoped controller shares this ledger with the owner-scoped
+            // controllers of other sessions and processes, and it loads their
+            // records so it can list and route them. Replacing the file with
+            // its own snapshot would delete a record another owner created
+            // after this controller loaded, or restore that owner's record
+            // from the stale copy it holds.
+            let persisted_records = load_background_state(&self.config.workspace_root).await?.records;
+            persist_background_state(
+                &self.config.workspace_root,
+                merge_unscoped_background_records(persisted_records, records),
+            )
+            .await
         }
     }
 
@@ -978,6 +989,42 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
 static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 fn background_state_persistence_lock() -> &'static Mutex<()> {
     BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Merges an unscoped controller's snapshot into the persisted ledger.
+///
+/// The unscoped controller is not the owner of the owner-scoped records it
+/// loads, so it must not replace them with its own copy. Records it does not
+/// track are kept exactly as another process last wrote them, and a record
+/// both sides hold keeps the copy with the newest `updated_at`: an untouched
+/// snapshot equals the copy this controller loaded, while a local refresh or
+/// cancellation is newer than it.
+fn merge_unscoped_background_records(
+    persisted: Vec<PersistedBackgroundRecord>,
+    snapshot: Vec<PersistedBackgroundRecord>,
+) -> Vec<PersistedBackgroundRecord> {
+    // Key on the canonical id: a ledger written by an older build can hold a
+    // legacy id for the same owner-scoped record, and the load path
+    // canonicalizes in memory. Keying on the raw id would let one record
+    // appear twice, or let two owners' records collapse into one entry.
+    let mut merged: BTreeMap<String, PersistedBackgroundRecord> = persisted
+        .into_iter()
+        .map(|mut record| {
+            record.canonicalize_id();
+            (record.id.clone(), record)
+        })
+        .collect();
+    for mut record in snapshot {
+        record.canonicalize_id();
+        match merged.get_mut(&record.id) {
+            Some(current) if record.is_at_least_as_new_as(current) => *current = record,
+            Some(_) => {}
+            None => {
+                merged.insert(record.id.clone(), record);
+            }
+        }
+    }
+    merged.into_values().collect()
 }
 
 #[cfg(test)]

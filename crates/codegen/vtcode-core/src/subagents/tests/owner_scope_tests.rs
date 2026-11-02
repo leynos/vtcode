@@ -195,6 +195,128 @@ async fn sibling_owners_keep_distinct_records_for_the_same_agent() {
     assert_eq!(owners, ["session-a", "session-b"], "a workspace-global save must persist both owners' records");
 }
 
+/// Builds a persisted record with an explicit status and timestamp so a test
+/// can order two writes to the same ledger entry.
+fn record_with_state(
+    id: &str,
+    owner_session_id: Option<&str>,
+    status: &str,
+    updated_at: &str,
+) -> PersistedBackgroundRecord {
+    let mut value = serde_json::to_value(persisted_background_record_for_owner(id, owner_session_id))
+        .expect("serialize fixture record");
+    value["status"] = serde_json::json!(status);
+    value["updated_at"] = serde_json::json!(updated_at);
+    serde_json::from_value(value).expect("deserialize record")
+}
+
+fn write_ledger(path: &std::path::Path, records: Vec<PersistedBackgroundRecord>) {
+    std::fs::write(path, serde_json::to_string(&PersistedBackgroundState { records }).expect("serialize state"))
+        .expect("write state");
+}
+
+fn read_ledger_by_id(path: &std::path::Path) -> std::collections::HashMap<String, serde_json::Value> {
+    let persisted: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("read persisted background_subagents state"))
+            .expect("persisted state");
+    persisted["records"]
+        .as_array()
+        .expect("records array")
+        .iter()
+        .map(|record| (record["id"].as_str().expect("record id").to_string(), record.clone()))
+        .collect()
+}
+
+/// An unscoped controller shares the ledger with the owner-scoped controllers
+/// of other sessions and processes, and it loads their records so it can list
+/// and route them. Its save must therefore merge into the current file rather
+/// than replace it: a record another owner created after this controller
+/// loaded would otherwise be deleted, and a record it holds a stale copy of
+/// would be restored over the newer state.
+#[tokio::test]
+async fn unscoped_save_preserves_records_written_by_other_owners_after_load() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".vtcode/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let ledger = state_dir.join("background_subagents.json");
+    write_ledger(
+        &ledger,
+        vec![record_with_state(
+            "worker",
+            Some("session-a"),
+            "running",
+            "2026-08-28T00:00:00Z",
+        )],
+    );
+
+    let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
+        .await
+        .expect("unscoped controller");
+    assert_eq!(unscoped.background_status_entries().await.len(), 1);
+
+    // Another process settles session-a's task and starts one for session-b
+    // after this controller took its snapshot.
+    write_ledger(
+        &ledger,
+        vec![
+            record_with_state("worker", Some("session-a"), "stopped", "2026-08-29T00:00:00Z"),
+            record_with_state("worker", Some("session-b"), "running", "2026-08-29T00:00:00Z"),
+        ],
+    );
+
+    unscoped.save_background_state().await.expect("save unscoped state");
+
+    let by_id = read_ledger_by_id(&ledger);
+    assert_eq!(by_id.len(), 2, "an unscoped save must not delete a record another owner created after it loaded");
+    assert_eq!(
+        by_id["background-worker@session-a"]["status"], "stopped",
+        "an unscoped save must not restore the stale copy it loaded over a newer write"
+    );
+    assert_eq!(by_id["background-worker@session-b"]["status"], "running");
+}
+
+/// The merge must not discard this controller's own newer state: a local
+/// refresh or cancellation is newer than the copy it loaded, so it wins over
+/// the on-disk record it was derived from.
+#[tokio::test]
+async fn unscoped_save_persists_its_own_newer_state() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".vtcode/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let ledger = state_dir.join("background_subagents.json");
+    write_ledger(
+        &ledger,
+        vec![record_with_state(
+            "worker",
+            Some("session-a"),
+            "running",
+            "2026-08-28T00:00:00Z",
+        )],
+    );
+
+    let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()))
+        .await
+        .expect("unscoped controller");
+    {
+        let mut state = unscoped.state.write().await;
+        let record = state
+            .background_children
+            .get_mut("background-worker@session-a")
+            .expect("loaded record");
+        record.status = BackgroundSubprocessStatus::Stopped;
+        record.updated_at = "2026-08-30T00:00:00Z".parse().expect("timestamp");
+    }
+
+    unscoped.save_background_state().await.expect("save unscoped state");
+
+    let by_id = read_ledger_by_id(&ledger);
+    assert_eq!(by_id.len(), 1);
+    assert_eq!(
+        by_id["background-worker@session-a"]["status"], "stopped",
+        "the controller's own newer state must survive the merge"
+    );
+}
+
 #[cfg(unix)]
 async fn spawn_background_demo(owner_session_id: Option<&str>) -> BackgroundSubprocessEntry {
     let temp = TempDir::new().expect("tempdir");

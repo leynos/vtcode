@@ -580,6 +580,15 @@ impl PersistedBackgroundRecord {
             self.owner_session_id.as_deref(),
         );
     }
+
+    /// Whether this record was written at or after `other`.
+    ///
+    /// A merge of two copies of the same ledger entry keeps the newer one, so
+    /// a local refresh or cancellation is not overwritten by the stale copy
+    /// the controller loaded.
+    pub(crate) fn is_at_least_as_new_as(&self, other: &Self) -> bool {
+        self.updated_at >= other.updated_at
+    }
 }
 
 // ─── Controller State ───────────────────────────────────────────────────────
