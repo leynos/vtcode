@@ -38,6 +38,21 @@ use diapason_ui::tui::app::{
 };
 use serde_json::json;
 
+use vtcode_config::{builtin_primary_auto_agent, builtin_primary_build_agent};
+use vtcode_core::config::constants::tools as tool_names;
+use vtcode_core::exec::events::{ThreadEvent, ThreadItemDetails, VersionedThreadEvent};
+use vtcode_core::llm::provider as uni;
+use vtcode_core::utils::ansi::AnsiRenderer;
+use vtcode_ui::tui::app::{
+    InlineEvent, InlineHandle, InlineListSelection, InlineSession, TransientEvent, TransientSubmission,
+};
+
+//! Unit tests for the unified runloop turn loop, including post-tool recovery.
+};
+};
+};
+};
+
 const PENDING_VERIFICATION_RESPONSE_MARKER: &str = "Inspection-only checks do not clear the verification gate";
 
 const CONTEXT_CAPACITY_RESPONSE_MARKER: &str = "context capacity or compaction failed";

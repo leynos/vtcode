@@ -1,3 +1,6 @@
+//! Conversions between vtcode request types and the Gemini wire format,
+//! including streaming response parsing.
+
 use super::wire::{GenerationConfig, InlineData, StreamingError, ThinkingConfig};
 use super::*;
 use crate::error_display;
