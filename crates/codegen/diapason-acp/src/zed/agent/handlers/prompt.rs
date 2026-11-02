@@ -255,6 +255,3 @@ pub(super) fn assistant_tool_call_message(
     }
     message
 }
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/prompt.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/prompt.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/prompt.rs' for per-hunk detail, 'weave check' to verify your resolution
