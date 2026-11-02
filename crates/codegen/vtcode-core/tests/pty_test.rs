@@ -62,7 +62,12 @@ fn pty_fixture_commands_config() -> CommandsConfig {
             .to_owned(),
         // The configured policy checks both the normalized argv and the raw
         // shell source that actually runs, so these commands are allow-listed
-        // in both representations.
+        // in both representations. A caller-supplied `bash -lc` invocation is
+        // checked the same way, so its source needs its own entry too.
+        r"^sleep 0\.75; echo done$".to_owned(),
+        r"^sleep 0\.4; echo done$".to_owned(),
+        r#"^sleep 0\.4; printf "<alpha>\\n"; sleep 1$"#.to_owned(),
+        r#"^IFS= read -r line; printf '<%s>' "\$line"$"#.to_owned(),
         r"^printf 'small output\\n'$".to_owned(),
         r#"^IFS= read -r line; printf '<%s>\\n' "\$line"$"#.to_owned(),
         r"^sleep 0\.5; printf 'abcdefghijklmnopqrstuvwxyz\\n'; sleep 2$".to_owned(),
