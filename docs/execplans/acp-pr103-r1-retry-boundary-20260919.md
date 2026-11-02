@@ -274,6 +274,14 @@ selectors.
     parent's smaller file.
   - `scripts/large_file_allowlist.txt`: kept the parent's tighter 1.8 MB
     ceiling and removed the duplicate 2 MB entry in `6271743e9`.
+- The parent's `f73ce33ac` made `AttemptFailureSink` cross-task safe
+  (`Send + Sync`). This layer's `RateLimitNoticeSink` already meets those
+  bounds, so the replayed retry loop announces failures through the hardened
+  port without an adapter.
+- The parent's `0a8099406` split the oversized ACP handler test modules. The
+  replayed `assert_first_stop_hook_block` helper and this layer's
+  `rate_limit_notice` module were applied to that split layout rather than
+  restoring the pre-split files.
 - The parent's `format_code_span` padding fix and its `--locked` schema
   invocation are retained. The generated
   `docs/config/CONFIG_FIELD_REFERENCE.md` was not regenerated: the generator
