@@ -1,13 +1,12 @@
 # Configure provider rate-limit headers
 
 Use this guide when a custom provider returns quota information in response
-headers and you want VT Code to include it in retry notices and optional ACP
-updates.
+headers, and VT Code must include it in retry notices and optional ACP updates.
 
 ## Add a mapping to a custom provider
 
 Add `rate_limit_headers` immediately after the associated
-`[[custom_providers]]` entry. Map each field to the response header that your
+`[[custom_providers]]` entry. Map each field to the response header that the
 provider actually sends:
 
 ```toml
@@ -32,8 +31,8 @@ recognizes that header independently as a retry instruction.
 
 Custom providers start with four standard mappings for per-minute request and
 token limits. Provider names that identify Fireworks or Together also receive
-their provider-specific defaults. Values that you set in `rate_limit_headers`
-take precedence for those fields, while other fields can continue to use the
+their provider-specific defaults. Values set in `rate_limit_headers` take
+precedence for those fields, while other fields can continue to use the
 effective provider defaults.
 
 For the complete field list and provider mapping tables, see the
@@ -61,7 +60,7 @@ identity from response headers.
 ## Incomplete or inconsistent headers
 
 VT Code ignores missing or malformed header values. It does not invent
-utilisation from a one-sided or inconsistent limit/remaining pair. A complete
+utilization from a one-sided or inconsistent limit/remaining pair. A complete
 limit and remaining pair can produce `usedPercent`; limit-only information may
-be rendered as an absolute limit while utilisation and an unsupported window
+be rendered as an absolute limit while utilization and an unsupported window
 remain absent.

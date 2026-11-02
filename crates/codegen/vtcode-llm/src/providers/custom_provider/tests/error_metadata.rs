@@ -1,3 +1,6 @@
+//! Verifies that custom-provider errors keep configured rate-limit header
+//! mappings and `Retry-After` metadata across buffered and streaming paths.
+
 use super::super::CustomProviderBackendRouter;
 use crate::provider::{LLMError, LLMProvider, LLMRequest, Message};
 use serde_json::json;
