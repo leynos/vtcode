@@ -3,6 +3,7 @@
 - [Getting started](./user-guide/getting-started.md)
 - [Configuration](./config/config.md)
 - [Custom providers](./user-guide/custom-providers.md)
+- [Scheduled tasks](./user-guide/scheduled-tasks.md)
 - [Zed ACP setup and sessions](./guides/zed-acp.md)
 - [Permissions](./guides/permissions.md)
 - [MCP integration](./mcp/MCP_INTEGRATION_GUIDE.md)
