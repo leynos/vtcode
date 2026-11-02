@@ -454,6 +454,7 @@ impl PipeSessionManager {
         sessions.get(session_id).cloned().ok_or_else(|| missing_session(session_id))
     }
 
+    /// Rejects a path that escapes the session workspace root.
     fn ensure_within_workspace(&self, candidate: &Path) -> Result<()> {
         ensure_path_within_workspace(candidate, &self.workspace_root).map(|_| ())
     }

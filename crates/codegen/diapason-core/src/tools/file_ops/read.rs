@@ -15,7 +15,9 @@ use super::is_image_path;
 use super::path_policy::PathSuggestionKind;
 use super::restore_exact_text_content;
 mod legacy;
+
 mod logging;
+
 mod segments;
 use crate::config::constants::tools;
 use crate::telemetry::perf::PerfSpan;
@@ -33,7 +35,9 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 const SPOOL_CHUNK_DEFAULT_LIMIT_LINES: usize = DEFAULT_NEXT_READ_LIMIT;
+
 const SPOOL_CHUNK_MAX_LIMIT_LINES: usize = 50;
+
 const SPOOL_CHUNK_SENTINEL_MAX_TOKENS: usize = 4096;
 
 #[derive(Clone, Copy, Debug)]
@@ -213,6 +217,11 @@ fn has_explicit_offset(args: &Value) -> bool {
 fn is_full_text_read(args: &Value, is_spool_output: bool) -> bool {
     !is_spool_output && !has_explicit_offset(args) && !has_explicit_limit(args)
 }
+
+/// Fills in the default offset and line limit for a spooled read.
+///
+/// Explicit caller values win; the defaults keep a spooled read bounded so a
+/// large file cannot be materialized in one response.
 fn apply_spool_chunk_defaults(handler_args_json: &mut Value, raw_args: &Value) -> SpoolChunkPlan {
     let mut offset = 1usize;
     let mut limit = SPOOL_CHUNK_DEFAULT_LIMIT_LINES;

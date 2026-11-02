@@ -176,9 +176,10 @@ impl ToolRegistry {
             progress_tool_name,
         )
         .await
-        .map_err(|error| mark_input_delivered(error, session.metadata.id.as_str()))
+        .map_err(|error| mark_input_delivered(error, session.metadata.id.as_str(), &self.metrics_collector()))
     }
 
+    /// Polls an exec session using the unified `exec_command` tool identity.
     pub(super) async fn execute_command_session_poll_internal(
         &self,
         args: Value,
@@ -748,9 +749,16 @@ impl ToolRegistry {
 ///
 /// The input bytes were already handed to the session before the response was
 /// captured, so a missing-session error afterwards must not claim that no
-/// partial state exists. Unrelated errors are returned unchanged.
-fn mark_input_delivered(error: anyhow::Error, session_id: &str) -> anyhow::Error {
+/// partial state exists. The same condition is a stale `write_stdin`
+/// continuation, so it is counted alongside the pre-write lookup failure.
+/// Unrelated errors are returned unchanged.
+fn mark_input_delivered(
+    error: anyhow::Error,
+    session_id: &str,
+    metrics: &crate::metrics::MetricsCollector,
+) -> anyhow::Error {
     if error.chain().any(|cause| cause.is::<ExecSessionNotFound>()) {
+        metrics.record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
         anyhow::Error::new(ExecSessionLostAfterInput { session_id: session_id.to_string() })
     } else {
         error

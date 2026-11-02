@@ -79,8 +79,7 @@ async fn write_stdin_losing_session_after_delivery_reports_partial_state(
     assert!(!error.rollback_performed);
 
     let details = error
-        .details
-        .as_ref()
+        .rendered_details()
         .ok_or_else(|| anyhow::anyhow!("session loss must carry details"))?;
     assert_eq!(details.get("reason").and_then(Value::as_str), Some("stale_exec_session"));
     assert_eq!(details.get("session_id").and_then(Value::as_str), Some(session_id.as_str()));
@@ -121,14 +120,14 @@ async fn stale_write_stdin_modes_are_resource_not_found_without_partial_state(
             .await;
         let error = outcome.error.expect("stale continuation should return a structured error");
 
+        let rendered_details = error.rendered_details();
         let observed = (
             error.category,
             error.error_type,
             error.retryable,
             error.circuit_breaker_impact,
             error.partial_state_possible,
-            error
-                .details
+            rendered_details
                 .as_ref()
                 .and_then(|details| details.get("reason"))
                 .and_then(Value::as_str),

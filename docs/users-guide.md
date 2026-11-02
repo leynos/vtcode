@@ -74,3 +74,16 @@ call may already have changed files. The mechanics, including `write_stdin`
 partial-state reporting and single-turn prompt admission, are in the
 [Zed ACP guide](./guides/zed-acp.md) and the
 [ACP runtime guide](./development/acp-runtime.md).
+
+### Stale `write_stdin` sessions
+
+An exec session identifier is process-local. It stops being valid when the
+command exits, the session is closed, or VT Code restarts. Continuing a stale
+identifier returns a non-retryable `ResourceNotFound` error with
+`reason: "stale_exec_session"`; start a new `exec_command` and use the session
+identifier it returns.
+
+If the session was lost after `write_stdin` delivered its input, the error also
+reports `input_delivered: true` and `partial_state_possible: true`. The bytes
+may already have been consumed, so verify the workspace before repeating the
+work. A failure before the input was written sets neither flag.

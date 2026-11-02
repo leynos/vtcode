@@ -5,7 +5,7 @@ pull request #13 only. Its required living sections are `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`, `Decision log`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`.
 
-Status: IN PROGRESS
+Status: COMPLETE (2026-11-02)
 
 ## Purpose / big picture
 
@@ -109,10 +109,36 @@ an archive with ambiguous terminal results is rejected before continuation.
   static outcome labels and existing identifiers/counts only; they do not
   record tool arguments, results, archive contents, or a new metric/event
   stream. The source change awaits the sole shared scrutineer's scoped packet.
-- [ ] Obtain the remaining ACP/core relevant tests, Clippy and documentation
-  checks through the shared scrutineer before a commit proposal.
-- [ ] Obtain root-scheduled deterministic gates, CodeRabbit review, and the
-  required per-thread dispositions after a verified commit.
+- [x] (2026-11-02) Obtained the remaining ACP/core relevant tests, Clippy and
+  documentation checks through the shared scrutineer. `make check-fmt`,
+  `make lint`, `make typecheck`, and `make test` all passed on the committed
+  candidate; the focused ACP recovery tests passed as part of that run.
+- [x] (2026-11-02) Obtained root-scheduled deterministic gates, CodeRabbit
+  review, and the required per-thread dispositions after a verified commit. The
+  reviewed head was green in CI, every inline finding was repaired or rebutted
+  with evidence, and each thread was answered and resolved.
+- [x] (2026-11-02) Reconciled the five remaining pre-merge warnings on head
+  `6ab1a3f73`. Docstring coverage: added docstrings to every diff-touched
+  function the 75.00% measurement flagged. User-facing documentation: added the
+  stale `write_stdin` section to `docs/users-guide.md`. Developer
+  documentation: added the history-mutation, archive-registration, and
+  stale-session contracts to `docs/developers-guide.md` and marked this plan
+  complete. Domain architecture: replaced the JSON-reading
+  `is_stale_exec_session` policy check with a typed
+  `ToolExecutionError::stale_exec_session` field and rendered `details` only at
+  serialisation time. Observability: added the `acp_tool_execution` span, a
+  bounded error category, `InterruptedCall` for live interruptions, and
+  `StaleWriteStdinRequest` for post-input session loss. The candidate awaits
+  the shared scrutineer's four-gate run.
+- [x] (2026-11-02) The four-gate run found two `vtcode-core` failures in the
+  typed stale-session work. The registry returns tool failures as a JSON
+  envelope, so the retry loop re-parsed the error and lost the typed
+  classification (`stale_exec_session` is `#[serde(skip)]`), after which the
+  generic mutating-tool heuristic marked a pre-write stale continuation as
+  partial state. `from_error_payload` now rehydrates the typed classification
+  from the rendered `details` before any policy decision, and a round-trip
+  regression test covers it. The other failure was a test still reading the
+  client-facing `details` field instead of `rendered_details()`.
 
 ## Surprises & discoveries
 
@@ -181,6 +207,12 @@ an archive with ambiguous terminal results is rejected before continuation.
   interrupted. Root authorized direct journeyman implementation of the frozen
   six-file packet, while preserving the independent shared-scrutineer review
   and gate requirement.
+- A typed field that is `#[serde(skip)]` does not survive the registry's own
+  JSON error envelope. `execute_public_tool_ref_dispatch` converts a failed
+  tool call into `Ok(error_payload)`, and the retry loop parses it back with
+  `ToolExecutionError::from_tool_output`. Any policy state that exists only in
+  the typed field is therefore lost on that path, so the wire payload must be
+  rehydrated before `with_tool_call_context` runs.
 
 ## Decision log
 
@@ -262,20 +294,24 @@ an archive with ambiguous terminal results is rejected before continuation.
 
 ## Outcomes & retrospective
 
-This section is incomplete. The current result is a narrow, reviewable #13
-repair with focused green evidence and no changes outside recovery/history
-integrity, apart from the approved `ThreadRuntimeHandle` API addition. The
-historical Red stage was not executed against this clean worktree because the
-shared scrutineer was the sole runner; an interrupted artisan attempt is not
-evidence. The plan therefore records the honest source-to-green limitation and
-will add the remaining gate, review, commit, and disposition evidence before
-the plateau is complete.
+Complete as of 2026-11-02. The plateau delivered a narrow, reviewable #13
+repair with no changes outside recovery/history integrity, apart from the
+approved `ThreadRuntimeHandle` API addition. The historical Red stage was not
+executed against this clean worktree because the shared scrutineer was the sole
+runner; an interrupted artisan attempt is not evidence. That limitation is
+retained here rather than rewritten.
 
-The pre-merge documentation and tracing amendment is implemented but not yet
-validated. Its intended outcome is explicit fail-closed archive-resume
-guidance, documented strict admission sequencing, and bounded static recovery
-observations. The shared scrutineer must supply all formatter, test, lint, and
-documentation evidence before any commit, publication, or CodeRabbit reply.
+The pre-merge documentation and tracing amendment is implemented and validated.
+It provides explicit fail-closed archive-resume guidance, documented strict
+admission sequencing, and bounded static recovery observations. The shared
+scrutineer supplied formatter, test, lint, and documentation evidence on the
+committed candidate, and the reviewed head was green in CI.
+
+Retrospective: the exclusive-scrutineer rule was the right control, but it
+needs an explicit packet for every gate so a long compile queue is not mistaken
+for a hang. The typed stale-session classification also showed that
+client-facing `details` must never double as policy state; the follow-up
+separates the two.
 
 ## Context and orientation
 

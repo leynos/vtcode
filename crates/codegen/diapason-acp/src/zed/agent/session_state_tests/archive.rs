@@ -108,6 +108,7 @@ struct SessionListProjection<TCursor> {
     next_cursor: TCursor,
 }
 
+/// Builds a minimal archived session listing for resume tests.
 pub(super) fn archived_listing(identifier: &str, workspace: &Path, prompt: &str) -> SessionListing {
     session_listing(
         identifier,
