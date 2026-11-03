@@ -358,12 +358,12 @@ mod tests {
 
         // The flush runs on a background task, so poll for the write instead
         // of assuming it lands within a fixed sleep on a loaded host.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let deadline = time::Instant::now() + Duration::from_secs(5);
         loop {
             if fs::read_to_string(&path).expect("read log") == "periodic\n" {
                 return;
             }
-            assert!(tokio::time::Instant::now() < deadline, "periodic flush did not write within the deadline");
+            assert!(time::Instant::now() < deadline, "periodic flush did not write within the deadline");
             time::sleep(Duration::from_millis(10)).await;
         }
     }

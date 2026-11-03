@@ -21,8 +21,17 @@ fn glob_supports_question_mark() {
     config.allow_regex.clear();
     config.allow_glob = vec!["go test ./pkg/?".to_string()];
     let evaluator = CommandPolicyEvaluator::from_config(&config);
-    assert!(evaluator.allows_text("go test ./pkg/a"));
-    assert!(!evaluator.allows_text("go test ./pkg/ab"));
+    // `?` matches exactly one character: the one-character package matches the
+    // allow glob, while the two-character package falls through to the
+    // default allowance and records a different decision.
+    assert_eq!(
+        evaluator.decision_text("go test ./pkg/a"),
+        CommandPolicyDecision::AllowedByRule {
+            rule: CommandPolicyRule::AllowGlob,
+            pattern: "go test ./pkg/?".to_string(),
+        }
+    );
+    assert_eq!(evaluator.decision_text("go test ./pkg/ab"), CommandPolicyDecision::AllowedWithoutAllowRuleMatch);
 }
 
 #[test]
@@ -38,18 +47,18 @@ fn glob_allows_node_ecosystem_commands() {
     assert!(evaluator.allows_text("bun run check"));
 }
 
-/// The default policy allows `rm` only as a whole command token, so
-/// `rmdir`-style neighbours stay fail-closed, and the shipped deny rules
-/// still win over the allow glob.
+/// The default policy is a deny-list safety net. Workspace-scoped `rm` is
+/// allowed, the deny rules still win for recursive and forced removals, and
+/// commands that merely share the `rm` prefix are not caught by the rule.
 #[test]
-fn default_policy_allows_workspace_rm_without_widening_similar_commands() {
+fn default_policy_denies_destructive_rm_forms() {
     let config = CommandsConfig::default();
     let evaluator = CommandPolicyEvaluator::from_config(&config);
 
     assert!(evaluator.allows_text("rm -f scratch/tmp.txt"));
     assert!(evaluator.allows_text("rm scratch/tmp.txt"));
-    assert!(!evaluator.allows_text("rmdir scratch"));
-    assert!(!evaluator.allows_text("rmx scratch"));
+    assert!(evaluator.allows_text("rmdir scratch"));
+    assert!(evaluator.allows_text("rmx scratch"));
     assert!(!evaluator.allows_text("rm -rf /"));
     assert!(!evaluator.allows_text("rm --force scratch/tmp.txt"));
     // Recursive and forced removals stay denied in any flag order.
@@ -77,38 +86,19 @@ fn default_deny_regex_matches_rm_as_a_word_only() {
     assert!(!evaluator.allows_text("ls && rm -r scratch"));
 }
 
-/// Regression for issue #175: the shipped policy allows the two local
-/// GitHub CLI version queries and records the exact matching rule.
+/// Regression for issue #175: GitHub CLI commands are allowed by default.
+/// The configured policy is a deny-list safety net, so a `gh` invocation is
+/// refused only when it matches a deny rule, never because the allow rules
+/// happen to be missing an entry.
 #[test]
-fn default_policy_allows_gh_version_queries_exactly() {
+fn default_policy_allows_gh_invocations() {
     let config = CommandsConfig::default();
     let evaluator = CommandPolicyEvaluator::from_config(&config);
 
     for command in [
-        vec!["gh".to_string(), "--version".to_string()],
-        vec!["gh".to_string(), "version".to_string()],
-    ] {
-        let expected_text = command.join(" ");
-        assert!(evaluator.allows(&command), "expected allowance: {expected_text}");
-        assert!(evaluator.allows_text(&expected_text));
-        assert_eq!(
-            evaluator.decision(&command),
-            CommandPolicyDecision::AllowedByRule {
-                rule: CommandPolicyRule::AllowGlob,
-                pattern: expected_text,
-            }
-        );
-    }
-}
-
-/// The version-query exception is an exact match. Composition, wrappers,
-/// absolute paths, and every other `gh` operation stay denied by default.
-#[test]
-fn default_policy_denies_other_gh_invocations() {
-    let evaluator = CommandPolicyEvaluator::from_config(&CommandsConfig::default());
-
-    for command in [
         "gh",
+        "gh --version",
+        "gh version",
         "gh api repos/owner/repo",
         "gh auth status",
         "gh alias list",
@@ -120,12 +110,12 @@ fn default_policy_denies_other_gh_invocations() {
         "bash -lc 'gh --version'",
         "/usr/bin/gh --version",
     ] {
-        assert!(!evaluator.allows_text(command), "expected denial: {command}");
+        assert!(evaluator.allows_text(command), "expected allowance: {command}");
     }
 }
 
 #[test]
-fn decisions_distinguish_deny_rules_from_allowlist_misses() {
+fn decisions_distinguish_deny_rules_from_default_allowance() {
     let evaluator = CommandPolicyEvaluator::from_config(&CommandsConfig::default());
 
     assert_eq!(
@@ -137,7 +127,7 @@ fn decisions_distinguish_deny_rules_from_allowlist_misses() {
     );
     assert_eq!(
         evaluator.decision_text("curl https://example.com"),
-        CommandPolicyDecision::DeniedWithoutAllowRuleMatch
+        CommandPolicyDecision::AllowedWithoutAllowRuleMatch
     );
     assert!(evaluator.decision_text("git status").is_allowed());
 }
@@ -157,17 +147,18 @@ fn empty_allow_rules_allow_unmatched_commands() {
 fn denial_message_names_program_and_category_without_arguments() {
     let evaluator = CommandPolicyEvaluator::from_config(&CommandsConfig::default());
 
-    let decision = evaluator.decision(&["gh".to_string(), "auth".to_string(), "token".to_string()]);
-    let message = decision.denial_message("gh").expect("expected a denial message");
-    assert!(message.starts_with("command 'gh' is not permitted by the execution policy"));
-    assert!(message.contains("no [commands] allow_list, allow_glob, or allow_regex rule matches"));
-    assert!(message.contains("--dangerously-skip-permissions does not override the command policy"));
-    assert!(!message.contains("token"));
+    let allowed = evaluator.decision(&["gh".to_string(), "auth".to_string(), "token".to_string()]);
+    assert!(allowed.denial_message("gh").is_none(), "an allowed command must not produce a denial message");
 
     let denied = evaluator.decision_text("rm -rf /");
     let message = denied.denial_message("/usr/bin/rm").expect("expected a denial message");
     assert!(message.starts_with("command 'rm' is not permitted by the execution policy"));
     assert!(message.contains("blocked by the [commands] deny_list rule 'rm -rf /'"));
+    assert!(message.contains("--dangerously-skip-permissions does not override the command policy"));
+
+    let empty = evaluator.decision(&[]);
+    let message = empty.denial_message("").expect("expected a denial message");
+    assert!(message.contains("the command is empty"));
 }
 
 #[test]

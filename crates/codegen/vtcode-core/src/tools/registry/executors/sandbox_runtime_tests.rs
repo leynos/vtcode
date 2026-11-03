@@ -542,14 +542,17 @@ async fn prepare_exec_run_request_denies_nested_shell_source() {
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
 
-    // Admit the outer `bash` invocation so only the nested source can deny.
+    // Keep only a prefix deny rule, so the wrapped argv cannot match but the
+    // nested source can: `bash -lc rm -rf /` does not start with the rule.
     let mut config = vtcode_config::CommandsConfig::default();
-    config.allow_list.push("bash".to_string());
+    config.deny_list = vec!["rm -rf /".to_string()];
+    config.deny_glob.clear();
+    config.deny_regex.clear();
     registry.apply_commands_config(&config);
 
     reset_exec_command_rate_limit();
     let args = serde_json::json!({
-        "command": ["bash", "-lc", "curl https://example.com"],
+        "command": ["bash", "-lc", "rm -rf /"],
         "shell": "/bin/sh",
     });
     let error = match super::ToolRegistry::prepare_exec_run_request(
@@ -564,7 +567,7 @@ async fn prepare_exec_run_request_denies_nested_shell_source() {
         Ok(_) => panic!("nested shell source must be evaluated"),
         Err(error) => error,
     };
-    assert!(error.to_string().contains("curl"), "denial should name the nested program: {error}");
+    assert!(error.to_string().contains("command 'rm'"), "denial should name the nested program: {error}");
 }
 
 /// The executor rate limiter is process-global. Reset its bucket before each
@@ -612,16 +615,18 @@ async fn prepare_exec_run_request_checks_explicit_shell_source() {
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
 
-    let config = vtcode_config::CommandsConfig {
-        allow_list: vec!["bash".to_string(), "git status".to_string()],
-        ..Default::default()
-    };
+    // A prefix deny rule cannot match the wrapper argv `bash -lc rm -rf /`, so
+    // only evaluating the source the caller supplied can produce a denial.
+    let mut config = vtcode_config::CommandsConfig::default();
+    config.deny_list = vec!["rm -rf /".to_string()];
+    config.deny_glob.clear();
+    config.deny_regex.clear();
     registry.apply_commands_config(&config);
 
     for confirm in [false, true] {
         reset_exec_command_rate_limit();
         let args = serde_json::json!({
-            "command": ["bash", "-lc", "curl https://example.com"],
+            "command": ["bash", "-lc", "rm -rf /"],
             "shell": "bash",
             "confirm": confirm,
         });
@@ -634,7 +639,7 @@ async fn prepare_exec_run_request_checks_explicit_shell_source() {
         )
         .await
         {
-            Ok(_) => panic!("an unlisted shell source must be denied (confirm={confirm})"),
+            Ok(_) => panic!("a denied shell source must be refused (confirm={confirm})"),
             Err(error) => error,
         };
         assert!(
@@ -656,17 +661,18 @@ async fn prepare_exec_run_request_checks_explicit_shell_source() {
         "empty command",
     )
     .await
-    .expect("a shell source that matches an allow rule is permitted");
+    .expect("a shell source that matches no deny rule is permitted");
 }
 
-/// Only the two exact version queries are exempt. Every other `gh` shape,
-/// including composed shell source, stays behind the fail-closed allowlist.
+/// The configured policy is a deny-list safety net, so every `gh` shape is
+/// allowed unless it matches a deny rule. Composed shell source is still
+/// evaluated, so a denied command inside the composition is refused.
 #[tokio::test]
-async fn prepare_exec_run_request_denies_non_version_gh_invocations() {
+async fn prepare_exec_run_request_allows_gh_invocations_by_default() {
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
 
-    let denied_commands = [
+    let allowed_commands = [
         json!(["gh"]),
         json!(["gh", "--version", "extra"]),
         json!(["gh", "api", "repos/owner/repo"]),
@@ -679,20 +685,19 @@ async fn prepare_exec_run_request_denies_non_version_gh_invocations() {
         json!(["/usr/bin/gh", "--version"]),
         json!(["bash", "-lc", "gh --version"]),
         json!("/bin/gh --version"),
-        json!(["gh", "--version", "&&", "rm", "-rf", "build"]),
         json!(["gh", "--version", ";", "id"]),
         json!(["gh", "--version", "|", "cat"]),
         json!(["gh", "--version", "$(", "id", ")"]),
     ];
 
-    for command in denied_commands {
+    for command in allowed_commands {
         for confirm in [false, true] {
             reset_exec_command_rate_limit();
             let args = serde_json::json!({
                 "command": command,
                 "confirm": confirm,
             });
-            let error = match super::ToolRegistry::prepare_exec_run_request(
+            super::ToolRegistry::prepare_exec_run_request(
                 &registry,
                 &args,
                 super::ExecRunBackendKind::Pipe,
@@ -700,20 +705,38 @@ async fn prepare_exec_run_request_denies_non_version_gh_invocations() {
                 "empty command",
             )
             .await
-            {
-                Ok(_) => panic!("policy should deny {command} (confirm={confirm})"),
-                Err(error) => error,
-            };
-            assert!(
-                error.to_string().contains("not permitted by the execution policy"),
-                "confirm={confirm}: unexpected error for {command}: {error}"
-            );
+            .unwrap_or_else(|error| panic!("policy should allow {command} (confirm={confirm}): {error}"));
         }
+    }
+
+    // A deny rule inside a composed command still wins.
+    for confirm in [false, true] {
+        reset_exec_command_rate_limit();
+        let args = serde_json::json!({
+            "command": ["gh", "--version", "&&", "rm", "-rf", "build"],
+            "confirm": confirm,
+        });
+        let error = match super::ToolRegistry::prepare_exec_run_request(
+            &registry,
+            &args,
+            super::ExecRunBackendKind::Pipe,
+            "missing command",
+            "empty command",
+        )
+        .await
+        {
+            Ok(_) => panic!("a denied command inside a composition must be refused (confirm={confirm})"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("not permitted by the execution policy"),
+            "confirm={confirm}: unexpected error: {error}"
+        );
     }
 }
 
-/// Composing a permitted argv with extra shell source cannot smuggle the
-/// unpermitted source past the configured policy.
+/// Composing a permitted argv with extra shell source cannot smuggle a
+/// denied command past the configured policy.
 #[tokio::test]
 async fn prepare_exec_run_request_denies_composed_gh_raw_command() {
     let workspace = tempfile::tempdir().expect("workspace tempdir");
@@ -723,7 +746,7 @@ async fn prepare_exec_run_request_denies_composed_gh_raw_command() {
         reset_exec_command_rate_limit();
         let args = serde_json::json!({
             "command": ["gh", "--version"],
-            "raw_command": "gh --version && curl https://example.com",
+            "raw_command": "gh --version && rm -rf /",
             "confirm": confirm,
         });
         let error = match super::ToolRegistry::prepare_exec_run_request(
@@ -745,7 +768,8 @@ async fn prepare_exec_run_request_denies_composed_gh_raw_command() {
     }
 }
 
-/// Explicit deny rules keep precedence over the exact `gh` allow globs.
+/// Explicit deny rules keep precedence over the default allowance that would
+/// otherwise permit every `gh` invocation.
 #[tokio::test]
 async fn prepare_exec_run_request_explicit_deny_wins_over_gh_allow() {
     let workspace = tempfile::tempdir().expect("workspace tempdir");
@@ -782,7 +806,7 @@ async fn prepare_exec_run_request_explicit_deny_wins_over_gh_allow() {
             )
             .await
             {
-                Ok(_) => panic!("{rule} must win over the gh allow glob (confirm={confirm})"),
+                Ok(_) => panic!("{rule} must win over the default allowance (confirm={confirm})"),
                 Err(error) => error,
             };
             assert!(error.to_string().contains(rule), "confirm={confirm}: expected the {rule} rule named in: {error}");
