@@ -1,4 +1,5 @@
 //! Covers the terminal activity a failed or cancelled ACP compaction publishes.
+use super::compaction::{CaptureWriter, capture_subscriber};
 use super::*;
 use agent_client_protocol::schema::v1::InitializeRequest;
 
@@ -159,10 +160,17 @@ async fn cancelled_acp_compaction_publishes_a_cancelled_terminal_update() {
 
     let started = Arc::new(tokio::sync::Notify::new());
     let provider = Arc::new(PendingCompactionProvider::new(Arc::clone(&started)));
+    let before = crate::metrics::compaction_metrics();
     let (updates, error) = run_failing_compaction_over_duplex(&agent, &session, provider, started, true).await;
+    let after = crate::metrics::compaction_metrics();
 
     assert_eq!(error.to_string(), "ACP compaction cancelled", "a cancelled compaction must surface its own message");
     assert_failed_terminal_activity(&updates, "cancelled");
+    assert!(
+        after.cancelled > before.cancelled,
+        "a cancelled attempt must be counted as a cancelled failure: {before:?} -> {after:?}"
+    );
+    assert!(after.failed > before.failed, "cancellation is a subset of failed attempts: {before:?} -> {after:?}");
 }
 
 #[tokio::test]
@@ -179,6 +187,8 @@ async fn failed_acp_compaction_publishes_a_provider_terminal_update() {
 
     let started = Arc::new(tokio::sync::Notify::new());
     let provider = Arc::new(FailingCompactionProvider::new(Arc::clone(&started)));
+    let captured = CaptureWriter::default();
+    let _guard = tracing::subscriber::set_default(capture_subscriber(&captured));
     let (updates, error) = run_failing_compaction_over_duplex(&agent, &session, provider, started, false).await;
 
     assert_eq!(
@@ -187,4 +197,28 @@ async fn failed_acp_compaction_publishes_a_provider_terminal_update() {
         "provider failures must not leak their diagnostic to callers"
     );
     assert_failed_terminal_activity(&updates, "provider");
+
+    let output = String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
+    assert!(output.contains("operation=\"context_compaction\""), "the fixed operation must be logged: {output}");
+    assert!(output.contains("error_category=\"provider\""), "the closed-set category must be logged: {output}");
+    assert!(output.contains("elapsed_ms="), "the completion log must keep the elapsed time: {output}");
+    assert!(output.contains("error_bytes="), "the suppressed detail reports its size, not its text: {output}");
+
+    let warning = output
+        .lines()
+        .find(|line| line.contains(" WARN ") && line.contains("ACP automatic context compaction failed"))
+        .expect("the compaction failure must reach the operator warning");
+    assert!(
+        !warning.contains("compaction summary request failed"),
+        "provider payload text must stay out of the operator warning: {warning}"
+    );
+
+    let suppressed = output
+        .lines()
+        .find(|line| line.contains("Suppressed ACP failure"))
+        .expect("the suppressed failure must be recorded at debug");
+    assert!(
+        suppressed.contains("detail=") && suppressed.contains("compaction summary request failed"),
+        "the debug record must retain the redacted chain for diagnosis: {suppressed}"
+    );
 }

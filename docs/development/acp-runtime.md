@@ -193,12 +193,16 @@ include the provider error text so the caller can see what failed, and the
 notice strips ANSI escape codes as presentation hygiene rather than privacy
 redaction.
 
-At the repaired boundaries the originating `anyhow` chain is retained at
-`debug` for local diagnosis. That is a diagnostic aid, not redaction: debug
-logs can contain workspace paths, provider detail, and prompt or tool payloads.
-Treat them as sensitive and collect or share them deliberately. Severity
-suppression alone is not redaction; where detail must never surface, remove it
-from the value that carries it rather than lowering the level it is logged at.
+At the repaired boundaries the originating error never reaches the
+operator-visible record. `log_suppressed_error` emits the fixed `operation` and
+`error_category`, the outer message size as `error_bytes`, and a `detail`
+rendering of the source chain produced by `redaction::redact_detail`, which
+collapses path-like tokens to `<path>`, masks recognized secret shapes, and
+truncates to 512 bytes. The chain therefore stays available at `debug`, where
+trusted diagnostics are enabled deliberately, without carrying workspace paths,
+transport URLs, or provider secrets. The `warn`/`info` records beside it carry
+fixed fields only. Severity suppression alone is not redaction, so untrusted
+detail is also removed from the values those records render.
 
 ## Property-model limits
 
@@ -384,9 +388,12 @@ compaction facts in the core event contract and translate them at the adapter.
 from any untrusted provider or hook detail. Its `Display` renders only a fixed,
 client-safe message, so `failureReason` cannot leak a provider payload,
 workspace path, or archive name. The retained detail is exposed through the
-error source chain and is rendered only by the redacted detail helper, which
-collapses path-like tokens, masks recognised secrets, and bounds the result to
-512 bytes; `log_suppressed_error` emits that rendering at `debug` level.
+error source chain for callers, and `log_suppressed_error` records it at
+`debug` only after `redaction::redact_detail` has bounded it and collapsed
+path-like tokens; the operator-visible record keeps the fixed fields and the
+message size. Provider and model log fields go through
+`redaction::bounded_label`, which strips control characters and truncates to 96
+bytes, so configuration cannot flood or forge a log line.
 
 Bounded, process-local counters accumulate across compaction attempts:
 `started`, `compacted`, `no_change`, `failed`, `cancelled`, `elapsed_ms_total`,
@@ -406,9 +413,11 @@ implements the port, and passes it into `generate_with_retry`; the streaming
 path calls the same `publish_rate_limit_notice` helper directly. The adapter
 turns a classified retryable or terminal rate limit into a session-info notice
 carrying `_meta.lody.notice`, reporting only the status, `Retry-After` value,
-and scheduled delay the provider actually supplied. It is a presentation
-adapter, not the JSON-RPC transport: it neither retries the request nor changes
-retry policy.
+and scheduled delay the provider actually supplied. A delivery failure logs the
+fixed `operation`, `stage`, and `error_category` plus the session correlation
+key and a redacted, bounded detail; the raw transport error and raw session
+identifier stay out of the log. It is a presentation adapter, not the JSON-RPC
+transport: it neither retries the request nor changes retry policy.
 
 `publish_lody_usage` emits the `_lody/session/usage_update` extension
 notification for each provider response. It resolves the effective model first:
