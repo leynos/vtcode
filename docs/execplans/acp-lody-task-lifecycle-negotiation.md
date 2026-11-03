@@ -1671,3 +1671,30 @@ test(redaction) | test(suppressed_error) | test(pre_compact_hook_failure)'`
 run 37 tests, 37 passed, 378 skipped (log
 `/tmp/nextest-acp-compaction-2.out`). Full `check-fmt`, `typecheck`, `lint` and
 `test` gates run next on the same candidate.
+
+### Revision note (2026-11-03, r22 restack onto `7ca0e6efd`)
+
+The base advanced to `7ca0e6efd`
+(`fix(acp): make subagent listing read-only and count partial snapshots`), one
+commit past `271a5cebf`. `git merge-tree` showed the replay conflicted only in
+`docs/guides/zed-acp.md` and this ExecPlan, so the 22-commit series was
+replayed with
+`--merge --no-fork-point --no-update-refs --no-autostash
+--reapply-cherry-picks --keep-empty --empty=stop`
+and `zdiff3` markers.
+
+Conflict decisions:
+
+- `docs/guides/zed-acp.md`: two commits conflicted on the same task-lifecycle
+  bullet. Both were resolved in favour of the base, which already replaces the
+  `_vtcode/taskLifecycle` section with the standard `session/update` plus
+  `_meta.lody.task` contract that the code emits. The child's older paraphrase
+  is superseded and intentionally dropped; the resulting tree is identical to
+  the base in that paragraph.
+- This ExecPlan: the base's r19 paragraph, r21 review-repairs note and this
+  branch's r20 revision note occupy the same end position. All are retained,
+  with the base's text first and the child's notes appended.
+
+`git diff --check 7ca0e6efd..HEAD` is clean, the replay has no file deletions,
+and the diffstat is 87 files changed, 5776 insertions, 1191 deletions. A fresh
+four-gate run follows on the replayed head.
