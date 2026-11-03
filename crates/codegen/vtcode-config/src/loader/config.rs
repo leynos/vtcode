@@ -823,9 +823,12 @@ exec_command = "prompt"           # Run commands; pipe-first by default, set tty
 write_stdin = "prompt"            # Send input to active command sessions
 code_search = "allow"             # Advanced bounded literal search with query-led filters
 
-# Command security - Define safe and dangerous command patterns
+# Command security - Define safe and dangerous command patterns.
+# The policy is a deny-list safety net: commands are allowed by default and
+# blocked only when they match a deny rule. Allow rules record commands the
+# policy recognises as safe; they do not gate execution.
 [commands]
-# Commands that are always allowed without confirmation
+# Commands recognised as safe
 allow_list = [
     "ls",           # List directory contents
     "pwd",          # Print working directory
@@ -835,7 +838,7 @@ allow_list = [
     "echo",         # Print text
 ]
 
-# Commands that are never allowed
+# Commands that are blocked
 deny_list = [
     "rm -rf /",        # Delete root directory (dangerous)
     "rm -rf ~",        # Delete home directory (dangerous)
@@ -845,7 +848,7 @@ deny_list = [
     ":(){ :|:& };:",   # Fork bomb (dangerous)
 ]
 
-# Command patterns that are allowed (supports glob patterns)
+# Command patterns recognised as safe (supports glob patterns)
 allow_glob = [
     "git *",        # All git commands
     "cargo *",      # All cargo commands

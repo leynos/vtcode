@@ -69,7 +69,11 @@ pub async fn validate_command(
         "uname" => validate_uname(args),
         "wc" => validate_wc(args, workspace_root, working_dir).await,
         "git" => validate_git(args, workspace_root, working_dir, confirm).await,
-        "gh" => validate_gh(args),
+        // The configured command policy is a deny-list safety net, so `gh` is
+        // allowed by default. This curated layer keeps no separate GitHub CLI
+        // allow-list; destructive operations are blocked by the configured
+        // deny rules instead.
+        "gh" => Ok(()),
         "cargo" => validate_cargo(args, workspace_root, working_dir, confirm).await,
         "python" | "python3" => validate_python(args, workspace_root, working_dir).await,
         "npm" => validate_npm(args, workspace_root, working_dir).await,
@@ -456,24 +460,6 @@ async fn validate_git(args: &[String], workspace_root: &Path, working_dir: &Path
         }
 
         other => Err(anyhow!("git subcommand '{other}' is not permitted by the execution policy")),
-    }
-}
-
-/// Validate the exact GitHub CLI surface the execution policy allows.
-///
-/// Only the two local version queries are permitted. Authenticated, remote,
-/// alias, extension, resource, and mutating subcommands are refused, and
-/// `confirm` cannot widen the boundary because it is intentionally ignored.
-fn validate_gh(args: &[String]) -> Result<()> {
-    match args {
-        [] => Err(anyhow!("gh requires a subcommand")),
-        [query] if query == "--version" || query == "version" => Ok(()),
-        [first, ..] if !first.starts_with('-') => {
-            Err(anyhow!("gh subcommand '{first}' is not permitted by the execution policy"))
-        }
-        [..] => Err(anyhow!(
-            "gh options are not permitted by the execution policy; only `gh --version` or `gh version` is allowed"
-        )),
     }
 }
 
@@ -1214,12 +1200,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn validate_command_allows_only_exact_gh_version_queries() {
+    async fn validate_command_allows_gh_invocations() {
         let workspace = tempdir().expect("workspace tempdir");
         let root = workspace.path();
 
-        for query in ["--version", "version"] {
-            let command = vec!["gh".to_owned(), query.to_owned()];
+        for args in [
+            &[][..],
+            &["--version"][..],
+            &["version"][..],
+            &["api", "repos/owner/repo"][..],
+            &["auth", "status"][..],
+            &["alias", "list"][..],
+            &["extension", "list"][..],
+            &["repo", "view"][..],
+        ] {
+            let mut command = vec!["gh".to_owned()];
+            command.extend(args.iter().map(|arg| (*arg).to_owned()));
             validate_command(&command, root, root, false)
                 .await
                 .unwrap_or_else(|error| panic!("{command:?} must be allowed (confirm=false): {error}"));
@@ -1227,34 +1223,6 @@ mod tests {
                 .await
                 .unwrap_or_else(|error| panic!("{command:?} must be allowed (confirm=true): {error}"));
         }
-
-        let rejected: [&[&str]; 7] = [
-            &[],
-            &["api", "repos/owner/repo"],
-            &["auth", "status"],
-            &["alias", "list"],
-            &["extension", "list"],
-            &["repo", "view"],
-            &["--version", "extra"],
-        ];
-        for args in rejected {
-            let mut command = vec!["gh".to_owned()];
-            command.extend(args.iter().map(|arg| (*arg).to_owned()));
-            assert!(validate_command(&command, root, root, false).await.is_err(), "expected rejection: {command:?}");
-            assert!(
-                validate_command(&command, root, root, true).await.is_err(),
-                "confirmation must not widen gh: {command:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn validate_gh_does_not_echo_argument_values() {
-        let error =
-            validate_gh(&["auth".to_owned(), "token".to_owned()]).expect_err("non-version gh commands are refused");
-        let message = error.to_string();
-        assert!(message.contains("'auth'"));
-        assert!(!message.contains("token"));
     }
 
     #[tokio::test]

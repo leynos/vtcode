@@ -94,36 +94,32 @@ command '<program>' is not permitted by the execution policy: <category>;
 --dangerously-skip-permissions does not override the command policy
 ```
 
-The category names the rule collection that decided and its configured pattern,
-or states that no allow rule matched:
+The category names the rule collection that decided and its configured pattern:
 
 - a `deny_list`, `deny_glob`, or `deny_regex` match names the collection and
-  the configured pattern; deny rules win over every allow rule;
-- an allowlist miss states that no `allow_list`, `allow_glob`, or `allow_regex`
-  rule matches.
+  the configured pattern; deny rules win over every allow rule.
+
+Denials are only produced by a deny rule or an empty command. The configured
+policy is a deny-list safety net, so an unmatched command is allowed and
+produces no denial message.
 
 Diagnostics name only the program basename. Command arguments are never echoed,
 so values passed to a command do not leak into logs or tool results.
 
-When all three allow collections are empty, the configured policy falls back to
-allowing unmatched commands. The shipped defaults configure allow rules, so an
-unmatched command is denied. When a request carries both an argv and a distinct
-raw shell source, both representations are evaluated and the command runs only
-when both pass. A caller-supplied `bash -lc "<source>"` is checked the same
-way: the source must match a rule on its own. The executor quotes arguments
-when it builds the shell line, so a rule may need to match the quoted source as
-well as the argv form. Composition, aliases, wrappers such as `bash -lc`, and
-leading environment prefixes do not inherit an exact match.
+When a request carries both an argv and a distinct raw shell source, both
+representations are evaluated and the command runs only when both pass. A
+caller-supplied `bash -lc "<source>"` is checked the same way: the source is
+evaluated on its own. Composition, aliases, wrappers such as `bash -lc`, and
+leading environment prefixes cannot hide a denied command from evaluation.
 
 ### GitHub CLI
 
-The shipped defaults allow the local version queries `gh --version` and
-`gh version`. The exception is an exact match: it does not extend to `gh api`,
-`gh auth`, `gh alias`, `gh extension`, resource subcommands, or extra
-arguments, and it cannot be combined with `&&`, `;`, `|`, or command
-substitution. Every other `gh` invocation needs an explicit, narrow allow rule
-in `[commands]`. The curated command validator accepts only those two forms for
-`gh` and ignores `confirm` for that program.
+Every `gh` invocation is allowed by default, including `gh --version`, `gh api`,
+`gh auth`, `gh alias`, `gh extension`, resource subcommands, absolute paths,
+composed commands, and `bash -lc` wrappers. No `gh`-specific allow rule is
+shipped. Add a narrow `[commands]` deny rule to block a specific operation;
+deny rules still take precedence over the default allowance. The curated
+command validator keeps no separate GitHub CLI allow-list.
 
 ## Classifier Review Settings
 

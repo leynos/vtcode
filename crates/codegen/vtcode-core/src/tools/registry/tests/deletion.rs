@@ -93,7 +93,7 @@ async fn harness_terminal_run_refuses_escaped_deletion_forms() -> Result<()> {
     // the gate alone must refuse a shell spelling the recognizer would
     // otherwise miss. The configured policy admits both the escaped source and
     // its normalized argv, so the refusal below can only come from the deletion
-    // gate rather than from an allowlist miss.
+    // gate rather than from the command policy.
     let temp_dir = TempDir::new()?;
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
     let mut config = CommandsConfig::default();

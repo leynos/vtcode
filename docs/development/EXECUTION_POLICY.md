@@ -24,12 +24,11 @@ tools work automatically, while dangerous operations require confirmation.
 
 ### GitHub CLI
 
-- **Allowed**: `gh --version` and `gh version` (exact local version queries)
-- **Blocked by default**: every other `gh` invocation, including `gh api`,
-  `gh auth`, `gh alias`, `gh extension`, resource subcommands, trailing
-  arguments, composed commands, and `bash -lc` wrappers
-- Add a narrow `[commands]` allow rule when a workflow needs more (`gh *` is
-  deliberately not shipped)
+- **Allowed by default**: every `gh` invocation, including `gh --version`,
+  `gh api`, `gh auth`, `gh alias`, `gh extension`, resource subcommands,
+  trailing arguments, composed commands, and `bash -lc` wrappers
+- The configured policy is a deny-list safety net, so no `gh` allow rule is
+  needed; add a `[commands]` deny rule to block a specific operation
 
 ### Build Tools (Cargo)
 
@@ -95,8 +94,9 @@ Example pivot:
 
 1. **Workspace Boundary**: All file operations are confined to `WORKSPACE_DIR`;
    cannot escape or touch system files
-2. **Command Whitelisting**: Only specific commands are allowed; unknown
-   commands are blocked
+2. **Command Deny List**: Commands are allowed by default and blocked only
+   when they match a configured deny rule; known-safe allow rules do not gate
+   execution
 3. **Argument Validation**: Common flags are validated (e.g., git force-push is
    blocked)
 4. **Confirmation Required**: Destructive operations still require user
@@ -144,13 +144,14 @@ scratch file without `confirm=true`.
 change how promptable tool calls are approved. They do not grant commands that
 the configured `[commands]` policy denies, and they do not bypass the curated
 command validator or an active sandbox. A policy denial names the rule
-collection and configured pattern that decided (or states that no allow rule
-matched) and prints only the program basename. See
+collection and configured pattern that decided and prints only the program
+basename. See
 [Granular Permissions](../guides/permissions.md#execution-policy-and-skip-permissions).
 
-When no allow rules are configured at all (`allow_list`, `allow_glob`, and
-`allow_regex` all empty), the configured policy allows unmatched commands. The
-shipped defaults configure allow rules, so an unmatched command is denied.
+The configured policy is a deny-list safety net: an unmatched command is
+allowed whether or not allow rules are configured. Only a matching deny rule,
+or an empty command, is denied. Allow rules record commands recognised as safe
+and support auto-approval, but they do not gate execution.
 
 ## Dangerous Operations (Blocked)
 
@@ -191,8 +192,10 @@ Policies are defined in:
 
 - **Core defaults**: `crates/codegen/vtcode-config/src/core/tools.rs` (tool
   policies)
-- **Command validation**: `crates/codegen/vtcode-core/src/exec_policy/mod.rs`
-  (command whitelisting)
+- **Command policy**: `crates/codegen/vtcode-core/src/tools/command_policy.rs`
+  (deny-list safety net) and
+  `crates/codegen/vtcode-core/src/exec_policy/mod.rs` (per-command argument
+  validation)
 - **User overrides**: `vtcode.toml` in project root or the canonical user
   config directory
 

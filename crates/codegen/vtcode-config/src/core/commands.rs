@@ -2,11 +2,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::constants::commands as command_constants;
 
-/// Command execution configuration
+/// Command execution configuration.
+///
+/// The configured policy is a deny-list safety net: a command is blocked only
+/// when it matches a deny rule. Allow rules record commands the policy
+/// recognises as safe, but an unmatched command is still allowed, so the
+/// policy does not need an entry for every harmless invocation.
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CommandsConfig {
-    /// Commands that can be executed without prompting
+    /// Commands recognised as safe. A match records an explicit allowance;
+    /// an unmatched command is allowed by default.
     #[serde(default)]
     pub allow_list: Vec<String>,
 
@@ -22,7 +28,7 @@ pub struct CommandsConfig {
     #[serde(default)]
     pub deny_list: Vec<String>,
 
-    /// Glob patterns allowed for shell commands (applies to Bash)
+    /// Glob patterns recognised as safe for shell commands (applies to Bash)
     #[serde(default)]
     pub allow_glob: Vec<String>,
 
@@ -30,7 +36,7 @@ pub struct CommandsConfig {
     #[serde(default)]
     pub deny_glob: Vec<String>,
 
-    /// Regex allow patterns for shell commands
+    /// Regex allow patterns recognised as safe for shell commands
     #[serde(default)]
     pub allow_regex: Vec<String>,
 
@@ -219,14 +225,6 @@ impl Default for CommandsConfig {
                 "rm *".into(),
                 // Version control
                 "git *".into(),
-                // GitHub CLI version queries. These entries contain no
-                // wildcard, so they are exact full-command matches: only the
-                // local `gh --version` and `gh version` queries are allowed.
-                // Every other `gh` invocation (api, auth, alias, extension,
-                // resource subcommands, composed commands) needs a separate,
-                // narrow allow rule.
-                "gh --version".into(),
-                "gh version".into(),
                 // Rust ecosystem
                 "cargo *".into(),
                 "rustc *".into(),
