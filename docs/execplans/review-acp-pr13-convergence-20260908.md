@@ -189,6 +189,14 @@ an archive with ambiguous terminal results is rejected before continuation.
   remaining sibling changes and reported no residual conflict markers. The
   rebased candidate is `df8d04104`; its four-gate run is pending on the shared
   scrutineer.
+- [x] (2026-11-03) The parent advanced again to `dabe6b57e` (four further
+  commits: RustSec remediation, ACP read-certification extraction, patch
+  handler and registry test-module splits, and regenerated third-party
+  notices), so the PR was `CONFLICTING` once more. A read-only
+  `git merge-tree --write-tree` predicted a clean Weave auto-merge, and the
+  rebase confirmed it: no textual conflict and no residual markers. The rebased
+  candidate is `fac8e0b37`; the four repository gates are being run
+  sequentially on it.
 
 ## Surprises & discoveries
 
