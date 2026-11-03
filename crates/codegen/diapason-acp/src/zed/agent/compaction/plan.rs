@@ -85,8 +85,25 @@ impl CompactionDecision {
         model: &str,
         prompt_tokens: usize,
     ) -> Option<Self> {
-        let configured_threshold = effective_compaction_threshold(vt_config, provider, model);
-        let admission_budget = admission_prompt_budget(provider, model);
+        Self::from_budgets(
+            prompt_tokens,
+            effective_compaction_threshold(vt_config, provider, model),
+            admission_prompt_budget(provider, model),
+        )
+    }
+
+    /// Decide compaction from already-resolved budgets.
+    ///
+    /// Compaction triggers exactly at the tighter applicable budget. Admission
+    /// pressure forces it even below the configured threshold, because the
+    /// request would otherwise be rejected by the provider; when the
+    /// configured threshold is the trigger, provider-side compaction stays
+    /// available.
+    pub(super) fn from_budgets(
+        prompt_tokens: usize,
+        configured_threshold: Option<usize>,
+        admission_budget: Option<usize>,
+    ) -> Option<Self> {
         let trigger = configured_threshold.into_iter().chain(admission_budget).min();
         if trigger.is_none_or(|budget| prompt_tokens < budget) {
             return None;
@@ -153,4 +170,77 @@ pub(in crate::zed::agent) struct CompactionCommit<'a> {
     pub(super) history: Vec<Message>,
     pub(super) tools: Option<&'a Arc<Vec<ToolDefinition>>>,
     pub(super) decision: CompactionDecision,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Compaction triggers exactly at the tighter applicable budget and
+        /// reports admission force only below the configured threshold.
+        #[test]
+        fn compaction_decision_matches_the_tighter_budget(
+            prompt_tokens in 0usize..200_000,
+            configured_threshold in proptest::option::of(1usize..200_000),
+            admission_budget in proptest::option::of(1usize..200_000),
+        ) {
+            let decision = CompactionDecision::from_budgets(
+                prompt_tokens,
+                configured_threshold,
+                admission_budget,
+            );
+            let tighter = configured_threshold.into_iter().chain(admission_budget).min();
+            match tighter {
+                None => prop_assert!(decision.is_none(), "no applicable budget never compacts"),
+                Some(budget) => {
+                    prop_assert_eq!(
+                        decision.is_some(),
+                        prompt_tokens >= budget,
+                        "compaction triggers exactly at the tighter budget"
+                    );
+                    if let Some(decision) = decision {
+                        let expected_force = admission_budget.is_some_and(|budget| prompt_tokens >= budget)
+                            && configured_threshold.is_none_or(|threshold| prompt_tokens < threshold);
+                        prop_assert_eq!(
+                            decision.force_compaction,
+                            expected_force,
+                            "force is exactly admission pressure below the configured threshold"
+                        );
+                        prop_assert_eq!(decision.prompt_tokens, prompt_tokens);
+                        prop_assert_eq!(decision.configured_threshold, configured_threshold);
+                        prop_assert_eq!(decision.admission_budget, admission_budget);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Assert the empty, zero and maximum boundaries of both budgets.
+    #[test]
+    fn compaction_decision_boundaries_are_exact() {
+        assert!(CompactionDecision::from_budgets(0, None, None).is_none());
+        assert!(CompactionDecision::from_budgets(0, Some(1), None).is_none());
+        assert!(CompactionDecision::from_budgets(1, Some(1), None).is_some());
+        assert!(CompactionDecision::from_budgets(usize::MAX - 1, Some(usize::MAX), None).is_none());
+        assert!(CompactionDecision::from_budgets(usize::MAX, Some(usize::MAX), None).is_some());
+    }
+
+    /// Assert equal budgets do not report admission force.
+    #[test]
+    fn equal_budgets_prefer_the_configured_threshold() {
+        let decision = CompactionDecision::from_budgets(1_000, Some(1_000), Some(1_000)).expect("both trigger");
+
+        assert!(!decision.force_compaction, "the configured threshold is the trigger, not admission");
+    }
+
+    /// Assert admission pressure forces compaction below the configured threshold.
+    #[test]
+    fn admission_pressure_forces_compaction_below_the_configured_threshold() {
+        let decision = CompactionDecision::from_budgets(900, Some(1_000), Some(800)).expect("admission triggers");
+
+        assert!(decision.force_compaction);
+        assert!(decision.is_over_admission_budget(900));
+    }
 }

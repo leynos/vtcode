@@ -63,11 +63,14 @@ parallel event type in a consumer crate.
   `_lody/session/usage_update` usage deltas.
 
 **Implementation decisions.** Retry notices flow through the
-`AttemptFailureSink` port (`RateLimitNoticeSink` in ACP) rather than being
-emitted from retry logic, so retry policy stays transport-agnostic. Compaction
-activity is a derived client projection: `vtcode-exec-events::ThreadEvent`
-remains the authoritative runtime event contract, and ACP compaction
-diagnostics are redacted and bounded before they reach clients or logs.
+`AttemptFailureSink` port rather than being emitted from retry logic, so retry
+policy stays transport-agnostic. Buffered generation reports through
+`RateLimitNoticeSink`, which implements that port in ACP; streaming calls
+`publish_rate_limit_notice` directly because it has no buffered attempt to
+sink. Compaction activity is a derived client projection:
+`vtcode-exec-events::ThreadEvent` remains the authoritative runtime event
+contract, and ACP compaction diagnostics are redacted and bounded before they
+reach clients or logs.
 
 ## Model + Harness
 

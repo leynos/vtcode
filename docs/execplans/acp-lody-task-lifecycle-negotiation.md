@@ -1603,3 +1603,71 @@ base `271a5cebf` or the current head, so GitHub is still reporting the
 mergeability of a stack that was rewritten out of existence. A further head push
 (`20d52d712`) left both the merge ref and the `CONFLICTING`/`DIRTY` state
 unchanged.
+
+The full CodeRabbit review completed on head `7c2e9275d` and raised eight
+findings, all verified against the current source before repair. The repairs
+decompose `maybe_compact_session` into `run_compaction_attempt`,
+`record_compaction_outcome` and `publish_compaction_update`, so a history that
+was committed but still exceeds the admission budget is reported as compacted
+rather than as a plain failure, and cancellation metrics key off
+`CompactionFailureKind::Cancelled` instead of a string comparison. Redaction
+now treats any backslash as a path separator, so relative Windows paths
+collapse like absolute ones. Provider `Retry-After` hints are bounded to 64
+bytes and rejected when they carry control characters before being echoed into
+a notice. The usage-profile test awaits its notification before releasing the
+client connection, `session_state_tests/workspace.rs` is split into
+`workspace_lease`, `workspace_session` and `workspace_hooks` submodules, and
+the architecture and ACP runtime documents now describe the buffered and
+streaming retry-notice routes and use "recognized".
+
+## Pre-merge row repairs (r22)
+
+The CodeRabbit pre-merge table on head `7c2e9275d` reported one error and two
+warnings: `Testing (Overall)` (no substantive test read the public
+`compaction_metrics()` after a real attempt, and no captured-tracing test drove
+the update-failure helper), `Testing (Property / Proof)` (no property test or
+boundary table for `CompactionDecision`), and `Observability` (raw provider,
+model and session values in logs and spans, and raw error chains in suppressed
+and transport failures). All three rows were verified against the current
+source before repair.
+
+Repairs, all in `crates/codegen/vtcode-acp`:
+
+- `redaction.rs` gained `log_compaction_update_failure` and
+  `log_notice_publish_failure`, plus `bounded_label` (control-character strip,
+  96-byte bound) and `session_correlation` (12-hex SHA-256 prefix). Captured
+  tests assert the fixed fields, the collapsed `<path>` markers, and that the
+  raw session id and workspace path never reach the log.
+- `compaction.rs` records the started/terminal metrics before and after the
+  attempt, wraps the attempt in an `acp_lody_compaction` span with bounded
+  `provider`/`model` labels, and routes publish failures through the redacting
+  helper. `compaction/tests.rs` adds
+  `pre_compact_hook_failure_logs_fixed_fields_without_hook_text`, which drives
+  a real `CompactionFailure::pre_compact_hook` carrying a hook path and asserts
+  neither the text nor the path survives.
+- `handlers/tests/prompt/compaction.rs` adds
+  `disconnected_client_keeps_the_compaction_result_and_logs_fixed_fields`: a
+  real compaction with no client attached still adopts the compacted history,
+  records the `started`, `compacted`, `elapsed_ms_total` and `elapsed_ms_max`
+  deltas, and logs both publish stages with fixed fields, the bounded
+  correlation key, and no raw session id or workspace path. The privacy
+  assertions are scoped to the two `context_compaction_update` lines so an
+  unrelated core log naming the session archive cannot mask them.
+- `compaction/plan.rs` adds the
+  `compaction_decision_matches_the_tighter_budget` proptest over
+  `0usize..200_000` prompt counts and optional configured and admission
+  budgets, plus `compaction_decision_boundaries_are_exact`,
+  `equal_budgets_prefer_the_configured_threshold` and
+  `admission_pressure_forces_compaction_below_the_configured_threshold`.
+- `mod.rs` `log_suppressed_error` now emits `operation`, `error_category`,
+  `error_bytes`, and the source chain through `redaction::redact_detail`, which
+  bounds it and collapses path-like tokens; `lody_notice.rs` bounds and
+  validates the `Retry-After` hint and routes delivery failures through the
+  redacting helper.
+
+Focused validation:
+`cargo nextest run -p vtcode-acp -E 'test(compaction) |
+test(redaction) | test(suppressed_error) | test(pre_compact_hook_failure)'`
+run 37 tests, 37 passed, 378 skipped (log
+`/tmp/nextest-acp-compaction-2.out`). Full `check-fmt`, `typecheck`, `lint` and
+`test` gates run next on the same candidate.
