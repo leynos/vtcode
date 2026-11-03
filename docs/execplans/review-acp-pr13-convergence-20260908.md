@@ -218,6 +218,15 @@ an archive with ambiguous terminal results is rejected before continuation.
   contains the parent's refactor without textual conflict or residual markers.
   The candidate is now `16e345811`; the four repository gates are being run
   sequentially on it.
+- [x] (2026-11-03) The four gates passed on `dfe463a06`, which adds this plan
+  record to the rebased candidate: `make check-fmt` (364 files unchanged),
+  `make lint` (exit 0, Clippy clean, documentation generated), `make typecheck`
+  (exit 0, 40m30s), and `make test` (10,547 passed, 0 failed, 22 skipped, exit
+  0). Published over SSH with a force-with-lease pinned to the superseded head
+  `66bd7f21d`; `ls-remote` confirmed the new remote head and the tracking ref
+  was refreshed. Because the push creates a new candidate, GitHub regenerates
+  `refs/pull/13/merge` and the duplicate-baseline result from the stale merge
+  tree is superseded rather than carried forward.
 
 ## Surprises & discoveries
 
