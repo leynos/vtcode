@@ -48,12 +48,14 @@ Complete guide to VT Code's security documentation.
 
 ## Security Features by Layer
 
-### Layer 1: Command Allowlist
+### Layer 1: Command Deny List
 
-- **Location**: `crates/codegen/vtcode-core/src/execpolicy/mod.rs`
+- **Location**: `crates/codegen/vtcode-core/src/tools/command_policy.rs`
 - **Documentation**:
-  [Security Model - Layer 1](./SECURITY_MODEL.md#layer-1-command-allowlist)
-- **Only 9 commands allowed**: ls, cat, cp, head, printenv, pwd, rg, sed, which
+  [Security Model - Layer 1](./SECURITY_MODEL.md#layer-1-command-deny-list)
+- **Allow-by-default safety net**: commands are blocked only when they match a
+  configured deny rule; a `gh` invocation is never blocked for lacking an
+  allow-list entry
 
 ### Layer 2: Argument Validation
 

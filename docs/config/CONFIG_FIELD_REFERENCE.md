@@ -522,9 +522,9 @@ make fmt
 
 ## `commands.allow_glob`
 
-| Field                 | Type    | Required | Default | Description                                                |
-| --------------------- | ------- | -------- | ------- | ---------------------------------------------------------- |
-| `commands.allow_glob` | `array` | no       | `[]`    | Glob patterns allowed for shell commands (applies to Bash) |
+| Field                 | Type    | Required | Default | Description                                                           |
+| --------------------- | ------- | -------- | ------- | --------------------------------------------------------------------- |
+| `commands.allow_glob` | `array` | no       | `[]`    | Glob patterns recognised as safe for shell commands (applies to Bash) |
 
 ## `commands.allow_glob[]`
 
@@ -534,9 +534,9 @@ make fmt
 
 ## `commands.allow_list`
 
-| Field                 | Type    | Required | Default | Description                                     |
-| --------------------- | ------- | -------- | ------- | ----------------------------------------------- |
-| `commands.allow_list` | `array` | no       | `[]`    | Commands that can be executed without prompting |
+| Field                 | Type    | Required | Default | Description                                                             |
+| --------------------- | ------- | -------- | ------- | ----------------------------------------------------------------------- |
+| `commands.allow_list` | `array` | no       | `[]`    | Commands recognised as safe; an unmatched command is allowed by default |
 
 ## `commands.allow_list[]`
 
@@ -546,9 +546,9 @@ make fmt
 
 ## `commands.allow_regex`
 
-| Field                  | Type    | Required | Default | Description                             |
-| ---------------------- | ------- | -------- | ------- | --------------------------------------- |
-| `commands.allow_regex` | `array` | no       | `[]`    | Regex allow patterns for shell commands |
+| Field                  | Type    | Required | Default | Description                                                |
+| ---------------------- | ------- | -------- | ------- | ---------------------------------------------------------- |
+| `commands.allow_regex` | `array` | no       | `[]`    | Regex allow patterns recognised as safe for shell commands |
 
 ## `commands.allow_regex[]`
 

@@ -349,15 +349,17 @@ mod tests {
         assert_eq!(invocation.display, "cargo check");
     }
 
+    /// The configured policy is a deny-list safety net: a command that no
+    /// allow rule mentions is still prepared for execution.
     #[tokio::test]
-    async fn prepare_invocation_rejects_command_not_in_policy() {
+    async fn prepare_invocation_allows_command_outside_allow_list() {
         let tool = make_tool();
         let input = make_input(vec!["custom-tool"]);
-        let error = tool
+        let invocation = tool
             .prepare_invocation(&input)
             .await
-            .expect_err("custom-tool should be blocked");
-        assert!(error.to_string().contains("is not permitted by the execution policy"));
+            .expect("an unmatched command is allowed by default");
+        assert_eq!(invocation.display, "custom-tool");
     }
 
     #[tokio::test]

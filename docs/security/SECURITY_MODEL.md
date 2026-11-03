@@ -15,9 +15,9 @@ document describes the security architecture and guidelines for maintaining it.
                               
                               
 
-  Layer 1: Command Allowlist                                 
-   Only 9 safe commands allowed                             
-   rm, sudo, docker, curl (without sandbox) blocked         
+  Layer 1: Command Deny List                                 
+   Commands allowed by default                              
+   Deny rules block destructive forms                        
 
                               
                               
@@ -55,27 +55,29 @@ document describes the security architecture and guidelines for maintaining it.
 
 ## Security Layers
 
-### Layer 1: Command Allowlist
+### Layer 1: Command Deny List
 
-**Location**: `crates/codegen/vtcode-core/src/execpolicy/mod.rs`
+**Location**: `crates/codegen/vtcode-core/src/tools/command_policy.rs`
 
-Only explicitly allowed commands can execute:
+The configured `[commands]` policy is a deny-list safety net modelled on
+[cc-safety-net](https://github.com/kenryu42/cc-safety-net). Commands are
+allowed by default and blocked only when they match a deny rule:
 
-- `ls` - List directory contents
-- `cat` - Display file contents
-- `cp` - Copy files
-- `head` - Display file beginning
-- `printenv` - Show environment variables
-- `pwd` - Print working directory
-- `rg` - Ripgrep text search
-- `sed` - Stream editor
-- `which` - Locate programs
+- Destructive commands: root/home `rm` targets, recursive or forced `rm`,
+  `dd`, `shred`
+- Privilege escalation: `sudo`, `su`, `doas`
+- System modification: `chmod`, `chown`, `systemctl`
+- Container tools: privileged `docker run` and administrative `kubectl`
+  operations
 
-**All other commands are blocked by default.**
+Allow rules (`allow_list`, `allow_glob`, `allow_regex`) record commands the
+policy recognises as safe and support auto-approval, but an unmatched command
+is still allowed. Only a matching deny rule, or an empty command, is denied.
 
 ### Layer 2: Per-Command Argument Validation
 
-Each allowed command has a dedicated validator function:
+Commands with a curated validator are checked argument by argument. Commands
+without one are still permitted by default unless a deny rule matches:
 
 - `validate_ls()` - Only allows `-1`, `-a`, `-l` flags
 - `validate_cat()` - Only allows `-b`, `-n`, `-t` flags

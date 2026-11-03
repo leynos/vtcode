@@ -583,7 +583,8 @@ VT Code is designed with security as a first-class concern:
 
 ### Built-in Security Features
 
-- **Execution Policy** - Only 9 safe commands allowed by default
+- **Execution Policy** - Deny-list safety net; commands are allowed by default
+  and blocked when they match a deny rule
 - **Argument Validation** - Blocks dangerous flags like `--pre`, `-exec`, `-e`
 - **Workspace Isolation** - All operations confined to workspace boundaries
 - **Human-in-the-Loop** - Three-tier approval system for tool execution

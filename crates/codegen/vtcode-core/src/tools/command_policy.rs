@@ -53,12 +53,21 @@ pub enum CommandPolicyDecision {
     /// A configured deny rule matched; deny rules win over every allow rule.
     DeniedByRule { rule: CommandPolicyRule, pattern: String },
     /// Allow rules are configured and none of them matched.
-    DeniedWithoutAllowRuleMatch,
+    ///
+    /// The policy is a deny-list safety net: an unmatched command is allowed.
+    /// Allow rules record the commands that are known-safe, but they do not
+    /// gate execution.
+    AllowedWithoutAllowRuleMatch,
+    /// The command text is empty, so there is nothing to evaluate.
+    DeniedEmptyCommand,
 }
 
 impl CommandPolicyDecision {
     pub fn is_allowed(&self) -> bool {
-        matches!(self, Self::AllowedByRule { .. } | Self::AllowedWithoutAllowRules)
+        matches!(
+            self,
+            Self::AllowedByRule { .. } | Self::AllowedWithoutAllowRules | Self::AllowedWithoutAllowRuleMatch
+        )
     }
 
     /// Deny rule and configured pattern, when a deny rule decided.
@@ -75,13 +84,13 @@ impl CommandPolicyDecision {
     /// included, so diagnostics cannot leak values passed on the command line.
     pub fn denial_message(&self, program: &str) -> Option<String> {
         let detail = match self {
-            Self::AllowedByRule { .. } | Self::AllowedWithoutAllowRules => return None,
+            Self::AllowedByRule { .. } | Self::AllowedWithoutAllowRules | Self::AllowedWithoutAllowRuleMatch => {
+                return None;
+            }
             Self::DeniedByRule { rule, pattern } => {
                 format!("blocked by the [commands] {} rule '{pattern}'", rule.config_key())
             }
-            Self::DeniedWithoutAllowRuleMatch => {
-                "no [commands] allow_list, allow_glob, or allow_regex rule matches this command".to_string()
-            }
+            Self::DeniedEmptyCommand => "the command is empty".to_string(),
         };
         let program = program_basename(program);
         Some(format!(
@@ -186,7 +195,7 @@ impl CommandPolicyEvaluator {
     /// Structured decision for an argv request.
     pub fn decision(&self, command: &[String]) -> CommandPolicyDecision {
         if command.is_empty() {
-            return CommandPolicyDecision::DeniedWithoutAllowRuleMatch;
+            return CommandPolicyDecision::DeniedEmptyCommand;
         }
         self.decision_text(&command.join(" "))
     }
@@ -195,7 +204,7 @@ impl CommandPolicyEvaluator {
     pub fn decision_text(&self, command_text: &str) -> CommandPolicyDecision {
         let cmd = command_text.trim();
         if cmd.is_empty() {
-            return CommandPolicyDecision::DeniedWithoutAllowRuleMatch;
+            return CommandPolicyDecision::DeniedEmptyCommand;
         }
 
         // Deny takes precedence
@@ -243,7 +252,10 @@ impl CommandPolicyEvaluator {
             };
         }
 
-        CommandPolicyDecision::DeniedWithoutAllowRuleMatch
+        // The policy is a deny-list safety net, so an unmatched command is
+        // allowed. Allow rules are recorded for diagnostics and auto-approval,
+        // but a miss does not gate execution.
+        CommandPolicyDecision::AllowedWithoutAllowRuleMatch
     }
 
     /// Enhanced async evaluation with command resolution and caching
@@ -278,7 +290,10 @@ impl CommandPolicyEvaluator {
             CommandPolicyDecision::AllowedWithoutAllowRules => {
                 "no allow rules configured; allowed by default".to_string()
             }
-            CommandPolicyDecision::DeniedWithoutAllowRuleMatch => "no allow rule matches".to_string(),
+            CommandPolicyDecision::AllowedWithoutAllowRuleMatch => {
+                "no allow rule matches; allowed by default".to_string()
+            }
+            CommandPolicyDecision::DeniedEmptyCommand => "command is empty".to_string(),
         };
 
         // Cache the result
