@@ -109,23 +109,24 @@ pub(super) async fn capture_read_version(
     expected_hash: &str,
     certification: &ReadCertification,
 ) -> Value {
-    let record_result = match session.workspace_runtime() {
-        Ok(Some(runtime)) => {
-            runtime
-                .local_tool_registry
-                .file_ops_tool()
-                .record_read_content_hash_if_matches(path, expected_hash)
-                .await
+    // Select the registry once, as `execute_session_local_invocation` does, so
+    // the two success arms cannot drift apart.
+    let runtime = session.workspace_runtime();
+    let registry = match &runtime {
+        Ok(Some(runtime)) => &runtime.local_tool_registry,
+        Ok(None) => &agent.local_tool_registry,
+        Err(_error) => {
+            certification.withheld(
+                PatchCertificationOutcome::ReadVersionCaptureFailed,
+                "Failed to capture ACP read file version",
+            );
+            return Value::Null;
         }
-        Ok(None) => {
-            agent
-                .local_tool_registry
-                .file_ops_tool()
-                .record_read_content_hash_if_matches(path, expected_hash)
-                .await
-        }
-        Err(error) => Err(error),
     };
+    let record_result = registry
+        .file_ops_tool()
+        .record_read_content_hash_if_matches(path, expected_hash)
+        .await;
     match record_result {
         Ok(Some(content_hash)) => json!(content_hash),
         Ok(None) => {
@@ -227,6 +228,7 @@ fn window_matches_projection(projected: &str, returned: &str) -> bool {
 #[cfg(test)]
 mod window_match_tests {
     use super::{WindowVerificationError, ZedAgent, window_matches_projection};
+    use rstest::rstest;
 
     /// A failed disk read must not carry the file path into its error chain.
     ///
@@ -270,41 +272,26 @@ mod window_match_tests {
         assert!(std::error::Error::source(&error).is_none(), "a UTF-8 failure has no underlying I/O error");
     }
 
-    /// An identical window always matches.
-    #[test]
-    fn identical_windows_match() {
-        assert!(window_matches_projection("alpha\n", "alpha\n"));
-        assert!(window_matches_projection("", ""));
-    }
-
-    /// The client may omit the projection's single trailing terminator, but it
-    /// may not add one: `returned` must never carry more than `projected`.
-    #[test]
-    fn one_trailing_newline_may_differ() {
-        assert!(window_matches_projection("alpha\n", "alpha"));
-        assert!(!window_matches_projection("alpha", "alpha\n"));
-    }
-
-    /// A response that is itself newline-terminated is a complete set of
-    /// lines, so a shorter one has dropped a line rather than a terminator.
-    #[test]
-    fn a_shorter_complete_line_set_does_not_match() {
-        assert!(!window_matches_projection("alpha\n\n", "alpha\n"));
-        assert!(!window_matches_projection("alpha\nbeta\n", "alpha\n"));
-    }
-
-    /// Extra blank lines stay significant, because they can be unsaved edits.
-    #[test]
-    fn extra_blank_lines_do_not_match() {
-        assert!(!window_matches_projection("alpha\n", "alpha\n\n"));
-        assert!(!window_matches_projection("alpha\n\n", "alpha\n\n\n"));
-        assert!(!window_matches_projection("alpha\n", "alpha\nbeta\n"));
-    }
-
-    /// A response that ignores the window and returns another line differs.
-    #[test]
-    fn a_wider_response_does_not_match() {
-        assert!(!window_matches_projection("beta\n", "alpha\nbeta\n"));
-        assert!(!window_matches_projection("beta\n", "beta\ngamma\n"));
+    /// Only a dropped final terminator is tolerated. A shorter complete set of
+    /// lines, extra blank lines, and a wider response never match, because each
+    /// can carry content the model did not see inside its requested window.
+    #[rstest]
+    #[case::identical("alpha\n", "alpha\n", true)]
+    #[case::both_empty("", "", true)]
+    #[case::dropped_final_terminator("alpha\n", "alpha", true)]
+    #[case::added_terminator("alpha", "alpha\n", false)]
+    #[case::dropped_blank_line("alpha\n\n", "alpha\n", false)]
+    #[case::dropped_second_line("alpha\nbeta\n", "alpha\n", false)]
+    #[case::one_extra_blank_line("alpha\n", "alpha\n\n", false)]
+    #[case::two_extra_blank_lines("alpha\n\n", "alpha\n\n\n", false)]
+    #[case::extra_line("alpha\n", "alpha\nbeta\n", false)]
+    #[case::wider_response_before("beta\n", "alpha\nbeta\n", false)]
+    #[case::wider_response_after("beta\n", "beta\ngamma\n", false)]
+    fn window_projection_matching(#[case] projected: &str, #[case] returned: &str, #[case] matches: bool) {
+        assert_eq!(
+            window_matches_projection(projected, returned),
+            matches,
+            "projected {projected:?} against returned {returned:?}"
+        );
     }
 }

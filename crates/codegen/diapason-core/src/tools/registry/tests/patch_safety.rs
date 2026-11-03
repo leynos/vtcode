@@ -2,14 +2,30 @@
 
 use super::*;
 
-/// Check a stale hash returns diagnostics and leaves the file untouched.
-#[tokio::test]
-async fn stale_apply_patch_hash_returns_diagnostics_without_writing() -> Result<()> {
+/// An isolated workspace with a registry that permits every tool.
+struct PatchWorkspace {
+    registry: ToolRegistry,
+    _temp_dir: TempDir,
+}
+
+/// Build one isolated registry for a patch-safety test.
+#[fixture]
+async fn patch_workspace() -> Result<PatchWorkspace> {
     let temp_dir = TempDir::new()?;
-    let path = temp_dir.path().join("versioned.txt");
-    fs::write(&path, "current\n")?;
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
     registry.allow_all_tools().await?;
+    Ok(PatchWorkspace { registry, _temp_dir: temp_dir })
+}
+
+/// Check a stale hash returns diagnostics and leaves the file untouched.
+#[rstest]
+#[tokio::test]
+async fn stale_apply_patch_hash_returns_diagnostics_without_writing(
+    #[future] patch_workspace: Result<PatchWorkspace>,
+) -> Result<()> {
+    let PatchWorkspace { registry, _temp_dir: temp_dir } = patch_workspace.await?;
+    let path = temp_dir.path().join("versioned.txt");
+    fs::write(&path, "current\n")?;
     let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n";
     let expected = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
 
@@ -49,13 +65,14 @@ async fn stale_apply_patch_hash_returns_diagnostics_without_writing() -> Result<
 }
 
 /// Check an unrebasable stale patch reports bounded anchor excerpts.
+#[rstest]
 #[tokio::test]
-async fn stale_unrebasable_patch_reports_bounded_anchor_context() -> Result<()> {
-    let temp_dir = TempDir::new()?;
+async fn stale_unrebasable_patch_reports_bounded_anchor_context(
+    #[future] patch_workspace: Result<PatchWorkspace>,
+) -> Result<()> {
+    let PatchWorkspace { registry, _temp_dir: temp_dir } = patch_workspace.await?;
     let path = temp_dir.path().join("versioned.txt");
     fs::write(&path, "fn nearby() {\n    current();\n}\n")?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
-    registry.allow_all_tools().await?;
     let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@ fn missing()\n-    stale();\n+    changed();\n*** End Patch\n";
     let expected = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"fn missing() {\n    stale();\n}\n"));
 
@@ -103,15 +120,16 @@ async fn stale_unrebasable_patch_reports_bounded_anchor_context() -> Result<()> 
 /// The payload is model-visible, so an arbitrarily long anchor or line must not
 /// reach the transcript, and the failure list must stay capped even when more
 /// than three hunks fail.
+#[rstest]
 #[tokio::test]
-async fn stale_patch_bounds_oversized_anchor_context_and_caps_failures() -> Result<()> {
+async fn stale_patch_bounds_oversized_anchor_context_and_caps_failures(
+    #[future] patch_workspace: Result<PatchWorkspace>,
+) -> Result<()> {
     const EXCERPT_BUDGET: usize = 240;
-    let temp_dir = TempDir::new()?;
+    let PatchWorkspace { registry, _temp_dir: temp_dir } = patch_workspace.await?;
     let path = temp_dir.path().join("versioned.txt");
     let current_line = format!("current-{}", "c".repeat(EXCERPT_BUDGET + 40));
     fs::write(&path, format!("{current_line}\n"))?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
-    registry.allow_all_tools().await?;
 
     let mut patch = String::from("*** Begin Patch\n*** Update File: versioned.txt\n");
     for index in 0..4 {
@@ -150,13 +168,12 @@ async fn stale_patch_bounds_oversized_anchor_context_and_caps_failures() -> Resu
 }
 
 /// Check a matching hash lets the write proceed.
+#[rstest]
 #[tokio::test]
-async fn matching_apply_patch_hash_allows_the_write() -> Result<()> {
-    let temp_dir = TempDir::new()?;
+async fn matching_apply_patch_hash_allows_the_write(#[future] patch_workspace: Result<PatchWorkspace>) -> Result<()> {
+    let PatchWorkspace { registry, _temp_dir: temp_dir } = patch_workspace.await?;
     let path = temp_dir.path().join("versioned.txt");
     fs::write(&path, "current\n")?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
-    registry.allow_all_tools().await?;
     let current = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
     let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n";
 
@@ -170,16 +187,17 @@ async fn matching_apply_patch_hash_allows_the_write() -> Result<()> {
 }
 
 /// Check a matching hash is accepted for the single-source delete and rename forms.
+#[rstest]
 #[tokio::test]
-async fn matching_apply_patch_hash_allows_single_source_delete_and_rename() -> Result<()> {
-    let temp_dir = TempDir::new()?;
+async fn matching_apply_patch_hash_allows_single_source_delete_and_rename(
+    #[future] patch_workspace: Result<PatchWorkspace>,
+) -> Result<()> {
+    let PatchWorkspace { registry, _temp_dir: temp_dir } = patch_workspace.await?;
     let obsolete = temp_dir.path().join("obsolete.txt");
     let renamed_from = temp_dir.path().join("before.txt");
     let renamed_to = temp_dir.path().join("after.txt");
     fs::write(&obsolete, "obsolete\n")?;
     fs::write(&renamed_from, "moved\n")?;
-    let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
-    registry.allow_all_tools().await?;
 
     let delete_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"obsolete\n"));
     let delete_patch = "*** Begin Patch\n*** Delete File: obsolete.txt\n*** End Patch\n";
