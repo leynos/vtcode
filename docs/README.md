@@ -457,6 +457,8 @@ cargo clippy && cargo fmt
 ### Development Resources
 
 - **[Contributing Guide](./CONTRIBUTING.md)** - How to contribute
+- **[Documentation style guide](./documentation-style-guide.md)** - Writing and
+  RFC/ADR conventions
 - **[Code Standards](../.github/copilot-instructions.md)** - Coding guidelines
 - **[Architecture Decisions](./ARCHITECTURE.md)** - Design rationale
 

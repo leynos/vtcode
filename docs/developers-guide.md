@@ -6,3 +6,4 @@
 - [Custom-provider request policy](./development/CUSTOM_PROVIDER_REQUEST_POLICY.md)
 - [Testing](./development/testing.md)
 - [Configuration field reference](./config/CONFIG_FIELD_REFERENCE.md)
+- [Documentation style guide](./documentation-style-guide.md)

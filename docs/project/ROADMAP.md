@@ -4,6 +4,9 @@ This document outlines planned enhancements and features for the vtcode coding
 agent, inspired by Anthropic's breakthrough engineering approach that achieved
 49% on SWE-bench Verified.
 
+For roadmap task writing guidance, see the
+[documentation style guide](../documentation-style-guide.md#roadmap-task-writing-guidelines).
+
 ## **Recently Completed - Major Breakthroughs**
 
 ### **Anthropic-Inspired Architecture Implementation**
