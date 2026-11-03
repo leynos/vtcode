@@ -1,0 +1,39 @@
+# Proposed configuration, not accepted by the current vtcode implementation.
+# Only trusted user or managed configuration can activate network export.
+[telemetry.otel]
+enabled = false
+service_name = "vtcode"
+content = "none"
+shutdown_timeout_ms = 2000
+metric_interval_ms = 10000
+trace_sample_ratio = 1.0
+max_record_bytes = 16384
+max_attribute_bytes = 1024
+max_attributes = 64
+queue_records_per_signal = 2048
+queue_bytes_per_signal = 8388608
+metric_series_per_instrument = 256
+
+[telemetry.otel.traces]
+exporter = "none"
+protocol = "http/protobuf"
+endpoint = "http://127.0.0.1:4318/v1/traces"
+timeout_ms = 1000
+
+[telemetry.otel.metrics]
+exporter = "none"
+protocol = "http/protobuf"
+endpoint = "http://127.0.0.1:4318/v1/metrics"
+timeout_ms = 1000
+
+[telemetry.otel.logs]
+exporter = "none"
+protocol = "http/protobuf"
+endpoint = "http://127.0.0.1:4318/v1/logs"
+timeout_ms = 1000
+
+[telemetry.otel.propagation]
+accept_remote_parent = false
+forward_to_tools = false
+allowed_destinations = []
+baggage_keys = []

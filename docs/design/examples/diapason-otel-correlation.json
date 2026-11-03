@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0.0",
+  "event_name": "diapason.operation.completed",
+  "event_id": "event-01",
+  "sequence": 7,
+  "timestamp": "2026-11-03T12:00:01Z",
+  "observed_timestamp": "2026-11-03T12:00:01Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "00f067aa0ba902b7",
+  "identity": {
+    "session_id": "session-01",
+    "process_instance_id": "process-02",
+    "interaction_id": "interaction-03",
+    "operation_id": "operation-04",
+    "attempt_id": "attempt-02"
+  },
+  "external": {
+    "correlation_id": "objective-01",
+    "workflow_run_id": "run-04",
+    "task_id": "task-12",
+    "task_attempt_id": "task-attempt-03",
+    "agent_invocation_id": "agent-invocation-02",
+    "workspace_id": "workspace-07"
+  },
+  "provenance": {
+    "source": "runtime",
+    "correlation_method": "propagated",
+    "authority": "trusted_launcher"
+  },
+  "operation_kind": "tool",
+  "outcome": "succeeded",
+  "duration_seconds": 0.25,
+  "artifact_ids": ["artifact-02"]
+}
