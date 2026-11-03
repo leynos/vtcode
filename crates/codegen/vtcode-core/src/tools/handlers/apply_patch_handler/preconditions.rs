@@ -192,3 +192,10 @@ pub(super) async fn validate_request_content_hash(
         ),
     })
 }
+
+/// Record one handler-surface precondition outcome when telemetry is wired.
+pub(super) fn record_handler_precondition(metrics: &Option<Arc<MetricsCollector>>, outcome: PatchPreconditionOutcome) {
+    if let Some(metrics) = metrics.as_ref() {
+        metrics.record_patch_precondition(outcome);
+    }
+}

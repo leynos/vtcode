@@ -10,6 +10,7 @@ use crate::exec_policy::RejectConfig;
 use crate::tools::handlers::adapter::DefaultToolSession;
 use crate::tools::handlers::sandboxing::{SandboxConfig, SandboxType};
 use crate::tools::handlers::tool_handler::{Constrained, ShellEnvironmentPolicy, TurnContext};
+use std::path::Path;
 use std::sync::Arc;
 use tempfile::TempDir;
 

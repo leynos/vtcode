@@ -14,8 +14,7 @@
 //!
 //! [openai/codex]: https://github.com/openai/codex
 
-use hashbrown::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -27,10 +26,12 @@ use super::sandboxing::{
     SandboxAttempt, Sandboxable, SandboxablePreference, ToolCtx, ToolError, ToolRuntime,
 };
 use super::tool_handler::{
-    ApprovalPolicy, FileChange, ToolCallError, ToolHandler, ToolInvocation, ToolKind, ToolOutput, ToolPayload,
+    ApprovalPolicy, ToolCallError, ToolHandler, ToolInvocation, ToolKind, ToolOutput, ToolPayload,
 };
 use super::tool_orchestrator::ToolOrchestrator;
-use crate::tools::editing::{Patch, PatchOperation};
+use crate::tools::editing::Patch;
+
+mod changes;
 
 mod preconditions;
 
@@ -40,7 +41,8 @@ mod specs;
 mod tests;
 
 use crate::metrics::PatchPreconditionOutcome;
-use preconditions::{PatchHandlerEvaluationTimer, validate_request_content_hash};
+use changes::convert_patch_to_changes;
+use preconditions::{PatchHandlerEvaluationTimer, record_handler_precondition, validate_request_content_hash};
 pub(crate) use specs::parse_apply_patch_command;
 pub use specs::{create_apply_patch_freeform_tool, create_apply_patch_json_tool};
 
@@ -359,52 +361,6 @@ impl ToolHandler for ApplyPatchHandler {
         let content = emitter.finish(event_ctx, result).await?;
 
         Ok(ToolOutput::Function { content, content_items: None, success: Some(true) })
-    }
-}
-
-/// Convert patch operations to file changes for tracking
-fn convert_patch_to_changes(patch: &Patch, cwd: &Path) -> HashMap<PathBuf, FileChange> {
-    let mut changes = HashMap::new();
-
-    for op in patch.operations() {
-        match op {
-            PatchOperation::AddFile { path, content } => {
-                let full_path = cwd.join(path);
-                changes.insert(full_path, FileChange::Add { content: content.clone() });
-            }
-            PatchOperation::DeleteFile { path } => {
-                let full_path = cwd.join(path);
-                changes.insert(full_path, FileChange::Delete);
-            }
-            PatchOperation::UpdateFile { path, new_path, chunks: _ } => {
-                let full_path = cwd.join(path);
-                if let Some(new_path) = new_path {
-                    changes.insert(full_path, FileChange::Rename { new_path: cwd.join(new_path), content: None });
-                } else {
-                    // For updates, we track as update with empty placeholders
-                    // The actual content will be computed during application
-                    changes.insert(
-                        full_path,
-                        FileChange::Update {
-                            old_content: String::new(),
-                            new_content: String::new(),
-                        },
-                    );
-                }
-            }
-        }
-    }
-
-    changes
-}
-
-/// Record one handler-surface precondition outcome when telemetry is wired.
-fn record_handler_precondition(
-    metrics: &Option<std::sync::Arc<crate::metrics::MetricsCollector>>,
-    outcome: PatchPreconditionOutcome,
-) {
-    if let Some(metrics) = metrics.as_ref() {
-        metrics.record_patch_precondition(outcome);
     }
 }
 
