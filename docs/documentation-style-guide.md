@@ -798,10 +798,11 @@ navigability:
 - Tasks (execution units) – Small, measurable pieces of work with clear
   acceptance criteria. How it gets done.
 
-This hierarchy should align with the Goals, Ideas, Steps, and Tasks (GIST)
-framework:
+The roadmap hierarchy below adapts selected GIST concepts to a three-layer
+structure; it does not map one-to-one to GIST's four layers:
 
-- Phases correspond to strategic themes or milestones.
+- Phases are strategic milestones specific to this hierarchy; they do not map
+  directly to GIST Goals or Ideas.
 - Steps correspond to GIST-style workstreams. A step must describe a coherent
   body of delivery work with one clear objective, explicit sequencing value,
   and a practical learning loop. A step is not just a heading used to group
