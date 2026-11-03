@@ -287,6 +287,39 @@ async fn exec_command_rejects_symlink_escape() -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn exec_command_rejects_parent_directory_symlink_escape() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let outside = tempfile::TempDir::new()?;
+    let outside_child = outside.path().join("child");
+    std::fs::create_dir_all(&outside_child)?;
+    let sentinel = outside.path().join("sentinel.txt");
+    std::fs::write(&sentinel, b"sentinel")?;
+    std::os::unix::fs::symlink(&outside_child, harness.workspace().join("link"))?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    // Lexical normalization turns this into the in-workspace `sentinel.txt`,
+    // but the kernel resolves `link` first and reaches the outside file.
+    let text = rejection_text(
+        registry
+            .execute_tool(
+                tools::EXEC_COMMAND,
+                json!({
+                    "cmd": "rm -f link/../sentinel.txt",
+                    "confirm": true
+                }),
+            )
+            .await,
+    );
+
+    assert!(text.contains("not supported") || text.contains("refusing to delete"), "unexpected refusal: {text}");
+    assert!(sentinel.exists(), "parent-directory deletion must not touch the outside file");
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn exec_command_rejects_glob_chained_and_protected_deletions() -> Result<()> {
     let harness = TestHarness::new()?;

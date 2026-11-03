@@ -4,7 +4,7 @@
 //! workspace. Confirmation, approvals, configured deny rules, and sandbox
 //! enforcement remain the responsibility of the caller.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use vtcode_commons::paths::{canonicalize_async, canonicalize_workspace};
 
@@ -80,6 +80,20 @@ async fn assess_operand(
     canonical_root: &Path,
     canonical_home: Option<&Path>,
 ) -> Result<PathBuf, DeletionDecision> {
+    // Recognition already refuses `..` operands. Refuse them here too so a
+    // future caller cannot reach the lexical normalization in
+    // `build_candidate_path`, which would collapse `..` before symlinks are
+    // resolved and assess a different path from the one the kernel deletes.
+    if Path::new(operand)
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(denied(
+            operand,
+            "operands containing `..` components are not permitted; name the exact path".to_string(),
+        ));
+    }
+
     let candidate = build_candidate_path(normalized_root, working_dir, operand)
         .await
         .map_err(|error| {

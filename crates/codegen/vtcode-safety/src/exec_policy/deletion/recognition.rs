@@ -7,6 +7,8 @@
 //! [`DeletionRecognition::Unsupported`] so a caller never accidentally treats
 //! an unparsed command as a harmless non-deletion.
 
+use std::path::{Component, Path};
+
 use crate::command_safety::shell_parser;
 
 use tokens::{
@@ -324,6 +326,18 @@ fn operand_rejection(operand: &str) -> Option<&'static str> {
     // would assess a different path from the one actually deleted.
     if operand.contains(['\'', '"', '\\']) {
         return Some("quoted or escaped operands are not supported; name the exact path without quotes or escapes");
+    }
+    // Containment is checked on the lexically normalized path, but the kernel
+    // resolves `..` after every symlink it has already followed. An operand
+    // such as `link/../file`, where `link` points outside the workspace, would
+    // therefore be assessed as an in-workspace path and delete a file outside
+    // it. Refusing the component keeps assessment and deletion viewing the
+    // same path; the caller must name the exact target instead.
+    if Path::new(operand)
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Some("parent-directory (`..`) operands are not supported; name the exact path");
     }
     if operand == "." {
         return Some("the current directory cannot be deleted");

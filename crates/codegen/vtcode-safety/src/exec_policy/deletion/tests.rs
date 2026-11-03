@@ -191,6 +191,21 @@ fn rejects_operand_only_dot() {
 }
 
 #[test]
+fn rejects_parent_directory_operands() {
+    // Assessment normalizes `link/../file` to `file`, but the kernel resolves
+    // `..` after it has followed `link`. When `link` is a symlink out of the
+    // workspace, the assessed path and the deleted path differ.
+    for command in [
+        "rm -f link/../sentinel.txt",
+        "rm -f ../outside.txt",
+        "rm -rf scratch/..",
+    ] {
+        let reason = unsupported(command);
+        assert!(reason.contains("parent-directory"), "unexpected reason for {command:?}: {reason}");
+    }
+}
+
+#[test]
 fn parse_failure_with_rm_fails_closed() {
     let recognition = recognize_deletion_command("rm -f 'unterminated");
     assert!(
@@ -264,6 +279,30 @@ async fn denies_symlink_escapes_including_final_component() {
         let decision = assess_deletion_targets(&[operand.to_string()], workspace.path(), workspace.path()).await;
         assert!(matches!(decision, DeletionDecision::Denied { .. }), "operand {operand} should be denied");
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn denies_parent_directory_behind_a_symlink() {
+    let workspace = TempDir::new().expect("workspace");
+    let outside = TempDir::new().expect("outside");
+    let outside_child = outside.path().join("child");
+    std::fs::create_dir_all(&outside_child).expect("mkdir");
+    let sentinel = outside.path().join("sentinel.txt");
+    std::fs::write(&sentinel, b"keep").expect("write");
+
+    std::os::unix::fs::symlink(&outside_child, workspace.path().join("link")).expect("symlink");
+
+    // Lexical normalization turns `link/../sentinel.txt` into an in-workspace
+    // `sentinel.txt`, while resolving `link` first reaches the outside file.
+    let decision =
+        assess_deletion_targets(&["link/../sentinel.txt".to_string()], workspace.path(), workspace.path()).await;
+
+    assert!(
+        matches!(&decision, DeletionDecision::Denied { reason, .. } if reason.contains("`..`")),
+        "expected a parent-directory denial, got {decision:?}"
+    );
+    assert_eq!(std::fs::read(&sentinel).expect("read"), b"keep");
 }
 
 #[cfg(unix)]

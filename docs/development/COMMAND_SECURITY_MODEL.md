@@ -242,15 +242,19 @@ invocation when all of these hold:
    may run a different field from the one preflight inspected. Operands must be
    unquoted and unescaped; quote and escape characters are rejected because the
    shell removes them before deleting, so the assessed text would differ from
-   the deleted path.
+   the deleted path. Operands must also contain no `..` component: assessment
+   collapses `..` lexically, while the kernel resolves it after following every
+   preceding component, so `link/../file` can assess as an in-workspace path
+   and still delete outside the workspace when `link` is a symlink. Name the
+   exact path instead.
 3. Options are limited to `-f`, `-r`, `-R`, `-d`, `-v`, `-i`, `-I` (stacked
    short groups included), their long forms, and `--`. `--no-preserve-root` and
    unknown options are rejected.
 4. Every operand resolves inside the launch workspace. The executor rejects the
-   workspace root and its aliases, lexical `..` or absolute escapes, symlink
-   escapes (including a symlink as the final component), the home directory,
-   and paths inside protected metadata directories (`.git`, `.vtcode`, `.codex`,
-   `.agents`). A nonexistent in-workspace operand is allowed.
+   workspace root and its aliases, absolute escapes, symlink escapes (including
+   a symlink as the final component), the home directory, and paths inside
+   protected metadata directories (`.git`, `.vtcode`, `.codex`, `.agents`). A
+   nonexistent in-workspace operand is allowed.
 
 Each recognized operand is also reported to the dotfile guardian as a delete
 target, so protected files such as `.env` and `.gitignore` still require

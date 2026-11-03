@@ -98,6 +98,10 @@ async fn harness_terminal_run_refuses_escaped_deletion_forms() -> Result<()> {
     for args in [
         json!({"action": "run", "cmd": "\\rm scratch/tmp.txt", "yield_time_ms": 100}),
         json!({"action": "run", "cmd": "\\rm scratch/tmp.txt", "confirm": true, "yield_time_ms": 100}),
+        // Assessment normalizes `link/../sentinel.txt` lexically, but the
+        // kernel resolves `..` after following `link`; the gate must refuse
+        // the operand before either resolution can matter.
+        json!({"action": "run", "cmd": "rm -f link/../sentinel.txt", "confirm": true, "yield_time_ms": 100}),
     ] {
         let error = registry
             .execute_harness_command_session_terminal_run(args)
