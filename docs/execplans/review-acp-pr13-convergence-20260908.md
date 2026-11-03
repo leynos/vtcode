@@ -197,6 +197,27 @@ an archive with ambiguous terminal results is rejected before continuation.
   rebase confirmed it: no textual conflict and no residual markers. The rebased
   candidate is `fac8e0b37`; the four repository gates are being run
   sequentially on it.
+- [x] (2026-11-03) The four gates passed on `66bd7f21d`, the amended candidate
+  after `make fmt` rewrapped the preceding plan entry: `make check-fmt` (364
+  files unchanged), `make lint` (exit 0, Clippy clean, documentation generated),
+  `make typecheck` (exit 0, 56m43s), and `make test` (10,541 passed, 0 failed,
+  22 skipped, exit 0). Published the candidate over SSH and verified the remote
+  head before refreshing the tracking ref. Posted the pre-merge reconciliation
+  comment at <https://github.com/leynos/vtcode/pull/13#issuecomment-6608152013>
+  through the comment-token pool. CodeRabbit accepted four of the five findings
+  in reply <https://github.com/leynos/vtcode/pull/13#issuecomment-6608191238>:
+  module-level documentation, unit architecture, user-facing documentation, and
+  domain architecture are resolved in source, while docstring coverage stays
+  unverified until a completed analysis reports its denominator and percentage
+  against the 80% threshold. Queue request `9dfbd795` remains pending for the
+  review that supplies it; no second request was added.
+- [x] (2026-11-03) The parent advanced once more to `0ef2b65de`
+  (`refactor: deduplicate read-certification and patch-safety setup`). A
+  read-only `git merge-tree --write-tree` again predicted a clean merge, and
+  the rebase reproduced that exact tree (`021afd1c6`), so the rebased candidate
+  contains the parent's refactor without textual conflict or residual markers.
+  The candidate is now `16e345811`; the four repository gates are being run
+  sequentially on it.
 
 ## Surprises & discoveries
 
@@ -271,6 +292,17 @@ an archive with ambiguous terminal results is rejected before continuation.
   `ToolExecutionError::from_tool_output`. Any policy state that exists only in
   the typed field is therefore lost on that path, so the wire payload must be
   rehydrated before `with_tool_call_context` runs.
+- The `Check Unmaintained Dependencies` failure on `66bd7f21d`
+  (`duplicate baseline finding identity at baseline.entries[33]`) came from a
+  stale synthetic merge tree, not from this branch. GitHub had built
+  `refs/pull/13/merge` against a base tip `2396140df` that merged `0ef2b65de`
+  into `ce140d638`; that merge concatenated both sides' baselines into 35
+  entries with the same `terminfo 0.9.0` finding twice, differing only in the
+  scanner's normalised-away `repo_status.Age`. The live base ref has since
+  returned to `0ef2b65de`, and both a fresh `git merge-tree` and this rebase
+  carry 32 entries with a single `terminfo` entry. The failure is therefore an
+  artefact of the stale merge ref that a new head regenerates, and the branch
+  baseline must not be edited to accommodate a tree that no longer exists.
 
 ## Decision log
 
