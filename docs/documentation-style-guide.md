@@ -798,7 +798,8 @@ navigability:
 - Tasks (execution units) – Small, measurable pieces of work with clear
   acceptance criteria. How it gets done.
 
-This hierarchy should align with the GIST framework:
+This hierarchy should align with the Goals, Ideas, Steps, and Tasks (GIST)
+framework:
 
 - Phases correspond to strategic themes or milestones.
 - Steps correspond to GIST-style workstreams. A step must describe a coherent
