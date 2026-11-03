@@ -5,6 +5,7 @@ docs/COMPATIBILITY.md
 docs/CODE_OF_CONDUCT.md
 docs/CONTRIBUTING.md
 docs/developers-guide.md
+docs/documentation-style-guide.md
 docs/FAQ.md
 docs/INDEX.md
 docs/README.md
