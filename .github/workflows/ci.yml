@@ -78,6 +78,8 @@ jobs:
         run: |
           python3 scripts/check_compiler_cache_wiring.py
           python3 -m unittest scripts/tests/test_check_compiler_cache_wiring.py
+      - name: Enforce the coverage proptest seed record
+        run: python3 -m unittest scripts/tests/test_coverage_proptest_seed.py
 
   large-files:
     name: Check Custom Invariants

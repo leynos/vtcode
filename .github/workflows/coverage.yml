@@ -69,6 +69,7 @@ jobs:
           set -euo pipefail
           proptest_rng_seed="$(od -An -N8 -tu8 /dev/urandom | tr -d '[:space:]')"
           test -n "$proptest_rng_seed"
+          [[ "$proptest_rng_seed" =~ ^[0-9]+$ ]]
           printf 'PROPTEST_RNG_SEED=%s\n' "$proptest_rng_seed" >> "$GITHUB_ENV"
           {
             printf '### Proptest reproduction seed\n\n'
