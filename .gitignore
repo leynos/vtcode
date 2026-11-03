@@ -165,6 +165,7 @@ docs/.vuepress/
 docs/.docusaurus/
 
 # Local Development
+.diapason/
 .local
 *.local.json
 *.local.yml
