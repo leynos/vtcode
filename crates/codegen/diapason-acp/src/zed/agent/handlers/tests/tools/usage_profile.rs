@@ -143,6 +143,12 @@ async fn published_usage_updates(session_model: &str, response: LLMResponse) -> 
         session_model,
         &response,
     );
+    // Wait for the usage notification before releasing the client connection:
+    // closing it first can drop the update before the handler forwards it.
+    let first = tokio::time::timeout(Duration::from_secs(3), notifications_rx.recv())
+        .await
+        .expect("usage notification deadline")
+        .expect("usage notification channel");
     release_client.notify_one();
 
     tokio::time::timeout(Duration::from_secs(3), client_task)
@@ -153,7 +159,9 @@ async fn published_usage_updates(session_model: &str, response: LLMResponse) -> 
     agent_task.abort();
     drop(agent_task.await);
 
-    std::iter::from_fn(|| notifications_rx.try_recv().ok()).collect()
+    let mut notifications = vec![first];
+    notifications.extend(std::iter::from_fn(|| notifications_rx.try_recv().ok()));
+    notifications
 }
 
 fn usage_update(notifications: &[acp::AgentNotification]) -> Value {

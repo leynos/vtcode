@@ -53,20 +53,24 @@ fn warn_hook_block_reason(hook_event: &'static str, reason: &str) {
     tracing::warn!(hook_event, reason_bytes = reason.len(), "ACP hook blocked an operation");
 }
 
-/// Record the originating error for a redacted ACP failure.
+/// Record a suppressed ACP failure with fixed fields and a redacted chain.
 ///
 /// ACP clients only ever see the closed-set `operation`/`error_category`
 /// reason codes, because the underlying error may embed workspace paths,
-/// provider detail or archive contents. That leaves the local log as the only
-/// place the root cause can be recovered, so it is emitted here at `debug`
-/// level, where trusted diagnostics are enabled deliberately rather than by
-/// default. The client-facing payloads are unchanged.
+/// provider payloads, hook text or archive contents. That leaves the local log
+/// as the only place the root cause can be recovered, so the source chain is
+/// emitted here at `debug` level, where trusted diagnostics are enabled
+/// deliberately rather than by default. [`redaction::redact_detail`] collapses
+/// path-like tokens, masks recognized secret shapes, and bounds the result, so
+/// the chain never carries workspace paths or transport URLs even at `debug`.
+/// The operator-visible `warn`/`info` records beside it carry fixed fields only.
 fn log_suppressed_error(error: &impl std::fmt::Display, operation: &'static str, error_category: &'static str) {
     tracing::debug!(
         operation,
         error_category,
+        error_bytes = error.to_string().len(),
         detail = %redaction::redact_detail(&format!("{error:#}")),
-        "Suppressed ACP failure detail"
+        "Suppressed ACP failure"
     );
 }
 
@@ -198,11 +202,12 @@ mod acp_logging_tests {
     }
 
     #[test]
-    fn suppressed_error_detail_keeps_the_full_chain_at_debug() {
+    fn suppressed_error_detail_keeps_the_redacted_chain_at_debug() {
         let capture = HookLogCapture::default();
         let events = Arc::clone(&capture.0);
         let subscriber = Registry::default().with(capture);
-        let error = anyhow::anyhow!("archive write failed").context("checkpointing ACP session");
+        let error =
+            anyhow::anyhow!("archive write failed for /home/private/archive.json").context("checkpointing ACP session");
 
         tracing::subscriber::with_default(subscriber, || {
             log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
@@ -213,10 +218,16 @@ mod acp_logging_tests {
         let captured = &events[0];
         assert!(captured.contains("operation=\"session_checkpoint\""));
         assert!(captured.contains("error_category=\"archive_write_failed\""));
+        let outer_message = "checkpointing ACP session";
         assert!(
-            captured.contains("detail=checkpointing ACP session: archive write failed"),
-            "the debug event must retain the source chain, got {captured}"
+            captured.contains(&format!("error_bytes={}", outer_message.len())),
+            "the outer message size is retained, got {captured}"
         );
+        assert!(
+            captured.contains("detail=checkpointing ACP session: archive write failed for <path>"),
+            "the redacted chain is retained for local diagnosis, got {captured}"
+        );
+        assert!(!captured.contains("/home/private/archive.json"), "paths must stay out, got {captured}");
     }
 
     #[test]

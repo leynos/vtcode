@@ -5,9 +5,9 @@
 use crate::acp;
 use serde_json::{Map, Value};
 use std::time::Duration;
-use tracing::warn;
 use diapason_core::llm::provider::{LLMError, LLMErrorMetadata};
 
+use super::redaction::{log_notice_publish_failure, session_correlation};
 use super::ZedAgent;
 
 impl ZedAgent {
@@ -27,7 +27,10 @@ impl ZedAgent {
             return;
         };
         if let Err(error) = self.send_update(session_id, update).await {
-            warn!(%error, %session_id, "Failed to publish ACP provider rate-limit notice");
+            // The transport error and the raw session id are both
+            // operator-sensitive, so only the fixed fields and a redacted,
+            // bounded detail reach the log.
+            log_notice_publish_failure(&error, &session_correlation(&session_id.to_string()));
         }
     }
 }
@@ -44,7 +47,7 @@ fn rate_limit_notice_update(
         Some(status) => format!("{provider} returned HTTP {status} (rate limited)"),
         None => format!("{provider} reported a rate limit"),
     };
-    if let Some(retry_after) = retry_after {
+    if let Some(retry_after) = retry_after.filter(|value| is_safe_retry_after(value)) {
         message.push_str(&format!("; provider Retry-After: {retry_after}"));
     }
     if let Some(delay) = retry_delay {
@@ -62,6 +65,17 @@ fn rate_limit_notice_update(
     let mut meta = Map::new();
     let _ = meta.insert("lody".to_string(), Value::Object(lody));
     Some(acp::SessionUpdate::SessionInfoUpdate(acp::SessionInfoUpdate::new().meta(meta)))
+}
+
+/// Maximum provider-supplied `Retry-After` hint length, in bytes.
+///
+/// The hint is echoed into a client-visible notice, so it is bounded and must
+/// not carry control characters that could forge or break the message.
+const RETRY_AFTER_MAX_BYTES: usize = 64;
+
+/// Report whether a provider `Retry-After` hint is safe to echo.
+fn is_safe_retry_after(value: &str) -> bool {
+    value.len() <= RETRY_AFTER_MAX_BYTES && !value.chars().any(char::is_control)
 }
 
 /// Classify `error` as a rate limit.
@@ -115,6 +129,36 @@ mod tests {
         assert!(message.contains("Retry-After: 17"));
         assert!(message.contains("retry in 20.0s"));
         assert!(value["_meta"]["lody"].get("rateLimits").is_none());
+    }
+
+    /// Assert an unsafe provider `Retry-After` hint is omitted from the notice.
+    #[test]
+    fn unsafe_retry_after_hint_is_omitted() {
+        let cases = [
+            ("x".repeat(RETRY_AFTER_MAX_BYTES + 1), "over-long hint"),
+            ("17\r\nforged: yes".to_string(), "control characters"),
+        ];
+
+        for (hint, label) in cases {
+            let error = LLMError::RateLimit {
+                metadata: Some(LLMErrorMetadata::new(
+                    "baseten",
+                    Some(429),
+                    Some("rate_limit_error".to_string()),
+                    None,
+                    None,
+                    Some(hint.clone()),
+                    None,
+                )),
+            };
+            let update = rate_limit_notice_update("baseten", &error, None).expect("rate-limit notice");
+            let value = serde_json::to_value(update).expect("notice JSON");
+            let message = value["_meta"]["lody"]["notice"]["message"].as_str().expect("notice message");
+
+            assert!(!message.contains("Retry-After"), "{label} must be omitted: {message}");
+            assert!(!message.contains(&hint), "{label} must not be echoed: {message}");
+            assert!(message.contains("no further automatic retry is scheduled"));
+        }
     }
 
     /// Assert a rate limit without metadata still publishes a notice.

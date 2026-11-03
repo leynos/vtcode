@@ -6,7 +6,7 @@
 use super::super::types::SessionHandle;
 use super::{ZedAgent, warn_hook_message};
 use crate::zed::agent::session_state::checkpoint_failure_label;
-use super::redaction::{log_compaction_update_failure, session_correlation};
+use super::redaction::{bounded_label, log_compaction_update_failure, session_correlation};
 use crate::metrics::{CompactionOutcome, record_compaction_finished, record_compaction_started};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
@@ -24,7 +24,7 @@ mod failure;
 
 
 mod plan;
-use failure::{CompactionFailure, classify};
+use failure::{CompactionFailure, CompactionFailureKind, classify};
 pub(super) use plan::{
     CompactionAttempt, CompactionCommit, CompactionDecision, CompactionRun, CompactionSessionSnapshot,
     estimated_prompt_tokens,
@@ -40,6 +40,72 @@ pub(super) struct CompactionRequest<'a> {
     pub(super) runtime: &'a ProviderRequestRuntime,
     pub(super) model: &'a str,
     pub(super) tools: Option<&'a Arc<Vec<ToolDefinition>>>,
+}
+
+/// What one automatic compaction attempt achieved.
+struct CompactionAttemptResult {
+    /// Whether the history was replaced.
+    compacted: bool,
+    /// Prompt tokens estimated from the adopted history, when it was replaced.
+    used_tokens_after: Option<usize>,
+    /// The failure that ended the attempt, if any.
+    failure: Option<anyhow::Error>,
+}
+
+impl CompactionAttemptResult {
+    /// Report an attempt that produced no compaction outcome.
+    const fn no_change() -> Self {
+        Self {
+            compacted: false,
+            used_tokens_after: None,
+            failure: None,
+        }
+    }
+
+    /// Report an attempt that replaced the history and fits the budget.
+    const fn compacted(used_tokens_after: usize) -> Self {
+        Self {
+            compacted: true,
+            used_tokens_after: Some(used_tokens_after),
+            failure: None,
+        }
+    }
+
+    /// Report an attempt that replaced the history but still exceeds the
+    /// provider admission budget.
+    fn compacted_over_budget(used_tokens_after: usize, error: anyhow::Error) -> Self {
+        Self {
+            compacted: true,
+            used_tokens_after: Some(used_tokens_after),
+            failure: Some(error),
+        }
+    }
+
+    /// Report an attempt that ended in `error` without replacing the history.
+    fn failed(error: anyhow::Error) -> Self {
+        Self {
+            compacted: false,
+            used_tokens_after: None,
+            failure: Some(error),
+        }
+    }
+}
+
+/// A compacted history that the session has already adopted.
+struct AdoptedCompaction {
+    /// Prompt tokens estimated from the adopted history.
+    prompt_tokens: usize,
+    /// Whether the adopted history still exceeds the admission budget.
+    over_budget: bool,
+}
+
+/// The values the terminal compaction bookkeeping reports on.
+struct CompactionReport<'a> {
+    provider: &'a str,
+    model: &'a str,
+    prompt_tokens: usize,
+    session_key: &'a str,
+    elapsed_ms: u64,
 }
 
 impl ZedAgent {
@@ -73,29 +139,28 @@ impl ZedAgent {
             uuid::Uuid::new_v4(),
             std::time::Instant::now(),
         );
-        match activity.started_update() {
-            Ok(update) => {
-                if let Err(error) = self.send_update(&acp_session_id, update).await {
-                    log_compaction_update_failure(&error, &session_key, "publish_started");
-                }
-            }
-            Err(error) => log_compaction_update_failure(&error, &session_key, "serialize_started"),
-        }
+        self.publish_compaction_update(
+            &acp_session_id,
+            activity.started_update(),
+            &session_key,
+            "publish_started",
+            "serialize_started",
+        )
+        .await;
         let span = tracing::info_span!(
             "acp_lody_compaction",
             operation = "context_compaction",
             session_correlation = %session_key,
-            provider = provider.name(),
-            model,
+            provider = %bounded_label(provider.name()),
+            model = %bounded_label(model),
             prompt_tokens,
             outcome = tracing::field::Empty,
             error_category = tracing::field::Empty,
             elapsed_ms = tracing::field::Empty,
         );
-        let compaction_result: Result<bool> = async {
-            let original_len = snapshot.history.len();
-            let attempt = self
-                .run_compaction(CompactionRun {
+        let attempt = self
+            .run_compaction_attempt(
+                CompactionRun {
                     session,
                     provider,
                     runtime,
@@ -103,91 +168,167 @@ impl ZedAgent {
                     vt_config,
                     decision,
                     snapshot,
-                })
-                .await?;
-            let Some(outcome) = verify_compaction_result(attempt.outcome, decision)? else {
-                return Ok(false);
-            };
-
-            let compacted_prompt_tokens = self
-                .commit_compacted_history(CompactionCommit {
-                    session,
-                    thread: attempt.thread,
-                    history: attempt.history,
-                    tools,
-                    decision,
-                })
-                .await?;
-            info!(
-                provider = provider.name(),
-                model,
-                prompt_tokens = decision.prompt_tokens,
-                compacted_prompt_tokens,
-                original_len,
-                compacted_len = outcome.compacted_len,
-                compaction_mode = outcome.mode.as_str(),
-                configured_threshold = ?decision.configured_threshold,
-                admission_budget = ?decision.admission_budget,
-                "Applied automatic ACP conversation compaction"
-            );
-            Ok(true)
-        }
-        .instrument(span.clone())
-        .await;
-        // `Ok(false)` means the attempt produced no compaction outcome while
-        // staying inside the admission budget, so report a completed but
-        // non-compacting activity instead of a misleading token reduction.
-        let compacted = matches!(compaction_result, Ok(true));
-        let used_tokens_after = if compacted {
-            self.resolved_messages(session)
-                .ok()
-                .map(|messages| estimated_prompt_tokens(&messages, tools))
-        } else {
-            None
-        };
-        // Clients only ever see this closed-set category; the originating
-        // error is detailed through the redacted debug helper below.
-        let failure_category = compaction_result.as_ref().err().map(|error| classify(error).category());
-        let outcome = CompactionOutcome::for_result(failure_category.is_some(), compacted);
+                },
+                tools,
+            )
+            .instrument(span.clone())
+            .await;
         let finished_at = std::time::Instant::now();
-        let elapsed_ms = activity.elapsed_millis(finished_at);
-        record_compaction_finished(outcome, failure_category == Some("cancelled"), elapsed_ms);
+        let failure_category = self.record_compaction_outcome(
+            &span,
+            &attempt,
+            CompactionReport {
+                provider: provider.name(),
+                model,
+                prompt_tokens,
+                session_key: &session_key,
+                elapsed_ms: activity.elapsed_millis(finished_at),
+            },
+        );
+        self.publish_compaction_update(
+            &acp_session_id,
+            activity.finished_update(finished_at, attempt.compacted, attempt.used_tokens_after, failure_category),
+            &session_key,
+            "publish_finished",
+            "serialize_finished",
+        )
+        .await;
+        match attempt.failure {
+            Some(error) => Err(error),
+            None => Ok(attempt.compacted),
+        }
+    }
+
+    /// Run one compaction attempt and report what it achieved.
+    ///
+    /// A failure is carried in the result rather than returned because
+    /// [`Self::commit_compacted_history`] adopts the compacted history before
+    /// it can tell whether that history fits the admission budget. A caller
+    /// that only saw an error would report a committed history as uncompacted.
+    async fn run_compaction_attempt(
+        &self,
+        run: CompactionRun<'_>,
+        tools: Option<&Arc<Vec<ToolDefinition>>>,
+    ) -> CompactionAttemptResult {
+        // Bind the copyable inputs before `run` is consumed by the attempt.
+        let session = run.session;
+        let provider = run.provider;
+        let model = run.model;
+        let decision = run.decision;
+        let original_len = run.snapshot.history.len();
+        let attempt = match self.run_compaction(run).await {
+            Ok(attempt) => attempt,
+            Err(error) => return CompactionAttemptResult::failed(error),
+        };
+        let outcome = match verify_compaction_result(attempt.outcome, decision) {
+            Ok(Some(outcome)) => outcome,
+            Ok(None) => return CompactionAttemptResult::no_change(),
+            Err(error) => return CompactionAttemptResult::failed(error),
+        };
+        let adopted = match self
+            .commit_compacted_history(CompactionCommit {
+                session,
+                thread: attempt.thread,
+                history: attempt.history,
+                tools,
+                decision,
+            })
+            .await
+        {
+            Ok(adopted) => adopted,
+            Err(error) => return CompactionAttemptResult::failed(error),
+        };
+        info!(
+            provider = %bounded_label(provider.name()),
+            model = %bounded_label(model),
+            prompt_tokens = decision.prompt_tokens,
+            compacted_prompt_tokens = adopted.prompt_tokens,
+            original_len,
+            compacted_len = outcome.compacted_len,
+            compaction_mode = outcome.mode.as_str(),
+            configured_threshold = ?decision.configured_threshold,
+            admission_budget = ?decision.admission_budget,
+            "Applied automatic ACP conversation compaction"
+        );
+        if adopted.over_budget {
+            return CompactionAttemptResult::compacted_over_budget(
+                adopted.prompt_tokens,
+                CompactionFailure::admission_budget(format!(
+                    "ACP compaction reduced the prompt from an estimated {} to {} tokens, which still exceeds its safe provider admission budget",
+                    decision.prompt_tokens, adopted.prompt_tokens
+                ))
+                .into_error(),
+            );
+        }
+        CompactionAttemptResult::compacted(adopted.prompt_tokens)
+    }
+
+    /// Record the terminal outcome of an attempt and return its category.
+    ///
+    /// Owns the outcome counters, the span fields and the closing log so the
+    /// attempt pipeline stays a linear sequence of explicit steps.
+    fn record_compaction_outcome(
+        &self,
+        span: &tracing::Span,
+        attempt: &CompactionAttemptResult,
+        report: CompactionReport<'_>,
+    ) -> Option<&'static str> {
+        // Clients only ever see this closed-set category; the originating
+        // error is detailed through the redacted debug helper.
+        let failure_kind = attempt.failure.as_ref().map(classify);
+        let failure_category = failure_kind.map(CompactionFailureKind::category);
+        let outcome = CompactionOutcome::for_result(failure_kind.is_some(), attempt.compacted);
+        record_compaction_finished(outcome, failure_kind == Some(CompactionFailureKind::Cancelled), report.elapsed_ms);
         let _ = span.record("outcome", outcome.as_str());
-        let _ = span.record("elapsed_ms", elapsed_ms);
-        if let (Some(error), Some(category)) = (compaction_result.as_ref().err(), failure_category) {
+        let _ = span.record("elapsed_ms", report.elapsed_ms);
+        if let (Some(error), Some(category)) = (attempt.failure.as_ref(), failure_category) {
             let _ = span.record("error_category", category);
             log_suppressed_error(error, "context_compaction", category);
             warn!(
-                provider = provider.name(),
-                model,
-                prompt_tokens,
-                elapsed_ms,
-                session_correlation = %session_key,
+                provider = %bounded_label(report.provider),
+                model = %bounded_label(report.model),
+                prompt_tokens = report.prompt_tokens,
+                elapsed_ms = report.elapsed_ms,
+                session_correlation = %report.session_key,
                 outcome = outcome.as_str(),
                 error_category = category,
                 "ACP automatic context compaction failed"
             );
         } else {
             info!(
-                provider = provider.name(),
-                model,
-                prompt_tokens,
-                compacted,
-                elapsed_ms,
-                session_correlation = %session_key,
+                provider = %bounded_label(report.provider),
+                model = %bounded_label(report.model),
+                prompt_tokens = report.prompt_tokens,
+                compacted = attempt.compacted,
+                elapsed_ms = report.elapsed_ms,
+                session_correlation = %report.session_key,
                 outcome = outcome.as_str(),
                 "ACP automatic context compaction finished"
             );
         }
-        match activity.finished_update(finished_at, compacted, used_tokens_after, failure_category) {
+        failure_category
+    }
+
+    /// Publish one compaction activity update, logging a redacted failure.
+    ///
+    /// A serialization failure and a transport failure keep distinct stage
+    /// labels so an operator can tell which half of the publish failed.
+    async fn publish_compaction_update(
+        &self,
+        session_id: &crate::acp::SessionId,
+        update: Result<crate::acp::SessionUpdate>,
+        session_key: &str,
+        publish_stage: &'static str,
+        serialize_stage: &'static str,
+    ) {
+        match update {
             Ok(update) => {
-                if let Err(error) = self.send_update(&acp_session_id, update).await {
-                    log_compaction_update_failure(&error, &session_key, "publish_finished");
+                if let Err(error) = self.send_update(session_id, update).await {
+                    log_compaction_update_failure(&error, session_key, publish_stage);
                 }
             }
-            Err(error) => log_compaction_update_failure(&error, &session_key, "serialize_finished"),
+            Err(error) => log_compaction_update_failure(&error, session_key, serialize_stage),
         }
-        compaction_result
     }
 
     /// Run one compaction attempt under the provider admission permit.
@@ -270,10 +411,11 @@ impl ZedAgent {
 
     /// Adopt the compacted history and report its remaining prompt size.
     ///
-    /// Fails with an admission-budget category when the summary still exceeds
-    /// the safe prompt budget, because retrying would duplicate the work and
-    /// sending it would be rejected by the provider.
-    async fn commit_compacted_history(&self, commit: CompactionCommit<'_>) -> Result<usize> {
+    /// The history is replaced before the estimate is taken, so the caller
+    /// must treat the returned [`AdoptedCompaction`] as committed even when
+    /// `over_budget` is set: retrying would duplicate the work and sending the
+    /// history would be rejected by the provider.
+    async fn commit_compacted_history(&self, commit: CompactionCommit<'_>) -> Result<AdoptedCompaction> {
         let CompactionCommit { session, thread, history, tools, decision } = commit;
         thread.replace_messages(history);
         if let Err(error) = self.checkpoint_session(session).await {
@@ -286,15 +428,11 @@ impl ZedAgent {
                 "Failed to persist compacted ACP session checkpoint"
             );
         }
-        let compacted_prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session)?, tools);
-        if decision.is_over_admission_budget(compacted_prompt_tokens) {
-            return Err(CompactionFailure::admission_budget(format!(
-                "ACP compaction reduced the prompt from an estimated {} to {compacted_prompt_tokens} tokens, which still exceeds its safe provider admission budget",
-                decision.prompt_tokens
-            ))
-            .into_error());
-        }
-        Ok(compacted_prompt_tokens)
+        let prompt_tokens = estimated_prompt_tokens(&self.resolved_messages(session)?, tools);
+        Ok(AdoptedCompaction {
+            prompt_tokens,
+            over_budget: decision.is_over_admission_budget(prompt_tokens),
+        })
     }
 }
 
