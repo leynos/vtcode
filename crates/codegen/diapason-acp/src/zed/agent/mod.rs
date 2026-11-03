@@ -111,6 +111,7 @@ fn report_session_runtime_failure(error: &anyhow::Error) -> String {
 mod compaction;
 pub(crate) mod handlers;
 mod prompt;
+mod read_certification;
 mod session_state;
 mod task_lifecycle;
 mod task_progress;

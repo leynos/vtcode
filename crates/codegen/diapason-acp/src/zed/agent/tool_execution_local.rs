@@ -3,6 +3,7 @@ mod list_files;
 
 use super::super::types::SessionHandle;
 use super::ZedAgent;
+use super::read_certification::{ReadCertification, capture_read_version, certification_metrics, expected_read_hash};
 use super::tool_execution::cancelable_session_request;
 use crate::acp;
 use crate::reports::{
@@ -11,10 +12,9 @@ use crate::reports::{
 };
 use crate::tooling::{TOOL_READ_FILE_LIMIT_ARG, TOOL_READ_FILE_LINE_ARG};
 use crate::zed::connection::ConnectionHandle;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use diapason_core::config::constants::tools;
 use diapason_core::llm::provider::MessageRole;
-use diapason_core::metrics::PatchCertificationOutcome;
 use diapason_core::tools::registry::{ExecutionPolicySnapshot, ToolExecutionRequest};
 use diapason_core::utils::ansi_parser::strip_ansi;
 use serde_json::{Value, json};
@@ -250,101 +250,15 @@ impl ZedAgent {
 
         // A certified version asserts that the returned window came from the
         // current on-disk bytes; it does not assert that the model saw the whole
-        // file. The ACP client serves the editor buffer, which may be unsaved, so
-        // a windowed read is certified only when its text equals the same line
-        // window projected from the on-disk bytes (trailing `\n` ignored), and a
-        // whole-file read only when the returned text hashes to those bytes. Any
-        // mismatch, non-UTF-8 on-disk content, or failed read leaves the version
-        // absent rather than certifying bytes the model never saw; `apply_patch`
-        // treats an absent precondition as omitted.
-        // Certification outcomes go to the workspace registry's collector when
-        // this session has one, and to the agent's collector otherwise. That is
-        // the same fallback the lifecycle observer uses.
-        let certification_metrics = match request.session.workspace_runtime() {
-            Ok(Some(runtime)) => runtime.local_tool_registry.metrics_collector(),
-            _ => self.local_tool_registry.metrics_collector(),
-        };
-        let record_certification = |outcome: PatchCertificationOutcome| {
-            certification_metrics.record_patch_certification(outcome);
-        };
-
-        let expected_hash = if truncated {
-            None
-        } else if line.is_some() || limit.is_some() {
-            match Self::windowed_disk_hash(&path, line, limit, &truncated_content).await {
-                Ok(Some(content_hash)) => Some(content_hash),
-                Ok(None) => {
-                    record_certification(PatchCertificationOutcome::WindowProjectionMismatch);
-                    warn!(
-                        operation = "read_file",
-                        outcome = "window_projection_mismatch",
-                        "ACP read window does not match the on-disk file version"
-                    );
-                    None
-                }
-                Err(WindowVerificationError::Read(_error)) => {
-                    record_certification(PatchCertificationOutcome::WindowReadFailed);
-                    warn!(
-                        operation = "read_file",
-                        outcome = "window_read_failed",
-                        "Failed to read the on-disk file for ACP read version certification"
-                    );
-                    None
-                }
-                Err(WindowVerificationError::NotUtf8) => {
-                    record_certification(PatchCertificationOutcome::WindowNotUtf8);
-                    warn!(
-                        operation = "read_file",
-                        outcome = "window_not_utf8",
-                        "On-disk content is not valid UTF-8 for ACP read version certification"
-                    );
-                    None
-                }
-            }
-        } else {
-            Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(truncated_content.as_bytes())))
-        };
+        // file. See `read_certification` for the projection rule and the
+        // outcome categories withheld versions are counted under.
+        let certification = ReadCertification::new(certification_metrics(self, request.session));
+        let expected_hash = expected_read_hash(&path, line, limit, &truncated_content, truncated, &certification).await;
 
         let content_hash = match expected_hash {
             None => Value::Null,
             Some(expected_hash) => {
-                let record_result = match request.session.workspace_runtime() {
-                    Ok(Some(runtime)) => {
-                        runtime
-                            .local_tool_registry
-                            .file_ops_tool()
-                            .record_read_content_hash_if_matches(&path, &expected_hash)
-                            .await
-                    }
-                    Ok(None) => {
-                        self.local_tool_registry
-                            .file_ops_tool()
-                            .record_read_content_hash_if_matches(&path, &expected_hash)
-                            .await
-                    }
-                    Err(error) => Err(error),
-                };
-                match record_result {
-                    Ok(Some(content_hash)) => json!(content_hash),
-                    Ok(None) => {
-                        record_certification(PatchCertificationOutcome::ReadContentMismatch);
-                        warn!(
-                            operation = "read_file",
-                            outcome = "read_content_mismatch",
-                            "ACP read content does not match the on-disk file version"
-                        );
-                        Value::Null
-                    }
-                    Err(_error) => {
-                        record_certification(PatchCertificationOutcome::ReadVersionCaptureFailed);
-                        warn!(
-                            operation = "read_file",
-                            outcome = "read_version_capture_failed",
-                            "Failed to capture ACP read file version"
-                        );
-                        Value::Null
-                    }
-                }
+                capture_read_version(self, request.session, &path, &expected_hash, &certification).await
             }
         };
 
@@ -362,33 +276,6 @@ impl ZedAgent {
         Ok(ToolExecutionReport::success(vec![acp::ToolCallContent::from(tool_content)], locations, payload))
     }
 
-    /// Hash the whole on-disk file when a returned line window matches its projection.
-    ///
-    /// Returns `Ok(None)` when the returned text is not the same window as the
-    /// on-disk bytes. A read or UTF-8 error is propagated without including
-    /// file content, so the caller can withhold the version and log a bounded
-    /// warning.
-    async fn windowed_disk_hash(
-        path: &std::path::Path,
-        line: Option<u32>,
-        limit: Option<u32>,
-        returned: &str,
-    ) -> Result<Option<String>, WindowVerificationError> {
-        // Keep the error path-free: the caller logs a bounded outcome
-        // category, and this error is never shown to the model. Read and
-        // UTF-8 failures stay distinct so telemetry can tell them apart.
-        let disk_bytes = tokio::fs::read(path).await.map_err(WindowVerificationError::Read)?;
-        // The UTF-8 error is deliberately not carried: its `Display` renders the
-        // byte offset, and the outcome category alone is what telemetry and the
-        // log record. Bind it by name so the discard stays explicit.
-        let disk_text = std::str::from_utf8(&disk_bytes).map_err(|_utf8_error| WindowVerificationError::NotUtf8)?;
-        let projected = vtcode_core::line_window(disk_text, line, limit);
-        if !window_matches_projection(projected, returned) {
-            return Ok(None);
-        }
-        Ok(Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&disk_bytes))))
-    }
-
     pub(crate) async fn run_list_files(&self, args: &Value) -> Result<ToolExecutionReport, String> {
         self.run_list_files_inner(args).await
     }
@@ -401,135 +288,6 @@ impl ZedAgent {
         self.run_session_list_files_inner(session, args).await
     }
 }
-
-/// Why a windowed read could not be certified against the on-disk bytes.
-///
-/// The variants stay distinct so telemetry can count an unreadable file
-/// separately from a non-UTF-8 one, and neither variant carries the path or
-/// file bytes.
-#[derive(Debug)]
-enum WindowVerificationError {
-    /// The on-disk file could not be read back.
-    Read(std::io::Error),
-    /// The on-disk bytes were not valid UTF-8.
-    NotUtf8,
-}
-
-impl std::fmt::Display for WindowVerificationError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Read(_) => formatter.write_str("Failed to read back file for version certification"),
-            Self::NotUtf8 => formatter.write_str("File content is not valid UTF-8"),
-        }
-    }
-}
-
-impl std::error::Error for WindowVerificationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Read(error) => Some(error),
-            Self::NotUtf8 => None,
-        }
-    }
-}
-
-/// Decide whether a returned read window is the on-disk projection.
-///
-/// `line_window` keeps line terminators, so the projections it produces end
-/// with `\n` unless the file's last line is unterminated. The only tolerated
-/// transport difference is a client dropping the terminator of the final line,
-/// so `projected` may carry exactly one `\n` more than `returned` — and only
-/// when `returned` is itself unterminated. A response that ends with `\n` is a
-/// complete set of lines, so a shorter one has dropped a whole line; extra
-/// blank lines are retained as well, because a client returning more text than
-/// the window may be showing unsaved buffer content. Trimming every trailing
-/// newline would accept such a buffer and certify disk bytes the model never
-/// saw within its window, which is why the rule is deliberately asymmetric.
-fn window_matches_projection(projected: &str, returned: &str) -> bool {
-    if projected == returned {
-        return true;
-    }
-    !returned.ends_with('\n') && projected.strip_suffix('\n') == Some(returned)
-}
-
-#[cfg(test)]
-mod window_match_tests {
-    use super::{WindowVerificationError, ZedAgent, window_matches_projection};
-
-    /// A failed disk read must not carry the file path into its error chain.
-    ///
-    /// The caller logs a fixed outcome category, and the chain is never shown
-    /// to the model, so a path here would be unbounded log context.
-    #[tokio::test]
-    async fn windowed_disk_hash_error_omits_the_path() {
-        let workspace = assert_fs::TempDir::new().expect("temp dir");
-        let path = workspace.path().join("private-notes.txt");
-        let error = ZedAgent::windowed_disk_hash(&path, None, None, "")
-            .await
-            .expect_err("missing file must fail");
-        let rendered = format!("{error:#}");
-        assert!(!rendered.contains("private-notes.txt"), "error chain leaked the path: {rendered}");
-        assert!(
-            matches!(error, WindowVerificationError::Read(_)),
-            "a missing file must stay a read failure, not a UTF-8 failure: {error:?}"
-        );
-    }
-
-    /// Non-UTF-8 on-disk bytes get their own outcome so telemetry can tell a
-    /// binary file apart from an unreadable one.
-    #[tokio::test]
-    async fn windowed_disk_hash_reports_non_utf8_separately() {
-        let workspace = assert_fs::TempDir::new().expect("temp dir");
-        let path = workspace.path().join("binary.bin");
-        std::fs::write(&path, [0xff, 0xfe, 0x00]).expect("write non-UTF-8 fixture");
-        let error = ZedAgent::windowed_disk_hash(&path, None, None, "")
-            .await
-            .expect_err("non-UTF-8 content must not be certified");
-        assert!(
-            matches!(error, WindowVerificationError::NotUtf8),
-            "non-UTF-8 content must not be reported as a read failure: {error:?}"
-        );
-        assert_eq!(error.to_string(), "File content is not valid UTF-8");
-        assert!(std::error::Error::source(&error).is_none(), "a UTF-8 failure has no underlying I/O error");
-    }
-
-    /// An identical window always matches.
-    #[test]
-    fn identical_windows_match() {
-        assert!(window_matches_projection("alpha\n", "alpha\n"));
-        assert!(window_matches_projection("", ""));
-    }
-
-    /// The client may omit the projection's single trailing terminator, but it
-    /// may not add one: `returned` must never carry more than `projected`.
-    #[test]
-    fn one_trailing_newline_may_differ() {
-        assert!(window_matches_projection("alpha\n", "alpha"));
-        assert!(!window_matches_projection("alpha", "alpha\n"));
-    }
-
-    /// A response that is itself newline-terminated is a complete set of
-    /// lines, so a shorter one has dropped a line rather than a terminator.
-    #[test]
-    fn a_shorter_complete_line_set_does_not_match() {
-        assert!(!window_matches_projection("alpha\n\n", "alpha\n"));
-        assert!(!window_matches_projection("alpha\nbeta\n", "alpha\n"));
-    }
-
-    /// Extra blank lines stay significant, because they can be unsaved edits.
-    #[test]
-    fn extra_blank_lines_do_not_match() {
-        assert!(!window_matches_projection("alpha\n", "alpha\n\n"));
-        assert!(!window_matches_projection("alpha\n\n", "alpha\n\n\n"));
-        assert!(!window_matches_projection("alpha\n", "alpha\nbeta\n"));
-    }
-
-    /// A response that ignores the window and returns another line differs.
-    #[test]
-    fn a_wider_response_does_not_match() {
-        assert!(!window_matches_projection("beta\n", "alpha\nbeta\n"));
-        assert!(!window_matches_projection("beta\n", "beta\ngamma\n"));
-    }
-}
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/tool_execution_local.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/tool_execution_local.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/tool_execution_local.rs' for per-hunk detail, 'weave check' to verify your resolution
