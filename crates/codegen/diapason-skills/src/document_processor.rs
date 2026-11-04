@@ -19,12 +19,10 @@
 //!
 //! Inspired by OpenAI's implementation in ChatGPT's Code Interpreter.
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
-
-use diapason_commons::fs::ensure_dir_exists_sync;
 
 /// Document processing configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,16 +160,18 @@ pub struct DocumentMetadata {
 /// Main document processor
 pub struct DocumentProcessor {
     config: DocumentProcessorConfig,
-    temp_dir: PathBuf,
+    _temp_dir: tempfile::TempDir,
 }
 
 impl DocumentProcessor {
     /// Create new document processor
     fn new(config: DocumentProcessorConfig) -> Result<Self> {
-        let temp_dir = std::env::temp_dir().join("diapason-document-processor");
-        ensure_dir_exists_sync(&temp_dir)?;
+        let temp_dir = tempfile::Builder::new()
+            .prefix("diapason-document-processor-")
+            .tempdir()
+            .with_context(|| "Failed to create temporary directory for document processor")?;
 
-        Ok(Self { config, temp_dir })
+        Ok(Self { config, _temp_dir: temp_dir })
     }
 
     /// Process a document for vision model analysis
@@ -311,22 +311,6 @@ impl DocumentProcessor {
 
         Ok(prompt)
     }
-
-    /// Clean up temporary files
-    fn cleanup(&self) -> Result<()> {
-        if self.temp_dir.exists() {
-            std::fs::remove_dir_all(&self.temp_dir)?;
-            debug!("Cleaned up temporary directory: {}", self.temp_dir.display());
-        }
-        Ok(())
-    }
-}
-
-impl Drop for DocumentProcessor {
-    fn drop(&mut self) {
-        // Attempt to clean up on drop
-        let _ = self.cleanup();
-    }
 }
 
 #[cfg(test)]
@@ -346,7 +330,20 @@ mod tests {
     fn test_document_processor_creation() {
         let config = DocumentProcessorConfig::default();
         let processor = DocumentProcessor::new(config).unwrap();
-        assert!(processor.temp_dir.exists());
+        assert!(processor._temp_dir.path().exists());
+    }
+
+    #[test]
+    fn test_document_processors_have_isolated_temp_directories() {
+        let first = DocumentProcessor::new(DocumentProcessorConfig::default()).unwrap();
+        let first_dir = first._temp_dir.path().to_path_buf();
+        let second = DocumentProcessor::new(DocumentProcessorConfig::default()).unwrap();
+        let second_dir = second._temp_dir.path().to_path_buf();
+
+        assert_ne!(first_dir, second_dir);
+        drop(second);
+        assert!(first_dir.exists());
+        assert!(!second_dir.exists());
     }
 
     #[tokio::test]

@@ -705,16 +705,21 @@ mod tests {
 
     #[test]
     fn test_cache_expiration() {
-        let cache = UnifiedCache::new(10, Duration::from_millis(100), EvictionPolicy::Lru);
+        let ttl = Duration::from_secs(60);
+        let mut cache = UnifiedCache::new(10, ttl, EvictionPolicy::Lru);
         let key = TestKey("test".into());
         let value: String = "test_value".into();
 
         cache.insert(key.clone(), value, 100);
         assert!(cache.get(&key).is_some());
 
-        // Wait for expiration
-        std::thread::sleep(Duration::from_millis(150));
+        // Expire the entry directly so parallel test load cannot consume the TTL.
+        let inner = cache.inner.get_mut().expect("cache lock should not be poisoned");
+        let entry = inner.entries.get_mut(&key).expect("inserted entry should exist");
+        entry.created_at = SystemTime::UNIX_EPOCH;
+
         assert!(cache.get(&key).is_none());
+        assert_eq!(cache.len(), 0);
     }
 
     #[test]
