@@ -1,45 +1,20 @@
-//! Redacted and bounded rendering of ACP failure detail for operator logs.
+//! Fixed-field, bounded rendering of ACP failure diagnostics for operator logs.
 //!
 //! ACP clients receive closed-set categories. The originating error may still
-//! carry a workspace path, archive name, transport URL, or provider payload, so
-//! the operator-facing rendering collapses path-like tokens, masks known secret
-//! shapes, and truncates the result to a fixed budget. A bare file name with no
-//! path separator cannot be told apart from ordinary prose, so it is left to
-//! the secret-shape masking rather than collapsed as a path.
+//! carry a workspace path, archive name, transport URL, provider payload, hook
+//! text, secret, or personal data, so none of its rendering is written to a log
+//! at any level. Operators instead get fixed fields - operation, stage,
+//! category, elapsed time, and byte counts - plus bounded, non-reversible
+//! correlation keys that let repeated identical failures be grouped without
+//! retaining the text that produced them. Configured identities - provider
+//! names and model identifiers - are treated the same way: their domain and
+//! content are not ours to trust, so they are logged as bounded digests with
+//! their byte length rather than verbatim.
 
-use diapason_commons::sanitizer::redact_secrets;
 
-/// Maximum rendered detail size in bytes.
-const DETAIL_MAX_BYTES: usize = 512;
 
-/// Maximum rendered size of a free-form log label, in bytes.
-const LABEL_MAX_BYTES: usize = 96;
-
-const TRUNCATION_MARKER: &str = "… [detail truncated]";
-
-/// Render untrusted failure detail for an operator log.
-///
-/// Path-like and URL-like tokens become `<path>`, secret shapes recognized by
-/// [`redact_secrets`] become `[REDACTED_SECRET]`, and the result is bounded to
-/// [`DETAIL_MAX_BYTES`] on a UTF-8 boundary.
-pub(super) fn redact_detail(detail: &str) -> String {
-    let redacted = redact_secrets(redact_path_like_tokens(detail));
-    truncate(redacted)
-}
-
-/// Render a configured identifier as a bounded, control-free log label.
-///
-/// Provider names and model identifiers are operator-facing context rather
-/// than secrets, so they stay readable, but they come from configuration and
-/// may be arbitrarily long or carry control characters. Bounding them keeps a
-/// single field from flooding or forging a log line.
-pub(super) fn bounded_label(label: &str) -> String {
-    let cleaned: String = label.chars().filter(|character| !character.is_control()).collect();
-    truncate_to(cleaned, LABEL_MAX_BYTES)
-}
-
-/// Width of a rendered session correlation key, in hexadecimal characters.
-pub(super) const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
+/// Width of a rendered correlation key, in hexadecimal characters.
+pub(super) const CORRELATION_HEX_LENGTH: usize = 12;
 
 /// Return a deterministic, bounded correlation key for a session id.
 ///
@@ -48,28 +23,56 @@ pub(super) const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
 /// randomly keyed hasher would not be; it is an identifier, not a secrecy
 /// boundary.
 pub(super) fn session_correlation(session_id: &str) -> String {
-    diapason_commons::utils::calculate_sha256(session_id.as_bytes())
+    bounded_digest(session_id)
+}
+
+/// Return a deterministic, bounded correlation key for untrusted detail.
+///
+/// Repeated identical failures can be grouped across sessions and restarts
+/// without retaining the provider payload, hook output, path, URL, or personal
+/// data that produced the text. Like [`session_correlation`], the digest is
+/// stable and bounded, and it is not a secrecy boundary.
+pub(super) fn detail_correlation(detail: &str) -> String {
+    bounded_digest(detail)
+}
+
+/// Return a deterministic, bounded correlation key for a configured identity.
+///
+/// Provider names arrive through the provider trait, and model identifiers come
+/// from configuration or a provider response, so neither is a value this module
+/// controls. A digest keeps distinct providers and models distinguishable and
+/// stable across records without retaining the identifier itself, and it cannot
+/// carry control characters or unbounded text into the log.
+pub(super) fn identifier_correlation(identifier: &str) -> String {
+    bounded_digest(identifier)
+}
+
+fn bounded_digest(value: &str) -> String {
+    diapason_commons::utils::calculate_sha256(value.as_bytes())
         .chars()
-        .take(SESSION_CORRELATION_HEX_LENGTH)
+        .take(CORRELATION_HEX_LENGTH)
         .collect()
 }
 
 /// Report a compaction activity update that could not be serialized or sent.
 ///
-/// A failed update never fails the compaction itself, but the raw transport or
-/// serialization error may embed workspace or archive detail, so the warning
-/// carries the fixed category and a redacted, bounded rendering.
+/// A failed update never fails the compaction itself, but the transport or
+/// serialization error may embed workspace, archive, or provider detail, so the
+/// warning carries fixed fields and a bounded digest instead of any part of the
+/// error's rendering.
 pub(super) fn log_compaction_update_failure(
     error: &impl std::fmt::Display,
     session_correlation: &str,
     stage: &'static str,
 ) {
+    let detail = error.to_string();
     tracing::warn!(
         session_correlation = %session_correlation,
         stage,
         operation = "context_compaction_update",
         error_category = "compaction_update_failed",
-        detail = %redact_detail(&error.to_string()),
+        error_bytes = detail.len(),
+        detail_correlation = %detail_correlation(&detail),
         "Failed to publish an ACP compaction activity update"
     );
 }
@@ -77,69 +80,19 @@ pub(super) fn log_compaction_update_failure(
 /// Report a provider rate-limit notice that could not be delivered.
 ///
 /// The transport error may embed provider payload or session detail, so the
-/// warning carries fixed fields and a redacted, bounded rendering instead of
-/// the raw error or the raw session identifier.
+/// warning carries fixed fields and a bounded digest instead of the raw error
+/// or the raw session identifier.
 pub(super) fn log_notice_publish_failure(error: &impl std::fmt::Display, session_correlation: &str) {
+    let detail = error.to_string();
     tracing::warn!(
         session_correlation = %session_correlation,
         stage = "publish_rate_limit_notice",
         operation = "provider_rate_limit_notice",
         error_category = "rate_limit_notice_publish_failed",
-        detail = %redact_detail(&error.to_string()),
+        error_bytes = detail.len(),
+        detail_correlation = %detail_correlation(&detail),
         "Failed to publish an ACP provider rate-limit notice"
     );
-}
-
-fn redact_path_like_tokens(detail: &str) -> String {
-    let mut redacted = String::with_capacity(detail.len());
-    let mut token = String::new();
-    for character in detail.chars() {
-        if character.is_whitespace() {
-            flush_token(&mut redacted, &mut token);
-            redacted.push(character);
-        } else {
-            token.push(character);
-        }
-    }
-    flush_token(&mut redacted, &mut token);
-    redacted
-}
-
-fn flush_token(redacted: &mut String, token: &mut String) {
-    if token.is_empty() {
-        return;
-    }
-    if is_path_like(token) {
-        redacted.push_str("<path>");
-    } else {
-        redacted.push_str(token);
-    }
-    token.clear();
-}
-
-/// Report whether `token` carries a path separator.
-///
-/// Both separators count on their own: a relative Windows path such as
-/// `..\secrets\archive.json` has no drive prefix but is still path-like. A
-/// bare file name with no separator cannot be distinguished from ordinary
-/// prose, so it is left for [`redact_secrets`] to mask if it looks secret.
-fn is_path_like(token: &str) -> bool {
-    token.contains('/') || token.contains('\\')
-}
-
-fn truncate(detail: String) -> String {
-    truncate_to(detail, DETAIL_MAX_BYTES)
-}
-
-fn truncate_to(mut detail: String, max_bytes: usize) -> String {
-    if detail.len() <= max_bytes {
-        return detail;
-    }
-    let content_limit = max_bytes.saturating_sub(TRUNCATION_MARKER.len());
-    let end = detail.floor_char_boundary(content_limit);
-    detail.truncate(end);
-    detail.push_str(TRUNCATION_MARKER);
-    detail
 }
 
 #[cfg(test)]
@@ -189,113 +142,93 @@ mod tests {
         String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8")
     }
 
+    /// Adversarial failure text that must never be log-visible.
+    const ADVERSARIAL_DETAIL: &str = concat!(
+        "provider payload POST https://api.example.invalid/v1/chat?token=SUPERSECRETTOKEN ",
+        "hook /home/private/hooks/pre.sh output alice@example.com ",
+        "sk-abcdefghijklmnopqrstuvwxyz archive /secret/workspace/archive.json ",
+        "raw-session-identifier"
+    );
+
+    /// Assert no part of [`ADVERSARIAL_DETAIL`] survives in `output`.
+    fn assert_detail_is_absent(output: &str) {
+        for leaked in [
+            "provider payload",
+            "api.example.invalid",
+            "SUPERSECRETTOKEN",
+            "/home/private",
+            "pre.sh",
+            "alice@example.com",
+            "sk-abcdefghijklmnopqrstuvwxyz",
+            "/secret/workspace",
+            "raw-session-identifier",
+        ] {
+            assert!(!output.contains(leaked), "{leaked} must not reach the log: {output}");
+        }
+    }
+
     /// Assert the compaction update warning carries fixed fields only.
     #[test]
-    fn compaction_update_failure_logs_fixed_fields_and_redacted_detail() {
+    fn compaction_update_failure_logs_fixed_fields_only() {
         let correlation = session_correlation("session-alpha");
         let output = capture(|| {
-            log_compaction_update_failure(
-                &std::io::Error::other("cannot open /secret/workspace/archive.json"),
-                &correlation,
-                "publish_started",
-            );
+            log_compaction_update_failure(&std::io::Error::other(ADVERSARIAL_DETAIL), &correlation, "publish_started");
         });
 
         assert!(output.contains("operation=\"context_compaction_update\""), "{output}");
         assert!(output.contains("error_category=\"compaction_update_failed\""), "{output}");
         assert!(output.contains("stage=\"publish_started\""), "{output}");
         assert!(output.contains(&format!("session_correlation={correlation}")), "{output}");
-        assert!(output.contains("<path>"), "the path must be collapsed: {output}");
-        assert!(!output.contains("/secret/workspace"), "the workspace path must not survive: {output}");
+        assert!(output.contains(&format!("error_bytes={}", ADVERSARIAL_DETAIL.len())), "{output}");
+        assert!(output.contains("detail_correlation="), "the bounded digest must remain: {output}");
+        assert!(!output.contains("session-alpha"), "the raw session id must not reach the log: {output}");
+        assert_detail_is_absent(&output);
     }
 
-    /// Assert the rate-limit warning omits the raw error and session id.
+    /// Assert the rate-limit warning carries fixed fields only.
     #[test]
-    fn notice_publish_failure_logs_fixed_fields_and_redacted_detail() {
+    fn notice_publish_failure_logs_fixed_fields_only() {
         let correlation = session_correlation("raw-session-identifier");
         let output = capture(|| {
-            log_notice_publish_failure(
-                &std::io::Error::other("transport closed for /home/private/workspace"),
-                &correlation,
-            );
+            log_notice_publish_failure(&std::io::Error::other(ADVERSARIAL_DETAIL), &correlation);
         });
 
         assert!(output.contains("operation=\"provider_rate_limit_notice\""), "{output}");
         assert!(output.contains("error_category=\"rate_limit_notice_publish_failed\""), "{output}");
         assert!(output.contains("stage=\"publish_rate_limit_notice\""), "{output}");
         assert!(output.contains(&format!("session_correlation={correlation}")), "{output}");
-        assert!(!output.contains("raw-session-identifier"), "the raw session id must not survive: {output}");
-        assert!(!output.contains("/home/private/workspace"), "the workspace path must not survive: {output}");
+        assert!(output.contains(&format!("error_bytes={}", ADVERSARIAL_DETAIL.len())), "{output}");
+        assert!(output.contains("detail_correlation="), "the bounded digest must remain: {output}");
+        assert_detail_is_absent(&output);
     }
 
-    /// Assert configured labels are bounded and free of control characters.
+    /// Assert configured identities are logged as digests, never verbatim.
     #[test]
-    fn bounded_labels_drop_control_characters_and_bound_length() {
-        assert_eq!(bounded_label("openai/gpt-5"), "openai/gpt-5");
-        assert_eq!(bounded_label("model\nwith\rcontrols"), "modelwithcontrols");
+    fn identifier_correlations_hide_the_identifier_and_stay_bounded() {
+        let model = "vendor/model-with-a-very-long-and-unbounded-name\nwith-controls";
+        let correlation = identifier_correlation(model);
 
-        let bounded = bounded_label(&"m".repeat(LABEL_MAX_BYTES * 2));
-        assert!(bounded.len() <= LABEL_MAX_BYTES, "label must stay bounded: {}", bounded.len());
-        assert!(bounded.ends_with(TRUNCATION_MARKER), "truncation is marked: {bounded}");
+        assert_eq!(correlation, identifier_correlation(model), "identical identities must correlate");
+        assert_ne!(correlation, identifier_correlation("vendor/other-model"), "distinct identities must differ");
+        assert_eq!(correlation.len(), CORRELATION_HEX_LENGTH, "the key has a fixed width");
+        assert!(correlation.chars().all(|character| character.is_ascii_hexdigit()), "{correlation}");
+        assert!(!correlation.contains("vendor"), "the identifier must not survive: {correlation}");
+        assert!(!correlation.chars().any(char::is_control), "no control characters: {correlation}");
     }
 
-    /// Assert unix and windows paths never reach the log.
+    /// Assert correlation keys are stable, distinct, bounded and non-reversible.
     #[test]
-    fn redacts_path_like_tokens() {
-        let detail = redact_detail("failed to read /secret/workspace/archive.json and C:\\Users\\me\\secret.txt");
+    fn correlation_keys_are_stable_bounded_and_non_reversible() {
+        let detail = "provider payload for alice@example.com";
+        let first = detail_correlation(detail);
+        let again = detail_correlation(detail);
+        let other = detail_correlation("a different failure");
 
-        assert!(!detail.contains("/secret"), "unix path must be collapsed: {detail}");
-        assert!(!detail.contains("secret.txt"), "windows path must be collapsed: {detail}");
-        assert!(detail.contains("<path>"), "paths are replaced with a marker: {detail}");
-        assert!(detail.contains("failed to read"), "surrounding prose is preserved: {detail}");
-    }
-
-    /// Assert a relative Windows path is collapsed without a drive prefix.
-    #[test]
-    fn redacts_relative_windows_paths() {
-        let detail = redact_detail("failed to read ..\\secrets\\archive.json and sessions\\a1.json");
-
-        assert!(!detail.contains("secrets"), "relative windows path must be collapsed: {detail}");
-        assert!(!detail.contains("a1.json"), "relative windows path must be collapsed: {detail}");
-        assert_eq!(detail.matches("<path>").count(), 2, "both tokens are paths: {detail}");
-    }
-
-    /// Assert URLs and secret shapes are redacted.
-    #[test]
-    fn redacts_urls_and_secrets() {
-        let detail =
-            redact_detail("POST https://api.example.invalid/v1/chat failed with sk-abcdefghijklmnopqrstuvwxyz");
-
-        assert!(!detail.contains("api.example.invalid"), "transport URL must be collapsed: {detail}");
-        assert!(!detail.contains("sk-abcdefghijklmnopqrstuvwxyz"), "secret must be masked: {detail}");
-        assert!(detail.contains("[REDACTED_SECRET]"), "secret marker must remain: {detail}");
-    }
-
-    /// Assert short prose without paths is left intact for diagnosis.
-    #[test]
-    fn preserves_plain_detail() {
-        assert_eq!(redact_detail("provider returned an empty completion"), "provider returned an empty completion");
-    }
-
-    /// Assert rendering is bounded and UTF-8 safe.
-    #[test]
-    fn bounds_long_detail_on_a_character_boundary() {
-        let detail = redact_detail(&"é".repeat(DETAIL_MAX_BYTES));
-
-        assert!(detail.len() <= DETAIL_MAX_BYTES, "detail must stay bounded: {}", detail.len());
-        assert!(detail.ends_with(TRUNCATION_MARKER), "truncation is marked: {detail}");
-    }
-
-    /// Assert correlation keys are stable, distinct and never the raw id.
-    #[test]
-    fn session_correlation_is_stable_and_non_identifying() {
-        let first = session_correlation("session-alpha");
-        let again = session_correlation("session-alpha");
-        let other = session_correlation("session-beta");
-
-        assert_eq!(first, again, "the same session must correlate across events");
-        assert_ne!(first, other, "distinct sessions must not collide");
-        assert!(!first.contains("session"), "the raw id must not survive: {first}");
-        assert_eq!(first.len(), SESSION_CORRELATION_HEX_LENGTH, "the key has a fixed width");
+        assert_eq!(first, again, "identical failures must correlate");
+        assert_ne!(first, other, "distinct failures must not collide");
+        assert!(!first.contains("alice"), "the key must not carry the source text: {first}");
+        assert_eq!(first.len(), CORRELATION_HEX_LENGTH, "the key has a fixed width");
+        assert_eq!(session_correlation("session-alpha").len(), CORRELATION_HEX_LENGTH);
     }
 }
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/redaction.rs' for per-hunk detail, 'weave check' to verify your resolution

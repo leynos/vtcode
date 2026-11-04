@@ -6,8 +6,8 @@
 use super::super::types::SessionHandle;
 use super::{ZedAgent, warn_hook_message};
 use crate::zed::agent::session_state::checkpoint_failure_label;
-use super::redaction::{bounded_label, log_compaction_update_failure, session_correlation};
-use crate::metrics::{CompactionOutcome, record_compaction_finished, record_compaction_started};
+use super::redaction::{identifier_correlation, session_correlation};
+use crate::metrics::record_compaction_started;
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
 use std::future::Future;
@@ -24,13 +24,16 @@ mod failure;
 
 
 mod plan;
-use failure::{CompactionFailure, CompactionFailureKind, classify};
+
+mod report;
+use failure::CompactionFailure;
 pub(super) use plan::{
     CompactionAttempt, CompactionCommit, CompactionDecision, CompactionRun, CompactionSessionSnapshot,
     estimated_prompt_tokens,
 };
 #[cfg(test)]
 pub(super) use plan::{admission_prompt_budget, should_compact};
+use report::{AdoptedCompaction, CompactionAttemptResult, CompactionReport};
 
 const COMPACTION_SUMMARY_MAX_TOKENS: u32 = 4_096;
 
@@ -40,72 +43,6 @@ pub(super) struct CompactionRequest<'a> {
     pub(super) runtime: &'a ProviderRequestRuntime,
     pub(super) model: &'a str,
     pub(super) tools: Option<&'a Arc<Vec<ToolDefinition>>>,
-}
-
-/// What one automatic compaction attempt achieved.
-struct CompactionAttemptResult {
-    /// Whether the history was replaced.
-    compacted: bool,
-    /// Prompt tokens estimated from the adopted history, when it was replaced.
-    used_tokens_after: Option<usize>,
-    /// The failure that ended the attempt, if any.
-    failure: Option<anyhow::Error>,
-}
-
-impl CompactionAttemptResult {
-    /// Report an attempt that produced no compaction outcome.
-    const fn no_change() -> Self {
-        Self {
-            compacted: false,
-            used_tokens_after: None,
-            failure: None,
-        }
-    }
-
-    /// Report an attempt that replaced the history and fits the budget.
-    const fn compacted(used_tokens_after: usize) -> Self {
-        Self {
-            compacted: true,
-            used_tokens_after: Some(used_tokens_after),
-            failure: None,
-        }
-    }
-
-    /// Report an attempt that replaced the history but still exceeds the
-    /// provider admission budget.
-    fn compacted_over_budget(used_tokens_after: usize, error: anyhow::Error) -> Self {
-        Self {
-            compacted: true,
-            used_tokens_after: Some(used_tokens_after),
-            failure: Some(error),
-        }
-    }
-
-    /// Report an attempt that ended in `error` without replacing the history.
-    fn failed(error: anyhow::Error) -> Self {
-        Self {
-            compacted: false,
-            used_tokens_after: None,
-            failure: Some(error),
-        }
-    }
-}
-
-/// A compacted history that the session has already adopted.
-struct AdoptedCompaction {
-    /// Prompt tokens estimated from the adopted history.
-    prompt_tokens: usize,
-    /// Whether the adopted history still exceeds the admission budget.
-    over_budget: bool,
-}
-
-/// The values the terminal compaction bookkeeping reports on.
-struct CompactionReport<'a> {
-    provider: &'a str,
-    model: &'a str,
-    prompt_tokens: usize,
-    session_key: &'a str,
-    elapsed_ms: u64,
 }
 
 impl ZedAgent {
@@ -151,8 +88,10 @@ impl ZedAgent {
             "acp_lody_compaction",
             operation = "context_compaction",
             session_correlation = %session_key,
-            provider = %bounded_label(provider.name()),
-            model = %bounded_label(model),
+            provider_correlation = %identifier_correlation(provider.name()),
+            provider_bytes = provider.name().len(),
+            model_correlation = %identifier_correlation(model),
+            model_bytes = model.len(),
             prompt_tokens,
             outcome = tracing::field::Empty,
             error_category = tracing::field::Empty,
@@ -239,8 +178,10 @@ impl ZedAgent {
             Err(error) => return CompactionAttemptResult::failed(error),
         };
         info!(
-            provider = %bounded_label(provider.name()),
-            model = %bounded_label(model),
+            provider_correlation = %identifier_correlation(provider.name()),
+            provider_bytes = provider.name().len(),
+            model_correlation = %identifier_correlation(model),
+            model_bytes = model.len(),
             prompt_tokens = decision.prompt_tokens,
             compacted_prompt_tokens = adopted.prompt_tokens,
             original_len,
@@ -261,74 +202,6 @@ impl ZedAgent {
             );
         }
         CompactionAttemptResult::compacted(adopted.prompt_tokens)
-    }
-
-    /// Record the terminal outcome of an attempt and return its category.
-    ///
-    /// Owns the outcome counters, the span fields and the closing log so the
-    /// attempt pipeline stays a linear sequence of explicit steps.
-    fn record_compaction_outcome(
-        &self,
-        span: &tracing::Span,
-        attempt: &CompactionAttemptResult,
-        report: CompactionReport<'_>,
-    ) -> Option<&'static str> {
-        // Clients only ever see this closed-set category; the originating
-        // error is detailed through the redacted debug helper.
-        let failure_kind = attempt.failure.as_ref().map(classify);
-        let failure_category = failure_kind.map(CompactionFailureKind::category);
-        let outcome = CompactionOutcome::for_result(failure_kind.is_some(), attempt.compacted);
-        record_compaction_finished(outcome, failure_kind == Some(CompactionFailureKind::Cancelled), report.elapsed_ms);
-        let _ = span.record("outcome", outcome.as_str());
-        let _ = span.record("elapsed_ms", report.elapsed_ms);
-        if let (Some(error), Some(category)) = (attempt.failure.as_ref(), failure_category) {
-            let _ = span.record("error_category", category);
-            log_suppressed_error(error, "context_compaction", category);
-            warn!(
-                provider = %bounded_label(report.provider),
-                model = %bounded_label(report.model),
-                prompt_tokens = report.prompt_tokens,
-                elapsed_ms = report.elapsed_ms,
-                session_correlation = %report.session_key,
-                outcome = outcome.as_str(),
-                error_category = category,
-                "ACP automatic context compaction failed"
-            );
-        } else {
-            info!(
-                provider = %bounded_label(report.provider),
-                model = %bounded_label(report.model),
-                prompt_tokens = report.prompt_tokens,
-                compacted = attempt.compacted,
-                elapsed_ms = report.elapsed_ms,
-                session_correlation = %report.session_key,
-                outcome = outcome.as_str(),
-                "ACP automatic context compaction finished"
-            );
-        }
-        failure_category
-    }
-
-    /// Publish one compaction activity update, logging a redacted failure.
-    ///
-    /// A serialization failure and a transport failure keep distinct stage
-    /// labels so an operator can tell which half of the publish failed.
-    async fn publish_compaction_update(
-        &self,
-        session_id: &crate::acp::SessionId,
-        update: Result<crate::acp::SessionUpdate>,
-        session_key: &str,
-        publish_stage: &'static str,
-        serialize_stage: &'static str,
-    ) {
-        match update {
-            Ok(update) => {
-                if let Err(error) = self.send_update(session_id, update).await {
-                    log_compaction_update_failure(&error, session_key, publish_stage);
-                }
-            }
-            Err(error) => log_compaction_update_failure(&error, session_key, serialize_stage),
-        }
     }
 
     /// Run one compaction attempt under the provider admission permit.
@@ -357,7 +230,9 @@ impl ZedAgent {
 
         let permit = runtime.acquire(&session.cancellation).await.map_err(|error| match error {
             ProviderAdmissionError::Cancelled => CompactionFailure::cancelled().into_error(),
-            other => CompactionFailure::provider_detail(format!("provider admission failed: {other}")).into_error(),
+            ProviderAdmissionError::Closed { .. } | ProviderAdmissionError::QueueTimeout { .. } => {
+                CompactionFailure::provider_admission().into_error()
+            }
         })?;
         let total_deadline = runtime
             .deadline_policy()

@@ -6,6 +6,7 @@
 //! together rather than projected in isolation.
 
 use super::*;
+use rstest::rstest;
 use serde_json::Value;
 use tokio::sync::Notify;
 use diapason_core::llm::Usage;
@@ -181,10 +182,34 @@ fn usage_update(notifications: &[acp::AgentNotification]) -> Value {
     updates.into_iter().next().expect("one usage delta")
 }
 
-/// A response without a model name reports the session model, and that model's
-/// profile — not the provider defaults — supplies the context window and cost.
+/// The session model's profile supplies the reported context window and cost,
+/// and a model absent from the profile map inherits the provider defaults.
+///
+/// A response whose `model` field is empty must fall back to the session model,
+/// so the usage delta is keyed by the model that actually served the turn.
+#[rstest]
+#[case::profiled_model(
+    WIRE_MODEL,
+    32_768,
+    0.25e-6,
+    1.00e-6,
+    "the model profile must win over the provider-default context window"
+)]
+#[case::unprofiled_model(
+    OTHER_MODEL,
+    200_000,
+    3.0e-6,
+    15.0e-6,
+    "an unprofiled model must inherit the provider-default context window"
+)]
 #[tokio::test]
-async fn empty_response_model_uses_session_model_profile_pricing() {
+async fn session_model_selects_the_reported_profile_and_pricing(
+    #[case] session_model: &str,
+    #[case] expected_context_window: u64,
+    #[case] input_per_token_usd: f64,
+    #[case] output_per_token_usd: f64,
+    #[case] context_window_message: &str,
+) {
     let response = LLMResponse {
         model: String::new(),
         usage: Some(Usage {
@@ -197,51 +222,19 @@ async fn empty_response_model_uses_session_model_profile_pricing() {
 
     // The duplex harness future is large enough to trip `large_futures`; pin it
     // on the heap rather than growing the test's stack frame.
-    let notifications = Box::pin(published_usage_updates(WIRE_MODEL, response)).await;
+    let notifications = Box::pin(published_usage_updates(session_model, response)).await;
     let update = usage_update(&notifications);
 
     assert_eq!(update["sessionId"], "session-usage-profile");
     assert_eq!(
-        update["modelUsage"][WIRE_MODEL]["inputTokens"], 13,
+        update["modelUsage"][session_model]["inputTokens"], 13,
         "the fallback session model must key the usage delta, not an empty model"
     );
-    assert_eq!(
-        update["usage"]["contextWindow"], 32_768,
-        "the model profile must win over the provider-default context window"
-    );
+    assert_eq!(update["usage"]["contextWindow"], expected_context_window, "{context_window_message}");
     let cost = update["usage"]["costUSD"].as_f64().expect("cost must be reported");
-    let expected = 13.0 * 0.25e-6 + 5.0 * 1.00e-6;
+    let expected = 13.0 * input_per_token_usd + 5.0 * output_per_token_usd;
     assert!(
         (cost - expected).abs() < 1e-12,
-        "model-profile pricing must price the turn: expected {expected}, got {cost}"
-    );
-}
-
-/// A model absent from the profile map falls back to provider defaults.
-#[tokio::test]
-async fn unprofiled_model_uses_provider_default_pricing() {
-    let response = LLMResponse {
-        model: String::new(),
-        usage: Some(Usage {
-            prompt_tokens: 13,
-            completion_tokens: 5,
-            ..Usage::default()
-        }),
-        ..LLMResponse::default()
-    };
-
-    let notifications = Box::pin(published_usage_updates(OTHER_MODEL, response)).await;
-    let update = usage_update(&notifications);
-
-    assert_eq!(update["modelUsage"][OTHER_MODEL]["inputTokens"], 13);
-    assert_eq!(
-        update["usage"]["contextWindow"], 200_000,
-        "an unprofiled model must inherit the provider-default context window"
-    );
-    let cost = update["usage"]["costUSD"].as_f64().expect("cost must be reported");
-    let expected = 13.0 * 3.0e-6 + 5.0 * 15.0e-6;
-    assert!(
-        (cost - expected).abs() < 1e-12,
-        "provider-default pricing must price an unprofiled model: expected {expected}, got {cost}"
+        "the resolved profile must price the turn: expected {expected}, got {cost}"
     );
 }

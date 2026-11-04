@@ -218,7 +218,96 @@ async fn failed_acp_compaction_publishes_a_provider_terminal_update() {
         .find(|line| line.contains("Suppressed ACP failure"))
         .expect("the suppressed failure must be recorded at debug");
     assert!(
-        suppressed.contains("detail=") && suppressed.contains("compaction summary request failed"),
-        "the debug record must retain the redacted chain for diagnosis: {suppressed}"
+        suppressed.contains("detail_correlation="),
+        "the debug record must keep the bounded correlation digest: {suppressed}"
     );
+    assert!(
+        !suppressed.contains("compaction summary request failed"),
+        "provider payload text must stay out of every log level: {suppressed}"
+    );
+}
+
+/// A disconnected client must not replace the compaction result.
+///
+/// With no client attached every activity update fails to publish. The
+/// attempt must still adopt the compacted history, record a positive duration
+/// for its started and terminal states, and log the delivery failure through
+/// fixed fields instead of the transport detail or the raw session identifier.
+#[tokio::test]
+async fn disconnected_client_keeps_the_compaction_result_and_logs_fixed_fields() {
+    let _history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    use assert_fs::TempDir;
+
+    let workspace = TempDir::new().expect("temporary compaction workspace");
+    let config = compaction_config(true);
+    let agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+    let session = large_compaction_session(&agent, workspace.path()).await;
+    let raw_session_id = session.data.lock().expect("ACP session data").session_id.to_string();
+    let workspace_path = workspace.path().to_string_lossy().into_owned();
+    // A controlled, positive provider interval makes the duration deltas
+    // meaningful: without it the attempt can finish in under a millisecond and
+    // the assertions would pass even if duration recording were removed.
+    let provider = CompactThenAnswerProvider {
+        requests: Arc::new(Mutex::new(Vec::new())),
+        context_size: 0,
+        summary: "disconnected compaction summary".to_string(),
+        delay: Duration::from_millis(20),
+    };
+    let runtime = agent.provider_runtime.for_provider("wire-test");
+
+    let before = crate::metrics::compaction_metrics();
+    let captured = CaptureWriter::default();
+    let _guard = tracing::subscriber::set_default(capture_subscriber(&captured));
+    let compacted = agent
+        .maybe_compact_session(CompactionRequest {
+            session: &session,
+            provider: &provider,
+            runtime: &runtime,
+            model: "wire-model",
+            tools: None,
+        })
+        .await
+        .expect("an update delivery failure must not replace the compaction result");
+    let after = crate::metrics::compaction_metrics();
+
+    assert!(compacted, "the compacted history must still be adopted");
+    assert!(after.started > before.started, "the attempt must record a start: {before:?} -> {after:?}");
+    assert!(after.compacted > before.compacted, "the terminal outcome must be recorded: {before:?} -> {after:?}");
+    // The provider stalls for a controlled interval, so elapsed recording must
+    // move both duration counters by a strictly positive amount. Nextest runs
+    // each test in its own process, so the deltas below cover this attempt
+    // alone.
+    let elapsed_ms_delta = after.elapsed_ms_total - before.elapsed_ms_total;
+    assert!(elapsed_ms_delta > 0, "the attempt duration must be recorded: {before:?} -> {after:?}");
+    assert!(
+        after.elapsed_ms_max > before.elapsed_ms_max,
+        "the longest attempt duration must be recorded: {before:?} -> {after:?}"
+    );
+
+    let output = String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
+    for expected in [
+        "operation=\"context_compaction_update\"",
+        "error_category=\"compaction_update_failed\"",
+        "stage=\"publish_started\"",
+        "stage=\"publish_finished\"",
+    ] {
+        assert!(output.contains(expected), "missing {expected} in: {output}");
+    }
+    // Unrelated core logs may name the archive, so the privacy claim is
+    // scoped to the ACP activity-update warnings this test drives.
+    let activity_lines = output
+        .lines()
+        .filter(|line| line.contains("context_compaction_update"))
+        .collect::<Vec<_>>();
+    assert_eq!(activity_lines.len(), 2, "both publish stages must log: {output}");
+    for line in activity_lines {
+        assert!(line.contains("session_correlation="), "the bounded correlation key must reach the log: {line}");
+        assert!(line.contains("error_bytes="), "the failure size must reach the log: {line}");
+        assert!(line.contains("detail_correlation="), "the bounded digest must reach the log: {line}");
+        assert!(!line.contains("detail="), "the raw error text must never reach the log: {line}");
+        assert!(!line.contains(&raw_session_id), "the raw session id must not reach the log: {line}");
+        assert!(!line.contains(&workspace_path), "the workspace path must not reach the log: {line}");
+    }
 }
