@@ -83,6 +83,7 @@ per-minute, per-second, and per-request units. `Retry-After` and configured
 reset intervals set a minimum for exponential back-off; missing headers are
 silent. See
 [provider rate-limit headers](../development/provider-rate-limit-headers.md).
+
 VT Code advertises push-only `_meta.lody.rateLimits` version 1 and emits
 `_lody/rate_limits/update` for observed quota headers. Complete limit/remaining
 pairs produce utilization windows; limit-only headers retain the absolute limit
@@ -90,15 +91,23 @@ in `limitName` with no invented utilization. There is no query method.
 
 ### Responses profiles
 
-| Boundary | Behaviour |
-| --- | --- |
-| HTTP/SSE completion | Requires `response.completed`; EOF is not success |
-| Partial output | Checkpointed as incomplete; no automatic generation replay |
-| Reasoning and custom inputs | Incremental visibility; done text reconciled as an aggregate |
-| Usage | Missing/null is absent; invalid or overflowing counts are errors |
-| Optional WebSockets | Cancelled exchanges discard their socket and continuation |
+| Boundary                    | Behaviour                                                        |
+| --------------------------- | ---------------------------------------------------------------- |
+| HTTP/SSE completion         | Requires `response.completed`; EOF is not success                |
+| Partial output              | Checkpointed as incomplete; no automatic generation replay       |
+| Reasoning and custom inputs | Incremental visibility; done text reconciled as an aggregate     |
+| Usage                       | Missing/null is absent; invalid or overflowing counts are errors |
+| Optional WebSockets         | Cancelled exchanges discard their socket and continuation        |
+| Streamed tool input         | Bounded, non-executable previews of the first 8,192 characters   |
 
-See [Responses hardening and verification](../development/responses-hardening.md).
+Streamed tool input is previewed through `tool_call`/`tool_call_update` updates
+whose identifier is `provider-input-preview:<call id>`. Input beyond 8,192
+Unicode characters is discarded and marked `[preview truncated]`. A preview
+never executes a tool, and its terminal update reports `completed` or `failed`
+when the provider stream ends.
+
+See
+[Responses hardening and verification](../development/responses-hardening.md).
 
 ## Legacy REST ACP client reference
 

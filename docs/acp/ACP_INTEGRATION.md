@@ -96,6 +96,28 @@ added to usage deltas. See
 [provider rate-limit headers](../development/provider-rate-limit-headers.md)
 for configuration and retry semantics.
 
+### Streamed tool-input previews
+
+While a provider streams tool-call input, the agent publishes standard
+`session/update` tool calls and tool-call updates that preview that input
+without executing it. Each preview uses a stable, non-executable identifier of
+the form `provider-input-preview:<provider call id>`, kind `other`, and status
+`pending` while input is still arriving. Its title says the input is not
+executed, so a client must never treat a preview as a request to run a tool.
+
+Preview content is bounded to the first 8,192 Unicode characters of streamed
+input. Input beyond that cap is discarded rather than buffered for later
+display, and a `[preview truncated]` marker is appended so the truncation is
+visible. When the provider stream completes, fails, or is cancelled, the agent
+sends one terminal update per preview with status `completed` or `failed` and a
+title using "Prepared" or "Abandoned" respectively. Preview publication is
+advisory: a delivery failure is logged and counted but never fails the turn,
+and the real tool call, if the model requested one, is reported separately with
+its provider-issued identifier.
+
+See the [OpenAI Responses over ACP user guide](../user-guide/acp-responses.md)
+for setup, recovery steps, and the user-visible limits of previews.
+
 The current server is launched with `vtcode acp` and communicates over stdio;
 it does not expose the legacy `/messages`, `/metadata`, or `/health` HTTP
 endpoints described below.

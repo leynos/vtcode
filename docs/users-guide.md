@@ -4,6 +4,7 @@
 - [Configuration](./config/config.md)
 - [Zed ACP setup and sessions](./guides/zed-acp.md)
 - [Patch safety: file versions and no-op guards](./guides/patch-safety.md)
+- [OpenAI Responses through ACP](./user-guide/acp-responses.md)
 - [Permissions](./guides/permissions.md)
 - [MCP integration](./mcp/MCP_INTEGRATION_GUIDE.md)
 - [User data directories](./guides/user-data-directories.md)

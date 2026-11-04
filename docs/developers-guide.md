@@ -9,6 +9,7 @@
 - [ACP quick reference](./acp/ACP_QUICK_REFERENCE.md)
 - [Custom-provider request policy](./development/CUSTOM_PROVIDER_REQUEST_POLICY.md)
 - [Provider rate-limit headers](./development/provider-rate-limit-headers.md)
+- [Responses streaming hardening](./development/responses-hardening.md)
 - [Apply-patch safety contract](./development/patch-safety-contract.md)
 - [Testing](./development/testing.md)
 - [Configuration field reference](./config/CONFIG_FIELD_REFERENCE.md)

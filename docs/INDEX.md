@@ -55,6 +55,9 @@ Last reviewed: 2026-08-28
   behavior.
 - [Provider Rate Limits](user-guide/provider-rate-limits.md) - Configure
   response-header mappings and understand retry and ACP rate-limit updates.
+- [OpenAI Responses over ACP](user-guide/acp-responses.md) - Configure a
+  Responses provider, interpret partial output and cancellation, and understand
+  bounded tool-input previews.
 - [Security Model](security/SECURITY_MODEL.md) - Security architecture.
 - [Process Hardening](development/PROCESS_HARDENING.md) - Runtime hardening
   controls.
