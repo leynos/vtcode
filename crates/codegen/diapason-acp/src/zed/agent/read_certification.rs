@@ -227,6 +227,14 @@ fn window_matches_projection(projected: &str, returned: &str) -> bool {
 
 #[cfg(test)]
 mod window_match_tests {
+    //! Windowed read-certification regressions.
+    //!
+    //! These exercise `ZedAgent`'s on-disk version certification and the
+    //! `window_matches_projection` rule that decides whether a returned window can
+    //! be certified. They stay beside the private helpers they cover so the
+    //! projection asymmetry and the error-chain hygiene are reviewed with the code
+    //! that mints or withholds `content_hash` values.
+
     use super::{WindowVerificationError, ZedAgent, window_matches_projection};
     use rstest::rstest;
 

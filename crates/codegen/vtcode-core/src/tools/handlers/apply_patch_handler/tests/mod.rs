@@ -16,6 +16,7 @@ use tempfile::TempDir;
 
 mod direct_runtime;
 mod handler_runtime;
+mod log_capture;
 mod telemetry;
 
 #[test]

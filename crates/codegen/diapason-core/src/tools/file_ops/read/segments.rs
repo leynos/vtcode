@@ -195,6 +195,13 @@ impl FileOpsTool {
 
 #[cfg(test)]
 mod line_window_tests {
+    //! Line-window projections for the `read_file` tool.
+    //!
+    //! These pin `line_window`'s offset and limit semantics, which both the read
+    //! tool and the ACP on-disk certification path rely on to describe exactly the
+    //! bytes the model received. The module stays beside the helper so the
+    //! projection and its expectations change together.
+
     use super::line_window;
 
     #[test]

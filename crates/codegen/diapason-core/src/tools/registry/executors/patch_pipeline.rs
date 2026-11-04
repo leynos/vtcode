@@ -87,23 +87,14 @@ impl ToolRegistry {
                 ));
             }
         };
-        if let Some(expected_hash) = expected_hash {
-            match validate_patch_content_hash(self, &patch, &expected_hash, &captured_paths).await? {
-                Some(rejection) => {
-                    self.metrics_collector().record_patch_precondition(rejection.outcome);
-                    tracing::info!(
-                        operation = tools::APPLY_PATCH,
-                        outcome = rejection.outcome.as_str(),
-                        session_id = %context.session_id,
-                        task_id = %context.task_id.as_deref().unwrap_or(""),
-                        "apply_patch version precondition rejected"
-                    );
-                    return Ok(rejection.response);
-                }
-                None => self
-                    .metrics_collector()
-                    .record_patch_precondition(PatchPreconditionOutcome::Matched),
-            }
+        if let Some(expected_hash) = expected_hash
+            && let Some(rejection) = self.record_registry_precondition_verdict(
+                &context.session_id,
+                context.task_id.as_deref().unwrap_or(""),
+                validate_patch_content_hash(self, &patch, &expected_hash, &captured_paths).await,
+            )?
+        {
+            return Ok(rejection);
         }
         for operation in patch.operations() {
             if let Some(conflict) = self
@@ -204,6 +195,50 @@ impl ToolRegistry {
         });
         response["diff"] = Value::Array(diff);
         Ok(response)
+    }
+
+    /// Record and log one registry precondition verdict.
+    ///
+    /// Returns the structured response when the patch must not proceed.
+    /// Normalization and missing-captured-state failures produce no verdict at
+    /// all, so they are recorded as `ValidationFailed` rather than disappearing
+    /// from the counters and the decision log before the error is returned.
+    fn record_registry_precondition_verdict(
+        &self,
+        session_id: &str,
+        task_id: &str,
+        verdict: Result<Option<super::patch_preconditions::PatchPreconditionRejection>>,
+    ) -> Result<Option<Value>> {
+        match verdict {
+            Ok(Some(rejection)) => {
+                self.metrics_collector().record_patch_precondition(rejection.outcome);
+                tracing::info!(
+                    operation = tools::APPLY_PATCH,
+                    outcome = rejection.outcome.as_str(),
+                    session_id,
+                    task_id,
+                    "apply_patch version precondition rejected"
+                );
+                Ok(Some(rejection.response))
+            }
+            Ok(None) => {
+                self.metrics_collector()
+                    .record_patch_precondition(PatchPreconditionOutcome::Matched);
+                Ok(None)
+            }
+            Err(error) => {
+                self.metrics_collector()
+                    .record_patch_precondition(PatchPreconditionOutcome::ValidationFailed);
+                tracing::info!(
+                    operation = tools::APPLY_PATCH,
+                    outcome = PatchPreconditionOutcome::ValidationFailed.as_str(),
+                    session_id,
+                    task_id,
+                    "apply_patch version precondition rejected"
+                );
+                Err(error)
+            }
+        }
     }
 
     /// Canonicalise and deduplicate every path the patch can touch.

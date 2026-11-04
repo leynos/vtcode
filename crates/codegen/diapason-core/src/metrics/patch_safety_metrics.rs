@@ -205,6 +205,13 @@ impl PatchSafetyMetrics {
 
 #[cfg(test)]
 mod tests {
+    //! Bounded patch-safety counters and their export surfaces.
+    //!
+    //! The tests drive `MetricsCollector` and assert that both summary JSON and
+    //! Prometheus output carry only fixed outcome labels, never patch text, paths,
+    //! or hashes. They live beside the struct that produces those exports so a new
+    //! counter and its disclosure rules are reviewed together.
+
     use super::{PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics};
     use crate::metrics::MetricsCollector;
 

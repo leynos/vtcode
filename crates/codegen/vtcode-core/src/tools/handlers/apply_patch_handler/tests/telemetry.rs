@@ -10,12 +10,12 @@ use crate::metrics::{MetricsCollector, PatchSafetyMetrics};
 use serde_json::json;
 
 /// Write a UTF-8 fixture and return its canonical version.
-fn versioned_fixture(workspace: &TempDir, content: &str) -> String {
+pub(super) fn versioned_fixture(workspace: &TempDir, content: &str) -> String {
     std::fs::write(workspace.path().join("versioned.txt"), content).expect("write fixture");
     format!("sha256:{}", vtcode_commons::utils::calculate_sha256(content.as_bytes()))
 }
 
-fn update_patch() -> &'static str {
+pub(super) fn update_patch() -> &'static str {
     "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n"
 }
 

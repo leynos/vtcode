@@ -166,3 +166,56 @@ async fn deleted_source_file_reports_a_null_current_hash() -> anyhow::Result<()>
     assert!(!path.exists(), "a rejected precondition must not recreate the file");
     Ok(())
 }
+
+/// A precondition step that fails before producing a verdict must still be
+/// counted and logged as `validation_failed`.
+///
+/// Path normalization and missing captured state propagate as plain errors
+/// rather than structured rejections, so without this branch they would leave
+/// no trace in either telemetry surface.
+#[tokio::test]
+async fn validation_error_records_and_logs_the_validation_failed_outcome() -> anyhow::Result<()> {
+    const ERROR_TEXT: &str = "UNIQUE_VALIDATION_MARKER_5ab21e";
+    let temp_dir = tempfile::TempDir::new()?;
+    let registry = crate::tools::ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    registry.allow_all_tools().await?;
+    let metrics = registry.metrics_collector();
+
+    let captured = CaptureWriter::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_ansi(false)
+        .with_writer(captured.clone())
+        .finish();
+    let guard = tracing::subscriber::set_default(subscriber);
+    let verdict = registry.record_registry_precondition_verdict(
+        "session-marker",
+        "",
+        Err(anyhow::anyhow!("normalization failed: {ERROR_TEXT}")),
+    );
+    drop(guard);
+
+    assert!(verdict.is_err(), "the propagated error must still reach the caller");
+    let safety = metrics.get_summary().patch_safety;
+    assert_eq!(safety.precondition_validation_failed, 1);
+    assert_eq!(safety.precondition_matched, 0, "a failed validation is not a match");
+    assert!(
+        metrics
+            .export_prometheus()
+            .contains(r#"vtcode_apply_patch_precondition_total{outcome="validation_failed"} 1"#)
+    );
+
+    let output = String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
+    assert!(
+        output.contains("apply_patch version precondition rejected"),
+        "the rejection must be logged: {output}"
+    );
+    assert!(output.contains("validation_failed"), "the fixed outcome must be logged: {output}");
+    assert!(output.contains("session-marker"), "the session identifier must be logged: {output}");
+    assert!(!output.contains(ERROR_TEXT), "the error string must not reach tracing: {output}");
+    assert!(
+        !output.contains(temp_dir.path().to_string_lossy().as_ref()),
+        "paths must not reach tracing: {output}"
+    );
+    Ok(())
+}

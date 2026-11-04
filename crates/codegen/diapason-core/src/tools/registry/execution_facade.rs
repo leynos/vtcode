@@ -1913,6 +1913,13 @@ impl ToolRegistry {
 
 #[cfg(test)]
 mod tests {
+    //! Tool-error rendering for the execution facade.
+    //!
+    //! These cover `tool_error_value_to_string`'s fallback when a serialized
+    //! `ToolExecutionError` omits its details field. The module lives beside the
+    //! facade conversion it exercises so the rendered shape and its tests stay
+    //! together.
+
     use super::tool_error_value_to_string;
     use serde_json::json;
 

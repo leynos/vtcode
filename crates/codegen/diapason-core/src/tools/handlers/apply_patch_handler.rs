@@ -42,7 +42,10 @@ mod tests;
 
 use crate::metrics::PatchPreconditionOutcome;
 use changes::convert_patch_to_changes;
-use preconditions::{PatchHandlerEvaluationTimer, record_handler_precondition, validate_request_content_hash};
+use preconditions::{
+    PatchHandlerEvaluationTimer, log_handler_precondition, log_runtime_revalidation, record_handler_precondition,
+    validate_request_content_hash,
+};
 pub(crate) use specs::parse_apply_patch_command;
 pub use specs::{create_apply_patch_freeform_tool, create_apply_patch_json_tool};
 
@@ -192,21 +195,6 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
                 exit_code: 0,
             });
         }
-        {
-            Ok(Some(_)) => {
-                if let Some(metrics) = runtime_metrics.as_ref() {
-                    metrics.record_runtime_revalidation(true);
-                }
-            }
-            Ok(None) => {}
-            Err(failure) => {
-                if let Some(metrics) = runtime_metrics.as_ref() {
-                    metrics.record_runtime_revalidation(false);
-                }
-                return Err(failure.into_tool_error());
-            }
-        }
-
         // Re-validate the version precondition immediately before mutating. The
         // handler checked it already, but a concurrent writer can change the
         // file between that check and this apply. The recheck narrows that
@@ -221,6 +209,22 @@ impl ToolRuntime<ApplyPatchRequest, ExecToolCallOutput> for ApplyPatchRuntime {
             ctx.session.workspace_root(),
         )
         .await
+        {
+            Ok(Some(outcome)) => {
+                if let Some(metrics) = runtime_metrics.as_ref() {
+                    metrics.record_runtime_revalidation(true);
+                }
+                log_runtime_revalidation(outcome, &ctx.turn.turn_id, &ctx.call_id);
+            }
+            Ok(None) => {}
+            Err(failure) => {
+                if let Some(metrics) = runtime_metrics.as_ref() {
+                    metrics.record_runtime_revalidation(false);
+                }
+                log_runtime_revalidation(failure.outcome(), &ctx.turn.turn_id, &ctx.call_id);
+                return Err(failure.into_tool_error());
+            }
+        }
 
         // Apply the patch
         match patch.apply(&req.cwd).await {
@@ -282,6 +286,7 @@ impl ToolHandler for ApplyPatchHandler {
                     Ok(value) => value.map(ToOwned::to_owned),
                     Err(error) => {
                         record_handler_precondition(&metrics, PatchPreconditionOutcome::MalformedHash);
+                        log_handler_precondition(PatchPreconditionOutcome::MalformedHash, &turn.turn_id, &call_id);
                         return Err(ToolCallError::respond(format!("Invalid expected_content_hash: {error}")));
                     }
                 };
@@ -326,10 +331,14 @@ impl ToolHandler for ApplyPatchHandler {
         )
         .await
         {
-            Ok(Some(outcome)) => record_handler_precondition(&metrics, outcome),
+            Ok(Some(outcome)) => {
+                record_handler_precondition(&metrics, outcome);
+                log_handler_precondition(outcome, &turn.turn_id, &call_id);
+            }
             Ok(None) => {}
             Err(failure) => {
                 record_handler_precondition(&metrics, failure.outcome());
+                log_handler_precondition(failure.outcome(), &turn.turn_id, &call_id);
                 return Err(failure.into_tool_call_error());
             }
         }

@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 
 use super::super::sandboxing::ToolError;
 use super::super::tool_handler::ToolCallError;
+use crate::config::constants::tools;
 use crate::metrics::{MetricsCollector, PatchPreconditionOutcome};
 use crate::tools::editing::Patch;
 use crate::tools::registry::patch_preconditions::{
@@ -198,4 +199,35 @@ pub(super) fn record_handler_precondition(metrics: &Option<Arc<MetricsCollector>
     if let Some(metrics) = metrics.as_ref() {
         metrics.record_patch_precondition(outcome);
     }
+}
+
+/// Emit one bounded handler precondition decision log.
+///
+/// The handler runs outside the registry pipeline, so it does not inherit that
+/// pipeline's decision logs. Only the fixed outcome label and the bounded turn
+/// and call identifiers are recorded; hashes, patch text, paths, and error
+/// strings stay out of the tracing stream.
+pub(super) fn log_handler_precondition(outcome: PatchPreconditionOutcome, turn_id: &str, call_id: &str) {
+    tracing::info!(
+        operation = tools::APPLY_PATCH,
+        outcome = outcome.as_str(),
+        turn_id,
+        call_id,
+        "apply_patch handler precondition decision"
+    );
+}
+
+/// Emit one bounded runtime revalidation decision log.
+///
+/// `ApplyPatchRuntime` rechecks the version immediately before mutating, which
+/// is a distinct decision from the handler preflight, so it gets its own
+/// message. The record carries the same bounded fields as the handler log.
+pub(super) fn log_runtime_revalidation(outcome: PatchPreconditionOutcome, turn_id: &str, call_id: &str) {
+    tracing::info!(
+        operation = tools::APPLY_PATCH,
+        outcome = outcome.as_str(),
+        turn_id,
+        call_id,
+        "apply_patch runtime revalidation decision"
+    );
 }
