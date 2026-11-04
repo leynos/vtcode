@@ -2,7 +2,7 @@
 
 Repository-wide entrypoint for VT Code documentation.
 
-Last reviewed: 2026-08-28
+Last reviewed: 2026-11-03
 
 ## Start Here
 
@@ -64,6 +64,8 @@ Last reviewed: 2026-08-28
 
 - [Development Setup](development/DEVELOPMENT_SETUP.md) - Canonical contributor
   setup and local quality loop.
+- [Documentation style guide](documentation-style-guide.md) - Authoring
+  standards, including RFC and ADR filenames.
 - [C++ Core Guidelines Adoption](development/CPP_CORE_GUIDELINES_ADOPTION.md) -
   Rules for C/C++ code paths and cross-language safety intent.
 - [Extension Boundaries](development/EXTENSION_BOUNDARIES.md) - When to use

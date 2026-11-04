@@ -11,6 +11,10 @@ impls in the core workspace. This is deliberate: Rust coherence and orphan-rule
 constraints make public trait APIs a poor default extension boundary for an
 ecosystem-style project.
 
+See the
+[documentation style guide](documentation-style-guide.md#design-document-adr-and-rfc)
+for design-document guidance and RFC/ADR filename conventions.
+
 For internal composition, prefer explicit provider selection over "clever"
 trait resolution when a boundary starts depending on many overlapping impls,
 associated types, or context-specific behaviour. In practice, VT Code treats

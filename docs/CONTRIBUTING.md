@@ -122,7 +122,8 @@ Cargo workspace with ~30 crates. Rust stable, MSRV 1.88, edition 2024.
 
 - All public APIs should have Rustdoc documentation
 - Complex logic should include explanatory comments
-- Follow the existing documentation patterns in the codebase
+- Follow the [documentation style guide](documentation-style-guide.md),
+  including its RFC and ADR filename conventions
 - All .md files should be placed in `./docs/` directory (not in the root)
 
 ### Examples
