@@ -28,8 +28,8 @@ impl ZedAgent {
         };
         if let Err(error) = self.send_update(session_id, update).await {
             // The transport error and the raw session id are both
-            // operator-sensitive, so only the fixed fields and a redacted,
-            // bounded detail reach the log.
+            // operator-sensitive, so only fixed fields and a bounded
+            // correlation digest reach the log.
             log_notice_publish_failure(&error, &session_correlation(&session_id.to_string()));
         }
     }

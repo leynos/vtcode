@@ -69,12 +69,11 @@ fn admission_budget_scales_reservations_for_small_context_windows() {
     assert_eq!(admission_prompt_budget(&unknown_context_provider, "test"), None);
 }
 
-/// A PreCompact hook failure reaches the log with fixed fields and a redacted
-/// chain.
+/// A PreCompact hook failure reaches the log with fixed fields only.
 ///
 /// The hook error may embed a script path or hook output, so the client-facing
-/// message and the operator log must both omit it; the debug chain collapses
-/// the path to `<path>`.
+/// message and every log level must both omit it; only the closed-set category,
+/// the message size, and a bounded correlation digest remain.
 #[test]
 fn pre_compact_hook_failure_logs_fixed_fields_without_hook_text() {
     let detail =
