@@ -107,35 +107,31 @@ Creates multi-crate releases for Diapason using
 
 **What it does:**
 
-- Delegates version management, tagging, pushing, and changelog updates to
-    `cargo release`
-- Keeps `diapason` and `diapason-core` versions in sync and updates
-    `npm/package.json`
-- Creates GitHub releases populated with the relevant changelog section
-- Hands off crates.io publishing to `publish_extracted_crates.sh` so the
-    crates release in dependency order
-- Optionally publishes to npm
+- Generates release notes, then runs `cargo release` to version, tag, and push
+    the workspace
+- Publishes crates to crates.io in dependency order through
+    `publish_extracted_crates.sh`, unless `--skip-crates` is used
+- Creates a GitHub release populated with the generated release notes
+- Uploads release binaries unless `--skip-binaries` is used
+- Triggers docs.rs rebuilds unless `--skip-crates` or `--skip-docs` is set
 
 **Prerequisites:**
 
 - Must be on `main` branch with a clean working tree
-- Requires GitHub repository access and `cargo-release` installed
+- Requires GitHub CLI authentication and `cargo-release` installed
     (`cargo install cargo-release`)
-- `CHANGELOG.md` entries follow the expected format (Unreleased + sections)
-- Logged in to crates.io (`cargo login`) and npm (`npm login`) when publishing
+- Crates.io credentials are required when publishing crates
 
 **Release Process:**
 
-1. **Pre-flight checks**: Verifies branch, working tree, and authentication
-2. **cargo-release execution**: Runs `cargo release` with workspace
-   configuration from `release.toml`
-3. **Git operations**: `cargo release` commits, tags, pushes, and updates
-   `CHANGELOG.md`
-4. **Distribution**: Publishes crates in dependency order via the staged
-   script, optionally publishes npm package, triggers docs.rs rebuild, and
-   builds binaries
-5. **GitHub Release**: `cargo release` uploads release notes using the
-   generated changelog section
+1. **Pre-flight checks**: Verifies the branch and working tree, then checks
+   GitHub CLI authentication
+2. **Release preparation**: Builds binaries locally as configured and generates
+   release notes
+3. **Version and tag**: Runs `cargo release` with workspace configuration from
+   `release.toml` to version, tag, and push
+4. **Distribution**: Publishes crates in dependency order, creates a GitHub
+   release, uploads binaries, and triggers docs.rs rebuilds
 
 ### `publish_extracted_crates.sh` - Staged Crate Publishing
 

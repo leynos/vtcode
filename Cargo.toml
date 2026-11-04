@@ -22,7 +22,6 @@ exclude = [
     "logs/",
     "/prompts/",
     "dist/",
-    "npm/",
     "resources/",
 ]
 default-run = "diapason"

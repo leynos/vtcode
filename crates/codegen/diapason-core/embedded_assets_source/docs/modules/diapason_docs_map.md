@@ -1001,7 +1001,7 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about DRY/KISS Duplication
     Audit?", "How does Scope work?", "How does Implemented Refactors work?"
 
-- **File**: `docs/harness/exec-plans/active/001-tui-runloop-decomposition.md`
+- **File**: `docs/harness/exec-plans/completed/001-tui-runloop-decomposition.md`
   - **Content**: EP-001: TUI Runloop and Slash Command Decomposition
   - **Topics**: Goal, Context, Steps, Decision Log, Retrospective
   - **User Questions**: "What can you tell me about EP-001: TUI Runloop and
