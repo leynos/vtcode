@@ -184,7 +184,7 @@ request separately from normalized facts for legacy matching and explanation.
 | `graph.nodes`   | ID-keyed typed actions with source spans, invocation stack, reachability, effects, completeness, and reason codes                                                               |
 | `graph.edges`   | Named records with source/target IDs and control, call, data-flow, or dependency kind                                                                                           |
 | `graph.values`  | ID-keyed abstract values, origins, integrity/confidentiality labels, and sink-validation facts                                                                                  |
-| `analysis`      | Analyser/model versions, coverage profile, bounds consumed, unresolved reasons, and consulted dependencies                                                                     |
+| `analysis`      | Analyser/model versions, coverage profile, bounds consumed, unresolved reasons, and consulted dependencies                                                                      |
 | `compatibility` | Source-tagged legacy matcher facts, ordered rule identities, defaults, and importer version                                                                                     |
 | `enforcement`   | Available confinement capabilities, effective profile identity, remote-service limitations and reservation facts                                                                |
 
@@ -691,14 +691,14 @@ programs are safe.
 | Property                            | Evidence strategy                                                                                                                  | Limit                                                        |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Restriction monotonicity            | Exhaustively enumerate small finding/authority sets; property-test permutations and added restrictions                             | Excludes authorized grants/replacement                       |
-| Reducer determinism                 | Permutation, duplication, and serialization tests; model constraint intersections and empty intersections                         | Depends on typed constraint semantics                        |
+| Reducer determinism                 | Permutation, duplication, and serialization tests; model constraint intersections and empty intersections                          | Depends on typed constraint semantics                        |
 | No effect during analysis           | Instrument deny-all process/write/network capabilities; adversarial expansions and redirections in isolated workers                | Broker/sandbox correctness remains trusted                   |
 | Supported-subset over-approximation | Compare generated bounded programs against GNU Bash traces in disposable, confined fixtures; observed effects must be included     | Differential agreement is not full-language soundness        |
 | Unknown monotonicity                | Replace concrete facts with unknown, exhaust budgets, widen loops; automatic coverage must not increase                            | Command-model correctness still needs review                 |
 | Authority preservation              | Model activation graph and delegation chains; namespace collision, forged provenance, stale target and competing replacement cases | Host trust-store compromise excluded                         |
 | Binding and revocation              | Race tests mutate PATH, aliases, files, policy, and approvals; tokens replayed or used by another principal fail                   | Arbitrary shell syscalls still rely on confinement           |
 | Complete mediation                  | End-to-end route matrix with denied operations at actual dispatch                                                                  | Remote service internal behaviour is opaque                  |
-| Secret non-disclosure               | Canary secrets through pipes, substitutions, errors, and policy reasons; scan logs/events/UI and persisted artefacts              | Explicit privileged diagnostic export needs separate consent |
+| Secret non-disclosure               | Canary secrets through pipes, substitutions, errors, and policy reasons; scan logs/events/UI and persisted artefacts               | Explicit privileged diagnostic export needs separate consent |
 
 _Table 8: Verification obligations and the boundaries of their evidence._
 
@@ -713,7 +713,7 @@ interactive/full-auto/approval-disabled mode, source authority, generation
 reload, approval freshness, analysis completeness, and platform enforcement.
 Exhaustively cover deny/bypass-sensitive pairs and all authority/replacement
 triples; use pairwise coverage for the remaining dimensions and retain
-  handwritten high-risk scenarios. Record uncovered combinations explicitly.
+handwritten high-risk scenarios. Record uncovered combinations explicitly.
 Minimize and retain any differential counterexample as a regression fixture.
 
 Release evidence must include zero unexplained permissive divergences, a
