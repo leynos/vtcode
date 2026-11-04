@@ -53,10 +53,10 @@ async fn list_files_tool_failure_keeps_caller_detail_out_of_default_diagnostics(
     );
 }
 
-/// The full chain remains available at debug for local diagnosis. This is not
-/// redaction: debug logs can retain raw paths and payload text.
+/// The suppressed failure logs only fixed fields and a bounded digest at
+/// debug; the originating chain text is never written at any level.
 #[tokio::test]
-async fn list_files_tool_failure_keeps_the_full_chain_only_at_debug() {
+async fn list_files_tool_failure_logs_only_fixed_fields_and_a_digest_at_debug() {
     let temp = TempDir::new().expect("temporary workspace");
     let agent = build_agent(temp.path()).await;
     let tool = FileOpsTool::new(temp.path().to_path_buf(), Arc::new(GrepSearchManager::new(temp.path().to_path_buf())));
@@ -69,9 +69,21 @@ async fn list_files_tool_failure_keeps_the_full_chain_only_at_debug() {
     .await;
 
     let debugged = debug_events.join("\n");
-    assert!(
-        debugged.contains(sentinel) && debugged.contains("Unsupported file operation mode"),
-        "the debug event must retain the suppressed chain, got {debugged}"
-    );
+    assert!(debugged.contains("operation=\"list_files\""));
     assert!(debugged.contains("error_category=\"listing_failed\""));
+    assert!(debugged.contains("error_bytes="));
+    assert!(debugged.contains("detail_correlation="));
+    assert!(!debugged.contains(sentinel), "originating detail must never reach logs, got {debugged}");
+    assert!(
+        !debugged.contains("Unsupported file operation mode"),
+        "raw tool text must never reach logs, got {debugged}"
+    );
+
+    let correlation = debugged
+        .split("detail_correlation=")
+        .nth(1)
+        .and_then(|digest| digest.split_whitespace().next())
+        .expect("the suppressed failure must log a correlation digest");
+    assert_eq!(correlation.len(), 12, "the digest must be bounded, got {correlation}");
+    assert!(correlation.chars().all(|c| c.is_ascii_hexdigit()), "the digest must be hex, got {correlation}");
 }
