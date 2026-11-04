@@ -248,7 +248,7 @@ function Install-Binary {
     Write-Info "Installing to $Target..."
     
     try {
-        Copy-Item -Path $Source -Destination $Target -Force -ErrorAction Stop
+        Copy-Item -LiteralPath $Source -Destination $Target -Force -ErrorAction Stop
         Write-Success "Binary installed to $Target"
     }
     catch {
@@ -257,6 +257,32 @@ function Install-Binary {
         Write-Info "You may need to run PowerShell as Administrator"
         exit 1
     }
+}
+
+function Install-SourceBinary {
+    param(
+        [string]$TargetPath,
+        [string]$CargoRoot
+    )
+
+    $Cargo = Get-Command cargo -ErrorAction SilentlyContinue
+    if ($null -eq $Cargo) {
+        throw "Cargo is required for a source build"
+    }
+
+    $SourceRef = if ([string]::IsNullOrWhiteSpace($env:DIAPASON_SOURCE_REF)) { "main" } else { $env:DIAPASON_SOURCE_REF }
+    Write-Info "Building Diapason from leynos/vtcode ($SourceRef)..."
+    & cargo install --git "https://github.com/$Repo.git" --branch $SourceRef --locked --root $CargoRoot diapason
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cargo source installation failed with exit code $LASTEXITCODE"
+    }
+
+    $BuiltBinary = Join-Path (Join-Path $CargoRoot "bin") $BinName
+    if (-not (Test-Path -LiteralPath $BuiltBinary -PathType Leaf)) {
+        throw "Cargo did not produce the expected binary at $BuiltBinary"
+    }
+
+    Install-Binary -Source $BuiltBinary -Target $TargetPath
 }
 
 # Check if installation directory is in PATH
@@ -285,18 +311,14 @@ function Add-ToPath {
     Write-Host ""
 }
 
-# Cleanup temporary files
-function Cleanup {
-    Get-ChildItem -Path $env:TEMP -Name "diapason-*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-}
-
 # Main installation flow
 function Main {
     Write-Host "Diapason Native Installer (Windows)" -ForegroundColor Magenta
     Write-Host ""
     
     # Create temporary directory for downloads
-    $TempDir = New-Item -ItemType Directory -Path "$env:TEMP\diapason-install-$(Get-Random)" -Force
+    $TempDir = Join-Path $env:TEMP ("diapason-install-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $TempDir > $null
     
     try {
         $TargetPath = Join-Path $InstallDir $BinName
@@ -308,17 +330,8 @@ function Main {
             Install-Binary -Source $BinaryPath -Target $TargetPath
         }
         elseif ($SourceBuild) {
-            $Cargo = Get-Command cargo -ErrorAction SilentlyContinue
-            if ($null -eq $Cargo) {
-                throw "Cargo is required for a source build"
-            }
-            $SourceRef = if ([string]::IsNullOrWhiteSpace($env:DIAPASON_SOURCE_REF)) { "main" } else { $env:DIAPASON_SOURCE_REF }
-            $CargoRoot = Split-Path -Parent $InstallDir
-            Write-Info "Building Diapason from leynos/vtcode ($SourceRef)..."
-            & cargo install --git "https://github.com/$Repo.git" --branch $SourceRef --locked --root $CargoRoot diapason
-            if ($LASTEXITCODE -ne 0) {
-                throw "Cargo source installation failed with exit code $LASTEXITCODE"
-            }
+            $CargoRoot = Join-Path $TempDir "cargo"
+            Install-SourceBinary -TargetPath $TargetPath -CargoRoot $CargoRoot
         }
         else {
             # Release matching accepts only Diapason-named binaries. Existing
@@ -358,8 +371,7 @@ function Main {
     }
     finally {
         # Cleanup
-        Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
-        Cleanup
+        Remove-Item -LiteralPath $TempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 

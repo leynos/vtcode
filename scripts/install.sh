@@ -25,9 +25,6 @@ WITH_AST_GREP=0
 WITH_SEARCH_TOOLS=1
 WITH_COMPLETIONS=0
 
-# Ensure INSTALL_DIR exists
-mkdir -p "$INSTALL_DIR"
-
 # Hide/show cursor
 show_cursor() { printf "\033[?25h"; }
 hide_cursor() { printf "\033[?25l"; }
@@ -398,6 +395,35 @@ install_binary() {
     log_success "Binary installed to $target"
 }
 
+# Build into an owned temporary Cargo root, then copy the artifact to target_path.
+install_from_source() (
+    local target_path="$1"
+
+    if ! command -v cargo >/dev/null 2>&1; then
+        log_error "Cargo is required for a source build"
+        exit 1
+    fi
+
+    local source_ref="${DIAPASON_SOURCE_REF:-main}"
+    local cargo_root
+    cargo_root="$(mktemp -d 2>/dev/null || mktemp -d -t 'diapason')"
+    trap 'rm -rf -- "$cargo_root"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    log_info "Building Diapason from leynos/vtcode ($source_ref)..."
+    cargo install --git "https://github.com/$REPO.git" --branch "$source_ref" \
+        --locked --root "$cargo_root" diapason
+
+    local built_binary="$cargo_root/bin/$BIN_NAME"
+    if [[ ! -f "$built_binary" ]]; then
+        log_error "Cargo did not produce the expected binary at $built_binary"
+        exit 1
+    fi
+
+    install_binary "$built_binary" "$target_path"
+)
+
 install_man_and_completions() {
     local archive_source="$1"
     local install_dir="$2"
@@ -489,11 +515,6 @@ add_to_path() {
     esac
 }
 
-# Cleanup temporary files
-cleanup() {
-    rm -f /tmp/diapason-* /tmp/diapason.tar.gz /tmp/diapason.zip
-}
-
 # Main installation flow
 main() {
     log_info "Diapason Native Installer"
@@ -509,16 +530,7 @@ main() {
         fi
         install_binary "$LOCAL_BINARY" "$target_path"
     elif [[ "$INSTALL_SOURCE" -eq 1 ]]; then
-        if ! command -v cargo >/dev/null 2>&1; then
-            log_error "Cargo is required for a source build"
-            exit 1
-        fi
-        local source_ref="${DIAPASON_SOURCE_REF:-main}"
-        local cargo_root
-        cargo_root="$(dirname "$INSTALL_DIR")"
-        log_info "Building Diapason from leynos/vtcode ($source_ref)..."
-        cargo install --git "https://github.com/$REPO.git" --branch "$source_ref" \
-            --locked --root "$cargo_root" diapason
+        install_from_source "$target_path"
     else
         if ! command -v curl >/dev/null 2>&1; then
             log_error "curl is required to check for published Diapason release binaries"
@@ -601,7 +613,7 @@ main() {
 
     # Test installation
     if "$target_path" --version &>/dev/null; then
-        log_success "Version check passed: $($target_path --version)"
+        log_success "Version check passed: $("$target_path" --version)"
     else
         log_warning "Could not verify installation, but binary appears to be installed"
     fi
@@ -701,4 +713,5 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+mkdir -p -- "$INSTALL_DIR"
 main
