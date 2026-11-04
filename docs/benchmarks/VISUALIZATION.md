@@ -67,6 +67,10 @@ The script generates:
 
 ## Chart Interpretation
 
+The thresholds below are illustrative interpretation guides. They are not
+current model recommendations; assess fresh benchmark results against your
+task's requirements.
+
 ### Pass Rate Analysis
 
 | Pass@1 | Interpretation                                |
@@ -99,6 +103,10 @@ The script generates:
 
 ## Example Charts
 
+> The model names, figures, and observations in these examples are historical
+> upstream benchmark examples, retained to illustrate chart interpretation.
+> They are not current measurements or model recommendations.
+
 ### Model Comparison Chart
 
 **Key Observations:**
@@ -108,15 +116,17 @@ The script generates:
 2. **Distribution**: gpt-5-nano passes 155/164 tests, gemini passes 101/164
 3. **Latency**: gemini is 10x faster (0.97s vs 10.4s)
 4. **Cost**: Both are $0.00 (completely free)
-5. **Strategic Choice**: Use gpt-5-nano for accuracy, gemini for speed
+5. **Historical trade-off**: This example shows a higher pass rate for
+   gpt-5-nano and lower latency for gemini
 
 ### Individual Model Chart
 
 **gemini-3-flash-preview Observations:**
 
-1. **Pass Rate**: 61.6% - good for development and rapid iteration
-2. **Speed**: Sub-second latency (0.97s) - 10x faster than gpt-5-nano
-3. **Cost**: $0.00 - ideal for high-volume testing
+1. **Pass Rate**: 61.6% in this historical example
+2. **Speed**: Sub-second latency (0.97s) - 10x faster than gpt-5-nano in this
+   example
+3. **Cost**: $0.00 in this historical example
 
 ## Comparing Multiple Models
 
@@ -201,4 +211,4 @@ plt.savefig(output_path, dpi=600)  # Higher quality
 
 - [matplotlib Documentation](https://matplotlib.org/stable/contents.html)
 - [Benchmark Methodology](README.md)
-- [Results Archive](SUMMARY.md)
+- [Results Archive](../archive/benchmarks/SUMMARY.md)

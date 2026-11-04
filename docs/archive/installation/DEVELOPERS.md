@@ -4,7 +4,8 @@
 > pipeline and release assets. Diapason has no verified published installer
 > packages. Every script, package manager, tap, release, and support claim below
 > describes that upstream pipeline, not current Diapason support. For current
-> installation instructions, use [the source installation guide](README.md).
+> installation instructions, use
+> [the source installation guide](../../installation/README.md).
 
 ## Overview
 

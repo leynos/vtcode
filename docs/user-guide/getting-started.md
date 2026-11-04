@@ -604,8 +604,8 @@ Diapason is designed with security as a first-class concern:
 - **[Security Guide](../guides/security.md)** - Complete security documentation
 - **[Security Model](../security/SECURITY_MODEL.md)** - Architecture and threat
   model
-- **[Tool Policies](../modules/diapason_tools_policy.md)** - Command execution
-  policies
+- **[Historical Tool-Policy Reference](../archive/modules/diapason_tools_policy.md)**
+  - Deprecated upstream policy module
 
 ## Next Steps
 

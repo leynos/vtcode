@@ -2,7 +2,8 @@
 
 > Historical upstream reference: the commands and release URLs below describe
 > VTCode's installers as they existed before the Diapason fork. They do not
-> install Diapason. See [the current installation guide](README.md) for the
+> install Diapason. See
+> [the current installation guide](../../installation/README.md) for the
 > source installation supported by this repository.
 
 The platform and release details below are historical upstream documentation;

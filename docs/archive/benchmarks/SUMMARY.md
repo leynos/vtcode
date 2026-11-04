@@ -25,7 +25,7 @@
 - Comparable to o1, Claude 3.7 Sonnet, GPT-4.5 Turbo
 - 10-50x cheaper than premium competitors
 
-**Full Report:** [README.md](README.md)
+**Full Report:** [README.md](../../benchmarks/README.md)
 
 ### gemini-3-flash-preview (2025-10-22) - SPEED CHAMPION
 
@@ -80,7 +80,7 @@ Output:
 
 ## Files
 
-- **Detailed Analysis:** [README.md](README.md)
-- **Methodology:** [README.md](README.md)
+- **Detailed Analysis:** [README.md](../../benchmarks/README.md)
+- **Methodology:** [README.md](../../benchmarks/README.md)
 - **Scripts:** `../../scripts/bench_humaneval.py`,
     `../../scripts/generate_benchmark_chart.py`

@@ -38,8 +38,8 @@ Entry point for Diapason contributor workflows.
   hot-path and I/O guidance.
 - [Performance Hasher Policy](./performance-hasher-policy.md) - `rustc_hash`
   usage policy.
-- [Async Performance Audit](./async-performance-audit.md) - Async architecture
-  performance findings.
+- [Historical Async Performance Audit](../archive/development/async-performance-audit.md)
+  - Async architecture performance findings.
 - [Session Event Persistence](./session-persistence.md) - Canonical session
   events, exporter boundaries, retention, and verification.
 - [Configuration reset and live reload](./configuration-reload.md) - Shared
@@ -66,8 +66,8 @@ Entry point for Diapason contributor workflows.
 - [Changelog Generation](./CHANGELOG_GENERATION.md) - `git-cliff`-based
   changelog updates.
 - [Desire Paths](./DESIRE_PATHS.md) - Known architecture pressure points.
-- [TUI-Only Refactoring Notes](./TUI_ONLY_REFACTORING.md) - Historical refactor
-  details.
+- [TUI-Only Refactoring Notes](../archive/development/TUI_ONLY_REFACTORING.md)
+  - Historical refactor details.
 - [Tool Summary Display](./tool-summary-display.md) - Compact and expanded tool
   transition summaries, configuration, and testing boundaries.
 - [First-party debt scan](../../scripts/first-party-debt-scan.sh) - Detect

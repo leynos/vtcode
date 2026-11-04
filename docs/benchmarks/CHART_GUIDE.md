@@ -1,6 +1,11 @@
 # Benchmark Chart Quick Reference
 
-## Current Chart
+> The figures and observations below are historical upstream examples from a
+> past HumanEval run. They illustrate how to read a chart and are not current
+> model recommendations. Generate a chart from a fresh report for current
+> results.
+
+## Historical Example Chart
 
 HumanEval benchmark results for gemini-2.5-flash-lite model.
 
@@ -51,7 +56,7 @@ HumanEval benchmark results for gemini-2.5-flash-lite model.
 - Development and prototyping
 - Code suggestions and completions
 - Learning and experimentation
-- Production code (consider premium models for >70% accuracy)
+- Production use: evaluate current results against the task's requirements
 
 ## Generating Your Own Charts
 
@@ -68,7 +73,8 @@ xdg-open reports/HE_*_chart.png  # Linux
 
 When you run benchmarks with different models, compare:
 
-1. **Pass@1 Rate**: Higher is better (aim for >70% for production)
+1. **Pass@1 Rate**: Compare results against the acceptance threshold for your
+   task
 2. **Latency**: Lower is better (sub-second ideal)
 3. **Cost**: Balance accuracy vs. cost for your use case
 4. **Consistency**: Tight latency distribution = predictable performance
@@ -76,6 +82,8 @@ When you run benchmarks with different models, compare:
 ## Next Steps
 
 - Run benchmarks with other models: [README.md](README.md)
-- Understand methodology: [HUMANEVAL_2025-10-22.md](HUMANEVAL_2025-10-22.md)
-- Compare results: [COMPARISON.md](COMPARISON.md)
+- Read the historical HumanEval report:
+  [HUMANEVAL_2025-10-22.md](../archive/benchmarks/HUMANEVAL_2025-10-22.md)
+- Compare historical results:
+  [COMPARISON.md](../archive/benchmarks/COMPARISON.md)
 - Learn visualization: [VISUALIZATION.md](VISUALIZATION.md)

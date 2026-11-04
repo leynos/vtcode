@@ -250,7 +250,7 @@ export GEMINI_API_KEY="your_api_key_here"
 ## References
 
 - **Benchmark Script:**
-    [scripts/bench_humaneval.py](../../scripts/bench_humaneval.py)
+    [scripts/bench_humaneval.py](../../../scripts/bench_humaneval.py)
 - **HumanEval Paper:**
     [Evaluating Large Language Models Trained on Code](https://arxiv.org/abs/2107.03374)
 - **Dataset:** [openai/human-eval](https://github.com/openai/human-eval)

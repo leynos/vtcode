@@ -107,7 +107,8 @@ chmod +x /usr/local/bin/diapason
 
 - Open an issue: <https://github.com/leynos/vtcode/issues>
 - Check docs: <https://github.com/leynos/vtcode/tree/main/docs>
-- See [detailed guide](./NATIVE_INSTALLERS.md)
+- See
+  [historical upstream installer notes](../archive/installation/NATIVE_INSTALLERS.md)
 
 ## Uninstall
 
@@ -150,8 +151,9 @@ The native installers automatically select the best location and add it to PATH.
 
 ## Additional Resources
 
-- **[Detailed Native Installers Guide](./NATIVE_INSTALLERS.md)** - Technical
-    details and advanced options
+- **[Historical VTCode Installer Reference](../archive/installation/NATIVE_INSTALLERS.md)**
+  - Upstream
+    packaging background
 - **[Quick Reference](./QUICK_REFERENCE.md)** - One-liner commands
 - **[Diapason repository](https://github.com/leynos/vtcode)** - Source and
     published project documentation

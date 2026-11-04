@@ -41,6 +41,7 @@ EXCLUDE_FILES = [
 
 # Directories to exclude from the map
 EXCLUDE_DIRS = [
+    "docs/archive",
     "docs/mcp/archive",
     "docs/async",
     "docs/vscode-extension-improve-docs",
@@ -131,12 +132,12 @@ def main():
     for ext in ['*.md', 'models.json']:
         for file_path in docs_dir.rglob(ext):
             rel_path = file_path.relative_to(root_dir)
-            rel_path_str = str(rel_path)
+            rel_path_str = rel_path.as_posix()
 
             if rel_path_str in EXCLUDE_FILES:
                 continue
             
-            if any(rel_path_str.startswith(d) for d in EXCLUDE_DIRS):
+            if any(Path(directory) in rel_path.parents for directory in EXCLUDE_DIRS):
                 continue
 
             # Determine category

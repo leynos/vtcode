@@ -40,7 +40,7 @@ Complete guide to Diapason's security documentation.
 
 ### For Organizations
 
-**[Tool Policies](../modules/diapason_tools_policy.md)**
+**[Execution Policy](../development/EXECUTION_POLICY.md)**
 
 - Command execution policies
 - Approval workflows
@@ -129,8 +129,10 @@ Complete guide to Diapason's security documentation.
 - **Defaults**: `config.toml` in the canonical user config directory
 - **Persisted approvals**: `tool-policy.json` in the canonical user config
   directory
-- **Documentation**:
-  [Tool Policies](../modules/diapason_tools_policy.md), [User Data Directories](../guides/user-data-directories.md)
+- **Historical documentation**:
+  [Tool-Policy Reference](../archive/modules/diapason_tools_policy.md)
+- **Current paths**:
+  [User Data Directories](../guides/user-data-directories.md)
 
 ### Workspace Configuration
 

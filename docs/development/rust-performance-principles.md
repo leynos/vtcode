@@ -643,7 +643,7 @@ ______________________________________________________________________
   times][mispredicted-branches] — Daniel Lemire.
 - Diapason internal: `docs/development/performance.md`
 - Diapason internal: `docs/development/performance-hasher-policy.md`
-- Diapason internal: `docs/development/async-performance-audit.md`
+- Diapason internal: `docs/archive/development/async-performance-audit.md`
 
 [rust-faster-c-2024]: https://www.reddit.com/r/rust/comments/1at3r6d/why_isnt_rust_faster_than_c_given_it_can_leverage/
 [branchless-rust]: https://www.greyblake.com/blog/branchless-rust/

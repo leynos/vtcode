@@ -103,7 +103,8 @@ Last reviewed: 2026-08-28
 
 ## Historical and Archive Paths
 
-- `docs/async/` - Async migration implementation logs.
+- [Documentation archive](archive/README.md) - Historical reports and upstream
+  records, with their original subdirectories preserved.
 
 When adding implementation summaries or one-off reports, prefer a domain folder
 or an archive path instead of placing files at `docs/*.md`.

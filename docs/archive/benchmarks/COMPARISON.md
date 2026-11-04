@@ -13,7 +13,7 @@ configurations.
 **Major Achievement:** gpt-5-nano achieves frontier-tier performance (94.5%),
 ranking in TOP 5 globally at very affordable pricing.
 
-See [README.md](README.md) for benchmark details.
+See [README.md](../../benchmarks/README.md) for benchmark details.
 
 ## Planned Comparisons
 
@@ -138,5 +138,5 @@ To add benchmark results:
 ## References
 
 - [HumanEval Dataset](https://github.com/openai/human-eval)
-- [Benchmark Methodology](README.md)
+- [Benchmark Methodology](../../benchmarks/README.md)
 - [Latest Results](SUMMARY.md)

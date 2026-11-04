@@ -282,8 +282,9 @@ prompt injection and argument injection attacks:
 - Complete security architecture **
 [Security Web Fetch](./security/SECURITY_WEB_FETCH.md)** - Web fetch security
 model and controls **[Security Guide](./guides/security.md)** - Best practices
-and configuration **[Tool Policies](./modules/diapason_tools_policy.md)** -
-Command execution policies
+and configuration
+**[Historical Tool-Policy Reference](archive/modules/diapason_tools_policy.md)**
+- Deprecated upstream policy module
 
 ## Quick Start Guide
 
@@ -371,10 +372,10 @@ template while preserving all your customizations.
 Diapason is evaluated on industry-standard benchmarks to measure code
 generation quality and performance:
 
-### HumanEval Results
+### Historical HumanEval Results
 
-**Latest:** `gemini-3-flash-preview` achieves **61.6% pass@1** on the complete
-HumanEval dataset (164 tasks)
+**Historical upstream example:** `gemini-3-flash-preview` achieved **61.6%
+pass@1** on the complete HumanEval dataset (164 tasks)
 
 | Metric         | Value             |
 | -------------- | ----------------- |
@@ -383,8 +384,8 @@ HumanEval dataset (164 tasks)
 | P90 Latency    | 1.363s            |
 | Cost           | $0.00 (free tier) |
 
-**[View Full Benchmark Results](./benchmarks/HUMANEVAL_2025-10-22.md)** **
-[Model Comparison](./benchmarks/COMPARISON.md)** **
+**[View Full Benchmark Results](archive/benchmarks/HUMANEVAL_2025-10-22.md)**
+**[Model Comparison](archive/benchmarks/COMPARISON.md)** **
 [Run Your Own Benchmarks](./benchmarks/README.md)**
 
 ### Running Benchmarks

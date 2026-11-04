@@ -369,8 +369,8 @@ Stay informed about security updates:
 
 - [Security Model](../security/SECURITY_MODEL.md) - Complete security
   architecture
-- [Tool Policies](../modules/diapason_tools_policy.md) - Command execution
-  policies
+- [Historical Tool-Policy Reference](../archive/modules/diapason_tools_policy.md)
+  - Deprecated upstream policy module
 - [CWE-88: Argument Injection](https://cwe.mitre.org/data/definitions/88.html)
 - [OWASP Command Injection](https://owasp.org/www-community/attacks/Command_Injection)
 

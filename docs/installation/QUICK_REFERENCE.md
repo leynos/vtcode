@@ -125,4 +125,4 @@ are separate — `/secret` manages API keys; `/login` manages OAuth.
 - Docs: <https://github.com/leynos/vtcode/tree/main/docs>
 - Issues: <https://github.com/leynos/vtcode/issues>
 - [Full Installation Guide](./README.md)
-- [Historical VTCode installer reference](./NATIVE_INSTALLERS.md)
+- [Historical VTCode installer reference](../archive/installation/NATIVE_INSTALLERS.md)

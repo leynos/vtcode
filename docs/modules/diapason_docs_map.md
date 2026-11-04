@@ -6,8 +6,8 @@ this file provides the complete catalog of available documentation sources.
 
 ## Quick Reference
 
-**Core Questions**: Can Diapason do X? | How does Diapason Y work? | What's VT
-Code's Z feature?
+**Core Questions**: Can Diapason do X? | How does Diapason Y work? | What's
+Diapason's Z feature?
 
 **Documentation Retrieval**: When users ask about Diapason capabilities, fetch
 relevant sections from the files listed below based on the topic area.
@@ -18,7 +18,9 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/config/CONFIG_FIELD_REFERENCE.md`
   - **Content**: Config Field Reference
-  - **User Questions**: "What can you tell me about Config Field Reference?"
+  - **Topics**: Configuration and state locations
+  - **User Questions**: "What can you tell me about Config Field Reference?",
+    "How does Configuration and state locations work?"
 
 - **File**: `docs/config/CONFIGURATION_PRECEDENCE.md`
   - **Content**: Configuration Precedence in Diapason
@@ -28,19 +30,19 @@ relevant sections from the files listed below based on the topic area.
     Diapason?", "How does Resolution Order work?", "How does Resetting a
     configuration layer work?"
 
+- **File**: `docs/config/config.md`
+  - **Content**: Diapason Configuration
+  - **Topics**: Quick navigation, SessionConfig compatibility, Settings palette
+    and reset, Live reload, Feature flags
+  - **User Questions**: "What can you tell me about Diapason Configuration?",
+    "How does Quick navigation work?", "How does SessionConfig compatibility
+    work?"
+
 - **File**: `docs/config/TOOLS_CONFIG.md`
   - **Content**: Tools Configuration
   - **Topics**: Blocked-call limits and blocked handoffs
   - **User Questions**: "What can you tell me about Tools Configuration?", "How
     does Blocked-call limits and blocked handoffs work?"
-
-- **File**: `docs/config/config.md`
-  - **Content**: Diapason Configuration
-  - **Topics**: Quick navigation, Settings palette and reset, Live reload,
-    Feature flags, Model selection
-  - **User Questions**: "What can you tell me about Diapason Configuration?",
-    "How does Quick navigation work?", "How does Settings palette and reset
-    work?"
 
 ### Development & Testing
 
@@ -59,6 +61,14 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about **Testing Guide**?", "How
     does **Test Overview** work?", "How does **Running Tests** work?"
 
+- **File**: `docs/development/acp-runtime.md`
+  - **Content**: ACP Runtime
+  - **Topics**: Boundaries and request flow, Session workspace and durability,
+    Providers, MCP, tools and audit, Diagnostics privacy
+  - **User Questions**: "What can you tell me about ACP Runtime?", "How does
+    Boundaries and request flow work?", "How does Session workspace and
+    durability work?"
+
 - **File**: `docs/development/ai-tool-surface-eval-report.md`
   - **Content**: AI Tool Surface Eval Report
   - **Topics**: Scope, Baseline Data, Comparison Table, Result Format
@@ -76,8 +86,8 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: Adding New Models to Diapason
   - **Topics**: Overview, Quick Checklist, Detailed Steps, Verification,
     Template for Copy-Paste
-  - **User Questions**: "What can you tell me about Adding New Models to VT
-    Code?", "How does Overview work?", "How does Quick Checklist work?"
+  - **User Questions**: "What can you tell me about Adding New Models to
+    Diapason?", "How does Overview work?", "How does Quick Checklist work?"
 
 - **File**: `docs/development/ALLOCATOR_MEMORY.md`
   - **Content**: Allocator & Memory Behavior
@@ -91,9 +101,9 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: Anthropic Thinking in Diapason
   - **Topics**: Compact Runtime Matrix, Configuration, Adaptive Thinking
     Behavior, Budgeted Thinking Behavior, Feature Compatibility
-  - **User Questions**: "What can you tell me about Anthropic Thinking in VT
-    Code?", "How does Compact Runtime Matrix work?", "How does Configuration
-    work?"
+  - **User Questions**: "What can you tell me about Anthropic Thinking in
+    Diapason?", "How does Compact Runtime Matrix work?", "How does
+    Configuration work?"
 
 - **File**: `docs/development/CPP_CORE_GUIDELINES_ADOPTION.md`
   - **Content**: C++ Core Guidelines Adoption
@@ -139,6 +149,14 @@ relevant sections from the files listed below based on the topic area.
     Configuration for Diapason?", "How does Overview work?", "How does
     Configuration Details work?"
 
+- **File**: `docs/development/CUSTOM_PROVIDER_REQUEST_POLICY.md`
+  - **Content**: Custom Provider Request Policy
+  - **Topics**: Admission scope, Provider deadlines, Retry and output safety,
+    Cancellation and turn safety
+  - **User Questions**: "What can you tell me about Custom Provider Request
+    Policy?", "How does Admission scope work?", "How does Provider deadlines
+    work?"
+
 - **File**: `docs/development/DESIRE_PATHS.md`
   - **Content**: Desire Paths in Diapason
   - **Topics**: Philosophy, Current Paved Paths, Desire Paths to Implement, How
@@ -156,17 +174,32 @@ relevant sections from the files listed below based on the topic area.
 - **File**: `docs/development/DEVELOPMENT_SETUP.md`
   - **Content**: Development Setup
   - **Topics**: One-Time Setup, Credential identities, Daily Development Loop,
-    Full Quality Gate, Common Commands
+    Full Quality Gate, Makefile Gate
   - **User Questions**: "What can you tell me about Development Setup?", "How
     does One-Time Setup work?", "How does Credential identities work?"
+
+- **File**: `docs/development/COMMAND_SECURITY_MODEL.md`
+  - **Content**: Diapason Command Security Model
+  - **Topics**: Additional permission normalization, Overview, Design
+    Philosophy, Architecture, Safe Commands (Enabled by Default)
+  - **User Questions**: "What can you tell me about Diapason Command Security
+    Model?", "How does Additional permission normalization work?", "How does
+    Overview work?"
+
+- **File**: `docs/development/EXECUTION_POLICY.md`
+  - **Content**: Diapason Execution Policy
+  - **Topics**: Summary, Auto-Allowed Commands, Tool Policies, Key Safety
+    Features, Dangerous Operations (Blocked)
+  - **User Questions**: "What can you tell me about Diapason Execution
+    Policy?", "How does Summary work?", "How does Auto-Allowed Commands work?"
 
 - **File**: `docs/development/EXTENSION_BOUNDARIES.md`
   - **Content**: Extension Boundaries in Diapason
   - **Topics**: Why This Exists, Default Extension Order, What Counts As
     Internal, What Counts As External, Review Checklist
-  - **User Questions**: "What can you tell me about Extension Boundaries in VT
-    Code?", "How does Why This Exists work?", "How does Default Extension Order
-    work?"
+  - **User Questions**: "What can you tell me about Extension Boundaries in
+    Diapason?", "How does Why This Exists work?", "How does Default Extension
+    Order work?"
 
 - **File**: `docs/development/fuzzing.md`
   - **Content**: Fuzzing Guide
@@ -191,6 +224,14 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about Model Addition Workflow
     Summary?", "How does Why This Workflow? work?", "How does The 10-Step
     Process work?"
+
+- **File**: `docs/development/model-profiles.md`
+  - **Content**: Model profiles and provider API format
+  - **Topics**: Provider-level fields (in `[[custom_providers]]`), Per-model
+    profiles (sparse overrides)
+  - **User Questions**: "What can you tell me about Model profiles and provider
+    API format?", "How does Provider-level fields (in `[[custom_providers]]`)
+    work?", "How does Per-model profiles (sparse overrides) work?"
 
 - **File**: `docs/development/performance-hasher-policy.md`
   - **Content**: Performance Hasher Policy
@@ -235,13 +276,6 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: Session Event Persistence
   - **User Questions**: "What can you tell me about Session Event Persistence?"
 
-- **File**: `docs/development/TUI_ONLY_REFACTORING.md`
-  - **Content**: TUI-Only Tool Permission Refactoring
-  - **Topics**: Overview, Problem Statement, Solution, Usage, Backward
-    Compatibility
-  - **User Questions**: "What can you tell me about TUI-Only Tool Permission
-    Refactoring?", "How does Overview work?", "How does Problem Statement work?"
-
 - **File**: `docs/development/grep-tool-guide.md`
   - **Content**: Text Search Guide
   - **Topics**: Overview, Architecture, Basic Usage, Flag Reference, Common
@@ -255,48 +289,19 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about Tool Summary Display?",
     "How does Model-visible tool output budget work?"
 
-- **File**: `docs/development/async-performance-audit.md`
-  - **Content**: Diapason Async Performance Audit
-  - **Topics**: Audit Rubric, Findings (Prioritized), Implemented Batch
-    (Runtime-Critical), Validation, Next Batch (Recommended)
-  - **User Questions**: "What can you tell me about Diapason Async Performance
-    Audit?", "How does Audit Rubric work?", "How does Findings (Prioritized)
-    work?"
-
-- **File**: `docs/development/COMMAND_SECURITY_MODEL.md`
-  - **Content**: Diapason Command Security Model
-  - **Topics**: Overview, Design Philosophy, Architecture, Safe Commands
-    (Enabled by Default), Dangerous Commands (Always Denied)
-  - **User Questions**: "What can you tell me about Diapason Command Security
-    Model?", "How does Overview work?", "How does Design Philosophy work?"
-
-- **File**: `docs/development/EXECUTION_POLICY.md`
-  - **Content**: Diapason Execution Policy
-  - **Topics**: Summary, Auto-Allowed Commands, Tool Policies, Key Safety
-    Features, Dangerous Operations (Blocked)
-  - **User Questions**: "What can you tell me about Diapason Execution Policy?",
-    "How does Summary work?", "How does Auto-Allowed Commands work?"
+- **File**: `docs/development/vidaimock-fixtures.md`
+  - **Content**: VidaiMock Arli scenarios
+  - **Topics**: Run the probe
+  - **User Questions**: "What can you tell me about VidaiMock Arli scenarios?",
+    "How does Run the probe work?"
 
 - **File**: `docs/development/webmcp.md`
   - **Content**: WebMCP bridge development guide
-  - **Topics**: Published deployments and exact origins, Boundaries, WebMCP API
-    versus the Diapason bridge, Browser tool contracts and evals, Transport and
-    pairing
+  - **Topics**: Self-hosting and exact origins, Boundaries, WebMCP API versus
+    the Diapason bridge, Browser tool contracts and evals, Transport and pairing
   - **User Questions**: "What can you tell me about WebMCP bridge development
-    guide?", "How does Published deployments and exact origins work?", "How
-    does Boundaries work?"
-
-- **File**: `docs/development/model-profiles.md`
-  - **Content**: model-profiles.md
-  - **User Questions**: "What can you tell me about model-profiles.md?"
-
-- **File**: `docs/development/grep-quick-reference.md`
-  - **Content**: rg Text Search Quick Reference Card
-  - **Topics**: Essential Commands, Common Search Patterns, Smart Patterns by
-    Language, Performance Tips, Output Example
-  - **User Questions**: "What can you tell me about rg Text Search Quick
-    Reference Card?", "How does Essential Commands work?", "How does Common
-    Search Patterns work?"
+    guide?", "How does Self-hosting and exact origins work?", "How does
+    Boundaries work?"
 
 - **File**: `docs/development/diapason-binary-gotchas.md`
   - **Content**: diapason Binary Gotchas
@@ -307,35 +312,22 @@ relevant sections from the files listed below based on the topic area.
     "How does Startup, updates, and allocation work?", "How does Tool-budget
     and recovery contracts work?"
 
-- **File**: `docs/development/diapason-crate-audit.md`
-  - **Content**: diapason-* Crate Audit Report
-  - **Topics**: Workspace Overview, MERGE RECOMMENDATIONS, RE-EXPORT CLEANUP
-    (in diapason-core), TEST DUPLICATES TO ELIMINATE, IMPLEMENTATION ORDER
-  - **User Questions**: "What can you tell me about diapason-* Crate Audit
-    Report?", "How does Workspace Overview work?", "How does MERGE
-    RECOMMENDATIONS work?"
+- **File**: `docs/development/grep-quick-reference.md`
+  - **Content**: rg Text Search Quick Reference Card
+  - **Topics**: Essential Commands, Common Search Patterns, Smart Patterns by
+    Language, Performance Tips, Output Example
+  - **User Questions**: "What can you tell me about rg Text Search Quick
+    Reference Card?", "How does Essential Commands work?", "How does Common
+    Search Patterns work?"
 
 ### Editor Integrations
 
 - **File**: `docs/ide/cursor-windsurf-setup.md`
   - **Content**: Cursor and Windsurf Setup Guide
-  - **Topics**: Overview, Configuration, Features Available, Troubleshooting,
-    Support
+  - **Topics**: Install the local extension, Troubleshooting
   - **User Questions**: "What can you tell me about Cursor and Windsurf Setup
-    Guide?", "How does Overview work?", "How does Configuration work?"
-
-- **File**: `docs/ide/editor-context-bridge.md`
-  - **Content**: Editor Context Bridge
-  - **Topics**: Contract, Canonical payload, Field notes, Integration checklist
-  - **User Questions**: "What can you tell me about Editor Context Bridge?",
-    "How does Contract work?", "How does Canonical payload work?"
-
-- **File**: `docs/ide/downloads.md`
-  - **Content**: Diapason Downloads
-  - **Topics**: Available for Your IDE, What is Diapason?, Support and
-    Documentation
-  - **User Questions**: "What can you tell me about Diapason Downloads?", "How
-    does Available for Your IDE work?", "How does What is Diapason? work?"
+    Guide?", "How does Install the local extension work?", "How does
+    Troubleshooting work?"
 
 - **File**: `docs/ide/troubleshooting.md`
   - **Content**: Diapason Troubleshooting Guide
@@ -345,21 +337,52 @@ relevant sections from the files listed below based on the topic area.
     Guide?", "How does Extension Not Working work?", "How does AI Provider Not
     Working work?"
 
+- **File**: `docs/ide/editor-context-bridge.md`
+  - **Content**: Editor Context Bridge
+  - **Topics**: Contract, Canonical payload, Field notes, Integration checklist
+  - **User Questions**: "What can you tell me about Editor Context Bridge?",
+    "How does Contract work?", "How does Canonical payload work?"
+
+- **File**: `docs/ide/downloads.md`
+  - **Content**: IDE Setup
+  - **Topics**: Install the Diapason CLI, Visual Studio Code, Cursor, and
+    Windsurf, Zed, Help
+  - **User Questions**: "What can you tell me about IDE Setup?", "How does
+    Install the Diapason CLI work?", "How does Visual Studio Code, Cursor, and
+    Windsurf work?"
+
 ### Getting Started & Overview
 
 - **File**: `docs/user-guide/agent-plugins.md`
   - **Content**: Agent Plugins
   - **Topics**: What a plugin gives you, Install a plugin, Manage plugins, Use
-    plugin skills and MCP, Example: diapason-plugins
+    plugin skills and MCP, Example: VTCode upstream plugin collection
   - **User Questions**: "What can you tell me about Agent Plugins?", "How does
     What a plugin gives you work?", "How does Install a plugin work?"
 
-- **File**: `docs/concurrency-improvements-report.md`
-  - **Content**: Concurrency Improvements Report
-  - **Topics**: Executive Summary, Changes Made, Bug Summary Table, False
-    Positives Eliminated, Test Results
-  - **User Questions**: "What can you tell me about Concurrency Improvements
-    Report?", "How does Executive Summary work?", "How does Changes Made work?"
+- **File**: `docs/ARCHITECTURE.md`
+  - **Content**: Diapason Architecture Guide
+  - **Topics**: Overview, Internal crate boundaries, Model + Harness, Core
+    Architecture, Tool Implementations
+  - **User Questions**: "What can you tell me about Diapason Architecture
+    Guide?", "How does Overview work?", "How does Internal crate boundaries
+    work?"
+
+- **File**: `docs/developers-guide.md`
+  - **Content**: Diapason Developer Guide
+  - **User Questions**: "What can you tell me about Diapason Developer Guide?"
+
+- **File**: `docs/COMPATIBILITY.md`
+  - **Content**: Diapason Platform Compatibility Matrix
+  - **Topics**: Quick Reference, Minimum Supported Rust Version (MSRV),
+    Platform-Specific Features, LLM Provider Compatibility, Feature Flags Matrix
+  - **User Questions**: "What can you tell me about Diapason Platform
+    Compatibility Matrix?", "How does Quick Reference work?", "How does Minimum
+    Supported Rust Version (MSRV) work?"
+
+- **File**: `docs/users-guide.md`
+  - **Content**: Diapason User Guide
+  - **User Questions**: "What can you tell me about Diapason User Guide?"
 
 - **File**: `docs/user-guide/exec-mode.md`
   - **Content**: Exec Mode Automation
@@ -372,9 +395,9 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: Getting Started with Diapason
   - **Topics**: What Makes Diapason Special, Enhanced Terminal Interface,
     Configuration, Usage Examples, Understanding the Agents
-  - **User Questions**: "What can you tell me about Getting Started with VT
-    Code?", "How does What Makes Diapason Special work?", "How does Enhanced
-    Terminal Interface work?"
+  - **User Questions**: "What can you tell me about Getting Started with
+    Diapason?", "How does What Makes Diapason Special work?", "How does
+    Enhanced Terminal Interface work?"
 
 - **File**: `docs/loop-engineering.md`
   - **Content**: Loop Engineering in diapason
@@ -420,21 +443,6 @@ relevant sections from the files listed below based on the topic area.
     Details, Configuration
   - **User Questions**: "What can you tell me about Tree-sitter Integration?",
     "How does Overview work?", "How does Shell Safety Parsing work?"
-
-- **File**: `docs/ARCHITECTURE.md`
-  - **Content**: Diapason Architecture Guide
-  - **Topics**: Overview, Model + Harness, Core Architecture, Tool
-    Implementations, Design Principles
-  - **User Questions**: "What can you tell me about Diapason Architecture
-    Guide?", "How does Overview work?", "How does Model + Harness work?"
-
-- **File**: `docs/COMPATIBILITY.md`
-  - **Content**: Diapason Platform Compatibility Matrix
-  - **Topics**: Quick Reference, Minimum Supported Rust Version (MSRV),
-    Platform-Specific Features, LLM Provider Compatibility, Feature Flags Matrix
-  - **User Questions**: "What can you tell me about Diapason Platform
-    Compatibility Matrix?", "How does Quick Reference work?", "How does Minimum
-    Supported Rust Version (MSRV) work?"
 
 - **File**: `docs/user-guide/webmcp.md`
   - **Content**: WebMCP Browser Bridge User Guide
@@ -503,6 +511,67 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about Configuring the inline
     status line?", "How does Available modes work?", "How does Command payload
     structure work?"
+
+- **File**: `docs/guides/async-architecture.md`
+  - **Content**: Diapason Async Architecture Guide
+  - **Topics**: When Should Diapason Use Async?, Architecture: Async vs.
+    Synchronous Paths, Key Async Patterns in Diapason, Anti-Patterns to Avoid,
+    Integration with Event Loop
+  - **User Questions**: "What can you tell me about Diapason Async Architecture
+    Guide?", "How does When Should Diapason Use Async? work?", "How does
+    Architecture: Async vs. Synchronous Paths work?"
+
+- **File**: `docs/guides/code-organization-patterns.md`
+  - **Content**: Diapason Code Organization Patterns
+  - **Topics**: Scope Rules, Shared Ownership Rules, FFI and Process-Handle
+    Field Lifetimes, Background Task Lifecycle, Channel Boundaries
+  - **User Questions**: "What can you tell me about Diapason Code Organization
+    Patterns?", "How does Scope Rules work?", "How does Shared Ownership Rules
+    work?"
+
+- **File**: `docs/guides/hooks-guide.md`
+  - **Content**: Diapason Hooks System Documentation
+  - **Topics**: Overview, Configuration, Hook Events, Hook Matching, Hook
+    Scripts
+  - **User Questions**: "What can you tell me about Diapason Hooks System
+    Documentation?", "How does Overview work?", "How does Configuration work?"
+
+- **File**: `docs/guides/output_styles.md`
+  - **Content**: Diapason Output Styles Feature
+  - **Topics**: Overview, How It Works, Configuration, Available Styles,
+    Creating Custom Styles
+  - **User Questions**: "What can you tell me about Diapason Output Styles
+    Feature?", "How does Overview work?", "How does How It Works work?"
+
+- **File**: `docs/guides/tui-event-handling.md`
+  - **Content**: Diapason TUI Event Handling Guide
+  - **Topics**: Overview, Key Implementation Details, Event Types,
+    Configuration, Integration with Diapason
+  - **User Questions**: "What can you tell me about Diapason TUI Event Handling
+    Guide?", "How does Overview work?", "How does Key Implementation Details
+    work?"
+
+- **File**: `docs/guides/terminal-optimization.md`
+  - **Content**: Diapason Terminal Optimization Guide
+  - **Topics**: Table of Contents, Theme and Appearance, Line Break Options,
+    Paste Handling, Notification Setup
+  - **User Questions**: "What can you tell me about Diapason Terminal
+    Optimization Guide?", "How does Table of Contents work?", "How does Theme
+    and Appearance work?"
+
+- **File**: `docs/guides/UPDATE_SYSTEM.md`
+  - **Content**: Diapason Update System Guide
+  - **Topics**: Overview, Release Channels, Version Pinning, Configuration
+    File, CLI Reference
+  - **User Questions**: "What can you tell me about Diapason Update System
+    Guide?", "How does Overview work?", "How does Release Channels work?"
+
+- **File**: `docs/guides/user-data-directories.md`
+  - **Content**: Diapason user data directories
+  - **Topics**: User configuration, User state, Workspace data, Legacy data
+  - **User Questions**: "What can you tell me about Diapason user data
+    directories?", "How does User configuration work?", "How does User state
+    work?"
 
 - **File**: `docs/guides/full-automation.md`
   - **Content**: Full Automation
@@ -592,8 +661,8 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/guides/responses-api-reasoning.md`
   - **Content**: Responses API & Reasoning Models
-  - **Topics**: Key Concepts, Diapason configuration guidance, Example workflow,
-    Taking it further
+  - **Topics**: Key Concepts, Diapason configuration guidance, Example
+    workflow, Taking it further
   - **User Questions**: "What can you tell me about Responses API & Reasoning
     Models?", "How does Key Concepts work?", "How does Diapason configuration
     guidance work?"
@@ -633,68 +702,6 @@ relevant sections from the files listed below based on the topic area.
     tool, Safety guidelines, Testing checklist
   - **User Questions**: "What can you tell me about Tool Registry Guide?", "How
     does Registry architecture work?", "How does Shell prompt profiles work?"
-
-- **File**: `docs/guides/async-architecture.md`
-  - **Content**: Diapason Async Architecture Guide
-  - **Topics**: When Should Diapason Use Async?, Architecture: Async vs.
-    Synchronous Paths, Key Async Patterns in Diapason, Anti-Patterns to Avoid,
-    Integration with Event Loop
-  - **User Questions**: "What can you tell me about Diapason Async Architecture
-    Guide?", "How does When Should Diapason Use Async? work?", "How does
-    Architecture: Async vs. Synchronous Paths work?"
-
-- **File**: `docs/guides/code-organization-patterns.md`
-  - **Content**: Diapason Code Organization Patterns
-  - **Topics**: Scope Rules, Shared Ownership Rules, FFI and Process-Handle
-    Field Lifetimes, Background Task Lifecycle, Channel Boundaries
-  - **User Questions**: "What can you tell me about Diapason Code Organization
-    Patterns?", "How does Scope Rules work?", "How does Shared Ownership Rules
-    work?"
-
-- **File**: `docs/guides/hooks-guide.md`
-  - **Content**: Diapason Hooks System Documentation
-  - **Topics**: Overview, Configuration, Hook Events, Hook Matching, Hook
-    Scripts
-  - **User Questions**: "What can you tell me about Diapason Hooks System
-    Documentation?", "How does Overview work?", "How does Configuration work?"
-
-- **File**: `docs/guides/output_styles.md`
-  - **Content**: Diapason Output Styles Feature
-  - **Topics**: Overview, How It Works, Configuration, Available Styles,
-    Creating Custom Styles
-  - **User Questions**: "What can you tell me about Diapason Output Styles
-    Feature?", "How does Overview work?", "How does How It Works work?"
-
-- **File**: `docs/guides/tui-event-handling.md`
-  - **Content**: Diapason TUI Event Handling Guide
-  - **Topics**: Overview, Key Implementation Details, Event Types,
-    Configuration, Integration with Diapason
-  - **User Questions**: "What can you tell me about Diapason TUI Event Handling
-    Guide?", "How does Overview work?", "How does Key Implementation Details
-    work?"
-
-- **File**: `docs/guides/terminal-optimization.md`
-  - **Content**: Diapason Terminal Optimization Guide
-  - **Topics**: Table of Contents, Theme and Appearance, Line Break Options,
-    Paste Handling, Notification Setup
-  - **User Questions**: "What can you tell me about Diapason Terminal
-    Optimization Guide?", "How does Table of Contents work?", "How does Theme
-    and Appearance work?"
-
-- **File**: `docs/guides/UPDATE_SYSTEM.md`
-  - **Content**: Diapason Update System Guide
-  - **Topics**: Overview, Release Channels, Version Pinning, Configuration
-    File, CLI Reference
-  - **User Questions**: "What can you tell me about Diapason Update System
-    Guide?", "How does Overview work?", "How does Release Channels work?"
-
-- **File**: `docs/guides/user-data-directories.md`
-  - **Content**: Diapason user data directories
-  - **Topics**: Find the active paths, Directory categories, Environment
-    variables, Configuration precedence, XDG user data directories
-  - **User Questions**: "What can you tell me about Diapason user data
-    directories?", "How does Find the active paths work?", "How does Directory
-    categories work?"
 
 - **File**: `docs/guides/zed-acp.md`
   - **Content**: Zed Agent Client Protocol Integration
@@ -897,6 +904,13 @@ relevant sections from the files listed below based on the topic area.
     "How does Event taxonomy work?", "How does Versioning and compatibility
     work?"
 
+- **File**: `docs/modules/diapason_indexer.md`
+  - **Content**: `diapason-indexer`
+  - **Topics**: Core concepts, Customizing persistence, Tailoring traversal,
+    End-to-end example
+  - **User Questions**: "What can you tell me about `diapason-indexer`?", "How
+    does Core concepts work?", "How does Customizing persistence work?"
+
 - **File**: `docs/modules/diapason_llm_environment.md`
   - **Content**: `diapason-llm` Environment Configuration Guide
   - **Topics**: Provider environment variables, Loading keys with
@@ -910,8 +924,9 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: `diapason-markdown-store`
   - **Topics**: Storage building blocks, Feature flags, Usage examples,
     Concurrency guarantees
-  - **User Questions**: "What can you tell me about `diapason-markdown-store`?",
-    "How does Storage building blocks work?", "How does Feature flags work?"
+  - **User Questions**: "What can you tell me about
+    `diapason-markdown-store`?", "How does Storage building blocks work?", "How
+    does Feature flags work?"
 
 - **File**: `docs/modules/diapason_a2a.md`
   - **Content**: diapason-a2a
@@ -944,23 +959,15 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: diapason-safety
   - **Topics**: Overview, Module Groups, Command Safety, Execution Policy,
     Sandboxing
-  - **User Questions**: "What can you tell me about diapason-safety?", "How does
-    Overview work?", "How does Module Groups work?"
+  - **User Questions**: "What can you tell me about diapason-safety?", "How
+    does Overview work?", "How does Module Groups work?"
 
 - **File**: `docs/modules/diapason_skills.md`
   - **Content**: diapason-skills
   - **Topics**: Overview, Key Modules, Skill Lifecycle, Architecture Notes,
     Dependencies
-  - **User Questions**: "What can you tell me about diapason-skills?", "How does
-    Overview work?", "How does Key Modules work?"
-
-- **File**: `docs/modules/diapason_tools_policy.md`
-  - **Content**: diapason-tools Policy Customization Guide (Historical)
-  - **Topics**: Custom storage location, Construct a `ToolPolicyManager` with
-    your path
-  - **User Questions**: "What can you tell me about diapason-tools Policy
-    Customization Guide (Historical)?", "How does Custom storage location
-    work?", "How does Construct a `ToolPolicyManager` with your path work?"
+  - **User Questions**: "What can you tell me about diapason-skills?", "How
+    does Overview work?", "How does Key Modules work?"
 
 - **File**: `docs/modules/diapason_ui.md`
   - **Content**: diapason-ui
@@ -968,21 +975,14 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about diapason-ui?", "How does
     Overview work?", "How does Architecture work?"
 
-- **File**: `docs/modules/diapason_indexer.md`
-  - **Content**: diapason_indexer.md
-  - **Topics**: Core concepts, Customizing persistence, Tailoring traversal,
-    End-to-end example
-  - **User Questions**: "What can you tell me about diapason_indexer.md?", "How
-    does Core concepts work?", "How does Customizing persistence work?"
-
 ### Other
 
 - **File**: `docs/a2a/a2a-protocol.md`
   - **Content**: A2A Protocol Support for Diapason
   - **Topics**: Overview, Architecture, Core Types, Task Manager API, Server
     API (HTTP Endpoints)
-  - **User Questions**: "What can you tell me about A2A Protocol Support for VT
-    Code?", "How does Overview work?", "How does Architecture work?"
+  - **User Questions**: "What can you tell me about A2A Protocol Support for
+    Diapason?", "How does Overview work?", "How does Architecture work?"
 
 - **File**: `docs/acp/ACP_INTEGRATION.md`
   - **Content**: ACP (Agent Communication Protocol) Integration Guide
@@ -1024,25 +1024,16 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: ANSI Escape Sequences in Diapason
   - **Topics**: Overview, Key Modules, ANSI Sequences Used in Diapason, PTY
     Output Processing, TUI Rendering
-  - **User Questions**: "What can you tell me about ANSI Escape Sequences in VT
-    Code?", "How does Overview work?", "How does Key Modules work?"
+  - **User Questions**: "What can you tell me about ANSI Escape Sequences in
+    Diapason?", "How does Overview work?", "How does Key Modules work?"
 
 - **File**: `docs/reference/ansi-quick-reference.md`
   - **Content**: ANSI Quick Reference for Diapason Development
   - **Topics**: Most Common Sequences, Diapason Usage Examples, Regex Patterns,
     Testing Helpers, Common Mistakes
-  - **User Questions**: "What can you tell me about ANSI Quick Reference for VT
-    Code Development?", "How does Most Common Sequences work?", "How does VT
-    Code Usage Examples work?"
-
-- **File**: `docs/audits/agent-harness-duplication-report.md`
-  - **Content**: Agent / Harness Duplication & Optimization Report
-  - **Topics**: Architectural root cause, Findings, Revised status after
-    line-by-line verification, Open questions for maintainers
-    (behavior-changing — not auto-applied), Changelog
-  - **User Questions**: "What can you tell me about Agent / Harness Duplication
-    & Optimization Report?", "How does Architectural root cause work?", "How
-    does Findings work?"
+  - **User Questions**: "What can you tell me about ANSI Quick Reference for
+    Diapason Development?", "How does Most Common Sequences work?", "How does
+    Diapason Usage Examples work?"
 
 - **File**: `docs/harness/AGENT_LEGIBILITY_GUIDE.md`
   - **Content**: Agent Legibility Guide
@@ -1083,8 +1074,8 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/styling/anstyle-crates-research.md`
   - **Content**: Anstyle Git/LS Crates Research & Diapason Styling Improvements
-  - **Topics**: Overview, Crate Analysis, Current Diapason Styling Architecture,
-    Recommended Improvements, Implementation Priority
+  - **Topics**: Overview, Crate Analysis, Current Diapason Styling
+    Architecture, Recommended Improvements, Implementation Priority
   - **User Questions**: "What can you tell me about Anstyle Git/LS Crates
     Research & Diapason Styling Improvements?", "How does Overview work?", "How
     does Crate Analysis work?"
@@ -1103,57 +1094,20 @@ relevant sections from the files listed below based on the topic area.
     Application, Module Dependencies, Effect Support Matrix, InlineTextStyle
     Evolution
   - **User Questions**: "What can you tell me about Architecture: Anstyle
-    Integration in Diapason?", "How does System Architecture Diagram work?", "How
-    does Data Flow: Style Parsing and Application work?"
+    Integration in Diapason?", "How does System Architecture Diagram work?",
+    "How does Data Flow: Style Parsing and Application work?"
 
-- **File**: `docs/analysis/BLOATY_ANALYSIS.md`
-  - **Content**: Bloaty Analysis Report for diapason
-  - **Topics**: Overview, Binary Size Summary, Release-fast Binary Analysis (32
-    MiB), Debug Binary Analysis (84 MiB), Recommendations
-  - **User Questions**: "What can you tell me about Bloaty Analysis Report for
-    diapason?", "How does Overview work?", "How does Binary Size Summary work?"
-
-- **File**: `docs/blog/building-diapason-a-year-in.md`
-  - **Content**: Building Diapason, a year in
-  - **Topics**: The model shelf, September 2026, Benchmarks, with honest
-    framing, The roadmap shipped, The harness matters more than the model,
-    Context engineering got real numbers
-  - **User Questions**: "What can you tell me about Building Diapason, a year
-    in?", "How does The model shelf, September 2026 work?", "How does
-    Benchmarks, with honest framing work?"
-
-- **File**: `docs/audits/code-review-2026-08-07.md`
-  - **Content**: Code Review + Fixes — 2026-08-07
-  - **Topics**: Completed fixes, Decomposition: `core/loop_detector.rs` →
-    `core/loop_detector/mod.rs` + `normalization.rs`, Intentionally not
-    changed, Verification summary, Status
-  - **User Questions**: "What can you tell me about Code Review + Fixes —
-    2026-08-07?", "How does Completed fixes work?", "How does Decomposition:
-    `core/loop_detector.rs` → `core/loop_detector/mod.rs` + `normalization.rs`
-    work?"
-
-- **File**: `docs/audits/code-review-2026-08-10.md`
-  - **Content**: Code Review + Fixes — 2026-08-10
-  - **Topics**: Findings and disposition, Compatibility and false-positive
-    filtering, Refactoring guard rails, Verification
-  - **User Questions**: "What can you tell me about Code Review + Fixes —
-    2026-08-10?", "How does Findings and disposition work?", "How does
-    Compatibility and false-positive filtering work?"
-
-- **File**: `docs/project/code-review-action-plan.md`
-  - **Content**: Code Review Action Plan
-  - **Topics**: MEDIUM SEVERITY, LOW SEVERITY, STYLE / QUALITY (bulk fixes),
-    PRIORITY ORDER
-  - **User Questions**: "What can you tell me about Code Review Action Plan?",
-    "How does MEDIUM SEVERITY work?", "How does LOW SEVERITY work?"
+- **File**: `docs/examples/background-subagent-demo.md`
+  - **Content**: Background subagent demo
+  - **User Questions**: "What can you tell me about Background subagent demo?"
 
 - **File**: `docs/context/context_engineering.md`
   - **Content**: Context Engineering in Diapason
   - **Topics**: Overview, Context Engineering vs Prompt Engineering, Diapason's
     Three Context Primitives, Accuracy Optimization Loop, Core Principles
-  - **User Questions**: "What can you tell me about Context Engineering in VT
-    Code?", "How does Overview work?", "How does Context Engineering vs Prompt
-    Engineering work?"
+  - **User Questions**: "What can you tell me about Context Engineering in
+    Diapason?", "How does Overview work?", "How does Context Engineering vs
+    Prompt Engineering work?"
 
 - **File**: `docs/harness/CORE_BELIEFS.md`
   - **Content**: Core Beliefs
@@ -1164,12 +1118,87 @@ relevant sections from the files listed below based on the topic area.
     1. Humans Steer, Agents Execute work?", "How does 2. Repository as System
     of Record work?"
 
-- **File**: `docs/analysis/DRY_DUPLICATION_AUDIT.md`
-  - **Content**: DRY/KISS Duplication Audit
-  - **Topics**: Scope, Implemented Refactors, Duplication Intentionally Left
-    Alone, Expected Benefits, Verification
-  - **User Questions**: "What can you tell me about DRY/KISS Duplication
-    Audit?", "How does Scope work?", "How does Implemented Refactors work?"
+- **File**: `docs/huggingface/diapason.md`
+  - **Content**: Diapason
+  - **Topics**: Overview, Configuration, Supported Models, Features with HF
+    Integration, Common Use Cases
+  - **User Questions**: "What can you tell me about Diapason?", "How does
+    Overview work?", "How does Configuration work?"
+
+- **File**: `docs/releases/0.157.0.md`
+  - **Content**: Diapason 0.157.0
+  - **Topics**: Configuration and migration, ACP behavior
+  - **User Questions**: "What can you tell me about Diapason 0.157.0?", "How
+    does Configuration and migration work?", "How does ACP behavior work?"
+
+- **File**: `docs/environment/ALLOWED_COMMANDS_REFERENCE.md`
+  - **Content**: Diapason Allowed Commands Reference
+  - **Topics**: Overview, Command Categories, Blocked Commands (Dangerous
+    Operations), Environment Variables Preserved, Configuration
+  - **User Questions**: "What can you tell me about Diapason Allowed Commands
+    Reference?", "How does Overview work?", "How does Command Categories work?"
+
+- **File**: `docs/environment/ENVIRONMENT_SETUP_GUIDE.md`
+  - **Content**: Diapason Environment Setup and PATH Visibility Guide
+  - **Topics**: Overview, Diapason storage environment, How Diapason Manages
+    Environment Variables, Command Execution Paths, Verifying Your Environment
+    Setup
+  - **User Questions**: "What can you tell me about Diapason Environment Setup
+    and PATH Visibility Guide?", "How does Overview work?", "How does Diapason
+    storage environment work?"
+
+- **File**: `docs/styling/RATATUI_FAQ_INTEGRATION.md`
+  - **Content**: Diapason Integration of Ratatui FAQ Best Practices
+  - **Topics**: Overview, FAQ Topics Applied, New Documentation, Code Comments,
+    Testing Improvements
+  - **User Questions**: "What can you tell me about Diapason Integration of
+    Ratatui FAQ Best Practices?", "How does Overview work?", "How does FAQ
+    Topics Applied work?"
+
+- **File**: `docs/project/diapason-project-info.md`
+  - **Content**: Diapason Project Info
+  - **Topics**: What is Diapason?, Architecture
+  - **User Questions**: "What can you tell me about Diapason Project Info?",
+    "How does What is Diapason? work?", "How does Architecture work?"
+
+- **File**: `docs/sandbox/SANDBOX_DEEP_DIVE.md`
+  - **Content**: Diapason Sandbox Deep Dive
+  - **Topics**: Design Philosophy, Sandbox Policies, Platform-Specific
+    Implementations, Security Features, Debug Tooling
+  - **User Questions**: "What can you tell me about Diapason Sandbox Deep
+    Dive?", "How does Design Philosophy work?", "How does Sandbox Policies
+    work?"
+
+- **File**: `docs/sandbox/SANDBOX_FIELD_GUIDE.md`
+  - **Content**: Diapason Sandbox Field Guide
+  - **Topics**: The Three-Question Model, Boundaries, Policy, Lifecycle,
+    Platform-Specific Implementation
+  - **User Questions**: "What can you tell me about Diapason Sandbox Field
+    Guide?", "How does The Three-Question Model work?", "How does Boundaries
+    work?"
+
+- **File**: `docs/styling/INDEX.md`
+  - **Content**: Diapason Styling System - Complete Documentation Index
+  - **Topics**: Quick Navigation, Implementation Status, Document Guide, Quick
+    Reference, Key Crates
+  - **User Questions**: "What can you tell me about Diapason Styling System -
+    Complete Documentation Index?", "How does Quick Navigation work?", "How
+    does Implementation Status work?"
+
+- **File**: `docs/styling/README.md`
+  - **Content**: Diapason Styling System Documentation
+  - **Topics**: Files, Quick Summary, Architecture Overview, Dependencies,
+    Related Code Locations
+  - **User Questions**: "What can you tell me about Diapason Styling System
+    Documentation?", "How does Files work?", "How does Quick Summary work?"
+
+- **File**: `docs/protocols/XDG_DIRECTORY_SPECIFICATION.md`
+  - **Content**: Diapason user directories
+  - **Topics**: Directory categories, Repository-local data, Platform roots,
+    Permissions, References
+  - **User Questions**: "What can you tell me about Diapason user
+    directories?", "How does Directory categories work?", "How does
+    Repository-local data work?"
 
 - **File**: `docs/harness/exec-plans/completed/001-tui-runloop-decomposition.md`
   - **Content**: EP-001: TUI Runloop and Slash Command Decomposition
@@ -1177,6 +1206,14 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about EP-001: TUI Runloop and
     Slash Command Decomposition?", "How does Goal work?", "How does Context
     work?"
+
+- **File**: `docs/execplans/issue-108-unmaintained-baseline.md`
+  - **Content**: Enforce the classified dependency maintenance baseline
+  - **Topics**: Purpose and constraints, Ownership and tolerance, Progress,
+    Work and validation, Integration and outcome
+  - **User Questions**: "What can you tell me about Enforce the classified
+    dependency maintenance baseline?", "How does Purpose and constraints
+    work?", "How does Ownership and tolerance work?"
 
 - **File**: `docs/harness/EXEC_PLANS.md`
   - **Content**: Execution Plans
@@ -1215,47 +1252,27 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/installation/README.md`
   - **Content**: Installation Guide
-  - **Topics**: Quick Install, Supported AI Providers, Troubleshooting,
+  - **Topics**: Install from source, Supported AI Providers, Troubleshooting,
     Uninstall, Additional Resources
   - **User Questions**: "What can you tell me about Installation Guide?", "How
-    does Quick Install work?", "How does Supported AI Providers work?"
-
-- **File**: `docs/installation/DEVELOPERS.md`
-  - **Content**: Installer Development Guide
-  - **Topics**: Overview, Platform Detection, Release Binaries, GitHub Releases
-    Setup, Testing Installers
-  - **User Questions**: "What can you tell me about Installer Development
-    Guide?", "How does Overview work?", "How does Platform Detection work?"
-
-- **File**: `docs/protocols/KITTY_KEYBOARD_PROTOCOL_RESTORATION.md`
-  - **Content**: Kitty Keyboard Protocol Restoration
-  - **Topics**: Overview, Architecture, Files Modified/Restored, Configuration,
-    Data Flow
-  - **User Questions**: "What can you tell me about Kitty Keyboard Protocol
-    Restoration?", "How does Overview work?", "How does Architecture work?"
+    does Install from source work?", "How does Supported AI Providers work?"
 
 - **File**: `docs/protocols/LANGUAGE_SUPPORT.md`
   - **Content**: Language Support in Diapason
   - **Topics**: Semantic Understanding, Tree-sitter Security Parsing (Bash),
     Syntax Highlighting
-  - **User Questions**: "What can you tell me about Language Support in VT
-    Code?", "How does Semantic Understanding work?", "How does Tree-sitter
+  - **User Questions**: "What can you tell me about Language Support in
+    Diapason?", "How does Semantic Understanding work?", "How does Tree-sitter
     Security Parsing (Bash) work?"
 
 - **File**: `docs/build-with-claude/migrating-to-claude-opus-5.md`
   - **Content**: Migrating Claude models in Diapason
-  - **Topics**: Quick navigation, Model comparison, Where to make changes in VT
-    Code, Migrating to Claude Fable 5 / Claude Mythos 5, Migrating to Claude
-    Opus 5
+  - **Topics**: Quick navigation, Model comparison, Where to make changes in
+    Diapason, Migrating to Claude Fable 5 / Claude Mythos 5, Migrating to
+    Claude Opus 5
   - **User Questions**: "What can you tell me about Migrating Claude models in
     Diapason?", "How does Quick navigation work?", "How does Model comparison
     work?"
-
-- **File**: `docs/installation/NATIVE_INSTALLERS.md`
-  - **Content**: Native Installers
-  - **Topics**: macOS & Linux (Shell), Windows (PowerShell)
-  - **User Questions**: "What can you tell me about Native Installers?", "How
-    does macOS & Linux (Shell) work?", "How does Windows (PowerShell) work?"
 
 - **File**: `docs/skills/NATIVE_PLUGIN_IMPLEMENTATION.md`
   - **Content**: Native Plugin System Implementation Summary
@@ -1269,8 +1286,9 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: Native Plugin System for Diapason
   - **Topics**: Overview, What are Native Plugins?, Plugin Architecture, Plugin
     ABI, Creating a Plugin
-  - **User Questions**: "What can you tell me about Native Plugin System for VT
-    Code?", "How does Overview work?", "How does What are Native Plugins? work?"
+  - **User Questions**: "What can you tell me about Native Plugin System for
+    Diapason?", "How does Overview work?", "How does What are Native Plugins?
+    work?"
 
 - **File**: `docs/protocols/OPEN_RESPONSES.md`
   - **Content**: Open Responses Specification Conformance
@@ -1317,7 +1335,8 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/installation/QUICK_REFERENCE.md`
   - **Content**: Quick Reference
-  - **Topics**: Install, Uninstall, Verify, Troubleshooting, API Keys
+  - **Topics**: Install, Uninstall, Verify, API Keys, Authentication (OAuth /
+    ChatGPT Subscription)
   - **User Questions**: "What can you tell me about Quick Reference?", "How
     does Install work?", "How does Uninstall work?"
 
@@ -1328,6 +1347,14 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about Quick Reference: Anstyle
     Crates?", "How does anstyle-git Syntax work?", "How does anstyle-ls Syntax
     work?"
+
+- **File**: `docs/execplans/ci-prerequisites.md`
+  - **Content**: Restore shared CI prerequisites for the remediation stack
+  - **Topics**: Purpose / big picture, Conformance basis and constraints,
+    Tolerances and ownership, Progress, Surprises & discoveries
+  - **User Questions**: "What can you tell me about Restore shared CI
+    prerequisites for the remediation stack?", "How does Purpose / big picture
+    work?", "How does Conformance basis and constraints work?"
 
 - **File**: `docs/harness/SESSION_LOG_REVIEW.md`
   - **Content**: Session Log Review
@@ -1388,88 +1415,12 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about Tech Debt Tracker?", "How
     does Priority Levels work?", "How does Status Values work?"
 
-- **File**: `docs/huggingface/diapason.md`
-  - **Content**: Diapason
-  - **Topics**: Overview, Configuration, Supported Models, Features with HF
-    Integration, Common Use Cases
-  - **User Questions**: "What can you tell me about Diapason?", "How does
-    Overview work?", "How does Configuration work?"
-
-- **File**: `docs/environment/ALLOWED_COMMANDS_REFERENCE.md`
-  - **Content**: Diapason Allowed Commands Reference
-  - **Topics**: Overview, Command Categories, Blocked Commands (Dangerous
-    Operations), Environment Variables Preserved, Configuration
-  - **User Questions**: "What can you tell me about Diapason Allowed Commands
-    Reference?", "How does Overview work?", "How does Command Categories work?"
-
-- **File**: `docs/environment/ENVIRONMENT_SETUP_GUIDE.md`
-  - **Content**: Diapason Environment Setup and PATH Visibility Guide
-  - **Topics**: Overview, Diapason storage environment, How Diapason Manages
-    Environment Variables, Command Execution Paths, Verifying Your Environment
-    Setup
-  - **User Questions**: "What can you tell me about Diapason Environment Setup
-    and PATH Visibility Guide?", "How does Overview work?", "How does Diapason
-    storage environment work?"
-
-- **File**: `docs/styling/RATATUI_FAQ_INTEGRATION.md`
-  - **Content**: Diapason Integration of Ratatui FAQ Best Practices
-  - **Topics**: Overview, FAQ Topics Applied, New Documentation, Code Comments,
-    Testing Improvements
-  - **User Questions**: "What can you tell me about Diapason Integration of
-    Ratatui FAQ Best Practices?", "How does Overview work?", "How does FAQ
-    Topics Applied work?"
-
-- **File**: `docs/project/diapason-project-info.md`
-  - **Content**: Diapason Project Info
-  - **Topics**: What is Diapason?, Architecture
-  - **User Questions**: "What can you tell me about Diapason Project Info?",
-    "How does What is Diapason? work?", "How does Architecture work?"
-
-- **File**: `docs/sandbox/SANDBOX_DEEP_DIVE.md`
-  - **Content**: Diapason Sandbox Deep Dive
-  - **Topics**: Design Philosophy, Sandbox Policies, Platform-Specific
-    Implementations, Security Features, Debug Tooling
-  - **User Questions**: "What can you tell me about Diapason Sandbox Deep
-    Dive?", "How does Design Philosophy work?", "How does Sandbox Policies
-    work?"
-
-- **File**: `docs/sandbox/SANDBOX_FIELD_GUIDE.md`
-  - **Content**: Diapason Sandbox Field Guide
-  - **Topics**: The Three-Question Model, Boundaries, Policy, Lifecycle,
-    Platform-Specific Implementation
-  - **User Questions**: "What can you tell me about Diapason Sandbox Field
-    Guide?", "How does The Three-Question Model work?", "How does Boundaries
-    work?"
-
-- **File**: `docs/styling/INDEX.md`
-  - **Content**: Diapason Styling System - Complete Documentation Index
-  - **Topics**: Quick Navigation, Implementation Status, Document Guide, Quick
-    Reference, Key Crates
-  - **User Questions**: "What can you tell me about Diapason Styling System -
-    Complete Documentation Index?", "How does Quick Navigation work?", "How
-    does Implementation Status work?"
-
-- **File**: `docs/protocols/XDG_DIRECTORY_SPECIFICATION.md`
-  - **Content**: Diapason user directories
-  - **Topics**: Directory categories, Platform roots, Legacy migration and
-    rollback, Compatibility boundaries, References
-  - **User Questions**: "What can you tell me about Diapason user directories?",
-    "How does Directory categories work?", "How does Platform roots work?"
-
-- **File**: `docs/styling/README.md`
-  - **Content**: Diapason Styling System Documentation
-  - **Topics**: Files, Quick Summary, Architecture Overview, Dependencies,
-    Related Code Locations
-  - **User Questions**: "What can you tell me about Diapason Styling System
-    Documentation?", "How does Files work?", "How does Quick Summary work?"
-
 - **File**: `docs/reference/webmcp.md`
   - **Content**: WebMCP deployment reference
-  - **Topics**: Select a deployment, Pair either published page, Origin trial
-    and browser support, Verification checklist
+  - **Topics**: Pair a self-hosted page, Verification checklist
   - **User Questions**: "What can you tell me about WebMCP deployment
-    reference?", "How does Select a deployment work?", "How does Pair either
-    published page work?"
+    reference?", "How does Pair a self-hosted page work?", "How does
+    Verification checklist work?"
 
 - **File**: `docs/protocols/ZED_EXTENSION_FILE_SEARCH.md`
   - **Content**: Zed Extension File Search Integration
@@ -1482,9 +1433,9 @@ relevant sections from the files listed below based on the topic area.
   - **Content**: Zen Alignment for Diapason
   - **Topics**: Scope, Full Principle Mapping (All 19), Baseline Metrics
     (2026-03-03), Rollout, Verification Commands
-  - **User Questions**: "What can you tell me about Zen Alignment for VT
-    Code?", "How does Scope work?", "How does Full Principle Mapping (All 19)
-    work?"
+  - **User Questions**: "What can you tell me about Zen Alignment for
+    Diapason?", "How does Scope work?", "How does Full Principle Mapping (All
+    19) work?"
 
 - **File**: `docs/ansi/ANSTYLE_CROSSTERM_IMPROVEMENTS.md`
   - **Content**: anstyle-crossterm Integration Improvements
@@ -1503,10 +1454,13 @@ relevant sections from the files listed below based on the topic area.
     Guide?", "How does Step 1: Add Dependency work?", "How does Step 2: Create
     Parser Wrapper Module work?"
 
-- **File**: `docs/examples/background-subagent-demo.md`
-  - **Content**: background-subagent-demo.md
-  - **User Questions**: "What can you tell me about
-    background-subagent-demo.md?"
+- **File**: `docs/development/module-guidance/src.md`
+  - **Content**: diapason (binary)
+  - **Topics**: Modules (active bridge: `agent/runloop/unified/webmcp.rs`),
+    Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason (binary)?", "How
+    does Modules (active bridge: `agent/runloop/unified/webmcp.rs`) work?",
+    "How does Rules work?"
 
 - **File**: `docs/project/ROADMAP.md`
   - **Content**: diapason Development Roadmap
@@ -1517,29 +1471,150 @@ relevant sections from the files listed below based on the topic area.
     Roadmap?", "How does **Recently Completed - Major Breakthroughs** work?",
     "How does **High Priority - SWE-bench Performance Optimization** work?"
 
+- **File**: `docs/development/module-guidance/diapason-a2a.md`
+  - **Content**: diapason-a2a
+  - **Topics**: Module Groups, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-a2a?", "How does
+    Module Groups work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-acp.md`
+  - **Content**: diapason-acp
+  - **Topics**: Modules, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-acp?", "How does
+    Modules work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-agent-plugins.md`
+  - **Content**: diapason-agent-plugins
+  - **Topics**: Conventions, Dependencies
+  - **User Questions**: "What can you tell me about diapason-agent-plugins?",
+    "How does Conventions work?", "How does Dependencies work?"
+
+- **File**: `docs/development/module-guidance/diapason-auth.md`
+  - **Content**: diapason-auth
+  - **Topics**: Modules, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-auth?", "How does
+    Modules work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-bash-runner.md`
+  - **Content**: diapason-bash-runner
+  - **Topics**: Modules, Rules, Testing, Gotchas
+  - **User Questions**: "What can you tell me about diapason-bash-runner?",
+    "How does Modules work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-commons.md`
+  - **Content**: diapason-commons
+  - **Topics**: Module Groups, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-commons?", "How
+    does Module Groups work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-config.md`
+  - **Content**: diapason-config
+  - **Topics**: Modules, Rules, Adding a Model — **OpenRouter**
+    (code-generated): edit `ModelId`, `Provider::OpenRouter` match, and
+    `docs/models.json`; the build script handles the rest. **Non-OpenRouter**
+    (manual): add the constant, `ModelId` variant and match arms, defaults if
+    needed, preset, optional resolver update, and `docs/models.json`; gateway
+    providers may intentionally accept explicit catalog-missing route IDs. See
+    `adding-llm-providers` skill for the checklist, Gotchas
+  - **User Questions**: "What can you tell me about diapason-config?", "How
+    does Modules work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-core.md`
+  - **Content**: diapason-core
+  - **Topics**: Module map, Rules, Workflows, Gotchas
+  - **User Questions**: "What can you tell me about diapason-core?", "How does
+    Module map work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-eval.md`
+  - **Content**: diapason-eval
+  - **Topics**: Module Groups, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-eval?", "How does
+    Module Groups work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-exec-events.md`
+  - **Content**: diapason-exec-events
+  - **Topics**: Key Types, ThreadEvent Variants, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-exec-events?",
+    "How does Key Types work?", "How does ThreadEvent Variants work?"
+
+- **File**: `docs/development/module-guidance/diapason-indexer.md`
+  - **Content**: diapason-indexer
+  - **Topics**: Key Types, Rules, Testing, Gotchas
+  - **User Questions**: "What can you tell me about diapason-indexer?", "How
+    does Key Types work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-llm.md`
+  - **Content**: diapason-llm
+  - **Topics**: Key Modules, Architecture Notes, Dependencies, Coding
+    Conventions, OpenAI-Compatible Providers
+  - **User Questions**: "What can you tell me about diapason-llm?", "How does
+    Key Modules work?", "How does Architecture Notes work?"
+
+- **File**: `docs/development/module-guidance/diapason-macros.md`
+  - **Content**: diapason-macros
+  - **Topics**: Conventions, Dependencies
+  - **User Questions**: "What can you tell me about diapason-macros?", "How
+    does Conventions work?", "How does Dependencies work?"
+
+- **File**: `docs/development/module-guidance/diapason-mcp.md`
+  - **Content**: diapason-mcp
+  - **Topics**: Module Groups, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-mcp?", "How does
+    Module Groups work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-memory.md`
+  - **Content**: diapason-memory
+  - **Topics**: Conventions, Dependencies, Testing
+  - **User Questions**: "What can you tell me about diapason-memory?", "How
+    does Conventions work?", "How does Dependencies work?"
+
+- **File**: `docs/development/module-guidance/diapason-safety.md`
+  - **Content**: diapason-safety
+  - **Topics**: Module Groups, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-safety?", "How
+    does Module Groups work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-skills.md`
+  - **Content**: diapason-skills
+  - **Topics**: Key Modules, Architecture Notes, Dependencies, Coding
+    Conventions, Gotchas
+  - **User Questions**: "What can you tell me about diapason-skills?", "How
+    does Key Modules work?", "How does Architecture Notes work?"
+
+- **File**: `docs/development/module-guidance/diapason-ui.md`
+  - **Content**: diapason-ui
+  - **Topics**: Modules, Rules, Gotchas
+  - **User Questions**: "What can you tell me about diapason-ui?", "How does
+    Modules work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/diapason-utility-tool-specs.md`
+  - **Content**: diapason-utility-tool-specs
+  - **Topics**: Conventions, Module Groups, Dependencies
+  - **User Questions**: "What can you tell me about
+    diapason-utility-tool-specs?", "How does Conventions work?", "How does
+    Module Groups work?"
+
+- **File**: `docs/development/module-guidance/diapason-webmcp.md`
+  - **Content**: diapason-webmcp
+  - **Topics**: Modules, Rules
+  - **User Questions**: "What can you tell me about diapason-webmcp?", "How
+    does Modules work?", "How does Rules work?"
+
+- **File**: `docs/development/module-guidance/xtask.md`
+  - **Content**: xtask
+  - **Topics**: Role, Commands, Rules
+  - **User Questions**: "What can you tell me about xtask?", "How does Role
+    work?", "How does Commands work?"
+
 ### Performance & Optimization
 
 - **File**: `docs/benchmarks/CHART_GUIDE.md`
   - **Content**: Benchmark Chart Quick Reference
-  - **Topics**: Current Chart, Chart Breakdown, Key Insights, Generating Your
-    Own Charts, Comparing Models
+  - **Topics**: Historical Example Chart, Chart Breakdown, Key Insights,
+    Generating Your Own Charts, Comparing Models
   - **User Questions**: "What can you tell me about Benchmark Chart Quick
-    Reference?", "How does Current Chart work?", "How does Chart Breakdown
-    work?"
-
-- **File**: `docs/benchmarks/COMPARISON.md`
-  - **Content**: Benchmark Comparison
-  - **Topics**: Current Results, Planned Comparisons, Expected Performance
-    Ranges, How to Add New Results, Analysis Framework
-  - **User Questions**: "What can you tell me about Benchmark Comparison?",
-    "How does Current Results work?", "How does Planned Comparisons work?"
-
-- **File**: `docs/benchmarks/SUMMARY.md`
-  - **Content**: Benchmark Summary
-  - **Topics**: Quick Reference, Latest Results, How to Run, Visualization,
-    Files
-  - **User Questions**: "What can you tell me about Benchmark Summary?", "How
-    does Quick Reference work?", "How does Latest Results work?"
+    Reference?", "How does Historical Example Chart work?", "How does Chart
+    Breakdown work?"
 
 - **File**: `docs/benchmarks/VISUALIZATION.md`
   - **Content**: Benchmark Visualization Guide
@@ -1549,27 +1624,12 @@ relevant sections from the files listed below based on the topic area.
     Guide?", "How does Chart Components work?", "How does Generating Charts
     work?"
 
-- **File**: `docs/benchmarks/HUMANEVAL_2025-10-22.md`
-  - **Content**: HumanEval Benchmark Results - October 22, 2025
-  - **Topics**: Executive Summary, Configuration, Results, Methodology, Analysis
-  - **User Questions**: "What can you tell me about HumanEval Benchmark Results
-    - October 22, 2025?", "How does Executive Summary work?", "How does
-    Configuration work?"
-
 - **File**: `docs/benchmarks/README.md`
   - **Content**: Diapason Benchmarks
   - **Topics**: Overview, Next.js AI Agent Evaluations, HumanEval Benchmark,
     Contributing, References
   - **User Questions**: "What can you tell me about Diapason Benchmarks?", "How
     does Overview work?", "How does Next.js AI Agent Evaluations work?"
-
-- **File**: `docs/benchmarks/performance_benchmarks.md`
-  - **Content**: Diapason Performance Benchmarks
-  - **Topics**: Overview, Benchmark Methodology, Performance Results, Memory
-    Profile, Clone Operation Audit
-  - **User Questions**: "What can you tell me about Diapason Performance
-    Benchmarks?", "How does Overview work?", "How does Benchmark Methodology
-    work?"
 
 - **File**: `docs/benchmarks/BENCHMARK_COMPARISON.md`
   - **Content**: Which Benchmark Should You Use?
@@ -1579,6 +1639,13 @@ relevant sections from the files listed below based on the topic area.
     Use??", "How does Quick Answer work?", "How does Detailed Comparison work?"
 
 ### Security & Safety
+
+- **File**: `docs/security/SECURITY_MODEL.md`
+  - **Content**: Diapason Security Model
+  - **Topics**: Overview, Security Architecture Diagram, Security Layers,
+    Threat Model, Attack Scenarios
+  - **User Questions**: "What can you tell me about Diapason Security Model?",
+    "How does Overview work?", "How does Security Architecture Diagram work?"
 
 - **File**: `docs/security/SECURITY_DOCUMENTATION_INDEX.md`
   - **Content**: Security Documentation Index
@@ -1594,13 +1661,6 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about Unsafe Code Inventory?",
     "How does Snapshot: 2026-08-10 work?", "How does Native-plugin site
     breakdown work?"
-
-- **File**: `docs/security/SECURITY_MODEL.md`
-  - **Content**: Diapason Security Model
-  - **Topics**: Overview, Security Architecture Diagram, Security Layers,
-    Threat Model, Attack Scenarios
-  - **User Questions**: "What can you tell me about Diapason Security Model?",
-    "How does Overview work?", "How does Security Architecture Diagram work?"
 
 - **File**: `docs/security/SECURITY_WEB_FETCH.md`
   - **Content**: Web Fetch Security & Malicious URL Prevention
@@ -1625,6 +1685,14 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about Defuddle Fetch (now
     `web_fetch` `format=markdown`)?", "How does Guard Rails work?", "How does
     Related Tools work?"
+
+- **File**: `docs/tools/TOOL_SPECS.md`
+  - **Content**: Diapason Tool Specifications
+  - **Topics**: Public Profiles, Default Tools, Advanced Code Search, File
+    Inspection, Platform Profiles
+  - **User Questions**: "What can you tell me about Diapason Tool
+    Specifications?", "How does Public Profiles work?", "How does Default Tools
+    work?"
 
 - **File**: `docs/tools/EDITOR_CONFIG.md`
   - **Content**: External Editor Configuration
@@ -1668,14 +1736,6 @@ relevant sections from the files listed below based on the topic area.
     Usage, Response Block Types
   - **User Questions**: "What can you tell me about Tool Search Integration?",
     "How does Overview work?", "How does Anthropic configuration work?"
-
-- **File**: `docs/tools/TOOL_SPECS.md`
-  - **Content**: Diapason Tool Specifications
-  - **Topics**: Public Profiles, Default Tools, Advanced Code Search, File
-    Inspection, Platform Profiles
-  - **User Questions**: "What can you tell me about Diapason Tool
-    Specifications?", "How does Public Profiles work?", "How does Default Tools
-    work?"
 
 - **File**: `docs/tools/web_fetch_security.md`
   - **Content**: Web Fetch Tool Security Configuration
@@ -1722,7 +1782,7 @@ relevant sections from the files listed below based on the topic area.
 - "What are the different system prompt modes (minimal, lightweight, etc.)?"
 - "How can I reduce token usage with tool documentation modes?"
 
-### Workflows & Agent Behavior
+### Workflows & Agent Behaviour
 
 - "How do I use the planning workflow?"
 - "How do I use the @ symbol to reference files in my messages?"
@@ -1772,7 +1832,7 @@ relevant sections from the files listed below based on the topic area.
 - "How do I build Diapason from source?"
 - "How do I run the test suite?"
 - "How do I add a new tool to Diapason?"
-- "How do I debug agent behavior or tool execution?"
+- "How do I debug agent behaviour or tool execution?"
 - "How do I run the performance benchmarks?"
 - "How do I update the self-documentation map?"
 - "How do I contribute to the Diapason project?"
@@ -1801,7 +1861,7 @@ relevant sections from the files listed below based on the topic area.
 ### External Documentation
 
 - **Repository**: <https://github.com/leynos/vtcode>
-- **Distribution**: Diapason packages are not currently published to crates.io.
+- **Crate**: <https://crates.io/crates/diapason>
 - **VS Code Extension**: Open VSX and VS Code Marketplace
 
 ______________________________________________________________________

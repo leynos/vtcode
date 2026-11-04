@@ -2,7 +2,7 @@
 
 ## Quick Links
 
-- **[Architecture Reference](./ASYNC_ARCHITECTURE.md)** - How the async
+- **[Architecture Reference](ASYNC_ARCHITECTURE.md)** - How the async
     system works
 
 ## TL;DR
@@ -14,7 +14,7 @@ requests use `reqwest` async.
 Authoritative session events use bounded backpressure and stop accepting new
 events when persistence fails; diagnostic trajectory logs use bounded
 best-effort buffering with periodic and shutdown flushes. See the
-[async architecture guide](../guides/async-architecture.md) for the pipeline
+[async architecture guide](../../guides/async-architecture.md) for the pipeline
 decision rules and capacity policy.
 
 ## Architecture Overview
@@ -38,7 +38,7 @@ PTY Operations    File Operations   HTTP Requests
 
 ## Related Documentation
 
-- [Main README](../../README.md)
+- [Main README](../../../README.md)
 
 ______________________________________________________________________
 
