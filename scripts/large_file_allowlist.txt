@@ -20,7 +20,7 @@ CHANGELOG.md=1_200_000
 patches/simdutf/cpp/simdutf.cpp=3_000_000
 
 # Project branding assets required by README/docs.
-resources/gif/diapason.gif=2_000_000
+resources/provenance/gif/diapason.gif=2_000_000
 resources/logo/diapason_logo.png=1_200_000
 
 # Generated field reference: `make fmt` (mdtablefix) pads its 900-row table
