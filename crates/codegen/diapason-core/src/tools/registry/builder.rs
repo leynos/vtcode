@@ -181,6 +181,7 @@ impl ToolRegistry {
             persistent_memory_enabled,
             edited_file_monitor,
             no_op_patch_guard: Arc::new(Mutex::new(super::patch_guard::NoOpPatchGuard::default())),
+            patch_failure_guard: Arc::new(Mutex::new(super::patch_failure_guard::PatchFailureGuard::default())),
             policy_gateway: Arc::new(policy_gateway),
             pty_sessions,
             exec_sessions,

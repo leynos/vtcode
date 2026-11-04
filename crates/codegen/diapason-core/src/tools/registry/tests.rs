@@ -33,6 +33,8 @@ mod pipe_session;
 
 mod no_op_ladder;
 
+mod patch_failure_bound;
+
 mod patch_safety;
 
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";

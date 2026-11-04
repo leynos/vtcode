@@ -71,7 +71,11 @@ fn is_pathless_mutating_command(tool_name: &str) -> bool {
     matches!(tool_name, tools::UNIFIED_EXEC | tools::EXEC_COMMAND | tools::EXEC_PTY_CMD | tools::WRITE_STDIN)
 }
 
-fn structured_tool_output_error(value: &Value) -> Option<String> {
+/// Describe a structured rejection envelope, if the value is one.
+///
+/// Shared with `patch_failure_guard` so the repeat bound and the execution
+/// history classify a failure the same way.
+pub(super) fn structured_tool_output_error(value: &Value) -> Option<String> {
     let obj = value.as_object()?;
     if obj.get("success").and_then(Value::as_bool) == Some(false) {
         return obj
@@ -1007,8 +1011,11 @@ impl ToolRegistry {
         }
 
         // `apply_patch` owns a content-aware no-op ladder keyed by canonical
-        // paths, patch structure, and file versions. The generic args-only
-        // detector would otherwise block its third diagnostic occurrence.
+        // paths, patch structure, and file versions, plus a failure ladder that
+        // bounds repeats of a rejection the no-op ladder never observes. The
+        // generic args-only detector would otherwise block the third
+        // diagnostic occurrence, and it counts only successful records, so it
+        // cannot replace either dedicated guard.
         let skip_loop_detection = tool_name == tools::APPLY_PATCH
             || self.should_skip_loop_detection_for_exec_continuation(&tool_name, args).await;
         if skip_loop_detection {

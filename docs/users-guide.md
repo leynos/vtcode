@@ -35,5 +35,14 @@ than silently accepted:
 3. third identical attempt: refused with `reason: "repeated_identical_no_op"`.
 
 Any patch that does change the files, or a materially different patch, resets
-the sequence. The full behaviour, including how conflict and stale-file details
-reach an ACP client, is in the [patch safety guide](./guides/patch-safety.md).
+the sequence.
+
+Rejections are bounded the same way. Two identical failures are permitted, and
+the third identical request is refused with
+`reason: "repeated_identical_failure"` before any file is touched. That bound
+covers rejections the no-op ladder never observes, such as an undecodable or
+unparsable patch, a stale `expected_content_hash`, a missing source file, and a
+detected conflict.
+
+The full behaviour, including how conflict and stale-file details reach an ACP
+client, is in the [patch safety guide](./guides/patch-safety.md).

@@ -102,16 +102,35 @@ Formatting-only variations of the same patch share one signature. Switching
 line endings or writing `./file.txt` instead of `file.txt` does not reset the
 ladder, because those describe the same request.
 
+## Repeated failing patches
+
+A rejected patch is not a no-op, so the ladder above never sees it, and the
+generic identical-call detector cannot bound it either: that detector counts
+only successful calls. Rejections are instead bounded by their own ladder. Two
+identical failures are permitted so the diagnostic can be read twice; the third
+identical request is refused with `reason: "repeated_identical_failure"` and
+`retry_prohibited: true` before any file is touched.
+
+That ladder covers the rejections that return before planning: an undecodable
+payload, a parse failure, a malformed or stale `expected_content_hash`, a
+missing source file, and a detected file conflict.
+
+It is keyed on a canonical signature of the request, so reordering the
+request's JSON keys does not reset it. Any success, or any request with a
+different signature, starts a fresh ladder, so a materially different patch is
+never blocked.
+
 ## Reading the responses
 
-| Response                                  | Meaning                                                               | What to do                                                     |
-| ----------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `success`, no `no_op`                     | The patch applied.                                                    | Continue.                                                      |
-| `success`, `no_op: true`, `occurrence: 1` | The target state already exists.                                      | Treat the work as done; do not resubmit.                       |
-| `success`, `no_op: true`, `warning: true` | The same no-op repeated.                                              | Reread the files and change the approach.                      |
-| `repeated_identical_no_op`                | The same no-op was offered three times.                               | Reread the files and submit a materially different patch.      |
-| `content_hash_mismatch`                   | The file changed after it was read.                                   | Reread the file and regenerate the patch from the new content. |
-| `invalid_precondition_scope`              | `expected_content_hash` was sent for an add-only or multi-file patch. | Split the patch so each one has a single source file.          |
+| Response                                  | Meaning                                                               | What to do                                                      |
+| ----------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `success`, no `no_op`                     | The patch applied.                                                    | Continue.                                                       |
+| `success`, `no_op: true`, `occurrence: 1` | The target state already exists.                                      | Treat the work as done; do not resubmit.                        |
+| `success`, `no_op: true`, `warning: true` | The same no-op repeated.                                              | Reread the files and change the approach.                       |
+| `repeated_identical_no_op`                | The same no-op was offered three times.                               | Reread the files and submit a materially different patch.       |
+| `repeated_identical_failure`              | The same failing patch was offered three times.                       | Fix the reported cause and submit a materially different patch. |
+| `content_hash_mismatch`                   | The file changed after it was read.                                   | Reread the file and regenerate the patch from the new content.  |
+| `invalid_precondition_scope`              | `expected_content_hash` was sent for an add-only or multi-file patch. | Split the patch so each one has a single source file.           |
 
 The no-op ladder and the edited-file monitor's tracked-read state are per
 session and held in memory. They are a guard rail against a looping turn, not a

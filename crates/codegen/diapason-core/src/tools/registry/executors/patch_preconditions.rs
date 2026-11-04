@@ -162,6 +162,28 @@ pub(crate) fn invalid_patch_precondition(message: impl Into<String>, details: Va
         .to_json_value()
 }
 
+/// Build the refusal returned once the same failing patch has been offered
+/// three times.
+///
+/// The details carry only the occurrence and an opaque signature: patch text,
+/// paths, and content hashes must not reach telemetry or a shared log
+/// (`docs/guides/patch-safety.md`).
+pub(crate) fn repeated_patch_failure_error(signature: String, occurrence: u8) -> Value {
+    ToolExecutionError::new(
+        crate::config::constants::tools::APPLY_PATCH,
+        ToolErrorType::PolicyViolation,
+        "Repeated identical failing patch blocked; reread the files and submit a materially different patch.",
+    )
+    .with_details(json!({
+        "reason": "repeated_identical_failure",
+        "occurrence": occurrence,
+        "signature": signature,
+        "retry_prohibited": true,
+        "next_action": "Reread the affected files, correct the reported precondition or patch error, and submit a materially different patch before calling apply_patch again."
+    }))
+    .to_json_value()
+}
+
 /// Build the refusal returned once the same no-op has been offered three times.
 pub(crate) fn repeated_no_op_error(signature: String, occurrence: u8) -> Value {
     ToolExecutionError::new(
