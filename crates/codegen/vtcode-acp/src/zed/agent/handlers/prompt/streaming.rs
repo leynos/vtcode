@@ -328,6 +328,7 @@ async fn collect_streaming_attempt(request: StreamAttemptRequest<'_>) -> Result<
     let mut deadlines = StreamDeadlineTracker::new(deadline_policy, Instant::now());
     let started_at = Instant::now();
     let span = stream_attempt_span(provider_runtime, attempt_index);
+    let mut previews = StreamedToolInputPreviews::default();
     let mut stream = match start_provider_stream(StreamStartRequest {
         turn,
         request,
@@ -337,7 +338,6 @@ async fn collect_streaming_attempt(request: StreamAttemptRequest<'_>) -> Result<
         started_at,
     })
     .await
-    let mut previews = StreamedToolInputPreviews::default();
     {
         Ok(stream) => stream,
         Err(StreamStartError::Cancelled) => return Ok(StreamAttemptOutcome::Cancelled),

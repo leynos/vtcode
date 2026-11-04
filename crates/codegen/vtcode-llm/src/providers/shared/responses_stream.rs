@@ -26,16 +26,6 @@ use super::{StreamAggregator, generate_tool_call_id};
 // backend error text. Protected by this module's `responses_stream` tests.
 // Remove only when Rig exposes an event adapter with the same normalised
 // surface for all VTCode providers that use Responses-style streaming.
-
-//! including reasoning and cache-usage accounting.
-};
-// Retained shared Responses stream processor.
-// Rig 0.40 can consume SSE, but VTCode needs a provider-agnostic
-// NormalizedStreamEvent contract: text/refusal/reasoning deltas, tool-call
-// start and argument deltas, tolerant empty-final-response recovery, and
-// backend error text. Protected by this module's `responses_stream` tests.
-// Remove only when Rig exposes an event adapter with the same normalised
-// surface for all VTCode providers that use Responses-style streaming.
 pub struct ResponsesNormalizedStreamOptions {
     pub(crate) provider_name: &'static str,
     pub(crate) model: String,

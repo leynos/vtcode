@@ -13,6 +13,9 @@ pub(super) async fn collect_stream_events(
     loop {
         match poll_next_stream_event(stream, &request).await {
             StreamPollOutcome::Cancelled => {
+                let updates = request
+                    .previews
+                    .finish(acp::ToolCallStatus::Failed, "Input streaming was cancelled; it was not executed.");
                 publish_preview_updates(
                     request.turn.agent.as_ref(),
                     &request.turn.args.session_id,
@@ -20,9 +23,6 @@ pub(super) async fn collect_stream_events(
                     updates,
                 )
                 .await;
-                let updates = request
-                    .previews
-                    .finish(acp::ToolCallStatus::Failed, "Input streaming was cancelled; it was not executed.");
                 record_stream_attempt(request.span, request.started_at, "cancelled", None);
                 return StreamAttemptOutcome::Cancelled;
             }
@@ -73,10 +73,10 @@ async fn classify_stream_poll_failure(
     error: LLMError,
 ) -> StreamAttemptOutcome {
     record_stream_failure(request.span, request.started_at, &error);
-    publish_preview_updates(request.turn.agent.as_ref(), &request.turn.args.session_id, "failed", updates).await;
     let updates = request
         .previews
         .finish(acp::ToolCallStatus::Failed, "Provider input streaming failed; it was not executed.");
+    publish_preview_updates(request.turn.agent.as_ref(), &request.turn.args.session_id, "failed", updates).await;
     classify_stream_failure(StreamFailureRequest {
         turn: request.turn,
         telemetry: &mut *request.telemetry,

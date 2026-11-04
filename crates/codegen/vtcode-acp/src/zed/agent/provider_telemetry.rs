@@ -10,15 +10,10 @@ use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 use crate::zed::provider_runtime::ProviderClass;
 
 const PROVIDER_ATTEMPT_TOTAL: &str = "vtcode.acp.provider_attempt_total";
-
 const PROVIDER_RETRY_TOTAL: &str = "vtcode.acp.provider_retry_total";
-
 const PROVIDER_RETRY_DELAY_MS: &str = "vtcode.acp.provider_retry_delay_ms";
-
 const PROVIDER_GENERATION_MS: &str = "vtcode.acp.provider_generation_ms";
-
 const PROVIDER_RATE_LIMITED_TOTAL: &str = "vtcode.acp.provider_rate_limited_total";
-
 const RATE_LIMIT_NOTIFICATION_FAILURE_TOTAL: &str = "vtcode.acp.rate_limit_notification_failure_total";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
