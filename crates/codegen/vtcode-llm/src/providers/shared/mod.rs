@@ -6,6 +6,7 @@ use crate::provider::{
 pub use crate::providers::ReasoningBuffer;
 use crate::providers::common::{extract_reasoning_text_from_serialized_details, map_finish_reason_common};
 mod responses_adapter;
+pub(crate) mod responses_observability;
 pub(crate) mod responses_reconciler;
 mod responses_stream;
 pub(crate) mod responses_tool_calls;
@@ -15,6 +16,14 @@ pub(crate) mod responses_wire;
 mod tag_sanitizer;
 use crate::providers::split_reasoning_from_text;
 pub(crate) use responses_adapter::reasoning_part_text;
+pub use responses_observability::{
+    ResponsesObservation, ResponsesStreamMetric, ResponsesStreamOutcome, ResponsesStreamPath, ResponsesTelemetrySink,
+    ResponsesWebSocketMetric, process_responses_telemetry, responses_stream_metrics, responses_websocket_metrics,
+};
+pub(crate) use responses_observability::{
+    ResponsesOutcomeRecorder, observe_responses_stream, record_responses_replay_prohibited,
+    record_responses_websocket_fallback, responses_error_category,
+};
 pub(crate) use responses_stream::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
 pub(crate) use responses_stream::{ResponsesStreamEventPolicy, response_stream_event_policy};
 use serde_json::{Map, Value};

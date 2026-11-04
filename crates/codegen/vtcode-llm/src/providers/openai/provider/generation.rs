@@ -9,7 +9,9 @@ use crate::error_display;
 use crate::provider;
 use crate::provider::LLMProvider;
 use crate::providers::error_handling::{ProviderFailure, is_rate_limit_error};
-use crate::providers::shared::parse_compacted_output_messages;
+use crate::providers::shared::{
+    parse_compacted_output_messages, record_responses_websocket_fallback, responses_error_category,
+};
 use futures::StreamExt;
 use serde_json::{Value, json};
 use std::borrow::Cow;
@@ -309,10 +311,11 @@ impl OpenAIProvider {
                     Ok(response) => return Ok(response),
                     Err(error) if super::websocket::websocket_error_prohibits_replay(&error) => return Err(error),
                     Err(error) => {
+                        record_responses_websocket_fallback();
                         tracing::debug!(
                             model = %model,
-                            error = %error,
                             outcome = "responses_websocket_http_fallback",
+                            error_category = responses_error_category(&error),
                             "Responses WebSocket exchange failed; falling back to HTTP"
                         );
                     }

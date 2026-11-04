@@ -11,7 +11,9 @@ use crate::error_display;
 use crate::provider::LLMProvider;
 use crate::provider::{self, LLMNormalizedStream};
 use crate::providers::error_handling::{ProviderFailure, is_rate_limit_error};
-use crate::providers::shared::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
+use crate::providers::shared::{
+    ResponsesNormalizedStreamOptions, create_responses_normalized_stream, process_responses_telemetry,
+};
 use async_stream::try_stream;
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -202,6 +204,7 @@ impl OpenAIProvider {
                         model: model.clone(),
                         emit_reasoning,
                         include_cached_prompt_metrics: include_metrics,
+                        telemetry: process_responses_telemetry(),
                     },
                     move |value| {
                         let mut response = parse_responses_payload(value, parse_model.clone(), include_metrics)?;
@@ -244,6 +247,7 @@ impl OpenAIProvider {
                     model.clone(),
                     include_metrics,
                     self.model_supports_reasoning(&model),
+                    process_responses_telemetry(),
                 ))
             }
             ResponsesStreamRoute::ChatCompletions => self.stream_chat_completions(&request).await,

@@ -5,8 +5,8 @@ use crate::error_display;
 use crate::provider::{LLMError, LLMNormalizedStream, LLMResponse, NormalizedStreamEvent, ToolCall};
 use crate::providers::shared::responses_adapter::{ResponsesStreamAdapter, ResponsesStreamEvent};
 use crate::providers::shared::responses_reconciler::{
-    reconcile_final_input,
     FinalInputPreference, ReasoningChannel, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
+    reconcile_final_input,
 };
 use crate::providers::shared::responses_usage;
 use crate::providers::shared::responses_validation;
@@ -15,7 +15,12 @@ use async_stream::try_stream;
 use futures::StreamExt;
 use hashbrown::{HashMap, HashSet};
 use serde_json::{Value, json};
+use std::sync::Arc;
 
+use super::responses_observability::{
+    ResponsesOutcomeRecorder, ResponsesStreamOutcome, ResponsesStreamPath, ResponsesTelemetrySink,
+    observe_responses_stream, process_responses_telemetry,
+};
 use super::responses_tool_calls::correlated_response_call;
 use super::{StreamAggregator, generate_tool_call_id};
 
@@ -31,6 +36,7 @@ pub struct ResponsesNormalizedStreamOptions {
     pub(crate) model: String,
     pub(crate) emit_reasoning: bool,
     pub(crate) include_cached_prompt_metrics: bool,
+    pub(crate) telemetry: Arc<dyn ResponsesTelemetrySink>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,16 +133,33 @@ struct ResponsesNormalizedStreamProcessor<P> {
     fabricated_fallback_id: Option<String>,
     final_response: Option<Value>,
     reconciler: ResponsesStreamReconciler,
+    recorder: Arc<ResponsesOutcomeRecorder>,
 }
 
 impl<P> ResponsesNormalizedStreamProcessor<P>
 where
     P: Fn(Value) -> Result<LLMResponse, LLMError>,
 {
+    /// Build a processor that records into the options' telemetry sink.
     fn new(options: ResponsesNormalizedStreamOptions, parse_final_response: P) -> Self {
+        let recorder = ResponsesOutcomeRecorder::new(
+            ResponsesStreamPath::Shared,
+            options.provider_name,
+            Arc::clone(&options.telemetry),
+        );
+        Self::with_recorder(options, parse_final_response, recorder)
+    }
+
+    /// Build a processor that shares the stream driver's outcome recorder.
+    fn with_recorder(
+        options: ResponsesNormalizedStreamOptions,
+        parse_final_response: P,
+        recorder: Arc<ResponsesOutcomeRecorder>,
+    ) -> Self {
         Self {
             aggregator: StreamAggregator::new(options.model.clone()),
             options,
+            recorder,
             parse_final_response,
             seen_tool_calls: HashSet::new(),
             tool_call_indexes: HashMap::new(),
@@ -400,34 +423,39 @@ where
     fn finish(self) -> Result<Vec<NormalizedStreamEvent>, LLMError> {
         let provider_name = self.options.provider_name;
         if let Err(message) = self.reconciler.require_completed() {
-            log_stream_outcome(provider_name, "rejected", "responses_stream_incomplete");
+            self.recorder.record(ResponsesStreamOutcome::Incomplete);
             return Err(provider_error(provider_name, message));
         }
         let fabricated_tool_call_ids = self.fabricated_tool_call_ids();
         let Some(final_response) = self.final_response else {
-            log_stream_outcome(provider_name, "rejected", "responses_stream_missing_final_response");
+            self.recorder.record(ResponsesStreamOutcome::MissingFinalResponse);
             return Err(provider_error(provider_name, "response.completed event did not contain a response"));
         };
         let mut streamed = self.aggregator.finalize();
-        merge_reconciled_custom_calls(&mut streamed, &self.reconciler, provider_name)
-            .inspect_err(|_| log_stream_outcome(provider_name, "rejected", "responses_reconciliation_failed"))?;
+        merge_reconciled_custom_calls(&mut streamed, &self.reconciler, provider_name).inspect_err(|_| {
+            self.recorder.record(ResponsesStreamOutcome::ReconciliationFailed);
+        })?;
         let mut response = match (self.parse_final_response)(final_response.clone()) {
             Ok(response) => response,
             Err(_) if final_response_output_is_empty(&final_response) && streamed_response_is_usable(&streamed) => {
                 streamed.clone()
             }
             Err(err) => {
-                log_stream_outcome(provider_name, "rejected", "responses_final_response_invalid");
+                self.recorder.record(ResponsesStreamOutcome::FinalResponseInvalid);
                 return Err(err);
             }
         };
         merge_final_response_metadata(&mut response, &final_response, self.options.include_cached_prompt_metrics)
-            .inspect_err(|_| log_stream_outcome(provider_name, "rejected", "responses_metadata_invalid"))?;
+            .inspect_err(|_| {
+                self.recorder.record(ResponsesStreamOutcome::MetadataInvalid);
+            })?;
 
         merge_streamed_response(&mut response, streamed, &fabricated_tool_call_ids, provider_name).inspect_err(
-            |_| log_stream_outcome(provider_name, "rejected", "responses_tool_call_reconciliation_failed"),
+            |_| {
+                self.recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+            },
         )?;
-        log_stream_outcome(provider_name, "completed", "responses_stream_completed");
+        self.recorder.record(ResponsesStreamOutcome::Completed);
 
         let mut events = Vec::new();
         if let Some(usage) = response.usage.clone() {
@@ -499,9 +527,16 @@ pub fn create_responses_normalized_stream<P>(
 where
     P: Fn(Value) -> Result<LLMResponse, LLMError> + Send + 'static,
 {
+    let recorder = ResponsesOutcomeRecorder::new(
+        ResponsesStreamPath::Shared,
+        options.provider_name,
+        Arc::clone(&options.telemetry),
+    );
+    let stream_recorder = Arc::clone(&recorder);
     let stream = try_stream! {
         let provider_name = options.provider_name;
-        let mut processor = ResponsesNormalizedStreamProcessor::new(options, parse_final_response);
+        let mut processor =
+            ResponsesNormalizedStreamProcessor::with_recorder(options, parse_final_response, Arc::clone(&stream_recorder));
         let mut body_stream = response.bytes_stream();
         let mut decoder = ResponsesSseDecoder::default();
 
@@ -509,17 +544,28 @@ where
             let chunk = chunk_result.map_err(|err| provider_error(
                 provider_name,
                 format!("streaming error: {err}"),
-            ))?;
+            )).inspect_err(|_| {
+                stream_recorder.record(ResponsesStreamOutcome::TransportFailure);
+            })?;
             let data_payloads = decoder.push(&chunk);
 
             for data_payload in data_payloads {
-                let data_payload = data_payload.map_err(|error| error.into_llm_error(provider_name))?;
+                let data_payload = data_payload
+                    .map_err(|error| error.into_llm_error(provider_name))
+                    .inspect_err(|_| {
+                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                    })?;
                 let trimmed_payload = data_payload.trim();
                 if trimmed_payload.is_empty() || trimmed_payload == "[DONE]" {
                     continue;
                 }
 
-                for event in processor.handle_payload_data(trimmed_payload)? {
+                let events = processor
+                    .handle_payload_data(trimmed_payload)
+                    .inspect_err(|_| {
+                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                    })?;
+                for event in events {
                     yield event;
                 }
 
@@ -534,7 +580,12 @@ where
         }
 
         if !processor.is_done() {
-            decoder.finish().map_err(|error| error.into_llm_error(provider_name))?;
+            decoder
+                .finish()
+                .map_err(|error| error.into_llm_error(provider_name))
+                .inspect_err(|_| {
+                    stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                })?;
         }
 
         for event in processor.finish()? {
@@ -542,7 +593,7 @@ where
         }
     };
 
-    Box::pin(stream)
+    Box::pin(observe_responses_stream(stream, recorder))
 }
 
 fn streamed_response_is_usable(response: &LLMResponse) -> bool {
@@ -695,30 +746,19 @@ fn provider_error(provider_name: &str, message: impl Into<String>) -> LLMError {
     LLMError::Provider { message, metadata: None }
 }
 
-/// Emit one stable stream-outcome record.
-///
-/// The record carries the provider name, a coarse outcome, and a fixed error
-/// category. Response text, tool input, and provider payloads never appear in
-/// it, so a rejected stream is diagnosable without leaking conversation data.
-fn log_stream_outcome(provider_name: &str, outcome: &'static str, error_category: &'static str) {
-    tracing::debug!(
-        target = "vtcode::llm::responses::stream",
-        provider = provider_name,
-        outcome,
-        error_category,
-        "Responses stream terminal outcome"
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         ResponsesNormalizedStreamOptions, ResponsesNormalizedStreamProcessor, ResponsesStreamEventPolicy,
-        merge_streamed_response, provider_error, response_stream_event_policy,
+        merge_streamed_response, process_responses_telemetry, provider_error, response_stream_event_policy,
     };
     use crate::provider::{FinishReason, LLMResponse, NormalizedStreamEvent, ToolCall};
+    use crate::providers::shared::{
+        ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, ResponsesTelemetrySink,
+    };
     use hashbrown::HashSet;
     use serde_json::{Value, json};
+    use std::sync::{Arc, Mutex};
 
     /// Prove reasoning-part events carry text and reconciliation metadata.
     #[test]
@@ -737,7 +777,31 @@ mod tests {
             model: "gpt-5".to_string(),
             emit_reasoning: true,
             include_cached_prompt_metrics: false,
+            telemetry: process_responses_telemetry(),
         }
+    }
+
+    #[derive(Debug, Default)]
+    struct TestSink {
+        observations: Mutex<Vec<ResponsesObservation>>,
+    }
+
+    impl ResponsesTelemetrySink for TestSink {
+        fn record(&self, observation: &ResponsesObservation) {
+            self.observations.lock().expect("test sink lock").push(observation.clone());
+        }
+    }
+
+    /// Build options that record terminal outcomes into a test sink.
+    fn recording_options() -> (ResponsesNormalizedStreamOptions, Arc<TestSink>) {
+        let sink = Arc::new(TestSink::default());
+        let mut options = options();
+        options.telemetry = sink.clone();
+        (options, sink)
+    }
+
+    fn observations(sink: &TestSink) -> Vec<ResponsesObservation> {
+        sink.observations.lock().expect("test sink lock").clone()
     }
 
     fn parse_response(value: Value) -> Result<LLMResponse, crate::provider::LLMError> {
@@ -1456,6 +1520,47 @@ mod tests {
 
         let error = processor.finish().expect_err("EOF without response.completed must fail");
         assert!(error.to_string().contains("response.completed"));
+    }
+
+    /// Prove an incomplete EOF is counted once, with no payload-derived labels.
+    #[test]
+    fn shared_processor_records_incomplete_outcome_for_eof() {
+        let (options, sink) = recording_options();
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options, parse_response);
+        processor
+            .handle_payload(text_delta_fixture("sensitive provider detail"))
+            .expect("text delta should parse");
+
+        processor.finish().expect_err("EOF without response.completed must fail");
+
+        let observations = observations(&sink);
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Shared);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::Incomplete);
+        assert!(!format!("{observations:?}").contains("sensitive provider detail"));
+    }
+
+    /// Prove a completed response records exactly one success outcome.
+    #[test]
+    fn shared_processor_records_completed_outcome() {
+        let (options, sink) = recording_options();
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options, parse_response);
+        processor
+            .handle_payload(completion_event(
+                1,
+                json!([{
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "final"}]
+                }]),
+            ))
+            .expect("completion should parse");
+
+        processor.finish().expect("completed stream should finish");
+
+        let observations = observations(&sink);
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].path, ResponsesStreamPath::Shared);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::Completed);
     }
 
     /// Prove the completed terminal absorbs every later frame.

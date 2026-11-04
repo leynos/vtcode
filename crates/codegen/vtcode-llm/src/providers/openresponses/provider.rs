@@ -9,6 +9,7 @@ use crate::providers::common::{
 use crate::providers::shared::{
     ResponsesNormalizedStreamOptions, Utf8StreamDecoder, collect_tool_references_from_tool_search_output,
     create_responses_normalized_stream, function_output_value_from_message_content, parse_compacted_output_messages,
+    process_responses_telemetry,
 };
 use anyhow::Result;
 use async_stream::try_stream;
@@ -959,6 +960,7 @@ impl LLMProvider for OpenResponsesProvider {
                 model: model.clone(),
                 emit_reasoning,
                 include_cached_prompt_metrics: false,
+                telemetry: process_responses_telemetry(),
             },
             move |value| Self::parse_native_response_payload(value, model.clone()),
         ))

@@ -22,14 +22,16 @@ use crate::providers::shared::responses_usage;
 use crate::providers::shared::responses_validation;
 use crate::providers::shared::responses_wire::ResponsesSseDecoder;
 use crate::providers::shared::{
-    ResponsesStreamEventPolicy, StreamAssemblyError, extract_data_payload, reasoning_part_text,
-    response_stream_event_policy,
+    ResponsesOutcomeRecorder, ResponsesStreamEventPolicy, ResponsesStreamOutcome, ResponsesStreamPath,
+    ResponsesTelemetrySink, StreamAssemblyError, extract_data_payload, observe_responses_stream,
+    process_responses_telemetry, reasoning_part_text, response_stream_event_policy,
 };
 use async_stream::try_stream;
 use futures::StreamExt;
 use hashbrown::{HashMap, HashSet};
 use serde_json::{Value, json};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 fn streaming_network_error(provider_name: &str, error: reqwest::Error) -> provider::LLMError {
     crate::providers::error_handling::format_reqwest_network_error(provider_name, &error)
@@ -411,7 +413,10 @@ pub(crate) fn create_responses_stream(
     model: String,
     include_metrics: bool,
     retain_reasoning: bool,
+    telemetry: Arc<dyn ResponsesTelemetrySink>,
 ) -> provider::LLMStream {
+    let recorder = ResponsesOutcomeRecorder::new(ResponsesStreamPath::Legacy, provider_name.clone(), telemetry);
+    let stream_recorder = Arc::clone(&recorder);
     let stream = try_stream! {
         let mut body_stream = response.bytes_stream();
         let mut decoder = ResponsesSseDecoder::default();
@@ -422,21 +427,33 @@ pub(crate) fn create_responses_stream(
         let telemetry = OpenAIStreamTelemetry;
 
         while let Some(chunk_result) = body_stream.next().await {
-            let chunk = chunk_result.map_err(|error| streaming_network_error(&provider_name, error))?;
+            let chunk = chunk_result
+                .map_err(|error| streaming_network_error(&provider_name, error))
+                .inspect_err(|_| {
+                    stream_recorder.record(ResponsesStreamOutcome::TransportFailure);
+                })?;
 
             let data_payloads = decoder.push(&chunk);
 
             for data_payload in data_payloads {
-                let data_payload = data_payload.map_err(|error| error.into_llm_error("OpenAI"))?;
+                let data_payload = data_payload
+                    .map_err(|error| error.into_llm_error("OpenAI"))
+                    .inspect_err(|_| {
+                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                    })?;
                 let trimmed_payload = data_payload.trim();
                 if trimmed_payload.is_empty() || trimmed_payload == "[DONE]" {
                     continue;
                 }
 
-                    let payload: Value = serde_json::from_str(trimmed_payload).map_err(|err| {
-                        StreamAssemblyError::InvalidPayload(err.to_string())
-                            .into_llm_error("OpenAI")
-                    })?;
+                    let payload: Value = serde_json::from_str(trimmed_payload)
+                        .map_err(|err| {
+                            StreamAssemblyError::InvalidPayload(err.to_string())
+                                .into_llm_error("OpenAI")
+                        })
+                        .inspect_err(|_| {
+                            stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                        })?;
                     let sequence_number = payload.get("sequence_number").and_then(Value::as_u64);
                     if !reconciler.admit(sequence_number) {
                         continue;
@@ -446,6 +463,9 @@ pub(crate) fn create_responses_stream(
                         .map_err(|message| {
                             StreamAssemblyError::InvalidPayload(message.to_string())
                                 .into_llm_error("OpenAI")
+                        })
+                        .inspect_err(|_| {
+                            stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
                         })?;
                     let event_type = payload
                         .get("type")
@@ -498,6 +518,7 @@ pub(crate) fn create_responses_stream(
                             _ => {}
                         }
                         ResponsesStreamEventPolicy::Unsupported => {
+                            stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
                             Err(StreamAssemblyError::InvalidPayload(format!(
                                 "unsupported Responses stream event type `{event_type}`"
                             ))
@@ -633,6 +654,7 @@ pub(crate) fn create_responses_stream(
                                 })?;
                             }
                             _ => {
+                                stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
                                 Err(StreamAssemblyError::InvalidPayload(format!(
                                     "unhandled Responses stream event type `{event_type}`"
                                 ))
@@ -651,16 +673,23 @@ pub(crate) fn create_responses_stream(
         }
 
         if reconciler.terminal_state() == ResponsesTerminalState::Active {
-            decoder.finish().map_err(|error| error.into_llm_error("OpenAI"))?;
+            decoder
+                .finish()
+                .map_err(|error| error.into_llm_error("OpenAI"))
+                .inspect_err(|_| {
+                    stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                })?;
         }
 
         reconciler.require_completed().map_err(|message| {
+            stream_recorder.record(ResponsesStreamOutcome::Incomplete);
             let message = error_display::format_llm_error("OpenAI", message);
             provider::LLMError::Provider { message, metadata: None }
         })?;
         let response_value = match final_response {
             Some(value) => value,
             None => {
+                stream_recorder.record(ResponsesStreamOutcome::MissingFinalResponse);
                 let formatted_error = error_display::format_llm_error(
                     "OpenAI",
                     "Stream ended without a completion event",
@@ -671,7 +700,9 @@ pub(crate) fn create_responses_stream(
 
         let fabricated_tool_call_ids = tool_call_state.fabricated_tool_call_ids();
         let mut final_aggregator_response = aggregator.finalize();
-        merge_reconciled_custom_calls(&mut final_aggregator_response, &reconciler)?;
+        merge_reconciled_custom_calls(&mut final_aggregator_response, &reconciler).inspect_err(|_| {
+            stream_recorder.record(ResponsesStreamOutcome::ReconciliationFailed);
+        })?;
         let mut response = match parse_responses_payload(response_value.clone(), model.clone(), include_metrics) {
             Ok(response) => response,
             Err(_)
@@ -680,9 +711,14 @@ pub(crate) fn create_responses_stream(
             {
                 final_aggregator_response.clone()
             }
-            Err(err) => Err(err)?,
+            Err(err) => {
+                stream_recorder.record(ResponsesStreamOutcome::FinalResponseInvalid);
+                Err(err)?
+            }
         };
-        merge_final_response_metadata(&mut response, &response_value, include_metrics)?;
+        merge_final_response_metadata(&mut response, &response_value, include_metrics).inspect_err(|_| {
+            stream_recorder.record(ResponsesStreamOutcome::MetadataInvalid);
+        })?;
 
         if response.content.is_none() {
             response.content = final_aggregator_response.content;
@@ -699,13 +735,17 @@ pub(crate) fn create_responses_stream(
             &mut response,
             final_aggregator_response.tool_calls.as_deref(),
             &fabricated_tool_call_ids,
-        )?;
+        )
+        .inspect_err(|_| {
+            stream_recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+        })?;
 
         let response = strip_reasoning(retain_reasoning, response);
+        stream_recorder.record(ResponsesStreamOutcome::Completed);
         yield provider::LLMStreamEvent::Completed { response: Box::new(response) };
     };
 
-    Box::pin(stream)
+    Box::pin(observe_responses_stream(stream, recorder))
 }
 
 /// Classify an event as reasoning-summary or raw-reasoning output.
@@ -878,11 +918,27 @@ fn optional_string_field(payload: &Value, field: &'static str) -> Result<Option<
 mod stream_transport_error_tests {
     use super::{create_chat_stream, create_responses_stream};
     use crate::provider::{self, LLMError};
+    use crate::providers::shared::{
+        ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, ResponsesTelemetrySink,
+        process_responses_telemetry,
+    };
     use futures::StreamExt;
+    use std::sync::{Arc, Mutex};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
     const CUSTOM_PROVIDER: &str = "Example Gateway";
+
+    #[derive(Debug, Default)]
+    struct TestSink {
+        observations: Mutex<Vec<ResponsesObservation>>,
+    }
+
+    impl ResponsesTelemetrySink for TestSink {
+        fn record(&self, observation: &ResponsesObservation) {
+            self.observations.lock().expect("test sink lock").push(observation.clone());
+        }
+    }
 
     async fn response_with_truncated_body(event: &'static str) -> reqwest::Response {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("test server should bind");
@@ -957,10 +1013,43 @@ mod stream_transport_error_tests {
         let response =
             response_with_truncated_body("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n")
                 .await;
-        let stream =
-            create_responses_stream(response, CUSTOM_PROVIDER.to_owned(), "custom-model".to_owned(), false, false);
+        let stream = create_responses_stream(
+            response,
+            CUSTOM_PROVIDER.to_owned(),
+            "custom-model".to_owned(),
+            false,
+            false,
+            process_responses_telemetry(),
+        );
 
         assert_custom_provider_body_error(stream).await;
+    }
+
+    /// Prove the legacy path records one bounded transport outcome on failure.
+    #[tokio::test]
+    async fn responses_stream_records_transport_outcome_for_truncated_body() {
+        let response = response_with_truncated_body(
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"sensitive provider detail\"}\n\n",
+        )
+        .await;
+        let sink = Arc::new(TestSink::default());
+        let stream = create_responses_stream(
+            response,
+            CUSTOM_PROVIDER.to_owned(),
+            "custom-model".to_owned(),
+            false,
+            false,
+            sink.clone(),
+        );
+
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(events.iter().any(Result::is_err), "truncated body must fail the stream");
+
+        let observations = sink.observations.lock().expect("test sink lock").clone();
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Legacy);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::TransportFailure);
+        assert!(!format!("{observations:?}").contains("sensitive provider detail"));
     }
 }
 

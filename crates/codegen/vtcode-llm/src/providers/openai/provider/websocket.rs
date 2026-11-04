@@ -1,6 +1,7 @@
 use super::OpenAIProvider;
 use crate::error_display;
 use crate::provider::{LLMError, LLMErrorMetadata, LLMRequest, LLMResponse};
+use crate::providers::shared::record_responses_replay_prohibited;
 use futures::{SinkExt, StreamExt};
 use serde_json::{Map, Value, json};
 use tokio_tungstenite::MaybeTlsStream;
@@ -26,6 +27,7 @@ pub(super) fn websocket_error_prohibits_replay(error: &LLMError) -> bool {
 
 /// Convert a post-output failure into a non-replayable provider error.
 fn prohibit_websocket_replay(error: LLMError) -> LLMError {
+    record_responses_replay_prohibited();
     tracing::warn!(
         target = "vtcode::llm::responses::websocket",
         outcome = "replay_prohibited",
@@ -574,15 +576,17 @@ fn format_network_error(message: String) -> LLMError {
 #[cfg(test)]
 mod tests {
     use super::{
-        OPENAI_BETA_RESPONSES_WEBSOCKET_V2, OpenAIResponsesWebSocketContinuationCache,
+        OPENAI_BETA_RESPONSES_WEBSOCKET_V2, OUTPUT_STARTED_ERROR_CODE, OpenAIResponsesWebSocketContinuationCache,
         PREVIOUS_RESPONSE_NOT_FOUND_CODE, WEBSOCKET_ACTIVE_RESPONSE_ERROR_PREFIX,
         WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE, apply_generate_mode, input_is_incremental,
         is_websocket_active_response_error, is_websocket_connection_limit_error,
-        is_websocket_previous_response_not_found_error, prepare_websocket_event, responses_websocket_url,
+        is_websocket_previous_response_not_found_error, prepare_websocket_event, prohibit_websocket_replay,
+        responses_websocket_url,
     };
     use crate::provider::LLMError;
     use crate::provider::{LLMProvider, LLMRequest, Message as ProviderMessage};
     use crate::providers::openai::OpenAIProvider;
+    use crate::providers::shared::responses_websocket_metrics;
     use futures::{SinkExt, StreamExt};
     use proptest::prelude::*;
     use serde_json::{Map, Value, json};
@@ -594,6 +598,24 @@ mod tests {
     use tokio_tungstenite::tungstenite::protocol::CloseFrame;
     use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
     use vtcode_config::core::OpenAIConfig;
+
+    #[test]
+    fn replay_prohibition_preserves_the_output_started_code() {
+        let before = responses_websocket_metrics().replay_prohibited_total;
+        let converted = prohibit_websocket_replay(LLMError::Provider {
+            message: "sensitive provider detail".to_string(),
+            metadata: None,
+        });
+        let after = responses_websocket_metrics().replay_prohibited_total;
+
+        assert_eq!(after, before.saturating_add(1));
+        match converted {
+            LLMError::Provider { metadata: Some(metadata), .. } => {
+                assert_eq!(metadata.code.as_deref(), Some(OUTPUT_STARTED_ERROR_CODE));
+            }
+            other => panic!("expected a provider error, got {other:?}"),
+        }
+    }
 
     #[test]
     fn websocket_url_is_derived_from_http_base() {

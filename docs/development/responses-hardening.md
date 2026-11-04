@@ -98,6 +98,31 @@ HTTP. Pre-output recovery remains available for supported errors. Continuation
 is provider-instance-local and requires compatible model, instructions, tools
 and history.
 
+## Observability
+
+Both Responses streaming paths report exactly one terminal outcome per attempt
+through `shared::responses_observability`. The vocabulary is closed —
+`Completed`, `Incomplete`, `MissingFinalResponse`, `MalformedEvent`,
+`ReconciliationFailed`, `FinalResponseInvalid`, `MetadataInvalid`,
+`ToolCallReconciliationFailed`, `ProviderFailure`, `TransportFailure`, and
+`Abandoned` — and each record carries only the stream path (`shared`/`legacy`),
+the provider name, and one outcome. Response text, tool arguments, request
+identifiers, and provider diagnostics are never exported.
+
+`responses_stream_metrics()` snapshots process-wide counters keyed by
+`(path, outcome)`. The first terminal observation wins, so an early error that
+later propagates is not counted twice, and a stream dropped before any terminal
+outcome is recorded once as `Abandoned`. `ProcessResponsesTelemetry` also emits
+one `vtcode::llm::responses::stream` tracing record with the coarse `outcome`
+(`completed`/`rejected`/`abandoned`) and a fixed `error_category`. Tests inject
+a `ResponsesTelemetrySink` instead of mutating process state.
+
+WebSocket recovery adds two counters to `responses_websocket_metrics()`:
+`replay_prohibited_total` increments when a post-output failure forbids replay,
+and `http_fallback_total` increments when a pre-output failure falls back to
+HTTP. The fallback tracing record includes a bounded `error_category` derived
+from `ErrorCategory` and never the provider message.
+
 ## Verification boundaries
 
 The tests distinguish the legacy `provider.stream` path used by ACP from the
