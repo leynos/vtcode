@@ -854,7 +854,7 @@ impl SubagentController {
                     display_label: subagent_display_label(&plan.spec),
                     description: plan.spec.description.clone(),
                     source: plan.spec.source.label(),
-                    color: plan.spec.color.clone(),
+                    colour: plan.spec.colour.clone(),
                     session_id: plan.session_id.clone(),
                     parent_session_id: plan.parent_session_id.clone(),
                     exec_session_id: plan.exec_session_id.clone(),

@@ -17,11 +17,11 @@ use std::time::{Duration, Instant};
 #[cfg(unix)]
 use anyhow::{Context, Result, anyhow};
 #[cfg(unix)]
-use diapason_commons::ansi_capabilities::{ColorScheme, set_color_scheme_override};
+use diapason_commons::ansi_capabilities::{ColourScheme, set_colour_scheme_override};
 #[cfg(unix)]
 use diapason_commons::ansi_codes::{DEVICE_ATTRIBUTES_REQUEST, ESC_BYTE, ESC_CHAR, OSC, ST};
 #[cfg(unix)]
-use diapason_commons::color256_theme::set_harmonious_runtime_hint;
+use diapason_commons::colour256_theme::set_harmonious_runtime_hint;
 #[cfg(unix)]
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 #[cfg(unix)]
@@ -30,22 +30,6 @@ use nix::sys::termios::{self, SetArg};
 use std::io::IsTerminal;
 #[cfg(unix)]
 use std::os::fd::AsFd;
-<<<<<<<< main
-|||||||| base
-#[cfg(unix)]
-use diapason_commons::ansi_capabilities::{ColorScheme, set_color_scheme_override};
-#[cfg(unix)]
-use diapason_commons::ansi_codes::{DEVICE_ATTRIBUTES_REQUEST, ESC_BYTE, ESC_CHAR, OSC, ST};
-#[cfg(unix)]
-use diapason_commons::color256_theme::set_harmonious_runtime_hint;
-========
-#[cfg(unix)]
-use diapason_commons::ansi_capabilities::{ColourScheme, set_colour_scheme_override};
-#[cfg(unix)]
-use diapason_commons::ansi_codes::{DEVICE_ATTRIBUTES_REQUEST, ESC_BYTE, ESC_CHAR, OSC, ST};
-#[cfg(unix)]
-use diapason_commons::colour256_theme::set_harmonious_runtime_hint;
->>>>>>>> colour-replay
 
 #[cfg(unix)]
 const DA1_RESPONSE_PREFIX: [u8; 3] = [ESC_BYTE, b'[', b'?'];
