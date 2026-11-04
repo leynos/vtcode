@@ -529,10 +529,10 @@ mod tests {
         );
     }
 
-    /// The suppressed chain remains at debug, which is a diagnostic aid rather
-    /// than redaction.
+    /// The suppressed failure logs only fixed fields and a bounded digest at
+    /// debug; the originating chain text is never written at any level.
     #[tokio::test]
-    async fn sandbox_policy_failure_keeps_the_full_chain_only_at_debug() {
+    async fn sandbox_policy_failure_logs_only_fixed_fields_and_a_digest_at_debug() {
         let temp = TempDir::new().expect("temporary workspace");
         let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;
         let mut vt_cfg = DiapasonConfig::default();
@@ -546,11 +546,23 @@ mod tests {
         .await;
 
         let debugged = debug_events.join("\n");
-        assert!(
-            debugged.contains(sentinel) && debugged.contains("sandbox policy build failed"),
-            "the debug event must retain the suppressed chain, got {debugged}"
-        );
+        assert!(debugged.contains("operation=\"optional_component_setup\""));
         assert!(debugged.contains("error_category=\"mcp_sandbox_policy_unavailable\""));
+        assert!(debugged.contains("error_bytes="));
+        assert!(debugged.contains("detail_correlation="));
+        assert!(!debugged.contains(sentinel), "originating detail must never reach logs, got {debugged}");
+        assert!(
+            !debugged.contains("sandbox policy build failed"),
+            "raw error text must never reach logs, got {debugged}"
+        );
+
+        let correlation = debugged
+            .split("detail_correlation=")
+            .nth(1)
+            .and_then(|digest| digest.split_whitespace().next())
+            .expect("the suppressed failure must log a correlation digest");
+        assert_eq!(correlation.len(), 12, "the digest must be bounded, got {correlation}");
+        assert!(correlation.chars().all(|c| c.is_ascii_hexdigit()), "the digest must be hex, got {correlation}");
     }
 
     /// Degraded outcomes report a bounded category and count, never the joined
