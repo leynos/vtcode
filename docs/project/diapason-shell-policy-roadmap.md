@@ -417,7 +417,8 @@ cutover. See design §§3, 6, and 8; RFC 0001 §§4–6.
   - Persist the required decision in redacted form and the authorization
     references before bind and dispatch; failure to persist this pre-dispatch
     audit record blocks dispatch. Record the execution outcome separately
-    after dispatch.
+    after dispatch; report persistence failures without attempting to undo the
+    dispatched action.
   - Success: an event trace distinguishes decision from execution outcome and
     secret canaries are absent from stored event payloads, logs, and policy
     test reports.
