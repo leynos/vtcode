@@ -408,14 +408,15 @@ cutover. See design §§3, 6, and 8; RFC 0001 §§4–6.
     and no raw secret value is persisted in a cache entry.
 - [ ] 5.1.5. Record redacted policy lifecycle and execution events.
   - See [design §3][design-3] and [design §11][design-11].
-  - Requires 3.1.3 and 5.1.2.
+  - Requires 3.1.3 and 5.1.1–5.1.3.
   - Extend `ThreadEvent` for policy activation, decision, approval/reservation
     reference, and execution outcome; record generation and rule/node IDs.
   - Omit raw environments, secret values, and command output from routine
     events and projections.
-  - Persist the required redacted decision and authorization references before
-    bind and dispatch; failure to persist this pre-dispatch audit record blocks
-    dispatch. Record the execution outcome separately after dispatch.
+  - Persist the required decision in redacted form and the authorization
+    references before bind and dispatch; failure to persist this pre-dispatch
+    audit record blocks dispatch. Record the execution outcome separately
+    after dispatch.
   - Success: an event trace distinguishes decision from execution outcome and
     secret canaries are absent from stored event payloads, logs, and policy
     test reports.
