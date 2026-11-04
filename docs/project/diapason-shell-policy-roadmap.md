@@ -384,10 +384,11 @@ cutover. See design §§3, 6, and 8; RFC 0001 §§4–6.
 - [ ] 5.1.2. Bind and revalidate the request before dispatch.
   - See [design §7.4][design-7-4] and [design §8.3][design-8-3].
   - Requires 3.1.3.
-  - Bind request, graph, state, executable, policy, approval, budget, and
-    sandbox identity; pin the policy generation and revocation epoch, then
-    serialize the final generation/approval checks and token consumption with
-    activation through the generation barrier. Reject token replay.
+  - Bind request, graph, state, executable, policy, approval record,
+    budget constraint, and sandbox identity; pin the policy generation and
+    revocation epoch, then serialize the final generation/approval checks and
+    token consumption with activation through the generation barrier. Reject
+    token replay.
   - Success: mutations and concurrent generation/revocation changes between
     evaluation and dispatch force re-evaluation or block.
 - [ ] 5.1.3. Integrate runtime reservations and sandbox obligations.

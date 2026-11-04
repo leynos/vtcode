@@ -276,9 +276,9 @@ Command substitution never launches a command to discover its output. It
 produces nested effects plus an abstract output and status. Process
 substitution also introduces process/descriptor effects. `eval`, `source`, and
 nested `bash -c` can recurse only when input/state dependencies are known and
-budget remains. Otherwise emit opaque re-entry, including potential effects of
-evaluating the argument itself. Traps and asynchronous jobs must be modelled or
-marked incomplete, not ignored.
+budget remains. Otherwise, emit opaque re-entry, including potential effects
+of evaluating the argument itself. Traps and asynchronous jobs must be modelled
+or marked incomplete, not ignored.
 
 The initial experimental bounds are 256 KiB of source, 10,000 graph nodes, 64
 alternatives per value, call depth 16, and 32 iterations at a loop join. Use a
@@ -617,7 +617,7 @@ Use descriptor-relative operations and platform facilities where available to
 reduce path substitution races. A path string or preflight `realpath` check
 alone does not prevent symlink races. For a GNU Bash script, the runtime cannot
 generally pin every internal file access or PATH lookup with a single token.
-Therefore run it inside confinement that independently bounds those effects;
+Therefore, run it inside confinement that independently bounds those effects;
 classify identities that cannot be held stable as uncertain. The token is a
 request-binding mechanism, not proof of every future syscall.
 
