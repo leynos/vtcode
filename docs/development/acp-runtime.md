@@ -415,10 +415,13 @@ path calls the same `publish_rate_limit_notice` helper directly. The adapter
 turns a classified retryable or terminal rate limit into a session-info notice
 carrying `_meta.lody.notice`, reporting only the status, `Retry-After` value,
 and scheduled delay the provider actually supplied. A delivery failure logs the
-fixed `operation`, `stage`, and `error_category` plus the session correlation
-key and a redacted, bounded detail; the raw transport error and raw session
-identifier stay out of the log. It is a presentation adapter, not the JSON-RPC
-transport: it neither retries the request nor changes retry policy.
+fixed `operation`, `stage`, and `error_category`, the session correlation key,
+the error rendering's byte length as `error_bytes`, and `detail_correlation`, a
+deterministic truncated SHA-256 digest of that rendering. The rendering itself
+and the raw session identifier stay out of the log; the digest correlates
+repeated failures and is not a secrecy boundary. It is a presentation adapter,
+not the JSON-RPC transport: it neither retries the request nor changes retry
+policy.
 
 `publish_lody_usage` emits the `_lody/session/usage_update` extension
 notification for each provider response that includes usage. It resolves the
