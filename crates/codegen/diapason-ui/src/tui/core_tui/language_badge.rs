@@ -1,3 +1,8 @@
+//! Language badge styling for inline transcript headers.
+//!
+//! Maps a language name to the accent colour and bold modifier used when rendering the
+//! language badge in the TUI.
+
 use ratatui::style::{Color, Modifier, Style};
 
 pub(crate) fn language_badge_style(language: &str) -> Option<Style> {

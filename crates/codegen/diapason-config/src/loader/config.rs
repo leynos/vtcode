@@ -1,4 +1,9 @@
-//! Defines the top-level configuration model and its deserialization defaults.
+//! Top-level configuration structs deserialised from `config.toml`.
+//!
+//! Defines the top-level configuration model and its deserialization defaults. The
+//! `DiapasonConfig` root carries the provider, feature, and workspace sections, and the
+//! `loader` module re-exports these types for the rest of the workspace.
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

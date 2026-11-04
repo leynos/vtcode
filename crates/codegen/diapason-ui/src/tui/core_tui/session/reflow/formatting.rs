@@ -1,3 +1,8 @@
+//! Formatting helpers for reflowed transcript lines.
+//!
+//! Builds dividers and justifies wrapped message lines, applying styling for todo items,
+//! lists, diffs, and fenced code blocks.
+
 use ratatui::prelude::*;
 use unicode_width::UnicodeWidthStr;
 

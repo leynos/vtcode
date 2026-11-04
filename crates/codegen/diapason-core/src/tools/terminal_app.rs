@@ -1,3 +1,8 @@
+//! Launching external terminal applications and editors.
+//!
+//! Owns terminal setup and teardown, editor command resolution, and the waiting and
+//! non-waiting launch paths used by the `/edit` flow and GUI file opens.
+
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};

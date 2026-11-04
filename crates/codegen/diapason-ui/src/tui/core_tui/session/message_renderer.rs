@@ -1,3 +1,8 @@
+//! Rendering of inline message lines into ratatui spans.
+//!
+//! Converts `MessageLine` segments, prefixes, and tool or PTY content into styled spans
+//! for the session transcript.
+
 use ratatui::{style::Modifier, text::Span};
 
 use super::super::style::{ratatui_pty_style_from_inline, ratatui_style_from_inline};

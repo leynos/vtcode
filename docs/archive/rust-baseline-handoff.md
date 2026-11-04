@@ -389,3 +389,31 @@ the three `*_with_home` entry points to state the remaining workspace-scope
 walk. The four sequential gates pass at `13d4e7a49`, including 10,110 workspace
 tests and 17 skips. Logs use `restack-2`; final handoff checks use
 `handoff-restack-3`.
+
+## PR 27 pre-merge reconciliation
+
+CodeRabbit's pre-merge table (comment `5549941202`, regenerated at the
+`2026-11-01T17:19Z` review) still carried two errors and four warnings. The four
+warnings were withdrawn by CodeRabbit on 2026-09-07 (comment `5563239627`) in
+response to the audit at comment `5563236472`; the regenerated table does not
+reflect that disposition, so those rows are stale rather than open.
+
+- **Testing (Overall):** valid. The explicit-home entry points were only
+  exercised with `None`. New tests cover an explicit home through
+  `read_project_doc_with_home`, `build_instruction_appendix_with_context_and_home`
+  and `IncrementalSystemPrompt::with_instruction_home`.
+- **Module-Level Documentation:** valid. Twelve edited modules began with
+  imports. Each now opens with a `//!` summary and, where non-obvious, its
+  relationship to the parent module.
+
+The remaining inline finding on `project_doc.rs` is also fixed. Extra include
+patterns are resolved and compiled one at a time, and an unresolvable pattern
+(for example `~/...` without a home directory) is skipped with a warning rather
+than aborting discovery before the workspace scan. Exclusion patterns stay
+fail-closed in `ExclusionMatcher`, so an exclusion that cannot be resolved
+still fails the whole appendix rather than being ignored.
+
+Regression coverage sits at both layers: `instructions.rs` proves that an
+unresolvable include does not suppress workspace sources while an unresolvable
+exclude still fails, and `project_doc.rs` proves the same through the appendix
+entry point.

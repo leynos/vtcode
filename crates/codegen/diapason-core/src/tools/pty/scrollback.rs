@@ -1,3 +1,8 @@
+//! Bounded scrollback buffer for PTY output.
+//!
+//! Retains complete and partial lines within line and byte limits, tracks deltas for
+//! incremental rendering, and records Unicode decoding diagnostics.
+
 use std::collections::VecDeque;
 use std::sync::Arc;
 

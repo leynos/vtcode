@@ -1,3 +1,8 @@
+//! Reusable inline list widget for TUI overlays and transcripts.
+//!
+//! Provides row rendering, selection padding, and scroll options shared by the
+//! session's inline list surfaces.
+
 use crate::tui::config::constants::ui;
 use ratatui::{
     prelude::*,

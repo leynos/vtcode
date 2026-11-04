@@ -1,3 +1,8 @@
+//! Markdown event parsing for terminal rendering.
+//!
+//! Translates `pulldown-cmark` events into styled `MarkdownLine` output, including lists,
+//! links, tables, and file-path detection.
+
 use super::code_blocks::CodeBlockState;
 use super::links::{
     extract_hidden_location_suffix, label_segments_have_location_suffix, should_render_link_destination,

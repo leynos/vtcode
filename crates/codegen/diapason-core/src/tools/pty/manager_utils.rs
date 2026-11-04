@@ -1,3 +1,8 @@
+//! Shared helpers for the PTY manager.
+//!
+//! Provides timeout clamping, exit-status conversion, and sandbox-aware command
+//! environment setup used by `manager.rs` when spawning PTY sessions.
+
 use hashbrown::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

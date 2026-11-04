@@ -487,6 +487,82 @@ mod tests {
         assert!(appendix.contains("nested doc"));
     }
 
+    // The `None` fixtures above prove that user-scope discovery can be turned
+    // off. This exercises the opposite contract through both public entry
+    // points: an explicit home must contribute its user-scope instructions, so
+    // the `*_with_home` family is not only a way to disable discovery.
+    #[tokio::test]
+    async fn discovers_user_scope_instructions_from_explicit_home() {
+        let home = tempdir().expect("home");
+        std::fs::write(home.path().join("AGENTS.md"), "user home doc").expect("write user doc");
+
+        let repo = tempdir().expect("repo");
+        mark_project_root(repo.path()).expect("mark project root");
+        write_doc(repo.path(), "workspace doc").expect("write workspace doc");
+
+        let bundle = read_project_doc_with_home(repo.path(), 4096, Some(home.path()))
+            .await
+            .expect("read project doc")
+            .expect("project doc bundle");
+        assert!(bundle.contents.contains("user home doc"));
+        assert!(bundle.contents.contains("workspace doc"));
+
+        let appendix = build_instruction_appendix_with_context_and_home(
+            &AgentConfig::default(),
+            repo.path(),
+            &[],
+            Some(home.path()),
+        )
+        .await
+        .expect("instruction appendix");
+        assert!(appendix.contains("~/AGENTS.md (user AGENTS)"));
+        assert!(appendix.contains("AGENTS.md (workspace AGENTS)"));
+        assert!(appendix.contains("user home doc"));
+        assert!(appendix.contains("workspace doc"));
+    }
+
+    // An include pattern that cannot be resolved must not take the whole
+    // appendix down with it: the loader turns a discovery error into `None`, so
+    // a single `~/...` entry with user-scope discovery disabled would otherwise
+    // hide an existing workspace `AGENTS.md`.
+    #[tokio::test]
+    async fn unresolved_instruction_file_does_not_suppress_workspace_docs() {
+        let repo = tempdir().expect("repo");
+        mark_project_root(repo.path()).expect("mark project root");
+        write_doc(repo.path(), "workspace doc").expect("write workspace doc");
+
+        let config = AgentConfig {
+            instruction_files: vec!["~/missing/agents.md".to_string()],
+            instruction_max_bytes: 4096,
+            ..Default::default()
+        };
+
+        let appendix = build_instruction_appendix_with_context_and_home(&config, repo.path(), &[], None)
+            .await
+            .expect("instruction appendix");
+        assert!(appendix.contains("AGENTS.md (workspace AGENTS)"));
+        assert!(appendix.contains("workspace doc"));
+    }
+
+    // Excludes are a safety boundary rather than an additive convenience, so an
+    // exclusion that cannot be resolved must fail the whole appendix closed
+    // instead of being skipped like an unresolvable include.
+    #[tokio::test]
+    async fn unresolved_instruction_exclude_fails_closed() {
+        let repo = tempdir().expect("repo");
+        mark_project_root(repo.path()).expect("mark project root");
+        write_doc(repo.path(), "workspace doc").expect("write workspace doc");
+
+        let config = AgentConfig {
+            instruction_excludes: vec!["~/missing/agents.md".to_string()],
+            instruction_max_bytes: 4096,
+            ..Default::default()
+        };
+
+        let appendix = build_instruction_appendix_with_context_and_home(&config, repo.path(), &[], None).await;
+        assert!(appendix.is_none());
+    }
+
     #[tokio::test]
     async fn instruction_appendix_returns_none_when_empty() {
         let tmp = tempdir().expect("tmp");

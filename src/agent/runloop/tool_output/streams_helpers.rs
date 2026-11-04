@@ -1,3 +1,8 @@
+//! Helpers for rendering tool output streams.
+//!
+//! Builds and renders code-fence blocks and decides when output should be shown as a
+//! code block; used by the parent `tool_output` module.
+
 use std::borrow::Cow;
 use std::io::Write as IoWrite;
 use std::path::PathBuf;

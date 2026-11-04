@@ -1,3 +1,8 @@
+//! rio-vt-backed screen state for PTY sessions.
+//!
+//! Wraps the terminal emulator so the PTY manager can feed output chunks, resize the
+//! grid, and capture plain-text screen snapshots.
+
 use diapason_config::constants::defaults::DEFAULT_PTY_SCROLLBACK_LINES;
 use portable_pty::PtySize;
 use rio_vt::ansi::CursorShape;
