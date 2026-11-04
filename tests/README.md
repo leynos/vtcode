@@ -1,6 +1,6 @@
-# VT Code TUI Snapshot Tests
+# Diapason TUI Snapshot Tests
 
-This directory contains snapshot tests for the VT Code terminal user interface
+This directory contains snapshot tests for the Diapason terminal user interface
 (TUI), following Ratatui best practices for UI testing.
 
 ## Test Categories
@@ -80,7 +80,7 @@ The tests require:
 
 - `insta` for snapshot testing
 - `ratatui` with `TestBackend` for terminal simulation
-- Access to public TUI interfaces from `vtcode_core`
+- Access to public TUI interfaces from `diapason_core`
 
 ## Best Practices
 

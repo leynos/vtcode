@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HumanEval pass@1 + latency; vtcode-based; Gemini-friendly.
+# HumanEval pass@1 + latency; diapason-based; Gemini-friendly.
 # - Provider default: gemini
 # - Model default: gemini-3-flash-preview
 # - Retries/backoff + sleep; robust code extraction; error surfacing.
@@ -73,10 +73,10 @@ def run_cmd(args, timeout=None):
 
 def vt_ask(prompt: str):
     # Build command with provider and model
-    # Note: vtcode 'ask' command doesn't support --temperature or --max-output-tokens flags
-    # These would need to be configured via vtcode.toml if needed
+    # Note: diapason 'ask' command doesn't support --temperature or --max-output-tokens flags
+    # These would need to be configured via config.toml if needed
     args = [
-        "vtcode",
+        "diapason",
         "--provider", PROVIDER,
         "--model", MODEL,
         "ask", prompt,
@@ -207,9 +207,9 @@ for ex in tasks:
         "gen_error": None,
     }
 
-    # vtcode error? record and skip tests
+    # diapason error? record and skip tests
     if g.get("rc", 0) != 0:
-        r["gen_error"] = f"vtcode rc={g.get('rc')}"
+        r["gen_error"] = f"diapason rc={g.get('rc')}"
         r["err_tail"] = (g.get("stdout") or "")[-400:]
     elif not g["timed_out"]:
         code = extract_code(g["stdout"])
@@ -253,6 +253,6 @@ with open(out_path, "w") as f:
 if summary["n"] and summary["pass_at_1"] == 0.0:
     errs = sum(1 for r in results if r.get("gen_error"))
     if errs:
-        print(f"Note: {errs}/{summary['n']} tasks had vtcode errors; inspect .results[*].gen_error/err_tail", file=sys.stderr)
+        print(f"Note: {errs}/{summary['n']} tasks had diapason errors; inspect .results[*].gen_error/err_tail", file=sys.stderr)
 
 print(json.dumps({"report_path": str(out_path), "summary": summary}, indent=2))

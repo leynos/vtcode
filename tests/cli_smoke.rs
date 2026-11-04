@@ -7,42 +7,45 @@ use assert_cmd::Command;
 use predicates::str::contains;
 use tempfile::TempDir;
 
-fn isolated_vtcode_command() -> (TempDir, Command) {
+fn isolated_diapason_command() -> (TempDir, Command) {
     let home = tempfile::tempdir().expect("create temp home");
-    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("vtcode");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("diapason");
     let _configured_command = cmd
         .env("HOME", home.path())
-        .env("VTCODE_CONFIG", home.path())
-        .env_remove("VTCODE_CONFIG_PATH")
+        .env("XDG_CONFIG_HOME", home.path().join(".config"))
+        .env("XDG_STATE_HOME", home.path().join(".state"))
+        .env("XDG_DATA_HOME", home.path().join(".data"))
+        .env("XDG_CACHE_HOME", home.path().join(".cache"))
+        .env_remove("DIAPASON_CONFIG_PATH")
         .current_dir(home.path())
         .env("NO_COLOR", "1");
     (home, cmd)
 }
 
 #[test]
-fn vtcode_help_command_succeeds() {
-    let (_home, mut cmd) = isolated_vtcode_command();
+fn diapason_help_command_succeeds() {
+    let (_home, mut cmd) = isolated_diapason_command();
     let _argument = cmd.arg("--help");
     let _assertion = cmd.assert().success();
 }
 
 #[test]
-fn vtcode_tool_policy_status_succeeds() {
-    let (_home, mut cmd) = isolated_vtcode_command();
+fn diapason_tool_policy_status_succeeds() {
+    let (_home, mut cmd) = isolated_diapason_command();
     let _argument = cmd.arg("tool-policy").arg("status");
     let _assertion = cmd.assert().success();
 }
 
 #[test]
-fn vtcode_tool_policy_help_succeeds() {
-    let (_home, mut cmd) = isolated_vtcode_command();
+fn diapason_tool_policy_help_succeeds() {
+    let (_home, mut cmd) = isolated_diapason_command();
     let _argument = cmd.arg("tool-policy").arg("--help");
     let _assertion = cmd.assert().success();
 }
 
 #[test]
-fn vtcode_positional_workspace_with_tool_policy_status_succeeds() {
-    let (home, mut cmd) = isolated_vtcode_command();
+fn diapason_positional_workspace_with_tool_policy_status_succeeds() {
+    let (home, mut cmd) = isolated_diapason_command();
     let workspace = home.path().join("workspace");
     std::fs::create_dir(&workspace).expect("create workspace");
 
@@ -51,8 +54,8 @@ fn vtcode_positional_workspace_with_tool_policy_status_succeeds() {
 }
 
 #[test]
-fn vtcode_invalid_option_shows_usage_help() {
-    let (_home, mut cmd) = isolated_vtcode_command();
+fn diapason_invalid_option_shows_usage_help() {
+    let (_home, mut cmd) = isolated_diapason_command();
     let _argument = cmd.arg("--definitely-invalid-option");
-    let _assertion = cmd.assert().failure().stderr(contains("Usage: vtcode"));
+    let _assertion = cmd.assert().failure().stderr(contains("Usage: diapason"));
 }

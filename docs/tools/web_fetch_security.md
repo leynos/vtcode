@@ -1,7 +1,7 @@
 # Web Fetch Tool Security Configuration
 
 The `web_fetch` tool provides flexible security modes for controlling which
-URLs can be accessed by VT Code agents.
+URLs can be accessed by Diapason agents.
 
 `web_fetch` accepts remote `http://` or `https://` URLs only (subject to the
 HTTPS, SSRF, allowlist, and blocklist checks below). `file://` URLs, relative
@@ -88,7 +88,7 @@ Create `<config>/web_fetch_blocklist.json`:
 
 **Benefits:**
 
-- Reload configuration without restarting VT Code
+- Reload configuration without restarting Diapason
 - Maintain organization-specific blocklists
 - Separate from main configuration file
 

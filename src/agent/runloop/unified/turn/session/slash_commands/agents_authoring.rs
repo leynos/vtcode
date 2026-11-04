@@ -1,18 +1,18 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::Value as YamlValue;
 type YamlMapping = serde_json::Map<String, YamlValue>;
+use diapason_commons::DiapasonPaths;
+use diapason_commons::fs::write_private_file_atomic;
+use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+#[cfg(test)]
+use diapason_config::load_subagent_from_file;
+use diapason_config::{SubagentMemoryScope, SubagentSource, SubagentSpec};
+use diapason_core::constants::tools;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection, WizardModalMode, WizardStep};
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use vtcode_commons::VtCodePaths;
-use vtcode_commons::fs::write_private_file_atomic;
-use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-#[cfg(test)]
-use vtcode_config::load_subagent_from_file;
-use vtcode_config::{SubagentMemoryScope, SubagentSource, SubagentSpec};
-use vtcode_core::constants::tools;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection, WizardModalMode, WizardStep};
 
 use super::super::ui::{ensure_selection_ui_available, wait_for_list_modal_selection};
 use super::{SlashCommandContext, SlashCommandControl};
@@ -297,7 +297,7 @@ pub(super) async fn handle_edit_agent(
         }
     };
 
-    if !is_native_vtcode_spec(&spec) {
+    if !is_native_diapason_spec(&spec) {
         let Some(name) = name.or(Some(spec.name.as_str())) else {
             return Ok(SlashCommandControl::Continue);
         };
@@ -307,7 +307,7 @@ pub(super) async fn handle_edit_agent(
     let path = spec
         .file_path
         .as_ref()
-        .ok_or_else(|| anyhow!("Native VT Code agent is missing a file path"))?;
+        .ok_or_else(|| anyhow!("Native Diapason agent is missing a file path"))?;
     let content = fs::read_to_string(path)?;
     let mut draft = NativeAgentDraft::from_spec(ctx.config.workspace.clone(), &spec, &content)?;
     run_authoring_flow(&mut ctx, &mut draft, false).await
@@ -380,7 +380,7 @@ async fn edit_native_agent_draft(
                 if let Some(result) = prompt_text_value(
                     ctx,
                     "Description",
-                    "Describe when VT Code should delegate to this agent.",
+                    "Describe when Diapason should delegate to this agent.",
                     draft.description.as_str(),
                     "Read-only reviewer for auth changes",
                     true,
@@ -466,12 +466,12 @@ async fn edit_native_agent_draft(
 fn show_authoring_menu(ctx: &mut SlashCommandContext<'_>, draft: &NativeAgentDraft, creating: bool) -> Result<()> {
     let path = draft.current_path().ok();
     let title = if creating {
-        "Create native VT Code agent".to_string()
+        "Create native Diapason agent".to_string()
     } else {
         format!("Edit native agent `{}`", draft.name)
     };
     let mut lines = vec![
-        "Guided editing updates structured VT Code frontmatter only.".to_string(),
+        "Guided editing updates structured Diapason frontmatter only.".to_string(),
         "Use `Save + open prompt` if you want to refine the longer prompt body in your editor.".to_string(),
     ];
     if let Some(path) = path.as_ref() {
@@ -569,7 +569,7 @@ async fn save_native_agent(
         }
     }
 
-    VtCodePaths::ensure_user_dir(
+    DiapasonPaths::ensure_user_dir(
         path.parent()
             .ok_or_else(|| anyhow!("Invalid agent destination {}", path.display()))?,
     )?;
@@ -606,11 +606,11 @@ async fn prompt_scope(
     let items = vec![
         InlineListItem {
             title: "Project scope".to_string(),
-            subtitle: Some("Write to `.vtcode/agents/<name>.md` in this workspace.".to_string()),
+            subtitle: Some("Write to `.diapason/agents/<name>.md` in this workspace.".to_string()),
             badge: Some("Recommended".to_string()),
             indent: 0,
             selection: Some(InlineListSelection::ConfigAction("agents:author:scope:project".to_string())),
-            search_value: Some("project workspace .vtcode agents".to_string()),
+            search_value: Some("project workspace .diapason agents".to_string()),
         },
         InlineListItem {
             title: "User scope".to_string(),
@@ -627,7 +627,7 @@ async fn prompt_scope(
     }));
     ctx.handle.show_list_modal(
         "Agent scope".to_string(),
-        vec!["Choose where VT Code should save the native agent definition.".to_string()],
+        vec!["Choose where Diapason should save the native agent definition.".to_string()],
         items,
         selected,
         None,
@@ -691,10 +691,14 @@ async fn prompt_memory_scope(
 ) -> Result<Option<Option<SubagentMemoryScope>>> {
     let items = vec![
         memory_item("No memory", "Do not set a persistent memory scope.", None),
-        memory_item("Project memory", "Use `.vtcode/agent-memory/<agent-name>/`.", Some(SubagentMemoryScope::Project)),
+        memory_item(
+            "Project memory",
+            "Use `.diapason/agent-memory/<agent-name>/`.",
+            Some(SubagentMemoryScope::Project),
+        ),
         memory_item(
             "Local memory",
-            "Use `.vtcode/agent-memory-local/<agent-name>/`.",
+            "Use `.diapason/agent-memory-local/<agent-name>/`.",
             Some(SubagentMemoryScope::Local),
         ),
         memory_item(
@@ -876,7 +880,7 @@ async fn edit_tools_checklist(
             .collect::<Vec<_>>();
         items.push(InlineListItem {
             title: "Add custom tool id".to_string(),
-            subtitle: Some("Append an exact VT Code tool id that is not in the default list.".to_string()),
+            subtitle: Some("Append an exact Diapason tool id that is not in the default list.".to_string()),
             badge: Some("Custom".to_string()),
             indent: 0,
             selection: Some(InlineListSelection::ConfigAction(TOOL_ADD_CUSTOM_ACTION.to_string())),
@@ -928,7 +932,7 @@ async fn edit_tools_checklist(
             if let Some(PromptTextResult::Value(value)) = prompt_text_value(
                 ctx,
                 "Custom tool id",
-                "Enter an exact VT Code tool id to add to the allowlist.",
+                "Enter an exact Diapason tool id to add to the allowlist.",
                 current,
                 "request_user_input",
                 true,
@@ -981,11 +985,11 @@ async fn select_native_agent_name(ctx: &mut SlashCommandContext<'_>) -> Result<O
         .effective_specs()
         .await
         .into_iter()
-        .filter(is_native_vtcode_spec)
+        .filter(is_native_diapason_spec)
         .collect::<Vec<_>>();
     if specs.is_empty() {
         ctx.renderer
-            .line(MessageStyle::Info, "No native `.vtcode` agent definitions are currently loaded.")?;
+            .line(MessageStyle::Info, "No native `.diapason` agent definitions are currently loaded.")?;
         return Ok(None);
     }
 
@@ -1002,8 +1006,8 @@ async fn select_native_agent_name(ctx: &mut SlashCommandContext<'_>) -> Result<O
         .collect::<Vec<_>>();
     let selected = items.first().and_then(|item| item.selection.clone());
     ctx.handle.show_list_modal(
-        "Edit native VT Code agent".to_string(),
-        vec!["Select a native `.vtcode` agent definition to edit interactively.".to_string()],
+        "Edit native Diapason agent".to_string(),
+        vec!["Select a native `.diapason` agent definition to edit interactively.".to_string()],
         items,
         selected,
         Some(InlineListSearchConfig {
@@ -1034,15 +1038,15 @@ async fn resolve_named_custom_agent(ctx: &SlashCommandContext<'_>, name: &str) -
         .ok_or_else(|| anyhow!("Unknown agent {name}"))
 }
 
-fn is_native_vtcode_spec(spec: &SubagentSpec) -> bool {
-    matches!(spec.source, SubagentSource::ProjectVtcode | SubagentSource::UserVtcode) && spec.file_path.is_some()
+fn is_native_diapason_spec(spec: &SubagentSpec) -> bool {
+    matches!(spec.source, SubagentSource::ProjectDiapason | SubagentSource::UserDiapason) && spec.file_path.is_some()
 }
 
 fn scope_from_source(source: &SubagentSource) -> Result<AgentDefinitionScope> {
     match source {
-        SubagentSource::ProjectVtcode => Ok(AgentDefinitionScope::Project),
-        SubagentSource::UserVtcode => Ok(AgentDefinitionScope::User),
-        _ => bail!("Only native `.vtcode` agents are editable in the guided flow"),
+        SubagentSource::ProjectDiapason => Ok(AgentDefinitionScope::Project),
+        SubagentSource::UserDiapason => Ok(AgentDefinitionScope::User),
+        _ => bail!("Only native `.diapason` agents are editable in the guided flow"),
     }
 }
 
@@ -1107,11 +1111,14 @@ fn ordered_tools(tools: Vec<String>) -> Vec<String> {
 }
 
 fn workspace_agent_path(workspace_root: &Path, name: &str) -> PathBuf {
-    workspace_root.join(".vtcode/agents").join(format!("{name}.md"))
+    workspace_root
+        .join(diapason_commons::workspace_dir_name())
+        .join("agents")
+        .join(format!("{name}.md"))
 }
 
 fn user_agent_path(name: &str) -> Result<PathBuf> {
-    VtCodePaths::resolve()
+    DiapasonPaths::resolve()
         .and_then(|paths| paths.config_path(format!("agents/{name}.md")))
         .map_err(|error| anyhow!("Cannot resolve user-scope agent path: {error}"))
 }
@@ -1153,7 +1160,7 @@ fn insert_yaml_string_list_if_non_empty(mapping: &mut YamlMapping, key: &str, va
 
 fn scope_label(scope: AgentDefinitionScope) -> &'static str {
     match scope {
-        AgentDefinitionScope::Project => ".vtcode/agents/<name>.md",
+        AgentDefinitionScope::Project => ".diapason/agents/<name>.md",
         AgentDefinitionScope::User => "the canonical user config directory/agents/<name>.md",
     }
 }
@@ -1291,7 +1298,7 @@ Review the target changes."#,
         )
         .expect("write file");
 
-        let spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode).expect("load subagent");
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectDiapason).expect("load subagent");
         let content = fs::read_to_string(&path).expect("read file");
         let mut draft = NativeAgentDraft::from_spec(temp.path().to_path_buf(), &spec, &content).expect("draft");
         draft.description = "Updated description".to_string();
@@ -1308,7 +1315,7 @@ Review the target changes."#,
         assert!(rendered.ends_with("\nReview the target changes."));
 
         fs::write(&path, rendered).expect("write rendered file");
-        let rendered_spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode).expect("reload rendered");
+        let rendered_spec = load_subagent_from_file(&path, SubagentSource::ProjectDiapason).expect("reload rendered");
         assert_eq!(rendered_spec.permissions.allow, vec!["code_search".to_string()]);
         assert_eq!(rendered_spec.permissions.ask, vec!["exec_command".to_string()]);
     }
@@ -1348,23 +1355,29 @@ Review the target changes."#,
         assert_eq!(draft.permissions.default, PermissionDefault::Deny);
         assert!(!draft.background);
         assert_eq!(draft.tools, default_agent_tools());
-        assert_eq!(draft.current_path().expect("path"), workspace.path().join(".vtcode/agents/reviewer.md"));
+        assert_eq!(
+            draft.current_path().expect("path"),
+            workspace
+                .path()
+                .join(diapason_commons::workspace_dir_name())
+                .join("agents/reviewer.md")
+        );
 
         let rendered = draft.render_markdown().expect("render");
         assert!(rendered.contains("name: reviewer\n"));
         assert!(rendered.contains("permissions:\n  default: deny\n"));
         assert!(rendered.contains("background: false\n"));
-        assert!(rendered.contains("\nYou are a focused VT Code subagent.\n"));
+        assert!(rendered.contains("\nYou are a focused Diapason subagent.\n"));
 
         let path = workspace.path().join("reviewer.md");
         fs::write(&path, rendered).expect("write rendered agent");
-        let spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode).expect("load subagent");
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectDiapason).expect("load subagent");
         assert_eq!(spec.permissions.default, PermissionDefault::Deny);
         assert!(spec.permissions.allow.is_empty());
         assert!(spec.permissions.ask.is_empty());
         assert!(spec.permissions.auto.is_empty());
         assert!(spec.permissions.deny.is_empty());
-        assert_eq!(spec.mode, vtcode_config::AgentMode::Subagent);
+        assert_eq!(spec.mode, diapason_config::AgentMode::Subagent);
     }
 
     #[test]
@@ -1456,13 +1469,13 @@ Review the target changes."#,
         let temp = TempDir::new().expect("temp dir");
         let path = temp.path().join("planner.md");
         fs::write(&path, rendered).expect("write rendered agent");
-        let spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode).expect("load primary");
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectDiapason).expect("load primary");
         assert_eq!(spec.permissions.default, PermissionDefault::Ask);
-        assert_eq!(spec.mode, vtcode_config::AgentMode::Primary);
+        assert_eq!(spec.mode, diapason_config::AgentMode::Primary);
     }
 
     #[test]
-    fn is_native_vtcode_spec_filters_to_vtcode_markdown_agents() {
+    fn is_native_diapason_spec_filters_to_diapason_markdown_agents() {
         let base_spec = SubagentSpec {
             name: "reviewer".to_string(),
             description: "desc".to_string(),
@@ -1471,39 +1484,39 @@ Review the target changes."#,
             disallowed_tools: Vec::new(),
             model: Some("inherit".to_string()),
             color: Some("blue".to_string()),
-            reasoning_effort: Some(vtcode_config::ReasoningEffortLevel::Medium),
+            reasoning_effort: Some(diapason_config::ReasoningEffortLevel::Medium),
             permissions: AgentPermissionsConfig::new(PermissionDefault::Ask),
             skills: Vec::new(),
             mcp_servers: Vec::new(),
             hooks: None,
             background: false,
-            mode: vtcode_config::AgentMode::Subagent,
+            mode: diapason_config::AgentMode::Subagent,
             max_turns: None,
             nickname_candidates: Vec::new(),
             initial_prompt: None,
             memory: None,
             isolation: None,
             aliases: Vec::new(),
-            source: SubagentSource::ProjectVtcode,
-            file_path: Some(PathBuf::from(".vtcode/agents/reviewer.md")),
+            source: SubagentSource::ProjectDiapason,
+            file_path: Some(diapason_commons::workspace_dir_name().join("agents/reviewer.md")),
             warnings: Vec::new(),
             tool_policy_overrides: std::collections::BTreeMap::new(),
         };
-        assert!(is_native_vtcode_spec(&base_spec));
+        assert!(is_native_diapason_spec(&base_spec));
 
         let imported_claude = SubagentSpec {
             source: SubagentSource::ProjectClaude,
             ..base_spec.clone()
         };
-        assert!(!is_native_vtcode_spec(&imported_claude));
+        assert!(!is_native_diapason_spec(&imported_claude));
 
         let imported_codex = SubagentSpec {
             source: SubagentSource::UserCodex,
             ..base_spec.clone()
         };
-        assert!(!is_native_vtcode_spec(&imported_codex));
+        assert!(!is_native_diapason_spec(&imported_codex));
 
         let missing_path = SubagentSpec { file_path: None, ..base_spec };
-        assert!(!is_native_vtcode_spec(&missing_path));
+        assert!(!is_native_diapason_spec(&missing_path));
     }
 }

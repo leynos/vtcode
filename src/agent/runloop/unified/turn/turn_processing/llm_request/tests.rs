@@ -100,7 +100,7 @@ fn retryable_llm_error_excludes_non_transient_messages() {
 
 #[tokio::test]
 async fn compatible_previous_response_not_found_without_sent_chain_is_not_recovered() {
-    use vtcode_core::utils::transcript;
+    use diapason_core::utils::transcript;
 
     transcript::clear();
 
@@ -152,7 +152,7 @@ async fn compatible_previous_response_not_found_without_sent_chain_is_not_recove
 
 #[tokio::test]
 async fn openai_stale_previous_response_retry_is_disabled() {
-    use vtcode_core::utils::transcript;
+    use diapason_core::utils::transcript;
 
     transcript::clear();
 
@@ -453,7 +453,7 @@ fn prompt_cache_shaping_mode_respects_gemini_mode_off() {
         ..PromptCachingConfig::default()
     };
     cfg.providers.gemini.enabled = true;
-    cfg.providers.gemini.mode = vtcode_core::config::core::GeminiPromptCacheMode::Off;
+    cfg.providers.gemini.mode = diapason_core::config::core::GeminiPromptCacheMode::Off;
 
     assert_eq!(resolve_prompt_cache_shaping_mode("gemini", &cfg), PromptCacheShapingMode::Disabled);
 }
@@ -464,7 +464,7 @@ fn openai_prompt_cache_key_uses_stable_session_identifier() {
     let first = build_openai_prompt_cache_key(true, &OpenAIPromptCacheKeyMode::Session, Some(lineage_id));
     let second = build_openai_prompt_cache_key(true, &OpenAIPromptCacheKeyMode::Session, Some(lineage_id));
 
-    assert_eq!(first, Some("vtcode:openai:lineage-abc-123".to_string()));
+    assert_eq!(first, Some("diapason:openai:lineage-abc-123".to_string()));
     assert_eq!(first, second);
 }
 

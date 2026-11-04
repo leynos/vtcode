@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VT Code NPM Authentication Setup Script
+# Diapason NPM Authentication Setup Script
 # This script helps set up npm authentication for publishing
 
 set -e
@@ -27,7 +27,7 @@ print_error() {
     printf '%b\n' "${RED}ERROR:${NC} $1"
 }
 
-echo "🚀 VT Code NPM Authentication Setup"
+echo "🚀 Diapason NPM Authentication Setup"
 echo "===================================="
 echo ""
 
@@ -71,7 +71,7 @@ case $choice in
         print_info "Trusted Publishing setup instructions:"
         echo ""
         echo "1. Go to https://www.npmjs.com/settings/integrations"
-        echo "2. Add your GitHub repository (vinhnx/vtcode) as a trusted publisher"
+        echo "2. Add your GitHub repository (leynos/vtcode) as a trusted publisher"
         echo "3. In your GitHub Actions workflow, ensure you have:"
         echo "   permissions:"
         echo "     contents: write"
@@ -126,7 +126,7 @@ case $choice in
         fi
         gh auth login
         TOKEN=$(gh auth token)
-        npm config set @vinhnx:registry https://npm.pkg.github.com
+        npm config set @df12productions:registry https://npm.pkg.github.com
         npm config set -- //npm.pkg.github.com/:_authToken=$TOKEN
         print_success "GitHub CLI authentication configured"
         ;;

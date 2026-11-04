@@ -1,0 +1,375 @@
+//! Prepares the tool definitions and per-session tool settings exposed by the Zed ACP agent.
+use super::ZedAgent;
+use crate::reports::TOOL_FAILURE_PREFIX;
+use crate::tooling::{SupportedTool, TOOL_READ_FILE_PATH_ARG, TOOL_READ_FILE_URI_ARG};
+use anyhow::{Context, Result};
+use diapason_core::config::constants::tools;
+use diapason_core::config::tool_loop_limit_reached;
+use diapason_core::llm::provider::ToolChoice;
+use diapason_core::llm::provider::ToolDefinition;
+use diapason_core::tools::command_args;
+use diapason_core::utils::path::ensure_path_within_workspace;
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+use super::super::constants::*;
+use super::super::types::{RunTerminalMode, SessionHandle, ToolRuntime};
+
+fn is_acp_session_tool(tool_name: &str) -> bool {
+    // Task tracking belongs to the ACP session rather than to a selected
+    // primary agent's filesystem/tool policy. Runtime permission and safety
+    // checks still authorize each concrete call before execution.
+    tool_name == tools::TASK_TRACKER
+}
+
+pub(super) struct SessionToolDefinitionRequest<'a> {
+    pub(super) session: &'a SessionHandle,
+    pub(super) provider_supports_tools: bool,
+    pub(super) enabled_tools: &'a [SupportedTool],
+    pub(super) primary_agent: &'a str,
+}
+
+impl ZedAgent {
+    pub(super) fn local_tools_available(&self, primary_agent: &str) -> bool {
+        self.acp_tool_registry.definitions_for(&[], true).iter().any(|definition| {
+            is_acp_session_tool(definition.function_name())
+                || self.primary_agents.allows_local_tool(primary_agent, definition.function_name())
+        })
+    }
+
+    pub(super) fn tool_definitions(
+        &self,
+        provider_supports_tools: bool,
+        enabled_tools: &[SupportedTool],
+        primary_agent: &str,
+    ) -> Option<Vec<ToolDefinition>> {
+        if !provider_supports_tools {
+            return None;
+        }
+
+        let include_local = self.local_tools_available(primary_agent);
+        if enabled_tools.is_empty() && !include_local {
+            None
+        } else {
+            let workspace_root = self.config.workspace.clone();
+            Some(
+                self.acp_tool_registry
+                    .definitions_for_filtered(enabled_tools, include_local, |tool_name| {
+                        is_acp_session_tool(tool_name)
+                            || self
+                                .primary_agents
+                                .allows_tool(primary_agent, tool_name, workspace_root.as_path())
+                    }),
+            )
+        }
+    }
+
+    pub(super) fn session_local_tools_available(&self, session: &SessionHandle, primary_agent: &str) -> Result<bool> {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .context("reading ACP session workspace runtime for local tool availability")?
+        else {
+            return Ok(self.local_tools_available(primary_agent));
+        };
+        Ok(runtime.acp_tool_registry.definitions_for(&[], true).iter().any(|definition| {
+            is_acp_session_tool(definition.function_name())
+                || runtime
+                    .primary_agents
+                    .allows_local_tool(primary_agent, definition.function_name())
+        }))
+    }
+
+    pub(super) fn session_tool_definitions(
+        &self,
+        request: SessionToolDefinitionRequest<'_>,
+    ) -> Result<Option<Vec<ToolDefinition>>> {
+        let SessionToolDefinitionRequest {
+            session,
+            provider_supports_tools,
+            enabled_tools,
+            primary_agent,
+        } = request;
+        let Some(runtime) = session
+            .workspace_runtime()
+            .context("reading ACP session workspace runtime for tool definitions")?
+        else {
+            return Ok(self.tool_definitions(provider_supports_tools, enabled_tools, primary_agent));
+        };
+        if !provider_supports_tools {
+            return Ok(None);
+        }
+        let include_local = self.session_local_tools_available(session, primary_agent)?;
+        if enabled_tools.is_empty() && !include_local {
+            return Ok(None);
+        }
+        Ok(Some(runtime.acp_tool_registry.definitions_for_filtered(
+            enabled_tools,
+            include_local,
+            |tool_name| {
+                is_acp_session_tool(tool_name)
+                    || runtime
+                        .primary_agents
+                        .allows_tool(primary_agent, tool_name, &runtime.workspace_root)
+            },
+        )))
+    }
+
+    pub(super) fn tool_choice(&self, tools_available: bool) -> Option<ToolChoice> {
+        if tools_available {
+            Some(ToolChoice::auto())
+        } else {
+            Some(ToolChoice::none())
+        }
+    }
+
+    pub(super) fn tool_loop_limit_reached(&self, completed_tool_loops: usize) -> bool {
+        tool_loop_limit_reached(completed_tool_loops, self.tool_loop_limit)
+    }
+
+    pub(super) fn tool_loop_limit_message(&self) -> String {
+        format!(
+            "Reached maximum tool loops ({}); stopping this turn to avoid an unsafe autonomous loop.",
+            self.tool_loop_limit
+        )
+    }
+
+    pub(super) fn client_supports_read_text_file(&self) -> Result<bool> {
+        self.client_capabilities
+            .lock()
+            .map(|guard| guard.as_ref().is_some_and(|capabilities| capabilities.fs.read_text_file))
+            .map_err(|error| anyhow::anyhow!("reading ACP client filesystem capabilities: {error}"))
+    }
+
+    pub(super) fn client_supports_terminal(&self) -> Result<bool> {
+        self.client_capabilities
+            .lock()
+            .map(|guard| guard.as_ref().is_some_and(|capabilities| capabilities.terminal))
+            .map_err(|error| anyhow::anyhow!("reading ACP client terminal capabilities: {error}"))
+    }
+
+    pub(super) fn tool_availability(
+        &self,
+        provider_supports_tools: bool,
+        client_supports_read_text_file: bool,
+    ) -> Vec<(SupportedTool, ToolRuntime)> {
+        self.acp_tool_registry
+            .registered_tools()
+            .into_iter()
+            .map(|tool| {
+                let runtime =
+                    if provider_supports_tools && (tool != SupportedTool::ReadFile || client_supports_read_text_file) {
+                        ToolRuntime::Enabled
+                    } else {
+                        ToolRuntime::Disabled
+                    };
+                (tool, runtime)
+            })
+            .collect()
+    }
+
+    pub(super) fn requested_terminal_mode(args: &Value) -> Result<RunTerminalMode, String> {
+        if let Some(mode_value) = args.get("mode").and_then(Value::as_str) {
+            let normalized = mode_value.trim().to_lowercase();
+            match normalized.as_str() {
+                "pty" => return Ok(RunTerminalMode::Pty),
+                "terminal" | "" => return Ok(RunTerminalMode::Terminal),
+                "streaming" => {
+                    return Err("command sessions do not support streaming mode".to_string());
+                }
+                _ => {}
+            }
+        }
+
+        if args.get("tty").and_then(Value::as_bool).unwrap_or(false) {
+            return Ok(RunTerminalMode::Pty);
+        }
+
+        Ok(RunTerminalMode::Terminal)
+    }
+
+    pub(crate) fn parse_terminal_command(args: &Value) -> Result<Vec<String>, String> {
+        fn validate_command_parts(parts: Vec<String>) -> Result<Vec<String>, String> {
+            if parts.is_empty() {
+                return Err("command array cannot be empty".to_string());
+            }
+            if parts.first().is_none_or(|part| part.trim().is_empty()) {
+                return Err("command executable cannot be empty".to_string());
+            }
+            Ok(parts)
+        }
+
+        match command_args::normalized_command_value(args).map_err(str::to_string)? {
+            Some(Value::String(command)) if command.trim().is_empty() => {
+                return Err("command string cannot be empty".to_string());
+            }
+            Some(Value::Array(values)) if values.is_empty() => {
+                return Err("command array cannot be empty".to_string());
+            }
+            _ => {}
+        }
+
+        let parts = command_args::command_words(args).map_err(str::to_string)?.ok_or_else(|| {
+            "command execution requires a 'command' field (string/array or indexed command.N entries)".to_string()
+        })?;
+        validate_command_parts(parts)
+    }
+
+    pub(super) fn resolve_terminal_working_dir(&self, args: &Value) -> Result<Option<PathBuf>, String> {
+        let requested = command_args::working_dir_text(args);
+
+        let Some(raw_dir) = requested else {
+            return Ok(None);
+        };
+
+        let candidate = Path::new(raw_dir);
+        let resolved = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            self.config.workspace.join(candidate)
+        };
+
+        let normalized = ensure_path_within_workspace(&resolved, &self.config.workspace)
+            .map_err(|_err| "working_dir must stay within the workspace".to_string())?;
+
+        Ok(Some(normalized))
+    }
+
+    pub(super) fn resolve_session_terminal_working_dir(
+        &self,
+        session: &SessionHandle,
+        args: &Value,
+    ) -> Result<Option<PathBuf>, String> {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .map_err(|error| super::report_session_runtime_failure(&error))?
+        else {
+            return self.resolve_terminal_working_dir(args);
+        };
+        let Some(raw_dir) = command_args::working_dir_text(args) else {
+            return Ok(None);
+        };
+        let candidate = Path::new(raw_dir);
+        let resolved = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            runtime.workspace_root.join(candidate)
+        };
+        ensure_path_within_workspace(&resolved, &runtime.workspace_root)
+            .map(Some)
+            .map_err(|_error| "working_dir must stay within the workspace".to_string())
+    }
+
+    pub(super) fn describe_terminal_location(&self, working_dir: Option<&PathBuf>) -> Option<String> {
+        let workspace = &self.config.workspace;
+        working_dir.and_then(|path| {
+            path.strip_prefix(workspace).ok().map(|relative| {
+                if relative.as_os_str().is_empty() {
+                    ".".to_string()
+                } else {
+                    format!("./{}", relative.to_string_lossy())
+                }
+            })
+        })
+    }
+
+    pub(super) fn describe_session_terminal_location(
+        &self,
+        session: &SessionHandle,
+        working_dir: Option<&PathBuf>,
+    ) -> Result<Option<String>, String> {
+        let Some(runtime) = session
+            .workspace_runtime()
+            .map_err(|error| super::report_session_runtime_failure(&error))?
+        else {
+            return Ok(self.describe_terminal_location(working_dir));
+        };
+        Ok(working_dir.and_then(|path| {
+            path.strip_prefix(&runtime.workspace_root).ok().map(|relative| {
+                if relative.as_os_str().is_empty() {
+                    ".".to_string()
+                } else {
+                    format!("./{}", relative.to_string_lossy())
+                }
+            })
+        }))
+    }
+
+    pub(super) fn truncate_text(&self, input: &str) -> (String, bool) {
+        if input.chars().count() <= MAX_TOOL_RESPONSE_CHARS {
+            return (input.to_string(), false);
+        }
+
+        let truncated: String = input.chars().take(MAX_TOOL_RESPONSE_CHARS).collect();
+        (truncated, true)
+    }
+
+    pub(super) fn argument_message(template: &str, argument: &str) -> String {
+        template.replace("{argument}", argument)
+    }
+
+    pub(super) fn workspace_root(&self) -> &Path {
+        self.config.workspace.as_path()
+    }
+
+    pub(super) fn resolve_workspace_path(&self, candidate: PathBuf, argument: &str) -> Result<PathBuf, String> {
+        let resolved_candidate = if candidate.is_absolute() {
+            candidate
+        } else {
+            self.workspace_root().join(candidate)
+        };
+        let normalized = ensure_path_within_workspace(&resolved_candidate, self.workspace_root())
+            .map_err(|_err| Self::argument_message(TOOL_READ_FILE_WORKSPACE_ESCAPE_TEMPLATE, argument))?;
+
+        if !normalized.is_absolute() {
+            return Err(Self::argument_message(TOOL_READ_FILE_ABSOLUTE_PATH_TEMPLATE, argument));
+        }
+
+        Ok(normalized)
+    }
+
+    pub(super) fn parse_positive_argument(args: &Value, key: &str) -> Result<Option<u32>, String> {
+        let Some(raw_value) = args.get(key) else {
+            return Ok(None);
+        };
+
+        if raw_value.is_null() {
+            return Ok(None);
+        }
+
+        let Some(value) = raw_value.as_u64() else {
+            return Err(Self::argument_message(TOOL_READ_FILE_INVALID_INTEGER_TEMPLATE, key));
+        };
+
+        if value == 0 {
+            return Err(Self::argument_message(TOOL_READ_FILE_INVALID_INTEGER_TEMPLATE, key));
+        }
+
+        let value = match u32::try_from(value) {
+            Ok(value) => value,
+            Err(_conversion_error) => return Err(Self::argument_message(TOOL_READ_FILE_INTEGER_RANGE_TEMPLATE, key)),
+        };
+
+        Ok(Some(value))
+    }
+
+    pub(super) fn parse_tool_path(&self, session: &SessionHandle, args: &Value) -> Result<PathBuf, String> {
+        if let Some(path) = args
+            .get(TOOL_READ_FILE_PATH_ARG)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            let candidate = PathBuf::from(path);
+            return self.resolve_session_workspace_path(session, candidate, TOOL_READ_FILE_PATH_ARG);
+        }
+
+        if let Some(uri) = args
+            .get(TOOL_READ_FILE_URI_ARG)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            return self.parse_resource_path(session, uri);
+        }
+
+        Err(format!("{TOOL_FAILURE_PREFIX}: missing {TOOL_READ_FILE_PATH_ARG} or {TOOL_READ_FILE_URI_ARG}"))
+    }
+}

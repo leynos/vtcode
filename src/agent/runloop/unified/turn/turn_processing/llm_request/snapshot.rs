@@ -9,10 +9,10 @@
 //! each call site. Invariant: the snapshot is read-only to its consumers;
 //! nothing outside this module mutates a captured `TurnRequestSnapshot`.
 
-use vtcode_core::ActivePrimaryAgent;
-use vtcode_core::config::{OpenAIPromptCacheKeyMode, PromptCachingConfig};
-use vtcode_core::core::agent::features::FeatureSet;
-use vtcode_core::llm::provider::{self as uni};
+use diapason_core::ActivePrimaryAgent;
+use diapason_core::config::{OpenAIPromptCacheKeyMode, PromptCachingConfig};
+use diapason_core::core::agent::features::FeatureSet;
+use diapason_core::llm::provider::{self as uni};
 
 use super::super::resolve_effective_request_model;
 use crate::agent::runloop::unified::incremental_system_prompt::PromptCacheShapingMode;
@@ -73,7 +73,7 @@ pub(super) struct TurnRequestSnapshot {
     /// [`build_prompt_output`]. Always `false` for Anthropic/OpenAI hosted
     /// policies, which must keep every deferred tool on the wire.
     ///
-    /// [`DeferredToolPolicy`]: vtcode_core::tools::handlers::DeferredToolPolicy
+    /// [`DeferredToolPolicy`]: diapason_core::tools::handlers::DeferredToolPolicy
     /// [`build_turn_request`]: super::request_builder::build_turn_request
     /// [`build_prompt_output`]: super::prompt_assembly::build_prompt_output
     pub client_local_tool_deferral: bool,
@@ -134,9 +134,9 @@ pub(super) fn capture_turn_request_snapshot(
 }
 
 pub(super) fn resolve_effective_reasoning_effort(
-    cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
+    cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
     turn_snapshot: &TurnRequestSnapshot,
-) -> Option<vtcode_core::config::types::ReasoningEffortLevel> {
+) -> Option<diapason_core::config::types::ReasoningEffortLevel> {
     if !turn_snapshot.capabilities.reasoning_effort || turn_snapshot.tool_free_recovery {
         return None;
     }

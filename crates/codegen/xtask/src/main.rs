@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn package_release(args: PackageReleaseArgs) -> Result<(), Box<dyn std::error::Error>> {
     let workspace_root = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join("..");
     let out_dir = workspace_root.join(&args.out_dir);
-    let stage_dir = out_dir.join(format!("vtcode-{}-v{}", args.target, args.version));
+    let stage_dir = out_dir.join(format!("diapason-{}-v{}", args.target, args.version));
 
     if stage_dir.exists() {
         fs::remove_dir_all(&stage_dir)?;
@@ -87,7 +87,7 @@ fn package_release(args: PackageReleaseArgs) -> Result<(), Box<dyn std::error::E
     fs::create_dir_all(&stage_dir)?;
 
     // Keep the binary at archive root so the native updater can discover it.
-    fs::copy(workspace_root.join(&args.binary), stage_dir.join("vtcode"))?;
+    fs::copy(workspace_root.join(&args.binary), stage_dir.join("diapason"))?;
 
     // Extra files in subdirectories for cargo-binstall and install.sh.
     fs::create_dir_all(stage_dir.join("man/man1"))?;
@@ -95,8 +95,8 @@ fn package_release(args: PackageReleaseArgs) -> Result<(), Box<dyn std::error::E
     fs::create_dir_all(stage_dir.join("completions/fish"))?;
     fs::create_dir_all(stage_dir.join("completions/zsh"))?;
 
-    let man_page = vtcode_core::cli::ManPageGenerator::generate_main_man_page()?;
-    fs::write(stage_dir.join("man/man1/vtcode.1"), man_page)?;
+    let man_page = diapason_core::cli::ManPageGenerator::generate_main_man_page()?;
+    fs::write(stage_dir.join("man/man1/diapason.1"), man_page)?;
 
     match generate_completions(&stage_dir) {
         Ok(()) => {}
@@ -106,7 +106,7 @@ fn package_release(args: PackageReleaseArgs) -> Result<(), Box<dyn std::error::E
         }
     }
 
-    let archive = out_dir.join(format!("vtcode-{}-v{}.tar.gz", args.target, args.version));
+    let archive = out_dir.join(format!("diapason-{}-v{}.tar.gz", args.target, args.version));
 
     if archive.exists() {
         fs::remove_file(&archive)?;
@@ -119,7 +119,7 @@ fn package_release(args: PackageReleaseArgs) -> Result<(), Box<dyn std::error::E
 
 fn generate_completions(stage_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let result = panic::catch_unwind(|| {
-        let mut cmd = vtcode_core::Cli::command();
+        let mut cmd = diapason_core::Cli::command();
         cmd.build();
         cmd
     });
@@ -132,19 +132,19 @@ fn generate_completions(stage_dir: &Path) -> Result<(), Box<dyn std::error::Erro
     };
 
     for (shell, dir, filename) in [
-        (clap_complete::Shell::Bash, "completions/bash", "vtcode"),
-        (clap_complete::Shell::Fish, "completions/fish", "vtcode.fish"),
-        (clap_complete::Shell::Zsh, "completions/zsh", "_vtcode"),
+        (clap_complete::Shell::Bash, "completions/bash", "diapason"),
+        (clap_complete::Shell::Fish, "completions/fish", "diapason.fish"),
+        (clap_complete::Shell::Zsh, "completions/zsh", "_diapason"),
     ] {
         let mut output = Vec::new();
-        clap_complete::generate(shell, &mut cmd, "vtcode", &mut output);
+        clap_complete::generate(shell, &mut cmd, "diapason", &mut output);
         fs::write(stage_dir.join(dir).join(filename), output)?;
     }
 
     Ok(())
 }
 
-const RELEASE_ROOT_ENTRIES: &[&str] = &["completions", "man", "vtcode"];
+const RELEASE_ROOT_ENTRIES: &[&str] = &["completions", "man", "diapason"];
 
 fn reject_workspace_instruction_files(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if !path.is_dir() {
@@ -247,7 +247,7 @@ fn bump_version(args: BumpVersionArgs) -> Result<(), Box<dyn std::error::Error>>
     doc["package"]["version"] = toml_edit::value(&new_str);
 
     // Update hardcoded inter-crate version pins in the root [dependencies] section.
-    // These use the pattern: vtcode-core = { path = "...", version = "0.123.7" }
+    // These use the pattern: diapason-core = { path = "...", version = "0.123.7" }
     if let Some(deps) = doc["dependencies"].as_table_like_mut() {
         for (_dep_name, entry) in deps.iter_mut() {
             if let Some(dep_table) = entry.as_table_like_mut() {
@@ -337,8 +337,8 @@ fn check_file_deps(
             continue;
         };
         for (dep_name, entry) in table.iter() {
-            // Handle inline tables: vtcode-core = { path = "...", version = "..." }
-            // Handle standard tables: [dependencies.vtcode-core] with path/version keys.
+            // Handle inline tables: diapason-core = { path = "...", version = "..." }
+            // Handle standard tables: [dependencies.diapason-core] with path/version keys.
             let dep_table = entry
                 .as_inline_table()
                 .map(|t| t as &dyn toml_edit::TableLike)
@@ -389,7 +389,7 @@ mod tests {
 
     fn test_root(label: &str) -> PathBuf {
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("system clock").as_nanos();
-        env::temp_dir().join(format!("vtcode-xtask-{label}-{}-{timestamp}", std::process::id()))
+        env::temp_dir().join(format!("diapason-xtask-{label}-{}-{timestamp}", std::process::id()))
     }
 
     #[test]
@@ -400,11 +400,11 @@ mod tests {
         fs::create_dir_all(stage_dir.join("man/man1")).expect("man directory");
         fs::create_dir_all(stage_dir.join("completions/bash")).expect("completion directory");
         fs::create_dir_all(&out_dir).expect("output directory");
-        fs::write(stage_dir.join("vtcode"), "binary").expect("binary");
-        fs::write(stage_dir.join("man/man1/vtcode.1"), "man page").expect("man page");
-        fs::write(stage_dir.join("completions/bash/vtcode"), "completion").expect("completion");
+        fs::write(stage_dir.join("diapason"), "binary").expect("binary");
+        fs::write(stage_dir.join("man/man1/diapason.1"), "man page").expect("man page");
+        fs::write(stage_dir.join("completions/bash/diapason"), "completion").expect("completion");
 
-        let archive = out_dir.join("vtcode-smoke.tar.gz");
+        let archive = out_dir.join("diapason-smoke.tar.gz");
         create_archive(&root, &out_dir, &archive, &stage_dir).expect("archive");
 
         let listing = Command::new("tar")
@@ -423,9 +423,9 @@ mod tests {
             );
             assert!(!entry.ends_with("AGENTS.md"));
         }
-        assert!(entries.lines().any(|entry| entry.trim_end_matches('/') == "vtcode"));
-        assert!(entries.lines().any(|entry| entry.ends_with("man/man1/vtcode.1")));
-        assert!(entries.lines().any(|entry| entry.ends_with("completions/bash/vtcode")));
+        assert!(entries.lines().any(|entry| entry.trim_end_matches('/') == "diapason"));
+        assert!(entries.lines().any(|entry| entry.ends_with("man/man1/diapason.1")));
+        assert!(entries.lines().any(|entry| entry.ends_with("completions/bash/diapason")));
 
         fs::remove_dir_all(root).expect("cleanup");
     }
@@ -437,10 +437,10 @@ mod tests {
         let out_dir = root.join("out");
         fs::create_dir_all(&stage_dir).expect("stage directory");
         fs::create_dir_all(&out_dir).expect("output directory");
-        fs::write(stage_dir.join("vtcode"), "binary").expect("binary");
+        fs::write(stage_dir.join("diapason"), "binary").expect("binary");
         fs::write(stage_dir.join("AGENTS.md"), "maintainer guidance").expect("instruction file");
 
-        let archive = out_dir.join("vtcode-allowlist.tar.gz");
+        let archive = out_dir.join("diapason-allowlist.tar.gz");
         let error = create_archive(&root, &out_dir, &archive, &stage_dir).expect_err("unexpected file must fail");
         assert!(error.to_string().contains("unexpected release entry `AGENTS.md`"));
 
@@ -454,10 +454,10 @@ mod tests {
         let out_dir = root.join("out");
         fs::create_dir_all(stage_dir.join("man/man1")).expect("man directory");
         fs::create_dir_all(&out_dir).expect("output directory");
-        fs::write(stage_dir.join("vtcode"), "binary").expect("binary");
+        fs::write(stage_dir.join("diapason"), "binary").expect("binary");
         fs::write(stage_dir.join("man/AGENTS.md"), "maintainer guidance").expect("instruction file");
 
-        let archive = out_dir.join("vtcode-nested-allowlist.tar.gz");
+        let archive = out_dir.join("diapason-nested-allowlist.tar.gz");
         let error = create_archive(&root, &out_dir, &archive, &stage_dir).expect_err("nested file must fail");
         assert!(error.to_string().contains("workspace instruction file in release stage"));
 

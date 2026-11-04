@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
-use vtcode_core::cli::args::{Cli, Commands, ExecSubcommand};
-use vtcode_core::utils::validation::validate_non_empty;
+use diapason_core::cli::args::{Cli, Commands, ExecSubcommand};
+use diapason_core::utils::validation::validate_non_empty;
 
 use super::SessionResumeMode;
 

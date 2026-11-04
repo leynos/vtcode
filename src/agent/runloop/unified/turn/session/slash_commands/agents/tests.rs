@@ -3,17 +3,17 @@ use super::{
     subprocess_action_prompt, summarize_thread_event_preview, visible_subagent_entries,
 };
 use chrono::Utc;
-use std::path::PathBuf;
-use tempfile::TempDir;
-use vtcode_config::core::permissions::PermissionDefault;
-use vtcode_config::{SubagentSource, load_subagent_from_file};
-use vtcode_core::subagents::{
+use diapason_config::core::permissions::PermissionDefault;
+use diapason_config::{SubagentSource, load_subagent_from_file};
+use diapason_core::subagents::{
     BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentStatus, SubagentStatusEntry,
 };
-use vtcode_core::{
+use diapason_core::{
     ItemStartedEvent, ItemUpdatedEvent, ReasoningItem, ThreadEvent, ThreadItem, ThreadItemDetails, ToolCallStatus,
     ToolOutputItem,
 };
+use std::path::PathBuf;
+use tempfile::TempDir;
 
 fn test_subagent_entry(id: &str, status: SubagentStatus) -> SubagentStatusEntry {
     let now = Utc::now();
@@ -166,7 +166,7 @@ fn scaffold_agent_markdown_generates_valid_permission_rules() {
     let path = temp.path().join("reviewer.md");
     std::fs::write(&path, rendered).expect("write scaffold");
 
-    let spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode).expect("load scaffold");
+    let spec = load_subagent_from_file(&path, SubagentSource::ProjectDiapason).expect("load scaffold");
     assert_eq!(spec.permissions.default, PermissionDefault::Deny);
     assert_eq!(spec.permissions.allow, DEFAULT_AGENT_TOOL_IDS);
 }

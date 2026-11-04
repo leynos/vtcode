@@ -5,19 +5,19 @@
 )]
 use std::sync::Arc;
 
+use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+use diapason_core::acp::PermissionGrant;
+use diapason_core::acp::permission_cache::ToolPermissionCache;
+use diapason_core::config::constants::tools;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::core::trajectory::TrajectoryLogger;
+use diapason_core::tools::result_cache::ToolResultCache;
 use serde_json::json;
 use tokio::sync::Notify;
-use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-use vtcode_core::acp::PermissionGrant;
-use vtcode_core::acp::permission_cache::ToolPermissionCache;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::core::trajectory::TrajectoryLogger;
-use vtcode_core::tools::result_cache::ToolResultCache;
 
 use super::*;
-use vtcode_commons::canonicalize;
+use diapason_commons::canonicalize;
 
 #[tokio::test]
 async fn test_run_tool_call_unknown_tool_failure() {
@@ -61,8 +61,11 @@ async fn test_run_tool_call_unknown_tool_failure() {
         None,
     );
 
-    let call =
-        vtcode_core::llm::provider::ToolCall::function("call_1".to_string(), "test_tool".to_string(), "{}".to_string());
+    let call = diapason_core::llm::provider::ToolCall::function(
+        "call_1".to_string(),
+        "test_tool".to_string(),
+        "{}".to_string(),
+    );
     let ctrl_c_state = Arc::new(CtrlCState::new());
     let ctrl_c_notify = Arc::new(Notify::new());
 
@@ -112,7 +115,7 @@ async fn test_run_tool_call_respects_max_tool_calls_budget() {
         None,
     );
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_budget".to_string(),
         "read_file".to_string(),
         "{}".to_string(),
@@ -137,8 +140,8 @@ async fn test_run_tool_call_respects_max_tool_calls_budget() {
 
 #[tokio::test]
 async fn test_run_tool_call_hook_deny_blocks_before_safety() {
-    use vtcode_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
-    use vtcode_core::hooks::LifecycleHookEngine;
+    use diapason_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
+    use diapason_core::hooks::LifecycleHookEngine;
 
     let mut test_ctx = TestContext::new().await;
     let hook_marker = test_ctx.workspace.join("deny-hook-ran");
@@ -159,7 +162,7 @@ async fn test_run_tool_call_hook_deny_blocks_before_safety() {
     let hooks = LifecycleHookEngine::new_with_session_gated(
         test_ctx.workspace.clone(),
         &hooks_config,
-        vtcode_core::hooks::SessionStartTrigger::Startup,
+        diapason_core::hooks::SessionStartTrigger::Startup,
         "test-session",
         false,
     )
@@ -199,7 +202,7 @@ async fn test_run_tool_call_hook_deny_blocks_before_safety() {
         None,
     );
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_deny".to_string(),
         tools::READ_FILE.to_string(),
         json!({"path": "README.md"}).to_string(),
@@ -223,8 +226,8 @@ async fn test_run_tool_call_hook_deny_blocks_before_safety() {
 
 #[tokio::test]
 async fn test_run_tool_call_hook_rewrite_runs_hooks_exactly_once() {
-    use vtcode_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
-    use vtcode_core::hooks::LifecycleHookEngine;
+    use diapason_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
+    use diapason_core::hooks::LifecycleHookEngine;
 
     let mut test_ctx = TestContext::new().await;
     // The hook rewrites the path argument and fails closed (exit 2) if it is
@@ -252,7 +255,7 @@ async fn test_run_tool_call_hook_rewrite_runs_hooks_exactly_once() {
     let hooks = LifecycleHookEngine::new_with_session_gated(
         test_ctx.workspace.clone(),
         &hooks_config,
-        vtcode_core::hooks::SessionStartTrigger::Startup,
+        diapason_core::hooks::SessionStartTrigger::Startup,
         "test-session",
         false,
     )
@@ -292,7 +295,7 @@ async fn test_run_tool_call_hook_rewrite_runs_hooks_exactly_once() {
         None,
     );
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_rewrite".to_string(),
         tools::READ_FILE.to_string(),
         json!({"path": "README.md"}).to_string(),
@@ -359,7 +362,7 @@ async fn test_run_tool_call_allows_unlimited_budget_when_disabled() {
         None,
     );
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_unlimited".to_string(),
         "read_file".to_string(),
         "{}".to_string(),
@@ -417,7 +420,7 @@ async fn test_run_tool_call_forwards_runtime_agent_permissions_to_routing() {
         &mut harness_state,
         None,
     );
-    let vt_cfg = VTCodeConfig {
+    let vt_cfg = DiapasonConfig {
         runtime_agent_permissions: Some(agent_permissions),
         ..Default::default()
     };
@@ -428,7 +431,7 @@ async fn test_run_tool_call_forwards_runtime_agent_permissions_to_routing() {
         "content": "hello"
     }))
     .expect("serialize file_operation args");
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_active_agent_deny".to_string(),
         tools::WRITE_FILE.to_string(),
         args,
@@ -473,7 +476,7 @@ async fn test_run_tool_call_prevalidated_blocks_mutation_in_planning_workflow() 
 
     registry.enable_planning();
     registry.planning_workflow_state().enable();
-    plan_session.enter(vtcode_core::core::interfaces::session::PlanningEntrySource::UserRequest);
+    plan_session.enter(diapason_core::core::interfaces::session::PlanningEntrySource::UserRequest);
 
     let mut harness_state = build_harness_state();
     let mut ctx = crate::agent::runloop::unified::run_loop_context::RunLoopContext::new(
@@ -500,7 +503,7 @@ async fn test_run_tool_call_prevalidated_blocks_mutation_in_planning_workflow() 
         "input": "*** Begin Patch\n*** Add File: notes.txt\n+hello planning workflow\n*** End Patch\n"
     }))
     .expect("serialize tool args");
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_plan_patch".to_string(),
         tools::APPLY_PATCH.to_string(),
         payload,
@@ -543,9 +546,9 @@ async fn test_run_tool_call_prevalidated_allows_task_tracker_in_planning_workflo
 
     registry.enable_planning();
     registry.planning_workflow_state().enable();
-    plan_session.enter(vtcode_core::core::interfaces::session::PlanningEntrySource::UserRequest);
+    plan_session.enter(diapason_core::core::interfaces::session::PlanningEntrySource::UserRequest);
 
-    let plans_dir = test_ctx.workspace.join(".vtcode").join("plans");
+    let plans_dir = test_ctx.workspace.join(diapason_commons::workspace_dir_name()).join("plans");
     std::fs::create_dir_all(&plans_dir).expect("create plans dir");
     let plan_file = plans_dir.join("tracker-test-task-tracker.md");
     std::fs::write(&plan_file, "# Tracker Test\n").expect("write plan file");
@@ -572,7 +575,7 @@ async fn test_run_tool_call_prevalidated_allows_task_tracker_in_planning_workflo
         None,
     );
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_task_tracker".to_string(),
         tools::TASK_TRACKER.to_string(),
         r#"{"action":"list"}"#.to_string(),
@@ -610,9 +613,9 @@ async fn test_run_tool_call_non_prevalidated_allows_task_tracker_in_planning_wor
 
     registry.enable_planning();
     registry.planning_workflow_state().enable();
-    plan_session.enter(vtcode_core::core::interfaces::session::PlanningEntrySource::UserRequest);
+    plan_session.enter(diapason_core::core::interfaces::session::PlanningEntrySource::UserRequest);
 
-    let plans_dir = test_ctx.workspace.join(".vtcode").join("plans");
+    let plans_dir = test_ctx.workspace.join(diapason_commons::workspace_dir_name()).join("plans");
     std::fs::create_dir_all(&plans_dir).expect("create plans dir");
     let plan_file = plans_dir.join("tracker-test-task-tracker-non-prevalidated.md");
     std::fs::write(&plan_file, "# Tracker Test\n").expect("write plan file");
@@ -639,7 +642,7 @@ async fn test_run_tool_call_non_prevalidated_allows_task_tracker_in_planning_wor
         None,
     );
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_task_tracker_non_prevalidated".to_string(),
         tools::TASK_TRACKER.to_string(),
         r#"{"action":"list"}"#.to_string(),
@@ -698,7 +701,7 @@ async fn test_run_tool_call_invalid_preflight_does_not_consume_budget() {
         None,
     );
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_invalid_preflight".to_string(),
         tools::READ_FILE.to_string(),
         r#"{"path":"/var/db/shadow"}"#.to_string(),
@@ -774,12 +777,12 @@ async fn test_run_tool_call_command_session_git_diff_uses_cache_on_repeat() {
     }))
     .expect("serialize command_session args");
 
-    let first_call = vtcode_core::llm::provider::ToolCall::function(
+    let first_call = diapason_core::llm::provider::ToolCall::function(
         "call_command_session_1".to_string(),
         tools::EXEC_COMMAND.to_string(),
         args.clone(),
     );
-    let second_call = vtcode_core::llm::provider::ToolCall::function(
+    let second_call = diapason_core::llm::provider::ToolCall::function(
         "call_command_session_2".to_string(),
         tools::EXEC_COMMAND.to_string(),
         args,
@@ -845,7 +848,7 @@ async fn test_run_tool_call_command_session_git_diff_uses_cache_on_repeat() {
 
 async fn run_cache_invalidation_tool_call(
     ctx: &mut crate::agent::runloop::unified::run_loop_context::RunLoopContext<'_>,
-    call: vtcode_core::llm::provider::ToolCall,
+    call: diapason_core::llm::provider::ToolCall,
     ctrl_c_state: &Arc<CtrlCState>,
     ctrl_c_notify: &Arc<Notify>,
 ) -> anyhow::Result<ToolPipelineOutcome> {
@@ -907,7 +910,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         "result_types": ["text"]
     });
     let search_call = |id: &str| {
-        vtcode_core::llm::provider::ToolCall::function(
+        diapason_core::llm::provider::ToolCall::function(
             id.to_string(),
             tools::CODE_SEARCH.to_string(),
             search_args.to_string(),
@@ -926,7 +929,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
     }
     assert_eq!(result_cache.read().await.stats().current_size, 1);
 
-    let failed_patch = vtcode_core::llm::provider::ToolCall::function(
+    let failed_patch = diapason_core::llm::provider::ToolCall::function(
         "failed_patch".to_string(),
         tools::APPLY_PATCH.to_string(),
         json!({"input": "*** Begin Patch\n*** Not An Operation\n*** End Patch\n"}).to_string(),
@@ -952,7 +955,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
     assert_eq!(result_cache.read().await.stats().hits, 1);
 
     let patch = "*** Begin Patch\n*** Update File: src/widget.rs\n@@\n-pub struct Widget;\n+pub struct Gadget;\n*** End Patch\n";
-    let successful_patch = vtcode_core::llm::provider::ToolCall::function(
+    let successful_patch = diapason_core::llm::provider::ToolCall::function(
         "successful_patch".to_string(),
         tools::APPLY_PATCH.to_string(),
         json!({"input": patch}).to_string(),
@@ -999,7 +1002,7 @@ async fn successful_apply_patch_invalidates_cached_code_search() {
         "the post-success search must execute freshly instead of hitting stale cache"
     );
 
-    let shell_call = vtcode_core::llm::provider::ToolCall::function(
+    let shell_call = diapason_core::llm::provider::ToolCall::function(
         "successful_shell_mutation".to_string(),
         tools::EXEC_COMMAND.to_string(),
         json!({
@@ -1056,7 +1059,7 @@ async fn test_run_tool_call_rejects_escalated_shell_when_hitl_disabled() {
         None,
     );
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.security.human_in_the_loop = false;
 
     let args = serde_json::to_string(&json!({
@@ -1067,7 +1070,7 @@ async fn test_run_tool_call_rejects_escalated_shell_when_hitl_disabled() {
     }))
     .expect("serialize command_session args");
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_command_session_escalated".to_string(),
         tools::EXEC_COMMAND.to_string(),
         args,
@@ -1126,7 +1129,7 @@ async fn test_run_tool_call_allows_escalated_shell_with_saved_prefix_rule() {
         None,
     );
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.security.human_in_the_loop = false;
     vt_cfg.runtime_agent_permissions = Some(AgentPermissionsConfig::new(PermissionDefault::Allow));
     vt_cfg
@@ -1143,7 +1146,7 @@ async fn test_run_tool_call_allows_escalated_shell_with_saved_prefix_rule() {
     }))
     .expect("serialize command_session args");
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         "call_command_session_escalated_saved_prefix".to_string(),
         tools::EXEC_COMMAND.to_string(),
         args,
@@ -1224,7 +1227,7 @@ async fn test_run_tool_call_reuses_streamed_invocation_item_without_duplicate_st
         Some(&emitter),
     );
 
-    let call = vtcode_core::llm::provider::ToolCall::function(
+    let call = diapason_core::llm::provider::ToolCall::function(
         tool_call_id.clone(),
         tools::READ_FILE.to_string(),
         r#"{"path":"note.txt"}"#.to_string(),
@@ -1275,9 +1278,6 @@ async fn test_run_tool_call_reuses_streamed_invocation_item_without_duplicate_st
 async fn test_prevalidated_runloop_execution_consumes_safety_budget_once() {
     let mut test_ctx = TestContext::new().await;
     let mut registry = test_ctx.registry;
-    // TestContext drops its TempDir (the workspace directory is deleted), so
-    // re-create it before writing the fixture.
-    std::fs::create_dir_all(&test_ctx.workspace).expect("recreate workspace");
     let read_path = test_ctx.workspace.join("budget.txt");
     std::fs::write(&read_path, "hello").expect("write fixture");
 
@@ -1326,19 +1326,19 @@ async fn test_prevalidated_runloop_execution_consumes_safety_budget_once() {
         // The runloop handlers safety-admit each call BEFORE the pipeline.
         let admission = gateway
             .check_and_record_with_id(
-                &vtcode_core::tools::SafetyContext::new("runloop-safety-validator"),
+                &diapason_core::tools::SafetyContext::new("runloop-safety-validator"),
                 tools::READ_FILE,
                 &args,
-                Some(vtcode_core::tools::ToolInvocationId::new()),
+                Some(diapason_core::tools::ToolInvocationId::new()),
             )
             .await;
         assert!(
-            matches!(admission.decision, vtcode_core::tools::SafetyDecision::Allow),
+            matches!(admission.decision, diapason_core::tools::SafetyDecision::Allow),
             "admission {index} should be allowed: {:?}",
             admission.decision
         );
 
-        let call = vtcode_core::llm::provider::ToolCall::function(
+        let call = diapason_core::llm::provider::ToolCall::function(
             format!("call_budget_{index}"),
             tools::READ_FILE.to_string(),
             serde_json::to_string(&args).expect("serialize args"),

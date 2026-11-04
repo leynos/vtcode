@@ -15,14 +15,14 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use vtcode_commons::reasoning::ReasoningEffortLevel;
-use vtcode_core::config::build_openai_prompt_cache_key;
-use vtcode_core::config::constants::llm_generation;
-use vtcode_core::config::{ToolDisplayMode, ToolOutputMode};
-use vtcode_core::core::agent::harness_kernel::{
+use diapason_commons::reasoning::ReasoningEffortLevel;
+use diapason_core::config::build_openai_prompt_cache_key;
+use diapason_core::config::constants::llm_generation;
+use diapason_core::config::{ToolDisplayMode, ToolOutputMode};
+use diapason_core::core::agent::harness_kernel::{
     HarnessRequestPlanInput, build_harness_request_plan, stable_system_prefix_hash,
 };
-use vtcode_core::llm::provider::{self as uni, ParallelToolConfig};
+use diapason_core::llm::provider::{self as uni, ParallelToolConfig};
 
 use super::context_management::resolve_context_management;
 use super::metrics::{
@@ -44,7 +44,7 @@ pub(super) struct TurnRequestBuildResult {
 
 pub(super) fn interrupted_provider_error(provider_name: &str) -> anyhow::Error {
     anyhow::Error::new(uni::LLMError::Provider {
-        message: vtcode_core::llm::error_display::format_llm_error(provider_name, "Interrupted by user"),
+        message: diapason_core::llm::error_display::format_llm_error(provider_name, "Interrupted by user"),
         metadata: None,
     })
 }
@@ -84,7 +84,7 @@ fn should_add_collapsed_tool_output_notice(
     let command_output_is_bounded = last_non_system_message
         .origin_tool
         .as_deref()
-        .is_some_and(vtcode_core::tools::tool_intent::is_command_tool);
+        .is_some_and(diapason_core::tools::tool_intent::is_command_tool);
 
     // `None` uses the renderer's compact default, and unknown config values
     // fail closed to the bounded display path.
@@ -394,14 +394,14 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+    use diapason_config::{SubagentMemoryScope, SubagentSource, SubagentSpec};
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::config::types::ReasoningEffortLevel;
+    use diapason_core::config::{ToolDisplayMode, ToolOutputMode};
+    use diapason_core::llm::provider::{self as uni, ToolDefinition};
+    use diapason_core::{EditorContextSnapshot, EditorFileContext};
     use serde_json::json;
-    use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-    use vtcode_config::{SubagentMemoryScope, SubagentSource, SubagentSpec};
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::config::types::ReasoningEffortLevel;
-    use vtcode_core::config::{ToolDisplayMode, ToolOutputMode};
-    use vtcode_core::llm::provider::{self as uni, ToolDefinition};
-    use vtcode_core::{EditorContextSnapshot, EditorFileContext};
 
     use super::super::response_chain::update_previous_response_chain_after_success_shared;
     use super::super::snapshot::capture_turn_request_snapshot;
@@ -423,14 +423,14 @@ mod tests {
             mcp_servers: Vec::new(),
             hooks: None,
             background: false,
-            mode: vtcode_config::AgentMode::Primary,
+            mode: diapason_config::AgentMode::Primary,
             max_turns: None,
             nickname_candidates: Vec::new(),
             initial_prompt: None,
             memory: None,
             isolation: None,
             aliases: Vec::new(),
-            source: SubagentSource::ProjectVtcode,
+            source: SubagentSource::ProjectDiapason,
             file_path: None,
             warnings: Vec::new(),
             tool_policy_overrides: std::collections::BTreeMap::new(),
@@ -472,7 +472,7 @@ mod tests {
     #[tokio::test]
     async fn recovery_request_omits_tools_and_disables_tool_choice() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
-        backing.select_primary_agent_from_specs(&[vtcode_config::builtin_primary_build_agent()], "build");
+        backing.select_primary_agent_from_specs(&[diapason_config::builtin_primary_build_agent()], "build");
         backing
             .add_tool_definition(ToolDefinition::function(
                 "code_search".to_string(),
@@ -506,7 +506,7 @@ mod tests {
             .await;
 
         let mut ctx = backing.turn_processing_context();
-        let mut vt_cfg = VTCodeConfig::default();
+        let mut vt_cfg = DiapasonConfig::default();
         vt_cfg.agent.reasoning_effort = ReasoningEffortLevel::High;
         ctx.vt_cfg = Some(&vt_cfg);
         ctx.activate_recovery("loop detector");
@@ -625,7 +625,7 @@ mod tests {
 
         let mut ctx = backing.turn_processing_context();
         let mut snapshot = capture_turn_request_snapshot(&mut ctx, "copilot-gpt-5.4", false);
-        snapshot.provider_name = vtcode_core::copilot::COPILOT_PROVIDER_KEY.to_string();
+        snapshot.provider_name = diapason_core::copilot::COPILOT_PROVIDER_KEY.to_string();
         snapshot.capabilities.tools = true;
         let built = build_turn_request(&mut ctx, 1, "copilot-gpt-5.4", &snapshot, Some(320), None, true)
             .await
@@ -838,7 +838,7 @@ mod tests {
                 }),
                 ..EditorContextSnapshot::default()
             }),
-            Some(&vtcode_config::IdeContextConfig::default()),
+            Some(&diapason_config::IdeContextConfig::default()),
         );
         ctx.working_history.push(uni::Message::user("hello".to_string()));
 
@@ -922,15 +922,29 @@ mod tests {
     async fn active_primary_agent_memory_appendix_uses_canonical_name_for_alias_selection() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
         let workspace = backing.workspace_path().to_path_buf();
-        std::fs::create_dir_all(workspace.join(".vtcode/agent-memory/reviewer")).expect("canonical memory dir");
+        std::fs::create_dir_all(
+            workspace
+                .join(diapason_commons::workspace_dir_name())
+                .join("agent-memory/reviewer"),
+        )
+        .expect("canonical memory dir");
         std::fs::write(
-            workspace.join(".vtcode/agent-memory/reviewer/MEMORY.md"),
+            workspace
+                .join(diapason_commons::workspace_dir_name())
+                .join("agent-memory/reviewer/MEMORY.md"),
             "# Reviewer Memory\n\n- Canonical reviewer memory.\n",
         )
         .expect("canonical memory");
-        std::fs::create_dir_all(workspace.join(".vtcode/agent-memory/critic")).expect("alias memory dir");
+        std::fs::create_dir_all(
+            workspace
+                .join(diapason_commons::workspace_dir_name())
+                .join("agent-memory/critic"),
+        )
+        .expect("alias memory dir");
         std::fs::write(
-            workspace.join(".vtcode/agent-memory/critic/MEMORY.md"),
+            workspace
+                .join(diapason_commons::workspace_dir_name())
+                .join("agent-memory/critic/MEMORY.md"),
             "# Critic Memory\n\n- Alias memory must not load.\n",
         )
         .expect("alias memory");
@@ -952,7 +966,7 @@ mod tests {
         let runtime_context = system_prompt_text(&built.request);
         assert!(runtime_context.contains("### Memory Appendix"));
         assert!(runtime_context.contains("Primary-agent memory file:"));
-        assert!(runtime_context.contains(".vtcode/agent-memory/reviewer/MEMORY.md"));
+        assert!(runtime_context.contains(".diapason/agent-memory/reviewer/MEMORY.md"));
         assert!(runtime_context.contains("Canonical reviewer memory."));
         assert!(!runtime_context.contains("Alias memory must not load."));
         assert!(!runtime_context.contains("Create or update `MEMORY.md`"));
@@ -965,7 +979,9 @@ mod tests {
         backing.add_tool_definition(named_tool("code_search")).await;
         backing.add_tool_definition(named_tool("apply_patch")).await;
         let workspace = backing.workspace_path().to_path_buf();
-        let memory_dir = workspace.join(".vtcode/agent-memory/planner");
+        let memory_dir = workspace
+            .join(diapason_commons::workspace_dir_name())
+            .join("agent-memory/planner");
 
         let mut spec = test_primary_agent_spec("planner", "Plan carefully.");
         spec.memory = Some(SubagentMemoryScope::Project);
@@ -997,7 +1013,10 @@ mod tests {
             ("planner", "Planner-only durable note."),
             ("reviewer", "Reviewer-only durable note."),
         ] {
-            let memory_dir = workspace.join(".vtcode/agent-memory").join(agent);
+            let memory_dir = workspace
+                .join(diapason_commons::workspace_dir_name())
+                .join("agent-memory")
+                .join(agent);
             std::fs::create_dir_all(&memory_dir).expect("memory dir");
             std::fs::write(memory_dir.join("MEMORY.md"), format!("- {memory}\n")).expect("memory");
         }
@@ -1086,7 +1105,7 @@ mod tests {
     #[tokio::test]
     async fn unconstrained_primary_agent_falls_back_to_baseline_tools() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
-        backing.select_primary_agent_from_specs(&[vtcode_config::builtin_primary_build_agent()], "build");
+        backing.select_primary_agent_from_specs(&[diapason_config::builtin_primary_build_agent()], "build");
         backing.add_tool_definition(named_tool("code_search")).await;
         backing.add_tool_definition(named_tool("apply_patch")).await;
 
@@ -1143,7 +1162,7 @@ mod tests {
     #[tokio::test]
     async fn active_primary_agent_runtime_state_keeps_stable_prompt_cache_friendly() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.agent.include_temporal_context = true;
         cfg.prompt_cache.cache_friendly_prompt_shaping = true;
         let cfg = Box::leak(Box::new(cfg));
@@ -1235,7 +1254,7 @@ mod tests {
         spec.reasoning_effort = Some(ReasoningEffortLevel::High);
         backing.select_primary_agent_from_specs(&[spec], "planner");
 
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.agent.reasoning_effort = ReasoningEffortLevel::Medium;
         let cfg = Box::leak(Box::new(cfg));
         let built = {
@@ -1276,7 +1295,7 @@ mod tests {
                 }),
                 ..EditorContextSnapshot::default()
             }),
-            Some(&vtcode_config::IdeContextConfig::default()),
+            Some(&diapason_config::IdeContextConfig::default()),
         );
         ctx.working_history.push(uni::Message::user("hello".to_string()));
 
@@ -1307,7 +1326,7 @@ mod tests {
                 }),
                 ..EditorContextSnapshot::default()
             }),
-            Some(&vtcode_config::IdeContextConfig::default()),
+            Some(&diapason_config::IdeContextConfig::default()),
         );
 
         let second = build_turn_request(&mut ctx, 2, "noop-model", &snapshot, Some(320), None, false)
@@ -1334,7 +1353,7 @@ mod tests {
     #[tokio::test]
     async fn anthropic_request_build_combines_clearing_and_compaction_when_enabled() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.agent.provider = "anthropic".to_string();
         cfg.agent.harness.auto_compaction_enabled = true;
         cfg.agent.harness.auto_compaction_threshold_tokens = Some(100_000);
@@ -1372,7 +1391,7 @@ mod tests {
             }))
         );
 
-        let mut compaction_only_cfg = VTCodeConfig::default();
+        let mut compaction_only_cfg = DiapasonConfig::default();
         compaction_only_cfg.agent.provider = "anthropic".to_string();
         compaction_only_cfg.agent.harness.auto_compaction_enabled = true;
         compaction_only_cfg.agent.harness.auto_compaction_threshold_tokens = Some(90_000);
@@ -1395,7 +1414,7 @@ mod tests {
 
         // Default now enables auto-compaction, so explicitly disable it here to
         // assert the "no context management payload" (disabled) path.
-        let mut disabled_cfg = VTCodeConfig::default();
+        let mut disabled_cfg = DiapasonConfig::default();
         disabled_cfg.agent.harness.auto_compaction_enabled = false;
         // `tool_result_clearing` defaults to enabled; disable it here so the
         // "no context management payload" (fully disabled) path is exercised.
@@ -1410,7 +1429,7 @@ mod tests {
     #[tokio::test]
     async fn openai_request_build_keeps_existing_compaction_payload() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.agent.harness.auto_compaction_enabled = true;
         cfg.agent.harness.auto_compaction_threshold_tokens = Some(512);
         let cfg = Box::leak(Box::new(cfg));
@@ -1496,7 +1515,7 @@ mod tests {
     #[tokio::test]
     async fn anthropic_request_build_persists_one_collapsed_output_notice() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.provider = "anthropic".to_string();
         let config = Box::leak(Box::new(config));
 

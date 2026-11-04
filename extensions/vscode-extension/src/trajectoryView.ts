@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
-import type { VtcodeTerminalOutputEvent } from "./agentTerminal";
+import * as path from "node:path";
+import { trajectoryLogPath } from "./userDataPaths";
+import type { DiapasonTerminalOutputEvent } from "./agentTerminal";
 
 interface RouteRecord {
     readonly kind: "route";
@@ -59,7 +61,7 @@ class TrajectoryTreeDataProvider
                 return [
                     new PlaceholderTreeItem(
                         this.placeholderMessage ??
-                            "Run the VT Code agent to capture trajectory logs."
+                            "Run the Diapason agent to capture trajectory logs."
                     ),
                 ];
             }
@@ -98,7 +100,7 @@ class PlaceholderTreeItem extends TrajectoryTreeItem {
     constructor(message: string) {
         super(message, vscode.TreeItemCollapsibleState.None);
         this.iconPath = new vscode.ThemeIcon("info");
-        this.contextValue = "vtcodeTrajectoryPlaceholder";
+        this.contextValue = "diapasonTrajectoryPlaceholder";
     }
 }
 
@@ -122,7 +124,7 @@ class TurnTreeItem extends TrajectoryTreeItem {
         this.description = descriptionParts.join(" • ") || undefined;
         this.iconPath = new vscode.ThemeIcon("history");
         this.tooltip = buildTurnTooltip(turn);
-        this.contextValue = "vtcodeTrajectoryTurn";
+        this.contextValue = "diapasonTrajectoryTurn";
     }
 }
 
@@ -143,7 +145,7 @@ class RouteTreeItem extends TrajectoryTreeItem {
         this.description = descriptionParts.join(" • ") || undefined;
         this.iconPath = new vscode.ThemeIcon("debug-step-over");
         this.tooltip = buildRouteTooltip(route);
-        this.contextValue = "vtcodeTrajectoryRoute";
+        this.contextValue = "diapasonTrajectoryRoute";
     }
 }
 
@@ -173,12 +175,12 @@ class ToolTreeItem extends TrajectoryTreeItem {
             tool.ok === false ? "error" : "check"
         );
         this.tooltip = buildToolTooltip(tool);
-        this.contextValue = "vtcodeTrajectoryTool";
+        this.contextValue = "diapasonTrajectoryTool";
     }
 }
 
 interface TrajectoryViewOptions {
-    readonly onAgentOutput?: vscode.Event<VtcodeTerminalOutputEvent>;
+    readonly onAgentOutput?: vscode.Event<DiapasonTerminalOutputEvent>;
 }
 
 export class TrajectoryViewController implements vscode.Disposable {
@@ -195,18 +197,18 @@ export class TrajectoryViewController implements vscode.Disposable {
         this.refreshDelayMs = this.resolveRefreshDelay();
         context.subscriptions.push(
             vscode.window.registerTreeDataProvider(
-                "vtcodeAgentLoopView",
+                "diapasonAgentLoopView",
                 this.provider
             )
         );
         context.subscriptions.push(
-            vscode.commands.registerCommand("vtcode.refreshAgentTimeline", () =>
+            vscode.commands.registerCommand("diapason.refreshAgentTimeline", () =>
                 this.refreshNow()
             )
         );
         context.subscriptions.push(
             vscode.commands.registerCommand(
-                "vtcode.openAgentTrajectoryLog",
+                "diapason.openAgentTrajectoryLog",
                 () => this.openTrajectoryLog()
             )
         );
@@ -216,7 +218,7 @@ export class TrajectoryViewController implements vscode.Disposable {
             vscode.workspace.onDidChangeConfiguration((event) => {
                 if (
                     event.affectsConfiguration(
-                        "vtcode.agentTimeline.refreshDebounceMs"
+                        "diapason.agentTimeline.refreshDebounceMs"
                     )
                 ) {
                     this.refreshDelayMs = this.resolveRefreshDelay();
@@ -262,14 +264,18 @@ export class TrajectoryViewController implements vscode.Disposable {
         if (!folder) {
             this.provider.update(
                 [],
-                "Open a workspace folder to inspect VT Code agent telemetry."
+                "Open a workspace folder to inspect Diapason agent telemetry."
             );
             return;
         }
 
+        const logUri = this.getTrajectoryLogUri();
+        if (!logUri) {
+            return;
+        }
         const pattern = new vscode.RelativePattern(
-            folder,
-            ".vtcode/logs/trajectory.jsonl"
+            vscode.Uri.file(path.dirname(logUri.fsPath)),
+            path.basename(logUri.fsPath)
         );
         const watcher = vscode.workspace.createFileSystemWatcher(pattern);
         this.watcher = watcher;
@@ -305,7 +311,7 @@ export class TrajectoryViewController implements vscode.Disposable {
         if (!logUri) {
             this.provider.update(
                 [],
-                "Open a workspace folder to inspect VT Code agent telemetry."
+                "Open a workspace folder to inspect Diapason agent telemetry."
             );
             return;
         }
@@ -319,7 +325,7 @@ export class TrajectoryViewController implements vscode.Disposable {
             ) {
                 this.provider.update(
                     [],
-                    "No trajectory logs detected. Run a VT Code chat session to populate this view."
+                    "No trajectory logs detected. Run a Diapason chat session to populate this view."
                 );
                 return;
             }
@@ -339,7 +345,7 @@ export class TrajectoryViewController implements vscode.Disposable {
             const turns = parseTrajectoryLog(text);
             const placeholder =
                 turns.length === 0
-                    ? "Trajectory log is empty. Run the VT Code agent to capture activity."
+                    ? "Trajectory log is empty. Run the Diapason agent to capture activity."
                     : undefined;
             this.provider.update(turns, placeholder);
         } catch (error) {
@@ -369,7 +375,7 @@ export class TrajectoryViewController implements vscode.Disposable {
                 error.code === "FileNotFound"
             ) {
                 void vscode.window.showInformationMessage(
-                    "VT Code has not written a trajectory log yet. Run a chat session to generate telemetry."
+                    "Diapason has not written a trajectory log yet. Run a chat session to generate telemetry."
                 );
                 return;
             }
@@ -391,17 +397,18 @@ export class TrajectoryViewController implements vscode.Disposable {
         if (!folder) {
             return undefined;
         }
-        return vscode.Uri.joinPath(
-            folder.uri,
-            ".vtcode",
-            "logs",
-            "trajectory.jsonl"
-        );
+        try {
+            return vscode.Uri.file(trajectoryLogPath(folder.uri.fsPath));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`Diapason state resolution failed: ${message}`);
+            return undefined;
+        }
     }
 
     private resolveRefreshDelay(): number {
         const configured = vscode.workspace
-            .getConfiguration("vtcode")
+            .getConfiguration("diapason")
             .get<number>("agentTimeline.refreshDebounceMs", 250);
         if (!Number.isFinite(configured)) {
             return 250;

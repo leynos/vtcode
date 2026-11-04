@@ -2,15 +2,15 @@ import * as vscode from "vscode";
 import { CommandContext, ICommand } from "./types/command";
 
 /**
- * VT Code Command Registry
+ * Diapason Command Registry
  *
- * This registry manages all VT Code commands available in the extension.
+ * This registry manages all Diapason commands available in the extension.
  * For configuration options and examples, see the documentation:
  * - docs/config.md - Complete configuration reference
- * - vtcode.toml - Basic example configuration
- * - vtcode.toml.example - Comprehensive example with all options
+ * - config.toml - Basic example configuration
+ * - config.toml.example - Comprehensive example with all options
  *
- * Registry for managing VT Code commands
+ * Registry for managing Diapason commands
  */
 export class CommandRegistry {
     private commands = new Map<string, ICommand>();

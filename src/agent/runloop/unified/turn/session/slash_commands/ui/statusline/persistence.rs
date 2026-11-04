@@ -2,9 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use diapason_core::config::StatusLineConfig;
+use diapason_core::utils::ansi::MessageStyle;
 use toml::Value as TomlValue;
-use vtcode_core::config::StatusLineConfig;
-use vtcode_core::utils::ansi::MessageStyle;
 
 use crate::agent::runloop::slash_commands::StatuslineTargetMode;
 use crate::agent::runloop::unified::palettes::refresh_runtime_config_from_manager;
@@ -14,7 +14,7 @@ use super::super::super::config_toml::{
     ensure_child_table, load_private_toml_value, load_toml_value, save_private_toml_value, save_toml_value,
 };
 use super::config::statusline_mode_id;
-use vtcode_commons::VtCodePaths;
+use diapason_commons::DiapasonPaths;
 
 const STATUSLINE_SCRIPT_FILE_NAME: &str = "statusline.sh";
 const STATUSLINE_SCRIPT_TEMPLATE: &str = r#"#!/bin/sh
@@ -122,7 +122,9 @@ fn u64_to_toml_integer(value: u64, label: &str) -> Result<i64> {
 
 pub(super) fn statusline_script_path(target: StatuslineTargetMode, workspace: &Path, config_path: &Path) -> PathBuf {
     match target {
-        StatuslineTargetMode::Workspace => workspace.join(".vtcode").join(STATUSLINE_SCRIPT_FILE_NAME),
+        StatuslineTargetMode::Workspace => workspace
+            .join(diapason_commons::workspace_dir_name())
+            .join(STATUSLINE_SCRIPT_FILE_NAME),
         StatuslineTargetMode::User => config_path
             .parent()
             .map(Path::to_path_buf)
@@ -133,7 +135,7 @@ pub(super) fn statusline_script_path(target: StatuslineTargetMode, workspace: &P
 
 pub(super) fn default_script_command(target: StatuslineTargetMode, script_path: &Path) -> String {
     match target {
-        StatuslineTargetMode::Workspace => ".vtcode/statusline.sh".to_string(),
+        StatuslineTargetMode::Workspace => ".diapason/statusline.sh".to_string(),
         StatuslineTargetMode::User => shell_quote(script_path),
     }
 }
@@ -165,7 +167,7 @@ pub(super) fn scaffold_statusline_script(
 
     if let Some(parent) = path.parent() {
         if target == StatuslineTargetMode::User {
-            VtCodePaths::ensure_user_dir(parent).with_context(|| format!("Failed to create {}", parent.display()))?;
+            DiapasonPaths::ensure_user_dir(parent).with_context(|| format!("Failed to create {}", parent.display()))?;
         } else {
             fs::create_dir_all(parent).with_context(|| format!("Failed to create {}", parent.display()))?;
         }
@@ -177,7 +179,7 @@ pub(super) fn scaffold_statusline_script(
         ScriptScaffoldResult::Created
     };
     if target == StatuslineTargetMode::User {
-        VtCodePaths::write_private_file_atomic(path, STATUSLINE_SCRIPT_TEMPLATE.as_bytes())
+        DiapasonPaths::write_private_file_atomic(path, STATUSLINE_SCRIPT_TEMPLATE.as_bytes())
             .with_context(|| format!("Failed to write {}", path.display()))?;
     } else {
         fs::write(path, STATUSLINE_SCRIPT_TEMPLATE).with_context(|| format!("Failed to write {}", path.display()))?;

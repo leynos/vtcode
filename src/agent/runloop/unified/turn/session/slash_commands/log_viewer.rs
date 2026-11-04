@@ -2,11 +2,11 @@ use std::io::BufRead;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use vtcode_commons::sanitizer::redact_secrets;
-use vtcode_core::core::threads::ThreadEventRecord;
-use vtcode_core::exec::events::VersionedThreadEvent;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::utils::file_utils::write_file_with_context_sync;
+use diapason_commons::sanitizer::redact_secrets;
+use diapason_core::core::threads::ThreadEventRecord;
+use diapason_core::exec::events::VersionedThreadEvent;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_core::utils::file_utils::write_file_with_context_sync;
 
 use super::{SlashCommandContext, SlashCommandControl};
 use crate::agent::runloop::slash_commands::{LogFormat, LogScope};
@@ -35,7 +35,7 @@ pub(crate) async fn handle_show_log_viewer(
             let workspace = ctx.config.workspace.clone();
             let disk_entries = tokio::task::spawn_blocking(move || collect_disk_entries(&workspace))
                 .await
-                .context("log disk scan task panicked")?;
+                .context("log disk scan task panicked")??;
             all_entries.extend(disk_entries);
             // Sort by seq for approximate chronological ordering. We do NOT
             // dedup: memory entries use the global `record.sequence` while disk
@@ -105,7 +105,7 @@ struct LogEntry {
     detail: String,
 }
 
-fn read_from_memory(thread_handle: &vtcode_core::core::threads::ThreadRuntimeHandle) -> Result<Vec<LogEntry>> {
+fn read_from_memory(thread_handle: &diapason_core::core::threads::ThreadRuntimeHandle) -> Result<Vec<LogEntry>> {
     let records: Vec<ThreadEventRecord> = thread_handle.replay_recent();
     let mut entries = Vec::with_capacity(records.len());
     for record in records {
@@ -122,11 +122,11 @@ fn read_from_memory(thread_handle: &vtcode_core::core::threads::ThreadRuntimeHan
 ///
 /// Does `std::fs::read_dir` + per-file `File::open` + `read_line` — must be
 /// called from `spawn_blocking` in async contexts.
-fn collect_disk_entries(workspace: &std::path::Path) -> Vec<LogEntry> {
-    let sessions_root = workspace.join(".vtcode/sessions");
+fn collect_disk_entries(workspace: &std::path::Path) -> Result<Vec<LogEntry>> {
+    let sessions_root = diapason_commons::workspace_state_dir(workspace)?.join("sessions");
     let mut entries = Vec::new();
     let Ok(read_dir) = std::fs::read_dir(&sessions_root) else {
-        return entries;
+        return Ok(entries);
     };
     for entry in read_dir.filter_map(|entry| entry.ok()) {
         let path = entry.path().join("events.jsonl");
@@ -137,7 +137,7 @@ fn collect_disk_entries(workspace: &std::path::Path) -> Vec<LogEntry> {
             entries.extend(disk_entries);
         }
     }
-    entries
+    Ok(entries)
 }
 
 /// Read and parse a single `events.jsonl` file into log entries.
@@ -165,8 +165,8 @@ fn read_events_from_file(path: PathBuf) -> Result<Vec<LogEntry>> {
     Ok(entries)
 }
 
-fn item_type_label(details: &vtcode_core::exec::events::ThreadItemDetails) -> &'static str {
-    use vtcode_core::exec::events::ThreadItemDetails;
+fn item_type_label(details: &diapason_core::exec::events::ThreadItemDetails) -> &'static str {
+    use diapason_core::exec::events::ThreadItemDetails;
     match details {
         ThreadItemDetails::AgentMessage(_) => "AgentMessage",
         ThreadItemDetails::Plan(_) => "Plan",
@@ -182,31 +182,31 @@ fn item_type_label(details: &vtcode_core::exec::events::ThreadItemDetails) -> &'
     }
 }
 
-fn describe_event(event: &vtcode_core::exec::events::ThreadEvent) -> (&'static str, String) {
+fn describe_event(event: &diapason_core::exec::events::ThreadEvent) -> (&'static str, String) {
     match event {
-        vtcode_core::exec::events::ThreadEvent::ThreadStarted(e) => {
+        diapason_core::exec::events::ThreadEvent::ThreadStarted(e) => {
             ("thread.started", format!("thread_id={}", e.thread_id))
         }
-        vtcode_core::exec::events::ThreadEvent::ThreadCompleted(e) => (
+        diapason_core::exec::events::ThreadEvent::ThreadCompleted(e) => (
             "thread.completed",
             format!("subtype={:?}, outcome={}, num_turns={}", e.subtype, e.outcome_code, e.num_turns),
         ),
-        vtcode_core::exec::events::ThreadEvent::ThreadCompactBoundary(e) => {
+        diapason_core::exec::events::ThreadEvent::ThreadCompactBoundary(e) => {
             ("thread.compact_boundary", format!("trigger={:?}", e.trigger))
         }
-        vtcode_core::exec::events::ThreadEvent::ContextReset(e) => (
+        diapason_core::exec::events::ThreadEvent::ContextReset(e) => (
             "context.reset",
             format!(
                 "trigger={:?}, plan_preserved={}, previous_context={}%, tool_budget_reset={}",
                 e.trigger, e.plan_preserved, e.previous_context_usage_percent, e.tool_budget_reset
             ),
         ),
-        vtcode_core::exec::events::ThreadEvent::TurnStarted(_) => ("turn.started", String::new()),
-        vtcode_core::exec::events::ThreadEvent::TurnCompleted(_) => ("turn.completed", String::new()),
-        vtcode_core::exec::events::ThreadEvent::TurnFailed(e) => {
+        diapason_core::exec::events::ThreadEvent::TurnStarted(_) => ("turn.started", String::new()),
+        diapason_core::exec::events::ThreadEvent::TurnCompleted(_) => ("turn.completed", String::new()),
+        diapason_core::exec::events::ThreadEvent::TurnFailed(e) => {
             ("turn.failed", truncate(&e.message, MAX_FIELD_DISPLAY_LEN).to_string())
         }
-        vtcode_core::exec::events::ThreadEvent::TurnBlocked(e) => (
+        diapason_core::exec::events::ThreadEvent::TurnBlocked(e) => (
             "turn.blocked",
             format!(
                 "{} (streak {}, total {})",
@@ -215,19 +215,19 @@ fn describe_event(event: &vtcode_core::exec::events::ThreadEvent) -> (&'static s
                 e.blocked_total
             ),
         ),
-        vtcode_core::exec::events::ThreadEvent::ItemStarted(e) => {
+        diapason_core::exec::events::ThreadEvent::ItemStarted(e) => {
             ("item.started", format!("type={}", item_type_label(&e.item.details)))
         }
-        vtcode_core::exec::events::ThreadEvent::ItemUpdated(e) => {
+        diapason_core::exec::events::ThreadEvent::ItemUpdated(e) => {
             ("item.updated", format!("type={}", item_type_label(&e.item.details)))
         }
-        vtcode_core::exec::events::ThreadEvent::ItemCompleted(e) => {
+        diapason_core::exec::events::ThreadEvent::ItemCompleted(e) => {
             ("item.completed", format!("type={}", item_type_label(&e.item.details)))
         }
-        vtcode_core::exec::events::ThreadEvent::PermissionRequested(e) => {
+        diapason_core::exec::events::ThreadEvent::PermissionRequested(e) => {
             ("permission.requested", format!("tool={}", truncate(&e.tool_name, MAX_FIELD_DISPLAY_LEN)))
         }
-        vtcode_core::exec::events::ThreadEvent::PermissionResolved(e) => (
+        diapason_core::exec::events::ThreadEvent::PermissionResolved(e) => (
             "permission.resolved",
             format!(
                 "tool={}, decision={:?}, wait_ms={}",
@@ -236,26 +236,26 @@ fn describe_event(event: &vtcode_core::exec::events::ThreadEvent) -> (&'static s
                 e.wait_ms
             ),
         ),
-        vtcode_core::exec::events::ThreadEvent::Interjected(e) => {
+        diapason_core::exec::events::ThreadEvent::Interjected(e) => {
             ("interjected", format!("source={:?}, redirect={:?}", e.source, e.redirect_kind))
         }
-        vtcode_core::exec::events::ThreadEvent::PlanDelta(e) => {
+        diapason_core::exec::events::ThreadEvent::PlanDelta(e) => {
             ("plan.delta", format!("thread_id={}, turn_id={}, item_id={}", e.thread_id, e.turn_id, e.item_id))
         }
-        vtcode_core::exec::events::ThreadEvent::PlanApprovalRequested(e) => {
+        diapason_core::exec::events::ThreadEvent::PlanApprovalRequested(e) => {
             ("plan.approval.requested", format!("thread_id={}, turn_id={}", e.thread_id, e.turn_id))
         }
-        vtcode_core::exec::events::ThreadEvent::PlanApprovalResolved(e) => (
+        diapason_core::exec::events::ThreadEvent::PlanApprovalResolved(e) => (
             "plan.approval.resolved",
             format!(
                 "thread_id={}, turn_id={}, decision={:?}, automatic={}",
                 e.thread_id, e.turn_id, e.decision, e.automatic
             ),
         ),
-        vtcode_core::exec::events::ThreadEvent::Error(e) => {
+        diapason_core::exec::events::ThreadEvent::Error(e) => {
             ("error", truncate(&e.message, MAX_FIELD_DISPLAY_LEN).to_string())
         }
-        vtcode_core::exec::events::ThreadEvent::Unknown => ("unknown", String::new()),
+        diapason_core::exec::events::ThreadEvent::Unknown => ("unknown", String::new()),
     }
 }
 
@@ -296,7 +296,7 @@ fn save_log_file(workspace: &std::path::Path, content: &str, format: LogFormat) 
         LogFormat::Text => "txt",
         LogFormat::Json => "json",
     };
-    let name = format!("vtcode-session-log-{}.{}", ts, ext);
+    let name = format!("diapason-session-log-{}.{}", ts, ext);
     let path = workspace.join(name);
     write_file_with_context_sync(&path, content, "session log")?;
     Ok(path)

@@ -1,16 +1,16 @@
-# VT Code FAQ
+# Diapason FAQ
 
 Based on best practices from Ratatui and terminal UI development, this FAQ
-addresses common questions about VT Code architecture and usage.
+addresses common questions about Diapason architecture and usage.
 
 ## Terminal & TUI
 
 ### Why don't I see duplicate key events on Windows?
 
-VT Code correctly filters key events to only process `KeyEventKind::Press`,
+Diapason correctly filters key events to only process `KeyEventKind::Press`,
 avoiding duplicate events from both press and release.
 
-See `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`:
+See `crates/codegen/diapason-ui/src/tui/core_tui/runner/`:
 
 ```rust
 if key.kind == KeyEventKind::Press {
@@ -20,9 +20,9 @@ if key.kind == KeyEventKind::Press {
 
 This pattern is **cross-platform compatible** (Windows, macOS, Linux).
 
-### Why should VT Code use tokio/async?
+### Why should Diapason use tokio/async?
 
-VT Code uses Tokio for:
+Diapason uses Tokio for:
 
 1. **Event multiplexing** - Handling terminal events, ticks, and renders
    concurrently without blocking
@@ -42,55 +42,55 @@ The architecture uses `tokio::select!` to multiplex:
 - Simple one-off CLI tasks (prefer synchronous main loop)
 - Tools that don't need concurrent execution
 
-VT Code's multi-agent coordination and tool execution justify async.
+Diapason's multi-agent coordination and tool execution justify async.
 
 ### Why use stderr instead of stdout for terminal rendering?
 
-VT Code renders to `stderr` (via `CrosstermBackend::new(std::io::stderr())` in
+Diapason renders to `stderr` (via `CrosstermBackend::new(std::io::stderr())` in
 the TUI runner).
 
 **Rationale:**
 
-- Allows piping output: `vtcode ask "task" | jq` doesn't break the TUI
+- Allows piping output: `diapason ask "task" | jq` doesn't break the TUI
 - Makes the TUI work out-of-the-box in pipes (no special TTY detection needed)
 - Compatible with shell pipelines and CI/CD environments
 
 ### Can I run multiple terminal.draw() calls in the same loop?
 
-No. VT Code uses a single `terminal.draw()` call per frame that renders all
+No. Diapason uses a single `terminal.draw()` call per frame that renders all
 widgets together. See
-`crates/codegen/vtcode-core/src/ui/tui/session.rs:render()` method, which
+`crates/codegen/diapason-core/src/ui/tui/session.rs:render()` method, which
 orchestrates all UI components in one closure.
 
 ### How do I pipe output to other tools?
 
-Because VT Code strictly separates data (`stdout`) from metadata/logging
+Because Diapason strictly separates data (`stdout`) from metadata/logging
 (`stderr`), you can pipe the output of commands like `ask` and `exec` directly.
 
 ```bash
 # Code goes to file, logs stay on screen
-vtcode ask "code for a fibonacci function" > fib.py
+diapason ask "code for a fibonacci function" > fib.py
 ```
 
-Use `vtcode exec --json` to get a pipeable stream of structured events.
+Use `diapason exec --json` to get a pipeable stream of structured events.
 
-### How does VT Code handle terminal resizing?
+### How does Diapason handle terminal resizing?
 
-VT Code listens for `Event::Resize(x, y)` events and updates the layout
+Diapason listens for `Event::Resize(x, y)` events and updates the layout
 automatically. The TUI widgets reflow based on the new terminal dimensions—no
 special handling needed.
 
-### Can I change font size in a VT Code terminal?
+### Can I change font size in a Diapason terminal?
 
-No, VT Code can't control terminal font size. That's a terminal emulator
-setting. VT Code adapts to the terminal's actual size via `Event::Resize`.
+No, Diapason can't control terminal font size. That's a terminal emulator
+setting. Diapason adapts to the terminal's actual size via `Event::Resize`.
 
 **Tip:** Use `tui-big-text` or `figlet` for large ASCII art titles within the
 TUI.
 
 ### What characters look weird or display as ?
 
-VT Code assumes a **Nerd Font** for box-drawing and icon support. Install one
+Diapason assumes a **Nerd Font** for box-drawing and icon support. Install one
 of:
 
 - [Nerd Fonts](https://www.nerdfonts.com/) (recommended)
@@ -98,23 +98,23 @@ of:
 
 ## Architecture & Design
 
-### Is VT Code a library or framework?
+### Is Diapason a library or framework?
 
-**VT Code is a tool/agent**, not a library or framework.
+**Diapason is a tool/agent**, not a library or framework.
 
-However, `vtcode-core` (the Rust crate) is a **library** you can use in your
-own Rust projects. The binary (`vtcode` CLI) uses this library to implement a
+However, `diapason-core` (the Rust crate) is a **library** you can use in your
+own Rust projects. The binary (`diapason` CLI) uses this library to implement a
 coding agent.
 
 **Philosophy:**
 
-- **Library-like:** You control the event loop and can extend VT Code's
+- **Library-like:** You control the event loop and can extend Diapason's
   functionality
 - **Agent-first:** The CLI provides opinionated defaults for common coding tasks
 
-### How does VT Code differ from similar tools?
+### How does Diapason differ from similar tools?
 
-VT Code is an **AI coding agent** with:
+Diapason is an **AI coding agent** with:
 
 - **Security-first:** Execution policies, workspace isolation, tool policies,
   and tree-sitter-bash command validation
@@ -124,7 +124,7 @@ VT Code is an **AI coding agent** with:
 - **Context engineering:** Token budget tracking, dynamic context curation
 - **Editor integration:** Agent Client Protocol (ACP) for Zed, Cursor, etc.
 
-### Why does VT Code use async/await extensively?
+### Why does Diapason use async/await extensively?
 
 **Reasons:**
 
@@ -134,13 +134,13 @@ VT Code is an **AI coding agent** with:
 3. **Streaming:** Real-time AI responses streamed without blocking
 4. **Lifecycle hooks:** Shell commands execute without blocking the agent loop
 
-**Result:** VT Code remains responsive even during long-running operations.
+**Result:** Diapason remains responsive even during long-running operations.
 
-### How does VT Code manage terminal state?
+### How does Diapason manage terminal state?
 
 The fullscreen TUI uses the shared runner in
-`crates/codegen/vtcode-ui/src/tui/core_tui/runner/` and writes terminal control
-sequences through `stderr`.
+`crates/codegen/diapason-ui/src/tui/core_tui/runner/` and writes terminal
+control sequences through `stderr`.
 
 1. **Enter:** Save cursor position, enable terminal modes (raw mode, bracketed
    paste, focus events, keyboard enhancements, optional mouse capture), then
@@ -157,7 +157,7 @@ git clients, etc.
 
 ### Why suspend the TUI to launch external apps?
 
-VT Code suspends the event loop, drains pending terminal events, leaves
+Diapason suspends the event loop, drains pending terminal events, leaves
 alternate-screen rendering, launches the external app, and then restores the
 fullscreen session. The same pattern is used for editor launches and for the
 tool-output viewer's handoff to native scrollback.
@@ -168,8 +168,8 @@ input/output.
 ### How does fullscreen Transcript Review work?
 
 Press the configured Transcript Review shortcut (default `Ctrl+T`) to open or
-close Transcript Review. VT Code composes the ordered session conversation with
-complete command output, including PTY captures and distinguishable pipe
+close Transcript Review. Diapason composes the ordered session conversation
+with complete command output, including PTY captures and distinguishable pipe
 stdout/stderr streams. The live view stays compact, while the review retains
 the full capture. Rich rendering is the default; press the configured render
 toggle (default `R`) for ANSI-free raw text. You can:
@@ -201,7 +201,7 @@ enable tmux mouse mode:
 set -g mouse on
 ```
 
-VT Code's alternate-screen fullscreen mode is intended for normal tmux
+Diapason's alternate-screen fullscreen mode is intended for normal tmux
 sessions. Avoid using it with iTerm2 control mode (`tmux -CC`), where mouse
 capture and alternate-screen behavior are unreliable.
 
@@ -212,35 +212,35 @@ capture and alternate-screen behavior are unreliable.
 Set `RUST_LOG` environment variable:
 
 ```bash
-RUST_LOG=vtcode_core=debug,vtcode=debug vtcode
+RUST_LOG=diapason_core=debug,diapason=debug diapason
 ```
 
-Or configure in `vtcode.toml`:
+Or configure in `config.toml`:
 
 ```toml
 [debug]
 enable_tracing = true
 trace_level = "debug"
-trace_targets = ["vtcode_core", "vtcode"]
+trace_targets = ["diapason_core", "diapason"]
 ```
 
 See `src/main.rs` for initialization.
 
-### How does VT Code handle buffer overruns?
+### How does Diapason handle buffer overruns?
 
 The Ratatui FAQ recommends using `area.intersection(buf.area)` to prevent
-out-of-bounds rendering. This is applied in VT Code's widget implementations to
-clamp rendering to valid regions.
+out-of-bounds rendering. This is applied in Diapason's widget implementations
+to clamp rendering to valid regions.
 
 **Best practice:** Use `Rect::intersection()` and `Rect::clamp()` when
 calculating layouts manually.
 
 ## Performance & Optimization
 
-### What's VT Code's frame and tick rate?
+### What's Diapason's frame and tick rate?
 
-- **Frame rate:** 60 FPS (default in `vtcode-ui`)
-- **Tick rate:** 4 Hz (default in `vtcode-ui`)
+- **Frame rate:** 60 FPS (default in `diapason-ui`)
+- **Tick rate:** 4 Hz (default in `diapason-ui`)
 
 Both are configurable via builder methods:
 
@@ -248,15 +248,15 @@ Both are configurable via builder methods:
 tui.frame_rate(60.0).tick_rate(4.0)
 ```
 
-### How does VT Code reduce latency?
+### How does Diapason reduce latency?
 
 1. **Async event handling:** Non-blocking `tokio::select!` in the TUI event loop
 2. **Double buffering:** Ratatui only renders diffs, not full redraws
 3. **Lazy rendering:** Only recompute UI when state changes (not every frame)
 
-### Can I use VT Code in a pipe?
+### Can I use Diapason in a pipe?
 
-Yes. VT Code detects when stdout is a pipe (not a TTY) and adapts:
+Yes. Diapason detects when stdout is a pipe (not a TTY) and adapts:
 
 - **Interactive mode:** Full TUI if terminal is available
 - **Pipe mode:** Text output (if piped)
@@ -266,4 +266,4 @@ Check `src/main.rs` for TTY detection.
 ## See Also
 
 - [Ratatui FAQ](https://ratatui.rs/faq/) - Terminal UI best practices
-- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - VT Code system architecture
+- [docs/ARCHITECTURE.md](./ARCHITECTURE.md) - Diapason system architecture

@@ -1,6 +1,6 @@
-# VT Code Zed Extension - Documentation Index
+# Diapason Zed Extension - Documentation Index
 
-Complete navigation guide for the VT Code Zed extension documentation.
+Complete navigation guide for the Diapason Zed extension documentation.
 
 ## Quick Navigation
 
@@ -131,7 +131,7 @@ ______________________________________________________________________
 
 ### SETUP_GUIDE.md
 
-- Prerequisites (Zed, Rust, VT Code CLI)
+- Prerequisites (Zed, Rust, Diapason CLI)
 - 5 installation methods
 - Configuration examples
 - Troubleshooting matrix
@@ -140,7 +140,7 @@ ______________________________________________________________________
 
 ### QUICK_START.md
 
-- 1-minute VT Code CLI install
+- 1-minute Diapason CLI install
 - 1-minute extension install
 - 1-minute configuration
 - 2 minutes first use
@@ -193,13 +193,13 @@ ______________________________________________________________________
 
 ```bash
 # Fastest way to get started
-cargo install vtcode
+cargo install --git https://github.com/leynos/vtcode.git --branch main --locked diapason
 # Then use "Install Dev Extension" in Zed
 ```
 
 ### Key Files
 
-- **Configuration**: `vtcode.toml` (in your workspace)
+- **Configuration**: `config.toml` (in your workspace)
 - **Extension Config**: `extension.toml`
 - **Source Code**: `src/lib.rs`
 - **License**: `LICENSE` (MIT)
@@ -214,7 +214,7 @@ cargo build --release
 cargo check
 
 # View help
-vtcode --help
+diapason --help
 ```
 
 ### API Credentials
@@ -241,7 +241,7 @@ extensions/zed-extension/
  Configuration Files
     extension.toml (extension metadata)
     Cargo.toml (Rust config)
-    languages/vtcode/config.toml (language support)
+    languages/diapason/config.toml (language support)
 
  Source Code
     src/lib.rs (extension code)
@@ -249,7 +249,7 @@ extensions/zed-extension/
  Build Artifacts
     target/
         debug/
-        release/libvtcode.dylib
+        release/libdiapason.dylib
 
  Project Files
      LICENSE (MIT)
@@ -262,16 +262,16 @@ ______________________________________________________________________
 
 ### Official Resources
 
-- **GitHub**: [vinhnx/vtcode](https://github.com/vinhnx/vtcode)
-- **Issues**: [Report bugs](https://github.com/vinhnx/vtcode/issues)
+- **GitHub**: [leynos/vtcode](https://github.com/leynos/vtcode)
+- **Issues**: [Report bugs](https://github.com/leynos/vtcode/issues)
 - **Discussions**:
-    [Ask questions](https://github.com/vinhnx/vtcode/discussions)
+    [Ask questions](https://github.com/leynos/vtcode/discussions)
 
 ### External Resources
 
 - **Zed Docs**: [zed.dev/docs](https://zed.dev/docs)
 - **Rust Book**: [doc.rust-lang.org](https://doc.rust-lang.org)
-- **VT Code CLI**: [GitHub repo](https://github.com/vinhnx/vtcode)
+- **Diapason CLI**: [GitHub repo](https://github.com/leynos/vtcode)
 
 ### Tools & Utilities
 
@@ -305,8 +305,8 @@ ______________________________________________________________________
 
 ### Q: Is this extension official?
 
-**A**: It's the official Zed extension for VT Code, maintained as part of the
-VT Code project.
+**A**: It's the official Zed extension for Diapason, maintained as part of the
+Diapason project.
 
 ______________________________________________________________________
 
@@ -344,9 +344,9 @@ ______________________________________________________________________
 
 ### Community & Support
 
-- [Report Issues](https://github.com/vinhnx/vtcode/issues)
-- [Discussions](https://github.com/vinhnx/vtcode/discussions)
-- [Star on GitHub](https://github.com/vinhnx/vtcode)
+- [Report Issues](https://github.com/leynos/vtcode/issues)
+- [Discussions](https://github.com/leynos/vtcode/discussions)
+- [Star on GitHub](https://github.com/leynos/vtcode)
 
 ______________________________________________________________________
 

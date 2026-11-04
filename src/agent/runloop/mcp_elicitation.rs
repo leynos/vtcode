@@ -4,8 +4,8 @@ use serde_json::Value;
 use std::sync::{Arc, RwLock as StdRwLock};
 use tokio::sync::Mutex;
 
-use vtcode_core::mcp::{ElicitationAction, McpElicitationHandler, McpElicitationRequest, McpElicitationResponse};
-use vtcode_core::{
+use diapason_core::mcp::{ElicitationAction, McpElicitationHandler, McpElicitationRequest, McpElicitationResponse};
+use diapason_core::{
     NotificationEvent, exec_policy::AskForApproval, send_global_notification, utils::ansi_codes::notify_attention,
 };
 
@@ -62,7 +62,7 @@ impl McpElicitationHandler for InteractiveMcpElicitationHandler {
         // Notify the user that attention is required
         if self.hitl_notification_bell
             && let Err(err) = send_global_notification(NotificationEvent::PermissionPrompt {
-                title: "VT Code input required".to_string(),
+                title: "Diapason input required".to_string(),
                 message: format!("MCP provider `{provider}` is waiting for input."),
             })
             .await
@@ -83,7 +83,7 @@ impl McpElicitationHandler for InteractiveMcpElicitationHandler {
         // In TUI mode crossterm owns the terminal; raw print!/stdin would
         // corrupt the display and block the event loop.  Auto-decline so
         // the MCP server gets a clear response instead of hanging.
-        if vtcode_core::ui::is_tui_mode() {
+        if diapason_core::ui::is_tui_mode() {
             tracing::info!("MCP elicitation auto-declined in TUI mode");
             return Ok(McpElicitationResponse {
                 action: ElicitationAction::Decline,
@@ -138,7 +138,7 @@ impl McpElicitationHandler for InteractiveMcpElicitationHandler {
 #[cfg(test)]
 mod tests {
     use super::elicitation_is_rejected_by_policy;
-    use vtcode_core::exec_policy::{AskForApproval, RejectConfig};
+    use diapason_core::exec_policy::{AskForApproval, RejectConfig};
 
     #[test]
     fn elicitation_reject_policy_defaults_to_prompting() {

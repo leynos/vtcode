@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
+use diapason_commons::canonicalize;
+use diapason_core::ui::is_tui_mode;
 use hashbrown::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::path::Path;
 use std::path::PathBuf;
-use vtcode_commons::canonicalize;
-use vtcode_core::ui::is_tui_mode;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GitStatusSummary {
@@ -97,7 +97,7 @@ pub(crate) fn normalize_workspace_path(workspace: &Path, path: &Path) -> PathBuf
     })
 }
 
-pub(crate) use vtcode_commons::workspace_relative_display;
+pub(crate) use diapason_commons::workspace_relative_display;
 
 /// Collect modified/added/deleted worktree entries (excluding staged renames).
 ///
@@ -384,8 +384,8 @@ mod tests {
         };
 
         run(&["init"]);
-        run(&["config", "user.name", "VT Code"]);
-        run(&["config", "user.email", "vtcode@example.com"]);
+        run(&["config", "user.name", "Diapason"]);
+        run(&["config", "user.email", "diapason@example.com"]);
         temp
     }
 

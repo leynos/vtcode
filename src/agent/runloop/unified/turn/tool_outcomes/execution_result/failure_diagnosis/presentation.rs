@@ -1,7 +1,7 @@
 //! Tool-response attachment and user-facing diagnosis emission.
 
+use diapason_core::utils::ansi::MessageStyle;
 use serde_json::json;
-use vtcode_core::utils::ansi::MessageStyle;
 
 use super::ToolFailureDiagnosis;
 use super::evidence::bounded_field;
@@ -36,7 +36,7 @@ pub(crate) async fn push_tool_response_with_diagnosis(
 }
 
 pub(crate) fn render_diagnosis(
-    renderer: &mut vtcode_core::utils::ansi::AnsiRenderer,
+    renderer: &mut diapason_core::utils::ansi::AnsiRenderer,
     harness_emitter: Option<&crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter>,
     turn_id: &str,
     tool_name: &str,

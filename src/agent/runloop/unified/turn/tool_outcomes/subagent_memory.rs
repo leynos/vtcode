@@ -1,6 +1,6 @@
 use anyhow::Result;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::persistent_memory::GroundedFactRecord;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::persistent_memory::GroundedFactRecord;
 
 use crate::agent::runloop::unified::turn::compaction::{SessionMemoryEnvelopeUpdate, refresh_session_memory_envelope};
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;

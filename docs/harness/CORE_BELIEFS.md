@@ -1,12 +1,12 @@
 # Core Beliefs
 
-Agent-first operating principles for VT Code development. These beliefs guide
+Agent-first operating principles for Diapason development. These beliefs guide
 every design decision, code review, and architectural trade-off.
 
 ## 1. Humans Steer, Agents Execute
 
 Humans define goals, set constraints, and review outcomes. Agents handle
-implementation, testing, iteration, and routine maintenance. In VT Code's
+implementation, testing, iteration, and routine maintenance. In Diapason's
 context:
 
 - **Humans** choose which provider to add, which tool abstraction to expose,

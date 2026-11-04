@@ -1,0 +1,143 @@
+#![allow(
+    clippy::panic_in_result_fn,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+#![allow(
+    missing_docs,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+use anyhow::Result;
+use diapason_core::config::constants::tools;
+use serde_json::json;
+
+mod support;
+use support::TestHarness;
+
+#[tokio::test]
+async fn run_command_uses_pty_backend() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let _sample_path = harness.write_file("sample.txt", "hello")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let response = registry
+        .execute_tool(
+            tools::RUN_PTY_CMD,
+            json!({
+                "command": "ls",
+                "working_dir": "."
+            }),
+        )
+        .await?;
+    // debug: response logged in test harness if needed
+
+    assert_eq!(response["success"], true);
+    // Check for PTY-related fields (implementation may vary)
+    let has_pty_indicators = response.get("session_id").is_some()
+        || response.get("process_id").is_some()
+        || response.get("pty_enabled").is_some()
+        || response.get("mode").is_some();
+    assert!(has_pty_indicators, "Response should have PTY-related fields. Response: {response:?}");
+
+    let output = response["output"].as_str().unwrap_or_default();
+    let stdout = response["stdout"].as_str().unwrap_or_default();
+    let combined_output = format!("{output} {stdout}");
+    assert!(
+        combined_output.contains("sample.txt"),
+        "Output should contain sample.txt. output='{output}', stdout='{stdout}'"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn exec_pty_cmd_resolves_and_runs_in_registry() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let _sample_path = harness.write_file("sample_pty.txt", "hello")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    // EXEC_PTY_CMD is offered to the model but must also resolve to a real
+    // executor; otherwise the call fails with "not found in registry".
+    let response = registry
+        .execute_tool(
+            tools::EXEC_PTY_CMD,
+            json!({
+                "cmd": "ls",
+                "workdir": "."
+            }),
+        )
+        .await?;
+
+    assert_eq!(response["success"], true, "exec_pty_cmd must execute; response was {response:?}");
+    let output = response["output"].as_str().unwrap_or_default();
+    let stdout = response["stdout"].as_str().unwrap_or_default();
+    let combined_output = format!("{output} {stdout}");
+    assert!(
+        combined_output.contains("sample_pty.txt"),
+        "Output should contain sample_pty.txt. output='{output}', stdout='{stdout}'"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn run_command_accepts_indexed_arguments_zero_based() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let _sample_path = harness.write_file("sample.txt", "hello")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let response = registry
+        .execute_tool(
+            tools::RUN_PTY_CMD,
+            json!({
+                "command.0": "ls",
+                "command.1": "-a",
+                "working_dir": "."
+            }),
+        )
+        .await?;
+
+    eprintln!("Response: {response:?}");
+    assert_eq!(response["success"], true);
+    let output = response["output"].as_str().unwrap_or_default();
+    let stdout = response["stdout"].as_str().unwrap_or_default();
+    let combined_output = format!("{output} {stdout}");
+    assert!(
+        combined_output.contains("sample.txt"),
+        "Output should contain sample.txt. output='{output}', stdout='{stdout}'"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn run_command_accepts_indexed_arguments_one_based() -> Result<()> {
+    let harness = TestHarness::new()?;
+    let _sample_path = harness.write_file("sample2.txt", "hello2")?;
+    let registry = harness.registry().await;
+    registry.allow_all_tools().await?;
+
+    let response = registry
+        .execute_tool(
+            tools::RUN_PTY_CMD,
+            json!({
+                "command.1": "ls",
+                "command.2": "-a",
+                "working_dir": "."
+            }),
+        )
+        .await?;
+
+    assert_eq!(response["success"], true);
+    let output = response["output"].as_str().unwrap_or_default();
+    let stdout = response["stdout"].as_str().unwrap_or_default();
+    let combined_output = format!("{output} {stdout}");
+    assert!(
+        combined_output.contains("sample2.txt"),
+        "Output should contain sample2.txt. output='{output}', stdout='{stdout}'"
+    );
+
+    Ok(())
+}

@@ -1,10 +1,10 @@
-//! `vtcode session-store` — operate the unified per-session state store.
+//! `diapason session-store` — operate the unified per-session state store.
 
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use vtcode_core::cli::args::SessionStoreCommand;
-use vtcode_memory::{
+use diapason_core::cli::args::SessionStoreCommand;
+use diapason_memory::{
     DEFAULT_MAX_EVENTS, RetentionPolicy, apply_retention, migrate_legacy, open, query_facts, recent_sessions,
 };
 
@@ -30,9 +30,9 @@ pub async fn handle_session_store_command(command: SessionStoreCommand) -> Resul
             println!("Garbage-collected {removed} session(s).");
         }
         SessionStoreCommand::List { limit } => {
-            let sessions = recent_sessions(&workspace, limit);
+            let sessions = recent_sessions(&workspace, limit)?;
             if sessions.is_empty() {
-                println!("No sessions found under .vtcode/sessions/.");
+                println!("No sessions found in the Diapason XDG state directory.");
                 return Ok(());
             }
             for s in &sessions {

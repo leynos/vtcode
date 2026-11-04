@@ -6,7 +6,7 @@ mod result_handler;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-use vtcode_core::ActivePrimaryAgent;
+use diapason_core::ActivePrimaryAgent;
 
 pub(crate) use llm_request::execute_llm_request;
 pub(crate) use llm_request::is_unmatched_tool_result_error;
@@ -30,7 +30,7 @@ pub(crate) fn resolve_effective_request_model(base_model: &str, active_primary_a
 #[cfg(test)]
 mod tests {
     use super::resolve_effective_request_model;
-    use vtcode_core::primary_agent::ActivePrimaryAgentState;
+    use diapason_core::primary_agent::ActivePrimaryAgentState;
 
     #[test]
     fn effective_request_model_honors_agent_override_and_inherit_sentinel() {

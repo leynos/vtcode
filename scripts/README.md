@@ -1,7 +1,7 @@
 # Development Scripts
 
 This directory contains scripts to help with development, testing, and
-maintaining the VT Code codebase.
+maintaining the Diapason codebase.
 
 ## Available Scripts
 
@@ -63,10 +63,10 @@ Performance scripts are grouped under `scripts/perf` and are intentionally
 local/manual (not CI-gated).
 
 ```bash
-# Capture a baseline (writes .vtcode/perf/baseline.json + logs)
+# Capture a baseline (writes .diapason/perf/baseline.json + logs)
 ./scripts/perf/baseline.sh baseline
 
-# Capture current metrics (writes .vtcode/perf/latest.json + logs)
+# Capture current metrics (writes .diapason/perf/latest.json + logs)
 ./scripts/perf/baseline.sh latest
 
 # Compare baseline vs latest
@@ -82,7 +82,7 @@ local/manual (not CI-gated).
 
 ### `release.sh` - Release Management
 
-Creates multi-crate releases for VT Code using
+Creates multi-crate releases for Diapason using
 [`cargo-release`](https://github.com/crate-ci/cargo-release).
 
 ```bash
@@ -107,35 +107,31 @@ Creates multi-crate releases for VT Code using
 
 **What it does:**
 
-- Delegates version management, tagging, pushing, and changelog updates to
-    `cargo release`
-- Keeps `vtcode` and `vtcode-core` versions in sync and updates
-    `npm/package.json`
-- Creates GitHub releases populated with the relevant changelog section
-- Hands off crates.io publishing to `publish_extracted_crates.sh` so the
-    crates release in dependency order
-- Optionally publishes to npm
+- Generates release notes, then runs `cargo release` to version, tag, and push
+    the workspace
+- Publishes crates to crates.io in dependency order through
+    `publish_extracted_crates.sh`, unless `--skip-crates` is used
+- Creates a GitHub release populated with the generated release notes
+- Uploads release binaries unless `--skip-binaries` is used
+- Triggers docs.rs rebuilds unless `--skip-crates` or `--skip-docs` is set
 
 **Prerequisites:**
 
 - Must be on `main` branch with a clean working tree
-- Requires GitHub repository access and `cargo-release` installed
+- Requires GitHub CLI authentication and `cargo-release` installed
     (`cargo install cargo-release`)
-- `CHANGELOG.md` entries follow the expected format (Unreleased + sections)
-- Logged in to crates.io (`cargo login`) and npm (`npm login`) when publishing
+- Crates.io credentials are required when publishing crates
 
 **Release Process:**
 
-1. **Pre-flight checks**: Verifies branch, working tree, and authentication
-2. **cargo-release execution**: Runs `cargo release` with workspace
-   configuration from `release.toml`
-3. **Git operations**: `cargo release` commits, tags, pushes, and updates
-   `CHANGELOG.md`
-4. **Distribution**: Publishes crates in dependency order via the staged
-   script, optionally publishes npm package, triggers docs.rs rebuild, and
-   builds binaries
-5. **GitHub Release**: `cargo release` uploads release notes using the
-   generated changelog section
+1. **Pre-flight checks**: Verifies the branch and working tree, then checks
+   GitHub CLI authentication
+2. **Release preparation**: Builds binaries locally as configured and generates
+   release notes
+3. **Version and tag**: Runs `cargo release` with workspace configuration from
+   `release.toml` to version, tag, and push
+4. **Distribution**: Publishes crates in dependency order, creates a GitHub
+   release, uploads binaries, and triggers docs.rs rebuilds
 
 ### `publish_extracted_crates.sh` - Staged Crate Publishing
 
@@ -148,7 +144,7 @@ published.
 ./scripts/publish_extracted_crates.sh --dry-run
 
 # Resume from a specific crate after an interruption
-./scripts/publish_extracted_crates.sh --start-from vtcode-config
+./scripts/publish_extracted_crates.sh --start-from diapason-config
 ```
 
 **What it does:**
@@ -180,7 +176,7 @@ For new developers:
 
     ```bash
     git clone <repository-url>
-    cd vtcode
+    cd diapason
     ```
 
 2. **Set up development environment**
@@ -215,12 +211,12 @@ For new developers:
 
 ## API Key Configuration
 
-VT Code supports multiple ways to configure API keys, with the following
+Diapason supports multiple ways to configure API keys, with the following
 priority:
 
 1. **Environment variables** (highest priority) - Most secure
 2. **.env file** - Convenient for development
-3. **Configuration file** (vtcode.toml) - Least secure, but convenient
+3. **Configuration file** (config.toml) - Least secure, but convenient
 
 Example `.env` file:
 
@@ -230,7 +226,7 @@ ANTHROPIC_API_KEY=your_anthropic_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-Example `vtcode.toml` configuration:
+Example `config.toml` configuration:
 
 ```toml
 [agent]

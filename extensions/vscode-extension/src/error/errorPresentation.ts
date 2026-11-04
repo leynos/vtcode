@@ -24,7 +24,7 @@ export class ErrorPresentationHandler {
             return {
                 title: "Connection Failed",
                 message:
-                    "VT Code cannot connect to the backend service. The service may be starting up or encountered an issue.",
+                    "Diapason cannot connect to the backend service. The service may be starting up or encountered an issue.",
                 suggestion:
                     "Try again in a few moments. If the problem persists, restart the extension.",
                 severity: "error",
@@ -52,7 +52,7 @@ export class ErrorPresentationHandler {
             return {
                 title: "Network Unreachable",
                 message:
-                    "VT Code cannot reach the backend service. Check your internet connection and firewall settings.",
+                    "Diapason cannot reach the backend service. Check your internet connection and firewall settings.",
                 suggestion:
                     "Verify your network connection and check firewall rules.",
                 severity: "error",
@@ -94,7 +94,7 @@ export class ErrorPresentationHandler {
             return {
                 title: "Authentication Failed",
                 message:
-                    "VT Code cannot authenticate with the service. Your API key or credentials may be invalid or expired.",
+                    "Diapason cannot authenticate with the service. Your API key or credentials may be invalid or expired.",
                 suggestion:
                     "Check your configuration settings and ensure your API key is correct. See the documentation for setup instructions.",
                 severity: "error",
@@ -106,7 +106,7 @@ export class ErrorPresentationHandler {
             return {
                 title: "Tool Execution Failed",
                 message:
-                    "A tool that VT Code tried to use encountered an error. This might be a permission issue or an unexpected state.",
+                    "A tool that Diapason tried to use encountered an error. This might be a permission issue or an unexpected state.",
                 suggestion:
                     "Review the tool output above for details. You may need to adjust permissions or workspace state.",
                 severity: "error",
@@ -121,7 +121,7 @@ export class ErrorPresentationHandler {
             return {
                 title: "File Not Found",
                 message:
-                    "VT Code tried to access a file that doesn't exist or has been deleted.",
+                    "Diapason tried to access a file that doesn't exist or has been deleted.",
                 suggestion:
                     "Check that the file still exists and the path is correct.",
                 severity: "warning",
@@ -136,7 +136,7 @@ export class ErrorPresentationHandler {
             return {
                 title: "Permission Denied",
                 message:
-                    "VT Code doesn't have permission to access this resource.",
+                    "Diapason doesn't have permission to access this resource.",
                 suggestion:
                     "Check file permissions or workspace trust settings. You may need to grant additional permissions.",
                 severity: "error",
@@ -206,25 +206,25 @@ export class ErrorPresentationHandler {
 export const ERROR_MESSAGES = {
     NO_WORKSPACE: {
         title: "No Workspace Open",
-        message: "Please open a workspace or folder to use VT Code.",
+        message: "Please open a workspace or folder to use Diapason.",
         severity: "warning" as const,
     },
     BACKEND_UNAVAILABLE: {
         title: "Backend Service Unavailable",
-        message: "The VT Code backend service is not running.",
+        message: "The Diapason backend service is not running.",
         suggestion: "Start the backend service or check the documentation.",
         severity: "error" as const,
     },
     CONFIGURATION_INVALID: {
         title: "Invalid Configuration",
-        message: "Your VT Code configuration is invalid or incomplete.",
+        message: "Your Diapason configuration is invalid or incomplete.",
         suggestion: "Review your configuration file and fix any errors.",
         severity: "error" as const,
     },
     WORKSPACE_UNTRUSTED: {
         title: "Workspace Not Trusted",
-        message: "VT Code requires a trusted workspace to function safely.",
-        suggestion: "Trust this workspace in VS Code settings to use VT Code.",
+        message: "Diapason requires a trusted workspace to function safely.",
+        suggestion: "Trust this workspace in VS Code settings to use Diapason.",
         severity: "warning" as const,
     },
 };

@@ -1,10 +1,6 @@
 use crate::agent::runloop::unified::state::CtrlCState;
 use anyhow::{Context, Result, anyhow};
-use std::future::Future;
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::Notify;
-use vtcode_auth::{
+use diapason_auth::{
     AuthCallbackOutcome, AuthCodeCallbackServer, AuthCredentialsStoreMode, AuthStatus, OAuthCallbackPage,
     OAuthProvider, OpenAIChatGptAuthStatus, OpenAIChatGptSession, OpenRouterToken, PkceChallenge,
     clear_oauth_token_with_mode, clear_openai_chatgpt_session, exchange_code_for_token,
@@ -13,12 +9,16 @@ use vtcode_auth::{
     load_openai_chatgpt_session_with_mode, parse_openai_chatgpt_manual_callback_input, save_oauth_token_with_mode,
     save_openai_chatgpt_session_with_mode, start_auth_code_callback_server, try_load_codex_chatgpt_session,
 };
-use vtcode_config::VTCodeConfig;
-use vtcode_core::config::api_keys::ApiKeySources;
-use vtcode_core::copilot::{
+use diapason_config::DiapasonConfig;
+use diapason_core::config::api_keys::ApiKeySources;
+use diapason_core::copilot::{
     COPILOT_AUTH_DOC_PATH, CopilotAuthEvent, CopilotAuthStatus, CopilotAuthStatusKind, login_with_events,
     logout_with_events, probe_auth_status,
 };
+use std::future::Future;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Notify;
 
 use crate::agent::runloop::unified::url_guard::{UrlGuardPrompt, open_external_url};
 use crate::codex_app_server::{
@@ -30,7 +30,7 @@ pub(crate) const OPENAI_PROVIDER: &str = "openai";
 pub(crate) const OPENROUTER_PROVIDER: &str = "openrouter";
 pub(crate) const COPILOT_PROVIDER: &str = "copilot";
 const DEFAULT_OPENROUTER_CALLBACK_PORT: u16 = 8484;
-const DEFAULT_FLOW_TIMEOUT_SECS: u64 = vtcode_config::constants::execution::DEFAULT_AUTH_FLOW_TIMEOUT_SECS;
+const DEFAULT_FLOW_TIMEOUT_SECS: u64 = diapason_config::constants::execution::DEFAULT_AUTH_FLOW_TIMEOUT_SECS;
 const OPENAI_MANUAL_PLACEHOLDER: &str = "http://localhost:1455/auth/callback?code=...&state=...";
 
 /// Prepared OpenRouter OAuth login state.
@@ -105,7 +105,7 @@ pub(crate) fn supports_auth_provider(provider: &str) -> bool {
         || supports_oauth_provider(provider)
 }
 
-pub(crate) fn prepare_openrouter_login(vt_cfg: Option<&VTCodeConfig>) -> Result<PreparedOpenRouterLogin> {
+pub(crate) fn prepare_openrouter_login(vt_cfg: Option<&DiapasonConfig>) -> Result<PreparedOpenRouterLogin> {
     let callback_port = vt_cfg
         .map(|cfg| cfg.auth.openrouter.callback_port)
         .unwrap_or(DEFAULT_OPENROUTER_CALLBACK_PORT);
@@ -162,10 +162,10 @@ pub(crate) async fn complete_openrouter_login_with_tui_cancel(
     }
 }
 
-pub(crate) fn prepare_openai_login(vt_cfg: Option<&VTCodeConfig>) -> Result<PreparedOpenAiLogin> {
+pub(crate) fn prepare_openai_login(vt_cfg: Option<&DiapasonConfig>) -> Result<PreparedOpenAiLogin> {
     let callback_port = vt_cfg
         .map(|cfg| cfg.auth.openai.callback_port)
-        .unwrap_or(vtcode_auth::OpenAIAuthConfig::default().callback_port);
+        .unwrap_or(diapason_auth::OpenAIAuthConfig::default().callback_port);
     let timeout_secs = vt_cfg
         .map(|cfg| cfg.auth.openai.flow_timeout_secs)
         .unwrap_or(DEFAULT_FLOW_TIMEOUT_SECS);
@@ -254,7 +254,7 @@ async fn persist_openrouter_login_code(prepared: PreparedOpenRouterLogin, code: 
         api_key: api_key.clone(),
         obtained_at: now_secs(),
         expires_at: None,
-        label: Some("VT Code OAuth".to_string()),
+        label: Some("Diapason OAuth".to_string()),
     };
     save_oauth_token_with_mode(&token, prepared.storage_mode)?;
     Ok(api_key)
@@ -363,34 +363,34 @@ pub(crate) fn is_oauth_flow_cancelled(err: &anyhow::Error) -> bool {
     err.is::<OAuthFlowCancelled>()
 }
 
-pub(crate) fn clear_openrouter_login(vt_cfg: Option<&VTCodeConfig>) -> Result<()> {
+pub(crate) fn clear_openrouter_login(vt_cfg: Option<&DiapasonConfig>) -> Result<()> {
     clear_oauth_token_with_mode(credential_storage_mode(vt_cfg))
 }
 
-pub(crate) fn clear_openai_login(_vt_cfg: Option<&VTCodeConfig>) -> Result<()> {
+pub(crate) fn clear_openai_login(_vt_cfg: Option<&DiapasonConfig>) -> Result<()> {
     clear_openai_chatgpt_session()
 }
 
-pub(crate) fn openrouter_auth_status(vt_cfg: Option<&VTCodeConfig>) -> Result<AuthStatus> {
+pub(crate) fn openrouter_auth_status(vt_cfg: Option<&DiapasonConfig>) -> Result<AuthStatus> {
     get_auth_status_with_mode(credential_storage_mode(vt_cfg))
 }
 
-pub(crate) fn openai_auth_status(vt_cfg: Option<&VTCodeConfig>) -> Result<OpenAIChatGptAuthStatus> {
+pub(crate) fn openai_auth_status(vt_cfg: Option<&DiapasonConfig>) -> Result<OpenAIChatGptAuthStatus> {
     get_openai_chatgpt_auth_status_with_mode(credential_storage_mode(vt_cfg))
 }
 
-pub(crate) fn load_openai_session(vt_cfg: Option<&VTCodeConfig>) -> Result<Option<OpenAIChatGptSession>> {
+pub(crate) fn load_openai_session(vt_cfg: Option<&DiapasonConfig>) -> Result<Option<OpenAIChatGptSession>> {
     load_openai_chatgpt_session_with_mode(credential_storage_mode(vt_cfg))
 }
 
 pub(crate) fn refresh_openai_login(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> impl Future<Output = Result<OpenAIChatGptSession>> + '_ {
-    vtcode_auth::refresh_openai_chatgpt_session_with_mode(credential_storage_mode(vt_cfg))
+    diapason_auth::refresh_openai_chatgpt_session_with_mode(credential_storage_mode(vt_cfg))
 }
 
 pub(crate) async fn refresh_openai_login_if_available(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> Result<Option<OpenAIChatGptSession>> {
     if load_openai_session(vt_cfg)?.is_none() {
         return Ok(None);
@@ -400,17 +400,17 @@ pub(crate) async fn refresh_openai_login_if_available(
 }
 
 pub(crate) async fn handle_login_command(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     provider: &str,
     device_code: bool,
     from_codex: bool,
 ) -> Result<()> {
     let provider = provider.trim().to_ascii_lowercase();
     if device_code && provider != CODEX_PROVIDER {
-        return Err(anyhow!("`--device-code` is currently supported only for `vtcode login codex`."));
+        return Err(anyhow!("`--device-code` is currently supported only for `diapason login codex`."));
     }
     if from_codex && provider != OPENAI_PROVIDER {
-        return Err(anyhow!("`--from-codex` is currently supported only for `vtcode login openai`."));
+        return Err(anyhow!("`--from-codex` is currently supported only for `diapason login openai`."));
     }
 
     if provider == CODEX_PROVIDER {
@@ -440,7 +440,7 @@ pub(crate) async fn handle_login_command(
                 println!("Starting Codex ChatGPT device-code authentication...");
                 println!("Enter this code after signing in:");
                 println!("{user_code}");
-                vtcode_commons::ansi_codes::notify_attention(true, Some(&format!("Codex device code: {user_code}")));
+                diapason_commons::ansi_codes::notify_attention(true, Some(&format!("Codex device code: {user_code}")));
                 open_browser_or_print_url(&verification_url)?;
                 login_id
             }
@@ -450,7 +450,7 @@ pub(crate) async fn handle_login_command(
             }
             CodexLoginAccountResponse::ChatGptAuthTokens => {
                 return Err(anyhow!(
-                    "Codex requested externally managed ChatGPT tokens; `vtcode login codex` supports only Codex-managed ChatGPT login flows"
+                    "Codex requested externally managed ChatGPT tokens; `diapason login codex` supports only Codex-managed ChatGPT login flows"
                 ));
             }
         };
@@ -493,9 +493,9 @@ pub(crate) async fn handle_login_command(
             if matches!(openai_auth_status(vt_cfg)?, OpenAIChatGptAuthStatus::NotAuthenticated) {
                 let overview = summarize_current_openai_credentials(vt_cfg)?;
                 if overview.codex_fallback_available {
-                    println!("Tip: Codex's auth.json was detected. VT Code can use it automatically at runtime.");
-                    println!("Continue below for a VT Code session with full auto-refresh, or cancel and");
-                    println!("run `vtcode login openai --from-codex` to validate the Codex credentials.");
+                    println!("Tip: Codex's auth.json was detected. Diapason can use it automatically at runtime.");
+                    println!("Continue below for a Diapason session with full auto-refresh, or cancel and");
+                    println!("run `diapason login openai --from-codex` to validate the Codex credentials.");
                 }
             }
             let prepared = prepare_openai_login(vt_cfg)?;
@@ -520,18 +520,18 @@ pub(crate) async fn handle_login_command(
 }
 
 /// Validate that Codex's `~/.codex/auth.json` contains usable ChatGPT
-/// credentials and inform the user that VT Code will use them via the
-/// automatic runtime fallback. Does not persist a VT Code session —
-/// Codex-owned tokens are deliberately not copied or rotated by VT Code,
+/// credentials and inform the user that Diapason will use them via the
+/// automatic runtime fallback. Does not persist a Diapason session —
+/// Codex-owned tokens are deliberately not copied or rotated by Diapason,
 /// because doing so could race Codex's refresh cycle or invalidate
 /// Codex-maintained credentials.
-async fn handle_openai_login_from_codex(_vt_cfg: Option<&VTCodeConfig>) -> Result<()> {
+async fn handle_openai_login_from_codex(_vt_cfg: Option<&DiapasonConfig>) -> Result<()> {
     println!("Checking Codex's auth.json for ChatGPT credentials...");
     let session = try_load_codex_chatgpt_session()?.ok_or_else(|| {
         anyhow!(
             "No ChatGPT tokens found in Codex's auth.json.\n\
              Run `codex login` first to authenticate with your ChatGPT account, then retry \
-             `vtcode login openai --from-codex`."
+             `diapason login openai --from-codex`."
         )
     })?;
     // Validate the session has a usable bearer token. The provider falls back
@@ -539,7 +539,7 @@ async fn handle_openai_login_from_codex(_vt_cfg: Option<&VTCodeConfig>) -> Resul
     if session.openai_api_key.trim().is_empty() && session.access_token.trim().is_empty() {
         anyhow::bail!(
             "Codex's auth.json does not contain a usable bearer token. \
-             Run `codex login` to refresh it, then retry `vtcode login openai --from-codex`."
+             Run `codex login` to refresh it, then retry `diapason login openai --from-codex`."
         );
     }
     println!("ChatGPT credentials found in Codex's auth.json.");
@@ -550,24 +550,24 @@ async fn handle_openai_login_from_codex(_vt_cfg: Option<&VTCodeConfig>) -> Resul
         println!("Plan: {plan}");
     }
     println!();
-    // Deliberately do NOT persist the session into VT Code's credential storage.
-    // Codex-owned tokens are not copied or rotated by VT Code — doing so could
+    // Deliberately do NOT persist the session into Diapason's credential storage.
+    // Codex-owned tokens are not copied or rotated by Diapason — doing so could
     // race Codex's refresh cycle or invalidate Codex-maintained credentials.
-    // Instead, VT Code automatically falls back to Codex's auth.json at runtime
+    // Instead, Diapason automatically falls back to Codex's auth.json at runtime
     // (with CodexAuthJsonRefresher), which re-reads the file that Codex
     // maintains independently.
     println!(
-        "VT Code will use these credentials automatically at runtime via the Codex\n\
-         auth.json fallback. No separate VT Code session is stored.\n\
+        "Diapason will use these credentials automatically at runtime via the Codex\n\
+         auth.json fallback. No separate Diapason session is stored.\n\
          \n\
          Note: The tokens are managed by Codex. When they expire, run `codex login`\n\
-         to refresh them. For a VT Code session with full auto-refresh support,\n\
-         use `vtcode login openai`."
+         to refresh them. For a Diapason session with full auto-refresh support,\n\
+         use `diapason login openai`."
     );
     Ok(())
 }
 
-pub(crate) async fn handle_logout_command(vt_cfg: Option<&VTCodeConfig>, provider: &str) -> Result<()> {
+pub(crate) async fn handle_logout_command(vt_cfg: Option<&DiapasonConfig>, provider: &str) -> Result<()> {
     let provider = provider.trim().to_ascii_lowercase();
     if provider == CODEX_PROVIDER {
         let client = CodexAppServerClient::connect(vt_cfg).await?;
@@ -605,7 +605,7 @@ pub(crate) async fn handle_logout_command(vt_cfg: Option<&VTCodeConfig>, provide
                 if overview.codex_fallback_available {
                     println!("OpenAI ChatGPT session not stored; Codex auth.json fallback is active.");
                     println!("Run `codex logout` to remove the Codex credentials entirely.");
-                    println!("For a VT Code session with full auto-refresh, run `vtcode login openai`.");
+                    println!("For a Diapason session with full auto-refresh, run `diapason login openai`.");
                 } else {
                     println!("OpenAI ChatGPT session already cleared.");
                 }
@@ -614,7 +614,7 @@ pub(crate) async fn handle_logout_command(vt_cfg: Option<&VTCodeConfig>, provide
             clear_openai_login(vt_cfg)?;
             println!("OpenAI ChatGPT session cleared.");
             if overview.codex_fallback_available {
-                println!("Note: Codex's auth.json was detected. VT Code will continue to use it as a");
+                println!("Note: Codex's auth.json was detected. Diapason will continue to use it as a");
                 println!("fallback at runtime. Run `codex logout` to remove those credentials entirely.");
             }
             Ok(())
@@ -625,7 +625,7 @@ pub(crate) async fn handle_logout_command(vt_cfg: Option<&VTCodeConfig>, provide
     }
 }
 
-pub(crate) async fn handle_show_auth_command(vt_cfg: Option<&VTCodeConfig>, provider: Option<&str>) -> Result<()> {
+pub(crate) async fn handle_show_auth_command(vt_cfg: Option<&DiapasonConfig>, provider: Option<&str>) -> Result<()> {
     println!("Authentication Status");
     println!();
 
@@ -677,15 +677,15 @@ pub(crate) async fn handle_show_auth_command(vt_cfg: Option<&VTCodeConfig>, prov
             let auth_cfg = vt_cfg.map(|cfg| cfg.auth.copilot.clone()).unwrap_or_default();
             render_copilot_auth_status(probe_auth_status(&auth_cfg, Some(&workspace)).await);
             println!();
-            println!("Use `vtcode login <provider>` to authenticate.");
-            println!("Use `vtcode logout <provider>` to clear stored credentials.");
+            println!("Use `diapason login <provider>` to authenticate.");
+            println!("Use `diapason logout <provider>` to clear stored credentials.");
         }
     }
 
     Ok(())
 }
 
-fn credential_storage_mode(vt_cfg: Option<&VTCodeConfig>) -> AuthCredentialsStoreMode {
+fn credential_storage_mode(vt_cfg: Option<&DiapasonConfig>) -> AuthCredentialsStoreMode {
     vt_cfg.map(|cfg| cfg.agent.credential_storage_mode).unwrap_or_default()
 }
 
@@ -693,15 +693,18 @@ fn credential_storage_mode(vt_cfg: Option<&VTCodeConfig>) -> AuthCredentialsStor
 /// API key. This is the single normalized auth-source status abstraction shared
 /// by CLI and TUI — both consume it instead of directly checking the filesystem.
 pub(crate) fn summarize_current_openai_credentials(
-    vt_cfg: Option<&VTCodeConfig>,
-) -> Result<vtcode_config::auth::OpenAICredentialOverview> {
-    let default_auth = vtcode_auth::OpenAIAuthConfig::default();
+    vt_cfg: Option<&DiapasonConfig>,
+) -> Result<diapason_config::auth::OpenAICredentialOverview> {
+    let default_auth = diapason_auth::OpenAIAuthConfig::default();
     let auth_cfg = vt_cfg.map(|cfg| &cfg.auth.openai).unwrap_or(&default_auth);
     let storage_mode = credential_storage_mode(vt_cfg);
-    let api_key =
-        vtcode_core::config::api_keys::get_api_key_with_mode(OPENAI_PROVIDER, &ApiKeySources::default(), storage_mode)
-            .ok();
-    vtcode_config::auth::summarize_openai_credentials(auth_cfg, storage_mode, api_key)
+    let api_key = diapason_core::config::api_keys::get_api_key_with_mode(
+        OPENAI_PROVIDER,
+        &ApiKeySources::default(),
+        storage_mode,
+    )
+    .ok();
+    diapason_config::auth::summarize_openai_credentials(auth_cfg, storage_mode, api_key)
 }
 
 fn current_auth_workspace() -> PathBuf {
@@ -752,8 +755,8 @@ fn prompt_openai_manual_input_cli_once() -> Result<Option<String>> {
     tokio::task::block_in_place(|| -> Result<Option<String>> {
         println!("Paste the redirected URL/query and press Enter when ready.");
         print!("Redirect URL or query: ");
-        vtcode_core::ui::terminal::flush_stdout();
-        let input = vtcode_core::ui::terminal::read_line().map_err(|err| anyhow!("stdin read failed: {err}"))?;
+        diapason_core::ui::terminal::flush_stdout();
+        let input = diapason_core::ui::terminal::read_line().map_err(|err| anyhow!("stdin read failed: {err}"))?;
         let trimmed = input.trim();
         if trimmed.is_empty() {
             Ok(None)
@@ -767,9 +770,9 @@ pub(crate) fn open_browser_or_print_url(url: &str) -> Result<()> {
     println!("Open this URL to continue:");
     println!(
         "{}{}{}",
-        vtcode_commons::ansi_codes::hyperlink_open(url),
+        diapason_commons::ansi_codes::hyperlink_open(url),
         url,
-        vtcode_commons::ansi_codes::hyperlink_close(),
+        diapason_commons::ansi_codes::hyperlink_close(),
     );
 
     if !confirm_cli_browser_open(url)? {
@@ -869,7 +872,7 @@ fn confirm_cli_browser_open(url: &str) -> Result<bool> {
         return Ok(false);
     };
 
-    if vtcode_core::ui::terminal::is_piped_input() || vtcode_core::ui::terminal::is_piped_output() {
+    if diapason_core::ui::terminal::is_piped_input() || diapason_core::ui::terminal::is_piped_output() {
         println!("Automatic browser launch skipped because approval requires an interactive terminal.");
         return Ok(false);
     }
@@ -879,8 +882,8 @@ fn confirm_cli_browser_open(url: &str) -> Result<bool> {
     }
 
     print!("Open in browser now? [y/N]: ");
-    vtcode_core::ui::terminal::flush_stdout();
-    let input = vtcode_core::ui::terminal::read_line().map_err(|err| anyhow!("stdin read failed: {err}"))?;
+    diapason_core::ui::terminal::flush_stdout();
+    let input = diapason_core::ui::terminal::read_line().map_err(|err| anyhow!("stdin read failed: {err}"))?;
     Ok(cli_browser_open_approved(&input))
 }
 
@@ -901,7 +904,7 @@ fn render_openrouter_auth_status(status: AuthStatus, storage_mode: AuthCredentia
             }
         }
         AuthStatus::NotAuthenticated => {
-            if vtcode_core::config::api_keys::get_api_key_with_mode(
+            if diapason_core::config::api_keys::get_api_key_with_mode(
                 OPENROUTER_PROVIDER,
                 &ApiKeySources::default(),
                 storage_mode,
@@ -919,9 +922,9 @@ fn render_openrouter_auth_status(status: AuthStatus, storage_mode: AuthCredentia
 fn render_openai_auth_status(
     status: OpenAIChatGptAuthStatus,
     _storage_mode: AuthCredentialsStoreMode,
-    overview: &vtcode_config::auth::OpenAICredentialOverview,
+    overview: &diapason_config::auth::OpenAICredentialOverview,
 ) {
-    use vtcode_config::auth::OpenAIResolvedAuthSource;
+    use diapason_config::auth::OpenAIResolvedAuthSource;
     // Drive the headline from overview.active_source — the same field runtime
     // resolution uses — so CLI/TUI status never disagrees with actual auth.
     match overview.active_source {
@@ -946,7 +949,7 @@ fn render_openai_auth_status(
                 if let Some(plan) = overview.chatgpt_plan.as_deref() {
                     println!("  Plan: {plan}");
                 }
-                println!("  Run `vtcode login openai` for a VT Code session with full auto-refresh support.");
+                println!("  Run `diapason login openai` for a Diapason session with full auto-refresh support.");
             }
         },
         Some(OpenAIResolvedAuthSource::ApiKey) => {
@@ -954,7 +957,7 @@ fn render_openai_auth_status(
         }
         None => {
             println!("OpenAI: not authenticated");
-            println!("  Run `vtcode login openai` to authenticate with your ChatGPT subscription.");
+            println!("  Run `diapason login openai` to authenticate with your ChatGPT subscription.");
         }
     }
     // Show dual-credential notice when both sources are available.
@@ -991,7 +994,7 @@ fn print_copilot_auth_event(event: CopilotAuthEvent) -> Result<()> {
     match event {
         CopilotAuthEvent::VerificationCode { url, user_code } => {
             println!("GitHub device code (copy this): {user_code}");
-            vtcode_commons::ansi_codes::notify_attention(true, Some(&format!("GitHub device code: {user_code}")));
+            diapason_commons::ansi_codes::notify_attention(true, Some(&format!("GitHub device code: {user_code}")));
             println!("Open this URL to continue:");
             println!("{url}");
         }
@@ -1036,16 +1039,16 @@ mod tests {
     };
     use crate::agent::runloop::unified::state::{CtrlCSignal, CtrlCState};
     use anyhow::anyhow;
-    use serial_test::serial;
-    use std::future;
-    use std::sync::Arc;
-    use tokio::sync::Notify;
-    use vtcode_auth::{
+    use diapason_auth::{
         AuthCallbackOutcome, AuthCredentialsStoreMode, OpenAIAuthConfig, OpenAIChatGptSession, OpenAIResolvedAuth,
         OpenRouterToken, clear_oauth_token_with_mode, clear_openai_chatgpt_session,
         clear_openai_chatgpt_session_with_mode, load_oauth_token_with_mode, load_openai_chatgpt_session_with_mode,
         resolve_openai_auth, save_oauth_token_with_mode, save_openai_chatgpt_session_with_mode,
     };
+    use serial_test::serial;
+    use std::future;
+    use std::sync::Arc;
+    use tokio::sync::Notify;
 
     /// Guard that isolates `CODEX_HOME` to an empty temp dir for the duration
     /// of a test, preventing the Codex auth.json fallback from picking up a
@@ -1059,20 +1062,20 @@ mod tests {
         fn new() -> Self {
             let temp = tempfile::tempdir().expect("create temp codex home");
             let previous = std::env::var("CODEX_HOME").ok();
-            vtcode_commons::env_lock::set_var("CODEX_HOME", temp.path());
+            diapason_commons::env_lock::set_var("CODEX_HOME", temp.path());
             Self { _temp: temp, previous }
         }
     }
 
     impl Drop for CodexHomeGuard {
         fn drop(&mut self) {
-            vtcode_commons::env_lock::lock().restore_var("CODEX_HOME", self.previous.as_deref());
+            diapason_commons::env_lock::lock().restore_var("CODEX_HOME", self.previous.as_deref());
         }
     }
-    use vtcode_config::VTCodeConfig;
+    use diapason_config::DiapasonConfig;
 
-    fn config_with_storage_mode(mode: AuthCredentialsStoreMode) -> VTCodeConfig {
-        let mut config = VTCodeConfig::default();
+    fn config_with_storage_mode(mode: AuthCredentialsStoreMode) -> DiapasonConfig {
+        let mut config = DiapasonConfig::default();
         config.agent.credential_storage_mode = mode;
         config
     }
@@ -1183,7 +1186,7 @@ mod tests {
             .await
             .expect_err("non-codex device-code login should fail");
 
-        assert!(error.to_string().contains("supported only for `vtcode login codex`"));
+        assert!(error.to_string().contains("supported only for `diapason login codex`"));
     }
 
     #[tokio::test]
@@ -1192,7 +1195,7 @@ mod tests {
             .await
             .expect_err("non-openai from-codex login should fail");
 
-        assert!(error.to_string().contains("supported only for `vtcode login openai`"));
+        assert!(error.to_string().contains("supported only for `diapason login openai`"));
     }
 
     #[test]

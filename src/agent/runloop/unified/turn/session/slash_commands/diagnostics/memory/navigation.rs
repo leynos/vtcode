@@ -1,5 +1,5 @@
 use anyhow::Result;
-use vtcode_core::persistent_memory::PersistentMemoryStatus;
+use diapason_core::persistent_memory::PersistentMemoryStatus;
 
 use super::{SlashCommandContext, SlashCommandControl};
 

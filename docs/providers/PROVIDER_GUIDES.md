@@ -1,11 +1,11 @@
 # Provider Guides
 
-This index collects provider-specific guides for configuring VT Code with
+This index collects provider-specific guides for configuring Diapason with
 different LLM backends.
 
 ## Provider whitelisting
 
-Use `providers_whitelist` in `vtcode.toml` to restrict which providers VT Code
+Use `providers_whitelist` in `config.toml` to restrict which providers Diapason
 may access. This is a governance control for environments where only approved
 inference endpoints should be reachable — for example, a corporate gateway or
 an air-gapped setup.
@@ -54,7 +54,7 @@ models = ["gpt-5-mini", "gpt-5.6-sol"]
 context_window = 256000   # optional; defaults to 128000 tokens
 ```
 
-Set the corresponding environment variable before launching VT Code:
+Set the corresponding environment variable before launching Diapason:
 
 ```bash
 export MYCORP_API_KEY="..."
@@ -115,7 +115,7 @@ Profiles apply only to an existing model identifier. They do not add models to
 the picker. Use `model` or `models` on the provider entry to control model
 availability.
 
-When VT Code resolves a model's runtime shape, values are applied in this
+When Diapason resolves a model's runtime shape, values are applied in this
 order, from highest to lowest priority:
 
 1. The matching per-model profile
@@ -147,14 +147,14 @@ pinned values on such names.
 List built-in and custom providers, then open the provider configuration flow:
 
 ```bash
-vtcode models list
-vtcode models config
+diapason models list
+diapason models config
 ```
 
 Run a simple request after configuration:
 
 ```bash
-vtcode ask "Summarize this repository"
+diapason ask "Summarize this repository"
 ```
 
 Worked examples: [Atlas Cloud](./atlascloud.md) and
@@ -165,8 +165,8 @@ field reference and precedence rules.
 ## Collapsed tool-result disclosure
 
 When compact transcript review or bounded tool-output mode hides most of a tool
-result, VT Code adds one exact disclosure to canonical conversation history for
-every provider and model:
+result, Diapason adds one exact disclosure to canonical conversation history
+for every provider and model:
 
 <!-- markdownlint-disable MD013 -- literal asserted by the Rust source -->
 ```text
@@ -201,7 +201,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - Configuration details are covered in the main
     [Getting Started guide](../user-guide/getting-started.md#api-requirements).
 - Models and constants are defined in
-    [`crates/codegen/vtcode-config/src/constants/models/google.rs`](../../crates/codegen/vtcode-config/src/constants/models/google.rs).
+    [`crates/codegen/diapason-config/src/constants/models/google.rs`](../../crates/codegen/diapason-config/src/constants/models/google.rs).
 
 ## OpenAI
 
@@ -213,38 +213,38 @@ replace the retained evidence or expose provider chain-of-thought.
   [Getting Started guide](../user-guide/getting-started.md#api-requirements)
   for API key setup.
 - See
-    [`crates/codegen/vtcode-config/src/constants/models/openai.rs`](../../crates/codegen/vtcode-config/src/constants/models/openai.rs)
+    [`crates/codegen/diapason-config/src/constants/models/openai.rs`](../../crates/codegen/diapason-config/src/constants/models/openai.rs)
     for the latest supported models.
 - **Authentication methods (in priority order):**
-    1. **ChatGPT subscription OAuth** — `vtcode login openai` or `/login
-       openai`. No API key needed. VT Code performs an in-process PKCE browser
+    1. **ChatGPT subscription OAuth** — `diapason login openai` or `/login
+       openai`. No API key needed. Diapason performs an in-process PKCE browser
        login with full auto-refresh. The Codex CLI is **not** required. By
-       default, VT Code reuses Codex's public OAuth client identity as an
+       default, Diapason reuses Codex's public OAuth client identity as an
        **unofficial compatibility mechanism** (OpenAI has not documented or
        guaranteed third-party reuse, and a public client ID is not authorization
        to reuse another tool's registration). Organizations with their own
        OpenAI-issued client pair can override via
-       `VTCODE_OPENAI_OAUTH_CLIENT_ID` / `VTCODE_OPENAI_OAUTH_ORIGINATOR` (both
+       `DIAPASON_OPENAI_OAUTH_CLIENT_ID` / `DIAPASON_OPENAI_OAUTH_ORIGINATOR` (both
        must be set together).
     2. **Codex auth.json fallback** — if you have Codex CLI installed and
-       authenticated (`codex login`), VT Code automatically detects
-       `~/.codex/auth.json` and uses it at runtime when no VT Code-managed
-       session is stored. Validate with `vtcode login openai --from-codex`.
-    3. **API key** — `vtcode secret add openai` or set `OPENAI_API_KEY`. Use
+       authenticated (`codex login`), Diapason automatically detects
+       `~/.codex/auth.json` and uses it at runtime when no Diapason-managed
+       session is stored. Validate with `diapason login openai --from-codex`.
+    3. **API key** — `diapason secret add openai` or set `OPENAI_API_KEY`. Use
        `/secret` to manage stored keys.
 - **Login/logout commands:**
-  - CLI: `vtcode login openai`, `vtcode login openai --from-codex`,
-    `vtcode logout openai`
+  - CLI: `diapason login openai`, `diapason login openai --from-codex`,
+    `diapason logout openai`
   - TUI: `/login openai`, `/logout openai`, `/auth`
-- **Logout semantics:** `vtcode logout openai` (or `/logout openai`) clears
-    VT Code's managed session only. If Codex's auth.json exists, VT Code will
+- **Logout semantics:** `diapason logout openai` (or `/logout openai`) clears
+    Diapason's managed session only. If Codex's auth.json exists, Diapason will
     continue using it as a fallback until you run `codex logout`.
 - See the [OAuth authentication guide](../guides/oauth-authentication.md) for
     full details.
-- VT Code's default OpenAI profile is `gpt-5.4` with
+- Diapason's default OpenAI profile is `gpt-5.4` with
     `reasoning_effort = "none"` and `verbosity = "medium"`; raise reasoning
     only when the task shape justifies the extra latency.
-- VT Code applies a compact GPT-5.4 prompt contract rather than a verbatim
+- Diapason applies a compact GPT-5.4 prompt contract rather than a verbatim
     cookbook prompt: compact outputs, low-risk follow-through, dependency-aware
     tool use, completeness checks, verification, and conditional
     grounding/citation rules.
@@ -255,7 +255,7 @@ replace the retained evidence or expose provider chain-of-thought.
     agentic work (1,050,000 context, 128k max output, reasoning `low`/`medium`/
     `high`/`xhigh`/`max`). Per the
     [latest-model guide](https://developers.openai.com/api/docs/guides/latest-model),
-    VT Code routes it through the Responses API (tool calling requires
+    Diapason routes it through the Responses API (tool calling requires
     Responses), coerces `none`/`minimal` reasoning effort to `low`, never sends
     `temperature`/`top_p`/`logprobs`, uses `prompt_cache_options.ttl: "30m"`
     instead of `prompt_cache_retention`, and appends a GPT-6 Astra prompt
@@ -263,11 +263,11 @@ replace the retained evidence or expose provider chain-of-thought.
     subagent delegation, proportionate testing).
 - File inputs are supported for native OpenAI Responses API requests through
     `input_file` parts.
-- Supported file input fields in VT Code message parts: `file_id`,
+- Supported file input fields in Diapason message parts: `file_id`,
     `file_data`, `file_url`, `filename`.
-- `file_url` is Responses API only; VT Code rejects `file_url` when a request
+- `file_url` is Responses API only; Diapason rejects `file_url` when a request
     uses Chat Completions.
-- VT Code only upgrades local non-image file refs such as `@report.pdf` and
+- Diapason only upgrades local non-image file refs such as `@report.pdf` and
     `@"Quarterly Deck.pptx"` into structured file attachments for native OpenAI
     Responses sessions on `api.openai.com`.
 - Remote external document URLs such as `@https://example.com/letter.pdf` are
@@ -281,17 +281,17 @@ replace the retained evidence or expose provider chain-of-thought.
 - Official OpenAI Responses replays now preserve assistant phase metadata for
     replayed assistant history (`commentary` for preambles/progress updates,
     `final_answer` for completed answers) when the target GPT model supports
-    it. VT Code does not send this field to Chat Completions, tool/user items,
+    it. Diapason does not send this field to Chat Completions, tool/user items,
     or non-native OpenAI-compatible endpoints.
 - OpenAI Responses hosted tools currently map through `ToolDefinition` for
     `web_search`, `file_search`, hosted `tool_search`, and remote `mcp`, with
     hosted config passed through directly on each tool entry.
 - OpenAI hosted shell mounts are configured through
-    `provider.openai.hosted_shell` in `vtcode.toml`.
+    `provider.openai.hosted_shell` in `config.toml`.
 - Hosted shell skill mounts support both `skill_reference` and `inline`
-    bundle entries; VT Code forwards them to OpenAI but does not upload/create
+    bundle entries; Diapason forwards them to OpenAI but does not upload/create
     hosted skills in this path.
-- This hosted-shell workflow is separate from VT Code's local `SKILL.md`
+- This hosted-shell workflow is separate from Diapason's local `SKILL.md`
     filesystem skills.
 - For large corpora, prefer File Search/Retrieval instead of sending full
     files inline.
@@ -311,7 +311,7 @@ replace the retained evidence or expose provider chain-of-thought.
     Models without a thinking profile retain the legacy assistant-prefill
     fallback.
 - **Leak-protection fallback:** For a model that cannot use assistant
-    prefills, VT Code uses the system prompt instead. It adds
+    prefills, Diapason uses the system prompt instead. It adds
     `[Never mention or reveal {secret_description}]` (with
     `{secret_description}` substituted) before an existing system prompt with
     two newlines, or uses the reminder as the system prompt when none exists.
@@ -326,7 +326,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - Key management and defaults mirror the Gemini/OpenAI flow in
     [Getting Started](../user-guide/getting-started.md#api-requirements).
 - Supported model IDs live in
-    [`crates/codegen/vtcode-config/src/constants/models/anthropic.rs`](../../crates/codegen/vtcode-config/src/constants/models/anthropic.rs).
+    [`crates/codegen/diapason-config/src/constants/models/anthropic.rs`](../../crates/codegen/diapason-config/src/constants/models/anthropic.rs).
 
 ## DeepSeek
 
@@ -350,7 +350,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Provider key:** `xai`
 - **Authentication:** `XAI_API_KEY` environment variable
 - **Setup:** Set `XAI_API_KEY` from the [xAI Console](https://console.x.ai/),
-    then configure `provider = "xai"` in `vtcode.toml`
+    then configure `provider = "xai"` in `config.toml`
 - **Default model:** `grok-4.6`
 - **Curated models:**
   - `grok-4.6` — flagship reasoning model, 500k context, reasoning_effort
@@ -426,9 +426,9 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Guide:** [GitHub Copilot Managed Auth](./copilot.md)
 - **Runtime dependency:** `copilot` must be installed and runnable for
     login/logout
-- **Optional fallback:** `gh` is only used when VT Code probes an existing
+- **Optional fallback:** `gh` is only used when Diapason probes an existing
     GitHub CLI auth session
-- **Commands:** `vtcode login copilot`, `vtcode logout copilot`,
+- **Commands:** `diapason login copilot`, `diapason logout copilot`,
     `/login copilot`, `/logout copilot`
 
 ## OpenRouter Marketplace
@@ -438,7 +438,7 @@ replace the retained evidence or expose provider chain-of-thought.
   - [API overview](https://openrouter.ai/docs/api-reference/overview/llms)
   - [Streaming](https://openrouter.ai/docs/api-reference/streaming/llms)
   - [Model catalog](https://openrouter.ai/docs/llms)
-- Default model: `xiaomi/mimo-v2.5-pro` (VT Code's default). Xiaomi MiMo V2.5
+- Default model: `xiaomi/mimo-v2.5-pro` (Diapason's default). Xiaomi MiMo V2.5
     and V2.5 Pro are also available.
 - For Meta Muse, prefer the official [`meta` provider](./meta.md) when direct
     Meta access is desired. OpenRouter's `meta/...` entries are separately
@@ -469,7 +469,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Official docs:**
   - [LLM / Chat](https://www.atlascloud.ai/docs/models/llm)
   - [FAQ](https://www.atlascloud.ai/docs/en/faq)
-- **Integration mode:** configure Atlas Cloud through VT Code's
+- **Integration mode:** configure Atlas Cloud through Diapason's
     `[[custom_providers]]` support because the LLM endpoint is
     OpenAI-compatible.
 - **Base URL:** `https://api.atlascloud.ai/v1`
@@ -485,7 +485,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Default model:** `auto` delegates model selection and fallback to
     OmniRoute.
 - **Features:** Chat Completions, optional Responses API routing for
-    compatible models, streaming, and function tools through VT Code's shared
+    compatible models, streaming, and function tools through Diapason's shared
     OpenAI-compatible transport.
 
 ## Xiaomi MiMo
@@ -499,7 +499,7 @@ replace the retained evidence or expose provider chain-of-thought.
     [Subscription](https://platform.xiaomimimo.com/docs/en-US/price/tokenplan/subscription)
     ·
     [Quick Access](https://platform.xiaomimimo.com/docs/en-US/price/tokenplan/quick-access)
-- **Setup:** Set `MIMO_API_KEY` or use the MiMo provider in VT Code's
+- **Setup:** Set `MIMO_API_KEY` or use the MiMo provider in Diapason's
     configuration
 - **Models:**
   - `mimo-v2.5-pro` — flagship agentic model, 1M context, deep thinking
@@ -544,11 +544,11 @@ replace the retained evidence or expose provider chain-of-thought.
 ## llama.cpp Local Server
 
 - **Guide:** [llama.cpp Provider Guide](./llamacpp.md)
-- **Server:** VT Code targets `llama-server` and defaults to
+- **Server:** Diapason targets `llama-server` and defaults to
     `http://localhost:8080/v1`
 - **Environment:** `LLAMACPP_BASE_URL` overrides the endpoint;
-    `LLAMACPP_MODEL_PATH` enables VT Code-managed startup
-- **Managed startup:** VT Code can launch
+    `LLAMACPP_MODEL_PATH` enables Diapason-managed startup
+- **Managed startup:** Diapason can launch
     `llama-server -m /path/to/model.gguf --port ...` when the endpoint is
     localhost and a GGUF path is configured
 - **Starter catalog:** `gpt-oss-20b`, `gemma-4-26b-a4b`, `gemma-4-e4b`, and
@@ -564,7 +564,7 @@ replace the retained evidence or expose provider chain-of-thought.
 - **Auth:** `EVOLINK_API_KEY` environment variable
 - **Setup:** Set `EVOLINK_API_KEY` from
     [Evolink dashboard](https://evolink.ai/dashboard/keys), then configure
-    `provider = "evolink"` in `vtcode.toml`
+    `provider = "evolink"` in `config.toml`
 - **Models:**
   - `evolink/gpt-5.2` (default)
   - `evolink/gpt-5.5`
@@ -579,17 +579,17 @@ replace the retained evidence or expose provider chain-of-thought.
   - `evolink/claude-haiku-4-5-20251001`
 - **Features:** OpenAI-compatible gateway exposing many upstream models
     behind one endpoint. Evolink serves models under bare upstream names (e.g.
-    `gpt-5.2`) that collide with VT Code's first-class providers, so curated
+    `gpt-5.2`) that collide with Diapason's first-class providers, so curated
     model IDs are namespaced as `evolink/<model>`. The provider strips the
     prefix before sending requests upstream.
 
 ## Anthropic API Compatibility Server
 
-VT Code provides compatibility with the Anthropic Messages API to help connect
-existing applications to VT Code, including tools like Claude Code.
+Diapason provides compatibility with the Anthropic Messages API to help connect
+existing applications to Diapason, including tools like Claude Code.
 
 - **Feature:** Anthropic API compatibility server
-- **Command:** `vtcode anthropic-api --port 11434`
+- **Command:** `diapason anthropic-api --port 11434`
 - **Endpoint:** `/v1/messages` (mirrors Anthropic Messages API)
 - **Environment variables:**
   - `ANTHROPIC_AUTH_TOKEN=ollama` (required but ignored)
@@ -609,7 +609,7 @@ existing applications to VT Code, including tools like Claude Code.
 - **Auth:** `ZAI_API_KEY` environment variable
 - **Base URL:** `https://api.z.ai/api`, override with `ZAI_BASE_URL`
 - **Setup:** Set `ZAI_API_KEY` from Z.AI platform, then configure
-    `provider = "zai"` in `vtcode.toml`
+    `provider = "zai"` in `config.toml`
 - **Models:**
   - `glm-5.3` — flagship coding model, 1M context, reasoning + tool calls
   - `glm-5.3-flash` — efficient multimodal model, 320B total / 18B active,
@@ -627,7 +627,7 @@ existing applications to VT Code, including tools like Claude Code.
 - **Official docs:** [Moonshot Platform](https://platform.moonshot.ai/docs)
 - **Auth:** `MOONSHOT_API_KEY` environment variable
 - **Setup:** Set `MOONSHOT_API_KEY` from Moonshot platform, then configure
-    `provider = "moonshot"` in `vtcode.toml`
+    `provider = "moonshot"` in `config.toml`
 - **Models:**
   - `kimi-k3` — 2.8T parameter flagship with Delta Attention, native vision, 1M
     context
@@ -644,7 +644,7 @@ existing applications to VT Code, including tools like Claude Code.
 - **Official docs:** [StepFun Platform](https://platform.stepfun.ai/docs)
 - **Auth:** `STEPFUN_API_KEY` environment variable
 - **Setup:** Set `STEPFUN_API_KEY` from StepFun platform, then configure
-    `provider = "stepfun"` in `vtcode.toml`
+    `provider = "stepfun"` in `config.toml`
 - **Models:**
   - `step-3.7-flash` — efficient reasoning model based on sparse MoE
     architecture
@@ -657,7 +657,7 @@ existing applications to VT Code, including tools like Claude Code.
 - **Official docs:** [MiniMax Platform](https://platform.minimax.io/docs)
 - **Auth:** `MINIMAX_API_KEY` environment variable
 - **Setup:** Set `MINIMAX_API_KEY` from MiniMax platform, then configure
-    `provider = "minimax"` in `vtcode.toml`
+    `provider = "minimax"` in `config.toml`
 - **Models:**
   - `MiniMax-M3` — frontier multimodal coding model, 1M context
   - `MiniMax-M2.5` — efficient model for general tasks
@@ -673,7 +673,7 @@ existing applications to VT Code, including tools like Claude Code.
 - **Base URL:** `https://router.huggingface.co/v1`, override with
     `HUGGINGFACE_BASE_URL`
 - **Setup:** Set `HF_TOKEN` from HuggingFace settings, then configure
-    `provider = "huggingface"` in `vtcode.toml`
+    `provider = "huggingface"` in `config.toml`
 - **Default model:** `openai/gpt-oss-120b:huggingface`
 - **Notable models:** `openai/gpt-oss-20b:huggingface`,
     `deepseek-ai/DeepSeek-R1`, `deepseek-ai/DeepSeek-V4-Pro:together`,
@@ -695,7 +695,7 @@ existing applications to VT Code, including tools like Claude Code.
 - **Curated picker models:** `poolside/laguna-s-2.1`, `poolside/laguna-m.1`,
     `poolside/laguna-xs.2`
 - **Setup:** Set `POOLSIDE_API_KEY` from Poolside platform, then configure
-    `provider = "poolside"` in `vtcode.toml`
+    `provider = "poolside"` in `config.toml`
 
 ## Mistral
 
@@ -728,7 +728,7 @@ existing applications to VT Code, including tools like Claude Code.
 - **Curated picker models:** `opencode/gpt-5.4`
 - **Setup:** Set `OPENCODE_ZEN_API_KEY` from the
     [OpenCode Zen console](https://opencode.ai/docs/zen/), then configure
-    `provider = "opencode-zen"` in `vtcode.toml`
+    `provider = "opencode-zen"` in `config.toml`
 - **Features:** Curated pay-as-you-go gateway over flagship models
 
 ## OpenCode Go
@@ -747,9 +747,9 @@ existing applications to VT Code, including tools like Claude Code.
     `opencode-go/deepseek-v4-flash`
 - **Setup:** Set `OPENCODE_GO_API_KEY` from the
     [OpenCode Go console](https://opencode.ai/docs/go/), then configure
-    `provider = "opencode-go"` in `vtcode.toml`
+    `provider = "opencode-go"` in `config.toml`
 - **Features:** Subscription-based access to flagship open models for agentic
     coding
 
 > ℹ Additional provider-specific guides will be added as new integrations land
-> in VT Code.
+> in Diapason.

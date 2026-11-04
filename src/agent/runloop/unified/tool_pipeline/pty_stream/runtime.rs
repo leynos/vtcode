@@ -4,13 +4,13 @@ use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use anstyle::Color;
+use diapason_core::config::PtyConfig;
+use diapason_core::tools::registry::ToolProgressCallback;
+use diapason_ui::tui::app::{InlineHandle, InlineMessageKind};
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinHandle,
 };
-use vtcode_core::config::PtyConfig;
-use vtcode_core::tools::registry::ToolProgressCallback;
-use vtcode_ui::tui::app::{InlineHandle, InlineMessageKind};
 
 use crate::agent::runloop::unified::progress::ProgressReporter;
 
@@ -105,7 +105,7 @@ async fn process_output(
         return;
     }
 
-    let visible_output = vtcode_core::utils::ansi_parser::strip_ansi(&output);
+    let visible_output = diapason_core::utils::ansi_parser::strip_ansi(&output);
     if visible_output.trim().is_empty() {
         return;
     }
@@ -116,7 +116,7 @@ async fn process_output(
     }
 
     if let Some(last_line) = last_line {
-        let cleaned_last_line = vtcode_core::utils::ansi_parser::strip_ansi(&last_line);
+        let cleaned_last_line = diapason_core::utils::ansi_parser::strip_ansi(&last_line);
         if !cleaned_last_line.trim().is_empty() {
             progress_reporter.set_message(cleaned_last_line).await;
         }

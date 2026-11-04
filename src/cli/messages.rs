@@ -6,7 +6,7 @@
 //   ok()      — green "Done: ..." for success
 //   hint()    — dim "  -> ..." for follow-up actions beneath an error/warn
 
-use vtcode_core::utils::colors::style;
+use diapason_core::utils::colors::style;
 
 /// Red bold error prefix.
 pub fn error(msg: &str) -> String {

@@ -1,15 +1,15 @@
 use anyhow::{Context, Result, anyhow};
+use diapason_config::resolve_openai_auth;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::copilot::{CopilotAuthStatusKind, probe_auth_status};
+use diapason_core::llm::factory::{ProviderConfig, create_provider_with_config};
+use diapason_core::llm::provider::LLMProvider;
+use diapason_core::llm::rig_adapter::RigProviderCapabilities;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::{InlineHandle, InlineHeaderContext};
 use std::path::Path;
-use vtcode_config::resolve_openai_auth;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::copilot::{CopilotAuthStatusKind, probe_auth_status};
-use vtcode_core::llm::factory::{ProviderConfig, create_provider_with_config};
-use vtcode_core::llm::provider::LLMProvider;
-use vtcode_core::llm::rig_adapter::RigProviderCapabilities;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::{InlineHandle, InlineHeaderContext};
 
 use crate::agent::runloop::unified::model_switch_compaction::{
     ModelSwitchCompactionOutcome, ModelSwitchCompactionRequest, compact_on_model_switch,
@@ -24,10 +24,10 @@ use crate::agent::runloop::welcome::SessionBootstrap;
 
 use crate::agent::runloop::ui::build_inline_header_context;
 
-fn service_tier_message_label(service_tier: Option<vtcode_config::OpenAIServiceTier>) -> &'static str {
+fn service_tier_message_label(service_tier: Option<diapason_config::OpenAIServiceTier>) -> &'static str {
     match service_tier {
-        Some(vtcode_config::OpenAIServiceTier::Flex) => "flex",
-        Some(vtcode_config::OpenAIServiceTier::Priority) => "priority",
+        Some(diapason_config::OpenAIServiceTier::Flex) => "flex",
+        Some(diapason_config::OpenAIServiceTier::Priority) => "priority",
         None => "project default",
     }
 }
@@ -41,7 +41,7 @@ pub(crate) async fn finalize_model_selection(
     picker: &ModelPickerState,
     selection: ModelSelectionResult,
     config: &mut CoreAgentConfig,
-    vt_cfg: &mut Option<VTCodeConfig>,
+    vt_cfg: &mut Option<DiapasonConfig>,
     provider_client: &mut Box<dyn LLMProvider>,
     session_bootstrap: &SessionBootstrap,
     handle: &InlineHandle,
@@ -98,7 +98,7 @@ pub(crate) async fn finalize_model_selection(
     }
 
     // Persist to disk only after provider creation succeeds, so a failure
-    // cannot leave vtcode.toml with a partially-updated provider config.
+    // cannot leave config.toml with a partially-updated provider config.
     let updated_cfg = picker.persist_selection(&workspace, &selection).await?;
     *vt_cfg = Some(updated_cfg);
 
@@ -203,7 +203,7 @@ pub(crate) async fn finalize_model_selection(
     if !selection.known_model {
         renderer.line(
             MessageStyle::Info,
-            "The selected model is not part of VT Code's curated list; capabilities may vary.",
+            "The selected model is not part of Diapason's curated list; capabilities may vary.",
         )?;
     }
 
@@ -249,13 +249,13 @@ pub(crate) async fn finalize_model_selection(
         renderer.line(
             MessageStyle::Info,
             &format!(
-                "API key saved to secure storage. The key will not be written to {} or vtcode.toml.",
+                "API key saved to secure storage. The key will not be written to {} or config.toml.",
                 selection.env_key,
             ),
         )?;
-    } else if selection.credential_source == Some(vtcode_config::api_keys::CredentialSource::SecureStorage) {
+    } else if selection.credential_source == Some(diapason_config::api_keys::CredentialSource::SecureStorage) {
         renderer.line(MessageStyle::Info, "Using API key from secure storage.")?;
-    } else if selection.credential_source == Some(vtcode_config::api_keys::CredentialSource::Workspace) {
+    } else if selection.credential_source == Some(diapason_config::api_keys::CredentialSource::Workspace) {
         renderer.line(
             MessageStyle::Info,
             &format!("Using workspace environment variable {} for authentication.", selection.env_key),
@@ -272,9 +272,9 @@ pub(crate) async fn finalize_model_selection(
 
 async fn resolve_runtime_api_key(
     workspace: &Path,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     selection: &ModelSelectionResult,
-) -> Result<(String, Option<vtcode_config::auth::OpenAIChatGptAuthHandle>)> {
+) -> Result<(String, Option<diapason_config::auth::OpenAIChatGptAuthHandle>)> {
     if selection.credential_source.is_none()
         && let Some(key) = selection.api_key.as_ref()
     {
@@ -287,20 +287,20 @@ async fn resolve_runtime_api_key(
 
     if selection.provider_enum == Some(Provider::Copilot) {
         let Some(cfg) = vt_cfg else {
-            return Err(anyhow!("GitHub Copilot configuration is unavailable. Run `vtcode login copilot`."));
+            return Err(anyhow!("GitHub Copilot configuration is unavailable. Run `diapason login copilot`."));
         };
         let status = probe_auth_status(&cfg.auth.copilot, Some(workspace)).await;
         return match status.kind {
             CopilotAuthStatusKind::Authenticated => Ok((String::new(), None)),
             CopilotAuthStatusKind::Unauthenticated | CopilotAuthStatusKind::AuthFlowFailed => {
                 Err(anyhow!(status.message.unwrap_or_else(|| {
-                    "GitHub Copilot is not authenticated. Run `vtcode login copilot`."
+                    "GitHub Copilot is not authenticated. Run `diapason login copilot`."
                         .to_string()
                 })))
             }
             CopilotAuthStatusKind::ServerUnavailable => Err(anyhow!(
                 status.message.unwrap_or_else(|| {
-                    "GitHub Copilot CLI is unavailable. Install `copilot`, set `VTCODE_COPILOT_COMMAND`, or configure `[auth.copilot].command`."
+                    "GitHub Copilot CLI is unavailable. Install `copilot`, set `DIAPASON_COPILOT_COMMAND`, or configure `[auth.copilot].command`."
                         .to_string()
                 })
             )),
@@ -329,7 +329,7 @@ async fn resolve_runtime_api_key(
     }
 
     let storage_mode = vt_cfg.map(|cfg| cfg.agent.credential_storage_mode).unwrap_or_default();
-    let resolved = vtcode_config::api_keys::resolve_credential_with_mode(
+    let resolved = diapason_config::api_keys::resolve_credential_with_mode(
         &selection.provider,
         &selection.env_key,
         Some(workspace),
@@ -342,8 +342,8 @@ async fn resolve_runtime_api_key(
     {
         let api_key = match resolved.as_ref().and_then(|credential| credential.secret.clone()) {
             Some(api_key) => Some(api_key),
-            None if cfg.auth.openai.preferred_method == vtcode_config::OpenAIPreferredMethod::ApiKey => {
-                vtcode_config::api_keys::load_stored_api_key_with_mode("openai", storage_mode)?
+            None if cfg.auth.openai.preferred_method == diapason_config::OpenAIPreferredMethod::ApiKey => {
+                diapason_config::api_keys::load_stored_api_key_with_mode("openai", storage_mode)?
             }
             None => None,
         };
@@ -376,7 +376,7 @@ async fn resolve_runtime_api_key(
 
 #[cfg(test)]
 fn read_workspace_api_key(workspace: &Path, env_key: &str) -> Result<Option<String>> {
-    vtcode_config::read_workspace_env_value(workspace, env_key)
+    diapason_config::read_workspace_env_value(workspace, env_key)
         .with_context(|| format!("Failed to read environment variable {env_key}"))
 }
 
@@ -387,7 +387,7 @@ fn sync_runtime_custom_api_key(config: &mut CoreAgentConfig, selection: &ModelSe
 
     if selection.api_key.is_some()
         && let Ok(Some(metadata_key)) =
-            vtcode_config::api_keys::credential_metadata_key(&selection.provider, &selection.env_key)
+            diapason_config::api_keys::credential_metadata_key(&selection.provider, &selection.env_key)
     {
         config.custom_api_keys.insert(metadata_key, String::new());
         return;
@@ -395,7 +395,7 @@ fn sync_runtime_custom_api_key(config: &mut CoreAgentConfig, selection: &ModelSe
 
     config.custom_api_keys.remove(&selection.provider);
     if let Ok(Some(metadata_key)) =
-        vtcode_config::api_keys::credential_metadata_key(&selection.provider, &selection.env_key)
+        diapason_config::api_keys::credential_metadata_key(&selection.provider, &selection.env_key)
     {
         config.custom_api_keys.remove(&metadata_key);
     }
@@ -419,10 +419,10 @@ fn runtime_provider_label(selection: &ModelSelectionResult, using_chatgpt_auth: 
 mod tests {
     use super::{read_workspace_api_key, resolve_runtime_api_key};
     use crate::agent::runloop::model_picker::ModelSelectionResult;
+    use diapason_config::DiapasonConfig;
+    use diapason_core::config::models::Provider;
+    use diapason_core::config::types::ReasoningEffortLevel;
     use tempfile::tempdir;
-    use vtcode_config::VTCodeConfig;
-    use vtcode_core::config::models::Provider;
-    use vtcode_core::config::types::ReasoningEffortLevel;
 
     fn selection(
         provider: &str,
@@ -498,14 +498,14 @@ mod tests {
     #[test]
     fn resolve_runtime_api_key_accepts_custom_provider_command_auth_without_key() {
         let dir = tempdir().expect("temp dir");
-        let mut config = VTCodeConfig::default();
-        config.custom_providers.push(vtcode_config::core::CustomProviderConfig {
+        let mut config = DiapasonConfig::default();
+        config.custom_providers.push(diapason_config::core::CustomProviderConfig {
             name: "mycorp".to_string(),
             display_name: "MyCorp".to_string(),
             base_url: "https://llm.example/v1".to_string(),
             context_window: None,
             api_key_env: String::new(),
-            auth: Some(vtcode_config::core::CustomProviderCommandAuthConfig {
+            auth: Some(diapason_config::core::CustomProviderCommandAuthConfig {
                 command: "print-token".to_string(),
                 args: Vec::new(),
                 cwd: None,
@@ -514,7 +514,7 @@ mod tests {
             }),
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
-            ..vtcode_config::core::CustomProviderConfig::default()
+            ..diapason_config::core::CustomProviderConfig::default()
         });
         let selection = selection("mycorp", None, "", None, false);
 

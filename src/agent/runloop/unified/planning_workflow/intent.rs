@@ -10,8 +10,8 @@
 //! explicitly handled, preventing implicit fallthrough bugs. The detection
 //! functions are pure (no side effects) and independently testable.
 
-use vtcode_core::llm::provider as uni;
-use vtcode_core::planning;
+use diapason_core::llm::provider as uni;
+use diapason_core::planning;
 
 /// Represents the user's intent regarding planning workflow transitions.
 ///
@@ -34,7 +34,7 @@ pub(crate) enum PlanningIntent {
 /// This is the single entry point for intent detection. It checks for
 /// stay-phrases first (higher priority), then exit-phrases, then
 /// confirmation phrases. The phrase literals and matchers live in
-/// `vtcode_core::planning` (the Codex bridge consumes the same source so the
+/// `diapason_core::planning` (the Codex bridge consumes the same source so the
 /// two paths cannot drift).
 ///
 /// # Arguments

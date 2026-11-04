@@ -16,7 +16,7 @@ Quick lookup for the Ollama provider submodules added from OpenAI Codex.
 ### Connect to Ollama Server
 
 ```rust
-use vtcode_core::llm::providers::ollama::OllamaClient;
+use diapason_core::llm::providers::ollama::OllamaClient;
 
 let client = OllamaClient::try_from_base_url("http://localhost:11434").await?;
 ```
@@ -34,7 +34,7 @@ for model in models {
 
 ```rust
 use futures::StreamExt;
-use vtcode_core::llm::providers::ollama::CliPullProgressReporter;
+use diapason_core::llm::providers::ollama::CliPullProgressReporter;
 
 let mut stream = client.pull_model_stream("llama2").await?;
 let mut reporter = CliPullProgressReporter::new();
@@ -47,7 +47,7 @@ while let Some(event) = stream.next().await {
 ### Parse Ollama API Response
 
 ```rust
-use vtcode_core::llm::providers::ollama::pull_events_from_value;
+use diapason_core::llm::providers::ollama::pull_events_from_value;
 use serde_json::json;
 
 let response = json!({"status": "pulling", "digest": "sha256:abc", "total": 1000, "completed": 500});
@@ -58,7 +58,7 @@ let events = pull_events_from_value(&response);
 ### Detect URL Type
 
 ```rust
-use vtcode_core::llm::providers::ollama::{is_openai_compatible_base_url, base_url_to_host_root};
+use diapason_core::llm::providers::ollama::{is_openai_compatible_base_url, base_url_to_host_root};
 
 assert!(is_openai_compatible_base_url("http://localhost:11434/v1"));
 let host = base_url_to_host_root("http://localhost:11434/v1");
@@ -121,10 +121,10 @@ cargo test --lib ollama
 
 ## Files Location
 
-- `crates/codegen/vtcode-core/src/llm/providers/ollama/client.rs`
-- `crates/codegen/vtcode-core/src/llm/providers/ollama/pull.rs`
-- `crates/codegen/vtcode-core/src/llm/providers/ollama/parser.rs`
-- `crates/codegen/vtcode-core/src/llm/providers/ollama/url.rs`
+- `crates/codegen/diapason-core/src/llm/providers/ollama/client.rs`
+- `crates/codegen/diapason-core/src/llm/providers/ollama/pull.rs`
+- `crates/codegen/diapason-core/src/llm/providers/ollama/parser.rs`
+- `crates/codegen/diapason-core/src/llm/providers/ollama/url.rs`
 
 ## Source
 

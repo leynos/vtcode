@@ -1,4 +1,4 @@
-use vtcode_core::llm::provider as uni;
+use diapason_core::llm::provider as uni;
 
 pub(super) const AUTONOMOUS_CONTINUE_DIRECTIVE: &str =
     "Do not stop with intent-only updates. Execute the next concrete action now, then report completion or blocker.";
@@ -266,7 +266,7 @@ fn last_user_requested_progressive_work(history: &[uni::Message]) -> bool {
         "grep",
         "ast-grep",
         "find ",
-        "use vt code",
+        "use diapason",
         "semantic code understanding",
         "show me how",
     ]
@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn autonomous_continue_triggers_for_exploration_request_without_full_auto() {
         let history = vec![
-            uni::Message::user("explore about vtcode core agent loop".to_string()),
+            uni::Message::user("explore about diapason core agent loop".to_string()),
             uni::Message::assistant("I can help.".to_string()),
         ];
 
@@ -670,7 +670,7 @@ mod tests {
             false,
             false,
             &history,
-            "I'll quickly inspect the actual vtcode-core runloop files and then summarize the core agent loop concretely from code.",
+            "I'll quickly inspect the actual diapason-core runloop files and then summarize the core agent loop concretely from code.",
             0
         )
         .should_continue);
@@ -687,7 +687,7 @@ mod tests {
             false,
             false,
             &history,
-            "I'll quickly inspect the actual vtcode-core runloop files and then summarize the core agent loop concretely from code.",
+            "I'll quickly inspect the actual diapason-core runloop files and then summarize the core agent loop concretely from code.",
             0
         )
         .should_continue);
@@ -1077,11 +1077,11 @@ mod tests {
 
     fn checkpoint_shaped_repo_overview() -> &'static str {
         "Here's a quick overview of the repo:\n\n\
-        **VT Code** — a Rust coding agent for long-running autonomous workflows, with OS-native sandboxing, multi-provider LLM support, open protocols, and extensible Skills.\n\n\
+        **Diapason** — a Rust coding agent for long-running autonomous workflows, with OS-native sandboxing, multi-provider LLM support, open protocols, and extensible Skills.\n\n\
         **Layout**\n\
-        - Root crate `vtcode` (binary) + workspace of ~30 member crates under `vtcode-*` (e.g. `vtcode-core`, `vtcode-ui`, `vtcode-llm`, `vtcode-mcp`, `vtcode-safety`, `vtcode-exec-events`, `vtcode-indexer`, `vtcode-skills`, `vtcode-config`, `vtcode-a2a`, `vtcode-acp`, etc.)\n\
+        - Root crate `diapason` (binary) + workspace of ~30 member crates under `diapason-*` (e.g. `diapason-core`, `diapason-ui`, `diapason-llm`, `diapason-mcp`, `diapason-safety`, `diapason-exec-events`, `diapason-indexer`, `diapason-skills`, `diapason-config`, `diapason-a2a`, `diapason-acp`, etc.)\n\
         - Rust stable, MSRV 1.88, edition 2024; CI runs `RUSTFLAGS=\"-D warnings\"` with `--locked`\n\
-        - `default-members` = root, `vtcode-core`, `vtcode-ui`\n\n\
+        - `default-members` = root, `diapason-core`, `diapason-ui`\n\n\
         **Capabilities**\n\
         - Agent runtime: interactive TUI, slash commands, streaming, `ask`/`exec` CLI, session resume\n\
         - Coding tools: safe file ops, ripgrep search, fuzzy discovery, code intelligence, project indexing, terminal execution\n\
@@ -1093,9 +1093,9 @@ mod tests {
         **Other top-level dirs**: `docs/`, `plans/`, `rules/`, `examples/`, `tests/`, `evals/`, `fuzz/`, `scripts/`, `extensions/vscode-extension/`, `extensions/zed-extension/`, `crates/codegen/xtask/`, `homebrew/`.\n\n\
         Quick start:\n\
         ```shell\n\
-        curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash\n\
-        vtcode init\n\
-        vtcode\n\
+        curl -fsSL https://raw.githubusercontent.com/leynos/vtcode/main/scripts/install.sh | bash\n\
+        diapason init\n\
+        diapason\n\
         ```\n\n\
         Let me know what you'd like to dig into next — a specific crate, the agent loop, the TUI, sandboxing, or something else."
     }

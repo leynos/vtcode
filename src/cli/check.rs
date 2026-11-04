@@ -1,12 +1,12 @@
 use anyhow::{Context, Result, anyhow, bail};
 use crossterm::style::Stylize;
+use diapason_core::cli::args::CheckSubcommand;
+use diapason_core::tools::ast_grep_binary::{missing_ast_grep_message, resolve_ast_grep_binary_from_env_and_fs};
 use std::path::Path;
 use tokio::process::Command;
-use vtcode_core::cli::args::CheckSubcommand;
-use vtcode_core::tools::ast_grep_binary::{missing_ast_grep_message, resolve_ast_grep_binary_from_env_and_fs};
 
 const AST_GREP_CONFIG_PATH: &str = "sgconfig.yml";
-const AST_GREP_INIT_COMMAND: &str = "vtcode init";
+const AST_GREP_INIT_COMMAND: &str = "diapason init";
 
 pub async fn handle_check_command(workspace: &Path, command: CheckSubcommand) -> Result<()> {
     match command {
@@ -17,7 +17,7 @@ pub async fn handle_check_command(workspace: &Path, command: CheckSubcommand) ->
 async fn handle_ast_grep_check(workspace: &Path) -> Result<()> {
     let ast_grep = resolve_ast_grep_binary_from_env_and_fs().ok_or_else(|| {
         anyhow!(missing_ast_grep_message(
-            "After installation, run `vtcode init` to materialize the local ast-grep scaffold."
+            "After installation, run `diapason init` to materialize the local ast-grep scaffold."
         ))
     })?;
 
@@ -70,12 +70,12 @@ async fn run_ast_grep_subcommand(workspace: &Path, ast_grep: &Path, subcommand: 
 mod tests {
     use super::{AST_GREP_CONFIG_PATH, CheckSubcommand, handle_check_command};
     use anyhow::{Context, Result, bail, ensure};
+    use diapason_commons::canonicalize;
+    use diapason_core::tools::ast_grep_binary::{AST_GREP_INSTALL_COMMAND, set_ast_grep_binary_override_for_tests};
     use serial_test::serial;
     use std::fs;
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
-    use vtcode_commons::canonicalize;
-    use vtcode_core::tools::ast_grep_binary::{AST_GREP_INSTALL_COMMAND, set_ast_grep_binary_override_for_tests};
 
     fn create_workspace_with_scaffold() -> Result<TempDir> {
         let temp_dir = TempDir::new().context("create temporary ast-grep workspace")?;
@@ -232,7 +232,7 @@ exit 0\n"
             Ok(()) => bail!("missing scaffold check unexpectedly succeeded"),
         };
 
-        ensure!(error.contains("vtcode init"), "missing scaffold error did not mention vtcode init: {error}");
+        ensure!(error.contains("diapason init"), "missing scaffold error did not mention diapason init: {error}");
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-# Clippy configuration for vtcode
+# Clippy configuration for diapason
 # Based on best practices from https://rust-lang.github.io/rust-clippy/master/index.html
 # and grok-build patterns
 
@@ -18,34 +18,34 @@ disallowed-methods = [
     { path = "std::iter::Iterator::try_for_each", reason = "prefer `for` for side-effects (F-COMBINATOR)" },
     # Canonicalization: std::fs::canonicalize returns \\?\ verbatim paths on
     # Windows, which break path comparisons and round-tripping. Use
-    # vtcode_commons::canonicalize (backed by dunce) instead. Pattern adopted
+    # diapason_commons::canonicalize (backed by dunce) instead. Pattern adopted
     # from grok-build.
-    { path = "std::fs::canonicalize", reason = "returns \\\\?\\ verbatim paths on Windows; use vtcode_commons::canonicalize (dunce-backed)" },
-    { path = "std::path::Path::canonicalize", reason = "returns \\\\?\\ verbatim paths on Windows; use vtcode_commons::canonicalize (dunce-backed)" },
-    { path = "tokio::fs::canonicalize", reason = "returns \\\\?\\ verbatim paths on Windows; use vtcode_commons::fs::canonicalize_with_context_async (spawn_blocking + dunce)" },
+    { path = "std::fs::canonicalize", reason = "returns \\\\?\\ verbatim paths on Windows; use diapason_commons::canonicalize (dunce-backed)" },
+    { path = "std::path::Path::canonicalize", reason = "returns \\\\?\\ verbatim paths on Windows; use diapason_commons::canonicalize (dunce-backed)" },
+    { path = "tokio::fs::canonicalize", reason = "returns \\\\?\\ verbatim paths on Windows; use diapason_commons::fs::canonicalize_with_context_async (spawn_blocking + dunce)" },
 ]
 
 # Allow absolute paths from specific crates (for project structure)
 absolute-paths-allowed-crates = [
-    "vtcode",
-    "vtcode-core",
-    "vtcode-commons",
-    "vtcode-config",
-    "vtcode-ui",
-    "vtcode-indexer",
-    "vtcode-bash-runner",
-    "vtcode-exec-events",
-    "vtcode-acp",
-    "vtcode-auth",
-    "vtcode-a2a",
-    "vtcode-mcp",
-    "vtcode-llm",
-    "vtcode-safety",
-    "vtcode-memory",
-    "vtcode-skills",
-    "vtcode-eval",
-    "vtcode-macros",
-    "vtcode-utility-tool-specs",
+    "diapason",
+    "diapason-core",
+    "diapason-commons",
+    "diapason-config",
+    "diapason-ui",
+    "diapason-indexer",
+    "diapason-bash-runner",
+    "diapason-exec-events",
+    "diapason-acp",
+    "diapason-auth",
+    "diapason-a2a",
+    "diapason-mcp",
+    "diapason-llm",
+    "diapason-safety",
+    "diapason-memory",
+    "diapason-skills",
+    "diapason-eval",
+    "diapason-macros",
+    "diapason-utility-tool-specs",
 ]
 
 # Suppress arithmetic checks for specific types where overflow is expected

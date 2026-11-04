@@ -3,12 +3,12 @@
 > **Experimental.** Local inference (Ollama, LM Studio, llama.cpp) is less
 > reliable than remote APIs and depends on your hardware and the model you
 > load. See [Local Models guide](../guides/local-models.md) for trade-offs,
-> hardware sizing, and a "getting reliable results" checklist. VT Code now
+> hardware sizing, and a "getting reliable results" checklist. Diapason now
 > detects a stopped server or an unloaded model *before* generating and prints
 > the exact recovery command (e.g. `ollama pull <model>` or
 > `/local start <provider>`).
 
-VT Code manages local LLM inference servers through the `/local` command.
+Diapason manages local LLM inference servers through the `/local` command.
 Control Ollama, LM Studio, and llama.cpp directly from the TUI.
 
 ## Quick Start
@@ -55,7 +55,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
 ```
 
-Or use VT Code: `/local start ollama`
+Or use Diapason: `/local start ollama`
 
 ### Pull a model
 
@@ -108,7 +108,7 @@ cat ~/.ollama/logs/server.log
 | `OLLAMA_BASE_URL` | Server URL     | `http://localhost:11434` |
 | `OLLAMA_HOST`     | Listen address | `127.0.0.1:11434`        |
 
-### VT Code integration
+### Diapason integration
 
 ```
 /local ollama              Open Ollama actions in TUI
@@ -124,7 +124,7 @@ cat ~/.ollama/logs/server.log
 serves the Ollama API (alongside OpenAI- and Anthropic-compatible ones) on port
 `17434`. Models are pulled as OCI artifacts or straight from Hugging Face
 (`hf.co/org/model`) and served by upstream `llama.cpp`, `vllm`, or `mlx-lm`.
-Because the API is the same, VT Code's `ollama` provider works unchanged; only
+Because the API is the same, Diapason's `ollama` provider works unchanged; only
 the base URL differs.
 
 ```bash
@@ -136,9 +136,9 @@ llmman serve
 llmman pull gemma4
 llmman pull hf.co/unsloth/Qwen3.5-0.8B-GGUF
 
-# Point VT Code's ollama provider at llmman
+# Point Diapason's ollama provider at llmman
 export OLLAMA_BASE_URL=http://localhost:17434
-vtcode --provider ollama --model gemma4
+diapason --provider ollama --model gemma4
 ```
 
 Override the listen address on the llmman side with `LLMMAN_HOST`
@@ -170,7 +170,7 @@ If `lms` is not on PATH, it may be at `~/.lmstudio/bin/lms`.
 lms server start
 ```
 
-Or use VT Code: `/local start lmstudio`
+Or use Diapason: `/local start lmstudio`
 
 Custom port:
 
@@ -244,7 +244,7 @@ lms unload --all
 | ------------------- | ----------- | -------------------------- |
 | `LMSTUDIO_BASE_URL` | Server URL  | `http://localhost:1234/v1` |
 
-### VT Code integration
+### Diapason integration
 
 ```
 /local lmstudio              Open LM Studio actions in TUI
@@ -281,7 +281,7 @@ The server binary is `llama-server`.
 llama-server -m /path/to/model.gguf --port 8080
 ```
 
-Or use VT Code (auto-start): set `LLAMACPP_MODEL_PATH` and VT Code manages
+Or use Diapason (auto-start): set `LLAMACPP_MODEL_PATH` and Diapason manages
 everything.
 
 ### Verify the server
@@ -306,9 +306,9 @@ Download `.gguf` files from <https://huggingface.co> or
 - <https://llama.app/models/gpt-oss-20b>
 - <https://llama.app/models/Step-3.5-Flash>
 
-### Auto-start with VT Code
+### Auto-start with Diapason
 
-Set `LLAMACPP_MODEL_PATH` to a `.gguf` file. VT Code will:
+Set `LLAMACPP_MODEL_PATH` to a `.gguf` file. Diapason will:
 
 1. Detect the model path
 2. Start `llama-server` automatically when needed
@@ -337,7 +337,7 @@ export LLAMACPP_EXTRA_ARGS="--ctx-size 4096 --n-gpu-layers 99"
 | `LLAMACPP_EXTRA_ARGS`              | Extra server arguments    | (none)                     |
 | `LLAMACPP_STARTUP_TIMEOUT_SECONDS` | Startup timeout           | 60                         |
 
-### VT Code integration
+### Diapason integration
 
 ```
 /local llamacpp              Open llama.cpp actions in TUI

@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::llm::{
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::llm::provider as uni;
+use diapason_core::llm::{
     LightweightFeature, collect_single_response, create_provider_for_model_route, resolve_lightweight_route,
 };
-use vtcode_core::tools::ToolRegistry;
+use diapason_core::tools::ToolRegistry;
 
 use crate::agent::runloop::git::GitStatusSummary;
 use crate::agent::runloop::unified::state::SessionStats;
@@ -74,7 +74,7 @@ impl PromptSuggestionRoute {
 pub(crate) async fn generate_prompt_suggestions(
     provider: &dyn uni::LLMProvider,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     workspace: &Path,
     history: &[uni::Message],
     session_stats: &SessionStats,
@@ -132,7 +132,7 @@ pub(crate) async fn generate_prompt_suggestions(
 pub(crate) async fn generate_inline_prompt_suggestion(
     provider: &dyn uni::LLMProvider,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     workspace: &Path,
     history: &[uni::Message],
     session_stats: &SessionStats,
@@ -281,7 +281,7 @@ fn deterministic_inline_prompt_suggestion(
 async fn llm_prompt_suggestions(
     provider: &dyn uni::LLMProvider,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     routes: &PromptSuggestionRoutes,
     history: &[uni::Message],
 ) -> Vec<PromptSuggestion> {
@@ -304,7 +304,7 @@ async fn llm_prompt_suggestions(
 async fn llm_prompt_suggestions_for_route(
     provider: &dyn uni::LLMProvider,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     route: &PromptSuggestionRoute,
     history: &[uni::Message],
 ) -> Vec<PromptSuggestion> {
@@ -327,7 +327,7 @@ async fn llm_prompt_suggestions_for_route(
 async fn llm_inline_prompt_suggestion(
     provider: &dyn uni::LLMProvider,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     routes: &PromptSuggestionRoutes,
     history: &[uni::Message],
     draft: &str,
@@ -352,7 +352,7 @@ async fn llm_inline_prompt_suggestion(
 async fn llm_inline_prompt_suggestion_for_route(
     provider: &dyn uni::LLMProvider,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     route: &PromptSuggestionRoute,
     history: &[uni::Message],
     draft: &str,
@@ -375,10 +375,10 @@ async fn llm_inline_prompt_suggestion_for_route(
 fn create_prompt_suggestion_provider(
     route: &PromptSuggestionRoute,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> Option<Box<dyn uni::LLMProvider>> {
     create_provider_for_model_route(
-        &vtcode_core::llm::ModelRoute {
+        &diapason_core::llm::ModelRoute {
             provider_name: route.provider_name.clone(),
             model: route.model.clone(),
         },
@@ -401,7 +401,7 @@ async fn llm_prompt_suggestions_from_provider(
 
     let request = uni::LLMRequest {
         messages: Arc::new(vec![uni::Message::user(format!(
-            "Generate 3 short follow-up prompts for this VT Code session. Return one prompt per line.\n\nRecent session context:\n{context}"
+            "Generate 3 short follow-up prompts for this Diapason session. Return one prompt per line.\n\nRecent session context:\n{context}"
         ))]),
         system_prompt: Some(Arc::from(
             "You write concise follow-up prompts for a coding assistant UI. Return plain text only, one prompt per line, no bullets or numbering.",
@@ -477,7 +477,7 @@ fn build_inline_prompt_suggestion_request(
     uni::LLMRequest {
         messages: Arc::new(vec![uni::Message::user(user_prompt)]),
         system_prompt: Some(Arc::from(
-            "Predict the user's next chat prompt for VT Code. Match the user's phrasing, keep it concise, and return plain text only. Do not add bullets, numbering, quotes, explanations, or assistant voice. If a draft is provided, the response must begin with the exact draft text.",
+            "Predict the user's next chat prompt for Diapason. Match the user's phrasing, keep it concise, and return plain text only. Do not add bullets, numbering, quotes, explanations, or assistant voice. If a draft is provided, the response must begin with the exact draft text.",
         )),
         model: model.to_string(),
         max_tokens: Some(48),
@@ -562,7 +562,10 @@ fn prompt_suggestion_cache_key(
     )
 }
 
-fn resolve_prompt_suggestion_routes(config: &CoreAgentConfig, vt_cfg: Option<&VTCodeConfig>) -> PromptSuggestionRoutes {
+fn resolve_prompt_suggestion_routes(
+    config: &CoreAgentConfig,
+    vt_cfg: Option<&DiapasonConfig>,
+) -> PromptSuggestionRoutes {
     let temperature = vt_cfg
         .map(|cfg| cfg.agent.prompt_suggestions.temperature)
         .unwrap_or(DEFAULT_PROMPT_SUGGESTION_TEMPERATURE);
@@ -642,14 +645,14 @@ fn git_status_fragment(summary: Option<&GitStatusSummary>) -> String {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use diapason_core::config::PromptCachingConfig;
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::config::models::ModelId;
+    use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+    use diapason_core::config::types::ModelSelectionSource;
+    use diapason_core::llm::provider::{FinishReason, LLMError, LLMRequest, LLMResponse};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
-    use vtcode_core::config::PromptCachingConfig;
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::config::models::ModelId;
-    use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-    use vtcode_core::config::types::ModelSelectionSource;
-    use vtcode_core::llm::provider::{FinishReason, LLMError, LLMRequest, LLMResponse};
 
     #[derive(Clone)]
     struct RecordingProvider {
@@ -724,7 +727,7 @@ mod tests {
     fn prompt_suggestion_route_prefers_configured_small_model() {
         let config = prompt_config("openai", "gpt-5.6-sol");
 
-        let mut vt_cfg = VTCodeConfig::default();
+        let mut vt_cfg = DiapasonConfig::default();
         vt_cfg.agent.prompt_suggestions.model = "gpt-5-mini".to_string();
         vt_cfg.agent.prompt_suggestions.temperature = 0.2;
 
@@ -738,7 +741,7 @@ mod tests {
     fn prompt_suggestion_route_auto_selects_lightweight_sibling() {
         let config = prompt_config("openai", "gpt-5.6-sol");
 
-        let vt_cfg = VTCodeConfig::default();
+        let vt_cfg = DiapasonConfig::default();
         let routes = resolve_prompt_suggestion_routes(&config, Some(&vt_cfg));
         assert_eq!(routes.primary.provider_name, "openai");
         // Lightweight routing steps down one tier: Sol -> Terra (not straight to Luna).
@@ -817,7 +820,7 @@ mod tests {
     async fn inline_prompt_suggestion_uses_route_temperature_on_active_provider() {
         let provider = RecordingProvider::with_response("Review the current diff in detail");
         let config = prompt_config("openai", "gpt-5-mini");
-        let mut vt_cfg = VTCodeConfig::default();
+        let mut vt_cfg = DiapasonConfig::default();
         vt_cfg.agent.prompt_suggestions.temperature = 0.15;
 
         let suggestion = generate_inline_prompt_suggestion(

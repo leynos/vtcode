@@ -1,11 +1,11 @@
 # Runtime Guidance and Project Instructions
 
-VT Code has two distinct prompt sources:
+Diapason has two distinct prompt sources:
 
-| Source                    | Loaded from                                                   | Purpose                                                                                                   | Trust boundary                                     |
-| ------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Compiled runtime guidance | `crates/codegen/vtcode-core/src/prompts/runtime_guidance.rs`  | Small, universal user-facing behavior included in Default, Minimal, Lightweight, and Specialized profiles | Part of the application runtime                    |
-| Project instruction map   | User/workspace `AGENTS.md`, `CLAUDE.md`, and `.vtcode/rules/` | Project conventions, local architecture, and maintainer workflows                                         | User-controlled context, never a security boundary |
+| Source                    | Loaded from                                                     | Purpose                                                                                                   | Trust boundary                                     |
+| ------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Compiled runtime guidance | `crates/codegen/diapason-core/src/prompts/runtime_guidance.rs`  | Small, universal user-facing behavior included in Default, Minimal, Lightweight, and Specialized profiles | Part of the application runtime                    |
+| Project instruction map   | User/workspace `AGENTS.md`, `CLAUDE.md`, and `.diapason/rules/` | Project conventions, local architecture, and maintainer workflows                                         | User-controlled context, never a security boundary |
 
 The compiled section is deterministic, cached with the static profile, and kept
 below its approximate 256-token cap. It must not read, embed, or generate
@@ -84,7 +84,7 @@ applied window, and the intent is acknowledged only after its tagged user
 message is durably checkpointed. Recovery compares IDs in the envelope with
 tagged history, not just instruction text, so duplicate text remains meaningful.
 
-Even when `.vtcode/prompts/system.md` replaces the static base prompt, the
+Even when `.diapason/prompts/system.md` replaces the static base prompt, the
 compiled section is reattached after prompt layers are resolved. This keeps the
 universal baseline present without treating workspace prompt content as a
 security boundary.
@@ -94,12 +94,12 @@ and workspace sources in precedence order, loads nested files for the active
 directory, applies path-scoped rules and exclusions, and appends the resulting
 project appendix separately from the compiled base prompt. `AGENTS.md` files
 therefore remain useful maintainer maps without becoming an implicit source of
-universal VT Code behavior.
+universal Diapason behavior.
 
 When changing this boundary, run:
 
 ```bash
-cargo nextest run -p vtcode-core
+cargo nextest run -p diapason-core
 cargo check --locked
 ./scripts/check-dev.sh --changed
 ```

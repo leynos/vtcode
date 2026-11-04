@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use rustc_hash::{FxHashMap, FxHashSet};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::tools::names::canonical_tool_name;
-use vtcode_core::tools::tool_intent::{
+use diapason_core::llm::provider as uni;
+use diapason_core::tools::names::canonical_tool_name;
+use diapason_core::tools::tool_intent::{
     ShellActivity, classify_shell_activity, shell_command_is_admitted_verification_attempt,
 };
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::agent::runloop::unified::tool_pipeline::{ToolExecutionStatus, ToolPipelineOutcome};
 use crate::agent::runloop::unified::turn::tool_outcomes::read_extent;
@@ -295,7 +295,7 @@ pub(crate) fn find_duplicate_in_history(
     }
 
     for (response_index, tc_args, msg) in matching_responses.into_iter().rev() {
-        let invalidated = tool_name == vtcode_core::config::constants::tools::CODE_SEARCH
+        let invalidated = tool_name == diapason_core::config::constants::tools::CODE_SEARCH
             && history_has_scoped_mutation_after(history, response_index, &tc_args, workspace_root);
         if !invalidated {
             return Some(msg.content.as_text().to_string());
@@ -418,10 +418,10 @@ fn history_has_scoped_mutation_after(
                     let Ok(args) = serde_json::from_str::<serde_json::Value>(&function.arguments) else {
                         continue;
                     };
-                    if !vtcode_core::tools::tool_intent::classify_tool_intent(&function.name, &args).mutating {
+                    if !diapason_core::tools::tool_intent::classify_tool_intent(&function.name, &args).mutating {
                         continue;
                     }
-                    let paths = vtcode_core::tools::mutation_target_paths(&function.name, &args);
+                    let paths = diapason_core::tools::mutation_target_paths(&function.name, &args);
                     if !paths.is_empty() {
                         pending_mutations.insert(tool_call.id.clone(), paths);
                     }
@@ -436,7 +436,7 @@ fn history_has_scoped_mutation_after(
                 };
                 if tool_response_is_success(message)
                     && paths.iter().any(|path| {
-                        vtcode_core::tools::code_search_scope_contains_mutated_path(search_args, path, workspace_root)
+                        diapason_core::tools::code_search_scope_contains_mutated_path(search_args, path, workspace_root)
                     })
                 {
                     return true;
@@ -535,8 +535,8 @@ fn is_low_signal_outcome(outcome: &ToolPipelineOutcome, canonical_tool_name: &st
                 || output_reuses_recent_result(output)
                 || (matches!(
                     canonical_tool_name,
-                    vtcode_core::config::constants::tools::UNIFIED_EXEC
-                        | vtcode_core::config::constants::tools::EXEC_COMMAND
+                    diapason_core::config::constants::tools::UNIFIED_EXEC
+                        | diapason_core::config::constants::tools::EXEC_COMMAND
                 ) && !*command_success
                     && is_grep_style_no_match(canonical_tool_name, args, output))
         }
@@ -615,7 +615,7 @@ pub(crate) fn signature_key_for(name: &str, args: &serde_json::Value) -> String 
     // allocating full JSON payloads for large tool arguments.
     let mut hash: u64 = 0xcbf29ce484222325;
     let mut input_len = 0usize;
-    let mutability_tag = if vtcode_core::tools::tool_intent::classify_tool_intent(name, args).mutating {
+    let mutability_tag = if diapason_core::tools::tool_intent::classify_tool_intent(name, args).mutating {
         "rw"
     } else {
         "ro"
@@ -642,8 +642,8 @@ pub(crate) fn signature_key_for(name: &str, args: &serde_json::Value) -> String 
 ///
 /// For mutating tools the original `signature_key_for` is returned unchanged.
 pub(crate) fn read_normalized_signature_key(name: &str, args: &serde_json::Value) -> String {
-    if name == vtcode_core::config::constants::tools::CODE_SEARCH
-        && let Some(identity) = vtcode_core::tools::normalised_code_search_identity(args)
+    if name == diapason_core::config::constants::tools::CODE_SEARCH
+        && let Some(identity) = diapason_core::tools::normalised_code_search_identity(args)
     {
         return format!("{name}:ro:{identity}");
     }
@@ -667,7 +667,7 @@ pub(crate) fn read_normalized_signature_key(name: &str, args: &serde_json::Value
 
 /// Returns `true` when `(name, args)` describe a read-only tool invocation.
 fn is_read_only_tool_args(name: &str, args: &serde_json::Value) -> bool {
-    use vtcode_core::config::constants::tools;
+    use diapason_core::config::constants::tools;
     match name {
         tools::READ_FILE | tools::GREP_FILE | tools::LIST_FILES => true,
         tools::CODE_SEARCH => true,
@@ -707,27 +707,27 @@ impl std::io::Write for HashingWriter<'_> {
 
 pub(crate) fn resolve_max_tool_retries(
     _tool_name: &str,
-    vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
+    vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
 ) -> usize {
     vt_cfg
         .map(|cfg| cfg.agent.harness.max_tool_retries as usize)
-        .unwrap_or(vtcode_config::constants::defaults::DEFAULT_MAX_TOOL_RETRIES as usize)
+        .unwrap_or(diapason_config::constants::defaults::DEFAULT_MAX_TOOL_RETRIES as usize)
 }
 
 fn path_targets_plan_artefact(path: &str) -> bool {
     let normalized = path.trim().replace('\\', "/");
-    normalized == ".vtcode/plans"
-        || normalized.starts_with(".vtcode/plans/")
-        || normalized.contains("/.vtcode/plans/")
-        || normalized == "/tmp/vtcode-plans"
-        || normalized.starts_with("/tmp/vtcode-plans/")
-        || normalized.contains("/tmp/vtcode-plans/")
+    normalized == ".diapason/plans"
+        || normalized.starts_with(".diapason/plans/")
+        || normalized.contains("/.diapason/plans/")
+        || normalized == "/tmp/diapason-plans"
+        || normalized.starts_with("/tmp/diapason-plans/")
+        || normalized.contains("/tmp/diapason-plans/")
 }
 
 pub(crate) fn is_plan_artefact_write(name: &str, args: &serde_json::Value) -> bool {
-    use vtcode_core::config::constants::tools as tool_names;
-    use vtcode_core::tools::names::canonical_tool_name;
-    use vtcode_core::tools::tool_intent::file_operation_action;
+    use diapason_core::config::constants::tools as tool_names;
+    use diapason_core::tools::names::canonical_tool_name;
+    use diapason_core::tools::tool_intent::file_operation_action;
 
     let canonical = canonical_tool_name(name);
     match canonical {
@@ -764,7 +764,7 @@ pub(crate) fn is_plan_artefact_write(name: &str, args: &serde_json::Value) -> bo
 }
 
 fn is_execution_tool(name: &str) -> bool {
-    use vtcode_core::config::constants::tools as tool_names;
+    use diapason_core::config::constants::tools as tool_names;
 
     matches!(
         name,
@@ -813,7 +813,7 @@ pub(crate) fn mutation_blocked_until_verification(
         return loop_tracker.fix_edits_remaining == 0;
     }
 
-    if !vtcode_core::tools::tool_intent::classify_tool_intent(canonical_name, args).mutating {
+    if !diapason_core::tools::tool_intent::classify_tool_intent(canonical_name, args).mutating {
         return false;
     }
     loop_tracker.fix_edits_remaining == 0
@@ -900,7 +900,7 @@ pub(crate) fn update_repetition_tracker(
         // navigation, so they neither advance nor clear that window.
         loop_tracker.reset_navigation_window(false);
     } else {
-        let intent = vtcode_core::tools::tool_intent::classify_tool_intent(canonical_name, args);
+        let intent = diapason_core::tools::tool_intent::classify_tool_intent(canonical_name, args);
         if intent.mutating {
             if mutation_was_applied(outcome) {
                 loop_tracker.record_successful_mutation();
@@ -918,7 +918,7 @@ pub(crate) fn update_repetition_tracker(
 fn mutation_was_applied(outcome: &ToolPipelineOutcome) -> bool {
     match &outcome.status {
         ToolExecutionStatus::Success { output, command_success, modified_files, .. } => {
-            if let Some(effective_change) = vtcode_core::tools::file_ops::diff_output_has_effective_change(output) {
+            if let Some(effective_change) = diapason_core::tools::file_ops::diff_output_has_effective_change(output) {
                 return effective_change;
             }
             *command_success || !modified_files.is_empty()
@@ -952,8 +952,8 @@ pub(crate) fn check_is_argument_error(error_str: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::constants::tools;
     use serde_json::json;
-    use vtcode_core::config::constants::tools;
 
     use super::*;
 
@@ -1097,9 +1097,9 @@ mod tests {
     fn repetition_tracker_counts_failures() {
         let mut tracker = LoopTracker::new();
         let outcome = ToolPipelineOutcome::from_status(ToolExecutionStatus::Failure {
-            error: vtcode_core::tools::registry::ToolExecutionError::new(
+            error: diapason_core::tools::registry::ToolExecutionError::new(
                 "edit_file".to_string(),
-                vtcode_core::tools::registry::ToolErrorType::ExecutionError,
+                diapason_core::tools::registry::ToolErrorType::ExecutionError,
                 "boom".to_string(),
             ),
         });
@@ -1113,9 +1113,9 @@ mod tests {
     fn failed_file_mutations_do_not_trigger_verification_pressure() {
         let mut tracker = LoopTracker::new();
         let outcome = ToolPipelineOutcome::from_status(ToolExecutionStatus::Failure {
-            error: vtcode_core::tools::registry::ToolExecutionError::new(
+            error: diapason_core::tools::registry::ToolExecutionError::new(
                 "apply_patch".to_string(),
-                vtcode_core::tools::registry::ToolErrorType::ExecutionError,
+                diapason_core::tools::registry::ToolErrorType::ExecutionError,
                 "invalid patch path".to_string(),
             ),
         });
@@ -1216,7 +1216,7 @@ mod tests {
         assert!(!mutation_blocked_until_verification(
             &tracker,
             tools::WRITE_FILE,
-            &json!({"path":".vtcode/plans/next.md","content":"plan"})
+            &json!({"path":".diapason/plans/next.md","content":"plan"})
         ));
         assert!(!mutation_blocked_until_verification(&tracker, tools::TASK_TRACKER, &json!({"action":"update"})));
     }
@@ -1339,9 +1339,9 @@ mod tests {
         let mut tracker = LoopTracker::with_verification_snapshot((true, 0));
         tracker.consecutive_mutations = BLIND_EDITING_THRESHOLD;
         let tool_failure = ToolPipelineOutcome::from_status(ToolExecutionStatus::Failure {
-            error: vtcode_core::tools::registry::ToolExecutionError::new(
+            error: diapason_core::tools::registry::ToolExecutionError::new(
                 tools::EXEC_COMMAND.to_string(),
-                vtcode_core::tools::registry::ToolErrorType::ExecutionError,
+                diapason_core::tools::registry::ToolErrorType::ExecutionError,
                 "check could not start".to_string(),
             ),
         });
@@ -1398,7 +1398,7 @@ mod tests {
             command_success: true,
         });
 
-        let command = r###"git diff --stat; find docs -maxdepth 2 -type f | sort | head -40; rg -n "vtcode init|vtcode models|full-auto|run-debug|cargo install" docs/user-guide docs/installation docs/development 2>/dev/null | head -50"###;
+        let command = r###"git diff --stat; find docs -maxdepth 2 -type f | sort | head -40; rg -n "diapason init|diapason models|full-auto|run-debug|cargo install" docs/user-guide docs/installation docs/development 2>/dev/null | head -50"###;
         update_repetition_tracker(&mut tracker, &success, tools::EXEC_COMMAND, &json!({"cmd":command}));
 
         assert_eq!(tracker.consecutive_mutations, 0);
@@ -1421,9 +1421,9 @@ mod tests {
         assert!(tracker.verification_is_pending());
 
         let failed_check = ToolPipelineOutcome::from_status(ToolExecutionStatus::Failure {
-            error: vtcode_core::tools::registry::ToolExecutionError::new(
+            error: diapason_core::tools::registry::ToolExecutionError::new(
                 tools::EXEC_COMMAND.to_string(),
-                vtcode_core::tools::registry::ToolErrorType::ExecutionError,
+                diapason_core::tools::registry::ToolErrorType::ExecutionError,
                 "check could not start".to_string(),
             ),
         });
@@ -1517,7 +1517,7 @@ mod tests {
 
         for command in [
             "cargo check --locked",
-            "cargo nextest run -p vtcode",
+            "cargo nextest run -p diapason",
             "cargo clippy --all-targets",
             "cargo build --release",
             "./scripts/check-dev.sh --changed",
@@ -1532,7 +1532,7 @@ mod tests {
         }
 
         for command in [
-            "cargo nextest run -p vtcode 2>&1 | head -c 4000",
+            "cargo nextest run -p diapason 2>&1 | head -c 4000",
             "cargo check | head -40",
         ] {
             assert_eq!(
@@ -1786,7 +1786,7 @@ mod tests {
             &mut tracker,
             &success,
             tools::UNIFIED_FILE,
-            &json!({"action":"write","path":".vtcode/plans/my-plan.md","content":"text"}),
+            &json!({"action":"write","path":".diapason/plans/my-plan.md","content":"text"}),
         );
         assert_eq!(tracker.consecutive_mutations, 0);
         assert_eq!(tracker.consecutive_navigations, 0);
@@ -1922,10 +1922,10 @@ mod tests {
     fn low_signal_tracker_counts_missing_read_failures() {
         let mut tracker = LoopTracker::new();
         let miss = ToolPipelineOutcome::from_status(ToolExecutionStatus::Failure {
-            error: vtcode_core::tools::registry::ToolExecutionError::new(
+            error: diapason_core::tools::registry::ToolExecutionError::new(
                 tools::UNIFIED_FILE.to_string(),
-                vtcode_core::tools::registry::ToolErrorType::ResourceNotFound,
-                "Resource not found: vtcode-tui/src/main.rs".to_string(),
+                diapason_core::tools::registry::ToolErrorType::ResourceNotFound,
+                "Resource not found: diapason-tui/src/main.rs".to_string(),
             ),
         });
 
@@ -1939,13 +1939,13 @@ mod tests {
             &mut tracker,
             &miss,
             tools::UNIFIED_FILE,
-            &json!({"action":"read","path":"vtcode-tui/src/main.rs"}),
+            &json!({"action":"read","path":"diapason-tui/src/main.rs"}),
         );
         update_repetition_tracker(
             &mut tracker,
             &miss,
             tools::UNIFIED_FILE,
-            &json!({"action":"read","path":"vtcode-tui/src/main.rs","offset":40}),
+            &json!({"action":"read","path":"diapason-tui/src/main.rs","offset":40}),
         );
 
         assert_eq!(
@@ -1961,14 +1961,14 @@ mod tests {
         // count must accumulate so the turn balancer can stop the churn.
         let mut tracker = LoopTracker::new();
         let miss = ToolPipelineOutcome::from_status(ToolExecutionStatus::Failure {
-            error: vtcode_core::tools::registry::ToolExecutionError::new(
+            error: diapason_core::tools::registry::ToolExecutionError::new(
                 tools::UNIFIED_FILE.to_string(),
-                vtcode_core::tools::registry::ToolErrorType::ResourceNotFound,
-                "Resource not found: vtcode-tui/src/main.rs".to_string(),
+                diapason_core::tools::registry::ToolErrorType::ResourceNotFound,
+                "Resource not found: diapason-tui/src/main.rs".to_string(),
             ),
         });
 
-        let identical_args = json!({"action":"read","path":"vtcode-tui/src/main.rs"});
+        let identical_args = json!({"action":"read","path":"diapason-tui/src/main.rs"});
         update_repetition_tracker(&mut tracker, &miss, tools::UNIFIED_FILE, &identical_args);
         update_repetition_tracker(&mut tracker, &miss, tools::UNIFIED_FILE, &identical_args);
 
@@ -1984,7 +1984,7 @@ mod tests {
         let mut tracker = LoopTracker::new();
         let miss = ToolPipelineOutcome::from_status(ToolExecutionStatus::Success {
             output: serde_json::json!({
-                "command": "grep -n 'missing' vtcode-tui/src/main.rs",
+                "command": "grep -n 'missing' diapason-tui/src/main.rs",
                 "exit_code": 1,
                 "output": ""
             }),
@@ -1996,13 +1996,13 @@ mod tests {
             &mut tracker,
             &miss,
             tools::EXEC_COMMAND,
-            &json!({"cmd":"grep -n 'missing' vtcode-tui/src/main.rs"}),
+            &json!({"cmd":"grep -n 'missing' diapason-tui/src/main.rs"}),
         );
         update_repetition_tracker(
             &mut tracker,
             &miss,
             tools::EXEC_COMMAND,
-            &json!({"cmd":"grep -n \"missing\" vtcode-tui/src/main.rs"}),
+            &json!({"cmd":"grep -n \"missing\" diapason-tui/src/main.rs"}),
         );
 
         assert_eq!(tracker.max_low_signal_count(), 2);
@@ -2135,7 +2135,7 @@ mod tests {
 
     #[test]
     fn find_duplicate_in_history_matches_normalized_read() {
-        use vtcode_core::llm::provider as uni;
+        use diapason_core::llm::provider as uni;
 
         // find_duplicate_in_history uses read_normalized_signature_key, which
         // strips offset/limit for file reads. A later unrelated Assistant batch

@@ -1,11 +1,11 @@
-# Terminal Rendering Best Practices for VT Code
+# Terminal Rendering Best Practices for Diapason
 
-This guide documents rendering patterns and best practices specific to VT Code,
-based on Ratatui conventions.
+This guide documents rendering patterns and best practices specific to
+Diapason, based on Ratatui conventions.
 
 ## Core Principle: Single Draw Per Frame
 
-VT Code follows the **Ratatui recipe** of rendering everything in a single
+Diapason follows the **Ratatui recipe** of rendering everything in a single
 `terminal.draw()` closure per frame cycle.
 
 ### Anti-Pattern: Multiple Draws
@@ -39,9 +39,9 @@ loop {
 }
 ```
 
-**Implementation in VT Code:**
+**Implementation in Diapason:**
 
-File: `crates/codegen/vtcode-core/src/ui/tui/session.rs`
+File: `crates/codegen/diapason-core/src/ui/tui/session.rs`
 
 The `Session::render()` method orchestrates all UI components:
 
@@ -61,7 +61,7 @@ Ratatui allocates one rendering buffer for the entire terminal area. When you
 call `terminal.draw()`, all widgets write to this buffer. At frame end, diffs
 are sent to the terminal.
 
-**Impact on VT Code:**
+**Impact on Diapason:**
 
 1. **Overlapping areas are safe** - Later renders overwrite earlier ones
 2. **Off-screen rendering is safe** - Clamped to buffer bounds (mostly)
@@ -69,7 +69,7 @@ are sent to the terminal.
 
 ### Out-of-Bounds Protection
 
-Ratatui **does not prevent** panics from rendering outside the buffer. VT Code
+Ratatui **does not prevent** panics from rendering outside the buffer. Diapason
 must defend against this.
 
 **Pattern (from Ratatui FAQ):**
@@ -92,7 +92,7 @@ fn render_ref(&self, area: Rect, buf: &mut Buffer) {
 
 ### Constraint-Based Layouts
 
-VT Code uses Ratatui's `Layout` system, which guarantees valid region
+Diapason uses Ratatui's `Layout` system, which guarantees valid region
 calculations:
 
 ```rust
@@ -146,8 +146,8 @@ for (i, cell) in f.buffer_mut().content.iter_mut().enumerate() {
 
 ### Composition Pattern
 
-VT Code composes widgets hierarchically. Each "pane" renders into its allocated
-area:
+Diapason composes widgets hierarchically. Each "pane" renders into its
+allocated area:
 
 **Structure:**
 
@@ -186,7 +186,7 @@ pub fn render(&mut self, f: &mut Frame) {
 
 ### Widget Type Safety
 
-VT Code uses Ratatui's widget trait (`Widget`) for reusable components.
+Diapason uses Ratatui's widget trait (`Widget`) for reusable components.
 Rendering happens via `widget.render()` call.
 
 **Pattern:**
@@ -209,10 +209,10 @@ f.render_widget(my_widget, area);
 
 ### Dynamic Text Reflow
 
-VT Code's message transcript must reflow when terminal resizes. This is
-expensive, so VT Code caches reflowed text:
+Diapason's message transcript must reflow when terminal resizes. This is
+expensive, so Diapason caches reflowed text:
 
-**Pattern (from vtcode-core):**
+**Pattern (from diapason-core):**
 
 ```rust
 struct Message {
@@ -245,13 +245,13 @@ On `Event::Resize(w, h)`:
 2. Recalculate layout constraints
 3. Trigger next `Event::Render`
 
-VT Code automatically clears caches and re-renders on resize.
+Diapason automatically clears caches and re-renders on resize.
 
 ## Color and Styling
 
 ### Ratatui Color Model
 
-VT Code uses Ratatui's style system for portable colors:
+Diapason uses Ratatui's style system for portable colors:
 
 ```rust
 use ratatui::style::{Color, Modifier, Style};
@@ -275,9 +275,9 @@ f.render_widget(
 
 ### ANSI SGR Code Parsing
 
-VT Code parses terminal ANSI escape codes and converts them to Ratatui styles:
+Diapason parses terminal ANSI escape codes and converts them to Ratatui styles:
 
-**File:** `crates/codegen/vtcode-core/src/ui/tui/style.rs`
+**File:** `crates/codegen/diapason-core/src/ui/tui/style.rs`
 
 Converts ANSI SGR codes (like `\x1b[1;31m` for bold red) to Ratatui `Style`.
 
@@ -291,7 +291,7 @@ Ratatui's double buffer means:
 - No "flicker" (frame is complete before display)
 - Terminal I/O is optimized via escape sequence diffing
 
-**VT Code optimization:**
+**Diapason optimization:**
 
 - Only send `Event::Render` at 60 FPS (not on every state change)
 - Batch state updates into `Event::Tick` (4 Hz)
@@ -299,7 +299,7 @@ Ratatui's double buffer means:
 
 ### Lazy Rendering
 
-VT Code uses the **Tick/Render split pattern**:
+Diapason uses the **Tick/Render split pattern**:
 
 ```
 Event::Tick (4 Hz)
@@ -352,7 +352,7 @@ checking)
 
 ## Testing Rendering
 
-VT Code includes render tests in `vtcode-core`:
+Diapason includes render tests in `diapason-core`:
 
 ```rust
 #[test]
@@ -377,5 +377,6 @@ Use `TestBackend` for offline rendering tests (no terminal needed).
 - [Ratatui: Widgets](https://ratatui.rs/how-to/render/widgets/)
 - [Ratatui: Styling](https://ratatui.rs/how-to/render/styling/)
 - [Ratatui: Custom Widgets](https://ratatui.rs/how-to/render/custom-widgets/)
-- `crates/codegen/vtcode-ui/src/tui/core_tui/runner/` - Terminal event handler
-- `crates/codegen/vtcode-core/src/ui/tui/session.rs` - Main render orchestration
+- `crates/codegen/diapason-ui/src/tui/core_tui/runner/` - Terminal event handler
+- `crates/codegen/diapason-core/src/ui/tui/session.rs` - Main render
+  orchestration

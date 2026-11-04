@@ -2,11 +2,11 @@
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
+use diapason_core::config::loader::ConfigManager;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 use tempfile::tempdir;
-use vtcode_core::config::loader::ConfigManager;
 
 #[test]
 fn test_configuration_caching() {
@@ -14,7 +14,7 @@ fn test_configuration_caching() {
     // global config. `use_root_config` also prevents a malformed user layer
     // from making an otherwise valid workspace fixture fail to load.
     let temp_workspace = tempdir().expect("create isolated config workspace");
-    fs::write(temp_workspace.path().join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+    fs::write(temp_workspace.path().join("config.toml"), "[workspace]\nuse_root_config = true\n")
         .expect("write isolated config fixture");
     let workspace = temp_workspace.path();
 
@@ -55,7 +55,7 @@ fn test_workspace_path_caching() {
 #[test]
 fn test_idle_configuration_defaults() {
     // Test that our idle configuration has sensible defaults
-    let config = vtcode_core::config::loader::VTCodeConfig::default();
+    let config = diapason_core::config::loader::DiapasonConfig::default();
     let idle_config = &config.optimization.agent_execution;
 
     // Should have reasonable defaults
@@ -71,7 +71,7 @@ fn test_idle_configuration_defaults() {
 #[test]
 fn test_optimization_config_structure() {
     // Test that our new optimization fields are properly structured
-    use vtcode_config::OptimizationConfig;
+    use diapason_config::OptimizationConfig;
 
     let config = OptimizationConfig::default();
     assert!(config.agent_execution.idle_timeout_ms > 0);

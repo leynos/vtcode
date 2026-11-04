@@ -14,6 +14,15 @@ use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
 use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
 use crate::agent::runloop::welcome::prepare_session_bootstrap;
 use anyhow::{Context, Result};
+use diapason_core::acp::ToolPermissionCache;
+use diapason_core::config::WorkspaceTrustLevel;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::state::recover_history_from_crash;
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::llm::factory::{ProviderConfig, create_provider_with_config, infer_provider};
+use diapason_core::llm::provider as uni;
+use diapason_core::mcp::plugin_providers::discover_plugin_mcp_providers;
 use hashbrown::HashMap;
 use std::path::Path;
 use std::str::FromStr;
@@ -21,48 +30,39 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing::{debug, error, info, warn};
-use vtcode_core::acp::ToolPermissionCache;
-use vtcode_core::config::WorkspaceTrustLevel;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::state::recover_history_from_crash;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::llm::factory::{ProviderConfig, create_provider_with_config, infer_provider};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::mcp::plugin_providers::discover_plugin_mcp_providers;
 
-use vtcode_commons::VtCodePaths;
-use vtcode_core::models::ModelId;
-use vtcode_core::subagents::{SubagentController, SubagentControllerConfig};
-use vtcode_core::tools::handlers::{
+use diapason_commons::DiapasonPaths;
+use diapason_core::models::ModelId;
+use diapason_core::subagents::{SubagentController, SubagentControllerConfig};
+use diapason_core::tools::handlers::{
     DeferredToolPolicy, SessionSurface, SessionToolsConfig, ToolModelCapabilities,
     anthropic_native_memory_enabled_for_runtime, deferred_tool_policy_for_runtime,
 };
-use vtcode_core::tools::{ApprovalRecorder, ToolRegistry, ToolResultCache};
-use vtcode_core::utils::dot_config::load_workspace_trust_level;
-use vtcode_core::{
-    ActivePrimaryAgent, apply_global_notification_config_from_vtcode, build_primary_agent_runtime_config,
+use diapason_core::tools::{ApprovalRecorder, ToolRegistry, ToolResultCache};
+use diapason_core::utils::dot_config::load_workspace_trust_level;
+use diapason_core::{
+    ActivePrimaryAgent, apply_global_notification_config_from_diapason, build_primary_agent_runtime_config,
     init_global_notification_manager,
 };
 
 use crate::startup::take_search_tools_bundle_notice;
 use crate::updater::{Updater, append_notice_highlight};
-use vtcode_config::MiMoAuthMethod;
-use vtcode_config::models::detect_mimo_auth_method;
+use diapason_config::MiMoAuthMethod;
+use diapason_config::models::detect_mimo_auth_method;
 
 #[cfg(test)]
 use super::session_mode::active_primary_agent_from_specs;
 use super::session_mode::active_primary_agent_from_specs_for_mode;
 
-fn vtcode_config_circuit_breaker_to_core(
-    vt_cfg: Option<&VTCodeConfig>,
+fn diapason_config_circuit_breaker_to_core(
+    vt_cfg: Option<&DiapasonConfig>,
     _agent_config: &CoreAgentConfig,
-) -> vtcode_core::tools::circuit_breaker::CircuitBreakerConfig {
-    let default_cfg = vtcode_config::core::agent::CircuitBreakerConfig::default();
+) -> diapason_core::tools::circuit_breaker::CircuitBreakerConfig {
+    let default_cfg = diapason_config::core::agent::CircuitBreakerConfig::default();
     let cfg = vt_cfg.map(|c| &c.agent.circuit_breaker).unwrap_or(&default_cfg);
 
     if !cfg.enabled {
-        return vtcode_core::tools::circuit_breaker::CircuitBreakerConfig {
+        return diapason_core::tools::circuit_breaker::CircuitBreakerConfig {
             failure_threshold: u32::MAX,
             reset_timeout: Duration::from_secs(1),
             min_backoff: Duration::from_millis(100),
@@ -72,7 +72,7 @@ fn vtcode_config_circuit_breaker_to_core(
         };
     }
 
-    vtcode_core::tools::circuit_breaker::CircuitBreakerConfig {
+    diapason_core::tools::circuit_breaker::CircuitBreakerConfig {
         failure_threshold: cfg.failure_threshold,
         reset_timeout: Duration::from_secs(cfg.recovery_cooldown.max(1)),
         min_backoff: Duration::from_secs(5),
@@ -86,7 +86,7 @@ fn vtcode_config_circuit_breaker_to_core(
 ///
 /// Returns an empty string when the provider key is blank (caller should fall
 /// back to the runtime provider name).
-pub(crate) fn resolve_provider_label(config: &CoreAgentConfig, vt_cfg: Option<&VTCodeConfig>) -> String {
+pub(crate) fn resolve_provider_label(config: &CoreAgentConfig, vt_cfg: Option<&DiapasonConfig>) -> String {
     if config.provider.eq_ignore_ascii_case("openai") && config.openai_chatgpt_auth.is_some() {
         return "OpenAI (ChatGPT)".to_string();
     }
@@ -121,14 +121,14 @@ pub(crate) fn resolve_provider_label(config: &CoreAgentConfig, vt_cfg: Option<&V
 
 pub(crate) async fn initialize_session(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     full_auto: bool,
     primary_agent_explicitly_configured: bool,
     resume: Option<&ResumeSession>,
     parent_session_id: &str,
 ) -> Result<SessionState> {
     if let Some(cfg) = vt_cfg {
-        if let Err(err) = apply_global_notification_config_from_vtcode(cfg) {
+        if let Err(err) = apply_global_notification_config_from_diapason(cfg) {
             warn!("Failed to apply notification configuration: {}", err);
         }
     } else if let Err(err) = init_global_notification_manager() {
@@ -154,7 +154,7 @@ pub(crate) async fn initialize_session(
 
     // Register custom OpenAI-compatible providers from config
     if let Some(cfg) = vt_cfg {
-        vtcode_core::llm::factory::register_custom_providers(&cfg.custom_providers);
+        diapason_core::llm::factory::register_custom_providers(&cfg.custom_providers);
     }
 
     let provider_client = create_provider_client(config, vt_cfg)?;
@@ -201,12 +201,13 @@ pub(crate) async fn initialize_session(
     {
         // Discover primary agents up front so the subagent lifecycle engine can
         // be gated exactly like the main session: workspace-controlled hook
-        // content (workspace vtcode.toml/.vtcode layers OR a project-sourced
+        // content (workspace config.toml/.diapason layers OR a project-sourced
         // primary agent spec contributing hooks) must not run without user
         // approval in a subagent context either.
-        let discovered =
-            vtcode_config::discover_subagents(&vtcode_config::SubagentDiscoveryInput::new(config.workspace.clone()))
-                .with_context(|| format!("Failed to discover primary agents in {}", config.workspace.display()))?;
+        let discovered = diapason_config::discover_subagents(&diapason_config::SubagentDiscoveryInput::new(
+            config.workspace.clone(),
+        ))
+        .with_context(|| format!("Failed to discover primary agents in {}", config.workspace.display()))?;
         let active_primary_agent = active_primary_agent_from_specs_for_mode(
             &discovered.effective,
             vt_cfg,
@@ -255,9 +256,9 @@ pub(crate) async fn initialize_session(
 
     // CGP Phase 5: Wrap registered tools through the CGP approval → sandbox → middleware pipeline.
     let cgp_mode = if full_auto {
-        vtcode_core::tools::CgpRuntimeMode::Ci
+        diapason_core::tools::CgpRuntimeMode::Ci
     } else {
-        vtcode_core::tools::CgpRuntimeMode::Interactive
+        diapason_core::tools::CgpRuntimeMode::Interactive
     };
     tool_registry.enable_cgp_pipeline(cgp_mode).await;
 
@@ -341,9 +342,10 @@ pub(crate) async fn initialize_session(
             resumed_primary_agent.clone(),
         )?
     } else {
-        let discovered =
-            vtcode_config::discover_subagents(&vtcode_config::SubagentDiscoveryInput::new(config.workspace.clone()))
-                .with_context(|| format!("Failed to discover primary agents in {}", config.workspace.display()))?;
+        let discovered = diapason_config::discover_subagents(&diapason_config::SubagentDiscoveryInput::new(
+            config.workspace.clone(),
+        ))
+        .with_context(|| format!("Failed to discover primary agents in {}", config.workspace.display()))?;
         active_primary_agent_from_specs_for_mode(
             &discovered.effective,
             vt_cfg,
@@ -361,27 +363,23 @@ pub(crate) async fn initialize_session(
 
     let tool_result_cache = Arc::new(RwLock::new(ToolResultCache::new(128)));
     let tool_permission_cache = Arc::new(RwLock::new(ToolPermissionCache::new()));
-    let paths = VtCodePaths::resolve().context("failed to resolve private VT Code approval cache")?;
+    let paths = DiapasonPaths::resolve().context("failed to resolve private Diapason approval cache")?;
     let cache_dir = paths
         .ensure_cache_child_dir("approval")
-        .context("failed to create private VT Code approval cache")?;
-    let legacy_cache_dirs = [
-        paths.cache_dir().to_path_buf(),
-        paths.config_dir().join("cache"),
-        paths.legacy_dir().join("cache"),
-    ];
+        .context("failed to create private Diapason approval cache")?;
+    let legacy_cache_dirs = [paths.cache_dir().to_path_buf(), paths.config_dir().join("cache")];
     let approval_recorder = Arc::new(ApprovalRecorder::new_with_legacy_cache_dirs(cache_dir, legacy_cache_dirs));
     let permissions_state = Arc::new(RwLock::new(vt_cfg.map(|cfg| cfg.permissions.clone()).unwrap_or_default()));
     if let Some(cfg) = vt_cfg
         && cfg.context.dynamic.enabled
         && let Err(err) =
-            vtcode_core::context::initialize_dynamic_context(&config.workspace, &cfg.context.dynamic).await
+            diapason_core::context::initialize_dynamic_context(&config.workspace, &cfg.context.dynamic).await
     {
         warn!("Failed to initialize dynamic context directories: {}", err);
     }
 
-    let circuit_breaker = Arc::new(vtcode_core::tools::circuit_breaker::CircuitBreaker::with_metrics(
-        vtcode_config_circuit_breaker_to_core(vt_cfg, config),
+    let circuit_breaker = Arc::new(diapason_core::tools::circuit_breaker::CircuitBreaker::with_metrics(
+        diapason_config_circuit_breaker_to_core(vt_cfg, config),
         tool_registry.metrics_collector(),
     ));
     tool_registry.set_shared_circuit_breaker(circuit_breaker.clone());
@@ -402,11 +400,11 @@ pub(crate) async fn initialize_session(
             approval_recorder,
             safety_validator: Arc::new(ToolCallSafetyValidator::with_gateway(shared_safety_gateway)),
             circuit_breaker: circuit_breaker.clone(),
-            tool_health_tracker: Arc::new(vtcode_core::tools::health::ToolHealthTracker::new(50)),
-            rate_limiter: Arc::new(vtcode_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter::default()),
-            validation_cache: Arc::new(vtcode_core::tools::validation_cache::ValidationCache::default()),
+            tool_health_tracker: Arc::new(diapason_core::tools::health::ToolHealthTracker::new(50)),
+            rate_limiter: Arc::new(diapason_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter::default()),
+            validation_cache: Arc::new(diapason_core::tools::validation_cache::ValidationCache::default()),
             autonomous_executor: {
-                let executor = vtcode_core::tools::autonomous_executor::AutonomousExecutor::new();
+                let executor = diapason_core::tools::autonomous_executor::AutonomousExecutor::new();
                 if let Some(cfg) = vt_cfg {
                     let loop_limits: HashMap<_, _> =
                         cfg.tools.loop_thresholds.iter().map(|(k, v)| (k.clone(), *v)).collect();
@@ -418,8 +416,10 @@ pub(crate) async fn initialize_session(
         metadata: SessionMetadataContext {
             decision_ledger,
             trajectory,
-            telemetry: Arc::new(vtcode_core::core::telemetry::TelemetryManager::new()),
-            error_recovery: Arc::new(RwLock::new(vtcode_core::core::agent::error_recovery::ErrorRecoveryState::new())),
+            telemetry: Arc::new(diapason_core::core::telemetry::TelemetryManager::new()),
+            error_recovery: Arc::new(
+                RwLock::new(diapason_core::core::agent::error_recovery::ErrorRecoveryState::new()),
+            ),
         },
         base_system_prompt,
         full_auto_allowlist,
@@ -464,7 +464,7 @@ async fn load_release_highlights_for_startup() -> Option<(semver::Version, Vec<S
 }
 
 fn create_async_mcp_manager(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     active_primary_agent: Option<&ActivePrimaryAgent>,
     workspace_root: &Path,
 ) -> Option<Arc<AsyncMcpManager>> {
@@ -478,17 +478,17 @@ fn create_async_mcp_manager(
     info!("Setting up async MCP client with {} providers", mcp_config.providers.len());
     let approval_policy = approval_policy_from_human_in_the_loop(cfg.security.human_in_the_loop);
     let sandbox_context = if cfg.sandbox.enabled
-        && !matches!(cfg.sandbox.default_policy, vtcode_config::SandboxPolicy::DangerFullAccess)
+        && !matches!(cfg.sandbox.default_policy, diapason_config::SandboxPolicy::DangerFullAccess)
     {
         let policy =
-            match vtcode_core::tools::registry::sandbox_policy_from_runtime_config(&cfg.sandbox, workspace_root) {
+            match diapason_core::tools::registry::sandbox_policy_from_runtime_config(&cfg.sandbox, workspace_root) {
                 Ok(policy) => policy,
                 Err(error) => {
                     error!("Unable to construct the MCP sandbox policy: {error}");
                     return None;
                 }
             };
-        Some(vtcode_core::mcp::McpSandboxContext::new(policy, workspace_root))
+        Some(diapason_core::mcp::McpSandboxContext::new(policy, workspace_root))
     } else {
         None
     };
@@ -511,11 +511,11 @@ fn create_async_mcp_manager(
 /// Centralized so session bootstrap and live `/plugin refresh` reconfigure
 /// produce identical configurations.
 pub(crate) fn session_mcp_config(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     active_primary_agent: Option<&ActivePrimaryAgent>,
     workspace_root: &Path,
-) -> vtcode_core::config::mcp::McpClientConfig {
-    let cfg = vt_cfg.expect("MCP config requires a loaded VTCodeConfig");
+) -> diapason_core::config::mcp::McpClientConfig {
+    let cfg = vt_cfg.expect("MCP config requires a loaded DiapasonConfig");
     let mut mcp_config = active_primary_agent
         .map(|agent| primary_agent_mcp_config(cfg, agent))
         .unwrap_or_else(|| cfg.mcp.clone());
@@ -530,9 +530,9 @@ pub(crate) fn session_mcp_config(
 }
 
 fn primary_agent_mcp_config(
-    cfg: &VTCodeConfig,
+    cfg: &DiapasonConfig,
     active_primary_agent: &ActivePrimaryAgent,
-) -> vtcode_core::config::mcp::McpClientConfig {
+) -> diapason_core::config::mcp::McpClientConfig {
     build_primary_agent_runtime_config(cfg, active_primary_agent).mcp
 }
 
@@ -546,7 +546,7 @@ async fn determine_mcp_bootstrap_error(manager: Option<&Arc<AsyncMcpManager>>) -
 
 pub(crate) fn create_provider_client(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> Result<Box<dyn uni::LLMProvider>> {
     let provider_name = if config.provider.trim().is_empty() {
         config
@@ -579,7 +579,7 @@ pub(crate) fn create_provider_client(
 
 pub(crate) fn active_deferred_tool_policy(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     provider_client: &dyn uni::LLMProvider,
 ) -> DeferredToolPolicy {
     deferred_tool_policy_for_runtime(
@@ -591,11 +591,11 @@ pub(crate) fn active_deferred_tool_policy(
 
 pub(crate) fn active_anthropic_native_memory(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     provider_client: &dyn uni::LLMProvider,
 ) -> bool {
     anthropic_native_memory_enabled_for_runtime(
-        vtcode_core::config::models::Provider::from_str(provider_client.name()).ok(),
+        diapason_core::config::models::Provider::from_str(provider_client.name()).ok(),
         &config.model,
         vt_cfg,
     )
@@ -606,8 +606,8 @@ pub(crate) async fn refresh_tool_snapshot(
     tools: &Arc<RwLock<Vec<uni::ToolDefinition>>>,
     _tool_catalog: &ToolCatalogState,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
-    tool_documentation_mode: vtcode_core::config::ToolDocumentationMode,
+    vt_cfg: Option<&DiapasonConfig>,
+    tool_documentation_mode: diapason_core::config::ToolDocumentationMode,
     deferred_tool_policy: &DeferredToolPolicy,
 ) {
     let anthropic_native_memory_enabled = anthropic_native_memory_enabled_for_runtime(
@@ -629,15 +629,15 @@ pub(crate) async fn refresh_tool_snapshot(
 
 fn interactive_session_tools_config(
     model: &str,
-    vt_cfg: Option<&VTCodeConfig>,
-    tool_documentation_mode: vtcode_core::config::ToolDocumentationMode,
+    vt_cfg: Option<&DiapasonConfig>,
+    tool_documentation_mode: diapason_core::config::ToolDocumentationMode,
     deferred_tool_policy: DeferredToolPolicy,
     anthropic_native_memory_enabled: bool,
     planning_active: bool,
 ) -> SessionToolsConfig {
     SessionToolsConfig::full_public(
         SessionSurface::Interactive,
-        vtcode_core::config::types::CapabilityLevel::CodeSearch,
+        diapason_core::config::types::CapabilityLevel::CodeSearch,
         tool_documentation_mode,
         ToolModelCapabilities::for_model_name(model),
     )
@@ -649,8 +649,8 @@ fn interactive_session_tools_config(
 
 fn interactive_session_base_tools_config(
     model: &str,
-    vt_cfg: Option<&VTCodeConfig>,
-    tool_documentation_mode: vtcode_core::config::ToolDocumentationMode,
+    vt_cfg: Option<&DiapasonConfig>,
+    tool_documentation_mode: diapason_core::config::ToolDocumentationMode,
     deferred_tool_policy: DeferredToolPolicy,
     anthropic_native_memory_enabled: bool,
 ) -> SessionToolsConfig {
@@ -668,7 +668,7 @@ fn interactive_session_base_tools_config(
 
 async fn maybe_attach_mcp_client(
     tool_registry: &mut ToolRegistry,
-    cfg: &VTCodeConfig,
+    cfg: &DiapasonConfig,
     async_mcp_manager: Option<&Arc<AsyncMcpManager>>,
 ) {
     if !cfg.mcp.enabled {
@@ -701,16 +701,16 @@ mod tests {
     use std::collections::BTreeMap;
 
     use clap::Parser;
-    use serde_json::json;
-    use tempfile::TempDir;
-    use vtcode_config::{
+    use diapason_config::{
         AgentMode, SubagentMcpServer, SubagentSource, SubagentSpec, ToolProfile,
         core::permissions::{AgentPermissionsConfig, PermissionDefault},
     };
-    use vtcode_core::cli::args::Cli;
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::config::types::ModelSelectionSource;
-    use vtcode_core::core::agent::config::{RuntimeModelSelection, build_runtime_agent_config};
+    use diapason_core::cli::args::Cli;
+    use diapason_core::config::constants::tools;
+    use diapason_core::config::types::ModelSelectionSource;
+    use diapason_core::core::agent::config::{RuntimeModelSelection, build_runtime_agent_config};
+    use serde_json::json;
+    use tempfile::TempDir;
 
     use super::*;
 
@@ -718,14 +718,14 @@ mod tests {
     async fn interactive_catalogue_uses_configured_tool_profile() {
         let temp = TempDir::new().expect("temp dir");
         let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
-        let mut advanced = VTCodeConfig::default();
-        advanced.tools.profile = ToolProfile::AdvancedVtCode;
+        let mut advanced = DiapasonConfig::default();
+        advanced.tools.profile = ToolProfile::AdvancedDiapason;
 
         let advanced_tools = registry
             .model_tools(interactive_session_tools_config(
                 "gpt-5",
                 Some(&advanced),
-                vtcode_core::config::ToolDocumentationMode::default(),
+                diapason_core::config::ToolDocumentationMode::default(),
                 DeferredToolPolicy::default(),
                 false,
                 registry.is_planning_active(),
@@ -735,7 +735,7 @@ mod tests {
             .model_tools(interactive_session_tools_config(
                 "gpt-5",
                 None,
-                vtcode_core::config::ToolDocumentationMode::default(),
+                diapason_core::config::ToolDocumentationMode::default(),
                 DeferredToolPolicy::default(),
                 false,
                 registry.is_planning_active(),
@@ -755,7 +755,7 @@ mod tests {
                 .model_tools(interactive_session_base_tools_config(
                     "gpt-5",
                     None,
-                    vtcode_core::config::ToolDocumentationMode::default(),
+                    diapason_core::config::ToolDocumentationMode::default(),
                     DeferredToolPolicy::default(),
                     false,
                 ))
@@ -791,9 +791,9 @@ mod tests {
         let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
         let tool_catalog = registry.tool_catalog_state();
         let active_tools = Arc::new(RwLock::new(Vec::new()));
-        let mut advanced = VTCodeConfig::default();
-        advanced.tools.profile = ToolProfile::AdvancedVtCode;
-        let cli = Cli::parse_from(["vtcode"]);
+        let mut advanced = DiapasonConfig::default();
+        advanced.tools.profile = ToolProfile::AdvancedDiapason;
+        let cli = Cli::parse_from(["diapason"]);
         let runtime_config = build_runtime_agent_config(
             &cli,
             &advanced,
@@ -805,7 +805,7 @@ mod tests {
                 model_source: ModelSelectionSource::WorkspaceConfig,
             },
             "test-key".to_string(),
-            vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+            diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         );
 
         refresh_tool_snapshot(
@@ -814,7 +814,7 @@ mod tests {
             tool_catalog.as_ref(),
             &runtime_config,
             Some(&advanced),
-            vtcode_core::config::ToolDocumentationMode::default(),
+            diapason_core::config::ToolDocumentationMode::default(),
             &DeferredToolPolicy::default(),
         )
         .await;
@@ -830,7 +830,7 @@ mod tests {
 
     #[test]
     fn async_mcp_manager_uses_primary_agent_merged_mcp_config() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.mcp.enabled = true;
         cfg.mcp.providers.push(
             serde_json::from_value(json!({
@@ -877,7 +877,7 @@ mod tests {
 
         let tmp = TempDir::new().expect("temp dir");
         let workspace = tmp.path();
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.mcp.enabled = true;
         cfg.mcp.providers.push(
             serde_json::from_value(json!({
@@ -941,9 +941,9 @@ mod tests {
 
     #[test]
     fn startup_primary_agent_uses_default_primary_agent_config() {
-        let mut cfg = VTCodeConfig {
+        let mut cfg = DiapasonConfig {
             default_primary_agent: "builder".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
         let active = active_primary_agent_from_specs(&[test_primary_agent_spec("builder")], Some(&cfg))
             .expect("configured primary agent");
@@ -971,9 +971,9 @@ mod tests {
 
     #[test]
     fn resumed_session_mode_wins_over_config_default() {
-        let cfg = VTCodeConfig {
+        let cfg = DiapasonConfig {
             default_primary_agent: "builder".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
         // A resumed "plan" session should restore "plan", not the config default "builder".
         let active = active_primary_agent_from_specs_for_mode(
@@ -991,9 +991,9 @@ mod tests {
     #[test]
     fn explicit_configured_primary_agent_overrides_resumed_mode() {
         // When the user explicitly configures a primary agent, it wins even on resume.
-        let cfg = VTCodeConfig {
+        let cfg = DiapasonConfig {
             default_primary_agent: "builder".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
         let active = active_primary_agent_from_specs_for_mode(
             &[test_primary_agent_spec("plan"), test_primary_agent_spec("builder")],
@@ -1009,9 +1009,9 @@ mod tests {
 
     #[test]
     fn full_auto_honours_explicit_primary_agent_config() {
-        let cfg = VTCodeConfig {
+        let cfg = DiapasonConfig {
             default_primary_agent: "builder".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
         let specs = [test_primary_agent_spec("auto"), test_primary_agent_spec("builder")];
 
@@ -1023,9 +1023,9 @@ mod tests {
 
     #[test]
     fn full_auto_honours_explicit_build_primary_agent_config() {
-        let cfg = VTCodeConfig {
+        let cfg = DiapasonConfig {
             default_primary_agent: "build".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
         let specs = [test_primary_agent_spec("auto")];
 
@@ -1070,7 +1070,7 @@ mod tests {
             memory: None,
             isolation: None,
             aliases: Vec::new(),
-            source: SubagentSource::ProjectVtcode,
+            source: SubagentSource::ProjectDiapason,
             file_path: None,
             warnings: Vec::new(),
             tool_policy_overrides: BTreeMap::new(),

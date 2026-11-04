@@ -29,10 +29,10 @@ fn does_not_suppress_diff_recap_when_user_asked_for_analysis() {
 #[test]
 fn suppresses_heading_style_diff_recap_after_view_request() {
     let history = vec![
-        uni::Message::user("show diff on vtcode-tui/src/ui/markdown.rs".to_string()),
+        uni::Message::user("show diff on diapason-tui/src/ui/markdown.rs".to_string()),
         uni::Message::tool_response(
             "call_1".to_string(),
-            r#"{"content_type":"git_diff","command":"git diff -- vtcode-tui/src/ui/markdown.rs","output":"diff --git a/vtcode-tui/src/ui/markdown.rs b/vtcode-tui/src/ui/markdown.rs\n@@ -1 +1 @@\n- old\n+ new"}"#.to_string(),
+            r#"{"content_type":"git_diff","command":"git diff -- diapason-tui/src/ui/markdown.rs","output":"diff --git a/diapason-tui/src/ui/markdown.rs b/diapason-tui/src/ui/markdown.rs\n@@ -1 +1 @@\n- old\n+ new"}"#.to_string(),
         ),
     ];
 

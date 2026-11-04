@@ -3,14 +3,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use tokio::sync::{Notify, RwLock};
 
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::primary_agent::ActivePrimaryAgentState;
-use vtcode_core::tools::ToolRegistry;
-use vtcode_ui::tui::app::{InlineHandle, InlineHeaderContext, InlineSession};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::hooks::{LifecycleHookEngine, SessionEndReason};
+use diapason_core::llm::provider as uni;
+use diapason_core::primary_agent::ActivePrimaryAgentState;
+use diapason_core::tools::ToolRegistry;
+use diapason_ui::tui::app::{InlineHandle, InlineHeaderContext, InlineSession};
 
 use crate::agent::runloop::mcp_events;
 use crate::agent::runloop::model_picker::ModelPickerState;
@@ -27,7 +27,7 @@ use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
 use crate::agent::runloop::unified::webmcp::ActiveWebmcpBridge;
 use crate::agent::runloop::unified::workspace_links::LinkedDirectory;
 use crate::agent::runloop::welcome::SessionBootstrap;
-use vtcode_core::utils::ansi::AnsiRenderer;
+use diapason_core::utils::ansi::AnsiRenderer;
 
 mod handlers;
 mod outcome_router;
@@ -45,14 +45,14 @@ pub(crate) enum SlashCommandControl {
 pub(crate) struct SlashCommandContext<'a> {
     pub(crate) thread_id: &'a str,
     pub(crate) active_thread_label: &'a str,
-    pub(crate) thread_handle: &'a vtcode_core::core::threads::ThreadRuntimeHandle,
+    pub(crate) thread_handle: &'a diapason_core::core::threads::ThreadRuntimeHandle,
     pub(crate) renderer: &'a mut AnsiRenderer,
     pub(crate) handle: &'a InlineHandle,
     pub(crate) session: &'a mut InlineSession,
     pub(crate) header_context: &'a mut InlineHeaderContext,
     pub(crate) ide_context_bridge: &'a mut Option<IdeContextBridge>,
     pub(crate) config: &'a mut CoreAgentConfig,
-    pub(crate) vt_cfg: &'a mut Option<VTCodeConfig>,
+    pub(crate) vt_cfg: &'a mut Option<DiapasonConfig>,
     pub(crate) provider_client: &'a mut Box<dyn uni::LLMProvider>,
     pub(crate) session_bootstrap: &'a SessionBootstrap,
     pub(crate) model_picker_state: &'a mut Option<ModelPickerState>,
@@ -75,8 +75,8 @@ pub(crate) struct SlashCommandContext<'a> {
     pub(crate) full_auto: bool,
     pub(crate) webmcp_prompt_sender: &'a tokio::sync::mpsc::Sender<String>,
     pub(crate) webmcp_bridge: &'a mut Option<ActiveWebmcpBridge>,
-    pub(crate) loaded_skills: &'a Arc<RwLock<hashbrown::HashMap<String, vtcode_core::skills::types::Skill>>>,
-    pub(crate) checkpoint_manager: Option<&'a vtcode_core::core::agent::snapshots::SnapshotManager>,
+    pub(crate) loaded_skills: &'a Arc<RwLock<hashbrown::HashMap<String, diapason_core::skills::types::Skill>>>,
+    pub(crate) checkpoint_manager: Option<&'a diapason_core::core::agent::snapshots::SnapshotManager>,
     pub(crate) lifecycle_hooks: Option<&'a LifecycleHookEngine>,
     pub(crate) harness_emitter: Option<&'a HarnessEventEmitter>,
 }

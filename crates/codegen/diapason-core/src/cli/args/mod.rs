@@ -1,0 +1,1173 @@
+use clap::{ArgAction, ColorChoice, Parser, Subcommand, ValueHint};
+use colorchoice_clap::Color as ColorSelection;
+use std::env;
+use std::path::PathBuf;
+
+use crate::config::models::ModelId;
+
+mod acp;
+mod ask;
+mod background;
+mod bench;
+mod check;
+mod config;
+mod dependencies;
+mod exec;
+mod models;
+mod plugins;
+mod pods;
+mod review;
+mod schedule;
+mod schema;
+mod secret;
+mod session_store;
+mod skills;
+mod webmcp;
+
+pub use acp::AgentClientProtocolTarget;
+pub use ask::{AskCommandOptions, AskOutputFormat};
+pub use background::BackgroundSubagentArgs;
+pub use bench::BenchAllocatorArgs;
+pub use check::CheckSubcommand;
+pub use config::{
+    ConfigCommand, ConfigFile, ConfigResetArgs, ContextConfig, LoggingConfig, PerformanceConfig, SecurityConfig,
+    ToolConfig,
+};
+pub use dependencies::{DependenciesSubcommand, ManagedDependency};
+pub use exec::{ExecEvalArgs, ExecResumeArgs, ExecSubcommand};
+pub use models::ModelCommands;
+pub use plugins::PluginsSubcommand;
+pub use pods::PodsCommands;
+pub use review::ReviewArgs;
+pub use schedule::{ScheduleCreateArgs, ScheduleSubcommand};
+pub use schema::{SchemaCommands, SchemaMode, SchemaOutputFormat};
+pub use secret::{MigrateArgs, SecretArgs, SecretProvider, SecretSubcommand};
+pub use session_store::SessionStoreCommand;
+pub use skills::{SkillsRefSubcommand, SkillsSubcommand};
+pub use webmcp::{WebmcpCommand, WebmcpPairArgs, WebmcpServeArgs};
+
+#[derive(Parser, Debug, Clone)]
+pub struct Cli {
+    /// Color output selection (auto, always, never)
+    #[command(flatten)]
+    pub color: ColorSelection,
+
+    /// Optional positional path to run diapason against a different workspace
+    #[arg(
+        value_name = "WORKSPACE",
+        value_hint = ValueHint::DirPath,
+        value_parser = parse_workspace_directory,
+        global = true
+    )]
+    pub workspace_path: Option<PathBuf>,
+
+    /// LLM Model ID (e.g., gpt-5, claude-sonnet-4-6, gemini-3-flash-preview)
+    #[arg(long, global = true)]
+    pub model: Option<String>,
+
+    /// LLM Provider (gemini, openai, anthropic, deepseek, meta, openrouter, merge-gateway, codex, zai, moonshot, minimax, ollama, lmstudio)
+    #[arg(long, global = true)]
+    pub provider: Option<String>,
+
+    /// API key environment variable (auto-detects GEMINI_API_KEY, OPENAI_API_KEY, etc.)
+    #[arg(long, global = true, default_value = crate::config::constants::defaults::DEFAULT_API_KEY_ENV)]
+    pub api_key_env: String,
+
+    /// Workspace root directory (default: current directory)
+    #[arg(
+        long,
+        global = true,
+        alias = "workspace-dir",
+        value_name = "PATH",
+        value_hint = ValueHint::DirPath,
+        value_parser = parse_workspace_directory
+    )]
+    pub workspace: Option<PathBuf>,
+
+    /// Enable research-preview features
+    #[arg(long, global = true)]
+    pub research_preview: bool,
+
+    /// Security level for tool execution (strict, moderate, permissive)
+    #[arg(long, global = true, default_value = "moderate")]
+    pub security_level: String,
+
+    /// Show diffs for file changes in chat interface
+    #[arg(long, global = true)]
+    pub show_file_diffs: bool,
+
+    /// Maximum concurrent async operations
+    #[arg(long, global = true, default_value_t = 5)]
+    pub max_concurrent_ops: usize,
+
+    /// Maximum API requests per minute
+    #[arg(long, global = true, default_value_t = 30)]
+    pub api_rate_limit: usize,
+
+    /// Maximum tool calls per session
+    #[arg(long, global = true, default_value_t = 10)]
+    pub max_tool_calls: usize,
+
+    /// Enable debug output for troubleshooting
+    #[arg(long, global = true)]
+    pub debug: bool,
+
+    /// Enable verbose logging
+    #[arg(long, global = true)]
+    pub verbose: bool,
+
+    /// Suppress all non-essential output (for scripting, CI/CD)
+    #[arg(short, long, global = true)]
+    pub quiet: bool,
+
+    /// Configuration overrides or file path (KEY=VALUE or PATH)
+    #[arg(
+        short = 'c',
+        long = "config",
+        value_name = "KEY=VALUE|PATH",
+        action = ArgAction::Append,
+        global = true
+    )]
+    pub config: Vec<String>,
+
+    /// Log level (error, warn, info, debug, trace)
+    #[arg(long, global = true, default_value = "info")]
+    pub log_level: String,
+
+    /// Disable color output (equivalent to `--color never`)
+    #[arg(long, global = true)]
+    pub no_color: bool,
+
+    /// Select UI theme (e.g., ciapre-dark, ciapre-blue)
+    #[arg(long, global = true, value_name = "THEME")]
+    pub theme: Option<String>,
+
+    /// App tick rate in milliseconds (default: 250)
+    #[arg(short = 't', long, default_value_t = 250)]
+    pub tick_rate: u64,
+
+    /// Frame rate in FPS (default: 60)
+    #[arg(short = 'f', long, default_value_t = 60)]
+    pub frame_rate: u64,
+
+    /// Enable skills system
+    #[arg(long, global = true)]
+    pub enable_skills: bool,
+
+    /// Enable Chrome browser integration for web automation
+    #[arg(long, global = true)]
+    pub chrome: bool,
+
+    /// Disable Chrome browser integration
+    #[arg(long = "no-chrome", global = true, conflicts_with = "chrome")]
+    pub no_chrome: bool,
+
+    /// Skip safety confirmations (use with caution)
+    #[arg(long, global = true)]
+    pub skip_confirmations: bool,
+
+    /// Enable experimental Codex app-server features for this run
+    #[arg(long = "codex-experimental", global = true, conflicts_with = "no_codex_experimental")]
+    pub codex_experimental: bool,
+
+    /// Disable experimental Codex app-server features for this run
+    #[arg(long = "no-codex-experimental", global = true, conflicts_with = "codex_experimental")]
+    pub no_codex_experimental: bool,
+
+    /// Print response without launching the interactive TUI
+    #[arg(
+        short = 'p',
+        long = "print",
+        value_name = "PROMPT",
+        value_hint = ValueHint::Other,
+        num_args = 0..=1,
+        default_missing_value = "",
+        global = true,
+        conflicts_with_all = ["full_auto"]
+    )]
+    pub print: Option<String>,
+
+    /// Run non-interactively with full-auto permission review
+    #[arg(
+        long = "full-auto",
+        global = true,
+        help = "Run non-interactively with full-auto permission review",
+        long_help = r#"Run non-interactively on top of the active primary agent.
+
+If no primary agent is explicitly selected or configured, Diapason selects the effective `auto` primary agent. Explicit choices, including `duck`, are honoured. Full-auto is an execution and permission layer, not a primary agent.
+
+Full-auto does not override explicit denies or grant tools outside `[automation.full_auto].allowed_tools`. Tools outside that allow-list are denied. Promptable actions inside the allow-list are routed through automatic permission review after deny and policy checks instead of asking. The run fails fast if it needs the defaulted `auto` primary agent and no effective `auto` exists."#,
+        value_name = "PROMPT",
+        num_args = 0..=1,
+        default_missing_value = "",
+        value_hint = ValueHint::Other
+    )]
+    pub full_auto: Option<String>,
+
+    /// Resume a previous conversation (use without ID for interactive picker)
+    #[arg(
+        short = 'r',
+        long = "resume",
+        global = true,
+        value_name = "SESSION_ID",
+        num_args = 0..=1,
+        default_missing_value = "__interactive__",
+        conflicts_with_all = ["continue_latest", "full_auto"]
+    )]
+    pub resume_session: Option<String>,
+
+    /// Continue the most recent conversation automatically
+    #[arg(
+        long = "continue",
+        visible_alias = "continue-session",
+        global = true,
+        conflicts_with_all = ["resume_session", "full_auto"]
+    )]
+    pub continue_latest: bool,
+
+    /// Fork an existing session with a new session ID
+    #[arg(
+        long = "fork-session",
+        global = true,
+        value_name = "SESSION_ID",
+        conflicts_with_all = ["resume_session", "continue_latest", "full_auto"]
+    )]
+    pub fork_session: Option<String>,
+
+    /// Show archived sessions from every workspace when resuming or forking
+    #[arg(long, global = true)]
+    pub all: bool,
+
+    /// Custom suffix for session identifier (alphanumeric, dash, underscore only, max 64 chars)
+    #[arg(long = "session-id", global = true, value_name = "CUSTOM_SUFFIX")]
+    pub session_id: Option<String>,
+
+    /// Use summarized history when forking a session
+    #[arg(long, global = true)]
+    pub summarize: bool,
+
+    /// Override the default agent model for this session
+    #[arg(long, global = true, value_name = "AGENT")]
+    pub agent: Option<String>,
+
+    /// Tools that execute without prompting (comma-separated, supports patterns like "Bash(git:*)")
+    #[arg(long = "allowed-tools", global = true, value_name = "TOOLS", action = ArgAction::Append)]
+    pub allowed_tools: Vec<String>,
+
+    /// Tools that cannot be used by the agent
+    #[arg(long = "disallowed-tools", global = true, value_name = "TOOLS", action = ArgAction::Append)]
+    pub disallowed_tools: Vec<String>,
+
+    /// Auto-approve promptable actions while respecting denies and policy blocks
+    #[arg(
+        long = "dangerously-skip-permissions",
+        global = true,
+        help = "Auto-approve promptable actions while respecting denies and policy blocks",
+        long_help = "Auto-approve promptable actions while still respecting explicit denies and policy blocks."
+    )]
+    pub dangerously_skip_permissions: bool,
+
+    /// Explicitly connect to IDE on startup (auto-detects available IDEs)
+    #[arg(long, global = true)]
+    pub ide: bool,
+
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum Commands {
+    /// Start Agent Client Protocol bridge for IDE integrations
+    #[command(name = "acp")]
+    AgentClientProtocol {
+        /// Client to connect over ACP
+        #[arg(value_enum, default_value_t = AgentClientProtocolTarget::Zed)]
+        target: AgentClientProtocolTarget,
+    },
+
+    /// Unified per-session state store (single source of truth for state,
+    /// context, and history). Consolidates the legacy `checkpoints/`, `logs/`,
+    /// and `history/` stores.
+    #[command(name = "session-store")]
+    SessionStore {
+        #[command(subcommand)]
+        command: SessionStoreCommand,
+    },
+
+    /// Interactive AI coding assistant
+    Chat,
+
+    /// Resume the most recent conversation automatically
+    ///
+    /// Equivalent to `diapason --continue`. Loads the latest archived session in
+    /// the current workspace (or across all workspaces with `--all`) and resumes
+    /// it without showing the interactive picker.
+    ///
+    /// Examples:
+    ///   diapason continue
+    ///   diapason continue --all
+    ///   diapason continue --session-id my-fork   # fork latest into a new session
+    Continue,
+
+    /// Single prompt mode - prints model reply without tools
+    ///
+    /// Send a single prompt to the model and print the response. No tools are
+    /// invoked, no session is created, and the process exits after replying.
+    ///
+    /// Examples:
+    ///   diapason ask "what is a monad?"
+    ///   echo "summarize this" | diapason ask
+    ///   diapason ask --output-format json "explain ownership in Rust"
+    Ask {
+        /// Prompt to ask. Use `-` to force reading from stdin.
+        #[arg(
+            value_name = "PROMPT",
+            long_help = "The prompt to send to the model.\n\nOmit to read from stdin (piped input).\nUse '-' to explicitly force reading from stdin."
+        )]
+        prompt: Option<String>,
+        /// Format the response using a structured representation.
+        #[arg(
+            long = "output-format",
+            value_enum,
+            value_name = "FORMAT",
+            long_help = "Output format for the response.\n\nCurrently supports:\n  json - Emit the response as a structured JSON document."
+        )]
+        output_format: Option<AskOutputFormat>,
+    },
+    /// Headless execution mode
+    ///
+    /// Run the agent in non-interactive mode. The agent executes the prompt,
+    /// runs tools, and exits when done. Ideal for CI/CD, scripting, and
+    /// agent-to-agent workflows.
+    ///
+    /// Examples:
+    ///   diapason exec "explain this codebase"
+    ///   diapason exec --json "fix the failing test"
+    ///   diapason exec --dry-run "refactor auth module"
+    ///   cat file.rs | diapason exec "review this code"
+    ///   diapason exec resume --last
+    Exec {
+        /// Emit structured JSON events to stdout (one per line)
+        #[arg(
+            long,
+            long_help = "Stream newline-delimited JSON events to stdout.\nEach line is a JSON object representing an agent event (tool call, message, etc.).\nUseful for programmatic consumption and CI integration."
+        )]
+        json: bool,
+        /// Run a read-only dry-run execution (blocks mutating tool calls)
+        #[arg(
+            long,
+            long_help = "Simulate execution without making changes.\nThe agent plans tool calls but does not execute mutating operations (file writes, shell commands).\nUseful for previewing what the agent would do."
+        )]
+        dry_run: bool,
+        /// Optional path to write the JSONL transcript
+        #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath, long_help = "Write the full JSONL event transcript to this file.\nIncludes all agent events: tool calls, messages, errors, and metadata.")]
+        events: Option<PathBuf>,
+        /// Write the last agent message to this file
+        #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath, long_help = "Write only the final agent message to this file.\nUseful for piping the agent's response into other tools.")]
+        last_message_file: Option<PathBuf>,
+        /// Optional exec subcommand
+        #[command(subcommand)]
+        command: Option<ExecSubcommand>,
+        /// Prompt to execute. Use `-` to force reading from stdin.
+        #[arg(
+            value_name = "PROMPT",
+            long_help = "The prompt to execute.\n\nOmit to read from stdin (piped input).\nUse '-' to explicitly force reading from stdin.\nQuote multi-word prompts: diapason exec \"fix the bug in auth.rs\""
+        )]
+        prompt: Option<String>,
+    },
+    /// Manage durable scheduled tasks
+    ///
+    /// Create, list, and delete scheduled tasks that run on a recurring or
+    /// one-shot basis. Tasks are stored persistently and survive restarts
+    /// when paired with `diapason schedule install-service`.
+    ///
+    /// Examples:
+    ///   diapason schedule create --name "daily-review" --cron "0 9 * * 1-5" --prompt "review recent changes"
+    ///   diapason schedule create --name "reminder" --reminder "standup in 10 minutes" --at "09:50"
+    ///   diapason schedule list
+    ///   diapason schedule delete `<task-id>`
+    Schedule {
+        #[command(subcommand)]
+        command: ScheduleSubcommand,
+    },
+
+    /// Internal Diapason background subagent runner
+    #[command(name = "background-subagent", hide = true)]
+    BackgroundSubagent(BackgroundSubagentArgs),
+
+    /// Headless code review for the current diff, selected files, or a custom git target
+    #[command(
+        long_about = "Run a non-interactive code review.\n\nExamples:\n  diapason review\n  diapason review --last-diff\n  diapason review --target HEAD~1..HEAD\n  diapason review --file src/main.rs --file crates/codegen/diapason-core/src/lib.rs\n  diapason review --style security"
+    )]
+    Review(ReviewArgs),
+
+    /// Runtime schema introspection for built-in tools
+    Schema {
+        #[command(subcommand)]
+        command: SchemaCommands,
+    },
+
+    /// Verbose interactive chat with debug output
+    ChatVerbose,
+
+    /// Analyze workspace (structure, security, performance).
+    #[command(name = "analyse", visible_alias = "analyze")]
+    Analyse {
+        /// Type of analysis to perform
+        #[arg(value_name = "TYPE", default_value = "full")]
+        analysis_type: String,
+    },
+
+    /// Pretty-print trajectory logs
+    #[command(name = "trajectory")]
+    Trajectory {
+        /// Optional path to trajectory JSONL file
+        #[arg(long)]
+        file: Option<PathBuf>,
+        /// Number of top entries to show
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+    },
+
+    /// Send a Diapason notification using the built-in notification system
+    Notify {
+        /// Optional notification title
+        #[arg(long, value_name = "TITLE")]
+        title: Option<String>,
+        /// Notification message
+        #[arg(value_name = "MESSAGE")]
+        message: String,
+    },
+
+    /// Benchmark against SWE-bench evaluation framework
+    Benchmark {
+        /// Path to a JSON benchmark specification
+        #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath)]
+        task_file: Option<PathBuf>,
+        /// Inline JSON specification for quick experiments
+        #[arg(long, value_name = "JSON")]
+        task: Option<String>,
+        /// Optional path to write the structured benchmark report
+        #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath)]
+        output: Option<PathBuf>,
+        /// Limit the number of tasks executed
+        #[arg(long, value_name = "COUNT")]
+        max_tasks: Option<usize>,
+    },
+
+    /// Measure allocator RSS behavior under a bursty/sparse Tokio workload
+    ///
+    /// Reproduces the mimalloc-vs-jemalloc analysis pattern: many short-lived
+    /// tasks allocated across Tokio worker threads, with idle gaps between
+    /// bursts. Reports the RSS trajectory so you can see whether the global
+    /// allocator returns memory to the OS (jemalloc) or pins it (mimalloc/glibc).
+    /// Build with `--features allocator-jemalloc` to compare allocators.
+    #[command(name = "bench-allocator")]
+    BenchAllocator(BenchAllocatorArgs),
+
+    /// Create complete Rust project
+    CreateProject {
+        name: String,
+        #[arg(long = "feature", value_name = "FEATURE", action = ArgAction::Append)]
+        features: Vec<String>,
+    },
+
+    /// Revert agent to a previous snapshot
+    Revert {
+        /// Turn number to revert to
+        #[arg(short, long)]
+        turn: usize,
+        /// Scope of revert operation: conversation, code, full
+        #[arg(long)]
+        partial: Option<String>,
+    },
+
+    /// List all available snapshots
+    Snapshots,
+
+    /// Clean up old snapshots
+    ///
+    /// Features:
+    ///   • Remove snapshots beyond limit
+    ///   • Configurable retention policy
+    ///   • Safe deletion with confirmation
+    ///
+    /// Examples:
+    ///   diapason cleanup-snapshots
+    ///   diapason cleanup-snapshots --max 20
+    #[command(name = "cleanup-snapshots")]
+    CleanupSnapshots {
+        /// Maximum number of snapshots to keep
+        ///
+        /// Default: 50
+        /// Example: --max 20
+        #[arg(short, long, default_value_t = 50)]
+        max: usize,
+    },
+
+    /// Initialize project guidance and workspace scaffolding
+    ///
+    /// Bootstrap a workspace for use with Diapason. Creates config.toml,
+    /// AGENTS.md, and other scaffolding. Run this once per project.
+    ///
+    /// Examples:
+    ///   diapason init
+    ///   diapason init --force
+    Init {
+        /// Overwrite an existing AGENTS.md without prompting
+        #[arg(
+            long,
+            short = 'f',
+            long_help = "Overwrite AGENTS.md without confirmation.\nUse this in CI/CD or scripts where interactive prompts are not possible."
+        )]
+        force: bool,
+    },
+
+    /// Initialize project in the user state directory's `projects/` path.
+    ///
+    /// Create a new project entry in the Diapason projects directory.
+    /// This is separate from `diapason init` which bootstraps a workspace.
+    ///
+    /// Examples:
+    ///   diapason init-project
+    ///   diapason init-project --name my-project
+    ///   diapason init-project --force --migrate
+    #[command(name = "init-project")]
+    InitProject {
+        /// Project name - defaults to current directory name
+        #[arg(
+            long,
+            long_help = "Name for the project.\nDefaults to the current directory name if not specified."
+        )]
+        name: Option<String>,
+        /// Force initialization - overwrite existing project structure
+        #[arg(long, long_help = "Overwrite existing project structure without confirmation.")]
+        force: bool,
+        /// Migrate existing files - move existing config/cache files to new structure
+        #[arg(
+            long,
+            long_help = "Move existing config and cache files into the new project structure."
+        )]
+        migrate: bool,
+    },
+
+    /// Generate or manage configuration files
+    ///
+    /// Create a config.toml configuration file with default settings, or use
+    /// `reset` to clear one configuration layer.
+    /// Use --global to create in the canonical user config directory or specify an output path.
+    ///
+    /// Examples:
+    ///   diapason config
+    ///   diapason config --global
+    ///   diapason config --output ./my-config.toml
+    ///   diapason config reset
+    ///   diapason config reset --global
+    ///   diapason config reset --project
+    Config {
+        #[command(subcommand)]
+        command: Option<ConfigCommand>,
+        /// Output file path
+        #[arg(
+            long,
+            long_help = "Write the configuration to this path.\nDefaults to ./config.toml in the current directory."
+        )]
+        output: Option<PathBuf>,
+        /// Create in the canonical user config directory.
+        #[arg(
+            long,
+            long_help = "Write the configuration to the canonical user config directory.\nThis sets global defaults for all workspaces."
+        )]
+        global: bool,
+    },
+
+    /// Authenticate with a supported provider
+    ///
+    /// Start an OAuth or API-key login flow for the given provider.
+    /// Credentials are stored securely in the OS keychain.
+    ///
+    /// Examples:
+    ///   diapason login openai
+    ///   diapason login openai --from-codex
+    ///   diapason login openrouter
+    ///   diapason login codex
+    ///   diapason login codex --device-code
+    Login {
+        /// Provider name (`openai`, `openrouter`, `copilot`, or `codex`)
+        #[arg(long_help = "The provider to authenticate with.\nSupported: openai, openrouter, copilot, codex")]
+        provider: String,
+        /// Use device-code login when the provider supports it (currently `codex` only)
+        #[arg(
+            long,
+            default_value_t = false,
+            long_help = "Use the device-code OAuth flow.\nCurrently supported only for the `codex` provider.\nOpens a browser URL and asks you to enter a code."
+        )]
+        device_code: bool,
+        /// Import ChatGPT credentials from Codex's `~/.codex/auth.json` instead
+        /// of running the browser OAuth flow (currently `openai` only)
+        #[arg(
+            long,
+            default_value_t = false,
+            long_help = "Import ChatGPT OAuth tokens from Codex's auth.json.\n\
+                         Requires that you have already run `codex login`.\n\
+                         Currently supported only for the `openai` provider."
+        )]
+        from_codex: bool,
+    },
+
+    /// Clear stored authentication credentials for a provider
+    ///
+    /// Remove stored OAuth tokens or API keys for the given provider.
+    ///
+    /// Examples:
+    ///   diapason logout openai
+    ///   diapason logout openrouter
+    Logout {
+        /// Provider name (`openai`, `openrouter`, `copilot`, or `codex`)
+        #[arg(long_help = "The provider to deauthenticate.\nSupported: openai, openrouter, copilot, codex")]
+        provider: String,
+    },
+
+    /// Show authentication status for one provider or all supported providers
+    ///
+    /// Display whether each provider is authenticated, which credential type
+    /// is in use, and token/session metadata when available.
+    ///
+    /// Examples:
+    ///   diapason auth
+    ///   diapason auth openai
+    ///   diapason auth openrouter
+    Auth {
+        /// Optional provider name (`openai`, `openrouter`, `copilot`, or `codex`)
+        #[arg(long_help = "Show status for a single provider.\nOmit to show status for all supported providers.")]
+        provider: Option<String>,
+    },
+
+    /// Manage tool execution policies
+    #[command(name = "tool-policy")]
+    ToolPolicy {
+        #[command(subcommand)]
+        command: crate::cli::tool_policy_commands::ToolPolicyCommands,
+    },
+
+    /// Manage Model Context Protocol providers
+    #[command(name = "mcp")]
+    Mcp {
+        #[command(subcommand)]
+        command: crate::mcp::cli::McpCommands,
+    },
+
+    /// Agent2Agent (A2A) Protocol
+    #[command(name = "a2a")]
+    A2a {
+        #[command(subcommand)]
+        command: super::super::a2a::cli::A2aCommands,
+    },
+
+    /// Authenticated browser editor bridge
+    #[command(name = "webmcp")]
+    Webmcp {
+        #[command(subcommand)]
+        command: WebmcpCommand,
+    },
+
+    /// Proxy to the official Codex app-server
+    #[command(name = "app-server")]
+    AppServer {
+        /// Transport listen target passed through to `codex app-server`
+        #[arg(long, default_value = "stdio://")]
+        listen: String,
+    },
+
+    /// Manage models and providers
+    Models {
+        #[command(subcommand)]
+        command: ModelCommands,
+    },
+
+    /// Manage GPU pod deployments
+    #[command(name = "pods")]
+    Pods {
+        #[command(subcommand)]
+        command: PodsCommands,
+    },
+
+    /// Generate or display man pages
+    Man {
+        /// Command name to generate man page for (optional)
+        command: Option<String>,
+        /// Output file path to save man page
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Manage Agent Skills
+    ///
+    /// Skills are reusable instruction sets that extend the agent's capabilities.
+    /// Each skill is a directory containing a SKILL.md manifest and optional scripts.
+    ///
+    /// Examples:
+    ///   diapason skills list
+    ///   diapason skills create my-skill
+    ///   diapason skills load my-skill
+    ///   diapason skills info my-skill
+    ///   diapason skills validate ./path/to/skill
+    #[command(subcommand)]
+    Skills(SkillsSubcommand),
+
+    /// Manage Agent Plugins
+    ///
+    /// Agent Plugins are portable packages that bundle Agent Skills and MCP servers
+    /// under a root plugin.json manifest, following the Agent Plugins spec.
+    ///
+    /// Examples:
+    ///   diapason plugins list
+    ///   diapason plugins info my-plugin
+    ///   diapason plugins validate ./path/to/plugin
+    ///   diapason plugins add <https://github.com/example/plugin>
+    ///   diapason plugins remove my-plugin
+    #[command(subcommand)]
+    Plugins(PluginsSubcommand),
+
+    /// List available skills (alias for `diapason skills list`)
+    #[command(name = "list-skills", hide = true)]
+    ListSkills {},
+
+    /// Manage optional Diapason dependencies
+    ///
+    /// Install, update, or check the status of optional tools that Diapason
+    /// can use (ripgrep, ast-grep, search-tools bundle).
+    ///
+    /// Examples:
+    ///   diapason dependencies status
+    ///   diapason dependencies install search-tools
+    ///   diapason deps install ripgrep
+    #[command(name = "dependencies", visible_alias = "deps", subcommand)]
+    Dependencies(DependenciesSubcommand),
+
+    /// Manage API keys in secure storage (OS keyring or encrypted file)
+    ///
+    /// Store, inspect, and delete provider API keys without exposing them
+    /// in shell history or workspace files.
+    ///
+    /// Examples:
+    ///   diapason secret
+    ///   diapason secret list
+    ///   diapason secret status openai
+    ///   diapason secret add openai
+    ///   diapason secret delete openai
+    Secret(SecretArgs),
+
+    /// Run built-in repository checks
+    ///
+    /// Execute repository-level checks such as ast-grep rule tests and scans.
+    ///
+    /// Examples:
+    ///   diapason check ast-grep
+    Check {
+        #[command(subcommand)]
+        command: CheckSubcommand,
+    },
+
+    /// Check for and install binary updates from GitHub Releases
+    ///
+    /// Manage Diapason binary updates. By default checks for a new version
+    /// and offers to install it. Use flags to customize behavior.
+    ///
+    /// Examples:
+    ///   diapason update
+    ///   diapason update --check
+    ///   diapason update --force
+    ///   diapason update --list
+    ///   diapason update --pin 0.120.0
+    ///   diapason update --unpin
+    #[command(name = "update")]
+    Update {
+        /// Check for updates without installing
+        #[arg(
+            long,
+            long_help = "Check whether a newer version is available without installing it."
+        )]
+        check: bool,
+        /// Force update even if on latest version
+        #[arg(
+            long,
+            long_help = "Reinstall or downgrade even if the current version is already the latest."
+        )]
+        force: bool,
+        /// List available versions
+        #[arg(long, long_help = "Print available release versions from GitHub and exit.")]
+        list: bool,
+        /// Number of versions to list (default: 10)
+        #[arg(
+            long,
+            default_value = "10",
+            long_help = "Maximum number of versions to display with --list."
+        )]
+        limit: usize,
+        /// Pin to a specific version
+        #[arg(
+            long,
+            value_name = "VERSION",
+            long_help = "Pin the binary to a specific version.\nAuto-updates are disabled until --unpin is used."
+        )]
+        pin: Option<String>,
+        /// Unpin version
+        #[arg(long, long_help = "Remove a previously set version pin and resume auto-updates.")]
+        unpin: bool,
+        /// Set release channel (stable, beta, nightly)
+        #[arg(
+            long,
+            value_name = "CHANNEL",
+            long_help = "Switch the release channel.\nAccepted values: stable, beta, nightly."
+        )]
+        channel: Option<String>,
+        /// Show current update configuration
+        #[arg(
+            long,
+            long_help = "Display the current update configuration (channel, pin, intervals) and exit."
+        )]
+        show_config: bool,
+    },
+
+    /// Start Anthropic API compatibility server
+    #[command(name = "anthropic-api")]
+    AnthropicApi {
+        /// Port to run the server on
+        #[arg(long, default_value = "11434")]
+        port: u16,
+        /// Host address to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+    },
+}
+
+impl Default for Cli {
+    fn default() -> Self {
+        Self {
+            color: ColorSelection { color: ColorChoice::Auto },
+            workspace_path: None,
+            model: Some(ModelId::default().to_string()),
+            provider: Some("gemini".to_owned()),
+            api_key_env: "GEMINI_API_KEY".to_owned(),
+            workspace: None,
+            research_preview: false,
+            security_level: "moderate".to_owned(),
+            show_file_diffs: false,
+            max_concurrent_ops: 5,
+            api_rate_limit: 30,
+            max_tool_calls: 10,
+            verbose: false,
+            quiet: false,
+            config: Vec::new(),
+            log_level: "info".to_owned(),
+            no_color: false,
+            theme: None,
+            skip_confirmations: false,
+            codex_experimental: false,
+            no_codex_experimental: false,
+            print: None,
+            full_auto: None,
+            resume_session: None,
+            continue_latest: false,
+            fork_session: None,
+            all: false,
+            session_id: None,
+            summarize: false,
+            debug: false,
+            enable_skills: false,
+            tick_rate: 250,
+            frame_rate: 60,
+            agent: None,
+            allowed_tools: Vec::new(),
+            disallowed_tools: Vec::new(),
+            dangerously_skip_permissions: false,
+            ide: false,
+            chrome: false,
+            no_chrome: false,
+            command: Some(Commands::Chat),
+        }
+    }
+}
+
+impl Cli {
+    /// Get the effective API key environment variable
+    ///
+    /// Automatically infers the API key environment variable based on the provider
+    /// when the current value matches the default or is not explicitly set.
+    pub fn get_api_key_env(&self) -> String {
+        crate::config::api_keys::resolve_api_key_env(
+            self.provider
+                .as_deref()
+                .unwrap_or(crate::config::constants::defaults::DEFAULT_PROVIDER),
+            &self.api_key_env,
+        )
+    }
+
+    pub fn codex_experimental_override(&self) -> Option<bool> {
+        if self.codex_experimental {
+            Some(true)
+        } else if self.no_codex_experimental {
+            Some(false)
+        } else {
+            None
+        }
+    }
+}
+
+fn parse_workspace_directory(raw: &str) -> Result<PathBuf, String> {
+    let candidate = PathBuf::from(raw);
+    if !candidate.exists() {
+        return Err(format!(
+            "'{}' is not a valid workspace path or subcommand.\n\
+             Run `diapason --help` to see available commands and options.",
+            raw
+        ));
+    }
+
+    Ok(candidate)
+}
+
+pub fn long_version() -> String {
+    let git_info = option_env!("DIAPASON_GIT_INFO").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let path_diagnostics = match diapason_commons::DiapasonPaths::resolve() {
+        Ok(paths) => format!(
+            "Config directory: {}\nData directory: {}\nState directory: {}\nCache directory: {}\nRuntime directory: {}\nExecutable directory: {}",
+            paths.config_dir().display(),
+            paths.data_dir().display(),
+            paths.state_dir().display(),
+            paths.cache_dir().display(),
+            paths.runtime_dir().display(),
+            paths.executable_dir().display(),
+        ),
+        Err(error) => format!("Storage paths: unavailable ({error:#})"),
+    };
+    let environment = [
+        "HOME",
+        "DIAPASON_CONFIG_PATH",
+        "DIAPASON_WORKSPACE_DIR",
+        "CODEX_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_RUNTIME_DIR",
+        "XDG_BIN_HOME",
+        "XDG_CONFIG_DIRS",
+        "XDG_DATA_DIRS",
+    ]
+    .iter()
+    .map(|name| {
+        let value = env::var_os(name)
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "<not set>".to_string());
+        format!("  {name}={value}")
+    })
+    .collect::<Vec<_>>()
+    .join("\n");
+
+    format!(
+        "{}\n\nAuthors: {}\n{}\n\nEnvironment variables:\n{}",
+        git_info,
+        env!("CARGO_PKG_AUTHORS"),
+        path_diagnostics,
+        environment,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn long_version_includes_expected_sections() {
+        let text = long_version();
+        assert!(text.contains("Authors:"));
+        assert!(text.contains("Config directory:"));
+        assert!(text.contains("Data directory:"));
+        assert!(text.contains("State directory:"));
+        assert!(text.contains("Cache directory:"));
+        assert!(text.contains("Runtime directory:"));
+        assert!(text.contains("Executable directory:"));
+        assert!(text.contains("DIAPASON_CONFIG_PATH"));
+        assert!(text.contains("DIAPASON_WORKSPACE_DIR"));
+        assert!(text.contains("XDG_CONFIG_HOME"));
+        assert!(text.contains("XDG_STATE_HOME"));
+        assert!(!text.contains("Legacy directory:"));
+        assert!(!text.contains("DIAPASON_HOME="));
+        assert!(!text.contains("DIAPASON_CONFIG="));
+        assert!(!text.contains("DIAPASON_DATA="));
+    }
+
+    #[test]
+    fn long_version_starts_with_build_git_info() {
+        let text = long_version();
+        let expected = option_env!("DIAPASON_GIT_INFO").unwrap_or(env!("CARGO_PKG_VERSION"));
+        assert!(text.starts_with(expected));
+    }
+
+    #[test]
+    fn config_file_api_key_env_uses_provider_default() {
+        let cli = Cli::parse_from(["diapason", "--provider", "minimax"]);
+
+        assert_eq!(cli.get_api_key_env(), "MINIMAX_API_KEY");
+    }
+
+    #[test]
+    fn config_file_api_key_env_preserves_explicit_override() {
+        let cli = Cli::parse_from(["diapason", "--provider", "openai", "--api-key-env", "CUSTOM_OPENAI_KEY"]);
+
+        assert_eq!(cli.get_api_key_env(), "CUSTOM_OPENAI_KEY");
+    }
+
+    #[test]
+    fn parses_app_server_command_with_stdio_listen_target() {
+        let cli = Cli::parse_from(["diapason", "app-server", "--listen", "stdio://"]);
+
+        assert!(matches!(
+            cli.command,
+            Some(Commands::AppServer { ref listen }) if listen == "stdio://"
+        ));
+    }
+
+    #[test]
+    fn parses_init_force_flag() {
+        let cli = Cli::parse_from(["diapason", "init", "--force"]);
+
+        assert!(matches!(cli.command, Some(Commands::Init { force: true })));
+    }
+
+    #[test]
+    fn analyse_is_canonical_and_analyze_remains_a_visible_cli_alias() {
+        let canonical = Cli::parse_from(["diapason", "analyse", "security"]);
+        let legacy = Cli::parse_from(["diapason", "analyze", "security"]);
+
+        assert!(matches!(
+            canonical.command,
+            Some(Commands::Analyse { ref analysis_type }) if analysis_type == "security"
+        ));
+        assert!(matches!(
+            legacy.command,
+            Some(Commands::Analyse { ref analysis_type }) if analysis_type == "security"
+        ));
+    }
+
+    #[test]
+    fn parses_codex_login_device_code_flag() {
+        let cli = Cli::parse_from(["diapason", "login", "codex", "--device-code"]);
+
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Login {
+                ref provider,
+                device_code: true,
+                from_codex: false
+            }) if provider == "codex"
+        ));
+    }
+
+    #[test]
+    fn parses_codex_experimental_flags() {
+        let enabled = Cli::parse_from(["diapason", "--codex-experimental"]);
+        assert_eq!(enabled.codex_experimental_override(), Some(true));
+
+        let disabled = Cli::parse_from(["diapason", "--no-codex-experimental"]);
+        assert_eq!(disabled.codex_experimental_override(), Some(false));
+    }
+
+    #[test]
+    fn codex_experimental_flags_conflict() {
+        let result = Cli::try_parse_from(["diapason", "--codex-experimental", "--no-codex-experimental"]);
+
+        result.unwrap_err();
+    }
+
+    #[test]
+    fn parses_create_project_feature_flags() {
+        let cli = Cli::parse_from([
+            "diapason",
+            "create-project",
+            "demo",
+            "--feature",
+            "web",
+            "--feature",
+            "db",
+        ]);
+
+        assert!(matches!(
+            cli.command,
+            Some(Commands::CreateProject { ref name, ref features })
+                if name == "demo" && features == &vec!["web".to_string(), "db".to_string()]
+        ));
+    }
+
+    #[test]
+    fn parses_revert_partial_long_flag() {
+        let cli = Cli::parse_from(["diapason", "revert", "--turn", "3", "--partial", "code"]);
+
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Revert {
+                turn: 3,
+                partial: Some(ref scope)
+            }) if scope == "code"
+        ));
+    }
+
+    #[test]
+    fn parses_config_reset_workspace_target_by_default() {
+        let cli = Cli::parse_from(["diapason", "config", "reset"]);
+
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Config {
+                command: Some(ConfigCommand::Reset(ConfigResetArgs { global: false, project: false })),
+                global: false,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_config_reset_global_and_project_targets() {
+        let global = Cli::parse_from(["diapason", "config", "reset", "--global"]);
+        assert!(matches!(
+            global.command,
+            Some(Commands::Config {
+                command: Some(ConfigCommand::Reset(ConfigResetArgs { global: true, project: false })),
+                ..
+            })
+        ));
+
+        let project = Cli::parse_from(["diapason", "config", "reset", "--project"]);
+        assert!(matches!(
+            project.command,
+            Some(Commands::Config {
+                command: Some(ConfigCommand::Reset(ConfigResetArgs { global: false, project: true })),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_parent_global_flag_for_config_reset() {
+        let cli = Cli::parse_from(["diapason", "config", "--global", "reset"]);
+
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Config {
+                command: Some(ConfigCommand::Reset(ConfigResetArgs { global: false, project: false })),
+                global: true,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn rejects_config_reset_with_conflicting_layer_flags() {
+        let result = Cli::try_parse_from(["diapason", "config", "reset", "--global", "--project"]);
+
+        assert!(result.is_err());
+    }
+}

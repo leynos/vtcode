@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, bail};
+use diapason_core::skills::manifest::generate_skill_template;
+use diapason_core::utils::colors::style;
+use diapason_core::utils::file_utils::{ensure_dir_exists_sync, write_file_with_context_sync};
 use std::path::Path;
-use vtcode_core::skills::manifest::generate_skill_template;
-use vtcode_core::utils::colors::style;
-use vtcode_core::utils::file_utils::{ensure_dir_exists_sync, write_file_with_context_sync};
 
 use crate::cli::messages;
 
@@ -33,7 +33,7 @@ pub async fn handle_skills_create(skill_path: &Path) -> Result<()> {
     println!("{}", style("Next steps:").bold());
     println!("{}", messages::hint("Edit SKILL.md with your skill details."));
     println!("{}", messages::hint("Add scripts to scripts/ if needed."));
-    println!("{}", messages::hint(&format!("Load with: vtcode skills load {skill_name}")));
+    println!("{}", messages::hint(&format!("Load with: diapason skills load {skill_name}")));
 
     Ok(())
 }

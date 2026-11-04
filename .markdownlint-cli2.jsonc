@@ -33,7 +33,7 @@
   },
   "ignores": [
     "**/.venv/**",
-    ".vtcode/**",
+    ".diapason/**",
     "**/node_modules/**",
     "**/target/**",
     ".terraform/**",
@@ -45,7 +45,7 @@
     "CHANGELOG.md",
     // Markdown-renderer test fixtures: inputs compared byte-for-byte against
     // snapshots, not documentation.
-    "crates/codegen/vtcode-core/src/utils/fixtures/*.md",
+    "crates/codegen/diapason-core/src/utils/fixtures/*.md",
     // Model prompt templates compiled into the binary, not documentation.
     "src/agent/runloop/unified/auto_permission/prompts/*.md"
   ]

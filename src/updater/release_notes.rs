@@ -104,7 +104,7 @@ mod tests {
 ### Highlights
 #### Features
 
-- Add vtcode-ui to publish sequence (bb7228ed)
+- Add diapason-ui to publish sequence (bb7228ed)
 - Implement new parser (a1b2c3d4) (@vinhnx)
 
 ### Other Changes
@@ -114,7 +114,7 @@ mod tests {
 ";
         let result = parse_highlights(&v("0.125.0"), body);
         assert_eq!(result.items.len(), 2);
-        assert_eq!(result.items[0], "Add vtcode-ui to publish sequence");
+        assert_eq!(result.items[0], "Add diapason-ui to publish sequence");
         assert_eq!(result.items[1], "Implement new parser");
     }
 

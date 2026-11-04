@@ -1,7 +1,7 @@
-# VT Code Platform Compatibility Matrix
+# Diapason Platform Compatibility Matrix
 
 Inspired by [caniuse.rs](https://caniuse.rs), this document tracks feature
-availability and platform support across the VT Code ecosystem.
+availability and platform support across the Diapason ecosystem.
 
 ## Quick Reference
 
@@ -27,35 +27,35 @@ ______________________________________________________________________
 
 **Current MSRV: Rust 1.88**
 
-All VT Code crates require Rust 1.88 or later due to dependencies (ratatui
+All Diapason crates require Rust 1.88 or later due to dependencies (ratatui
 0.30, darling 0.23, sysinfo 0.37, zip 8.1).
 
 ### Crate Version Matrix
 
-| Crate                     | Version  | MSRV | Edition | Published | Notes                                                      |
-| ------------------------- | -------- | ---- | ------- | --------- | ---------------------------------------------------------- |
-| vtcode                    | 0.133.21 | 1.88 | 2024    | Yes       | Binary crate                                               |
-| vtcode-core               | 0.133.21 | 1.88 | 2024    | Yes       | Main runtime                                               |
-| vtcode-config             | 0.133.21 | 1.88 | 2024    | Yes       | Configuration                                              |
-| vtcode-commons            | 0.133.21 | 1.88 | 2024    | Yes       | Shared primitives                                          |
-| vtcode-indexer            | 0.133.21 | 1.88 | 2024    | Yes       | File indexing + markdown storage                           |
-| vtcode-bash-runner        | 0.133.21 | 1.88 | 2024    | Yes       | Shell execution                                            |
-| vtcode-exec-events        | 0.133.21 | 1.88 | 2024    | Yes       | Event schemas                                              |
-| vtcode-webmcp             | 0.147.4  | 1.93 | 2024    | Yes       | Authenticated browser bridge and bounded workspace adapter |
-| vtcode-memory             | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
-| vtcode-eval               | 0.135.4  | 1.88 | 2024    | No        | Internal (publish=false)                                   |
-| vtcode-acp                | 0.133.21 | 1.88 | 2024    | Yes       | Agent Communication Protocol                               |
-| vtcode-auth               | 0.133.21 | 1.88 | 2024    | Yes       | OAuth/PKCE                                                 |
-| vtcode-macros             | 0.133.21 | 1.88 | 2024    | Yes       | Proc macros                                                |
-| vtcode-ui                 | 0.133.21 | 1.88 | 2024    | Yes       | TUI framework                                              |
-| vtcode-utility-tool-specs | 0.133.21 | 1.88 | 2024    | Yes       | Tool schemas                                               |
-| vtcode-safety             | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
-| vtcode-a2a                | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
-| vtcode-mcp                | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
-| vtcode-llm                | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
-| vtcode-skills             | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
-| vtcode-agent-plugins      | 0.133.21 | 1.88 | 2024    | No        | Agent Plugins loader                                       |
-| xtask                     | 0.133.21 | 1.88 | 2024    | No        | Internal build tasks                                       |
+| Crate                       | Version  | MSRV | Edition | Published | Notes                                                      |
+| --------------------------- | -------- | ---- | ------- | --------- | ---------------------------------------------------------- |
+| diapason                    | 0.133.21 | 1.88 | 2024    | Yes       | Binary crate                                               |
+| diapason-core               | 0.133.21 | 1.88 | 2024    | Yes       | Main runtime                                               |
+| diapason-config             | 0.133.21 | 1.88 | 2024    | Yes       | Configuration                                              |
+| diapason-commons            | 0.133.21 | 1.88 | 2024    | Yes       | Shared primitives                                          |
+| diapason-indexer            | 0.133.21 | 1.88 | 2024    | Yes       | File indexing + markdown storage                           |
+| diapason-bash-runner        | 0.133.21 | 1.88 | 2024    | Yes       | Shell execution                                            |
+| diapason-exec-events        | 0.133.21 | 1.88 | 2024    | Yes       | Event schemas                                              |
+| diapason-webmcp             | 0.147.4  | 1.93 | 2024    | Yes       | Authenticated browser bridge and bounded workspace adapter |
+| diapason-memory             | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
+| diapason-eval               | 0.135.4  | 1.88 | 2024    | No        | Internal (publish=false)                                   |
+| diapason-acp                | 0.133.21 | 1.88 | 2024    | Yes       | Agent Communication Protocol                               |
+| diapason-auth               | 0.133.21 | 1.88 | 2024    | Yes       | OAuth/PKCE                                                 |
+| diapason-macros             | 0.133.21 | 1.88 | 2024    | Yes       | Proc macros                                                |
+| diapason-ui                 | 0.133.21 | 1.88 | 2024    | Yes       | TUI framework                                              |
+| diapason-utility-tool-specs | 0.133.21 | 1.88 | 2024    | Yes       | Tool schemas                                               |
+| diapason-safety             | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
+| diapason-a2a                | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
+| diapason-mcp                | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
+| diapason-llm                | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
+| diapason-skills             | 0.133.21 | 1.88 | 2024    | No        | Internal (publish=false)                                   |
+| diapason-agent-plugins      | 0.133.21 | 1.88 | 2024    | No        | Agent Plugins loader                                       |
+| xtask                       | 0.133.21 | 1.88 | 2024    | No        | Internal build tasks                                       |
 
 ______________________________________________________________________
 
@@ -270,4 +270,4 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-*Last updated: 2026-06-28* *VT Code Version: 0.133.21*
+*Last updated: 2026-06-28* *Diapason Version: 0.133.21*

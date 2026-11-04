@@ -1,4 +1,4 @@
-# ANSI Quick Reference for VT Code Development
+# ANSI Quick Reference for Diapason Development
 
 ## Most Common Sequences
 
@@ -75,12 +75,12 @@
 \x1b[?47l    Restore screen
 ```
 
-## VT Code Usage Examples
+## Diapason Usage Examples
 
 ### Stripping ANSI
 
 ```rust
-use vtcode_core::utils::ansi_parser::strip_ansi;
+use diapason_core::utils::ansi_parser::strip_ansi;
 
 // Remove all ANSI codes
 let clean = strip_ansi("\x1b[31mError\x1b[0m");
@@ -90,7 +90,7 @@ let clean = strip_ansi("\x1b[31mError\x1b[0m");
 ### In-place Redraw (Progress/Spinner)
 
 ```rust
-use vtcode_core::utils::ansi_codes::{format_redraw_line, redraw_line_prefix};
+use diapason_core::utils::ansi_codes::{format_redraw_line, redraw_line_prefix};
 
 let prefix = redraw_line_prefix(); // "\r\x1b[2K"
 let frame = format_redraw_line("Building... 42%");
@@ -110,7 +110,7 @@ fn has_ansi(text: &str) -> bool {
 #### Cargo Output
 
 ```
-\x1b[0m\x1b[1m\x1b[32m   Compiling\x1b[0m vtcode v0.45.6
+\x1b[0m\x1b[1m\x1b[32m   Compiling\x1b[0m diapason v0.45.6
      ^^^^^^^^^^^^^^ Bold Green "Compiling"
 
 \x1b[0m\x1b[1m\x1b[33mwarning\x1b[0m: unused variable
@@ -307,5 +307,5 @@ for line in clean_output.lines() {
 ## See Also
 
 - `docs/reference/ansi-escape-sequences.md` - Full ANSI reference
-- `docs/reference/ansi-in-vtcode.md` - VT Code-specific usage
-- `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` - Implementation
+- `docs/reference/ansi-in-diapason.md` - Diapason-specific usage
+- `crates/codegen/diapason-core/src/utils/ansi_parser.rs` - Implementation

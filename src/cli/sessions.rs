@@ -1,14 +1,14 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::Local;
 use dialoguer::{Select, theme::ColorfulTheme};
-use std::path::PathBuf;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
-use vtcode_core::core::threads::{ArchivedSessionIntent, SessionQueryScope, list_recent_sessions_in_scope};
-use vtcode_core::utils::colors::style;
-use vtcode_core::utils::session_archive::{
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::core::threads::{ArchivedSessionIntent, SessionQueryScope, list_recent_sessions_in_scope};
+use diapason_core::utils::colors::style;
+use diapason_core::utils::session_archive::{
     SessionContinuationMetadata, SessionContinuationRecommendedAction, SessionListing, session_workspace_path,
 };
+use std::path::PathBuf;
 
 use crate::agent::agents::{ResumeSession, SessionContinuation};
 use crate::startup::SessionResumeMode;
@@ -311,8 +311,8 @@ fn print_resume_summary(resume: &ResumeSession, workspace: &std::path::Path) {
     println!("{}", style(format!("Archive: {}", resume.path().display())).green());
 
     if let Some(info) =
-        vtcode_core::core::agent::blocked_handoff::read_current_blocked_handoff(workspace).or_else(|| {
-            vtcode_core::core::agent::blocked_handoff::find_latest_archived_blocker_for_session(
+        diapason_core::core::agent::blocked_handoff::read_current_blocked_handoff(workspace).or_else(|| {
+            diapason_core::core::agent::blocked_handoff::find_latest_archived_blocker_for_session(
                 workspace,
                 &resume.identifier(),
             )
@@ -329,7 +329,7 @@ fn print_resume_summary(resume: &ResumeSession, workspace: &std::path::Path) {
             );
             println!(
                 "{}",
-                style("Details: .vtcode/tasks/current_blocked.md (or latest in .vtcode/tasks/blockers/)").cyan()
+                style("Details: .diapason/tasks/current_blocked.md (or latest in .diapason/tasks/blockers/)").cyan()
             );
         }
     }
@@ -431,8 +431,8 @@ fn resolve_resume_workspace(resume: &ResumeSession, config: &CoreAgentConfig) ->
 mod tests {
     use super::*;
     use chrono::Utc;
-    use vtcode_core::llm::provider::MessageRole;
-    use vtcode_core::utils::session_archive::{
+    use diapason_core::llm::provider::MessageRole;
+    use diapason_core::utils::session_archive::{
         SessionArchiveMetadata, SessionContinuationMetadata, SessionMessage, SessionProgress, SessionSnapshot,
     };
 

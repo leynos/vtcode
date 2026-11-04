@@ -2,9 +2,9 @@
 use anyhow::Result;
 
 use crate::startup::StartupContext;
-use vtcode::acp::{StandardAcpAdapter, ZedAcpAdapter};
-use vtcode_core::cli::args::{Cli, Commands};
-use vtcode_core::core::interfaces::acp::AcpClientAdapter;
+use diapason::acp::{StandardAcpAdapter, ZedAcpAdapter};
+use diapason_core::cli::args::{Cli, Commands};
+use diapason_core::core::interfaces::acp::AcpClientAdapter;
 
 mod acp;
 mod action_resolution;
@@ -126,7 +126,7 @@ async fn dispatch_with_acp_adapters(
         && let Some(notice) = crate::updater::get_preflight_notice()
     {
         tracing::info!(
-            "VT Code v{} -> v{} available. Run `vtcode update` to upgrade.",
+            "Diapason v{} -> v{} available. Run `diapason update` to upgrade.",
             notice.current_version,
             notice.latest_version
         );
@@ -140,30 +140,30 @@ mod tests {
     use super::{ResolvedCliAction, dispatch::handle_resume_session_command, resolve_action};
     use crate::startup::{SessionResumeMode, StartupContext};
     use clap::Parser;
+    use diapason_core::cli::args::{Cli, Commands};
+    use diapason_core::config::core::PromptCachingConfig;
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::config::models::Provider;
+    use diapason_core::config::types::{
+        AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
+    };
+    use diapason_core::core::agent::snapshots::{
+        DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
+    };
     use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use vtcode_core::cli::args::{Cli, Commands};
-    use vtcode_core::config::core::PromptCachingConfig;
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::config::models::Provider;
-    use vtcode_core::config::types::{
-        AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
-    };
-    use vtcode_core::core::agent::snapshots::{
-        DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
-    };
 
     fn runtime_config() -> CoreAgentConfig {
         CoreAgentConfig {
-            model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+            model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
             api_key: "test-key".to_string(),
             provider: "gemini".to_string(),
             api_key_env: Provider::Gemini.default_api_key_env().to_string(),
             workspace: std::env::current_dir().expect("current_dir"),
             verbose: false,
             quiet: false,
-            theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+            theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
             reasoning_effort: ReasoningEffortLevel::default(),
             ui_surface: UiSurfacePreference::default(),
             prompt_cache: PromptCachingConfig::default(),
@@ -186,7 +186,7 @@ mod tests {
     fn startup_context() -> StartupContext {
         StartupContext {
             workspace: PathBuf::from("."),
-            config: VTCodeConfig::default(),
+            config: DiapasonConfig::default(),
             agent_config: runtime_config(),
             skip_confirmations: false,
             full_auto_requested: false,
@@ -196,13 +196,13 @@ mod tests {
             resume_show_all: false,
             custom_session_id: None,
             summarize_fork: false,
-            planning_entry_source: vtcode_core::core::interfaces::session::PlanningEntrySource::None,
+            planning_entry_source: diapason_core::core::interfaces::session::PlanningEntrySource::None,
         }
     }
 
     #[test]
     fn resolve_action_prefers_print_mode() {
-        let args = parse_cli(&["vtcode", "chat"]);
+        let args = parse_cli(&["diapason", "chat"]);
         let mut startup = startup_context();
         startup.automation_prompt = Some("auto prompt".to_string());
         startup.session_resume = Some(SessionResumeMode::Latest);
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn resolve_action_prefers_auto_over_resume_and_command() {
-        let args = parse_cli(&["vtcode", "chat"]);
+        let args = parse_cli(&["diapason", "chat"]);
         let mut startup = startup_context();
         startup.automation_prompt = Some("auto prompt".to_string());
         startup.session_resume = Some(SessionResumeMode::Latest);
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn resolve_action_prefers_resume_over_command() {
-        let args = parse_cli(&["vtcode", "chat"]);
+        let args = parse_cli(&["diapason", "chat"]);
         let mut startup = startup_context();
         startup.session_resume = Some(SessionResumeMode::Specific("session-123".to_string()));
 
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn resolve_action_returns_command_when_explicit_subcommand_exists() {
-        let args = parse_cli(&["vtcode", "chat"]);
+        let args = parse_cli(&["diapason", "chat"]);
         let startup = startup_context();
 
         let action = resolve_action(&args, &startup, None).expect("command should resolve");
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn resolve_action_returns_chat_when_no_special_mode_or_command_exists() {
-        let args = parse_cli(&["vtcode"]);
+        let args = parse_cli(&["diapason"]);
         let startup = startup_context();
 
         let action = resolve_action(&args, &startup, None).expect("chat should resolve");

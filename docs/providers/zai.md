@@ -1,6 +1,6 @@
 # Z.AI Provider Guide
 
-VT Code has a first-class Z.AI provider for GLM models. This guide covers
+Diapason has a first-class Z.AI provider for GLM models. This guide covers
 setup, curated models, and the new **GLM-5.3 Flash** multimodal model.
 
 ## Prerequisites
@@ -20,7 +20,7 @@ compatible gateway or test endpoint is required.
 Use the Z.AI provider with its default model:
 
 ```bash
-vtcode --provider zai --model glm-5.3 chat
+diapason --provider zai --model glm-5.3 chat
 ```
 
 The equivalent persistent configuration is:
@@ -34,12 +34,12 @@ default_model = "glm-5.3"
 For the new Flash model:
 
 ```bash
-vtcode --provider zai --model glm-5.3-flash chat
+diapason --provider zai --model glm-5.3-flash chat
 # explicit Flash with recommended effort
-vtcode --provider zai --model glm-5.3-flash ask "Build a Next.js page from this screenshot"
+diapason --provider zai --model glm-5.3-flash ask "Build a Next.js page from this screenshot"
 ```
 
-`vtcode.toml` for Flash:
+`config.toml` for Flash:
 
 ```toml
 [agent]
@@ -49,7 +49,7 @@ default_model = "glm-5.3-flash"
 
 ## Model API — GLM-5.3 Flash
 
-- **Model code:** `glm-5.3-flash` (canonical VT Code id `glm-5.3-flash`,
+- **Model code:** `glm-5.3-flash` (canonical Diapason id `glm-5.3-flash`,
     `ModelId::ZaiGlm53Flash`)
 - **API docs:**
     [Chat Completion API](https://docs.z.ai/api-reference/introduction)
@@ -72,14 +72,14 @@ Multiple images are supported by including multiple `image_url` blocks.
 
 From [Z.AI GLM-5.3 Flash guide](https://docs.z.ai/guides/vlm/glm-5.3-flash):
 
-- `temperature: 1`, `top_p: 0.95`, `reasoning_effort: max` (VT Code maps
+- `temperature: 1`, `top_p: 0.95`, `reasoning_effort: max` (Diapason maps
     `max` → `xhigh`)
 - `thinking.type` only supports `enabled` (thinking cannot be disabled); we
     recommend `thinking.clear_thinking: false`
-- For streaming, enable both `stream: true` and `tool_stream: true` (VT Code
+- For streaming, enable both `stream: true` and `tool_stream: true` (Diapason
     does this by default)
 
-In VT Code, reasoning effort for Flash is exposed as:
+In Diapason, reasoning effort for Flash is exposed as:
 
 | Effort   | Notes                                          |
 | -------- | ---------------------------------------------- |
@@ -87,7 +87,7 @@ In VT Code, reasoning effort for Flash is exposed as:
 | `high`   | Deep thinking                                  |
 | `xhigh`  | Max reasoning (recommended for Flash per Z.AI) |
 
-Set via `vtcode.toml` or the `/model` picker:
+Set via `config.toml` or the `/model` picker:
 
 ```toml
 [agent]

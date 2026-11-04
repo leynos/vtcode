@@ -1,16 +1,16 @@
 use anyhow::{Result, anyhow};
 use std::str::FromStr;
 
-use vtcode_config::MiMoAuthMethod;
-use vtcode_config::OpenAIServiceTier;
-use vtcode_config::VTCodeConfig;
-use vtcode_config::api_keys::CredentialSource;
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_config::core::CustomProviderConfig;
-use vtcode_core::config::constants::reasoning;
-use vtcode_core::config::models::{ModelId, Provider};
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::llm::{DynamicModelMeta, ModelAvailability, ModelResolver, ResolvedModel};
+use diapason_config::DiapasonConfig;
+use diapason_config::MiMoAuthMethod;
+use diapason_config::OpenAIServiceTier;
+use diapason_config::api_keys::CredentialSource;
+use diapason_config::auth::AuthCredentialsStoreMode;
+use diapason_config::core::CustomProviderConfig;
+use diapason_core::config::constants::reasoning;
+use diapason_core::config::models::{ModelId, Provider};
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::llm::{DynamicModelMeta, ModelAvailability, ModelResolver, ResolvedModel};
 
 use super::options::{ModelOption, find_option_index};
 
@@ -73,7 +73,7 @@ pub(crate) struct ModelSelectionResult {
 pub(super) fn parse_model_selection(
     options: &[ModelOption],
     input: &str,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> Result<SelectionDetail> {
     let trimmed = input.trim();
     if !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_digit()) {
@@ -291,7 +291,7 @@ pub(super) fn selection_from_dynamic_with_api_key_env(
     let resolved = ModelResolver::resolve_with_mode_and_api_key_env(
         Some(provider.as_ref()),
         model_id,
-        &[vtcode_core::llm::DynamicModelRef { provider, model_id }],
+        &[diapason_core::llm::DynamicModelRef { provider, model_id }],
         Some(DynamicModelMeta {
             display_name: display_name.to_string(),
             description: description.map(ToOwned::to_owned),
@@ -328,7 +328,7 @@ pub(super) fn selection_from_dynamic_with_api_key_env(
     )
 }
 
-fn storage_mode(vt_cfg: Option<&VTCodeConfig>) -> AuthCredentialsStoreMode {
+fn storage_mode(vt_cfg: Option<&DiapasonConfig>) -> AuthCredentialsStoreMode {
     vt_cfg.map(|cfg| cfg.agent.credential_storage_mode).unwrap_or_default()
 }
 
@@ -503,8 +503,8 @@ pub(super) fn title_case(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use vtcode_core::config::models::Provider;
-    use vtcode_core::llm::{ModelAvailability, ModelResolver};
+    use diapason_core::config::models::Provider;
+    use diapason_core::llm::{ModelAvailability, ModelResolver};
 
     #[test]
     fn managed_auth_provider_skips_api_key_requirement() {

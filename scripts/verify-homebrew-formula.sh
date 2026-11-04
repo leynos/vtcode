@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VT Code Homebrew Formula Verification Script
+# Diapason Homebrew Formula Verification Script
 # This script validates the Homebrew formula and tests installation
 
 set -euo pipefail
@@ -48,7 +48,7 @@ check_formula_syntax() {
         return 1
     fi
 
-    local formula_path="homebrew/vtcode.rb"
+    local formula_path="homebrew/diapason.rb"
 
     if [ ! -f "$formula_path" ]; then
         print_error "Formula not found at $formula_path"
@@ -78,7 +78,7 @@ check_formula_syntax() {
 verify_checksums() {
     print_info "Verifying checksums against GitHub releases..."
 
-    local formula_path="homebrew/vtcode.rb"
+    local formula_path="homebrew/diapason.rb"
     local version=$(grep 'version "' "$formula_path" | head -1 | sed 's/.*version "\([^"]*\)".*/\1/')
 
     if [ -z "$version" ]; then
@@ -146,7 +146,7 @@ test_installation() {
 
     print_warning "Dry-run installation (not actually installing)"
 
-    local formula_path="homebrew/vtcode.rb"
+    local formula_path="homebrew/diapason.rb"
 
     if ! brew install --dry-run "$formula_path" 2>&1 | head -20; then
         print_warning "Dry-run showed some issues (may be non-critical)"

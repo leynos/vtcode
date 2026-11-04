@@ -1,6 +1,6 @@
 # Ollama Integration Documentation Index
 
-Comprehensive guide to the OpenAI Codex Ollama integration in VT Code.
+Comprehensive guide to the OpenAI Codex Ollama integration in Diapason.
 
 ## Quick Links
 
@@ -158,7 +158,7 @@ pub fn base_url_to_host_root(base_url: &str) -> String
 
 ### Phase 4: Configuration ([wait] Ready)
 
-- [ ] Add `[ollama]` section to `vtcode.toml`
+- [ ] Add `[ollama]` section to `config.toml`
 - [ ] `auto_pull` option
 - [ ] Model whitelist
 - [ ] Timeout configuration
@@ -239,8 +239,8 @@ cargo test --lib ollama -- --nocapture
 ## File Locations
 
 ```
-vtcode/
-├── crates/codegen/vtcode-core/src/llm/providers/
+diapason/
+├── crates/codegen/diapason-core/src/llm/providers/
 │   ├── ollama.rs                  (main provider)
 │   └── ollama/                    (new modules)
 │       ├── client.rs              (high-level API)

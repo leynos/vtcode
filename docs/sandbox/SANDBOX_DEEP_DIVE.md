@@ -1,19 +1,19 @@
-# VT Code Sandbox Deep Dive
+# Diapason Sandbox Deep Dive
 
-This document describes VT Code's sandboxing implementation, inspired by the
+This document describes Diapason's sandboxing implementation, inspired by the
 [Codex sandboxing model](https://pierce.dev/notes/a-deep-dive-on-agent-sandboxes)
 and the AI sandbox field guide.
 
 ## Design Philosophy
 
-VT Code implements **configurable sandbox execution with selective
+Diapason implements **configurable sandbox execution with selective
 escalation**. Sandboxing is opt-in via `[sandbox].enabled = true`; when
 enabled, commands flow through a centralized execution system that decides
 whether to run commands raw, under macOS Seatbelt, or through Linux Landlock +
 seccomp.
 
 Runtime enforcement for shell execution is applied in the active `exec_command`
-path after loading `[sandbox]` from `vtcode.toml`, before PTY process launch.
+path after loading `[sandbox]` from `config.toml`, before PTY process launch.
 
 Key design principles:
 
@@ -25,7 +25,7 @@ Key design principles:
 
 ## Sandbox Policies
 
-VT Code supports three main isolation levels (`SandboxPolicy`):
+Diapason supports three main isolation levels (`SandboxPolicy`):
 
 ### ReadOnly
 
@@ -53,7 +53,7 @@ VT Code supports three main isolation levels (`SandboxPolicy`):
 
 ### macOS Seatbelt
 
-VT Code uses Apple's Seatbelt framework (`/usr/bin/sandbox-exec`) with
+Diapason uses Apple's Seatbelt framework (`/usr/bin/sandbox-exec`) with
 dynamically generated SBPL profiles:
 
 ```scheme
@@ -79,7 +79,7 @@ dynamically generated SBPL profiles:
 
 ### Linux Landlock + seccomp
 
-On Linux, VT Code uses:
+On Linux, Diapason uses:
 
 - **Landlock** (Linux 5.13+): Capability-based filesystem access control
 - **seccomp-BPF**: System call filtering with programmable filters
@@ -122,10 +122,10 @@ applied only after this boundary and cannot restore filtered names.
 Child processes receive environment markers so downstream tools know they're
 sandboxed:
 
-- `VTCODE_SANDBOX_ACTIVE=1`
-- `VTCODE_SANDBOX_NETWORK_DISABLED=1` (when network is blocked)
-- `VTCODE_SANDBOX_TYPE=MacosSeatbelt` (or `LinuxLandlock`)
-- `VTCODE_SANDBOX_WRITABLE_ROOTS=/path/to/workspace`
+- `DIAPASON_SANDBOX_ACTIVE=1`
+- `DIAPASON_SANDBOX_NETWORK_DISABLED=1` (when network is blocked)
+- `DIAPASON_SANDBOX_TYPE=MacosSeatbelt` (or `LinuxLandlock`)
+- `DIAPASON_SANDBOX_WRITABLE_ROOTS=/path/to/workspace`
 
 ### Parent Death Signal (Linux)
 
@@ -183,7 +183,7 @@ Conservative limits for untrusted code:
 Test sandbox configurations without affecting production:
 
 ```rust
-use vtcode_core::sandboxing::{debug_sandbox, sandbox_capabilities_summary, SandboxType, SandboxPolicy};
+use diapason_core::sandboxing::{debug_sandbox, sandbox_capabilities_summary, SandboxType, SandboxPolicy};
 
 // Show sandbox capabilities
 println!("{}", sandbox_capabilities_summary());

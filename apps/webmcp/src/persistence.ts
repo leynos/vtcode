@@ -6,8 +6,8 @@ import {
   type PersistedBrowserState,
 } from "./types.ts";
 
-const STORAGE_KEY = "vtcode-webmcp:browser-workspace";
-const SETTINGS_STORAGE_KEY = "vtcode-webmcp:settings";
+const STORAGE_KEY = "diapason-webmcp:browser-workspace";
+const SETTINGS_STORAGE_KEY = "diapason-webmcp:settings";
 const STORAGE_VERSION = 1 as const;
 const SETTINGS_VERSION = 1 as const;
 const MAX_STATE_BYTES = 8 * 1024 * 1024;

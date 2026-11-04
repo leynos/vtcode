@@ -4,9 +4,9 @@ mod prep;
 mod run;
 
 use anyhow::{Result, bail};
+use diapason_core::config::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
 use std::path::PathBuf;
-use vtcode_core::config::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
 
 pub use prep::ExecCommandKind;
 pub(crate) use prep::resolve_exec_command;
@@ -23,12 +23,12 @@ pub struct ExecCommandOptions {
 
 pub async fn handle_exec_command(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     options: ExecCommandOptions,
 ) -> Result<()> {
     tokio::select! {
         res = run::handle_exec_command_impl(config, vt_cfg, options) => res,
-        _ = vtcode_core::shutdown::shutdown_signal() => {
+        _ = diapason_core::shutdown::shutdown_signal() => {
             eprintln!("{}", crate::cli::messages::warn("Cancelled by user."));
             bail!("Operation cancelled");
         }
@@ -42,13 +42,13 @@ mod tests {
     use super::run::{
         REVIEW_TASK_ID, effective_exec_events_path, resolve_exec_event_log_path, task_instructions, task_spec,
     };
-    use tempfile::TempDir;
-    use vtcode_core::core::agent::task::{TaskOutcome, TaskResults};
-    use vtcode_core::exec::events::{
+    use diapason_core::core::agent::task::{TaskOutcome, TaskResults};
+    use diapason_core::exec::events::{
         AgentMessageItem, CommandExecutionItem, CommandExecutionStatus, ErrorItem, HarnessEventItem, HarnessEventKind,
         ItemCompletedEvent, ItemStartedEvent, PlanDeltaEvent, ReasoningItem, ThreadErrorEvent, ThreadEvent, ThreadItem,
         ThreadItemDetails, ThreadStartedEvent, TurnCompletedEvent, Usage,
     };
+    use tempfile::TempDir;
 
     type TestProcessor = ExecEventProcessor<Vec<u8>, Vec<u8>, Vec<u8>>;
 
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn review_commands_use_review_instructions() {
-        let spec = vtcode_core::review::build_review_spec(false, None, Vec::new(), None).expect("review spec");
+        let spec = diapason_core::review::build_review_spec(false, None, Vec::new(), None).expect("review spec");
         let task = task_spec(&ExecCommandKind::Review { spec }, false);
 
         assert_eq!(task.id, REVIEW_TASK_ID);

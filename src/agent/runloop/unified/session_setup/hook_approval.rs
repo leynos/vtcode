@@ -1,9 +1,9 @@
 //! Interactive approval for workspace-controlled lifecycle hooks.
 //!
-//! Workspace-controlled configuration (a workspace-root `vtcode.toml`, the
-//! workspace `.vtcode/vtcode.toml` fallback, a project profile inside the
+//! Workspace-controlled configuration (a workspace-root `config.toml`, the
+//! workspace `.diapason/config.toml` fallback, a project profile inside the
 //! workspace, or a workspace-sourced agent spec with hooks) can declare
-//! lifecycle hook commands that VT Code otherwise runs automatically via
+//! lifecycle hook commands that Diapason otherwise runs automatically via
 //! `sh -c`. Because that configuration is attacker-influenceable in an
 //! untrusted repository, no lifecycle hook runs while workspace-controlled
 //! hook content is present until the user approves the exact command set the
@@ -14,12 +14,12 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use tokio::sync::Notify;
-use vtcode_core::core::interfaces::ui::UiSession;
-use vtcode_core::hooks::LifecycleHookCommandPreview;
-use vtcode_ui::tui::app::{
+use diapason_core::core::interfaces::ui::UiSession;
+use diapason_core::hooks::LifecycleHookCommandPreview;
+use diapason_ui::tui::app::{
     InlineHandle, InlineListItem, InlineListSelection, ListOverlayRequest, TransientRequest, TransientSubmission,
 };
+use tokio::sync::Notify;
 
 use crate::agent::runloop::unified::overlay_prompt::{OverlayWaitOutcome, show_overlay_and_wait};
 use crate::agent::runloop::unified::state::CtrlCState;
@@ -40,9 +40,9 @@ pub(crate) async fn prompt_workspace_hook_approval<S: UiSession + ?Sized>(
     commands: &[LifecycleHookCommandPreview],
 ) -> Result<HookApprovalDecision> {
     let mut lines = vec![
-        "The workspace configuration defines lifecycle hook commands that VT Code".to_string(),
+        "The workspace configuration defines lifecycle hook commands that Diapason".to_string(),
         "runs automatically. They execute via `sh -c` from the workspace directory and".to_string(),
-        "are controlled by files inside the workspace (vtcode.toml / .vtcode), so an".to_string(),
+        "are controlled by files inside the workspace (config.toml / .diapason), so an".to_string(),
         "untrusted repository could change them. Approving runs the exact command set".to_string(),
         "below; any later change to these commands requires a new approval.".to_string(),
         String::new(),

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
-import { runVtcodeCommand } from "../utils/vtcodeRunner";
+import { runDiapasonCommand } from "../utils/diapasonRunner";
 
 /**
  * Command to find files using fuzzy pattern matching
@@ -9,7 +9,7 @@ import { runVtcodeCommand } from "../utils/vtcodeRunner";
  * Supports fuzzy filename matching and respects .gitignore files.
  */
 export class FindFilesCommand extends BaseCommand {
-    public readonly id = "vtcode.findFiles";
+    public readonly id = "diapason.findFiles";
     public readonly title = "Find Files";
     public readonly description = "Find files using fuzzy pattern matching";
     public readonly icon = "search";
@@ -48,13 +48,13 @@ export class FindFilesCommand extends BaseCommand {
                 args.push("--limit", limit.toString());
             }
 
-            await runVtcodeCommand(args, {
+            await runDiapasonCommand(args, {
                 title: `Finding files matching "${pattern}"…`,
                 output: context.output,
             });
 
             void vscode.window.showInformationMessage(
-                `File search completed. Check the VT Code output channel for results.`
+                `File search completed. Check the Diapason output channel for results.`
             );
         } catch (error) {
             this.handleCommandError("find files", error);

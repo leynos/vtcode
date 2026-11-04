@@ -1,14 +1,14 @@
-# VT Code Tool Specifications
+# Diapason Tool Specifications
 
-This document describes the public tool surface exposed to VT Code models after
-the Codex-style tool migration.
+This document describes the public tool surface exposed to Diapason models
+after the Codex-style tool migration.
 
 ## Public Profiles
 
-| Profile          | Tools                                                        | Use                                                                                           |
-| ---------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| Default          | `exec_command`, `write_stdin`, `apply_patch`, `search_tools` | Normal repository work plus deferred capability discovery.                                    |
-| Advanced VT Code | Default tools plus `code_search`                             | Bounded workspace search for definitions, syntactic usages, literal text, and matching paths. |
+| Profile           | Tools                                                        | Use                                                                                           |
+| ----------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Default           | `exec_command`, `write_stdin`, `apply_patch`, `search_tools` | Normal repository work plus deferred capability discovery.                                    |
+| Advanced Diapason | Default tools plus `code_search`                             | Bounded workspace search for definitions, syntactic usages, literal text, and matching paths. |
 
 No `unified_*` schema, alias, hidden public tool, or compatibility profile is
 available after this migration. Those names are legacy external schema names
@@ -34,8 +34,8 @@ Common optional fields:
 - `max_output_tokens`: output budget for the response.
 
 Every function tool accepts `max_output_tokens`. It defaults to 10,000 and must
-be between 1 and 50,000. VT Code spools the complete output and limits only the
-model-visible preview.
+be between 1 and 50,000. Diapason spools the complete output and limits only
+the model-visible preview.
 
 The limit is validated during preflight before dispatch. Omit it to use the
 10,000-token default or provide an integer override in that range; strings,
@@ -47,13 +47,13 @@ approval metadata.
 Unix-like example:
 
 ```json
-{"cmd":"rg -n \"ToolProfile\" vtcode-core","workdir":"/repo"}
+{"cmd":"rg -n \"ToolProfile\" diapason-core","workdir":"/repo"}
 ```
 
 PowerShell example:
 
 ```json
-{"cmd":"Select-String -Path vtcode-core/**/*.rs -Pattern ToolProfile","workdir":"C:\\repo"}
+{"cmd":"Select-String -Path diapason-core/**/*.rs -Pattern ToolProfile","workdir":"C:\\repo"}
 ```
 
 ### `write_stdin`
@@ -100,7 +100,7 @@ Example:
 
 ### `apply_patch`
 
-Applies a freeform patch through VT Code's workspace-boundary and edit-safety
+Applies a freeform patch through Diapason's workspace-boundary and edit-safety
 checks. Use it for file edits, additions, moves, and deletions when the model
 has the patch tool. Successful responses include a bounded `diff` array with
 one entry per planned file (`path`, `operation`, bounded unified `content`, and
@@ -151,7 +151,7 @@ for the next request segment.
 
 ## Advanced Code Search
 
-`code_search` is available only when the advanced VT Code profile is enabled.
+`code_search` is available only when the advanced Diapason profile is enabled.
 It accepts exactly five inputs:
 
 - `query` is required and searched literally. A wholly lower-case query is
@@ -177,7 +177,7 @@ have more candidates; it does not report an exact repository-wide total. Narrow
 Example:
 
 ```json
-{"query":"ToolProfile","path":"vtcode-core","file_types":["rust"],"result_types":["definition","usage"],"max_results":20}
+{"query":"ToolProfile","path":"diapason-core","file_types":["rust"],"result_types":["definition","usage"],"max_results":20}
 ```
 
 Use `exec_command` or the specialised ast-grep skill for arbitrary structural
@@ -204,7 +204,7 @@ use case justifies them. They must not reuse a legacy `unified_*` name.
 
 ## Platform Profiles
 
-VT Code selects the model-facing shell guidance from
+Diapason selects the model-facing shell guidance from
 `agent.shell_prompt_profile`.
 
 | Platform       | Default profile | Guidance                                              |
@@ -215,8 +215,9 @@ VT Code selects the model-facing shell guidance from
 | Native Windows | `powershell`    | Use native PowerShell syntax.                         |
 
 The setting accepts `auto`, `unix_like`, or `powershell`. It controls prompt
-examples and expected command syntax only. VT Code does not translate GNU flags
-for macOS BSD tools, and it does not translate Unix commands to PowerShell.
+examples and expected command syntax only. Diapason does not translate GNU
+flags for macOS BSD tools, and it does not translate Unix commands to
+PowerShell.
 
 ## Migration From Removed Schemas
 
@@ -235,11 +236,11 @@ External users of the removed legacy schemas must update their calls directly:
 Short replacements:
 
 ```json
-{"cmd":"rg -n \"struct ToolRegistration\" vtcode-core"}
+{"cmd":"rg -n \"struct ToolRegistration\" diapason-core"}
 ```
 
 ```json
-{"query":"ToolRegistration","path":"crates/codegen/vtcode-core/src/tools","file_types":["rust"],"result_types":["definition"]}
+{"query":"ToolRegistration","path":"crates/codegen/diapason-core/src/tools","file_types":["rust"],"result_types":["definition"]}
 ```
 
 ## Related Docs

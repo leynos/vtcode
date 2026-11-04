@@ -1,10 +1,10 @@
 # anstyle-parse Integration Guide
 
-**Implementation Steps for vtcode System**
+**Implementation Steps for diapason System**
 
 ## Step 1: Add Dependency
 
-**File: `vtcode-core/Cargo.toml`**
+**File: `diapason-core/Cargo.toml`**
 
 ```toml
 [dependencies]
@@ -14,7 +14,7 @@ anstyle-parse = "0.2"  # Add this line
 
 ## Step 2: Create Parser Wrapper Module
 
-**File: `crates/codegen/vtcode-core/src/utils/ansi_parser.rs`**
+**File: `crates/codegen/diapason-core/src/utils/ansi_parser.rs`**
 
 ```rust
 //! ANSI escape sequence parser wrapper using anstyle-parse
@@ -284,8 +284,8 @@ mod tests {
 
     #[test]
     fn test_strip_ansi_multiple() {
-        let input = "Checking \x1b[0m\x1b[1m\x1b[32mvtcode\x1b[0m";
-        assert_eq!(strip_ansi(input), "Checking vtcode");
+        let input = "Checking \x1b[0m\x1b[1m\x1b[32mdiapason\x1b[0m";
+        assert_eq!(strip_ansi(input), "Checking diapason");
     }
 
     #[test]
@@ -298,7 +298,7 @@ mod tests {
 
 ## Step 3: Update Module Exports
 
-**File: `crates/codegen/vtcode-core/src/utils/mod.rs`**
+**File: `crates/codegen/diapason-core/src/utils/mod.rs`**
 
 Add:
 
@@ -308,7 +308,7 @@ pub mod ansi_parser;
 
 ## Step 4: Replace Manual Parser in PTY
 
-**File: `crates/codegen/vtcode-core/src/tools/pty.rs`**
+**File: `crates/codegen/diapason-core/src/tools/pty.rs`**
 
 Replace the `parse_ansi_sequence` function with:
 
@@ -386,7 +386,7 @@ fn parse_ansi_sequence(text: &str) -> Option<usize> {
 ## Step 5: Update ANSI Stripping
 
 **File:**
-`crates/codegen/vtcode-core/src/tools/registry/executors/exec_output.rs`
+`crates/codegen/diapason-core/src/tools/registry/executors/exec_output.rs`
 
 Replace `strip_ansi` function with:
 
@@ -402,8 +402,8 @@ Simplifies from ~60 lines to 1 line!
 
 ## Step 6: Testing
 
-**File: `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` (already included
-in Step 2)**
+**File: `crates/codegen/diapason-core/src/utils/ansi_parser.rs` (already
+included in Step 2)**
 
 Run tests:
 
@@ -416,9 +416,9 @@ cargo test ansi_parser::tests
 ```rust
 #[test]
 fn test_ansi_parser_with_real_tool_output() {
-    let output = "cargo check\n\x1b[0m\x1b[1m\x1b[32mvtcode\x1b[0m v0.1.0\n\x1b[0m";
+    let output = "cargo check\n\x1b[0m\x1b[1m\x1b[32mdiapason\x1b[0m v0.1.0\n\x1b[0m";
     let parsed = parse_ansi(output);
-    assert!(parsed.plain_text.contains("vtcode v0.1.0"));
+    assert!(parsed.plain_text.contains("diapason v0.1.0"));
     assert!(!parsed.plain_text.contains("\x1b"));
 }
 ```
@@ -477,9 +477,9 @@ pub fn truncate_with_ansi(text: &str, width: usize) -> String {
 
 ## Verification Checklist
 
-- [ ] Add `anstyle-parse = "0.2"` to `vtcode-core/Cargo.toml`
-- [ ] Create `crates/codegen/vtcode-core/src/utils/ansi_parser.rs`
-- [ ] Add module export to `crates/codegen/vtcode-core/src/utils/mod.rs`
+- [ ] Add `anstyle-parse = "0.2"` to `diapason-core/Cargo.toml`
+- [ ] Create `crates/codegen/diapason-core/src/utils/ansi_parser.rs`
+- [ ] Add module export to `crates/codegen/diapason-core/src/utils/mod.rs`
 - [ ] Run `cargo check` - verifies compilation
 - [ ] Run `cargo test` - all tests pass
 - [ ] Replace `strip_ansi` in `executors/exec_output.rs`

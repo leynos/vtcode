@@ -1,24 +1,24 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use vtcode_config::api_keys::{CredentialSource, DiscoveredProvider, find_discovered};
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::models::Provider;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::ui::interactive_list::SelectionEntry;
+use diapason_config::api_keys::{CredentialSource, DiscoveredProvider, find_discovered};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::models::Provider;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::ui::interactive_list::SelectionEntry;
 
 use super::common::{prompt_with_placeholder, run_selection};
 
 /// Pick the initial provider for the wizard.
 ///
 /// Order of preference:
-/// 1. The provider already recorded in `vtcode.toml` (if valid).
+/// 1. The provider already recorded in `config.toml` (if valid).
 /// 2. The first provider with a discoverable credential (env var, OS keyring,
 ///    OAuth, managed auth, or local) — so a user who already exports, say,
 ///    `OPENROUTER_API_KEY` is not defaulted into OpenAI (which they may have
 ///    no key for).
 /// 3. The built-in default provider.
-fn whitelist_has_only_custom_providers(config: &VTCodeConfig) -> bool {
+fn whitelist_has_only_custom_providers(config: &DiapasonConfig) -> bool {
     if config.providers_whitelist.is_empty() {
         return false;
     }
@@ -27,10 +27,10 @@ fn whitelist_has_only_custom_providers(config: &VTCodeConfig) -> bool {
     })
 }
 
-pub(crate) fn resolve_initial_provider(config: &VTCodeConfig, discovered: &[DiscoveredProvider]) -> Provider {
+pub(crate) fn resolve_initial_provider(config: &DiapasonConfig, discovered: &[DiscoveredProvider]) -> Provider {
     let configured = config.agent.provider.trim();
     let hardcoded_default =
-        Provider::from_str(vtcode_core::config::constants::defaults::DEFAULT_PROVIDER).unwrap_or(Provider::OpenAI);
+        Provider::from_str(diapason_core::config::constants::defaults::DEFAULT_PROVIDER).unwrap_or(Provider::OpenAI);
 
     if !configured.is_empty() {
         // Custom provider names don't have a Provider enum variant.
@@ -166,7 +166,7 @@ fn provider_entries(providers: &[Provider], discovered: &[DiscoveredProvider]) -
 
 /// Build the per-provider readiness marker shown under the provider name.
 /// Surfaces the *specific* env var that was discovered so the user knows
-/// exactly what vtcode read (e.g. `GOOGLE_API_KEY` vs `GEMINI_API_KEY`).
+/// exactly what diapason read (e.g. `GOOGLE_API_KEY` vs `GEMINI_API_KEY`).
 fn ready_subtitle(provider: Provider, entry: &DiscoveredProvider) -> String {
     let mark = match entry.source {
         CredentialSource::Env
@@ -269,10 +269,10 @@ fn select_provider_with_ratatui(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_config::api_keys::discover_available_providers;
+    use diapason_config::api_keys::discover_available_providers;
 
-    fn base_config() -> VTCodeConfig {
-        VTCodeConfig::default()
+    fn base_config() -> DiapasonConfig {
+        DiapasonConfig::default()
     }
 
     #[test]
@@ -402,8 +402,8 @@ mod tests {
             },
         ];
 
-        let expected =
-            Provider::from_str(vtcode_core::config::constants::defaults::DEFAULT_PROVIDER).unwrap_or(Provider::OpenAI);
+        let expected = Provider::from_str(diapason_core::config::constants::defaults::DEFAULT_PROVIDER)
+            .unwrap_or(Provider::OpenAI);
 
         let resolved = resolve_initial_provider(&config, &discovered);
         assert_eq!(

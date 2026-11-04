@@ -1,0 +1,366 @@
+use std::collections::VecDeque;
+use std::time::Instant;
+
+use crate::tools::circuit_breaker::{CircuitBreaker, CircuitState, ToolCircuitDiagnostics};
+
+// Re-export from diapason-config so call sites outside this module keep compiling.
+pub use diapason_config::constants::execution::{DEFAULT_MAX_OPEN_CIRCUITS, DEFAULT_MAX_RECENT_ERRORS};
+
+#[derive(Debug, Clone)]
+pub struct ErrorRecoveryState {
+    pub recent_errors: VecDeque<RecentError>,
+    pub circuit_events: VecDeque<CircuitEvent>,
+    pub pause_threshold: usize,
+    pub last_recovery_prompt: Option<Instant>,
+    pub recovery_cooldown: std::time::Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecentError {
+    pub tool_name: String,
+    pub timestamp: Instant,
+    pub error_message: String,
+    pub error_type: ErrorType,
+    /// Canonical error category for consistent retry/recovery decisions.
+    pub category: Option<diapason_commons::ErrorCategory>,
+}
+
+// Re-export the canonical ErrorType from core::error_recovery
+pub use crate::core::error_recovery::ErrorType;
+
+#[derive(Debug, Clone)]
+pub struct CircuitEvent {
+    pub tool_name: String,
+    pub timestamp: Instant,
+    pub state: String,
+    pub failure_count: u32,
+    pub backoff_duration: std::time::Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecoveryDiagnostics {
+    pub open_circuits: Vec<String>,
+    pub recent_errors: Vec<RecentError>,
+    pub error_patterns: Vec<ErrorPattern>,
+    pub should_pause: bool,
+    pub pause_reason: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ErrorPattern {
+    pub tool_name: String,
+    pub error_count: usize,
+    pub common_error: String,
+    pub error_types: Vec<ErrorType>,
+}
+
+impl Default for ErrorRecoveryState {
+    fn default() -> Self {
+        Self {
+            recent_errors: VecDeque::with_capacity(DEFAULT_MAX_RECENT_ERRORS),
+            circuit_events: VecDeque::with_capacity(DEFAULT_MAX_RECENT_ERRORS),
+            pause_threshold: DEFAULT_MAX_OPEN_CIRCUITS,
+            last_recovery_prompt: None,
+            recovery_cooldown: std::time::Duration::from_secs(60),
+        }
+    }
+}
+
+impl ErrorRecoveryState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_threshold(max_open_circuits: usize) -> Self {
+        Self {
+            recent_errors: VecDeque::with_capacity(DEFAULT_MAX_RECENT_ERRORS),
+            circuit_events: VecDeque::with_capacity(DEFAULT_MAX_RECENT_ERRORS),
+            pause_threshold: max_open_circuits,
+            last_recovery_prompt: None,
+            recovery_cooldown: std::time::Duration::from_secs(60),
+        }
+    }
+
+    pub fn record_error(&mut self, tool_name: &str, error_message: String, error_type: ErrorType) {
+        let category = diapason_commons::classify_error_message(&error_message);
+        self.record_error_with_category(tool_name, error_message, error_type, Some(category));
+    }
+
+    pub fn record_error_with_category(
+        &mut self,
+        tool_name: &str,
+        error_message: String,
+        error_type: ErrorType,
+        category: Option<diapason_commons::ErrorCategory>,
+    ) {
+        self.recent_errors.push_front(RecentError {
+            tool_name: tool_name.to_string(),
+            timestamp: Instant::now(),
+            error_message,
+            error_type,
+            category,
+        });
+
+        if self.recent_errors.len() > DEFAULT_MAX_RECENT_ERRORS {
+            self.recent_errors.pop_back();
+        }
+    }
+
+    /// Records a circuit-breaker state change or blocked call event.
+    pub fn record_circuit_event(
+        &mut self,
+        tool_name: &str,
+        state: &str,
+        failure_count: u32,
+        backoff_duration: std::time::Duration,
+    ) {
+        self.circuit_events.push_back(CircuitEvent {
+            tool_name: tool_name.to_string(),
+            timestamp: Instant::now(),
+            state: state.to_string(),
+            failure_count,
+            backoff_duration,
+        });
+
+        if self.circuit_events.len() > DEFAULT_MAX_RECENT_ERRORS {
+            self.circuit_events.pop_front();
+        }
+    }
+
+    /// Records events derived from a circuit-breaker state transition,
+    /// including state changes and newly blocked calls.
+    pub fn record_circuit_transition(&mut self, before: &ToolCircuitDiagnostics, after: &ToolCircuitDiagnostics) {
+        debug_assert_eq!(before.tool_name, after.tool_name);
+
+        let backoff_duration = after.remaining_backoff.unwrap_or(after.current_backoff);
+
+        if before.status != after.status {
+            let state = match after.status {
+                CircuitState::Open => "open",
+                CircuitState::HalfOpen => "half_open",
+                CircuitState::Closed => "reset",
+            };
+            self.record_circuit_event(&after.tool_name, state, after.failure_count, backoff_duration);
+        }
+
+        if after.denied_requests > before.denied_requests {
+            self.record_circuit_event(&after.tool_name, "blocked_call", after.failure_count, backoff_duration);
+        }
+    }
+
+    /// Snapshot the current circuit-breaker state for `tool_name`, compare it
+    /// to `before`, and record any transition.
+    ///
+    /// This is the shared seam used by both the core `AgentRunner`
+    /// (`runner/tool_exec.rs`) and the unified binary runloop
+    /// (`handlers_batch.rs`) so the compare-and-record logic is not
+    /// duplicated across harness paths. Callers acquire their own lock on
+    /// `ErrorRecoveryState` (sync or async) and pass the breaker reference.
+    pub fn record_circuit_transition_from_snapshot(
+        &mut self,
+        breaker: &CircuitBreaker,
+        tool_name: &str,
+        before: &ToolCircuitDiagnostics,
+    ) {
+        let after = breaker.get_diagnostics(tool_name);
+        if before.status != after.status || after.denied_requests > before.denied_requests {
+            self.record_circuit_transition(before, &after);
+        }
+    }
+
+    /// Builds a diagnostic summary from the current state, including whether
+    /// the agent should pause for user guidance.
+    ///
+    /// `error_patterns` is left empty here; callers that need pattern analysis
+    /// should call [`Self::detect_error_patterns`] explicitly. This avoids
+    /// building a per-tool error histogram on every recovery diagnostics call
+    /// when no production path consumes it.
+    pub fn get_diagnostics(&self, open_circuits: &[String], max_recent_errors: usize) -> RecoveryDiagnostics {
+        let recent_errors: Vec<RecentError> = self.recent_errors.iter().take(max_recent_errors).cloned().collect();
+
+        let should_pause = open_circuits.len() >= self.pause_threshold;
+        let pause_reason = if should_pause {
+            Some(format!(
+                "{} circuit(s) open: {}. Consider pausing for user guidance.",
+                open_circuits.len(),
+                open_circuits.join(", ")
+            ))
+        } else {
+            None
+        };
+
+        RecoveryDiagnostics {
+            open_circuits: open_circuits.to_vec(),
+            recent_errors,
+            error_patterns: Vec::new(),
+            should_pause,
+            pause_reason,
+        }
+    }
+
+    /// Group recent errors by tool and surface tools with repeated failures.
+    ///
+    /// Only tools with at least two recent errors are reported. The
+    /// `common_error` field is the first-seen message for that tool, not a
+    /// frequency-weighted "most common" message.
+    pub fn detect_error_patterns(&self) -> Vec<ErrorPattern> {
+        let mut tool_errors: hashbrown::HashMap<String, (usize, String, hashbrown::HashSet<ErrorType>)> =
+            hashbrown::HashMap::new();
+
+        for error in &self.recent_errors {
+            let entry = tool_errors.entry(error.tool_name.clone()).or_insert((
+                0,
+                error.error_message.clone(),
+                hashbrown::HashSet::new(),
+            ));
+            entry.0 += 1;
+            entry.2.insert(error.error_type);
+        }
+
+        tool_errors
+            .into_iter()
+            .filter(|(_, (count, _, _))| *count >= 2)
+            .map(|(tool_name, (count, common_error, error_types))| ErrorPattern {
+                tool_name,
+                error_count: count,
+                common_error,
+                error_types: error_types.into_iter().collect(),
+            })
+            .collect()
+    }
+
+    /// Returns `true` if enough time has elapsed since the last recovery prompt
+    /// to show another one.
+    pub fn can_prompt_user(&self) -> bool {
+        if let Some(last_prompt) = self.last_recovery_prompt {
+            last_prompt.elapsed() >= self.recovery_cooldown
+        } else {
+            true
+        }
+    }
+
+    /// Records that a recovery prompt was shown to the user, resetting the cooldown.
+    pub fn mark_prompt_shown(&mut self) {
+        self.last_recovery_prompt = Some(Instant::now());
+    }
+
+    /// Clears all recorded recent errors.
+    pub fn clear_recent_errors(&mut self) {
+        self.recent_errors.clear();
+    }
+
+    /// Clears all recorded circuit-breaker events.
+    pub fn clear_circuit_events(&mut self) {
+        self.circuit_events.clear();
+    }
+
+    /// Clears all errors, circuit events, and the recovery prompt timestamp.
+    pub fn reset(&mut self) {
+        self.recent_errors.clear();
+        self.circuit_events.clear();
+        self.last_recovery_prompt = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::constants::tools;
+
+    #[test]
+    fn test_record_error() {
+        let mut state = ErrorRecoveryState::new();
+
+        state.record_error(tools::GREP_FILE, "Pattern not found".to_string(), ErrorType::ToolExecution);
+
+        assert_eq!(state.recent_errors.len(), 1);
+        assert_eq!(state.recent_errors[0].tool_name, tools::GREP_FILE);
+    }
+
+    #[test]
+    fn test_error_limit() {
+        let mut state = ErrorRecoveryState::new();
+
+        for i in 0..15 {
+            state.record_error(&format!("tool_{}", i % 3), format!("error {i}"), ErrorType::ToolExecution);
+        }
+
+        assert_eq!(state.recent_errors.len(), DEFAULT_MAX_RECENT_ERRORS);
+    }
+
+    #[test]
+    fn record_circuit_transition_tracks_open_and_blocked_calls() {
+        let mut state = ErrorRecoveryState::new();
+        let before = ToolCircuitDiagnostics {
+            tool_name: "read_file".to_string(),
+            status: CircuitState::Closed,
+            failure_count: 0,
+            current_backoff: std::time::Duration::ZERO,
+            remaining_backoff: None,
+            opened_at: None,
+            open_count: 0,
+            is_open: false,
+            denied_requests: 0,
+            last_denied_at: None,
+            last_error_category: None,
+        };
+        let after = ToolCircuitDiagnostics {
+            tool_name: "read_file".to_string(),
+            status: CircuitState::Open,
+            failure_count: 3,
+            current_backoff: std::time::Duration::from_secs(5),
+            remaining_backoff: Some(std::time::Duration::from_secs(4)),
+            opened_at: None,
+            open_count: 1,
+            is_open: true,
+            denied_requests: 2,
+            last_denied_at: None,
+            last_error_category: Some(diapason_commons::ErrorCategory::Timeout),
+        };
+
+        state.record_circuit_transition(&before, &after);
+
+        assert_eq!(state.circuit_events.len(), 2);
+        assert_eq!(state.circuit_events[0].state, "open");
+        assert_eq!(state.circuit_events[1].state, "blocked_call");
+    }
+
+    #[test]
+    fn test_error_pattern_detection() {
+        let mut state = ErrorRecoveryState::new();
+
+        for _i in 0..3 {
+            state.record_error(tools::GREP_FILE, "Pattern not found".to_string(), ErrorType::ToolExecution);
+        }
+
+        state.record_error("read_file", "File not found".to_string(), ErrorType::ResourceNotFound);
+
+        let patterns = state.detect_error_patterns();
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].tool_name, tools::GREP_FILE);
+        assert_eq!(patterns[0].error_count, 3);
+    }
+
+    #[test]
+    fn test_pause_threshold() {
+        let state = ErrorRecoveryState::with_threshold(3);
+
+        let open_circuits = vec!["tool1".to_string(), "tool2".to_string()];
+        let diagnostics = state.get_diagnostics(&open_circuits, 10);
+        assert!(!diagnostics.should_pause);
+
+        let open_circuits = vec!["tool1".to_string(), "tool2".to_string(), "tool3".to_string()];
+        let diagnostics = state.get_diagnostics(&open_circuits, 10);
+        assert!(diagnostics.should_pause);
+    }
+
+    #[test]
+    fn test_cooldown() {
+        let mut state = ErrorRecoveryState::new();
+
+        assert!(state.can_prompt_user());
+
+        state.mark_prompt_shown();
+        assert!(!state.can_prompt_user());
+    }
+}

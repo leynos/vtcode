@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report or enforce Rust file length limits for VT Code governance."""
+"""Report or enforce Rust file length limits for Diapason governance."""
 
 from __future__ import annotations
 

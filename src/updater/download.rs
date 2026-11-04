@@ -90,7 +90,7 @@ pub(super) fn checksum_asset<'a>(assets: &'a [ReleaseAsset], archive_name: &str)
     let archive_name = archive_name.to_ascii_lowercase();
     // Modern sidecar: `archive.tar.gz.sha256` / `archive.zip.sha256`.
     let modern_sidecar = format!("{archive_name}.sha256");
-    // Legacy extension-stripped sidecar: `vtcode-<v>-<target>.sha256`
+    // Legacy extension-stripped sidecar: `diapason-<v>-<target>.sha256`
     // (the `.tar.gz`/`.zip` suffix removed). This is the convention the
     // release pipeline publishes today, so prefer it over the aggregate file.
     let legacy_sidecar = legacy_checksum_name(&archive_name);
@@ -114,7 +114,7 @@ pub(super) fn checksum_asset<'a>(assets: &'a [ReleaseAsset], archive_name: &str)
 
 /// Derive the legacy extension-stripped checksum sidecar name for an archive.
 ///
-/// `vtcode-1.0.0-aarch64-apple-darwin.tar.gz` -> `vtcode-1.0.0-aarch64-apple-darwin.sha256`.
+/// `diapason-1.0.0-aarch64-apple-darwin.tar.gz` -> `diapason-1.0.0-aarch64-apple-darwin.sha256`.
 /// Returns `None` for archives that are neither `.tar.gz` nor `.zip`.
 fn legacy_checksum_name(archive_name: &str) -> Option<String> {
     archive_name
@@ -224,9 +224,9 @@ mod tests {
 
     #[test]
     fn parses_checksum_for_named_archive() {
-        let checksum = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  vtcode-1.0.0.tar.gz\n";
+        let checksum = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  diapason-1.0.0.tar.gz\n";
         assert_eq!(
-            parse_checksum_metadata(checksum, "vtcode-1.0.0.tar.gz"),
+            parse_checksum_metadata(checksum, "diapason-1.0.0.tar.gz"),
             Some("deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef".to_string())
         );
     }
@@ -234,18 +234,18 @@ mod tests {
     #[test]
     fn ignores_checksum_for_another_archive() {
         let checksum = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  other.tar.gz\n";
-        assert!(parse_checksum_metadata(checksum, "vtcode.tar.gz").is_none());
+        assert!(parse_checksum_metadata(checksum, "diapason.tar.gz").is_none());
     }
 
     #[test]
     fn selects_exact_archive_over_compatibility_asset() {
         let checksum = "\
-83bcccc61f7dac396a2ffd31bcd6f2dbdc46363b7551e3dd8fc2dedfe5546cb7  compat-vtcode-0.141.7-aarch64-apple-darwin.tar.gz.compat
-b9362df9124a6180c5cf0787d6159ff525e7caee6ceb51a0987fb827205df91e  vtcode-0.141.7-aarch64-apple-darwin.tar.gz
+83bcccc61f7dac396a2ffd31bcd6f2dbdc46363b7551e3dd8fc2dedfe5546cb7  compat-diapason-0.141.7-aarch64-apple-darwin.tar.gz.compat
+b9362df9124a6180c5cf0787d6159ff525e7caee6ceb51a0987fb827205df91e  diapason-0.141.7-aarch64-apple-darwin.tar.gz
 ";
 
         assert_eq!(
-            parse_checksum_metadata(checksum, "vtcode-0.141.7-aarch64-apple-darwin.tar.gz"),
+            parse_checksum_metadata(checksum, "diapason-0.141.7-aarch64-apple-darwin.tar.gz"),
             Some("b9362df9124a6180c5cf0787d6159ff525e7caee6ceb51a0987fb827205df91e".to_string())
         );
     }
@@ -260,86 +260,86 @@ b9362df9124a6180c5cf0787d6159ff525e7caee6ceb51a0987fb827205df91e  vtcode-0.141.7
 
     #[test]
     fn parse_checksum_metadata_returns_none_for_missing_archive() {
-        assert!(parse_checksum_metadata("signature only", "vtcode.tar.gz").is_none());
+        assert!(parse_checksum_metadata("signature only", "diapason.tar.gz").is_none());
     }
 
     #[test]
     fn ignores_unrelated_architecture_checksum_sidecars() {
         let assets = vec![
             ReleaseAsset {
-                name: "vtcode-1.0.0-aarch64-apple-darwin.tar.gz".to_string(),
+                name: "diapason-1.0.0-aarch64-apple-darwin.tar.gz".to_string(),
                 download_url: "https://example.test/archive".to_string(),
             },
             ReleaseAsset {
-                name: "vtcode-1.0.0-x86_64-apple-darwin.tar.gz.sha256".to_string(),
+                name: "diapason-1.0.0-x86_64-apple-darwin.tar.gz.sha256".to_string(),
                 download_url: "https://example.test/checksum".to_string(),
             },
         ];
 
-        assert!(checksum_asset(&assets, "vtcode-1.0.0-aarch64-apple-darwin.tar.gz").is_none());
+        assert!(checksum_asset(&assets, "diapason-1.0.0-aarch64-apple-darwin.tar.gz").is_none());
     }
 
     #[test]
     fn selects_legacy_extension_stripped_checksum_sidecar() {
-        // The release pipeline publishes `vtcode-<v>-<target>.sha256`
+        // The release pipeline publishes `diapason-<v>-<target>.sha256`
         // (extension-stripped) alongside the `.tar.gz` archive.
         let assets = vec![
             ReleaseAsset {
-                name: "vtcode-1.0.0-aarch64-apple-darwin.tar.gz".to_string(),
+                name: "diapason-1.0.0-aarch64-apple-darwin.tar.gz".to_string(),
                 download_url: "https://example.test/archive".to_string(),
             },
             ReleaseAsset {
-                name: "vtcode-1.0.0-aarch64-apple-darwin.sha256".to_string(),
+                name: "diapason-1.0.0-aarch64-apple-darwin.sha256".to_string(),
                 download_url: "https://example.test/checksum".to_string(),
             },
         ];
 
-        let selected = checksum_asset(&assets, "vtcode-1.0.0-aarch64-apple-darwin.tar.gz").expect("sidecar");
+        let selected = checksum_asset(&assets, "diapason-1.0.0-aarch64-apple-darwin.tar.gz").expect("sidecar");
 
-        assert_eq!(selected.name, "vtcode-1.0.0-aarch64-apple-darwin.sha256");
+        assert_eq!(selected.name, "diapason-1.0.0-aarch64-apple-darwin.sha256");
     }
 
     #[test]
     fn selects_legacy_extension_stripped_checksum_sidecar_for_zip() {
         let assets = vec![
             ReleaseAsset {
-                name: "vtcode-1.0.0-x86_64-pc-windows-msvc.zip".to_string(),
+                name: "diapason-1.0.0-x86_64-pc-windows-msvc.zip".to_string(),
                 download_url: "https://example.test/archive".to_string(),
             },
             ReleaseAsset {
-                name: "vtcode-1.0.0-x86_64-pc-windows-msvc.sha256".to_string(),
+                name: "diapason-1.0.0-x86_64-pc-windows-msvc.sha256".to_string(),
                 download_url: "https://example.test/checksum".to_string(),
             },
         ];
 
-        let selected = checksum_asset(&assets, "vtcode-1.0.0-x86_64-pc-windows-msvc.zip").expect("sidecar");
+        let selected = checksum_asset(&assets, "diapason-1.0.0-x86_64-pc-windows-msvc.zip").expect("sidecar");
 
-        assert_eq!(selected.name, "vtcode-1.0.0-x86_64-pc-windows-msvc.sha256");
+        assert_eq!(selected.name, "diapason-1.0.0-x86_64-pc-windows-msvc.sha256");
     }
 
     #[test]
     fn prefers_modern_sidecar_over_legacy_stripped_sidecar() {
         let assets = vec![
             ReleaseAsset {
-                name: "vtcode-1.0.0-aarch64-apple-darwin.tar.gz.sha256".to_string(),
+                name: "diapason-1.0.0-aarch64-apple-darwin.tar.gz.sha256".to_string(),
                 download_url: "https://example.test/modern".to_string(),
             },
             ReleaseAsset {
-                name: "vtcode-1.0.0-aarch64-apple-darwin.sha256".to_string(),
+                name: "diapason-1.0.0-aarch64-apple-darwin.sha256".to_string(),
                 download_url: "https://example.test/legacy".to_string(),
             },
         ];
 
-        let selected = checksum_asset(&assets, "vtcode-1.0.0-aarch64-apple-darwin.tar.gz").expect("sidecar");
+        let selected = checksum_asset(&assets, "diapason-1.0.0-aarch64-apple-darwin.tar.gz").expect("sidecar");
 
-        assert_eq!(selected.name, "vtcode-1.0.0-aarch64-apple-darwin.tar.gz.sha256");
+        assert_eq!(selected.name, "diapason-1.0.0-aarch64-apple-darwin.tar.gz.sha256");
     }
 
     #[tokio::test]
     async fn download_rejects_untrusted_asset_url_with_asset_context() {
         let asset = ReleaseAsset {
-            name: "vtcode.tar.gz".to_string(),
-            download_url: "https://example.com/vtcode.tar.gz".to_string(),
+            name: "diapason.tar.gz".to_string(),
+            download_url: "https://example.com/diapason.tar.gz".to_string(),
         };
         let temp = tempfile::tempdir().expect("temp");
         let error = download_asset(
@@ -352,7 +352,7 @@ b9362df9124a6180c5cf0787d6159ff525e7caee6ceb51a0987fb827205df91e  vtcode-0.141.7
         .await
         .expect_err("untrusted URL");
 
-        assert!(error.to_string().contains("vtcode.tar.gz"));
+        assert!(error.to_string().contains("diapason.tar.gz"));
     }
 
     #[tokio::test]

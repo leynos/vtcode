@@ -3,17 +3,17 @@
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
 use anyhow::Result;
+use diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics;
+use diapason_core::hooks::{LifecycleHookEngine, SessionEndReason};
+use diapason_core::llm::provider as uni;
+use diapason_core::notifications::{set_global_notification_hook_engine, set_global_terminal_focused};
+use diapason_core::ui::set_tui_mode;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::session_archive::{SessionArchive, SessionMessage};
+use diapason_core::utils::transcript;
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use std::io;
 use std::path::PathBuf;
-use vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics;
-use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::notifications::{set_global_notification_hook_engine, set_global_terminal_focused};
-use vtcode_core::ui::set_tui_mode;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::session_archive::{SessionArchive, SessionMessage};
-use vtcode_core::utils::transcript;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use crate::agent::runloop::unified::async_mcp_manager::AsyncMcpManager;
 use crate::agent::runloop::unified::state::SessionStats;
@@ -29,9 +29,9 @@ pub(super) struct FinalizationOutput {
 /// This ensures that raw mode is disabled and the terminal is left in a usable state
 /// even if the TUI didn't exit cleanly (e.g., due to Ctrl+C)
 fn restore_terminal_on_exit() -> io::Result<()> {
-    // Use the centralized TUI restoration logic from vtcode-core
+    // Use the centralized TUI restoration logic from diapason-core
     // This handles draining events, clearing the line, and proper restoration order
-    vtcode_ui::tui::panic_hook::restore_tui()
+    diapason_ui::tui::panic_hook::restore_tui()
 }
 
 pub(super) async fn finalize_session(

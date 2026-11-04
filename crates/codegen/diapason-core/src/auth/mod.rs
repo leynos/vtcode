@@ -1,0 +1,22 @@
+//! Authentication module for Diapason.
+//!
+//! This module provides:
+//! - OAuth flows for OpenRouter and other providers
+//! - ACP authentication method handling
+//! - Authentication configuration management
+
+pub mod auth_handler;
+
+#[cfg(feature = "a2a-server")]
+pub use diapason_auth::{
+    AuthCallbackOutcome as OAuthResult, OAuthCallbackPage, OAuthProvider,
+    run_auth_code_callback_server as run_oauth_callback_server,
+};
+
+pub use auth_handler::{AuthHandler, AuthMethod};
+
+// Re-export config auth types for convenience
+pub use diapason_config::auth::{
+    AuthStatus, OpenRouterOAuthConfig, OpenRouterToken, PkceChallenge, clear_oauth_token, exchange_code_for_token,
+    generate_pkce_challenge, get_auth_status, get_auth_url, load_oauth_token, save_oauth_token,
+};

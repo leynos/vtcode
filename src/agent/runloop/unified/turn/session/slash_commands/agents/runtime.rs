@@ -1,14 +1,14 @@
 use anyhow::{Result, anyhow};
-use std::path::PathBuf;
-use std::time::Duration;
-use vtcode_core::subagents::{BackgroundSubprocessEntry, SubagentStatusEntry};
-use vtcode_core::utils::ansi::MessageStyle;
+use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentStatusEntry};
+use diapason_core::utils::ansi::MessageStyle;
 #[cfg(test)]
-use vtcode_core::{CommandExecutionStatus, ThreadEvent, ThreadItemDetails, ToolCallStatus};
-use vtcode_ui::tui::app::{
+use diapason_core::{CommandExecutionStatus, ThreadEvent, ThreadItemDetails, ToolCallStatus};
+use diapason_ui::tui::app::{
     InlineListItem, InlineListSearchConfig, InlineListSelection, ListOverlayRequest, TransientEvent, TransientHotkey,
     TransientHotkeyAction, TransientHotkeyKey, TransientRequest, TransientSelectionChange, TransientSubmission,
 };
+use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::agent::runloop::unified::session_setup::refresh_local_agents;
 
@@ -21,7 +21,7 @@ use super::{
 
 pub(super) async fn close_subagent_entry(
     ctx: &mut SlashCommandContext<'_>,
-    controller: &std::sync::Arc<vtcode_core::subagents::SubagentController>,
+    controller: &std::sync::Arc<diapason_core::subagents::SubagentController>,
     id: &str,
     display_label: &str,
 ) -> Result<SlashCommandControl> {
@@ -34,7 +34,7 @@ pub(super) async fn close_subagent_entry(
 
 pub(super) async fn apply_background_subprocess_action(
     ctx: &mut SlashCommandContext<'_>,
-    controller: &std::sync::Arc<vtcode_core::subagents::SubagentController>,
+    controller: &std::sync::Arc<diapason_core::subagents::SubagentController>,
     id: &str,
     force: bool,
 ) -> Result<BackgroundSubprocessEntry> {
@@ -163,8 +163,8 @@ enum InspectorActionKind {
 }
 
 async fn wait_for_inspector_action(
-    handle: &vtcode_ui::tui::app::InlineHandle,
-    session: &mut vtcode_ui::tui::app::InlineSession,
+    handle: &diapason_ui::tui::app::InlineHandle,
+    session: &mut diapason_ui::tui::app::InlineSession,
     ctrl_c_state: &std::sync::Arc<crate::agent::runloop::unified::state::CtrlCState>,
     ctrl_c_notify: &std::sync::Arc<tokio::sync::Notify>,
     initial_selection: Option<InlineListSelection>,
@@ -203,21 +203,21 @@ async fn wait_for_inspector_action(
         };
 
         match event {
-            vtcode_ui::tui::app::InlineEvent::Transient(TransientEvent::SelectionChanged(
+            diapason_ui::tui::app::InlineEvent::Transient(TransientEvent::SelectionChanged(
                 TransientSelectionChange::List(selection),
             )) => {
                 current_selection = Some(selection);
             }
-            vtcode_ui::tui::app::InlineEvent::Transient(TransientEvent::Submitted(TransientSubmission::Selection(
-                selection,
-            ))) => {
+            diapason_ui::tui::app::InlineEvent::Transient(TransientEvent::Submitted(
+                TransientSubmission::Selection(selection),
+            )) => {
                 ctrl_c_state.reset();
                 return Some(InspectorAction {
                     kind: InspectorActionKind::Inspect,
                     selection: Some(selection),
                 });
             }
-            vtcode_ui::tui::app::InlineEvent::Transient(TransientEvent::Submitted(TransientSubmission::Hotkey(
+            diapason_ui::tui::app::InlineEvent::Transient(TransientEvent::Submitted(TransientSubmission::Hotkey(
                 action,
             ))) => {
                 ctrl_c_state.reset();
@@ -229,13 +229,13 @@ async fn wait_for_inspector_action(
                 };
                 return Some(InspectorAction { kind, selection: current_selection.clone() });
             }
-            vtcode_ui::tui::app::InlineEvent::Transient(TransientEvent::Cancelled)
-            | vtcode_ui::tui::app::InlineEvent::Cancel
-            | vtcode_ui::tui::app::InlineEvent::Exit => {
+            diapason_ui::tui::app::InlineEvent::Transient(TransientEvent::Cancelled)
+            | diapason_ui::tui::app::InlineEvent::Cancel
+            | diapason_ui::tui::app::InlineEvent::Exit => {
                 ctrl_c_state.reset();
                 return None;
             }
-            vtcode_ui::tui::app::InlineEvent::Interrupt => {
+            diapason_ui::tui::app::InlineEvent::Interrupt => {
                 handle.close_transient();
                 handle.force_redraw();
                 return None;
@@ -528,7 +528,7 @@ pub(super) async fn show_background_subprocess_inspector(
 
 fn active_agent_inspector_refresh_after(
     entry: &SubagentStatusEntry,
-    snapshot: &vtcode_core::subagents::SubagentThreadSnapshot,
+    snapshot: &diapason_core::subagents::SubagentThreadSnapshot,
 ) -> Option<Duration> {
     (!entry.status.is_terminal() || snapshot.snapshot.turn_in_flight)
         .then_some(Duration::from_millis(ACTIVE_AGENT_INSPECTOR_REFRESH_MS))
@@ -540,8 +540,8 @@ fn background_subprocess_refresh_after(
 ) -> Option<Duration> {
     matches!(
         entry.status,
-        vtcode_core::subagents::BackgroundSubprocessStatus::Starting
-            | vtcode_core::subagents::BackgroundSubprocessStatus::Running
+        diapason_core::subagents::BackgroundSubprocessStatus::Starting
+            | diapason_core::subagents::BackgroundSubprocessStatus::Running
     )
     .then_some(Duration::from_millis(refresh_interval_ms.max(250)))
 }
@@ -552,7 +552,7 @@ fn inspector_live_updates_label(refresh_after: Option<Duration>) -> String {
 
 fn active_agent_summary(
     entry: &SubagentStatusEntry,
-    snapshot: &vtcode_core::subagents::SubagentThreadSnapshot,
+    snapshot: &diapason_core::subagents::SubagentThreadSnapshot,
 ) -> String {
     entry
         .summary
@@ -563,7 +563,7 @@ fn active_agent_summary(
         .unwrap_or_else(|| {
             if snapshot.snapshot.turn_in_flight {
                 "Turn in flight; streaming live updates.".to_string()
-            } else if matches!(entry.status, vtcode_core::subagents::SubagentStatus::Queued) {
+            } else if matches!(entry.status, diapason_core::subagents::SubagentStatus::Queued) {
                 "Queued and waiting to start.".to_string()
             } else if entry.status.is_terminal() {
                 "No summary recorded".to_string()
@@ -581,27 +581,27 @@ pub(super) fn background_subprocess_summary(entry: &BackgroundSubprocessEntry) -
         .filter(|summary| !summary.is_empty())
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| match entry.status {
-            vtcode_core::subagents::BackgroundSubprocessStatus::Starting => {
+            diapason_core::subagents::BackgroundSubprocessStatus::Starting => {
                 "Starting; waiting for subprocess output.".to_string()
             }
-            vtcode_core::subagents::BackgroundSubprocessStatus::Running => {
+            diapason_core::subagents::BackgroundSubprocessStatus::Running => {
                 "Running; waiting for transcript output.".to_string()
             }
-            vtcode_core::subagents::BackgroundSubprocessStatus::Stopped
-            | vtcode_core::subagents::BackgroundSubprocessStatus::Error => "No summary recorded".to_string(),
+            diapason_core::subagents::BackgroundSubprocessStatus::Stopped
+            | diapason_core::subagents::BackgroundSubprocessStatus::Error => "No summary recorded".to_string(),
         })
 }
 
 fn background_subprocess_preview_placeholder(entry: &BackgroundSubprocessEntry) -> String {
     match entry.status {
-        vtcode_core::subagents::BackgroundSubprocessStatus::Starting => {
+        diapason_core::subagents::BackgroundSubprocessStatus::Starting => {
             "Waiting for the subprocess to emit output...".to_string()
         }
-        vtcode_core::subagents::BackgroundSubprocessStatus::Running => {
+        diapason_core::subagents::BackgroundSubprocessStatus::Running => {
             "Subprocess is running; waiting for the next transcript update.".to_string()
         }
-        vtcode_core::subagents::BackgroundSubprocessStatus::Stopped
-        | vtcode_core::subagents::BackgroundSubprocessStatus::Error => "No recent output yet.".to_string(),
+        diapason_core::subagents::BackgroundSubprocessStatus::Stopped
+        | diapason_core::subagents::BackgroundSubprocessStatus::Error => "No recent output yet.".to_string(),
     }
 }
 
@@ -697,7 +697,7 @@ fn summarize_preview_text(text: &str) -> Option<String> {
 
 #[cfg(test)]
 fn collapse_preview_whitespace(text: &str) -> String {
-    vtcode_commons::formatting::collapse_whitespace(text)
+    diapason_commons::formatting::collapse_whitespace(text)
 }
 
 #[cfg(test)]
@@ -792,7 +792,7 @@ async fn confirm_subagent_cancellation(ctx: &mut SlashCommandContext<'_>, name: 
     confirm_list_action(
         ctx,
         "Close delegated agent",
-        &format!("Close `{name}` and stay on the main VT Code session?"),
+        &format!("Close `{name}` and stay on the main Diapason session?"),
         "Close agent",
     )
     .await
@@ -809,7 +809,7 @@ pub(super) fn active_subagent_entries(entries: Vec<SubagentStatusEntry>) -> Vec<
 }
 
 pub(super) fn visible_subagent_entries(mut entries: Vec<SubagentStatusEntry>) -> Vec<SubagentStatusEntry> {
-    entries.retain(|entry| entry.status != vtcode_core::subagents::SubagentStatus::Closed);
+    entries.retain(|entry| entry.status != diapason_core::subagents::SubagentStatus::Closed);
     entries.sort_by(|left, right| {
         left.status
             .is_terminal()
@@ -870,7 +870,7 @@ async fn confirm_list_action(
 pub(super) fn render_background_setup_guidance(ctx: &mut SlashCommandContext<'_>) -> Result<()> {
     ctx.renderer.line(
         MessageStyle::Info,
-        "Background subagents are opt-in. VT Code will not launch one until it is explicitly configured.",
+        "Background subagents are opt-in. Diapason will not launch one until it is explicitly configured.",
     )?;
     ctx.renderer.line(
         MessageStyle::Output,
@@ -886,7 +886,7 @@ pub(super) fn render_background_setup_guidance(ctx: &mut SlashCommandContext<'_>
 pub(super) fn render_active_agent_status_text(
     ctx: &mut SlashCommandContext<'_>,
     entry: &SubagentStatusEntry,
-    snapshot: &vtcode_core::subagents::SubagentThreadSnapshot,
+    snapshot: &diapason_core::subagents::SubagentThreadSnapshot,
 ) -> Result<()> {
     ctx.renderer.line(
         MessageStyle::Info,
@@ -912,7 +912,7 @@ pub(super) fn render_active_agent_status_text(
 
 pub(super) fn render_background_subprocess_status_text(
     ctx: &mut SlashCommandContext<'_>,
-    snapshot: &vtcode_core::subagents::BackgroundSubprocessSnapshot,
+    snapshot: &diapason_core::subagents::BackgroundSubprocessSnapshot,
 ) -> Result<()> {
     render_subprocess_status(ctx, &snapshot.entry)?;
     if let Some(path) = snapshot.entry.transcript_path.as_ref().or(snapshot.entry.archive_path.as_ref()) {

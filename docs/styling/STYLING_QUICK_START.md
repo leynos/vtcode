@@ -5,7 +5,7 @@
 Use the simple chainable API:
 
 ```rust
-use vtcode_core::utils::colors::style;
+use diapason_core::utils::colors::style;
 
 // Basic colors
 println!("{}", style("text").green());
@@ -22,7 +22,7 @@ Convert anstyle to ratatui styles:
 
 ```rust
 use anstyle::{Style, Color, AnsiColor, Effects};
-use vtcode_core::utils::ratatui_styles::anstyle_to_ratatui;
+use diapason_core::utils::ratatui_styles::anstyle_to_ratatui;
 use ratatui::text::Span;
 
 let anstyle = Style::new()
@@ -70,7 +70,7 @@ println!("{}", format!("{}{}{}",
 ));
 
 // Use in TUI
-use vtcode_core::utils::ratatui_styles::anstyle_to_ratatui;
+use diapason_core::utils::ratatui_styles::anstyle_to_ratatui;
 let span = Span::styled("Done", anstyle_to_ratatui(theme.success));
 ```
 
@@ -113,7 +113,7 @@ Color::Ansi256(196)                   // 256-color indexed
 ### Error Messages
 
 ```rust
-use vtcode_core::utils::colors::style;
+use diapason_core::utils::colors::style;
 eprintln!("{}", style("Error: ").red().bold());
 eprintln!("{}", style(message).red());
 ```
@@ -134,7 +134,7 @@ println!("Status: {}{}{}", success.render(), "OK", success.render_reset());
 ### TUI List Item
 
 ```rust
-use vtcode_core::utils::ratatui_styles::anstyle_to_ratatui;
+use diapason_core::utils::ratatui_styles::anstyle_to_ratatui;
 use ratatui::text::{Line, Span};
 
 let label_style = anstyle_to_ratatui(theme.title);
@@ -157,14 +157,14 @@ let line = Line::from(vec![
 ## See Also
 
 - `docs/styling_integration.md` - Detailed guide
-- `vtcode-core/examples/anstyle_ratatui_example.rs` - Full working example
-- `crates/codegen/vtcode-core/src/utils/ratatui_styles.rs` - Module
+- `diapason-core/examples/anstyle_ratatui_example.rs` - Full working example
+- `crates/codegen/diapason-core/src/utils/ratatui_styles.rs` - Module
   documentation
 
 ## Running the Example
 
 ```bash
-cd vtcode-core
+cd diapason-core
 cargo run --example anstyle_ratatui_example
 # Press 'q' to quit
 ```

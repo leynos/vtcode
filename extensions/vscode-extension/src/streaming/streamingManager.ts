@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { VtcodeStreamChunk } from "../vtcodeBackend";
+import { DiapasonStreamChunk } from "../diapasonBackend";
 
 export interface StreamingOptions {
     readonly bufferSize: number;
@@ -18,7 +18,7 @@ export interface StreamMetrics {
 }
 
 /**
- * Enhanced streaming manager for VT Code responses
+ * Enhanced streaming manager for Diapason responses
  * Provides buffering, smoothing, progress tracking, and metrics
  */
 export class StreamingManager implements vscode.Disposable {
@@ -29,12 +29,12 @@ export class StreamingManager implements vscode.Disposable {
         showProgress: true,
     };
 
-    private buffer: VtcodeStreamChunk[] = [];
+    private buffer: DiapasonStreamChunk[] = [];
     private metrics: StreamMetrics | null = null;
     private updateTimer: NodeJS.Timeout | null = null;
     private progressDisposable: vscode.Disposable | null = null;
     private readonly onUpdateEmitter = new vscode.EventEmitter<
-        VtcodeStreamChunk[]
+        DiapasonStreamChunk[]
     >();
     private readonly onCompleteEmitter =
         new vscode.EventEmitter<StreamMetrics>();
@@ -48,7 +48,7 @@ export class StreamingManager implements vscode.Disposable {
      * Stream chunks with enhanced buffering and smoothing
      */
     public async streamChunks(
-        chunkGenerator: AsyncGenerator<VtcodeStreamChunk>,
+        chunkGenerator: AsyncGenerator<DiapasonStreamChunk>,
         options?: Partial<StreamingOptions>
     ): Promise<StreamMetrics> {
         const opts = { ...this.defaultOptions, ...options };
@@ -90,7 +90,7 @@ export class StreamingManager implements vscode.Disposable {
      * Process individual chunk with buffering
      */
     private async processChunk(
-        chunk: VtcodeStreamChunk,
+        chunk: DiapasonStreamChunk,
         options: StreamingOptions
     ): Promise<void> {
         // Add to buffer
@@ -130,9 +130,9 @@ export class StreamingManager implements vscode.Disposable {
     /**
      * Apply smoothing to reduce UI jitter
      */
-    private applySmoothing(chunks: VtcodeStreamChunk[]): VtcodeStreamChunk[] {
+    private applySmoothing(chunks: DiapasonStreamChunk[]): DiapasonStreamChunk[] {
         // Group text chunks by type to reduce rapid updates
-        const smoothed: VtcodeStreamChunk[] = [];
+        const smoothed: DiapasonStreamChunk[] = [];
         let currentText = "";
 
         for (const chunk of chunks) {
@@ -159,7 +159,7 @@ export class StreamingManager implements vscode.Disposable {
     /**
      * Update streaming metrics
      */
-    private updateMetrics(chunk: VtcodeStreamChunk): void {
+    private updateMetrics(chunk: DiapasonStreamChunk): void {
         if (!this.metrics) return;
 
         this.metrics.totalChunks++;
@@ -186,7 +186,7 @@ export class StreamingManager implements vscode.Disposable {
         this.progressDisposable = vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: "VT Code is thinking...",
+                title: "Diapason is thinking...",
                 cancellable: true,
             },
             async (progress, token) => {

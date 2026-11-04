@@ -10,9 +10,9 @@
 use std::path::Path;
 
 use anyhow::Result;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::hooks::LifecycleHookEngine;
-use vtcode_core::llm::provider::{LLMProvider, Message};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::hooks::LifecycleHookEngine;
+use diapason_core::llm::provider::{LLMProvider, Message};
 
 use crate::agent::runloop::unified::context_manager::ContextManager;
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
@@ -70,7 +70,7 @@ pub(crate) struct ModelSwitchCompactionRequest<'a> {
     pub enabled: bool,
     pub provider: &'a dyn LLMProvider,
     pub workspace: &'a Path,
-    pub vt_cfg: Option<&'a VTCodeConfig>,
+    pub vt_cfg: Option<&'a DiapasonConfig>,
     pub targets: ModelSwitchCompactionTargets<'a>,
 }
 
@@ -97,7 +97,7 @@ pub(crate) async fn compact_on_model_switch(
         return Ok(ModelSwitchCompactionOutcome::Unchanged);
     }
 
-    req.targets.session_stats.auto_compact_suppressed = vtcode_core::compaction::SUPPRESS_NONE;
+    req.targets.session_stats.auto_compact_suppressed = diapason_core::compaction::SUPPRESS_NONE;
     req.targets.session_stats.prefire.clear();
 
     // The selection changed (for example an unconfigured custom provider) but no
@@ -139,8 +139,8 @@ pub(crate) async fn compact_on_model_switch(
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use diapason_core::llm::provider::{LLMError, LLMRequest, LLMResponse};
     use tempfile::tempdir;
-    use vtcode_core::llm::provider::{LLMError, LLMRequest, LLMResponse};
 
     struct StubProvider;
 
@@ -165,7 +165,7 @@ mod tests {
             &self,
             model: &str,
             history: &[Message],
-            _options: &vtcode_core::llm::provider::ResponsesCompactionOptions,
+            _options: &diapason_core::llm::provider::ResponsesCompactionOptions,
         ) -> Result<Vec<Message>, LLMError> {
             self.compact_history(model, history).await
         }

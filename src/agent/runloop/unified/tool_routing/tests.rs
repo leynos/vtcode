@@ -6,27 +6,27 @@ use super::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use diapason_config::core::PromptCachingConfig;
+use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+use diapason_core::acp::{PermissionGrant, ToolPermissionCache};
+use diapason_core::config::PermissionsConfig;
+use diapason_core::config::constants::tools;
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::config::types::{ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
+use diapason_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
+use diapason_core::exec_policy::{AskForApproval, RejectConfig};
+use diapason_core::llm::provider as uni;
+use diapason_core::tool_policy::ToolPolicy;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
-use vtcode_config::core::PromptCachingConfig;
-use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-use vtcode_core::acp::{PermissionGrant, ToolPermissionCache};
-use vtcode_core::config::PermissionsConfig;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::config::types::{ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
-use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
-use vtcode_core::exec_policy::{AskForApproval, RejectConfig};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::tool_policy::ToolPolicy;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 fn create_headless_session() -> InlineSession {
     let (command_tx, _command_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -39,7 +39,7 @@ fn create_headless_session() -> InlineSession {
 }
 
 fn create_session_with_receiver()
--> (InlineSession, tokio::sync::mpsc::UnboundedReceiver<vtcode_ui::tui::app::InlineCommand>) {
+-> (InlineSession, tokio::sync::mpsc::UnboundedReceiver<diapason_ui::tui::app::InlineCommand>) {
     let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
     let (_event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     (
@@ -53,16 +53,16 @@ fn create_session_with_receiver()
 }
 
 fn isolate_workspace_config(workspace: &Path) {
-    fs::write(workspace.join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+    fs::write(workspace.join("config.toml"), "[workspace]\nuse_root_config = true\n")
         .expect("write isolated workspace config");
 }
 
 fn drain_appended_lines(
-    receiver: &mut tokio::sync::mpsc::UnboundedReceiver<vtcode_ui::tui::app::InlineCommand>,
+    receiver: &mut tokio::sync::mpsc::UnboundedReceiver<diapason_ui::tui::app::InlineCommand>,
 ) -> Vec<String> {
     let mut lines = Vec::new();
     while let Ok(command) = receiver.try_recv() {
-        if let vtcode_ui::tui::app::InlineCommand::AppendLine { segments, .. } = command {
+        if let diapason_ui::tui::app::InlineCommand::AppendLine { segments, .. } = command {
             let line = segments.into_iter().map(|segment| segment.text).collect::<String>();
             if !line.trim().is_empty() {
                 lines.push(line);
@@ -83,14 +83,14 @@ fn reject_all_approvals() -> AskForApproval {
 
 fn runtime_config() -> CoreAgentConfig {
     CoreAgentConfig {
-        model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+        model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
         api_key: "test-key".to_string(),
         provider: "gemini".to_string(),
         api_key_env: "GEMINI_API_KEY".to_string(),
         workspace: std::env::current_dir().expect("current_dir"),
         verbose: false,
         quiet: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -203,7 +203,7 @@ fn on_request_policy_keeps_prompts_enabled() {
 fn shell_learning_target_uses_scoped_prefix_rule() {
     let args = json!({
         "action": "run",
-        "command": "cargo test -p vtcode",
+        "command": "cargo test -p diapason",
         "prefix_rule": ["cargo", "test"],
         "sandbox_permissions": "require_escalated",
     });
@@ -220,7 +220,7 @@ fn shell_learning_target_uses_scoped_prefix_rule() {
 fn shell_learning_target_falls_back_to_exact_command_scope() {
     let args = json!({
         "action": "run",
-        "command": "cargo test -p vtcode",
+        "command": "cargo test -p diapason",
         "prefix_rule": ["cargo", "build"],
         "sandbox_permissions": "require_escalated",
     });
@@ -228,9 +228,9 @@ fn shell_learning_target_falls_back_to_exact_command_scope() {
     let target = approval_learning_target("exec_command", Some(&args), "Run command");
     assert_eq!(
         target.approval_key,
-        "cargo test -p vtcode|sandbox_permissions=\"require_escalated\"|additional_permissions=null"
+        "cargo test -p diapason|sandbox_permissions=\"require_escalated\"|additional_permissions=null"
     );
-    assert_eq!(target.display_label, "command `cargo test -p vtcode`");
+    assert_eq!(target.display_label, "command `cargo test -p diapason`");
 }
 
 #[test]
@@ -251,7 +251,7 @@ async fn shell_approval_prefix_rules_persist_to_workspace_config() {
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
     let args = json!({
         "action": "run",
-        "command": "cargo test -p vtcode",
+        "command": "cargo test -p diapason",
         "sandbox_permissions": "require_escalated",
     });
 
@@ -273,7 +273,7 @@ async fn shell_approval_prefix_rules_persist_to_workspace_config() {
             "cargo".to_string(),
             "test".to_string(),
             "-p".to_string(),
-            "vtcode".to_string()
+            "diapason".to_string()
         ],
         "sandbox_permissions=\"require_escalated\"|additional_permissions=null"
     ));
@@ -284,7 +284,7 @@ async fn shell_approval_prefix_rules_persist_to_workspace_config() {
                     "cargo".to_string(),
                     "test".to_string(),
                     "-p".to_string(),
-                    "vtcode".to_string()
+                    "diapason".to_string()
                 ],
                 "sandbox_permissions=\"require_escalated\"|additional_permissions=null",
             )
@@ -333,7 +333,7 @@ async fn shell_approval_prefix_matching_respects_permission_scope() {
             "cargo".to_string(),
             "test".to_string(),
             "-p".to_string(),
-            "vtcode".to_string()
+            "diapason".to_string()
         ],
         "sandbox_permissions=\"with_additional_permissions\"|additional_permissions={\"fs_write\":[\"/tmp/demo.txt\"]}"
     ));
@@ -614,8 +614,8 @@ async fn matching_allow_rule_allows_tool_call() {
 
 #[tokio::test]
 async fn pre_tool_use_hook_rewrite_reaches_approved_args() {
-    use vtcode_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
-    use vtcode_core::hooks::LifecycleHookEngine;
+    use diapason_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
+    use diapason_core::hooks::LifecycleHookEngine;
 
     let temp_dir = tempfile::TempDir::new().expect("temp dir");
     isolate_workspace_config(temp_dir.path());
@@ -646,7 +646,7 @@ async fn pre_tool_use_hook_rewrite_reaches_approved_args() {
     let hooks = LifecycleHookEngine::new_with_session_gated(
         temp_dir.path().to_path_buf(),
         &hooks_config,
-        vtcode_core::hooks::SessionStartTrigger::Startup,
+        diapason_core::hooks::SessionStartTrigger::Startup,
         "test-session",
         false,
     )
@@ -690,8 +690,8 @@ async fn pre_tool_use_hook_rewrite_reaches_approved_args() {
 
 #[tokio::test]
 async fn pre_tool_use_hook_rewrite_survives_forwarded_hook_phase() {
-    use vtcode_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
-    use vtcode_core::hooks::LifecycleHookEngine;
+    use diapason_core::config::{HookCommandConfig, HookGroupConfig, HooksConfig, LifecycleHooksConfig};
+    use diapason_core::hooks::LifecycleHookEngine;
 
     let temp_dir = tempfile::TempDir::new().expect("temp dir");
     isolate_workspace_config(temp_dir.path());
@@ -728,7 +728,7 @@ async fn pre_tool_use_hook_rewrite_survives_forwarded_hook_phase() {
     let hooks = LifecycleHookEngine::new_with_session_gated(
         temp_dir.path().to_path_buf(),
         &hooks_config,
-        vtcode_core::hooks::SessionStartTrigger::Startup,
+        diapason_core::hooks::SessionStartTrigger::Startup,
         "test-session",
         false,
     )
@@ -1339,7 +1339,7 @@ async fn active_agent_allow_default_keeps_protected_write_prompts() {
             harness_emitter: None,
         },
         tools::UNIFIED_FILE,
-        Some(&json!({"action": "write", "path": ".vtcode/settings.toml", "content": "hello"})),
+        Some(&json!({"action": "write", "path": ".diapason/settings.toml", "content": "hello"})),
     )
     .await
     .expect("permission flow");
@@ -1390,7 +1390,7 @@ async fn protected_write_prompts_without_matching_allow() {
             harness_emitter: None,
         },
         tools::UNIFIED_FILE,
-        Some(&json!({"action": "write", "path": ".vtcode/settings.toml", "content": "hello"})),
+        Some(&json!({"action": "write", "path": ".diapason/settings.toml", "content": "hello"})),
     )
     .await
     .expect("permission flow");
@@ -1873,14 +1873,14 @@ async fn permanent_shell_approval_reuses_for_loop_body_commands() {
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
     let approved_args = json!({
         "action": "run",
-        "command": "cd crates/codegen/vtcode-core/src/tools/registry && for f in *.rs; do echo \"=== $f ===\"; grep -nE '^(pub )?(struct|enum|fn)' \"$f\" | head -50; done",
+        "command": "cd crates/codegen/diapason-core/src/tools/registry && for f in *.rs; do echo \"=== $f ===\"; grep -nE '^(pub )?(struct|enum|fn)' \"$f\" | head -50; done",
     });
 
     persist_segment_approval_cache_keys(&registry, "exec_command", "exec_command", Some(&approved_args)).await;
 
     let later_args = json!({
         "action": "run",
-        "command": "cd crates/codegen/vtcode-core/src/tools/registry && for f in approval_recorder.rs assembly.rs; do echo \"=== $f ===\"; grep -nE '^(pub )?(struct|enum|fn)' \"$f\" | head -50; done",
+        "command": "cd crates/codegen/diapason-core/src/tools/registry && for f in approval_recorder.rs assembly.rs; do echo \"=== $f ===\"; grep -nE '^(pub )?(struct|enum|fn)' \"$f\" | head -50; done",
     });
 
     assert!(
@@ -1907,7 +1907,7 @@ async fn auto_permission_headless_fallback_returns_blocked_summary() {
     };
     let config = runtime_config();
     let permissions = PermissionsConfig {
-        auto_permission: vtcode_core::config::AutoPermissionConfig {
+        auto_permission: diapason_core::config::AutoPermissionConfig {
             max_consecutive_denials: 1,
             max_total_denials: 20,
             ..Default::default()
@@ -1982,7 +1982,7 @@ async fn auto_permission_interactive_fallback_notice_is_emitted_once() {
     };
     let config = runtime_config();
     let permissions = PermissionsConfig {
-        auto_permission: vtcode_core::config::AutoPermissionConfig {
+        auto_permission: diapason_core::config::AutoPermissionConfig {
             max_consecutive_denials: 1,
             max_total_denials: 20,
             ..Default::default()

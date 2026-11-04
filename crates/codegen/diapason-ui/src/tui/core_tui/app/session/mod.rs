@@ -1,0 +1,1169 @@
+use std::collections::VecDeque;
+
+pub(super) use ratatui::crossterm::event::{
+    Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind,
+};
+pub(super) use ratatui::prelude::*;
+pub(super) use ratatui::widgets::Clear;
+pub(super) use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
+use crate::tui::core_tui::app::types::{
+    CompactActivityMetadata, DiffOverlayRequest, DiffPreviewState, InlineCommand, InlineEvent, InlineMessageKind,
+    InlineSegment, LocalAgentsTransientRequest, SlashCommandItem, TaskPanelMetadata, TaskPanelTransientRequest,
+    ToolOutputId, TransientRequest,
+};
+use crate::tui::core_tui::runner::TuiSessionDriver;
+use crate::tui::core_tui::session::Session as CoreSessionState;
+use crate::tui::core_tui::session::action::BindingStore;
+
+mod agent_palette;
+/// Diff preview overlay for file changes.
+pub(crate) mod diff_preview;
+mod events;
+/// File palette for workspace file selection.
+pub mod file_palette;
+/// Command history picker state and rendering.
+pub mod history_picker;
+mod impl_events;
+mod impl_render;
+mod layout;
+mod local_agents;
+mod palette;
+/// Session rendering logic and layout composition.
+pub(crate) mod render;
+/// Slash command detection and suggestion UI.
+pub(crate) mod slash;
+/// Slash command palette widget.
+pub mod slash_palette;
+mod task_panel;
+#[path = "transcript_review.rs"]
+mod tool_output_viewer;
+mod transient;
+/// Workspace trust state management.
+pub mod trust;
+
+use self::file_palette::FilePalette;
+use self::history_picker::HistoryPickerState;
+use self::local_agents::LocalAgentsState;
+use self::slash_palette::SlashPalette;
+use self::tool_output_viewer::ToolOutputViewerState;
+use self::transient::{TransientFocusPolicy, TransientHost, TransientSurface, TransientVisibilityChange};
+use crate::tui::options::FullscreenInteractionSettings;
+use agent_palette::AgentPalette;
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ToolOutputBlock {
+    /// Session-local identifier used to keep a completed capture tied to its
+    /// corresponding transcript entry while the overlay is refreshed.
+    pub(crate) id: u64,
+    /// Index of the summary line when the capture was recorded. The review
+    /// layer uses this identity anchor without reverse-matching command text,
+    /// which is ambiguous when the same command runs more than once.
+    pub(crate) anchor_line: Option<usize>,
+    /// Number of core transcript lines present when this capture was queued.
+    /// PTY previews may use this boundary to find their already-rendered
+    /// header without searching through earlier calls.
+    pub(crate) anchor_search_start: usize,
+    /// Original transcript position for a capture that has no identity anchor.
+    /// `None` is retained for blocks constructed by older callers/tests, which
+    /// are appended as genuine orphan content.
+    pub(crate) recorded_at_line: Option<usize>,
+    pub(crate) lines: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CompactActivityEntry {
+    pub(crate) line_index: usize,
+    pub(crate) metadata: CompactActivityMetadata,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CompactActivityHitRegion {
+    pub(crate) area: Rect,
+    pub(crate) review_anchor: ToolOutputId,
+}
+
+/// App-level session that layers Diapason features on top of the core session.
+pub struct AppSession {
+    pub(crate) core: CoreSessionState,
+    agent_palette: Option<AgentPalette>,
+    agent_palette_active: bool,
+    file_palette: Option<FilePalette>,
+    pub(crate) file_palette_active: bool,
+    inline_lists_visible: bool,
+    pub(crate) slash_palette: SlashPalette,
+    pub(crate) history_picker_state: HistoryPickerState,
+    local_agents_state: LocalAgentsState,
+    local_agents_auto_opened: bool,
+    pub(crate) show_task_panel: bool,
+    pub(crate) task_panel_lines: Vec<String>,
+    pub(crate) task_panel_metadata: Option<TaskPanelMetadata>,
+    diff_preview_state: Option<DiffPreviewState>,
+    tool_output_viewer_state: Option<ToolOutputViewerState>,
+    pub(crate) tool_output_blocks: Vec<ToolOutputBlock>,
+    pub(crate) tool_output_revision: u64,
+    pub(crate) compact_activity_entries: Vec<CompactActivityEntry>,
+    pub(crate) compact_activity_hit_regions: Vec<CompactActivityHitRegion>,
+    diff_overlay_queue: VecDeque<DiffOverlayRequest>,
+    transient_host: TransientHost,
+    preview_callback: Option<crate::tui::core_tui::types::PreviewCallback>,
+}
+
+pub(super) type Session = AppSession;
+
+impl AppSession {
+    /// Create a new session with explicit log visibility, theme, and slash commands.
+    pub(crate) fn new_with_logs(
+        theme: crate::tui::core_tui::types::InlineTheme,
+        placeholder: Option<String>,
+        view_rows: u16,
+        show_logs: bool,
+        appearance: Option<crate::tui::core_tui::session::config::AppearanceConfig>,
+        slash_commands: Vec<SlashCommandItem>,
+        app_name: String,
+    ) -> Self {
+        let core = CoreSessionState::new_with_logs(theme, placeholder, view_rows, show_logs, appearance, app_name);
+
+        Self {
+            core,
+            agent_palette: None,
+            agent_palette_active: false,
+            file_palette: None,
+            file_palette_active: false,
+            inline_lists_visible: true,
+            slash_palette: SlashPalette::with_commands(slash_commands),
+            history_picker_state: HistoryPickerState::new(),
+            local_agents_state: LocalAgentsState::default(),
+            local_agents_auto_opened: false,
+            show_task_panel: false,
+            task_panel_lines: Vec::new(),
+            task_panel_metadata: None,
+            diff_preview_state: None,
+            tool_output_viewer_state: None,
+            tool_output_blocks: Vec::new(),
+            tool_output_revision: 0,
+            compact_activity_entries: Vec::new(),
+            compact_activity_hit_regions: Vec::new(),
+            diff_overlay_queue: VecDeque::new(),
+            transient_host: TransientHost::default(),
+            preview_callback: None,
+        }
+    }
+
+    /// Create a new session with explicit log visibility, theme, slash commands, and key bindings.
+    pub(crate) fn new_with_logs_and_bindings(
+        theme: crate::tui::core_tui::types::InlineTheme,
+        placeholder: Option<String>,
+        view_rows: u16,
+        show_logs: bool,
+        appearance: Option<crate::tui::core_tui::session::config::AppearanceConfig>,
+        slash_commands: Vec<SlashCommandItem>,
+        app_name: String,
+        bindings: BindingStore,
+    ) -> Self {
+        let core = CoreSessionState::new_with_bindings(
+            theme,
+            placeholder,
+            view_rows,
+            show_logs,
+            appearance,
+            app_name,
+            bindings,
+        );
+
+        Self {
+            core,
+            agent_palette: None,
+            agent_palette_active: false,
+            file_palette: None,
+            file_palette_active: false,
+            inline_lists_visible: true,
+            slash_palette: SlashPalette::with_commands(slash_commands),
+            history_picker_state: HistoryPickerState::new(),
+            local_agents_state: LocalAgentsState::default(),
+            local_agents_auto_opened: false,
+            show_task_panel: false,
+            task_panel_lines: Vec::new(),
+            task_panel_metadata: None,
+            diff_preview_state: None,
+            tool_output_viewer_state: None,
+            tool_output_blocks: Vec::new(),
+            tool_output_revision: 0,
+            compact_activity_entries: Vec::new(),
+            compact_activity_hit_regions: Vec::new(),
+            diff_overlay_queue: VecDeque::new(),
+            transient_host: TransientHost::default(),
+            preview_callback: None,
+        }
+    }
+
+    pub fn new(theme: crate::tui::core_tui::types::InlineTheme, placeholder: Option<String>, view_rows: u16) -> Self {
+        Self::new_with_logs(theme, placeholder, view_rows, true, None, Vec::new(), "Agent TUI".to_string())
+    }
+
+    pub fn core(&self) -> &CoreSessionState {
+        &self.core
+    }
+
+    pub fn core_mut(&mut self) -> &mut CoreSessionState {
+        &mut self.core
+    }
+
+    pub(crate) fn inline_lists_visible(&self) -> bool {
+        self.inline_lists_visible
+    }
+
+    fn toggle_inline_lists_visibility(&mut self) {
+        self.inline_lists_visible = !self.inline_lists_visible;
+        self.core.mark_dirty();
+    }
+
+    fn ensure_inline_lists_visible_for_trigger(&mut self) {
+        if !self.inline_lists_visible {
+            self.inline_lists_visible = true;
+            self.core.mark_dirty();
+        }
+    }
+
+    fn update_input_triggers(&mut self) {
+        if !self.core.input_enabled() {
+            return;
+        }
+
+        self.check_agent_reference_trigger();
+        self.check_file_reference_trigger();
+        slash::update_slash_suggestions(self);
+    }
+
+    fn show_transient_surface(&mut self, surface: TransientSurface) -> bool {
+        let change = self.transient_host.show(surface);
+        if !change.changed() {
+            return false;
+        }
+
+        self.apply_transient_visibility_change(change);
+        true
+    }
+
+    fn close_transient_surface(&mut self, surface: TransientSurface) -> bool {
+        let change = self.transient_host.hide(surface);
+        if !change.changed() {
+            return false;
+        }
+
+        self.apply_transient_visibility_change(change);
+        true
+    }
+
+    fn finish_history_picker_interaction(&mut self, was_active: bool) {
+        if was_active && !self.history_picker_state.active {
+            self.close_transient_surface(TransientSurface::HistoryPicker);
+            self.update_input_triggers();
+        }
+    }
+
+    pub(crate) fn set_task_panel_visible(&mut self, visible: bool) {
+        if self.show_task_panel != visible {
+            self.show_task_panel = visible;
+            if visible {
+                self.show_transient_surface(TransientSurface::TaskPanel);
+            } else {
+                self.close_transient_surface(TransientSurface::TaskPanel);
+            }
+            self.core.mark_dirty();
+        }
+    }
+
+    pub(crate) fn toggle_task_panel(&mut self) {
+        let target = !self.show_task_panel;
+        self.set_task_panel_visible(target);
+    }
+
+    fn visible_transient_surface(&self) -> Option<TransientSurface> {
+        self.transient_host.top()
+    }
+
+    fn visible_bottom_docked_surface(&self) -> Option<TransientSurface> {
+        self.transient_host.visible_bottom_docked()
+    }
+
+    fn history_picker_visible(&self) -> bool {
+        self.history_picker_state.active && self.transient_host.is_visible(TransientSurface::HistoryPicker)
+    }
+
+    pub(crate) fn local_agents_visible(&self) -> bool {
+        self.transient_host.is_visible(TransientSurface::LocalAgents)
+    }
+
+    fn local_agents_loading_active(&self) -> bool {
+        self.local_agents_visible()
+            && self
+                .local_agents_state
+                .entries()
+                .iter()
+                .any(crate::tui::core_tui::types::LocalAgentEntry::is_loading)
+    }
+
+    pub(crate) fn file_palette_visible(&self) -> bool {
+        self.file_palette_active && self.transient_host.is_visible(TransientSurface::FilePalette)
+    }
+
+    fn agent_palette_visible(&self) -> bool {
+        self.agent_palette_active && self.transient_host.is_visible(TransientSurface::AgentPalette)
+    }
+
+    pub(crate) fn slash_palette_visible(&self) -> bool {
+        !self.slash_palette.is_empty() && self.transient_host.is_visible(TransientSurface::SlashPalette)
+    }
+
+    pub(crate) fn has_active_overlay(&self) -> bool {
+        self.core.has_active_overlay() && self.transient_host.is_visible(TransientSurface::FloatingOverlay)
+    }
+
+    pub(crate) fn modal_state(&self) -> Option<&crate::tui::core_tui::session::modal::ModalState> {
+        self.has_active_overlay().then(|| self.core.modal_state()).flatten()
+    }
+
+    fn modal_state_mut(&mut self) -> Option<&mut crate::tui::core_tui::session::modal::ModalState> {
+        if !self.has_active_overlay() {
+            return None;
+        }
+        self.core.modal_state_mut()
+    }
+
+    fn wizard_overlay(&self) -> Option<&crate::tui::core_tui::session::modal::WizardModalState> {
+        self.has_active_overlay().then(|| self.core.wizard_overlay()).flatten()
+    }
+
+    fn wizard_overlay_mut(&mut self) -> Option<&mut crate::tui::core_tui::session::modal::WizardModalState> {
+        if !self.has_active_overlay() {
+            return None;
+        }
+        self.core.wizard_overlay_mut()
+    }
+
+    fn close_overlay(&mut self) {
+        if !self.has_active_overlay() {
+            return;
+        }
+
+        self.core.close_overlay();
+        if !self.core.has_active_overlay() {
+            self.close_transient_surface(TransientSurface::FloatingOverlay);
+        }
+    }
+
+    pub(crate) fn diff_preview_state(&self) -> Option<&DiffPreviewState> {
+        self.transient_host
+            .is_visible(TransientSurface::DiffPreview)
+            .then_some(())
+            .and(self.diff_preview_state.as_ref())
+    }
+
+    fn diff_preview_state_mut(&mut self) -> Option<&mut DiffPreviewState> {
+        if !self.transient_host.is_visible(TransientSurface::DiffPreview) {
+            return None;
+        }
+        self.diff_preview_state.as_mut()
+    }
+
+    fn tool_output_viewer_state(&self) -> Option<&ToolOutputViewerState> {
+        self.transient_host
+            .is_visible(TransientSurface::ToolOutputViewer)
+            .then_some(())
+            .and(self.tool_output_viewer_state.as_ref())
+    }
+
+    fn tool_output_viewer_state_mut(&mut self) -> Option<&mut ToolOutputViewerState> {
+        if !self.transient_host.is_visible(TransientSurface::ToolOutputViewer) {
+            return None;
+        }
+        self.tool_output_viewer_state.as_mut()
+    }
+
+    pub(crate) fn show_diff_overlay(&mut self, request: DiffOverlayRequest) {
+        if self.diff_preview_state.is_some() {
+            self.diff_overlay_queue.push_back(request);
+            return;
+        }
+
+        let mut state = DiffPreviewState::new_with_mode(
+            request.file_path,
+            request.before,
+            request.after,
+            request.hunks,
+            request.mode,
+        );
+        state.current_hunk = request.current_hunk;
+        self.diff_preview_state = Some(state);
+        self.show_transient_surface(TransientSurface::DiffPreview);
+        self.core.mark_dirty();
+    }
+
+    pub(crate) fn close_diff_overlay(&mut self) {
+        if self.diff_preview_state.is_none() {
+            return;
+        }
+        self.diff_preview_state = None;
+        if let Some(next) = self.diff_overlay_queue.pop_front() {
+            self.show_diff_overlay(next);
+            return;
+        }
+        self.close_transient_surface(TransientSurface::DiffPreview);
+        self.core.mark_dirty();
+    }
+
+    fn close_history_picker(&mut self) {
+        if !self.history_picker_state.active {
+            return;
+        }
+        self.history_picker_state.cancel(&mut self.core.input_manager);
+        self.close_transient_surface(TransientSurface::HistoryPicker);
+        self.update_input_triggers();
+        self.mark_dirty();
+    }
+
+    fn open_tool_output_viewer(&mut self, width: u16, height: u16, review_anchor: Option<ToolOutputId>) {
+        self.tool_output_viewer_state = Some(ToolOutputViewerState::open_focused(self, width, height, review_anchor));
+        self.show_transient_surface(TransientSurface::ToolOutputViewer);
+        self.core.mark_dirty();
+    }
+
+    fn record_tool_output_block(&mut self, id: ToolOutputId, lines: Vec<String>) {
+        if lines.is_empty() {
+            return;
+        }
+
+        // A non-PTY capture is recorded after the live PTY stream has rendered
+        // its command header. Restrict the fallback search to the current
+        // trailing PTY block so repeated commands cannot borrow an older
+        // header from the conversation.
+        let recorded_at_line = self.core.lines.len();
+        let mut anchor_search_start = recorded_at_line;
+        while anchor_search_start > 0
+            && self
+                .core
+                .lines
+                .get(anchor_search_start - 1)
+                .is_some_and(|line| line.kind == InlineMessageKind::Pty)
+        {
+            anchor_search_start -= 1;
+        }
+        let anchor_line = self.find_live_pty_anchor(lines.first(), anchor_search_start);
+
+        self.tool_output_blocks.push(ToolOutputBlock {
+            id,
+            anchor_line,
+            anchor_search_start,
+            recorded_at_line: Some(recorded_at_line),
+            lines,
+        });
+        self.tool_output_revision = self.tool_output_revision.wrapping_add(1);
+        self.core.mark_dirty();
+    }
+
+    fn find_live_pty_anchor(&self, header: Option<&String>, search_start: usize) -> Option<usize> {
+        let header = header.map(|header| normalize_tool_output_header(header))?;
+        let mut index = self.core.lines.len();
+        while index > search_start {
+            let line_index = index - 1;
+            let line = self.core.lines.get(line_index)?;
+            if line.kind != InlineMessageKind::Pty {
+                break;
+            }
+            if rendered_core_line_text(&self.core, line_index).trim_end() == header.trim_end() {
+                return Some(line_index);
+            }
+            index = line_index;
+        }
+        None
+    }
+
+    fn append_tool_output_line(&mut self, id: ToolOutputId, kind: InlineMessageKind, segments: Vec<InlineSegment>) {
+        self.core
+            .handle_command(crate::tui::core_tui::types::InlineCommand::AppendLine { kind, segments });
+        let line_index = self.core.lines.len().saturating_sub(1);
+        if let Some(block) = self.tool_output_blocks.iter_mut().find(|block| block.id == id)
+            && block.anchor_line.is_none()
+        {
+            block.anchor_line = Some(line_index);
+            self.tool_output_revision = self.tool_output_revision.wrapping_add(1);
+            self.core.mark_dirty();
+        }
+    }
+
+    fn update_tool_output_anchors(&mut self, metadata: &CompactActivityMetadata, line_index: usize) {
+        let mut ids = metadata.review_anchors.clone();
+        if ids.is_empty()
+            && let Some(review_anchor) = metadata.review_anchor
+        {
+            ids.push(review_anchor);
+        }
+        for id in ids {
+            if let Some(block) = self.tool_output_blocks.iter_mut().find(|block| block.id == id) {
+                block.anchor_line = Some(line_index);
+            }
+        }
+    }
+
+    fn refresh_compact_activity_presentations(&mut self) {
+        let entries = self.compact_activity_entries.clone();
+        for entry in entries {
+            let is_compact_line = self
+                .core
+                .lines
+                .get(entry.line_index)
+                .is_some_and(|line| line.kind == InlineMessageKind::Info);
+            if !is_compact_line {
+                continue;
+            }
+
+            let segments = tool_output_viewer::compact_activity_segments(self, &entry.metadata);
+            let revision = self.core.next_revision();
+            if let Some(line) = self.core.lines.get_mut(entry.line_index) {
+                line.segments = segments;
+                line.link_ranges.clear();
+                line.revision = revision;
+                self.core.mark_line_dirty(entry.line_index);
+            }
+        }
+        self.core.invalidate_scroll_metrics();
+    }
+
+    fn append_compact_activity(&mut self, metadata: CompactActivityMetadata) {
+        let segments = tool_output_viewer::compact_activity_segments(self, &metadata);
+        self.core
+            .handle_command(crate::tui::core_tui::types::InlineCommand::AppendLine {
+                kind: InlineMessageKind::Info,
+                segments,
+            });
+        let line_index = self.core.lines.len().saturating_sub(1);
+        self.compact_activity_entries
+            .push(CompactActivityEntry { line_index, metadata: metadata.clone() });
+        self.update_tool_output_anchors(&metadata, line_index);
+    }
+
+    fn replace_compact_activity(&mut self, metadata: CompactActivityMetadata) {
+        let can_replace = self
+            .compact_activity_entries
+            .last()
+            .is_some_and(|entry| entry.line_index + 1 == self.core.lines.len());
+        if !can_replace {
+            self.append_compact_activity(metadata);
+            return;
+        }
+
+        let segments = tool_output_viewer::compact_activity_segments(self, &metadata);
+        self.core
+            .handle_command(crate::tui::core_tui::types::InlineCommand::ReplaceLast {
+                count: 1,
+                kind: InlineMessageKind::Info,
+                lines: vec![segments],
+                link_ranges: None,
+            });
+        if let Some(entry) = self.compact_activity_entries.last_mut() {
+            entry.metadata = metadata.clone();
+            entry.line_index = self.core.lines.len().saturating_sub(1);
+        }
+        let line_index = self.core.lines.len().saturating_sub(1);
+        self.update_tool_output_anchors(&metadata, line_index);
+    }
+
+    fn collapse_pty_block(&mut self, metadata: CompactActivityMetadata) {
+        let pty_count = self
+            .core
+            .lines
+            .iter()
+            .rev()
+            .take_while(|line| line.kind == InlineMessageKind::Pty)
+            .count();
+        if pty_count == 0 {
+            self.replace_compact_activity(metadata);
+            return;
+        }
+
+        let old_first_removed = self.core.lines.len().saturating_sub(pty_count);
+        let preceding_activity = self.compact_activity_entries.last().is_some_and(|entry| {
+            entry.line_index + 1 == old_first_removed && entry.metadata.group_id == metadata.group_id
+        });
+        let remove_count = pty_count + usize::from(preceding_activity);
+        let first_removed = self.core.lines.len().saturating_sub(remove_count);
+        let segments = tool_output_viewer::compact_activity_segments(self, &metadata);
+        self.core
+            .handle_command(crate::tui::core_tui::types::InlineCommand::ReplaceLast {
+                count: remove_count,
+                kind: InlineMessageKind::Info,
+                lines: vec![segments],
+                link_ranges: None,
+            });
+        self.compact_activity_entries.retain(|entry| entry.line_index < first_removed);
+        let line_index = self.core.lines.len().saturating_sub(1);
+        self.compact_activity_entries
+            .push(CompactActivityEntry { line_index, metadata: metadata.clone() });
+        self.update_tool_output_anchors(&metadata, line_index);
+    }
+
+    pub(crate) fn compact_activity_for_line(&self, line_index: usize) -> Option<&CompactActivityMetadata> {
+        self.compact_activity_entries
+            .iter()
+            .find(|entry| entry.line_index == line_index)
+            .map(|entry| &entry.metadata)
+    }
+
+    pub(crate) fn compact_activity_review_anchor_at(&self, column: u16, row: u16) -> Option<ToolOutputId> {
+        self.compact_activity_hit_regions
+            .iter()
+            .find(|region| region.area.contains(Position { x: column, y: row }))
+            .map(|region| region.review_anchor)
+    }
+
+    fn close_tool_output_viewer(&mut self) {
+        if self.tool_output_viewer_state.is_none() {
+            return;
+        }
+        self.tool_output_viewer_state = None;
+        self.close_transient_surface(TransientSurface::ToolOutputViewer);
+        self.core.mark_dirty();
+    }
+
+    pub(crate) fn show_transient(&mut self, request: TransientRequest) {
+        self.core.clear_inline_prompt_suggestion();
+        match request {
+            TransientRequest::Modal(request) => {
+                self.core
+                    .show_overlay(crate::tui::core_tui::types::OverlayRequest::Modal(request.into()));
+                self.show_transient_surface(TransientSurface::FloatingOverlay);
+            }
+            TransientRequest::List(request) => {
+                self.core
+                    .show_overlay(crate::tui::core_tui::types::OverlayRequest::List(request.into()));
+                self.show_transient_surface(TransientSurface::FloatingOverlay);
+            }
+            TransientRequest::Wizard(request) => {
+                self.core
+                    .show_overlay(crate::tui::core_tui::types::OverlayRequest::Wizard(request.into()));
+                self.show_transient_surface(TransientSurface::FloatingOverlay);
+            }
+            TransientRequest::Diff(request) => {
+                self.show_diff_overlay(request);
+            }
+            TransientRequest::FilePalette(request) => {
+                self.load_file_palette(request.dir_lister, request.workspace);
+                match request.visible {
+                    Some(true) => {
+                        self.ensure_inline_lists_visible_for_trigger();
+                        self.file_palette_active = true;
+                        self.show_transient_surface(TransientSurface::FilePalette);
+                    }
+                    Some(false) => {
+                        self.close_file_palette();
+                    }
+                    None => {}
+                }
+            }
+            TransientRequest::AgentPalette(request) => {
+                self.load_agent_palette(request.agents);
+                match request.visible {
+                    Some(true) => {
+                        self.ensure_inline_lists_visible_for_trigger();
+                        self.agent_palette_active = true;
+                        self.show_transient_surface(TransientSurface::AgentPalette);
+                    }
+                    Some(false) => {
+                        self.close_agent_palette();
+                    }
+                    None => {}
+                }
+            }
+            TransientRequest::HistoryPicker => {
+                events::open_history_picker(self);
+            }
+            TransientRequest::SlashPalette => {
+                self.ensure_inline_lists_visible_for_trigger();
+                self.show_transient_surface(TransientSurface::SlashPalette);
+            }
+            TransientRequest::TaskPanel(TaskPanelTransientRequest { lines, visible, metadata }) => {
+                self.core.set_task_panel_lines(lines.clone());
+                self.task_panel_lines = lines;
+                if visible.is_none() {
+                    self.task_panel_metadata = metadata;
+                }
+                if let Some(visible) = visible {
+                    let suppressed = visible && !self.core.appearance.should_show_task_panel();
+                    if !suppressed {
+                        self.set_task_panel_visible(visible);
+                    }
+                    // When suppressed, the lines are retained so the manual
+                    // `toggle_task_panel` keybinding can reveal them later.
+                } else {
+                    self.core.mark_dirty();
+                }
+            }
+            TransientRequest::LocalAgents(LocalAgentsTransientRequest { visible }) => {
+                if let Some(visible) = visible {
+                    if visible {
+                        self.ensure_inline_lists_visible_for_trigger();
+                        self.open_local_agents_drawer(false);
+                    } else {
+                        self.close_local_agents_drawer(true);
+                    }
+                } else {
+                    self.core.mark_dirty();
+                }
+            }
+        }
+        self.core.mark_dirty();
+    }
+
+    /// Show a help modal using the ratatui-cheese Help widget
+    fn show_help_modal(&mut self) {
+        self.show_transient(TransientRequest::Modal(crate::tui::core_tui::app::types::ModalOverlayRequest {
+            title: "Keyboard Shortcuts".to_string(),
+            lines: Vec::new(),
+            secure_prompt: None,
+        }));
+        if let Some(state) = self.core.modal_state_mut() {
+            state.is_help_modal = true;
+        }
+    }
+
+    fn should_auto_open_local_agents(&self) -> bool {
+        if self.has_active_overlay() {
+            return false;
+        }
+
+        matches!(
+            self.visible_transient_surface(),
+            None | Some(TransientSurface::TaskPanel | TransientSurface::LocalAgents)
+        )
+    }
+
+    pub(crate) fn close_transient(&mut self) {
+        match self.visible_transient_surface() {
+            Some(TransientSurface::FloatingOverlay) => self.close_overlay(),
+            Some(TransientSurface::DiffPreview) => self.close_diff_overlay(),
+            Some(TransientSurface::ToolOutputViewer) => self.close_tool_output_viewer(),
+            Some(TransientSurface::HistoryPicker) => self.close_history_picker(),
+            Some(TransientSurface::AgentPalette) => self.close_agent_palette(),
+            Some(TransientSurface::FilePalette) => self.close_file_palette(),
+            Some(TransientSurface::SlashPalette) => slash::clear_slash_suggestions(self),
+            Some(TransientSurface::TaskPanel) => self.set_task_panel_visible(false),
+            Some(TransientSurface::LocalAgents) => {
+                self.close_local_agents_drawer(true);
+            }
+            None => {}
+        }
+    }
+
+    fn open_local_agents_drawer(&mut self, auto_opened: bool) {
+        self.local_agents_auto_opened = auto_opened;
+        self.show_transient_surface(TransientSurface::LocalAgents);
+    }
+
+    fn close_local_agents_drawer(&mut self, clear_auto_opened: bool) {
+        if clear_auto_opened {
+            self.local_agents_auto_opened = false;
+        }
+        self.close_transient_surface(TransientSurface::LocalAgents);
+    }
+
+    fn sync_transient_focus(&mut self) {
+        if self.core.activity_state.is_busy() {
+            self.core.set_input_enabled(false);
+            self.core.set_cursor_visible(false);
+            return;
+        }
+        let Some(surface) = self.visible_transient_surface() else {
+            self.core.set_input_enabled(true);
+            self.core.set_cursor_visible(true);
+            return;
+        };
+
+        match surface.focus_policy() {
+            TransientFocusPolicy::Modal | TransientFocusPolicy::CapturedInput => {
+                self.core.set_input_enabled(false);
+                self.core.set_cursor_visible(false);
+            }
+            TransientFocusPolicy::SharedInput | TransientFocusPolicy::Passive => {
+                self.core.set_input_enabled(true);
+                self.core.set_cursor_visible(true);
+            }
+        }
+    }
+
+    fn apply_transient_visibility_change(&mut self, change: TransientVisibilityChange) {
+        if matches!(change.previous_visible, Some(TransientSurface::FilePalette | TransientSurface::AgentPalette))
+            || matches!(change.current_visible, Some(TransientSurface::FilePalette | TransientSurface::AgentPalette))
+        {
+            self.core.needs_full_clear = true;
+        }
+        self.core
+            .set_local_agents_drawer_visible(change.current_visible == Some(TransientSurface::LocalAgents));
+        self.sync_transient_focus();
+    }
+
+    pub fn handle_command(&mut self, command: InlineCommand) {
+        match command {
+            InlineCommand::SetLocalAgents { entries } => {
+                let has_delegated_entries = entries
+                    .iter()
+                    .any(|entry| entry.kind == crate::tui::core_tui::types::LocalAgentKind::Delegated);
+                let update = self.local_agents_state.set_entries(entries.clone());
+                self.core.set_local_agents(entries);
+                if update.has_new_delegated_entries && self.should_auto_open_local_agents() {
+                    self.ensure_inline_lists_visible_for_trigger();
+                    self.open_local_agents_drawer(true);
+                } else if self.local_agents_auto_opened && !has_delegated_entries {
+                    self.close_local_agents_drawer(true);
+                } else if !self.local_agents_visible() && !has_delegated_entries {
+                    self.local_agents_auto_opened = false;
+                }
+            }
+            InlineCommand::SetArchivedHistory { entries } => {
+                let mut input_entries = Vec::new();
+                let archived = entries
+                    .into_iter()
+                    .map(|e| {
+                        input_entries.push(
+                            crate::tui::core_tui::session::input_manager::InputHistoryEntry::from_content_and_timestamp(
+                                e.content.clone(),
+                                e.created_at,
+                            ),
+                        );
+                        history_picker::ArchivedPrompt {
+                            content: e.content,
+                            created_at: e.created_at,
+                            session_label: e.session_label,
+                        }
+                    })
+                    .collect();
+                self.history_picker_state.set_archived_prompts(archived);
+                self.core.input_manager.prepend_archived_history(input_entries);
+                self.core.mark_dirty();
+            }
+            InlineCommand::SetInput(value) => {
+                self.core
+                    .handle_command(crate::tui::core_tui::types::InlineCommand::SetInput(value));
+                self.update_input_triggers();
+            }
+            InlineCommand::RestoreInputDraft(input) => {
+                self.core
+                    .handle_command(crate::tui::core_tui::types::InlineCommand::RestoreInputDraft(input));
+                self.update_input_triggers();
+            }
+            InlineCommand::ApplySuggestedPrompt(value) => {
+                self.core
+                    .handle_command(crate::tui::core_tui::types::InlineCommand::ApplySuggestedPrompt(value));
+                self.update_input_triggers();
+            }
+            InlineCommand::SetInlinePromptSuggestion { suggestion, llm_generated } => {
+                self.core
+                    .handle_command(crate::tui::core_tui::types::InlineCommand::SetInlinePromptSuggestion {
+                        suggestion,
+                        llm_generated,
+                    });
+                self.update_input_triggers();
+            }
+            InlineCommand::ClearInlinePromptSuggestion => {
+                self.core
+                    .handle_command(crate::tui::core_tui::types::InlineCommand::ClearInlinePromptSuggestion);
+                self.update_input_triggers();
+            }
+            InlineCommand::ClearInput => {
+                self.core.handle_command(crate::tui::core_tui::types::InlineCommand::ClearInput);
+                self.update_input_triggers();
+            }
+            InlineCommand::RecordToolOutput { id, lines } => {
+                self.record_tool_output_block(id, lines);
+            }
+            InlineCommand::AppendToolOutputLine { id, kind, segments } => {
+                self.append_tool_output_line(id, kind, segments);
+            }
+            InlineCommand::AppendCompactActivity(metadata) => {
+                self.append_compact_activity(metadata);
+            }
+            InlineCommand::ReplaceCompactActivity(metadata) => {
+                self.replace_compact_activity(metadata);
+            }
+            InlineCommand::CollapsePtyBlock(metadata) => {
+                self.collapse_pty_block(metadata);
+            }
+            InlineCommand::SetKeyBindings { bindings } => {
+                self.core.set_bindings(BindingStore::new(bindings));
+                self.refresh_compact_activity_presentations();
+            }
+            InlineCommand::SetAppearance { appearance } => {
+                self.core
+                    .handle_command(crate::tui::core_tui::types::InlineCommand::SetAppearance { appearance });
+                self.refresh_compact_activity_presentations();
+            }
+            InlineCommand::ReplaceLast { count, kind, lines, link_ranges } => {
+                let remove_count = count.min(self.core.lines.len());
+                let first_removed = self.core.lines.len().saturating_sub(remove_count);
+                self.compact_activity_entries.retain(|entry| entry.line_index < first_removed);
+                self.core
+                    .handle_command(crate::tui::core_tui::types::InlineCommand::ReplaceLast {
+                        count,
+                        kind,
+                        lines,
+                        link_ranges,
+                    });
+            }
+            InlineCommand::ClearScreen => {
+                self.tool_output_blocks.clear();
+                self.compact_activity_entries.clear();
+                self.compact_activity_hit_regions.clear();
+                self.tool_output_revision = self.tool_output_revision.wrapping_add(1);
+                self.core
+                    .handle_command(crate::tui::core_tui::types::InlineCommand::ClearScreen);
+            }
+            InlineCommand::CloseTransient => self.close_transient(),
+            InlineCommand::ShowTransient { request } => self.show_transient(*request),
+            InlineCommand::UpdateFilePaletteSearch { files } => {
+                if let Some(palette) = &mut self.file_palette {
+                    palette.set_search_index(files);
+                }
+            }
+            _ => {
+                if let Some(core_cmd) = to_core_command(&command) {
+                    self.core.handle_command(core_cmd);
+                }
+            }
+        }
+    }
+}
+
+fn normalize_tool_output_header(header: &str) -> String {
+    crate::tui::core_tui::session::text_utils::strip_ansi_codes(header)
+        .trim_end()
+        .to_owned()
+}
+
+fn rendered_core_line_text(core: &CoreSessionState, line_index: usize) -> String {
+    let Some(line) = core.lines.get(line_index) else {
+        return String::new();
+    };
+    core.render_message_spans_for_line(line)
+        .into_iter()
+        .map(|span| crate::tui::core_tui::session::text_utils::strip_ansi_codes(span.content.as_ref()).into_owned())
+        .collect()
+}
+
+impl std::ops::Deref for AppSession {
+    type Target = CoreSessionState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.core
+    }
+}
+
+impl std::ops::DerefMut for AppSession {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.core
+    }
+}
+
+fn to_core_command(command: &InlineCommand) -> Option<crate::tui::core_tui::types::InlineCommand> {
+    use crate::tui::core_tui::types::InlineCommand as CoreCommand;
+
+    Some(match command {
+        InlineCommand::AppendLine { kind, segments } => {
+            CoreCommand::AppendLine { kind: *kind, segments: segments.clone() }
+        }
+        InlineCommand::AppendPastedMessage { kind, text, line_count } => CoreCommand::AppendPastedMessage {
+            kind: *kind,
+            text: text.clone(),
+            line_count: *line_count,
+        },
+        InlineCommand::Inline { kind, segment } => CoreCommand::Inline { kind: *kind, segment: segment.clone() },
+        InlineCommand::ReplaceLast { count, kind, lines, link_ranges } => CoreCommand::ReplaceLast {
+            count: *count,
+            kind: *kind,
+            lines: lines.clone(),
+            link_ranges: link_ranges.clone(),
+        },
+        InlineCommand::RecordToolOutput { .. }
+        | InlineCommand::AppendToolOutputLine { .. }
+        | InlineCommand::AppendCompactActivity(_)
+        | InlineCommand::ReplaceCompactActivity(_)
+        | InlineCommand::CollapsePtyBlock(_)
+        | InlineCommand::SetKeyBindings { .. } => return None,
+        InlineCommand::SetPrompt { prefix, style } => {
+            CoreCommand::SetPrompt { prefix: prefix.clone(), style: style.clone() }
+        }
+        InlineCommand::SetPlaceholder { hint, style } => {
+            CoreCommand::SetPlaceholder { hint: hint.clone(), style: style.clone() }
+        }
+        InlineCommand::SetMessageLabels { agent, user } => {
+            CoreCommand::SetMessageLabels { agent: agent.clone(), user: user.clone() }
+        }
+        InlineCommand::SetHeaderContext { context } => CoreCommand::SetHeaderContext { context: context.clone() },
+        InlineCommand::SetInputStatus { left, right } => {
+            CoreCommand::SetInputStatus { left: left.clone(), right: right.clone() }
+        }
+        InlineCommand::SetActivityState(state) => CoreCommand::SetActivityState(*state),
+        InlineCommand::SetTerminalTitleItems { items } => CoreCommand::SetTerminalTitleItems { items: items.clone() },
+        InlineCommand::SetTerminalTitleThreadLabel { label } => {
+            CoreCommand::SetTerminalTitleThreadLabel { label: label.clone() }
+        }
+        InlineCommand::SetTerminalTitleGitBranch { branch } => {
+            CoreCommand::SetTerminalTitleGitBranch { branch: branch.clone() }
+        }
+        InlineCommand::SetTheme { theme } => CoreCommand::SetTheme { theme: theme.clone() },
+        InlineCommand::SetAppearance { appearance } => CoreCommand::SetAppearance { appearance: appearance.clone() },
+        InlineCommand::SetVimModeEnabled(enabled) => CoreCommand::SetVimModeEnabled(*enabled),
+        InlineCommand::SetQueuedInputs { entries } => CoreCommand::SetQueuedInputs { entries: entries.clone() },
+        InlineCommand::SetSubprocessEntries { entries } => {
+            CoreCommand::SetSubprocessEntries { entries: entries.clone() }
+        }
+        InlineCommand::SetSubagentPreview { text } => CoreCommand::SetSubagentPreview { text: text.clone() },
+        InlineCommand::SetLocalAgents { .. } => return None,
+        InlineCommand::SetArchivedHistory { .. } => return None,
+        InlineCommand::UpdateFilePaletteSearch { .. } => return None,
+        InlineCommand::SetPrimaryAgent { name, color } => {
+            CoreCommand::SetPrimaryAgent { name: name.clone(), color: color.clone() }
+        }
+        InlineCommand::SetCursorVisible(value) => CoreCommand::SetCursorVisible(*value),
+        InlineCommand::SetInputEnabled(value) => CoreCommand::SetInputEnabled(*value),
+        InlineCommand::SetImageInputEnabled(value) => CoreCommand::SetImageInputEnabled(*value),
+        InlineCommand::SetInput(value) => CoreCommand::SetInput(value.clone()),
+        InlineCommand::RestoreInputDraft(input) => CoreCommand::RestoreInputDraft(input.clone()),
+        InlineCommand::ApplySuggestedPrompt(value) => CoreCommand::ApplySuggestedPrompt(value.clone()),
+        InlineCommand::SetInlinePromptSuggestion { suggestion, llm_generated } => {
+            CoreCommand::SetInlinePromptSuggestion {
+                suggestion: suggestion.clone(),
+                llm_generated: *llm_generated,
+            }
+        }
+        InlineCommand::ClearInlinePromptSuggestion => CoreCommand::ClearInlinePromptSuggestion,
+        InlineCommand::ClearInput => CoreCommand::ClearInput,
+        InlineCommand::ForceRedraw => CoreCommand::ForceRedraw,
+        InlineCommand::ClearScreen => CoreCommand::ClearScreen,
+        InlineCommand::SuspendEventLoop => CoreCommand::SuspendEventLoop,
+        InlineCommand::ResumeEventLoop => CoreCommand::ResumeEventLoop,
+        InlineCommand::ClearInputQueue => CoreCommand::ClearInputQueue,
+        InlineCommand::StopEventStream => CoreCommand::StopEventStream,
+        InlineCommand::StartEventStream => CoreCommand::StartEventStream,
+        InlineCommand::SetSkipConfirmations(skip) => CoreCommand::SetSkipConfirmations(*skip),
+        InlineCommand::Shutdown => CoreCommand::Shutdown,
+        InlineCommand::SetReasoningStage(stage) => CoreCommand::SetReasoningStage(stage.clone()),
+        InlineCommand::ShowTransient { .. } | InlineCommand::CloseTransient => return None,
+    })
+}
+
+impl TuiSessionDriver for AppSession {
+    type Command = InlineCommand;
+    type Event = InlineEvent;
+
+    fn handle_command(&mut self, command: Self::Command) {
+        AppSession::handle_command(self, command);
+    }
+
+    fn handle_event(
+        &mut self,
+        event: CrosstermEvent,
+        events: &UnboundedSender<Self::Event>,
+        callback: Option<&(dyn Fn(&Self::Event) + Send + Sync + 'static)>,
+    ) {
+        AppSession::handle_event(self, event, events, callback);
+    }
+
+    fn handle_tick(&mut self) {
+        self.core.handle_tick();
+        if self.local_agents_loading_active()
+            && self.core.appearance.should_animate_progress_status()
+            && !self.core.is_shimmer_active()
+            && self.core.shimmer_state.update()
+        {
+            self.core.mark_dirty();
+        }
+    }
+
+    fn render(&mut self, frame: &mut Frame<'_>) {
+        AppSession::render(self, frame);
+    }
+
+    fn take_redraw(&mut self) -> bool {
+        self.core.take_redraw()
+    }
+
+    fn use_steady_cursor(&self) -> bool {
+        self.core.use_steady_cursor()
+    }
+
+    fn is_hovering_link(&self) -> bool {
+        self.core.is_hovering_link()
+    }
+
+    fn is_selecting_text(&self) -> bool {
+        self.core.is_selecting_text()
+    }
+
+    fn should_exit(&self) -> bool {
+        self.core.should_exit()
+    }
+
+    fn request_exit(&mut self) {
+        self.core.request_exit();
+    }
+
+    fn mark_dirty(&mut self) {
+        self.core.mark_dirty();
+    }
+
+    fn update_terminal_title(&mut self) {
+        self.core.update_terminal_title();
+    }
+
+    fn clear_terminal_title(&mut self) {
+        self.core.clear_terminal_title();
+    }
+
+    fn is_running_activity(&self) -> bool {
+        self.core.is_running_activity() || self.local_agents_loading_active()
+    }
+
+    fn has_status_spinner(&self) -> bool {
+        self.core.has_status_spinner() || self.local_agents_loading_active()
+    }
+
+    fn thinking_spinner_active(&self) -> bool {
+        self.core.thinking_spinner.is_active
+    }
+
+    fn has_active_navigation_ui(&self) -> bool {
+        self.transient_host.has_active_navigation_surface()
+    }
+
+    fn apply_coalesced_scroll(&mut self, line_delta: i32, page_delta: i32) {
+        self.core.apply_coalesced_scroll(line_delta, page_delta);
+    }
+
+    fn set_show_logs(&mut self, show: bool) {
+        self.core.show_logs = show;
+    }
+
+    fn set_active_pty_sessions(&mut self, sessions: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>) {
+        self.core.active_pty_sessions = sessions;
+    }
+
+    fn set_workspace_root(&mut self, root: Option<std::path::PathBuf>) {
+        self.core.set_workspace_root(root);
+    }
+
+    fn set_log_receiver(&mut self, receiver: UnboundedReceiver<crate::tui::core_tui::log::LogEntry>) {
+        self.core.set_log_receiver(receiver);
+    }
+
+    fn set_fullscreen_active(&mut self, active: bool) {
+        self.core.set_fullscreen_active(active);
+    }
+
+    fn set_fullscreen_interaction(&mut self, config: FullscreenInteractionSettings) {
+        self.core.set_fullscreen_interaction(config);
+    }
+
+    fn set_preview_callback(&mut self, callback: Option<crate::tui::core_tui::types::PreviewCallback>) {
+        self.preview_callback = callback;
+    }
+}

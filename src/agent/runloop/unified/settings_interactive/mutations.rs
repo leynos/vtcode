@@ -1,14 +1,14 @@
 use anyhow::{Context, Result, anyhow, bail};
+use diapason_commons::DiapasonPaths;
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig, explicit_config_path};
+use diapason_core::config::{constants::defaults, constants::model_helpers};
+use diapason_core::llm::{auto_lightweight_model, lightweight_model_choices};
+use diapason_core::ui::theme;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml::Value as TomlValue;
-use vtcode_commons::VtCodePaths;
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig, explicit_config_path};
-use vtcode_core::config::{constants::defaults, constants::model_helpers};
-use vtcode_core::llm::{auto_lightweight_model, lightweight_model_choices};
-use vtcode_core::ui::theme;
 
 use crate::agent::runloop::unified::config_section_headings::{heading_for_path, normalize_config_path};
 
@@ -47,14 +47,14 @@ pub(crate) fn reload_state_from_disk(state: &mut SettingsPaletteState) -> Result
         state.source_path = source_path.to_path_buf();
         state.source_label = format!("Configuration source: {}", source_path.display());
     } else {
-        state.source_path = state.workspace.join("vtcode.toml");
+        state.source_path = state.workspace.join("config.toml");
         state.source_label = no_config_source_label(&state.workspace);
     }
     Ok(())
 }
 
 pub(super) fn no_config_source_label(workspace: &Path) -> String {
-    format!("No vtcode.toml found for {}. Draft starts from runtime defaults.", workspace.display())
+    format!("No config.toml found for {}. Draft starts from runtime defaults.", workspace.display())
 }
 
 pub(super) fn add_array_item(root: &mut TomlValue, path: &str) -> Result<()> {
@@ -339,16 +339,16 @@ where
         TomlValue::try_from(state.draft.clone()).context("Failed to serialize draft configuration")?;
     mutator(&mut draft_value)?;
 
-    let parsed: VTCodeConfig = draft_value.try_into().context("Updated draft configuration is invalid")?;
+    let parsed: DiapasonConfig = draft_value.try_into().context("Updated draft configuration is invalid")?;
     parsed.validate().context("Updated draft configuration failed validation")?;
 
     state.draft = parsed;
     Ok(())
 }
 
-fn write_commented_config(path: &Path, config: &VTCodeConfig) -> Result<()> {
+fn write_commented_config(path: &Path, config: &DiapasonConfig) -> Result<()> {
     let content = render_commented_config(config)?;
-    VtCodePaths::write_private_file_atomic(path, content.as_bytes())
+    DiapasonPaths::write_private_file_atomic(path, content.as_bytes())
         .with_context(|| format!("Failed to write configuration file {}", path.display()))
 }
 
@@ -360,7 +360,7 @@ fn persist_draft(state: &mut SettingsPaletteState, path: &str) -> Result<()> {
     let mut target_value = load_or_default_toml(&target_path)?;
     set_node(&mut target_value, &persisted_path, persisted_value)?;
 
-    let target_config: VTCodeConfig = target_value
+    let target_config: DiapasonConfig = target_value
         .try_into()
         .with_context(|| format!("Updated configuration at {} could not be deserialized", target_path.display()))?;
     target_config
@@ -455,12 +455,12 @@ fn load_or_default_toml(path: &Path) -> Result<TomlValue> {
         }
     }
 
-    let content = String::from_utf8(VtCodePaths::read_file_no_follow(path)?)
+    let content = String::from_utf8(DiapasonPaths::read_file_no_follow(path)?)
         .with_context(|| format!("Configuration file {} is not valid UTF-8", path.display()))?;
     toml::from_str(&content).with_context(|| format!("Failed to parse config file {}", path.display()))
 }
 
-pub(super) fn render_commented_config(config: &VTCodeConfig) -> Result<String> {
+pub(super) fn render_commented_config(config: &DiapasonConfig) -> Result<String> {
     let value = ConfigManager::sparse_config_value(config)
         .context("Failed to serialize configuration for comment rendering")?;
 
@@ -469,7 +469,7 @@ pub(super) fn render_commented_config(config: &VTCodeConfig) -> Result<String> {
     };
 
     let mut output = String::new();
-    output.push_str("# VT Code Configuration File\n");
+    output.push_str("# Diapason Configuration File\n");
     output.push_str("# Saved from /config with readable section headings.\n");
     output.push_str("# Every field includes descriptions, defaults, and known choices where available.\n\n");
 

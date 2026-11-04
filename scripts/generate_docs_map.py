@@ -30,7 +30,7 @@ FILE_CATEGORY_OVERRIDE = {
 
 # Files to exclude from the map
 EXCLUDE_FILES = [
-    "docs/modules/vtcode_docs_map.md",
+    "docs/modules/diapason_docs_map.md",
     "docs/README.md",
     "docs/INDEX.md",
     "docs/CONTRIBUTING.md",
@@ -41,6 +41,7 @@ EXCLUDE_FILES = [
 
 # Directories to exclude from the map
 EXCLUDE_DIRS = [
+    "docs/archive",
     "docs/mcp/archive",
     "docs/async",
     "docs/vscode-extension-improve-docs",
@@ -123,7 +124,7 @@ def generate_questions(title, topics):
 def main():
     root_dir = Path(__file__).parent.parent
     docs_dir = root_dir / "docs"
-    output_file = docs_dir / "modules" / "vtcode_docs_map.md"
+    output_file = docs_dir / "modules" / "diapason_docs_map.md"
 
     categories = {}
 
@@ -131,12 +132,12 @@ def main():
     for ext in ['*.md', 'models.json']:
         for file_path in docs_dir.rglob(ext):
             rel_path = file_path.relative_to(root_dir)
-            rel_path_str = str(rel_path)
+            rel_path_str = rel_path.as_posix()
 
             if rel_path_str in EXCLUDE_FILES:
                 continue
             
-            if any(rel_path_str.startswith(d) for d in EXCLUDE_DIRS):
+            if any(Path(directory) in rel_path.parents for directory in EXCLUDE_DIRS):
                 continue
 
             # Determine category
@@ -169,15 +170,15 @@ def main():
 
     # Build the output content
     content = [
-        "# VT Code Documentation Map",
+        "# Diapason Documentation Map",
         "",
-        "This document serves as an index of all VT Code documentation. When users ask questions about VT Code itself (capabilities, features, configuration, etc.), this file provides the complete catalog of available documentation sources.",
+        "This document serves as an index of all Diapason documentation. When users ask questions about Diapason itself (capabilities, features, configuration, etc.), this file provides the complete catalog of available documentation sources.",
         "",
         "## Quick Reference",
         "",
-        "**Core Questions**: Can VT Code do X? | How does VT Code Y work? | What's VT Code's Z feature?",
+        "**Core Questions**: Can Diapason do X? | How does Diapason Y work? | What's Diapason's Z feature?",
         "",
-        "**Documentation Retrieval**: When users ask about VT Code capabilities, fetch relevant sections from the files listed below based on the topic area.",
+        "**Documentation Retrieval**: When users ask about Diapason capabilities, fetch relevant sections from the files listed below based on the topic area.",
         "",
         "## Documentation Categories",
         ""
@@ -200,13 +201,13 @@ def main():
         "## Enhanced Trigger Questions",
         "",
         "### Core Capabilities & Features",
-        "- \"What can VT Code do?\"",
-        "- \"What are VT Code's main features?\"",
-        "- \"How does VT Code compare to other AI coding tools?\"",
-        "- \"What makes VT Code unique?\"",
-        "- \"Can VT Code handle multiple programming languages?\"",
-        "- \"Does VT Code support real-time collaboration?\"",
-        "- \"How does VT Code handle large codebases efficiently?\"",
+        "- \"What can Diapason do?\"",
+        "- \"What are Diapason's main features?\"",
+        "- \"How does Diapason compare to other AI coding tools?\"",
+        "- \"What makes Diapason unique?\"",
+        "- \"Can Diapason handle multiple programming languages?\"",
+        "- \"Does Diapason support real-time collaboration?\"",
+        "- \"How does Diapason handle large codebases efficiently?\"",
         "- \"What are the different system prompt modes (minimal, lightweight, etc.)?\"",
         "- \"How can I reduce token usage with tool documentation modes?\"",
         "",
@@ -218,50 +219,50 @@ def main():
         "- \"How does the agent handle long-running conversations?\"",
         "",
         "### Security & Reliability",
-        "- \"What security layers does VT Code implement?\"",
-        "- \"How does VT Code ensure shell command safety?\"",
-        "- \"What is the 5-layer security model in VT Code?\"",
+        "- \"What security layers does Diapason implement?\"",
+        "- \"How does Diapason ensure shell command safety?\"",
+        "- \"What is the 5-layer security model in Diapason?\"",
         "- \"How do tool policies and human-in-the-loop approvals work?\"",
         "- \"How does the circuit breaker prevent cascading failures?\"",
-        "- \"Is my code and data safe with VT Code?\"",
+        "- \"Is my code and data safe with Diapason?\"",
         "",
         "### Integrations & Protocols",
-        "- \"How do I use VT Code inside the Zed editor?\"",
+        "- \"How do I use Diapason inside the Zed editor?\"",
         "- \"What is the Agent Client Protocol (ACP) and how is it used?\"",
         "- \"What is the Agent2Agent (A2A) protocol?\"",
-        "- \"How does VT Code conform to the Open Responses specification?\"",
+        "- \"How does Diapason conform to the Open Responses specification?\"",
         "- \"How do I configure Model Context Protocol (MCP) servers?\"",
         "- \"What are lifecycle hooks and how do I configure them?\"",
         "",
         "### Local Models & Providers",
-        "- \"Can I use VT Code with local models via Ollama?\"",
-        "- \"How do I integrate VT Code with LM Studio?\"",
+        "- \"Can I use Diapason with local models via Ollama?\"",
+        "- \"How do I integrate Diapason with LM Studio?\"",
         "- \"Which AI providers are supported (OpenAI, Anthropic, Gemini, etc.)?\"",
-        "- \"How do I set up OpenRouter with VT Code?\"",
+        "- \"How do I set up OpenRouter with Diapason?\"",
         "- \"How can I use Hugging Face Inference Providers?\"",
         "",
         "### Getting Started & Setup",
-        "- \"How do I install VT Code?\"",
-        "- \"How do I get started with VT Code?\"",
-        "- \"How do I set up VT Code for the first time?\"",
+        "- \"How do I install Diapason?\"",
+        "- \"How do I get started with Diapason?\"",
+        "- \"How do I set up Diapason for the first time?\"",
         "- \"What do I need to get started?\"",
         "- \"How do I configure API keys?\"",
         "- \"Which LLM provider should I choose?\"",
-        "- \"How do I configure VT Code for my workflow?\"",
+        "- \"How do I configure Diapason for my workflow?\"",
         "- \"What are the most common keyboard shortcuts?\"",
         "",
         "### Development & Maintenance",
-        "- \"How do I build VT Code from source?\"",
+        "- \"How do I build Diapason from source?\"",
         "- \"How do I run the test suite?\"",
-        "- \"How do I add a new tool to VT Code?\"",
+        "- \"How do I add a new tool to Diapason?\"",
         "- \"How do I debug agent behaviour or tool execution?\"",
         "- \"How do I run the performance benchmarks?\"",
         "- \"How do I update the self-documentation map?\"",
-        "- \"How do I contribute to the VT Code project?\"",
-        "- \"What is the release process for VT Code?\"",
+        "- \"How do I contribute to the Diapason project?\"",
+        "- \"What is the release process for Diapason?\"",
         "- \"How do I manage multi-crate dependencies in this workspace?\"",
         "",
-        "## VT Code Feature Categories",
+        "## Diapason Feature Categories",
         "",
         "### Core Capabilities",
         "- **Multi-LLM Provider Support**: OpenAI, Anthropic, Google, DeepSeek, xAI, OpenRouter, Moonshot AI, Ollama, LM Studio",
@@ -274,13 +275,13 @@ def main():
         "## Additional Resources",
         "",
         "### External Documentation",
-        "- **Repository**: https://github.com/vinhnx/vtcode",
-        "- **Crate**: https://crates.io/crates/vtcode",
+        "- **Repository**: https://github.com/leynos/vtcode",
+        "- **Crate**: https://crates.io/crates/diapason",
         "- **VS Code Extension**: Open VSX and VS Code Marketplace",
         "",
         "---",
         "",
-        "**Note**: This enhanced documentation map is designed for VT Code's self-documentation system. When users ask questions about VT Code itself, the system should fetch this document and use it to provide accurate, up-to-date information about VT Code's capabilities and features."
+        "**Note**: This enhanced documentation map is designed for Diapason's self-documentation system. When users ask questions about Diapason itself, the system should fetch this document and use it to provide accurate, up-to-date information about Diapason's capabilities and features."
     ])
 
     with open(output_file, 'w', encoding='utf-8') as f:

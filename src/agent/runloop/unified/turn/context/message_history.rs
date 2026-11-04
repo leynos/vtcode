@@ -1,6 +1,6 @@
-use vtcode_commons::diff_paths::{is_diff_addition_line, is_diff_deletion_line, is_diff_header_line};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::llm::providers::ReasoningSegment;
+use diapason_commons::diff_paths::{is_diff_addition_line, is_diff_deletion_line, is_diff_header_line};
+use diapason_core::llm::provider as uni;
+use diapason_core::llm::providers::ReasoningSegment;
 
 pub(super) fn reasoning_duplicates_content(reasoning: &str, content: &str) -> bool {
     let r = reasoning.trim();

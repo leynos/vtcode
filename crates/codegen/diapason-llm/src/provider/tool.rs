@@ -1,0 +1,554 @@
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
+
+// Re-export from diapason-config as the canonical definition
+pub use diapason_config::ToolSearchAlgorithm;
+
+/// A namespace grouping for deferred tools. When a tool has a namespace and
+/// `defer_loading` is true, only the namespace metadata (name + description)
+/// is sent upfront. The full tool definitions are loaded when the model
+/// searches for a tool in that namespace.
+///
+/// This is the infrastructure for the article's description: "when deferred
+/// functions are grouped into a namespace, only the namespace's name and
+/// description" are sent to the model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolNamespace {
+    /// The namespace name (e.g., "file_operations", "code_search")
+    pub name: String,
+    /// A short description of what tools in this namespace do
+    pub description: String,
+}
+
+/// Universal tool definition that matches OpenAI/Anthropic/Gemini specifications
+/// Based on official API documentation from Context7
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    /// The type of tool: "function", "apply_patch" (GPT-5.1), "shell" (GPT-5.1), or "custom" (GPT-5 freeform)
+    /// Also supports provider-native and hosted tool types like:
+    /// - "tool_search" (OpenAI hosted tool search)
+    /// - "file_search" and "mcp" (OpenAI Responses hosted tools)
+    /// - Anthropic tool search revisions:
+    /// - "tool_search_tool_regex_20251119", "tool_search_tool_bm25_20251119"
+    /// - "web_search_20260209" (and other web_search_* revisions)
+    /// - "code_execution_20250825" (and other code_execution_* revisions)
+    /// - "memory_20250818" (and other memory_* revisions)
+    #[serde(rename = "type")]
+    pub tool_type: String,
+
+    /// Function definition containing name, description, and parameters
+    /// Used for "function", "apply_patch", and "custom" types
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function: Option<FunctionDefinition>,
+
+    /// Restricts which Anthropic callers can invoke this tool programmatically.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) allowed_callers: Option<Vec<String>>,
+
+    /// Anthropic tool use examples used to teach complex tool behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) input_examples: Option<Vec<Value>>,
+
+    /// Provider-native web search configuration payload (e.g. Z.AI `web_search` tool).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub web_search: Option<Value>,
+
+    /// Provider-hosted Responses tool configuration for tool types like
+    /// `file_search` and `mcp`.
+    #[serde(skip, default)]
+    pub(crate) hosted_tool_config: Option<Value>,
+
+    /// Shell tool configuration (GPT-5.1 specific)
+    /// Describes shell command capabilities and constraints
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) shell: Option<ShellToolDefinition>,
+
+    /// Grammar definition for context-free grammar constraints (GPT-5 specific)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) grammar: Option<GrammarDefinition>,
+
+    /// When true and using Anthropic, mark the tool as strict for structured tool use validation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) strict: Option<bool>,
+
+    /// When true, the tool is deferred and only loaded when discovered via tool search (Anthropic advanced-tool-use beta)
+    /// This enables dynamic tool discovery for large tool catalogs (10k+ tools)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub defer_loading: Option<bool>,
+
+    /// Optional namespace grouping for deferred tools. When present and
+    /// `defer_loading` is true, only this namespace metadata is sent upfront
+    /// instead of the full tool definition.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<ToolNamespace>,
+
+    /// Anthropic server-side advisor tool configuration. Carries the advisor's
+    /// options (model, max_uses, max_tokens, caching) so that inbound proxy
+    /// requests can round-trip through `ToolDefinition` without losing data.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) advisor: Option<Value>,
+}
+
+/// Shell tool definition for GPT-5.1 shell tool type
+/// Allows controlled command-line interface interactions
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShellToolDefinition {
+    /// Description of shell tool capabilities
+    description: String,
+
+    /// List of allowed commands (whitelist for safety)
+    allowed_commands: Vec<String>,
+
+    /// List of forbidden commands (blacklist for safety)
+    forbidden_patterns: Vec<String>,
+
+    /// Maximum command timeout in seconds
+    timeout_seconds: u32,
+}
+
+/// Grammar definition for GPT-5 context-free grammar (CFG) constraints
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GrammarDefinition {
+    /// The syntax of the grammar: "lark" or "regex"
+    pub(crate) syntax: String,
+
+    /// The grammar definition in the specified syntax
+    pub(crate) definition: String,
+}
+
+impl Default for GrammarDefinition {
+    fn default() -> Self {
+        Self { syntax: "lark".into(), definition: String::new() }
+    }
+}
+
+impl Default for ShellToolDefinition {
+    fn default() -> Self {
+        Self {
+            description: "Execute shell commands in the workspace".into(),
+            allowed_commands: vec![
+                "ls".into(),
+                "find".into(),
+                "grep".into(),
+                "cargo".into(),
+                "git".into(),
+                "python".into(),
+                "node".into(),
+            ],
+            forbidden_patterns: vec!["rm -rf".into(), "sudo".into(), "passwd".into()],
+            timeout_seconds: 30,
+        }
+    }
+}
+
+/// Function definition within a tool
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FunctionDefinition {
+    /// The name of the function to be called
+    pub name: String,
+
+    /// A description of what the function does
+    pub description: String,
+
+    /// The parameters the function accepts, described as a JSON Schema object
+    pub parameters: Value,
+}
+
+pub(crate) fn sanitize_tool_description(description: &str) -> String {
+    let mut result = String::with_capacity(description.len());
+    let mut first = true;
+    for line in description.lines() {
+        if !first {
+            result.push('\n');
+        }
+        result.push_str(line.trim_end());
+        first = false;
+    }
+    result.trim().to_owned()
+}
+
+impl ToolDefinition {
+    fn empty(tool_type: impl Into<String>) -> Self {
+        Self {
+            tool_type: tool_type.into(),
+            function: None,
+            allowed_callers: None,
+            input_examples: None,
+            web_search: None,
+            hosted_tool_config: None,
+            shell: None,
+            grammar: None,
+            strict: None,
+            defer_loading: None,
+            namespace: None,
+            advisor: None,
+        }
+    }
+
+    /// Create a new tool definition with function type
+    pub fn function(name: String, description: String, parameters: Value) -> Self {
+        let sanitized_description = sanitize_tool_description(&description);
+        let mut tool = Self::empty("function");
+        tool.function = Some(FunctionDefinition {
+            name,
+            description: sanitized_description,
+            parameters,
+        });
+        tool
+    }
+
+    /// Set whether the tool should be considered strict (Anthropic structured tool use)
+    pub fn with_strict(mut self, strict: bool) -> Self {
+        self.strict = Some(strict);
+        self
+    }
+
+    /// Restrict which Anthropic callers can invoke this tool programmatically.
+    pub(crate) fn with_allowed_callers(mut self, allowed_callers: Vec<String>) -> Self {
+        self.allowed_callers = Some(allowed_callers);
+        self
+    }
+
+    /// Attach Anthropic tool use examples for better tool selection and argument shaping.
+    pub(crate) fn with_input_examples(mut self, input_examples: Vec<Value>) -> Self {
+        self.input_examples = Some(input_examples);
+        self
+    }
+
+    /// Set whether the tool should be deferred (Anthropic tool search)
+    pub fn with_defer_loading(mut self, defer: bool) -> Self {
+        self.defer_loading = Some(defer);
+        self
+    }
+
+    /// Assign this tool to a namespace for grouped deferred loading.
+    /// When both `defer_loading` and `namespace` are set, only the namespace
+    /// metadata is sent upfront; the full definition is loaded on search.
+    pub fn with_namespace(mut self, namespace: ToolNamespace) -> Self {
+        self.namespace = Some(namespace);
+        self
+    }
+
+    /// Create a tool search tool definition for Anthropic's advanced-tool-use beta
+    /// Supports regex and bm25 search algorithms
+    pub fn tool_search(algorithm: ToolSearchAlgorithm) -> Self {
+        let (tool_type, name) = match algorithm {
+            ToolSearchAlgorithm::Regex => ("tool_search_tool_regex_20251119", "tool_search_tool_regex"),
+            ToolSearchAlgorithm::Bm25 => ("tool_search_tool_bm25_20251119", "tool_search_tool_bm25"),
+            // Unknown algorithms default to regex
+            ToolSearchAlgorithm::Unknown => ("tool_search_tool_regex_20251119", "tool_search_tool_regex"),
+        };
+
+        let mut tool = Self::empty(tool_type);
+        tool.function = Some(FunctionDefinition {
+            name: name.to_owned(),
+            description: "Search for tools by name, description, or parameters".to_owned(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (regex pattern for regex variant, natural language for bm25)"
+                    }
+                },
+                "required": ["query"]
+            }),
+        });
+        tool
+    }
+
+    /// Create an OpenAI hosted tool search definition.
+    pub fn hosted_tool_search() -> Self {
+        Self::empty("tool_search")
+    }
+
+    /// Create an Anthropic native memory tool definition.
+    pub fn anthropic_memory() -> Self {
+        Self::empty("memory_20250818")
+    }
+
+    /// Create a new apply_patch tool definition (GPT-5.1 specific)
+    /// The apply_patch tool lets models create, update, and delete files using Diapason structured diffs
+    pub fn apply_patch(description: String) -> Self {
+        let sanitized_description = sanitize_tool_description(&description);
+        let mut tool = Self::empty("apply_patch");
+        tool.function = Some(FunctionDefinition {
+            name: "apply_patch".to_owned(),
+            description: sanitized_description,
+            parameters: apply_patch_schema(diapason_utility_tool_specs::DEFAULT_APPLY_PATCH_INPUT_DESCRIPTION),
+        });
+        tool
+    }
+
+    /// Create a new custom tool definition for freeform function calling (GPT-5 specific)
+    /// Allows raw text payloads without JSON wrapping
+    pub fn custom(name: String, description: String) -> Self {
+        let sanitized_description = sanitize_tool_description(&description);
+        let mut tool = Self::empty("custom");
+        tool.function = Some(FunctionDefinition {
+            name,
+            description: sanitized_description,
+            parameters: json!({}), // Custom tools may not need parameters
+        });
+        tool
+    }
+
+    /// Create a new grammar tool definition for context-free grammar constraints (GPT-5 specific)
+    /// Ensures model output matches predefined syntax
+    pub fn grammar(syntax: String, definition: String) -> Self {
+        let mut tool = Self::empty("grammar");
+        tool.grammar = Some(GrammarDefinition { syntax, definition });
+        tool
+    }
+
+    /// Create a provider-native web search tool definition.
+    pub fn web_search(config: Value) -> Self {
+        let mut tool = Self::empty("web_search");
+        tool.web_search = Some(config);
+        tool
+    }
+
+    /// Create a Gemini Google Maps grounding tool definition.
+    pub fn google_maps(config: Value) -> Self {
+        let mut tool = Self::empty("google_maps");
+        tool.hosted_tool_config = Some(config);
+        tool
+    }
+
+    /// Create a Gemini URL Context tool definition.
+    pub fn url_context(config: Value) -> Self {
+        let mut tool = Self::empty("url_context");
+        tool.hosted_tool_config = Some(config);
+        tool
+    }
+
+    /// Create an OpenAI Responses file search tool definition.
+    pub(crate) fn file_search(config: Value) -> Self {
+        let mut tool = Self::empty("file_search");
+        tool.hosted_tool_config = Some(config);
+        tool
+    }
+
+    /// Create a Gemini Code Execution tool definition.
+    pub(crate) fn code_execution(config: Value) -> Self {
+        let mut tool = Self::empty("code_execution");
+        tool.hosted_tool_config = Some(config);
+        tool
+    }
+
+    /// Create an OpenAI Responses remote MCP tool definition.
+    pub(crate) fn mcp(config: Value) -> Self {
+        let mut tool = Self::empty("mcp");
+        tool.hosted_tool_config = Some(config);
+        tool
+    }
+
+    /// Get the function name for easy access
+    pub fn function_name(&self) -> &str {
+        if self.is_anthropic_memory_tool() {
+            "memory"
+        } else if let Some(func) = &self.function {
+            &func.name
+        } else {
+            &self.tool_type
+        }
+    }
+
+    /// Get the description for easy access
+    pub fn description(&self) -> &str {
+        if let Some(func) = &self.function {
+            &func.description
+        } else if let Some(shell) = &self.shell {
+            &shell.description
+        } else {
+            ""
+        }
+    }
+
+    /// Validate that this tool definition is properly formed
+    pub fn validate(&self) -> Result<(), String> {
+        match self.tool_type.as_str() {
+            "function" => self.validate_function(),
+            "apply_patch" => self.validate_apply_patch(),
+            "shell" => self.validate_shell(),
+            "custom" => self.validate_custom(),
+            "grammar" => self.validate_grammar(),
+            "web_search" => self.validate_web_search(),
+            "google_maps" | "url_context" | "file_search" | "mcp" | "code_execution" => {
+                self.validate_hosted_tool_config()
+            }
+            "tool_search" => Ok(()),
+            "tool_search_tool_regex_20251119" | "tool_search_tool_bm25_20251119" => self.validate_function(),
+            other if other.starts_with("web_search_") => self.validate_anthropic_web_search(),
+            other if other.starts_with("code_execution_") => Ok(()),
+            other if other.starts_with("memory_") => Ok(()),
+            other => Err(format!(
+                "Unsupported tool type: {other}. Supported types: function, apply_patch, shell, custom, grammar, web_search, google_maps, url_context, file_search, mcp, code_execution, tool_search, tool_search_tool_*, web_search_*, code_execution_*, memory_*"
+            )),
+        }
+    }
+
+    /// Returns true if this is a tool search tool type
+    pub fn is_tool_search(&self) -> bool {
+        matches!(
+            self.tool_type.as_str(),
+            "tool_search" | "tool_search_tool_regex_20251119" | "tool_search_tool_bm25_20251119"
+        )
+    }
+
+    /// Returns true when the tool is an Anthropic native web search tool revision.
+    pub fn is_anthropic_web_search(&self) -> bool {
+        self.tool_type.starts_with("web_search_")
+    }
+
+    /// Returns true when the tool is an Anthropic native code execution tool revision.
+    pub(crate) fn is_anthropic_code_execution(&self) -> bool {
+        self.tool_type.starts_with("code_execution_")
+    }
+
+    /// Returns true when the tool is an Anthropic native memory tool revision.
+    pub(crate) fn is_anthropic_memory_tool(&self) -> bool {
+        self.tool_type.starts_with("memory_")
+    }
+
+    fn validate_function(&self) -> Result<(), String> {
+        if let Some(func) = &self.function {
+            if func.name.is_empty() {
+                return Err("Function name cannot be empty".to_owned());
+            }
+            if func.description.is_empty() {
+                return Err("Function description cannot be empty".to_owned());
+            }
+            if !func.parameters.is_object() {
+                return Err("Function parameters must be a JSON object".to_owned());
+            }
+            Ok(())
+        } else {
+            Err("Function tool missing function definition".to_owned())
+        }
+    }
+
+    fn validate_apply_patch(&self) -> Result<(), String> {
+        if let Some(func) = &self.function {
+            if func.name != "apply_patch" {
+                return Err(format!("apply_patch tool must have name 'apply_patch', got: {}", func.name));
+            }
+            if func.description.is_empty() {
+                return Err("apply_patch description cannot be empty".to_owned());
+            }
+            Ok(())
+        } else {
+            Err("apply_patch tool missing function definition".to_owned())
+        }
+    }
+
+    fn validate_shell(&self) -> Result<(), String> {
+        if let Some(shell) = &self.shell {
+            if shell.description.is_empty() {
+                return Err("Shell tool description cannot be empty".to_owned());
+            }
+            if shell.timeout_seconds == 0 {
+                return Err("Shell tool timeout must be greater than 0".to_owned());
+            }
+            Ok(())
+        } else {
+            Err("Shell tool missing shell definition".to_owned())
+        }
+    }
+
+    fn validate_custom(&self) -> Result<(), String> {
+        if let Some(func) = &self.function {
+            if func.name.is_empty() {
+                return Err("Custom tool name cannot be empty".to_owned());
+            }
+            if func.description.is_empty() {
+                return Err("Custom tool description cannot be empty".to_owned());
+            }
+            Ok(())
+        } else {
+            Err("Custom tool missing function definition".to_owned())
+        }
+    }
+
+    fn validate_grammar(&self) -> Result<(), String> {
+        if let Some(grammar) = &self.grammar {
+            if !["lark", "regex"].contains(&grammar.syntax.as_str()) {
+                return Err("Grammar syntax must be 'lark' or 'regex'".to_owned());
+            }
+            if grammar.definition.is_empty() {
+                return Err("Grammar definition cannot be empty".to_owned());
+            }
+            Ok(())
+        } else {
+            Err("Grammar tool missing grammar definition".to_owned())
+        }
+    }
+
+    fn validate_web_search(&self) -> Result<(), String> {
+        self.web_search_config_object(true).map(|_| ())
+    }
+
+    fn validate_anthropic_web_search(&self) -> Result<(), String> {
+        let Some(config) = self.web_search_config_object(false)? else {
+            return Ok(());
+        };
+
+        if config.contains_key("allowed_domains") && config.contains_key("blocked_domains") {
+            return Err("anthropic web_search tools cannot set both allowed_domains and blocked_domains".to_owned());
+        }
+
+        Ok(())
+    }
+
+    fn validate_hosted_tool_config(&self) -> Result<(), String> {
+        match self.hosted_tool_config.as_ref() {
+            Some(Value::Object(_)) => Ok(()),
+            Some(_) => Err(format!("{} tool configuration must be a JSON object", self.tool_type)),
+            None => Err(format!("{} tool missing configuration", self.tool_type)),
+        }
+    }
+
+    fn web_search_config_object(&self, required: bool) -> Result<Option<&Map<String, Value>>, String> {
+        match self.web_search.as_ref() {
+            Some(Value::Object(config)) => Ok(Some(config)),
+            Some(_) => Err(format!("{} tool configuration must be a JSON object", self.tool_type)),
+            None if required => Err(format!("{} tool missing web_search configuration", self.tool_type)),
+            None => Ok(None),
+        }
+    }
+}
+
+/// Static schema for apply_patch tool parameters.
+/// This is the same schema as `crate::tools::apply_patch::parameter_schema` but
+/// inlined to avoid depending on diapason-core's tools module.
+fn apply_patch_schema(description: &str) -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "patch": {
+                "type": "string",
+                "description": description
+            }
+        },
+        "required": ["patch"]
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ToolDefinition;
+
+    #[test]
+    fn apply_patch_parameter_schema_requires_workspace_relative_paths() {
+        let tool = ToolDefinition::apply_patch("Apply patches".to_owned());
+        let function = tool.function.expect("apply_patch function definition");
+        let description = function.parameters["properties"]["patch"]["description"]
+            .as_str()
+            .expect("patch parameter description");
+
+        assert!(description.contains("workspace-relative"));
+        assert!(description.contains("absolute paths"));
+        assert!(description.contains("`..`"));
+        assert!(description.contains("traversal-like forms"));
+    }
+}

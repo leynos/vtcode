@@ -188,7 +188,7 @@ pub(crate) fn has_unclosed_plan_block(text: &str) -> bool {
 /// assistant prose around a plan block. The exact line is intentionally
 /// bounded and prompt-owned; arbitrary model text is left untouched.
 pub(crate) fn strip_plan_persistence_policy_line(text: &str) -> String {
-    let stripped = text.replace(vtcode_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE, "");
+    let stripped = text.replace(diapason_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE, "");
     if stripped == text {
         text.to_string()
     } else {
@@ -210,7 +210,7 @@ fn has_partial_open_tag(text: &str) -> bool {
 }
 
 fn filter_policy_text(buffer: &mut String, flush: bool) -> String {
-    let policy = vtcode_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE;
+    let policy = diapason_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE;
     let mut visible = String::new();
 
     loop {
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn strips_only_the_known_plan_persistence_policy_line() {
-        let policy = vtcode_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE;
+        let policy = diapason_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE;
         let text = format!("{policy}\n\nResearch summary");
         assert_eq!(strip_plan_persistence_policy_line(&text), "Research summary");
         assert_eq!(strip_plan_persistence_policy_line("unrelated prose"), "unrelated prose");
@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn policy_echo_does_not_look_like_an_unclosed_plan_block() {
-        let policy = vtcode_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE;
+        let policy = diapason_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE;
         let response = format!("{policy}\n<plan>\n- Step 1\n</plan>");
         let extraction = extract_any_plan(&response);
         assert_eq!(extraction.plan_text.as_deref(), Some("- Step 1"));

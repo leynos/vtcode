@@ -1,6 +1,6 @@
 # Agent Skills Spec Implementation
 
-This document describes VT Code's current Agent Skills behavior.
+This document describes Diapason's current Agent Skills behavior.
 
 ## Implemented Behavior
 
@@ -62,16 +62,16 @@ Any other frontmatter key is rejected during parsing and validation.
 
 ## Deliberate Non-Support
 
-VT Code does not support:
+Diapason does not support:
 
-- legacy VT Code skill frontmatter extensions
-- deprecated skill locations such as `.vtcode/skills`, `.claude/skills`,
+- legacy Diapason skill frontmatter extensions
+- deprecated skill locations such as `.diapason/skills`, `.claude/skills`,
   `.pi/skills`, `.codex/skills`, `.github/skills`, or `./skills`
 - `agents/openai.yaml`
 
 ## Runtime Surface
 
-- `skills list` and `skills info` render strict-spec metadata plus VT Code's
+- `skills list` and `skills info` render strict-spec metadata plus Diapason's
   explicit command-skill metadata
 - skill prompts include only name, description, file path, and scope
 - routing logic uses `description`; legacy trigger fields are not considered

@@ -121,7 +121,7 @@ fn segment_readonly_pattern(segment: &[String], scope_signature: &str) -> Option
 
 fn segmented_shell_learning_target(command_words: &[String], scope_signature: &str) -> Option<ApprovalLearningTarget> {
     let segments = split_command_words_on_operators(command_words).or_else(|| {
-        vtcode_core::command_safety::shell_parser::parse_shell_commands(&shell_words::join(
+        diapason_core::command_safety::shell_parser::parse_shell_commands(&shell_words::join(
             command_words.iter().map(String::as_str),
         ))
         .ok()
@@ -175,7 +175,7 @@ pub(super) fn approval_learning_target(
     tool_args: Option<&Value>,
     default_learning_label: &str,
 ) -> ApprovalLearningTarget {
-    use vtcode_core::config::constants::tools::{FETCH_URL, WEB_FETCH};
+    use diapason_core::config::constants::tools::{FETCH_URL, WEB_FETCH};
 
     // For web_fetch / fetch_url, key by domain so that permanent approval is
     // scoped to the specific domain rather than the entire tool.
@@ -210,7 +210,7 @@ pub(super) fn approval_learning_target(
     }
 
     ApprovalLearningTarget::new(
-        vtcode_core::tools::names::canonical_tool_name(tool_name).to_owned(),
+        diapason_core::tools::names::canonical_tool_name(tool_name).to_owned(),
         default_learning_label.to_string(),
     )
 }
@@ -220,7 +220,7 @@ pub(super) fn exact_shell_approval_target(
     tool_args: Option<&Value>,
     default_learning_label: &str,
 ) -> Option<ApprovalLearningTarget> {
-    use vtcode_core::config::constants::tools::{FETCH_URL, WEB_FETCH};
+    use diapason_core::config::constants::tools::{FETCH_URL, WEB_FETCH};
 
     // For web_fetch / fetch_url, return the domain-scoped target so that
     // persisted approval lookups match the domain-specific key.
@@ -242,7 +242,7 @@ pub(super) fn persistent_approval_target(
     tool_args: Option<&Value>,
     default_learning_label: &str,
 ) -> PersistentApprovalTarget {
-    use vtcode_core::config::constants::tools::{FETCH_URL, WEB_FETCH};
+    use diapason_core::config::constants::tools::{FETCH_URL, WEB_FETCH};
 
     if let Some(prefix_rule) = extract_shell_persistent_approval_prefix_rule(tool_name, tool_args) {
         let rendered_prefix = render_shell_approval_command_words(&prefix_rule);
@@ -386,7 +386,7 @@ fn learned_find_pattern(
     // syntax can splice a destructive option together after tokenization
     // (for example, `-exe$''c` becomes `-exec` in bash).
     let raw_command_text = raw_command_text?;
-    if vtcode_core::tools::command_args::contains_dynamic_shell_syntax(raw_command_text) {
+    if diapason_core::tools::command_args::contains_dynamic_shell_syntax(raw_command_text) {
         return None;
     }
 
@@ -521,11 +521,11 @@ mod tests {
     #[test]
     fn find_with_spliced_destructive_flag_does_not_get_pattern() {
         for command in [
-            "find src -maxdepth 0 -exe$''c touch /tmp/VT_BYPASS_POC {} +",
-            "find src -maxdepth 0 -exe$@c touch /tmp/VT_BYPASS_POC {} +",
-            "find src -maxdepth 0 -exe$*c touch /tmp/VT_BYPASS_POC {} +",
-            "find src -maxdepth 0 -ex{e,}c touch /tmp/VT_BYPASS_POC {} +",
-            "find src -maxdepth 0 -ex* touch /tmp/VT_BYPASS_POC {} +",
+            "find src -maxdepth 0 -exe$''c touch /tmp/DIAPASON_BYPASS_POC {} +",
+            "find src -maxdepth 0 -exe$@c touch /tmp/DIAPASON_BYPASS_POC {} +",
+            "find src -maxdepth 0 -exe$*c touch /tmp/DIAPASON_BYPASS_POC {} +",
+            "find src -maxdepth 0 -ex{e,}c touch /tmp/DIAPASON_BYPASS_POC {} +",
+            "find src -maxdepth 0 -ex* touch /tmp/DIAPASON_BYPASS_POC {} +",
         ] {
             assert!(pattern_for(command).is_none(), "dynamic find syntax must not learn: {command}");
         }
@@ -580,7 +580,7 @@ mod tests {
     #[test]
     fn sed_print_under_workspace_path_yields_pattern_key() {
         let pattern =
-            pattern_for("sed -n '87,140p' crates/codegen/vtcode-core/src/core/agent/features.rs").expect("pattern");
+            pattern_for("sed -n '87,140p' crates/codegen/diapason-core/src/core/agent/features.rs").expect("pattern");
 
         assert!(
             pattern
@@ -663,10 +663,10 @@ mod tests {
 
     #[tokio::test]
     async fn record_blocking_records_both_exact_and_pattern_keys() {
-        use vtcode_core::tools::ApprovalRecorder;
+        use diapason_core::tools::ApprovalRecorder;
 
         let temp_dir = std::env::temp_dir().join(format!(
-            "vtcode_record_blocking_{}_{}",
+            "diapason_record_blocking_{}_{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -693,10 +693,10 @@ mod tests {
 
     #[tokio::test]
     async fn denial_propagates_to_pattern_key() {
-        use vtcode_core::tools::ApprovalRecorder;
+        use diapason_core::tools::ApprovalRecorder;
 
         let temp_dir = std::env::temp_dir().join(format!(
-            "vtcode_pattern_denial_{}_{}",
+            "diapason_pattern_denial_{}_{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -727,10 +727,10 @@ mod tests {
 
     #[tokio::test]
     async fn three_safe_find_invocations_promote_pattern_to_auto_approve() {
-        use vtcode_core::tools::ApprovalRecorder;
+        use diapason_core::tools::ApprovalRecorder;
 
         let temp_dir = std::env::temp_dir().join(format!(
-            "vtcode_pattern_promote_{}_{}",
+            "diapason_pattern_promote_{}_{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

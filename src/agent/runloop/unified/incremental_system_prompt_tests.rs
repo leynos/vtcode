@@ -51,7 +51,7 @@ async fn test_instruction_appendix_uses_explicit_directory() {
     std::fs::create_dir_all(&nested).expect("create nested");
     std::fs::write(nested.join("AGENTS.md"), "nested rule").expect("write nested");
 
-    let config = vtcode_config::core::AgentConfig {
+    let config = diapason_config::core::AgentConfig {
         user_instructions: Some("be brief".to_string()),
         instruction_max_bytes: 4096,
         include_temporal_context: true,
@@ -82,7 +82,7 @@ async fn test_instruction_appendix_uses_explicit_directory() {
 #[tokio::test]
 async fn test_prompt_omits_runtime_context_sections() {
     let prompt_builder = IncrementalSystemPrompt::new();
-    let agent_config = vtcode_config::core::AgentConfig {
+    let agent_config = diapason_config::core::AgentConfig {
         include_temporal_context: true,
         temporal_context_use_utc: true,
         ..Default::default()
@@ -111,14 +111,14 @@ async fn test_planning_workflow_notice_appended() {
         .get_system_prompt("You are a helpful assistant.", 1, context.hash(), &context, None)
         .await;
 
-    assert!(prompt.contains(vtcode_core::prompts::system::PLANNING_WORKFLOW_READ_ONLY_HEADER));
-    assert!(prompt.contains(vtcode_core::prompts::system::PLANNING_WORKFLOW_EXIT_INSTRUCTION_LINE));
-    assert!(prompt.contains(vtcode_core::prompts::system::PLANNING_WORKFLOW_PLAN_QUALITY_LINE));
+    assert!(prompt.contains(diapason_core::prompts::system::PLANNING_WORKFLOW_READ_ONLY_HEADER));
+    assert!(prompt.contains(diapason_core::prompts::system::PLANNING_WORKFLOW_EXIT_INSTRUCTION_LINE));
+    assert!(prompt.contains(diapason_core::prompts::system::PLANNING_WORKFLOW_PLAN_QUALITY_LINE));
     assert!(prompt.contains("<proposed_plan>"));
     assert!(prompt.contains("Next open decision"));
     assert!(!prompt.contains("Scope checkpoint"));
-    assert!(prompt.contains(vtcode_core::prompts::system::PLANNING_WORKFLOW_NO_AUTO_EXIT_LINE));
-    assert!(prompt.contains(vtcode_core::prompts::system::PLANNING_WORKFLOW_TASK_TRACKER_LINE));
+    assert!(prompt.contains(diapason_core::prompts::system::PLANNING_WORKFLOW_NO_AUTO_EXIT_LINE));
+    assert!(prompt.contains(diapason_core::prompts::system::PLANNING_WORKFLOW_TASK_TRACKER_LINE));
     assert!(!prompt.contains("[Context]"));
 }
 
@@ -136,7 +136,7 @@ async fn test_planning_workflow_uses_plan_notice_unconditionally() {
             .get_system_prompt("You are a helpful assistant.", 1, context.hash(), &context, None)
             .await;
 
-        assert!(prompt.contains(vtcode_core::prompts::system::PLANNING_WORKFLOW_PLAN_POLICY_LINE));
+        assert!(prompt.contains(diapason_core::prompts::system::PLANNING_WORKFLOW_PLAN_POLICY_LINE));
     }
 }
 

@@ -1,0 +1,155 @@
+#![allow(
+    missing_docs,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+/// Test that PtySessionGuard automatically decrements session count when dropped
+#[test]
+fn pty_session_guard_auto_cleanup() {
+    use diapason_core::config::PtyConfig;
+    use diapason_core::tools::registry::PtySessionManager;
+    use std::path::PathBuf;
+
+    let config = PtyConfig {
+        enabled: true,
+        max_sessions: 5,
+        ..Default::default()
+    };
+
+    let manager = PtySessionManager::new(PathBuf::from("."), config);
+
+    // Initially should be 0 active sessions
+    assert_eq!(manager.active_sessions(), 0);
+
+    // Start a session
+    {
+        let _guard = manager.start_session().expect("should start session");
+        assert_eq!(manager.active_sessions(), 1);
+
+        // The guard exists here
+
+        // When we exit this scope, the guard is dropped and count decrements
+    }
+
+    // After guard is dropped, count should be back to 0
+    assert_eq!(manager.active_sessions(), 0, "session count should auto-decrement when guard is dropped");
+}
+
+/// Test that multiple sessions can be tracked
+#[test]
+fn pty_session_guard_multiple_sessions() {
+    use diapason_core::config::PtyConfig;
+    use diapason_core::tools::registry::PtySessionManager;
+    use std::path::PathBuf;
+
+    let config = PtyConfig {
+        enabled: true,
+        max_sessions: 10,
+        ..Default::default()
+    };
+
+    let manager = PtySessionManager::new(PathBuf::from("."), config);
+
+    let _guard1 = manager.start_session().expect("session 1");
+    assert_eq!(manager.active_sessions(), 1);
+
+    let _guard2 = manager.start_session().expect("session 2");
+    assert_eq!(manager.active_sessions(), 2);
+
+    let _guard3 = manager.start_session().expect("session 3");
+    assert_eq!(manager.active_sessions(), 3);
+
+    drop(_guard2);
+    assert_eq!(manager.active_sessions(), 2);
+
+    drop(_guard1);
+    assert_eq!(manager.active_sessions(), 1);
+
+    drop(_guard3);
+    assert_eq!(manager.active_sessions(), 0);
+}
+
+/// Test that session limit is enforced
+#[test]
+fn pty_session_guard_max_sessions() {
+    use diapason_core::config::PtyConfig;
+    use diapason_core::tools::registry::PtySessionManager;
+    use std::path::PathBuf;
+
+    let config = PtyConfig {
+        enabled: true,
+        max_sessions: 2,
+        ..Default::default()
+    };
+
+    let manager = PtySessionManager::new(PathBuf::from("."), config);
+
+    let _guard1 = manager.start_session().expect("session 1");
+    let _guard2 = manager.start_session().expect("session 2");
+
+    // Should fail: max sessions reached
+    let result = manager.start_session();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Maximum PTY sessions"));
+
+    // After dropping one, should succeed
+    drop(_guard1);
+    let _guard3 = manager.start_session().expect("session 3 after freeing slot");
+    assert_eq!(manager.active_sessions(), 2);
+}
+
+/// Test that concurrent session starts cannot overshoot the configured limit.
+#[test]
+fn pty_session_guard_max_sessions_under_concurrency() {
+    use diapason_core::config::PtyConfig;
+    use diapason_core::tools::registry::PtySessionManager;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier, mpsc};
+    use std::thread;
+
+    let config = PtyConfig {
+        enabled: true,
+        max_sessions: 1,
+        ..Default::default()
+    };
+    let manager = Arc::new(PtySessionManager::new(PathBuf::from("."), config));
+    let attempts = 16;
+    let start = Arc::new(Barrier::new(attempts + 1));
+    let release_successful_guard = Arc::new(AtomicBool::new(false));
+    let (result_tx, result_rx) = mpsc::channel();
+
+    let mut handles = Vec::with_capacity(attempts);
+    for _ in 0..attempts {
+        let manager = Arc::clone(&manager);
+        let start = Arc::clone(&start);
+        let release_successful_guard = Arc::clone(&release_successful_guard);
+        let result_tx = result_tx.clone();
+
+        handles.push(thread::spawn(move || {
+            let _wait = start.wait();
+            let result = manager.start_session();
+            let started = result.is_ok();
+            result_tx.send(started).expect("send start result");
+
+            if let Ok(_guard) = result {
+                while !release_successful_guard.load(Ordering::Relaxed) {
+                    thread::yield_now();
+                }
+            }
+        }));
+    }
+    drop(result_tx);
+
+    let _wait = start.wait();
+    let started = (0..attempts)
+        .filter(|_| result_rx.recv().expect("receive start result"))
+        .count();
+    release_successful_guard.store(true, Ordering::Relaxed);
+
+    for handle in handles {
+        handle.join().expect("join worker");
+    }
+
+    assert_eq!(started, 1);
+    assert_eq!(manager.active_sessions(), 0);
+}

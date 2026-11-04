@@ -1,19 +1,19 @@
 use anyhow::{Context, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal::enable_raw_mode;
+use diapason_config::DiapasonConfig;
+use diapason_config::api_keys::{
+    CredentialSource, clear_credential_with_mode, load_stored_credential_with_mode, resolve_credential_with_mode,
+    store_credential_with_mode,
+};
+use diapason_config::auth::AuthCredentialsStoreMode;
+use diapason_config::workspace_env::{read_workspace_env_value, remove_workspace_env_value, workspace_env_path};
+use diapason_core::cli::args::{MigrateArgs, SecretSubcommand};
+use diapason_core::config::models::Provider;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::str::FromStr;
 use unicode_width::UnicodeWidthChar;
-use vtcode_config::VTCodeConfig;
-use vtcode_config::api_keys::{
-    CredentialSource, clear_credential_with_mode, load_stored_credential_with_mode, resolve_credential_with_mode,
-    store_credential_with_mode,
-};
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_config::workspace_env::{read_workspace_env_value, remove_workspace_env_value, workspace_env_path};
-use vtcode_core::cli::args::{MigrateArgs, SecretSubcommand};
-use vtcode_core::config::models::Provider;
 
 #[derive(Clone)]
 struct SecretTarget {
@@ -26,7 +26,7 @@ struct SecretTarget {
 
 pub async fn handle_secret_command(
     command: SecretSubcommand,
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
     workspace: &Path,
     storage_mode: AuthCredentialsStoreMode,
 ) -> Result<()> {
@@ -47,7 +47,7 @@ pub async fn handle_secret_command(
     }
 }
 
-fn secret_target(config: &VTCodeConfig, name: &str, key_name: Option<&str>) -> Result<SecretTarget> {
+fn secret_target(config: &DiapasonConfig, name: &str, key_name: Option<&str>) -> Result<SecretTarget> {
     let provider_name = name.trim().to_ascii_lowercase();
     if provider_name.is_empty() {
         anyhow::bail!("Provider name cannot be empty.");
@@ -99,7 +99,7 @@ fn secret_target(config: &VTCodeConfig, name: &str, key_name: Option<&str>) -> R
     })
 }
 
-fn all_secret_targets(config: &VTCodeConfig) -> Vec<SecretTarget> {
+fn all_secret_targets(config: &DiapasonConfig) -> Vec<SecretTarget> {
     let mut targets = Provider::all_providers()
         .into_iter()
         .filter_map(|provider| secret_target(config, provider.as_ref(), None).ok())
@@ -114,7 +114,7 @@ fn all_secret_targets(config: &VTCodeConfig) -> Vec<SecretTarget> {
 }
 
 fn render_secret_status_table(
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
     workspace: &Path,
     filter: Option<&str>,
     key_name: Option<&str>,
@@ -163,13 +163,13 @@ fn render_secret_status_table(
         println!();
     }
 
-    println!("Use `vtcode secret add <provider> [--key-name NAME]` to store a key.");
+    println!("Use `diapason secret add <provider> [--key-name NAME]` to store a key.");
     if !has_oauth_or_managed {
-        println!("Use `vtcode secret delete <provider>` to remove a stored key.");
+        println!("Use `diapason secret delete <provider>` to remove a stored key.");
     }
     if has_oauth_or_managed {
         println!("OAuth / managed-auth providers (copilot, openai, openrouter) use their own login flows.");
-        println!("Run `vtcode login <provider>` or `/login <provider>` for those.");
+        println!("Run `diapason login <provider>` or `/login <provider>` for those.");
     }
     Ok(())
 }
@@ -186,7 +186,7 @@ async fn handle_add(target: SecretTarget, workspace: &Path, storage_mode: AuthCr
     println!("Expected env: {}", env_key);
     println!("Secure display hint: ****************");
     println!("Key will be stored in secure storage (OS keyring or encrypted file).");
-    println!("Key will NOT be stored in vtcode.toml or workspace environment files.");
+    println!("Key will NOT be stored in config.toml or workspace environment files.");
     println!();
 
     let key = if io::stdin().is_terminal() {
@@ -270,7 +270,7 @@ async fn handle_delete(target: SecretTarget, workspace: &Path, storage_mode: Aut
 
 async fn handle_migrate(
     args: MigrateArgs,
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
     workspace: &Path,
     storage_mode: AuthCredentialsStoreMode,
 ) -> Result<()> {

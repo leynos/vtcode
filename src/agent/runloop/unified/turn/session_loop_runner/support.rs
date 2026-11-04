@@ -4,18 +4,18 @@ use crate::agent::runloop::git::{DirtyWorktreeStatus, git_dirty_worktree_entries
 use crate::agent::runloop::unified::overlay_prompt::{OverlayWaitOutcome, show_overlay_and_wait};
 use crate::agent::runloop::unified::turn::context::TurnLoopResult;
 use anyhow::Result;
-use std::sync::Arc;
-use tokio::sync::Notify;
-use vtcode_config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::llm::provider::{AssistantPhase, MessageRole};
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::utils::session_archive;
-use vtcode_core::utils::session_archive::{SessionMessage, SessionProgressArgs};
-use vtcode_ui::tui::app::{
+use diapason_config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::llm::provider::{AssistantPhase, MessageRole};
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::utils::session_archive;
+use diapason_core::utils::session_archive::{SessionMessage, SessionProgressArgs};
+use diapason_ui::tui::app::{
     InlineHandle, InlineListItem, InlineListSelection, InlineSession, ListOverlayRequest, TransientRequest,
     TransientSubmission,
 };
+use std::sync::Arc;
+use tokio::sync::Notify;
 
 const STARTUP_PLANNING_WORKFLOW_ENTER_ACTION: &str = "planning_active:start_enter";
 const STARTUP_PLANNING_WORKFLOW_STAY_ACTION: &str = "planning_active:start_stay";
@@ -30,7 +30,7 @@ pub(super) struct TurnHistoryCheckpoint {
 
 #[cfg(test)]
 impl TurnHistoryCheckpoint {
-    pub(super) fn capture(history: &[vtcode_core::llm::provider::Message]) -> Self {
+    pub(super) fn capture(history: &[diapason_core::llm::provider::Message]) -> Self {
         Self {
             baseline_len: history.len(),
             #[cfg(debug_assertions)]
@@ -38,14 +38,14 @@ impl TurnHistoryCheckpoint {
         }
     }
 
-    pub(super) fn rollback(&self, history: &mut Vec<vtcode_core::llm::provider::Message>) {
+    pub(super) fn rollback(&self, history: &mut Vec<diapason_core::llm::provider::Message>) {
         #[cfg(debug_assertions)]
         self.assert_append_only(history);
         history.truncate(self.baseline_len);
     }
 
     #[cfg(debug_assertions)]
-    fn assert_append_only(&self, history: &[vtcode_core::llm::provider::Message]) {
+    fn assert_append_only(&self, history: &[diapason_core::llm::provider::Message]) {
         debug_assert!(
             history.len() >= self.baseline_len,
             "turn history rollback requires append-only growth after checkpoint"
@@ -58,7 +58,7 @@ impl TurnHistoryCheckpoint {
     }
 
     #[cfg(debug_assertions)]
-    fn prefix_fingerprint(history: &[vtcode_core::llm::provider::Message]) -> u64 {
+    fn prefix_fingerprint(history: &[diapason_core::llm::provider::Message]) -> u64 {
         use std::hash::{Hash, Hasher};
 
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -67,7 +67,10 @@ impl TurnHistoryCheckpoint {
     }
 }
 
-pub(super) fn remove_transient_system_notes(history: &mut Vec<vtcode_core::llm::provider::Message>, notes: &[String]) {
+pub(super) fn remove_transient_system_notes(
+    history: &mut Vec<diapason_core::llm::provider::Message>,
+    notes: &[String],
+) {
     for note in notes.iter().rev() {
         if let Some(index) = history
             .iter()
@@ -93,7 +96,7 @@ pub(super) fn build_tracked_file_freshness_note(
         .join("\n");
 
     Some(format!(
-        "Freshness note: the following files changed on disk after VT Code last read them:\n{display_paths}\nRe-read these files before relying on earlier content because disk content is newer than the agent's prior read snapshot."
+        "Freshness note: the following files changed on disk after Diapason last read them:\n{display_paths}\nRe-read these files before relying on earlier content because disk content is newer than the agent's prior read snapshot."
     ))
 }
 
@@ -143,7 +146,7 @@ pub(super) fn build_unrelated_dirty_worktree_note(
 /// (see `orchestration.rs`) because `build_unrelated_dirty_worktree_note`
 /// spawns blocking `git` subprocesses — see the `# Blocking` docs in `git.rs`.
 pub(super) fn append_transient_turn_notes(
-    history: &mut Vec<vtcode_core::llm::provider::Message>,
+    history: &mut Vec<diapason_core::llm::provider::Message>,
     workspace: &std::path::Path,
     tool_registry: &ToolRegistry,
     unrelated_dirty_note: Option<String>,
@@ -155,18 +158,18 @@ pub(super) fn append_transient_turn_notes(
         build_tracked_file_freshness_note(workspace, &stale_paths)
     } {
         transient_system_notes.push(note.clone());
-        history.push(vtcode_core::llm::provider::Message::system(note));
+        history.push(diapason_core::llm::provider::Message::system(note));
     }
 
     if let Some(note) = unrelated_dirty_note {
         transient_system_notes.push(note.clone());
-        history.push(vtcode_core::llm::provider::Message::system(note));
+        history.push(diapason_core::llm::provider::Message::system(note));
     }
 
     transient_system_notes
 }
 
-pub(super) fn latest_assistant_result_text(messages: &[vtcode_core::llm::provider::Message]) -> Option<String> {
+pub(super) fn latest_assistant_result_text(messages: &[diapason_core::llm::provider::Message]) -> Option<String> {
     messages.iter().rev().find_map(|message| {
         if message.role != MessageRole::Assistant
             || message.tool_calls.is_some()
@@ -290,7 +293,7 @@ pub(super) async fn approved_plan_execution_summary(
     final_response_was_fallback: bool,
     changed_files: bool,
 ) -> ExecutionSummary {
-    let checklist_result = match tool_registry.get_tool(vtcode_core::config::constants::tools::TASK_TRACKER) {
+    let checklist_result = match tool_registry.get_tool(diapason_core::config::constants::tools::TASK_TRACKER) {
         Some(tool) => match tool.execute(serde_json::json!({"action": "list"})).await {
             Ok(value) => Some(value),
             Err(err) => {
@@ -309,7 +312,7 @@ pub(super) async fn approved_plan_execution_summary(
 }
 
 pub(super) fn take_pending_resumed_user_prompt(
-    history: &mut Vec<vtcode_core::llm::provider::Message>,
+    history: &mut Vec<diapason_core::llm::provider::Message>,
 ) -> Option<String> {
     let user_index = history.iter().rposition(|message| message.role == MessageRole::User)?;
     if history
@@ -333,7 +336,7 @@ pub(super) fn prepare_resume_bootstrap_without_archive(
     resume: &ResumeSession,
     mut metadata: session_archive::SessionArchiveMetadata,
     reserved_archive_id: Option<String>,
-) -> (vtcode_core::core::threads::ThreadBootstrap, String) {
+) -> (diapason_core::core::threads::ThreadBootstrap, String) {
     let source_metadata = &resume.snapshot().metadata;
     let is_compatible = metadata.workspace_path == source_metadata.workspace_path
         && metadata.provider == source_metadata.provider
@@ -358,15 +361,14 @@ pub(super) fn prepare_resume_bootstrap_without_archive(
     }
 
     let thread_id = match resume.intent() {
-        vtcode_core::core::threads::ArchivedSessionIntent::ResumeInPlace => resume.identifier(),
-        vtcode_core::core::threads::ArchivedSessionIntent::ForkNewArchive { .. } => {
-            reserved_archive_id.unwrap_or_else(|| {
+        diapason_core::core::threads::ArchivedSessionIntent::ResumeInPlace => resume.identifier(),
+        diapason_core::core::threads::ArchivedSessionIntent::ForkNewArchive { .. } => reserved_archive_id
+            .unwrap_or_else(|| {
                 session_archive::generate_session_archive_identifier(
                     &workspace_archive_label(std::path::Path::new(&resume.snapshot().metadata.workspace_path)),
                     resume.custom_suffix().map(str::to_owned),
                 )
-            })
-        }
+            }),
     };
 
     (bootstrap, thread_id)
@@ -374,7 +376,7 @@ pub(super) fn prepare_resume_bootstrap_without_archive(
 
 pub(super) async fn checkpoint_session_archive_start(
     archive: &session_archive::SessionArchive,
-    thread_handle: &vtcode_core::core::threads::ThreadRuntimeHandle,
+    thread_handle: &diapason_core::core::threads::ThreadRuntimeHandle,
 ) -> Result<()> {
     let snapshot = thread_handle.snapshot();
     let messages: Vec<SessionMessage> = snapshot.messages.iter().map(SessionMessage::from).collect();
@@ -397,7 +399,7 @@ pub(super) async fn checkpoint_session_archive_start(
 pub(super) async fn force_reload_workspace_config_for_execution(
     workspace: &std::path::Path,
     runtime_cfg: &CoreAgentConfig,
-    vt_cfg: &mut Option<VTCodeConfig>,
+    vt_cfg: &mut Option<DiapasonConfig>,
     tool_registry: &mut ToolRegistry,
     async_mcp_manager: Option<&crate::agent::runloop::unified::async_mcp_manager::AsyncMcpManager>,
 ) -> Result<()> {

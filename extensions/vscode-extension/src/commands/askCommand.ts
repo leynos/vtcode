@@ -1,14 +1,14 @@
 import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
-import { runVtcodeCommand } from "../utils/vtcodeRunner";
+import { runDiapasonCommand } from "../utils/diapasonRunner";
 
 /**
- * Command to ask the VT Code agent a question
+ * Command to ask the Diapason agent a question
  */
 export class AskCommand extends BaseCommand {
-    public readonly id = "vtcode.askAgent";
+    public readonly id = "diapason.askAgent";
     public readonly title = "Ask Agent";
-    public readonly description = "Ask the VT Code agent a question";
+    public readonly description = "Ask the Diapason agent a question";
     public readonly icon = "comment-discussion";
 
     async execute(context: CommandContext): Promise<void> {
@@ -17,7 +17,7 @@ export class AskCommand extends BaseCommand {
         }
 
         const question = await vscode.window.showInputBox({
-            prompt: "What would you like the VT Code agent to help with?",
+            prompt: "What would you like the Diapason agent to help with?",
             placeHolder: "Summarize src/main.rs",
             ignoreFocusOut: true,
         });
@@ -30,12 +30,12 @@ export class AskCommand extends BaseCommand {
         try {
             await this.flushIdeContextSnapshot(context);
 
-            await runVtcodeCommand(["ask", trimmedQuestion], {
-                title: "Asking VT Code…",
+            await runDiapasonCommand(["ask", trimmedQuestion], {
+                title: "Asking Diapason…",
                 output: context.output,
             });
             void vscode.window.showInformationMessage(
-                "VT Code finished processing your request. Check the VT Code output channel for details."
+                "Diapason finished processing your request. Check the Diapason output channel for details."
             );
         } catch (error) {
             this.handleCommandError("ask", error);
@@ -45,7 +45,7 @@ export class AskCommand extends BaseCommand {
     private handleCommandError(context: string, error: unknown): void {
         const message = error instanceof Error ? error.message : String(error);
         void vscode.window.showErrorMessage(
-            `Failed to ${context} with VT Code: ${message}`
+            `Failed to ${context} with Diapason: ${message}`
         );
     }
 }

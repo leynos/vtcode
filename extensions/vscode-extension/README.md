@@ -1,27 +1,20 @@
-# VT Code
+# Diapason
 
-**VT Code** is an AI coding assistant available for your favorite IDEs. This
+**Diapason** is an AI coding assistant available for your favorite IDEs. This
 repository contains the Visual Studio Code extension, providing deep
-integration with [VT Code](https://github.com/vinhnx/vtcode), a Rust-based
+integration with [Diapason](https://github.com/leynos/vtcode), a Rust-based
 terminal coding agent with semantic code intelligence.
 
-## Download VT Code Extension for your IDE
-
-[**Visual Studio Code**](https://marketplace.visualstudio.com/items?itemName=nguyenxuanvinh.vtcode-companion)
-| [**Winsurf** (Coming Soon)](./docs/ide-downloads.md) |
-| [**Cursor** (Coming Soon)](./docs/ide-downloads.md)  |
-[**All Downloads**](./docs/ide-downloads.md)
-
-For installation instructions and download links for other IDEs, visit our
-[IDE Downloads](./docs/ide-downloads.md) page.
+The Diapason Marketplace listing will be available after the extension is
+published.
 
 ## Features
 
-- **AI Coding Assistant**: Access the VT Code agent directly from VS Code
+- **AI Coding Assistant**: Access the Diapason agent directly from VS Code
 - **Quick Actions**: Easily send questions and get responses without leaving
     your editor
 - **Code Analysis**: Analyze your workspace with semantic code intelligence
-- **Configuration Management**: Edit your `vtcode.toml` configuration files
+- **Configuration Management**: Edit your `config.toml` configuration files
     with syntax highlighting
 - **Context Awareness**: Leverages Tree-sitter for deep code understanding
     with enhanced regex search
@@ -31,28 +24,25 @@ For installation instructions and download links for other IDEs, visit our
 
 ## Prerequisites
 
-Before using this extension, you need to have the VT Code CLI installed:
+Before using this extension, you need to have the Diapason CLI installed:
 
 ```bash
-# Install with Cargo (recommended)
-cargo install vtcode
+# From the repository root, install with Cargo:
+cargo install --git https://github.com/leynos/vtcode.git --branch main --locked diapason
 
-# Or with Homebrew
-brew trust vinhnx/tap
-brew install vinhnx/tap/vtcode
-
-# Or with NPM
-npm install -g vtcode-ai
+# Or build the Homebrew formula from the repository root:
+brew install --HEAD ./homebrew/diapason.rb
 ```
 
 ## Quick Start
 
-1. Install the VT Code CLI using one of the methods above
-2. Install this extension from the VS Code Marketplace
-3. Open a workspace containing a `vtcode.toml` file
-4. Access VT Code features through:
+1. Install the Diapason CLI from source or select a local binary
+2. Build and install the extension locally from this repository; the Diapason
+   Marketplace listing has not been published
+3. Open a workspace containing a `config.toml` file
+4. Access Diapason features through:
     - The Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`)
-    - The VT Code Quick Actions view in the Explorer
+    - The Diapason Quick Actions view in the Explorer
     - Right-click context menu on selected code
     - Status bar icon
 
@@ -60,15 +50,15 @@ npm install -g vtcode-ai
 
 The extension contributes the following commands:
 
-- `VT Code: Open Quick Actions` - Access the quick actions panel
-- `VT Code: Ask the Agent` - Send a question to the VT Code agent
-- `VT Code: Ask About Selection` - Ask about highlighted code
-- `VT Code: Launch Agent Terminal` - Open an integrated terminal session
-    running `vtcode chat`
-- `VT Code: Analyze Workspace` - Run `vtcode analyze` on your workspace
-- `VT Code: Open Configuration` - Edit your `vtcode.toml` configuration file
-- `VT Code: Open Documentation` - Access VT Code documentation
-- `VT Code: Toggle Human-in-the-Loop` - Control human approval for sensitive
+- `Diapason: Open Quick Actions` - Access the quick actions panel
+- `Diapason: Ask the Agent` - Send a question to the Diapason agent
+- `Diapason: Ask About Selection` - Ask about highlighted code
+- `Diapason: Launch Agent Terminal` - Open an integrated terminal session
+    running `diapason chat`
+- `Diapason: Analyze Workspace` - Run `diapason analyze` on your workspace
+- `Diapason: Open Configuration` - Edit your `config.toml` configuration file
+- `Diapason: Open Documentation` - Access Diapason documentation
+- `Diapason: Toggle Human-in-the-Loop` - Control human approval for sensitive
     operations
 - And more…
 
@@ -76,29 +66,28 @@ The extension contributes the following commands:
 
 The extension contributes the following settings:
 
-- `vtcode.commandPath`: Path to the VT Code executable (default: `vtcode`)
+- `diapason.commandPath`: Path to the Diapason executable (default: `diapason`)
 
-For comprehensive VT Code configuration options, see the
+For comprehensive Diapason configuration options, see the
 [configuration documentation](./docs/config.md). You can also use the example
-configuration files provided:
+configuration example:
 
-- [vtcode.toml](./vtcode.toml) - Basic configuration example
-- [vtcode.toml.example](./vtcode.toml.example) - Comprehensive configuration
+- [config.toml.example](./config.toml.example) - Comprehensive configuration
     with all options
 
 ## Requirements
 
 - VS Code version 1.87.0 or higher
-- VT Code now supports placing the VT Code view container in VS Code's
-    Secondary Side Bar (VS Code 1.106+). You can move the VT Code container
+- Diapason now supports placing the Diapason view container in VS Code's
+    Secondary Side Bar (VS Code 1.106+). You can move the Diapason container
     from the activity bar to the secondary side bar via drag-and-drop or
     through the context menus in the UI.
-- VT Code CLI installed and accessible in your PATH
+- Diapason CLI installed and accessible in your PATH
 
 ## Contributing
 
 Contributions are welcome! Please see the
-[main VT Code repository](https://github.com/vinhnx/vtcode) for contribution
+[main Diapason repository](https://github.com/leynos/vtcode) for contribution
 guidelines.
 
 ### Development
@@ -121,16 +110,16 @@ To release a new version of the extension:
 ```
 
 The release script automates version bumping, building, packaging, and
-publishing to both VSCode Marketplace and Open VSX Registry. See
-[RELEASE.md](RELEASE.md) for details.
+publishing to the VS Code Marketplace and Open VSX Registry. No extension
+listing is currently published. See [RELEASE.md](RELEASE.md) for details.
 
 ## Support
 
-If you find VT Code useful, please consider supporting the project by visiting
+If you find Diapason useful, please consider supporting the project by visiting
 [BuyMeACoffee](https://www.buymeacoffee.com/vinhnx).
 
 ## License
 
-This extension is licensed under **MIT OR Apache-2.0**. See [LICENSE](LICENSE)
-for the full Apache-2.0 text; MIT terms are also granted under the same
-copyright.
+This extension is licensed under **MIT OR Apache-2.0**. See
+[LICENSE.txt](LICENSE.txt) for the full Apache-2.0 text; MIT terms are also
+granted under the same copyright.

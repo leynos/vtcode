@@ -1,6 +1,6 @@
 # Agent Trajectory Interchange Format (ATIF)
 
-VT Code implements the
+Diapason implements the
 [Agent Trajectory Interchange Format (ATIF)](https://www.harborframework.com/docs/agents/trajectory-format)
 v1.4, a standardized JSON-based specification for logging complete agent
 interaction histories. ATIF trajectories are usable across debugging,
@@ -12,14 +12,14 @@ For the full specification, see the
 
 ## Overview
 
-When enabled, VT Code exports an `atif-trajectory.json` file under the
+When enabled, Diapason exports an `atif-trajectory.json` file under the
 canonical session's derived artifacts at session end. The file captures the
 complete session: user messages, agent responses, tool executions,
 observations, and per-step/aggregate LLM metrics.
 
 ## Configuration
 
-Enable ATIF export in `vtcode.toml`:
+Enable ATIF export in `config.toml`:
 
 ```toml
 [telemetry]
@@ -30,12 +30,10 @@ The ATIF export is independent of `trajectory_enabled` — you can enable one
 without the other.
 
 Output location:
-`<workspace>/.vtcode/sessions/<session_id>/derived/atif-trajectory.json`
+`<state>/workspaces/<workspace-hash>/sessions/<session_id>/derived/atif-trajectory.json`
 
 The canonical source stream is
-`<workspace>/.vtcode/sessions/<session_id>/events.jsonl`. Historical global
-artifacts under the legacy `VTCODE_HOME/sessions/` path are left untouched and
-are not imported or deleted automatically.
+`<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`.
 
 ## Schema
 
@@ -90,11 +88,11 @@ ATIF v1.4 defines these core types:
 | `total_cost_usd`          | Float   | Total estimated cost         |
 | `total_steps`             | Integer | Total number of steps        |
 
-## VT Code Event Mapping
+## Diapason Event Mapping
 
-VT Code converts its internal `ThreadEvent` stream to ATIF steps:
+Diapason converts its internal `ThreadEvent` stream to ATIF steps:
 
-| VT Code Event                   | ATIF Source | Notes                                                 |
+| Diapason Event                  | ATIF Source | Notes                                                 |
 | ------------------------------- | ----------- | ----------------------------------------------------- |
 | `AgentMessage`                  | `agent`     | Agent text response                                   |
 | `Plan`                          | `agent`     | Planning workflow content                             |
@@ -114,8 +112,8 @@ skipped — only terminal states are exported.
 
 ## Implementation
 
-The ATIF implementation lives in `crates/common/vtcode-exec-events/src/atif.rs`
-with:
+The ATIF implementation lives in
+`crates/common/diapason-exec-events/src/atif.rs` with:
 
 - **Schema types**: `Trajectory`, `AtifAgent`, `Step`, `AtifToolCall`,
   `Observation`, `ObservationResult`, `StepMetrics`, `FinalMetrics`
@@ -129,10 +127,10 @@ with:
 ### Rust Usage
 
 ```rust
-use vtcode_exec_events::atif::*;
+use diapason_exec_events::atif::*;
 
 // Create builder
-let agent = AtifAgent::vtcode().with_model("gemini-2.5-flash");
+let agent = AtifAgent::diapason().with_model("gemini-2.5-flash");
 let mut builder = AtifTrajectoryBuilder::new(agent);
 
 // Feed ThreadEvents as they arrive
@@ -150,7 +148,7 @@ let json = serde_json::to_string_pretty(&trajectory)?;
   "schema_version": "ATIF-v1.4",
   "session_id": "session-abc123",
   "agent": {
-    "name": "vtcode",
+    "name": "diapason",
     "version": "0.96.15",
     "model_name": "gemini-2.5-flash"
   },
@@ -214,7 +212,7 @@ let json = serde_json::to_string_pretty(&trajectory)?;
 
 ## Interoperability
 
-VT Code's ATIF trajectories are compatible with:
+Diapason's ATIF trajectories are compatible with:
 
 - [Harbor](https://www.harborframework.com/) evaluation framework and
   trajectory validator
@@ -228,4 +226,4 @@ VT Code's ATIF trajectories are compatible with:
 - [ATIF RFC Specification](https://github.com/laude-institute/harbor/blob/main/docs/rfcs/0001-trajectory-format.md)
 - [Harbor Framework Documentation](https://www.harborframework.com/docs/agents/trajectory-format)
 - [Real-world trajectory examples](https://github.com/laude-institute/harbor/tree/main/tests/golden)
-- [VT Code Architecture](../ARCHITECTURE.md)
+- [Diapason Architecture](../ARCHITECTURE.md)

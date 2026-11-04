@@ -1,12 +1,13 @@
 # MCP Integration Guide
 
-This guide outlines how VT Code connects to external MCP (Model Context
+This guide outlines how Diapason connects to external MCP (Model Context
 Protocol) servers, how allowlists control tool access, and how to troubleshoot
 common configuration issues. The configuration surface documented below maps
-directly to the serde structures in `crates/codegen/vtcode-config/src/mcp.rs`,
-so the examples here stay aligned with the loader that powers the CLI and the
-reusable `vtcode-config` crate. For the canonical protocol behaviour and the
-latest server/client expectations, consult the upstream MCP reference index at
+directly to the serde structures in
+`crates/codegen/diapason-config/src/mcp.rs`, so the examples here stay aligned
+with the loader that powers the CLI and the reusable `diapason-config` crate.
+For the canonical protocol behaviour and the latest server/client expectations,
+consult the upstream MCP reference index at
 `https://modelcontextprotocol.io/llms.txt`. That index links to the full
 architecture, transport, authorisation, logging, and resource specification
 documents maintained by the MCP community.
@@ -20,7 +21,7 @@ documents maintained by the MCP community.
 ## MCP Specification Map
 
 The `llms.txt` index enumerates every normative reference you may need while
-configuring VT Code. When you need deeper protocol detail, jump straight from
+configuring Diapason. When you need deeper protocol detail, jump straight from
 this guide to the most relevant specification chapter:
 
 | Topic                                    | Primary reference                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -32,17 +33,17 @@ this guide to the most relevant specification chapter:
 | Security and governance                  | [Security best practices](https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices.md), [Authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization.md), [Understanding authorization](https://modelcontextprotocol.io/docs/tutorials/security/authorization.md), [Governance](https://modelcontextprotocol.io/community/governance.md)                                                                                                                                                                   |
 | Tooling and debugging                    | [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector.md), [Example clients](https://modelcontextprotocol.io/clients.md), [Example servers](https://modelcontextprotocol.io/examples.md)                                                                                                                                                                                                                                                                                                                                                                  |
 
-Keep the specification open while editing `vtcode.toml`; VT Code intentionally
+Keep the specification open while editing `config.toml`; Diapason intentionally
 mirrors the naming and behavioural guarantees defined there.
 
 ## Configuring MCP Providers
 
 ### Core `[mcp]` table
 
-Open `vtcode.toml` and ensure the global MCP section is enabled. The top-level
+Open `config.toml` and ensure the global MCP section is enabled. The top-level
 table mirrors the `McpClientConfig` defaults, letting you tune concurrency,
 timeout, and transport behaviour in one place. All values fall back to the
-defaults compiled into `vtcode-config`, summarised in the following table:
+defaults compiled into `diapason-config`, summarised in the following table:
 
 | Key                            | Default                                                             | Purpose                                                                                                                                         |
 | ------------------------------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -102,8 +103,8 @@ show_provider_names = false
 ### Provider transports
 
 Define one or more providers. Stdio transports embed the command, arguments,
-and optional working directory directly in the provider table. VT Code forwards
-every value here into the MCP lifecycle as described in the
+and optional working directory directly in the provider table. Diapason
+forwards every value here into the MCP lifecycle as described in the
 [stdio transport spec](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports.md):
 
 ```toml
@@ -132,7 +133,7 @@ max_concurrent_requests = 4
 endpoint = "https://mcp.figma.com/mcp"
 api_key_env = "FIGMA_MCP_TOKEN"
 protocol_version = "2025-06-18"
-headers = { "X-Client" = "vtcode", "X-MCP-App" = "vtcode" }
+headers = { "X-Client" = "diapason", "X-MCP-App" = "diapason" }
 ```
 
 Environment variables defined under `[mcp.providers.env]` are forwarded to
@@ -140,7 +141,7 @@ stdio transports and composed with the curated whitelist the loader already
 exposes. Use `working_directory` to stage local binaries, credentials, or
 fixtures that the provider expects on disk. For HTTP transports,
 `protocol_version` determines which MCP schema the client negotiates (the
-default matches `vtcode-config`'s `2024-11-05`, but you can adopt the
+default matches `diapason-config`'s `2024-11-05`, but you can adopt the
 `2025-06-18` release or later when providers publish compatible endpoints).
 Custom `headers` values help satisfy hosted provider requirements for client
 identification—check the server's docs for required `Authorization` formats per
@@ -159,7 +160,7 @@ the global pool configured in `[mcp]`.
 
 ## Security and validation
 
-VT Code exposes additional security gates through the `[mcp.security]` table.
+Diapason exposes additional security gates through the `[mcp.security]` table.
 Enable authentication and tighten rate limits or validation rules when running
 sensitive providers. These settings mirror the guidance in the MCP
 [security best practices](https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices.md)
@@ -168,7 +169,7 @@ chapter:
 ```toml
 [mcp.security]
 auth_enabled = true
-api_key_env = "VT_MCP_API_KEY"
+api_key_env = "DIAPASON_MCP_API_KEY"
 
 [mcp.security.rate_limit]
 requests_per_minute = 120
@@ -180,7 +181,7 @@ path_traversal_protection = true
 max_argument_size = 262144
 ```
 
-The same structure powers the optional embedded MCP server (`vtcode` as a
+The same structure powers the optional embedded MCP server (`diapason` as a
 provider). Combine the security block with the `[mcp.server]` table to expose
 curated tools over SSE or HTTP. Ensure your tool list lines up with the
 [server tools contract](https://modelcontextprotocol.io/specification/2025-06-18/server/tools.md):
@@ -194,7 +195,7 @@ transport = "sse"
 exposed_tools = ["read_file"]
 ```
 
-`vtcode-config` re-exports serde schemas for these tables, making it
+`diapason-config` re-exports serde schemas for these tables, making it
 straightforward to validate configuration files in automation or IDE tooling.
 
 ## Allowlist Behaviour
@@ -206,7 +207,7 @@ now fully override the defaults:
 - When a provider defines `tools`, `resources`, `prompts`, or `logging`
   patterns, only matches in that provider block are accepted. Default rules are
   ignored for that provider.
-- If a provider omits a rule set, VT Code falls back to the default patterns.
+- If a provider omits a rule set, Diapason falls back to the default patterns.
 - Configuration permissions (`configuration` maps) continue to support provider
   overrides via an explicit match or by delegating to the default rules.
 
@@ -257,7 +258,7 @@ documented above and confirm compatibility with the
 [schema reference](https://modelcontextprotocol.io/specification/2025-06-18/schema.md):
 
 ```bash
-cargo test -p vtcode-core mcp -- --nocapture
+cargo test -p diapason-core mcp -- --nocapture
 ```
 
 The suite includes mocked clients and parsing tests so it does not require live
@@ -268,7 +269,7 @@ package on demand. This mirrors the
 the MCP documentation:
 
 ```bash
-cargo test -p vtcode-core --test mcp_context7_manual context7_list_tools_smoke -- --ignored --nocapture
+cargo test -p diapason-core --test mcp_context7_manual context7_list_tools_smoke -- --ignored --nocapture
 ```
 
 Expect the test to take a little longer on the first run while `npx` downloads
@@ -279,7 +280,7 @@ the server bundle.
 - **Unexpected tool execution permissions** – confirm whether the provider
   defines its own allowlist. Provider rules now override defaults, so missing
   patterns may block tools that defaults would otherwise allow.
-- **Provider handshake visibility** – VT Code now sends explicit MCP client
+- **Provider handshake visibility** – Diapason now sends explicit MCP client
   metadata and normalizes structured tool responses. Context7 results surface
   as plain JSON objects in the tool panel so downstream renderers can display
   status, metadata, and message lists without additional post-processing.
@@ -287,9 +288,9 @@ the server bundle.
   `request_timeout_seconds`, and `retry_attempts` appear under the `[mcp]`
   table *after* any nested `[mcp.ui]` section. TOML resets the table context
   when a new header appears.
-- **HTTP transport issues** – VT Code currently performs capability probing for
+- **HTTP transport issues** – Diapason currently performs capability probing for
   HTTP MCP servers but requires a streaming implementation to be fully
   functional. Use stdio transports when possible.
 
 With these settings and checks in place, MCP providers and allowlists should
-behave predictably, unlocking additional context-aware tooling in VT Code.
+behave predictably, unlocking additional context-aware tooling in Diapason.

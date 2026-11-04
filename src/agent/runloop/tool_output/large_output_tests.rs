@@ -51,7 +51,7 @@ fn test_above_threshold_spools() {
 #[test]
 fn test_format_notification() {
     let result = SpoolResult {
-        file_path: PathBuf::from("/home/user/.cache/vtcode/large-output/abc123/call_def456.output"),
+        file_path: PathBuf::from("/home/user/.cache/diapason/large-output/abc123/call_def456.output"),
         size_bytes: 100_000,
         line_count: 1000,
         tool_name: "test_tool".to_string(),
@@ -60,7 +60,7 @@ fn test_format_notification() {
 
     let notification = format_spool_notification(&result);
     assert!(notification.contains("100000 bytes"));
-    assert!(notification.contains(".cache/vtcode/large-output"));
+    assert!(notification.contains(".cache/diapason/large-output"));
 }
 
 #[test]

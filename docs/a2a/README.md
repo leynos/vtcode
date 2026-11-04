@@ -1,6 +1,6 @@
 # Agent2Agent (A2A) Protocol Support
 
-VT Code implements the [Agent2Agent (A2A) Protocol](https://a2a-protocol.org),
+Diapason implements the [Agent2Agent (A2A) Protocol](https://a2a-protocol.org),
 an open standard enabling communication and interoperability between AI agents.
 
 ## Overview
@@ -18,8 +18,8 @@ The A2A Protocol enables:
 
 ## Architecture
 
-VT Code's A2A support is organized into the `vtcode-core::a2a` module with the
-following components:
+Diapason's A2A support is organized into the `diapason-core::a2a` module with
+the following components:
 
 ### Core Types (`types.rs`)
 
@@ -77,19 +77,19 @@ following components:
 ### Basic Setup
 
 ```rust
-use vtcode_core::a2a::{AgentCard, TaskManager};
+use diapason_core::a2a::{AgentCard, TaskManager};
 
 // Create a task manager
 let manager = TaskManager::new();
 
 // Create an agent card for discovery
-let card = AgentCard::vtcode_default("http://localhost:8080");
+let card = AgentCard::diapason_default("http://localhost:8080");
 ```
 
 ### Creating and Managing Tasks
 
 ```rust
-use vtcode_core::a2a::types::{Message, MessageRole};
+use diapason_core::a2a::types::{Message, MessageRole};
 
 // Create a task
 let task = manager.create_task(Some("conversation-id".to_string())).await;
@@ -109,15 +109,15 @@ manager.add_artifact(&task.id, artifact).await?;
 ### Running the HTTP Server
 
 ```rust
-use vtcode_core::a2a::{AgentCard, TaskManager};
-use vtcode_core::a2a::server::{A2aServerState, run};
+use diapason_core::a2a::{AgentCard, TaskManager};
+use diapason_core::a2a::server::{A2aServerState, run};
 use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
     let state = A2aServerState::new(
         TaskManager::new(),
-        AgentCard::vtcode_default("http://localhost:8080"),
+        AgentCard::diapason_default("http://localhost:8080"),
     );
     println!("Use this bearer token for A2A requests: {}", state.auth_token());
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
@@ -136,8 +136,8 @@ cargo build --features a2a-server
 `GET /.well-known/agent-card.json` remains public so clients can discover the
 agent. `POST /a2a` and `POST /a2a/stream` require the bearer token exposed by
 `A2aServerState::auth_token()` (or supplied to
-`A2aServerState::new_with_auth_token`). The `vtcode a2a serve` command prints
-the generated token. Set it as `VTCODE_A2A_TOKEN` when using the CLI client
+`A2aServerState::new_with_auth_token`). The `diapason a2a serve` command prints
+the generated token. Set it as `DIAPASON_A2A_TOKEN` when using the CLI client
 commands; this keeps the token out of process arguments.
 
 The server disables cross-origin browser access by default. Webhook URLs must
@@ -290,7 +290,7 @@ Common error codes:
 
 ## Configuration
 
-A2A server can be configured via environment variables or `vtcode.toml`:
+A2A server can be configured via environment variables or `config.toml`:
 
 ```toml
 [a2a]
@@ -305,12 +305,12 @@ max_tasks = 1000
 Run A2A tests:
 
 ```bash
-cargo nextest run -p vtcode-a2a --features a2a-server
-cargo nextest run -p vtcode-core --features a2a-server
+cargo nextest run -p diapason-a2a --features a2a-server
+cargo nextest run -p diapason-core --features a2a-server
 ```
 
 ## References
 
 - [A2A Protocol Specification](https://a2a-protocol.org)
-- [VT Code Architecture](../ARCHITECTURE.md)
+- [Diapason Architecture](../ARCHITECTURE.md)
 - [Contributing Guide](../../docs/CONTRIBUTING.md)

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# VT Code VSCode Extension Release Script
+# Diapason VSCode Extension Release Script
 # This script automates the release process for the VSCode extension
 # Usage: ./release.sh [patch|minor|major]
 
@@ -165,8 +165,8 @@ package_extension() {
 
 	npm run package
 
-	if [ -f "vtcode-companion-${version}.vsix" ]; then
-		print_success "Extension packaged: vtcode-companion-${version}.vsix"
+	if [ -f "diapason-companion-${version}.vsix" ]; then
+		print_success "Extension packaged: diapason-companion-${version}.vsix"
 	else
 		print_error "Failed to create package"
 		exit 1
@@ -219,7 +219,7 @@ push_to_github() {
 	git push origin "$tag_name"
 
 	print_success "Pushed to GitHub"
-	print_warning "Create a GitHub release at: https://github.com/vinhnx/vtcode/releases/new?tag=$tag_name"
+	print_warning "Create a GitHub release at: https://github.com/leynos/vtcode/releases/new?tag=$tag_name"
 }
 
 # Publish to VSCode Marketplace
@@ -231,13 +231,13 @@ publish_vscode_marketplace() {
 	vsce publish
 
 	print_success "Published to VSCode Marketplace"
-	echo "         URL: https://marketplace.visualstudio.com/items?itemName=nguyenxuanvinh.vtcode-companion"
+	echo "         URL: https://marketplace.visualstudio.com/items?itemName=df12productions.diapason-companion"
 }
 
 # Publish to Open VSX Registry
 publish_open_vsx() {
 	local version=$1
-	local vsix_file="vtcode-companion-${version}.vsix"
+	local vsix_file="diapason-companion-${version}.vsix"
 
 	print_step "Publishing to Open VSX Registry..."
 
@@ -249,7 +249,7 @@ publish_open_vsx() {
 	ovsx publish "$vsix_file"
 
 	print_success "Published to Open VSX Registry"
-	echo "         URL: https://open-vsx.org/extension/nguyenxuanvinh/vtcode-companion"
+	echo "         URL: https://open-vsx.org/extension/df12productions/diapason-companion"
 }
 
 # Cleanup old VSIX files
@@ -259,7 +259,7 @@ cleanup_old_vsix() {
 	print_step "Cleaning up old VSIX files..."
 
 	# Keep only the current version
-	find . -maxdepth 1 -name "vtcode-companion-*.vsix" ! -name "vtcode-companion-${current_version}.vsix" -delete
+	find . -maxdepth 1 -name "diapason-companion-*.vsix" ! -name "diapason-companion-${current_version}.vsix" -delete
 
 	print_success "Cleanup completed"
 }
@@ -267,7 +267,7 @@ cleanup_old_vsix() {
 # Main release flow
 main() {
 	echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
-	echo -e "${BLUE}║${NC}  ${GREEN}VT Code VSCode Extension Release Script${NC}          ${BLUE}║${NC}"
+	echo -e "${BLUE}║${NC}  ${GREEN}Diapason VSCode Extension Release Script${NC}          ${BLUE}║${NC}"
 	echo -e "${BLUE}╚════════════════════════════════════════════════════════╝${NC}"
 	echo
 
@@ -351,12 +351,12 @@ main() {
 	echo
 	print_success "Version: v${new_version}"
 	print_success "Git tag: vscode-v${new_version}"
-	print_success "Package: vtcode-companion-${new_version}.vsix"
+	print_success "Package: diapason-companion-${new_version}.vsix"
 	echo
 	echo -e "${YELLOW}Next steps:${NC}"
-	echo "  1. Create GitHub release: https://github.com/vinhnx/vtcode/releases/new?tag=vscode-v${new_version}"
-	echo "  2. Attach vtcode-companion-${new_version}.vsix to the release"
-	echo "  3. Test installation: code --install-extension vtcode-companion-${new_version}.vsix"
+	echo "  1. Create GitHub release: https://github.com/leynos/vtcode/releases/new?tag=vscode-v${new_version}"
+	echo "  2. Attach diapason-companion-${new_version}.vsix to the release"
+	echo "  3. Test installation: code --install-extension diapason-companion-${new_version}.vsix"
 	echo
 }
 

@@ -1,14 +1,14 @@
 use anyhow::{Context, Result};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::persistent_memory::{
+use diapason_core::llm::provider as uni;
+use diapason_core::persistent_memory::{
     MemoryMissingField, MemoryOpCandidate, MemoryOpKind, MemoryOpPlan, cleanup_persistent_memory,
     forget_planned_persistent_memory_matches, list_persistent_memory_candidates, normalize_whitespace,
     persist_remembered_memory_plan, persistent_memory_status, plan_forget_persistent_memory,
     plan_remember_persistent_memory, truncate_for_fact,
 };
-use vtcode_core::session::SessionId;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
+use diapason_core::session::SessionId;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
 
 use crate::agent::runloop::slash_commands::SlashCommandOutcome;
 use crate::agent::runloop::unified::display::{display_user_message, reset_inline_input};
@@ -43,8 +43,8 @@ enum MemoryPromptConfirmation {
 
 fn memory_operation_notice(intent: &MemoryPromptIntent) -> &'static str {
     match intent {
-        MemoryPromptIntent::Remember { .. } => "Memory save requested. VT Code is preparing a normalized note.",
-        MemoryPromptIntent::Forget { .. } => "Memory removal requested. VT Code is matching normalized notes.",
+        MemoryPromptIntent::Remember { .. } => "Memory save requested. Diapason is preparing a normalized note.",
+        MemoryPromptIntent::Forget { .. } => "Memory removal requested. Diapason is matching normalized notes.",
         MemoryPromptIntent::Show => "Opening persistent memory view.",
     }
 }
@@ -57,13 +57,13 @@ fn start_memory_loading(
     start_loading_status(ctx.handle, state.input_status_state, message)
 }
 
-fn cleanup_fingerprint(status: &vtcode_core::persistent_memory::PersistentMemoryStatus) -> (usize, usize) {
+fn cleanup_fingerprint(status: &diapason_core::persistent_memory::PersistentMemoryStatus) -> (usize, usize) {
     (status.cleanup_status.suspicious_facts, status.cleanup_status.suspicious_summary_lines)
 }
 
 fn should_suppress_cleanup_confirmation(
     dismissed_fingerprint: Option<(usize, usize)>,
-    status: &vtcode_core::persistent_memory::PersistentMemoryStatus,
+    status: &diapason_core::persistent_memory::PersistentMemoryStatus,
 ) -> bool {
     dismissed_fingerprint == Some(cleanup_fingerprint(status))
 }
@@ -86,7 +86,7 @@ pub(crate) async fn handle_memory_prompt(
             if !ctx
                 .vt_cfg
                 .as_ref()
-                .map(vtcode_core::config::loader::VTCodeConfig::persistent_memory_enabled)
+                .map(diapason_core::config::loader::DiapasonConfig::persistent_memory_enabled)
                 .unwrap_or(true)
             {
                 respond_to_memory_prompt(
@@ -158,7 +158,9 @@ pub(crate) async fn handle_memory_prompt(
                 ),
                 Ok(None) => "No memory note was added.".to_string(),
                 Err(err) => {
-                    format!("Couldn't save memory. VT Code blocks memory writes unless the LLM planner succeeds: {err}")
+                    format!(
+                        "Couldn't save memory. Diapason blocks memory writes unless the LLM planner succeeds: {err}"
+                    )
                 }
             };
             drop(save_spinner);
@@ -169,7 +171,7 @@ pub(crate) async fn handle_memory_prompt(
             if !ctx
                 .vt_cfg
                 .as_ref()
-                .map(vtcode_core::config::loader::VTCodeConfig::persistent_memory_enabled)
+                .map(diapason_core::config::loader::DiapasonConfig::persistent_memory_enabled)
                 .unwrap_or(true)
             {
                 respond_to_memory_prompt(
@@ -205,7 +207,7 @@ pub(crate) async fn handle_memory_prompt(
                         ctx,
                         input,
                         &format!(
-                            "Couldn't remove memory. VT Code blocks memory writes unless the LLM planner succeeds: {err}"
+                            "Couldn't remove memory. Diapason blocks memory writes unless the LLM planner succeeds: {err}"
                         ),
                     )?;
                     return Ok(Some(InteractionOutcome::DirectToolHandled));
@@ -259,7 +261,7 @@ pub(crate) async fn handle_memory_prompt(
                     ),
                     Ok(Some(_)) | Ok(None) => "No matching persistent memory notes were removed.".to_string(),
                     Err(err) => format!(
-                        "Couldn't remove memory. VT Code blocks memory writes unless the LLM planner succeeds: {err}"
+                        "Couldn't remove memory. Diapason blocks memory writes unless the LLM planner succeeds: {err}"
                     ),
                 };
             drop(remove_spinner);
@@ -372,14 +374,14 @@ async fn maybe_cleanup_before_memory_mutation(
         respond_to_memory_prompt(
             ctx,
             input,
-            "Persistent memory still needs one-time cleanup before VT Code can change it. Use `/memory` to run cleanup when you're ready.",
+            "Persistent memory still needs one-time cleanup before Diapason can change it. Use `/memory` to run cleanup when you're ready.",
         )?;
         return Ok(false);
     }
 
     ctx.renderer.line(
         MessageStyle::Info,
-        "Persistent memory needs one-time cleanup. VT Code is asking for confirmation before continuing.",
+        "Persistent memory needs one-time cleanup. Diapason is asking for confirmation before continuing.",
     )?;
     match confirm_memory_cleanup(ctx, state, &status).await? {
         MemoryPromptConfirmation::Confirmed => {
@@ -390,7 +392,7 @@ async fn maybe_cleanup_before_memory_mutation(
             respond_to_memory_prompt(
                 ctx,
                 input,
-                "Persistent memory needs one-time cleanup before VT Code can change it. Use `/memory` to run cleanup when you're ready.",
+                "Persistent memory needs one-time cleanup before Diapason can change it. Use `/memory` to run cleanup when you're ready.",
             )?;
             return Ok(false);
         }
@@ -427,7 +429,7 @@ async fn maybe_cleanup_before_memory_mutation(
             respond_to_memory_prompt(
                 ctx,
                 input,
-                &format!("Persistent memory cleanup failed, so VT Code did not change memory: {err}"),
+                &format!("Persistent memory cleanup failed, so Diapason did not change memory: {err}"),
             )?;
             Ok(false)
         }
@@ -500,7 +502,7 @@ async fn resolve_remember_plan(
                     ctx,
                     input,
                     &format!(
-                        "Couldn't save memory. VT Code blocks memory writes unless the LLM planner succeeds: {err}"
+                        "Couldn't save memory. Diapason blocks memory writes unless the LLM planner succeeds: {err}"
                     ),
                 )?;
                 return Ok(None);
@@ -584,8 +586,8 @@ fn describe_memory_plan(plan: &MemoryOpPlan) -> String {
         .iter()
         .map(|fact| {
             let topic = match fact.topic {
-                vtcode_core::persistent_memory::MemoryPlannedTopic::Preferences => "preferences",
-                vtcode_core::persistent_memory::MemoryPlannedTopic::RepositoryFacts => "repository facts",
+                diapason_core::persistent_memory::MemoryPlannedTopic::Preferences => "preferences",
+                diapason_core::persistent_memory::MemoryPlannedTopic::RepositoryFacts => "repository facts",
             };
             format!("- [{}] {}", topic, fact.fact)
         })
@@ -687,7 +689,7 @@ async fn confirm_memory_plan(
 async fn confirm_memory_cleanup(
     ctx: &mut InteractionLoopContext<'_>,
     state: &mut InteractionState<'_>,
-    status: &vtcode_core::persistent_memory::PersistentMemoryStatus,
+    status: &diapason_core::persistent_memory::PersistentMemoryStatus,
 ) -> Result<MemoryPromptConfirmation> {
     if !ctx.renderer.supports_inline_ui() {
         return Ok(MemoryPromptConfirmation::Unavailable);
@@ -775,7 +777,7 @@ async fn prompt_missing_memory_value(
     }
 
     ctx.renderer
-        .line(MessageStyle::Info, "VT Code needs one more detail before it can save this memory.")?;
+        .line(MessageStyle::Info, "Diapason needs one more detail before it can save this memory.")?;
     let step = WizardStep {
         title: "Missing Detail".to_string(),
         question: prompt.to_string(),
@@ -926,8 +928,8 @@ fn normalize_prompt_clause(input: &str) -> Option<String> {
         "can you ",
         "could you ",
         "would you ",
-        "vt code, ",
-        "vt code ",
+        "diapason, ",
+        "diapason ",
     ]
     .iter()
     .find_map(|prefix| text.to_ascii_lowercase().starts_with(prefix).then(|| &text[prefix.len()..]))
@@ -935,7 +937,7 @@ fn normalize_prompt_clause(input: &str) -> Option<String> {
         text = stripped.trim_start();
     }
 
-    let normalized = vtcode_commons::formatting::collapse_whitespace(text);
+    let normalized = diapason_commons::formatting::collapse_whitespace(text);
     (!normalized.is_empty()).then_some(normalized)
 }
 
@@ -1035,12 +1037,12 @@ mod tests {
     fn exhausted_missing_details_message_is_actionable() {
         let missing = MemoryMissingField {
             field: "alias".to_string(),
-            prompt: "What alias should VT Code remember?".to_string(),
+            prompt: "What alias should Diapason remember?".to_string(),
         };
 
         let message = exhausted_missing_details_message(&missing);
         assert!(message.contains("alias"));
-        assert!(message.contains("What alias should VT Code remember?"));
+        assert!(message.contains("What alias should Diapason remember?"));
         assert!(message.contains("submit the complete fact directly"));
         assert!(!message.contains("still needs more information."));
     }
@@ -1048,18 +1050,21 @@ mod tests {
     #[test]
     fn memory_operation_notice_describes_remember_flow() {
         let intent = MemoryPromptIntent::Remember { request: "remember my editor theme".to_string() };
-        assert_eq!(memory_operation_notice(&intent), "Memory save requested. VT Code is preparing a normalized note.");
+        assert_eq!(memory_operation_notice(&intent), "Memory save requested. Diapason is preparing a normalized note.");
     }
 
     #[test]
     fn memory_operation_notice_describes_forget_flow() {
         let intent = MemoryPromptIntent::Forget { request: "forget my editor theme".to_string() };
-        assert_eq!(memory_operation_notice(&intent), "Memory removal requested. VT Code is matching normalized notes.");
+        assert_eq!(
+            memory_operation_notice(&intent),
+            "Memory removal requested. Diapason is matching normalized notes."
+        );
     }
 
     #[test]
     fn suppresses_repeated_cleanup_confirmation_for_same_fingerprint() {
-        let status = vtcode_core::persistent_memory::PersistentMemoryStatus {
+        let status = diapason_core::persistent_memory::PersistentMemoryStatus {
             enabled: true,
             auto_write: true,
             directory: std::path::PathBuf::from("/tmp/memory"),
@@ -1072,7 +1077,7 @@ mod tests {
             summary_exists: true,
             registry_exists: true,
             pending_rollout_summaries: 0,
-            cleanup_status: vtcode_core::persistent_memory::MemoryCleanupStatus {
+            cleanup_status: diapason_core::persistent_memory::MemoryCleanupStatus {
                 needed: true,
                 suspicious_facts: 2,
                 suspicious_summary_lines: 1,

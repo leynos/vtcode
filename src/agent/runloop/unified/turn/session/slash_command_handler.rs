@@ -10,11 +10,11 @@ use crate::agent::runloop::unified::turn::session::interaction_loop::{
     InteractionLoopContext, InteractionOutcome, InteractionState,
 };
 use crate::agent::runloop::unified::turn::session::slash_commands::{self, SlashCommandContext, SlashCommandControl};
-use vtcode_commons::fs::{is_windows_absolute_path, trim_trailing_image_path, unescape_whitespace};
-use vtcode_core::hooks::SessionEndReason;
-use vtcode_core::scheduler::{ScheduleSpec, SessionLanguageCommand, scheduled_tasks_enabled};
-use vtcode_core::tools::file_ops::is_image_path;
-use vtcode_core::utils::ansi::MessageStyle;
+use diapason_commons::fs::{is_windows_absolute_path, trim_trailing_image_path, unescape_whitespace};
+use diapason_core::hooks::SessionEndReason;
+use diapason_core::scheduler::{ScheduleSpec, SessionLanguageCommand, scheduled_tasks_enabled};
+use diapason_core::tools::file_ops::is_image_path;
+use diapason_core::utils::ansi::MessageStyle;
 
 pub(crate) enum CommandProcessingResult {
     Outcome(InteractionOutcome),
@@ -156,7 +156,7 @@ async fn handle_session_language_command(
     input: &str,
     ctx: &mut InteractionLoopContext<'_>,
 ) -> Result<Option<CommandProcessingResult>> {
-    let Some(command) = vtcode_core::scheduler::parse_session_language_command(input, chrono::Local::now()) else {
+    let Some(command) = diapason_core::scheduler::parse_session_language_command(input, chrono::Local::now()) else {
         return Ok(None);
     };
     match command? {

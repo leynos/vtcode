@@ -1,6 +1,6 @@
 # Allocator & Memory Behavior
 
-VT Code runs a bursty, sparse workload: `Semaphore`-capped concurrency with
+Diapason runs a bursty, sparse workload: `Semaphore`-capped concurrency with
 `JoinSet` fans-out of many short-lived Tokio tasks, then workers go idle
 between bursts (tool batches, LLM streaming, subagents, periodic
 health/metrics). This pattern interacts badly with how some allocators return
@@ -28,10 +28,10 @@ The default allocator is `mimalloc`. `tikv-jemalloc` is opt-in via the
 
 ```bash
 # default: mimalloc
-cargo run --release --bin vtcode -- bench-allocator
+cargo run --release --bin diapason -- bench-allocator
 
 # jemalloc (background-thread purging)
-cargo run --release --bin vtcode --features allocator-jemalloc -- bench-allocator
+cargo run --release --bin diapason --features allocator-jemalloc -- bench-allocator
 ```
 
 - **Linux (containers / long-lived servers):** build with
@@ -63,7 +63,7 @@ latency cost is the accepted trade for long-lived servers.
 
 Two tools, no provider/API key needed:
 
-- **RSS / memory pinning** — `vtcode bench-allocator` prints the active
+- **RSS / memory pinning** — `diapason bench-allocator` prints the active
   allocator and a per-burst RSS trajectory (`peak_rss_mb`, `post_burst_mb`,
   `post_idle_mb`, `retained_after_idle_mb`). The diagnostic signature is
   `post_idle_mb` staying near `peak_rss_mb` (allocator not returning memory).
@@ -94,9 +94,9 @@ article's container findings).
   `thread_local!` and `std::thread::current` without re-entrancy concerns. This
   removes a previous limitation that could cause issues with Rust-based
   allocators using thread-local storage.
-- RSS sampling lives in `vtcode-commons::memory` (real values on macOS via
+- RSS sampling lives in `diapason-commons::memory` (real values on macOS via
   `mach_task_basic_info`, on Linux via `/proc/self/statm`) — unlike
   `performance_profiler::get_memory_usage_mb`, which is Linux-only with a fake
   macOS fallback.
 - The `bench-allocator` command is implemented in `src/cli/bench_allocator.rs`
-  and wired through `vtcode_core::cli::args::BenchAllocatorArgs`.
+  and wired through `diapason_core::cli::args::BenchAllocatorArgs`.

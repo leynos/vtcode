@@ -1,16 +1,16 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use vtcode_core::cli::args::Cli;
-use vtcode_core::config::loader::{ConfigBuilder, VTCodeConfig, set_explicit_config_path};
-use vtcode_core::utils::validation::validate_path_exists;
+use diapason_core::cli::args::Cli;
+use diapason_core::config::loader::{ConfigBuilder, DiapasonConfig, set_explicit_config_path};
+use diapason_core::utils::validation::validate_path_exists;
 
 use super::first_run::maybe_run_first_run_setup;
 use super::validation::{parse_cli_config_entries, resolve_config_path, resolve_workspace_path};
 
 pub(super) struct LoadedStartupConfig {
     pub(super) workspace: PathBuf,
-    pub(super) config: VTCodeConfig,
+    pub(super) config: DiapasonConfig,
     pub(super) first_run_occurred: bool,
     pub(super) full_auto_requested: bool,
     pub(super) automation_prompt: Option<String>,
@@ -26,7 +26,7 @@ pub(super) async fn load_startup_config(args: &Cli) -> Result<LoadedStartupConfi
     }
 
     let (cli_config_path_override, inline_config_overrides) = parse_cli_config_entries(&args.config);
-    let env_config_path_override = std::env::var("VTCODE_CONFIG_PATH").ok().and_then(|value| {
+    let env_config_path_override = std::env::var("DIAPASON_CONFIG_PATH").ok().and_then(|value| {
         let trimmed = value.trim();
         if trimmed.is_empty() {
             None
@@ -72,7 +72,7 @@ pub(super) async fn load_startup_config(args: &Cli) -> Result<LoadedStartupConfi
             tracing::warn!("Configuration could not be loaded before reset: {error:#}");
             return Ok(LoadedStartupConfig {
                 workspace,
-                config: VTCodeConfig::default(),
+                config: DiapasonConfig::default(),
                 first_run_occurred: false,
                 full_auto_requested: false,
                 automation_prompt: None,
@@ -83,25 +83,25 @@ pub(super) async fn load_startup_config(args: &Cli) -> Result<LoadedStartupConfi
     };
     let config_duration = config_phase.elapsed();
     if let Some(timing) = manager.phase_timing() {
-        tracing::debug!(target = "vtcode.startup", ?timing, "configuration phases recorded");
-        vtcode_commons::startup_trace::record_duration(
+        tracing::debug!(target = "diapason.startup", ?timing, "configuration phases recorded");
+        diapason_commons::startup_trace::record_duration(
             "config_path_resolution",
             std::time::Duration::from_micros(timing.path_resolution_us),
         );
-        vtcode_commons::startup_trace::record_duration(
+        diapason_commons::startup_trace::record_duration(
             "config_layer_loading",
             std::time::Duration::from_micros(timing.layer_loading_us),
         );
-        vtcode_commons::startup_trace::record_duration(
+        diapason_commons::startup_trace::record_duration(
             "config_merge_and_parse",
             std::time::Duration::from_micros(timing.merge_and_parse_us),
         );
-        vtcode_commons::startup_trace::record_duration(
+        diapason_commons::startup_trace::record_duration(
             "config_validation",
             std::time::Duration::from_micros(timing.validation_us),
         );
     }
-    vtcode_commons::startup_trace::record_duration("config_loading", config_duration);
+    diapason_commons::startup_trace::record_duration("config_loading", config_duration);
     let primary_agent_explicitly_configured = has_explicit_default_primary_agent(&manager.effective_config());
     let mut config = manager.config().clone();
 
@@ -139,10 +139,10 @@ fn has_top_level_config_key(config: &toml::Value, key: &str) -> bool {
 mod tests {
     use super::*;
     use clap::Parser;
+    use diapason_config::loader::explicit_config_path;
+    use diapason_core::cli::args::Cli;
     use serial_test::serial;
     use tempfile::TempDir;
-    use vtcode_config::loader::explicit_config_path;
-    use vtcode_core::cli::args::Cli;
 
     /// RAII guard for the process-global session override so a panicking test
     /// cannot leak a stale explicit path into sibling tests.
@@ -168,7 +168,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir");
         let workspace = temp_dir.path().join("workspace");
         std::fs::create_dir(&workspace).expect("workspace dir");
-        std::fs::create_dir(workspace.join(".vtcode")).expect("workspace dot dir");
+        std::fs::create_dir(workspace.join(diapason_commons::workspace_dir_name())).expect("workspace dot dir");
 
         let config_path = temp_dir.path().join("custom-config.toml");
         std::fs::write(
@@ -181,7 +181,7 @@ enable_tracing = true
         .expect("custom config");
 
         let args = Cli::parse_from([
-            "vtcode",
+            "diapason",
             "--workspace",
             workspace.to_str().expect("workspace path"),
             "--config",
@@ -196,34 +196,34 @@ enable_tracing = true
     #[tokio::test]
     #[serial]
     async fn env_config_path_override_loads_requested_file_and_captures_session_override() {
-        use vtcode_commons::env_lock;
+        use diapason_commons::env_lock;
 
         let _guard = SessionOverrideGuard::reset();
         let env_guard = env_lock::lock();
-        let previous = std::env::var_os("VTCODE_CONFIG_PATH");
+        let previous = std::env::var_os("DIAPASON_CONFIG_PATH");
 
         let temp_dir = TempDir::new().expect("temp dir");
         let workspace = temp_dir.path().join("workspace");
         std::fs::create_dir_all(&workspace).expect("workspace dir");
-        std::fs::create_dir_all(workspace.join(".vtcode")).expect("workspace dot dir");
+        std::fs::create_dir_all(workspace.join(diapason_commons::workspace_dir_name())).expect("workspace dot dir");
 
         let config_path = temp_dir.path().join("custom-env-config.toml");
         std::fs::write(&config_path, "[debug]\nenable_tracing = true\n").expect("custom env config");
 
-        env_guard.set_var("VTCODE_CONFIG_PATH", config_path.to_str().expect("config path"));
+        env_guard.set_var("DIAPASON_CONFIG_PATH", config_path.to_str().expect("config path"));
 
-        let args = Cli::parse_from(["vtcode", "--workspace", workspace.to_str().expect("workspace path")]);
+        let args = Cli::parse_from(["diapason", "--workspace", workspace.to_str().expect("workspace path")]);
 
         let loaded = load_startup_config(&args).await;
         let session_override = explicit_config_path();
 
-        env_guard.restore_var("VTCODE_CONFIG_PATH", previous);
+        env_guard.restore_var("DIAPASON_CONFIG_PATH", previous);
 
-        let loaded = loaded.expect("startup config should load from VTCODE_CONFIG_PATH");
+        let loaded = loaded.expect("startup config should load from DIAPASON_CONFIG_PATH");
         assert!(loaded.config.debug.enable_tracing);
         assert_eq!(
-            session_override.and_then(|path| vtcode_commons::canonicalize(path).ok()),
-            vtcode_commons::canonicalize(&config_path).ok(),
+            session_override.and_then(|path| diapason_commons::canonicalize(path).ok()),
+            diapason_commons::canonicalize(&config_path).ok(),
             "startup must capture the resolved env path as the session override"
         );
     }

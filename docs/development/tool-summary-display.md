@@ -1,6 +1,6 @@
 # Tool Summary Display
 
-VT Code has two independent tool-display settings:
+Diapason has two independent tool-display settings:
 
 - `ui.tool_output_mode` controls how command and tool result bodies are
   truncated or spooled.
@@ -57,7 +57,7 @@ the native `clear_at: "next_user_message"` field and the required
 without that capability promote the same text to their top-level system prompt.
 All remaining provider routes receive it through their native system, history,
 instructions, or transcript mapping, without the Anthropic-only `clear_at`
-field. VT Code keeps one typed marker in canonical session history so provider
+field. Diapason keeps one typed marker in canonical session history so provider
 switching and replay preserve the disclosure. This tells the model when it must
 quote or summarize output for the user; it does not expose raw provider
 reasoning or replace the complete output retained by Transcript Review.
@@ -77,7 +77,7 @@ command whose successful body is available through Transcript Review.
 The runtime mode can be changed for the current session with `Alt+T`. This
 action is rebindable through the existing keybinding configuration. Use
 `/config` to cycle `ui.tool_display_mode` and persist the choice to
-`vtcode.toml`.
+`config.toml`.
 
 Explicit `expanded` mode preserves the existing per-call summary and
 live-output layout.
@@ -92,7 +92,7 @@ short note. Complete output remains in the internal spool and current-session
 tool-output viewer, so this budget affects recovery diagnostics rather than
 Transcript Review.
 
-Static, bounded reads of `.vtcode/context/tool_outputs/` using `cat`, `sed`,
+Static, bounded reads of `.diapason/context/tool_outputs/` using `cat`, `sed`,
 `tail`, or bounded `rg` pipelines are marked `no_spool` before generic output
 processing. Dynamic paths, redirects, writes, in-place edits, and malformed
 commands remain fail-closed; they cannot opt out of normal spooling.

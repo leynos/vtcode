@@ -1,40 +1,40 @@
 use std::path::{Path, PathBuf};
 
+use diapason_commons::terminal_detection::{TerminalFeature, TerminalType};
+use diapason_core::config::AgentClientProtocolZedWorkspaceTrustMode;
+use diapason_core::config::constants::{prompt_budget as prompt_budget_constants, ui as ui_constants};
+use diapason_core::config::core::AgentOnboardingConfig;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::project_doc::{self, ProjectDocOptions};
+use diapason_core::ui::slash::find_visible_command;
+use diapason_core::utils::common::summarize_workspace_languages;
+use diapason_ui::tui::app::InlineHeaderHighlight;
 use hashbrown::HashMap;
 use tracing::warn;
-use vtcode_commons::terminal_detection::{TerminalFeature, TerminalType};
-use vtcode_core::config::AgentClientProtocolZedWorkspaceTrustMode;
-use vtcode_core::config::constants::{prompt_budget as prompt_budget_constants, ui as ui_constants};
-use vtcode_core::config::core::AgentOnboardingConfig;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::project_doc::{self, ProjectDocOptions};
-use vtcode_core::ui::slash::find_visible_command;
-use vtcode_core::utils::common::summarize_workspace_languages;
-use vtcode_ui::tui::app::InlineHeaderHighlight;
 
 #[derive(Default, Clone)]
 pub(crate) struct SessionBootstrap {
     pub placeholder: Option<String>,
     pub prompt_addendum: Option<String>,
     pub mcp_enabled: Option<bool>,
-    pub mcp_providers: Option<Vec<vtcode_core::config::mcp::McpProviderConfig>>,
+    pub mcp_providers: Option<Vec<diapason_core::config::mcp::McpProviderConfig>>,
     pub mcp_error: Option<String>,
     pub search_tools_notice: Option<crate::startup::SearchToolsBundleNotice>,
     pub header_highlights: Vec<InlineHeaderHighlight>,
     pub acp_workspace_trust: Option<AgentClientProtocolZedWorkspaceTrustMode>,
     pub release_highlights: Option<(semver::Version, Vec<String>)>,
-    /// Legacy dot-file bindings retained as a separate layer so live VT Code
+    /// Legacy dot-file bindings retained as a separate layer so live Diapason
     /// config reloads do not discard them.
     pub legacy_key_bindings: HashMap<String, Vec<String>>,
     /// Token-budget report for the composed system prompt. Populated after
     /// `read_system_prompt` runs (session_setup/init.rs); defaults to an
     /// under-budget report until then.
-    pub system_prompt_report: vtcode_core::prompts::system::SystemPromptReport,
+    pub system_prompt_report: diapason_core::prompts::system::SystemPromptReport,
 }
 
 impl SessionBootstrap {
-    pub(crate) fn effective_key_bindings(&self, config: &VTCodeConfig) -> HashMap<String, Vec<String>> {
+    pub(crate) fn effective_key_bindings(&self, config: &DiapasonConfig) -> HashMap<String, Vec<String>> {
         let mut bindings = self.legacy_key_bindings.clone();
         bindings.extend(config.ui.keybindings.clone());
         bindings
@@ -43,7 +43,7 @@ impl SessionBootstrap {
 
 pub(crate) async fn prepare_session_bootstrap(
     runtime_cfg: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     mcp_error: Option<String>,
 ) -> SessionBootstrap {
     let onboarding_cfg = vt_cfg.map(|cfg| cfg.agent.onboarding.clone()).unwrap_or_default();

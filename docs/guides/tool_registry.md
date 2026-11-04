@@ -31,7 +31,7 @@ internal index as well as the policy manager. Built-in registrations live in
 state from a single source of truth.
 
 The canonical default public surface is `exec_command`, `write_stdin`, and
-`apply_patch`. Advanced VT Code profiles may also expose `code_search` for one
+`apply_patch`. Advanced Diapason profiles may also expose `code_search` for one
 literal query with optional path, file-type, result-type, and result-limit
 filters. It returns recognised definitions, syntactic usages, literal text, and
 matching paths. Legacy internal dispatcher and file helper names must not gain
@@ -39,31 +39,31 @@ a second public declaration path.
 
 ## Shell prompt profiles
 
-VT Code selects a shell prompt profile for model-facing command examples:
+Diapason selects a shell prompt profile for model-facing command examples:
 
 | Platform       | Default prompt profile | Notes                                                                                     |
 | -------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
 | Linux          | `unix_like`            | Use Unix-like command syntax in `exec_command.cmd`.                                       |
-| macOS          | `unix_like`            | Use BSD-compatible flags for BSD tools. VT Code does not rewrite GNU flags.               |
+| macOS          | `unix_like`            | Use BSD-compatible flags for BSD tools. Diapason does not rewrite GNU flags.              |
 | WSL            | `unix_like`            | WSL is the recommended route for Unix-like workflows on Windows.                          |
 | Native Windows | `powershell`           | Use native PowerShell syntax such as `Get-ChildItem`, `Select-String`, and `Get-Content`. |
 
 Set `agent.shell_prompt_profile` to `auto`, `unix_like`, or `powershell` to
 override the prompt profile. This setting controls prompt examples and expected
 command syntax only. Command approval, sandboxing, and allow-list policy remain
-runtime checks. VT Code does not translate GNU-to-BSD, BSD-to-GNU,
+runtime checks. Diapason does not translate GNU-to-BSD, BSD-to-GNU,
 Unix-to-PowerShell, or PowerShell-to-Unix command flags.
 
 ## Adding a new tool
 
-First decide whether this should be a built-in VT Code tool at all.
+First decide whether this should be a built-in Diapason tool at all.
 
 - If the capability is external or org-specific, prefer MCP or a plugin/skill
   manifest instead of adding a new compile-time tool trait implementation.
 - Treat this as an extension-boundary rule, not just an implementation
   preference: public Rust trait seams create the same "everyone must target the
   first trait" pressure that Rust coherence makes hard to unwind later.
-- Add a built-in registry tool when VT Code must own the runtime behavior,
+- Add a built-in registry tool when Diapason must own the runtime behavior,
   policy surface, or UX directly.
 
 1. Implement the tool logic (usually by implementing the `Tool` trait or by
@@ -71,9 +71,9 @@ First decide whether this should be a built-in VT Code tool at all.
 2. Create a `ToolRegistration`:
 
     ```rust
-    use vtcode_core::tools::{ToolRegistration, ToolRegistry};
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::config::types::CapabilityLevel;
+    use diapason_core::tools::{ToolRegistration, ToolRegistry};
+    use diapason_core::config::constants::tools;
+    use diapason_core::config::types::CapabilityLevel;
 
     let registration = ToolRegistration::from_tool_instance(
         tools::CREATE_FILE,
@@ -106,11 +106,11 @@ surface it through the shared projections. When used, agents should prefer
     `exec_command`, `write_stdin`, `apply_patch`, and advanced `code_search`
     where the profile exposes it.
 - Prefer MCP or manifest-driven extension for third-party capabilities before
-    expanding VT Code's compile-time tool surface.
+    expanding Diapason's compile-time tool surface.
 - For file inspection, prefer shell commands through `exec_command.cmd`.
     For file edits, prefer `apply_patch`.
-- Tune the `[timeouts]` table in `vtcode.toml` when integrating long-running
-    tooling. VT Code raises an inline warning once execution crosses the
+- Tune the `[timeouts]` table in `config.toml` when integrating long-running
+    tooling. Diapason raises an inline warning once execution crosses the
     `warning_threshold_percent` so you can cancel runaway commands before they
     hit the ceiling.
 

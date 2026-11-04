@@ -1,11 +1,11 @@
 use hashbrown::HashMap;
 
 use anstyle::{AnsiColor, Color, Style as AnsiStyle};
-use vtcode_commons::diff_paths::{is_diff_addition_line, is_diff_deletion_line, is_diff_header_line};
-use vtcode_core::config::constants::tools;
-use vtcode_core::tools::tool_intent;
-use vtcode_core::utils::diff_styles::{DiffColorLevel, DiffTheme, diff_add_bg, diff_del_bg};
-use vtcode_core::utils::style_helpers::bold_color;
+use diapason_commons::diff_paths::{is_diff_addition_line, is_diff_deletion_line, is_diff_header_line};
+use diapason_core::config::constants::tools;
+use diapason_core::tools::tool_intent;
+use diapason_core::utils::diff_styles::{DiffColorLevel, DiffTheme, diff_add_bg, diff_del_bg};
+use diapason_core::utils::style_helpers::bold_color;
 
 /// Get background color for diff lines based on detected theme and color level.
 fn diff_line_bg_color(is_addition: bool) -> Option<Color> {
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn detects_ls_styles_for_directories_and_executables() {
         let git = GitStyles::new();
-        use vtcode_core::utils::style_helpers::bold_color;
+        use diapason_core::utils::style_helpers::bold_color;
         let dir_style = bold_color(AnsiColor::Blue);
         let exec_style = bold_color(AnsiColor::Green);
         let mut classes = HashMap::new();
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn applies_extension_based_styles() {
         let git = GitStyles::new();
-        use vtcode_core::utils::style_helpers::bold_color;
+        use diapason_core::utils::style_helpers::bold_color;
         let suffixes = vec![(".rs".to_string(), bold_color(AnsiColor::Red))];
         let ls = LsStyles::from_components(HashMap::new(), suffixes);
         let styled = select_line_style(Some("run_pty_cmd"), "main.rs", &git, &ls);
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn extension_matching_requires_dot_boundary() {
         let git = GitStyles::new();
-        use vtcode_core::utils::style_helpers::bold_color;
+        use diapason_core::utils::style_helpers::bold_color;
         let suffixes = vec![(".rs".to_string(), bold_color(AnsiColor::Green))];
         let ls = LsStyles::from_components(HashMap::new(), suffixes);
 

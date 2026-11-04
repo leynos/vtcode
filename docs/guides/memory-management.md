@@ -1,15 +1,16 @@
-# Guidance and Persistent Memory for VT Code
+# Guidance and Persistent Memory for Diapason
 
-VT Code has two distinct memory surfaces:
+Diapason has two distinct memory surfaces:
 
-- Authored guidance that you write in `AGENTS.md` and `.vtcode/rules/`.
-- Learned per-repository memory that VT Code stores under your user state
+- Authored guidance that you write in `AGENTS.md` and `.diapason/rules/`.
+- Learned per-repository memory that Diapason stores under your user state
   directory.
 
-The canonical user config root is the platform config directory (for example
-`$XDG_CONFIG_HOME/vtcode`, defaulting to `~/.config/vtcode` on Linux/BSD). The
-historical `VTCODE_HOME`/`~/.vtcode` tree remains readable for compatibility
-and is preserved as a migration backup.
+The canonical user config root is `$XDG_CONFIG_HOME/diapason/`, defaulting to
+`~/.config/diapason/` on Linux/BSD. User-wide agent instructions are stored in
+its `AGENTS.md`; learned state is stored below `$XDG_STATE_HOME/diapason/`.
+Diapason does not read or migrate historical `~/.diapason/` or `.vtcode/`
+directories.
 
 Understanding that split makes it easier to tune prompt quality without mixing
 durable project instructions with automatically learned notes.
@@ -18,32 +19,32 @@ durable project instructions with automatically learned notes.
 
 ### Instruction sources and precedence
 
-VT Code loads authored guidance from the lowest-precedence scope to the
+Diapason loads authored guidance from the lowest-precedence scope to the
 highest-precedence scope. Later and more specific sources win when they
 conflict.
 
-| Load order | Scope                           | Location                                                                                                             | Purpose                                                         |
-| ---------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| 1          | User `AGENTS.md`                | `~/AGENTS.md`, the canonical config directory's `AGENTS.md`, and legacy `~/.vtcode/AGENTS.md`                        | Personal preferences that apply across repositories.            |
-| 2          | User unconditional rules        | The canonical config directory's `rules/**/*.md`, then legacy `~/.vtcode/rules/**/*.md`, without `paths` frontmatter | Always-on personal rules.                                       |
-| 3          | User matched rules              | The same canonical and legacy rule roots, with `paths` frontmatter that matches the current instruction context      | Personal rules that only load for relevant files.               |
-| 4          | Extra instruction files         | Paths or globs from `agent.instruction_files`                                                                        | Explicitly injected docs such as runbooks or local conventions. |
-| 5          | Workspace `AGENTS.md` hierarchy | `<repo>/AGENTS.md` plus nested `AGENTS.md` files from repo root to the active instruction scope                      | Shared project guidance and subsystem overrides.                |
-| 6          | Workspace unconditional rules   | `<repo>/.vtcode/rules/**/*.md` without `paths` frontmatter                                                           | Always-on repository rules.                                     |
-| 7          | Workspace matched rules         | Same workspace rule roots, but with matching `paths` frontmatter                                                     | File- or directory-scoped repository rules.                     |
+| Load order | Scope                           | Location                                                                                        | Purpose                                                         |
+| ---------- | ------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 1          | User `AGENTS.md`                | `~/AGENTS.md` and `$XDG_CONFIG_HOME/diapason/AGENTS.md`                                         | Personal preferences that apply across repositories.            |
+| 2          | User unconditional rules        | `$XDG_CONFIG_HOME/diapason/rules/**/*.md` without `paths` frontmatter                           | Always-on personal rules.                                       |
+| 3          | User matched rules              | `$XDG_CONFIG_HOME/diapason/rules/**/*.md` with matching `paths` frontmatter                     | Personal rules that only load for relevant files.               |
+| 4          | Extra instruction files         | Paths or globs from `agent.instruction_files`                                                   | Explicitly injected docs such as runbooks or local conventions. |
+| 5          | Workspace `AGENTS.md` hierarchy | `<repo>/AGENTS.md` plus nested `AGENTS.md` files from repo root to the active instruction scope | Shared project guidance and subsystem overrides.                |
+| 6          | Workspace unconditional rules   | `<repo>/.diapason/rules/**/*.md` without `paths` frontmatter                                    | Always-on repository rules.                                     |
+| 7          | Workspace matched rules         | Same workspace rule roots, but with matching `paths` frontmatter                                | File- or directory-scoped repository rules.                     |
 
 ### Compiled runtime guidance
 
 The static prompt also contains a small compiled runtime-guidance section from
-`vtcode-core/src/prompts/runtime_guidance.rs`. It applies to every prompt
+`diapason-core/src/prompts/runtime_guidance.rs`. It applies to every prompt
 profile and is separate from the authored hierarchy above. `AGENTS.md`,
 `CLAUDE.md`, and rule files are user-controlled context: they can describe
-project conventions, but they cannot override VT Code's tool policy,
+project conventions, but they cannot override Diapason's tool policy,
 sandboxing, approvals, or other security controls.
 
 ### Path-scoped rules
 
-Rules inside `.vtcode/rules/` can use YAML frontmatter with a `paths` field:
+Rules inside `.diapason/rules/` can use YAML frontmatter with a `paths` field:
 
 ```md
 ---
@@ -56,7 +57,7 @@ paths:
 - Keep changes surgical.
 ```
 
-VT Code activates matched rules from the next prompt rebuild when any of these
+Diapason activates matched rules from the next prompt rebuild when any of these
 contexts include a matching path:
 
 - the active editor file
@@ -73,26 +74,26 @@ Authored guidance files can import other files inline with `@path/to/file.md`.
 - Relative imports resolve from the containing file.
 - The default recursive import limit is `5`, controlled by
   `agent.instruction_import_max_depth`.
-- Imports are limited to the workspace or VT Code user-config roots.
+- Imports are limited to the workspace or Diapason user-config roots.
 - Use `agent.instruction_excludes` to skip specific `AGENTS.md` or
-  `.vtcode/rules/` paths by glob.
+  `.diapason/rules/` paths by glob.
 
 ## Persistent Memory
 
-Persistent memory is VT Code's learned, per-repository memory store. It is
-separate from authored guidance, and VT Code injects only a compact startup
+Persistent memory is Diapason's learned, per-repository memory store. It is
+separate from authored guidance, and Diapason injects only a compact startup
 summary after authored instructions.
 
 ### Storage layout
 
-For each repository, VT Code stores memory under:
+For each repository, Diapason stores memory under:
 
 ```text
 <user-state-directory>/projects/<project>/memory/
 ```
 
-Older VT Code builds stored persistent memory under the general config root on
-some platforms, such as macOS Application Support. VT Code now copies the
+Older Diapason builds stored persistent memory under the general config root on
+some platforms, such as macOS Application Support. Diapason now copies the
 legacy per-repository memory directory into the canonical state directory the
 next time that repository memory is resolved, while preserving the source.
 
@@ -117,7 +118,7 @@ memory/
 ### Feature flag
 
 Memories can also be controlled via a Codex-compatible `[features]` table in
-`vtcode.toml`:
+`config.toml`:
 
 ```toml
 [features]
@@ -125,7 +126,7 @@ memories = true
 ```
 
 When `features.memories` is true **and** `agent.persistent_memory.enabled` is
-true, VT Code carries durable context from completed threads into future
+true, Diapason carries durable context from completed threads into future
 sessions.  The `[features]` toggle acts as the global master switch; the
 per-repo `agent.persistent_memory.enabled` gates the actual storage layer.
 
@@ -146,7 +147,7 @@ controls for the extraction and injection pipeline:
 Persistent memory is disabled by default. Enable it with `/config memory` or by
 setting `agent.persistent_memory.enabled = true`.
 
-When `agent.persistent_memory.enabled = true`, VT Code injects:
+When `agent.persistent_memory.enabled = true`, Diapason injects:
 
 1. explicit user instructions
 2. authored guidance
@@ -160,24 +161,24 @@ The startup scan is controlled by:
 
 ### Write flow
 
-When `agent.persistent_memory.auto_write = true`, VT Code writes memory in two
+When `agent.persistent_memory.auto_write = true`, Diapason writes memory in two
 phases:
 
 1. Session finalization writes one rollout summary into `rollout_summaries/`.
 2. Consolidation merges pending rollout summaries into `preferences.md`,
    `repository-facts.md`, `MEMORY.md`, and `memory_summary.md`.
 
-VT Code now treats LLM assistance as a hard requirement for memory mutation:
+Diapason now treats LLM assistance as a hard requirement for memory mutation:
 
 - natural-language `remember` and `forget` requests are planned through a
   structured LLM response
 - session-finalization memory writes use the same LLM-assisted normalization
   path
-- VT Code writes the files itself after validating the structured output
+- Diapason writes the files itself after validating the structured output
 - if no memory LLM route is available, or the structured response is invalid,
-  VT Code blocks the mutation and leaves memory unchanged
+  Diapason blocks the mutation and leaves memory unchanged
 
-If `agent.small_model.use_for_memory = true`, VT Code prefers the configured
+If `agent.small_model.use_for_memory = true`, Diapason prefers the configured
 lightweight-model route for memory planning, classification, cleanup, and
 summary refresh. Otherwise it uses the active session model/provider.
 
@@ -200,13 +201,13 @@ Use `/memory` as the memory-focused control surface.
 
 ### Natural-language memory prompts
 
-VT Code also detects explicit memory-management prompts before they go to the
+Diapason also detects explicit memory-management prompts before they go to the
 model.
 
 - Prompts like `remember that I prefer pnpm`,
   `save to memory: use cargo nextest`, and `forget my pnpm preference` open a
   human-in-the-loop confirmation dialog in inline UI.
-- VT Code sends the raw request through the memory planner first, then shows
+- Diapason sends the raw request through the memory planner first, then shows
   the normalized fact or exact deletion candidates before applying the change.
 - Deictic saves such as `remember it`, `remember this`, and `remember that`
   resolve only against the immediately preceding non-empty assistant answer.
@@ -217,16 +218,16 @@ model.
 - Personal identity details, including names and aliases, are stored in the
   existing `preferences.md` topic rather than the repository-facts topic.
 - If the request is underspecified, such as
-  `save to memory and remember my name`, VT Code asks for the missing detail
+  `save to memory and remember my name`, Diapason asks for the missing detail
   before it writes anything.
 - If a save succeeds but the read-back verification cannot find the normalized
-  fact, VT Code reports the verification failure and directs you to `/memory`
+  fact, Diapason reports the verification failure and directs you to `/memory`
   to inspect the store.
 - Prompts like `show memory` or `what do you remember` route to the existing
   `/memory` surface instead of sending the request to the model.
-- If cleanup is required, VT Code asks you to run the one-time cleanup before
+- If cleanup is required, Diapason asks you to run the one-time cleanup before
   any memory mutation.
-- If inline selection UI is unavailable, VT Code does not mutate memory and
+- If inline selection UI is unavailable, Diapason does not mutate memory and
   points you back to `/memory`.
 
 ### `/config memory`
@@ -247,7 +248,7 @@ The focused controls cover:
 - `agent.small_model.use_for_memory`
 
 `directory_override` is intentionally restricted to system, user, or
-project-profile config layers. A workspace-root `vtcode.toml` cannot redirect
+project-profile config layers. A workspace-root `config.toml` cannot redirect
 persistent memory storage.
 
 For current-value fields such as startup line limits, byte limits, and import
@@ -257,7 +258,7 @@ depth, pressing `Enter` on an empty inline input keeps the displayed value.
 
 `/init` still generates the root `AGENTS.md`, and now also scaffolds:
 
-- `.vtcode/README.md`
+- `.diapason/README.md`
 - the per-repository memory directory layout
 
 Use `/init --force` when you want to regenerate the root guidance file and
@@ -266,7 +267,7 @@ refresh workspace scaffolding in one pass.
 ## Recommended Practices
 
 - Keep authored guidance concise, reviewable, and intentionally human-written.
-- Use `.vtcode/rules/` for modular project rules instead of growing one large
+- Use `.diapason/rules/` for modular project rules instead of growing one large
   `AGENTS.md`.
 - Reserve persistent memory for reusable learned facts, not policy or mandatory
   coding standards.

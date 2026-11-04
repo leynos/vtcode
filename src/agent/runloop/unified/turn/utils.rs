@@ -1,8 +1,8 @@
 use anyhow::Result;
-use vtcode_core::config::constants::output_limits;
-use vtcode_core::hooks::{HookMessage, HookMessageLevel};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::constants::output_limits;
+use diapason_core::hooks::{HookMessage, HookMessageLevel};
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 pub(crate) fn render_hook_messages(renderer: &mut AnsiRenderer, messages: &[HookMessage]) -> Result<()> {
     for message in messages {

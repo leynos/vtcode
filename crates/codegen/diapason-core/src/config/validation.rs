@@ -1,0 +1,438 @@
+/// Configuration validation module
+///
+/// Provides comprehensive validation of DiapasonConfig at startup to catch
+/// common configuration errors early and provide helpful error messages.
+use anyhow::{Result, bail};
+use diapason_commons::MultiErrors;
+use std::path::Path;
+
+use crate::config::FullAutoConfig;
+use crate::config::loader::DiapasonConfig;
+use crate::config::models::{catalog_provider_keys, model_catalog_entry, supported_models_for_provider};
+use diapason_config::core::CustomProviderConfig;
+
+/// Result of a configuration validation check
+#[derive(Debug, Clone)]
+pub struct ValidationResult {
+    pub is_valid: bool,
+    pub errors: MultiErrors<String>,
+    pub warnings: Vec<String>,
+}
+
+impl ValidationResult {
+    pub fn new() -> Self {
+        Self {
+            is_valid: true,
+            errors: MultiErrors::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    pub fn add_error(&mut self, error: String) {
+        self.is_valid = false;
+        self.errors.push(error);
+    }
+
+    pub fn add_warning(&mut self, warning: String) {
+        self.warnings.push(warning);
+    }
+}
+
+impl Default for ValidationResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Validate that the configured model exists in the generated model catalog.
+pub fn validate_model_exists(provider: &str, model: &str) -> Result<()> {
+    if provider.eq_ignore_ascii_case("copilot") || provider.eq_ignore_ascii_case("merge-gateway") {
+        if model.trim().is_empty() {
+            bail!("Model must not be empty for provider '{provider}'");
+        }
+        return Ok(());
+    }
+
+    if let Some(models) = supported_models_for_provider(provider) {
+        if !models.contains(&model) {
+            // Check for known deprecated OpenAI models and suggest replacements.
+            if provider.eq_ignore_ascii_case("openai")
+                && let Some((replacement, reason)) =
+                    diapason_config::constants::models::openai::deprecated_model_replacement(model)
+            {
+                bail!("{reason}. Update your config to use '{replacement}' or run /model to pick a current model.");
+            }
+            bail!("Model '{}' not found for provider '{}'. Available models: {}", model, provider, models.join(", "));
+        }
+        Ok(())
+    } else {
+        bail!(
+            "Provider '{}' not recognized. Available providers: {}",
+            provider,
+            catalog_provider_keys().join(", ")
+        );
+    }
+}
+
+/// Get context window size for a model from the catalog.
+fn catalog_model_context_window(provider: &str, model: &str) -> Result<Option<usize>> {
+    Ok(model_catalog_entry(provider, model)
+        .map(|entry| entry.context_window)
+        .filter(|context_window| *context_window > 0))
+}
+
+/// Resolve the effective context window size for a model.
+pub fn effective_model_context_window(provider: &str, model: &str) -> Result<Option<usize>> {
+    if provider.eq_ignore_ascii_case("anthropic") {
+        return Ok(Some(crate::llm::providers::anthropic::capabilities::effective_context_size(model)));
+    }
+
+    catalog_model_context_window(provider, model)
+}
+
+fn custom_provider_for_model<'a>(
+    config: &'a DiapasonConfig,
+    provider: &str,
+    model: &str,
+) -> Option<&'a CustomProviderConfig> {
+    config
+        .custom_providers
+        .iter()
+        .find(|custom| custom.name.eq_ignore_ascii_case(provider))
+        .and_then(|custom| {
+            custom.effective_models().into_iter().find(|candidate| candidate == model)?;
+            Some(custom)
+        })
+}
+
+fn effective_model_context_window_for_config(
+    config: &DiapasonConfig,
+    provider: &str,
+    model: &str,
+) -> Result<Option<usize>> {
+    if let Some(custom) = custom_provider_for_model(config, provider, model) {
+        let profile = custom.resolved_profile(model);
+        if let Some(context_window) = profile.context_window {
+            return Ok(Some(context_window));
+        }
+
+        return match profile.api_format {
+            Some(diapason_config::core::CustomProviderApiFormat::AnthropicMessages) => {
+                effective_model_context_window("anthropic", model)
+            }
+            _ => Ok(effective_model_context_window("openai", model)?.or(Some(128_000))),
+        };
+    }
+
+    effective_model_context_window(provider, model)
+}
+
+/// Validate full DiapasonConfig at startup
+pub fn validate_config(config: &DiapasonConfig, workspace: &Path) -> Result<ValidationResult> {
+    let mut result = ValidationResult::new();
+
+    // Validate agent model exists
+    validate_agent_model(config, &mut result);
+
+    // Validate provider is in whitelist (if configured)
+    if !config.providers_whitelist.is_empty()
+        && !config
+            .providers_whitelist
+            .iter()
+            .any(|w| w.eq_ignore_ascii_case(&config.agent.provider))
+    {
+        result.add_error(format!(
+            "Provider '{}' is not in providers_whitelist: {:?}",
+            config.agent.provider, config.providers_whitelist
+        ));
+    }
+
+    // Validate context window if specified
+    validate_context_window(config, &mut result);
+
+    // Validate checkpointing directory if enabled
+    if config.agent.checkpointing.enabled
+        && let Some(storage_dir) = &config.agent.checkpointing.storage_dir
+    {
+        validate_checkpointing_dir(storage_dir, workspace, &mut result);
+    }
+
+    // Validate automation configuration
+    if config.automation.full_auto.enabled {
+        validate_full_auto_config(&config.automation.full_auto, workspace, &mut result);
+    }
+
+    Ok(result)
+}
+
+fn validate_agent_model(config: &DiapasonConfig, result: &mut ValidationResult) {
+    let provider = &config.agent.provider;
+    let model = &config.agent.default_model;
+    if provider.eq_ignore_ascii_case("codex") {
+        return;
+    }
+
+    let validation = if let Some(custom) = config
+        .custom_providers
+        .iter()
+        .find(|custom| custom.name.eq_ignore_ascii_case(provider))
+    {
+        if custom.effective_models().iter().any(|candidate| candidate == model) {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "Model '{}' not found for custom provider '{}'. Available models: {}",
+                model,
+                custom.display_name,
+                custom.effective_models().join(", ")
+            ))
+        }
+    } else {
+        validate_model_exists(provider, model)
+    };
+
+    match validation {
+        Ok(_) => {
+            // Also check context window
+            if let Ok(Some(context_size)) = effective_model_context_window_for_config(config, provider, model) {
+                let display_size = if context_size >= 1_000_000 {
+                    format!("{}M", context_size / 1_000_000)
+                } else if context_size >= 1_000 {
+                    format!("{}K", context_size / 1_000)
+                } else {
+                    context_size.to_string()
+                };
+                tracing::debug!("Agent model '{}' context window: {}", model, display_size);
+            }
+        }
+        Err(e) => {
+            result.add_error(format!("Agent model configuration invalid: {e}"));
+        }
+    }
+}
+
+fn validate_context_window(config: &DiapasonConfig, result: &mut ValidationResult) {
+    if config.agent.provider.eq_ignore_ascii_case("codex") {
+        return;
+    }
+
+    let context_window = config.context.max_context_tokens;
+    if context_window > 0
+        && let Ok(Some(model_context)) =
+            effective_model_context_window_for_config(config, &config.agent.provider, &config.agent.default_model)
+        && context_window > model_context
+    {
+        result.add_warning(format!(
+            "Configured session context safety budget {context_window} exceeds provider capacity {model_context}. \
+             The provider capacity remains the hard upper bound for compaction and request validation."
+        ));
+    }
+}
+
+fn validate_checkpointing_dir(storage_dir: &str, workspace: &Path, result: &mut ValidationResult) {
+    let path = if Path::new(storage_dir).is_absolute() {
+        std::path::PathBuf::from(storage_dir)
+    } else {
+        workspace.join(storage_dir)
+    };
+
+    // Check if parent directory exists
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        result.add_warning(format!(
+            "Checkpointing storage directory parent '{}' does not exist. \
+             It will be created when checkpointing is first used.",
+            parent.display()
+        ));
+    }
+}
+
+fn validate_full_auto_config(full_auto_cfg: &FullAutoConfig, workspace: &Path, result: &mut ValidationResult) {
+    if full_auto_cfg.require_profile_ack {
+        if let Some(profile_path) = &full_auto_cfg.profile_path {
+            let resolved = if Path::new(profile_path).is_absolute() {
+                std::path::PathBuf::from(profile_path)
+            } else {
+                workspace.join(profile_path)
+            };
+
+            if !resolved.exists() {
+                result.add_error(format!(
+                    "Full-auto profile '{}' required but not found. \
+                     Create the acknowledgement file before using --full-auto.",
+                    resolved.display()
+                ));
+            }
+        } else {
+            result.add_error("Full-auto profile_path is required when require_profile_ack = true".to_owned());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_catalog_contains_providers() {
+        let providers = catalog_provider_keys();
+        assert!(!providers.is_empty(), "Should expose generated providers");
+        assert!(
+            providers.contains(&"gemini") || providers.contains(&"openai"),
+            "Should have at least one major provider"
+        );
+    }
+
+    #[test]
+    fn validates_known_model() {
+        let result = validate_model_exists("google", "gemini-3.7-flash");
+        assert!(result.is_ok(), "Should validate gemini-3.7-flash for google provider");
+    }
+
+    #[test]
+    fn rejects_unknown_model() {
+        let result = validate_model_exists("google", "model-does-not-exist");
+        assert!(result.is_err(), "Should reject unknown model");
+    }
+
+    #[test]
+    fn accepts_live_copilot_model_id() {
+        let result = validate_model_exists("copilot", "gpt-5-codex");
+        assert!(result.is_ok(), "Should accept live Copilot model ids");
+    }
+
+    #[test]
+    fn accepts_arbitrary_merge_gateway_model_id() {
+        let result = validate_model_exists("merge-gateway", "deepseek/deepseek-v4-pro");
+        assert!(result.is_ok(), "Merge Gateway should accept valid explicit route ids");
+    }
+
+    #[test]
+    fn validate_config_skips_codex_model_catalog_checks() {
+        let mut config = DiapasonConfig::default();
+        config.agent.provider = "codex".to_string();
+        config.agent.default_model = "upstream-managed-model".to_string();
+
+        let result = validate_config(&config, Path::new(".")).expect("config validation should run");
+
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn rejects_unknown_provider() {
+        let result = validate_model_exists("provider-does-not-exist", "some-model");
+        assert!(result.is_err(), "Should reject unknown provider");
+    }
+
+    #[test]
+    fn gets_context_window() {
+        let result = effective_model_context_window("google", "gemini-3.7-flash");
+        assert!(result.is_ok(), "Should get context window");
+
+        let context = result.unwrap();
+        assert!(context.is_some() && context.unwrap() > 0, "Should have positive context window");
+    }
+
+    #[test]
+    fn anthropic_46_uses_effective_context_window() {
+        let result = effective_model_context_window("anthropic", "claude-sonnet-5");
+        assert_eq!(result.unwrap(), Some(1_000_000));
+    }
+
+    #[test]
+    fn validation_result_collects_errors() {
+        let mut result = ValidationResult::new();
+        assert!(result.is_valid);
+
+        result.add_error("Error 1".to_owned());
+        assert!(!result.is_valid);
+
+        result.add_error("Error 2".to_owned());
+        assert_eq!(result.errors.len(), 2);
+    }
+
+    #[test]
+    fn validation_result_collects_warnings() {
+        let mut result = ValidationResult::new();
+        result.add_warning("Warning 1".to_owned());
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.is_valid); // Warnings don't invalidate
+    }
+
+    #[test]
+    fn whitelist_allows_configured_provider() {
+        let mut config = DiapasonConfig::default();
+        config.agent.provider = "openai".to_string();
+        config.agent.default_model = "gpt-5.6-sol".to_string();
+        config.providers_whitelist = vec!["openai".to_string()];
+
+        let result = validate_config(&config, Path::new(".")).expect("validation should run");
+        assert!(result.errors.is_empty(), "openai should pass when whitelisted: {:?}", result.errors);
+    }
+
+    #[test]
+    fn whitelist_blocks_non_whitelisted_provider() {
+        let mut config = DiapasonConfig::default();
+        config.agent.provider = "openai".to_string();
+        config.agent.default_model = "gpt-5.6-sol".to_string();
+        config.providers_whitelist = vec!["anthropic".to_string()];
+
+        let result = validate_config(&config, Path::new(".")).expect("validation should run");
+        assert!(
+            result.errors.iter().any(|e| e.contains("not in providers_whitelist")),
+            "expected whitelist error, got: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn empty_whitelist_allows_all_providers() {
+        let mut config = DiapasonConfig::default();
+        config.agent.provider = "openai".to_string();
+        config.agent.default_model = "gpt-5.6-sol".to_string();
+        config.providers_whitelist.clear();
+
+        let result = validate_config(&config, Path::new(".")).expect("validation should run");
+        assert!(result.errors.is_empty(), "empty whitelist should allow all: {:?}", result.errors);
+    }
+
+    #[test]
+    fn deprecated_openai_model_produces_actionable_error() {
+        let mut config = DiapasonConfig::default();
+        config.agent.provider = "openai".to_string();
+        config.agent.default_model = "gpt-5".to_string();
+        config.providers_whitelist.clear();
+
+        let result = validate_config(&config, Path::new(".")).expect("validation should run");
+        assert!(
+            result.errors.iter().any(|e| e.contains("gpt-5.6-sol")),
+            "expected actionable deprecation replacement, got: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn non_openai_provider_with_deprecated_id_gets_generic_error() {
+        // A non-OpenAI provider using a deprecated OpenAI ID should NOT get
+        // OpenAI-specific migration advice.
+        let mut config = DiapasonConfig::default();
+        config.agent.provider = "custom-provider".to_string();
+        config.agent.default_model = "gpt-5".to_string();
+        config.providers_whitelist.clear();
+        // Make the custom provider advertise this model so it passes the
+        // model-exists check for custom providers and reaches validation.
+        config.custom_providers.push(CustomProviderConfig {
+            name: "custom-provider".to_string(),
+            models: vec!["gpt-5".to_string()],
+            ..Default::default()
+        });
+
+        let result = validate_config(&config, Path::new(".")).expect("validation should run");
+        assert!(
+            !result.errors.iter().any(|e| e.contains("gpt-5.6-sol")),
+            "non-OpenAI provider should not get OpenAI migration advice: {:?}",
+            result.errors
+        );
+    }
+}

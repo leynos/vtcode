@@ -1,16 +1,16 @@
 use std::collections::VecDeque;
 use std::path::Path;
 
-use vtcode_commons::formatting::wrap_text_words;
-use vtcode_commons::preview::{
+use diapason_commons::formatting::wrap_text_words;
+use diapason_commons::preview::{
     format_hidden_lines_summary as shared_hidden_lines_summary, split_head_tail_preview_with_limit,
     summary_window as shared_summary_window,
 };
-use vtcode_core::config::PtyConfig;
-use vtcode_core::tools::pty::PtyPreviewRenderer;
+use diapason_core::config::PtyConfig;
+use diapason_core::tools::pty::PtyPreviewRenderer;
 
-use vtcode_ui::tui::app::InlineLinkRange;
-use vtcode_ui::tui::app::InlineSegment;
+use diapason_ui::tui::app::InlineLinkRange;
+use diapason_ui::tui::app::InlineSegment;
 
 use super::segments::{PtyLineStyles, line_to_segments};
 use crate::agent::runloop::unified::tool_summary_helpers::relativize_command_paths;
@@ -202,7 +202,7 @@ impl PtyStreamState {
 
     pub(super) fn set_header_color(&mut self, color: anstyle::Color) {
         self.line_styles.bullet =
-            std::sync::Arc::new(vtcode_ui::tui::core::convert_style(anstyle::Style::new().fg_color(Some(color))));
+            std::sync::Arc::new(diapason_ui::tui::core::convert_style(anstyle::Style::new().fg_color(Some(color))));
     }
 
     fn reset_output_state(&mut self) {
@@ -309,7 +309,7 @@ fn format_hidden_lines_summary(hidden: usize) -> String {
 
 fn normalize_command_prompt(command_prompt: Option<String>) -> Option<String> {
     command_prompt.and_then(|value| {
-        let collapsed = vtcode_commons::formatting::collapse_whitespace(&value);
+        let collapsed = diapason_commons::formatting::collapse_whitespace(&value);
         if collapsed.is_empty() { None } else { Some(collapsed) }
     })
 }

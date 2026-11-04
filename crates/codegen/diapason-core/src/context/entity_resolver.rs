@@ -1,0 +1,307 @@
+//! Entity resolution for vibe coding support
+//!
+//! This module provides fuzzy entity matching to resolve vague terms like
+//! "the sidebar" or "that button" to actual workspace entities (files, components, etc.)
+
+use diapason_commons::utils::current_timestamp;
+use hashbrown::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::path::PathBuf;
+
+/// Maximum number of entity matches to return
+const MAX_ENTITY_MATCHES: usize = 5;
+
+/// Maximum number of recent edits to track
+const MAX_RECENT_EDITS: usize = 50;
+
+/// Location of an entity within a file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileLocation {
+    pub path: PathBuf,
+    pub line_start: usize,
+    pub line_end: usize,
+    pub content_preview: String,
+}
+
+/// A matched entity with confidence score
+#[derive(Debug, Clone)]
+pub struct EntityMatch {
+    pub entity: String,
+    pub locations: Vec<FileLocation>,
+    pub confidence: f32,
+    pub recency_score: f32,
+    pub mention_score: f32,
+    pub proximity_score: f32,
+}
+
+impl EntityMatch {
+    /// Calculate total score for ranking
+    pub fn total_score(&self) -> f32 {
+        self.confidence + self.recency_score + self.mention_score + self.proximity_score
+    }
+}
+
+/// Reference to an entity that was recently edited
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityReference {
+    pub entity: String,
+    pub file: PathBuf,
+    pub timestamp: u64,
+}
+
+/// Value found in a style file (CSS, SCSS, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StyleValue {
+    pub property: String,
+    pub value: String,
+    pub file: PathBuf,
+    pub line: usize,
+}
+
+/// Index of entities in the workspace
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityIndex {
+    /// UI components (Sidebar, Button, etc.)
+    pub ui_components: HashMap<String, Vec<FileLocation>>,
+
+    /// Functions and methods
+    pub functions: HashMap<String, Vec<FileLocation>>,
+
+    /// Classes and structs
+    pub classes: HashMap<String, Vec<FileLocation>>,
+
+    /// Style properties (padding, color, etc.)
+    pub style_properties: HashMap<String, Vec<StyleValue>>,
+
+    /// Config keys
+    pub config_keys: HashMap<String, Vec<FileLocation>>,
+
+    /// Recent edits for recency ranking
+    pub recent_edits: VecDeque<EntityReference>,
+
+    /// Last mentioned entities with timestamps
+    pub last_mentioned: HashMap<String, u64>,
+
+    /// Last update timestamp
+    pub last_updated: u64,
+}
+
+impl Default for EntityIndex {
+    fn default() -> Self {
+        Self {
+            ui_components: HashMap::new(),
+            functions: HashMap::new(),
+            classes: HashMap::new(),
+            style_properties: HashMap::new(),
+            config_keys: HashMap::new(),
+            recent_edits: VecDeque::with_capacity(MAX_RECENT_EDITS),
+            last_mentioned: HashMap::new(),
+            last_updated: current_timestamp(),
+        }
+    }
+}
+
+/// Entity resolver for fuzzy matching
+pub struct EntityResolver {
+    /// The entity index
+    index: EntityIndex,
+}
+
+impl Default for EntityResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EntityResolver {
+    /// Create a new entity resolver
+    pub fn new() -> Self {
+        Self { index: EntityIndex::default() }
+    }
+
+    /// Check if the entity index is empty
+    pub fn index_is_empty(&self) -> bool {
+        self.index.ui_components.is_empty() && self.index.functions.is_empty() && self.index.classes.is_empty()
+    }
+
+    /// Resolve a vague term to entity matches
+    pub fn resolve(&self, term: &str) -> Option<EntityMatch> {
+        let matches = self.find_entity_fuzzy(term);
+
+        // Return best match if any
+        matches.into_iter().max_by(|a, b| {
+            a.total_score()
+                .partial_cmp(&b.total_score())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+    }
+
+    /// Find entities using fuzzy matching
+    fn find_entity_fuzzy(&self, term: &str) -> Vec<EntityMatch> {
+        let term_lower = term.to_lowercase();
+        let mut matches = Vec::new();
+
+        // Search UI components
+        self.search_hashmap(&self.index.ui_components, &term_lower, &mut matches);
+
+        // Search functions
+        self.search_hashmap(&self.index.functions, &term_lower, &mut matches);
+
+        // Search classes
+        self.search_hashmap(&self.index.classes, &term_lower, &mut matches);
+
+        // Sort by total score and limit
+        matches.sort_by(|a, b| {
+            b.total_score()
+                .partial_cmp(&a.total_score())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        matches.truncate(MAX_ENTITY_MATCHES);
+
+        matches
+    }
+
+    /// Search a hashmap for matching entities
+    fn search_hashmap(&self, map: &HashMap<String, Vec<FileLocation>>, term: &str, matches: &mut Vec<EntityMatch>) {
+        for (entity, locations) in map {
+            let entity_lower = entity.to_lowercase();
+
+            // Exact match
+            if entity_lower == term {
+                matches.push(EntityMatch {
+                    entity: entity.clone(),
+                    locations: locations.clone(),
+                    confidence: 1.0,
+                    recency_score: self.calculate_recency_score(&entity_lower),
+                    mention_score: self.calculate_mention_score(&entity_lower),
+                    proximity_score: 0.0,
+                });
+                continue;
+            }
+
+            // Case-insensitive substring match
+            if entity_lower.contains(term) {
+                let confidence = term.len() as f32 / entity_lower.len() as f32;
+                matches.push(EntityMatch {
+                    entity: entity.clone(),
+                    locations: locations.clone(),
+                    confidence: confidence * 0.8, // Slightly lower than exact
+                    recency_score: self.calculate_recency_score(&entity_lower),
+                    mention_score: self.calculate_mention_score(&entity_lower),
+                    proximity_score: 0.0,
+                });
+                continue;
+            }
+
+            // Fuzzy match using Damerau-Levenshtein distance
+            let distance = levenshtein_distance(term, &entity_lower);
+            if distance <= 2 {
+                let confidence = strsim::normalized_damerau_levenshtein(term, &entity_lower) as f32;
+                matches.push(EntityMatch {
+                    entity: entity.clone(),
+                    locations: locations.clone(),
+                    confidence: confidence * 0.6, // Lower confidence for fuzzy
+                    recency_score: self.calculate_recency_score(&entity_lower),
+                    mention_score: self.calculate_mention_score(&entity_lower),
+                    proximity_score: 0.0,
+                });
+            }
+        }
+    }
+
+    /// Calculate recency score based on recent edits
+    fn calculate_recency_score(&self, entity: &str) -> f32 {
+        let now = current_timestamp();
+
+        // Check if entity was recently edited (within 5 minutes)
+        if let Some(edit) = self.index.recent_edits.iter().rev().find(|e| e.entity.to_lowercase() == entity) {
+            let age_seconds = now.saturating_sub(edit.timestamp);
+            if age_seconds < 300 {
+                // Score decays over 5 minutes
+                return 0.3 * (1.0 - (age_seconds as f32 / 300.0));
+            }
+        }
+
+        0.0
+    }
+
+    /// Calculate mention score based on conversation history
+    fn calculate_mention_score(&self, entity: &str) -> f32 {
+        if let Some(&timestamp) = self.index.last_mentioned.get(entity) {
+            let now = current_timestamp();
+            let age_seconds = now.saturating_sub(timestamp);
+
+            // Score decays over 10 minutes
+            if age_seconds < 600 {
+                return 0.2 * (1.0 - (age_seconds as f32 / 600.0));
+            }
+        }
+
+        0.0
+    }
+
+    /// Get mutable access to the index for building
+    pub fn index_mut(&mut self) -> &mut EntityIndex {
+        &mut self.index
+    }
+}
+
+/// Calculate Damerau-Levenshtein distance between two strings.
+///
+/// Like Levenshtein but also handles transpositions, which improves entity
+/// matching for real-world typos (e.g. "hte" ↔ "the").
+/// Delegates to the battle-tested [`strsim`](https://docs.rs/strsim) implementation.
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    strsim::damerau_levenshtein(a, b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_levenshtein_distance() {
+        assert_eq!(levenshtein_distance("", ""), 0);
+        assert_eq!(levenshtein_distance("hello", "hello"), 0);
+        assert_eq!(levenshtein_distance("hello", "hallo"), 1);
+        assert_eq!(levenshtein_distance("sidebar", "sidbar"), 1);
+        assert_eq!(levenshtein_distance("button", "btn"), 3);
+    }
+
+    #[test]
+    fn test_entity_match_scoring() {
+        let match1 = EntityMatch {
+            entity: "Sidebar".to_string(),
+            locations: vec![],
+            confidence: 1.0,
+            recency_score: 0.3,
+            mention_score: 0.2,
+            proximity_score: 0.0,
+        };
+
+        assert!((match1.total_score() - 1.5).abs() < f32::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn test_entity_resolver_exact_match() {
+        let mut resolver = EntityResolver::new();
+
+        resolver.index_mut().ui_components.insert(
+            "Sidebar".to_string(),
+            vec![FileLocation {
+                path: PathBuf::from("src/Sidebar.tsx"),
+                line_start: 1,
+                line_end: 50,
+                content_preview: "export const Sidebar = () => {}".to_string(),
+            }],
+        );
+
+        let result = resolver.resolve("sidebar");
+        assert!(result.is_some());
+
+        let matched = result.unwrap();
+        assert_eq!(matched.entity, "Sidebar");
+        assert!((matched.confidence - 1.0).abs() < f32::EPSILON);
+    }
+}

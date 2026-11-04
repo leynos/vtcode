@@ -1,16 +1,16 @@
-# Migrating Claude models in VT Code
+# Migrating Claude models in Diapason
 
-Guide for switching VT Code between Claude model versions. This covers both
+Guide for switching Diapason between Claude model versions. This covers both
 end-user config changes and developer-facing API contract changes.
 
 ______________________________________________________________________
 
-<Note> This guide is specific to VT Code. For the underlying Anthropic API
+<Note> This guide is specific to Diapason. For the underlying Anthropic API
 changes, see the official
 [Migrating to Claude Opus 5](https://docs.anthropic.com/en/build-with-claude/migrating-to-claude-opus-5)
-guide. VT Code's `AnthropicProvider` handles most wire-level translations
-automatically; the items below are what you need to change in VT Code config or
-code. </Note>
+guide. Diapason's `AnthropicProvider` handles most wire-level translations
+automatically; the items below are what you need to change in Diapason config
+or code. </Note>
 
 ## Quick navigation
 
@@ -31,7 +31,7 @@ code. </Note>
 
 ## Model comparison
 
-Quick reference for Claude models in VT Code.
+Quick reference for Claude models in Diapason.
 
 | Feature                      | Claude Fable 5       | Claude Mythos 5      | Claude Opus 5             | Claude Sonnet 5           | Claude Haiku 4.5 |
 | ---------------------------- | -------------------- | -------------------- | ------------------------- | ------------------------- | ---------------- |
@@ -48,14 +48,14 @@ Quick reference for Claude models in VT Code.
 | Data retention               | 30-day required      | 30-day required      | Standard                  | Standard                  | Standard         |
 | Safety classifiers (refusal) | Yes                  | No                   | Yes (cyber)               | Yes (cyber)               | No               |
 | Priority Tier                | Yes                  | No                   | No                        | No                        | Yes              |
-| Effort default in VT Code    | `high`               | `high`               | `high`                    | `high`                    | N/A              |
+| Effort default in Diapason   | `high`               | `high`               | `high`                    | `high`                    | N/A              |
 | `thinking_display` default   | `omitted`            | `omitted`            | `omitted`                 | `omitted`                 | `summarized`     |
 
 ______________________________________________________________________
 
-## Where to make changes in VT Code
+## Where to make changes in Diapason
 
-### End-user: `vtcode.toml`
+### End-user: `config.toml`
 
 The two places to update:
 
@@ -75,8 +75,8 @@ task_budget_tokens = 128000                # Opus 4.7+ only
 
 ### Developer: `ModelId` enum
 
-If you are developing against `vtcode-config`, update the `ModelId` enum in
-`crates/codegen/vtcode-config/src/models/model_id.rs` and its match arms
+If you are developing against `diapason-config`, update the `ModelId` enum in
+`crates/codegen/diapason-config/src/models/model_id.rs` and its match arms
 (`as_str.rs`, `display.rs`, `description.rs`, `parse.rs`, `provider.rs`,
 `capabilities.rs`, `collection.rs`). Use the
 [adding-llm-providers](/docs/development/ADDING_MODELS.md) workflow.
@@ -95,16 +95,16 @@ Claude Fable 5 is generally available. Claude Mythos 5 is the same model
 without safety classifiers, available through
 [Project Glasswing](https://anthropic.com/glasswing).
 
-### Baseline behavior in VT Code
+### Baseline behavior in Diapason
 
-Both models map to adaptive-only thinking in VT Code's `AnthropicProvider`:
+Both models map to adaptive-only thinking in Diapason's `AnthropicProvider`:
 
 - `provider.anthropic.extended_thinking_enabled` and
   `interleaved_thinking_budget_tokens` are **ignored** (the request builder
   omits `thinking` entirely; adaptive is always on).
 - `provider.anthropic.thinking_display` defaults to `"omitted"` on these
   models. Set it to `"summarized"` if your UI streams reasoning content.
-- Prefill is not supported. VT Code's request builder omits any `prefill` field
+- Prefill is not supported. Diapason's request builder omits any `prefill` field
   when the target model is adaptive-only.
 - Sampling parameters (`temperature`, `top_p`, `top_k`) are forced to `None` by
   the request builder when thinking is active.
@@ -138,15 +138,15 @@ effort = "high"
 **Breaking:**
 
 1. **Extended thinking config is ignored.**
-   `thinking: {type: "enabled", budget_tokens: N}` returns 400. VT Code's
+   `thinking: {type: "enabled", budget_tokens: N}` returns 400. Diapason's
    request builder drops `budget_tokens` for adaptive-only models. Remove
    `interleaved_thinking_budget_tokens` from your config to avoid confusion.
 
-2. **`thinking: {type: "disabled"}` returns 400.** VT Code no longer sends a
+2. **`thinking: {type: "disabled"}` returns 400.** Diapason no longer sends a
    `thinking` field for these models. If you had logic to explicitly disable
    thinking, remove it.
 
-3. **Prefill is not supported.** VT Code's request builder omits `prefill` for
+3. **Prefill is not supported.** Diapason's request builder omits `prefill` for
    adaptive-only models. If you were using the prefill feature to steer output
    format, switch to `output_config.format` or system prompt instructions.
 
@@ -204,7 +204,7 @@ thinking_display = "summarized"
 
 **Breaking:**
 
-1. **Thinking can no longer be disabled.** On Opus 5, VT Code sends
+1. **Thinking can no longer be disabled.** On Opus 5, Diapason sends
    `thinking: {type: "disabled"}` when effort is `high` or below and the user
    opts out. On Fable/Mythos 5, that config returns 400. Remove the
    disable-thinking path; use lower effort (`medium`, `low`) to control token
@@ -258,7 +258,7 @@ thinking_display = "summarized"
 
 **Breaking:**
 
-1. **Adaptive thinking is always on.** On Opus 4.8, VT Code sends
+1. **Adaptive thinking is always on.** On Opus 4.8, Diapason sends
    `thinking: {type: "adaptive"}` only when `extended_thinking_enabled = true`.
    On Fable/Mythos 5, the request builder omits `thinking` entirely and the API
    runs adaptive thinking by default. Requests without a `thinking` field that
@@ -275,7 +275,7 @@ thinking_display = "summarized"
    short to cache on Opus 4.8 now create cache entries automatically.
 
 3. **Safety classifiers (Fable 5 only).** Handle `FinishReason::Refusal` and
-   inspect `stop_details.category`. VT Code's response parser already maps
+   inspect `stop_details.category`. Diapason's response parser already maps
    `stop_reason: "refusal"` to `FinishReason::Refusal` and exposes
    `stop_details`.
 
@@ -294,7 +294,7 @@ ______________________________________________________________________
 ## Migrating to Claude Opus 5
 
 Claude Opus 5 is a drop-in upgrade for Claude Opus 4.8 at the same $5/$25
-pricing. In VT Code, the two breaking changes are: thinking is on by default,
+pricing. In Diapason, the two breaking changes are: thinking is on by default,
 and disabling thinking is capped at effort `high` or below.
 
 ### Opus 4.8 → Opus 5
@@ -319,7 +319,7 @@ effort = "xhigh"
 # Optional: thinking_display = "omitted" (default on Opus 4.7+)
 ```
 
-No other config changes are required for this hop. VT Code's request builder
+No other config changes are required for this hop. Diapason's request builder
 automatically omits `thinking: {type: "disabled"}` when effort is above `high`
 and sends adaptive thinking instead.
 
@@ -327,30 +327,30 @@ and sends adaptive thinking instead.
 
 **Breaking:**
 
-1. **Thinking on by default.** On Opus 4.8, VT Code sent no `thinking` field
+1. **Thinking on by default.** On Opus 4.8, Diapason sent no `thinking` field
    when `extended_thinking_enabled = false`, and the API ran without thinking.
    On Opus 5, the same config runs with adaptive thinking. If you had workloads
    that relied on no-thinking behavior, either:
    - Revisit `max_tokens` (it remains a hard limit on thinking + response
      text), or
-   - Set `effort = "high"` (or `medium`/`low`) and VT Code will send
+   - Set `effort = "high"` (or `medium`/`low`) and Diapason will send
      `thinking: {type: "disabled"}` for you.
 
-2. **Disabling thinking is capped at `high` effort.** VT Code validates this
+2. **Disabling thinking is capped at `high` effort.** Diapason validates this
    per-request. A config with `effort = "xhigh"` or `effort = "max"` combined
    with thinking-disabled will be rejected with 400. The request builder will
    log a clear error; lower effort or remove the disable-thinking path.
 
 **Recommended:**
 
-1. **Test `max` effort.** VT Code supports `low`, `medium`, `high`, `xhigh`,
+1. **Test `max` effort.** Diapason supports `low`, `medium`, `high`, `xhigh`,
    `max`. Test `max` for capability-critical work; raise `max_tokens` to at
    least 64k when using `xhigh` or `max`.
 
 2. **Mid-conversation system messages.** Opus 5 accepts `role: "system"` in the
-   `messages` array. VT Code's message builder can now inject mid-conversation
+   `messages` array. Diapason's message builder can now inject mid-conversation
    system messages without rebuilding the full history, preserving prompt cache
-   hits. When VT Code collapses or bounds tool output, it adds the fixed
+   hits. When Diapason collapses or bounds tool output, it adds the fixed
    disclosure after the tool-result user message. Anthropic wire routes use
    `clear_at: "next_user_message"` and the
    `mid-conversation-system-clear-at-2026-08-21` beta only when the selected
@@ -363,8 +363,8 @@ and sends adaptive thinking instead.
    `[provider.anthropic]`, it works unchanged on Opus 5. The minimum is 20,000
    tokens.
 
-4. **Fast mode (beta).** Set `VTCODE_ANTHROPIC_BETA=fast-mode-2026-02-01` or
-   add it via the provider's beta header config; VT Code passes it through
+4. **Fast mode (beta).** Set `DIAPASON_ANTHROPIC_BETA=fast-mode-2026-02-01` or
+   add it via the provider's beta header config; Diapason passes it through
    unchanged.
 
 #### Migration checklist
@@ -378,7 +378,7 @@ and sends adaptive thinking instead.
 - [ ] `max` effort tested with `max_tokens >= 64k`
 - [ ] Mid-conversation system messages considered for prompt cache preservation
 - [ ] `task_budget_tokens` reviewed if used
-- [ ] `stop_reason: "refusal"` handling verified (VT Code maps to
+- [ ] `stop_reason: "refusal"` handling verified (Diapason maps to
       `FinishReason::Refusal`)
 - [ ] Cost and latency re-baselined
 
@@ -393,7 +393,7 @@ changes (sampling parameters, prefill, tokenizer) that this hop does not cover.
 
 The same config changes as the Opus 4.8 → Opus 5 hop apply. The only additional
 item: if you used `betas=["interleaved-thinking-2025-05-14"]` manually, remove
-it — VT Code adds it automatically when needed, and adaptive thinking enables
+it — Diapason adds it automatically when needed, and adaptive thinking enables
 interleaved thinking implicitly.
 
 ______________________________________________________________________
@@ -430,7 +430,7 @@ thinking_display = "summarized"          # if you want visible reasoning
 **Breaking:**
 
 1. **Extended thinking removed.**
-   `thinking: {type: "enabled", budget_tokens: N}` returns 400. VT Code's
+   `thinking: {type: "enabled", budget_tokens: N}` returns 400. Diapason's
    request builder now emits `ThinkingConfig::Adaptive` for Opus 5. Remove
    `extended_thinking_enabled` and `interleaved_thinking_budget_tokens` from
    config to avoid confusion.
@@ -440,21 +440,21 @@ thinking_display = "summarized"          # if you want visible reasoning
 
 3. **Disabling thinking capped at `high` effort.** Same as above.
 
-4. **Sampling parameters removed.** VT Code's request builder already forces
+4. **Sampling parameters removed.** Diapason's request builder already forces
    `temperature = None` when thinking is active or the model is Opus 4.8+. On
    Opus 5, non-default `temperature`/`top_p`/`top_k` are rejected server-side
    regardless. Ensure no code path sets these explicitly.
 
-5. **Thinking content omitted by default.** VT Code's default
+5. **Thinking content omitted by default.** Diapason's default
    `thinking_display` for Opus 5 is `"omitted"` (matching the API). Set
    `thinking_display = "summarized"` in config if your UI displays reasoning.
 
 6. **Tokenizer changed.** The new tokenizer uses roughly 1x–1.35x tokens
-   compared to pre-Opus 4.7 models. VT Code's token counting
+   compared to pre-Opus 4.7 models. Diapason's token counting
    (`count_tokens_enabled = true`) will return different values. Re-baseline
    `max_tokens` and cost expectations.
 
-7. **Prefill removed.** VT Code's request builder omits `prefill` for Opus 5.
+7. **Prefill removed.** Diapason's request builder omits `prefill` for Opus 5.
    Use `output_config.format` or system instructions instead.
 
 **Recommended:**
@@ -466,7 +466,7 @@ thinking_display = "summarized"          # if you want visible reasoning
 
 2. **High-resolution images.** Maximum image resolution is 2,576px on the long
    edge (up from 1,568). Full-resolution images use up to ~3x more image
-   tokens. VT Code passes images through unchanged; downsample before sending
+   tokens. Diapason passes images through unchanged; downsample before sending
    if fidelity is not needed.
 
 #### Migration checklist
@@ -494,19 +494,19 @@ Apply all changes from the [Opus 4.6 → Opus 5](#opus-46--opus-5) section, plus
 1. **Prefill removal (from 4.6).** Already covered above.
 
 2. **Tool parameter JSON escaping (from 4.6).** Claude 4.5+ preserves trailing
-   newlines in tool call string parameters. VT Code's tool parser uses standard
-   JSON parsing, so this is handled automatically. If you have custom
+   newlines in tool call string parameters. Diapason's tool parser uses
+   standard JSON parsing, so this is handled automatically. If you have custom
    string-based tool argument parsing, verify it handles trailing newlines.
 
 **Additional recommended:**
 
-1. **Beta header cleanup (from 4.7).** VT Code manages beta headers internally.
+1. **Beta header cleanup (from 4.7).** Diapason manages beta headers internally.
    If you passed `betas=["effort-2025-11-24"]`,
    `betas=["fine-grained-tool-streaming-2025-05-14"]`, or
    `betas=["interleaved-thinking-2025-05-14"]` manually, remove them — they are
    GA or auto-enabled.
 
-2. **Tool versions (from 4.7).** VT Code's tool definitions are internal. If
+2. **Tool versions (from 4.7).** Diapason's tool definitions are internal. If
    you reference tool types in prompts or code, update:
    - `text_editor_20250124` → `text_editor_20250728` (`str_replace_editor` →
      `str_replace_based_edit_tool`)
@@ -558,7 +558,7 @@ effort = "high"
 
 **Breaking:**
 
-1. **Disabling thinking is capped at `high` effort.** On Sonnet 5, VT Code
+1. **Disabling thinking is capped at `high` effort.** On Sonnet 5, Diapason
    accepts `thinking: {type: "disabled"}` at any effort. On Opus 5, it is only
    allowed at `high` or below. Audit any code or config that disables thinking
    with `xhigh` or `max` effort.
@@ -585,7 +585,7 @@ ______________________________________________________________________
 
 ## Migrating to Claude Sonnet 5
 
-Claude Sonnet 5 is VT Code's default model (`[default]`). It uses a new
+Claude Sonnet 5 is Diapason's default model (`[default]`). It uses a new
 tokenizer (~30% more tokens), adaptive thinking on by default, and requires the
 latest tool versions.
 
@@ -623,21 +623,21 @@ thinking_display = "summarized"    # if UI shows reasoning; default is "omitted"
    `max_tokens` for workloads that previously ran without thinking.
 
 2. **Manual extended thinking removed.**
-   `thinking: {type: "enabled", budget_tokens: N}` returns 400. VT Code's
+   `thinking: {type: "enabled", budget_tokens: N}` returns 400. Diapason's
    request builder drops budgeted thinking for Sonnet 5.
 
-3. **New tokenizer.** Token counts increase by roughly 30%. VT Code's
+3. **New tokenizer.** Token counts increase by roughly 30%. Diapason's
    `count_tokens_enabled = true` will return different values. Re-baseline
    `max_tokens` and cost.
 
 **Recommended:**
 
 1. **Effort default is `high`.** Sonnet 4.6 had no effort parameter. Sonnet 5
-   defaults to `high` in VT Code, which may increase latency. Test `medium` or
+   defaults to `high` in Diapason, which may increase latency. Test `medium` or
    `low` for cost-sensitive workloads.
 
 2. **Cybersecurity safeguards.** Sonnet 5 is the first Sonnet-tier model with
-   real-time safety classifiers. VT Code maps `stop_reason: "refusal"` to
+   real-time safety classifiers. Diapason maps `stop_reason: "refusal"` to
    `FinishReason::Refusal`. Add handling if your workload touches cybersecurity
    topics.
 
@@ -660,14 +660,14 @@ Apply the [Sonnet 4.6 → Sonnet 5](#sonnet-46--sonnet-5) changes, plus:
 
 **Breaking:**
 
-1. **Prefill removed (from 4.6).** VT Code's request builder omits `prefill`
+1. **Prefill removed (from 4.6).** Diapason's request builder omits `prefill`
    for Sonnet 5. Use `output_config.format` or system instructions.
 
-2. **Tool JSON escaping (from 4.6).** VT Code's tool parser uses standard JSON;
+2. **Tool JSON escaping (from 4.6).** Diapason's tool parser uses standard JSON;
    no action needed unless you have custom parsing.
 
 3. **Effort parameter introduced.** Sonnet 4.5 had no effort. Sonnet 5 defaults
-   to `high` in VT Code. Explicitly set `effort` if the default latency is too
+   to `high` in Diapason. Explicitly set `effort` if the default latency is too
    high.
 
 #### Migration checklist
@@ -682,7 +682,7 @@ ______________________________________________________________________
 ### Haiku 4.5 → Sonnet 5
 
 Haiku 4.5 uses manual extended thinking; Sonnet 5 uses adaptive thinking on by
-default. This is the largest API-level gap between adjacent tiers in VT Code.
+default. This is the largest API-level gap between adjacent tiers in Diapason.
 
 #### Config changes
 
@@ -715,7 +715,7 @@ thinking_display = "summarized"
    thinking config.
 
 2. **Effort parameter now available.** Haiku 4.5 did not support effort. Sonnet
-   5 defaults to `high` in VT Code. Test `medium`/`low` for cost control.
+   5 defaults to `high` in Diapason. Test `medium`/`low` for cost control.
 
 3. **Context window: 200k → 1M.** Sonnet 5 serves 1M tokens by default. Re-run
    token counting.
@@ -745,7 +745,7 @@ ______________________________________________________________________
 ## Migrating to Claude Haiku 4.5
 
 Haiku 4.5 is the fastest model with near-frontier performance. It is the only
-current VT Code model that still supports manual extended thinking.
+current Diapason model that still supports manual extended thinking.
 
 ### Haiku 3.5 or earlier → Haiku 4.5
 
@@ -780,7 +780,7 @@ interleaved_thinking_budget_tokens = 10000
 2. **Tool versions.** Update to `text_editor_20250728` and
    `code_execution_20250825`. Remove `undo_edit` references.
 
-3. **Refusal handling.** Haiku 4.5 can return `stop_reason: "refusal"`. VT Code
+3. **Refusal handling.** Haiku 4.5 can return `stop_reason: "refusal"`. Diapason
    maps it to `FinishReason::Refusal`.
 
 #### Migration checklist
@@ -794,12 +794,12 @@ interleaved_thinking_budget_tokens = 10000
 
 ______________________________________________________________________
 
-## Consolidated VT Code migration checklist
+## Consolidated Diapason migration checklist
 
 Use this when migrating across any model generation.
 
 - [ ] **Model ID updated:** `agent.default_model` set to target model string; or
-      `ModelId` enum updated if developing against `vtcode-config`
+      `ModelId` enum updated if developing against `diapason-config`
 - [ ] **Effort reviewed:** `provider.anthropic.effort` matches target model's
       supported levels; `xhigh`/`max` only used with `max_tokens >= 64k`
 - [ ] **Thinking config cleaned:** `extended_thinking_enabled` and
@@ -829,7 +829,7 @@ Use this when migrating across any model generation.
       newlines preserved on Claude 4.5+)
 - [ ] **Prompt caching reviewed:** Prompts ≥ 512 tokens now create cache
       entries on most models
-- [ ] **Beta headers:** No manual beta headers needed; VT Code manages them
+- [ ] **Beta headers:** No manual beta headers needed; Diapason manages them
       internally
 - [ ] **Task budgets evaluated:** `task_budget_tokens` set if using agentic
       workloads (min 20,000 tokens)
@@ -848,21 +848,21 @@ ______________________________________________________________________
 
 ## Developer reference
 
-### Key VT Code types
+### Key Diapason types
 
-| Type                   | Location                                         | Role                                                               |
-| ---------------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
-| `ModelId`              | `vtcode-config/src/models/model_id.rs`           | Canonical model enum; add new models here                          |
-| `AnthropicConfig`      | `vtcode-config/src/core/provider.rs`             | All Anthropic-specific settings                                    |
-| `ReasoningEffortLevel` | `vtcode-commons/src/reasoning.rs`                | Effort enum (`None`/`Minimal`/`Low`/`Medium`/`High`/`XHigh`/`Max`) |
-| `LLMRequest`           | `vtcode-llm/src/provider/request.rs`             | Universal request struct                                           |
-| `LLMResponse`          | `vtcode-commons/src/llm.rs`                      | Universal response struct                                          |
-| `FinishReason`         | `vtcode-commons/src/llm.rs`                      | Stop reason enum                                                   |
-| `AnthropicProvider`    | `vtcode-llm/src/providers/anthropic/provider.rs` | Request building, HTTP, response parsing                           |
-| `ModelResolver`        | `vtcode-llm/src/model_resolver.rs`               | Resolves model string → provider + catalog                         |
-| `ThinkingDisplayMode`  | `vtcode-config/src/core/provider.rs`             | `Summarized` / `Omitted` / `Unknown`                               |
+| Type                   | Location                                           | Role                                                               |
+| ---------------------- | -------------------------------------------------- | ------------------------------------------------------------------ |
+| `ModelId`              | `diapason-config/src/models/model_id.rs`           | Canonical model enum; add new models here                          |
+| `AnthropicConfig`      | `diapason-config/src/core/provider.rs`             | All Anthropic-specific settings                                    |
+| `ReasoningEffortLevel` | `diapason-commons/src/reasoning.rs`                | Effort enum (`None`/`Minimal`/`Low`/`Medium`/`High`/`XHigh`/`Max`) |
+| `LLMRequest`           | `diapason-llm/src/provider/request.rs`             | Universal request struct                                           |
+| `LLMResponse`          | `diapason-commons/src/llm.rs`                      | Universal response struct                                          |
+| `FinishReason`         | `diapason-commons/src/llm.rs`                      | Stop reason enum                                                   |
+| `AnthropicProvider`    | `diapason-llm/src/providers/anthropic/provider.rs` | Request building, HTTP, response parsing                           |
+| `ModelResolver`        | `diapason-llm/src/model_resolver.rs`               | Resolves model string → provider + catalog                         |
+| `ThinkingDisplayMode`  | `diapason-config/src/core/provider.rs`             | `Summarized` / `Omitted` / `Unknown`                               |
 
-### How VT Code translates config to API
+### How Diapason translates config to API
 
 1. `agent.default_model` → `ModelId` enum (or raw string for OpenRouter/custom)
 2. `[provider.anthropic]` → `AnthropicConfig` struct
@@ -883,9 +883,9 @@ ______________________________________________________________________
 
 ## Get help
 
-- [VT Code config reference](/docs/config/CONFIG_FIELD_REFERENCE.md) — all
+- [Diapason config reference](/docs/config/CONFIG_FIELD_REFERENCE.md) — all
   `[provider.anthropic]` fields
-- [Extended thinking in VT Code](/docs/development/EXTENDED_THINKING.md) —
+- [Extended thinking in Diapason](/docs/development/EXTENDED_THINKING.md) —
   thinking matrix and budget selection
 - [Adding models](/docs/development/ADDING_MODELS.md) — developer workflow for
   new model IDs

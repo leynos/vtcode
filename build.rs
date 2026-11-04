@@ -53,5 +53,5 @@ fn main() {
         }
     }
 
-    println!("cargo:rustc-env=VT_CODE_GIT_INFO={git_describe}");
+    println!("cargo:rustc-env=DIAPASON_GIT_INFO={git_describe}");
 }

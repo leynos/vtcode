@@ -2,7 +2,7 @@
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
-//! Verifies `vtcode_core::safety::hitl` is reachable. This is a regression
+//! Verifies `diapason_core::safety::hitl` is reachable. This is a regression
 //! guard against the `safety.rs` + `safety/` ambiguity that previously made
 //! the human-in-the-loop submodule silently unbuilt.
 
@@ -12,7 +12,7 @@
 )]
 #[test]
 fn safety_hitl_module_is_reachable() {
-    use vtcode_core::safety::hitl::{
+    use diapason_core::safety::hitl::{
         HitlAuditTrail, HitlEvent, HitlGate, HitlPolicy, HitlStatistics, OversightDecision,
     };
 

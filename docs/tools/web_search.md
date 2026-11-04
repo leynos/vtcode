@@ -37,7 +37,7 @@ Optional parameters:
 
 ## Configuration
 
-Configure via `vtcode.toml` under `[tools.web_search]`:
+Configure via `config.toml` under `[tools.web_search]`:
 
 ```toml
 [tools.web_search]

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use diapason_core::core::interfaces::ui::UiSession;
+use diapason_ui::tui::app::{InlineEvent, InlineHandle, TransientEvent, TransientRequest, TransientSubmission};
 use tokio::sync::Notify;
 use tokio::task;
-use vtcode_core::core::interfaces::ui::UiSession;
-use vtcode_ui::tui::app::{InlineEvent, InlineHandle, TransientEvent, TransientRequest, TransientSubmission};
 
 use super::state::CtrlCState;
 
@@ -31,7 +31,7 @@ where
     F: FnMut(TransientSubmission) -> Option<T>,
 {
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         "show_overlay_and_wait: showing transient request"
     );
     handle.show_transient(request);
@@ -39,7 +39,7 @@ where
     task::yield_now().await;
     let result = wait_for_overlay_submission(handle, session, ctrl_c_state, ctrl_c_notify, map_submission).await;
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         overlay_result = "completed",
         "show_overlay_and_wait: completed"
     );
@@ -65,7 +65,7 @@ where
 
         let notify = ctrl_c_notify.clone();
         tracing::info!(
-            target: "vtcode.planning_workflow",
+            target: "diapason.planning_workflow",
             "wait_for_overlay_submission: waiting for event"
         );
         let maybe_event = tokio::select! {
@@ -73,7 +73,7 @@ where
             event = session.next_event() => event,
         };
         tracing::info!(
-            target: "vtcode.planning_workflow",
+            target: "diapason.planning_workflow",
             event_received = true,
             "wait_for_overlay_submission: event received"
         );
@@ -89,7 +89,7 @@ where
         match event {
             InlineEvent::Interrupt => {
                 tracing::info!(
-                    target: "vtcode.planning_workflow",
+                    target: "diapason.planning_workflow",
                     "wait_for_overlay_submission: interrupt event"
                 );
                 crate::agent::runloop::unified::stop_requests::request_local_stop(ctrl_c_state, ctrl_c_notify);
@@ -98,7 +98,7 @@ where
             }
             InlineEvent::Transient(TransientEvent::Submitted(submission)) => {
                 tracing::info!(
-                    target: "vtcode.planning_workflow",
+                    target: "diapason.planning_workflow",
                     submission = "received",
                     "wait_for_overlay_submission: submitted event"
                 );
@@ -110,7 +110,7 @@ where
             }
             InlineEvent::Transient(TransientEvent::Cancelled) | InlineEvent::Cancel => {
                 tracing::info!(
-                    target: "vtcode.planning_workflow",
+                    target: "diapason.planning_workflow",
                     "wait_for_overlay_submission: cancelled event"
                 );
                 ctrl_c_state.reset();
@@ -119,7 +119,7 @@ where
             }
             InlineEvent::Exit => {
                 tracing::info!(
-                    target: "vtcode.planning_workflow",
+                    target: "diapason.planning_workflow",
                     "wait_for_overlay_submission: exit event"
                 );
                 ctrl_c_state.reset();
@@ -136,7 +136,7 @@ where
             InlineEvent::Transient(_) => {}
             _ => {
                 tracing::info!(
-                    target: "vtcode.planning_workflow",
+                    target: "diapason.planning_workflow",
                     event_type = "other",
                     "wait_for_overlay_submission: other event"
                 );
@@ -155,9 +155,9 @@ async fn close_overlay(handle: &InlineHandle) {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use diapason_core::core::interfaces::ui::UiSession;
+    use diapason_ui::tui::app::{InlineCommand, InlineListItem};
     use tokio::sync::{Notify, mpsc};
-    use vtcode_core::core::interfaces::ui::UiSession;
-    use vtcode_ui::tui::app::{InlineCommand, InlineListItem};
 
     struct FailingDeferralSession {
         handle: InlineHandle,

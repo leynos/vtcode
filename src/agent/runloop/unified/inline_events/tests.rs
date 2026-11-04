@@ -15,21 +15,21 @@ use crate::agent::runloop::unified::state::CtrlCState;
 use crate::agent::runloop::unified::state::SessionStats;
 use crate::agent::runloop::unified::url_guard::UrlGuardPrompt;
 use crate::agent::runloop::welcome::SessionBootstrap;
-use tokio::sync::Notify;
-use vtcode_core::config::core::PromptCachingConfig;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::{
+use diapason_core::config::core::PromptCachingConfig;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::{
     AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
 };
-use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
-use vtcode_core::llm::provider::{self as uni, LLMRequest, LLMResponse};
-use vtcode_core::ui::theme;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{
+use diapason_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
+use diapason_core::llm::provider::{self as uni, LLMRequest, LLMResponse};
+use diapason_core::ui::theme;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{
     ContentPart, InlineCommand, InlineEvent, InlineHandle, InlineListSelection, SubmittedInput, TransientEvent,
     TransientRequest, TransientSubmission,
 };
+use tokio::sync::Notify;
 
 #[derive(Clone)]
 struct DummyProvider;
@@ -67,7 +67,7 @@ impl uni::LLMProvider for DummyProvider {
 
 fn runtime_config() -> CoreAgentConfig {
     CoreAgentConfig {
-        model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+        model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
         api_key: "test-key".to_string(),
         provider: "gemini".to_string(),
         api_key_env: Provider::Gemini.default_api_key_env().to_string(),
@@ -121,7 +121,7 @@ async fn launch_editor_event_submits_edit_command() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -174,7 +174,7 @@ async fn launch_editor_event_with_draft_returns_editor_with_draft_action() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -227,7 +227,7 @@ async fn open_file_in_editor_event_emits_out_of_band_request_with_path() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -285,7 +285,7 @@ async fn open_url_event_shows_guard_modal_with_deny_selected_by_default() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let url = "https://example.com/docs".to_string();
     {
         let mut history = Vec::<uni::Message>::new();
@@ -358,7 +358,7 @@ async fn open_http_url_guard_modal_includes_insecure_transport_warning() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     {
         let mut history = Vec::<uni::Message>::new();
         let mut session_stats = SessionStats::default();
@@ -426,7 +426,7 @@ async fn cancelling_url_guard_restores_previous_palette() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     {
         let mut history = Vec::<uni::Message>::new();
         let mut session_stats = SessionStats::default();
@@ -508,7 +508,7 @@ async fn previous_agent_event_cycles_primary_agent_backward() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -556,9 +556,9 @@ async fn settings_editor_selection_submits_editor_config_command() {
     let mut palette_state: Option<ActivePalette> = Some(ActivePalette::Settings {
         state: Box::new(SettingsPaletteState {
             workspace: std::path::PathBuf::from("."),
-            source_path: std::path::PathBuf::from("vtcode.toml"),
+            source_path: std::path::PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("tools".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -569,7 +569,7 @@ async fn settings_editor_selection_submits_editor_config_command() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -629,7 +629,7 @@ async fn mode_palette_selection_selects_primary_agent() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -689,7 +689,7 @@ async fn plan_confirmation_events_map_to_expected_actions() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -780,7 +780,7 @@ async fn single_ctrl_c_returns_continue_from_tui() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -833,7 +833,7 @@ async fn double_ctrl_c_returns_exit_from_tui() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -891,7 +891,7 @@ async fn steering_events_are_passive_in_idle_loop() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -944,7 +944,7 @@ async fn steer_with_attachments_restores_full_draft_and_continues() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -1019,7 +1019,7 @@ async fn process_latest_queued_event_primes_newest_queue_priority() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();
@@ -1074,7 +1074,7 @@ async fn inline_prompt_suggestion_event_maps_to_inline_action() {
     let mut vt_cfg = None;
     let mut provider_client: Box<dyn uni::LLMProvider> = Box::new(DummyProvider);
     let session_bootstrap = SessionBootstrap::default();
-    let mut header_context = vtcode_ui::tui::app::InlineHeaderContext::default();
+    let mut header_context = diapason_ui::tui::app::InlineHeaderContext::default();
     let mut history = Vec::<uni::Message>::new();
     let mut session_stats = SessionStats::default();
     let mut context_manager = ContextManager::default_for_test();

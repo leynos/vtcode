@@ -12,14 +12,14 @@ export interface CommandContext {
     selection?: vscode.Selection;
     /** Active terminal, if any */
     terminal?: vscode.Terminal;
-    /** VT Code backend instance */
+    /** Diapason backend instance */
     backend?: any;
     /** Output channel for logging */
     output: vscode.OutputChannel;
 }
 
 /**
- * Base interface for all VT Code commands
+ * Base interface for all Diapason commands
  */
 export interface ICommand {
     /** Unique command identifier */
@@ -47,7 +47,7 @@ export interface ICommand {
 }
 
 /**
- * Base class for VT Code commands providing common functionality
+ * Base class for Diapason commands providing common functionality
  */
 export abstract class BaseCommand implements ICommand {
     public abstract readonly id: string;
@@ -70,7 +70,7 @@ export abstract class BaseCommand implements ICommand {
     protected ensureWorkspaceTrusted(context: CommandContext): boolean {
         if (!vscode.workspace.isTrusted) {
             void vscode.window.showWarningMessage(
-                "VT Code requires a trusted workspace to execute this command."
+                "Diapason requires a trusted workspace to execute this command."
             );
             return false;
         }
@@ -87,7 +87,7 @@ export abstract class BaseCommand implements ICommand {
     ): Promise<void> {
         try {
             const contextFlushed = await vscode.commands.executeCommand<boolean>(
-                "vtcode.flushIdeContextSnapshot"
+                "diapason.flushIdeContextSnapshot"
             );
             if (contextFlushed === false) {
                 context.output?.appendLine(

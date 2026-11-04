@@ -4,10 +4,10 @@ use anyhow::Result;
 
 use tokio_util::sync::CancellationToken;
 
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::steering::SteeringMessage;
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::steering::SteeringMessage;
+use diapason_core::core::interfaces::session::PlanningEntrySource;
 
 /// Optimization: Pre-computed idle detection thresholds to avoid repeated config lookups
 #[derive(Clone, Copy)]
@@ -27,7 +27,7 @@ const RECENT_MESSAGE_LIMIT: usize = 16;
 
 /// Optimization: Extract idle detection config once to avoid repeated Option unwrapping
 #[inline]
-fn extract_idle_config(vt_cfg: Option<&VTCodeConfig>) -> IdleDetectionConfig {
+fn extract_idle_config(vt_cfg: Option<&DiapasonConfig>) -> IdleDetectionConfig {
     vt_cfg
         .map(|cfg| {
             let idle_config = &cfg.optimization.agent_execution;
@@ -49,7 +49,7 @@ fn extract_idle_config(vt_cfg: Option<&VTCodeConfig>) -> IdleDetectionConfig {
 #[cfg_attr(feature = "profiling", hotpath::measure)]
 pub(crate) async fn run_single_agent_loop_unified(
     config: &CoreAgentConfig,
-    _vt_cfg: Option<VTCodeConfig>,
+    _vt_cfg: Option<DiapasonConfig>,
     _skip_confirmations: bool,
     full_auto: bool,
     primary_agent_explicitly_configured: bool,
@@ -83,7 +83,7 @@ impl TerminalCleanupGuard {
 
 impl Drop for TerminalCleanupGuard {
     fn drop(&mut self) {
-        let _ = vtcode_ui::tui::panic_hook::restore_tui();
+        let _ = diapason_ui::tui::panic_hook::restore_tui();
         let _ = std::io::stdout().flush();
         let _ = std::io::stderr().flush();
     }

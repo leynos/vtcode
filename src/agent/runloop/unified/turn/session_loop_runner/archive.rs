@@ -12,14 +12,14 @@ pub(super) enum NextRuntimeArchiveId {
 }
 
 pub(super) async fn create_session_archive(
-    metadata: vtcode_core::utils::session_archive::SessionArchiveMetadata,
+    metadata: diapason_core::utils::session_archive::SessionArchiveMetadata,
     reserved_archive_id: Option<String>,
-) -> Result<vtcode_core::utils::session_archive::SessionArchive> {
+) -> Result<diapason_core::utils::session_archive::SessionArchive> {
     if let Some(identifier) = reserved_archive_id {
-        return vtcode_core::utils::session_archive::SessionArchive::new_with_identifier(metadata, identifier).await;
+        return diapason_core::utils::session_archive::SessionArchive::new_with_identifier(metadata, identifier).await;
     }
 
-    vtcode_core::utils::session_archive::SessionArchive::new(metadata, None).await
+    diapason_core::utils::session_archive::SessionArchive::new(metadata, None).await
 }
 
 pub(super) fn workspace_archive_label(workspace: &std::path::Path) -> String {
@@ -58,13 +58,13 @@ pub(super) async fn refresh_runtime_debug_context_for_next_session(
     let session_id = match next_runtime_archive_id_request(workspace, resume) {
         NextRuntimeArchiveId::Existing(identifier) => identifier,
         NextRuntimeArchiveId::Reserve { workspace_label, custom_suffix }
-            if vtcode_core::utils::session_archive::history_persistence_enabled() =>
+            if diapason_core::utils::session_archive::history_persistence_enabled() =>
         {
-            vtcode_core::utils::session_archive::reserve_session_archive_identifier(&workspace_label, custom_suffix)
+            diapason_core::utils::session_archive::reserve_session_archive_identifier(&workspace_label, custom_suffix)
                 .await?
         }
         NextRuntimeArchiveId::Reserve { workspace_label, custom_suffix } => {
-            vtcode_core::utils::session_archive::generate_session_archive_identifier(&workspace_label, custom_suffix)
+            diapason_core::utils::session_archive::generate_session_archive_identifier(&workspace_label, custom_suffix)
         }
     };
 

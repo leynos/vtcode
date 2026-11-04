@@ -1,10 +1,10 @@
 use anyhow::{Result, anyhow};
 
-use vtcode_config::OpenAIServiceTier;
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_ui::tui::ui::interactive_list::{SelectionEntry, run_interactive_selection};
+use diapason_config::OpenAIServiceTier;
+use diapason_config::auth::AuthCredentialsStoreMode;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_ui::tui::ui::interactive_list::{SelectionEntry, run_interactive_selection};
 
 use super::dynamic_models::DynamicModelRegistry;
 use super::options::{ModelOption, option_indexes_for_provider};
@@ -22,7 +22,7 @@ pub(super) const REFRESH_ENTRY_LABEL: &str = "Refresh dynamic model lists";
 
 pub(super) fn custom_provider_description(selection: &SelectionDetail) -> String {
     if selection.model_id.trim().is_empty() {
-        format!("{} • Configure a model in vtcode.toml", selection.provider_label)
+        format!("{} • Configure a model in config.toml", selection.provider_label)
     } else {
         format!("{} • {}", selection.provider_label, selection.model_id)
     }

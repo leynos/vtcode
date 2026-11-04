@@ -1,11 +1,11 @@
 use hashbrown::HashSet;
 
+pub(super) use diapason_commons::formatting::truncate_path_middle;
+use diapason_commons::formatting::{collapse_whitespace, truncate_middle};
+use diapason_core::tools::command_args;
 use serde_json::Value;
 use std::borrow::Cow;
 use std::path::Path;
-pub(super) use vtcode_commons::formatting::truncate_path_middle;
-use vtcode_commons::formatting::{collapse_whitespace, truncate_middle};
-use vtcode_core::tools::command_args;
 
 pub(super) fn humanize_tool_name(name: &str) -> String {
     humanize_key(name)
@@ -504,14 +504,14 @@ mod tests {
     #[test]
     fn test_describe_shell_command_string_format() {
         let args = json!({
-            "command": "cargo check -p vtcode"
+            "command": "cargo check -p diapason"
         });
 
         let result = describe_shell_command(&args);
         assert!(result.is_some());
 
         let (description, _used) = result.unwrap();
-        assert_eq!(description, "cargo check -p vtcode");
+        assert_eq!(description, "cargo check -p diapason");
     }
 
     #[test]
@@ -608,7 +608,7 @@ mod tests {
 
     #[test]
     fn truncate_path_middle_breaks_at_separator() {
-        let path = "/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/hello/src/main.rs";
+        let path = "/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/hello/src/main.rs";
         let truncated = truncate_path_middle(path, 40);
         // Should break at a '/' not in the middle of a word
         assert!(truncated.contains("…"));
@@ -631,7 +631,8 @@ mod tests {
 
     #[test]
     fn preview_command_multi_line_shows_first_line_only() {
-        let command = "python3 -c \"\nimport json\nwith open('.vtcode/checkpoints/turn_1032.json') as f:\n    pass\n\"";
+        let command =
+            "python3 -c \"\nimport json\nwith open('.diapason/checkpoints/turn_1032.json') as f:\n    pass\n\"";
         let preview = preview_command(command, 70);
         assert_eq!(preview, "python3 -c \"");
         assert!(!preview.contains('…'));
@@ -681,7 +682,7 @@ mod tests {
     #[test]
     fn describe_shell_command_no_mid_string_ellipsis() {
         let args = json!({
-            "command": "python3 -c \"\nimport json\nwith open('.vtcode/checkpoints/turn_1032.json') as f: d = json.load(f)\""
+            "command": "python3 -c \"\nimport json\nwith open('.diapason/checkpoints/turn_1032.json') as f: d = json.load(f)\""
         });
         let (summary, used) = describe_shell_command(&args).expect("shell command summary");
         assert_eq!(used.iter().collect::<Vec<_>>(), ["command"]);

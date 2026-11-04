@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-vtcode-core = { path = "../vtcode-core" }
+diapason-core = { path = "../diapason-core" }
 clap = { workspace = true, features = ["derive"] }
 clap_complete = { workspace = true }
 semver = { workspace = true }

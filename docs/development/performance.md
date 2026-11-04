@@ -1,6 +1,6 @@
 # Performance Optimization
 
-VT Code uses a local-first performance workflow. Performance checks are
+Diapason uses a local-first performance workflow. Performance checks are
 measured manually and are not hard CI gates. The default stance is simple: do
 not guess, measure first, and only keep complexity that pays for itself.
 
@@ -19,7 +19,7 @@ not guess, measure first, and only keep complexity that pays for itself.
 - Prefer simple algorithms when input sizes are small or not yet proven large.
 - Avoid fancy algorithms and broad refactors unless measurements justify their
   constant-factor and maintenance cost.
-- Start with data structures and layout. In VT Code, the right cache shape,
+- Start with data structures and layout. In Diapason, the right cache shape,
   queue boundary, or representation usually matters more than clever control
   flow.
 
@@ -92,9 +92,9 @@ while completed read-only command cache hits remain reusable.
 Avoid combining `#[serde(flatten)]` with `#[serde(untagged)]` on frequent,
 discriminator-driven protocol payloads. Serde must buffer the surrounding map
 to decide which flattened shape applies; direct wire structs can decode the
-known fields once and construct the tagged payload afterward. VT Code uses this
-for OpenResponses and ACP streaming notifications. Keep flattening when it is
-the actual contract, such as trace metadata's vendor-extension map.
+known fields once and construct the tagged payload afterward. Diapason uses
+this for OpenResponses and ACP streaming notifications. Keep flattening when it
+is the actual contract, such as trace metadata's vendor-extension map.
 
 Keep streaming payloads as borrowed SSE text until a consumer needs an owned
 payload. The normalized Responses adapter now avoids the old
@@ -109,8 +109,8 @@ continues to use the canonical `VersionedThreadEvent` decoder.
 
 ### Privacy-preserving harness trace analysis
 
-Use `vtcode_eval::analyze_jsonl_file` or `analyze_jsonl_reader` for offline
-DeepSeek/VT Code harness analysis. The file and reader paths process one JSONL
+Use `diapason_eval::analyze_jsonl_file` or `analyze_jsonl_reader` for offline
+DeepSeek/Diapason harness analysis. The file and reader paths process one JSONL
 record at a time (with a 1 MiB record limit), retain only aggregate counters,
 and never copy prompts, arguments, paths, file contents, output text, or
 free-form error messages into the returned summary. Tool names and error values
@@ -139,9 +139,10 @@ cache usage, and output volume before changing the runtime.
 ./scripts/perf/compare.sh
 ```
 
-Artifacts are written to `.vtcode/perf/` and include JSON metrics plus raw logs.
+Artifacts are written to `.diapason/perf/` and include JSON metrics plus raw
+logs.
 
-The perf harness builds and measures `target/release/vtcode`, not `cargo run`
+The perf harness builds and measures `target/release/diapason`, not `cargo run`
 or the debug binary. It clears `RUSTC_WRAPPER` and `CARGO_BUILD_RUSTC_WRAPPER`
 by default for its cargo steps so local measurements still work when `sccache`
 is configured but unavailable. Set `PERF_KEEP_RUSTC_WRAPPER=1` only when you
@@ -156,18 +157,18 @@ Startup policy is defined by the command case and launch state, not by one
 generic `startup_ms` number. Measure the release executable directly:
 
 ```bash
-cargo build --release --locked --bin vtcode
-VTCODE_BIN="$PWD/target/release/vtcode" \
-  VTCODE_BENCH_RUNS=10 \
+cargo build --release --locked --bin diapason
+DIAPASON_BIN="$PWD/target/release/diapason" \
+  DIAPASON_BENCH_RUNS=10 \
   cargo bench --locked --bench startup -- --noplot
 ```
 
 The standalone case matrix is:
 
 ```text
-vtcode --version
-vtcode --help
-vtcode schema tools --format ndjson --name code_search
+diapason --version
+diapason --help
+diapason schema tools --format ndjson --name code_search
 ```
 
 Run every case as both a cold and warm sample. Cold means copying the
@@ -188,8 +189,8 @@ For each case and launch mode, retain the raw millisecond samples and report
 the median and p95. The median is the primary central result; p95 exposes
 startup tail behavior. Use the same binary, machine, environment, sample count,
 and isolation layout for before/after comparisons. Keep
-`VTCODE_STARTUP_TRACE=0` (or unset) during timed runs; enable
-`VTCODE_STARTUP_TRACE=1` only for a separate diagnostic run.
+`DIAPASON_STARTUP_TRACE=0` (or unset) during timed runs; enable
+`DIAPASON_STARTUP_TRACE=1` only for a separate diagnostic run.
 
 The broader capture remains available when its additional workloads are needed:
 
@@ -197,7 +198,7 @@ The broader capture remains available when its additional workloads are needed:
 ./scripts/perf/baseline.sh baseline
 ./scripts/perf/baseline.sh latest
 ./scripts/perf/compare.sh \
-  .vtcode/perf/baseline.json .vtcode/perf/latest.json
+  .diapason/perf/baseline.json .diapason/perf/latest.json
 ```
 
 It records separate cold fresh-copy, warm, first-user-I/O, and interactive
@@ -207,7 +208,7 @@ the three-case standalone matrix above.
 For phase-level diagnostics, set the opt-in trace before launching the binary:
 
 ```bash
-VTCODE_STARTUP_TRACE=1 target/release/vtcode --provider ollama --model llama3
+DIAPASON_STARTUP_TRACE=1 target/release/diapason --provider ollama --model llama3
 ```
 
 The trace is silent when unset and reports only duration records for bootstrap,
@@ -251,10 +252,10 @@ through the first usable frame.
 
 The default binary links heavy subsystems that most invocations never use:
 
-- `vtcode-eval` — eval framework (only `vtcode eval` commands).
-- `vtcode-acp` — Agent Client Protocol (only `vtcode acp`).
-- transitively via `vtcode-core`: `vtcode-indexer`, `vtcode-mcp`, `vtcode-a2a`,
-  `vtcode-skills`.
+- `diapason-eval` — eval framework (only `diapason eval` commands).
+- `diapason-acp` — Agent Client Protocol (only `diapason acp`).
+- transitively via `diapason-core`: `diapason-indexer`, `diapason-mcp`,
+  `diapason-a2a`, `diapason-skills`.
 
 These are potential binary-size levers. Cutting them requires feature-gating
 them out of the default binary (and behind an opt-in feature for the commands
@@ -278,7 +279,7 @@ This builds release with:
 - `-C force-frame-pointers=yes`
 - `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`
 
-Then profile `target/release/vtcode` with your preferred tool.
+Then profile `target/release/diapason` with your preferred tool.
 
 ## Local Native Tuning
 
@@ -297,8 +298,8 @@ change portable release defaults.
 Current Criterion benches:
 
 ```bash
-cargo bench -p vtcode-core --bench tool_pipeline
-cargo bench -p vtcode-core --bench agent_harness
+cargo bench -p diapason-core --bench tool_pipeline
+cargo bench -p diapason-core --bench agent_harness
 ```
 
 Use benches when a hotspot is stable and repeatable. Use the baseline/profile
@@ -322,7 +323,7 @@ older index remain safe.
 
 Workspace tool registration also retains the effective persistent-memory
 configuration from its startup parse. Memory tool calls no longer reload and
-reparse `vtcode.toml`; this follows the same snapshot policy as the web-tool
+reparse `config.toml`; this follows the same snapshot policy as the web-tool
 and output-spooler settings while preserving the disabled-memory guard.
 
 Basic directory-list cache keys include the canonical workspace and every
@@ -353,7 +354,7 @@ Compare repeated local medians rather than adding a noisy hard gate:
 ```
 
 Rustc-specific AST shrinking, compiler incremental-cache changes, and PGO are
-outside this runtime-focused wave. Revisit them only with a confirmed VT Code
+outside this runtime-focused wave. Revisit them only with a confirmed Diapason
 profile hotspot and a separate build-performance budget.
 
 ## Optimization Rules

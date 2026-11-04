@@ -1,11 +1,11 @@
-# VT Code TUI Event Handling Guide
+# Diapason TUI Event Handling Guide
 
-This guide documents best practices for terminal UI event handling in VT Code,
+This guide documents best practices for terminal UI event handling in Diapason,
 derived from Ratatui and crossterm standards.
 
 ## Overview
 
-VT Code uses a modular event-driven architecture with async/await and
+Diapason uses a modular event-driven architecture with async/await and
 `tokio::select!`. The pattern is:
 
 ```
@@ -16,7 +16,7 @@ VT Code uses a modular event-driven architecture with async/await and
          
          
 
-  crates/codegen/vtcode-ui/src/tui/core_tui/runner/       Event filtering & multiplexing
+  crates/codegen/diapason-ui/src/tui/core_tui/runner/       Event filtering & multiplexing
   Tui::start() spawns task               
   tokio::select! on 3 channels:          
   - tick_interval                        
@@ -40,9 +40,9 @@ VT Code uses a modular event-driven architecture with async/await and
 
 ### 1. Platform-Specific Event Filtering
 
-VT Code filters key events to avoid duplicates on Windows:
+Diapason filters key events to avoid duplicates on Windows:
 
-**File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+**File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 
 ```rust
 CrosstermEvent::Key(key) => {
@@ -57,9 +57,9 @@ every keypress, while macOS/Linux emit only `Press`.
 
 ### 2. Async Event Loop with tokio::select
 
-VT Code multiplexes three independent timers and one blocking read:
+Diapason multiplexes three independent timers and one blocking read:
 
-**File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+**File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 
 ```rust
 fn start(&mut self) {
@@ -96,7 +96,7 @@ fn start(&mut self) {
 
 ### 3. Graceful Shutdown with CancellationToken
 
-**File:** `crates/codegen/vtcode-ui/src/tui/`
+**File:** `crates/codegen/diapason-ui/src/tui/`
 
 ```rust
 pub fn cancel(&self) {
@@ -115,9 +115,9 @@ pub fn exit(&mut self) -> Result<()> {
 
 ### 4. External App Suspension Pattern
 
-When launching external editors/git clients, VT Code suspends the TUI:
+When launching external editors/git clients, Diapason suspends the TUI:
 
-**File:** `crates/codegen/vtcode-ui/src/tui/`
+**File:** `crates/codegen/diapason-ui/src/tui/`
 
 ```rust
 pub async fn with_suspended_tui<F, T>(&mut self, f: F) -> Result<T>
@@ -156,9 +156,9 @@ capability responses, buffered keystrokes) from reaching the external app.
 
 ## Event Types
 
-VT Code defines these application events:
+Diapason defines these application events:
 
-**File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+**File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 
 | Event               | Source                 | Purpose                                 |
 | ------------------- | ---------------------- | --------------------------------------- |
@@ -179,7 +179,7 @@ VT Code defines these application events:
 
 ### Frame and Tick Rates
 
-**File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+**File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 
 ```rust
 let tick_rate = 4.0;     // 4 ticks per second (250ms intervals)
@@ -196,7 +196,7 @@ let tui = Tui::new()?
 
 ### Mouse and Paste Support
 
-**File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+**File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 
 ```rust
 pub mouse: bool,   // Capture mouse events
@@ -216,9 +216,9 @@ When enabled:
 - Mouse events are sent via `Event::Mouse(MouseEvent)`
 - Pasted text is sent via `Event::Paste(String)` (not individual keypresses)
 
-## Integration with VT Code
+## Integration with Diapason
 
-VT Code's main event loop typically looks like:
+Diapason's main event loop typically looks like:
 
 ```rust
 loop {
@@ -284,11 +284,11 @@ the last one.
 
 ### 3. Use stderr for Rendering
 
-VT Code uses `CrosstermBackend::new(std::io::stderr())` to allow stdout for
+Diapason uses `CrosstermBackend::new(std::io::stderr())` to allow stdout for
 piped output:
 
 ```bash
-vtcode ask "task" | jq '.result'
+diapason ask "task" | jq '.result'
 ```
 
 ### 4. Handle Terminal Resize Gracefully
@@ -390,14 +390,14 @@ crossterm::terminal::enable_raw_mode()?;
 
 ## Testing
 
-VT Code includes tests in `crates/codegen/vtcode-ui/src/tui/` (marked with
+Diapason includes tests in `crates/codegen/diapason-ui/src/tui/` (marked with
 `#[allow(dead_code)]`). To test event handling:
 
 1. Create a mock `Event` stream
 2. Assert state changes per event
 3. Verify rendering output
 
-Example (in vtcode-core):
+Example (in diapason-core):
 
 ```rust
 #[tokio::test]

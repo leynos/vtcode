@@ -14,11 +14,11 @@ class EvaluationEngineCommandTests(unittest.TestCase):
 
     def test_advanced_profile_is_explicit(self):
         command = self.engine.build_command(
-            "find symbols", "advanced_vtcode", "/tmp/final-message.txt"
+            "find symbols", "advanced_diapason", "/tmp/final-message.txt"
         )
 
         self.assertIn("-c", command)
-        self.assertIn("tools.profile=advanced_vtcode", command)
+        self.assertIn("tools.profile=advanced_diapason", command)
         self.assertEqual(
             command[-5:],
             [
@@ -32,10 +32,10 @@ class EvaluationEngineCommandTests(unittest.TestCase):
 
     def test_default_profile_is_explicit(self):
         command = self.engine.build_command(
-            "list files", "vt_code", "/tmp/final-message.txt"
+            "list files", "diapason", "/tmp/final-message.txt"
         )
 
-        self.assertIn("tools.profile=vt_code", command)
+        self.assertIn("tools.profile=diapason", command)
 
     def test_unknown_profile_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "Unsupported eval profile"):
@@ -57,7 +57,7 @@ class EvaluationEngineCommandTests(unittest.TestCase):
         self.assertEqual(len(cases), 7)
         self.assertEqual(
             {case["profile"] for case in cases},
-            {"vt_code", "advanced_vtcode"},
+            {"diapason", "advanced_diapason"},
         )
         self.assertNotIn(
             "tool_surface_archived_baseline_unavailable",

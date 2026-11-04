@@ -11,19 +11,19 @@ timing and SSE frames; request headers and the request body were removed.
 ## Run the probe
 
 Use the official ACP Rust SDK as the client harness. These instructions require
-a separate checkout of `vtcode-arli-toolcall-fixture` and VidaiMock 0.1.3 on
-`PATH`. Set `VT_FIXTURE_REPO` to that checkout and `VT_FIXTURES` to this
-repository's fixture directory, adjusting both example paths to match your
+a separate checkout of `diapason-arli-toolcall-fixture` and VidaiMock 0.1.3 on
+`PATH`. Set `DIAPASON_FIXTURE_REPO` to that checkout and `DIAPASON_FIXTURES` to
+this repository's fixture directory, adjusting both example paths to match your
 checkouts. Start the mock from the fixture repository with the scenario you
 want and the provider/template directory in this directory:
 
 ```bash
-VT_FIXTURE_REPO=/path/to/vtcode-arli-toolcall-fixture
-VT_FIXTURES=/path/to/vtcode/tests/fixtures/vidaimock
-cd "$VT_FIXTURE_REPO"
+DIAPASON_FIXTURE_REPO=/path/to/diapason-arli-toolcall-fixture
+DIAPASON_FIXTURES=/path/to/diapason/tests/fixtures/vidaimock
+cd "$DIAPASON_FIXTURE_REPO"
 VIDAIMOCK_ISOLATED=true vidaimock \
-  --config "$VT_FIXTURES/scenarios/success.toml" \
-  --config-dir "$VT_FIXTURES"
+  --config "$DIAPASON_FIXTURES/scenarios/success.toml" \
+  --config-dir "$DIAPASON_FIXTURES"
 ```
 
 The captured replay route is defined in
@@ -35,11 +35,11 @@ route generates four distinct content chunks at
 trickle, and disconnect behaviour to actual model frames rather than to an
 already-rendered capture.
 
-From the VT Code checkout, run the ignored adapter physics tests explicitly:
+From the Diapason checkout, run the ignored adapter physics tests explicitly:
 
 ```bash
 cargo nextest run --run-ignored ignored-only \
-  -p vtcode-llm vidaimock_
+  -p diapason-llm vidaimock_
 ```
 
 These tests require VidaiMock 0.1.3 on `PATH`, bind it to an ephemeral

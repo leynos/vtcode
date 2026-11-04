@@ -2,10 +2,10 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use anyhow::Result;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::tools::validation_cache::ValidationCache;
+use diapason_core::utils::ansi::MessageStyle;
 use serde_json::Value;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::tools::validation_cache::ValidationCache;
-use vtcode_core::utils::ansi::MessageStyle;
 
 use crate::agent::runloop::unified::turn::context::{TurnHandlerOutcome, TurnLoopResult, TurnProcessingContext};
 
@@ -22,13 +22,13 @@ pub(crate) fn validate_tool_args_security(
     name: &str,
     args: &Value,
     validation_cache: Option<&Arc<ValidationCache>>,
-    tool_registry: Option<&vtcode_core::tools::ToolRegistry>,
+    tool_registry: Option<&diapason_core::tools::ToolRegistry>,
 ) -> Option<Vec<String>> {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use std::io;
 
-    use vtcode_core::tools::validation::{commands, paths};
+    use diapason_core::tools::validation::{commands, paths};
 
     struct HasherWriter<'a, H: Hasher>(&'a mut H);
     impl<H: Hasher> io::Write for HasherWriter<'_, H> {
@@ -84,7 +84,7 @@ pub(crate) fn validate_tool_args_security(
         }
     }
 
-    use vtcode_core::config::constants::tools as tool_names;
+    use diapason_core::config::constants::tools as tool_names;
 
     fn is_missing_arg_value(args: &Value, key: &str) -> bool {
         match args.get(key) {
@@ -133,7 +133,7 @@ pub(crate) fn validate_tool_args_security(
         }
     }
     if name == tool_names::UNIFIED_EXEC {
-        let exec_failures = vtcode_core::tools::command_args::command_session_missing_required_args(args);
+        let exec_failures = diapason_core::tools::command_args::command_session_missing_required_args(args);
         if !exec_failures.is_empty() {
             failures
                 .get_or_insert_with(|| Vec::with_capacity(exec_failures.len()))
@@ -147,7 +147,7 @@ pub(crate) fn validate_tool_args_security(
         return failures;
     }
 
-    if name == tool_names::UNIFIED_EXEC && vtcode_core::tools::tool_intent::command_session_action(args).is_none() {
+    if name == tool_names::UNIFIED_EXEC && diapason_core::tools::tool_intent::command_session_action(args).is_none() {
         return Some(vec![
             "Invalid arguments: missing action; provide `action` or inferable exec arguments".to_string(),
         ]);
@@ -166,8 +166,8 @@ pub(crate) fn validate_tool_args_security(
     // Command safety checks
     if (name == tool_names::RUN_PTY_CMD
         || (name == tool_names::UNIFIED_EXEC
-            && vtcode_core::tools::command_args::command_session_requires_command_safety(args)))
-        && let Some(cmd) = vtcode_core::tools::command_args::command_text(args).ok().flatten()
+            && diapason_core::tools::command_args::command_session_requires_command_safety(args)))
+        && let Some(cmd) = diapason_core::tools::command_args::command_text(args).ok().flatten()
         && let Err(e) = commands::validate_command_safety(&cmd)
     {
         failures
@@ -229,7 +229,7 @@ fn is_readonly_signature(signature: &str) -> bool {
     let tool_name_str: &str = tool_name.as_ref();
 
     if let Ok(args) = serde_json::from_str::<Value>(args_json) {
-        return !vtcode_core::tools::tool_intent::classify_tool_intent(tool_name_str, &args).mutating;
+        return !diapason_core::tools::tool_intent::classify_tool_intent(tool_name_str, &args).mutating;
     }
 
     // Fallback for malformed signature payloads.
@@ -319,7 +319,7 @@ pub(crate) async fn handle_turn_balancer(
     max_tool_loops: usize,
     tool_repeat_limit: usize,
 ) -> TurnHandlerOutcome {
-    use vtcode_core::llm::provider as uni;
+    use diapason_core::llm::provider as uni;
 
     use crate::agent::runloop::unified::turn::tool_outcomes::helpers::{
         ANTI_BLIND_EDITING_DIRECTIVE, ANTI_BLIND_EDITING_WARNING, NAVIGATION_LOOP_THRESHOLD,
@@ -428,11 +428,11 @@ pub(crate) async fn handle_turn_balancer(
             let mut ledger = ctx.decision_ledger.write().await;
             ledger.record_decision(
                 "Turn balancer: Early recovery intervention".to_string(),
-                vtcode_core::core::decision_tracker::Action::Response {
+                diapason_core::core::decision_tracker::Action::Response {
                     content:
                         "Repeated low-signal navigation was detected; an early tool-free recovery pass was scheduled."
                             .to_string(),
-                    response_type: vtcode_core::core::decision_tracker::ResponseType::ContextSummary,
+                    response_type: diapason_core::core::decision_tracker::ResponseType::ContextSummary,
                 },
                 None,
             );
@@ -470,9 +470,9 @@ pub(crate) async fn handle_turn_balancer(
             let mut ledger = ctx.decision_ledger.write().await;
             ledger.record_decision(
                 "Turn balancer: Recovery intervention".to_string(),
-                vtcode_core::core::decision_tracker::Action::Response {
+                diapason_core::core::decision_tracker::Action::Response {
                     content: "Low-signal churn detected; a final tool-free recovery pass was scheduled.".to_string(),
-                    response_type: vtcode_core::core::decision_tracker::ResponseType::ContextSummary,
+                    response_type: diapason_core::core::decision_tracker::ResponseType::ContextSummary,
                 },
                 None,
             );
@@ -492,8 +492,8 @@ fn apply_balancer_recovery(
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::constants::tools as tool_names;
     use serde_json::json;
-    use vtcode_core::config::constants::tools as tool_names;
 
     use super::{
         apply_balancer_recovery, is_readonly_signature, navigation_loop_guidance, validate_tool_args_security,
@@ -510,7 +510,7 @@ mod tests {
     fn readonly_signature_handles_file_and_code_search_signatures() {
         assert!(is_readonly_signature(r#"read file:{"path":"README.md"}"#));
         assert!(is_readonly_signature(
-            r#"code_search:{"query":"LLMStreamEvent","path":"crates/codegen/vtcode-core/src/llm/providers/anthropic/api.rs"}"#
+            r#"code_search:{"query":"LLMStreamEvent","path":"crates/codegen/diapason-core/src/llm/providers/anthropic/api.rs"}"#
         ));
     }
 

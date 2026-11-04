@@ -270,7 +270,7 @@ export function createWebMcpTools({
     {
       name: "list_project_files",
       title: "List project files",
-      description: "Start here to list bounded files visible to the current VT Code workspace without changing it.",
+      description: "Start here to list bounded files visible to the current Diapason workspace without changing it.",
       inputSchema: EMPTY_INPUT_SCHEMA,
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async (_input: unknown, { signal }: ToolExecutionOptions = {}) => ({ files: await listFiles({ signal }) }),
@@ -411,7 +411,7 @@ export function createWebMcpTools({
     {
       name: "open_panel",
       title: "Open an editor panel",
-      description: "Show the activity, changes, or VT Code panel in the browser editor.",
+      description: "Show the activity, changes, or Diapason panel in the browser editor.",
       inputSchema: {
         type: "object",
         properties: {

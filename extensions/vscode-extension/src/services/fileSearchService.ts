@@ -1,12 +1,12 @@
 /**
  * File Search Service for VS Code Extension
  *
- * Provides RPC-based file search integration with VT Code subprocess.
+ * Provides RPC-based file search integration with Diapason subprocess.
  * Enables fast, fuzzy file discovery with cancellation support.
  */
 
 import * as vscode from 'vscode';
-import { spawnVtcodeProcess } from '../utils/vtcodeRunner';
+import { spawnDiapasonProcess } from '../utils/diapasonRunner';
 import * as path from 'path';
 
 /**
@@ -39,9 +39,9 @@ const DEFAULT_CONFIG: FileSearchConfig = {
 };
 
 /**
- * File Search Service - RPC-based integration with VT Code
+ * File Search Service - RPC-based integration with Diapason
  *
- * Uses JSON-RPC to communicate with VT Code subprocess for file search operations.
+ * Uses JSON-RPC to communicate with Diapason subprocess for file search operations.
  * Supports cancellation, caching, and streaming results.
  */
 export class FileSearchService {
@@ -236,7 +236,7 @@ export class FileSearchService {
   }
 
   /**
-   * Execute RPC call to VT Code subprocess
+   * Execute RPC call to Diapason subprocess
    *
    * @param request - RPC request object
    * @param cancellationToken - Optional cancellation token
@@ -261,7 +261,7 @@ export class FileSearchService {
       try {
         // For now, this is a stub implementation
         // In production, this would:
-        // 1. Spawn/connect to VT Code subprocess
+        // 1. Spawn/connect to Diapason subprocess
         // 2. Send JSON-RPC request
         // 3. Wait for response with timeout
         // 4. Parse and return results
@@ -311,7 +311,7 @@ export function initializeFileSearchService(
   context: vscode.ExtensionContext,
   workspaceRoot: string
 ): FileSearchService {
-  const config = vscode.workspace.getConfiguration('vtcode.fileSearch');
+  const config = vscode.workspace.getConfiguration('diapason.fileSearch');
 
   const serviceConfig: Partial<FileSearchConfig> = {
     maxResults: config.get('maxResults', 100),
@@ -324,7 +324,7 @@ export function initializeFileSearchService(
   // Watch for configuration changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('vtcode.fileSearch')) {
+      if (e.affectsConfiguration('diapason.fileSearch')) {
         const newConfig: Partial<FileSearchConfig> = {
           maxResults: config.get('maxResults', 100),
           respectGitignore: config.get('respectGitignore', true),

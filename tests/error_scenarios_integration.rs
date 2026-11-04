@@ -15,7 +15,7 @@
 mod error_scenarios {
     use std::time::Duration;
 
-    use vtcode_commons::{BackoffStrategy, ErrorCategory, Retryability};
+    use diapason_commons::{BackoffStrategy, ErrorCategory, Retryability};
 
     // -----------------------------------------------------------------------
     // 1. Unified error categorization round-trips
@@ -23,7 +23,7 @@ mod error_scenarios {
 
     #[test]
     fn category_round_trip_via_tool_error_type() {
-        use vtcode_core::tools::registry::ToolErrorType;
+        use diapason_core::tools::registry::ToolErrorType;
 
         let categories = [
             ErrorCategory::Network,
@@ -49,7 +49,7 @@ mod error_scenarios {
 
     #[test]
     fn category_round_trip_via_unified_error_kind() {
-        use vtcode_core::tools::unified_error::UnifiedErrorKind;
+        use diapason_core::tools::unified_error::UnifiedErrorKind;
 
         let categories = [
             ErrorCategory::Network,
@@ -84,7 +84,7 @@ mod error_scenarios {
         ];
 
         for (msg, expected) in cases {
-            let actual = vtcode_commons::classify_error_message(msg);
+            let actual = diapason_commons::classify_error_message(msg);
             assert_eq!(actual, expected, "classify_error_message({msg:?}) = {actual:?}, expected {expected:?}");
         }
     }
@@ -191,7 +191,7 @@ mod error_scenarios {
 
     #[test]
     fn retry_policy_surfaces_circuit_open_backoff() {
-        let policy = vtcode_core::retry::RetryPolicy::default();
+        let policy = diapason_core::retry::RetryPolicy::default();
         let decision = policy.decision_for_category(ErrorCategory::CircuitOpen, 0, Some(Duration::from_secs(7)));
 
         assert!(decision.retryable);
@@ -201,10 +201,10 @@ mod error_scenarios {
 
     #[test]
     fn circuit_breaker_blocks_requests_after_threshold() {
-        let breaker = vtcode_core::tools::circuit_breaker::CircuitBreaker::new(
-            vtcode_core::tools::circuit_breaker::CircuitBreakerConfig {
+        let breaker = diapason_core::tools::circuit_breaker::CircuitBreaker::new(
+            diapason_core::tools::circuit_breaker::CircuitBreakerConfig {
                 failure_threshold: 1,
-                ..vtcode_core::tools::circuit_breaker::CircuitBreakerConfig::default()
+                ..diapason_core::tools::circuit_breaker::CircuitBreakerConfig::default()
             },
         );
 
@@ -223,7 +223,7 @@ mod error_scenarios {
 
     #[test]
     fn mcp_error_codes_have_guidance() {
-        use vtcode_core::mcp::errors::ErrorCode;
+        use diapason_core::mcp::errors::ErrorCode;
 
         let codes = [
             ErrorCode::ToolNotFound,
@@ -260,11 +260,11 @@ mod error_scenarios {
 
         for msg in &retryable_messages {
             assert!(
-                vtcode_commons::is_retryable_llm_error_message(msg),
+                diapason_commons::is_retryable_llm_error_message(msg),
                 "is_retryable_llm_error_message({msg:?}) should be true"
             );
 
-            let cat = vtcode_commons::classify_error_message(msg);
+            let cat = diapason_commons::classify_error_message(msg);
             assert!(cat.is_retryable(), "classify_error_message({msg:?}) = {cat:?} should be retryable");
         }
     }
@@ -275,11 +275,11 @@ mod error_scenarios {
 
         for msg in &non_retryable_messages {
             assert!(
-                !vtcode_commons::is_retryable_llm_error_message(msg),
+                !diapason_commons::is_retryable_llm_error_message(msg),
                 "is_retryable_llm_error_message({msg:?}) should be false"
             );
 
-            let cat = vtcode_commons::classify_error_message(msg);
+            let cat = diapason_commons::classify_error_message(msg);
             assert!(!cat.is_retryable(), "classify_error_message({msg:?}) = {cat:?} should be non-retryable");
         }
     }
@@ -293,7 +293,7 @@ mod error_scenarios {
         let inner = std::io::Error::new(std::io::ErrorKind::TimedOut, "connection timed out");
         let anyhow_err = anyhow::Error::new(inner).context("request timed out while fetching resource");
 
-        let cat = vtcode_commons::classify_anyhow_error(&anyhow_err);
+        let cat = diapason_commons::classify_anyhow_error(&anyhow_err);
         assert_eq!(cat, ErrorCategory::Timeout, "Expected Timeout, got {cat:?}");
     }
 
@@ -302,7 +302,7 @@ mod error_scenarios {
         let inner = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
         let anyhow_err = anyhow::Error::new(inner).context("permission denied while reading file");
 
-        let cat = vtcode_commons::classify_anyhow_error(&anyhow_err);
+        let cat = diapason_commons::classify_anyhow_error(&anyhow_err);
         assert_eq!(cat, ErrorCategory::PermissionDenied, "Expected PermissionDenied, got {cat:?}");
     }
 }

@@ -1,6 +1,6 @@
 # Interactive Mode Reference
 
-The VT Code terminal UI includes an interactive mode that combines
+The Diapason terminal UI includes an interactive mode that combines
 keyboard-first navigation with quick commands for agent control. This page
 consolidates the shortcuts, input modes, and background execution behaviors
 available while you are connected to a session.
@@ -8,7 +8,7 @@ available while you are connected to a session.
 ## Keyboard Shortcuts
 
 > Keyboard shortcuts may vary slightly by platform and terminal emulator. Press
-> `?` on an empty input line while VT Code is running to open a quick shortcut
+> `?` on an empty input line while Diapason is running to open a quick shortcut
 > overlay.
 
 ### General Controls
@@ -16,7 +16,7 @@ available while you are connected to a session.
 | Shortcut               | Description                                                                                                               | Context                                                                                                                                                                                                                                                                        |
 | :--------------------- | :------------------------------------------------------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Ctrl+C`               | Cancel the current generation or command. Press twice to terminate the session.                                           | Works during prompts, tool execution, and streaming replies.                                                                                                                                                                                                                   |
-| `Ctrl+D`               | Exit VT Code interactive mode.                                                                                            | Sends EOF to the shell integration.                                                                                                                                                                                                                                            |
+| `Ctrl+D`               | Exit Diapason interactive mode.                                                                                           | Sends EOF to the shell integration.                                                                                                                                                                                                                                            |
 | `Ctrl+L`               | Clear the terminal screen while keeping the conversation history.                                                         | Useful for refreshing when output is cluttered.                                                                                                                                                                                                                                |
 | `Ctrl+T`               | Open or close Transcript Review (default binding).                                                                        | Works in inline and fullscreen modes; if unbound, it remains the readline transpose shortcut.                                                                                                                                                                                  |
 | `Alt+O`                | Open Transcript Review (compatibility alias).                                                                             | Useful when the terminal does not deliver `Ctrl+T`; mouse capture is required for clickable hints.                                                                                                                                                                             |
@@ -32,8 +32,8 @@ available while you are connected to a session.
 | `Ctrl+K`               | Delete from cursor to line end.                                                                                           | UNIX/readline-style editing.                                                                                                                                                                                                                                                   |
 | `Alt+Left/Right`       | Move cursor by word.                                                                                                      | UNIX/readline-style navigation.                                                                                                                                                                                                                                                |
 | `Ctrl+R`               | Reverse search the command history.                                                                                       | Matches previous prompts and bash commands.                                                                                                                                                                                                                                    |
-| `Ctrl+V` or `Alt+V`    | Paste a clipboard image through VT Code.                                                                                  | App-level shortcut; works only in image-enabled sessions. Use your terminal's paste shortcut for text.                                                                                                                                                                         |
-| `Ctrl+Z` (Unix)        | Suspend VT Code to the shell; run `fg` to resume.                                                                         | Job-control support for terminal workflows.                                                                                                                                                                                                                                    |
+| `Ctrl+V` or `Alt+V`    | Paste a clipboard image through Diapason.                                                                                 | App-level shortcut; works only in image-enabled sessions. Use your terminal's paste shortcut for text.                                                                                                                                                                         |
+| `Ctrl+Z` (Unix)        | Suspend Diapason to the shell; run `fg` to resume.                                                                        | Job-control support for terminal workflows.                                                                                                                                                                                                                                    |
 | `Up/Down arrows`       | Navigate through command history.                                                                                         | Recall previous prompts or commands.                                                                                                                                                                                                                                           |
 | `Esc` + `Esc`          | Open the rewind picker for checkpoint restore or summarize actions.                                                       | Idle context only (while no task/PTY is running).                                                                                                                                                                                                                              |
 | `Enter`                | Queue the current input.                                                                                                  | Plain input box only.                                                                                                                                                                                                                                                          |
@@ -53,18 +53,18 @@ available while you are connected to a session.
 
 > Tip: `Shift+Enter` works natively in `Ghostty`, `Kitty`, `WezTerm`, `iTerm2`,
 > and `Warp`. Run `/terminal-setup` in supported terminals such as `VS Code`,
-> `Alacritty`, or `Zed` when you want VT Code's guided setup flow.
+> `Alacritty`, or `Zed` when you want Diapason's guided setup flow.
 
 ### Clipboard Paste
 
-- `Ctrl+V` and `Alt+V` are VT Code shortcuts for image paste. They read a
+- `Ctrl+V` and `Alt+V` are Diapason shortcuts for image paste. They read a
   clipboard image and attach it to the current draft when the selected session
   supports image input.
 - Text paste still uses the terminal bracketed paste path. In many terminals
   this is `Ctrl+Shift+V`; use the paste shortcut configured by your terminal.
-- If the selected model does not support image input, VT Code rejects both
+- If the selected model does not support image input, Diapason rejects both
   image paste and image submission, then shows a warning.
-- On WSL, VT Code first tries direct Linux clipboard access. If that cannot
+- On WSL, Diapason first tries direct Linux clipboard access. If that cannot
   read an image, it tries a Windows clipboard image fallback through PowerShell.
 
 ### Quick Commands
@@ -80,7 +80,7 @@ available while you are connected to a session.
 
 ## Fullscreen Rendering
 
-When VT Code is running in alternate-screen mode, the transcript and composer
+When Diapason is running in alternate-screen mode, the transcript and composer
 use a fixed fullscreen layout similar to terminal applications such as `vim` or
 `less`. The input stays pinned at the bottom, mouse handling is internal to VT
 Code, and the tool-output viewer/search happens inside the app instead of your
@@ -150,7 +150,7 @@ opening the editor with `v`, or handing the review to native scrollback with
 - `ui.fullscreen.scroll_speed` multiplies mouse-wheel scrolling without
   affecting `PgUp`/`PgDn`.
 - Inside tmux, enable mouse support with `set -g mouse on` if you want wheel
-  scrolling and other mouse actions to reach VT Code.
+  scrolling and other mouse actions to reach Diapason.
 
 The compact presentation and review affordances are configurable with
 `ui.tool_display_mode`, `ui.transcript_review.show_hints`,
@@ -166,21 +166,21 @@ enabled and compact display is the default.
 ### Session Context Commands
 
 - `/continue` resumes the most recently archived session in a new conversation.
-  Equivalent to `vtcode --continue` from the CLI.
+  Equivalent to `diapason --continue` from the CLI.
 - When a turn is blocked (repeated tool denials hit the fuse), the TUI shows a
   `Blocked` header badge,
-  `Blocked • continue to retry • /resume • details: .vtcode/tasks/current_blocked.md`
+  `Blocked • continue to retry • /resume • details: .diapason/tasks/current_blocked.md`
   footer hint, and a transcript banner. Type `continue` with new guidance,
-  describe alternative instructions, or run `vtcode --resume <session>` from a
-  terminal. One attempt before the fuse trips, the runtime warns with the
+  describe alternative instructions, or run `diapason --resume <session>` from
+  a terminal. One attempt before the fuse trips, the runtime warns with the
   remaining attempts and a per-tool remedy hint.
 - `/compact` compacts the current session history immediately when you want to
   shed context manually.
 - `/compact edit-prompt` and `/compact reset-prompt` manage the saved default
   prompt for manual compaction requests.
-- For providers with native Responses compaction, VT Code uses the
+- For providers with native Responses compaction, Diapason uses the
   provider-owned compacted state.
-- For local fallback compaction, VT Code rebuilds history around one
+- For local fallback compaction, Diapason rebuilds history around one
    structured summary plus retained recent user messages, then injects the
    session memory envelope.
 - Automatic compaction also keeps the newest complete protocol groups verbatim
@@ -194,13 +194,13 @@ enabled and compact display is the default.
    leaves history untouched.
 - `context.dynamic.retained_user_messages` controls that retained-user-message
    budget; the default is `4`.
-- On the local fallback path, VT Code also deduplicates older repeated
+- On the local fallback path, Diapason also deduplicates older repeated
   single-file reads before summarization so the newest read stays available
   without repeatedly bloating the prompt.
-- `/fork` opens the archived-session picker. After selecting a session, VT Code
+- `/fork` opens the archived-session picker. After selecting a session, Diapason
   now asks whether the new session should start from the full copied transcript
   or from a summarized fork.
-- A summarized fork starts from the same compacted handoff shape VT Code uses
+- A summarized fork starts from the same compacted handoff shape Diapason uses
   for local compaction: structured summary, retained user prompts, and the
   memory envelope.
 - If a session stopped because it hit the local `max_budget_usd` limit,
@@ -208,7 +208,7 @@ enabled and compact display is the default.
   with the full transcript after an explicit higher-cost warning, or start
   fresh.
 - `/agents` opens the subagent manager for creating, inspecting, editing,
-  deleting, and browsing active delegated agents. New scaffolds use VT Code
+  deleting, and browsing active delegated agents. New scaffolds use Diapason
   tool ids in frontmatter.
 - `/agent` opens the active-agent inspector. Selecting a child agent opens a
   modal over the current session instead of switching threads.
@@ -227,7 +227,7 @@ enabled and compact display is the default.
 
 ## Scheduled Prompts And Reminders
 
-- VT Code also recognizes narrow reminder phrases in chat such as
+- Diapason also recognizes narrow reminder phrases in chat such as
   `remind me at 3pm to ...`, `in 45 minutes, ...`,
   `what scheduled tasks do I have?`, and `cancel <job id|name>`.
 - Session-scoped scheduled prompts fire only at idle boundaries so they do not
@@ -237,16 +237,16 @@ enabled and compact display is the default.
 
 ## Vim Mode
 
-VT Code supports an optional Vim-style prompt editor.
+Diapason supports an optional Vim-style prompt editor.
 
 - Set `ui.vim_mode = true` to enable it by default for new sessions.
 - Use `/vim`, `/vim on`, and `/vim off` to change the current session only.
 - Supported modes are `INSERT` and `NORMAL`.
 - Supported subset includes motions, change/delete/yank operators, `f/F/t/T`,
   text objects, `p/P`, `J`, and repeat with `.`.
-- VT Code does not implement visual mode, macros, or multiple registers; yanks
+- Diapason does not implement visual mode, macros, or multiple registers; yanks
   reuse the single session clipboard.
-- VT Code-specific prompt controls still win when relevant, including `Enter`,
+- Diapason-specific prompt controls still win when relevant, including `Enter`,
   `Tab`, `Ctrl+Enter`, `/`, `@`, and `!`.
 
 ## Prompt Suggestions, Tasks, and Jobs
@@ -256,11 +256,11 @@ VT Code supports an optional Vim-style prompt editor.
 - `Alt+P` requests one inline ghost-text suggestion for the current draft. If a
   ghost suggestion is visible, `Tab` accepts it; otherwise `Tab` keeps its
   normal queue behavior.
-- VT Code routes prompt suggestion generation through
+- Diapason routes prompt suggestion generation through
   `agent.prompt_suggestions` and falls back to deterministic local suggestions
   when the provider, model, or endpoint cannot service the request.
 - LLM-backed prompt suggestions can consume tokens. When
-  `agent.prompt_suggestions.show_cost_notice = true`, VT Code shows a one-time
+  `agent.prompt_suggestions.show_cost_notice = true`, Diapason shows a one-time
   reminder in the session before the first LLM-backed inline suggestion.
 - Picking a suggestion inserts it into the composer. Empty drafts are replaced;
   non-empty drafts keep their content and append the suggestion after a blank
@@ -278,11 +278,11 @@ VT Code supports an optional Vim-style prompt editor.
   previews a snapshot modal, and `Ctrl+X` sends an interrupt to the selected
   job.
 - Pressing `Enter` on an empty draft opens `/jobs` when active jobs exist;
-  otherwise VT Code keeps the normal empty-enter behavior.
+  otherwise Diapason keeps the normal empty-enter behavior.
 
 ## Active Run Steering
 
-When a task is already running, VT Code keeps the active turn alive and lets
+When a task is already running, Diapason keeps the active turn alive and lets
 you queue or steer input:
 
 - `Enter` and `Tab` queue the current input for later processing; queued
@@ -326,7 +326,7 @@ you queue or steer input:
 
 - On GitHub-backed repositories, the header can show a PR review badge such as
   `PR: ready`, `PR: reviewed`, or `PR: outdated`.
-- VT Code uses read-only `gh` inspection for this status. If `gh` is missing or
+- Diapason uses read-only `gh` inspection for this status. If `gh` is missing or
   unauthenticated, the header shows the appropriate CTA instead of failing the
   session.
 - The badge refreshes as branch and HEAD state change, and warnings appear when
@@ -356,7 +356,7 @@ you queue or steer input:
 
 ## Command History
 
-VT Code keeps a command history scoped to the working directory. The history
+Diapason keeps a command history scoped to the working directory. The history
 resets when you clear it manually or start a new directory session.
 
 - Cleared with the `/clear` command.
@@ -380,13 +380,13 @@ working with the agent.
 
 ### Running in the Background
 
-- Ask VT Code to run a command in the background, or
+- Ask Diapason to run a command in the background, or
 - Press `Ctrl+B` while a command runs to move it to the background (press twice
   if your terminal uses tmux with the same prefix).
 
-Background tasks return immediately with an ID. VT Code keeps streaming updates
-via the BashOutput tool, and tasks are automatically cleaned up when the
-session ends.
+Background tasks return immediately with an ID. Diapason keeps streaming
+updates via the BashOutput tool, and tasks are automatically cleaned up when
+the session ends.
 
 Common backgrounded commands include:
 
@@ -405,14 +405,14 @@ For an agent-managed `write_stdin` or `unified_exec` session, use the explicit
 ```
 
 The wait deadline is only an observation deadline. If the process is still
-running, VT Code returns an in-progress result with the same reusable session
+running, Diapason returns an in-progress result with the same reusable session
 ID; a later explicit wait can continue it. The configured
 `timeouts.long_running_command_ceiling_seconds` remains the hard upper bound,
 and cancellation still terminates the process. Model-visible output is bounded
 to a preview and includes the total byte count, truncation state, exit status,
 and `spool_path` when the spool file is open and healthy. An active session may
 set `spool_complete` to `false`; that path is a readable partial snapshot. If
-the process has exited before draining finishes, VT Code withholds the path,
+the process has exited before draining finishes, Diapason withholds the path,
 retains the session, and a later wait can return the completed reference. For
 spooled command results, the response contains one preview capped at the
 smaller of the requested output budget and 6 KiB. Inspection commands retain

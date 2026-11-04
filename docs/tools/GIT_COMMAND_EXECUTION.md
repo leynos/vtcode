@@ -2,7 +2,7 @@
 
 ## Overview
 
-The vtcode agent now supports comprehensive git command execution with a
+The diapason agent now supports comprehensive git command execution with a
 three-tier security model:
 
 - **Tier 1**: Safe read-only operations (always allowed)
@@ -190,7 +190,7 @@ git filter-branch
 ## Configuration
 
 Git execution is validated in the execution policy module:
-`crates/codegen/vtcode-core/src/execpolicy/mod.rs`
+`crates/codegen/diapason-core/src/execpolicy/mod.rs`
 
 To modify allowed operations:
 

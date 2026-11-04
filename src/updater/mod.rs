@@ -10,9 +10,9 @@ mod release_notes;
 mod types;
 
 use anyhow::{Context, Result, bail};
+use diapason_config::update::UpdateConfig;
 use semver::Version;
 use tracing::{debug, info};
-use vtcode_config::update::UpdateConfig;
 
 pub(crate) use install_source::InstallSource;
 pub(crate) use interactive::{
@@ -26,7 +26,7 @@ pub(crate) use types::{
     VersionInfo,
 };
 
-/// Auto-updater for VT Code binary from GitHub Releases
+/// Auto-updater for Diapason binary from GitHub Releases
 pub(crate) struct Updater {
     current_version: Version,
     config: UpdateConfig,
@@ -58,7 +58,7 @@ impl Updater {
     }
 
     pub(crate) async fn check_for_updates(&mut self) -> Result<Option<UpdateInfo>> {
-        debug!("Checking for VT Code updates (channel: {})...", self.config.channel);
+        debug!("Checking for Diapason updates (channel: {})...", self.config.channel);
 
         if let Some(pinned_version) = self.config.pinned_version() {
             if self.config.should_auto_unpin() {
@@ -176,7 +176,7 @@ impl Updater {
     ) -> Result<InstallOutcome> {
         let guidance = self.update_guidance();
         if guidance.source.is_managed() {
-            bail!("VT Code was installed via {}. Update with: {}", guidance.source.label(), guidance.command());
+            bail!("Diapason was installed via {}. Update with: {}", guidance.source.label(), guidance.command());
         }
 
         let target = install_source::get_target_triple().context("Unsupported platform for auto-update")?;
@@ -231,7 +231,7 @@ impl Updater {
         .context("Update extraction task join failed")??;
 
         on_progress(UpdateProgress::ReplacingBinary);
-        self_replace::self_replace(&extracted_binary).context("Failed to replace the current VT Code binary")?;
+        self_replace::self_replace(&extracted_binary).context("Failed to replace the current Diapason binary")?;
         Ok(InstallOutcome::Updated(release.version.to_string()))
     }
 
@@ -326,19 +326,23 @@ mod tests {
     #[test]
     fn test_install_source_detection() {
         assert_eq!(
-            install_source::detect_install_source_from_path(Path::new("/opt/homebrew/Cellar/vtcode/0.1/bin/vtcode")),
+            install_source::detect_install_source_from_path(Path::new(
+                "/opt/homebrew/Cellar/diapason/0.1/bin/diapason"
+            )),
             InstallSource::Homebrew
         );
         assert_eq!(
-            install_source::detect_install_source_from_path(Path::new("/Users/dev/.cargo/bin/vtcode")),
+            install_source::detect_install_source_from_path(Path::new("/Users/dev/.cargo/bin/diapason")),
             InstallSource::Cargo
         );
         assert_eq!(
-            install_source::detect_install_source_from_path(Path::new("/usr/local/lib/node_modules/vtcode/bin/vtcode")),
+            install_source::detect_install_source_from_path(Path::new(
+                "/usr/local/lib/node_modules/diapason/bin/diapason"
+            )),
             InstallSource::Npm
         );
         assert_eq!(
-            install_source::detect_install_source_from_path(Path::new("/usr/local/bin/vtcode")),
+            install_source::detect_install_source_from_path(Path::new("/usr/local/bin/diapason")),
             InstallSource::Standalone
         );
     }

@@ -1,6 +1,6 @@
 # AI Tool Surface Migration
 
-VT Code now exposes a small Codex-style default tool surface to models:
+Diapason now exposes a small Codex-style default tool surface to models:
 `exec_command`, `write_stdin`, and `apply_patch`.
 
 ## What Changed
@@ -18,7 +18,7 @@ profile adds the query-led `code_search` tool.
 | `unified_file` patch or edit                    | `apply_patch`.                                                                                                                                       |
 | `unified_file` read or write                    | Shell commands through `exec_command.cmd` by default. Separately named non-default file tools may be added later only with a concrete justification. |
 | `unified_search` text search                    | `rg` or `grep` through `exec_command.cmd`.                                                                                                           |
-| `unified_search` search                         | `code_search` in the advanced VT Code profile.                                                                                                       |
+| `unified_search` search                         | `code_search` in the advanced Diapason profile.                                                                                                      |
 | `unified_search` web, skills, errors, discovery | Separate tools only where retained.                                                                                                                  |
 
 ## Short Examples
@@ -26,7 +26,7 @@ profile adds the query-led `code_search` tool.
 Text search:
 
 ```json
-{"cmd":"rg -n \"ToolProfile\" vtcode-core","workdir":"/repo"}
+{"cmd":"rg -n \"ToolProfile\" diapason-core","workdir":"/repo"}
 ```
 
 Interactive continuation:
@@ -49,12 +49,12 @@ Patch edit:
 Code search with the advanced profile:
 
 ```json
-{"query":"ToolRegistration","path":"crates/codegen/vtcode-core/src/tools","file_types":["rust"],"result_types":["definition","usage"]}
+{"query":"ToolRegistration","path":"crates/codegen/diapason-core/src/tools","file_types":["rust"],"result_types":["definition","usage"]}
 ```
 
 ## Advanced Profile
 
-Enable the advanced VT Code profile when a task needs bounded code search. The
+Enable the advanced Diapason profile when a task needs bounded code search. The
 advanced profile keeps the default tools and adds `code_search`, with required
 `query` and optional `path`, `file_types`, `result_types`, and `max_results`.
 It returns recognised definitions, exact syntactic usages, literal text, and
@@ -67,7 +67,7 @@ structural patterns.
 ## File Tool Finding
 
 Codex core does not expose default model-visible `read_file` or `write_file`
-tools. VT Code follows that finding: inspect files with shell commands,
+tools. Diapason follows that finding: inspect files with shell commands,
 internal filesystem affordances, or MCP tools when present, and edit files with
 `apply_patch`.
 
@@ -80,5 +80,5 @@ internal filesystem affordances, or MCP tools when present, and edit files with
 - `unix_like`: force Unix-like examples.
 - `powershell`: force PowerShell examples.
 
-VT Code does not rewrite GNU flags for macOS BSD tools. Use WSL when Windows
+Diapason does not rewrite GNU flags for macOS BSD tools. Use WSL when Windows
 workflows need Unix-like command syntax.

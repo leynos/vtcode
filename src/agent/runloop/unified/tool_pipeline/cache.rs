@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::path::Path;
 
+use diapason_core::config::constants::tools;
+use diapason_core::tools::result_cache::ToolCacheKey;
+use diapason_core::tools::tool_intent;
 use serde_json::Value;
-use vtcode_core::config::constants::tools;
-use vtcode_core::tools::result_cache::ToolCacheKey;
-use vtcode_core::tools::tool_intent;
 
 use crate::agent::runloop::unified::tool_reads::spool_chunk_read_path;
 
@@ -65,7 +65,7 @@ pub(super) fn create_enhanced_cache_key(
     };
 
     if tool_name == tools::CODE_SEARCH
-        && let Some(identity) = vtcode_core::tools::normalised_code_search_identity(args)
+        && let Some(identity) = diapason_core::tools::normalised_code_search_identity(args)
     {
         return ToolCacheKey::new(tool_name, &identity, &enhanced_target);
     }
@@ -248,19 +248,19 @@ fn contains_shell_operator(parts: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::constants::tools;
     use serde_json::json;
-    use vtcode_core::config::constants::tools;
 
     use super::{cache_target_path, create_enhanced_cache_key, is_tool_cacheable, stream_command_parts};
 
     #[test]
     fn caches_path_scoped_git_diff_run_pty() {
         let args = json!({
-            "command": "git diff vtcode-tui/src/core_tui/session/diff_preview.rs"
+            "command": "git diff diapason-tui/src/core_tui/session/diff_preview.rs"
         });
 
         assert!(is_tool_cacheable(tools::RUN_PTY_CMD, &args));
-        assert_eq!(cache_target_path(tools::RUN_PTY_CMD, &args), "vtcode-tui/src/core_tui/session/diff_preview.rs");
+        assert_eq!(cache_target_path(tools::RUN_PTY_CMD, &args), "diapason-tui/src/core_tui/session/diff_preview.rs");
     }
 
     #[test]
@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn stream_command_parts_supports_raw_command_for_run_pty() {
         let args = json!({
-            "raw_command": "cargo check -p vtcode-core"
+            "raw_command": "cargo check -p diapason-core"
         });
 
         assert_eq!(
@@ -323,7 +323,7 @@ mod tests {
                 "cargo".to_string(),
                 "check".to_string(),
                 "-p".to_string(),
-                "vtcode-core".to_string()
+                "diapason-core".to_string()
             ])
         );
     }
@@ -352,11 +352,11 @@ mod tests {
     #[test]
     fn does_not_cache_live_tool_output_spool_reads() {
         let read_file_args = json!({
-            "path": ".vtcode\\context\\tool_outputs\\command_session_123.txt"
+            "path": ".diapason\\context\\tool_outputs\\command_session_123.txt"
         });
         let unified_file_args = json!({
             "action": "read",
-            "path": ".vtcode/context/tool_outputs/command_session_123.txt"
+            "path": ".diapason/context/tool_outputs/command_session_123.txt"
         });
 
         assert!(!is_tool_cacheable(tools::READ_FILE, &read_file_args));

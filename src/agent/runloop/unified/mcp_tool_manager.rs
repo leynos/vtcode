@@ -1,12 +1,12 @@
+use diapason_core::config::ToolDocumentationMode;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::llm::provider as uni;
+use diapason_core::mcp::McpToolInfo;
 use tracing::warn;
-use vtcode_core::config::ToolDocumentationMode;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::mcp::McpToolInfo;
 
 use crate::agent::runloop::unified::session_setup::refresh_tool_snapshot;
 use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
-use vtcode_core::tools::handlers::DeferredToolPolicy;
+use diapason_core::tools::handlers::DeferredToolPolicy;
 
 pub(crate) struct McpToolManager;
 
@@ -17,11 +17,11 @@ impl McpToolManager {
         reason = "Intentional compatibility, platform, or test-only suppression."
     )]
     pub(crate) async fn enumerate_mcp_tools_after_refresh(
-        tool_registry: &mut vtcode_core::tools::ToolRegistry,
+        tool_registry: &mut diapason_core::tools::ToolRegistry,
         tools: &std::sync::Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
         tool_catalog: &ToolCatalogState,
         config: &CoreAgentConfig,
-        vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
+        vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
         tool_documentation_mode: ToolDocumentationMode,
         deferred_tool_policy: &DeferredToolPolicy,
         last_known_mcp_tools: &mut Vec<String>, // This becomes the new current tool list
@@ -62,11 +62,11 @@ impl McpToolManager {
         reason = "Intentional compatibility, platform, or test-only suppression."
     )]
     pub(crate) async fn enumerate_mcp_tools_after_initial_setup(
-        tool_registry: &mut vtcode_core::tools::ToolRegistry,
+        tool_registry: &mut diapason_core::tools::ToolRegistry,
         tools: &std::sync::Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
         tool_catalog: &ToolCatalogState,
         config: &CoreAgentConfig,
-        vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
+        vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
         tool_documentation_mode: ToolDocumentationMode,
         deferred_tool_policy: &DeferredToolPolicy,
         mcp_tools: Vec<McpToolInfo>,            // Passed in from initial setup

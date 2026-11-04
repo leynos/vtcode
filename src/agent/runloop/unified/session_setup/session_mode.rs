@@ -12,8 +12,8 @@
 //! 4. The config `default_primary_agent`, else the built-in `build` agent.
 
 use anyhow::{Result, bail};
-use vtcode_config::{SubagentSpec, VTCodeConfig};
-use vtcode_core::{ActivePrimaryAgentState, constants::defaults::DEFAULT_PRIMARY_AGENT_NAME};
+use diapason_config::{DiapasonConfig, SubagentSpec};
+use diapason_core::{ActivePrimaryAgentState, constants::defaults::DEFAULT_PRIMARY_AGENT_NAME};
 
 /// Inputs to [`resolve_session_primary_agent`].
 ///
@@ -22,7 +22,7 @@ use vtcode_core::{ActivePrimaryAgentState, constants::defaults::DEFAULT_PRIMARY_
 /// consumes the whole request rather than N positional arguments.
 pub(crate) struct SessionModeInput<'a> {
     specs: &'a [SubagentSpec],
-    vt_cfg: Option<&'a VTCodeConfig>,
+    vt_cfg: Option<&'a DiapasonConfig>,
     full_auto: bool,
     primary_agent_explicitly_configured: bool,
     resumed_primary_agent: Option<String>,
@@ -41,7 +41,7 @@ impl<'a> SessionModeInput<'a> {
     }
 
     #[must_use]
-    pub fn with_config(mut self, vt_cfg: Option<&'a VTCodeConfig>) -> Self {
+    pub fn with_config(mut self, vt_cfg: Option<&'a DiapasonConfig>) -> Self {
         self.vt_cfg = vt_cfg;
         self
     }
@@ -104,7 +104,7 @@ pub(crate) fn resolve_session_primary_agent(input: SessionModeInput<'_>) -> Resu
 /// [`SessionModeInput`] directly.
 pub(crate) fn active_primary_agent_from_specs_for_mode(
     specs: &[SubagentSpec],
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     full_auto: bool,
     primary_agent_explicitly_configured: bool,
     resumed_primary_agent: Option<String>,
@@ -123,7 +123,7 @@ pub(crate) fn active_primary_agent_from_specs_for_mode(
 #[cfg(test)]
 pub(crate) fn active_primary_agent_from_specs(
     specs: &[SubagentSpec],
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> Result<ActivePrimaryAgentState> {
     active_primary_agent_from_specs_for_mode(specs, vt_cfg, false, false, None)
 }
@@ -131,7 +131,7 @@ pub(crate) fn active_primary_agent_from_specs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_config::{
+    use diapason_config::{
         AgentMode, SubagentSource, SubagentSpec,
         core::permissions::{AgentPermissionsConfig, PermissionDefault},
     };
@@ -158,7 +158,7 @@ mod tests {
             memory: None,
             isolation: None,
             aliases: Vec::new(),
-            source: SubagentSource::ProjectVtcode,
+            source: SubagentSource::ProjectDiapason,
             file_path: None,
             warnings: Vec::new(),
             tool_policy_overrides: std::collections::BTreeMap::new(),
@@ -167,9 +167,9 @@ mod tests {
 
     #[test]
     fn resumed_mode_wins_over_config_default() {
-        let cfg = VTCodeConfig {
+        let cfg = DiapasonConfig {
             default_primary_agent: "builder".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
         let active = resolve_session_primary_agent(
             SessionModeInput::new(&[spec("plan"), spec("builder")])
@@ -183,9 +183,9 @@ mod tests {
 
     #[test]
     fn explicit_config_overrides_resumed_mode() {
-        let cfg = VTCodeConfig {
+        let cfg = DiapasonConfig {
             default_primary_agent: "builder".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
         let active = resolve_session_primary_agent(
             SessionModeInput::new(&[spec("plan"), spec("builder")])
@@ -200,9 +200,9 @@ mod tests {
 
     #[test]
     fn missing_resumed_mode_falls_back_to_config_default() {
-        let cfg = VTCodeConfig {
+        let cfg = DiapasonConfig {
             default_primary_agent: "builder".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
         let active = resolve_session_primary_agent(
             SessionModeInput::new(&[spec("builder")])

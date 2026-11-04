@@ -1,7 +1,7 @@
 /**
  * Quick Open Command Integration
  *
- * Replaces VS Code's built-in quick file picker with vtcode-powered file search
+ * Replaces VS Code's built-in quick file picker with diapason-powered file search
  * for faster, more intelligent file discovery.
  */
 
@@ -219,7 +219,7 @@ export function registerQuickOpenCommands(
 
   // Command: Open File (Cmd+P / Ctrl+P)
   context.subscriptions.push(
-    vscode.commands.registerCommand('vtcode.quickOpen', async () => {
+    vscode.commands.registerCommand('diapason.quickOpen', async () => {
       try {
         const filePath = await controller.showQuickFileOpen();
         if (filePath) {
@@ -236,7 +236,7 @@ export function registerQuickOpenCommands(
 
   // Command: Open Rust File (Cmd+P rust)
   context.subscriptions.push(
-    vscode.commands.registerCommand('vtcode.quickOpenRust', async () => {
+    vscode.commands.registerCommand('diapason.quickOpenRust', async () => {
       try {
         const filePath = await controller.showQuickOpenForType(['rs']);
         if (filePath) {
@@ -253,7 +253,7 @@ export function registerQuickOpenCommands(
 
   // Command: Open TypeScript File
   context.subscriptions.push(
-    vscode.commands.registerCommand('vtcode.quickOpenTypescript', async () => {
+    vscode.commands.registerCommand('diapason.quickOpenTypescript', async () => {
       try {
         const filePath = await controller.showQuickOpenForType(['ts', 'tsx']);
         if (filePath) {
@@ -270,7 +270,7 @@ export function registerQuickOpenCommands(
 
   // Command: Open Python File
   context.subscriptions.push(
-    vscode.commands.registerCommand('vtcode.quickOpenPython', async () => {
+    vscode.commands.registerCommand('diapason.quickOpenPython', async () => {
       try {
         const filePath = await controller.showQuickOpenForType(['py']);
         if (filePath) {

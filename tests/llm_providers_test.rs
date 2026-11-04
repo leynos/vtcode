@@ -4,12 +4,10 @@
 )]
 //! Comprehensive tests for LLM providers refactor
 
-use serde_json::json;
-use std::sync::Arc;
-use vtcode_core::config::constants::models;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::VerbosityLevel;
-use vtcode_core::llm::{
+use diapason_core::config::constants::models;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::VerbosityLevel;
+use diapason_core::llm::{
     factory::{LLMFactory, create_provider_for_model, infer_provider},
     provider::{LLMProvider, LLMRequest, Message, MessageRole, ToolDefinition},
     providers::{
@@ -17,6 +15,8 @@ use vtcode_core::llm::{
         OpenRouterProvider,
     },
 };
+use serde_json::json;
+use std::sync::Arc;
 
 #[test]
 fn test_provider_factory_creation() {
@@ -330,8 +330,8 @@ fn test_anthropic_tool_message_handling() {
 
 #[test]
 fn test_backward_compatibility() {
-    use vtcode_core::llm::make_client;
-    use vtcode_core::models::ModelId;
+    use diapason_core::llm::make_client;
+    use diapason_core::models::ModelId;
 
     // Test that the old make_client function still works
     use std::str::FromStr;

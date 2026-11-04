@@ -1,8 +1,8 @@
 use anyhow::Error;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::tools::tool_intent;
+use diapason_core::tools::validation::condensed_schema_hint;
 use serde_json::{Value, json};
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::tools::tool_intent;
-use vtcode_core::tools::validation::condensed_schema_hint;
 
 use crate::agent::runloop::unified::request_user_input::normalize_request_user_input_fallback_args;
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
@@ -105,7 +105,11 @@ fn file_operation_write_fallback(args: &Value) -> Option<(String, Value)> {
 /// Pick a heredoc delimiter that does not appear as a standalone line in `content`.
 /// Returns `None` if all candidates collide (extremely unlikely).
 fn unique_heredoc_delimiter(content: &str) -> Option<&'static str> {
-    const CANDIDATES: &[&str] = &["__VT_WRITE_EOF__", "__VT_WRITE_EOF_2__", "__VT_WRITE_EOF_3__"];
+    const CANDIDATES: &[&str] = &[
+        "__DIAPASON_WRITE_EOF__",
+        "__DIAPASON_WRITE_EOF_2__",
+        "__DIAPASON_WRITE_EOF_3__",
+    ];
     CANDIDATES.iter().find(|d| !content.lines().any(|line| line == **d)).copied()
 }
 
@@ -227,8 +231,8 @@ pub(super) fn try_recover_preflight_with_fallback(
 #[cfg(test)]
 mod tests {
     use super::trimmed_non_empty_string_field;
+    use diapason_core::config::constants::tools as tool_names;
     use serde_json::json;
-    use vtcode_core::config::constants::tools as tool_names;
 
     #[test]
     fn trimmed_non_empty_string_field_trims_and_rejects_blank() {
@@ -257,7 +261,7 @@ mod tests {
         let command = fallback_args["cmd"].as_str().expect("command should be a string");
         assert!(command.contains("'docs/output.md'"), "command should quote the path");
         assert!(command.contains("# Large Document"), "command should include the content");
-        assert!(command.contains("__VT_WRITE_EOF__"), "command should use unique delimiter");
+        assert!(command.contains("__DIAPASON_WRITE_EOF__"), "command should use unique delimiter");
     }
 
     #[test]
@@ -306,15 +310,15 @@ mod tests {
 
     #[test]
     fn unique_heredoc_delimiter_avoids_content_collision() {
-        let content = "line 1\n__VT_WRITE_EOF__\nline 3";
+        let content = "line 1\n__DIAPASON_WRITE_EOF__\nline 3";
         let delimiter = super::unique_heredoc_delimiter(content).expect("should find a non-colliding delimiter");
-        assert_ne!(delimiter, "__VT_WRITE_EOF__");
+        assert_ne!(delimiter, "__DIAPASON_WRITE_EOF__");
         assert!(!content.lines().any(|l| l == delimiter));
     }
 
     #[test]
     fn unique_heredoc_delimiter_returns_none_when_all_collide() {
-        let content = "__VT_WRITE_EOF__\n__VT_WRITE_EOF_2__\n__VT_WRITE_EOF_3__";
+        let content = "__DIAPASON_WRITE_EOF__\n__DIAPASON_WRITE_EOF_2__\n__DIAPASON_WRITE_EOF_3__";
         assert!(super::unique_heredoc_delimiter(content).is_none());
     }
 }

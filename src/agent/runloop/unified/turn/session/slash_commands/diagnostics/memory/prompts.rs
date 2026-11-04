@@ -1,6 +1,6 @@
 use anyhow::Result;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
 
 use crate::agent::runloop::unified::wizard_modal::{WizardModalOutcome, show_wizard_modal_and_wait};
 
@@ -123,9 +123,9 @@ mod tests {
     #[test]
     fn diagnostics_prompt_step_keeps_placeholder_only_when_no_default_is_set() {
         let step =
-            build_diagnostics_prompt_step("Add an exclude glob.", "Pattern", "**/other-team/.vtcode/rules/**", None);
+            build_diagnostics_prompt_step("Add an exclude glob.", "Pattern", "**/other-team/.diapason/rules/**", None);
 
-        assert_eq!(step.freeform_placeholder.as_deref(), Some("**/other-team/.vtcode/rules/**"));
+        assert_eq!(step.freeform_placeholder.as_deref(), Some("**/other-team/.diapason/rules/**"));
         assert_eq!(step.freeform_default, None);
     }
 

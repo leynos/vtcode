@@ -1,0 +1,300 @@
+#![allow(
+    missing_docs,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+//! Integration test for Phase 4: Split Tool Results
+//!
+//! Demonstrates dual-output execution with real tools showing token savings.
+
+use anyhow::Result;
+use diapason_config::constants::tools;
+use diapason_core::tool_policy::ToolPolicyManager;
+use diapason_core::tools::registry::ToolRegistry;
+use serde_json::json;
+use std::path::PathBuf;
+
+async fn create_registry(workspace: PathBuf) -> Result<ToolRegistry> {
+    let policy_dir = tempfile::tempdir()?;
+    let policy_manager = ToolPolicyManager::new_with_config_path(policy_dir.path().join("tool-policy.json")).await?;
+    let registry = ToolRegistry::new_with_custom_policy(workspace, policy_manager).await;
+    registry.allow_all_tools().await?;
+    Ok(registry)
+}
+
+#[tokio::test]
+async fn test_code_search_dual_output_integration() -> Result<()> {
+    // Setup: Create a registry with workspace
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let registry = create_registry(workspace).await?;
+
+    // Test: Execute code_search with dual output
+    let args = json!({
+        "query": "ToolRegistry",
+        "path": "src/tools",
+        "file_types": ["rust"],
+        "result_types": ["definition", "usage", "text"],
+        "max_results": 10
+    });
+
+    let result = registry
+        .execute_tool_dual(tools::CODE_SEARCH, args)
+        .await
+        .expect("code_search execution should succeed");
+
+    assert_eq!(result.tool_name, tools::CODE_SEARCH);
+    assert!(result.success, "Tool should succeed");
+    assert_eq!(result.llm_content, result.ui_content);
+
+    let response: serde_json::Value = serde_json::from_str(&result.llm_content).expect("compact code_search response");
+    let mut fields = response
+        .as_object()
+        .expect("response object")
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    fields.sort_unstable();
+    assert_eq!(fields, ["filters", "hints", "query", "results", "returned", "truncated"]);
+    assert_eq!(response["query"], "ToolRegistry");
+    assert_eq!(response["filters"]["path"], "src/tools");
+    assert_eq!(response["filters"]["file_types"], json!(["rust"]));
+    assert_eq!(response["filters"]["result_types"], json!(["definition", "usage", "text"]));
+    assert_eq!(response["filters"]["max_results"], 10);
+    assert_eq!(response["returned"].as_u64(), response["results"].as_array().map(|results| results.len() as u64));
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_shell_listing_dual_output_integration() -> Result<()> {
+    // Setup: Create a registry with workspace
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let registry = create_registry(workspace).await?;
+
+    // Test: Execute a shell listing with dual output
+    let args = json!({
+        "cmd": "find src/tools -maxdepth 2 -type f | sort | head -n 20",
+        "yield_time_ms": 1000
+    });
+
+    let result = registry
+        .execute_tool_dual(tools::EXEC_COMMAND, args)
+        .await
+        .expect("exec_command listing should succeed");
+
+    // Verify: Basic structure
+    assert!(!result.llm_content.is_empty());
+    assert!(!result.ui_content.is_empty());
+    // Tool name may vary based on implementation
+    assert!(!result.tool_name.is_empty());
+
+    // Verify: Token counting
+    let counts = &result.metadata.token_counts;
+    assert!(counts.llm_tokens > 0);
+    assert!(counts.ui_tokens > 0);
+
+    // Verify: Summary structure for list results
+    // Should contain item count information
+    assert!(
+        result.llm_content.to_lowercase().contains("item")
+            || result.llm_content.to_lowercase().contains("file")
+            || result.llm_content.to_lowercase().contains("listed")
+            || result.llm_content.to_lowercase().contains("found")
+            || result.llm_content.to_lowercase().contains("lines"),
+        "LLM summary should mention items/files: {}",
+        result.llm_content
+    );
+
+    println!("v List Dual Output:");
+    println!("   LLM: {}", result.llm_content);
+    println!("   Savings: {}", result.savings_summary());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_file_inspection_dual_output() -> Result<()> {
+    // Setup: Create a registry
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let registry = create_registry(workspace).await?;
+
+    // Test: Inspect a file through exec_command.
+    let args = json!({
+        "cmd": "sed -n '1,120p' README.md",
+        "yield_time_ms": 1000
+    });
+
+    let result = registry
+        .execute_tool_dual(tools::EXEC_COMMAND, args)
+        .await
+        .expect("exec_command file inspection should succeed");
+
+    // Verify: Dual output with summarization
+    assert!(!result.llm_content.is_empty());
+    assert!(!result.ui_content.is_empty());
+    // Tool name may vary based on implementation
+    assert!(!result.tool_name.is_empty());
+
+    // Verify: LLM summary should mention line count
+    assert!(
+        result.llm_content.to_lowercase().contains("read")
+            || result.llm_content.to_lowercase().contains("line")
+            || result.llm_content.to_lowercase().contains("file"),
+        "LLM summary should mention file stats: {}",
+        result.llm_content
+    );
+
+    // Verify: Should have token savings on larger files
+    let counts = &result.metadata.token_counts;
+    if counts.ui_tokens > 200 {
+        assert!(
+            counts.savings_percent > 50.0,
+            "Should have significant savings on large files: {:.1}%",
+            counts.savings_percent
+        );
+
+        println!("v Read File Dual Output:");
+        println!("   UI tokens: {}", counts.ui_tokens);
+        println!("   LLM tokens: {}", counts.llm_tokens);
+        println!("   Savings: {:.1}%", counts.savings_percent);
+    } else {
+        println!("v Read File Dual Output (small file):");
+        println!("   File too small for significant savings");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_exec_command_dual_output() -> Result<()> {
+    // Setup: Create a registry
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let registry = create_registry(workspace).await?;
+
+    // Test: Execute exec_command with BashSummarizer
+    let args = json!({
+        "cmd": "ls -la src/tools",
+        "yield_time_ms": 1000
+    });
+
+    let result = registry
+        .execute_tool_dual(tools::EXEC_COMMAND, args)
+        .await
+        .expect("exec_command execution should succeed");
+
+    // Verify: Dual output with summarization
+    assert!(!result.llm_content.is_empty());
+    assert!(!result.ui_content.is_empty());
+    // Tool name may vary based on implementation
+    assert!(!result.tool_name.is_empty());
+
+    // Verify: LLM summary should mention command execution details
+    let llm_lower = result.llm_content.to_lowercase();
+    assert!(
+        llm_lower.contains("command")
+            || llm_lower.contains("exit")
+            || llm_lower.contains("output")
+            || llm_lower.contains("success"),
+        "LLM summary should mention execution details: {}",
+        result.llm_content
+    );
+
+    // Verify: Should have token savings on larger command outputs
+    let counts = &result.metadata.token_counts;
+    if counts.ui_tokens > 200 {
+        assert!(
+            counts.savings_percent > 50.0,
+            "Should have significant savings on large command output: {:.1}%",
+            counts.savings_percent
+        );
+
+        println!("v Bash Dual Output:");
+        println!("   UI tokens: {}", counts.ui_tokens);
+        println!("   LLM tokens: {}", counts.llm_tokens);
+        println!("   Savings: {:.1}%", counts.savings_percent);
+    } else {
+        println!("v Bash Dual Output (small output):");
+        println!("   Command output too small for significant savings");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_apply_patch_dual_output() -> Result<()> {
+    // Setup: Create a registry
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let test_file = workspace.join("test_temp_write.txt");
+
+    let registry = create_registry(workspace).await?;
+
+    // Test with apply_patch which creates a temp file
+    use std::fs;
+    let patch = "*** Begin Patch\n*** Add File: test_temp_write.txt\n+Test content for write operation\n+Line 2\n+Line 3\n*** End Patch\n";
+    let args = json!({
+        "patch": patch
+    });
+
+    let result = registry
+        .execute_tool_dual(tools::APPLY_PATCH, args)
+        .await
+        .expect("apply_patch execution should succeed");
+
+    // Cleanup
+    drop(fs::remove_file(&test_file));
+
+    // Verify: Dual output structure
+    assert!(!result.llm_content.is_empty());
+    assert!(!result.ui_content.is_empty());
+    // Tool name may vary based on implementation
+    assert!(!result.tool_name.is_empty());
+
+    // Verify: LLM summary should mention file operation
+    let llm_lower = result.llm_content.to_lowercase();
+    assert!(
+        llm_lower.contains("modified")
+            || llm_lower.contains("file")
+            || llm_lower.contains("success")
+            || llm_lower.contains("wrote")
+            || llm_lower.contains("write"),
+        "LLM summary should mention file operation: {}",
+        result.llm_content
+    );
+
+    println!("v Edit/Write Dual Output:");
+    println!("   Tool: {}", result.tool_name);
+    println!("   LLM summary: {}", result.llm_content);
+    println!("   Savings: {}", result.savings_summary());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_backward_compatibility() -> Result<()> {
+    // Verify that old execute_tool() still works alongside execute_tool_dual()
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let registry = create_registry(workspace).await?;
+
+    let args = json!({
+        "query": "pub struct",
+        "path": "src/tools",
+        "result_types": ["text"],
+        "max_results": 5
+    });
+
+    // Old API should still work
+    let old_result = registry
+        .execute_tool(tools::CODE_SEARCH, args.clone())
+        .await
+        .expect("Old execute_tool should still work");
+
+    assert!(old_result.is_object() || old_result.is_string());
+
+    // New API should also work
+    let new_result = registry
+        .execute_tool_dual(tools::CODE_SEARCH, args)
+        .await
+        .expect("New execute_tool_dual should work");
+
+    assert!(!new_result.llm_content.is_empty());
+    assert!(!new_result.ui_content.is_empty());
+
+    println!("v Backward Compatibility:");
+    println!("   Old API: Working");
+    println!("   New API: Working with {} savings", new_result.savings_summary());
+    Ok(())
+}

@@ -12,7 +12,7 @@ Session-start time is rendered once into the cached system prompt. Later time
 must come from tool output. Approval and sandbox policy values are execution
 gateway state and must not be rendered into prompts or tool descriptions.
 
-VT Code's prompt system follows the four pillars of *Section 18.3 (Prompt
+Diapason's prompt system follows the four pillars of *Section 18.3 (Prompt
 Architecture)* of the agentic-AI guide:
 
 1. **System-prompt design** (18.3.1) — persona, capabilities, constraints,
@@ -22,15 +22,15 @@ Architecture)* of the agentic-AI guide:
    contract, recovery mode, harness limits, tool catalog, and primary-agent
    state. Later runtime changes are appended as context messages.
 3. **Few-shot management** (18.3.3) — keyword-tagged examples loaded from
-   disk, token-budgeted via `vtcode_commons::tokens::estimate_tokens`, and
+   disk, token-budgeted via `diapason_commons::tokens::estimate_tokens`, and
    appended as a synthetic system context message when relevant; they do not
    rewrite the immutable prompt prefix.
 4. **Tool descriptions** (18.3.4) — every LLM-visible tool must include
    when-to-use guidance, when-NOT-to-use guidance, and a constraints cue
    (rate-limit, max size, side-effect, permission). The
    `tool_descriptions_satisfy_documented_contract` test in
-   `crates/codegen/vtcode-core/src/tools/registry/builtins.rs::tests` enforces
-   this contract at `cargo test` time.
+   `crates/codegen/diapason-core/src/tools/registry/builtins.rs::tests`
+   enforces this contract at `cargo test` time.
 
 ## Assembly order
 
@@ -38,7 +38,7 @@ At segment creation, `request_builder::build_prompt_output` produces the
 immutable `system_prompt` in this order:
 
 1. **Base system prompt** —
-   `vtcode_core::prompts::system::generate_system_instruction` (with
+   `diapason_core::prompts::system::generate_system_instruction` (with
    `Default / Minimal / Lightweight / Specialized` variants cached via
    `OnceLock`). Each cached profile includes the deterministic compiled
    runtime-guidance section from `prompts/runtime_guidance.rs` exactly once.
@@ -67,7 +67,7 @@ immutable `system_prompt` in this order:
 
 Examples live as Markdown files under:
 
-- `<workspace>/.vtcode/prompts/examples/*.md`
+- `<workspace>/.diapason/prompts/examples/*.md`
 - `<canonical user config directory>/prompts/examples/*.md` (legacy user prompt
   files are migrated there)
 
@@ -121,7 +121,7 @@ provider. Embedding-based selection is the documented next step (see Section
   examples.
 - **Token count is honest.** `FewShotExample::token_count` is computed
   via the `cl100k_base` BPE tokenizer in
-  `vtcode_commons::tokens::estimate_tokens`. Budget enforcement uses the same
+  `diapason_commons::tokens::estimate_tokens`. Budget enforcement uses the same
   tokenizer, so the budget is accurate for OpenAI models and within ~10% for
   Anthropic / Gemini.
 
@@ -129,7 +129,7 @@ provider. Embedding-based selection is the documented next step (see Section
 
 1. Choose a stable, hyphenated id (used in logs and prompts).
 2. Author the `.md` file with frontmatter and body.
-3. Run `cargo test -p vtcode-core prompts::few_shot::tests` to confirm
+3. Run `cargo test -p diapason-core prompts::few_shot::tests` to confirm
    the example loads and selects correctly.
 4. Optional: add a `FewShotStore::from_examples(...)` unit test that
    asserts the example is selected by a representative query.
@@ -150,7 +150,7 @@ or read-only helpers (`cron` action=`list`/`delete`, `mcp` action=
 guard-rails. See the test for the full allowlist and cue vocabularies.
 
 Run
-`cargo test -p vtcode-core tools::registry::builtins::tests::tool_descriptions_satisfy_documented_contract`
+`cargo test -p diapason-core tools::registry::builtins::tests::tool_descriptions_satisfy_documented_contract`
 to validate any description change before merging.
 
-[`DEFAULT_FEW_SHOT_BUDGET_TOKENS`]: ../crates/codegen/vtcode-core/src/prompts/few_shot.rs
+[`DEFAULT_FEW_SHOT_BUDGET_TOKENS`]: ../crates/codegen/diapason-core/src/prompts/few_shot.rs

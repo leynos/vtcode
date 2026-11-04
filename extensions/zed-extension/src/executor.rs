@@ -1,13 +1,13 @@
-/// VT Code CLI Command Executor
+/// Diapason CLI Command Executor
 ///
-/// Handles execution of VT Code CLI commands and output capture.
-/// This module provides the interface for running VT Code commands
+/// Handles execution of Diapason CLI commands and output capture.
+/// This module provides the interface for running Diapason commands
 /// and retrieving their results with timeout support.
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-/// Result of a VT Code command execution
+/// Result of a Diapason command execution
 #[derive(Debug, Clone)]
 pub struct CommandResult {
     /// Exit status (0 = success)
@@ -34,10 +34,10 @@ impl CommandResult {
     }
 }
 
-/// Execute a VT Code command
+/// Execute a Diapason command
 ///
 /// # Arguments
-/// * `command` - The vtcode subcommand (e.g., "ask", "analyze")
+/// * `command` - The diapason subcommand (e.g., "ask", "analyze")
 /// * `args` - Additional arguments to pass
 ///
 /// # Returns
@@ -52,10 +52,10 @@ pub fn execute_command(command: &str, args: &[&str]) -> Result<CommandResult, St
     execute_command_with_timeout_and_env(command, args, timeout, None)
 }
 
-/// Execute a VT Code command with custom timeout
+/// Execute a Diapason command with custom timeout
 ///
 /// # Arguments
-/// * `command` - The vtcode subcommand
+/// * `command` - The diapason subcommand
 /// * `args` - Additional arguments
 /// * `_timeout` - Maximum duration to wait for command completion
 ///
@@ -84,7 +84,7 @@ pub fn execute_command_with_timeout_and_env(
     env: Option<&HashMap<String, String>>,
 ) -> Result<CommandResult, String> {
     // Build the full command
-    let mut cmd = Command::new("vtcode");
+    let mut cmd = Command::new("diapason");
     cmd.arg(command);
 
     for arg in args {
@@ -100,7 +100,7 @@ pub fn execute_command_with_timeout_and_env(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|e| format!("Failed to execute vtcode command: {}", e))?;
+        .map_err(|e| format!("Failed to execute diapason command: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -113,17 +113,17 @@ pub fn execute_command_with_timeout_and_env(
     })
 }
 
-/// Check if VT Code CLI is available
-pub fn check_vtcode_available() -> bool {
-    Command::new("vtcode")
+/// Check if Diapason CLI is available
+pub fn check_diapason_available() -> bool {
+    Command::new("diapason")
         .arg("--version")
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
 }
 
-/// Get VT Code CLI version
-pub fn get_vtcode_version() -> Result<String, String> {
+/// Get Diapason CLI version
+pub fn get_diapason_version() -> Result<String, String> {
     let result = execute_command("--version", &[])?;
     if result.is_success() {
         Ok(result.stdout.trim().to_string())

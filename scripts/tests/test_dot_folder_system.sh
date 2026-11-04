@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 
-# Comprehensive test script for VT Code dot-folder project management
+# Comprehensive test script for Diapason dot-folder project management
 
-echo "=== VT Code Dot-Folder Project Management Test ==="
+echo "=== Diapason Dot-Folder Project Management Test ==="
 
 if [ -n "${XDG_STATE_HOME:-}" ]; then
     case "$XDG_STATE_HOME" in
-        /*) STATE_DIR="$XDG_STATE_HOME/vtcode" ;;
-        *) STATE_DIR="$HOME/.local/state/vtcode" ;;
+        /*) STATE_DIR="$XDG_STATE_HOME/diapason" ;;
+        *) STATE_DIR="$HOME/.local/state/diapason" ;;
     esac
 else
-    STATE_DIR="$HOME/.local/state/vtcode"
+    STATE_DIR="$HOME/.local/state/diapason"
 fi
 PROJECTS_DIR="$STATE_DIR/projects"
 
@@ -26,28 +26,28 @@ fi
 # Test 2: Create a test project
 echo -e "\nTest 2: Creating test project..."
 cd /tmp || exit 1
-mkdir -p test-vtcode-project
-cd test-vtcode-project || exit 1
+mkdir -p test-diapason-project
+cd test-diapason-project || exit 1
 
 # Initialize project structure
 echo "Initializing project structure..."
-cargo run --quiet --manifest-path /workspace/vtcode/Cargo.toml -- init-project --name test-vtcode-project --force >/dev/null 2>&1
+cargo run --quiet --manifest-path /workspace/diapason/Cargo.toml -- init-project --name test-diapason-project --force >/dev/null 2>&1
 
 # Create project metadata
-cat > "$PROJECTS_DIR/test-vtcode-project/.project" << EOF
+cat > "$PROJECTS_DIR/test-diapason-project/.project" << EOF
 {
-  "name": "test-vtcode-project",
-  "description": "Test project for VT Code dot-folder system",
+  "name": "test-diapason-project",
+  "description": "Test project for Diapason dot-folder system",
   "created_at": $(date +%s),
   "updated_at": $(date +%s),
-  "root_path": "/tmp/test-vtcode-project",
-  "tags": ["test", "vtcode"]
+  "root_path": "/tmp/test-diapason-project",
+  "tags": ["test", "diapason"]
 }
 EOF
 
 # Test 3: Verify project structure
 echo -e "\nTest 3: Verifying project structure..."
-PROJECT_DIR="$PROJECTS_DIR/test-vtcode-project"
+PROJECT_DIR="$PROJECTS_DIR/test-diapason-project"
 if [ -d "$PROJECT_DIR" ]; then
     echo "PASS: Project directory exists"
 else
@@ -87,7 +87,7 @@ fi
 
 # Test 5: Test configuration loading priority
 echo -e "\nTest 5: Testing configuration concepts..."
-CONFIG_FILE="$PROJECT_DIR/config/vtcode.toml"
+CONFIG_FILE="$PROJECT_DIR/config/config.toml"
 if [ -f "$CONFIG_FILE" ]; then
     echo "PASS: Configuration file found"
 else
@@ -98,7 +98,7 @@ fi
 # Test 6: Test project identification
 echo -e "\nTest 6: Testing project identification..."
 IDENTIFIED_PROJECT=$(grep -o '"name"[ ]*:[ ]*"[^"]*"' "$PROJECT_DIR/.project" | head -n1 | cut -d'"' -f4)
-if [ "$IDENTIFIED_PROJECT" = "test-vtcode-project" ]; then
+if [ "$IDENTIFIED_PROJECT" = "test-diapason-project" ]; then
     echo "PASS: Project identified correctly"
 else
     echo "FAIL: Project identification failed"
@@ -107,11 +107,11 @@ fi
 
 # Cleanup
 echo -e "\nCleaning up test files..."
-rm -rf "$PROJECTS_DIR/test-vtcode-project"
-rm -rf /tmp/test-vtcode-project
+rm -rf "$PROJECTS_DIR/test-diapason-project"
+rm -rf /tmp/test-diapason-project
 
 echo -e "\n=== All tests completed successfully! ==="
-echo "The VT Code dot-folder project management system is working correctly."
+echo "The Diapason dot-folder project management system is working correctly."
 echo "Features verified:"
 echo "  • Project directory structure creation"
 echo "  • Subdirectory organization (config, cache, embeddings, retrieval)"

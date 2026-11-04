@@ -1,0 +1,180 @@
+#![allow(
+    clippy::expect_used,
+    clippy::unreachable,
+    missing_docs,
+    dead_code,
+    unused_imports,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+#![cfg_attr(
+    not(test),
+    allow(
+        clippy::map_err_ignore,
+        reason = "Configuration compatibility paths preserve legacy error mapping semantics."
+    )
+)]
+#![expect(
+    unused_results,
+    clippy::let_underscore_must_use,
+    clippy::indexing_slicing,
+    clippy::string_slice,
+    clippy::cast_possible_truncation,
+    reason = "Configuration loading mutates layered maps, parses validated text boundaries, and converts bounded persistence timestamps."
+)]
+//! Shared configuration loader utilities for Diapason and downstream integrations.
+//!
+//! This crate exposes [`DiapasonConfig`] and [`ConfigManager`] for reading and
+//! validating `config.toml` files while allowing applications to customize the
+//! filesystem layout via [`ConfigDefaultsProvider`]. Consumers can opt into the
+//! [`bootstrap`](index.html#features) feature (enabled by default) to scaffold
+//! configuration directories with project-specific defaults.
+//! Disable default features when you only need parsing/validation to omit the
+//! filesystem bootstrap helpers and reduce dependencies.
+//!
+//! # Examples
+//! ```no_run
+//! use diapason_config::ConfigManager;
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! let manager = ConfigManager::load_from_workspace(".")?;
+//! println!("Active provider: {}", manager.config().agent.provider);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Install a custom [`ConfigDefaultsProvider`] with
+//! [`install_config_defaults_provider`] when you need to override search paths
+//! or syntax highlighting defaults exposed by the loader.
+
+pub mod acp;
+pub mod api_keys;
+pub mod auth;
+pub mod codex;
+pub mod constants;
+pub mod context;
+pub mod core;
+pub mod debug;
+pub mod defaults;
+pub(crate) mod env_helpers;
+pub mod hooks;
+pub mod ide_context;
+pub mod loader;
+pub mod mcp;
+pub mod models;
+pub mod network_allowlist;
+pub mod optimization;
+pub mod output_styles;
+pub mod root;
+pub mod safety;
+#[cfg(feature = "schema")]
+pub mod schema;
+pub mod status_line;
+pub mod subagents;
+pub mod telemetry;
+pub mod terminal_title;
+pub mod timeouts;
+pub mod types;
+pub mod update;
+pub mod webmcp;
+pub mod workspace_env;
+
+pub use acp::{
+    AcpAuthMethod, AgentClientProtocolConfig, AgentClientProtocolTransport, AgentClientProtocolZedConfig,
+    AgentClientProtocolZedToolsConfig, AgentClientProtocolZedWorkspaceTrustMode, WorkspaceTrustLevel,
+};
+pub use api_keys::ApiKeySources;
+pub use context::{ContextFeaturesConfig, DynamicContextConfig, LedgerConfig};
+pub use core::{
+    AgentCodexAppServerConfig, AgentConfig, AgentOnboardingConfig, AgentPromptSuggestionsConfig, AuthConfig,
+    AutoPermissionConfig, AutoPermissionEnvironmentConfig, AutomationConfig, BundledSkillsConfig, CommandsConfig,
+    CopilotAuthConfig, CustomProviderApiFormat, CustomProviderCommandAuthConfig, CustomProviderConfig,
+    CustomProviderProfileConfig, DockerSandboxConfig, EditorToolConfig, ExternalSandboxConfig, ExternalSandboxType,
+    FullAutoConfig, GatekeeperConfig, MemoriesConfig, MicroVMSandboxConfig, MicroVmProvider, ModelConfig,
+    NetworkAllowlistEntryConfig, NetworkConfig, NetworkPolicy, OpenAIAuthConfig, OpenAIConfig, OpenAIHostedShellConfig,
+    OpenAIHostedShellDomainSecret, OpenAIHostedShellEnvironment, OpenAIHostedShellNetworkPolicy,
+    OpenAIHostedShellNetworkPolicyType, OpenAIHostedSkill, OpenAIManualCompactionConfig, OpenAIPreferredMethod,
+    OpenAIServiceTier, OpenResponsesConfig, OpenRouterAuthConfig, PluginRuntimeConfig, PluginTrustLevel,
+    PromptCacheRetention, PromptCachingConfig, ProviderOverrideConfig, ProviderPromptCachingConfig,
+    ResolvedCustomProviderProfile, ResourceLimitsConfig, ResourceLimitsPreset, SandboxConfig, SandboxPolicy,
+    SeccompConfig, SeccompProfilePreset, SecurityConfig, SensitivePathsConfig, SkillsConfig, SkillsRenderMode,
+    ThinkingDisplayMode, ToolPolicy, ToolProfile, ToolSearchAlgorithm, ToolsConfig, WebFetchConfig, WebFetchMode,
+    WebSearchConfig, WebSearchProvider,
+};
+pub use debug::{DebugConfig, TraceLevel};
+pub use defaults::{
+    ConfigDefaultsProvider, ContextStoreDefaults, PerformanceDefaults, ScenarioDefaults, SyntaxHighlightingDefaults,
+    WorkspacePathsDefaults, current_config_defaults, get_config_dir, get_data_dir, install_config_defaults_provider,
+    reset_to_default_config_defaults, with_config_defaults,
+};
+pub use diapason_commons::ui_protocol::ThinkingBlockState;
+pub use hooks::{
+    HookCommandConfig, HookCommandKind, HookGroupConfig, HooksConfig, LifecycleHooksConfig, WorkspaceHookCommand,
+    WorkspaceLifecycleHooks,
+};
+pub use ide_context::{
+    IdeContextConfig, IdeContextProviderConfig, IdeContextProviderFamily, IdeContextProviderMode,
+    IdeContextProvidersConfig,
+};
+pub use loader::layers::{
+    ConfigLayerEntry, ConfigLayerLoadError, ConfigLayerMetadata, ConfigLayerSource, ConfigLayerStack,
+    LayerDisabledReason,
+};
+pub use loader::{
+    ConfigBuilder, ConfigManager, ConfigWatcher, DiapasonConfig, FeaturesConfig, SimpleConfigWatcher,
+    SyntaxHighlightingConfig, WorkspaceConfig, explicit_config_path, fingerprint_str, fingerprint_toml_value,
+    merge_toml_values, merge_toml_values_with_origins, set_explicit_config_path,
+};
+pub use mcp::{
+    McpAllowListConfig, McpAllowListRules, McpClientConfig, McpHttpServerConfig, McpLifecycleConfig, McpProviderConfig,
+    McpStdioServerConfig, McpTransportConfig, McpUiConfig, McpUiMode,
+};
+pub use models::{MiMoAuthMethod, ModelId, OpenRouterMetadata};
+pub(crate) use network_allowlist::{
+    AiProviderCategories, AllowlistEntry, AllowlistMeta, DEFAULT_ALLOWLIST_TOML, LocalAiProviderEntry,
+    NetworkAllowlist, SearchCategories,
+};
+pub use optimization::{
+    AgentExecutionConfig, AsyncPipelineConfig, CommandCacheConfig, FileReadCacheConfig, LLMClientConfig,
+    MemoryPoolConfig, OptimizationConfig, ProfilingConfig, ToolRegistryConfig,
+};
+pub use output_styles::{OutputStyle, OutputStyleConfig, OutputStyleManager};
+pub use root::{
+    AskQuestionsConfig, ChatConfig, LayoutModeOverride, NotificationBackend, NotificationDeliveryMode, PtyConfig,
+    ReasoningDisplayMode, ToolDisplayMode, ToolOutputMode, UiConfig, UiDisplayMode, UiFullscreenConfig,
+    UiNotificationsConfig, UiTranscriptReviewConfig,
+};
+#[cfg(feature = "schema")]
+pub use schema::{diapason_config_schema, diapason_config_schema_json, diapason_config_schema_pretty};
+pub use status_line::{StatusLineConfig, StatusLineMode};
+pub use subagents::{
+    AgentMode, DiscoveredSubagents, IsolationMode, SubagentDiscoveryInput, SubagentMcpServer, SubagentMemoryScope,
+    SubagentRuntimeLimits, SubagentSource, SubagentSpec, builtin_plan_agent, builtin_primary_auto_agent,
+    builtin_primary_build_agent, builtin_primary_duck_agent, builtin_subagents, discover_subagents,
+    load_subagent_from_file,
+};
+pub use telemetry::TelemetryConfig;
+pub use terminal_title::{DEFAULT_TERMINAL_TITLE_ITEMS, TerminalTitleConfig};
+pub use timeouts::{TimeoutsConfig, resolve_timeout};
+pub use types::{
+    ReasoningEffortLevel, ResolvedShellPromptProfile, ShellProfilePlatform, ShellPromptProfile, SystemPromptMode,
+    ToolDocumentationMode, UiSurfacePreference, VerbosityLevel,
+};
+pub use webmcp::{RemoteMcpConfig, WebmcpConfig};
+pub use workspace_env::{
+    read_workspace_env_value, remove_workspace_env_value, workspace_env_path, workspace_env_path_display,
+    write_workspace_env_value,
+};
+
+// Re-export auth module types
+pub use auth::{
+    AuthStatus, CopilotAuthConfig as AuthCopilotConfig, McpOAuthConfig, McpOAuthService, McpOAuthStatus, McpOAuthToken,
+    OpenAIAccountAuthService, OpenAIChatGptAuthHandle, OpenAIChatGptAuthStatus, OpenAIChatGptSession,
+    OpenRouterOAuthConfig, OpenRouterToken, PkceChallenge, clear_oauth_token, clear_openai_chatgpt_session,
+    generate_pkce_challenge, get_auth_status, get_auth_url, get_openai_chatgpt_auth_status,
+    get_openai_chatgpt_auth_url, load_oauth_token, load_openai_chatgpt_session, resolve_openai_auth, save_oauth_token,
+    save_openai_chatgpt_session,
+};
+pub use codex::{
+    FileOpener, HistoryConfig, HistoryPersistence, NotificationCondition, TerminalNotificationMethod,
+    TuiAlternateScreen, TuiConfig, TuiNotificationEvent, TuiNotificationsConfig,
+};

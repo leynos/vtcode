@@ -8,8 +8,8 @@
 //! - **Family cap**: Catches identical slice retries (same path + same offset/limit)
 //! - **Per-file-path cap**: Catches paginated reads of the same file (different offsets)
 
+use diapason_core::config::constants::tools as tool_names;
 use serde_json::{Value, json};
-use vtcode_core::config::constants::tools as tool_names;
 
 use super::super::ValidationResult;
 use super::super::looping::low_signal_family_key;
@@ -119,7 +119,7 @@ fn repeated_file_read_family_key(canonical_tool_name: &str, args: &Value) -> Opt
             // Track file-reading shell commands in the family guard to prevent
             // bypass via unified_exec. Only commands on the is_readonly_unified_exec_command
             // allowlist (tool_intent.rs) reach this point — cat, head, tail, bat.
-            let parts = vtcode_core::tools::command_args::command_words(args).ok()??;
+            let parts = diapason_core::tools::command_args::command_words(args).ok()??;
             let command_name = parts.first()?.as_str();
             if !matches!(command_name, "cat" | "head" | "tail" | "bat") {
                 return None;
@@ -139,7 +139,7 @@ struct ExecReadTarget {
 }
 
 fn parse_simple_exec_read_target(args: &Value) -> Option<ExecReadTarget> {
-    let parts = vtcode_core::tools::command_args::command_words(args).ok()??;
+    let parts = diapason_core::tools::command_args::command_words(args).ok()??;
     if parts.iter().any(|part| matches!(part.as_str(), "&&" | "|" | ";")) {
         return None;
     }
@@ -422,7 +422,7 @@ pub(crate) fn enforce_repeated_read_only_call_guard(
 
 #[cfg(test)]
 mod tests {
-    use vtcode_core::config::constants::tools as tool_names;
+    use diapason_core::config::constants::tools as tool_names;
 
     use super::*;
 

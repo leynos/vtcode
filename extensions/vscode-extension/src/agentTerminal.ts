@@ -53,7 +53,7 @@ function getNodePtyLoadError(): unknown {
     return nodePtyLoadError;
 }
 
-export interface VtcodeTerminalLaunchOptions {
+export interface DiapasonTerminalLaunchOptions {
     readonly id: string;
     readonly title: string;
     readonly commandPath: string;
@@ -64,19 +64,19 @@ export interface VtcodeTerminalLaunchOptions {
     readonly message?: string;
 }
 
-export interface VtcodeTerminalOutputEvent {
+export interface DiapasonTerminalOutputEvent {
     readonly terminalId: string;
     readonly data: string;
 }
 
-export interface VtcodeTerminalExitEvent {
+export interface DiapasonTerminalExitEvent {
     readonly terminalId: string;
     readonly code?: number;
     readonly signal?: number;
     readonly errorMessage?: string;
 }
 
-export interface VtcodeTerminalHandle extends vscode.Disposable {
+export interface DiapasonTerminalHandle extends vscode.Disposable {
     readonly id: string;
     readonly terminal: vscode.Terminal;
     isDisposed(): boolean;
@@ -85,12 +85,12 @@ export interface VtcodeTerminalHandle extends vscode.Disposable {
     sendText(text: string, options?: { addNewLine?: boolean }): void;
 }
 
-export class VtcodeTerminalManager implements vscode.Disposable {
+export class DiapasonTerminalManager implements vscode.Disposable {
     private readonly terminals = new Map<string, ManagedTerminal>();
     private readonly outputEmitter =
-        new vscode.EventEmitter<VtcodeTerminalOutputEvent>();
+        new vscode.EventEmitter<DiapasonTerminalOutputEvent>();
     private readonly exitEmitter =
-        new vscode.EventEmitter<VtcodeTerminalExitEvent>();
+        new vscode.EventEmitter<DiapasonTerminalExitEvent>();
 
     readonly onDidReceiveOutput = this.outputEmitter.event;
     readonly onDidExit = this.exitEmitter.event;
@@ -106,8 +106,8 @@ export class VtcodeTerminalManager implements vscode.Disposable {
         this.exitEmitter.dispose();
     }
 
-    createOrShowTerminal(options: VtcodeTerminalLaunchOptions): {
-        handle: VtcodeTerminalHandle;
+    createOrShowTerminal(options: DiapasonTerminalLaunchOptions): {
+        handle: DiapasonTerminalHandle;
         created: boolean;
     } {
         const existing = this.terminals.get(options.id);
@@ -156,7 +156,7 @@ export class VtcodeTerminalManager implements vscode.Disposable {
         return true;
     }
 
-    getTerminalHandle(terminalId: string): VtcodeTerminalHandle | undefined {
+    getTerminalHandle(terminalId: string): DiapasonTerminalHandle | undefined {
         const terminal = this.terminals.get(terminalId);
         if (!terminal || terminal.isDisposed()) {
             return undefined;
@@ -166,7 +166,7 @@ export class VtcodeTerminalManager implements vscode.Disposable {
     }
 }
 
-class ManagedTerminal implements vscode.Pseudoterminal, VtcodeTerminalHandle {
+class ManagedTerminal implements vscode.Pseudoterminal, DiapasonTerminalHandle {
     private readonly writeEmitter = new vscode.EventEmitter<string>();
     private readonly closeEmitter = new vscode.EventEmitter<number | void>();
     private readonly disposables: vscode.Disposable[] = [];
@@ -181,9 +181,9 @@ class ManagedTerminal implements vscode.Pseudoterminal, VtcodeTerminalHandle {
     readonly onDidClose = this.closeEmitter.event;
 
     constructor(
-        private readonly options: VtcodeTerminalLaunchOptions,
-        private readonly emitOutput: (event: VtcodeTerminalOutputEvent) => void,
-        private readonly emitExit: (event: VtcodeTerminalExitEvent) => void,
+        private readonly options: DiapasonTerminalLaunchOptions,
+        private readonly emitOutput: (event: DiapasonTerminalOutputEvent) => void,
+        private readonly emitExit: (event: DiapasonTerminalExitEvent) => void,
         private readonly onDisposed: () => void
     ) {}
 
@@ -193,7 +193,7 @@ class ManagedTerminal implements vscode.Pseudoterminal, VtcodeTerminalHandle {
 
     get terminal(): vscode.Terminal {
         if (!this.attachedTerminal) {
-            throw new Error("VT Code terminal has not been attached yet.");
+            throw new Error("Diapason terminal has not been attached yet.");
         }
 
         return this.attachedTerminal;
@@ -291,7 +291,7 @@ class ManagedTerminal implements vscode.Pseudoterminal, VtcodeTerminalHandle {
         const columns = this.dimensions?.columns ?? 80;
         const rows = this.dimensions?.rows ?? 30;
 
-        const launchBanner = `\u001b[90m[vtcode] Launching ${
+        const launchBanner = `\u001b[90m[diapason] Launching ${
             this.options.commandPath
         } ${this.options.args.join(" ")}\u001b[0m\r\n`;
         this.writeEmitter.fire(launchBanner);
@@ -303,10 +303,10 @@ class ManagedTerminal implements vscode.Pseudoterminal, VtcodeTerminalHandle {
                 ? loadError instanceof Error
                     ? loadError.message
                     : String(loadError)
-                : "Install dependencies with 'npm install' to enable the VT Code terminal.";
+                : "Install dependencies with 'npm install' to enable the Diapason terminal.";
             const message = `node-pty module not available. ${detail}`;
             this.writeEmitter.fire(
-                `\u001b[31m[vtcode] Failed to launch terminal: ${message}\u001b[0m\r\n`
+                `\u001b[31m[diapason] Failed to launch terminal: ${message}\u001b[0m\r\n`
             );
             this.emitExit({
                 terminalId: this.options.id,
@@ -317,7 +317,7 @@ class ManagedTerminal implements vscode.Pseudoterminal, VtcodeTerminalHandle {
             if (!nodePtyWarningShown) {
                 nodePtyWarningShown = true;
                 void vscode.window.showErrorMessage(
-                    "VT Code could not load the optional 'node-pty' dependency. Run 'npm install' in the extension workspace to enable the integrated terminal."
+                    "Diapason could not load the optional 'node-pty' dependency. Run 'npm install' in the extension workspace to enable the integrated terminal."
                 );
             }
             return;
@@ -342,7 +342,7 @@ class ManagedTerminal implements vscode.Pseudoterminal, VtcodeTerminalHandle {
                     ? spawnError.message
                     : String(spawnError);
             this.writeEmitter.fire(
-                `\u001b[31m[vtcode] Failed to launch terminal: ${message}\u001b[0m\r\n`
+                `\u001b[31m[diapason] Failed to launch terminal: ${message}\u001b[0m\r\n`
             );
             this.emitExit({
                 terminalId: this.options.id,

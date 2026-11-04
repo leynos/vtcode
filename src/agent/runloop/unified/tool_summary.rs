@@ -3,19 +3,19 @@ use std::path::Path;
 
 use anstyle::{Color, Reset, Style as AnsiStyle};
 use anyhow::Result;
+use diapason_commons::color_policy;
+use diapason_commons::formatting::wrap_text_words;
+use diapason_commons::ui_protocol::{CompactToolSummaryLine, CompactToolSummaryLineKind};
 use serde_json::Value;
-use vtcode_commons::color_policy;
-use vtcode_commons::formatting::wrap_text_words;
-use vtcode_commons::ui_protocol::{CompactToolSummaryLine, CompactToolSummaryLineKind};
 
-use vtcode_core::config::ToolDisplayMode;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::tools::registry::labels::tool_action_label;
-use vtcode_core::tools::tool_intent;
-use vtcode_core::ui::theme;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::style_helpers::{ColorPalette, render_styled};
-use vtcode_ui::tui::ui::syntax_highlight;
+use diapason_core::config::ToolDisplayMode;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::tools::registry::labels::tool_action_label;
+use diapason_core::tools::tool_intent;
+use diapason_core::ui::theme;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::style_helpers::{ColorPalette, render_styled};
+use diapason_ui::tui::ui::syntax_highlight;
 
 use crate::agent::runloop::tool_output::render_tree_detail;
 use crate::agent::runloop::unified::tool_summary_helpers::{
@@ -751,11 +751,11 @@ fn extract_first_patch_file_path(args: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use diapason_commons::formatting::wrap_text_words;
+    use diapason_core::config::constants::tools as tool_names;
+    use diapason_core::utils::ansi::AnsiRenderer;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle};
     use serde_json::json;
-    use vtcode_commons::formatting::wrap_text_words;
-    use vtcode_core::config::constants::tools as tool_names;
-    use vtcode_core::utils::ansi::AnsiRenderer;
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle};
 
     use super::{
         ToolSummaryRenderContext, build_tool_summary, describe_tool_action, render_tool_call_summary,
@@ -764,7 +764,7 @@ mod tests {
 
     #[test]
     fn build_tool_summary_formats_run_command_as_ran() {
-        assert_eq!(build_tool_summary("Run command", "cargo check -p vtcode"), "Ran cargo check -p vtcode");
+        assert_eq!(build_tool_summary("Run command", "cargo check -p diapason"), "Ran cargo check -p diapason");
     }
 
     #[test]
@@ -800,12 +800,12 @@ mod tests {
             tool_names::UNIFIED_EXEC,
             &json!({
                 "action": "run",
-                "command": "cargo check -p vtcode"
+                "command": "cargo check -p diapason"
             }),
             None,
         );
 
-        assert_eq!(description, "cargo check -p vtcode");
+        assert_eq!(description, "cargo check -p diapason");
         assert!(used_keys.contains("command"));
     }
 
@@ -843,15 +843,15 @@ mod tests {
         assert!(run_summary_is_placeholder("Ran Use Unified exec"));
         assert!(run_summary_is_placeholder("Ran command"));
         assert!(run_summary_is_placeholder("Ran bash"));
-        assert!(!run_summary_is_placeholder("Ran cargo check -p vtcode"));
+        assert!(!run_summary_is_placeholder("Ran cargo check -p diapason"));
     }
 
     #[test]
     fn wrap_text_words_wraps_long_command_summary() {
-        let text = "cargo test -p vtcode run_command_preview_ build_tool_summary_formats_run_command_as_ran";
+        let text = "cargo test -p diapason run_command_preview_ build_tool_summary_formats_run_command_as_ran";
         let wrapped = wrap_text_words(text, 62, 58);
         assert_eq!(wrapped.len(), 2);
-        assert_eq!(wrapped[0], "cargo test -p vtcode run_command_preview_");
+        assert_eq!(wrapped[0], "cargo test -p diapason run_command_preview_");
         assert_eq!(wrapped[1], "build_tool_summary_formats_run_command_as_ran");
     }
 
@@ -917,7 +917,7 @@ mod tests {
     #[test]
     fn try_bash_grammar_ansi_highlights_cargo_command() {
         let result = super::try_bash_grammar_ansi(
-            "cargo check --locked -p vtcode",
+            "cargo check --locked -p diapason",
             anstyle::Color::Ansi(anstyle::AnsiColor::White),
         );
         assert!(result.is_some(), "cargo command should get bash grammar highlighting");
@@ -925,8 +925,8 @@ mod tests {
         // ANSI escape sequences present (ESC = 0x1b)
         assert!(ansi.contains('\u{1b}'), "output should contain ANSI escape codes");
         // Plain text is preserved when ANSI codes are stripped
-        let stripped = vtcode_commons::ansi::strip_ansi_codes(&ansi);
-        assert_eq!(stripped, "cargo check --locked -p vtcode");
+        let stripped = diapason_commons::ansi::strip_ansi_codes(&ansi);
+        assert_eq!(stripped, "cargo check --locked -p diapason");
     }
 
     #[test]
@@ -938,7 +938,7 @@ mod tests {
         assert!(result.is_some(), "sed command should get bash grammar highlighting");
         let ansi = result.unwrap();
         assert!(ansi.contains('\u{1b}'));
-        let stripped = vtcode_commons::ansi::strip_ansi_codes(&ansi);
+        let stripped = diapason_commons::ansi::strip_ansi_codes(&ansi);
         assert_eq!(stripped, "sed -n 178,190p src/main_helpers/bootstrap.rs");
     }
 
@@ -951,7 +951,7 @@ mod tests {
         assert!(result.is_some(), "rg command should get bash grammar highlighting");
         let ansi = result.unwrap();
         assert!(ansi.contains('\u{1b}'));
-        let stripped = vtcode_commons::ansi::strip_ansi_codes(&ansi);
+        let stripped = diapason_commons::ansi::strip_ansi_codes(&ansi);
         assert_eq!(stripped, "rg -n use std::time::Instant");
     }
 
@@ -971,36 +971,36 @@ mod tests {
         // Force color output on. The color policy uses a Lazy initializer that
         // reads NO_COLOR from the env; we must trigger it first, then override.
         // (nextest runs each test in its own process, so this is safe.)
-        let _ = vtcode_commons::color_policy::current_color_output_policy();
-        vtcode_commons::color_policy::set_color_output_policy(vtcode_commons::color_policy::ColorOutputPolicy {
+        let _ = diapason_commons::color_policy::current_color_output_policy();
+        diapason_commons::color_policy::set_color_output_policy(diapason_commons::color_policy::ColorOutputPolicy {
             enabled: true,
-            source: vtcode_commons::color_policy::ColorOutputPolicySource::CliColorAlways,
+            source: diapason_commons::color_policy::ColorOutputPolicySource::CliColorAlways,
         });
 
         let result = super::render_command_segment(
-            "cargo check --locked -p vtcode",
+            "cargo check --locked -p diapason",
             anstyle::Color::Ansi(anstyle::AnsiColor::Green),
             anstyle::Color::Ansi(anstyle::AnsiColor::BrightBlack),
             true,
         );
         // Should contain ANSI escape codes from bash grammar highlighting
         assert!(result.contains('\u{1b}'), "command segment should be syntax-highlighted");
-        let stripped = vtcode_commons::ansi::strip_ansi_codes(&result);
-        assert_eq!(stripped.as_ref(), "cargo check --locked -p vtcode");
+        let stripped = diapason_commons::ansi::strip_ansi_codes(&result);
+        assert_eq!(stripped.as_ref(), "cargo check --locked -p diapason");
     }
 
     #[test]
     fn inline_tool_summary_keeps_command_tokens_independently_styled() {
-        let _ = vtcode_commons::color_policy::current_color_output_policy();
-        vtcode_commons::color_policy::set_color_output_policy(vtcode_commons::color_policy::ColorOutputPolicy {
+        let _ = diapason_commons::color_policy::current_color_output_policy();
+        diapason_commons::color_policy::set_color_output_policy(diapason_commons::color_policy::ColorOutputPolicy {
             enabled: true,
-            source: vtcode_commons::color_policy::ColorOutputPolicySource::CliColorAlways,
+            source: diapason_commons::color_policy::ColorOutputPolicySource::CliColorAlways,
         });
 
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         let handle = InlineHandle::new_for_tests(sender);
         let mut renderer = AnsiRenderer::with_inline_ui(handle, Default::default());
-        renderer.set_tool_display_mode(vtcode_core::config::ToolDisplayMode::Expanded);
+        renderer.set_tool_display_mode(diapason_core::config::ToolDisplayMode::Expanded);
         let context = ToolSummaryRenderContext { workspace_root: None };
 
         render_tool_call_summary(
@@ -1057,7 +1057,7 @@ mod tests {
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         let handle = InlineHandle::new_for_tests(sender);
         let mut renderer = AnsiRenderer::with_inline_ui(handle, Default::default());
-        renderer.set_tool_display_mode(vtcode_core::config::ToolDisplayMode::Compact);
+        renderer.set_tool_display_mode(diapason_core::config::ToolDisplayMode::Compact);
         let context = ToolSummaryRenderContext { workspace_root: None };
 
         for max_results in [30, 100] {
@@ -1091,7 +1091,7 @@ mod tests {
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         let handle = InlineHandle::new_for_tests(sender);
         let mut renderer = AnsiRenderer::with_inline_ui(handle, Default::default());
-        renderer.set_tool_display_mode(vtcode_core::config::ToolDisplayMode::Compact);
+        renderer.set_tool_display_mode(diapason_core::config::ToolDisplayMode::Compact);
         let context = ToolSummaryRenderContext { workspace_root: None };
 
         for command in ["printf one", "printf two"] {
@@ -1126,7 +1126,7 @@ mod tests {
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         let handle = InlineHandle::new_for_tests(sender);
         let mut renderer = AnsiRenderer::with_inline_ui(handle, Default::default());
-        renderer.set_tool_display_mode(vtcode_core::config::ToolDisplayMode::Compact);
+        renderer.set_tool_display_mode(diapason_core::config::ToolDisplayMode::Compact);
         let context = ToolSummaryRenderContext { workspace_root: None };
 
         for (tool_name, command) in [("exec", "printf one"), ("container.exec", "printf two")] {
@@ -1159,7 +1159,7 @@ mod tests {
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         let handle = InlineHandle::new_for_tests(sender);
         let mut renderer = AnsiRenderer::with_inline_ui(handle, Default::default());
-        renderer.set_tool_display_mode(vtcode_core::config::ToolDisplayMode::Compact);
+        renderer.set_tool_display_mode(diapason_core::config::ToolDisplayMode::Compact);
         let context = ToolSummaryRenderContext { workspace_root: None };
 
         for (tool_name, args) in [

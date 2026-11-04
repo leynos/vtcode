@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { VtcodeStreamChunk } from "../vtcodeBackend";
+import { DiapasonStreamChunk } from "../diapasonBackend";
 import {
     StreamingManager,
     createBufferedGenerator,
@@ -18,7 +18,7 @@ jest.mock("vscode", () => ({
 
 describe("StreamingManager", () => {
     let manager: StreamingManager;
-    let mockGenerator: AsyncGenerator<VtcodeStreamChunk>;
+    let mockGenerator: AsyncGenerator<DiapasonStreamChunk>;
 
     beforeEach(() => {
         manager = new StreamingManager();
@@ -62,7 +62,7 @@ describe("StreamingManager", () => {
         });
 
         it("should buffer chunks before emitting", async () => {
-            const chunks: VtcodeStreamChunk[][] = [];
+            const chunks: DiapasonStreamChunk[][] = [];
 
             manager.onUpdate((bufferedChunks) => {
                 chunks.push(bufferedChunks);
@@ -120,7 +120,7 @@ describe("StreamingManager", () => {
             expect(vscode.window.withProgress).toHaveBeenCalledWith(
                 expect.objectContaining({
                     location: 15, // Notification
-                    title: "VT Code is thinking...",
+                    title: "Diapason is thinking...",
                     cancellable: true,
                 }),
                 expect.any(Function)
@@ -216,7 +216,7 @@ describe("StreamingManager", () => {
 
     describe("forceFlush", () => {
         it("should flush remaining buffer", async () => {
-            const chunks: VtcodeStreamChunk[][] = [];
+            const chunks: DiapasonStreamChunk[][] = [];
 
             manager.onUpdate((bufferedChunks) => {
                 chunks.push(bufferedChunks);
@@ -250,7 +250,7 @@ describe("createThrottledGenerator", () => {
         const throttled = createThrottledGenerator(fastGenerator, 50);
 
         const startTime = Date.now();
-        const chunks: VtcodeStreamChunk[] = [];
+        const chunks: DiapasonStreamChunk[] = [];
 
         for await (const chunk of throttled) {
             chunks.push(chunk);
@@ -273,7 +273,7 @@ describe("createThrottledGenerator", () => {
 
         const throttled = createThrottledGenerator(sourceGenerator, 10);
 
-        const chunks: VtcodeStreamChunk[] = [];
+        const chunks: DiapasonStreamChunk[] = [];
         for await (const chunk of throttled) {
             chunks.push(chunk);
         }
@@ -298,7 +298,7 @@ describe("createBufferedGenerator", () => {
 
         const buffered = createBufferedGenerator(sourceGenerator, 3, 1000); // Large timeout to test size-based buffering
 
-        const batches: VtcodeStreamChunk[][] = [];
+        const batches: DiapasonStreamChunk[][] = [];
         for await (const batch of buffered) {
             batches.push(batch);
         }
@@ -324,7 +324,7 @@ describe("createBufferedGenerator", () => {
 
         const buffered = createBufferedGenerator(slowGenerator, 10, 100); // Small time threshold
 
-        const batches: VtcodeStreamChunk[][] = [];
+        const batches: DiapasonStreamChunk[][] = [];
         for await (const batch of buffered) {
             batches.push(batch);
         }
@@ -342,7 +342,7 @@ describe("createBufferedGenerator", () => {
 
         const buffered = createBufferedGenerator(sourceGenerator, 5, 1000); // Large buffer size
 
-        const batches: VtcodeStreamChunk[][] = [];
+        const batches: DiapasonStreamChunk[][] = [];
         for await (const batch of buffered) {
             batches.push(batch);
         }

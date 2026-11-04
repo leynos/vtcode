@@ -2,12 +2,12 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use vtcode_commons::terminal_detection::TerminalType;
-use vtcode_core::prompts::find_prompt_template;
-use vtcode_core::skills::find_command_skill_by_slash_name;
-use vtcode_core::ui::slash::{SlashCommandInfo, find_command, visible_commands};
-use vtcode_core::ui::theme;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_commons::terminal_detection::TerminalType;
+use diapason_core::prompts::find_prompt_template;
+use diapason_core::skills::find_command_skill_by_slash_name;
+use diapason_core::ui::slash::{SlashCommandInfo, find_command, visible_commands};
+use diapason_core::ui::theme;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 pub(super) fn render_mcp_usage(renderer: &mut AnsiRenderer) -> Result<()> {
     renderer.line(
@@ -15,10 +15,10 @@ pub(super) fn render_mcp_usage(renderer: &mut AnsiRenderer) -> Result<()> {
         "Usage: /mcp [status|list|tools|refresh|config|config edit|repair|diagnose|login <name>|logout <name>]",
     )?;
     renderer.line(MessageStyle::Info, "  status  – Show overall MCP connection health")?;
-    renderer.line(MessageStyle::Info, "  list    – List configured providers from vtcode.toml")?;
+    renderer.line(MessageStyle::Info, "  list    – List configured providers from config.toml")?;
     renderer.line(MessageStyle::Info, "  tools   – Show tools exposed by active providers")?;
     renderer.line(MessageStyle::Info, "  refresh – Reindex MCP tools without restarting")?;
-    renderer.line(MessageStyle::Info, "  config  – Summarize MCP settings from vtcode.toml")?;
+    renderer.line(MessageStyle::Info, "  config  – Summarize MCP settings from config.toml")?;
     renderer.line(MessageStyle::Info, "  config edit – Show the config file path and editing guidance")?;
     renderer.line(MessageStyle::Info, "  repair  – Restart MCP connections and refresh tool indices")?;
     renderer.line(MessageStyle::Info, "  diagnose – Validate config and run MCP health checks")?;
@@ -124,7 +124,7 @@ pub(super) async fn render_help(
         for cmd in visible_commands() {
             renderer.line(MessageStyle::Info, &format!("  /{} – {}", cmd.name, cmd.description))?;
         }
-        let prompt_templates = vtcode_core::prompts::discover_prompt_templates(workspace)
+        let prompt_templates = diapason_core::prompts::discover_prompt_templates(workspace)
             .await
             .into_iter()
             .filter(|template| find_command(&template.name).is_none())
@@ -141,7 +141,7 @@ pub(super) async fn render_help(
         renderer.line(MessageStyle::Info, "")?;
         renderer.line(MessageStyle::Info, "Interactive mode features:")?;
         renderer.line(MessageStyle::Info, "  Ctrl+C – Cancel current input or generation")?;
-        renderer.line(MessageStyle::Info, "  Ctrl+D – Exit VT Code session")?;
+        renderer.line(MessageStyle::Info, "  Ctrl+D – Exit Diapason session")?;
         renderer.line(MessageStyle::Info, "  Ctrl+L – Clear screen (keep context)")?;
         renderer.line(MessageStyle::Info, "  Ctrl+R – Reverse search command history")?;
         renderer.line(MessageStyle::Info, "  /history – Open command history picker")?;
@@ -173,7 +173,7 @@ pub(super) async fn render_help(
             term if term.should_offer_terminal_setup() => {
                 renderer.line(
                     MessageStyle::Info,
-                    "  /terminal-setup – Install VT Code multiline bindings for this terminal",
+                    "  /terminal-setup – Install Diapason multiline bindings for this terminal",
                 )?;
             }
             _ => {

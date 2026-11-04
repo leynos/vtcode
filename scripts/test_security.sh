@@ -1,10 +1,10 @@
 #!/bin/bash
-# VT Code Security Test
+# Diapason Security Test
 # Tests that dangerous commands are properly blocked
 
 set -e
 
-echo "🛡️  VT Code Security Test Suite"
+echo "🛡️  Diapason Security Test Suite"
 echo "================================"
 
 # Colors
@@ -87,7 +87,7 @@ echo -e "\nTesting Policy Integration"
 echo "=============================="
 
 # Test that tools integrate with policy system
-run_test "Policy system integration" "grep 'should_execute_tool' crates/codegen/vtcode-core/src/tools/registry.rs" "should_execute_tool"
+run_test "Policy system integration" "grep 'should_execute_tool' crates/codegen/diapason-core/src/tools/registry.rs" "should_execute_tool"
 
 echo -e "\n✦ Security Test Results"
 echo "========================"

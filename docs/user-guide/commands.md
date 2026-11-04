@@ -1,6 +1,6 @@
 # Command Reference
 
-This guide summarizes common actions and how to invoke them with vtcode. The
+This guide summarizes common actions and how to invoke them with diapason. The
 agent exposes a suite of tools to the LLM; you interact with them via chat.
 When you ask to search, read, or edit files, the agent chooses an appropriate
 tool.
@@ -10,23 +10,24 @@ tool.
 Use `exec_command.cmd` with `rg` or `grep` for flexible shell text search.
 
 The default model-visible tools are `exec_command`, `write_stdin`, and
-`apply_patch`. `code_search` is available through the advanced VT Code profile.
-It accepts a required literal `query` plus optional `path`, `file_types`,
-`result_types`, and `max_results`. Its four result categories are recognised
-definitions, exact syntactic usages, literal text, and matching paths. A usage
-is a same-spelling syntax occurrence, not a resolved reference. Queries use
-literal smart-case. When `truncated` is true, narrow a filter in another call;
-the response does not claim an exact repository-wide total.
+`apply_patch`. `code_search` is available through the advanced Diapason
+profile. It accepts a required literal `query` plus optional `path`,
+`file_types`, `result_types`, and `max_results`. Its four result categories are
+recognised definitions, exact syntactic usages, literal text, and matching
+paths. A usage is a same-spelling syntax occurrence, not a resolved reference.
+Queries use literal smart-case. When `truncated` is true, narrow a filter in
+another call; the response does not claim an exact repository-wide total.
 
 Use `exec_command` or the specialised ast-grep skill for arbitrary structural
 patterns.
 
 ## Storage diagnostics
 
-Use `vtcode --version` to print the active config, data, state, cache, runtime,
-executable, and legacy roots, as well as the migration marker and report paths.
-This is the quickest way to diagnose an XDG override, a sandbox environment, or
-a legacy `~/.vtcode` migration without relying on platform-specific guesses.
+Use `diapason --version` to print the active config, data, state, cache,
+runtime, and executable roots. This is the quickest way to diagnose an XDG
+override or a sandbox environment without relying on platform-specific guesses.
+Diapason does not read or migrate the historical `~/.diapason/` or `.vtcode/`
+directories.
 
 ### Examples
 
@@ -64,24 +65,24 @@ Ask: Search for TODO or FIXME across the repo with 2 lines of context in Rust fi
 
 ## Session resume and forks
 
-VT Code can reopen archived sessions, continue the latest one, or fork a
+Diapason can reopen archived sessions, continue the latest one, or fork a
 previous session into a new archive.
 
 ### Resume the latest or a specific session
 
 ```bash
-vtcode --continue
-vtcode --resume session-123
-vtcode --resume          # interactive picker
+diapason --continue
+diapason --resume session-123
+diapason --resume          # interactive picker
 ```
 
 ### Fork from an archived session
 
 ```bash
-vtcode --fork-session session-123
-vtcode --fork-session session-123 --session-id bugfix-branch
-vtcode --resume session-123 --session-id bugfix-branch
-vtcode --continue --session-id followup-branch
+diapason --fork-session session-123
+diapason --fork-session session-123 --session-id bugfix-branch
+diapason --resume session-123 --session-id bugfix-branch
+diapason --continue --session-id followup-branch
 ```
 
 Notes:
@@ -96,12 +97,12 @@ Notes:
 ### Start a summarized fork
 
 ```bash
-vtcode --fork-session session-123 --summarize
-vtcode --resume session-123 --session-id handoff --summarize
-vtcode --resume --session-id handoff --summarize   # interactive picker, summarized fork
+diapason --fork-session session-123 --summarize
+diapason --resume session-123 --session-id handoff --summarize
+diapason --resume --session-id handoff --summarize   # interactive picker, summarized fork
 ```
 
-Summarized forks do not copy the full transcript. VT Code starts the child
+Summarized forks do not copy the full transcript. Diapason starts the child
 session from:
 
 - one structured conversation summary
@@ -112,7 +113,7 @@ Normal forks keep the full archived transcript unchanged.
 
 ## Quick Actions in Chat Input
 
-VT Code provides several quick actions directly in the chat input for faster
+Diapason provides several quick actions directly in the chat input for faster
 workflow:
 
 - **File Picker (`@`)** — Type `@` anywhere in your input to open the file
@@ -123,15 +124,15 @@ workflow:
 
 ## Configuration quick reference
 
-| Action                         | Command                         | Result                                              |
-| ------------------------------ | ------------------------------- | --------------------------------------------------- |
-| Open settings                  | `/config` (or `/settings`)      | Browse categorized settings and effective values    |
-| Open a section                 | `/config <path>`                | Jump directly to a settings section                 |
-| Reset the active layer         | `/config reset`                 | Show the target file and request confirmation       |
-| Generate configuration         | `vtcode config`                 | Print a generated configuration document            |
-| Reset workspace/explicit layer | `vtcode config reset`           | Clear one workspace-layer file and reload the stack |
-| Reset user layer               | `vtcode config reset --global`  | Clear the canonical user config only                |
-| Reset project layer            | `vtcode config reset --project` | Clear the current project profile only              |
+| Action                         | Command                           | Result                                              |
+| ------------------------------ | --------------------------------- | --------------------------------------------------- |
+| Open settings                  | `/config` (or `/settings`)        | Browse categorized settings and effective values    |
+| Open a section                 | `/config <path>`                  | Jump directly to a settings section                 |
+| Reset the active layer         | `/config reset`                   | Show the target file and request confirmation       |
+| Generate configuration         | `diapason config`                 | Print a generated configuration document            |
+| Reset workspace/explicit layer | `diapason config reset`           | Clear one workspace-layer file and reload the stack |
+| Reset user layer               | `diapason config reset --global`  | Clear the canonical user config only                |
+| Reset project layer            | `diapason config reset --project` | Clear the current project profile only              |
 
 Configuration resets preserve lower-precedence values and secure credentials.
 Interactive sessions live-reload safe changes from watched layers; malformed
@@ -142,25 +143,25 @@ details.
 ### `/code-ide` (VS Code integration)
 
 Use the `/code-ide` slash command to trigger IDE-specific actions from within a
-VT Code chat session or the integrated terminal. When the VS Code extension is
+Diapason chat session or the integrated terminal. When the VS Code extension is
 installed:
 
-- Run `/code-ide` in the VT Code terminal session to synchronize with the
+- Run `/code-ide` in the Diapason terminal session to synchronize with the
     sidebar views and refresh context-aware data.
-- Use the **VT Code: Send /code-ide Slash Command** command palette entry or
+- Use the **Diapason: Send /code-ide Slash Command** command palette entry or
     the Quick Actions panel to dispatch the slash command directly to the
-    active VT Code terminal.
+    active Diapason terminal.
 - The command will emit IDE events back to the extension host, keeping the
     Agent Loop timeline, status indicators, and MCP configuration summaries in
     sync.
 
-Configure the behaviour under **Settings › Extensions › VT Code**:
+Configure the behaviour under **Settings › Extensions › Diapason**:
 
-- `vtcode.terminal.autoRunChat` — Automatically run `vtcode chat` when the
+- `diapason.terminal.autoRunChat` — Automatically run `diapason chat` when the
     managed terminal opens.
-- `vtcode.terminal.allowMultipleInstances` — Opt-in to creating new terminal
-    sessions instead of reusing the shared VT Code terminal.
-- `vtcode.agentTimeline.refreshDebounceMs` — Control how quickly the Agent
+- `diapason.terminal.allowMultipleInstances` — Opt-in to creating new terminal
+    sessions instead of reusing the shared Diapason terminal.
+- `diapason.agentTimeline.refreshDebounceMs` — Control how quickly the Agent
     Loop timeline reacts to incoming terminal output.
 
 ### Slash-command notes
@@ -180,7 +181,7 @@ Configure the behaviour under **Settings › Extensions › VT Code**:
   fork and a summarized fork.
 - `/compact` manually compacts the current conversation context immediately. Use
   `/compact edit-prompt` or `/compact reset-prompt` to manage the saved default
-  prompt for manual compaction requests. On the local fallback path, VT Code
+  prompt for manual compaction requests. On the local fallback path, Diapason
   keeps a structured summary plus retained user prompts instead of a mixed
   recent tail.
 - `/agent` and `/agents` inspect agent definitions and delegated child runs.
@@ -190,7 +191,7 @@ Configure the behaviour under **Settings › Extensions › VT Code**:
   session's instructions, model, granular permission policy, and tool access.
 - `/agents list` shows all agent definitions with their availability
   (`mode: primary`, `mode: subagent`, or `mode: all`). `/agents create`
-  scaffolds a new agent definition in `.vtcode/agents/`.
+  scaffolds a new agent definition in `.diapason/agents/`.
 - `/plan` starts or continues the planning workflow. It is a workflow command,
   not a state selector. Execution agents may also suggest it for demanding or
   multi-phase tasks; interactive policies confirm the suggestion, while
@@ -221,23 +222,21 @@ to print the guide without the status details:
 ```
 
 Use `/webmcp pair <origin>` when the browser must submit real agent turns to
-this same VT Code session. The printed WebSocket URL and one-time pairing code
+this same Diapason session. The printed WebSocket URL and one-time pairing code
 belong to that running TUI process.
 
-For the published WebMCP app, use `https://vtcode.vinhnx.chatgpt.site` for the
-ChatGPT Site or `https://vinhnx.github.io` for the GitHub Pages page at
-`https://vinhnx.github.io/VTCode/`. The path is not part of the origin. Add
-both exact origins to `[webmcp].allowed_origins` when one listener should serve
-both pages.
+For a self-hosted WebMCP app, pair the exact browser origin shown by the
+address bar, such as `http://localhost:5173`. Configure that same origin in
+`[webmcp].allowed_origins`. both pages.
 
 Pair from the two sides in this order:
 
-1. In the VT Code TUI, run `/webmcp pair http://localhost:5173`.
-2. In the WebMCP editor, open **Connect to a local VT Code bridge**.
+1. In the Diapason TUI, run `/webmcp pair http://localhost:5173`.
+2. In the WebMCP editor, open **Connect to a local Diapason bridge**.
 3. Paste the TUI's WebSocket URL and one-time pairing code into the browser,
-   then select **Pair with VT Code**.
+   then select **Pair with Diapason**.
 
-Keep the TUI running. A URL and code from `vtcode webmcp serve` are for the
+Keep the TUI running. A URL and code from `diapason webmcp serve` are for the
 headless workspace bridge and cannot receive active-session agent turns.
 
 If `/webmcp pair <origin>` reports that WebMCP is already listening, it prints
@@ -252,18 +251,18 @@ The standalone command starts the opt-in authenticated WebSocket bridge for
 headless workspace operations:
 
 ```bash
-vtcode webmcp serve --origin http://localhost:5173
-vtcode webmcp pair --origin http://localhost:5173
-vtcode webmcp status
-vtcode webmcp tools
-vtcode webmcp roots
-vtcode webmcp unpair
+diapason webmcp serve --origin http://localhost:5173
+diapason webmcp pair --origin http://localhost:5173
+diapason webmcp status
+diapason webmcp tools
+diapason webmcp roots
+diapason webmcp unpair
 ```
 
-The standalone `vtcode webmcp unpair` command cannot revoke an already running
-server's in-memory pairing state. It only reports that revocation is owned by
-the server process. Stop that process separately with `Ctrl-C` to revoke its
-active sessions.
+The standalone `diapason webmcp unpair` command cannot revoke an already
+running server's in-memory pairing state. It only reports that revocation is
+owned by the server process. Stop that process separately with `Ctrl-C` to
+revoke its active sessions.
 
 The server binds to loopback and chooses an available port by default. Enter
 its one-time pairing code in the browser editor. Exact origins are required;
@@ -279,15 +278,15 @@ drafts, and troubleshooting, see the
 
 ## Scheduled tasks
 
-Use `vtcode schedule` when the task should survive restarts.
+Use `diapason schedule` when the task should survive restarts.
 
 ```bash
-vtcode schedule create --prompt "check the deployment" --every 10m
-vtcode schedule create --prompt "review the nightly build" --cron "0 9 * * 1-5"
-vtcode schedule create --reminder "push the release branch" --at "15:00"
-vtcode schedule list
-vtcode schedule delete 1a2b3c4d
-vtcode schedule serve
+diapason schedule create --prompt "check the deployment" --every 10m
+diapason schedule create --prompt "review the nightly build" --cron "0 9 * * 1-5"
+diapason schedule create --reminder "push the release branch" --at "15:00"
+diapason schedule list
+diapason schedule delete 1a2b3c4d
+diapason schedule serve
 ```
 
 See [Scheduled Tasks](./scheduled-tasks.md) for session reminders, durable
@@ -301,23 +300,23 @@ output and `--detailed` to list each tool.
 
 ## schema (runtime tool introspection)
 
-Inspect VT Code's built-in tool schemas at runtime so automation can discover
+Inspect Diapason's built-in tool schemas at runtime so automation can discover
 exact tool names and input parameters without relying on stale docs.
 
 ### Usage
 
 ```bash
 # Full JSON document (default)
-vtcode schema tools
+diapason schema tools
 
 # Compact schema descriptions for tighter context windows
-vtcode schema tools --mode minimal
+diapason schema tools --mode minimal
 
 # NDJSON output for streaming parsers
-vtcode schema tools --format ndjson
+diapason schema tools --format ndjson
 
 # Filter to specific tools
-vtcode schema tools --name exec_command --name apply_patch
+diapason schema tools --name exec_command --name apply_patch
 ```
 
 ### Options
@@ -328,17 +327,17 @@ vtcode schema tools --name exec_command --name apply_patch
 
 ## update (binary updates)
 
-Check for and install binary updates of VT Code from GitHub Releases. Updates
+Check for and install binary updates of Diapason from GitHub Releases. Updates
 are downloaded and verified against checksums for security.
 
 ### Usage
 
 ```bash
 # Check for available updates without installing
-vtcode update --check
+diapason update --check
 
 # Check for updates (same as above, default behavior)
-vtcode update
+diapason update
 ```
 
 ### Options
@@ -348,7 +347,7 @@ vtcode update
 
 ### How it works
 
-1. The command checks the GitHub API for the latest VT Code release
+1. The command checks the GitHub API for the latest Diapason release
 2. It compares the remote version with your current version
 3. If a new version is available, it shows release notes and download
    information
@@ -358,7 +357,7 @@ vtcode update
    guidance
 
 Standalone releases download the exact platform archive, verify a published
-SHA-256 checksum when available, safely extract `vtcode`/`vtcode.exe`, and
+SHA-256 checksum when available, safely extract `diapason`/`diapason.exe`, and
 replace the running binary natively. Binaries built with the former updater
 must be bootstrapped once with the native installer before this replacement
 flow can update them.
@@ -368,85 +367,85 @@ flow can update them.
 - Check for updates:
 
   ```bash
-  vtcode update --check
+  diapason update --check
   ```
 
 - Check for updates and show if you're on the latest version:
 
   ```bash
-  vtcode update
+  diapason update
   ```
 
 ## dependencies
 
-Manage optional VT Code dependencies such as ripgrep and ast-grep.
+Manage optional Diapason dependencies such as ripgrep and ast-grep.
 
 ### Usage
 
 ```bash
 # Install both optional search tools in one step
-vtcode dependencies install search-tools
+diapason dependencies install search-tools
 
-# Check whether VT Code can resolve the optional search tools
-vtcode dependencies status search-tools
+# Check whether Diapason can resolve the optional search tools
+diapason dependencies status search-tools
 
 # Install ripgrep using a supported system installer
-vtcode dependencies install ripgrep
+diapason dependencies install ripgrep
 
 # Install the managed ast-grep binary into the canonical executable directory
-vtcode dependencies install ast-grep
+diapason dependencies install ast-grep
 
 # Materialize the bundled ast-grep scaffold in the current workspace
-vtcode init
+diapason init
 
 # Run ast-grep rule tests and scan for the current workspace
-vtcode check ast-grep
+diapason check ast-grep
 
-# Check whether VT Code can resolve ast-grep
-vtcode dependencies status ast-grep
+# Check whether Diapason can resolve ast-grep
+diapason dependencies status ast-grep
 ```
 
 ### Notes
 
-- `vtcode deps ...` is a short alias for `vtcode dependencies ...`
-- `vtcode dependencies install search-tools` bundles the recommended `ripgrep` +
-  `ast-grep` setup after any install method
-- `vtcode dependencies install ripgrep` installs `rg` through a supported
+- `diapason deps ...` is a short alias for `diapason dependencies ...`
+- `diapason dependencies install search-tools` bundles the recommended
+  `ripgrep` + `ast-grep` setup after any install method
+- `diapason dependencies install ripgrep` installs `rg` through a supported
   system installer and keeps startup non-blocking when you skip it
-- `vtcode init` materializes VT Code's bundled ast-grep starter files into the
-  current workspace: `sgconfig.yml`, `rules/`, and `rule-tests/`
-- `vtcode check ast-grep` is the first-class replacement for the repo-only
+- `diapason init` materializes Diapason's bundled ast-grep starter files into
+  the current workspace: `sgconfig.yml`, `rules/`, and `rule-tests/`
+- `diapason check ast-grep` is the first-class replacement for the repo-only
   `./scripts/check.sh ast-grep` flow
-- VT Code does not auto-edit your shell profile; on Linux/BSD, add
+- Diapason does not auto-edit your shell profile; on Linux/BSD, add
   `export PATH="${XDG_BIN_HOME:-$HOME/.local/bin}:$PATH"` yourself if you want
-  managed binaries available outside VT Code
+  managed binaries available outside Diapason
 - On Linux, prefer `ast-grep` over `sg`
 - The curl installer includes the search-tools bundle by default; use
   `--without-search-tools` to skip it
 
 ## check
 
-Run built-in repository checks from VT Code.
+Run built-in repository checks from Diapason.
 
 ### Usage
 
 ```bash
 # Install ast-grep if needed
-vtcode dependencies install ast-grep
+diapason dependencies install ast-grep
 
 # Materialize the bundled ast-grep scaffold in the current workspace
-vtcode init
+diapason init
 
 # Run ast-grep rule tests and scan
-vtcode check ast-grep
+diapason check ast-grep
 ```
 
 ### Notes
 
-- `vtcode check ast-grep` runs `ast-grep test --config sgconfig.yml` and then
+- `diapason check ast-grep` runs `ast-grep test --config sgconfig.yml` and then
   `ast-grep scan --config sgconfig.yml`
 - The command expects `sgconfig.yml` in the workspace root and points you to
-  `vtcode init` when the scaffold has not been materialized yet
+  `diapason init` when the scaffold has not been materialized yet
 
 ## plugins
 
@@ -455,19 +454,19 @@ Skills and MCP servers under a `plugin.json` manifest.
 
 ```bash
 # Install a plugin from a git URL or local directory into ~/.agents/plugins
-vtcode plugins add https://github.com/example/my-plugin
+diapason plugins add https://github.com/example/my-plugin
 
 # List installed plugins with skill and MCP server counts
-vtcode plugins list
+diapason plugins list
 
 # Show plugin details
-vtcode plugins info my-plugin
+diapason plugins info my-plugin
 
 # Validate a plugin directory without installing it
-vtcode plugins validate ./my-plugin
+diapason plugins validate ./my-plugin
 
 # Uninstall a plugin
-vtcode plugins remove my-plugin
+diapason plugins remove my-plugin
 ```
 
 ### Notes
@@ -486,37 +485,37 @@ Manage remote GPU-backed model pods over SSH. See the full feature guide in
 
 ```bash
 # Start a pod-backed model
-vtcode pods start --name llama \
+diapason pods start --name llama \
   --model meta-llama/Llama-3.1-8B-Instruct \
   --ssh "ssh root@gpu.example.com" \
   --gpu 0:A100 --gpu 1:A100 \
   --gpus 2
 
 # Inspect tracked pods
-vtcode pods list
+diapason pods list
 
 # Stream logs for one model
-vtcode pods logs --name llama
+diapason pods logs --name llama
 ```
 
 ### Commands
 
-- `vtcode pods start` - Launch a model on the active pod
-- `vtcode pods stop` - Stop one tracked model
-- `vtcode pods stop-all` - Stop every tracked model on the active pod
-- `vtcode pods list` - Show tracked model status
-- `vtcode pods logs` - Stream the remote log for a model
-- `vtcode pods known-models` - Show compatible and incompatible profiles
+- `diapason pods start` - Launch a model on the active pod
+- `diapason pods stop` - Stop one tracked model
+- `diapason pods stop-all` - Stop every tracked model on the active pod
+- `diapason pods list` - Show tracked model status
+- `diapason pods logs` - Stream the remote log for a model
+- `diapason pods known-models` - Show compatible and incompatible profiles
 
 ## Did You Mean?
 
-When you type an unrecognized `vtcode` subcommand, VT Code suggests the closest
-match:
+When you type an unrecognized `diapason` subcommand, Diapason suggests the
+closest match:
 
 ```bash
-$ vtcode initilize
+$ diapason initilize
 # Did you mean?
-#   vtcode init
+#   diapason init
 ```
 
 Suggestions use fuzzy matching and are colorized. This also applies to slash
@@ -527,21 +526,21 @@ commands inside interactive sessions.
 Resume the most recent archived session:
 
 ```bash
-vtcode --continue
+diapason --continue
 # or in interactive mode:
 # /continue
 ```
 
 This starts a fresh conversation with the context preserved from the last
-session. Use it to pick up where you left off after closing VT Code.
+session. Use it to pick up where you left off after closing Diapason.
 
 ## Tips
 
-- The agent respects `.vtcodegitignore` to exclude files from search and I/O.
+- The agent respects `.diapasongitignore` to exclude files from search and I/O.
 - Prefer `exec_command.cmd` with `rg` for fast, focused text searches with
     glob filters and context.
 - Ask for “N lines of context” when searching to understand usage in-place.
 - Shell commands are filtered by allow/deny lists and can be extended via
-    `VTCODE_<AGENT>_COMMANDS_*` environment variables.
-- Use `vtcode update --check` regularly to stay informed about new features
+    `DIAPASON_<AGENT>_COMMANDS_*` environment variables.
+- Use `diapason update --check` regularly to stay informed about new features
     and security updates.

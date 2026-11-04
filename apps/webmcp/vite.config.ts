@@ -48,14 +48,14 @@ export function webmcpOriginTrialPlugin(
 
 export default defineConfig({
   // Both public deployments can serve the same artifact: GitHub Pages beneath
-  // /VTCode/ and the ChatGPT Site at its host root. Relative assets work for
+  // /Diapason/ and the ChatGPT Site at its host root. Relative assets work for
   // both paths and for the local Vite server.
   base: "./",
   // Keep fallback state scoped to this deployed WebMCP app version. Without
   // an explicit instance, every origin falls back to the development key and a
   // stale/empty browser snapshot can hide the deterministic seed workspace.
   define: {
-    __VTCODE_APP_INSTANCE__: JSON.stringify("vtcode-webmcp-app-v2"),
+    __DIAPASON_APP_INSTANCE__: JSON.stringify("diapason-webmcp-app-v2"),
   },
   plugins: [webmcpOriginTrialPlugin() as Plugin],
 });

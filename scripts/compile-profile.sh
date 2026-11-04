@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compile Time Profiling Script for vtcode
+# Compile Time Profiling Script for diapason
 # Usage: ./scripts/compile-profile.sh [command]
 #
 # Commands:
@@ -40,8 +40,8 @@ run_llvm_lines() {
         cargo install cargo-llvm-lines
     fi
     
-    log_info "Analysing LLVM IR line counts for vtcode-core..."
-    cargo llvm-lines --lib -p vtcode-core 2>&1 | head -60
+    log_info "Analysing LLVM IR line counts for diapason-core..."
+    cargo llvm-lines --lib -p diapason-core 2>&1 | head -60
 }
 
 run_macro_stats() {

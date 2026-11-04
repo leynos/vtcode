@@ -1,14 +1,14 @@
 use anyhow::Result;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::mcp::McpRendererProfile;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 use serde_json::Value;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::mcp::McpRendererProfile;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::panels::{PanelContentLine, render_left_border_panel};
 
 pub(crate) fn resolve_renderer_profile(
     tool_name: &str,
-    vt_config: Option<&VTCodeConfig>,
+    vt_config: Option<&DiapasonConfig>,
 ) -> Option<McpRendererProfile> {
     let config = vt_config?;
     config.mcp.ui.renderer_for_tool(tool_name)
@@ -204,7 +204,7 @@ fn collect_formatted_json_lines(lines: &mut Vec<PanelContentLine>, json: &Value)
 }
 
 fn shorten(text: &str, max_len: usize) -> String {
-    use vtcode_ui::design::constants::ELLIPSIS;
+    use diapason_ui::design::constants::ELLIPSIS;
     // Reserve 1 display column for the ellipsis character (not byte length).
     const ELLIPSIS_WIDTH: usize = 1;
     if text.chars().count() <= max_len {

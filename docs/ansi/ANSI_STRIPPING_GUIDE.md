@@ -16,7 +16,7 @@ feature is **enabled by default**.
 
 ### How to Configure
 
-In `vtcode.toml`:
+In `config.toml`:
 
 ```toml
 [ui]
@@ -58,7 +58,7 @@ When `allow_tool_ansi = false`, the following ANSI sequences are removed:
 
 ```
 warning: function check_prompt_reference_trigger is never used
---> crates/codegen/vtcode-core/src/ui/tui/session/command.rs:321:15
+--> crates/codegen/diapason-core/src/ui/tui/session/command.rs:321:15
 ```
 
 (The function name and path would be colored yellow/orange and red respectively)
@@ -67,7 +67,7 @@ warning: function check_prompt_reference_trigger is never used
 
 ```
 warning: function check_prompt_reference_trigger is never used
---> crates/codegen/vtcode-core/src/ui/tui/session/command.rs:321:15
+--> crates/codegen/diapason-core/src/ui/tui/session/command.rs:321:15
 ```
 
 (Plain text, no colors)
@@ -118,7 +118,7 @@ If colors are still visible despite `allow_tool_ansi = false`:
 1. Verify config is loaded:
 
     ```bash
-    vtcode config show ui.allow_tool_ansi
+    diapason config show ui.allow_tool_ansi
     ```
 
 2. Check if environment overrides config:
@@ -130,7 +130,7 @@ If colors are still visible despite `allow_tool_ansi = false`:
     unset CLICOLOR_FORCE
     ```
 
-3. Rebuild vtcode to ensure latest version:
+3. Rebuild diapason to ensure latest version:
 
     ```bash
     cargo build --release
@@ -138,7 +138,7 @@ If colors are still visible despite `allow_tool_ansi = false`:
 
 ### Want Colors Back?
 
-Set in `vtcode.toml`:
+Set in `config.toml`:
 
 ```toml
 [ui]
@@ -152,7 +152,7 @@ allow_tool_ansi = true
 - Color codes appearing in output
 - Broken terminal wrapping
 
-Only enable if using VT Code in a context that properly handles ANSI codes.
+Only enable if using Diapason in a context that properly handles ANSI codes.
 
 ## Test Coverage
 
@@ -187,7 +187,7 @@ covering:
 Run tests:
 
 ```bash
-cargo test --bin vtcode tool_output::streams::ansi_stripping_tests
+cargo test --bin diapason tool_output::streams::ansi_stripping_tests
 ```
 
 All tests consistently pass, validating the robustness of the implementation.

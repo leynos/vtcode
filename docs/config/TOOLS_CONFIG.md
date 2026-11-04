@@ -1,15 +1,16 @@
 # Tools Configuration
 
-This document describes the tools-related configuration in `vtcode.toml`.
+This document describes the tools-related configuration in `config.toml`.
 
 - max_tool_loops: Maximum number of inner tool-call loops per user turn. The
   ordinary default is `40`. Plan raises smaller nonzero values to its `60`-loop
   floor; an explicit `0` means unlimited. Prompt-approved planning extensions
   remain bounded by the `240`-loop planning cap.
-  - Configuration: `[tools].max_tool_loops` in `vtcode.toml`
+  - Configuration: `[tools].max_tool_loops` in `config.toml`
   - Code default:
-    `vtcode_config::constants::tool_limits::DEFAULT_MAX_TOOL_LOOPS`, consumed by
-    `crates/codegen/vtcode-config/src/core/tools.rs`
+    `diapason_config::constants::tool_limits::DEFAULT_MAX_TOOL_LOOPS`,
+    consumed by
+    `crates/codegen/diapason-config/src/core/tools.rs`
   - Ordinary default: `40`
   - Plan floor: `60` (for configured nonzero values below the floor)
   - Explicit `0`: unlimited
@@ -47,12 +48,12 @@ exec_command = 3
 code_search = 6
 ```
 
-When the fuse stops a turn, VT Code emits `turn.blocked`
+When the fuse stops a turn, Diapason emits `turn.blocked`
 (streak/total/caps/last tool) alongside `turn.failed`, forces a session-history
 checkpoint, pins referenced spool outputs so resume can still read them, and
 creates the blocked handoff. A persisted archive produces a verified
-`vtcode --resume <archive-id>` command. Disabled history or a failed checkpoint
-produces a handoff without a resume command and states why resume is
+`diapason --resume <archive-id>` command. Disabled history or a failed
+checkpoint produces a handoff without a resume command and states why resume is
 unavailable. Interactive sessions remain available for the next user input; the
 TUI shows a `Blocked` header badge, `Blocked • continue to retry…` footer hint,
 and a transcript banner with resume guidance.

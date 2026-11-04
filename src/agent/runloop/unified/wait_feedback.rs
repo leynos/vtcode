@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use vtcode_commons::stop_hints::STOP_HINT_INLINE;
+use diapason_commons::stop_hints::STOP_HINT_INLINE;
 
 pub(crate) const WAIT_KEEPALIVE_INITIAL: Duration = Duration::from_secs(5);
 pub(crate) const WAIT_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);

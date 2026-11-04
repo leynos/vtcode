@@ -1,10 +1,10 @@
 use anyhow::Result;
+use diapason_core::core::threads::{SessionQueryScope, list_recent_sessions_in_scope};
+use diapason_core::ui::inline_theme_from_core_styles;
+use diapason_core::ui::theme;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection, TransientSubmission};
 use tokio::task;
-use vtcode_core::core::threads::{SessionQueryScope, list_recent_sessions_in_scope};
-use vtcode_core::ui::inline_theme_from_core_styles;
-use vtcode_core::ui::theme;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection, TransientSubmission};
 
 use super::{SlashCommandContext, SlashCommandControl};
 use crate::agent::runloop::model_picker::{ModelPickerStart, ModelPickerState};
@@ -326,7 +326,7 @@ pub(crate) async fn handle_start_mode_palette(mut ctx: SlashCommandContext<'_>) 
     let specs = if let Some(controller) = ctx.tool_registry.subagent_controller() {
         controller.effective_specs().await
     } else {
-        match vtcode_config::discover_subagents(&vtcode_config::SubagentDiscoveryInput::new(
+        match diapason_config::discover_subagents(&diapason_config::SubagentDiscoveryInput::new(
             ctx.config.workspace.clone(),
         )) {
             Ok(discovered) => discovered.effective,

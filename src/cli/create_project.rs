@@ -1,9 +1,9 @@
 use anyhow::Result;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::utils::colors::style;
+use diapason_core::utils::file_utils::{ensure_dir_exists, ensure_dir_exists_sync, write_file_with_context_sync};
 use itertools::Itertools;
 use std::path::Path;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::utils::colors::style;
-use vtcode_core::utils::file_utils::{ensure_dir_exists, ensure_dir_exists_sync, write_file_with_context_sync};
 
 /// Handle the create-project command
 pub async fn handle_create_project_command(config: &CoreAgentConfig, name: &str, features: &[String]) -> Result<()> {
@@ -26,8 +26,8 @@ pub async fn handle_create_project_command(config: &CoreAgentConfig, name: &str,
     // Create basic project structure based on features
     create_project_structure(&project_path, features)?;
 
-    // Create vtcode configuration
-    create_vtcode_config(&project_path)?;
+    // Create diapason configuration
+    create_diapason_config(&project_path)?;
 
     println!("Project '{name}' created successfully!");
 
@@ -52,7 +52,7 @@ fn create_project_structure(project_path: &Path, features: &[String]) -> Result<
     let readme_content = format!(
         r#"# Project
 
-This is a new project created with VT Code.
+This is a new project created with Diapason.
 
 ## Features
 
@@ -76,9 +76,9 @@ edition = "2021"
     Ok(())
 }
 
-/// Create vtcode configuration file
-fn create_vtcode_config(project_path: &Path) -> Result<()> {
-    let config_content = r#"# VT Code Configuration
+/// Create diapason configuration file
+fn create_diapason_config(project_path: &Path) -> Result<()> {
+    let config_content = r#"# Diapason Configuration
 [model]
 name = "gemini-3-flash-preview"
 
@@ -89,6 +89,6 @@ path = "."
 verbose = false
 "#;
 
-    write_file_with_context_sync(&project_path.join("vtcode.toml"), config_content, "vtcode.toml")?;
+    write_file_with_context_sync(&project_path.join("config.toml"), config_content, "config.toml")?;
     Ok(())
 }

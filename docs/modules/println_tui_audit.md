@@ -52,17 +52,17 @@ frequent triggers.
 
 ## Safe I/O Patterns (Verified)
 
-| File                                                                  | Lines                      | Why Safe                                       |
-| --------------------------------------------------------------------- | -------------------------- | ---------------------------------------------- |
-| `src/agent/runloop/git.rs`                                            | 327-328                    | `is_tui_mode()` check skips interactive prompt |
-| `src/agent/runloop/unified/postamble.rs`                              | 41-122                     | Called after `restore_tui()`                   |
-| `src/codex_app_server/runtime.rs`                                     | 266, 439-492, 709-719, 930 | Own TUI (not crossterm-based)                  |
-| `src/cli/`                                                            | various                    | CLI commands, not TUI context                  |
-| `src/main.rs`, `src/main_helpers/`                                    | various                    | Startup/shutdown, not TUI                      |
-| `src/process_hardening.rs`                                            | various                    | `eprintln!` for error messages                 |
-| `src/startup/first_run_prompts/`                                      | various                    | First-run setup, not TUI                       |
-| `crates/codegen/vtcode-ui/src/tui/core_tui/session/terminal_title.rs` | 261-266                    | Writes to stdout (TUI uses stderr)             |
-| `crates/codegen/vtcode-ui/src/tui/core_tui/panic_hook.rs`             | 89-208                     | `eprintln!` in panic hook by design            |
+| File                                                                    | Lines                      | Why Safe                                       |
+| ----------------------------------------------------------------------- | -------------------------- | ---------------------------------------------- |
+| `src/agent/runloop/git.rs`                                              | 327-328                    | `is_tui_mode()` check skips interactive prompt |
+| `src/agent/runloop/unified/postamble.rs`                                | 41-122                     | Called after `restore_tui()`                   |
+| `src/codex_app_server/runtime.rs`                                       | 266, 439-492, 709-719, 930 | Own TUI (not crossterm-based)                  |
+| `src/cli/`                                                              | various                    | CLI commands, not TUI context                  |
+| `src/main.rs`, `src/main_helpers/`                                      | various                    | Startup/shutdown, not TUI                      |
+| `src/process_hardening.rs`                                              | various                    | `eprintln!` for error messages                 |
+| `src/startup/first_run_prompts/`                                        | various                    | First-run setup, not TUI                       |
+| `crates/codegen/diapason-ui/src/tui/core_tui/session/terminal_title.rs` | 261-266                    | Writes to stdout (TUI uses stderr)             |
+| `crates/codegen/diapason-ui/src/tui/core_tui/panic_hook.rs`             | 89-208                     | `eprintln!` in panic hook by design            |
 
 ## Recommendations
 

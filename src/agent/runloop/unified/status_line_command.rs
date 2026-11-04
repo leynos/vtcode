@@ -2,12 +2,12 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use diapason_core::config::StatusLineConfig;
+use diapason_core::tools::dominant_workspace_language;
+use diapason_core::utils::ansi_parser::strip_ansi;
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command as TokioCommand;
-use vtcode_core::config::StatusLineConfig;
-use vtcode_core::tools::dominant_workspace_language;
-use vtcode_core::utils::ansi_parser::strip_ansi;
 
 use crate::agent::runloop::git::GitStatusSummary;
 use crate::agent::runloop::unified::session_setup::preferred_display_language_for_workspace;
@@ -190,12 +190,12 @@ impl StatusLineGit {
 #[cfg(test)]
 mod tests {
     use super::StatusLineCommandPayload;
+    use diapason_commons::env_lock::{remove_var as remove_env_var, set_var as set_env_var};
+    use diapason_core::ide_context::{IDE_CONTEXT_ENV_VAR, LEGACY_VSCODE_CONTEXT_ENV_VAR};
     use serde_json::Value;
     use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
-    use vtcode_commons::env_lock::{remove_var as remove_env_var, set_var as set_env_var};
-    use vtcode_core::ide_context::{IDE_CONTEXT_ENV_VAR, LEGACY_VSCODE_CONTEXT_ENV_VAR};
 
     #[test]
     #[serial]
@@ -259,10 +259,13 @@ mod tests {
     fn payload_prefers_workspace_ide_context_snapshot_without_env() {
         let workspace = TempDir::new().expect("workspace tempdir");
         fs::create_dir_all(workspace.path().join("src")).expect("create src");
-        fs::create_dir_all(workspace.path().join(".vtcode")).expect("create .vtcode");
+        fs::create_dir_all(workspace.path().join(diapason_commons::workspace_dir_name())).expect("create .diapason");
         fs::write(workspace.path().join("src/lib.rs"), "fn alpha() {}\n").expect("write rust");
         fs::write(
-            workspace.path().join(".vtcode/ide-context.json"),
+            workspace
+                .path()
+                .join(diapason_commons::workspace_dir_name())
+                .join("ide-context.json"),
             format!(
                 r#"{{
                     "version": 1,

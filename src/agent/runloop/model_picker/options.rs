@@ -4,10 +4,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
 use tracing::warn;
 
-use vtcode_config::VTCodeConfig;
-use vtcode_config::core::ProviderOverrideConfig;
-use vtcode_core::config::constants::defaults;
-use vtcode_core::config::models::{ModelId, Provider};
+use diapason_config::DiapasonConfig;
+use diapason_config::core::ProviderOverrideConfig;
+use diapason_core::config::constants::defaults;
+use diapason_core::config::models::{ModelId, Provider};
 
 #[derive(Clone)]
 pub(super) struct ModelOption {
@@ -127,7 +127,7 @@ pub(super) fn find_option_index(provider: Provider, model_id: &str, options: &[M
     })
 }
 
-pub(super) fn build_filtered_options(vt_cfg: Option<&VTCodeConfig>) -> Cow<'static, [ModelOption]> {
+pub(super) fn build_filtered_options(vt_cfg: Option<&DiapasonConfig>) -> Cow<'static, [ModelOption]> {
     let Some(cfg) = vt_cfg else {
         return Cow::Borrowed(MODEL_OPTIONS.as_slice());
     };
@@ -142,7 +142,7 @@ pub(super) fn build_filtered_options(vt_cfg: Option<&VTCodeConfig>) -> Cow<'stat
 
 fn apply_persisted_api_key_env(
     options: Cow<'static, [ModelOption]>,
-    cfg: &VTCodeConfig,
+    cfg: &DiapasonConfig,
 ) -> Cow<'static, [ModelOption]> {
     let Some(provider) = Provider::from_str(&cfg.agent.provider).ok() else {
         return options;

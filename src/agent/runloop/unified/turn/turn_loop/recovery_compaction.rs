@@ -6,7 +6,7 @@
 //! receive the live memory-envelope and session-stat dependencies it updates.
 
 use anyhow::Result;
-use vtcode_core::llm::provider as uni;
+use diapason_core::llm::provider as uni;
 
 use crate::agent::runloop::unified::context_manager::ContextManager;
 use crate::agent::runloop::unified::state::SessionStats;

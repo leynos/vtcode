@@ -4,13 +4,13 @@
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
 use assert_fs::TempDir;
+use diapason_core::config::ToolDocumentationMode;
+use diapason_core::config::constants::tools;
+use diapason_core::config::types::CapabilityLevel;
+use diapason_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities, ToolProfile};
+use diapason_core::tools::{ToolRegistration, ToolRegistry};
 use futures::future::BoxFuture;
 use serde_json::{Value, json};
-use vtcode_core::config::ToolDocumentationMode;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::types::CapabilityLevel;
-use vtcode_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities, ToolProfile};
-use vtcode_core::tools::{ToolRegistration, ToolRegistry};
 
 fn default_public_tool_names() -> Vec<String> {
     vec![
@@ -113,7 +113,7 @@ async fn advanced_profile_exposes_code_search_outside_default_catalog() {
                 ToolDocumentationMode::Full,
                 ToolModelCapabilities::default(),
             )
-            .with_tool_profile(ToolProfile::AdvancedVtCode),
+            .with_tool_profile(ToolProfile::AdvancedDiapason),
         )
         .await;
     let names: Vec<_> = schema_entries.into_iter().map(|entry| entry.name).collect();
@@ -154,7 +154,7 @@ async fn wildcard_full_auto_tracks_late_tools_visible_to_the_effective_profile()
         ToolDocumentationMode::Full,
         ToolModelCapabilities::default(),
     );
-    let advanced_config = default_config.clone().with_tool_profile(ToolProfile::AdvancedVtCode);
+    let advanced_config = default_config.clone().with_tool_profile(ToolProfile::AdvancedDiapason);
     let profile_filtered_tool = "profile_filtered_dynamic_tool";
     let late_advanced_tool = "late_advanced_dynamic_tool";
     let post_explicit_tool = "post_explicit_dynamic_tool";

@@ -1,9 +1,9 @@
 # Lifecycle Hooks
 
-VT Code supports lifecycle hooks that execute shell commands in response to
+Diapason supports lifecycle hooks that execute shell commands in response to
 agent events. Hooks let you enrich the model's context, enforce policy, surface
 notifications, or block risky operations automatically. This guide explains how
-hooks are configured in `vtcode.toml`, which events are available, and how the
+hooks are configured in `config.toml`, which events are available, and how the
 agent interprets hook output.
 
 Similar to Claude Code Hooks:
@@ -49,9 +49,9 @@ match everything.
 - **`hooks`** – array of commands. Every command must specify a `command`
 string and may set an explicit `timeout_seconds` (defaults to 60 seconds).
 
-> Tip: Put reusable scripts under `.vtcode/hooks/` (or similar) and reference
-them with `$CLAUDE_PROJECT_DIR`/`$VT_PROJECT_DIR` so they work from any working
-directory.
+> Tip: Put reusable scripts under `.diapason/hooks/` (or similar) and reference
+them with `$CLAUDE_PROJECT_DIR`/`$DIAPASON_PROJECT_DIR` so they work from any
+working directory.
 
 ## Matchers
 
@@ -67,9 +67,9 @@ expressions to detect policies or keywords.
 - **PreToolUse / PostToolUse** – compared against the tool name. Match builtin
 names like `Write`, `Edit`, `Task`, `Bash`, or Model Context Protocol tools
 such as `mcp__filesystem__read_file`.
-- **PermissionRequest** – compared against the tool name only when VT Code is
+- **PermissionRequest** – compared against the tool name only when Diapason is
 about to show a human approval prompt.
-- **Stop** – compared against the configured matcher string before VT Code
+- **Stop** – compared against the configured matcher string before Diapason
 finalizes a turn.
 - **Notification** – compared against the notification type (`permission_prompt`
 or `idle_prompt`).
@@ -85,17 +85,17 @@ time.
 
 ## Hook Execution Model
 
-When a lifecycle hook triggers, VT Code spawns `sh -c <command>` in the project
-root with the serialized JSON payload on stdin. The process inherits a
+When a lifecycle hook triggers, Diapason spawns `sh -c <command>` in the
+project root with the serialized JSON payload on stdin. The process inherits a
 60-second timeout unless you provide `timeout_seconds` on the command entry.
 
 The following environment variables are set for every hook command:
 
-- `VT_PROJECT_DIR` / `CLAUDE_PROJECT_DIR` – absolute project root.
-- `VT_SESSION_ID` / `CLAUDE_SESSION_ID` – unique session identifier.
-- `VT_HOOK_EVENT` – current lifecycle event name (e.g., `PreToolUse`).
-- `VT_TRANSCRIPT_PATH` / `CLAUDE_TRANSCRIPT_PATH` – current transcript path when
-available.
+- `DIAPASON_PROJECT_DIR` / `CLAUDE_PROJECT_DIR` – absolute project root.
+- `DIAPASON_SESSION_ID` / `CLAUDE_SESSION_ID` – unique session identifier.
+- `DIAPASON_HOOK_EVENT` – current lifecycle event name (e.g., `PreToolUse`).
+- `DIAPASON_TRANSCRIPT_PATH` / `CLAUDE_TRANSCRIPT_PATH` – current transcript
+  path when available.
 
 Use these variables to locate scripts, persist artifacts, or provide additional
 context to other tooling.
@@ -127,7 +127,7 @@ Invoked when a session ends. The payload mirrors `SessionStart` but replaces
 
 ### PreCompact
 
-Runs before VT Code records a compaction boundary. Payload:
+Runs before Diapason records a compaction boundary. Payload:
 
 ```json
 {
@@ -144,7 +144,7 @@ Runs before VT Code records a compaction boundary. Payload:
 ```
 
 Use this hook to archive transcripts, copy compaction artifacts, or attach
-external metadata before VT Code emits `thread.compact_boundary`.
+external metadata before Diapason emits `thread.compact_boundary`.
 
 ### UserPromptSubmit
 
@@ -208,7 +208,7 @@ inspect outputs, enforce policy, or append extra context for the model.
 
 ### PermissionRequest
 
-Runs only when VT Code is about to show a human approval prompt. Payload:
+Runs only when Diapason is about to show a human approval prompt. Payload:
 
 ```json
 {
@@ -231,7 +231,7 @@ session/project permission rules before the local prompt appears.
 
 ### Stop
 
-Runs after VT Code drafts the assistant response but before the turn is marked
+Runs after Diapason drafts the assistant response but before the turn is marked
 complete. Payload:
 
 ```json
@@ -256,7 +256,7 @@ Code normalizes both into `stop`. New configurations should use `stop`.
 
 ### Notification
 
-Runs when VT Code emits a notification that survives runtime gating (global
+Runs when Diapason emits a notification that survives runtime gating (global
 enablement, focus suppression, event-category toggles, and repeat suppression).
 Payload:
 
@@ -266,14 +266,14 @@ Payload:
   "cwd": "/path/to/project",
   "hook_event_name": "Notification",
   "notification_type": "permission_prompt" | "idle_prompt",
-  "title": "VT Code approval required",
+  "title": "Diapason approval required",
   "message": "Review the permission prompt for tool `exec_command`.",
   "transcript_path": "..." | null
 }
 ```
 
 Use `matcher = "permission_prompt"` to react to approval and MCP elicitation
-prompts, or `matcher = "idle_prompt"` to react when VT Code has been waiting
+prompts, or `matcher = "idle_prompt"` to react when Diapason has been waiting
 for user input for 60 seconds.
 
 ## Interpreting Hook Results
@@ -296,8 +296,8 @@ message.
 
 ### JSON Output
 
-If stdout parses as JSON, VT Code interprets fields compatible with Claude Code
-hooks:
+If stdout parses as JSON, Diapason interprets fields compatible with Claude
+Code hooks:
 
 | Field                     | Purpose                                                           |
 | ------------------------- | ----------------------------------------------------------------- |
@@ -331,7 +331,8 @@ transcript visibility is controlled by `ui.show_diagnostics_in_transcript`.
 
 ## Best Practices
 
-- Validate regular expressions and configuration with `vtcode config validate`.
+- Validate regular expressions and configuration with
+  `diapason config validate`.
 - Keep hook scripts idempotent and side-effect aware—hooks may run multiple
 commands in parallel for matching groups.
 - Use short timeouts and descriptive error messages so users understand why an
@@ -345,11 +346,11 @@ project-root environment variables.
 
 To start using lifecycle hooks in your project:
 
-1. **Create a `vtcode.toml` configuration file** in your project root if you
+1. **Create a `config.toml` configuration file** in your project root if you
    don't already have one:
 
    ```bash
-   touch vtcode.toml
+   touch config.toml
    ```
 
 2. **Add the lifecycle hooks section** to your configuration:
@@ -362,15 +363,15 @@ To start using lifecycle hooks in your project:
 3. **Create a hooks directory** to store your hook scripts:
 
 ```bash
-mkdir -p .vtcode/hooks
+mkdir -p .diapason/hooks
 ```
 
 ### Example Setup: Notification On SessionStart
 
-Here's a minimal example that sends a VT Code notification and then shows a
+Here's a minimal example that sends a Diapason notification and then shows a
 line in the TUI when a session starts:
 
-1. **Create a notification script** at `.vtcode/hooks/send-notification.sh`:
+1. **Create a notification script** at `.diapason/hooks/send-notification.sh`:
 
    ```bash
    #!/bin/bash
@@ -378,10 +379,10 @@ line in the TUI when a session starts:
    # Consume the JSON payload so the pipe is drained cleanly.
    cat >/dev/null
 
-   vtcode notify --title "VT Code" "Session started"
+   diapason notify --title "Diapason" "Session started"
    ```
 
-2. **Create a TUI message script** at `.vtcode/hooks/session-banner.sh`:
+2. **Create a TUI message script** at `.diapason/hooks/session-banner.sh`:
 
    ```bash
    #!/bin/bash
@@ -389,24 +390,24 @@ line in the TUI when a session starts:
    # Consume the JSON payload so the pipe is drained cleanly.
    cat >/dev/null
 
-   printf '%s\n' '{"systemMessage":"VT Code: SessionStart hook is active.",'\
+   printf '%s\n' '{"systemMessage":"Diapason: SessionStart hook is active.",'\
    '"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"SessionStart hook is active."}}'
    ```
 
 3. **Make both scripts executable**:
 
    ```bash
-   chmod +x .vtcode/hooks/send-notification.sh
-   chmod +x .vtcode/hooks/session-banner.sh
+   chmod +x .diapason/hooks/send-notification.sh
+   chmod +x .diapason/hooks/session-banner.sh
    ```
 
-4. **Configure the hooks** in your `vtcode.toml`:
+4. **Configure the hooks** in your `config.toml`:
 
 ```toml
 [hooks.lifecycle]
 session_start = [{ hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/send-notification.sh" },
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/session-banner.sh" }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/send-notification.sh" },
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/session-banner.sh" }
 ] }]
 ```
 
@@ -417,7 +418,7 @@ Plain stdout from `SessionStart` becomes hidden model context. Use
 
 Here's a practical example that adds project context when a session starts:
 
-1. **Create a script** at `.vtcode/hooks/session-context.sh`:
+1. **Create a script** at `.diapason/hooks/session-context.sh`:
 
    ```bash
    #!/bin/bash
@@ -426,9 +427,9 @@ Here's a practical example that adds project context when a session starts:
    payload=$(cat)
 
    # Extract project info and return as context
-   echo "Project: $(basename $VT_PROJECT_DIR)" > /tmp/context.txt
+   echo "Project: $(basename $DIAPASON_PROJECT_DIR)" > /tmp/context.txt
    echo "Files in project root:" >> /tmp/context.txt
-   ls -la $VT_PROJECT_DIR >> /tmp/context.txt
+   ls -la $DIAPASON_PROJECT_DIR >> /tmp/context.txt
 
    # Output additional context for the model
    cat /tmp/context.txt
@@ -438,21 +439,21 @@ Here's a practical example that adds project context when a session starts:
 2. **Make the script executable**:
 
    ```bash
-   chmod +x .vtcode/hooks/session-context.sh
+   chmod +x .diapason/hooks/session-context.sh
    ```
 
-3. **Configure the hook** in your `vtcode.toml`:
+3. **Configure the hook** in your `config.toml`:
 
 ```toml
 [hooks.lifecycle]
-session_start = [{ hooks = [{ command = "$VT_PROJECT_DIR/.vtcode/hooks/session-context.sh" }] }]
+session_start = [{ hooks = [{ command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/session-context.sh" }] }]
 ```
 
 ### Example Setup: Pre-Tool Validation
 
 Here's how to set up validation before running bash commands:
 
-1. **Create a validation script** at `.vtcode/hooks/validate-bash.sh`:
+1. **Create a validation script** at `.diapason/hooks/validate-bash.sh`:
 
    ```bash
    #!/bin/bash
@@ -482,7 +483,7 @@ pre_tool_use = [
     matcher = "Bash",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/validate-bash.sh", 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/validate-bash.sh",
         timeout_seconds = 5 
       }
     ]
@@ -495,7 +496,7 @@ pre_tool_use = [
 1. **Validate your configuration**:
 
    ```bash
-   vtcode config validate
+   diapason config validate
    ```
 
 2. **Test hook execution manually** by simulating the JSON payload:
@@ -506,7 +507,7 @@ echo '{"session_id": "test", "cwd": "/tmp", "hook_event_name": "SessionStart",'\
 ' "source": "startup", "transcript_path": null}' > test_payload.json
 
 # Run your hook manually to test
-cat test_payload.json | .vtcode/hooks/session-context.sh
+cat test_payload.json | .diapason/hooks/session-context.sh
 ```
 
 ### Common Use Cases
@@ -554,7 +555,7 @@ pre_tool_use = [
     matcher = "Bash",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/security-check.sh", 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/security-check.sh",
         timeout_seconds = 10 
       }
     ]
@@ -567,7 +568,7 @@ post_tool_use = [
     matcher = "Bash",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/log-command.sh" 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/log-command.sh"
       }
     ]
   }
@@ -585,7 +586,7 @@ session_start = [
   { 
     hooks = [ 
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/setup-env.sh",
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/setup-env.sh",
         timeout_seconds = 30
       }
     ] 
@@ -598,7 +599,7 @@ pre_tool_use = [
     matcher = "Write|Edit",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/check-style.sh" 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/check-style.sh"
       }
     ]
   }
@@ -610,7 +611,7 @@ post_tool_use = [
     matcher = "Write|Edit",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/run-linter.sh" 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/run-linter.sh"
       }
     ]
   }
@@ -629,7 +630,7 @@ post_tool_use = [
     matcher = "Write|Edit",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/run-tests.sh",
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/run-tests.sh",
         timeout_seconds = 120
       }
     ]
@@ -642,7 +643,7 @@ pre_tool_use = [
     matcher = "Bash",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/validate-commit.sh" 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/validate-commit.sh"
       }
     ]
   }
@@ -654,7 +655,7 @@ post_tool_use = [
     matcher = ".*\\.md$",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/update-docs-index.sh" 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/update-docs-index.sh"
       }
     ]
   }
@@ -672,7 +673,7 @@ session_start = [
   { 
     hooks = [ 
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/log-session-start.sh" 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/log-session-start.sh"
       }
     ] 
   }
@@ -684,7 +685,7 @@ post_tool_use = [
     matcher = ".*",
     hooks = [
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/log-tool-usage.sh" 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/log-tool-usage.sh"
       }
     ]
   }
@@ -695,7 +696,7 @@ session_end = [
   { 
     hooks = [ 
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/log-session-end.sh" 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/log-session-end.sh"
       }
     ] 
   }
@@ -709,10 +710,10 @@ Before using lifecycle hooks in production, validate your configuration:
 1. **Validate configuration syntax**:
 
 ```bash
-vtcode config validate
+diapason config validate
 ```
 
-This checks that your `vtcode.toml` file has valid syntax and that all regular
+This checks that your `config.toml` file has valid syntax and that all regular
 expressions in matchers are properly formatted.
 
 1. **Test hooks manually** by simulating the JSON payload:
@@ -730,24 +731,24 @@ expressions in matchers are properly formatted.
    EOF
 
    # Run your hook manually to test it
-   cat test-payload.json | .vtcode/hooks/session-context.sh
+   cat test-payload.json | .diapason/hooks/session-context.sh
    ```
 
 2. **Check script permissions** - make sure your hook scripts are executable:
 
 ```bash
-chmod +x .vtcode/hooks/*.sh
+chmod +x .diapason/hooks/*.sh
 ```
 
 ### Debugging Tips
 
-1. **Check hook execution** by looking at stderr output in the VT Code UI
+1. **Check hook execution** by looking at stderr output in the Diapason UI
 2. **Use `jq`** to parse JSON payloads in your scripts for easier handling
 3. **Set shorter timeouts** during development to avoid hanging processes
 4. **Log to files** for debugging complex hook logic:
 
    ```bash
-   echo "$(date): Processing hook for $VT_HOOK_EVENT" >> /tmp/vtcode-hooks.log
+   echo "$(date): Processing hook for $DIAPASON_HOOK_EVENT" >> /tmp/diapason-hooks.log
    ```
 
 5. **Test exit codes** - remember that exit code 2 blocks execution, so test
@@ -767,7 +768,7 @@ rm temp_hook.sh
    hook outputs
 2. **Validate all inputs** - never trust user input or tool parameters without
    validation
-3. **Use relative paths** - prefer `$VT_PROJECT_DIR` over hardcoded paths
+3. **Use relative paths** - prefer `$DIAPASON_PROJECT_DIR` over hardcoded paths
 4. **Minimize permissions** - run hooks with minimal required privileges
 5. **Audit script content** - regularly review hook scripts for security issues
 
@@ -784,7 +785,7 @@ rm temp_hook.sh
 
    ```bash
    # Example: cache git status results
-   cache_file="/tmp/vtcode_git_status_$VT_SESSION_ID"
+   cache_file="/tmp/diapason_git_status_$DIAPASON_SESSION_ID"
    if [[ ! -f "$cache_file" ]] || [[ $(find "$cache_file" -mmin +5) ]]; then
      git status --porcelain > "$cache_file"
    fi

@@ -1,13 +1,14 @@
 # Skill Container API Guide
 
-Quick reference for using VT Code's skill container system (Claude API-aligned).
+Quick reference for using Diapason's skill container system (Claude
+API-aligned).
 
 ## Basic Usage
 
 ### Single Skill
 
 ```rust
-use vtcode_core::skills::{SkillContainer, SkillSpec};
+use diapason_core::skills::{SkillContainer, SkillSpec};
 
 // Create container with one skill
 let container = SkillContainer::single(
@@ -37,7 +38,7 @@ executor.execute_container(container, input).await?;
 ### Version Pinning
 
 ```rust
-use vtcode_core::skills::{SkillVersion, SkillSpec};
+use diapason_core::skills::{SkillVersion, SkillSpec};
 
 // Use latest (default)
 let spec = SkillSpec::custom("analysis-skill");
@@ -162,17 +163,17 @@ JSON Output:
 
 ```bash
 # List available skills
-vtcode skills list
+diapason skills list
 
 # Show skill details
-vtcode skills info my-skill
+diapason skills info my-skill
 
 # Create container with multiple skills
-vtcode exec-container --skill xlsx --skill pptx --skill my-skill \
+diapason exec-container --skill xlsx --skill pptx --skill my-skill \
   "analyze data and create presentation"
 
 # Use specific version
-vtcode exec-container --skill my-skill:1759178010641129 \
+diapason exec-container --skill my-skill:1759178010641129 \
   "use v1 of my skill"
 ```
 

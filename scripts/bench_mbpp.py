@@ -55,13 +55,13 @@ def run_cmd(args, timeout=None):
 
 def vt_ask(prompt: str):
     """
-    Call vtcode with the given prompt.
+    Call diapason with the given prompt.
     
-    Note: vtcode 'ask' command doesn't support --no-tools, --temperature, 
-    --max-output-tokens flags. These would need to be configured via vtcode.toml.
+    Note: diapason 'ask' command doesn't support --no-tools, --temperature,
+    --max-output-tokens flags. These would need to be configured via config.toml.
     """
     args = [
-        "vtcode",
+        "diapason",
         "--provider", PROVIDER,
         "--model", MODEL,
         "ask", prompt,

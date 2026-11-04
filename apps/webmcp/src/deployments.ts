@@ -1,24 +1,12 @@
 export interface WebMcpDeployment {
-  readonly id: "chatgpt-site" | "github-pages";
+  readonly id: string;
   readonly label: string;
   readonly url: string;
   readonly origin: string;
 }
 
-export const WEBMCP_DEPLOYMENTS: readonly WebMcpDeployment[] = Object.freeze([
-  {
-    id: "chatgpt-site",
-    label: "ChatGPT Site",
-    url: "https://vtcode.vinhnx.chatgpt.site/",
-    origin: "https://vtcode.vinhnx.chatgpt.site",
-  },
-  {
-    id: "github-pages",
-    label: "GitHub Pages",
-    url: "https://vinhnx.github.io/VTCode/",
-    origin: "https://vinhnx.github.io",
-  },
-]);
+// Hosted deployments are configured by the operator; upstream demos are not Diapason instances.
+export const WEBMCP_DEPLOYMENTS: readonly WebMcpDeployment[] = Object.freeze([]);
 
 const LOCAL_WEBMCP_ORIGIN = "http://localhost:5173";
 

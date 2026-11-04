@@ -2,10 +2,10 @@ use std::path::Path;
 
 use anyhow::Result;
 use anyhow::{Context, anyhow};
-use vtcode_core::config::DEFAULT_TERMINAL_TITLE_ITEMS;
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig};
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
+use diapason_core::config::DEFAULT_TERMINAL_TITLE_ITEMS;
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 
 use crate::agent::runloop::unified::turn::session::slash_commands::{SlashCommandContext, SlashCommandControl};
 
@@ -22,7 +22,7 @@ const TERMINAL_TITLE_ITEM_SPECS: [TerminalTitleItemSpec; 8] = [
     TerminalTitleItemSpec {
         id: "app-name",
         title: "App name",
-        description: "VT Code branding",
+        description: "Diapason branding",
     },
     TerminalTitleItemSpec {
         id: "project",
@@ -102,7 +102,7 @@ pub(crate) async fn handle_start_terminal_title_setup(mut ctx: SlashCommandConte
         ctx.handle.show_list_modal(
             "Terminal title setup".to_string(),
             vec![
-                "Choose the ordered items VT Code should manage in the terminal title.".to_string(),
+                "Choose the ordered items Diapason should manage in the terminal title.".to_string(),
                 format!("Current items: {current_items}"),
                 format!("Preview: {preview}"),
             ],
@@ -131,7 +131,7 @@ pub(crate) async fn handle_start_terminal_title_setup(mut ctx: SlashCommandConte
                 persist_terminal_title_items(&ctx.config.workspace, ctx.vt_cfg, draft_items.clone())?;
                 ctx.handle.set_terminal_title_items(Some(draft_items.clone()));
                 ctx.renderer
-                    .line(MessageStyle::Info, "Saved terminal title configuration to vtcode.toml.")?;
+                    .line(MessageStyle::Info, "Saved terminal title configuration to config.toml.")?;
                 return Ok(SlashCommandControl::Continue);
             }
             TerminalTitleSetupAction::Cancel => {
@@ -196,7 +196,7 @@ fn build_terminal_title_setup_items(draft_items: &[String]) -> Vec<InlineListIte
 
     items.push(config_action_item(
         "Save changes",
-        "Persist ui.terminal_title.items in vtcode.toml",
+        "Persist ui.terminal_title.items in config.toml",
         "Save",
         0,
         "title:save",
@@ -263,7 +263,7 @@ fn apply_terminal_title_action(action: &str, draft_items: &mut Vec<String>) -> R
 
 fn persist_terminal_title_items(
     workspace: &Path,
-    vt_cfg: &mut Option<VTCodeConfig>,
+    vt_cfg: &mut Option<DiapasonConfig>,
     draft_items: Vec<String>,
 ) -> Result<()> {
     let mut manager = ConfigManager::load_from_workspace(workspace)
@@ -323,7 +323,7 @@ fn build_terminal_title_preview(
     let mut seen = std::collections::HashSet::new();
     for item_id in draft_items {
         let candidate = match item_id.as_str() {
-            "app-name" => Some(("VT Code".to_string(), false)),
+            "app-name" => Some(("Diapason".to_string(), false)),
             "project" => Some((project.clone(), false)),
             "spinner" => spinner.as_ref().map(|spinner| (spinner.clone(), true)),
             "status" => Some((status.to_string(), false)),

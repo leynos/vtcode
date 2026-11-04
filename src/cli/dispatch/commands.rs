@@ -1,8 +1,8 @@
 //! Dispatches parsed CLI subcommands to their command-specific handlers.
 use crate::startup::StartupContext;
 use anyhow::Result;
-use vtcode_core::cli::args::{Cli, Commands};
-use vtcode_core::mcp::cli::handle_mcp_command;
+use diapason_core::cli::args::{Cli, Commands};
+use diapason_core::mcp::cli::handle_mcp_command;
 
 use super::run::{
     handle_analyse_command, handle_ask_single_command, handle_chat_command, handle_resume_session_command,
@@ -20,7 +20,7 @@ use crate::cli::{
     analyse, benchmark, check, config, create_project, dependencies, exec, init, init_project, man, notify, revert,
     review, schedule, schema, secret, skills, snapshots, trajectory, update,
 };
-use vtcode_core::core::interfaces::acp::AcpClientAdapter;
+use diapason_core::core::interfaces::acp::AcpClientAdapter;
 
 pub(crate) async fn dispatch_command_with_acp_adapters(
     args: &Cli,
@@ -36,7 +36,7 @@ pub(crate) async fn dispatch_command_with_acp_adapters(
 
     // Register OpenAI-compatible custom providers for non-interactive CLI flows
     // such as `ask`, `review`, and `benchmark` before any provider is resolved.
-    vtcode_core::llm::factory::register_custom_providers(&cfg.custom_providers);
+    diapason_core::llm::factory::register_custom_providers(&cfg.custom_providers);
 
     match command {
         Commands::AgentClientProtocol { target } => {
@@ -44,13 +44,13 @@ pub(crate) async fn dispatch_command_with_acp_adapters(
                 .await?;
         }
         Commands::ToolPolicy { command } => {
-            vtcode_core::cli::tool_policy_commands::handle_tool_policy_command(command).await?;
+            diapason_core::cli::tool_policy_commands::handle_tool_policy_command(command).await?;
         }
         Commands::Mcp { command } => {
             handle_mcp_command(command).await?;
         }
         Commands::A2a { command } => {
-            vtcode_core::cli::a2a::execute_a2a_command(command).await?;
+            diapason_core::cli::a2a::execute_a2a_command(command).await?;
         }
         Commands::Webmcp { command } => {
             webmcp::handle_webmcp_command(startup, command).await?;
@@ -59,10 +59,10 @@ pub(crate) async fn dispatch_command_with_acp_adapters(
             handle_app_server_command(core_cfg, cfg, &listen).await?;
         }
         Commands::Models { command } => {
-            vtcode_core::cli::models_commands::handle_models_command(args, &command).await?;
+            diapason_core::cli::models_commands::handle_models_command(args, &command).await?;
         }
         Commands::Pods { command } => {
-            vtcode_core::cli::pods_commands::handle_pods_command(command).await?;
+            diapason_core::cli::pods_commands::handle_pods_command(command).await?;
         }
         Commands::Continue => {
             // `continue` is normally intercepted in `resolve_action` and turned
@@ -130,7 +130,7 @@ pub(crate) async fn dispatch_command_with_acp_adapters(
         }
         Commands::Review(review) => {
             let files = review.files.iter().map(|path| path.display().to_string()).collect::<Vec<_>>();
-            let spec = vtcode_core::review::build_review_spec(
+            let spec = diapason_core::review::build_review_spec(
                 review.last_diff,
                 review.target.clone(),
                 files,
@@ -213,7 +213,7 @@ pub(crate) async fn dispatch_command_with_acp_adapters(
             dependencies::handle_dependencies_command(command).await?;
         }
         Commands::Secret(args) => {
-            let command = args.command.unwrap_or(vtcode_core::cli::args::SecretSubcommand::List);
+            let command = args.command.unwrap_or(diapason_core::cli::args::SecretSubcommand::List);
             secret::handle_secret_command(
                 command,
                 cfg,
@@ -262,8 +262,8 @@ pub(crate) async fn dispatch_command_with_acp_adapters(
 }
 
 async fn dispatch_schema_command(
-    command: vtcode_core::cli::args::SchemaCommands,
-    config: &vtcode_core::config::VTCodeConfig,
+    command: diapason_core::cli::args::SchemaCommands,
+    config: &diapason_core::config::DiapasonConfig,
 ) -> Result<String> {
     schema::handle_schema_command(command, config).await
 }
@@ -273,13 +273,13 @@ mod tests {
     use super::dispatch_schema_command;
     use crate::startup::StartupContext;
     use clap::Parser;
+    use diapason_commons::env_lock;
+    use diapason_core::cli::args::{AgentClientProtocolTarget, Cli, Commands};
+    use diapason_core::config::ToolProfile;
+    use diapason_core::core::interfaces::acp::{AcpClientAdapter, AcpLaunchParams};
     use std::fs;
     use std::sync::Mutex;
     use tempfile::TempDir;
-    use vtcode_commons::env_lock;
-    use vtcode_core::cli::args::{AgentClientProtocolTarget, Cli, Commands};
-    use vtcode_core::config::ToolProfile;
-    use vtcode_core::core::interfaces::acp::{AcpClientAdapter, AcpLaunchParams};
 
     #[derive(Default)]
     struct RecordingAdapter(Mutex<Vec<bool>>);
@@ -296,7 +296,7 @@ mod tests {
     async fn schema_dispatch_receives_generic_profile_override_from_startup() {
         let env_guard = env_lock::lock();
         let temp = TempDir::new().expect("temp dir");
-        fs::write(temp.path().join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+        fs::write(temp.path().join("config.toml"), "[workspace]\nuse_root_config = true\n")
             .expect("write isolated workspace config");
         env_guard.set_var("OPENAI_API_KEY", "test");
         // The default provider resolved from the built-in config is OpenRouter,
@@ -304,22 +304,22 @@ mod tests {
         // test only exercises the offline schema dispatch path.
         env_guard.set_var("OPENROUTER_API_KEY", "test");
         let args = Cli::parse_from([
-            "vtcode",
+            "diapason",
             "--workspace",
             temp.path().to_str().expect("workspace path"),
             "-c",
-            "tools.profile=advanced_vtcode",
+            "tools.profile=advanced_diapason",
             "schema",
             "tools",
             "--format",
             "ndjson",
             "--name",
-            vtcode_core::config::constants::tools::CODE_SEARCH,
+            diapason_core::config::constants::tools::CODE_SEARCH,
         ]);
         let startup = StartupContext::from_cli_args(&args).await.expect("startup context");
         let command = args.command.clone().expect("schema command");
 
-        assert_eq!(startup.config.tools.profile, ToolProfile::AdvancedVtCode);
+        assert_eq!(startup.config.tools.profile, ToolProfile::AdvancedDiapason);
         let Commands::Schema { command } = command else {
             panic!("expected schema command");
         };
@@ -334,7 +334,7 @@ mod tests {
     fn parsed_acp_commands_dispatch_selected_adapter_with_startup_permission_setting() {
         let env_guard = env_lock::lock();
         let temp = TempDir::new().expect("isolated ACP CLI workspace");
-        fs::write(temp.path().join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+        fs::write(temp.path().join("config.toml"), "[workspace]\nuse_root_config = true\n")
             .expect("write isolated workspace config");
         env_guard.set_var("OPENAI_API_KEY", "test");
         env_guard.set_var("OPENROUTER_API_KEY", "test");
@@ -356,7 +356,7 @@ mod tests {
                     ] {
                         for skip_confirmations in [false, true] {
                             let mut arguments = vec![
-                                "vtcode".to_owned(),
+                                "diapason".to_owned(),
                                 "--workspace".to_owned(),
                                 workspace.display().to_string(),
                                 "-c".to_owned(),

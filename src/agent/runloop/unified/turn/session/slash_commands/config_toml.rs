@@ -2,9 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use diapason_commons::DiapasonPaths;
+use diapason_core::config::loader::ConfigManager;
 use toml::Value as TomlValue;
-use vtcode_commons::VtCodePaths;
-use vtcode_core::config::loader::ConfigManager;
 
 pub(super) fn ensure_child_table<'a>(
     table: &'a mut toml::map::Map<String, TomlValue>,
@@ -49,7 +49,7 @@ pub(super) fn load_private_toml_value(path: &Path) -> Result<TomlValue> {
         Err(error) => return Err(error).with_context(|| format!("Failed to inspect {}", path.display())),
     }
 
-    let content = String::from_utf8(VtCodePaths::read_file_no_follow(path)?)
+    let content = String::from_utf8(DiapasonPaths::read_file_no_follow(path)?)
         .with_context(|| format!("Failed to read {} as UTF-8", path.display()))?;
     if content.trim().is_empty() {
         return Ok(TomlValue::Table(Default::default()));
@@ -91,10 +91,10 @@ pub(super) fn save_private_toml_value(path: &Path, root: &TomlValue) -> Result<(
     }
 
     if let Some(parent) = path.parent() {
-        VtCodePaths::ensure_user_dir(parent).with_context(|| format!("Failed to create {}", parent.display()))?;
+        DiapasonPaths::ensure_user_dir(parent).with_context(|| format!("Failed to create {}", parent.display()))?;
     }
     let content = toml::to_string_pretty(root)?;
-    VtCodePaths::write_private_file_atomic(path, content.as_bytes())
+    DiapasonPaths::write_private_file_atomic(path, content.as_bytes())
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 

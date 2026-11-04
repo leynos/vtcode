@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use anyhow::Result;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::skills::CommandSkillSpec;
-use vtcode_core::ui::theme;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::skills::CommandSkillSpec;
+use diapason_core::ui::theme;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::flow::{
     handle_auth_command, handle_continue_command, handle_fork_command, handle_login_command, handle_logout_command,
@@ -30,7 +30,7 @@ use super::rendering::{render_help, render_theme_list};
 fn handle_donate_command(renderer: &mut AnsiRenderer) -> Result<SlashCommandOutcome> {
     renderer.line(
         MessageStyle::Info,
-        "I build VT Code in my spare time. It supports open-weight models and will stay open source, no matter what. If it has saved you some time, you can buy me a coffee:",
+        "I build Diapason in my spare time. It supports open-weight models and will stay open source, no matter what. If it has saved you some time, you can buy me a coffee:",
     )?;
     Ok(SlashCommandOutcome::OpenDonateLinks)
 }
@@ -750,7 +750,7 @@ pub(in crate::agent::runloop::slash_commands) fn parse_update_args(
             "force" | "--force" => force = true,
             _ => {
                 return Err(
-                    "Usage: /update [check|install] [--force]\nExamples: /update, /update check, /update install --force\n\nTip: You can also run `vtcode update` from the CLI.".to_string(),
+                    "Usage: /update [check|install] [--force]\nExamples: /update, /update check, /update install --force\n\nTip: You can also run `diapason update` from the CLI.".to_string(),
                 );
             }
         }

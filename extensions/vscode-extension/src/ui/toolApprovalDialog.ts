@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { VtcodeToolCall } from "../vtcodeBackend";
+import { DiapasonToolCall } from "../diapasonBackend";
 
 export interface ToolApprovalOptions {
     readonly showPreview: boolean;
@@ -28,7 +28,7 @@ export class ToolApprovalDialog {
      * Request approval for a tool execution with enhanced UI
      */
     public async requestApproval(
-        toolCall: VtcodeToolCall,
+        toolCall: DiapasonToolCall,
         options?: Partial<ToolApprovalOptions>
     ): Promise<ToolApprovalResult> {
         const opts = { ...this.defaultOptions, ...options };
@@ -53,7 +53,7 @@ export class ToolApprovalDialog {
 
         // Show dialog with enhanced information
         const result = await vscode.window.showInformationMessage(
-            `VT Code wants to run: ${toolName}`,
+            `Diapason wants to run: ${toolName}`,
             {
                 modal: true,
                 detail: this.formatDialogDetails(details, preview, riskLevel),

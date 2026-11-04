@@ -1,8 +1,8 @@
 # GPU Pod Manager
 
-VT Code includes a `pods` command family for managing remote GPU-backed model
+Diapason includes a `pods` command family for managing remote GPU-backed model
 pods over SSH. It is a backend + CLI feature in v1, with no TUI integration and
-no `vtcode.toml` section.
+no `config.toml` section.
 
 ## Overview
 
@@ -14,32 +14,32 @@ The pod manager keeps a small amount of state under the user state directory's
 - `catalog.json` stores the model/profile catalog used by `pods known-models`
   and `pods start`.
 
-The current implementation is SSH-only. VT Code uploads a run script and a
+The current implementation is SSH-only. Diapason uploads a run script and a
 wrapper script to the remote host, starts the model in a detached session, and
 tracks the process locally.
 
 ## Commands
 
 ```bash
-vtcode pods start --name llama --model meta-llama/Llama-3.1-8B-Instruct \
+diapason pods start --name llama --model meta-llama/Llama-3.1-8B-Instruct \
   --ssh "ssh root@gpu.example.com" \
   --gpu 0:A100 --gpu 1:A100 \
   --gpus 2 \
   --memory 90 \
   --context 32k
 
-vtcode pods list
-vtcode pods logs --name llama
-vtcode pods stop --name llama
-vtcode pods stop-all
-vtcode pods known-models
+diapason pods list
+diapason pods logs --name llama
+diapason pods stop --name llama
+diapason pods stop-all
+diapason pods known-models
 ```
 
 ### `start`
 
 Launches a model on the active pod.
 
-- `--name` is the local label VT Code stores in `state.json`.
+- `--name` is the local label Diapason stores in `state.json`.
 - `--model` is the remote model identifier passed to the launch script.
 - `--ssh` provides the SSH target used for all remote operations.
 - `--gpu` entries define the visible GPU inventory as `ID:NAME`.
@@ -85,5 +85,5 @@ persisted state.
 Run the pod-focused tests with:
 
 ```bash
-cargo test -p vtcode-core pods -- --nocapture
+cargo test -p diapason-core pods -- --nocapture
 ```

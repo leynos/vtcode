@@ -1,5 +1,5 @@
 /**
- * MCP Tool Integration for VT Code Chat Extension
+ * MCP Tool Integration for Diapason Chat Extension
  *
  * Provides Model Context Protocol (MCP) tool support for enhanced
  * chat capabilities including external tool invocations.
@@ -46,11 +46,11 @@ export class McpToolManager {
     }
 
     /**
-     * Load MCP providers from vtcode.toml configuration
+     * Load MCP providers from config.toml configuration
      */
     async loadProviders(workspaceRoot: string): Promise<void> {
         try {
-            const configUri = vscode.Uri.file(`${workspaceRoot}/vtcode.toml`);
+            const configUri = vscode.Uri.file(`${workspaceRoot}/config.toml`);
             const configContent = await vscode.workspace.fs.readFile(configUri);
             const config = this.parseToml(
                 Buffer.from(configContent).toString("utf8")

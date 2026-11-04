@@ -1,11 +1,11 @@
 # OAuth Authentication Guide
 
-VT Code supports secure OAuth 2.0 authentication for multiple AI providers,
+Diapason supports secure OAuth 2.0 authentication for multiple AI providers,
 enabling seamless account-based access without managing API keys directly.
 
 ## Overview
 
-OAuth integration in VT Code provides:
+OAuth integration in Diapason provides:
 
 - **PKCE-Secured Flows**: RFC 7636 Proof Key for Code Exchange for client-only
   applications
@@ -24,8 +24,8 @@ an OAuth session or one API-key profile is never reused as another profile. For
 example, MiMo pay-as-you-go and Token Plan keys can be stored separately:
 
 ```bash
-vtcode secret add mimo --key-name MIMO_API_KEY
-vtcode secret add mimo --key-name MIMO_TOKEN_PLAN_KEY
+diapason secret add mimo --key-name MIMO_API_KEY
+diapason secret add mimo --key-name MIMO_TOKEN_PLAN_KEY
 ```
 
 Environment variables and workspace `.env` values take precedence over secure
@@ -36,7 +36,7 @@ provider key is requested; non-default identities must be named explicitly.
 
 ### GitHub Copilot Managed Auth
 
-VT Code uses the official `copilot` CLI for GitHub Copilot authentication. No
+Diapason uses the official `copilot` CLI for GitHub Copilot authentication. No
 separate OAuth flow is implemented — instead, authentication is delegated to
 the official `copilot` binary.
 
@@ -49,17 +49,17 @@ the official `copilot` binary.
 # Authenticate via the official copilot CLI
 copilot login
 
-# Or use VT Code's TUI
-vtcode
+# Or use Diapason's TUI
+diapason
 # Then use: /login copilot
 ```
 
 **How it Works**:
 
-- VT Code shells out to `copilot` binary for device-flow authentication
+- Diapason shells out to `copilot` binary for device-flow authentication
 - `copilot login` launches browser-based device flow (GitHub handles auth)
 - Credentials stored securely by the `copilot` CLI (platform-native keyring)
-- VT Code probes auth status and launches ACP session without managing tokens
+- Diapason probes auth status and launches ACP session without managing tokens
 
 #### Requirements
 
@@ -71,7 +71,7 @@ vtcode
 
 #### Configuration
 
-In `vtcode.toml`:
+In `config.toml`:
 
 ```toml
 [auth.copilot]
@@ -82,19 +82,19 @@ command = "/path/to/copilot"
 Or via environment variable:
 
 ```bash
-export VTCODE_COPILOT_COMMAND="/path/to/copilot"
+export DIAPASON_COPILOT_COMMAND="/path/to/copilot"
 ```
 
 #### Device Flow Authentication
 
 When you run `/login copilot`:
 
-1. VT Code invokes `copilot login`
+1. Diapason invokes `copilot login`
 2. `copilot` outputs a user code (e.g., `ABCD-EFGH`)
 3. Browser opens to `github.com/login/device`
 4. You enter the code and authorize
 5. `copilot` stores credentials in OS keyring
-6. VT Code detects auth status and activates Copilot provider
+6. Diapason detects auth status and activates Copilot provider
 
 #### Token Management
 
@@ -102,10 +102,10 @@ Tokens are managed entirely by the `copilot` CLI:
 
 ```bash
 # Check authentication status
-vtcode auth status copilot
+diapason auth status copilot
 
 # Logout
-vtcode logout copilot
+diapason logout copilot
 # Or: /logout copilot
 ```
 
@@ -122,34 +122,34 @@ brew install gh-copilot
 # https://github.com/github/copilot-cli/releases
 ```
 
-**VT Code doesn't detect auth**:
+**Diapason doesn't detect auth**:
 
 ```bash
 # Manually authenticate via copilot CLI first
 copilot login
 
-# Then check VT Code's detection
-vtcode auth status copilot
+# Then check Diapason's detection
+diapason auth status copilot
 ```
 
 **`gh` not found (optional)**:
 
 - This is only a fallback; it's not required
 - `copilot` works independently for auth
-- VT Code only uses `gh` to detect existing auth sessions
+- Diapason only uses `gh` to detect existing auth sessions
 
 ### OpenAI ChatGPT OAuth
 
-Authenticate with your OpenAI account to use ChatGPT models. VT Code implements
-an OAuth 2.0 PKCE authorization-code flow for ChatGPT subscription auth — **the
-Codex CLI executable is NOT required** at runtime.
+Authenticate with your OpenAI account to use ChatGPT models. Diapason
+implements an OAuth 2.0 PKCE authorization-code flow for ChatGPT subscription
+auth — **the Codex CLI executable is NOT required** at runtime.
 
 #### OAuth Client Identity (Unofficial Compatibility Flow)
 
-By default, VT Code reuses the **Codex CLI's public-client identifier** (client
-ID `app_EMoamEEZ73f0CkXaXp7hrann`, originator `codex_cli_rs`). This is a public
-OAuth client with no client secret — the ID is not a secret by OAuth 2.1
-design. This is an **unofficial compatibility mechanism**: OpenAI has not
+By default, Diapason reuses the **Codex CLI's public-client identifier**
+(client ID `app_EMoamEEZ73f0CkXaXp7hrann`, originator `codex_cli_rs`). This is
+a public OAuth client with no client secret — the ID is not a secret by OAuth
+2.1 design. This is an **unofficial compatibility mechanism**: OpenAI has not
 documented or guaranteed that third-party tools may reuse this client
 identifier, and it may stop working if OpenAI's client policy changes. Users
 should verify applicable OpenAI terms of service.
@@ -158,43 +158,44 @@ If your organization has its own OpenAI-issued OAuth client, override both
 values:
 
 ```bash
-export VTCODE_OPENAI_OAUTH_CLIENT_ID="your-client-id"
-export VTCODE_OPENAI_OAUTH_ORIGINATOR="your-originator"
+export DIAPASON_OPENAI_OAUTH_CLIENT_ID="your-client-id"
+export DIAPASON_OPENAI_OAUTH_ORIGINATOR="your-originator"
 ```
 
 > **Note**: The custom client must accept the hard-coded localhost redirect URI,
-> scopes, and Codex-specific authorization parameters VT Code sends. These
+> scopes, and Codex-specific authorization parameters Diapason sends. These
 > variables do not make the flow a generic OAuth client implementation.
-> The override must remain configured for the session lifetime — VT Code rereads
+> The override must remain configured for the session lifetime — Diapason
+> rereads
 > the environment at refresh time.
 
 #### Setup
 
 ```bash
 # Option 1: In-process PKCE OAuth (full auto-refresh, no Codex CLI required)
-vtcode
+diapason
 # Then use /login openai in the TUI, or:
-vtcode login openai
+diapason login openai
 
 # Option 2: Validate/reuse Codex CLI auth.json fallback (if you already ran `codex login`)
-vtcode login openai --from-codex
+diapason login openai --from-codex
 ```
 
 **Authentication Methods**:
 
-- In-process PKCE OAuth: VT Code's browser-based login with full auto-refresh
+- In-process PKCE OAuth: Diapason's browser-based login with full auto-refresh
   (no Codex CLI required)
 - Codex auth.json fallback: Automatically detected at runtime if
   `~/.codex/auth.json` exists
-- API Key: Direct API key entry via `vtcode secret add openai`
+- API Key: Direct API key entry via `diapason secret add openai`
 - Manual Callback: Paste authorization code manually if browser auto-open fails
 
 #### How ChatGPT Auth Works Without Codex CLI
 
-VT Code implements an OAuth 2.0 PKCE authorization-code flow for OpenAI
+Diapason implements an OAuth 2.0 PKCE authorization-code flow for OpenAI
 ChatGPT, using the Codex CLI's **public-client identifier** by default. You do
 **not** need the Codex CLI or app installed. When you run `/login openai` or
-`vtcode login openai`, VT Code:
+`diapason login openai`, Diapason:
 
 1. Generates a PKCE challenge
 2. Opens your browser to OpenAI's authorization page
@@ -203,35 +204,35 @@ ChatGPT, using the Codex CLI's **public-client identifier** by default. You do
 5. Stores them securely (keyring or encrypted file)
 6. Refreshes them automatically when they expire
 
-> **⚠️ Unofficial compatibility mechanism:** By default, VT Code reuses the
+> **⚠️ Unofficial compatibility mechanism:** By default, Diapason reuses the
 > Codex
 > CLI's public PKCE client ID (`app_EMoamEEZ73f0CkXaXp7hrann`) and originator
 > (`codex_cli_rs`). The client ID is **not a secret** (PKCE public clients have
 > no client secret by OAuth 2.1 design), but reusing it is an **unofficial,
-> unguaranteed** compatibility approach — it is not a VTCode-owned OAuth
+> unguaranteed** compatibility approach — it is not a Diapason-owned OAuth
 > registration. OpenAI has not documented or guaranteed third-party reuse of
 > this client identity, and a public identifier is **not authorization** to
 > reuse another tool's OAuth registration. OpenAI may change or revoke it at
 > any time. Organizations with their own OpenAI-issued client pair should set
-> `VTCODE_OPENAI_OAUTH_CLIENT_ID` and `VTCODE_OPENAI_OAUTH_ORIGINATOR` (both
+> `DIAPASON_OPENAI_OAUTH_CLIENT_ID` and `DIAPASON_OPENAI_OAUTH_ORIGINATOR` (both
 > must
 > be set together; one-sided overrides are rejected as a configuration error).
 
 If you happen to have the Codex CLI installed and authenticated
-(`codex login`), VT Code automatically detects `~/.codex/auth.json` and uses it
-as a fallback when no VT Code-managed session is stored. This means:
+(`codex login`), Diapason automatically detects `~/.codex/auth.json` and uses
+it as a fallback when no Diapason-managed session is stored. This means:
 
-- **Without Codex CLI**: VT Code's in-process PKCE flow handles everything — no
+- **Without Codex CLI**: Diapason's in-process PKCE flow handles everything — no
   dependency on the Codex executable.
-- **With Codex CLI**: VT Code additionally reads Codex's auth.json as a
-  fallback, so you don't need to authenticate twice. VT Code does **not**
+- **With Codex CLI**: Diapason additionally reads Codex's auth.json as a
+  fallback, so you don't need to authenticate twice. Diapason does **not**
   rotate Codex-owned refresh tokens; it rereads Codex's auth.json file to stay
   in sync with Codex's own refresh cycle. Run `codex logout` to clear the
   fallback.
 
 #### Configuration
 
-In `vtcode.toml`:
+In `config.toml`:
 
 ```toml
 [auth.openai]
@@ -266,37 +267,37 @@ When keyring is selected:
 - Encryption: AES-256-GCM with machine-derived key and per-file salt
 - Existing `openai_chatgpt.json` files are migrated automatically when loaded
 
-Set `VTCODE_CONFIG` to select an absolute canonical config root for a managed
-deployment. New credentials are written there; legacy credential locations are
-still read for compatibility when startup migration is bypassed. Do not use
-`VTCODE_HOME` as a new credential destination: it identifies the preserved
-legacy source tree.
+The canonical credential directory is below the active config root,
+`$XDG_CONFIG_HOME/diapason/auth/` by default on Linux and BSD. Standard XDG
+variables select user directory roots; `DIAPASON_CONFIG_PATH` selects an
+explicit configuration file for the current session, not a credential root.
+Diapason does not read legacy `.vtcode/` credentials.
 
 #### Codex auth.json Fallback
 
-When VT Code has no stored ChatGPT session of its own, it automatically checks
+When Diapason has no stored ChatGPT session of its own, it automatically checks
 for Codex's `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`). If valid tokens
-are found, VT Code uses them at runtime with a special `CodexAuthJsonRefresher`
-that re-reads the file when tokens need refreshing. VT Code does not rotate
-Codex-owned refresh tokens itself — this avoids racing Codex's own refresh
-cycle or invalidating its stored credentials. Instead, it rereads `auth.json`
-to pick up tokens Codex has refreshed.
+are found, Diapason uses them at runtime with a special
+`CodexAuthJsonRefresher` that re-reads the file when tokens need refreshing.
+Diapason does not rotate Codex-owned refresh tokens itself — this avoids racing
+Codex's own refresh cycle or invalidating its stored credentials. Instead, it
+rereads `auth.json` to pick up tokens Codex has refreshed.
 
 ```bash
-# Validate Codex credentials are available (does not persist a VT Code session)
-vtcode login openai --from-codex
+# Validate Codex credentials are available (does not persist a Diapason session)
+diapason login openai --from-codex
 
 # Check auth status (shows Codex fallback if active)
-vtcode auth status openai
+diapason auth status openai
 
-# Logout — clears VT Code session; Codex fallback remains until `codex logout`
-vtcode logout openai
+# Logout — clears Diapason session; Codex fallback remains until `codex logout`
+diapason logout openai
 ```
 
-**Key difference from VT Code-managed OAuth**: Codex-sourced tokens are managed
-by the Codex CLI. When they expire, run `codex login` to refresh them. A VT
-Code-managed session (`vtcode login openai`) refreshes tokens in-process
-without requiring the Codex executable at runtime.
+**Key difference from Diapason-managed OAuth**: Codex-sourced tokens are
+managed by the Codex CLI. When they expire, run `codex login` to refresh them.
+A Diapason-managed session (`diapason login openai`) refreshes tokens
+in-process without requiring the Codex executable at runtime.
 
 #### Troubleshooting
 
@@ -314,8 +315,8 @@ credentials_store_mode = "file"
 **Clear OAuth Session**:
 
 ```bash
-# Remove stored VT Code tokens
-vtcode logout openai
+# Remove stored Diapason tokens
+diapason logout openai
 
 # Also remove Codex fallback if present
 codex logout
@@ -328,8 +329,8 @@ Authenticate with OpenRouter for access to multiple model providers.
 #### Setup
 
 ```bash
-# Launch VT Code with OpenRouter OAuth
-vtcode
+# Launch Diapason with OpenRouter OAuth
+diapason
 
 # Enable OAuth in the provider selection flow
 ```
@@ -342,7 +343,7 @@ vtcode
 
 #### Configuration
 
-In `vtcode.toml`:
+In `config.toml`:
 
 ```toml
 [llm.openrouter]
@@ -422,7 +423,7 @@ Implements [RFC 7636](https://tools.ietf.org/html/rfc7636) requirements:
 ### Interactive Mode
 
 ```bash
-vtcode
+diapason
 ```
 
 Follow the provider selection flow; OAuth authentication triggers automatically
@@ -432,19 +433,19 @@ when enabled.
 
 ```bash
 # View current auth status
-vtcode auth status <provider>
+diapason auth status <provider>
 
 # Clear authentication
-vtcode auth clear <provider>
+diapason auth clear <provider>
 
 # Re-authenticate
-vtcode auth refresh <provider>
+diapason auth refresh <provider>
 ```
 
 **Supported providers**: `copilot`, `openai`, `openrouter`
 
 **GitHub Copilot note**: Tokens are managed by the `copilot` CLI and stored in
-the OS keyring. VT Code probes status but does not store credentials directly.
+the OS keyring. Diapason probes status but does not store credentials directly.
 
 ## Token Lifecycle
 
@@ -467,7 +468,7 @@ the OS keyring. VT Code probes status but does not store credentials directly.
 ### Expiration
 
 - OpenAI: Token expiry follows the `expires_in` value from the token endpoint
-  or the `exp` claim in the JWT. VT Code refreshes proactively every 8 minutes
+  or the `exp` claim in the JWT. Diapason refreshes proactively every 8 minutes
   and treats tokens as expired 60 seconds before their actual expiry.
 - OpenRouter: Provider-dependent
 
@@ -497,8 +498,8 @@ credentials_store_mode = "file"
 4. Try clearing session and re-authenticating:
 
    ```bash
-   vtcode auth clear openai
-   vtcode
+   diapason auth clear openai
+   diapason
    ```
 
 ### "Browser didn't open"
@@ -507,7 +508,7 @@ credentials_store_mode = "file"
 
 1. Copy the authorization URL
 2. Open manually in browser
-3. Paste the authorization code back into VT Code
+3. Paste the authorization code back into Diapason
 
 ## Environment Variables
 
@@ -515,8 +516,8 @@ Control OAuth behavior via env vars:
 
 ```bash
 # OpenAI OAuth client identity (override the default Codex CLI public client)
-export VTCODE_OPENAI_OAUTH_CLIENT_ID="your-client-id"
-export VTCODE_OPENAI_OAUTH_ORIGINATOR="your-originator"
+export DIAPASON_OPENAI_OAUTH_CLIENT_ID="your-client-id"
+export DIAPASON_OPENAI_OAUTH_ORIGINATOR="your-originator"
 
 # OpenAI auth preference
 export OPENAI_PREFERRED_AUTH_METHOD="oauth"
@@ -526,7 +527,7 @@ export OPENROUTER_USE_OAUTH="true"
 export OPENROUTER_CALLBACK_PORT="8484"
 
 # Token storage
-export VTCODE_AUTH_STORE_MODE="keyring"  # or "file"
+export DIAPASON_AUTH_STORE_MODE="keyring"  # or "file"
 ```
 
 ## Development
@@ -535,7 +536,7 @@ export VTCODE_AUTH_STORE_MODE="keyring"  # or "file"
 
 ```rust
 // Example: Testing OpenRouter OAuth
-use vtcode_auth::{
+use diapason_auth::{
     get_auth_url,
     exchange_code_for_token,
     AuthCredentialsStoreMode,
@@ -561,7 +562,7 @@ let token = exchange_code_for_token(
 4. **Storage**: Use `CredentialStorage` for secure storage
 5. **Configuration**: Add provider config to `AuthConfig`
 
-See `crates/codegen/vtcode-auth/src/openrouter_oauth.rs` for a reference
+See `crates/codegen/diapason-auth/src/openrouter_oauth.rs` for a reference
 implementation.
 
 ## See Also

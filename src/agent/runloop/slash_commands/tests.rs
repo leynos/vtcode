@@ -3,11 +3,11 @@ use super::{
     AgentManagerAction, CompactConversationCommand, SecretCommandAction, SessionLogExportFormat, SlashCommandOutcome,
     SubprocessManagerAction, handle_slash_command,
 };
-use vtcode_core::compaction::ManualCompactionOptions;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::skills::command_skill_specs;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_core::compaction::ManualCompactionOptions;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::skills::command_skill_specs;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::InlineHandle;
 
 fn renderer_for_tests() -> AnsiRenderer {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
@@ -692,14 +692,17 @@ async fn compact_commands_parse_to_automatic_and_direct_outcomes() {
         } if options.instructions.as_deref() == Some("keep decisions")
             && options.max_output_tokens == Some(128)
             && options.reasoning_effort == Some(ReasoningEffortLevel::Minimal)
-            && options.verbosity == Some(vtcode_core::config::types::VerbosityLevel::High)
+            && options.verbosity == Some(diapason_core::config::types::VerbosityLevel::High)
     ));
 }
 
 #[tokio::test]
 async fn prompt_template_invocation_replaces_editor_input() {
     let workspace = tempfile::TempDir::new().expect("workspace");
-    let template_dir = workspace.path().join(".vtcode/prompts/templates");
+    let template_dir = workspace
+        .path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("prompts/templates");
     std::fs::create_dir_all(&template_dir).expect("template dir");
     std::fs::write(
         template_dir.join("review-template.md"),
@@ -722,7 +725,10 @@ async fn prompt_template_invocation_replaces_editor_input() {
 #[tokio::test]
 async fn prompt_template_invocation_preserves_quoted_arguments() {
     let workspace = tempfile::TempDir::new().expect("workspace");
-    let template_dir = workspace.path().join(".vtcode/prompts/templates");
+    let template_dir = workspace
+        .path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("prompts/templates");
     std::fs::create_dir_all(&template_dir).expect("template dir");
     std::fs::write(template_dir.join("rename-template.md"), "---\ndescription: Rename template\n---\nRename $1 to $2")
         .expect("template");
@@ -743,7 +749,10 @@ async fn prompt_template_invocation_preserves_quoted_arguments() {
 #[tokio::test]
 async fn built_in_slash_command_beats_same_named_template() {
     let workspace = tempfile::TempDir::new().expect("workspace");
-    let template_dir = workspace.path().join(".vtcode/prompts/templates");
+    let template_dir = workspace
+        .path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("prompts/templates");
     std::fs::create_dir_all(&template_dir).expect("template dir");
     std::fs::write(template_dir.join("help.md"), "---\ndescription: shadow help\n---\nThis should not run.")
         .expect("template");

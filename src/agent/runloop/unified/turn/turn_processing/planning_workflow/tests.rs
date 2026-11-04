@@ -2,7 +2,7 @@ use super::interview_context::line_has_open_decision_marker;
 use super::*;
 use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
 use crate::agent::runloop::unified::state::SessionStats;
-use vtcode_core::config::constants::tools;
+use diapason_core::config::constants::tools;
 
 fn tool_calls_result(tool_calls: Vec<uni::ToolCall>, assistant_text: impl Into<String>) -> TurnProcessingResult {
     TurnProcessingResult::ToolCalls {
@@ -115,7 +115,7 @@ fn planning_workflow_reminder_stays_fail_closed_before_persistence() {
     assert!(PLANNING_WORKFLOW_REMINDER.contains("Emit exactly one final `<proposed_plan>` block"));
     assert!(
         PLANNING_WORKFLOW_REMINDER
-            .contains("Do not use shell commands or file-writing tools to create or modify `.vtcode/plans/`")
+            .contains("Do not use shell commands or file-writing tools to create or modify `.diapason/plans/`")
     );
     assert!(PLANNING_WORKFLOW_REMINDER.contains("runtime owns plan/tracker persistence and validation"));
     assert!(PLANNING_WORKFLOW_REMINDER.contains("approval controls only after successful persistence"));

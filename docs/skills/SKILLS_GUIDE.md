@@ -1,11 +1,11 @@
 # Agent Skills Guide
 
-VT Code supports repository, user, admin, and bundled system skills using the
+Diapason supports repository, user, admin, and bundled system skills using the
 open Agent Skills `SKILL.md` format.
 
 ## Discovery
 
-VT Code discovers skills in this order:
+Diapason discovers skills in this order:
 
 1. Nearest ancestor `.agents/skills` from the current working directory up to
    the git repository root
@@ -16,7 +16,7 @@ VT Code discovers skills in this order:
 If multiple skills share the same name, the nearest repository skill wins, then
 user, then admin, then system.
 
-VT Code also honors disabled entries from `~/.codex/config.toml`:
+Diapason also honors disabled entries from `~/.codex/config.toml`:
 
 ```toml
 [[skills.config]]
@@ -40,7 +40,7 @@ my-skill/
 
 ## SKILL.md
 
-VT Code accepts the core Agent Skills frontmatter fields plus the client-side
+Diapason accepts the core Agent Skills frontmatter fields plus the client-side
 `disable-model-invocation` flag used to hide a skill from the model-facing
 startup catalog while keeping it available for explicit harness activation:
 
@@ -69,11 +69,11 @@ Optional fields:
 - `allowed-tools`
 - `disable-model-invocation`
 
-Legacy VT Code frontmatter such as `version`, `author`, `when-to-use`,
+Legacy Diapason frontmatter such as `version`, `author`, `when-to-use`,
 `when-not-to-use`, `model`, `mode`, `context`, `agent`, `network`,
 `permissions`, container flags, and similar extensions is rejected.
 
-VT Code does not support `agents/openai.yaml`. That file is Codex-specific and
+Diapason does not support `agents/openai.yaml`. That file is Codex-specific and
 ignored by design.
 
 ## Prompting Behavior
@@ -88,36 +88,36 @@ ignored by design.
 List skills:
 
 ```bash
-vtcode skills list
+diapason skills list
 ```
 
 Inspect one skill:
 
 ```bash
-vtcode skills info my-skill
+diapason skills info my-skill
 ```
 
 Create a new skill scaffold:
 
 ```bash
-vtcode skills create my-skill
+diapason skills create my-skill
 ```
 
 Validate a skill:
 
 ```bash
-vtcode skills validate ./.agents/skills/my-skill
+diapason skills validate ./.agents/skills/my-skill
 ```
 
 Show configured paths:
 
 ```bash
-vtcode skills config
+diapason skills config
 ```
 
 ## Slash Command Skills
 
-VT Code also exposes the interactive slash-command surface as skills.
+Diapason also exposes the interactive slash-command surface as skills.
 
 - Canonical skill names use the `cmd-<slash-name>` form, for example
   `cmd-status` or `cmd-review`.
@@ -133,8 +133,8 @@ VT Code also exposes the interactive slash-command surface as skills.
 
 ## Notes
 
-- `vtcode skills create` generates a spec-first `SKILL.md` scaffold with
+- `diapason skills create` generates a spec-first `SKILL.md` scaffold with
   optional commented guidance for `disable-model-invocation`.
-- User-facing skill metadata in VT Code is limited to the strict `SKILL.md`
+- User-facing skill metadata in Diapason is limited to the strict `SKILL.md`
   fields above.
 - Bundled system skills are surfaced as `system` scope.

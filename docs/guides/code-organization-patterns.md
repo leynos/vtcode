@@ -1,10 +1,10 @@
-# VT Code Code Organization Patterns
+# Diapason Code Organization Patterns
 
 This guide adapts the Rust code organization patterns from Codex DeepWiki
-section `8.3` for VT Code's workspace and runtime architecture.
+section `8.3` for Diapason's workspace and runtime architecture.
 
 It is intentionally pragmatic: use these rules when adding or changing code in
-`vtcode-core/` and `src/`.
+`diapason-core/` and `src/`.
 
 ## Scope Rules
 
@@ -16,8 +16,8 @@ Session-scoped state lives across many turns and should only store stable data:
 - Managers, registries, and shared clients
 - Long-lived caches with clear invalidation
 
-In VT Code, this maps to components like shared runloop/session configuration
-and global managers in `vtcode-core`.
+In Diapason, this maps to components like shared runloop/session configuration
+and global managers in `diapason-core`.
 
 ### Turn-Scoped State
 
@@ -33,7 +33,7 @@ a per-turn struct and pass it through execution functions.
 ## Shared Ownership Rules
 
 Prefer plain ownership and borrowing first. Shared ownership is an opt-in
-runtime cost, not the default shape for VT Code state.
+runtime cost, not the default shape for Diapason state.
 
 Use `Rc<T>` only for single-threaded graphs, callbacks, or other cases where
 multiple owners genuinely need to keep a value alive.
@@ -67,8 +67,8 @@ type system and in field comments, because the compiler cannot check them:
   small safe wrapper with a single `// SAFETY:` note, so the audit surface is
   one place rather than scattered call sites.
 
-`crates/codegen/vtcode-skills/src/native_plugin.rs` (`NativePlugin`,
-`get_plugin_symbol`) and `crates/codegen/vtcode-bash-runner/src/process.rs`
+`crates/codegen/diapason-skills/src/native_plugin.rs` (`NativePlugin`,
+`get_plugin_symbol`) and `crates/codegen/diapason-bash-runner/src/process.rs`
 (`ProcessHandle`, `PtyHandles`) are the reference implementations of these
 rules.
 
@@ -112,7 +112,7 @@ When editing large modules:
 Rule of thumb: if understanding a change requires unrelated sections, split the
 module.
 
-## Applied in VT Code
+## Applied in Diapason
 
 As part of adopting these patterns, the tool execution pipeline now explicitly
 owns and cleans up its background processing task:
@@ -122,4 +122,4 @@ owns and cleans up its background processing task:
 - Awaits task completion during shutdown
 - Aborts lingering task on drop
 
-See: `crates/codegen/vtcode-core/src/tools/exec_session.rs`.
+See: `crates/codegen/diapason-core/src/tools/exec_session.rs`.

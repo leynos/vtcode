@@ -1,8 +1,8 @@
 # Process Hardening
 
-VT Code implements comprehensive process hardening based on the OpenAI Codex
+Diapason implements comprehensive process hardening based on the OpenAI Codex
 security model. This document outlines the hardening measures applied to
-protect the VT Code process from various attack vectors.
+protect the Diapason process from various attack vectors.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ fn init() {
 
 3. **LD_* environment variable removal**: Strips `LD_PRELOAD` and similar
    dynamic linker variables that could subvert library loading.
-   - VT Code is MUSL-linked in release builds, so these are ignored anyway, but
+   - Diapason is MUSL-linked in release builds, so these are ignored anyway, but
      removing them provides additional defense.
 
 ### macOS
@@ -72,7 +72,7 @@ decoded as UTF-8. This is critical for robustness:
 
 - `vars_os()` returns `OsString` which can represent invalid UTF-8 sequences
 - `vars()` panics if an environment variable contains non-UTF-8 bytes
-- This ensures VT Code doesn't crash due to malformed environment variables
+- This ensures Diapason doesn't crash due to malformed environment variables
 
 ### Exit Codes
 
@@ -98,7 +98,7 @@ The `process_hardening` module includes unit tests for:
 Run the tests with:
 
 ```bash
-cargo test --package vtcode process_hardening
+cargo test --package diapason process_hardening
 ```
 
 ## Security Philosophy

@@ -2,7 +2,7 @@
 
 LM Studio exposes both a native REST API and OpenAI-compatible HTTP server so
 you can run local or LAN-hosted models without changing your existing API
-integration. VT Code uses the OpenAI-compatible endpoints for inference, which
+integration. Diapason uses the OpenAI-compatible endpoints for inference, which
 means streaming, tool calling, structured outputs work seamlessly while keeping
 inference on your own hardware.
 
@@ -56,9 +56,9 @@ inference on your own hardware.
 - `LMSTUDIO_API_KEY` (optional): Set when you enable authentication in the LM
   Studio server. Leave unset for local testing without authentication.
 
-### VT Code Configuration
+### Diapason Configuration
 
-Configure `vtcode.toml` in your workspace to point at LM Studio:
+Configure `config.toml` in your workspace to point at LM Studio:
 
 ```toml
 [agent]
@@ -77,7 +77,7 @@ run_pty_cmd = "prompt"
 You can also override the provider and model via CLI:
 
 ```bash
-vtcode --provider lmstudio --model lmstudio-community/qwen2.5-7b-instruct
+diapason --provider lmstudio --model lmstudio-community/qwen2.5-7b-instruct
 ```
 
 ## API Endpoints
@@ -86,7 +86,7 @@ LM Studio provides multiple API surfaces:
 
 ### OpenAI-Compatible Endpoints (`/v1/*`)
 
-Used by VT Code for maximum compatibility:
+Used by Diapason for maximum compatibility:
 
 - **`POST /v1/chat/completions`**: Standard OpenAI chat completions (streaming,
   tool calling, structured output)
@@ -106,7 +106,7 @@ Enhanced API with richer metadata:
 - **`POST /api/v0/models/load`**: Load a model into memory
 - **`POST /api/v0/models/unload`**: Unload a model from memory
 
-VT Code currently uses the OpenAI-compatible endpoints. Set
+Diapason currently uses the OpenAI-compatible endpoints. Set
 `LMSTUDIO_USE_NATIVE_API=true` to use the native REST API for model listing.
 
 ## Using Custom LM Studio Models
@@ -117,7 +117,7 @@ other model ID exposed by the LM Studio server.
 
 When you sideload a GGUF or add a local GGML/ONNX pipeline through LM Studio,
 make sure it appears under the server's `GET /v1/models` response. Once listed,
-VT Code can target it by passing the exact model ID via CLI or configuration.
+Diapason can target it by passing the exact model ID via CLI or configuration.
 
 ## Tool Calling, Structured Output, and Streaming
 
@@ -134,7 +134,7 @@ capabilities:
 | Enhanced stats         | x                      | v                          |
 | Model info in response | x                      | v                          |
 
-VT Code forwards tool definitions, function-calling metadata, and JSON schema
+Diapason forwards tool definitions, function-calling metadata, and JSON schema
 expectations so models can call tools or produce structured output. Streaming
 is enabled by default, and you will see incremental tokens in the TUI just as
 you would with remote OpenAI deployments.

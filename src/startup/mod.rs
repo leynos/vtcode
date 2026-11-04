@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
-use vtcode_core::dotfile_protection::init_global_guardian;
-use vtcode_core::utils::validation::validate_path_exists;
+use diapason_core::dotfile_protection::init_global_guardian;
+use diapason_core::utils::validation::validate_path_exists;
 
 mod config_loading;
 mod dependency_advisories;
@@ -16,26 +16,26 @@ mod workspace_trust;
 pub(crate) use config_loading::has_explicit_default_primary_agent;
 use config_loading::load_startup_config;
 pub(crate) use dependency_advisories::{SearchToolsBundleNotice, take_search_tools_bundle_notice};
+use diapason_config::auth::{OpenAIChatGptAuthHandle, resolve_openai_auth};
+use diapason_config::workspace_env::read_workspace_env_value;
+use diapason_config::{OpenAIPreferredMethod, PromptCacheRetention};
+use diapason_core::cli::args::{Cli, Commands};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::models::{Provider, ProviderModelSupport, model_catalog_entry};
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::config::validator::{check_openai_hosted_shell_compat, check_prompt_cache_retention_compat};
+use diapason_core::copilot::{CopilotAuthStatusKind, probe_auth_status};
+use diapason_core::core::agent::config::{
+    RuntimeModelSelection, build_runtime_agent_config, provider_label, resolve_runtime_model_selection,
+};
+use diapason_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::{initialize_dot_folder, update_model_preference, update_theme_preference};
 use resume::{resolve_session_resume, validate_resume_all_usage};
 use theme::determine_theme;
 use validation::{
     apply_cli_permission_overrides, validate_full_auto_configuration, validate_runtime_provider,
     validate_startup_configuration,
 };
-use vtcode_config::auth::{OpenAIChatGptAuthHandle, resolve_openai_auth};
-use vtcode_config::workspace_env::read_workspace_env_value;
-use vtcode_config::{OpenAIPreferredMethod, PromptCacheRetention};
-use vtcode_core::cli::args::{Cli, Commands};
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::models::{Provider, ProviderModelSupport, model_catalog_entry};
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::config::validator::{check_openai_hosted_shell_compat, check_prompt_cache_retention_compat};
-use vtcode_core::copilot::{CopilotAuthStatusKind, probe_auth_status};
-use vtcode_core::core::agent::config::{
-    RuntimeModelSelection, build_runtime_agent_config, provider_label, resolve_runtime_model_selection,
-};
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
-use vtcode_core::{initialize_dot_folder, update_model_preference, update_theme_preference};
 pub(crate) use workspace_trust::{
     auto_grant_tui_full_auto_workspace_trust, ensure_full_auto_workspace_trust, require_full_auto_workspace_trust,
 };
@@ -44,7 +44,7 @@ pub(crate) use workspace_trust::{
 #[derive(Debug, Clone)]
 pub(crate) struct StartupContext {
     pub(crate) workspace: PathBuf,
-    pub(crate) config: VTCodeConfig,
+    pub(crate) config: DiapasonConfig,
     pub(crate) agent_config: CoreAgentConfig,
     pub(crate) skip_confirmations: bool,
     pub(crate) full_auto_requested: bool,
@@ -68,8 +68,8 @@ pub(crate) enum SessionResumeMode {
 /// Startup work selected by the command being launched.
 ///
 /// The policy is intentionally centralized because startup has several
-/// independent side effects: environment loading, legacy migration, provider
-/// authentication, theme preference access, runtime security initialization,
+/// independent side effects: environment loading, provider authentication,
+/// theme preference access, runtime security initialization,
 /// update checks, and spool cleanup. A command that does not need one of those
 /// services must not pay for it or accidentally create user state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,9 +113,9 @@ impl StartupPolicy {
         } else {
             match args.command.as_ref() {
                 Some(Commands::Ask { .. }) => StartupCommandKind::Ask,
-                Some(Commands::Schema { .. } | Commands::Models { .. } | Commands::Man { .. }) => {
-                    StartupCommandKind::Metadata
-                }
+                Some(
+                    Commands::Check { .. } | Commands::Schema { .. } | Commands::Models { .. } | Commands::Man { .. },
+                ) => StartupCommandKind::Metadata,
                 Some(Commands::AppServer { .. }) => StartupCommandKind::AppServer,
                 Some(
                     Commands::Chat
@@ -168,12 +168,6 @@ impl StartupPolicy {
     /// Whether `.env` loading is needed before this command starts.
     #[must_use]
     pub(crate) const fn load_dotenv(self) -> bool {
-        !matches!(self.kind, StartupCommandKind::Metadata)
-    }
-
-    /// Whether legacy global paths should be migrated during startup.
-    #[must_use]
-    pub(crate) const fn migrate_legacy_paths(self) -> bool {
         !matches!(self.kind, StartupCommandKind::Metadata)
     }
 
@@ -268,7 +262,7 @@ pub(crate) fn is_config_reset_command(args: &Cli) -> bool {
     matches!(
         args.command,
         Some(Commands::Config {
-            command: Some(vtcode_core::cli::args::ConfigCommand::Reset(_)),
+            command: Some(diapason_core::cli::args::ConfigCommand::Reset(_)),
             ..
         })
     )
@@ -278,11 +272,11 @@ impl StartupContext {
     pub(crate) async fn from_cli_args(args: &Cli) -> Result<Self> {
         let startup_start = std::time::Instant::now();
         let startup_policy = command_startup_policy(args);
-        let config_phase = vtcode_commons::startup_trace::phase_started();
+        let config_phase = diapason_commons::startup_trace::phase_started();
         let loaded = load_startup_config(args).await?;
-        vtcode_commons::startup_trace::record_phase("config", config_phase);
+        diapason_commons::startup_trace::record_phase("config", config_phase);
         tracing::debug!(
-            target = "vtcode.startup",
+            target = "diapason.startup",
             phase = "config",
             elapsed_ms = startup_start.elapsed().as_millis() as u64,
             "startup phase complete"
@@ -294,7 +288,7 @@ impl StartupContext {
             validate_full_auto_configuration(&loaded.config, &loaded.workspace)?;
         }
         tracing::debug!(
-            target = "vtcode.startup",
+            target = "diapason.startup",
             phase = "validation",
             elapsed_ms = startup_start.elapsed().as_millis() as u64,
             "startup phase complete"
@@ -308,14 +302,14 @@ impl StartupContext {
         apply_cli_permission_overrides(&mut config, &args.allowed_tools, &args.disallowed_tools);
 
         // Validate configuration against models database
-        let validation_phase = vtcode_commons::startup_trace::phase_started();
+        let validation_phase = diapason_commons::startup_trace::phase_started();
         if startup_policy.validate_startup_configuration() {
             validate_startup_configuration(&config, &loaded.workspace, args.quiet, uses_interactive_ui).await?;
         }
 
         let (custom_session_id, session_resume) = resolve_session_resume(args)?;
         validate_resume_all_usage(args, session_resume.as_ref())?;
-        vtcode_commons::startup_trace::record_phase("validation", validation_phase);
+        diapason_commons::startup_trace::record_phase("validation", validation_phase);
 
         if session_resume.is_some() && args.command.is_some() {
             bail!(
@@ -325,7 +319,7 @@ impl StartupContext {
 
         let mut selection = resolve_runtime_model_selection(args, &config);
         let auth_phase = if startup_policy.resolve_provider_auth() {
-            vtcode_commons::startup_trace::phase_started()
+            diapason_commons::startup_trace::phase_started()
         } else {
             None
         };
@@ -379,13 +373,16 @@ impl StartupContext {
             if skip_runtime_init {
                 return;
             }
-            vtcode_core::utils::session_archive::apply_session_history_config_from_vtcode(&config);
-            vtcode_core::utils::ansi::apply_file_opener_config(config.file_opener);
-            vtcode_core::telemetry::perf::initialize_perf_telemetry(&config.telemetry);
-            vtcode_core::tools::cache::configure_file_cache(&config.optimization.file_read_cache);
-            vtcode_core::tools::read_limits::configure_read_limits(&config.optimization.file_read_cache);
-            vtcode_core::tools::command_cache::configure_command_cache(&config.optimization.command_cache);
-            vtcode_core::utils::gatekeeper::initialize_gatekeeper(&config.security.gatekeeper, Some(&loaded.workspace));
+            diapason_core::utils::session_archive::apply_session_history_config_from_diapason(&config);
+            diapason_core::utils::ansi::apply_file_opener_config(config.file_opener);
+            diapason_core::telemetry::perf::initialize_perf_telemetry(&config.telemetry);
+            diapason_core::tools::cache::configure_file_cache(&config.optimization.file_read_cache);
+            diapason_core::tools::read_limits::configure_read_limits(&config.optimization.file_read_cache);
+            diapason_core::tools::command_cache::configure_command_cache(&config.optimization.command_cache);
+            diapason_core::utils::gatekeeper::initialize_gatekeeper(
+                &config.security.gatekeeper,
+                Some(&loaded.workspace),
+            );
         };
         let auth_fut = async {
             if skip_auth {
@@ -402,7 +399,7 @@ impl StartupContext {
             {
                 Ok(auth) => Ok(auth),
                 Err(err) if startup_policy.allow_missing_provider_auth() => {
-                    tracing::warn!("starting VT Code without provider auth: {err}");
+                    tracing::warn!("starting Diapason without provider auth: {err}");
                     Ok((String::new(), None))
                 }
                 Err(err) => Err(err),
@@ -428,16 +425,16 @@ impl StartupContext {
                 update_theme_preference(&theme_selection).await.ok();
             }
         }
-        vtcode_core::utils::dot_config::set_startup_user_config(if startup_policy.read_theme_preference() {
+        diapason_core::utils::dot_config::set_startup_user_config(if startup_policy.read_theme_preference() {
             theme_resolution.loaded_dot_config
         } else {
             None
         });
 
         let (api_key, openai_chatgpt_auth) = auth_res?;
-        vtcode_commons::startup_trace::record_phase("auth", auth_phase);
+        diapason_commons::startup_trace::record_phase("auth", auth_phase);
         tracing::debug!(
-            target = "vtcode.startup",
+            target = "diapason.startup",
             phase = "auth_and_runtime",
             elapsed_ms = startup_start.elapsed().as_millis() as u64,
             "startup phase complete"
@@ -491,28 +488,28 @@ impl StartupContext {
 /// Defer the warning-only prompt-size calculation until the first interactive
 /// frame has been drawn. Non-interactive diagnostics call the same check
 /// synchronously during validation.
-pub(crate) fn defer_system_prompt_size_check(config: &VTCodeConfig, workspace: &Path) {
+pub(crate) fn defer_system_prompt_size_check(config: &DiapasonConfig, workspace: &Path) {
     if !config.agent.system_prompt_budget_warning {
         return;
     }
 
     let config = config.clone();
     let workspace = workspace.to_path_buf();
-    vtcode_commons::startup_trace::install_first_render_hook(move || {
+    diapason_commons::startup_trace::install_first_render_hook(move || {
         tokio::spawn(async move {
             validation::check_system_prompt_size(&config, &workspace).await;
         });
     });
 }
 
-fn apply_codex_experimental_override(config: &mut VTCodeConfig, override_value: Option<bool>) {
+fn apply_codex_experimental_override(config: &mut DiapasonConfig, override_value: Option<bool>) {
     if let Some(enabled) = override_value {
         config.agent.codex_app_server.experimental_features = enabled;
     }
 }
 
 async fn maybe_apply_codex_sidecar_fallback(
-    config: &mut VTCodeConfig,
+    config: &mut DiapasonConfig,
     workspace: &Path,
     selection: &mut RuntimeModelSelection,
     first_run_occurred: bool,
@@ -533,7 +530,7 @@ async fn maybe_apply_codex_sidecar_fallback(
     persist_runtime_selection(config, workspace, &fallback).await?;
 
     let notice = format!(
-        "{} Falling back to {} ({}) and updating the saved VT Code selection.",
+        "{} Falling back to {} ({}) and updating the saved Diapason selection.",
         unavailable,
         provider_label(&fallback.provider, Some(config)),
         fallback.model
@@ -543,7 +540,7 @@ async fn maybe_apply_codex_sidecar_fallback(
 }
 
 async fn resolve_codex_fallback_selection(
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
     workspace: &Path,
     selection: &RuntimeModelSelection,
     first_run_occurred: bool,
@@ -555,7 +552,7 @@ async fn resolve_codex_fallback_selection(
         model_source: selection.model_source,
     };
     let copilot_candidate = RuntimeModelSelection {
-        model: vtcode_core::config::constants::models::copilot::DEFAULT_MODEL.to_string(),
+        model: diapason_core::config::constants::models::copilot::DEFAULT_MODEL.to_string(),
         provider: "copilot".to_string(),
         api_key_env: Provider::Copilot.default_api_key_env().to_string(),
         model_source: selection.model_source,
@@ -574,7 +571,7 @@ async fn resolve_codex_fallback_selection(
     }
 
     bail!(
-        "No authenticated fallback provider is available. Authenticate OpenAI (`vtcode login openai` or OPENAI_API_KEY) or GitHub Copilot (`vtcode login copilot`)."
+        "No authenticated fallback provider is available. Authenticate OpenAI (`diapason login openai` or OPENAI_API_KEY) or GitHub Copilot (`diapason login copilot`)."
     );
 }
 
@@ -583,11 +580,11 @@ fn openai_fallback_model(model: &str) -> String {
         return model.to_string();
     }
 
-    vtcode_core::config::constants::models::openai::DEFAULT_MODEL.to_string()
+    diapason_core::config::constants::models::openai::DEFAULT_MODEL.to_string()
 }
 
 async fn persist_runtime_selection(
-    config: &mut VTCodeConfig,
+    config: &mut DiapasonConfig,
     workspace: &Path,
     selection: &RuntimeModelSelection,
 ) -> Result<()> {
@@ -605,7 +602,7 @@ async fn persist_runtime_selection(
 }
 
 async fn resolve_runtime_provider_auth(
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
     workspace: &Path,
     selection: &RuntimeModelSelection,
     first_run_occurred: bool,
@@ -620,7 +617,7 @@ async fn resolve_runtime_provider_auth(
             .api_key_env
             .eq_ignore_ascii_case(Provider::OpenAI.default_api_key_env())
         {
-            let resolved = vtcode_config::api_keys::resolve_credential_with_mode(
+            let resolved = diapason_config::api_keys::resolve_credential_with_mode(
                 &selection.provider,
                 &selection.api_key_env,
                 Some(workspace),
@@ -635,7 +632,7 @@ async fn resolve_runtime_provider_auth(
             return Ok((auth.api_key().to_string(), auth.handle()));
         }
         let storage_mode = config.agent.credential_storage_mode;
-        let resolved = vtcode_config::api_keys::resolve_credential_with_mode(
+        let resolved = diapason_config::api_keys::resolve_credential_with_mode(
             &selection.provider,
             &selection.api_key_env,
             Some(workspace),
@@ -644,7 +641,7 @@ async fn resolve_runtime_provider_auth(
         let api_key = match resolved.and_then(|credential| credential.secret) {
             Some(api_key) => Some(api_key),
             None if config.auth.openai.preferred_method == OpenAIPreferredMethod::ApiKey => {
-                vtcode_config::api_keys::load_stored_api_key_with_mode("openai", storage_mode)?
+                diapason_config::api_keys::load_stored_api_key_with_mode("openai", storage_mode)?
             }
             None => None,
         };
@@ -664,7 +661,7 @@ async fn resolve_runtime_provider_auth(
             }
             CopilotAuthStatusKind::ServerUnavailable => Err(anyhow::anyhow!(
                 status.message.unwrap_or_else(|| {
-                    "GitHub Copilot CLI is unavailable. Install `copilot`, set `VTCODE_COPILOT_COMMAND`, or configure `[auth.copilot].command`."
+                    "GitHub Copilot CLI is unavailable. Install `copilot`, set `DIAPASON_COPILOT_COMMAND`, or configure `[auth.copilot].command`."
                         .to_string()
                 })
             )),
@@ -679,7 +676,7 @@ async fn resolve_runtime_provider_auth(
         if custom_provider.uses_command_auth() {
             return Ok((String::new(), None));
         }
-        if let Some(credential) = vtcode_config::api_keys::resolve_credential_with_mode(
+        if let Some(credential) = diapason_config::api_keys::resolve_credential_with_mode(
             &selection.provider,
             &selection.api_key_env,
             Some(workspace),
@@ -691,7 +688,7 @@ async fn resolve_runtime_provider_auth(
         }
     }
 
-    let api_key = vtcode_config::api_keys::resolve_credential_with_mode(
+    let api_key = diapason_config::api_keys::resolve_credential_with_mode(
         &selection.provider,
         &selection.api_key_env,
         Some(workspace),
@@ -709,7 +706,7 @@ fn is_local_model_without_remote_auth(selection: &RuntimeModelSelection) -> bool
 }
 
 fn missing_api_key_message(
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
     selection: &RuntimeModelSelection,
     first_run_occurred: bool,
     command: Option<&Commands>,
@@ -721,13 +718,13 @@ fn missing_api_key_message(
             "Run `/secret add {provider_name}` in the interactive session to store it in secure storage (recommended)."
         )
     } else {
-        format!("Run `vtcode secret add {provider_name}` to store it in secure storage (recommended).")
+        format!("Run `diapason secret add {provider_name}` to store it in secure storage (recommended).")
     };
 
     let env_var = selection.api_key_env.clone();
 
     let env_hint = format!("Set {env_var} environment variable,");
-    let config_hint = "configure it in vtcode.toml";
+    let config_hint = "configure it in config.toml";
 
     let in_env = read_workspace_env_value(workspace, &env_var)
         .map(|v| v.is_some())
@@ -736,7 +733,7 @@ fn missing_api_key_message(
         if command_launches_tui(command) {
             "Or run `/secret migrate` to move keys from workspace `.env` to secure storage."
         } else {
-            "Or run `vtcode secret migrate` to move keys from workspace `.env` to secure storage."
+            "Or run `diapason secret migrate` to move keys from workspace `.env` to secure storage."
         }
     } else {
         ""
@@ -744,20 +741,20 @@ fn missing_api_key_message(
 
     if selection.provider.eq_ignore_ascii_case(crate::codex_app_server::CODEX_PROVIDER) {
         return format!(
-            "Codex authentication is managed by the official `codex app-server`. Run `vtcode auth codex` or `vtcode login codex`. {}",
+            "Codex authentication is managed by the official `codex app-server`. Run `diapason auth codex` or `diapason login codex`. {}",
             crate::codex_app_server::codex_sidecar_requirement_note()
         );
     }
 
     if selection.provider.eq_ignore_ascii_case("copilot") {
-        return "Authentication not found for GitHub Copilot. Run `vtcode login copilot`. Install `copilot` first if needed; `gh` is only an optional fallback."
+        return "Authentication not found for GitHub Copilot. Run `diapason login copilot`. Install `copilot` first if needed; `gh` is only an optional fallback."
             .to_string();
     }
 
     if let Some(custom_provider) = config.custom_provider(&selection.provider) {
         let custom_env_var = custom_provider.resolved_api_key_env();
         let custom_env_hint = format!("Set {custom_env_var} environment variable,");
-        let custom_config_hint = "configure it in vtcode.toml under [[custom_providers]]";
+        let custom_config_hint = "configure it in config.toml under [[custom_providers]]";
         let base = if first_run_occurred {
             format!(
                 "API key not found for {provider_name}. To fix:\n  1. {tui_hint}\n  2. {custom_env_hint} or\n  3. {custom_config_hint}\n\nRun `/init` anytime to reconfigure."
@@ -777,7 +774,7 @@ fn missing_api_key_message(
 
     if selection.provider.eq_ignore_ascii_case("openai") {
         let base = format!(
-            "Authentication not found for OpenAI. {tui_hint} Or {env_hint} {config_hint}, or run `vtcode login openai`."
+            "Authentication not found for OpenAI. {tui_hint} Or {env_hint} {config_hint}, or run `diapason login openai`."
         );
         if migrate_hint.is_empty() {
             return base;
@@ -830,15 +827,15 @@ mod validation_tests {
     use anyhow::{Context, Result, anyhow};
     use assert_fs::TempDir;
     use clap::Parser;
+    use diapason_commons::env_lock;
+    use diapason_config::ConfigManager;
+    use diapason_config::OpenAIPreferredMethod;
+    use diapason_config::auth::AuthCredentialsStoreMode;
+    use diapason_core::cli::args::Cli;
     use std::ffi::OsStr;
     use std::fs;
     use std::io::Write;
     use std::path::Path;
-    use vtcode_commons::env_lock;
-    use vtcode_config::ConfigManager;
-    use vtcode_config::OpenAIPreferredMethod;
-    use vtcode_config::auth::AuthCredentialsStoreMode;
-    use vtcode_core::cli::args::Cli;
 
     fn write_fake_executable(path: &Path) {
         fs::write(path, "#!/bin/sh\nexit 0\n").expect("write fake executable");
@@ -851,8 +848,8 @@ mod validation_tests {
         }
     }
 
-    fn save_workspace_config(workspace: &Path, config: &VTCodeConfig) -> Result<()> {
-        let path = workspace.join("vtcode.toml");
+    fn save_workspace_config(workspace: &Path, config: &DiapasonConfig) -> Result<()> {
+        let path = workspace.join("config.toml");
         ConfigManager::save_config_to_path(&path, config)
             .with_context(|| format!("save workspace configuration to {}", path.display()))?;
         let mut file = fs::OpenOptions::new()
@@ -866,7 +863,7 @@ mod validation_tests {
 
     #[test]
     fn retention_warning_for_non_responses_model() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.prompt_cache.providers.openai.prompt_cache_retention = Some(PromptCacheRetention::H24);
         let model = "gpt-oss-20b"; // not in responses API list
         let provider = "openai";
@@ -875,9 +872,9 @@ mod validation_tests {
 
     #[test]
     fn retention_ok_for_responses_model() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.prompt_cache.providers.openai.prompt_cache_retention = Some(PromptCacheRetention::H24);
-        let model = vtcode_core::config::constants::models::openai::GPT_5; // responses model
+        let model = diapason_core::config::constants::models::openai::GPT_5; // responses model
         let provider = "openai";
         assert!(check_prompt_cache_retention_compat(&cfg, model, provider).is_none());
     }
@@ -894,7 +891,6 @@ mod validation_tests {
         let policy = command_startup_policy(&args);
         assert_eq!(policy.kind, kind, "unexpected policy for {args:?}");
         assert_eq!(policy.load_dotenv(), loads_dotenv, "dotenv policy for {args:?}");
-        assert_eq!(policy.migrate_legacy_paths(), loads_dotenv, "migration policy for {args:?}");
         assert_eq!(policy.resolve_provider_auth(), resolves_auth, "auth policy for {args:?}");
         assert_eq!(
             policy.validate_startup_configuration(),
@@ -915,7 +911,7 @@ mod validation_tests {
     #[test]
     fn startup_policy_matrix_covers_metadata_ask_interactive_and_tool_paths() {
         assert_policy(
-            Cli::parse_from(["vtcode", "schema", "tools"]),
+            Cli::parse_from(["diapason", "schema", "tools"]),
             StartupCommandKind::Metadata,
             false,
             false,
@@ -924,7 +920,7 @@ mod validation_tests {
             false,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "models", "list"]),
+            Cli::parse_from(["diapason", "models", "list"]),
             StartupCommandKind::Metadata,
             false,
             false,
@@ -933,7 +929,7 @@ mod validation_tests {
             false,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "man"]),
+            Cli::parse_from(["diapason", "man"]),
             StartupCommandKind::Metadata,
             false,
             false,
@@ -942,7 +938,16 @@ mod validation_tests {
             false,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "ask", "hello"]),
+            Cli::parse_from(["diapason", "check", "ast-grep"]),
+            StartupCommandKind::Metadata,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
+        assert_policy(
+            Cli::parse_from(["diapason", "ask", "hello"]),
             StartupCommandKind::Ask,
             true,
             true,
@@ -951,7 +956,7 @@ mod validation_tests {
             false,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "--print", "hello"]),
+            Cli::parse_from(["diapason", "--print", "hello"]),
             StartupCommandKind::Ask,
             true,
             true,
@@ -959,9 +964,9 @@ mod validation_tests {
             false,
             false,
         );
-        assert_policy(Cli::parse_from(["vtcode"]), StartupCommandKind::Interactive, true, true, true, true, true);
+        assert_policy(Cli::parse_from(["diapason"]), StartupCommandKind::Interactive, true, true, true, true, true);
         assert_policy(
-            Cli::parse_from(["vtcode", "--continue"]),
+            Cli::parse_from(["diapason", "--continue"]),
             StartupCommandKind::Interactive,
             true,
             true,
@@ -970,7 +975,7 @@ mod validation_tests {
             true,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "exec", "inspect the workspace"]),
+            Cli::parse_from(["diapason", "exec", "inspect the workspace"]),
             StartupCommandKind::ToolCapable,
             true,
             true,
@@ -979,7 +984,7 @@ mod validation_tests {
             false,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "exec", "--print", "inspect the workspace"]),
+            Cli::parse_from(["diapason", "exec", "--print", "inspect the workspace"]),
             StartupCommandKind::ToolCapable,
             true,
             true,
@@ -988,7 +993,7 @@ mod validation_tests {
             false,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "review", "--print"]),
+            Cli::parse_from(["diapason", "review", "--print"]),
             StartupCommandKind::ToolCapable,
             true,
             true,
@@ -997,7 +1002,7 @@ mod validation_tests {
             false,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "acp", "zed"]),
+            Cli::parse_from(["diapason", "acp", "zed"]),
             StartupCommandKind::ToolCapable,
             true,
             true,
@@ -1010,7 +1015,7 @@ mod validation_tests {
     #[test]
     fn startup_policy_preserves_app_server_auth_exception_and_runtime_security() {
         assert_policy(
-            Cli::parse_from(["vtcode", "app-server"]),
+            Cli::parse_from(["diapason", "app-server"]),
             StartupCommandKind::AppServer,
             true,
             false,
@@ -1023,7 +1028,7 @@ mod validation_tests {
     #[test]
     fn startup_policy_keeps_known_command_owned_paths_off_provider_runtime() {
         assert_policy(
-            Cli::parse_from(["vtcode", "tool-policy", "status"]),
+            Cli::parse_from(["diapason", "tool-policy", "status"]),
             StartupCommandKind::CommandOwned,
             true,
             false,
@@ -1032,7 +1037,7 @@ mod validation_tests {
             false,
         );
         assert_policy(
-            Cli::parse_from(["vtcode", "config", "reset"]),
+            Cli::parse_from(["diapason", "config", "reset"]),
             StartupCommandKind::CommandOwned,
             true,
             false,
@@ -1045,7 +1050,7 @@ mod validation_tests {
     #[test]
     fn startup_policy_leaves_unclassified_commands_conservative() {
         assert_policy(
-            Cli::parse_from(["vtcode", "config"]),
+            Cli::parse_from(["diapason", "config"]),
             StartupCommandKind::Conservative,
             true,
             true,
@@ -1057,20 +1062,20 @@ mod validation_tests {
 
     #[test]
     fn startup_policy_allows_interactive_and_acp_auth_to_be_resolved_later() {
-        let interactive = command_startup_policy(&Cli::parse_from(["vtcode"]));
+        let interactive = command_startup_policy(&Cli::parse_from(["diapason"]));
         assert!(interactive.allow_missing_provider_auth());
 
-        let acp = command_startup_policy(&Cli::parse_from(["vtcode", "acp", "zed"]));
+        let acp = command_startup_policy(&Cli::parse_from(["diapason", "acp", "zed"]));
         assert!(acp.allow_missing_provider_auth());
 
-        let ask = command_startup_policy(&Cli::parse_from(["vtcode", "ask", "hello"]));
+        let ask = command_startup_policy(&Cli::parse_from(["diapason", "ask", "hello"]));
         assert!(!ask.allow_missing_provider_auth());
     }
 
     #[test]
     fn missing_api_key_message_uses_custom_provider_label_and_env_key() {
-        let mut cfg = VTCodeConfig::default();
-        cfg.custom_providers.push(vtcode_config::core::CustomProviderConfig {
+        let mut cfg = DiapasonConfig::default();
+        cfg.custom_providers.push(diapason_config::core::CustomProviderConfig {
             name: "mycorp".to_string(),
             display_name: "MyCorporateName".to_string(),
             base_url: "https://llm.example/v1".to_string(),
@@ -1079,14 +1084,14 @@ mod validation_tests {
             auth: None,
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
-            ..vtcode_config::core::CustomProviderConfig::default()
+            ..diapason_config::core::CustomProviderConfig::default()
         });
 
         let selection = RuntimeModelSelection {
             model: "gpt-5-mini".to_string(),
             provider: "mycorp".to_string(),
             api_key_env: "MYCORP_API_KEY".to_string(),
-            model_source: vtcode_core::config::types::ModelSelectionSource::WorkspaceConfig,
+            model_source: diapason_core::config::types::ModelSelectionSource::WorkspaceConfig,
         };
 
         let message = missing_api_key_message(&cfg, &selection, true, None, Path::new("/tmp"));
@@ -1098,34 +1103,34 @@ mod validation_tests {
 
     #[test]
     fn missing_api_key_message_uses_codex_guidance() {
-        let cfg = VTCodeConfig::default();
+        let cfg = DiapasonConfig::default();
         let selection = RuntimeModelSelection {
             model: "gpt-5-codex".to_string(),
             provider: "codex".to_string(),
             api_key_env: String::new(),
-            model_source: vtcode_core::config::types::ModelSelectionSource::WorkspaceConfig,
+            model_source: diapason_core::config::types::ModelSelectionSource::WorkspaceConfig,
         };
 
         let message = missing_api_key_message(&cfg, &selection, true, None, Path::new("/tmp"));
 
         assert!(message.contains("codex app-server"));
-        assert!(message.contains("vtcode auth codex"));
+        assert!(message.contains("diapason auth codex"));
         assert!(message.contains("`$PATH`"));
     }
 
     #[test]
     fn missing_api_key_message_suggests_migrate_when_key_in_workspace_env() {
-        let tmp = std::env::temp_dir().join(format!("vtcode-test-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("diapason-test-{}", std::process::id()));
         let _ = fs::create_dir_all(&tmp);
         let mut env_file = fs::File::create(tmp.join(".env")).expect("create .env");
         let _ = env_file.write_all(b"OPENAI_API_KEY=sk-test\n");
 
-        let cfg = VTCodeConfig::default();
+        let cfg = DiapasonConfig::default();
         let selection = RuntimeModelSelection {
             model: "gpt-4o".to_string(),
             provider: "openai".to_string(),
             api_key_env: "OPENAI_API_KEY".to_string(),
-            model_source: vtcode_core::config::types::ModelSelectionSource::WorkspaceConfig,
+            model_source: diapason_core::config::types::ModelSelectionSource::WorkspaceConfig,
         };
 
         let message = missing_api_key_message(&cfg, &selection, true, None, &tmp);
@@ -1136,7 +1141,7 @@ mod validation_tests {
 
     #[test]
     fn hosted_shell_warning_for_non_responses_model() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.provider.openai.hosted_shell.enabled = true;
 
         let msg = check_openai_hosted_shell_compat(&cfg, "gpt-oss-20b", "openai");
@@ -1145,7 +1150,7 @@ mod validation_tests {
 
     #[test]
     fn resolve_session_resume_treats_resume_with_session_suffix_as_fork() {
-        let args = Cli::parse_from(["vtcode", "--resume", "session-123", "--session-id", "fork-copy"]);
+        let args = Cli::parse_from(["diapason", "--resume", "session-123", "--session-id", "fork-copy"]);
 
         let (custom_session_id, session_resume) = resolve_session_resume(&args).expect("session resume should resolve");
 
@@ -1158,7 +1163,7 @@ mod validation_tests {
 
     #[test]
     fn resolve_session_resume_treats_continue_with_session_suffix_as_latest_fork() {
-        let args = Cli::parse_from(["vtcode", "--continue", "--session-id", "fork-copy"]);
+        let args = Cli::parse_from(["diapason", "--continue", "--session-id", "fork-copy"]);
 
         let (custom_session_id, session_resume) = resolve_session_resume(&args).expect("continue should resolve");
 
@@ -1172,8 +1177,8 @@ mod validation_tests {
     #[test]
     fn validate_resume_all_usage_accepts_resume_and_continue_modes() {
         for args in [
-            Cli::parse_from(["vtcode", "--resume", "session-123", "--all"]),
-            Cli::parse_from(["vtcode", "--continue", "--all"]),
+            Cli::parse_from(["diapason", "--resume", "session-123", "--all"]),
+            Cli::parse_from(["diapason", "--continue", "--all"]),
         ] {
             let (_, session_resume) = resolve_session_resume(&args).expect("session resume should resolve");
             validate_resume_all_usage(&args, session_resume.as_ref()).unwrap();
@@ -1182,7 +1187,7 @@ mod validation_tests {
 
     #[test]
     fn validate_resume_all_usage_rejects_unscoped_all_flag() {
-        let args = Cli::parse_from(["vtcode", "--all"]);
+        let args = Cli::parse_from(["diapason", "--all"]);
         let (_, session_resume) = resolve_session_resume(&args).expect("session resume");
         let err = validate_resume_all_usage(&args, session_resume.as_ref()).expect_err("all flag should be rejected");
 
@@ -1194,7 +1199,7 @@ mod validation_tests {
 
     #[test]
     fn validate_resume_all_usage_accepts_summarized_interactive_fork_via_session_suffix() {
-        let args = Cli::parse_from(["vtcode", "--resume", "--session-id", "fork-copy", "--summarize"]);
+        let args = Cli::parse_from(["diapason", "--resume", "--session-id", "fork-copy", "--summarize"]);
 
         let (_, session_resume) = resolve_session_resume(&args).expect("session resume");
 
@@ -1207,22 +1212,22 @@ mod validation_tests {
         let env_guard = env_lock::lock();
         let temp = TempDir::new().expect("temp dir");
         let workspace = temp.path().to_path_buf();
-        fs::write(workspace.join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+        fs::write(workspace.join("config.toml"), "[workspace]\nuse_root_config = true\n")
             .expect("write isolated workspace config");
 
         env_guard.set_var("OPENAI_API_KEY", "test");
         let args = Cli::parse_from([
-            "vtcode",
+            "diapason",
             "--workspace",
             workspace.to_str().expect("workspace path"),
             "--model",
-            vtcode_core::config::constants::models::openai::GPT_5,
+            diapason_core::config::constants::models::openai::GPT_5,
         ]);
 
         let ctx = StartupContext::from_cli_args(&args).await.expect("startup success");
 
-        assert_eq!(ctx.config.agent.default_model, vtcode_core::config::constants::models::openai::GPT_5);
-        assert_eq!(ctx.agent_config.model, vtcode_core::config::constants::models::openai::GPT_5);
+        assert_eq!(ctx.config.agent.default_model, diapason_core::config::constants::models::openai::GPT_5);
+        assert_eq!(ctx.agent_config.model, diapason_core::config::constants::models::openai::GPT_5);
     }
 
     #[tokio::test]
@@ -1230,12 +1235,12 @@ mod validation_tests {
         let env_guard = env_lock::lock();
         let temp = TempDir::new().expect("temp dir");
         let workspace = temp.path().to_path_buf();
-        fs::write(workspace.join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+        fs::write(workspace.join("config.toml"), "[workspace]\nuse_root_config = true\n")
             .expect("write isolated workspace config");
 
         env_guard.set_var("OPENAI_API_KEY", "test");
         let args = Cli::parse_from([
-            "vtcode",
+            "diapason",
             "--workspace",
             workspace.to_str().expect("workspace path"),
             "--model",
@@ -1256,12 +1261,12 @@ mod validation_tests {
         let env_guard = env_lock::lock();
         let temp = TempDir::new().expect("temp dir");
         let workspace = temp.path().to_path_buf();
-        fs::write(workspace.join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+        fs::write(workspace.join("config.toml"), "[workspace]\nuse_root_config = true\n")
             .expect("write isolated workspace config");
 
         env_guard.set_var("OPENAI_API_KEY", "test");
         let args = Cli::parse_from([
-            "vtcode",
+            "diapason",
             "--workspace",
             workspace.to_str().expect("workspace path"),
             "--model",
@@ -1281,16 +1286,16 @@ mod validation_tests {
         let env_guard = env_lock::lock();
         let temp = TempDir::new().expect("temp dir");
         let workspace = temp.path().to_path_buf();
-        fs::write(workspace.join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+        fs::write(workspace.join("config.toml"), "[workspace]\nuse_root_config = true\n")
             .expect("write isolated workspace config");
 
         env_guard.set_var("OPENAI_API_KEY", "test");
         let args = Cli::parse_from([
-            "vtcode",
+            "diapason",
             "--workspace",
             workspace.to_str().expect("workspace path"),
             "--model",
-            vtcode_core::config::constants::models::openai::GPT_5,
+            diapason_core::config::constants::models::openai::GPT_5,
             "--config",
             "prompt_cache.providers.openai.prompt_cache_retention=24h",
         ]);
@@ -1307,16 +1312,16 @@ mod validation_tests {
         let env_guard = env_lock::lock();
         let temp = TempDir::new().expect("temp dir");
         let workspace = temp.path().to_path_buf();
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.provider = "openai".to_string();
-        config.agent.default_model = vtcode_core::config::constants::models::openai::GPT_5.to_string();
+        config.agent.default_model = diapason_core::config::constants::models::openai::GPT_5.to_string();
         config.automation.full_auto.enabled = true;
         config.automation.full_auto.require_profile_ack = false;
         save_workspace_config(&workspace, &config).expect("write full-auto workspace configuration");
 
         env_guard.set_var("OPENAI_API_KEY", "test");
         let args = Cli::parse_from([
-            "vtcode",
+            "diapason",
             "--workspace",
             workspace.to_str().expect("workspace path"),
             "--full-auto",
@@ -1330,7 +1335,7 @@ mod validation_tests {
 
     #[test]
     fn cli_codex_experimental_override_updates_loaded_config() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         assert!(!config.agent.codex_app_server.experimental_features);
 
         apply_codex_experimental_override(&mut config, Some(true));
@@ -1352,7 +1357,7 @@ mod validation_tests {
     fn missing_codex_sidecar_openai_fallback(selected_model: &str) -> Result<CodexFallbackFacts> {
         let workspace_dir = tempfile::tempdir().context("create isolated fallback workspace")?;
         let workspace = workspace_dir.path();
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.provider = "codex".to_string();
         config.agent.default_model = selected_model.to_string();
         config.agent.codex_app_server.command = workspace.join("missing-codex").display().to_string();
@@ -1372,10 +1377,7 @@ mod validation_tests {
                 ("GITHUB_TOKEN", None::<&OsStr>),
                 ("HOME", Some(root)),
                 ("OPENAI_API_KEY", Some(OsStr::new("test-openai-key"))),
-                ("VTCODE_CONFIG", Some(root)),
-                ("VTCODE_CONFIG_PATH", None),
-                ("VTCODE_DATA", Some(root)),
-                ("VTCODE_HOME", Some(root)),
+                ("DIAPASON_CONFIG_PATH", None),
                 ("XDG_CACHE_HOME", Some(root)),
                 ("XDG_CONFIG_DIRS", Some(root)),
                 ("XDG_CONFIG_HOME", Some(root)),
@@ -1390,7 +1392,7 @@ mod validation_tests {
                     .build()
                     .context("build isolated fallback runtime")?
                     .block_on(async {
-                        let args = Cli::try_parse_from(["vtcode", "--workspace", workspace_str])
+                        let args = Cli::try_parse_from(["diapason", "--workspace", workspace_str])
                             .context("parse isolated fallback startup arguments")?;
                         let ctx = StartupContext::from_cli_args(&args)
                             .await
@@ -1415,9 +1417,9 @@ mod validation_tests {
 
     #[test]
     fn missing_codex_sidecar_preserves_supported_openai_model_and_persists_selection() -> Result<()> {
-        let selected_model = vtcode_core::config::constants::models::openai::GPT_5_6_LUNA;
+        let selected_model = diapason_core::config::constants::models::openai::GPT_5_6_LUNA;
         anyhow::ensure!(
-            selected_model != vtcode_core::config::constants::models::openai::DEFAULT_MODEL,
+            selected_model != diapason_core::config::constants::models::openai::DEFAULT_MODEL,
             "retention fixture must use a supported non-default OpenAI model"
         );
         let facts = missing_codex_sidecar_openai_fallback(selected_model)?;
@@ -1452,7 +1454,7 @@ mod validation_tests {
 
     #[test]
     fn missing_codex_sidecar_replaces_unsupported_openai_model_and_persists_selection() -> Result<()> {
-        let expected_model = vtcode_core::config::constants::models::openai::DEFAULT_MODEL;
+        let expected_model = diapason_core::config::constants::models::openai::DEFAULT_MODEL;
         let facts = missing_codex_sidecar_openai_fallback("gpt-5-codex")?;
         anyhow::ensure!(facts.runtime_provider == "openai", "fallback runtime provider: {}", facts.runtime_provider);
         anyhow::ensure!(
@@ -1496,7 +1498,7 @@ mod validation_tests {
         let codex_temp = TempDir::new().expect("temp codex home");
         env_guard.set_var("CODEX_HOME", codex_temp.path());
 
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.provider = "codex".to_string();
         config.agent.default_model = "gpt-5-codex".to_string();
         config.agent.codex_app_server.command = workspace.join("missing-codex").display().to_string();
@@ -1507,14 +1509,14 @@ mod validation_tests {
 
         env_guard.remove_var("OPENAI_API_KEY");
         env_guard.set_var("GITHUB_TOKEN", "test-github-token");
-        let args = Cli::parse_from(["vtcode", "--workspace", workspace.to_str().expect("workspace path")]);
+        let args = Cli::parse_from(["diapason", "--workspace", workspace.to_str().expect("workspace path")]);
 
         let ctx = StartupContext::from_cli_args(&args)
             .await
             .expect("startup should fall back to copilot");
 
         assert_eq!(ctx.agent_config.provider, "copilot");
-        assert_eq!(ctx.agent_config.model, vtcode_core::config::constants::models::copilot::DEFAULT_MODEL);
+        assert_eq!(ctx.agent_config.model, diapason_core::config::constants::models::copilot::DEFAULT_MODEL);
         assert_eq!(ctx.config.agent.provider, "copilot");
     }
 
@@ -1529,7 +1531,7 @@ mod validation_tests {
         let codex_temp = TempDir::new().expect("temp codex home");
         env_guard.set_var("CODEX_HOME", codex_temp.path());
 
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.provider = "codex".to_string();
         config.agent.default_model = "gpt-5-codex".to_string();
         config.agent.codex_app_server.command = workspace.join("missing-codex").display().to_string();
@@ -1540,7 +1542,7 @@ mod validation_tests {
 
         env_guard.remove_var("OPENAI_API_KEY");
         env_guard.remove_var("GITHUB_TOKEN");
-        let args = Cli::parse_from(["vtcode", "--workspace", workspace.to_str().expect("workspace path")]);
+        let args = Cli::parse_from(["diapason", "--workspace", workspace.to_str().expect("workspace path")]);
 
         let err = StartupContext::from_cli_args(&args)
             .await

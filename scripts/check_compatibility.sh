@@ -1,5 +1,5 @@
 #!/bin/bash
-# VTCode Compatibility Checker
+# Diapason Compatibility Checker
 # Inspired by caniuse.rs - checks MSRV, platform targets, and feature compatibility
 #
 # Usage: ./scripts/check_compatibility.sh [--msrv] [--targets] [--features] [--all]
@@ -18,7 +18,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     VTCode Compatibility Checker (caniuse.rs style)   ║${NC}"
+echo -e "${BLUE}║     Diapason Compatibility Checker (caniuse.rs style)   ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -213,9 +213,9 @@ if [[ "$RUN_FEATURES" == true ]]; then
     echo -e "${BLUE}Checking individual crate features...${NC}"
     
     CRATES=(
-        "vtcode-core:schema,anthropic-api,a2a-server,desktop-notifications"
-        "vtcode-config:bootstrap,schema"
-        "vtcode-exec-events:serde-json,telemetry-tracing,schema-export"
+        "diapason-core:schema,anthropic-api,a2a-server,desktop-notifications"
+        "diapason-config:bootstrap,schema"
+        "diapason-exec-events:serde-json,telemetry-tracing,schema-export"
     )
     
     for crate_info in "${CRATES[@]}"; do
@@ -260,7 +260,7 @@ echo ""
 if [[ $OVERALL_STATUS -eq 0 ]]; then
     echo -e "${GREEN}✓ All critical compatibility checks passed!${NC}"
     echo ""
-    echo "Your VTCode installation is compatible with the current setup."
+    echo "Your Diapason installation is compatible with the current setup."
 else
     echo -e "${RED}✗ Some compatibility checks failed!${NC}"
     echo ""

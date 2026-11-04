@@ -1,22 +1,22 @@
 import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
-import { pickVtcodeConfigUri } from "../vtcodeConfig";
+import { pickDiapasonConfigUri } from "../diapasonConfig";
 
 /**
- * Command to open the VT Code configuration file
+ * Command to open the Diapason configuration file
  */
 export class OpenConfigCommand extends BaseCommand {
-    public readonly id = "vtcode.openConfig";
+    public readonly id = "diapason.openConfig";
     public readonly title = "Open Configuration";
-    public readonly description = "Open the vtcode.toml configuration file";
+    public readonly description = "Open the config.toml configuration file";
     public readonly icon = "gear";
 
     async execute(context: CommandContext): Promise<void> {
         try {
-            const configUri = await pickVtcodeConfigUri();
+            const configUri = await pickDiapasonConfigUri();
             if (!configUri) {
                 void vscode.window.showWarningMessage(
-                    "No vtcode.toml file was found in this workspace."
+                    "No config.toml file was found in this workspace."
                 );
                 return;
             }
@@ -33,7 +33,7 @@ export class OpenConfigCommand extends BaseCommand {
     private handleCommandError(context: string, error: unknown): void {
         const message = error instanceof Error ? error.message : String(error);
         void vscode.window.showErrorMessage(
-            `Failed to ${context} with VT Code: ${message}`
+            `Failed to ${context} with Diapason: ${message}`
         );
     }
 }

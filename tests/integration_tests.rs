@@ -3,11 +3,11 @@
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
 use assert_fs::TempDir;
+use diapason_core::config::constants::tools;
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::tool_policy::ToolPolicy as RuntimeToolPolicy;
+use diapason_core::tools::ToolRegistry;
 use serde_json::json;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::tool_policy::ToolPolicy as RuntimeToolPolicy;
-use vtcode_core::tools::ToolRegistry;
 
 #[cfg(test)]
 mod integration_tests {
@@ -83,7 +83,7 @@ exec_command = "allow"
 apply_patch = "allow"
 "#;
 
-        std::fs::write(workspace.join("vtcode.toml"), config_contents).unwrap();
+        std::fs::write(workspace.join("config.toml"), config_contents).unwrap();
 
         let registry = ToolRegistry::new(workspace.to_path_buf()).await;
         registry.initialize_async().await.unwrap();

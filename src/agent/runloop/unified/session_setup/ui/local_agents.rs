@@ -1,11 +1,11 @@
 use anyhow::Result;
-use std::sync::Arc;
-use vtcode_core::subagents::{
+use diapason_core::subagents::{
     BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, SubagentController,
     SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot,
 };
-use vtcode_core::{CommandExecutionStatus, ThreadEvent, ThreadItemDetails, ToolCallStatus};
-use vtcode_ui::tui::app::{InlineHandle, LocalAgentEntry, LocalAgentKind};
+use diapason_core::{CommandExecutionStatus, ThreadEvent, ThreadItemDetails, ToolCallStatus};
+use diapason_ui::tui::app::{InlineHandle, LocalAgentEntry, LocalAgentKind};
+use std::sync::Arc;
 
 pub(crate) async fn refresh_local_agents(handle: &InlineHandle, controller: &Arc<SubagentController>) -> Result<()> {
     let background_entries = controller.refresh_background_processes().await?;
@@ -313,7 +313,7 @@ fn summarize_preview_text(text: &str) -> Option<String> {
 }
 
 fn collapse_preview_whitespace(text: &str) -> String {
-    vtcode_commons::formatting::collapse_whitespace(text)
+    diapason_commons::formatting::collapse_whitespace(text)
 }
 
 fn truncate_preview_text(text: String, max_chars: usize) -> String {

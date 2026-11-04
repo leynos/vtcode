@@ -1,11 +1,11 @@
 use std::path::Path;
 
 use anyhow::Result;
-use vtcode_config::OpenAIServiceTier;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::ui::{InlineListItem, InlineListSelection, OpenAIServiceTierChoice, reasoning_to_selection_string};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_config::OpenAIServiceTier;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::ui::{InlineListItem, InlineListSelection, OpenAIServiceTierChoice, reasoning_to_selection_string};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::super::selection::{
     SelectionDetail, reasoning_level_description, reasoning_level_label, service_tier_label,
@@ -195,7 +195,7 @@ pub(crate) fn prompt_api_key_plain(
         &format!("API key – enter a key for {} (env: {}).", selection.provider_label, selection.env_key),
     )?;
     renderer.line(MessageStyle::Info, "The key will be saved to secure storage (OS keyring or encrypted file).")?;
-    renderer.line(MessageStyle::Info, "The key will NOT be stored in vtcode.toml for security.")?;
+    renderer.line(MessageStyle::Info, "The key will NOT be stored in config.toml for security.")?;
     renderer.line(MessageStyle::Info, "Or run `/secret add <provider>` to manage keys separately.")?;
 
     if matches!(selection.provider_enum, Some(Provider::HuggingFace)) {
@@ -299,7 +299,7 @@ pub(crate) fn show_secure_api_modal(
         format!("Expected env: {}", selection.env_key),
         format!("Secure display hint: {}", mask_preview),
         storage_line,
-        "Key will NOT be stored in vtcode.toml.".to_string(),
+        "Key will NOT be stored in config.toml.".to_string(),
         "Paste the key — it will be auto-detected and saved securely.".to_string(),
     ];
     let prompt_label = format!("{} API key ({})", selection.provider_label, selection.env_key);

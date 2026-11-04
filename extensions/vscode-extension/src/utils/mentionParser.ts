@@ -1,5 +1,5 @@
 /**
- * @mention parser for VT Code extension
+ * @mention parser for Diapason extension
  * Extracts participant mentions from chat messages and provides context resolution
  */
 

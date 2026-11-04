@@ -1,6 +1,6 @@
 # Model Addition Checklist
 
-Complete this checklist when adding a new LLM model to VT Code.
+Complete this checklist when adding a new LLM model to Diapason.
 
 ## Pre-Flight
 
@@ -98,7 +98,7 @@ Complete this checklist when adding a new LLM model to VT Code.
 
 ## Phase 4: Compilation & Verification
 
-- [ ] Ran: `cargo check --package vtcode-config`
+- [ ] Ran: `cargo check --package diapason-config`
   - [ ] No errors
   - [ ] No warnings
 - [ ] Ran: `cargo check --all-targets`
@@ -109,7 +109,7 @@ Complete this checklist when adding a new LLM model to VT Code.
 ## Phase 5: Functional Testing
 
 - [ ] Model appears in `/model` command help
-- [ ] Model can be selected: `vtcode ask --model gpt-5.4-nano "test"`
+- [ ] Model can be selected: `diapason ask --model gpt-5.4-nano "test"`
 - [ ] Model ID parses correctly: `"gpt-5.6-luna".parse::<ModelId>()`
 - [ ] Model properties correct:
   - [ ] `provider()` returns correct provider

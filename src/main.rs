@@ -1,4 +1,4 @@
-//! VT Code - Research-preview Rust coding agent
+//! Diapason - Research-preview Rust coding agent
 //!
 //! Thin binary entry point that delegates to modular CLI handlers.
 #![allow(
@@ -31,11 +31,11 @@ mod allocator;
 
 use clap::FromArgMatches;
 use colorchoice::ColorChoice as GlobalColorChoice;
-use vtcode_commons::color_policy;
-use vtcode_commons::{VtCodePaths, env_lock};
-use vtcode_core::cli::args::Cli;
-use vtcode_core::config::api_keys::load_dotenv;
-use vtcode_ui::tui::panic_hook;
+use diapason_commons::color_policy;
+use diapason_commons::{DiapasonPaths, env_lock};
+use diapason_core::cli::args::Cli;
+use diapason_core::config::api_keys::load_dotenv;
+use diapason_ui::tui::panic_hook;
 
 mod agent;
 mod cli; // local CLI handlers in src/cli // agent runloops (single-agent only)
@@ -83,7 +83,7 @@ fn main() -> std::process::ExitCode {
     const MAIN_THREAD_STACK_BYTES: usize = 16 * 1024 * 1024;
 
     let handle = match std::thread::Builder::new()
-        .name("vtcode-main".to_string())
+        .name("diapason-main".to_string())
         .stack_size(MAIN_THREAD_STACK_BYTES)
         .spawn(|| -> Result<()> {
             match bootstrap_main()? {
@@ -98,7 +98,7 @@ fn main() -> std::process::ExitCode {
         }) {
         Ok(handle) => handle,
         Err(err) => {
-            eprintln!("Error: failed to spawn vtcode main thread: {err}");
+            eprintln!("Error: failed to spawn diapason main thread: {err}");
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -115,7 +115,7 @@ fn main() -> std::process::ExitCode {
         }
         Err(_) => {
             let _ = panic_hook::restore_tui();
-            eprintln!("Error: vtcode main thread panicked");
+            eprintln!("Error: diapason main thread panicked");
             let _ = std::io::Write::flush(&mut std::io::stderr());
             std::process::ExitCode::FAILURE
         }
@@ -125,28 +125,29 @@ fn main() -> std::process::ExitCode {
 #[cfg(target_os = "macos")]
 fn remove_runtime_env_var(key: &str) {
     // Delegates to the process-wide env lock so this mutation cannot race with any
-    // other VT Code env mutator, even though it runs on the dedicated main thread
+    // other Diapason env mutator, even though it runs on the dedicated main thread
     // before any worker threads exist.
     env_lock::remove_var(key);
 }
 
 fn bootstrap_main() -> Result<BootstrapOutcome> {
+    diapason_commons::validate_workspace_dir_override()?;
     // This must run before tracing initialization so early CLI/config phases
-    // can be captured when VTCODE_STARTUP_TRACE=1.
-    vtcode_commons::startup_trace::initialize();
+    // can be captured when DIAPASON_STARTUP_TRACE=1.
+    diapason_commons::startup_trace::initialize();
     let bootstrap_start = std::time::Instant::now();
-    let bootstrap_phase = vtcode_commons::startup_trace::phase_started();
+    let bootstrap_phase = diapason_commons::startup_trace::phase_started();
     let launch_argv = std::env::args_os().collect::<Vec<_>>();
     let launch_cwd = std::env::current_dir().context("failed to resolve current directory")?;
     configure_runtime_relaunch_context(launch_argv, launch_cwd);
 
-    // Mark this process as VTCode for HuggingFace agent harness detection.
-    // `huggingface_hub` reads this to attribute Hub traffic to VTCode in the
+    // Mark this process as Diapason for HuggingFace agent harness detection.
+    // `huggingface_hub` reads this to attribute Hub traffic to Diapason in the
     // public agent usage dataset.  Set early via env_lock before worker threads
     // exist so the mutex acquisition is uncontended.
     {
         let _env_guard = env_lock::lock();
-        _env_guard.set_var("VTCODE", "1");
+        _env_guard.set_var("DIAPASON", "1");
     }
 
     // Suppress macOS malloc warnings that appear as stderr output
@@ -181,14 +182,14 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
         Some(env!("CARGO_PKG_REPOSITORY")),
     );
     panic_hook::init_panic_hook();
-    vtcode_commons::startup_trace::record_milestone("hardening_ready");
+    diapason_commons::startup_trace::record_milestone("hardening_ready");
 
-    if vtcode_core::maybe_run_zsh_exec_wrapper_mode()? {
+    if diapason_core::maybe_run_zsh_exec_wrapper_mode()? {
         return Ok(BootstrapOutcome::ExitEarly);
     }
 
     let cli_start = std::time::Instant::now();
-    let cli_phase = vtcode_commons::startup_trace::phase_started();
+    let cli_phase = diapason_commons::startup_trace::phase_started();
     let matches = match build_augmented_cli_command().try_get_matches() {
         Ok(m) => m,
         Err(err) => {
@@ -200,30 +201,25 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
             err.exit();
         }
     };
-    tracing::debug!(target = "vtcode.startup", elapsed_ms = cli_start.elapsed().as_millis() as u64, "cli parsed");
+    tracing::debug!(target = "diapason.startup", elapsed_ms = cli_start.elapsed().as_millis() as u64, "cli parsed");
     let args = Cli::from_arg_matches(&matches)?;
-    vtcode_commons::startup_trace::record_phase("cli_parsing", cli_phase);
+    diapason_commons::startup_trace::record_phase("cli_parsing", cli_phase);
     let startup_policy = startup::command_startup_policy(&args);
     panic_hook::set_debug_mode(args.debug);
-    let color_eyre_enabled = debug_runtime_flag_enabled(args.debug, "VTCODE_COLOR_EYRE");
+    let color_eyre_enabled = debug_runtime_flag_enabled(args.debug, "DIAPASON_COLOR_EYRE");
     panic_hook::set_color_eyre_enabled(color_eyre_enabled);
-    let tui_log_capture_enabled = debug_runtime_flag_enabled(args.debug, "VTCODE_TUI_LOGS");
-    vtcode_ui::tui::log::set_tui_log_capture_enabled(tui_log_capture_enabled);
+    let tui_log_capture_enabled = debug_runtime_flag_enabled(args.debug, "DIAPASON_TUI_LOGS");
+    diapason_ui::tui::log::set_tui_log_capture_enabled(tui_log_capture_enabled);
 
-    // Load .env and migrate legacy paths only for commands whose startup
-    // policy needs provider credentials or the normal user runtime. Offline
-    // metadata must remain read-only and independent of user state.
-    if startup_policy.load_dotenv() || startup_policy.migrate_legacy_paths() {
-        let environment_phase = vtcode_commons::startup_trace::phase_started();
+    // Load environment files only when the command needs provider credentials.
+    if startup_policy.load_dotenv() {
+        let environment_phase = diapason_commons::startup_trace::phase_started();
         if startup_policy.load_dotenv()
             && let Err(_err) = load_dotenv()
             && !args.quiet
         {}
 
-        if startup_policy.migrate_legacy_paths() {
-            migrate_legacy_global_paths(args.quiet);
-        }
-        vtcode_commons::startup_trace::record_phase("dotenv_and_migration", environment_phase);
+        diapason_commons::startup_trace::record_phase("dotenv", environment_phase);
     }
 
     if args.print.is_some() && args.command.is_some() {
@@ -243,14 +239,14 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
     // resolution and the main agent run loop.  Previously a single-threaded
     // runtime was created here and a second multi-threaded one later in main(),
     // which duplicated thread-pool and I/O-driver setup.
-    let runtime_phase = vtcode_commons::startup_trace::phase_started();
+    let runtime_phase = diapason_commons::startup_trace::phase_started();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .context("failed to build Tokio runtime")?;
-    vtcode_commons::startup_trace::record_phase("runtime_creation", runtime_phase);
+    diapason_commons::startup_trace::record_phase("runtime_creation", runtime_phase);
     tracing::debug!(
-        target = "vtcode.startup",
+        target = "diapason.startup",
         elapsed_ms = bootstrap_start.elapsed().as_millis() as u64,
         "runtime ready"
     );
@@ -273,28 +269,31 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
         agent::probe::start_terminal_palette_probe(runtime.handle());
     }
 
-    let startup = match runtime.block_on(resolve_startup_context(&args)) {
+    let startup = match runtime.block_on(resolve_startup_context(&args)).and_then(|startup| {
+        let _workspace_data_dir = diapason_commons::workspace_data_dir(&startup.workspace)?;
+        Ok(startup)
+    }) {
         Ok(startup) => startup,
         Err(error) => {
             // The interactive palette probe runs concurrently with startup
             // resolution. Finish it before returning an error so its raw-mode
             // guard restores the TTY and no delayed terminal replies are
-            // printed by the user's shell after VT Code exits.
+            // printed by the user's shell after Diapason exits.
             if startup_policy.run_terminal_probe() {
                 runtime.block_on(agent::probe::finish_terminal_palette_probe());
             }
             return Err(error);
         }
     };
-    vtcode_commons::startup_trace::record_milestone("dispatch_ready");
-    vtcode_commons::startup_trace::record_phase("bootstrap", bootstrap_phase);
+    diapason_commons::startup_trace::record_milestone("dispatch_ready");
+    diapason_commons::startup_trace::record_phase("bootstrap", bootstrap_phase);
     // For one-shot commands this is the last startup boundary before dispatch;
     // interactive sessions publish the more useful first_ui_render milestone.
     if !startup_policy.runs_interactive_session() {
-        vtcode_commons::startup_trace::record_milestone("short_lived_command_ready");
+        diapason_commons::startup_trace::record_milestone("short_lived_command_ready");
     }
     tracing::debug!(
-        target = "vtcode.startup",
+        target = "diapason.startup",
         elapsed_ms = bootstrap_start.elapsed().as_millis() as u64,
         "bootstrap ready"
     );
@@ -303,22 +302,6 @@ fn bootstrap_main() -> Result<BootstrapOutcome> {
         prepared: PreparedRun { args, startup, print_mode },
         runtime,
     })))
-}
-
-fn migrate_legacy_global_paths(quiet: bool) {
-    match VtCodePaths::resolve().and_then(|paths| paths.migrate_legacy()) {
-        Ok(report) if !report.failures.is_empty() && !quiet => {
-            eprintln!(
-                "Warning: VT Code legacy migration is incomplete with {} diagnostic failure(s); startup will retry it. See `vtcode --version` for the migration report path.",
-                report.failures.len()
-            );
-        }
-        Ok(_) => {}
-        Err(error) if !quiet => {
-            eprintln!("Warning: VT Code could not start legacy migration: {error:#}. Startup will continue.");
-        }
-        Err(_) => {}
-    }
 }
 
 async fn run(prepared: PreparedRun) -> Result<()> {
@@ -358,7 +341,7 @@ async fn run(prepared: PreparedRun) -> Result<()> {
     // unbounded growth. Deferred to a blocking task so a cold cache does not
     // block first user I/O on the critical startup path.
     if startup_policy.run_interactive_maintenance()
-        && let Ok(paths) = VtCodePaths::resolve()
+        && let Ok(paths) = DiapasonPaths::resolve()
         && let Ok(tmp_dir) = paths.cache_path("large-output")
     {
         tokio::task::spawn_blocking(move || {
@@ -372,7 +355,7 @@ async fn run(prepared: PreparedRun) -> Result<()> {
 
     let dispatch_result = cli::dispatch(&args, &startup, print_mode).await;
     perform_queued_runtime_relaunch();
-    vtcode_core::utils::trace_writer::flush_trace_log();
+    diapason_core::utils::trace_writer::flush_trace_log();
     dispatch_result?;
 
     Ok(())

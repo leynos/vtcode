@@ -2,20 +2,14 @@ use std::env;
 use std::path::Path;
 
 use super::types::{UpdateAction, UpdateExecutionStrategy};
-use vtcode_commons::canonicalize;
+use diapason_commons::canonicalize;
 
 const CURL_INSTALL_COMMAND: &str =
-    "curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash";
+    "curl -fsSL https://raw.githubusercontent.com/leynos/vtcode/main/scripts/install.sh | bash";
 const WINDOWS_INSTALL_COMMAND: &str =
-    "irm https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.ps1 | iex";
-const HOMEBREW_UPDATE_COMMAND: &str = "brew upgrade vinhnx/tap/vtcode";
-const CARGO_UPDATE_COMMAND: &str = "cargo install vtcode --force";
-const NPM_UPDATE_COMMAND: &str = "npm install -g @vinhnx/vtcode@latest --registry=https://npm.pkg.github.com";
-const SCOOP_UPDATE_COMMAND: &str = "scoop update vtcode";
-const SNAP_UPDATE_COMMAND: &str = "sudo snap refresh vtcode";
-const FLATPAK_UPDATE_COMMAND: &str = "flatpak update com.vinhnx.Vtcode";
-const NIX_UPDATE_COMMAND: &str = "nix profile upgrade vtcode";
-const WINGET_UPDATE_COMMAND: &str = "winget upgrade vtcode";
+    "irm https://raw.githubusercontent.com/leynos/vtcode/main/scripts/install.ps1 | iex";
+const SOURCE_BUILD_UPDATE_COMMAND: &str =
+    "cargo install --git https://github.com/leynos/vtcode.git --locked --force diapason";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum InstallSource {
@@ -67,52 +61,14 @@ impl InstallSource {
                 execution: UpdateExecutionStrategy::Shell,
                 prefer_path_relaunch: false,
             },
-            Self::Homebrew => UpdateAction {
+            _ => UpdateAction {
                 source_label: self.label(),
-                display_command: HOMEBREW_UPDATE_COMMAND,
-                execution: UpdateExecutionStrategy::Shell,
-                prefer_path_relaunch: true,
-            },
-            Self::Cargo => UpdateAction {
-                source_label: self.label(),
-                display_command: CARGO_UPDATE_COMMAND,
-                execution: UpdateExecutionStrategy::Shell,
-                prefer_path_relaunch: true,
-            },
-            Self::Npm => UpdateAction {
-                source_label: self.label(),
-                display_command: NPM_UPDATE_COMMAND,
-                execution: UpdateExecutionStrategy::Shell,
-                prefer_path_relaunch: true,
-            },
-            Self::Scoop => UpdateAction {
-                source_label: self.label(),
-                display_command: SCOOP_UPDATE_COMMAND,
-                execution: UpdateExecutionStrategy::PowerShell,
-                prefer_path_relaunch: true,
-            },
-            Self::Snap => UpdateAction {
-                source_label: self.label(),
-                display_command: SNAP_UPDATE_COMMAND,
-                execution: UpdateExecutionStrategy::Shell,
-                prefer_path_relaunch: true,
-            },
-            Self::Flatpak => UpdateAction {
-                source_label: self.label(),
-                display_command: FLATPAK_UPDATE_COMMAND,
-                execution: UpdateExecutionStrategy::Shell,
-                prefer_path_relaunch: true,
-            },
-            Self::Nix => UpdateAction {
-                source_label: self.label(),
-                display_command: NIX_UPDATE_COMMAND,
-                execution: UpdateExecutionStrategy::Shell,
-                prefer_path_relaunch: true,
-            },
-            Self::Winget => UpdateAction {
-                source_label: self.label(),
-                display_command: WINGET_UPDATE_COMMAND,
-                execution: UpdateExecutionStrategy::PowerShell,
+                display_command: SOURCE_BUILD_UPDATE_COMMAND,
+                execution: if os == "windows" {
+                    UpdateExecutionStrategy::PowerShell
+                } else {
+                    UpdateExecutionStrategy::Shell
+                },
                 prefer_path_relaunch: true,
             },
         }
@@ -150,7 +106,7 @@ pub(super) fn detect_install_source_from_path(path: &Path) -> InstallSource {
         return InstallSource::Npm;
     }
 
-    // Nix: after canonicalize(), ~/.nix-profile/bin/vtcode resolves to /nix/store/...
+    // Nix: after canonicalize(), ~/.nix-profile/bin/diapason resolves to /nix/store/...
     // Non-canonicalized paths use /.nix-profile/ (with dot).
     if path_text.contains("/nix/store/") || path_text.contains("/.nix-profile/") {
         return InstallSource::Nix;
@@ -205,9 +161,9 @@ pub(super) fn get_target_triple_for(os: &str, arch: &str) -> Option<&'static str
 
 pub(super) fn binary_name_for_target(target: &str) -> &'static str {
     if target.contains("-pc-windows-") {
-        "vtcode.exe"
+        "diapason.exe"
     } else {
-        "vtcode"
+        "diapason"
     }
 }
 
@@ -231,8 +187,8 @@ mod tests {
 
     #[test]
     fn target_binary_name_matches_platform_archive() {
-        assert_eq!(binary_name_for_target("x86_64-unknown-linux-musl"), "vtcode");
-        assert_eq!(binary_name_for_target("x86_64-pc-windows-msvc"), "vtcode.exe");
+        assert_eq!(binary_name_for_target("x86_64-unknown-linux-musl"), "diapason");
+        assert_eq!(binary_name_for_target("x86_64-pc-windows-msvc"), "diapason.exe");
     }
 
     #[test]
@@ -254,27 +210,45 @@ mod tests {
     }
 
     #[test]
-    fn homebrew_uses_core_upgrade_command() {
-        let action = InstallSource::Homebrew.update_action_for_os("linux");
-        assert_eq!(action.display_command, "brew upgrade vinhnx/tap/vtcode");
-        assert_eq!(action.execution, UpdateExecutionStrategy::Shell);
-        assert!(action.prefer_path_relaunch);
-    }
-
-    #[test]
-    fn npm_uses_scoped_registry_command() {
-        let action = InstallSource::Npm.update_action_for_os("linux");
-        assert_eq!(
-            action.display_command,
-            "npm install -g @vinhnx/vtcode@latest --registry=https://npm.pkg.github.com"
-        );
-        assert!(action.prefer_path_relaunch);
+    fn managed_sources_use_fork_source_build_command() {
+        struct PlatformCase {
+            os: &'static str,
+            execution: UpdateExecutionStrategy,
+        }
+        let platforms = [
+            PlatformCase {
+                os: "linux",
+                execution: UpdateExecutionStrategy::Shell,
+            },
+            PlatformCase {
+                os: "windows",
+                execution: UpdateExecutionStrategy::PowerShell,
+            },
+        ];
+        for source in [
+            InstallSource::Homebrew,
+            InstallSource::Cargo,
+            InstallSource::Npm,
+            InstallSource::Scoop,
+            InstallSource::Snap,
+            InstallSource::Flatpak,
+            InstallSource::Nix,
+            InstallSource::Winget,
+        ] {
+            for platform in &platforms {
+                let os = platform.os;
+                let action = source.update_action_for_os(os);
+                assert_eq!(action.display_command, SOURCE_BUILD_UPDATE_COMMAND, "{} on {os}", source.label());
+                assert_eq!(action.execution, platform.execution, "{} on {os}", source.label());
+                assert!(action.prefer_path_relaunch, "{} on {os}", source.label());
+            }
+        }
     }
 
     #[test]
     fn scoop_detected_on_windows_path() {
         assert_eq!(
-            detect_install_source_from_path(Path::new("C:\\Users\\dev\\scoop\\apps\\vtcode\\0.1.0\\vtcode.exe")),
+            detect_install_source_from_path(Path::new("C:\\Users\\dev\\scoop\\apps\\diapason\\0.1.0\\diapason.exe")),
             InstallSource::Scoop
         );
     }
@@ -282,34 +256,37 @@ mod tests {
     #[test]
     fn scoop_shim_detected() {
         assert_eq!(
-            detect_install_source_from_path(Path::new("C:\\Users\\dev\\scoop\\shims\\vtcode.exe")),
+            detect_install_source_from_path(Path::new("C:\\Users\\dev\\scoop\\shims\\diapason.exe")),
             InstallSource::Scoop
         );
     }
 
     #[test]
     fn snap_detected() {
-        assert_eq!(detect_install_source_from_path(Path::new("/snap/vtcode/123/bin/vtcode")), InstallSource::Snap);
+        assert_eq!(detect_install_source_from_path(Path::new("/snap/diapason/123/bin/diapason")), InstallSource::Snap);
     }
 
     #[test]
     fn nix_store_detected() {
         assert_eq!(
-            detect_install_source_from_path(Path::new("/nix/store/abc123-vtcode-0.1.0/bin/vtcode")),
+            detect_install_source_from_path(Path::new("/nix/store/abc123-diapason-0.1.0/bin/diapason")),
             InstallSource::Nix
         );
     }
 
     #[test]
     fn nix_profile_detected() {
-        assert_eq!(detect_install_source_from_path(Path::new("/home/dev/.nix-profile/bin/vtcode")), InstallSource::Nix);
+        assert_eq!(
+            detect_install_source_from_path(Path::new("/home/dev/.nix-profile/bin/diapason")),
+            InstallSource::Nix
+        );
     }
 
     #[test]
     fn winget_portable_detected() {
         assert_eq!(
             detect_install_source_from_path(Path::new(
-                "C:\\Users\\dev\\AppData\\Local\\Microsoft\\WinGet\\Packages\\vtcode\\vtcode.exe"
+                "C:\\Users\\dev\\AppData\\Local\\Microsoft\\WinGet\\Packages\\diapason\\diapason.exe"
             )),
             InstallSource::Winget
         );
@@ -318,9 +295,7 @@ mod tests {
     #[test]
     fn flatpak_detected() {
         assert_eq!(
-            detect_install_source_from_path(Path::new(
-                "/var/lib/flatpak/app/com.vinhnx.Vtcode/current/active/bin/vtcode"
-            )),
+            detect_install_source_from_path(Path::new("/var/lib/flatpak/app/app/diapason/current/active/bin/diapason")),
             InstallSource::Flatpak
         );
     }
@@ -336,33 +311,5 @@ mod tests {
         ] {
             assert!(source.is_managed(), "{} should be managed", source.label());
         }
-    }
-
-    #[test]
-    fn scoop_uses_powershell() {
-        let action = InstallSource::Scoop.update_action_for_os("windows");
-        assert_eq!(action.display_command, SCOOP_UPDATE_COMMAND);
-        assert_eq!(action.execution, UpdateExecutionStrategy::PowerShell);
-    }
-
-    #[test]
-    fn nix_uses_shell() {
-        let action = InstallSource::Nix.update_action_for_os("linux");
-        assert_eq!(action.display_command, NIX_UPDATE_COMMAND);
-        assert_eq!(action.execution, UpdateExecutionStrategy::Shell);
-    }
-
-    #[test]
-    fn snap_uses_shell() {
-        let action = InstallSource::Snap.update_action_for_os("linux");
-        assert_eq!(action.display_command, SNAP_UPDATE_COMMAND);
-        assert_eq!(action.execution, UpdateExecutionStrategy::Shell);
-    }
-
-    #[test]
-    fn winget_uses_powershell() {
-        let action = InstallSource::Winget.update_action_for_os("windows");
-        assert_eq!(action.display_command, WINGET_UPDATE_COMMAND);
-        assert_eq!(action.execution, UpdateExecutionStrategy::PowerShell);
     }
 }

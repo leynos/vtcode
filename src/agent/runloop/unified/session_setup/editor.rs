@@ -5,11 +5,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use diapason_commons::{EditorTarget, resolve_editor_target};
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::tools::terminal_app::TerminalAppLauncher;
+use diapason_ui::tui::app::InlineHandle;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use vtcode_commons::{EditorTarget, resolve_editor_target};
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::tools::terminal_app::TerminalAppLauncher;
-use vtcode_ui::tui::app::InlineHandle;
 
 use crate::agent::runloop::unified::external_editor::run_with_event_loop_suspended_async;
 
@@ -166,8 +166,8 @@ pub(crate) fn spawn_editor_open_coordinator(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diapason_commons::EditorTarget;
     use std::path::PathBuf;
-    use vtcode_commons::EditorTarget;
 
     struct NoopBackend;
 

@@ -2,18 +2,18 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use diapason_core::config::ToolDisplayMode;
+use diapason_core::config::constants::tools;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::core::agent::features::FeatureSet;
+use diapason_core::exec::events::ToolCallStatus;
+use diapason_core::hooks::LifecycleHookEngine;
+use diapason_core::tools::ToolInvocationId;
+use diapason_core::tools::command_args;
+use diapason_core::tools::registry::{ExecSettlementMode, ToolExecutionError};
+use diapason_core::tools::tool_intent;
 use serde_json::Value;
 use tokio::sync::Notify;
-use vtcode_core::config::ToolDisplayMode;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::core::agent::features::FeatureSet;
-use vtcode_core::exec::events::ToolCallStatus;
-use vtcode_core::hooks::LifecycleHookEngine;
-use vtcode_core::tools::ToolInvocationId;
-use vtcode_core::tools::command_args;
-use vtcode_core::tools::registry::{ExecSettlementMode, ToolExecutionError};
-use vtcode_core::tools::tool_intent;
 
 use crate::agent::runloop::git::confirm_changes_with_git_diff;
 use crate::agent::runloop::unified::async_mcp_manager::approval_policy_from_human_in_the_loop;
@@ -32,7 +32,7 @@ use super::file_conflict_prompt::resolve_file_conflict_status;
 use super::status::{ToolExecutionStatus, ToolPipelineOutcome};
 use super::validation::{SafetyValidationFailure, validate_tool_call_with_limit_prompt};
 use crate::agent::runloop::unified::planning_workflow::handle_start_planning;
-use vtcode_commons::canonicalize;
+use diapason_commons::canonicalize;
 
 fn resolve_harness_item_identity(tool_item_id: &str) -> (ToolInvocationId, String) {
     match ToolInvocationId::parse(tool_item_id) {
@@ -67,13 +67,13 @@ fn excludes_wait_from_turn_clock(tool_name: &str, args: &Value) -> bool {
 )] // pipeline entry point, all params needed
 pub(crate) async fn run_tool_call(
     ctx: &mut RunLoopContext<'_>,
-    call: &vtcode_core::llm::provider::ToolCall,
+    call: &diapason_core::llm::provider::ToolCall,
     ctrl_c_state: &Arc<CtrlCState>,
     ctrl_c_notify: &Arc<Notify>,
     default_placeholder: Option<String>,
     lifecycle_hooks: Option<&LifecycleHookEngine>,
     skip_confirmations: bool,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     turn_index: usize,
     prevalidated: bool,
 ) -> Result<ToolPipelineOutcome, anyhow::Error> {
@@ -125,7 +125,7 @@ pub(crate) async fn run_tool_call_with_args(
     default_placeholder: Option<String>,
     lifecycle_hooks: Option<&LifecycleHookEngine>,
     skip_confirmations: bool,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     turn_index: usize,
     prevalidated: bool,
 ) -> Result<ToolPipelineOutcome, anyhow::Error> {
@@ -547,7 +547,7 @@ async fn check_tool_permission(
     default_placeholder: Option<String>,
     lifecycle_hooks: Option<&LifecycleHookEngine>,
     skip_confirmations: bool,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     safety_approval_justification: Option<&str>,
     hook_phase: Option<PreToolHookPhaseResult>,
 ) -> Result<Option<Value>, ToolExecutionStatus> {
@@ -588,9 +588,9 @@ fn build_tool_permissions_context<'a>(
     default_placeholder: Option<String>,
     lifecycle_hooks: Option<&'a LifecycleHookEngine>,
     skip_confirmations: bool,
-    vt_cfg: Option<&'a VTCodeConfig>,
+    vt_cfg: Option<&'a DiapasonConfig>,
     safety_approval_justification: Option<&str>,
-) -> crate::agent::runloop::unified::tool_routing::ToolPermissionsContext<'a, vtcode_ui::tui::app::InlineSession> {
+) -> crate::agent::runloop::unified::tool_routing::ToolPermissionsContext<'a, diapason_ui::tui::app::InlineSession> {
     let auto_permission_runtime = ctx.auto_permission.as_mut().map(|auto_permission| {
         crate::agent::runloop::unified::run_loop_context::AutoPermissionRuntimeContext {
             config: auto_permission.config,
@@ -622,7 +622,7 @@ fn build_tool_permissions_context<'a>(
         approval_policy: vt_cfg
             .map(|cfg| cfg.security.human_in_the_loop)
             .map(approval_policy_from_human_in_the_loop)
-            .unwrap_or(vtcode_core::exec_policy::AskForApproval::OnRequest),
+            .unwrap_or(diapason_core::exec_policy::AskForApproval::OnRequest),
         skip_confirmations,
         permissions_config: vt_cfg.map(|cfg| &cfg.permissions),
         auto_permission_runtime,
@@ -728,10 +728,10 @@ mod tests {
         cache_invalidation_paths, excludes_wait_from_turn_clock, exec_settlement_mode_for_tool_call,
         resolve_harness_item_identity,
     };
+    use diapason_commons::canonicalize;
+    use diapason_core::tools::registry::ExecSettlementMode;
+    use diapason_core::{config::constants::tools, tools::ToolInvocationId};
     use serde_json::json;
-    use vtcode_commons::canonicalize;
-    use vtcode_core::tools::registry::ExecSettlementMode;
-    use vtcode_core::{config::constants::tools, tools::ToolInvocationId};
 
     #[test]
     fn cache_invalidation_paths_resolve_relative_edits_against_workspace() {

@@ -4,7 +4,7 @@
 //!   - Persistent-memory modal actions stay in this root, while config persistence and prompt helpers live in `memory/` support modules.
 //!   - Shared slash-command UI helpers remain in the surrounding diagnostics and UI modules.
 //! - Constraints: This file is still part of active TD-005 debt; keep new modal branches factored into named helpers rather than extending the root flow.
-//! - Verify: `cargo check -p vtcode && cargo test -p vtcode slash_commands`
+//! - Verify: `cargo check -p diapason && cargo test -p diapason slash_commands`
 
 #[path = "memory/config_persistence.rs"]
 pub(crate) mod config_persistence;
@@ -16,13 +16,13 @@ mod presentation;
 mod prompts;
 
 use anyhow::{Context, Result, bail};
-use vtcode_core::persistent_memory::{
+use diapason_core::persistent_memory::{
     PersistentMemoryStatus, cleanup_persistent_memory, persistent_memory_status, rebuild_persistent_memory_summary,
     scaffold_persistent_memory,
 };
-use vtcode_core::project_doc::load_instruction_appendix;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::InlineListSelection;
+use diapason_core::project_doc::load_instruction_appendix;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::InlineListSelection;
 
 use crate::agent::runloop::unified::ui_interaction::{instruction_memory_map, start_loading_status};
 
@@ -193,7 +193,7 @@ async fn handle_memory_action(
             let enabled = ctx
                 .vt_cfg
                 .as_ref()
-                .map(vtcode_core::config::loader::VTCodeConfig::persistent_memory_enabled)
+                .map(diapason_core::config::loader::DiapasonConfig::persistent_memory_enabled)
                 .unwrap_or(true);
             persist_workspace_config_change(ctx, move |root| {
                 set_workspace_memory_enabled(root, !enabled);
@@ -324,9 +324,9 @@ async fn handle_memory_action(
             let Some(value) = prompt_required_text(
                 ctx,
                 "Instruction Exclude",
-                "Add an exclude glob for AGENTS.md or `.vtcode/rules/` discovery.",
+                "Add an exclude glob for AGENTS.md or `.diapason/rules/` discovery.",
                 "Pattern",
-                "**/other-team/.vtcode/rules/**",
+                "**/other-team/.diapason/rules/**",
                 None,
             )
             .await?
@@ -355,7 +355,7 @@ async fn handle_memory_action(
                 "Remove Instruction Exclude",
                 "Enter the exact exclude pattern to remove.",
                 "Pattern",
-                "**/other-team/.vtcode/rules/**",
+                "**/other-team/.diapason/rules/**",
                 None,
             )
             .await?

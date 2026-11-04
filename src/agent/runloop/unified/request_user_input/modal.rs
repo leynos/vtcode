@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
+use diapason_ui::tui::app::{
+    InlineHandle, InlineListItem, InlineListSelection, InlineMessageKind, InlineSegment, InlineSession,
+    InlineTextStyle, WizardStep,
+};
 use hashbrown::HashMap;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::Notify;
-use vtcode_ui::tui::app::{
-    InlineHandle, InlineListItem, InlineListSelection, InlineMessageKind, InlineSegment, InlineSession,
-    InlineTextStyle, WizardStep,
-};
 
 use super::super::state::CtrlCState;
 use super::super::wizard_modal::{WizardModalOutcome, show_wizard_modal_and_wait};
@@ -174,12 +174,12 @@ fn append_summary_lines(
     handle: &InlineHandle,
     questions: &[RequestUserInputQuestion],
     answers: &HashMap<String, RequestUserInputAnswer>,
-    wizard_mode: vtcode_ui::tui::app::WizardModalMode,
+    wizard_mode: diapason_ui::tui::app::WizardModalMode,
 ) {
     let summary_style = Arc::new(InlineTextStyle::default());
     let summary_segment = |text: String| InlineSegment { text, style: summary_style.clone() };
 
-    if wizard_mode == vtcode_ui::tui::app::WizardModalMode::TabbedList {
+    if wizard_mode == diapason_ui::tui::app::WizardModalMode::TabbedList {
         handle.append_line(InlineMessageKind::Info, vec![summary_segment("• Selection captured".to_string())]);
         return;
     }
@@ -229,7 +229,7 @@ mod tests {
 
     use super::execute_request_user_input_tool;
     use crate::agent::runloop::unified::state::CtrlCState;
-    use vtcode_ui::tui::app::{
+    use diapason_ui::tui::app::{
         InlineCommand, InlineEvent, InlineHandle, InlineListSelection, InlineSession, TransientEvent, TransientRequest,
         TransientSubmission,
     };

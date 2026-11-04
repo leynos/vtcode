@@ -4,11 +4,11 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
+use diapason_commons::DiapasonPaths;
+use diapason_commons::fs::{read_private_file_no_follow, with_private_file_lock};
+use diapason_core::config::models::Provider;
+use diapason_core::utils::dot_config::get_dot_manager;
 use serde::{Deserialize, Serialize};
-use vtcode_commons::VtCodePaths;
-use vtcode_commons::fs::{read_private_file_no_follow, with_private_file_lock};
-use vtcode_core::config::models::Provider;
-use vtcode_core::utils::dot_config::get_dot_manager;
 
 use super::endpoints::default_provider_base;
 
@@ -59,7 +59,7 @@ impl CachedDynamicModelStore {
                         let lock_path = path.clone();
                         let destination = path.clone();
                         let publish = with_private_file_lock(&lock_path, move || {
-                            VtCodePaths::write_private_file_atomic_if_absent(&destination, &serialized).map(|_| ())
+                            DiapasonPaths::write_private_file_atomic_if_absent(&destination, &serialized).map(|_| ())
                         })
                         .await;
                         if let Err(error) = publish {
@@ -91,7 +91,7 @@ impl CachedDynamicModelStore {
         let lock_path = path.clone();
         let entries = self.entries.clone();
         with_private_file_lock(&lock_path, move || {
-            let mut merged = match VtCodePaths::read_file_no_follow(&path) {
+            let mut merged = match DiapasonPaths::read_file_no_follow(&path) {
                 Ok(data) => match serde_json::from_slice::<CacheEntries>(&data) {
                     Ok(entries) => entries,
                     Err(_) => HashMap::new(),
@@ -101,7 +101,7 @@ impl CachedDynamicModelStore {
             };
             merged.extend(entries);
             let serialized = serde_json::to_vec_pretty(&merged)?;
-            VtCodePaths::write_private_file_atomic(&path, &serialized)?;
+            DiapasonPaths::write_private_file_atomic(&path, &serialized)?;
             Ok(())
         })
         .await?;
@@ -225,10 +225,10 @@ fn dynamic_model_cache_path() -> Option<PathBuf> {
 }
 
 fn legacy_dynamic_model_cache_paths() -> Option<Vec<PathBuf>> {
-    let paths = VtCodePaths::resolve().ok()?;
+    let paths = DiapasonPaths::resolve().ok()?;
     let mut candidates = vec![
+        paths.cache_dir().join("models").join(DYNAMIC_MODEL_CACHE_FILENAME),
         paths.config_dir().join("cache/models").join(DYNAMIC_MODEL_CACHE_FILENAME),
-        paths.legacy_dir().join("cache/models").join(DYNAMIC_MODEL_CACHE_FILENAME),
     ];
     candidates.dedup();
     Some(candidates)

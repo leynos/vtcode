@@ -9,26 +9,26 @@ use super::progress::ProgressReporter;
 use anstyle::Effects;
 
 use anyhow::Result;
+use diapason_commons::stop_hints::with_stop_hint;
 #[cfg(test)]
 use tokio::sync::Notify;
 use tokio::sync::{RwLock, watch};
 use tokio::task;
 use tokio::time::MissedTickBehavior;
-use vtcode_commons::stop_hints::with_stop_hint;
 
-use vtcode_commons::terminal_detection::TerminalType;
-use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
-use vtcode_core::config::loader::layers::ConfigLayerSource;
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig};
-use vtcode_core::config::mcp::McpTransportConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::copilot::{CopilotAuthStatusKind, probe_auth_status};
-use vtcode_core::instructions::{InstructionSourceKind, format_instruction_path};
+use diapason_commons::terminal_detection::TerminalType;
+use diapason_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
+use diapason_core::config::loader::layers::ConfigLayerSource;
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig};
+use diapason_core::config::mcp::McpTransportConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::copilot::{CopilotAuthStatusKind, probe_auth_status};
+use diapason_core::instructions::{InstructionSourceKind, format_instruction_path};
 #[cfg(test)]
-use vtcode_core::llm::provider as uni;
-use vtcode_core::project_doc::load_instruction_appendix;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_core::llm::provider as uni;
+use diapason_core::project_doc::load_instruction_appendix;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::InlineHandle;
 
 use super::async_mcp_manager::{AsyncMcpManager, McpInitStatus};
 #[cfg(test)]
@@ -36,11 +36,11 @@ use super::state::CtrlCState;
 use super::state::SessionStats;
 use super::status_line::InputStatusState;
 
-type LoadedSkillsMap = hashbrown::HashMap<String, vtcode_core::skills::types::Skill>;
+type LoadedSkillsMap = hashbrown::HashMap<String, diapason_core::skills::types::Skill>;
 
 pub(crate) struct SessionStatusContext<'a> {
     pub config: &'a CoreAgentConfig,
-    pub vt_cfg: Option<&'a VTCodeConfig>,
+    pub vt_cfg: Option<&'a DiapasonConfig>,
     pub active_instruction_directory: &'a Path,
     pub instruction_context_paths: &'a [PathBuf],
     pub message_count: usize,
@@ -112,13 +112,13 @@ pub(crate) async fn display_session_status(renderer: &mut AnsiRenderer, ctx: Ses
 async fn render_auth_usage_status(
     renderer: &mut AnsiRenderer,
     ctx: &SessionStatusContext<'_>,
-    openai_session: Option<&vtcode_auth::OpenAIChatGptSession>,
+    openai_session: Option<&diapason_auth::OpenAIChatGptSession>,
 ) -> Result<()> {
     let openrouter_status = crate::cli::auth::openrouter_auth_status(ctx.vt_cfg)?;
     let openai_status = crate::cli::auth::openai_auth_status(ctx.vt_cfg)?;
     let copilot_auth_cfg = ctx.vt_cfg.map(|cfg| cfg.auth.copilot.clone()).unwrap_or_default();
     let copilot_status = probe_auth_status(&copilot_auth_cfg, Some(&ctx.config.workspace)).await;
-    let openai_connected = matches!(openai_status, vtcode_auth::OpenAIChatGptAuthStatus::Authenticated { .. })
+    let openai_connected = matches!(openai_status, diapason_auth::OpenAIChatGptAuthStatus::Authenticated { .. })
         || ctx.config.openai_chatgpt_auth.is_some();
     render_status_heading(renderer, "Authentication info")?;
     renderer.line(
@@ -139,16 +139,16 @@ async fn render_auth_usage_status(
 
     let storage_mode = ctx.vt_cfg.map(|cfg| cfg.agent.credential_storage_mode).unwrap_or_default();
     if ctx.config.provider.eq_ignore_ascii_case("openai") {
-        let default_auth = vtcode_auth::OpenAIAuthConfig::default();
+        let default_auth = diapason_auth::OpenAIAuthConfig::default();
         let auth_cfg = ctx.vt_cfg.map(|cfg| &cfg.auth.openai).unwrap_or(&default_auth);
         let api_key = get_api_key_with_mode("openai", &ApiKeySources::default(), storage_mode).ok();
-        let overview = vtcode_config::auth::summarize_openai_credentials(auth_cfg, storage_mode, api_key)?;
+        let overview = diapason_config::auth::summarize_openai_credentials(auth_cfg, storage_mode, api_key)?;
         let usage_status = if ctx.config.openai_chatgpt_auth.is_some() {
             "using ChatGPT subscription"
         } else {
             match overview.active_source {
-                Some(vtcode_config::auth::OpenAIResolvedAuthSource::ChatGpt) => "using ChatGPT subscription",
-                Some(vtcode_config::auth::OpenAIResolvedAuthSource::ApiKey) => "using OPENAI_API_KEY",
+                Some(diapason_config::auth::OpenAIResolvedAuthSource::ChatGpt) => "using ChatGPT subscription",
+                Some(diapason_config::auth::OpenAIResolvedAuthSource::ApiKey) => "using OPENAI_API_KEY",
                 None => "no active OpenAI credential",
             }
         };
@@ -165,9 +165,9 @@ async fn render_auth_usage_status(
     } else if ctx.config.provider.eq_ignore_ascii_case("openrouter") {
         let api_key = get_api_key_with_mode("openrouter", &ApiKeySources::default(), storage_mode).ok();
         let usage_status = match openrouter_status {
-            vtcode_auth::AuthStatus::Authenticated { .. } => "using OpenRouter OAuth",
-            vtcode_auth::AuthStatus::NotAuthenticated if api_key.is_some() => "using OPENROUTER_API_KEY",
-            vtcode_auth::AuthStatus::NotAuthenticated => "no active OpenRouter credential",
+            diapason_auth::AuthStatus::Authenticated { .. } => "using OpenRouter OAuth",
+            diapason_auth::AuthStatus::NotAuthenticated if api_key.is_some() => "using OPENROUTER_API_KEY",
+            diapason_auth::AuthStatus::NotAuthenticated => "no active OpenRouter credential",
         };
         renderer.line(MessageStyle::Info, &format!("  Usage status: {usage_status}"))?;
     } else if ctx.config.provider.eq_ignore_ascii_case("copilot") {
@@ -188,14 +188,14 @@ async fn render_auth_usage_status(
     Ok(())
 }
 
-fn short_oauth_status_openrouter(status: &vtcode_auth::AuthStatus) -> &'static str {
+fn short_oauth_status_openrouter(status: &diapason_auth::AuthStatus) -> &'static str {
     match status {
-        vtcode_auth::AuthStatus::Authenticated { .. } => "connected",
-        vtcode_auth::AuthStatus::NotAuthenticated => "not connected",
+        diapason_auth::AuthStatus::Authenticated { .. } => "connected",
+        diapason_auth::AuthStatus::NotAuthenticated => "not connected",
     }
 }
 
-fn short_copilot_status(status: &vtcode_core::copilot::CopilotAuthStatus) -> &'static str {
+fn short_copilot_status(status: &diapason_core::copilot::CopilotAuthStatus) -> &'static str {
     match status.kind {
         CopilotAuthStatusKind::Authenticated => "connected",
         CopilotAuthStatusKind::Unauthenticated => "not connected",
@@ -213,7 +213,7 @@ fn render_status_heading(renderer: &mut AnsiRenderer, heading: &str) -> Result<(
 
 fn current_session_id() -> String {
     crate::main_helpers::runtime_archive_session_id()
-        .or_else(|| env::var("VT_SESSION_ID").ok())
+        .or_else(|| env::var("DIAPASON_SESSION_ID").ok())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "unavailable".to_string())
 }
@@ -295,7 +295,7 @@ fn format_tool_version_label(name: &str, version: Option<String>) -> String {
     }
 }
 
-async fn summarize_mcp_servers(vt_cfg: Option<&VTCodeConfig>, async_mcp_manager: Option<&AsyncMcpManager>) -> String {
+async fn summarize_mcp_servers(vt_cfg: Option<&DiapasonConfig>, async_mcp_manager: Option<&AsyncMcpManager>) -> String {
     let mut providers: Vec<String> = Vec::new();
     if let Some(cfg) = vt_cfg {
         if !cfg.mcp.enabled {
@@ -371,7 +371,7 @@ fn summarize_project_memory(workspace: &Path) -> String {
 }
 
 async fn summarize_loaded_agents_sources(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     active_instruction_directory: &Path,
     instruction_context_paths: &[PathBuf],
 ) -> String {
@@ -383,7 +383,7 @@ async fn summarize_loaded_agents_sources(
 }
 
 pub(crate) fn instruction_memory_map(
-    appendix: Option<&vtcode_core::project_doc::InstructionAppendixBundle>,
+    appendix: Option<&diapason_core::project_doc::InstructionAppendixBundle>,
 ) -> (Vec<String>, Vec<String>) {
     let Some(bundle) = appendix else {
         return (Vec::new(), Vec::new());
@@ -442,15 +442,15 @@ fn summarize_setting_sources(workspace: &Path) -> String {
     let project_label = project_sources
         .first()
         .cloned()
-        .unwrap_or_else(|| workspace.join("vtcode.toml").display().to_string());
-    let vtcode_path = workspace.join(".vtcode");
-    let vtcode_label = if vtcode_path.exists() {
-        vtcode_path.display().to_string()
+        .unwrap_or_else(|| workspace.join("config.toml").display().to_string());
+    let diapason_path = workspace.join(diapason_commons::workspace_dir_name());
+    let diapason_label = if diapason_path.exists() {
+        diapason_path.display().to_string()
     } else {
-        format!("{} (missing)", vtcode_path.display())
+        format!("{} (missing)", diapason_path.display())
     };
 
-    format!("user: {user_label}, project: {project_label}, .vtcode: {vtcode_label}")
+    format!("user: {user_label}, project: {project_label}, .diapason: {diapason_label}")
 }
 
 fn truncate_status_value(value: &str, max_len: usize) -> String {
@@ -658,7 +658,7 @@ pub(crate) struct StreamSpinnerOptions {
     pub suppress_output_signal: Option<Arc<AtomicBool>>,
 }
 
-pub(crate) use vtcode_core::core::agent::runtime::RuntimeModelProgress as StreamProgressEvent;
+pub(crate) use diapason_core::core::agent::runtime::RuntimeModelProgress as StreamProgressEvent;
 
 #[cfg(test)]
 pub(crate) async fn stream_and_render_response(

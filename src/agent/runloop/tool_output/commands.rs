@@ -1,10 +1,10 @@
 use anyhow::Result;
+use diapason_core::config::constants::tools;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::{ToolDisplayMode, ToolOutputMode};
+use diapason_core::tools::tool_intent;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 use serde_json::Value;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::{ToolDisplayMode, ToolOutputMode};
-use vtcode_core::tools::tool_intent;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::commands_processing::{parse_command_tokens, preprocess_terminal_stdout};
 use super::render_tool_follow_up_hints;
@@ -31,7 +31,7 @@ pub(crate) async fn render_terminal_command_panel(
     payload: &Value,
     git_styles: &GitStyles,
     ls_styles: &LsStyles,
-    vt_config: Option<&VTCodeConfig>,
+    vt_config: Option<&DiapasonConfig>,
     allow_ansi: bool,
 ) -> Result<()> {
     // Check if stdout is JSON containing command output (from execute_code tool).

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 
-# Test script for VT Code project management
+# Test script for Diapason project management
 
-echo "Testing VT Code project management..."
+echo "Testing Diapason project management..."
 
 if [ -n "${XDG_STATE_HOME:-}" ]; then
     case "$XDG_STATE_HOME" in
-        /*) STATE_DIR="$XDG_STATE_HOME/vtcode" ;;
-        *) STATE_DIR="$HOME/.local/state/vtcode" ;;
+        /*) STATE_DIR="$XDG_STATE_HOME/diapason" ;;
+        *) STATE_DIR="$HOME/.local/state/diapason" ;;
     esac
 else
-    STATE_DIR="$HOME/.local/state/vtcode"
+    STATE_DIR="$HOME/.local/state/diapason"
 fi
 PROJECTS_DIR="$STATE_DIR/projects"
 
@@ -58,11 +58,11 @@ fi
 cat > "$PROJECTS_DIR/test-project/.project" << EOF
 {
   "name": "test-project",
-  "description": "Test project for VT Code",
+  "description": "Test project for Diapason",
   "created_at": $(date +%s),
   "updated_at": $(date +%s),
   "root_path": "/tmp/test-project",
-  "tags": ["test", "vtcode"]
+  "tags": ["test", "diapason"]
 }
 EOF
 

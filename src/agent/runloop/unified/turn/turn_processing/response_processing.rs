@@ -1,7 +1,7 @@
 use anyhow::Result;
-use vtcode_core::llm::providers::split_reasoning_from_text;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_core::utils::ansi::MessageStyle;
+use diapason_core::llm::providers::split_reasoning_from_text;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_core::utils::ansi::MessageStyle;
 
 use crate::agent::runloop::unified::plan_blocks::{
     extract_any_plan, has_exactly_one_proposed_plan_block, strip_plan_persistence_policy_line,
@@ -13,20 +13,20 @@ use crate::agent::runloop::unified::turn::guards::validate_tool_args_security;
 /// Process an LLM response and return a `TurnProcessingResult` describing whether
 /// there are tool calls to run, a textual assistant response, or nothing.
 pub(crate) fn process_llm_response(
-    response: &vtcode_core::llm::provider::LLMResponse,
+    response: &diapason_core::llm::provider::LLMResponse,
     renderer: &mut AnsiRenderer,
     conversation_len: usize,
     planning_active: bool,
     allow_plan_interview: bool,
     request_user_input_enabled: bool,
     allow_tool_calls: bool,
-    validation_cache: Option<&std::sync::Arc<vtcode_core::tools::validation_cache::ValidationCache>>,
-    tool_registry: Option<&vtcode_core::tools::ToolRegistry>,
+    validation_cache: Option<&std::sync::Arc<diapason_core::tools::validation_cache::ValidationCache>>,
+    tool_registry: Option<&diapason_core::tools::ToolRegistry>,
 ) -> Result<TurnProcessingResult> {
     use crate::agent::runloop::unified::turn::harmony::{contains_harmony_marker, strip_harmony_syntax};
     use crate::agent::runloop::unified::turn::provider_noise::strip_provider_noise;
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::llm::provider as uni;
+    use diapason_core::config::constants::tools;
+    use diapason_core::llm::provider as uni;
 
     let reasoning = split_reasoning_from_text(response.reasoning.as_deref().unwrap_or("")).0;
     let reasoning_text = reasoning
@@ -203,7 +203,7 @@ pub(crate) fn process_llm_response(
 
     if !tool_calls.is_empty() {
         tracing::info!(
-            target: "vtcode.turn.metrics",
+            target: "diapason.turn.metrics",
             metric = "llm_response_parsed",
             kind = "tool_calls",
             tool_calls = tool_calls.len(),
@@ -234,7 +234,7 @@ pub(crate) fn process_llm_response(
         && (!text.trim().is_empty() || is_harmony || proposed_plan.is_some())
     {
         tracing::info!(
-            target: "vtcode.turn.metrics",
+            target: "diapason.turn.metrics",
             metric = "llm_response_parsed",
             kind = "text",
             tool_calls = 0,
@@ -253,7 +253,7 @@ pub(crate) fn process_llm_response(
     }
 
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         metric = "llm_response_parsed",
         kind = "empty",
         tool_calls = 0,
@@ -302,7 +302,7 @@ fn looks_like_structured_plan(text: &str) -> bool {
     has_section(SUMMARY_HEADERS) && has_section(VALIDATION_HEADERS) && report.is_ready()
 }
 pub(crate) fn prepare_tool_calls(
-    tool_calls: Vec<vtcode_core::llm::provider::ToolCall>,
+    tool_calls: Vec<diapason_core::llm::provider::ToolCall>,
 ) -> Vec<PreparedAssistantToolCall> {
     tool_calls.into_iter().map(PreparedAssistantToolCall::new).collect()
 }
@@ -588,18 +588,18 @@ fn strip_wrapping<'a>(line: &'a str, prefix: &str, suffix: &str) -> Option<&'a s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::llm::provider::{FinishReason, LLMResponse};
+    use diapason_core::config::constants::tools;
+    use diapason_core::llm::provider::{FinishReason, LLMResponse};
 
     #[test]
     fn prepare_tool_calls_reuses_parsed_arguments_and_metadata() {
         let tool_calls = vec![
-            vtcode_core::llm::provider::ToolCall::function(
+            diapason_core::llm::provider::ToolCall::function(
                 "call_search".to_string(),
                 tools::CODE_SEARCH.to_string(),
                 r#"{"query":"TurnProcessingResult"}"#.to_string(),
             ),
-            vtcode_core::llm::provider::ToolCall::function(
+            diapason_core::llm::provider::ToolCall::function(
                 "call_exec".to_string(),
                 tools::UNIFIED_EXEC.to_string(),
                 r#"{"action":"run","command":["cargo","check"]}"#.to_string(),
@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn prepare_tool_calls_records_invalid_json_without_reparsing() {
-        let tool_calls = vec![vtcode_core::llm::provider::ToolCall::function(
+        let tool_calls = vec![diapason_core::llm::provider::ToolCall::function(
             "call_invalid".to_string(),
             tools::CODE_SEARCH.to_string(),
             "{not-json}".to_string(),
@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn prepare_tool_calls_keeps_custom_tool_payload_as_raw_string() {
-        let tool_calls = vec![vtcode_core::llm::provider::ToolCall::custom(
+        let tool_calls = vec![diapason_core::llm::provider::ToolCall::custom(
             "call_patch".to_string(),
             tools::APPLY_PATCH.to_string(),
             "*** Begin Patch\n*** End Patch\n".to_string(),
@@ -709,7 +709,7 @@ mod tests {
     #[tokio::test]
     async fn process_llm_response_rejects_textual_exec_command_without_command() {
         let temp = tempfile::tempdir().expect("temp workspace");
-        let tool_registry = vtcode_core::tools::ToolRegistry::new(temp.path().to_path_buf()).await;
+        let tool_registry = diapason_core::tools::ToolRegistry::new(temp.path().to_path_buf()).await;
         let response = LLMResponse {
             content: Some("run()".to_string()),
             tool_calls: None,
@@ -864,7 +864,7 @@ mod tests {
 
     #[test]
     fn process_llm_response_removes_echoed_plan_policy_text() {
-        let policy = vtcode_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE;
+        let policy = diapason_core::prompts::system::PLANNING_WORKFLOW_PLAN_PERSISTENCE_POLICY_LINE;
         let response = LLMResponse {
             content: Some(format!("{policy}\n\n<plan>\n- Step 1\n</plan>")),
             tool_calls: None,
@@ -928,7 +928,7 @@ mod tests {
             content: Some(
                 "# Attached plan\n\n## Summary\nKeep approval ahead of tool execution.\n\n## Steps\n1. Gate the plan -> files: [src/agent/runloop/unified/turn/turn_processing/response_processing.rs] -> verify: cargo check\n\n## Validation\n1. Run the planning regression tests.\n\n## Assumptions\n1. Preserve the existing planning policy.\n".to_string(),
             ),
-            tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+            tool_calls: Some(vec![diapason_core::llm::provider::ToolCall::function(
                 "call_after_plan".to_string(),
                 "code_search".to_string(),
                 r#"{"query":"should-not-run"}"#.to_string(),
@@ -971,9 +971,9 @@ Next open decision: none.
 Keep the default runtime prompt sparse and consistent with Planning workflow.
 
 ## Implementation Steps
-1. Update prompt constants -> files: [crates/codegen/vtcode-core/src/prompts/system.rs] -> verify: [cargo check]
-2. Update plan scaffold -> files: [crates/codegen/vtcode-core/src/tools/handlers/planning_workflow.rs] -> verify: [cargo test -p vtcode-core test_start_planning -- --nocapture]
-3. Update parser tests -> files: [src/agent/runloop/unified/turn/turn_processing/response_processing.rs] -> verify: [cargo test -p vtcode process_llm_response_extracts_sparse_proposed_plan_blocks -- --nocapture]
+1. Update prompt constants -> files: [crates/codegen/diapason-core/src/prompts/system.rs] -> verify: [cargo check]
+2. Update plan scaffold -> files: [crates/codegen/diapason-core/src/tools/handlers/planning_workflow.rs] -> verify: [cargo test -p diapason-core test_start_planning -- --nocapture]
+3. Update parser tests -> files: [src/agent/runloop/unified/turn/turn_processing/response_processing.rs] -> verify: [cargo test -p diapason process_llm_response_extracts_sparse_proposed_plan_blocks -- --nocapture]
 
 ## Test Cases and Validation
 1. Build and lint: [project build and lint command(s) based on detected toolchain]
@@ -1084,7 +1084,7 @@ Outro"#
             "test",
             "<proposed_plan>\n## Summary\nDo the work.\n\n## Implementation Steps\n1. Update src/lib.rs -> files: [src/lib.rs] -> verify: [cargo check --locked]\n\n## Test Cases and Validation\n- Run nextest.\n\n## Assumptions and Defaults\n- Preserve the contract.\n</proposed_plan>",
         );
-        response.tool_calls = Some(vec![vtcode_core::llm::provider::ToolCall::function(
+        response.tool_calls = Some(vec![diapason_core::llm::provider::ToolCall::function(
             "call-forbidden".to_string(),
             "code_search".to_string(),
             r#"{"query":"must not execute"}"#.to_string(),
@@ -1168,7 +1168,7 @@ Open questions for alignment:
     fn process_llm_response_preserves_reasoning_details_for_tool_calls() {
         let response = LLMResponse {
             content: Some("".to_string()),
-            tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+            tool_calls: Some(vec![diapason_core::llm::provider::ToolCall::function(
                 "call_1".to_string(),
                 "code_search".to_string(),
                 r#"{"query":"x"}"#.to_string(),
@@ -1232,7 +1232,7 @@ Open questions for alignment:
     fn process_llm_response_ignores_structured_tool_calls_when_tool_calls_disabled() {
         let response = LLMResponse {
             content: Some("Final synthesis only.".to_string()),
-            tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+            tool_calls: Some(vec![diapason_core::llm::provider::ToolCall::function(
                 "call_1".to_string(),
                 "code_search".to_string(),
                 r#"{"query":"Widget","path":"src","result_types":["path"]}"#.to_string(),

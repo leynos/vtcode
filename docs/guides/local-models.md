@@ -1,6 +1,6 @@
 # Local Models: Ollama, LM Studio & llama.cpp
 
-VT Code can run models entirely on your machine through three local inference
+Diapason can run models entirely on your machine through three local inference
 backends. This guide explains when local makes sense, how it compares to remote
 APIs, what hardware you need, and how to get reliable results.
 
@@ -43,7 +43,7 @@ weights. Prefer Q4/Q5 quantizations for the best speed/quality trade-off.
 ## Getting reliable results
 
 Local generation fails most often for two reasons: **the server is stopped** or
-**the model isn't loaded**. VT Code now detects both *before* generating and
+**the model isn't loaded**. Diapason now detects both *before* generating and
 returns an exact recovery command (e.g. `ollama pull gpt-oss:20b` or
 `/local start ollama`) instead of a cryptic error.
 
@@ -54,14 +54,14 @@ Checklist:
    - Ollama: `ollama serve`
    - LM Studio: `lms server start` (or the app's "Run LLM server on login")
    - llama.cpp: `llama-server -m /path/to/model.gguf --port 8080`, or set
-     `LLAMACPP_MODEL_PATH` and let VT Code manage it.
+     `LLAMACPP_MODEL_PATH` and let Diapason manage it.
 2. **Make sure the model is available.**
    - Ollama: `ollama pull <model>` (then it auto-loads on request).
    - LM Studio: load the model in the app or `lms load <model>`.
    - llama.cpp: the model passed to `llama-server` is the only loaded model.
 3. **Pick a model that actually exists.** The model picker shows models that
    are currently loaded when the server is running. If you select a preset
-   whose model isn't loaded, VT Code tells you the exact pull/load command.
+   whose model isn't loaded, Diapason tells you the exact pull/load command.
 4. **Use `/local troubleshoot`** for guided diagnostics.
 
 ## Known limitations

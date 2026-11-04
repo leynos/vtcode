@@ -1,13 +1,13 @@
 use anyhow::Result;
 
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::InlineHandle;
 
 use super::action::InlineLoopAction;
 use super::queue::InlineQueueState;
 use crate::agent::runloop::unified::display::reset_inline_input;
 use crate::agent::runloop::unified::state::CtrlCState;
-use vtcode_core::hooks::SessionEndReason;
+use diapason_core::hooks::SessionEndReason;
 
 #[derive(Clone, Copy)]
 pub(crate) struct InlineInterruptCoordinator<'a> {
@@ -64,7 +64,7 @@ impl<'a> InlineInterruptCoordinator<'a> {
             MessageStyle::Info,
             "Interrupt received. Stopping task... (Press Esc, Ctrl+C, or /stop again within 1s to exit)",
         )?;
-        reset_inline_input(handle, Some(vtcode_config::constants::ui::CHAT_INPUT_PLACEHOLDER_INTERRUPTED.to_owned()));
+        reset_inline_input(handle, Some(diapason_config::constants::ui::CHAT_INPUT_PLACEHOLDER_INTERRUPTED.to_owned()));
         queue.clear();
         Ok(())
     }

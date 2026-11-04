@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Diapason Config",
+  "scopeName": "source.toml",
+  "patterns": [
+    {
+      "include": "source.toml"
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# yank-stale-crates.sh — Yanks all published versions of vtcode-tui,
-# vtcode-design, and vtcode-theme from crates.io. These crates have been
-# consolidated into vtcode-ui and should no longer be resolvable by new
+# yank-stale-crates.sh — Yanks all published versions of diapason-tui,
+# diapason-design, and diapason-theme from crates.io. These crates have been
+# consolidated into diapason-ui and should no longer be resolvable by new
 # consumers.
 #
 # Prerequisites:
@@ -19,8 +19,8 @@ if [[ "${1:-}" == "--dry-run" ]]; then
     echo "DRY RUN — will print commands without executing them"
 fi
 
-UA="vtcode-release-script"
-CRATES=(vtcode-design vtcode-theme vtcode-tui)
+UA="diapason-release-script"
+CRATES=(diapason-design diapason-theme diapason-tui)
 TOTAL_YANKED=0
 TOTAL_FAILED=0
 

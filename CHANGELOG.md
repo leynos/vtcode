@@ -1,3 +1,9 @@
+# Diapason changelog
+
+Diapason is a hard fork of VTCode by df12 Productions, focused on ACP control
+and observability. The entries below preserve the upstream VTCode history and
+authorship as provenance; they describe upstream releases.
+
 # Changelog
 
 All notable changes to vtcode will be documented in this file.

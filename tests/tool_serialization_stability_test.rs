@@ -14,11 +14,11 @@
 //! Run with: `cargo test --test tool_serialization_stability_test -- --nocapture`
 
 use anyhow::{Context, Result};
+use diapason_commons::utils::calculate_sha256;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
-use vtcode_commons::utils::calculate_sha256;
 
 /// Snapshot directory for baseline tool schemas
 const SNAPSHOT_DIR: &str = "tests/snapshots/tool_schemas";
@@ -84,8 +84,8 @@ fn canonicalize_json(value: &Value) -> Result<String> {
 
 /// Records the current serialization format of all tools
 fn snapshot_current_tool_schemas() -> Result<BTreeMap<String, Value>> {
+    use diapason_core::tools::ToolRegistry;
     use tempfile::TempDir;
-    use vtcode_core::tools::ToolRegistry;
 
     let temp_dir = TempDir::new().context("Failed to create temporary directory for tool registry")?;
 
@@ -152,7 +152,7 @@ fn snapshot_current_tool_schemas() -> Result<BTreeMap<String, Value>> {
                 "apply_patch".to_string(),
                 json!({
                     "name": "apply_patch",
-                    "description": "Apply a VT Code patch",
+                    "description": "Apply a Diapason patch",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -494,12 +494,12 @@ pub fn update_schema_snapshots() -> Result<()> {
     Ok(())
 }
 
-// Integration tests with actual VT Code tool registry
+// Integration tests with actual Diapason tool registry
 #[cfg(test)]
 mod integration_tests {
     use super::*;
     use assert_fs::TempDir;
-    use vtcode_core::tools::ToolRegistry;
+    use diapason_core::tools::ToolRegistry;
 
     #[tokio::test]
     async fn test_actual_tool_schemas_are_valid() {

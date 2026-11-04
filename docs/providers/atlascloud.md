@@ -1,6 +1,6 @@
 # Atlas Cloud Integration Guide
 
-Atlas Cloud exposes an OpenAI-compatible chat API, so VT Code can use it
+Atlas Cloud exposes an OpenAI-compatible chat API, so Diapason can use it
 through the existing `[[custom_providers]]` support without adding a dedicated
 runtime provider.
 
@@ -17,7 +17,7 @@ ENV
 
 ## Quickstart
 
-Add Atlas Cloud to your workspace `vtcode.toml`:
+Add Atlas Cloud to your workspace `config.toml`:
 
 ```toml
 [agent]
@@ -53,16 +53,16 @@ model = "deepseek-ai/deepseek-v4-flash"
 # ]
 ```
 
-Then run VT Code normally:
+Then run Diapason normally:
 
 ```bash
-vtcode ask "Summarize this repository"
+diapason ask "Summarize this repository"
 ```
 
 ## Why This Works
 
 - Atlas Cloud's LLM endpoint is OpenAI-compatible.
-- VT Code registers `[[custom_providers]]` as OpenAI-compatible providers.
+- Diapason registers `[[custom_providers]]` as OpenAI-compatible providers.
 - Custom providers bypass the built-in model catalog check, so Atlas-specific
   model IDs work as long as the upstream endpoint accepts them.
 - Custom providers default to a 128K context window. If your selected models
@@ -120,23 +120,23 @@ Atlas provider rollouts:
 Run a one-off prompt with the workspace config:
 
 ```bash
-vtcode ask "Explain the current module layout"
+diapason ask "Explain the current module layout"
 ```
 
 Override the model for a single invocation:
 
 ```bash
-vtcode ask --model moonshotai/kimi-k2.6 "Review this patch at a high level"
+diapason ask --model moonshotai/kimi-k2.6 "Review this patch at a high level"
 ```
 
 ## Troubleshooting
 
-| Symptom                                              | Resolution                                                                                                                  |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `Unknown provider: atlascloud`                       | Use a VT Code build that includes custom provider registration in CLI flows.                                                |
-| `API key not found for custom provider 'atlascloud'` | Run `vtcode secret add atlascloud` to store a key in your OS keyring, or set the `ATLASCLOUD_API_KEY` environment variable. |
-| `403` from chat completions                          | Verify the model slug against `GET /v1/models` and confirm the Atlas account can access chat generation.                    |
-| Model not found                                      | Replace the sample model with the exact model ID returned by Atlas Cloud for your account.                                  |
+| Symptom                                              | Resolution                                                                                                                    |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `Unknown provider: atlascloud`                       | Use a Diapason build that includes custom provider registration in CLI flows.                                                 |
+| `API key not found for custom provider 'atlascloud'` | Run `diapason secret add atlascloud` to store a key in your OS keyring, or set the `ATLASCLOUD_API_KEY` environment variable. |
+| `403` from chat completions                          | Verify the model slug against `GET /v1/models` and confirm the Atlas account can access chat generation.                      |
+| Model not found                                      | Replace the sample model with the exact model ID returned by Atlas Cloud for your account.                                    |
 
 ## References
 

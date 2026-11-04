@@ -12,6 +12,17 @@ mod styles;
 // Re-export stream utilities
 use anyhow::Result;
 use commands::render_terminal_command_panel;
+use diapason_core::config::ToolOutputMode;
+use diapason_core::config::constants::tools;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::mcp::McpRendererProfile;
+use diapason_core::tools::continuation::{
+    NEXT_CONTINUE_PROMPT, NEXT_READ_PROMPT, PtyContinuationArgs, ReadChunkContinuationArgs,
+};
+use diapason_core::tools::handlers::task_tracking::compact_task_tree_view_from_items;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::style_helpers::{ColorPalette, render_styled};
+use diapason_ui::tui::app::TaskPanelMetadata;
 use files::{
     format_diff_content_lines_with_numbers, render_apply_patch_diff_preview, render_list_dir_output,
     render_read_file_output, render_write_file_preview,
@@ -21,17 +32,6 @@ use serde_json::Value;
 use streams::render_stream_section;
 pub(crate) use streams::{render_code_fence_blocks, resolve_stdout_tail_limit};
 use styles::{GitStyles, LsStyles};
-use vtcode_core::config::ToolOutputMode;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::mcp::McpRendererProfile;
-use vtcode_core::tools::continuation::{
-    NEXT_CONTINUE_PROMPT, NEXT_READ_PROMPT, PtyContinuationArgs, ReadChunkContinuationArgs,
-};
-use vtcode_core::tools::handlers::task_tracking::compact_task_tree_view_from_items;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::style_helpers::{ColorPalette, render_styled};
-use vtcode_ui::tui::app::TaskPanelMetadata;
 
 pub(crate) fn spooled_output_hint(path: &str) -> String {
     format!(
@@ -152,7 +152,7 @@ fn render_tool_follow_up_hints_for_value(renderer: &mut AnsiRenderer, val: &Valu
 async fn render_terminal_tool_output(
     renderer: &mut AnsiRenderer,
     val: &Value,
-    vt_config: Option<&VTCodeConfig>,
+    vt_config: Option<&DiapasonConfig>,
     allow_tool_ansi: bool,
 ) -> Result<()> {
     let git_styles = GitStyles::new();
@@ -164,7 +164,7 @@ pub(crate) async fn render_tool_output(
     renderer: &mut AnsiRenderer,
     tool_name: Option<&str>,
     val: &Value,
-    vt_config: Option<&VTCodeConfig>,
+    vt_config: Option<&DiapasonConfig>,
 ) -> Result<()> {
     let allow_tool_ansi = vt_config.map(|cfg| cfg.ui.allow_tool_ansi).unwrap_or(false);
     let is_git_diff_output = is_git_diff_payload(val);
@@ -519,7 +519,7 @@ fn render_error_details(renderer: &mut AnsiRenderer, val: &Value) -> Result<()> 
     if let Some(original) = val.get("original_error").and_then(|v| v.as_str())
         && !original.trim().is_empty()
     {
-        let display_error = vtcode_commons::formatting::truncate_byte_budget(original, 197, "...");
+        let display_error = diapason_commons::formatting::truncate_byte_budget(original, 197, "...");
         renderer.line(MessageStyle::ToolDetail, &format!("Details: {display_error}"))?;
     }
 
@@ -555,15 +555,15 @@ fn render_error_details(renderer: &mut AnsiRenderer, val: &Value) -> Result<()> 
 
 #[cfg(test)]
 pub(crate) fn collect_inline_output(
-    receiver: &mut tokio::sync::mpsc::UnboundedReceiver<vtcode_core::ui::InlineCommand>,
+    receiver: &mut tokio::sync::mpsc::UnboundedReceiver<diapason_core::ui::InlineCommand>,
 ) -> String {
     let mut lines: Vec<String> = Vec::new();
     while let Ok(command) = receiver.try_recv() {
         match command {
-            vtcode_core::ui::InlineCommand::AppendLine { segments, .. } => {
+            diapason_core::ui::InlineCommand::AppendLine { segments, .. } => {
                 lines.push(segments.into_iter().map(|segment| segment.text).collect::<String>());
             }
-            vtcode_core::ui::InlineCommand::ReplaceLast { lines: replacement_lines, .. } => {
+            diapason_core::ui::InlineCommand::ReplaceLast { lines: replacement_lines, .. } => {
                 lines.extend(
                     replacement_lines
                         .into_iter()
@@ -578,10 +578,10 @@ pub(crate) fn collect_inline_output(
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::ToolDisplayMode;
+    use diapason_core::ui::InlineHandle;
+    use diapason_core::utils::ansi::AnsiRenderer;
     use serde_json::json;
-    use vtcode_core::config::ToolDisplayMode;
-    use vtcode_core::ui::InlineHandle;
-    use vtcode_core::utils::ansi::AnsiRenderer;
 
     use super::{
         collect_inline_output, preferred_follow_up_rendered_body, render_tool_output,
@@ -593,7 +593,7 @@ mod tests {
     fn command_session_terminal_panel_detects_command_payload() {
         let payload = json!({
             "command": "cargo check",
-            "output": "Checking vtcode"
+            "output": "Checking diapason"
         });
         assert!(should_render_command_session_terminal_panel(&payload));
     }
@@ -657,7 +657,7 @@ mod tests {
             "exit_code": 0
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::UNIFIED_EXEC), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::UNIFIED_EXEC), &payload, None)
             .await
             .expect("git diff payload should render");
 
@@ -678,7 +678,7 @@ mod tests {
             "exit_code": 0
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::UNIFIED_EXEC), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::UNIFIED_EXEC), &payload, None)
             .await
             .expect("git diff stdout payload should render");
 
@@ -702,7 +702,7 @@ mod tests {
             }]
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::APPLY_PATCH), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::APPLY_PATCH), &payload, None)
             .await
             .expect("apply_patch diff payload should render");
 
@@ -728,7 +728,7 @@ mod tests {
             }]
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::APPLY_PATCH), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::APPLY_PATCH), &payload, None)
             .await
             .expect("ANSI apply_patch diff payload should render");
 
@@ -749,10 +749,10 @@ mod tests {
             "next_continue_args": {
                 "session_id": "run-123"
             },
-            "spool_path": ".vtcode/context/tool_outputs/run-123.txt"
+            "spool_path": ".diapason/context/tool_outputs/run-123.txt"
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::UNIFIED_EXEC), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::UNIFIED_EXEC), &payload, None)
             .await
             .expect("structured hint payload should render");
 
@@ -771,20 +771,20 @@ mod tests {
         renderer.set_tool_display_mode(ToolDisplayMode::Expanded);
         let payload = json!({
             "command": "cargo check",
-            "output": "Compiling vtcode v0.135.9",
-            "stdout": "Compiling vtcode v0.135.9",
+            "output": "Compiling diapason v0.135.9",
+            "stdout": "Compiling diapason v0.135.9",
             "stderr": "",
             "is_exited": true,
             "exit_code": 0
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::EXEC_COMMAND), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::EXEC_COMMAND), &payload, None)
             .await
             .expect("exec_command payload should render");
 
         let inline_output = collect_inline_output(&mut receiver);
         assert!(
-            inline_output.contains("Compiling vtcode v0.135.9"),
+            inline_output.contains("Compiling diapason v0.135.9"),
             "exec_command output must be rendered in the terminal panel, got: {inline_output}"
         );
         assert!(
@@ -803,7 +803,7 @@ mod tests {
             "stderr": ""
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::EXEC_COMMAND), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::EXEC_COMMAND), &payload, None)
             .await
             .expect("exec_command payload should render");
 
@@ -823,7 +823,7 @@ mod tests {
             "exit_code": 0
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::EXEC_PTY_CMD), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::EXEC_PTY_CMD), &payload, None)
             .await
             .expect("exec_pty_cmd payload should render");
 
@@ -844,10 +844,10 @@ mod tests {
             "session_id": "run-123",
             "is_exited": true,
             "exit_code": 0,
-            "spool_path": ".vtcode/context/tool_outputs/run-123.txt"
+            "spool_path": ".diapason/context/tool_outputs/run-123.txt"
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::RUN_PTY_CMD), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::RUN_PTY_CMD), &payload, None)
             .await
             .expect("spooled PTY payload should render");
 
@@ -865,10 +865,10 @@ mod tests {
         let payload = json!({
             "path": "README.md",
             "content": "preview",
-            "spool_path": ".vtcode/context/tool_outputs/readme.txt"
+            "spool_path": ".diapason/context/tool_outputs/readme.txt"
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::READ_FILE), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::READ_FILE), &payload, None)
             .await
             .expect("read_file payload should render");
 
@@ -885,10 +885,10 @@ mod tests {
         let mut renderer = AnsiRenderer::with_inline_ui(InlineHandle::new_for_tests(sender), Default::default());
         let payload = json!({
             "content": "preview",
-            "spool_path": ".vtcode/context/tool_outputs/web.txt"
+            "spool_path": ".diapason/context/tool_outputs/web.txt"
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::WEB_FETCH), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::WEB_FETCH), &payload, None)
             .await
             .expect("web_fetch payload should render");
 
@@ -903,7 +903,7 @@ mod tests {
     async fn render_tool_output_does_not_duplicate_spooled_output_hint() {
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         let mut renderer = AnsiRenderer::with_inline_ui(InlineHandle::new_for_tests(sender), Default::default());
-        let spool_path = ".vtcode/context/tool_outputs/web.txt";
+        let spool_path = ".diapason/context/tool_outputs/web.txt";
         let hint = spooled_output_hint(spool_path);
         let payload = json!({
             "output": hint,
@@ -930,7 +930,7 @@ mod tests {
             "content": content
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::READ_FILE), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::READ_FILE), &payload, None)
             .await
             .expect("read_file preview payload should render");
 
@@ -947,10 +947,10 @@ mod tests {
         let mut renderer = AnsiRenderer::with_inline_ui(InlineHandle::new_for_tests(sender), Default::default());
         let payload = json!({
             "loop_detected": true,
-            "fallback_tool": vtcode_core::config::constants::tools::CODE_SEARCH
+            "fallback_tool": diapason_core::config::constants::tools::CODE_SEARCH
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::CODE_SEARCH), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::CODE_SEARCH), &payload, None)
             .await
             .expect("loop recovery hint payload should render");
 
@@ -964,15 +964,15 @@ mod tests {
         let mut renderer = AnsiRenderer::with_inline_ui(InlineHandle::new_for_tests(sender), Default::default());
         let payload = json!({
             "loop_detected": true,
-            "spool_path": ".vtcode/context/tool_outputs/readme.txt",
+            "spool_path": ".diapason/context/tool_outputs/readme.txt",
             "next_read_args": {
-                "path": ".vtcode/context/tool_outputs/readme.txt",
+                "path": ".diapason/context/tool_outputs/readme.txt",
                 "offset": 81,
                 "limit": 40
             }
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::READ_FILE), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::READ_FILE), &payload, None)
             .await
             .expect("spooled loop recovery hint payload should render");
 
@@ -986,7 +986,7 @@ mod tests {
         let mut renderer = AnsiRenderer::with_inline_ui(InlineHandle::new_for_tests(sender), Default::default());
         let payload = json!({
             "loop_detected": true,
-            "fallback_tool": vtcode_core::config::constants::tools::CODE_SEARCH,
+            "fallback_tool": diapason_core::config::constants::tools::CODE_SEARCH,
             "output": "Loop detected; fallback is available."
         });
 
@@ -1012,7 +1012,7 @@ mod tests {
             "next_action": "Check the command name or install the missing binary, then rerun the command."
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::UNIFIED_EXEC), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::UNIFIED_EXEC), &payload, None)
             .await
             .expect("exit 127 payload should render");
 
@@ -1066,7 +1066,7 @@ mod tests {
             }
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::WRITE_FILE), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::WRITE_FILE), &payload, None)
             .await
             .expect("write file diff payload should render");
 
@@ -1092,7 +1092,7 @@ mod tests {
             }]
         });
 
-        render_tool_output(&mut renderer, Some(vtcode_core::config::constants::tools::WRITE_FILE), &payload, None)
+        render_tool_output(&mut renderer, Some(diapason_core::config::constants::tools::WRITE_FILE), &payload, None)
             .await
             .expect("canonical write diff should render");
 
@@ -1185,7 +1185,7 @@ mod tests {
                         "status": "in_progress",
                         "files": ["Cargo.toml"],
                         "outcome": "Version is ready",
-                        "verify": ["cargo nextest run -p vtcode"]
+                        "verify": ["cargo nextest run -p diapason"]
                     },
                     { "index_path": "1.1", "level": 1, "description": "Update version", "status": "completed" },
                     { "index_path": "1.2", "level": 1, "description": "Run checks", "status": "in_progress" },
@@ -1212,7 +1212,7 @@ mod tests {
         );
         assert_eq!(payload["checklist"]["items"][0]["files"], json!(["Cargo.toml"]));
         assert_eq!(payload["checklist"]["items"][0]["outcome"], "Version is ready");
-        assert_eq!(payload["checklist"]["items"][0]["verify"], json!(["cargo nextest run -p vtcode"]));
+        assert_eq!(payload["checklist"]["items"][0]["verify"], json!(["cargo nextest run -p diapason"]));
         let metadata = tracker_panel_metadata(&json!({
             "checklist": {
                 "title": "Release",

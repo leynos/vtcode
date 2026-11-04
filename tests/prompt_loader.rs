@@ -5,9 +5,9 @@
 /// Integration tests for system prompt loading functionality
 /// This test ensures the prompt loading system works correctly and provides good error messages.
 use assert_fs::TempDir;
+use diapason_core::config::constants::prompts;
 use std::fs;
 use std::path::Path;
-use vtcode_core::config::constants::prompts;
 
 /// Test that the default system prompt path constant is correct
 #[test]
@@ -95,7 +95,7 @@ fn actual_prompt_file_validation() {
         assert!(!content.is_empty(), "System prompt should not be empty");
         assert!(content.len() > 50, "System prompt should be substantial (>50 chars)");
 
-        // Check for expected content patterns in the VT Code system prompt
+        // Check for expected content patterns in the Diapason system prompt
         let content_lower = content.to_lowercase();
 
         // Should mention being a coding assistant
@@ -162,9 +162,9 @@ fn integration_prompt_loading_workflow() {
     fs::create_dir_all(&prompts_dir).expect("Failed to create prompts directory");
 
     // Create a comprehensive system prompt
-    let system_prompt = r#"# VT Code System Prompt
+    let system_prompt = r#"# Diapason System Prompt
 
-You are a helpful coding assistant for the VT Code Rust project with access to file operations.
+You are a helpful coding assistant for the Diapason Rust project with access to file operations.
 
 ## Available Tools
 - list_files: List files and directories
@@ -188,7 +188,7 @@ Always respond with helpful, accurate information about the codebase.
         .expect("Failed to load system prompt using constant path");
 
     assert_eq!(loaded_content, system_prompt);
-    assert!(loaded_content.contains("VT Code"));
+    assert!(loaded_content.contains("Diapason"));
     assert!(loaded_content.contains("Available Tools"));
 
     println!("[SUCCESS] Integration test completed successfully");

@@ -13,12 +13,12 @@ use crate::agent::runloop::unified::plan_blocks::{
     ProposedPlanStreamParser, extract_any_plan, strip_plan_persistence_policy_line,
 };
 use crate::agent::runloop::unified::stream_sanitization::StreamSanitizer;
-use vtcode_commons::formatting::compact_reasoning_text;
-use vtcode_core::copilot::CopilotRuntimeRequest;
-use vtcode_core::llm::error_display;
-use vtcode_core::llm::provider::{self as uni, LLMStreamEvent, NormalizedStreamEvent};
-use vtcode_core::llm::providers::clean_reasoning_text;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_commons::formatting::compact_reasoning_text;
+use diapason_core::copilot::CopilotRuntimeRequest;
+use diapason_core::llm::error_display;
+use diapason_core::llm::provider::{self as uni, LLMStreamEvent, NormalizedStreamEvent};
+use diapason_core::llm::providers::clean_reasoning_text;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::state::CtrlCState;
 use super::ui_interaction::{PlaceholderSpinner, StreamProgressEvent, StreamSpinnerOptions};
@@ -613,7 +613,7 @@ pub(crate) async fn render_stream_with_options_and_copilot_runtime_impl(
                             return Err(uni::LLMError::Provider {
                                 message: error_display::format_llm_error(
                                     provider_name,
-                                    "Copilot runtime request arrived without a VT Code handler",
+                                    "Copilot runtime request arrived without a Diapason handler",
                                 ),
                                 metadata: None,
                             });
@@ -1056,15 +1056,15 @@ mod tests {
         PlaceholderSpinner, StreamProgressEvent, StreamSpinnerOptions,
     };
     use async_trait::async_trait;
+    use diapason_core::copilot::{CopilotObservedToolCall, CopilotObservedToolCallStatus, CopilotRuntimeRequest};
+    use diapason_core::llm::provider::{self as uni, FinishReason, LLMResponse, LLMStreamEvent};
+    use diapason_core::utils::ansi::AnsiRenderer;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle};
     use futures::stream;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
     use tokio::sync::{Notify, mpsc, oneshot};
-    use vtcode_core::copilot::{CopilotObservedToolCall, CopilotObservedToolCallStatus, CopilotRuntimeRequest};
-    use vtcode_core::llm::provider::{self as uni, FinishReason, LLMResponse, LLMStreamEvent};
-    use vtcode_core::utils::ansi::AnsiRenderer;
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle};
 
     struct SleepingRuntimeHandler {
         sleep_for: Duration,

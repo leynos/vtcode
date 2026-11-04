@@ -44,13 +44,13 @@ fuse is strict: with a cap of `3`, Plan Mode permits 12 non-consecutive blocked
 calls and stops on call 13. A successful or otherwise allowed call resets the
 consecutive streak, but not the turn's total blocked-call count.
 
-When a turn stops because of blocked behavior, VT Code forces a session-history
-checkpoint before writing the blocked handoff. The handoff advertises
-`vtcode --resume <archive-id>` only after that archive is successfully
-persisted and its identifier is verified. If history persistence is disabled or
-the checkpoint fails, the handoff explains that resume is unavailable and does
-not advertise a misleading command. Interactive sessions return to the next
-input after the handoff.
+When a turn stops because of blocked behavior, Diapason forces a
+session-history checkpoint before writing the blocked handoff. The handoff
+advertises `diapason --resume <archive-id>` only after that archive is
+successfully persisted and its identifier is verified. If history persistence
+is disabled or the checkpoint fails, the handoff explains that resume is
+unavailable and does not advertise a misleading command. Interactive sessions
+return to the next input after the handoff.
 
 Runner paths that do not create session archives also omit the resume command
 and state that limitation in the handoff.
@@ -77,7 +77,7 @@ scripts).
 
 During planning, the dispatch gate denies mutating tools. Plan remains
 read-only; the runtime alone persists validated planning artifacts under
-`.vtcode/plans/`.
+`.diapason/plans/`.
 
 `task_tracker` is available for checklist state. Planning output should use
 `<proposed_plan>...</proposed_plan>` when the agent is ready for user review.
@@ -229,7 +229,7 @@ Every numbered implementation step must name a concrete file, symbol, behavior,
 or other repository target and include a non-empty `verify:`/`verification:`
 command or check. Placeholder tokens and unresolved `Next open decision` or
 `Open question` entries block approval. Invalid candidates are rejected before
-persistence, so an existing valid draft is preserved. VT Code gives the model
+persistence, so an existing valid draft is preserved. Diapason gives the model
 one bounded repair request; if the repaired artifact is still invalid, planning
 remains active with the validation reasons visible.
 
@@ -267,7 +267,7 @@ approval popup is not shown until any required clarification has completed.
 
 `request_user_input` is optional in headless and other noninteractive runtimes.
 A permanent denial is recorded for the planning session and suppresses repeated
-interview attempts. VT Code gives the model one bounded synthesis retry using
+interview attempts. Diapason gives the model one bounded synthesis retry using
 the repository evidence already gathered. If that retry does not produce a
 validated persisted plan, the session stays in planning and shows a
 keep-planning message; it does not advertise implementation or emit approval
@@ -515,7 +515,8 @@ terminal decision is emitted as `plan.approval.resolved` with one of `execute`,
 `fresh_context`, `revise`, `cancel`, or a legacy handoff decision, plus an
 `automatic` flag. A successful fresh handoff then emits `context.reset` with
 the trigger, plan-preserved status, previous context usage, and tool-budget
-reset status. The Open Responses bridge forwards this as `vtcode.context_reset`.
+reset status. The Open Responses bridge forwards this as
+`diapason.context_reset`.
 
 ## Budget Exhaustion
 
@@ -537,7 +538,7 @@ missing results; the durable session history is not rewritten by this repair.
 ## Plan File Persistence
 
 The runtime-owned draft is the single source of truth and lives on disk under
-`.vtcode/plans/<plan>.md`, not only in chat history. The planning agent never
+`.diapason/plans/<plan>.md`, not only in chat history. The planning agent never
 writes this file itself. A candidate is validated before the plan file, sidecar
 tracker, global tracker, or approval events are created or updated. Invalid or
 partial inline plans from normal or tool-free recovery are discarded for

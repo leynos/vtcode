@@ -1,4 +1,4 @@
-use vtcode_agent_plugins::{FileSystemPluginLoader, PluginLoader};
+use diapason_agent_plugins::{FileSystemPluginLoader, PluginLoader};
 
 pub(super) async fn handle_info(name: &str) -> anyhow::Result<()> {
     let roots = super::plugin_roots();
@@ -25,13 +25,13 @@ pub(super) async fn handle_info(name: &str) -> anyhow::Result<()> {
             println!("MCP servers:");
             for (name, server) in &mcp.servers {
                 match server {
-                    vtcode_agent_plugins::ServerConfig::Stdio(s) => {
+                    diapason_agent_plugins::ServerConfig::Stdio(s) => {
                         println!("  - {} (stdio): {} {:?}", name, s.command, s.args);
                     }
-                    vtcode_agent_plugins::ServerConfig::StreamableHttp(h) => {
+                    diapason_agent_plugins::ServerConfig::StreamableHttp(h) => {
                         println!("  - {} (streamable-http): {}", name, h.url);
                     }
-                    vtcode_agent_plugins::ServerConfig::Sse(s) => {
+                    diapason_agent_plugins::ServerConfig::Sse(s) => {
                         println!("  - {} (sse): {} (unsupported)", name, s.url);
                     }
                 }

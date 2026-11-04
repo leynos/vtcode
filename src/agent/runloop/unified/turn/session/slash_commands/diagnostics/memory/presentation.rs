@@ -1,10 +1,10 @@
-use vtcode_core::llm::{
+use diapason_core::llm::{
     LightweightFeature, LightweightRouteSource, auto_lightweight_model, lightweight_model_choices,
     resolve_lightweight_route,
 };
-use vtcode_core::persistent_memory::PersistentMemoryStatus;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
+use diapason_core::persistent_memory::PersistentMemoryStatus;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 
 use super::{MEMORY_ACTION_BACK, MEMORY_ACTION_PREFIX, MEMORY_LIGHTWEIGHT_MODEL_PREFIX, SlashCommandContext};
 
@@ -88,8 +88,8 @@ pub(super) fn render_common_memory_status(
 }
 
 pub(super) fn memory_lightweight_route_info(
-    runtime_config: &vtcode_core::config::types::AgentConfig,
-    vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
+    runtime_config: &diapason_core::config::types::AgentConfig,
+    vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
 ) -> MemoryLightweightRouteInfo {
     let resolution = resolve_lightweight_route(runtime_config, vt_cfg, LightweightFeature::Memory, None);
     let configured_label = vt_cfg
@@ -198,7 +198,7 @@ pub(super) fn show_memory_actions_modal(
     items.push(InlineListItem {
         title: toggle_title("Lightweight Model For Memory", agent_config.small_model.use_for_memory),
         subtitle: Some(
-            "Allow VT Code to use the shared lightweight route for memory classification and summary refresh."
+            "Allow Diapason to use the shared lightweight route for memory classification and summary refresh."
                 .to_string(),
         ),
         badge: Some("Toggle".to_string()),

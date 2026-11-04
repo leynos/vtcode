@@ -2,16 +2,16 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use serde_json::Value;
-use tokio::sync::Notify;
-use vtcode_core::core::interfaces::ui::UiSession;
-use vtcode_core::notifications::{NotificationEvent, send_global_notification};
-use vtcode_core::sandboxing::{AdditionalPermissions, SandboxPermissions as CoreSandboxPermissions};
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{
+use diapason_core::core::interfaces::ui::UiSession;
+use diapason_core::notifications::{NotificationEvent, send_global_notification};
+use diapason_core::sandboxing::{AdditionalPermissions, SandboxPermissions as CoreSandboxPermissions};
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{
     InlineHandle, ListOverlayRequest, TransientHotkey, TransientHotkeyAction, TransientHotkeyKey, TransientRequest,
     TransientSubmission,
 };
+use serde_json::Value;
+use tokio::sync::Notify;
 
 use super::HitlDecision;
 use super::shell_approval::{ApprovalLearningTarget, PersistentApprovalTarget};
@@ -37,13 +37,13 @@ fn cancelled_prompt_decision(prompt_kind: ToolPermissionPromptKind) -> HitlDecis
 
 fn shell_run_args<'a>(tool_name: &str, tool_args: Option<&'a Value>) -> Option<&'a Value> {
     let args = tool_args?;
-    vtcode_core::tools::tool_intent::is_command_run_tool_call(tool_name, args).then_some(args)
+    diapason_core::tools::tool_intent::is_command_run_tool_call(tool_name, args).then_some(args)
 }
 
 pub(super) fn tool_permission_prompt_kind(tool_name: &str) -> ToolPermissionPromptKind {
-    if vtcode_core::tools::mcp::is_legacy_mcp_tool_name(tool_name)
-        || vtcode_core::tools::mcp::parse_canonical_mcp_tool_name(tool_name).is_some()
-        || tool_name.starts_with(vtcode_core::tools::mcp::MCP_QUALIFIED_TOOL_PREFIX)
+    if diapason_core::tools::mcp::is_legacy_mcp_tool_name(tool_name)
+        || diapason_core::tools::mcp::parse_canonical_mcp_tool_name(tool_name).is_some()
+        || tool_name.starts_with(diapason_core::tools::mcp::MCP_QUALIFIED_TOOL_PREFIX)
     {
         ToolPermissionPromptKind::Mcp
     } else {
@@ -52,20 +52,22 @@ pub(super) fn tool_permission_prompt_kind(tool_name: &str) -> ToolPermissionProm
 }
 
 fn normalized_shell_command_value(args: &Value) -> Option<Value> {
-    match vtcode_core::tools::command_args::normalize_shell_args(args) {
-        Ok(normalized) => vtcode_core::tools::command_args::normalized_command_value(&normalized)
+    match diapason_core::tools::command_args::normalize_shell_args(args) {
+        Ok(normalized) => diapason_core::tools::command_args::normalized_command_value(&normalized)
             .ok()
             .flatten(),
-        Err(_) => vtcode_core::tools::command_args::normalized_command_value(args).ok().flatten(),
+        Err(_) => diapason_core::tools::command_args::normalized_command_value(args)
+            .ok()
+            .flatten(),
     }
 }
 
 fn extract_shell_command_text_from_run_args(args: &Value) -> Option<String> {
-    vtcode_core::tools::command_args::command_text(args).ok().flatten()
+    diapason_core::tools::command_args::command_text(args).ok().flatten()
 }
 
 fn extract_shell_command_words_from_run_args(args: &Value) -> Option<Vec<String>> {
-    vtcode_core::tools::command_args::command_words(args).ok().flatten()
+    diapason_core::tools::command_args::command_words(args).ok().flatten()
 }
 
 fn render_shell_command_words(parts: &[String]) -> String {
@@ -178,7 +180,7 @@ pub(super) fn extract_shell_command_text(tool_name: &str, tool_args: Option<&Val
 
 pub(super) fn extract_shell_raw_command_text(tool_name: &str, tool_args: Option<&Value>) -> Option<String> {
     let args = shell_run_args(tool_name, tool_args)?;
-    vtcode_core::tools::command_args::raw_command_text(args)
+    diapason_core::tools::command_args::raw_command_text(args)
 }
 
 pub(super) fn split_command_words_on_operators(parts: &[String]) -> Option<Vec<Vec<String>>> {
@@ -357,7 +359,7 @@ fn tool_args_diff_preview(tool_name: &str, tool_args: Option<&Value>) -> Option<
         .and_then(Value::as_str)
         .unwrap_or("(unknown file)");
 
-    let diff_preview = vtcode_core::tools::file_ops::build_diff_preview(path, before, after);
+    let diff_preview = diapason_core::tools::file_ops::build_diff_preview(path, before, after);
     let skipped = diff_preview.get("skipped").and_then(Value::as_bool).unwrap_or(false);
     if skipped {
         let reason = diff_preview
@@ -372,7 +374,7 @@ fn tool_args_diff_preview(tool_name: &str, tool_args: Option<&Value>) -> Option<
         return Some(vec!["(no changes)".to_string()]);
     }
 
-    let plain = vtcode_commons::ansi::strip_ansi(content);
+    let plain = diapason_commons::ansi::strip_ansi(content);
     let lines = format_unified_diff_lines(&plain);
     if lines.len() <= 80 {
         return Some(lines);
@@ -388,8 +390,8 @@ fn tool_args_diff_preview(tool_name: &str, tool_args: Option<&Value>) -> Option<
 fn build_tool_permission_options(
     prompt_kind: ToolPermissionPromptKind,
     persistent_approval_target: Option<&PersistentApprovalTarget>,
-) -> Vec<vtcode_ui::tui::app::InlineListItem> {
-    use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
+) -> Vec<diapason_ui::tui::app::InlineListItem> {
+    use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 
     let mut options = vec![
         InlineListItem {
@@ -496,9 +498,9 @@ pub(super) async fn prompt_tool_permission<S: UiSession + ?Sized>(
     ctrl_c_notify: &Arc<Notify>,
     default_placeholder: Option<String>,
     approval_reason: Option<&str>,
-    justification: Option<&vtcode_core::tools::ToolJustification>,
+    justification: Option<&diapason_core::tools::ToolJustification>,
     persistent_approval_target: Option<&PersistentApprovalTarget>,
-    approval_recorder: Option<&vtcode_core::tools::ApprovalRecorder>,
+    approval_recorder: Option<&diapason_core::tools::ApprovalRecorder>,
     hitl_notification_bell: bool,
     source_thread_label: Option<&str>,
 ) -> Result<HitlDecision> {
@@ -594,11 +596,11 @@ pub(super) async fn prompt_tool_permission<S: UiSession + ?Sized>(
         })
         .unwrap_or_default();
 
-    use vtcode_ui::tui::app::InlineListSelection;
+    use diapason_ui::tui::app::InlineListSelection;
     let default_selection = InlineListSelection::ToolApproval(true);
     if hitl_notification_bell
         && let Err(err) = send_global_notification(NotificationEvent::PermissionPrompt {
-            title: "VT Code approval required".to_string(),
+            title: "Diapason approval required".to_string(),
             message: format!("Review the permission prompt for tool `{tool_name}`."),
         })
         .await
@@ -624,7 +626,7 @@ pub(super) async fn prompt_tool_permission<S: UiSession + ?Sized>(
             TransientSubmission::Hotkey(TransientHotkeyAction::OpenSourceThread) => {
                 handle.set_input("/agent".to_string());
                 let _ = renderer.line(
-                    vtcode_core::utils::ansi::MessageStyle::Info,
+                    diapason_core::utils::ansi::MessageStyle::Info,
                     "Switched focus to thread selector command. Run /agent to inspect the source thread, then retry the tool action.",
                 );
                 Some(HitlDecision::DeniedOnce)
@@ -670,7 +672,7 @@ pub(super) async fn prompt_policy_denied_tool<S: UiSession + ?Sized>(
     ctrl_c_notify: &Arc<Notify>,
     session: &mut S,
 ) -> Result<HitlDecision> {
-    use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
+    use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 
     let mut description_lines = vec![
         format!("Tool: {}", tool_name),
@@ -758,8 +760,8 @@ pub(super) async fn prompt_policy_denied_tool<S: UiSession + ?Sized>(
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::constants::tools;
     use serde_json::json;
-    use vtcode_core::config::constants::tools;
 
     use super::{
         ToolPermissionPromptKind, build_tool_permission_options, cancelled_prompt_decision,
@@ -927,7 +929,7 @@ mod tests {
     fn shell_persistent_prefix_rule_requires_matching_command_prefix() {
         let args = json!({
             "action": "run",
-            "command": "cargo test -p vtcode",
+            "command": "cargo test -p diapason",
             "prefix_rule": ["cargo", "build"]
         });
 
@@ -951,7 +953,7 @@ mod tests {
     fn shell_approval_prefix_text_normalizes_simple_commands() {
         let args = json!({
             "action": "run",
-            "command": ["cargo", "test", "-p", "vtcode"]
+            "command": ["cargo", "test", "-p", "diapason"]
         });
 
         let command = extract_shell_approval_command_prefix_words(tools::UNIFIED_EXEC, Some(&args));
@@ -961,7 +963,7 @@ mod tests {
                 "cargo".to_string(),
                 "test".to_string(),
                 "-p".to_string(),
-                "vtcode".to_string()
+                "diapason".to_string()
             ])
         );
     }
@@ -1002,7 +1004,7 @@ mod tests {
     fn shell_persistent_approval_entry_includes_scope() {
         let args = json!({
             "action": "run",
-            "command": "cargo test -p vtcode",
+            "command": "cargo test -p diapason",
             "prefix_rule": ["cargo", "test"],
             "sandbox_permissions": "require_escalated"
         });

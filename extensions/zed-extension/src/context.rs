@@ -1,12 +1,12 @@
 /// Editor Context Management
 ///
-/// Provides rich context from the Zed editor for VT Code commands.
+/// Provides rich context from the Zed editor for Diapason commands.
 /// Captures selection, file info, workspace structure, and environment.
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 
-pub const IDE_CONTEXT_ENV_VAR: &str = "VT_IDE_CONTEXT_FILE";
+pub const IDE_CONTEXT_ENV_VAR: &str = "DIAPASON_IDE_CONTEXT_FILE";
 const IDE_CONTEXT_SNAPSHOT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -55,7 +55,7 @@ pub struct IdeContextSelectionRange {
     pub end_column: usize,
 }
 
-/// Rich context from the editor for a VT Code command
+/// Rich context from the editor for a Diapason command
 #[derive(Debug, Clone)]
 pub struct EditorContext {
     /// Currently active file path
@@ -212,12 +212,12 @@ impl Default for EditorContext {
 
 fn ide_context_snapshot_path() -> PathBuf {
     std::env::temp_dir().join(format!(
-        "vtcode-zed-ide-context-{}.json",
+        "diapason-zed-ide-context-{}.json",
         std::process::id()
     ))
 }
 
-/// Diagnostic result from VT Code analysis
+/// Diagnostic result from Diapason analysis
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     /// Severity: error, warning, info

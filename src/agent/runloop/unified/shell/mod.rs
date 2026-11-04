@@ -107,10 +107,10 @@ mod tests {
     #[test]
     fn test_detect_show_diff_normalizes_on_prefixed_file_mentions() {
         let result =
-            detect_explicit_run_command("show diff on @crates/codegen/vtcode-core/src/tools/registry/policy.rs");
+            detect_explicit_run_command("show diff on @crates/codegen/diapason-core/src/tools/registry/policy.rs");
         assert!(result.is_some());
         let (_, args) = result.expect("direct command expected");
-        assert_eq!(args["command"], "git diff -- crates/codegen/vtcode-core/src/tools/registry/policy.rs");
+        assert_eq!(args["command"], "git diff -- crates/codegen/diapason-core/src/tools/registry/policy.rs");
     }
 
     #[test]
@@ -131,10 +131,10 @@ mod tests {
 
     #[test]
     fn test_detect_show_diff_allows_dot_prefixed_paths() {
-        let result = detect_explicit_run_command("show diff .vtcode/tool-policy.json");
+        let result = detect_explicit_run_command("show diff .diapason/tool-policy.json");
         assert!(result.is_some());
         let (_, args) = result.expect("direct command expected");
-        assert_eq!(args["command"], "git diff -- .vtcode/tool-policy.json");
+        assert_eq!(args["command"], "git diff -- .diapason/tool-policy.json");
     }
 
     #[test]
@@ -147,26 +147,26 @@ mod tests {
     #[test]
     fn test_detect_explicit_run_command_normalizes_natural_cargo_test_phrase() {
         let result =
-            detect_explicit_run_command("run cargo test on vtcode bin for func highlights_run_prefix_user_input");
+            detect_explicit_run_command("run cargo test on diapason bin for func highlights_run_prefix_user_input");
         assert!(result.is_some());
         let (_, args) = result.expect("normalized command expected");
-        assert_eq!(args["command"], "cargo test --bin vtcode highlights_run_prefix_user_input");
+        assert_eq!(args["command"], "cargo test --bin diapason highlights_run_prefix_user_input");
     }
 
     #[test]
     fn test_detect_explicit_run_command_keeps_standard_cargo_test() {
-        let result = detect_explicit_run_command("run cargo test --bin vtcode smoke_test");
+        let result = detect_explicit_run_command("run cargo test --bin diapason smoke_test");
         assert!(result.is_some());
         let (_, args) = result.expect("command expected");
-        assert_eq!(args["command"], "cargo test --bin vtcode smoke_test");
+        assert_eq!(args["command"], "cargo test --bin diapason smoke_test");
     }
 
     #[test]
     fn test_detect_explicit_run_command_normalizes_cargo_check_package_phrase() {
-        let result = detect_explicit_run_command("run cargo check on vtcode-core package");
+        let result = detect_explicit_run_command("run cargo check on diapason-core package");
         assert!(result.is_some());
         let (_, args) = result.expect("normalized command expected");
-        assert_eq!(args["command"], "cargo check -p vtcode-core");
+        assert_eq!(args["command"], "cargo check -p diapason-core");
     }
 
     #[test]
@@ -188,10 +188,10 @@ mod tests {
     #[test]
     fn test_detect_explicit_run_command_extracts_backtick_command() {
         let result =
-            detect_explicit_run_command("run please use `cargo test --bin vtcode highlights_run_prefix_user_input`");
+            detect_explicit_run_command("run please use `cargo test --bin diapason highlights_run_prefix_user_input`");
         assert!(result.is_some());
         let (_, args) = result.expect("normalized command expected");
-        assert_eq!(args["command"], "cargo test --bin vtcode highlights_run_prefix_user_input");
+        assert_eq!(args["command"], "cargo test --bin diapason highlights_run_prefix_user_input");
     }
 
     #[test]

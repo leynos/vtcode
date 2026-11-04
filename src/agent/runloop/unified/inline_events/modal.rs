@@ -4,12 +4,12 @@ use tokio::sync::Notify;
 
 use tracing::warn;
 
-use vtcode_config::constants::ui;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::llm::provider::{self as uni};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::{InlineHandle, InlineHeaderContext, InlineListSelection, SubmittedInput};
+use diapason_config::constants::ui;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::llm::provider::{self as uni};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::{InlineHandle, InlineHeaderContext, InlineListSelection, SubmittedInput};
 
 use crate::agent::runloop::model_picker::{ModelPickerProgress, ModelPickerStart, ModelPickerState};
 use crate::agent::runloop::slash_commands::SessionPaletteMode;
@@ -46,7 +46,7 @@ impl<'a> InlineModalProcessor<'a> {
         model_picker_state: &'a mut Option<ModelPickerState>,
         palette_state: &'a mut Option<ActivePalette>,
         config: &'a mut CoreAgentConfig,
-        vt_cfg: &'a mut Option<VTCodeConfig>,
+        vt_cfg: &'a mut Option<DiapasonConfig>,
         provider_client: &'a mut Box<dyn uni::LLMProvider>,
         ctrl_c_state: &'a Arc<crate::agent::runloop::unified::state::CtrlCState>,
         ctrl_c_notify: &'a Arc<Notify>,
@@ -327,7 +327,7 @@ impl<'a> PaletteCoordinator<'a> {
         renderer: &mut AnsiRenderer,
         selection: InlineListSelection,
         config: &mut CoreAgentConfig,
-        vt_cfg: &mut Option<VTCodeConfig>,
+        vt_cfg: &mut Option<DiapasonConfig>,
         provider_client: &dyn uni::LLMProvider,
         session_bootstrap: &SessionBootstrap,
         full_auto: bool,
@@ -434,7 +434,7 @@ struct ModelPickerCoordinator<'a> {
     state: &'a mut Option<ModelPickerState>,
     header_context: &'a mut InlineHeaderContext,
     config: &'a mut CoreAgentConfig,
-    vt_cfg: &'a mut Option<VTCodeConfig>,
+    vt_cfg: &'a mut Option<DiapasonConfig>,
     provider_client: &'a mut Box<dyn uni::LLMProvider>,
     ctrl_c_state: &'a Arc<crate::agent::runloop::unified::state::CtrlCState>,
     ctrl_c_notify: &'a Arc<Notify>,

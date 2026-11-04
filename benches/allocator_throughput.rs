@@ -1,5 +1,5 @@
 //! Allocation throughput benchmark comparing the active global allocator
-//! (`mimalloc` vs `jemalloc`) for vtcode's allocation patterns.
+//! (`mimalloc` vs `jemalloc`) for diapason's allocation patterns.
 //!
 //! Run with the default allocator (mimalloc on macOS):
 //!
@@ -14,7 +14,7 @@
 //! ```
 //!
 //! Lower times = faster allocator. This measures allocation latency/throughput
-//! only — it does NOT measure RSS reclamation (see `vtcode bench-allocator`).
+//! only — it does NOT measure RSS reclamation (see `diapason bench-allocator`).
 //!
 //! Build with the default allocator (mimalloc):
 //!   cargo bench --bench allocator_throughput

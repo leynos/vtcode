@@ -1,14 +1,14 @@
-# VT Code Allowed Commands Reference
+# Diapason Allowed Commands Reference
 
-This document outlines all commands that VT Code allows agents to execute,
+This document outlines all commands that Diapason allows agents to execute,
 organized by category.
 
 ## Overview
 
-VT Code maintains a comprehensive allow-list of safe commands that the agent
+Diapason maintains a comprehensive allow-list of safe commands that the agent
 can execute. The list is defined in
-`crates/codegen/vtcode-config/src/constants.rs` and can be customized via
-`vtcode.toml`.
+`crates/codegen/diapason-config/src/constants.rs` and can be customized via
+`config.toml`.
 
 **Total Allowed Commands**: 380+ (as of v0.43.3)
 
@@ -251,7 +251,7 @@ wget, ftp, scp, rsync, ssh, telnet, nc, ncat, socat
 
 ## Environment Variables Preserved
 
-When executing commands, VT Code now preserves these critical environment
+When executing commands, Diapason now preserves these critical environment
 variables from the parent shell:
 
 - `PATH` - Command search paths (enables finding custom installations)
@@ -263,12 +263,12 @@ variables from the parent shell:
 - `EDITOR`, `VISUAL` - Default editors
 - Custom environment variables set by the user
 
-**Note**: VT Code overrides `PAGER`, `GIT_PAGER`, `LESS`, `TERM`, color-related
-vars for consistency.
+**Note**: Diapason overrides `PAGER`, `GIT_PAGER`, `LESS`, `TERM`,
+color-related vars for consistency.
 
 ## Configuration
 
-### Default Allow List (vtcode.toml)
+### Default Allow List (config.toml)
 
 ```toml
 [commands]
@@ -315,7 +315,7 @@ deny_glob = [
 
 ### Custom Allowlists
 
-Users can extend the allowed commands via `vtcode.toml`:
+Users can extend the allowed commands via `config.toml`:
 
 ```toml
 [commands]
@@ -345,7 +345,7 @@ type <command>
 command -v <command>
 ```
 
-If a command is in PATH but not in VT Code's allow-list, it will be blocked by
+If a command is in PATH but not in Diapason's allow-list, it will be blocked by
 policy enforcement.
 
 ## Troubleshooting
@@ -355,7 +355,7 @@ policy enforcement.
 1. Verify the command is installed: `which <command>`
 2. Check it's in PATH: `echo $PATH`
 3. Verify it's in the allow-list or matches an allow-glob pattern
-4. Check vtcode.toml for deny rules that might block it
+4. Check config.toml for deny rules that might block it
 
 ### PATH Not Inherited
 
@@ -371,7 +371,7 @@ If a command runs but shows permission errors:
 
 1. Check file permissions: `ls -la /path/to/command`
 2. Ensure the command is executable: `chmod +x /path/to/command`
-3. VT Code doesn't execute blocked commands - check against deny lists
+3. Diapason doesn't execute blocked commands - check against deny lists
 
 ## See Also
 
@@ -380,5 +380,5 @@ If a command runs but shows permission errors:
 - `docs/guides/security.md` - Security best practices
 - `docs/environment/PATH_VISIBILITY_FIX.md` - Details on the PATH inheritance
     fix
-- `crates/codegen/vtcode-config/src/constants.rs` - Source of truth for
+- `crates/codegen/diapason-config/src/constants.rs` - Source of truth for
     command lists

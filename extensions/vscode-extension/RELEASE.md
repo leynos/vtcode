@@ -1,9 +1,12 @@
-# VT Code Extension Release Script
+# Diapason Extension Release Script
 
-Automated release script for the VT Code VSCode extension that handles version
+Automated release script for the Diapason VSCode extension that handles version
 bumping, building, packaging, and publishing.
 
 ## Quick Start
+
+This is the release procedure for a future Diapason extension publication; no
+Diapason VS Code or Open VSX release is published yet.
 
 ```bash
 # Patch release (0.1.1 -> 0.1.2)
@@ -33,9 +36,9 @@ bumping, building, packaging, and publishing.
 ## Tag Naming Convention
 
 The extension uses **`vscode-v{version}`** format to avoid conflicts with the
-main VT Code binary:
+main Diapason binary:
 
-- **Main VT Code CLI**: `v0.39.0`, `v0.39.1`, `v0.39.2`
+- **Main Diapason CLI**: `v0.39.0`, `v0.39.1`, `v0.39.2`
 - **VSCode Extension**: `vscode-v0.1.0`, `vscode-v0.1.1`, `vscode-v0.1.2`
 
 ## Prerequisites
@@ -53,7 +56,7 @@ main VT Code binary:
 **VSCode Marketplace:**
 
 - Personal Access Token from <https://marketplace.visualstudio.com/manage>
-- Login with: `vsce login nguyenxuanvinh`
+- Login with: `vsce login df12productions`
 
 **Open VSX Registry:**
 
@@ -86,7 +89,7 @@ npm run package
 vsce publish
 
 # Publish to Open VSX only
-ovsx publish vtcode-companion-{version}.vsix
+ovsx publish diapason-companion-{version}.vsix
 ```
 
 ## Troubleshooting
@@ -120,8 +123,8 @@ tags if they exist.
 
 After a successful release:
 
-- Local `.vsix` file: `vtcode-companion-{version}.vsix`
+- Local `.vsix` file: `diapason-companion-{version}.vsix`
 - Git tag: `vscode-v{version}`
 - Marketplace:
-    <https://marketplace.visualstudio.com/items?itemName=nguyenxuanvinh.vtcode-companion>
-- Open VSX: <https://open-vsx.org/extension/nguyenxuanvinh/vtcode-companion>
+    <https://marketplace.visualstudio.com/items?itemName=df12productions.diapason-companion>
+- Open VSX: <https://open-vsx.org/extension/df12productions/diapason-companion>

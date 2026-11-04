@@ -11,7 +11,7 @@
 
 ```bash
 export MODEL_API_KEY="..."
-vtcode --provider meta --model muse-spark-1.2 ask "Summarize this change"
+diapason --provider meta --model muse-spark-1.2 ask "Summarize this change"
 ```
 
 Official Meta Muse models:

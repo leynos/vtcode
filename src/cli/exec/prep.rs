@@ -1,22 +1,22 @@
 use anyhow::{Context, Result, bail};
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
-use vtcode_core::cli::args::{ExecResumeArgs, ExecSubcommand};
-use vtcode_core::cli::input_hardening::validate_agent_safe_text;
-use vtcode_core::config::VTCodeConfig;
-use vtcode_core::config::models::ModelId;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::threads::{
+use diapason_core::cli::args::{ExecResumeArgs, ExecSubcommand};
+use diapason_core::cli::input_hardening::validate_agent_safe_text;
+use diapason_core::config::DiapasonConfig;
+use diapason_core::config::models::ModelId;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::threads::{
     ArchivedSessionIntent, SessionQueryScope, ThreadBootstrap, build_thread_archive_metadata,
     list_recent_sessions_in_scope, prepare_archived_session,
 };
-use vtcode_core::review::{ReviewSpec, build_review_prompt};
-use vtcode_core::utils::session_archive::{
+use diapason_core::review::{ReviewSpec, build_review_prompt};
+use diapason_core::utils::session_archive::{
     SessionArchive, SessionListing, find_session_by_identifier, generate_session_archive_identifier,
     history_persistence_enabled, reserve_session_archive_identifier,
 };
-use vtcode_core::utils::tty::TtyExt;
-use vtcode_core::utils::validation::validate_non_empty;
+use diapason_core::utils::tty::TtyExt;
+use diapason_core::utils::validation::validate_non_empty;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 
 use crate::agent::agents::{apply_persisted_resume_metadata, apply_runtime_overrides};
 use crate::startup::require_full_auto_workspace_trust;
@@ -51,9 +51,9 @@ pub enum ExecCommandKind {
 
 pub(super) struct ExecPreparedRun {
     pub config: CoreAgentConfig,
-    pub vt_cfg: VTCodeConfig,
+    pub vt_cfg: DiapasonConfig,
     pub model_id: ModelId,
-    pub active_primary_agent: vtcode_core::ActivePrimaryAgent,
+    pub active_primary_agent: diapason_core::ActivePrimaryAgent,
     pub prompt: String,
     pub session_id: String,
     pub archive: Option<SessionArchive>,
@@ -61,7 +61,7 @@ pub(super) struct ExecPreparedRun {
 }
 
 struct ExecVtConfig {
-    config: VTCodeConfig,
+    config: DiapasonConfig,
     primary_agent_explicitly_configured: bool,
 }
 
@@ -100,7 +100,7 @@ fn resolve_resume_command(resume: ExecResumeArgs) -> Result<ExecCommandKind> {
 
 pub(super) async fn prepare_exec_run(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     options: &ExecCommandOptions,
 ) -> Result<ExecPreparedRun> {
     validate_resume_prompt_requirement(&options.command, io::stdin().is_tty_ext())?;
@@ -147,13 +147,13 @@ pub(super) async fn prepare_exec_run(
     // This avoids the interactive trust prompt in CI/eval scenarios.
     let automation_cfg = &run_vt_cfg.automation.full_auto;
     if automation_cfg.enabled {
-        let current_trust = vtcode_core::utils::dot_config::load_workspace_trust_level(&run_config.workspace)
+        let current_trust = diapason_core::utils::dot_config::load_workspace_trust_level(&run_config.workspace)
             .await
             .unwrap_or(None);
         if current_trust.is_none() {
-            vtcode_core::utils::dot_config::update_workspace_trust(
+            diapason_core::utils::dot_config::update_workspace_trust(
                 &run_config.workspace,
-                vtcode_core::config::WorkspaceTrustLevel::FullAuto,
+                diapason_core::config::WorkspaceTrustLevel::FullAuto,
             )
             .await
             .ok();
@@ -174,7 +174,7 @@ pub(super) async fn prepare_exec_run(
     )
     .with_context(|| {
         format!(
-            "Model '{}' is not recognized for exec command. Update vtcode.toml to a supported identifier.",
+            "Model '{}' is not recognized for exec command. Update config.toml to a supported identifier.",
             run_config.model
         )
     })?;
@@ -343,9 +343,9 @@ fn resolve_resume_workspace(listing: &SessionListing) -> Result<PathBuf> {
 fn build_exec_archive_metadata(
     workspace: &Path,
     model_id: &ModelId,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     config: &CoreAgentConfig,
-) -> vtcode_core::utils::session_archive::SessionArchiveMetadata {
+) -> diapason_core::utils::session_archive::SessionArchiveMetadata {
     build_thread_archive_metadata(
         workspace,
         &model_id.as_str(),
@@ -376,7 +376,7 @@ async fn next_exec_session_id(
 }
 
 async fn load_exec_vt_config(
-    base: &VTCodeConfig,
+    base: &DiapasonConfig,
     workspace: &Path,
     original_workspace: &Path,
     original_primary_agent_explicitly_configured: bool,
@@ -429,16 +429,16 @@ mod tests {
         ExecCommandKind, build_exec_archive_metadata, load_exec_vt_config, next_exec_session_id,
         prompt_with_stdin_context, resolve_exec_command, validate_resume_prompt_requirement,
     };
-    use std::path::{Path, PathBuf};
-    use std::str::FromStr;
-    use vtcode_core::cli::args::{ExecResumeArgs, ExecSubcommand};
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::config::models::ModelId;
-    use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-    use vtcode_core::review::{ReviewTarget, build_review_spec};
-    use vtcode_core::utils::session_debug::{
+    use diapason_core::cli::args::{ExecResumeArgs, ExecSubcommand};
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::config::models::ModelId;
+    use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+    use diapason_core::review::{ReviewTarget, build_review_spec};
+    use diapason_core::utils::session_debug::{
         configure_runtime_debug_context, runtime_debug_log_path, set_runtime_debug_log_path,
     };
+    use std::path::{Path, PathBuf};
+    use std::str::FromStr;
 
     #[test]
     fn resolve_resume_last_uses_first_positional_as_prompt() {
@@ -533,7 +533,7 @@ mod tests {
         let launch_dir = tempfile::tempdir().expect("launch workspace");
         let resumed_dir = tempfile::tempdir().expect("resumed workspace");
         std::fs::write(
-            resumed_dir.path().join("vtcode.toml"),
+            resumed_dir.path().join("config.toml"),
             r#"
 default_primary_agent = "duck"
 
@@ -546,7 +546,7 @@ use_root_config = true
         )
         .expect("resumed config");
 
-        let loaded = load_exec_vt_config(&VTCodeConfig::default(), resumed_dir.path(), launch_dir.path(), false)
+        let loaded = load_exec_vt_config(&DiapasonConfig::default(), resumed_dir.path(), launch_dir.path(), false)
             .await
             .expect("resumed config should load");
 
@@ -558,7 +558,7 @@ use_root_config = true
     async fn load_exec_vt_config_preserves_launch_primary_agent_metadata_for_same_workspace() {
         let workspace = tempfile::tempdir().expect("workspace");
 
-        let loaded = load_exec_vt_config(&VTCodeConfig::default(), workspace.path(), workspace.path(), true)
+        let loaded = load_exec_vt_config(&DiapasonConfig::default(), workspace.path(), workspace.path(), true)
             .await
             .expect("same-workspace config should load");
 
@@ -567,7 +567,7 @@ use_root_config = true
 
     #[test]
     fn build_exec_archive_metadata_includes_runtime_debug_log_path() {
-        let mut vt_cfg = VTCodeConfig::default();
+        let mut vt_cfg = DiapasonConfig::default();
         vt_cfg.agent.provider = "openai".to_string();
         vt_cfg.agent.theme = "mono".to_string();
 

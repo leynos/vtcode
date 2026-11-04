@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VT Code Fast Development Check Script
+# Diapason Fast Development Check Script
 # Optimized for rapid development iterations (typically 10-30s vs 2-5m for full check)
 #
 # Default checks (fast):
@@ -73,7 +73,7 @@ run_rustfmt() {
     fi
 }
 
-DEFAULT_PACKAGE_NAMES=("vtcode" "vtcode-core" "vtcode-ui")
+DEFAULT_PACKAGE_NAMES=("diapason" "diapason-core" "diapason-ui")
 DEFAULT_MEMBERS=()
 for package_name in "${DEFAULT_PACKAGE_NAMES[@]}"; do
     DEFAULT_MEMBERS+=("-p" "$package_name")
@@ -277,7 +277,7 @@ run_shell_scripts_lint() {
 }
 
 print_usage() {
-    echo "VT Code Fast Development Check Script"
+    echo "Diapason Fast Development Check Script"
     echo ""
     echo "Usage: $0 [OPTIONS]"
     echo ""

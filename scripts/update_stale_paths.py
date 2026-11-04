@@ -7,22 +7,22 @@ import re
 # Mapping: old prefix -> new prefix
 # Only matching exact crate/src/... patterns to avoid false positives
 REPLACEMENTS = [
-    ("crates/codegen/vtcode-core/src/", "crates/codegen/vtcode-core/src/"),
-    ("crates/common/vtcode-commons/src/", "crates/common/vtcode-commons/src/"),
-    ("crates/codegen/vtcode-config/src/", "crates/codegen/vtcode-config/src/"),
-    ("crates/codegen/vtcode-ui/src/", "crates/codegen/vtcode-ui/src/"),
-    ("crates/codegen/vtcode-indexer/src/", "crates/codegen/vtcode-indexer/src/"),
-    ("crates/codegen/vtcode-bash-runner/src/", "crates/codegen/vtcode-bash-runner/src/"),
-    ("crates/common/vtcode-exec-events/src/", "crates/common/vtcode-exec-events/src/"),
-    ("crates/codegen/vtcode-acp/src/", "crates/codegen/vtcode-acp/src/"),
-    ("crates/codegen/vtcode-auth/src/", "crates/codegen/vtcode-auth/src/"),
-    ("crates/codegen/vtcode-a2a/src/", "crates/codegen/vtcode-a2a/src/"),
-    ("crates/codegen/vtcode-mcp/src/", "crates/codegen/vtcode-mcp/src/"),
-    ("crates/codegen/vtcode-llm/src/", "crates/codegen/vtcode-llm/src/"),
-    ("crates/codegen/vtcode-safety/src/", "crates/codegen/vtcode-safety/src/"),
-    ("crates/codegen/vtcode-memory/src/", "crates/codegen/vtcode-memory/src/"),
-    ("crates/codegen/vtcode-skills/src/", "crates/codegen/vtcode-skills/src/"),
-    ("crates/codegen/vtcode-eval/src/", "crates/codegen/vtcode-eval/src/"),
+    ("crates/codegen/diapason-core/src/", "crates/codegen/diapason-core/src/"),
+    ("crates/common/diapason-commons/src/", "crates/common/diapason-commons/src/"),
+    ("crates/codegen/diapason-config/src/", "crates/codegen/diapason-config/src/"),
+    ("crates/codegen/diapason-ui/src/", "crates/codegen/diapason-ui/src/"),
+    ("crates/codegen/diapason-indexer/src/", "crates/codegen/diapason-indexer/src/"),
+    ("crates/codegen/diapason-bash-runner/src/", "crates/codegen/diapason-bash-runner/src/"),
+    ("crates/common/diapason-exec-events/src/", "crates/common/diapason-exec-events/src/"),
+    ("crates/codegen/diapason-acp/src/", "crates/codegen/diapason-acp/src/"),
+    ("crates/codegen/diapason-auth/src/", "crates/codegen/diapason-auth/src/"),
+    ("crates/codegen/diapason-a2a/src/", "crates/codegen/diapason-a2a/src/"),
+    ("crates/codegen/diapason-mcp/src/", "crates/codegen/diapason-mcp/src/"),
+    ("crates/codegen/diapason-llm/src/", "crates/codegen/diapason-llm/src/"),
+    ("crates/codegen/diapason-safety/src/", "crates/codegen/diapason-safety/src/"),
+    ("crates/codegen/diapason-memory/src/", "crates/codegen/diapason-memory/src/"),
+    ("crates/codegen/diapason-skills/src/", "crates/codegen/diapason-skills/src/"),
+    ("crates/codegen/diapason-eval/src/", "crates/codegen/diapason-eval/src/"),
 ]
 
 # Directories to scan
@@ -87,9 +87,9 @@ def main():
             # Skip .git
             if ".git" in dirs:
                 dirs.remove(".git")
-            # Skip .vtcode runtime data
-            if ".vtcode" in dirs:
-                dirs.remove(".vtcode")
+            # Skip .diapason runtime data
+            if ".diapason" in dirs:
+                dirs.remove(".diapason")
 
             for fname in files:
                 filepath = os.path.join(root, fname)

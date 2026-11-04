@@ -2,20 +2,20 @@ use crate::agent::runloop::git::normalize_workspace_path;
 use crate::agent::runloop::mcp_events::McpPanelState;
 use crate::agent::runloop::unified::state::SessionStats;
 use anyhow::Result;
+use diapason_commons::paths::ensure_path_within_workspace_resolved;
+use diapason_core::config::ToolDisplayMode;
+use diapason_core::config::constants::tools;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::tools::command_args;
+use diapason_core::tools::tool_intent;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_core::utils::style_helpers::ColorPalette;
+use diapason_core::utils::transcript;
+use diapason_ui::tui::app::{InlineHandle, InlineMessageKind, InlineSegment, InlineTextStyle, ToolOutputId};
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
-use vtcode_commons::paths::ensure_path_within_workspace_resolved;
-use vtcode_core::config::ToolDisplayMode;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::tools::command_args;
-use vtcode_core::tools::tool_intent;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::utils::style_helpers::ColorPalette;
-use vtcode_core::utils::transcript;
-use vtcode_ui::tui::app::{InlineHandle, InlineMessageKind, InlineSegment, InlineTextStyle, ToolOutputId};
 
 use crate::agent::runloop::unified::run_loop_context::RunLoopContext;
 use crate::agent::runloop::unified::tool_pipeline::{
@@ -24,7 +24,7 @@ use crate::agent::runloop::unified::tool_pipeline::{
 use crate::agent::runloop::unified::tool_summary_helpers::{
     display_command_text, preview_command, relativize_command_paths,
 };
-use vtcode_commons::canonicalize;
+use diapason_commons::canonicalize;
 
 fn record_mcp_outcome_event(
     mcp_panel_state: &mut McpPanelState,
@@ -395,7 +395,7 @@ fn has_compact_command_artefact(output: &serde_json::Value, complete_capture: Op
 }
 
 fn has_file_operation_diff(output: &serde_json::Value) -> bool {
-    !vtcode_core::tools::file_ops::canonical_diff_previews(output).is_empty()
+    !diapason_core::tools::file_ops::canonical_diff_previews(output).is_empty()
 }
 
 fn warning_message(output: &serde_json::Value) -> Option<String> {
@@ -757,7 +757,7 @@ fn normalized_lines_contain_subsequence(container: &[String], candidate: &[Strin
 
 fn command_output_header(name: &str, args: &serde_json::Value, workspace_root: Option<&Path>) -> String {
     let command = extract_command_line(args)
-        .map(|command| vtcode_commons::formatting::collapse_whitespace(&command))
+        .map(|command| diapason_commons::formatting::collapse_whitespace(&command))
         .filter(|command| !command.is_empty())
         .map(|command| relativize_command_paths(&command, workspace_root));
     command
@@ -893,7 +893,7 @@ async fn render_tool_output_common(
     args_val: &serde_json::Value,
     output: &serde_json::Value,
     command_success: bool,
-    vt_config: Option<&VTCodeConfig>,
+    vt_config: Option<&DiapasonConfig>,
     workspace_root: Option<&Path>,
 ) -> Result<()> {
     let inline_run_tool = renderer.supports_inline_ui() && streams_pty_output(name, args_val);
@@ -1131,7 +1131,7 @@ struct OutcomeContext<'a> {
     handle: &'a InlineHandle,
     harness_state: &'a mut crate::agent::runloop::unified::run_loop_context::HarnessTurnState,
     mcp_panel_state: &'a mut McpPanelState,
-    vt_config: Option<&'a VTCodeConfig>,
+    vt_config: Option<&'a DiapasonConfig>,
     workspace_root: Option<&'a Path>,
 }
 
@@ -1338,7 +1338,7 @@ pub(crate) async fn handle_pipeline_output(
     name: &str,
     args_val: &serde_json::Value,
     outcome: &ToolPipelineOutcome,
-    vt_config: Option<&VTCodeConfig>,
+    vt_config: Option<&DiapasonConfig>,
 ) -> Result<(Vec<PathBuf>, Option<String>)> {
     // The registry owns the workspace used by the executor and the spooler.
     // Use it here even on the Copilot path, whose lightweight run-loop
@@ -1363,7 +1363,7 @@ pub(crate) async fn handle_pipeline_output_from_turn_ctx(
     name: &str,
     args_val: &serde_json::Value,
     outcome: &ToolPipelineOutcome,
-    vt_config: Option<&VTCodeConfig>,
+    vt_config: Option<&DiapasonConfig>,
 ) -> Result<(Vec<PathBuf>, Option<String>)> {
     let mut run_ctx = ctx.as_run_loop_context();
     let (modified_files, last_stdout) =
@@ -1383,20 +1383,20 @@ pub(crate) async fn handle_pipeline_output_from_turn_ctx(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diapason_core::acp::ToolPermissionCache;
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::core::decision_tracker::DecisionTracker;
+    use diapason_core::core::trajectory::TrajectoryLogger;
+    use diapason_core::tools::ApprovalRecorder;
+    use diapason_core::tools::registry::{ToolExecutionError, ToolRegistry};
+    use diapason_core::tools::result_cache::{ToolCacheKey, ToolResultCache};
+    use diapason_core::ui::inline_theme_from_core_styles;
+    use diapason_core::ui::theme;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle, SessionOptions, spawn_session_with_options};
     use std::io::{IsTerminal, stdin};
     use std::sync::Arc;
     use tempfile::TempDir;
     use tokio::sync::{RwLock, mpsc::unbounded_channel};
-    use vtcode_core::acp::ToolPermissionCache;
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::core::decision_tracker::DecisionTracker;
-    use vtcode_core::core::trajectory::TrajectoryLogger;
-    use vtcode_core::tools::ApprovalRecorder;
-    use vtcode_core::tools::registry::{ToolExecutionError, ToolRegistry};
-    use vtcode_core::tools::result_cache::{ToolCacheKey, ToolResultCache};
-    use vtcode_core::ui::inline_theme_from_core_styles;
-    use vtcode_core::ui::theme;
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle, SessionOptions, spawn_session_with_options};
 
     fn build_harness_state() -> crate::agent::runloop::unified::run_loop_context::HarnessTurnState {
         crate::agent::runloop::unified::run_loop_context::HarnessTurnState::new(
@@ -1495,7 +1495,7 @@ mod tests {
             handle: &handle,
             harness_state: &mut harness_state,
             mcp_panel_state: &mut mcp,
-            vt_config: None::<&VTCodeConfig>,
+            vt_config: None::<&DiapasonConfig>,
         };
         let (mod_files, _last_stdout) =
             process_outcome_common(&mut output_ctx, "write_file", &serde_json::json!({}), &outcome)
@@ -1872,7 +1872,10 @@ mod tests {
     #[tokio::test]
     async fn pty_capture_reads_complete_workspace_spool() {
         let workspace = TempDir::new().expect("workspace temp dir");
-        let spool_path = workspace.path().join(".vtcode/context/tool_outputs/pty.txt");
+        let spool_path = workspace
+            .path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("context/tool_outputs/pty.txt");
         tokio::fs::create_dir_all(spool_path.parent().expect("spool parent"))
             .await
             .expect("create spool parent");
@@ -1881,7 +1884,7 @@ mod tests {
             .expect("write spool");
 
         let output = serde_json::json!({
-            "spool_path": ".vtcode/context/tool_outputs/pty.txt",
+            "spool_path": ".diapason/context/tool_outputs/pty.txt",
             "output": "first preview line"
         });
 
@@ -1941,7 +1944,7 @@ mod tests {
             handle: &handle,
             harness_state: &mut harness_state,
             mcp_panel_state: &mut mcp,
-            vt_config: None::<&VTCodeConfig>,
+            vt_config: None::<&DiapasonConfig>,
         };
         let (_mod_files, _last_stdout) =
             process_outcome_common(&mut output_ctx, "mcp_example", &serde_json::json!({}), &outcome)
@@ -1966,7 +1969,7 @@ mod tests {
         let outcome = ToolPipelineOutcome::from_status(ToolExecutionStatus::Success {
             output: serde_json::json!({
                 "output": "preview text that should stay out of transcript persistence",
-                "spool_path": ".vtcode/context/tool_outputs/exec_command_1.txt",
+                "spool_path": ".diapason/context/tool_outputs/exec_command_1.txt",
                 "exit_code": 0,
                 "is_exited": true
             }),
@@ -1982,7 +1985,7 @@ mod tests {
             handle: &handle,
             harness_state: &mut harness_state,
             mcp_panel_state: &mut mcp,
-            vt_config: None::<&VTCodeConfig>,
+            vt_config: None::<&DiapasonConfig>,
         };
 
         process_outcome_common(
@@ -1990,7 +1993,7 @@ mod tests {
             tools::UNIFIED_EXEC,
             &serde_json::json!({
                 "action": "run",
-                "command": "cargo check -p vtcode-core"
+                "command": "cargo check -p diapason-core"
             }),
             &outcome,
         )
@@ -1999,7 +2002,7 @@ mod tests {
 
         let transcript_lines = transcript::snapshot();
         let transcript_text = transcript_lines.join("\n");
-        let stripped_text = vtcode_core::utils::ansi_parser::strip_ansi(&transcript_text);
+        let stripped_text = diapason_core::utils::ansi_parser::strip_ansi(&transcript_text);
         assert!(stripped_text.contains("Large output was spooled to"), "Transcript: {stripped_text:?}");
         assert!(!stripped_text.contains("preview text that should stay out of transcript persistence"));
 
@@ -2009,7 +2012,10 @@ mod tests {
     #[tokio::test]
     async fn inline_tool_output_viewer_retains_complete_spooled_capture() {
         let workspace = TempDir::new().expect("workspace temp dir");
-        let spool_path = workspace.path().join(".vtcode/context/tool_outputs/exec_command_1.txt");
+        let spool_path = workspace
+            .path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("context/tool_outputs/exec_command_1.txt");
         tokio::fs::create_dir_all(spool_path.parent().expect("spool parent"))
             .await
             .expect("create spool parent");
@@ -2027,7 +2033,7 @@ mod tests {
         let outcome = ToolPipelineOutcome::from_status(ToolExecutionStatus::Success {
             output: serde_json::json!({
                 "output": "preview line",
-                "spool_path": ".vtcode/context/tool_outputs/exec_command_1.txt",
+                "spool_path": ".diapason/context/tool_outputs/exec_command_1.txt",
                 "exit_code": 0,
                 "is_exited": true
             }),
@@ -2042,7 +2048,7 @@ mod tests {
             handle: &handle,
             harness_state: &mut harness_state,
             mcp_panel_state: &mut mcp,
-            vt_config: None::<&VTCodeConfig>,
+            vt_config: None::<&DiapasonConfig>,
         };
 
         process_outcome_common(
@@ -2193,7 +2199,7 @@ mod tests {
             handle: &handle,
             harness_state: &mut harness_state,
             mcp_panel_state: &mut mcp,
-            vt_config: None::<&VTCodeConfig>,
+            vt_config: None::<&DiapasonConfig>,
         };
         let status = ToolExecutionStatus::Failure {
             error: ToolExecutionError::from_anyhow(
@@ -2841,7 +2847,7 @@ mod tests {
 
         let mut registry = ToolRegistry::new(workspace.clone()).await;
         let permission_cache_arc = Arc::new(RwLock::new(ToolPermissionCache::new()));
-        let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+        let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
 
         let mut session = spawn_session_with_options(
             inline_theme_from_core_styles(&theme::active_styles()),
@@ -2901,7 +2907,7 @@ mod tests {
         });
 
         let (mod_files, _last_stdout) =
-            handle_pipeline_output(&mut ctx, "read_file", &serde_json::json!({}), &outcome, None::<&VTCodeConfig>)
+            handle_pipeline_output(&mut ctx, "read_file", &serde_json::json!({}), &outcome, None::<&DiapasonConfig>)
                 .await
                 .expect("handle should succeed");
 
@@ -3000,7 +3006,7 @@ mod tests {
             handle: &handle,
             harness_state: &mut harness_state,
             mcp_panel_state: &mut mcp,
-            vt_config: None::<&VTCodeConfig>,
+            vt_config: None::<&DiapasonConfig>,
         };
 
         process_outcome_common(&mut output_ctx, tools::TASK_TRACKER, &args, &first)
@@ -3034,7 +3040,7 @@ mod tests {
 
         let mut registry = ToolRegistry::new(workspace.clone()).await;
         let permission_cache_arc = Arc::new(RwLock::new(ToolPermissionCache::new()));
-        let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+        let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
 
         let mut session = spawn_session_with_options(
             inline_theme_from_core_styles(&theme::active_styles()),
@@ -3087,7 +3093,7 @@ mod tests {
         });
 
         let (_mod_files, _last_stdout) =
-            handle_pipeline_output(&mut ctx, "mcp_example", &serde_json::json!({}), &outcome, None::<&VTCodeConfig>)
+            handle_pipeline_output(&mut ctx, "mcp_example", &serde_json::json!({}), &outcome, None::<&DiapasonConfig>)
                 .await
                 .expect("handle should succeed");
 

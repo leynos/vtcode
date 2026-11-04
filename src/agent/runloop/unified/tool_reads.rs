@@ -1,6 +1,6 @@
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::tools::tool_intent;
 use serde_json::Value;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::tools::tool_intent;
 
 pub(crate) fn read_file_path_arg(args: &Value) -> Option<&str> {
     let obj = args.as_object()?;
@@ -27,7 +27,7 @@ pub(crate) fn is_read_file_style_call(canonical_tool_name: &str, args: &Value) -
 
 fn looks_like_tool_output_spool_path(path: &str) -> bool {
     let normalized = path.replace('\\', "/");
-    normalized.contains(".vtcode/context/tool_outputs/")
+    normalized.contains(&format!("{}/context/tool_outputs/", diapason_commons::workspace_dir_name().display()))
 }
 
 pub(crate) fn spool_chunk_read_path<'a>(canonical_tool_name: &str, args: &'a Value) -> Option<&'a str> {
@@ -83,22 +83,22 @@ pub(crate) fn spool_content_looks_like_error(content: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::constants::tools;
     use serde_json::json;
-    use vtcode_core::config::constants::tools;
 
     use super::{spool_chunk_read_path, spool_content_looks_like_error};
 
     #[test]
     fn spool_chunk_read_path_matches_read_file_spool_reads() {
         let args = json!({
-            "path": ".vtcode/context/tool_outputs/command_session_123.txt",
+            "path": ".diapason/context/tool_outputs/command_session_123.txt",
             "offset": 41,
             "limit": 40
         });
 
         assert_eq!(
             spool_chunk_read_path(tools::READ_FILE, &args),
-            Some(".vtcode/context/tool_outputs/command_session_123.txt")
+            Some(".diapason/context/tool_outputs/command_session_123.txt")
         );
     }
 
@@ -106,14 +106,14 @@ mod tests {
     fn spool_chunk_read_path_matches_file_operation_read_spool_reads() {
         let args = json!({
             "action": "read",
-            "path": ".vtcode/context/tool_outputs/command_session_456.txt",
+            "path": ".diapason/context/tool_outputs/command_session_456.txt",
             "offset": 81,
             "limit": 40
         });
 
         assert_eq!(
             spool_chunk_read_path(tools::UNIFIED_FILE, &args),
-            Some(".vtcode/context/tool_outputs/command_session_456.txt")
+            Some(".diapason/context/tool_outputs/command_session_456.txt")
         );
     }
 
@@ -132,7 +132,7 @@ mod tests {
     fn spool_chunk_read_path_ignores_non_read_file_operation_actions() {
         let args = json!({
             "action": "write",
-            "path": ".vtcode/context/tool_outputs/command_session_789.txt",
+            "path": ".diapason/context/tool_outputs/command_session_789.txt",
             "content": "replacement"
         });
 

@@ -1,11 +1,11 @@
-# Language Support in VT Code
+# Language Support in Diapason
 
-VT Code supports a wide range of programming languages through a combination of
-LLM-native understanding and robust shell integration.
+Diapason supports a wide range of programming languages through a combination
+of LLM-native understanding and robust shell integration.
 
 ## Semantic Understanding
 
-VT Code relies on the inherent ability of Large Language Models (LLMs) to
+Diapason relies on the inherent ability of Large Language Models (LLMs) to
 understand and analyze code from raw text. This approach covers almost all
 modern programming languages including:
 
@@ -41,7 +41,7 @@ explicitly parsed using
 
 Shell commands can be notoriously difficult to validate with simple text
 matching due to pipes (`|`), logical operators (`&&`, `||`), and redirections.
-VT Code uses `tree-sitter-bash` to accurately decompose these commands into
+Diapason uses `tree-sitter-bash` to accurately decompose these commands into
 their constituent parts, ensuring that every subcommand is checked against the
 configured security policies before execution.
 

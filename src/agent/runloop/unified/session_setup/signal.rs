@@ -1,10 +1,10 @@
 use crate::agent::runloop::unified::async_mcp_manager::AsyncMcpManager;
 use crate::agent::runloop::unified::state::{CtrlCSignal, CtrlCState};
 use crate::agent::runloop::unified::stop_requests::request_local_stop;
+use diapason_core::notifications::set_global_terminal_focused;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
-use vtcode_core::notifications::set_global_terminal_focused;
 
 pub(crate) struct SignalHandlerGuard {
     handle: Option<tokio::task::JoinHandle<()>>,
@@ -77,7 +77,7 @@ pub(crate) fn spawn_signal_handler(
     let handle = tokio::spawn(async move {
         loop {
             tokio::select! {
-                _ = vtcode_core::shutdown::shutdown_signal() => {
+                _ = diapason_core::shutdown::shutdown_signal() => {
                     let signal = request_local_stop(&ctrl_c_state, &ctrl_c_notify);
 
                     if matches!(signal, CtrlCSignal::Exit) {
@@ -121,7 +121,7 @@ pub(crate) fn spawn_signal_handler(
 
 fn emergency_terminal_cleanup() {
     set_global_terminal_focused(false);
-    let _ = vtcode_ui::tui::panic_hook::restore_tui();
-    vtcode_commons::trace_flush::flush_trace_log();
+    let _ = diapason_ui::tui::panic_hook::restore_tui();
+    diapason_commons::trace_flush::flush_trace_log();
     std::process::exit(130);
 }

@@ -1,9 +1,9 @@
 use anyhow::{Result, anyhow};
+use diapason_core::config::constants::tools;
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::Notify;
-use vtcode_core::config::constants::tools;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use crate::agent::runloop::unified::request_user_input;
 use crate::agent::runloop::unified::state::CtrlCState;
@@ -36,12 +36,12 @@ pub(crate) async fn execute_hitl_tool(
 mod tests {
     use std::sync::Arc;
 
-    use serde_json::json;
-    use tokio::sync::{Notify, mpsc};
-    use vtcode_ui::tui::app::{
+    use diapason_ui::tui::app::{
         InlineCommand, InlineEvent, InlineHandle, InlineListSelection, InlineSession, TransientEvent,
         TransientSubmission,
     };
+    use serde_json::json;
+    use tokio::sync::{Notify, mpsc};
 
     use super::execute_hitl_tool;
     use crate::agent::runloop::unified::state::CtrlCState;
@@ -70,7 +70,7 @@ mod tests {
             .expect("send wizard answer");
 
         let result = execute_hitl_tool(
-            vtcode_core::config::constants::tools::REQUEST_USER_INPUT,
+            diapason_core::config::constants::tools::REQUEST_USER_INPUT,
             &handle,
             &mut session,
             &json!({

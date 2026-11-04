@@ -118,7 +118,7 @@ def parse_allow_rules(path: Path) -> list[AllowRule]:
 
 def is_allowlisted(rel_path: str, line_no: int, rules: list[AllowRule]) -> bool:
     # The allowlist was authored against the pre-restructure short form
-    # (e.g. "vtcode-core/src/..."); match both it and the current
+    # (e.g. "diapason-core/src/..."); match both it and the current
     # "crates/codegen|common/..." form so entries do not go stale when the
     # workspace layout changes.
     candidates = {rel_path}

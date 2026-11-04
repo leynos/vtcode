@@ -28,18 +28,18 @@ def now_stamp():
 
 def vt_ask(prompt: str):
     """
-    Call vtcode with the given prompt.
+    Call diapason with the given prompt.
     
-    Note: vtcode 'ask' command doesn't support --no-tools, --max-output-tokens flags.
-    These would need to be configured via vtcode.toml if needed.
+    Note: diapason 'ask' command doesn't support --no-tools, --max-output-tokens flags.
+    These would need to be configured via config.toml if needed.
     """
     args = [
-        "vtcode",
+        "diapason",
         "--provider", PROVIDER,
         "--model", MODEL,
         "ask", prompt,
     ]
-    # Note: --no-tools and --max-output-tokens are not supported by vtcode ask command
+    # Note: --no-tools and --max-output-tokens are not supported by diapason ask command
     # The ask command runs without tools by default
     # For debugging, you can add: args.append("--debug")
     

@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::utils::colors::style;
 use hashbrown::HashMap;
 use serde::Deserialize;
 use serde_json::Value;
@@ -7,8 +9,6 @@ use std::cmp::Reverse;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::utils::colors::style;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind")]
@@ -200,7 +200,10 @@ fn summarize_trajectory<R: BufRead>(reader: R) -> Result<TrajectorySummary> {
 
 pub async fn handle_trajectory_command(_cfg: &CoreAgentConfig, file: Option<PathBuf>, top: usize) -> Result<()> {
     let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let log_path = file.unwrap_or_else(|| workspace.join(".vtcode/logs/trajectory.jsonl"));
+    let log_path = match file {
+        Some(path) => path,
+        None => diapason_commons::workspace_state_dir(&workspace)?.join("logs/trajectory.jsonl"),
+    };
 
     // `File::open` + `summarize_trajectory` do blocking synchronous reads;
     // run them off the async executor. See `# Blocking` docs in

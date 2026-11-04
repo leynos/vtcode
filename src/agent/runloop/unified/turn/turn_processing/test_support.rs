@@ -3,23 +3,23 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+use diapason_config::core::PromptCachingConfig;
+use diapason_core::acp::ToolPermissionCache;
+use diapason_core::config::types::{AgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
+use diapason_core::core::agent::runtime::RuntimeSteering;
+use diapason_core::core::agent::steering::SteeringMessage;
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::core::trajectory::TrajectoryLogger;
+use diapason_core::llm::provider::{self as uni, ToolDefinition};
+use diapason_core::primary_agent::ActivePrimaryAgentState;
+use diapason_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter;
+use diapason_core::tools::circuit_breaker::CircuitBreaker;
+use diapason_core::tools::health::ToolHealthTracker;
+use diapason_core::tools::{ApprovalRecorder, ToolResultCache};
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use hashbrown::HashMap;
 use serde_json::Value;
 use tokio::sync::{Notify, RwLock};
-use vtcode_config::core::PromptCachingConfig;
-use vtcode_core::acp::ToolPermissionCache;
-use vtcode_core::config::types::{AgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
-use vtcode_core::core::agent::runtime::RuntimeSteering;
-use vtcode_core::core::agent::steering::SteeringMessage;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::core::trajectory::TrajectoryLogger;
-use vtcode_core::llm::provider::{self as uni, ToolDefinition};
-use vtcode_core::primary_agent::ActivePrimaryAgentState;
-use vtcode_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter;
-use vtcode_core::tools::circuit_breaker::CircuitBreaker;
-use vtcode_core::tools::health::ToolHealthTracker;
-use vtcode_core::tools::{ApprovalRecorder, ToolResultCache};
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use crate::agent::runloop::mcp_events::McpPanelState;
 use crate::agent::runloop::unified::context_manager::ContextManager;
@@ -71,7 +71,8 @@ impl uni::LLMProvider for NoopProvider {
     }
 }
 
-fn create_headless_session() -> (InlineSession, tokio::sync::mpsc::UnboundedReceiver<vtcode_core::ui::InlineCommand>) {
+fn create_headless_session() -> (InlineSession, tokio::sync::mpsc::UnboundedReceiver<diapason_core::ui::InlineCommand>)
+{
     let (command_tx, command_rx) = tokio::sync::mpsc::unbounded_channel();
     let (_event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     (
@@ -86,11 +87,11 @@ fn create_headless_session() -> (InlineSession, tokio::sync::mpsc::UnboundedRece
 
 pub(crate) struct TestTurnProcessingBacking {
     _temp: tempfile::TempDir,
-    tool_registry: vtcode_core::tools::ToolRegistry,
+    tool_registry: diapason_core::tools::ToolRegistry,
     tools: Arc<RwLock<Vec<ToolDefinition>>>,
     tool_result_cache: Arc<RwLock<ToolResultCache>>,
     tool_permission_cache: Arc<RwLock<ToolPermissionCache>>,
-    permissions_state: Arc<RwLock<vtcode_core::config::PermissionsConfig>>,
+    permissions_state: Arc<RwLock<diapason_core::config::PermissionsConfig>>,
     decision_ledger: Arc<RwLock<DecisionTracker>>,
     approval_recorder: Arc<ApprovalRecorder>,
     session_stats: SessionStats,
@@ -100,18 +101,18 @@ pub(crate) struct TestTurnProcessingBacking {
     last_forced_redraw: Instant,
     input_status_state: InputStatusState,
     session: InlineSession,
-    command_receiver: tokio::sync::mpsc::UnboundedReceiver<vtcode_core::ui::InlineCommand>,
+    command_receiver: tokio::sync::mpsc::UnboundedReceiver<diapason_core::ui::InlineCommand>,
     handle: InlineHandle,
-    renderer: vtcode_core::utils::ansi::AnsiRenderer,
+    renderer: diapason_core::utils::ansi::AnsiRenderer,
     ctrl_c_state: Arc<CtrlCState>,
     ctrl_c_notify: Arc<Notify>,
     safety_validator: Arc<ToolCallSafetyValidator>,
     circuit_breaker: Arc<CircuitBreaker>,
     tool_health_tracker: Arc<ToolHealthTracker>,
     rate_limiter: Arc<AdaptiveRateLimiter>,
-    telemetry: Arc<vtcode_core::core::telemetry::TelemetryManager>,
-    autonomous_executor: Arc<vtcode_core::tools::autonomous_executor::AutonomousExecutor>,
-    error_recovery: Arc<RwLock<vtcode_core::core::agent::error_recovery::ErrorRecoveryState>>,
+    telemetry: Arc<diapason_core::core::telemetry::TelemetryManager>,
+    autonomous_executor: Arc<diapason_core::tools::autonomous_executor::AutonomousExecutor>,
+    error_recovery: Arc<RwLock<diapason_core::core::agent::error_recovery::ErrorRecoveryState>>,
     harness_state: HarnessTurnState,
     harness_emitter: Option<HarnessEventEmitter>,
     auto_finish_planning_attempted: bool,
@@ -131,11 +132,11 @@ impl TestTurnProcessingBacking {
         let temp = tempfile::TempDir::new().expect("temp workspace");
         let workspace = temp.path().to_path_buf();
 
-        let tool_registry = vtcode_core::tools::ToolRegistry::new(workspace.clone()).await;
+        let tool_registry = diapason_core::tools::ToolRegistry::new(workspace.clone()).await;
         let tools = Arc::new(RwLock::new(Vec::new()));
         let tool_result_cache = Arc::new(RwLock::new(ToolResultCache::new(8)));
         let tool_permission_cache = Arc::new(RwLock::new(ToolPermissionCache::new()));
-        let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+        let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
         let decision_ledger = Arc::new(RwLock::new(DecisionTracker::new()));
         let approval_recorder = Arc::new(ApprovalRecorder::new(workspace.clone()));
         let session_stats = SessionStats::default();
@@ -143,13 +144,13 @@ impl TestTurnProcessingBacking {
             crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState::default();
         let mcp_panel_state = McpPanelState::default();
         let loaded_skills = Arc::new(RwLock::new(HashMap::new()));
-        let context_manager = ContextManager::new("You are VT Code.".to_string(), (), loaded_skills, None);
+        let context_manager = ContextManager::new("You are Diapason.".to_string(), (), loaded_skills, None);
         let last_forced_redraw = Instant::now();
         let input_status_state = InputStatusState::default();
         let (mut session, command_receiver) = create_headless_session();
         session.set_skip_confirmations(true);
         let handle = session.clone_inline_handle();
-        let renderer = vtcode_core::utils::ansi::AnsiRenderer::with_inline_ui(handle.clone(), Default::default());
+        let renderer = diapason_core::utils::ansi::AnsiRenderer::with_inline_ui(handle.clone(), Default::default());
         let ctrl_c_state = Arc::new(CtrlCState::new());
         let ctrl_c_notify = Arc::new(Notify::new());
         let safety_validator = Arc::new(ToolCallSafetyValidator::new());
@@ -157,10 +158,10 @@ impl TestTurnProcessingBacking {
         let circuit_breaker = Arc::new(CircuitBreaker::default());
         let tool_health_tracker = Arc::new(ToolHealthTracker::new(3));
         let rate_limiter = Arc::new(AdaptiveRateLimiter::default());
-        let telemetry = Arc::new(vtcode_core::core::telemetry::TelemetryManager::new());
-        let autonomous_executor = Arc::new(vtcode_core::tools::autonomous_executor::AutonomousExecutor::new());
+        let telemetry = Arc::new(diapason_core::core::telemetry::TelemetryManager::new());
+        let autonomous_executor = Arc::new(diapason_core::tools::autonomous_executor::AutonomousExecutor::new());
         let error_recovery =
-            Arc::new(RwLock::new(vtcode_core::core::agent::error_recovery::ErrorRecoveryState::default()));
+            Arc::new(RwLock::new(diapason_core::core::agent::error_recovery::ErrorRecoveryState::default()));
         let harness_state = HarnessTurnState::new(
             TurnRunId("run-test".to_string()),
             TurnId("turn-test".to_string()),
@@ -256,7 +257,7 @@ impl TestTurnProcessingBacking {
         .expect("test plan should persist");
     }
 
-    pub(crate) fn select_primary_agent_from_specs(&mut self, specs: &[vtcode_config::SubagentSpec], requested: &str) {
+    pub(crate) fn select_primary_agent_from_specs(&mut self, specs: &[diapason_config::SubagentSpec], requested: &str) {
         self.active_primary_agent
             .select_from_specs(specs, requested)
             .expect("test primary agent should resolve");
@@ -328,7 +329,7 @@ impl TestTurnProcessingBacking {
     pub(crate) fn activate_planning_for_test(&mut self) {
         self.tool_registry.enable_planning();
         self.plan_session
-            .enter(vtcode_core::core::interfaces::session::PlanningEntrySource::UserRequest);
+            .enter(diapason_core::core::interfaces::session::PlanningEntrySource::UserRequest);
     }
 
     pub(crate) fn mark_interview_denied_for_test(&mut self) {

@@ -15,8 +15,8 @@ pub(super) struct TurnExecutionMetrics {
     pub outcome: &'static str,
 }
 
-pub(super) fn estimate_history_bytes(history: &[vtcode_core::llm::provider::Message]) -> usize {
-    use vtcode_core::llm::provider::{ContentPart, MessageContent};
+pub(super) fn estimate_history_bytes(history: &[diapason_core::llm::provider::Message]) -> usize {
+    use diapason_core::llm::provider::{ContentPart, MessageContent};
 
     history
         .iter()
@@ -41,7 +41,7 @@ pub(super) fn estimate_history_bytes(history: &[vtcode_core::llm::provider::Mess
 
 pub(super) fn emit_turn_execution_metrics(turn_metrics: TurnExecutionMetrics) {
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         metric = "turn_execution",
         attempts_made = turn_metrics.attempts_made,
         retry_count = turn_metrics.retry_count,

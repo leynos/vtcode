@@ -11,7 +11,7 @@
 //! | `rendering/prompts` | Per-step prompt text (reasoning, API key, service tier, MiMo auth) | `render_reasoning_inline`, `prompt_reasoning_plain`, `show_secure_api_modal`, `prompt_api_key_plain`, `render_service_tier_inline`, `prompt_service_tier_plain`, `render_mimo_auth_method_inline`, `prompt_mimo_auth_method_plain` |
 //! | `interaction` | Ratatui interactive list selection for reasoning, service tier, model list | `select_model_with_ratatui_list`, `select_reasoning_with_ratatui`, `select_service_tier_with_ratatui` |
 //! | `state_machine` | Step-transition logic: model → reasoning → MiMo auth → service tier → API key | `process_model_selection`, `handle_reasoning`, `handle_mimo_auth_method`, `handle_service_tier`, `handle_api_key`, `build_result` |
-//! | `config_persistence` | Persisting completed selection to `vtcode.toml` | `persist_selection` |
+//! | `config_persistence` | Persisting completed selection to `config.toml` | `persist_selection` |
 //!
 //! ## State machine contract
 //!
@@ -32,17 +32,17 @@
 //! - State machine functions mutate `ModelPickerState` and return `ModelPickerProgress`.
 
 use anyhow::{Context, Result, anyhow};
+use diapason_config::{DiapasonConfig, MiMoAuthMethod, OpenAIServiceTier};
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::ui::{InlineListSelection, OpenAIServiceTierChoice, reasoning_from_selection_string};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::ui::interactive_list::SelectionInterrupted;
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Notify;
-use vtcode_config::{MiMoAuthMethod, OpenAIServiceTier, VTCodeConfig};
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::ui::{InlineListSelection, OpenAIServiceTierChoice, reasoning_from_selection_string};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::ui::interactive_list::SelectionInterrupted;
 
 use crate::agent::runloop::unified::state::CtrlCState;
 use interaction::{
@@ -91,9 +91,9 @@ enum RatatuiOutcome {
 }
 
 pub(crate) use self::dynamic_models::DynamicModelRegistry;
-pub(crate) use selection::ModelSelectionResult;
 #[cfg(test)]
-pub(super) use vtcode_config::read_workspace_env_value as read_workspace_env;
+pub(super) use diapason_config::read_workspace_env_value as read_workspace_env;
+pub(crate) use selection::ModelSelectionResult;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[expect(
@@ -119,7 +119,7 @@ pub(crate) enum ModelPickerProgress {
 pub(crate) struct PickerSettings {
     options: Cow<'static, [ModelOption]>,
     inline_enabled: bool,
-    vt_cfg: Option<VTCodeConfig>,
+    vt_cfg: Option<DiapasonConfig>,
     workspace: Option<PathBuf>,
     ctrl_c_state: Option<Arc<CtrlCState>>,
     ctrl_c_notify: Option<Arc<Notify>>,
@@ -140,7 +140,7 @@ pub(crate) struct ModelPickerState {
     selected_service_tier: Option<Option<OpenAIServiceTier>>,
     selected_mimo_auth: Option<MiMoAuthMethod>,
     pending_api_key: Option<String>,
-    pending_credential_source: Option<vtcode_config::api_keys::CredentialSource>,
+    pending_credential_source: Option<diapason_config::api_keys::CredentialSource>,
     plain_mode_active: bool,
 }
 
@@ -160,7 +160,7 @@ impl ModelPickerState {
     )]
     pub(crate) async fn new(
         renderer: &mut AnsiRenderer,
-        vt_cfg: Option<VTCodeConfig>,
+        vt_cfg: Option<DiapasonConfig>,
         current_reasoning: ReasoningEffortLevel,
         current_service_tier: Option<OpenAIServiceTier>,
         workspace: Option<PathBuf>,
@@ -332,7 +332,11 @@ impl ModelPickerState {
         }
     }
 
-    pub async fn persist_selection(&self, workspace: &Path, selection: &ModelSelectionResult) -> Result<VTCodeConfig> {
+    pub async fn persist_selection(
+        &self,
+        workspace: &Path,
+        selection: &ModelSelectionResult,
+    ) -> Result<DiapasonConfig> {
         config_persistence::persist_selection(workspace, selection).await
     }
 
@@ -607,7 +611,7 @@ impl ModelPickerState {
         self.process_model_selection(renderer, selection)
     }
 
-    fn storage_mode(&self) -> vtcode_config::auth::AuthCredentialsStoreMode {
+    fn storage_mode(&self) -> diapason_config::auth::AuthCredentialsStoreMode {
         self.settings
             .vt_cfg
             .as_ref()

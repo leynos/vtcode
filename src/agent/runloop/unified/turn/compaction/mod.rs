@@ -4,7 +4,7 @@ mod recovery_preview;
 pub(crate) use self::memory_envelope::{refresh_session_memory_envelope, refresh_session_memory_envelope_async};
 pub(crate) use self::recovery_preview::build_recovery_context_previews_with_workspace;
 
-pub(crate) use vtcode_core::compaction::memory_envelope::{
+pub(crate) use diapason_core::compaction::memory_envelope::{
     MemoryEnvelopePersistence, MemoryEnvelopePlacement, SessionMemoryEnvelope, SessionMemoryEnvelopeUpdate,
     build_session_memory_envelope, build_zero_cost_summarized_fork_history, configured_retained_user_messages,
     dedup_repeated_file_reads_for_local_compaction, default_memory_envelope_path_for_session,
@@ -19,26 +19,26 @@ pub(crate) use vtcode_core::compaction::memory_envelope::{
 
 // Test-only symbols referenced by the runloop compaction test suite.
 #[cfg(test)]
-pub(crate) use vtcode_core::compaction::memory_envelope::{
+pub(crate) use diapason_core::compaction::memory_envelope::{
     DEDUPED_FILE_READ_NOTE, SESSION_MEMORY_ENVELOPE_SCHEMA_VERSION, inject_latest_memory_envelope,
     resolve_compaction_threshold,
 };
 #[cfg(test)]
-pub(crate) use vtcode_core::persistent_memory::{GroundedFactRecord, dedup_latest_facts};
+pub(crate) use diapason_core::persistent_memory::{GroundedFactRecord, dedup_latest_facts};
 
 use anyhow::Result;
+use diapason_core::compaction::auto::{AutoCompactionInput, auto_compact_messages};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::hooks::LifecycleHookEngine;
+use diapason_core::llm::provider::{LLMProvider, Message, MessageRole};
+use diapason_core::persistent_memory::normalize_whitespace;
 use serde_json::{Value, json};
 use std::path::Path;
-use vtcode_core::compaction::auto::{AutoCompactionInput, auto_compact_messages};
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::hooks::LifecycleHookEngine;
-use vtcode_core::llm::provider::{LLMProvider, Message, MessageRole};
-use vtcode_core::persistent_memory::normalize_whitespace;
 
 use crate::agent::runloop::unified::context_manager::ContextManager;
 use crate::agent::runloop::unified::inline_events::harness::{HarnessEventEmitter, compact_boundary_event};
 use crate::agent::runloop::unified::state::SessionStats;
-use vtcode_core::core::agent::request_envelope::SegmentBoundaryReason;
+use diapason_core::core::agent::request_envelope::SegmentBoundaryReason;
 
 const RECOVERY_PREVIEW_MAX_CHARS: usize = 220;
 const RECOVERY_PREVIEW_MAX_TOOL_OUTPUTS: usize = 3;
@@ -57,7 +57,7 @@ struct CompactionEnvelopeMode {
 pub(crate) struct CompactionOutcome {
     pub original_len: usize,
     pub compacted_len: usize,
-    pub mode: vtcode_core::exec::events::CompactionMode,
+    pub mode: diapason_core::exec::events::CompactionMode,
     pub history_artefact_path: Option<String>,
 }
 
@@ -68,7 +68,7 @@ pub(crate) struct CompactionContext<'a> {
     session_id: &'a str,
     thread_id: &'a str,
     workspace_root: &'a Path,
-    vt_cfg: Option<&'a VTCodeConfig>,
+    vt_cfg: Option<&'a DiapasonConfig>,
     lifecycle_hooks: Option<&'a LifecycleHookEngine>,
     harness_emitter: Option<&'a HarnessEventEmitter>,
 }
@@ -80,7 +80,7 @@ impl<'a> CompactionContext<'a> {
         session_id: &'a str,
         thread_id: &'a str,
         workspace_root: &'a Path,
-        vt_cfg: Option<&'a VTCodeConfig>,
+        vt_cfg: Option<&'a DiapasonConfig>,
         lifecycle_hooks: Option<&'a LifecycleHookEngine>,
         harness_emitter: Option<&'a HarnessEventEmitter>,
     ) -> Self {
@@ -131,20 +131,20 @@ impl<'a> CompactionState<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CompactionPlan {
-    trigger: vtcode_core::exec::events::CompactionTrigger,
+    trigger: diapason_core::exec::events::CompactionTrigger,
     boundary_reason: SegmentBoundaryReason,
     envelope_mode: CompactionEnvelopeMode,
 }
 
 fn boundary_reason_for_compaction_trigger(
-    trigger: vtcode_core::exec::events::CompactionTrigger,
+    trigger: diapason_core::exec::events::CompactionTrigger,
 ) -> SegmentBoundaryReason {
     match trigger {
-        vtcode_core::exec::events::CompactionTrigger::Recovery => SegmentBoundaryReason::Recovery,
-        vtcode_core::exec::events::CompactionTrigger::ModelSwitch => SegmentBoundaryReason::Model,
-        vtcode_core::exec::events::CompactionTrigger::Auto
-        | vtcode_core::exec::events::CompactionTrigger::Manual
-        | vtcode_core::exec::events::CompactionTrigger::Unknown => SegmentBoundaryReason::Compaction,
+        diapason_core::exec::events::CompactionTrigger::Recovery => SegmentBoundaryReason::Recovery,
+        diapason_core::exec::events::CompactionTrigger::ModelSwitch => SegmentBoundaryReason::Model,
+        diapason_core::exec::events::CompactionTrigger::Auto
+        | diapason_core::exec::events::CompactionTrigger::Manual
+        | diapason_core::exec::events::CompactionTrigger::Unknown => SegmentBoundaryReason::Compaction,
     }
 }
 
@@ -173,7 +173,7 @@ pub(crate) async fn build_summarized_fork_history(
     source_session_id: &str,
     target_session_id: &str,
     workspace_root: &Path,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     source_history: &[Message],
     prefer_saved_summary: bool,
 ) -> Result<Vec<Message>> {
@@ -196,7 +196,7 @@ pub(crate) async fn build_summarized_fork_history(
         )
     } else {
         let compaction_input = dedup_repeated_file_reads_for_local_compaction(&source_history);
-        vtcode_core::compaction::compact_history(
+        diapason_core::compaction::compact_history(
             provider,
             model,
             &compaction_input,
@@ -233,7 +233,7 @@ pub(crate) async fn compact_history_in_place(
     model: &str,
     session_id: &str,
     workspace_root: &Path,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     history: &mut Vec<Message>,
     session_stats: &mut SessionStats,
     context_manager: &mut ContextManager,
@@ -241,7 +241,7 @@ pub(crate) async fn compact_history_in_place(
     compact_history_in_place_with_events(
         CompactionContext::new(provider, model, session_id, session_id, workspace_root, vt_cfg, None, None),
         CompactionState::new(history, session_stats, context_manager),
-        vtcode_core::exec::events::CompactionTrigger::Manual,
+        diapason_core::exec::events::CompactionTrigger::Manual,
     )
     .await
 }
@@ -249,7 +249,7 @@ pub(crate) async fn compact_history_in_place(
 pub(crate) async fn compact_history_in_place_with_events(
     context: CompactionContext<'_>,
     state: CompactionState<'_>,
-    trigger: vtcode_core::exec::events::CompactionTrigger,
+    trigger: diapason_core::exec::events::CompactionTrigger,
 ) -> Result<Option<CompactionOutcome>> {
     compact_history_segment_in_place(
         context,
@@ -269,10 +269,10 @@ pub(crate) async fn compact_history_in_place_with_events(
 pub(crate) async fn manual_compact_history_in_place(
     context: CompactionContext<'_>,
     state: CompactionState<'_>,
-    options: &vtcode_core::compaction::ManualCompactionOptions,
+    options: &diapason_core::compaction::ManualCompactionOptions,
     native_only: bool,
 ) -> Result<Option<CompactionOutcome>> {
-    run_manual_compaction(context, state, options, native_only, vtcode_core::exec::events::CompactionTrigger::Manual)
+    run_manual_compaction(context, state, options, native_only, diapason_core::exec::events::CompactionTrigger::Manual)
         .await
 }
 
@@ -288,9 +288,9 @@ pub(crate) async fn compact_history_on_model_switch_in_place(
     run_manual_compaction(
         context,
         state,
-        &vtcode_core::compaction::ManualCompactionOptions::default(),
+        &diapason_core::compaction::ManualCompactionOptions::default(),
         false,
-        vtcode_core::exec::events::CompactionTrigger::ModelSwitch,
+        diapason_core::exec::events::CompactionTrigger::ModelSwitch,
     )
     .await
 }
@@ -298,9 +298,9 @@ pub(crate) async fn compact_history_on_model_switch_in_place(
 async fn run_manual_compaction(
     context: CompactionContext<'_>,
     state: CompactionState<'_>,
-    options: &vtcode_core::compaction::ManualCompactionOptions,
+    options: &diapason_core::compaction::ManualCompactionOptions,
     native_only: bool,
-    trigger: vtcode_core::exec::events::CompactionTrigger,
+    trigger: diapason_core::exec::events::CompactionTrigger,
 ) -> Result<Option<CompactionOutcome>> {
     let CompactionContext {
         provider,
@@ -331,7 +331,7 @@ async fn run_manual_compaction(
     let mut compaction_input = history.clone();
     strip_existing_memory_envelope(&mut compaction_input);
     let original_history = compaction_input.clone();
-    let (compacted, compaction_mode) = vtcode_core::compaction::compact_history_manual(
+    let (compacted, compaction_mode) = diapason_core::compaction::compact_history_manual(
         provider,
         model,
         &compaction_input,
@@ -387,7 +387,7 @@ pub(crate) async fn compact_history_for_recovery_in_place(
         state,
         preserve_from_index,
         CompactionPlan {
-            trigger: vtcode_core::exec::events::CompactionTrigger::Recovery,
+            trigger: diapason_core::exec::events::CompactionTrigger::Recovery,
             boundary_reason: SegmentBoundaryReason::Recovery,
             envelope_mode: CompactionEnvelopeMode {
                 persistence: MemoryEnvelopePersistence::PersistToDisk,
@@ -441,8 +441,8 @@ async fn compact_history_segment_in_place_with_boundary(
     // hard `Err` (Anthropic does not override `compact_history`) with a graceful
     // Local fallback, so recovery never aborts.
     let config = local_compaction_config(vt_cfg, false);
-    let strategy = vtcode_core::compaction::manual_compaction_strategy(provider, model);
-    let compaction_history = if matches!(strategy, vtcode_core::compaction::CompactionStrategy::Local) {
+    let strategy = diapason_core::compaction::manual_compaction_strategy(provider, model);
+    let compaction_history = if matches!(strategy, diapason_core::compaction::CompactionStrategy::Local) {
         dedup_repeated_file_reads_for_local_compaction(&compaction_input)
     } else {
         compaction_input.clone()
@@ -452,12 +452,12 @@ async fn compact_history_segment_in_place_with_boundary(
     if !config.always_summarize && compaction_history.len() <= config.keep_last_messages {
         return Ok(None);
     }
-    let (compacted, compaction_mode) = vtcode_core::compaction::compact_history_manual(
+    let (compacted, compaction_mode) = diapason_core::compaction::compact_history_manual(
         provider,
         model,
         &compaction_history,
         &config,
-        &vtcode_core::compaction::ManualCompactionOptions::default(),
+        &diapason_core::compaction::ManualCompactionOptions::default(),
     )
     .await?;
 
@@ -495,7 +495,7 @@ async fn apply_compacted_history(
     original_history: Vec<Message>,
     previous_response_chain_present: bool,
     compacted: Vec<Message>,
-    compaction_mode: vtcode_core::exec::events::CompactionMode,
+    compaction_mode: diapason_core::exec::events::CompactionMode,
     begin_segment: bool,
 ) -> Result<CompactionOutcome> {
     let CompactionContext {
@@ -702,7 +702,7 @@ pub(crate) async fn compact_history_from_index_in_place(
     model: &str,
     session_id: &str,
     workspace_root: &Path,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     history: &mut Vec<Message>,
     start_index: usize,
     session_stats: &mut SessionStats,
@@ -718,7 +718,7 @@ pub(crate) async fn compact_history_from_index_in_place(
             context,
             CompactionState::new(history, session_stats, context_manager),
             CompactionPlan {
-                trigger: vtcode_core::exec::events::CompactionTrigger::Manual,
+                trigger: diapason_core::exec::events::CompactionTrigger::Manual,
                 boundary_reason: SegmentBoundaryReason::Compaction,
                 envelope_mode: CompactionEnvelopeMode {
                     persistence: MemoryEnvelopePersistence::InMemoryOnly,
@@ -735,7 +735,7 @@ pub(crate) async fn compact_history_from_index_in_place(
         context,
         CompactionState::new(&mut suffix, session_stats, context_manager),
         CompactionPlan {
-            trigger: vtcode_core::exec::events::CompactionTrigger::Manual,
+            trigger: diapason_core::exec::events::CompactionTrigger::Manual,
             boundary_reason: SegmentBoundaryReason::Compaction,
             envelope_mode: CompactionEnvelopeMode {
                 persistence: MemoryEnvelopePersistence::InMemoryOnly,
@@ -807,7 +807,7 @@ pub(crate) async fn maybe_auto_compact_history(
             current_token_usage: current_prompt_pressure_tokens,
             touched_files: &session_stats.recent_touched_files(),
             engine_cfg: local_compaction_config(vt_cfg, false),
-            manual_options: vtcode_core::compaction::ManualCompactionOptions::default(),
+            manual_options: diapason_core::compaction::ManualCompactionOptions::default(),
             placement: MemoryEnvelopePlacement::BeforeLastUserOrSummary,
             prefire: Some(&session_stats.prefire),
             auto_compact_suppressed: &mut session_stats.auto_compact_suppressed,
@@ -830,7 +830,7 @@ pub(crate) async fn maybe_auto_compact_history(
     if let Some(harness_emitter) = harness_emitter {
         let event = compact_boundary_event(
             thread_id.to_string(),
-            vtcode_core::exec::events::CompactionTrigger::Auto,
+            diapason_core::exec::events::CompactionTrigger::Auto,
             outcome.mode,
             outcome.original_len,
             outcome.compacted_len,

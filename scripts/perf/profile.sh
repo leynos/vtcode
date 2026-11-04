@@ -16,4 +16,4 @@ echo "[perf] building release with frame pointers and line tables"
 (cd "${ROOT_DIR}" && cargo build --release "$@")
 
 echo "[perf] done"
-echo "[perf] next: run your profiler (e.g., samply, perf, flamegraph) against target/release/vtcode"
+echo "[perf] next: run your profiler (e.g., samply, perf, flamegraph) against target/release/diapason"

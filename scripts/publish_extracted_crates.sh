@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # publish_extracted_crates.sh orchestrates the sequential publishes for the
-# extracted VT Code crates. It follows the dependency order required by
+# extracted Diapason crates. It follows the dependency order required by
 # crates.io tarball verification and provides optional dry-run coverage so the
 # same script can be used for validation ahead of the real release window.
 
@@ -16,14 +16,14 @@ Usage: $0 [--dry-run] [--start-from <crate>] [--skip-tests] [--skip-docs] [--ski
 Options:
   --dry-run          Use `cargo publish --dry-run` for each crate instead of
                      performing the real publish. This is the default when the
-                     VT_RELEASE_DRY_RUN environment variable is set to 1.
+                     DIAPASON_RELEASE_DRY_RUN environment variable is set to 1.
   --start-from CRATE Resume publishing from the provided crate name. Valid
-                     crates: vtcode-commons, vtcode-auth, vtcode-exec-events,
-                     vtcode-memory, vtcode-macros, vtcode-config,
-                     vtcode-indexer, vtcode-bash-runner, vtcode-utility-tool-specs,
-                     vtcode-eval, vtcode-safety, vtcode-webmcp, vtcode-a2a, vtcode-llm,
-                     vtcode-skills, vtcode-agent-plugins, vtcode-ui, vtcode-mcp, vtcode-core,
-                     vtcode-acp, vtcode.
+                     crates: diapason-commons, diapason-auth, diapason-exec-events,
+                     diapason-memory, diapason-macros, diapason-config,
+                     diapason-indexer, diapason-bash-runner, diapason-utility-tool-specs,
+                     diapason-eval, diapason-safety, diapason-webmcp, diapason-a2a, diapason-llm,
+                     diapason-skills, diapason-agent-plugins, diapason-ui, diapason-mcp, diapason-core,
+                     diapason-acp, diapason.
   --skip-tests       Skip running the workspace fmt/clippy/test checks. Use with
                      caution; the release plan expects the validation suite to
                      pass before publishing.
@@ -34,16 +34,16 @@ Options:
   -h, --help         Show this help message and exit.
 
 Environment variables:
-  VT_RELEASE_DRY_RUN When set to 1, the script defaults to performing a dry
+  DIAPASON_RELEASE_DRY_RUN When set to 1, the script defaults to performing a dry
                      run. Passing `--dry-run` or providing `--start-from` still
                      works while the variable is set.
-  VT_RELEASE_SKIP_DOCS
+  DIAPASON_RELEASE_SKIP_DOCS
                      When set to 1, skip regenerating API docs even if
                      `--skip-docs` is not passed.
 USAGE
 }
 
-DRY_RUN=${VT_RELEASE_DRY_RUN:-0}
+DRY_RUN=${DIAPASON_RELEASE_DRY_RUN:-0}
 START_FROM=""
 RUN_TESTS=1
 RUN_DOCS=1
@@ -51,7 +51,7 @@ RUN_TAGS=1
 RUN_FOLLOW_UP=1
 CURRENT_VERSION=$(get_current_version)
 
-if [[ ${VT_RELEASE_SKIP_DOCS:-0} -eq 1 ]]; then
+if [[ ${DIAPASON_RELEASE_SKIP_DOCS:-0} -eq 1 ]]; then
 	RUN_DOCS=0
 fi
 
@@ -94,33 +94,33 @@ while [[ $# -gt 0 ]]; do
 done
 
 CRATES=(
-	vtcode-commons
-	vtcode-auth
-	vtcode-exec-events
-	vtcode-memory
-	vtcode-macros
-	vtcode-config
-	vtcode-indexer
-	vtcode-bash-runner
-	vtcode-utility-tool-specs
-	vtcode-eval
-	vtcode-safety
-	vtcode-webmcp
-	vtcode-a2a
-	vtcode-llm
-	vtcode-skills
-	vtcode-agent-plugins
-	vtcode-ui
-	vtcode-mcp
-	vtcode-core
-	vtcode-acp
-	vtcode
+	diapason-commons
+	diapason-auth
+	diapason-exec-events
+	diapason-memory
+	diapason-macros
+	diapason-config
+	diapason-indexer
+	diapason-bash-runner
+	diapason-utility-tool-specs
+	diapason-eval
+	diapason-safety
+	diapason-webmcp
+	diapason-a2a
+	diapason-llm
+	diapason-skills
+	diapason-agent-plugins
+	diapason-ui
+	diapason-mcp
+	diapason-core
+	diapason-acp
+	diapason
 )
 
 # Validate that all workspace dependencies of crates in the publish list
 # are also in the publish list and appear earlier (topological order). This
-# catches missing crates and out-of-order publishes (e.g. vtcode-webmcp
-# requiring vtcode-safety) before hitting crates.io 400 errors.
+# catches missing crates and out-of-order publishes (e.g. diapason-webmcp
+# requiring diapason-safety) before hitting crates.io 400 errors.
 validate_publish_order() {
 	local errors=0
 	local crate_set=""
@@ -144,7 +144,7 @@ validate_publish_order() {
 	}
 
 	for crate in "${CRATES[@]}"; do
-		# Resolve Cargo.toml path via workspace resolver (handles re-aliased crates like vtcode-commons)
+		# Resolve Cargo.toml path via workspace resolver (handles re-aliased crates like diapason-commons)
 		local cargo_toml=""
 		if [[ -f "${crate}/Cargo.toml" ]]; then
 			cargo_toml="${crate}/Cargo.toml"
@@ -159,9 +159,9 @@ validate_publish_order() {
 			fi
 		fi
 
-		# Extract vtcode workspace dependencies: handles both `workspace = true` and `path =` forms
+		# Extract diapason workspace dependencies: handles both `workspace = true` and `path =` forms
 		local deps
-		deps=$(grep -E 'vtcode-[a-z0-9_-]+\s*=' "$cargo_toml" | grep -oE 'vtcode-[a-z0-9_-]+' | sort -u || true)
+		deps=$(grep -E 'diapason-[a-z0-9_-]+\s*=' "$cargo_toml" | grep -oE 'diapason-[a-z0-9_-]+' | sort -u || true)
 
 		for dep in $deps; do
 			# Skip self-dependency
@@ -228,7 +228,7 @@ is_version_published() {
 	local crate="$1"
 	local version="$2"
 	local endpoint="https://crates.io/api/v1/crates/${crate}/${version}"
-	if curl --silent --show-error --fail --location --user-agent "vtcode-publish-script" "$endpoint" >/dev/null 2>&1; then
+	if curl --silent --show-error --fail --location --user-agent "diapason-publish-script" "$endpoint" >/dev/null 2>&1; then
 		return 0
 	fi
 	if cargo info --registry crates-io --quiet "${crate}@${version}" >/dev/null 2>&1; then
@@ -278,7 +278,7 @@ publish_cmd() {
 			return 0
 		fi
 
-		# Handle dirty working directory for vtcode binary (cargo publish requires clean tree)
+		# Handle dirty working directory for diapason binary (cargo publish requires clean tree)
 		if grep -qi "uncommitted changes" "$tmp_out" || grep -qi "allow-dirty" "$tmp_out"; then
 			print_warning "cargo publish blocked by dirty working directory for ${crate}. Retrying with --allow-dirty..."
 			rm -f "$tmp_out"
@@ -347,7 +347,7 @@ wait_for_crates_io_version() {
 
 	print_info "Waiting for ${crate} ${version} to be indexed on crates.io..."
 	while [[ $attempt -le $max_attempts ]]; do
-		if curl --silent --show-error --fail --location --user-agent "vtcode-publish-script" "$endpoint" >/dev/null; then
+		if curl --silent --show-error --fail --location --user-agent "diapason-publish-script" "$endpoint" >/dev/null; then
 			print_success "${crate} ${version} is available on crates.io"
 			api_available=1
 			break
@@ -437,9 +437,9 @@ fi
 
 for crate in "${CRATES[@]}"; do
 	generate_docs "$crate"
-	if [[ "$crate" == "vtcode-bash-runner" && $DRY_RUN -eq 0 ]]; then
-		echo "Re-running vtcode-bash-runner dry run now that vtcode-exec-events is published..."
-		run_cmd "cargo publish --dry-run -p vtcode-bash-runner"
+	if [[ "$crate" == "diapason-bash-runner" && $DRY_RUN -eq 0 ]]; then
+		echo "Re-running diapason-bash-runner dry run now that diapason-exec-events is published..."
+		run_cmd "cargo publish --dry-run -p diapason-bash-runner"
 	fi
 	if ! publish_cmd "$crate"; then
 		print_error "Failed to publish ${crate} ${CURRENT_VERSION}. Aborting remaining publishes."

@@ -6,9 +6,9 @@
 
 use std::sync::Arc;
 
-use vtcode_core::config::constants::models;
-use vtcode_core::config::types::VerbosityLevel;
-use vtcode_core::llm::{
+use diapason_core::config::constants::models;
+use diapason_core::config::types::VerbosityLevel;
+use diapason_core::llm::{
     factory::{LLMFactory, create_provider_for_model},
     provider::{LLMProvider, LLMRequest, Message, MessageRole},
     providers::{

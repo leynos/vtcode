@@ -6,14 +6,14 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use anyhow::{Result, bail};
-use vtcode_config::IdeContextConfig;
-use vtcode_core::EditorContextSnapshot;
-use vtcode_core::llm::provider as uni;
+use diapason_config::IdeContextConfig;
+use diapason_core::EditorContextSnapshot;
+use diapason_core::llm::provider as uni;
 
 use crate::agent::runloop::unified::incremental_system_prompt::{
     IncrementalSystemPrompt, SystemPromptContext, hash_base_system_prompt,
 };
-use vtcode_commons::canonicalize;
+use diapason_commons::canonicalize;
 
 /// Parameters for building system prompts
 #[derive(Clone)]
@@ -39,11 +39,11 @@ pub(crate) struct ContextManager {
     base_system_prompt: String,
     incremental_prompt_builder: IncrementalSystemPrompt,
     /// Loaded skills for prompt injection
-    loaded_skills: Arc<RwLock<HashMap<String, vtcode_core::skills::types::Skill>>>,
+    loaded_skills: Arc<RwLock<HashMap<String, diapason_core::skills::types::Skill>>>,
     /// Incrementally tracked statistics
     cached_stats: ContextStats,
     /// Agent configuration
-    agent_config: Option<vtcode_config::core::AgentConfig>,
+    agent_config: Option<diapason_config::core::AgentConfig>,
     /// Workspace root used for request-time editor context rendering.
     workspace_root: Option<PathBuf>,
     /// Normalized editor snapshot used for request-time prompt injection.
@@ -60,8 +60,8 @@ impl ContextManager {
     pub(crate) fn new(
         base_system_prompt: String,
         _trim_config: (), // Removed trim config parameter
-        loaded_skills: Arc<RwLock<HashMap<String, vtcode_core::skills::types::Skill>>>,
-        agent_config: Option<vtcode_config::core::AgentConfig>,
+        loaded_skills: Arc<RwLock<HashMap<String, diapason_core::skills::types::Skill>>>,
+        agent_config: Option<diapason_config::core::AgentConfig>,
     ) -> Self {
         Self {
             base_system_prompt,
@@ -306,13 +306,13 @@ impl ContextManager {
     /// tool-calling semantics.
     pub(crate) fn normalize_history_for_request<'a>(&self, history: &'a [uni::Message]) -> Cow<'a, [uni::Message]> {
         let request_history_needs_repair =
-            vtcode_core::core::agent::state::request_history_needs_normalization(history);
+            diapason_core::core::agent::state::request_history_needs_normalization(history);
         if !request_history_needs_repair && !history_needs_message_cleanup(history) {
             return Cow::Borrowed(history);
         }
 
         let mut normalized = if request_history_needs_repair {
-            vtcode_core::core::agent::state::normalize_history_for_request(history)
+            diapason_core::core::agent::state::normalize_history_for_request(history)
         } else {
             history.to_vec()
         };

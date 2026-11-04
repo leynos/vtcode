@@ -10,9 +10,9 @@
 //!
 //! Recovery mode uses a tighter total fuse than normal mode.
 
+use diapason_core::config::constants::defaults::DEFAULT_MAX_CONSECUTIVE_BLOCKED_TOOL_CALLS_PER_TURN;
+use diapason_core::tools::registry::labels::tool_action_label;
 use serde_json::Value;
-use vtcode_core::config::constants::defaults::DEFAULT_MAX_CONSECUTIVE_BLOCKED_TOOL_CALLS_PER_TURN;
-use vtcode_core::tools::registry::labels::tool_action_label;
 
 use super::super::build_failure_error_content;
 use super::common::push_guard_failure_messages;
@@ -39,7 +39,7 @@ pub(crate) fn consecutive_cap_for_tool(ctx: &TurnProcessingContext<'_>, tool_nam
     {
         return *override_cap;
     }
-    if tool_name == vtcode_core::config::constants::tools::CODE_SEARCH {
+    if tool_name == diapason_core::config::constants::tools::CODE_SEARCH {
         return base.saturating_mul(2).max(base);
     }
     base
@@ -49,16 +49,16 @@ pub(crate) fn consecutive_cap_for_tool(ctx: &TurnProcessingContext<'_>, tool_nam
 /// instead of retrying the same denied call.
 pub(crate) fn remedy_hint_for_tool(tool_name: &str) -> &'static str {
     match tool_name {
-        vtcode_core::config::constants::tools::EXEC_COMMAND => {
+        diapason_core::config::constants::tools::EXEC_COMMAND => {
             "Check sandbox/approval policy, narrow the command, or request approval instead of retrying verbatim."
         }
-        vtcode_core::config::constants::tools::CODE_SEARCH => {
+        diapason_core::config::constants::tools::CODE_SEARCH => {
             "Narrow code_search filters (omit empty path, use specific query) instead of retrying the same search."
         }
-        vtcode_core::config::constants::tools::WRITE_STDIN => {
+        diapason_core::config::constants::tools::WRITE_STDIN => {
             "Verify the target session exists and is writable before retrying write_stdin."
         }
-        vtcode_core::config::constants::tools::APPLY_PATCH => {
+        diapason_core::config::constants::tools::APPLY_PATCH => {
             "Rebase the patch on current file contents and confirm edit approval before retrying."
         }
         _ => "Adjust arguments, permissions, or approvals instead of retrying the identical call.",
@@ -186,7 +186,7 @@ pub(crate) fn blocked_tool_call_messages_detailed(
     } else {
         String::new()
     };
-    let resume_guidance = "History and outputs are retained. Type 'continue' with new guidance, or run `vtcode --resume <session>`; details: .vtcode/tasks/current_blocked.md.";
+    let resume_guidance = "History and outputs are retained. Type 'continue' with new guidance, or run `diapason --resume <session>`; details: .diapason/tasks/current_blocked.md.";
     let (block_reason, error_msg, error_label) = match (fuse_trip, recovery_mode) {
         (BlockedToolCallFuseTrip::Total { cap }, true) => (
             format!(
@@ -307,6 +307,6 @@ mod tests {
         assert!(reason.contains("streak 4"));
         assert!(reason.contains("sandbox/approval"));
         assert!(reason.contains("Type 'continue'"));
-        assert!(reason.contains(".vtcode/tasks/current_blocked.md"));
+        assert!(reason.contains(".diapason/tasks/current_blocked.md"));
     }
 }

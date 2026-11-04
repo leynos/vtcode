@@ -1,12 +1,12 @@
 # Documentation Index
 
-Repository-wide entrypoint for VT Code documentation.
+Repository-wide entrypoint for Diapason documentation.
 
 Last reviewed: 2026-11-03
 
 ## Start Here
 
-- [Community Wiki](https://github.com/vinhnx/VTCode/wiki) - Getting started,
+- [Community Wiki](https://github.com/leynos/vtcode/wiki) - Getting started,
   configuration, providers, local models, skills, MCP, automation, security,
   and FAQ.
 - [Documentation Hub](README.md) - Main user/developer overview.
@@ -44,7 +44,7 @@ Last reviewed: 2026-11-03
 - [Scheduled Tasks](user-guide/scheduled-tasks.md) - Reminder and durable
   scheduler flows.
 - [WebMCP Browser Bridge User Guide](user-guide/webmcp.md) - Connect a browser
-  editor to an active VT Code session or a bounded standalone workspace bridge.
+  editor to an active Diapason session or a bounded standalone workspace bridge.
 - [Planning Workflow](guides/planning-workflow.md) - `/plan`, review gate, plan
   handoff to build/auto agents.
 - [Permissions Guide](guides/permissions.md) - Granular agent permissions and
@@ -57,7 +57,7 @@ Last reviewed: 2026-11-03
 - [MCP Integration Guide](mcp/MCP_INTEGRATION_GUIDE.md) - MCP integration
   onboarding.
 - [Agent Plugins](guides/agent-plugins.md) - Portable skill + MCP packages,
-  `vtcode plugins` CLI.
+  `diapason plugins` CLI.
 - [Testing Guide](development/testing.md) - Test strategy and commands.
 
 ## Engineering References
@@ -74,7 +74,7 @@ Last reviewed: 2026-11-03
   language support status.
 - [Signal Handling](signal_handling.md) - Ctrl+C / SIGINT priority guarantees
   and emergency exit.
-- [Indexer Notes](modules/vtcode_indexer.md) - Indexer behavior and usage.
+- [Indexer Notes](modules/diapason_indexer.md) - Indexer behavior and usage.
 - [Development Guide](development/README.md) - Local dev workflows.
 - [Roadmap](project/ROADMAP.md) - Planned work.
 - [Loop Engineering](loop-engineering.md) - Worktree isolation, propose/verify
@@ -82,28 +82,31 @@ Last reviewed: 2026-11-03
 
 ## Module Documentation
 
-- [vtcode-ui](modules/vtcode_ui.md) - UI framework, design system, theme
+- [diapason-ui](modules/diapason_ui.md) - UI framework, design system, theme
   registry.
-- [vtcode-llm](modules/vtcode_llm.md) - LLM provider abstraction and streaming.
-- [vtcode-skills](modules/vtcode_skills.md) - Skill discovery, loading, and
+- [diapason-llm](modules/diapason_llm.md) - LLM provider abstraction and
+  streaming.
+- [diapason-skills](modules/diapason_skills.md) - Skill discovery, loading, and
   validation.
-- [vtcode-safety](modules/vtcode_safety.md) - Command safety, execution
+- [diapason-safety](modules/diapason_safety.md) - Command safety, execution
   policies, sandboxing.
-- [vtcode-a2a](modules/vtcode_a2a.md) - Agent2Agent protocol support.
-- [vtcode-mcp](modules/vtcode_mcp.md) - Model Context Protocol integration.
-- [vtcode-bash-runner](modules/vtcode_bash_runner.md) - Shell execution sandbox.
-- [vtcode-config](modules/vtcode_config_migration.md) - Configuration loading
-  and schema.
-- [vtcode-commons](modules/vtcode_commons_reference.md) - Shared utilities.
-- [vtcode-exec-events](modules/vtcode_exec_events.md) - ThreadEvent contract
+- [diapason-a2a](modules/diapason_a2a.md) - Agent2Agent protocol support.
+- [diapason-mcp](modules/diapason_mcp.md) - Model Context Protocol integration.
+- [diapason-bash-runner](modules/diapason_bash_runner.md) - Shell execution
+  sandbox.
+- [diapason-config](modules/diapason_config_migration.md) - Configuration
+  loading and schema.
+- [diapason-commons](modules/diapason_commons_reference.md) - Shared utilities.
+- [diapason-exec-events](modules/diapason_exec_events.md) - ThreadEvent contract
   and ATIF export.
-- [vtcode-indexer](modules/vtcode_indexer.md) - Code indexing and search.
-- [vtcode-agent-plugins](modules/vtcode_agent_plugins.md) - Agent Plugins
+- [diapason-indexer](modules/diapason_indexer.md) - Code indexing and search.
+- [diapason-agent-plugins](modules/diapason_agent_plugins.md) - Agent Plugins
   manifest parsing, validation, and discovery.
 
 ## Historical and Archive Paths
 
-- `docs/async/` - Async migration implementation logs.
+- [Documentation archive](archive/README.md) - Historical reports and upstream
+  records, with their original subdirectories preserved.
 
 When adding implementation summaries or one-off reports, prefer a domain folder
 or an archive path instead of placing files at `docs/*.md`.

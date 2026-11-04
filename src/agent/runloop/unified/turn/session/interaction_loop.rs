@@ -6,18 +6,18 @@ use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 use tokio::sync::{Notify, mpsc};
 
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig;
-use vtcode_core::core::agent::runtime::RuntimeSteering;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::primary_agent::ActivePrimaryAgentState;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig;
+use diapason_core::core::agent::runtime::RuntimeSteering;
+use diapason_core::llm::provider as uni;
+use diapason_core::primary_agent::ActivePrimaryAgentState;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::InlineHandle;
 
 use crate::agent::runloop::ResumeSession;
 use crate::agent::runloop::model_picker::ModelPickerState;
 use crate::updater::StartupUpdateNotice;
-use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason};
+use diapason_core::hooks::{LifecycleHookEngine, SessionEndReason};
 
 use crate::agent::runloop::unified::async_mcp_manager::AsyncMcpManager;
 use crate::agent::runloop::unified::inline_events::QueuedInput;
@@ -35,26 +35,26 @@ use std::path::PathBuf;
 pub(crate) struct InteractionLoopContext<'a> {
     pub thread_id: &'a str,
     pub active_thread_label: &'a str,
-    pub thread_handle: &'a vtcode_core::core::threads::ThreadRuntimeHandle,
+    pub thread_handle: &'a diapason_core::core::threads::ThreadRuntimeHandle,
     pub renderer: &'a mut AnsiRenderer,
-    pub session: &'a mut vtcode_ui::tui::app::InlineSession,
+    pub session: &'a mut diapason_ui::tui::app::InlineSession,
     pub handle: &'a InlineHandle,
-    pub header_context: &'a mut vtcode_ui::tui::app::InlineHeaderContext,
+    pub header_context: &'a mut diapason_ui::tui::app::InlineHeaderContext,
     pub ide_context_bridge: &'a mut Option<IdeContextBridge>,
     pub ctrl_c_state: &'a Arc<CtrlCState>,
     pub ctrl_c_notify: &'a Arc<Notify>,
     pub input_activity_counter: &'a Arc<AtomicU64>,
     pub config: &'a mut AgentConfig,
-    pub vt_cfg: &'a mut Option<VTCodeConfig>,
+    pub vt_cfg: &'a mut Option<DiapasonConfig>,
     pub provider_client: &'a mut Box<dyn uni::LLMProvider>,
     pub session_bootstrap: &'a SessionBootstrap,
     pub async_mcp_manager: &'a Option<Arc<AsyncMcpManager>>,
-    pub tool_registry: &'a mut vtcode_core::tools::registry::ToolRegistry,
+    pub tool_registry: &'a mut diapason_core::tools::registry::ToolRegistry,
     pub tools: &'a Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
     pub tool_catalog: &'a Arc<ToolCatalogState>,
     pub conversation_history: &'a mut Vec<uni::Message>,
     pub agent_touched_paths: &'a mut BTreeSet<PathBuf>,
-    pub decision_ledger: &'a Arc<tokio::sync::RwLock<vtcode_core::core::decision_tracker::DecisionTracker>>,
+    pub decision_ledger: &'a Arc<tokio::sync::RwLock<diapason_core::core::decision_tracker::DecisionTracker>>,
     pub context_manager: &'a mut crate::agent::runloop::unified::context_manager::ContextManager,
     pub active_primary_agent: &'a mut ActivePrimaryAgentState,
     pub session_stats: &'a mut SessionStats,
@@ -64,26 +64,26 @@ pub(crate) struct InteractionLoopContext<'a> {
     pub lifecycle_hooks: &'a mut Option<LifecycleHookEngine>,
     pub full_auto: bool,
     pub skip_confirmations: bool,
-    pub approval_recorder: &'a Arc<vtcode_core::tools::ApprovalRecorder>,
-    pub tool_permission_cache: &'a Arc<tokio::sync::RwLock<vtcode_core::acp::ToolPermissionCache>>,
-    pub permissions_state: &'a Arc<tokio::sync::RwLock<vtcode_core::config::PermissionsConfig>>,
-    pub loaded_skills: &'a Arc<tokio::sync::RwLock<hashbrown::HashMap<String, vtcode_core::skills::Skill>>>,
+    pub approval_recorder: &'a Arc<diapason_core::tools::ApprovalRecorder>,
+    pub tool_permission_cache: &'a Arc<tokio::sync::RwLock<diapason_core::acp::ToolPermissionCache>>,
+    pub permissions_state: &'a Arc<tokio::sync::RwLock<diapason_core::config::PermissionsConfig>>,
+    pub loaded_skills: &'a Arc<tokio::sync::RwLock<hashbrown::HashMap<String, diapason_core::skills::Skill>>>,
     pub default_placeholder: &'a mut Option<String>,
     pub follow_up_placeholder: &'a mut Option<String>,
-    pub checkpoint_manager: Option<&'a vtcode_core::core::agent::snapshots::SnapshotManager>,
-    pub tool_result_cache: &'a Arc<tokio::sync::RwLock<vtcode_core::tools::ToolResultCache>>,
-    pub traj: &'a vtcode_core::core::trajectory::TrajectoryLogger,
+    pub checkpoint_manager: Option<&'a diapason_core::core::agent::snapshots::SnapshotManager>,
+    pub tool_result_cache: &'a Arc<tokio::sync::RwLock<diapason_core::tools::ToolResultCache>>,
+    pub traj: &'a diapason_core::core::trajectory::TrajectoryLogger,
     pub harness_emitter: Option<&'a crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter>,
     pub safety_validator: &'a Arc<crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator>,
-    pub circuit_breaker: &'a Arc<vtcode_core::tools::circuit_breaker::CircuitBreaker>,
-    pub tool_health_tracker: &'a Arc<vtcode_core::tools::health::ToolHealthTracker>,
-    pub rate_limiter: &'a Arc<vtcode_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
-    pub telemetry: &'a Arc<vtcode_core::core::telemetry::TelemetryManager>,
-    pub autonomous_executor: &'a Arc<vtcode_core::tools::autonomous_executor::AutonomousExecutor>,
-    pub error_recovery: &'a Arc<tokio::sync::RwLock<vtcode_core::core::agent::error_recovery::ErrorRecoveryState>>,
+    pub circuit_breaker: &'a Arc<diapason_core::tools::circuit_breaker::CircuitBreaker>,
+    pub tool_health_tracker: &'a Arc<diapason_core::tools::health::ToolHealthTracker>,
+    pub rate_limiter: &'a Arc<diapason_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
+    pub telemetry: &'a Arc<diapason_core::core::telemetry::TelemetryManager>,
+    pub autonomous_executor: &'a Arc<diapason_core::tools::autonomous_executor::AutonomousExecutor>,
+    pub error_recovery: &'a Arc<tokio::sync::RwLock<diapason_core::core::agent::error_recovery::ErrorRecoveryState>>,
     pub last_forced_redraw: &'a mut Instant,
     pub turn_metadata_cache: &'a mut Option<Option<serde_json::Value>>,
-    pub harness_config: vtcode_config::core::agent::AgentHarnessConfig,
+    pub harness_config: diapason_config::core::agent::AgentHarnessConfig,
     pub runtime_steering: &'a mut RuntimeSteering,
     pub webmcp_prompt_receiver: &'a mut Option<mpsc::Receiver<String>>,
     pub webmcp_prompt_sender: &'a mpsc::Sender<String>,

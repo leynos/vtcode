@@ -1,5 +1,5 @@
 [package]
-name = "vtcode-fuzz"
+name = "diapason-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -11,8 +11,8 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 tempfile = "3.25"
 tokio = { version = "1.49", features = ["rt-multi-thread", "fs"] }
-vtcode-commons = { path = "../crates/common/vtcode-commons" }
-vtcode-core = { path = "../crates/codegen/vtcode-core", default-features = false, features = ["tui"] }
+diapason-commons = { path = "../crates/common/diapason-commons" }
+diapason-core = { path = "../crates/codegen/diapason-core", default-features = false, features = ["tui"] }
 
 [workspace]
 members = ["."]

@@ -4,18 +4,18 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use diapason_commons::canonicalize;
+use diapason_config::IdeContextConfig;
+use diapason_core::ide_context::{EditorContextSnapshot, IDE_CONTEXT_ENV_VAR, LEGACY_VSCODE_CONTEXT_ENV_VAR};
+use diapason_core::tools::dominant_workspace_language;
 use tracing::{debug, warn};
-use vtcode_commons::canonicalize;
-use vtcode_config::IdeContextConfig;
-use vtcode_core::ide_context::{EditorContextSnapshot, IDE_CONTEXT_ENV_VAR, LEGACY_VSCODE_CONTEXT_ENV_VAR};
-use vtcode_core::tools::dominant_workspace_language;
 
-const WORKSPACE_IDE_CONTEXT_JSON_FILE: &str = ".vtcode/ide-context.json";
-const WORKSPACE_IDE_CONTEXT_MARKDOWN_FILE: &str = ".vtcode/ide-context.md";
+const WORKSPACE_IDE_CONTEXT_JSON_FILE: &str = "ide-context.json";
+const WORKSPACE_IDE_CONTEXT_MARKDOWN_FILE: &str = "ide-context.md";
 const VSCODE_COMPATIBLE_STORAGE_DIRS: &[&str] = &["Code", "Code - Insiders", "Cursor", "Windsurf", "VSCodium", "Kiro"];
-const VSCODE_COMPATIBLE_EXTENSION_ID: &str = "nguyenxuanvinh.vtcode-companion";
-const VSCODE_COMPATIBLE_JSON_FILE: &str = "vtcode-ide-context.json";
-const VSCODE_COMPATIBLE_MARKDOWN_FILE: &str = "vtcode-ide-context.md";
+const VSCODE_COMPATIBLE_EXTENSION_ID: &str = "df12productions.diapason-companion";
+const VSCODE_COMPATIBLE_JSON_FILE: &str = "diapason-ide-context.json";
+const VSCODE_COMPATIBLE_MARKDOWN_FILE: &str = "diapason-ide-context.md";
 
 pub(crate) struct IdeContextBridge {
     workspace_root: PathBuf,
@@ -155,12 +155,16 @@ fn read_env_ide_context_snapshot() -> Result<Option<(EditorContextSnapshot, Path
 }
 
 fn read_workspace_ide_context_snapshot(workspace: &Path) -> Result<Option<(EditorContextSnapshot, PathBuf)>> {
-    let json_path = workspace.join(WORKSPACE_IDE_CONTEXT_JSON_FILE);
+    let json_path = workspace
+        .join(diapason_commons::workspace_dir_name())
+        .join(WORKSPACE_IDE_CONTEXT_JSON_FILE);
     if let Some(snapshot) = EditorContextSnapshot::read_json_file(&json_path)? {
         return Ok(Some((snapshot, json_path)));
     }
 
-    let legacy_markdown_path = workspace.join(WORKSPACE_IDE_CONTEXT_MARKDOWN_FILE);
+    let legacy_markdown_path = workspace
+        .join(diapason_commons::workspace_dir_name())
+        .join(WORKSPACE_IDE_CONTEXT_MARKDOWN_FILE);
     Ok(EditorContextSnapshot::read_legacy_markdown_file(&legacy_markdown_path)?
         .map(|snapshot| (snapshot, legacy_markdown_path)))
 }
@@ -325,13 +329,26 @@ mod tests {
         preferred_display_language_for_workspace_with_snapshot, read_vscode_compatible_snapshot_from_roots,
         tui_header_summary,
     };
+    use diapason_commons::env_lock::{remove_var as remove_env_var, set_var as set_env_var};
+    use diapason_config::IdeContextConfig;
+    use diapason_core::ide_context::{EditorContextSnapshot, IDE_CONTEXT_ENV_VAR};
     use serial_test::serial;
     use std::fs;
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
-    use vtcode_commons::env_lock::{remove_var as remove_env_var, set_var as set_env_var};
-    use vtcode_config::IdeContextConfig;
-    use vtcode_core::ide_context::{EditorContextSnapshot, IDE_CONTEXT_ENV_VAR};
+
+    #[test]
+    fn compatible_extension_id_matches_package_manifest() {
+        let package: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/extensions/vscode-extension/package.json"
+        )))
+        .expect("parse VS Code extension package manifest");
+        let publisher = package["publisher"].as_str().expect("package publisher");
+        let name = package["name"].as_str().expect("package name");
+
+        assert_eq!(format!("{publisher}.{name}"), super::VSCODE_COMPATIBLE_EXTENSION_ID);
+    }
 
     #[test]
     fn preferred_language_uses_snapshot_before_workspace_fallback() {
@@ -340,7 +357,7 @@ mod tests {
         fs::write(workspace.path().join("src/lib.rs"), "fn alpha() {}\n").expect("write rust");
 
         let snapshot = EditorContextSnapshot {
-            active_file: Some(vtcode_core::EditorFileContext {
+            active_file: Some(diapason_core::EditorFileContext {
                 path: workspace.path().join("main.py").display().to_string(),
                 language_id: Some("python".to_string()),
                 line_range: None,
@@ -373,7 +390,7 @@ mod tests {
     fn tui_header_summary_respects_visibility_toggle() {
         let snapshot = EditorContextSnapshot {
             workspace_root: Some(PathBuf::from("/workspace")),
-            active_file: Some(vtcode_core::EditorFileContext {
+            active_file: Some(diapason_core::EditorFileContext {
                 path: "/workspace/src/main.rs".to_string(),
                 language_id: Some("rust".to_string()),
                 line_range: None,
@@ -427,7 +444,7 @@ mod tests {
     #[serial]
     fn bridge_refresh_reads_workspace_snapshot_without_env() {
         let workspace = TempDir::new().expect("workspace tempdir");
-        let snapshot_dir = workspace.path().join(".vtcode");
+        let snapshot_dir = workspace.path().join(diapason_commons::workspace_dir_name());
         fs::create_dir_all(&snapshot_dir).expect("create snapshot dir");
         fs::write(
             snapshot_dir.join("ide-context.json"),
@@ -461,11 +478,11 @@ mod tests {
     #[test]
     fn configured_snapshot_respects_provider_family_filters() {
         let snapshot = EditorContextSnapshot {
-            provider_family: vtcode_config::IdeContextProviderFamily::Zed,
+            provider_family: diapason_config::IdeContextProviderFamily::Zed,
             ..EditorContextSnapshot::default()
         };
         let config = IdeContextConfig {
-            provider_mode: vtcode_config::IdeContextProviderMode::VscodeCompatible,
+            provider_mode: diapason_config::IdeContextProviderMode::VscodeCompatible,
             ..IdeContextConfig::default()
         };
 
@@ -581,7 +598,7 @@ mod tests {
     #[serial]
     fn preferred_language_reads_workspace_snapshot_without_env() {
         let workspace = TempDir::new().expect("workspace tempdir");
-        let snapshot_dir = workspace.path().join(".vtcode");
+        let snapshot_dir = workspace.path().join(diapason_commons::workspace_dir_name());
         fs::create_dir_all(&snapshot_dir).expect("create snapshot dir");
         fs::write(
             snapshot_dir.join("ide-context.json"),

@@ -22,7 +22,7 @@ on:
       - "scripts/**"
       - "!.github/dependabot.yml" # Exclude dependabot changes
       - "!.gitignore"
-      - "!.vtcodegitignore"
+      - "!.diapasongitignore"
       - "!.env*"
   pull_request:
     branches:
@@ -40,7 +40,7 @@ on:
       - "scripts/**"
       - "!.github/dependabot.yml" # Exclude dependabot changes
       - "!.gitignore"
-      - "!.vtcodegitignore"
+      - "!.diapasongitignore"
       - "!.env*"
 
 env:
@@ -277,7 +277,7 @@ jobs:
       - name: Lint changed Markdown paths
         if: steps.filter.outputs.markdown == 'true'
         env:
-          VTCODE_CHANGED_MARKDOWN_FILES_JSON: ${{ steps.filter.outputs.markdown_files }}
+          DIAPASON_CHANGED_MARKDOWN_FILES_JSON: ${{ steps.filter.outputs.markdown_files }}
         run: node scripts/lint_changed_markdown.mjs
 
   check-cross-platform:
@@ -363,9 +363,9 @@ jobs:
       - name: Run focused harness PTY/TUI regressions
         if: success() || failure()
         run: |
-          cargo test --locked -p vtcode-core --test pty_tests
-          cargo test --locked -p vtcode-bash-runner --test pipe_tests
-          cargo test --locked -p vtcode --bin vtcode inline_events::tests
+          cargo test --locked -p diapason-core --test pty_tests
+          cargo test --locked -p diapason-bash-runner --test pipe_tests
+          cargo test --locked -p diapason --bin diapason inline_events::tests
 
   msrv:
     name: MSRV Check (1.88)

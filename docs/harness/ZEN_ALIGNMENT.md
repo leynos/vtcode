@@ -1,6 +1,6 @@
-# Zen Alignment for VT Code
+# Zen Alignment for Diapason
 
-Full mapping of all 19 Zen of Python principles to VT Code controls, checks,
+Full mapping of all 19 Zen of Python principles to Diapason controls, checks,
 and operating behavior.
 
 Last reviewed: 2026-03-03
@@ -14,7 +14,7 @@ Last reviewed: 2026-03-03
 
 ## Full Principle Mapping (All 19)
 
-| #   | Zen Principle                                                         | VT Code Interpretation                                           | Control / Check                                                         | Status          |
+| #   | Zen Principle                                                         | Diapason Interpretation                                          | Control / Check                                                         | Status          |
 | --- | --------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------- |
 | 1   | Beautiful is better than ugly.                                        | Prefer coherent, legible output and docs structure.              | Markdown lint + harness document structure                              | Active          |
 | 2   | Explicit is better than implicit.                                     | Keep links, policies, and constraints explicit.                  | `python3 scripts/check_docs_links.py`                                   | Active          |

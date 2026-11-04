@@ -1,0 +1,269 @@
+//! Enhanced MCP Configuration
+//!
+//! This module provides enhanced configuration options for MCP with
+//! improved validation, security features, and better error handling.
+
+use serde::{Deserialize, Serialize};
+
+// Import canonical types from diapason-config instead of defining locally
+pub use diapason_config::mcp::{McpRateLimitConfig, McpValidationConfig};
+
+use tracing::{debug, warn};
+
+/// Enhanced security configuration for MCP
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EnhancedMcpSecurityConfig {
+    /// Enable authentication for MCP server
+    #[serde(default = "default_auth_enabled")]
+    auth_enabled: bool,
+
+    /// API key environment variable name
+    #[serde(default)]
+    api_key_env: Option<String>,
+
+    /// Rate limiting configuration
+    #[serde(default)]
+    rate_limit: McpRateLimitConfig,
+
+    /// Tool call validation configuration
+    #[serde(default)]
+    validation: McpValidationConfig,
+}
+
+impl Default for EnhancedMcpSecurityConfig {
+    fn default() -> Self {
+        Self {
+            auth_enabled: default_auth_enabled(),
+            api_key_env: None,
+            rate_limit: McpRateLimitConfig::default(),
+            validation: McpValidationConfig::default(),
+        }
+    }
+}
+
+// Default functions
+fn default_auth_enabled() -> bool {
+    false
+}
+
+/// Enhanced MCP client configuration with validation
+#[derive(Debug, Clone)]
+pub struct ValidatedMcpClientConfig {
+    /// Original configuration
+    original: diapason_config::mcp::McpClientConfig,
+    /// Enhanced security configuration
+    security: EnhancedMcpSecurityConfig,
+}
+
+impl ValidatedMcpClientConfig {
+    /// Create a new validated configuration from the original
+    fn new(original: diapason_config::mcp::McpClientConfig) -> Self {
+        let security = EnhancedMcpSecurityConfig::default();
+        Self { original, security }
+    }
+
+    /// Validate the configuration and return any issues found
+    fn validate(&self) -> Vec<ValidationError> {
+        let mut errors = Vec::new();
+
+        // Validate server configuration if enabled
+        if self.original.server.enabled {
+            // Validate port range
+            if self.original.server.port == 0 {
+                errors.push(ValidationError::InvalidPort(self.original.server.port.into()));
+            }
+
+            // Validate bind address
+            if self.original.server.bind_address.is_empty() {
+                errors.push(ValidationError::EmptyBindAddress);
+            }
+
+            // Validate security settings if auth is enabled
+            if self.security.auth_enabled && self.security.api_key_env.is_none() {
+                errors.push(ValidationError::MissingApiKeyEnv);
+            }
+        }
+
+        // Validate timeouts
+        if let Some(startup_timeout) = self.original.startup_timeout_seconds
+            && startup_timeout > 300
+        {
+            // Max 5 minutes
+            errors.push(ValidationError::InvalidStartupTimeout(startup_timeout));
+        }
+
+        if let Some(tool_timeout) = self.original.tool_timeout_seconds
+            && tool_timeout > 3600
+        {
+            // Max 1 hour
+            errors.push(ValidationError::InvalidToolTimeout(tool_timeout));
+        }
+
+        // Validate provider configurations
+        for provider in &self.original.providers {
+            if provider.name.is_empty() {
+                errors.push(ValidationError::EmptyProviderName);
+            }
+
+            // Validate max_concurrent_requests
+            if provider.max_concurrent_requests == 0 {
+                errors.push(ValidationError::InvalidMaxConcurrentRequests(
+                    provider.name.clone(),
+                    provider.max_concurrent_requests,
+                ));
+            }
+        }
+
+        errors
+    }
+
+    /// Check if the configuration is valid
+    fn is_valid(&self) -> bool {
+        self.validate().is_empty()
+    }
+
+    /// Log any validation warnings
+    pub fn log_warnings(&self) {
+        let errors = self.validate();
+        if !errors.is_empty() {
+            warn!("MCP configuration validation issues found:");
+            for error in errors {
+                warn!("  - {}", error);
+            }
+        } else {
+            debug!("MCP configuration validation passed");
+        }
+    }
+}
+
+/// Validation error types
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ValidationError {
+    #[error("Invalid server port: {0}")]
+    InvalidPort(u64),
+    #[error("Server bind address cannot be empty")]
+    EmptyBindAddress,
+    #[error("API key environment variable must be set when auth is enabled")]
+    MissingApiKeyEnv,
+    #[error("Startup timeout cannot exceed 300 seconds: {0}")]
+    InvalidStartupTimeout(u64),
+    #[error("Tool timeout cannot exceed 3600 seconds: {0}")]
+    InvalidToolTimeout(u64),
+    #[error("MCP provider name cannot be empty")]
+    EmptyProviderName,
+    #[error("Max concurrent requests must be greater than 0 for provider '{0}': {1}")]
+    InvalidMaxConcurrentRequests(String, usize),
+}
+
+/// Enhanced tool configuration
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EnhancedMcpToolConfig {
+    /// Name of the tool to expose
+    name: String,
+    /// Whether the tool is enabled
+    #[serde(default = "default_tool_enabled")]
+    enabled: bool,
+    /// Optional description override
+    description: Option<String>,
+    /// Rate limiting for this specific tool
+    #[serde(default)]
+    rate_limit: Option<McpRateLimitConfig>,
+    /// Validation rules specific to this tool
+    #[serde(default)]
+    validation: Option<McpValidationConfig>,
+}
+
+fn default_tool_enabled() -> bool {
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diapason_config::mcp::{
+        McpClientConfig, McpProviderConfig, McpServerConfig, McpStdioServerConfig, McpTransportConfig,
+    };
+    use hashbrown::HashMap;
+
+    fn create_test_config() -> McpClientConfig {
+        McpClientConfig {
+            enabled: true,
+            ui: Default::default(),
+            providers: vec![McpProviderConfig {
+                name: "test_provider".to_owned(),
+                transport: McpTransportConfig::Stdio(McpStdioServerConfig {
+                    command: "test_command".to_owned(),
+                    args: vec![],
+                    working_directory: None,
+                }),
+                env: HashMap::new(),
+                enabled: true,
+                max_concurrent_requests: 5,
+                startup_timeout_ms: None,
+            }],
+            server: McpServerConfig {
+                enabled: true,
+                bind_address: "127.0.0.1".to_owned(),
+                port: 3000,
+                transport: diapason_config::mcp::McpServerTransport::Sse,
+                name: "test_server".to_owned(),
+                version: "1.0.0".to_owned(),
+                exposed_tools: vec![],
+            },
+            allowlist: Default::default(),
+            requirements: Default::default(),
+            max_concurrent_connections: 10,
+            request_timeout_seconds: 30,
+            retry_attempts: 3,
+            startup_timeout_seconds: Some(60),
+            tool_timeout_seconds: Some(300),
+            experimental_use_rmcp_client: false,
+            connection_pooling_enabled: true,
+            tool_cache_capacity: 128,
+            connection_timeout_seconds: 30,
+            security: Default::default(),
+            lifecycle: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_validated_config_creation() {
+        let original = create_test_config();
+        let validated = ValidatedMcpClientConfig::new(original);
+        assert!(validated.is_valid());
+    }
+
+    #[test]
+    fn test_invalid_port_validation() {
+        let mut original = create_test_config();
+        original.server.port = 65535; // Max valid port
+        let validated = ValidatedMcpClientConfig::new(original);
+        assert!(validated.is_valid());
+    }
+
+    #[test]
+    fn test_empty_bind_address_validation() {
+        let mut original = create_test_config();
+        original.server.bind_address = String::new(); // Empty bind address
+        let validated = ValidatedMcpClientConfig::new(original);
+        assert!(!validated.is_valid());
+    }
+
+    #[test]
+    fn test_timeout_validation() {
+        let mut original = create_test_config();
+        original.startup_timeout_seconds = Some(400); // Too long
+        let validated = ValidatedMcpClientConfig::new(original);
+        assert!(!validated.is_valid());
+    }
+
+    #[test]
+    fn test_zero_concurrent_requests_validation() {
+        let mut original = create_test_config();
+        original.providers[0].max_concurrent_requests = 0; // Invalid
+        let validated = ValidatedMcpClientConfig::new(original);
+        assert!(!validated.is_valid());
+    }
+}

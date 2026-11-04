@@ -1,7 +1,7 @@
 use crate::startup::{SessionResumeMode, StartupContext};
-use vtcode_core::cli::args::{Cli, Commands, ExecSubcommand};
-use vtcode_core::core::threads::{SessionQueryScope, list_recent_sessions_in_scope};
-use vtcode_core::utils::session_archive::{
+use diapason_core::cli::args::{Cli, Commands, ExecSubcommand};
+use diapason_core::core::threads::{SessionQueryScope, list_recent_sessions_in_scope};
+use diapason_core::utils::session_archive::{
     generate_session_archive_identifier, history_persistence_enabled, reserve_session_archive_identifier,
 };
 
@@ -127,11 +127,11 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::{LazyLock, Mutex};
 
-    use vtcode_config::core::PromptCachingConfig;
-    use vtcode_config::types::{
+    use diapason_config::core::PromptCachingConfig;
+    use diapason_config::types::{
         AgentConfig as StartupAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
     };
-    use vtcode_core::config::loader::VTCodeConfig;
+    use diapason_core::config::loader::DiapasonConfig;
 
     use crate::main_helpers::runtime_archive_session_id;
 
@@ -139,14 +139,14 @@ mod tests {
 
     fn startup_agent_config() -> StartupAgentConfig {
         StartupAgentConfig {
-            model: vtcode_core::config::constants::models::openai::GPT_5.to_string(),
+            model: diapason_core::config::constants::models::openai::GPT_5.to_string(),
             api_key: "test-key".to_string(),
             provider: "openai".to_string(),
             api_key_env: "OPENAI_API_KEY".to_string(),
             workspace: PathBuf::from("."),
             verbose: false,
             quiet: false,
-            theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+            theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
             reasoning_effort: ReasoningEffortLevel::default(),
             ui_surface: UiSurfacePreference::default(),
             prompt_cache: PromptCachingConfig::default(),
@@ -170,7 +170,7 @@ mod tests {
         let startup = StartupContext {
             workspace: PathBuf::from("."),
             agent_config: startup_agent_config(),
-            config: VTCodeConfig::default(),
+            config: DiapasonConfig::default(),
             skip_confirmations: false,
             full_auto_requested: false,
             automation_prompt: None,
@@ -179,7 +179,7 @@ mod tests {
             resume_show_all: false,
             custom_session_id: None,
             summarize_fork: false,
-            planning_entry_source: vtcode_core::core::interfaces::session::PlanningEntrySource::None,
+            planning_entry_source: diapason_core::core::interfaces::session::PlanningEntrySource::None,
         };
 
         configure_runtime_debug_context("seed".to_string(), Some("seed".to_string()));
@@ -193,11 +193,11 @@ mod tests {
     fn configure_debug_session_routing_reuses_exec_resume_identifier() {
         let _guard = DEBUG_ROUTING_TEST_GUARD.lock().expect("debug routing guard");
 
-        let args = Cli::parse_from(["vtcode", "exec", "resume", "session-456", "continue"]);
+        let args = Cli::parse_from(["diapason", "exec", "resume", "session-456", "continue"]);
         let startup = StartupContext {
             workspace: PathBuf::from("."),
             agent_config: startup_agent_config(),
-            config: VTCodeConfig::default(),
+            config: DiapasonConfig::default(),
             skip_confirmations: false,
             full_auto_requested: false,
             automation_prompt: None,
@@ -206,7 +206,7 @@ mod tests {
             resume_show_all: false,
             custom_session_id: None,
             summarize_fork: false,
-            planning_entry_source: vtcode_core::core::interfaces::session::PlanningEntrySource::None,
+            planning_entry_source: diapason_core::core::interfaces::session::PlanningEntrySource::None,
         };
 
         configure_runtime_debug_context("seed".to_string(), Some("seed".to_string()));

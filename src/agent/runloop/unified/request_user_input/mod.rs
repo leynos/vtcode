@@ -15,8 +15,8 @@ mod tests {
         normalize_request_user_input_fallback_args,
     };
     use super::suggestions::generate_suggested_options;
+    use diapason_ui::tui::app::{InlineListSelection, WizardModalMode};
     use serde_json::json;
-    use vtcode_ui::tui::app::{InlineListSelection, WizardModalMode};
 
     fn prompt_question_with_hints() -> RequestUserInputQuestion {
         RequestUserInputQuestion {

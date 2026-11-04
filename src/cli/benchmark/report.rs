@@ -1,6 +1,6 @@
+use diapason_core::core::agent::task::Task;
+use diapason_core::{RunnerTaskOutcome, RunnerTaskResults};
 use serde::Serialize;
-use vtcode_core::core::agent::task::Task;
-use vtcode_core::{RunnerTaskOutcome, RunnerTaskResults};
 
 #[derive(Debug, Serialize)]
 pub(super) struct BenchmarkReport {

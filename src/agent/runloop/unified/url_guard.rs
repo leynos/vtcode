@@ -1,8 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use anyhow::{Result, anyhow};
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection, ListOverlayRequest, TransientRequest};
 use url::Url;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection, ListOverlayRequest, TransientRequest};
 
 pub(crate) const URL_GUARD_TITLE: &str = "Open External Link";
 pub(crate) const URL_GUARD_APPROVE_ACTION: &str = "url_guard:approve";
@@ -57,7 +57,7 @@ impl UrlGuardPrompt {
 
     pub(crate) fn lines(&self) -> Vec<String> {
         let mut lines =
-            vec!["This link may be unsafe. VT Code requires approval before opening external URLs.".to_string()];
+            vec!["This link may be unsafe. Diapason requires approval before opening external URLs.".to_string()];
 
         if self.insecure_transport {
             lines.push(
@@ -71,12 +71,12 @@ impl UrlGuardPrompt {
             );
         } else if self.trusted_host {
             lines.push(
-                "Destination matches VT Code's small built-in trusted host list, but approval is still required."
+                "Destination matches Diapason's small built-in trusted host list, but approval is still required."
                     .to_string(),
             );
         } else {
             lines.push(
-                "Destination is not in VT Code's small built-in trusted host list. Review it carefully before proceeding."
+                "Destination is not in Diapason's small built-in trusted host list. Review it carefully before proceeding."
                     .to_string(),
             );
         }
@@ -90,7 +90,7 @@ impl UrlGuardPrompt {
 
         lines.push(format!("Host: {}", self.host_label));
         lines.push(format!("URL: {}", self.url));
-        lines.push("Choose Open to continue or Cancel to stay in VT Code.".to_string());
+        lines.push("Choose Open to continue or Cancel to stay in Diapason.".to_string());
 
         lines
     }
@@ -208,7 +208,7 @@ mod tests {
         URL_GUARD_APPROVE_ACTION, URL_GUARD_DENY_ACTION, URL_GUARD_TITLE, UrlGuardDecision, UrlGuardPrompt,
         url_guard_decision,
     };
-    use vtcode_ui::tui::app::{InlineListSelection, TransientRequest};
+    use diapason_ui::tui::app::{InlineListSelection, TransientRequest};
 
     #[test]
     fn parse_http_url_marks_insecure_transport() {

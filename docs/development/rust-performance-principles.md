@@ -1,7 +1,7 @@
-# Rust-Specific Performance Principles for VT Code
+# Rust-Specific Performance Principles for Diapason
 
 This document captures the nuance of what makes Rust fast (and where it isn't)
-in the context of the vtcode project. It complements the general guidelines in
+in the context of the diapason project. It complements the general guidelines in
 `performance.md` by focusing on Rust-specific properties that affect the
 optimizer, the standard library, and day-to-day coding decisions.
 
@@ -19,7 +19,7 @@ optimizer, the standard library, and day-to-day coding decisions.
 - [When Rust Can Be Slower Than C/C++](#when-rust-can-be-slower-than-cc)
 - [Breaking Inter-Iteration Dependencies (Value Speculation)](#breaking-inter-iteration-dependencies-value-speculation)
 - [Branchless Programming: Removing Unpredictable Branches](#branchless-programming-removing-unpredictable-branches)
-- [Checklist for VT Code Hot Paths](#checklist-for-vt-code-hot-paths)
+- [Checklist for Diapason Hot Paths](#checklist-for-diapason-hot-paths)
 
 ______________________________________________________________________
 
@@ -42,7 +42,7 @@ keyword (rarely used in practice). Rust is structurally positioned to match or
 exceed C's optimization ceiling, but realizing that potential depends on the
 backend's ability to consume the information — which brings us to LLVM.
 
-**VT Code implication**: When choosing between a safe and an `unsafe`
+**Diapason implication**: When choosing between a safe and an `unsafe`
 implementation, prefer the safe one and measure first. The borrow checker gives
 the optimizer information that C++ cannot express, so safe Rust can *already*
 produce better code than C++ in many cases.
@@ -63,7 +63,7 @@ still runs. This has two consequences:
 2. **Realloc works**: `Vec` can use `realloc` on growth because moves are
    bitwise. C++ `std::vector` cannot safely `realloc` non-trivial types.
 
-### VT Code guidelines
+### Diapason guidelines
 
 - Use `std::mem::take(&mut value)` instead of `.clone()` followed by `.clear()`
   when you need to move a value out of a `&mut` reference.
@@ -73,7 +73,7 @@ still runs. This has two consequences:
   extraction.
 
 **Already applied**: `std::mem::take` is used in 24+ locations across
-vtcode-core (agent runtime, events, stream buffer, pipeline, etc.). Continue
+diapason-core (agent runtime, events, stream buffer, pipeline, etc.). Continue
 this pattern.
 
 ______________________________________________________________________
@@ -108,10 +108,10 @@ Clang). Fortran (via gfortran) similarly exercises GCC's aliasing paths, which
 is why GCC's handling has historically been more robust — but LLVM's Flang
 frontend is younger and hasn't yet had the same shake-down.
 
-As of Rust 1.54+ / LLVM 12+, `&mut T` in vtcode gives LLVM *actionable* alias
+As of Rust 1.54+ / LLVM 12+, `&mut T` in diapason gives LLVM *actionable* alias
 information that C++ cannot express.
 
-### VT Code guidelines
+### Diapason guidelines
 
 - Prefer `&mut T` over raw pointers to communicate non-aliasing intent.
 - When writing hot loops over slices, use `&mut [T]` and `&[T]` rather than
@@ -134,7 +134,7 @@ This means the Rust compiler (and LLVM) can cache loaded values across function
 calls without reloading. In C++, a function receiving `const int&` must reload
 after every call because the callee might have cast away const.
 
-### VT Code guidelines
+### Diapason guidelines
 
 - Use `&T` rather than `&mut T` wherever mutation is not needed — it
   communicates aliasing safety to the optimizer.
@@ -166,7 +166,7 @@ but the optimizations it blocks can cost double-digit percentages.
 - `unsafe` is available for the rare cases where the compiler cannot prove
   safety.
 
-### VT Code guidelines
+### Diapason guidelines
 
 - Prefer iterator combinators (`map`, `filter`, `fold`, `for_each`) over
   indexed loops in hot paths.
@@ -177,7 +177,7 @@ but the optimizations it blocks can cost double-digit percentages.
 - Only use `unsafe { get_unchecked() }` when profiling proves bounds checks are
   a bottleneck.
 
-**Measured in vtcode**: Indexed `for i in 0..N` loops are rare in core hot
+**Measured in diapason**: Indexed `for i in 0..N` loops are rare in core hot
 paths (found mostly in tests and memory_pool setup). This is good.
 
 ______________________________________________________________________
@@ -216,7 +216,7 @@ cold sections (GCC `-freorder-blocks-and-partition`).
   profitable)
 - Error-only paths (mark these `#[cold]` instead)
 
-### VT Code current state
+### Diapason current state
 
 | Annotation  | Count | Assessment                                               |
 | ----------- | ----- | -------------------------------------------------------- |
@@ -242,11 +242,11 @@ Rust has no stable ABI for the standard library. This means:
 - The standard library can adopt new data structures and algorithms without
   breaking existing binaries.
 
-### VT Code implications
+### Diapason implications
 
-- vtcode already uses `hashbrown::HashMap` directly (~370 uses) and
+- diapason already uses `hashbrown::HashMap` directly (~370 uses) and
   `rustc_hash::FxHashMap` for measured hotspots. This is correct.
-- Unlike C++ projects, vtcode does not need third-party hash map replacements;
+- Unlike C++ projects, diapason does not need third-party hash map replacements;
   `hashbrown` is already the best available.
 - The `regex` crate (used via dependencies) is already faster than C++
   `std::regex` due to its compiled-once, automata-based approach.
@@ -287,11 +287,11 @@ value on the stack then copies it to the heap. LLVM can elide this copy
 code (allocate on heap, initialize in-place) generates simpler IR from the
 start.
 
-### What this means for vtcode
+### What this means for diapason
 
 These are backend limitations, not language limitations. As LLVM evolves (or if
 Rust gains an alternative backend like GCC or Cranelift), these gaps will
-narrow. For vtcode's workload (I/O-bound LLM orchestration, not tight numeric
+narrow. For diapason's workload (I/O-bound LLM orchestration, not tight numeric
 loops), these issues are unlikely to be material — but they explain why Rust's
 "free performance from information" has not materialized at scale.
 
@@ -319,7 +319,7 @@ eliminates the need for them:
   ownership trees.
 - `Send + Sync` provides compile-time data-race freedom — no runtime checks.
 
-### VT Code guidelines
+### Diapason guidelines
 
 - When you find yourself adding a `.clone()` to appease the borrow checker in a
   hot path, consider changing the data structure or ownership model instead. A
@@ -341,10 +341,10 @@ Rust has a few areas where it may be slower:
 | **Result checking in tight loops** | `Result<T, E>` is always checked; exceptions in C++ can be truly zero-cost when the sad path is rare.                                                              | Use `.unwrap_unchecked()` in `unsafe` blocks where invariants guarantee success (profile first).         |
 | **Bounds checking**                | Default indexing includes bounds checks.                                                                                                                           | Use iterators or `get_unchecked()` when proven necessary.                                                |
 | **Move-heavy heap allocation**     | Rust constructs values on the stack then copies to heap (`Box::new(val)`); LLVM does not always elide the intermediate copy. C allocates and initializes in-place. | Use `Box::new_uninit()` + manual init for measured hot paths, or arena allocation patterns.              |
-| **Panic infrastructure**           | Panic unwinding has overhead even if panic never occurs.                                                                                                           | Use `panic = "abort"` in release (already vtcode's default).                                             |
-| **Compile time**                   | Not a runtime concern, but Rust's generics and monomorphization increase build times.                                                                              | Use `codegen-units=1` (already vtcode's release default), `lld` linker, and `-Zshare-generics`.          |
+| **Panic infrastructure**           | Panic unwinding has overhead even if panic never occurs.                                                                                                           | Use `panic = "abort"` in release (already diapason's default).                                           |
+| **Compile time**                   | Not a runtime concern, but Rust's generics and monomorphization increase build times.                                                                              | Use `codegen-units=1` (already diapason's release default), `lld` linker, and `-Zshare-generics`.        |
 
-For vtcode, none of these are material concerns given the workload
+For diapason, none of these are material concerns given the workload
 characteristics (I/O-bound LLM calls, not tight numeric loops).
 
 ______________________________________________________________________
@@ -396,16 +396,16 @@ assume the same thing. In Rust, overflow is defined behavior (panic in debug,
 wrap in release), which means the compiler has *more* constraints it can
 exploit, not fewer.
 
-### What this means for vtcode
+### What this means for diapason
 
-vtcode already follows best practices:
+diapason already follows best practices:
 
-| Practice                       | vtcode status                                                                                                  |
+| Practice                       | diapason status                                                                                                |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
 | Profile-based overflow control | `overflow-checks = true` in test, `false` in CI/release — correct split                                        |
 | Semantic overflow methods      | `checked_*` for fallible paths, `saturating_*` for clamping, `wrapping_*` for hashing — all used appropriately |
 | Hash code uses `wrapping_mul`  | FNV-1a, MurmurHash3 — wrapping is the intended semantics, no checks needed                                     |
-| No `unchecked_*` intrinsics    | Appropriate — vtcode is I/O-bound, not tight numeric loops                                                     |
+| No `unchecked_*` intrinsics    | Appropriate — diapason is I/O-bound, not tight numeric loops                                                   |
 
 Guidelines for ongoing work:
 
@@ -416,7 +416,7 @@ Guidelines for ongoing work:
 - **Use `saturating_*` for UI/cursor/size math** (already done in TUI) —
   clamping is the correct semantics for layout.
 - **Only reach for `unsafe { unchecked_add() }` when profiling proves a
-  bottleneck** — this has not been necessary in vtcode to date.
+  bottleneck** — this has not been necessary in diapason to date.
 - **Leverage the test profile**: since `overflow-checks = true` in
   `[profile.test]`, any arithmetic overflow in tests panics immediately,
   catching bugs that would silently wrap in release.
@@ -424,7 +424,7 @@ Guidelines for ongoing work:
 The Rust compiler's overflow checking is not yet at the level of the Midori
 compiler described above (rustc's MIR does not keep overflow-checked ops as
 single nodes through all optimization passes — LLVM sees the branch). However,
-the direction of travel is the same, and for vtcode's workload, the cost is
+the direction of travel is the same, and for diapason's workload, the cost is
 already negligible.
 
 ______________________________________________________________________
@@ -452,9 +452,9 @@ for i in ..n {
 }
 ```
 
-### Transferring this to VT Code
+### Transferring this to Diapason
 
-- **Literal pointer-speculation does *not* apply here.** VT Code has no
+- **Literal pointer-speculation does *not* apply here.** Diapason has no
   linked-list / `next`-pointer structures; hot paths use contiguous `Vec` /
   `VecDeque` / `HashMap`, which the hardware stride prefetcher already covers.
 - **Rust has no stable `likely`/`unlikely`**, so the exact `[[unlikely]]` /
@@ -462,14 +462,15 @@ for i in ..n {
   **carry the predicted state in a local and only touch the container on
   change.**
 - Applied changes:
-  - `vtcode-commons` `ansi::strip_ansi` — uses `memchr::memchr` (SIMD) to locate
+  - `diapason-commons` `ansi::strip_ansi` — uses `memchr::memchr` (SIMD) to
+    locate
     ESC bytes instead of a scalar byte scan (a latency-bound delimiter search
     made data-parallel).
-  - `vtcode-indexer` `query` — scores `files`/`directories` in **parallel
+  - `diapason-indexer` `query` — scores `files`/`directories` in **parallel
     rayon chunks**, reusing one matcher + haystack buffer per worker thread
     (`map_init`); this realizes the same "more instructions in parallel" goal at
     thread granularity for large indexes.
-  - `vtcode-ui` `coalesce_adjacent_spans` — hoists the carried `Style` into a
+  - `diapason-ui` `coalesce_adjacent_spans` — hoists the carried `Style` into a
     local, appending to the tail only on a style change (the common path no
     longer re-reads `merged.last().style` per element).
 
@@ -555,9 +556,9 @@ unpredictable** (≈50% selectivity with no learnable pattern). Apply the
 sorted-vs-shuffled diagnostic first; if sorting doesn't change the runtime,
 misprediction is not the problem and branchless won't help.
 
-### When NOT to use it (VT Code-specific)
+### When NOT to use it (Diapason-specific)
 
-Most VT Code hot paths are **I/O-bound** (LLM network calls, disk reads, PTY
+Most Diapason hot paths are **I/O-bound** (LLM network calls, disk reads, PTY
 output) — a 15–20 cycle misprediction is noise next to a millisecond RTT.
 Branchless is for tight *in-memory* loops, and the current hot paths largely
 aren't:
@@ -566,8 +567,8 @@ aren't:
   `memchr` crate (SIMD), not branchless arithmetic. Delimiters are usually
   *rare*, so the branch is well-predicted (the idiomatic best case); branchless
   would make the common no-delimiter case do unnecessary work. `memchr` is
-  already the repo pattern — `vtcode-commons` `ansi::strip_ansi` uses
-  `memchr::memchr` to find ESC bytes, and `vtcode-memory` `event_log` reads
+  already the repo pattern — `diapason-commons` `ansi::strip_ansi` uses
+  `memchr::memchr` to find ESC bytes, and `diapason-memory` `event_log` reads
   lines via `BufReader::read_until(b'\n')` rather than a hand-rolled scan. The
   PTY scrollback ASCII newline scan and SSE/PTY line splitting fall here.
 - **I/O-paced line loops** (SSE `data:` extraction, JSONL reconstruction) → the
@@ -584,20 +585,20 @@ aren't:
 
 ### Decision audit (2026-08-06)
 
-A sweep of the I/O-adjacent hot paths (`vtcode-indexer`, `vtcode-memory`,
-`vtcode-llm` streaming, `vtcode-core` grep/PTY, `vtcode-exec-events`) found
-**no current loop that is both (a) a tight in-memory scan and (b) branching on
-unpredictable data**. Every candidate was classified into one of the "when NOT
-to use it" buckets above. The technique is recorded here so that when a
-*future* profiler trace points at a genuine 50%-selectivity in-memory filter
-the fix is obvious — and so the `memchr`-vs-branchless and
+A sweep of the I/O-adjacent hot paths (`diapason-indexer`, `diapason-memory`,
+`diapason-llm` streaming, `diapason-core` grep/PTY, `diapason-exec-events`)
+found **no current loop that is both (a) a tight in-memory scan and (b)
+branching on unpredictable data**. Every candidate was classified into one of
+the "when NOT to use it" buckets above. The technique is recorded here so that
+when a *future* profiler trace points at a genuine 50%-selectivity in-memory
+filter the fix is obvious — and so the `memchr`-vs-branchless and
 value-speculation-vs-branchless distinctions are not re-derived. Full
 candidate-by-candidate reasoning lives in
-`.vtcode/memory/branchless-2026-08-06.md`.
+`.diapason/memory/branchless-2026-08-06.md`.
 
-## Checklist for VT Code Hot Paths
+## Checklist for Diapason Hot Paths
 
-When reviewing or writing a hot path in vtcode:
+When reviewing or writing a hot path in diapason:
 
 - [ ] Is there a `.clone()` that could be a reference `&T` instead?
 - [ ] Is there a `.clone()` that could be `std::mem::take()` instead?
@@ -640,9 +641,9 @@ ______________________________________________________________________
   classic misprediction demo).
 - [Mispredicted branches can multiply your running
   times][mispredicted-branches] — Daniel Lemire.
-- VT Code internal: `docs/development/performance.md`
-- VT Code internal: `docs/development/performance-hasher-policy.md`
-- VT Code internal: `docs/development/async-performance-audit.md`
+- Diapason internal: `docs/development/performance.md`
+- Diapason internal: `docs/development/performance-hasher-policy.md`
+- Diapason internal: `docs/archive/development/async-performance-audit.md`
 
 [rust-faster-c-2024]: https://www.reddit.com/r/rust/comments/1at3r6d/why_isnt_rust_faster_than_c_given_it_can_leverage/
 [branchless-rust]: https://www.greyblake.com/blog/branchless-rust/

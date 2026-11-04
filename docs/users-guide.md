@@ -1,4 +1,4 @@
-# VT Code User Guide
+# Diapason User Guide
 
 - [Getting started](./user-guide/getting-started.md)
 - [Configuration](./config/config.md)

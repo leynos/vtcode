@@ -6,8 +6,8 @@
 //! unit-tested in isolation; delivery is best-effort and never fails the
 //! session.
 
-use vtcode_core::exec::events::ThreadCompletionSubtype;
-use vtcode_core::notifications::{CompletionStatus, NotificationEvent, send_global_notification};
+use diapason_core::exec::events::ThreadCompletionSubtype;
+use diapason_core::notifications::{CompletionStatus, NotificationEvent, send_global_notification};
 
 /// Map a session completion subtype + turn count to a notification event.
 ///

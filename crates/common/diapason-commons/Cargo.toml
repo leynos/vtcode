@@ -1,0 +1,66 @@
+[package]
+name = "diapason-commons"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93.0"
+authors = ["Vinh Nguyen <vinhnguyen2308@gmail.com>", "df12 Productions"]
+description = "Shared traits for paths, telemetry, and error reporting reused across Diapason component extractions"
+license.workspace = true
+readme = "README.md"
+homepage = "https://github.com/leynos/vtcode"
+repository = "https://github.com/leynos/vtcode"
+documentation = "https://docs.rs/diapason-commons"
+categories = ["development-tools", "command-line-interface"]
+keywords = ["vt", "commons", "traits", "utilities", "error-handling"]
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-unknown-linux-gnu"
+rustdoc-args = ["--cfg", "docsrs"]
+
+
+[features]
+schema = ["dep:schemars"]
+default = []
+
+[dependencies]
+anyhow = { workspace = true }
+hashbrown = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+compact_str = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util"] }
+tracing = { workspace = true }
+libc = { workspace = true }
+anstyle = { workspace = true }
+
+futures = { workspace = true }
+base64 = { workspace = true }
+ignore = { workspace = true }
+dirs = { workspace = true }
+dunce = { workspace = true }
+fs2 = { workspace = true }
+once_cell = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+left-right = "0.11.7"
+memchr = { workspace = true }
+send_wrapper = "0.6.0"
+unicode-width = { workspace = true }
+url = { workspace = true }
+percent-encoding = "2.3"
+schemars = { workspace = true, optional = true }
+tiktoken = { workspace = true }
+rustc-hash = { workspace = true }
+smallvec = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "rt"] }
+
+[lints]
+workspace = true

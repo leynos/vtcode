@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 use toml::Value as TomlValue;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
 
 use super::docs::FIELD_DOCS;
 use super::mutations::resolve_cycle_options;

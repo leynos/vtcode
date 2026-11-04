@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
-import * as vtcodeRunner from "../../utils/vtcodeRunner";
+import * as diapasonRunner from "../../utils/diapasonRunner";
 import { AnalyseCommand } from "../analyseCommand";
 
-// Mock the vtcodeRunner module
-jest.mock("../../utils/vtcodeRunner");
+// Mock the diapasonRunner module
+jest.mock("../../utils/diapasonRunner");
 
 describe("AnalyseCommand", () => {
     let command: AnalyseCommand;
@@ -45,7 +45,7 @@ describe("AnalyseCommand", () => {
     describe("execute", () => {
         it("should execute analyse command successfully", async () => {
             // Arrange
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockResolvedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockResolvedValue(
                 undefined
             );
             mockShowInformationMessage.mockResolvedValue(undefined as any);
@@ -54,22 +54,22 @@ describe("AnalyseCommand", () => {
             await command.execute(mockContext);
 
             // Assert
-            expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
+            expect(diapasonRunner.runDiapasonCommand).toHaveBeenCalledWith(
                 ["analyse"],
                 {
-                    title: "Analysing workspace with VT Code…",
+                    title: "Analysing workspace with Diapason…",
                     output: mockContext.output,
                 }
             );
             expect(mockShowInformationMessage).toHaveBeenCalledWith(
-                "VT Code finished analysing the workspace. Review the VT Code output channel for results."
+                "Diapason finished analysing the workspace. Review the Diapason output channel for results."
             );
         });
 
         it("should handle command execution errors", async () => {
             // Arrange
             const mockError = new Error("Analysis failed");
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockRejectedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockRejectedValue(
                 mockError
             );
             mockShowErrorMessage.mockResolvedValue(undefined as any);
@@ -78,16 +78,16 @@ describe("AnalyseCommand", () => {
             await command.execute(mockContext);
 
             // Assert
-            expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalled();
+            expect(diapasonRunner.runDiapasonCommand).toHaveBeenCalled();
             expect(mockShowErrorMessage).toHaveBeenCalledWith(
-                "Failed to analyse the workspace with VT Code: Analysis failed"
+                "Failed to analyse the workspace with Diapason: Analysis failed"
             );
             expect(mockShowInformationMessage).not.toHaveBeenCalled();
         });
 
         it("should handle CLI unavailability", async () => {
             // Arrange
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockRejectedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockRejectedValue(
                 new Error("CLI not available")
             );
             mockShowErrorMessage.mockResolvedValue(undefined as any);
@@ -102,10 +102,10 @@ describe("AnalyseCommand", () => {
 
     describe("command metadata", () => {
         it("should have correct command metadata", () => {
-            expect(command.id).toBe("vtcode.runAnalyze");
+            expect(command.id).toBe("diapason.runAnalyze");
             expect(command.title).toBe("Analyse Workspace");
             expect(command.description).toBe(
-                "Analyse the current workspace with VT Code"
+                "Analyse the current workspace with Diapason"
             );
             expect(command.icon).toBe("search");
         });
@@ -115,7 +115,7 @@ describe("AnalyseCommand", () => {
         it("should return true when CLI is available", async () => {
             // Arrange
             (
-                vtcodeRunner.ensureCliAvailableForCommand as jest.Mock
+                diapasonRunner.ensureCliAvailableForCommand as jest.Mock
             ).mockResolvedValue(true);
 
             // Act
@@ -128,7 +128,7 @@ describe("AnalyseCommand", () => {
         it("should return false when CLI is not available", async () => {
             // Arrange
             (
-                vtcodeRunner.ensureCliAvailableForCommand as jest.Mock
+                diapasonRunner.ensureCliAvailableForCommand as jest.Mock
             ).mockResolvedValue(false);
 
             // Act

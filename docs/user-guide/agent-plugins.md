@@ -3,7 +3,7 @@
 Agent Plugins are portable packages that bundle Agent Skills and MCP servers
 under a root `plugin.json` manifest, following the
 [Agent Plugins](https://agent-plugins.org/specification) spec. Install one and
-its skills and MCP servers become available to VT Code immediately.
+its skills and MCP servers become available to Diapason immediately.
 
 For the full reference — plugin layout, manifest fields, MCP transports, and
 security behavior — see the [Agent Plugins Guide](../guides/agent-plugins.md).
@@ -29,7 +29,7 @@ my-plugin/
 ## Install a plugin
 
 ```bash
-vtcode plugins add https://github.com/example/my-plugin
+diapason plugins add https://github.com/example/my-plugin
 ```
 
 `add` accepts a git URL or a local directory, clones/copies it into
@@ -37,7 +37,7 @@ vtcode plugins add https://github.com/example/my-plugin
 directory name:
 
 ```bash
-vtcode plugins add https://github.com/example/my-plugin --name my-tools
+diapason plugins add https://github.com/example/my-plugin --name my-tools
 ```
 
 `add` installs to your **user** plugin root (`~/.agents/plugins`). To keep a
@@ -47,10 +47,10 @@ plugin project-local instead, place it (or clone it) under
 ## Manage plugins
 
 ```bash
-vtcode plugins list                   # installed plugins (skills + MCP counts)
-vtcode plugins info my-plugin         # details: skills, MCP servers, root
-vtcode plugins validate ./my-plugin   # check a plugin directory
-vtcode plugins remove my-plugin       # uninstall from ~/.agents/plugins
+diapason plugins list                   # installed plugins (skills + MCP counts)
+diapason plugins info my-plugin         # details: skills, MCP servers, root
+diapason plugins validate ./my-plugin   # check a plugin directory
+diapason plugins remove my-plugin       # uninstall from ~/.agents/plugins
 ```
 
 Inside an interactive session the same management is available through the
@@ -67,7 +67,7 @@ Inside an interactive session the same management is available through the
 /plugin help                 # show command help
 ```
 
-`/plugin add` behaves exactly like `vtcode plugins add` — it installs into
+`/plugin add` behaves exactly like `diapason plugins add` — it installs into
 `~/.agents/plugins/<name>` and validates the manifest on the way in.
 
 ## Use plugin skills and MCP
@@ -83,18 +83,17 @@ Once installed, no further setup is needed:
 Plugin skills and MCP servers are discovered from both
 `<workspace>/.agents/plugins` and `~/.agents/plugins`.
 
-## Example: vtcode-plugins
+## Example: VTCode upstream plugin collection
 
-[`vinhnx/vtcode-plugins`](https://github.com/vinhnx/vtcode-plugins) is a real,
-open-source plugin that bundles nine general-purpose Agent Skills extracted
-from VT Code itself — Rust coding rules, codemod migrations, code review,
-workspace analysis, and more.
+[`vinhnx/vtcode-plugins`](https://github.com/vinhnx/vtcode-plugins) is a plugin
+collection from the VTCode upstream project. It is not a Diapason package, and
+its contents and compatibility are maintained by that upstream project.
 
 ```bash
-# Install it and inspect
-vtcode plugins add https://github.com/vinhnx/vtcode-plugins.git
-vtcode plugins list
-vtcode plugins info vtcode-plugins
+# Install the upstream collection and inspect it
+diapason plugins add https://github.com/vinhnx/vtcode-plugins.git
+diapason plugins list
+diapason plugins info vtcode-plugins
 
 # Then in a session, ask the agent to use one of its skills,
 # e.g. "Use the rust-skills skill"
@@ -102,7 +101,7 @@ vtcode plugins info vtcode-plugins
 
 ## Configure plugin behavior
 
-The `tools.plugins` section of `vtcode.toml` governs the separate **marketplace
+The `tools.plugins` section of `config.toml` governs the separate **marketplace
 tool plugin** runtime (TOML manifests registered via the `manifests` list):
 
 ```toml

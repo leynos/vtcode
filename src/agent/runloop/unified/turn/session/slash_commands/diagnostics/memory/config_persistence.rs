@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use diapason_core::config::current_config_defaults;
+use diapason_core::config::loader::ConfigManager;
 use toml::Value as TomlValue;
-use vtcode_core::config::current_config_defaults;
-use vtcode_core::config::loader::ConfigManager;
 
 use crate::agent::runloop::unified::palettes::refresh_runtime_config_from_manager;
 
@@ -18,7 +18,7 @@ where
     F: FnOnce(&mut toml::map::Map<String, TomlValue>) -> Result<()>,
 {
     let manager =
-        ConfigManager::load_from_workspace(&ctx.config.workspace).context("Failed to load VT Code configuration")?;
+        ConfigManager::load_from_workspace(&ctx.config.workspace).context("Failed to load Diapason configuration")?;
     let workspace_config_path = preferred_workspace_config_path(&manager, &ctx.config.workspace);
     let mut root = load_toml_value(&workspace_config_path)?;
     let root_table = root.as_table_mut().context("Workspace config root is not a TOML table")?;
@@ -41,7 +41,7 @@ pub(super) async fn persist_user_directory_override(
     value: Option<String>,
 ) -> Result<()> {
     let manager =
-        ConfigManager::load_from_workspace(&ctx.config.workspace).context("Failed to load VT Code configuration")?;
+        ConfigManager::load_from_workspace(&ctx.config.workspace).context("Failed to load Diapason configuration")?;
     let user_config_path = preferred_user_config_path(&manager).context("Could not resolve user config path")?;
     write_user_directory_override(&user_config_path, value)?;
     refresh_runtime_config_from_manager(
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn workspace_memory_settings_preserve_unrelated_keys() {
         let temp = tempdir().expect("tempdir");
-        let path = temp.path().join("vtcode.toml");
+        let path = temp.path().join("config.toml");
         std::fs::write(&path, "[agent]\ntheme = \"ciapre\"\n[agent.small_model]\nmodel = \"gpt-5-mini\"\n")
             .expect("seed config");
 
@@ -220,7 +220,7 @@ mod tests {
         set_workspace_memory_line_limit(root_table, 111).expect("line limit");
         set_workspace_memory_byte_limit(root_table, 222).expect("byte limit");
         set_workspace_instruction_import_depth(root_table, 7).expect("import depth");
-        set_workspace_instruction_excludes(root_table, vec!["**/other-team/.vtcode/rules/**".to_string()]);
+        set_workspace_instruction_excludes(root_table, vec!["**/other-team/.diapason/rules/**".to_string()]);
         set_workspace_small_model_for_memory(root_table, false);
         save_toml_value(&path, &root).expect("save config");
 

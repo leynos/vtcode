@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VT Code Release Monitor - Polls GitHub API for release assets
+# Diapason Release Monitor - Polls GitHub API for release assets
 # Waits for binaries to be available and notifies when ready
 
 set -euo pipefail
@@ -9,7 +9,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # Configuration
-REPO="vinhnx/vtcode"
+REPO="leynos/vtcode"
 
 RELEASE_TAG=$(get_current_version)
 POLL_INTERVAL=5  # seconds
@@ -21,17 +21,17 @@ AUTO_INSTALL=false
 get_required_assets() {
     case "$(uname -s)-$(uname -m)" in
         Darwin-arm64)
-            echo "vtcode-$RELEASE_TAG-aarch64-apple-darwin.tar.gz"
+            echo "diapason-$RELEASE_TAG-aarch64-apple-darwin.tar.gz"
             ;;
         Darwin-x86_64)
-            echo "vtcode-$RELEASE_TAG-x86_64-apple-darwin.tar.gz"
+            echo "diapason-$RELEASE_TAG-x86_64-apple-darwin.tar.gz"
             ;;
         Linux-x86_64)
-            echo "vtcode-$RELEASE_TAG-x86_64-unknown-linux-musl.tar.gz"
-            echo "vtcode-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz"
+            echo "diapason-$RELEASE_TAG-x86_64-unknown-linux-musl.tar.gz"
+            echo "diapason-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz"
             ;;
         MINGW*-x86_64|MSYS*-x86_64)
-            echo "vtcode-$RELEASE_TAG-x86_64-pc-windows-msvc.zip"
+            echo "diapason-$RELEASE_TAG-x86_64-pc-windows-msvc.zip"
             ;;
         *)
             echo "ERROR: Unsupported platform" >&2
@@ -107,7 +107,7 @@ show_status() {
         return
     fi
 
-    asset_count=$(echo "$response" | grep -o '"name": "vtcode-' | wc -l)
+    asset_count=$(echo "$response" | grep -o '"name": "diapason-' | wc -l)
 
     if [[ $asset_count -gt 0 ]]; then
         required_assets=$(get_required_assets)
@@ -133,7 +133,7 @@ show_status() {
 # Show help
 show_help() {
     cat <<HELP
-VT Code Release Monitor - Wait for binaries
+Diapason Release Monitor - Wait for binaries
 
 Usage: ./scripts/wait-for-release.sh [options]
 
@@ -185,7 +185,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Main polling loop
-log_info "Waiting for VT Code $RELEASE_TAG binaries to be available..."
+log_info "Waiting for Diapason $RELEASE_TAG binaries to be available..."
 log_info "Release: https://github.com/$REPO/releases/tag/$RELEASE_TAG"
 log_info "Polling every $POLL_INTERVAL seconds (max wait: $MAX_WAIT seconds)"
 echo ""
@@ -205,17 +205,17 @@ while [[ $ELAPSED -lt $MAX_WAIT ]]; do
         log_success "Ready to install!"
         echo ""
         log_info "Run the installer:"
-        echo "  curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash"
+        echo "  curl -fsSL https://raw.githubusercontent.com/leynos/vtcode/main/scripts/install.sh | bash"
         echo ""
 
         if [[ "$AUTO_INSTALL" == "true" ]]; then
             log_info "Auto-installing in 5 seconds... (Ctrl+C to cancel)"
             sleep 5
             log_info "Starting installer..."
-            curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/leynos/vtcode/main/scripts/install.sh | bash
             exit $?
         else
-            log_info "Alternatively, verify with: vtcode --version"
+            log_info "Alternatively, verify with: diapason --version"
         fi
 
         exit 0

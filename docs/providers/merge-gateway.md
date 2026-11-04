@@ -1,7 +1,7 @@
 # Merge Gateway Integration
 
-Merge Gateway gives VT Code one native Responses API endpoint for routing
-requests to Merge's supported model vendors. VT Code also retains the
+Merge Gateway gives Diapason one native Responses API endpoint for routing
+requests to Merge's supported model vendors. Diapason also retains the
 OpenAI-compatible Chat Completions surface for explicitly configured legacy
 `/v1/openai` endpoints.
 
@@ -9,13 +9,13 @@ OpenAI-compatible Chat Completions surface for explicitly configured legacy
 
 1. Create a Merge API key in the
    [Merge dashboard](https://dashboard.merge.dev/).
-2. Export it before starting VT Code:
+2. Export it before starting Diapason:
 
    ```bash
    export MERGE_GATEWAY_API_KEY="your-merge-api-key"
    ```
 
-3. Select the provider in `vtcode.toml`:
+3. Select the provider in `config.toml`:
 
    ```toml
    [agent]
@@ -30,23 +30,23 @@ The default endpoint is the native Merge API:
 https://api-gateway.merge.dev/v1
 ```
 
-VT Code posts native requests to `/responses` and discovers authenticated model
-metadata from `/models`. Set `MERGE_GATEWAY_BASE_URL` when a proxy is required.
-To keep an existing OpenAI-compatible deployment, explicitly set the base URL
-to a path ending in `/v1/openai`; that selects the legacy Chat Completions
-transport and appends `/chat/completions`.
+Diapason posts native requests to `/responses` and discovers authenticated
+model metadata from `/models`. Set `MERGE_GATEWAY_BASE_URL` when a proxy is
+required. To keep an existing OpenAI-compatible deployment, explicitly set the
+base URL to a path ending in `/v1/openai`; that selects the legacy Chat
+Completions transport and appends `/chat/completions`.
 
 ## Quick start
 
 ```bash
 export MERGE_GATEWAY_API_KEY="your-merge-api-key"
-vtcode --provider merge-gateway --model default_routing
+diapason --provider merge-gateway --model default_routing
 ```
 
 Use an explicit route when you want to select a vendor model:
 
 ```bash
-vtcode --provider merge-gateway --model anthropic/claude-opus-5
+diapason --provider merge-gateway --model anthropic/claude-opus-5
 ```
 
 ## Curated models
@@ -71,7 +71,7 @@ vtcode --provider merge-gateway --model anthropic/claude-opus-5
 | `openai/gpt-5.6-sol`              | 1.1M          | Yes             | OpenAI route                                          |
 | `openai/gpt-5.6-terra`            | 1.1M          | Yes             | OpenAI route                                          |
 
-These are the models shown in VT Code's picker. Merge model IDs are not a
+These are the models shown in Diapason's picker. Merge model IDs are not a
 closed local allowlist: any valid explicit `provider/model` route can be used
 with `provider = "merge-gateway"`, even when it is not in `docs/models.json`.
 
@@ -102,11 +102,11 @@ multi-turn contract.
 
 ### Streaming
 
-VT Code's native `stream` and `stream_normalized` paths send
+Diapason's native `stream` and `stream_normalized` paths send
 `POST /v1/responses` with `"stream": true`. Merge returns SSE-style `data:`
 frames: native `response.stream` frames are cumulative snapshots,
 `response.done` is the successful terminal frame, and `response.error` is an
-in-band provider failure. VT Code converts cumulative snapshots into text and
+in-band provider failure. Diapason converts cumulative snapshots into text and
 tool deltas as they arrive. It retains the first snapshot until the next frame
 confirms that the response is cumulative, preserving the ability to discard a
 pre-output `fallback_restart`; a stream with only one snapshot necessarily
@@ -120,7 +120,7 @@ the native Merge form, and resets the buffered snapshot when Merge emits a
 the upstream response and error behavior.
 
 When the Merge provider is selected and `MERGE_GATEWAY_API_KEY` is available,
-VT Code fetches the authenticated `GET /v1/models` catalog with cursor
+Diapason fetches the authenticated `GET /v1/models` catalog with cursor
 pagination. Catalog data is cached per provider and reused when refresh fails;
 unknown explicit `provider/model` route IDs remain valid and use conservative
 capabilities. Deprecated catalog routes are not added to the picker.
@@ -130,7 +130,7 @@ The supplied
 file is a documentation index, not a runtime model dataset. Runtime discovery
 uses the authenticated `/v1/models` endpoint.
 
-Merge's reasoning behavior is vendor- and route-specific. VT Code discovers
+Merge's reasoning behavior is vendor- and route-specific. Diapason discovers
 each route's reasoning capability from the authenticated `/v1/models` catalog
 and applies the configured reasoning effort using the route's advertised
 control: routes advertising a provider-native `reasoning_effort` (OpenAI, xAI,
@@ -140,7 +140,7 @@ DeepSeek, Qwen, MiniMax, Thinking Machines prefixes) receive a top-level
 `thinking` block with a `budget_tokens` value derived from the effort level and
 clamped below `max_tokens`. Unclassified routes such as `default_routing` and
 unknown explicit route IDs never receive reasoning controls. Merge routing
-metadata and billed cost remain provider-side metadata; VT Code reports
+metadata and billed cost remain provider-side metadata; Diapason reports
 normalized token usage through its existing response contract.
 
 ## Troubleshooting
@@ -151,13 +151,13 @@ normalized token usage through its existing response contract.
   configured legacy base URL ends at `/v1/openai`; do not include `/responses`
   or `/chat/completions` in the configured base URL.
 - No dynamic models appear: confirm the API key is available in
-  `MERGE_GATEWAY_API_KEY`; VT Code keeps curated/static models available when
+  `MERGE_GATEWAY_API_KEY`; Diapason keeps curated/static models available when
   catalog discovery is unavailable.
 - A model is rejected by Merge: confirm the exact vendor-prefixed route ID in
-  Merge's catalog. VT Code deliberately does not reject unknown Merge IDs
+  Merge's catalog. Diapason deliberately does not reject unknown Merge IDs
   locally.
 - Reasoning output is absent: Merge reasoning controls are route-specific and
-  are not projected into the generic VT Code reasoning fields; the reasoning
+  are not projected into the generic Diapason reasoning fields; the reasoning
   effort is still honored on reasoning-capable routes.
 
 See the [Merge Gateway quick reference](./merge-gateway-quick-reference.md) for

@@ -10,13 +10,13 @@ use std::path::{Path, PathBuf};
 
 use super::config_section_headings::{heading_for_path, humanize_identifier};
 use anyhow::{Context, Result, anyhow, bail};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::{ConfigResetRequest, ConfigService, ConfigWriteTarget};
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection};
 use path::get_node;
 use render::summarize_value;
 use toml::Value as TomlValue;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::{ConfigResetRequest, ConfigService, ConfigWriteTarget};
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection};
 
 #[cfg(test)]
 use docs::FIELD_DOCS;
@@ -32,7 +32,7 @@ pub(crate) use path::parent_view_path;
 #[cfg(test)]
 use path::{PathToken, parse_path_tokens};
 
-const SETTINGS_TITLE: &str = "VT Code Settings";
+const SETTINGS_TITLE: &str = "Diapason Settings";
 const SETTINGS_HINT: &str = "Enter open/apply • ←/→ adjust • Esc back";
 const SETTINGS_SEARCH_PLACEHOLDER: &str = "section, setting, or value";
 pub(crate) const ACTION_RELOAD: &str = "settings:reload";
@@ -56,7 +56,7 @@ pub(crate) struct SettingsPaletteState {
     pub(crate) workspace: PathBuf,
     pub(crate) source_path: PathBuf,
     pub(crate) source_label: String,
-    pub(crate) draft: VTCodeConfig,
+    pub(crate) draft: DiapasonConfig,
     pub(crate) view_path: Option<String>,
     /// Last submitted selection in the current settings view.
     pub(crate) last_selection: Option<InlineListSelection>,
@@ -87,14 +87,14 @@ pub(crate) struct SettingsApplyOutcome {
 
 pub(crate) fn create_settings_palette_state(
     workspace: &Path,
-    vt_snapshot: &Option<VTCodeConfig>,
+    vt_snapshot: &Option<DiapasonConfig>,
 ) -> Result<SettingsPaletteState> {
     let manager = crate::main_helpers::load_workspace_config(workspace)?;
     let has_config_file = manager.config_path().is_some();
     let source_path = manager
         .config_path()
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| workspace.join("vtcode.toml"));
+        .unwrap_or_else(|| workspace.join("config.toml"));
 
     let draft = if has_config_file {
         manager.config().clone()
@@ -184,7 +184,7 @@ fn preferred_settings_selection(
         .or_else(|| items.iter().find_map(|item| item.selection.clone()))
 }
 
-fn format_permission_summary(config: &VTCodeConfig) -> String {
+fn format_permission_summary(config: &DiapasonConfig) -> String {
     format!(
         "Rules: deny: {} | ask: {} | allow: {}",
         config.permissions.deny.len(),
@@ -359,13 +359,13 @@ fn describe_array_change(path: &str, added: bool) -> String {
 mod tests {
     use super::*;
     use crate::agent::runloop::unified::config_section_headings::normalize_config_path;
+    use diapason_commons::canonicalize;
+    use diapason_commons::reference::StaticWorkspacePaths;
+    use diapason_config::defaults::WorkspacePathsDefaults;
+    use diapason_config::defaults::provider::with_config_defaults_provider_for_test;
+    use diapason_core::config::ConfigManager;
     use serial_test::serial;
     use std::sync::Arc;
-    use vtcode_commons::canonicalize;
-    use vtcode_commons::reference::StaticWorkspacePaths;
-    use vtcode_config::defaults::WorkspacePathsDefaults;
-    use vtcode_config::defaults::provider::with_config_defaults_provider_for_test;
-    use vtcode_core::config::ConfigManager;
 
     #[test]
     fn parse_path_handles_arrays() {
@@ -395,9 +395,9 @@ mod tests {
     fn settings_selection_memory_restores_parent_and_falls_back_when_removed() {
         let mut state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: None,
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -428,9 +428,9 @@ mod tests {
     fn reset_confirmation_lists_only_confirm_and_cancel_actions() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some(RESET_CONFIRMATION_VIEW.to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -453,9 +453,9 @@ mod tests {
     fn tool_display_mode_is_exposed_as_a_cycle_setting() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("ui".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -479,12 +479,12 @@ mod tests {
     #[test]
     fn tool_display_mode_cycle_persists_to_disk() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let source_path = temp.path().join("vtcode.toml");
+        let source_path = temp.path().join("config.toml");
         let mut state = SettingsPaletteState {
             workspace: temp.path().to_path_buf(),
             source_path: source_path.clone(),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("ui".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -495,7 +495,7 @@ mod tests {
 
         assert!(outcome.saved);
         // The default is compact; cycling advances to expanded.
-        assert_eq!(state.draft.ui.tool_display_mode, vtcode_core::config::ToolDisplayMode::Expanded);
+        assert_eq!(state.draft.ui.tool_display_mode, diapason_core::config::ToolDisplayMode::Expanded);
         let persisted = std::fs::read_to_string(&source_path).expect("persisted config");
         assert!(persisted.contains("tool_display_mode = \"expanded\""));
     }
@@ -503,7 +503,7 @@ mod tests {
     #[test]
     #[serial]
     fn settings_palette_uses_explicit_session_override_as_source() {
-        use vtcode_config::loader::set_explicit_config_path;
+        use diapason_config::loader::set_explicit_config_path;
 
         struct OverrideGuard;
 
@@ -523,7 +523,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp dir");
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace).expect("workspace dir");
-        std::fs::write(workspace.join("vtcode.toml"), "agent.provider = \"anthropic\"\n").expect("workspace config");
+        std::fs::write(workspace.join("config.toml"), "agent.provider = \"anthropic\"\n").expect("workspace config");
 
         let override_path = temp.path().join("custom-night.toml");
         std::fs::write(&override_path, "agent.provider = \"openai\"\n").expect("override config");
@@ -544,9 +544,9 @@ mod tests {
     fn root_settings_items_include_nested_keys_for_global_search() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: None,
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -575,9 +575,9 @@ mod tests {
     fn root_settings_hide_nested_items_until_section_is_opened() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: None,
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -599,14 +599,14 @@ mod tests {
     fn root_settings_do_not_show_missing_nested_optional_fields() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: None,
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         assert!(!items.iter().any(|item| item.title == "Service Tier"));
@@ -616,9 +616,9 @@ mod tests {
     fn nested_settings_titles_are_humanized() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("agent".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -642,14 +642,14 @@ mod tests {
     fn agent_view_hides_deprecated_auto_permissions_field() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("agent".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         assert!(!items.iter().any(|item| item.title == "Autonomous Execution"));
@@ -659,14 +659,14 @@ mod tests {
     fn provider_openai_view_includes_missing_service_tier_doc_field() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("provider.openai".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         assert!(items.iter().any(|item| item.title == "Service Tier"));
@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn render_commented_config_includes_section_heading() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.default_model = "gpt-5.6-sol".to_string();
 
         let rendered = render_commented_config(&config).expect("config should render");
@@ -686,9 +686,9 @@ mod tests {
     fn missing_service_tier_cycle_creates_value() {
         let mut state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("provider.openai".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -699,42 +699,42 @@ mod tests {
         })
         .expect("service tier should be inserted");
 
-        assert_eq!(state.draft.provider.openai.service_tier, Some(vtcode_config::OpenAIServiceTier::Flex));
+        assert_eq!(state.draft.provider.openai.service_tier, Some(diapason_config::OpenAIServiceTier::Flex));
     }
 
     #[test]
     fn service_tier_cycle_advances_from_flex_to_priority() {
         let mut state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("provider.openai".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        state.draft.provider.openai.service_tier = Some(vtcode_config::OpenAIServiceTier::Flex);
+        state.draft.provider.openai.service_tier = Some(diapason_config::OpenAIServiceTier::Flex);
 
         mutate_draft(&mut state, |draft| {
             apply_scalar_operation(draft, "provider.openai.service_tier", ScalarOperation::CycleNext)
         })
         .expect("service tier should advance");
 
-        assert_eq!(state.draft.provider.openai.service_tier, Some(vtcode_config::OpenAIServiceTier::Priority));
+        assert_eq!(state.draft.provider.openai.service_tier, Some(diapason_config::OpenAIServiceTier::Priority));
     }
 
     #[test]
     fn root_settings_include_ide_context_section() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: None,
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         assert!(items.iter().any(|item| item.title == "IDE Context"));
@@ -753,14 +753,14 @@ mod tests {
     fn root_settings_include_model_config_quick_access() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: None,
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         let entry = items
@@ -777,14 +777,14 @@ mod tests {
     fn root_settings_include_external_editor_quick_access() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: None,
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         let entry = items
@@ -798,14 +798,14 @@ mod tests {
     fn root_settings_include_codex_app_server_quick_access() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: None,
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         let entry = items
@@ -822,9 +822,9 @@ mod tests {
     fn codex_app_server_custom_command_entry_is_cycleable() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("agent.codex_app_server".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -852,14 +852,14 @@ mod tests {
     fn model_config_root_shows_main_section() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some(SETTINGS_MODEL_CONFIG_PATH.to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         assert!(items.iter().any(|item| item.title == "Main Model"));
@@ -870,14 +870,14 @@ mod tests {
     fn model_config_main_uses_picker_backed_default_model() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some(SETTINGS_MODEL_CONFIG_MAIN_PATH.to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         assert!(items.iter().any(|item| item.title == "Provider"));
@@ -895,14 +895,14 @@ mod tests {
     fn ide_context_view_includes_provider_section_navigation() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("ide_context.providers".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         assert!(items.iter().any(|item| item.title == "VS Code Family"));
@@ -914,14 +914,14 @@ mod tests {
     fn tools_view_routes_external_editor_to_configure_action() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("tools".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         let entry = items
@@ -935,14 +935,14 @@ mod tests {
     fn agent_view_uses_picker_backed_default_model() {
         let state = SettingsPaletteState {
             workspace: PathBuf::from("."),
-            source_path: PathBuf::from("vtcode.toml"),
+            source_path: PathBuf::from("config.toml"),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("agent".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
         };
-        let draft = TomlValue::try_from(VTCodeConfig::default()).expect("default config should serialize");
+        let draft = TomlValue::try_from(DiapasonConfig::default()).expect("default config should serialize");
 
         let items = build_settings_items(&state, &draft).expect("settings items");
         let default_model = items
@@ -958,12 +958,12 @@ mod tests {
     #[test]
     fn ide_context_toggle_action_persists_to_disk() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let source_path = temp.path().join("vtcode.toml");
+        let source_path = temp.path().join("config.toml");
         let mut state = SettingsPaletteState {
             workspace: temp.path().to_path_buf(),
             source_path: source_path.clone(),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("ide_context".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -981,9 +981,9 @@ mod tests {
     #[serial]
     fn custom_providers_array_add_uses_valid_template() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let user_path = temp.path().join("home").join("vtcode.toml");
+        let user_path = temp.path().join("home").join("config.toml");
         std::fs::create_dir_all(user_path.parent().expect("user config parent")).expect("user config dir");
-        let paths = StaticWorkspacePaths::new(temp.path(), temp.path().join(".vtcode"));
+        let paths = StaticWorkspacePaths::new(temp.path(), temp.path().join(diapason_commons::workspace_dir_name()));
         let provider = WorkspacePathsDefaults::new(Arc::new(paths))
             .with_home_paths(vec![user_path.clone()])
             .with_system_config_paths(Vec::new());
@@ -991,9 +991,9 @@ mod tests {
         with_config_defaults_provider_for_test(Arc::new(provider), || {
             let mut state = SettingsPaletteState {
                 workspace: temp.path().to_path_buf(),
-                source_path: temp.path().join("vtcode.toml"),
+                source_path: temp.path().join("config.toml"),
                 source_label: "test".to_string(),
-                draft: VTCodeConfig::default(),
+                draft: DiapasonConfig::default(),
                 view_path: Some("custom_providers".to_string()),
                 last_selection: None,
                 selection_by_view: BTreeMap::new(),
@@ -1023,8 +1023,8 @@ mod tests {
     fn settings_edit_does_not_copy_trusted_provider_into_workspace_config() {
         let temp = tempfile::tempdir().expect("temp dir");
         let workspace = temp.path();
-        let user_path = workspace.join("home").join("vtcode.toml");
-        let workspace_path = workspace.join("vtcode.toml");
+        let user_path = workspace.join("home").join("config.toml");
+        let workspace_path = workspace.join("config.toml");
         std::fs::create_dir_all(user_path.parent().expect("user config parent")).expect("user config dir");
         std::fs::write(
             &user_path,
@@ -1040,7 +1040,7 @@ api_key_env = "TRUSTED_API_KEY"
         .expect("user config");
         std::fs::write(&workspace_path, "agent.provider = \"openai\"\n").expect("workspace config");
 
-        let paths = StaticWorkspacePaths::new(workspace, workspace.join(".vtcode"));
+        let paths = StaticWorkspacePaths::new(workspace, workspace.join(diapason_commons::workspace_dir_name()));
         let provider = WorkspacePathsDefaults::new(Arc::new(paths))
             .with_home_paths(vec![user_path.clone()])
             .with_system_config_paths(Vec::new());
@@ -1080,12 +1080,12 @@ api_key_env = "TRUSTED_API_KEY"
     #[test]
     fn toggle_action_produces_change_feedback_message() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let source_path = temp.path().join("vtcode.toml");
+        let source_path = temp.path().join("config.toml");
         let mut state = SettingsPaletteState {
             workspace: temp.path().to_path_buf(),
             source_path: source_path.clone(),
             source_label: "test".to_string(),
-            draft: VTCodeConfig::default(),
+            draft: DiapasonConfig::default(),
             view_path: Some("ide_context".to_string()),
             last_selection: None,
             selection_by_view: BTreeMap::new(),
@@ -1102,7 +1102,7 @@ api_key_env = "TRUSTED_API_KEY"
     #[test]
     fn settings_palette_state_loads_workspace_config_directly() {
         let temp = tempfile::tempdir().expect("temp dir");
-        let source_path = temp.path().join("vtcode.toml");
+        let source_path = temp.path().join("config.toml");
         std::fs::write(&source_path, "[workspace]\nuse_root_config = true\n\n[agent]\ntheme = \"ansi\"\n")
             .expect("workspace config should be written");
 
@@ -1120,8 +1120,8 @@ api_key_env = "TRUSTED_API_KEY"
     fn settings_reload_is_fail_closed_and_tracks_layer_creation_and_deletion() {
         let temp = tempfile::tempdir().expect("temp dir");
         let workspace = temp.path();
-        let fallback_path = workspace.join(".vtcode").join("vtcode.toml");
-        let paths = StaticWorkspacePaths::new(workspace, workspace.join(".vtcode"));
+        let fallback_path = workspace.join(diapason_commons::workspace_dir_name()).join("config.toml");
+        let paths = StaticWorkspacePaths::new(workspace, workspace.join(diapason_commons::workspace_dir_name()));
         let provider = WorkspacePathsDefaults::new(Arc::new(paths))
             .with_home_paths(Vec::new())
             .with_system_config_paths(Vec::new());
@@ -1147,13 +1147,13 @@ api_key_env = "TRUSTED_API_KEY"
             std::fs::remove_file(&fallback_path).expect("remove fallback config");
             reload_state_from_disk(&mut state).expect("deleted fallback should reload defaults");
             assert_eq!(state.draft.agent.provider, initial_provider);
-            assert_eq!(state.source_path, workspace.join("vtcode.toml"));
+            assert_eq!(state.source_path, workspace.join("config.toml"));
         });
     }
 
     #[test]
     fn permission_view_summary_includes_mode_and_rule_counts() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.permissions.allow = vec!["Read".to_string()];
         config.permissions.ask = vec!["Bash".to_string(), "Write".to_string()];
         config.permissions.deny = vec!["Edit".to_string()];

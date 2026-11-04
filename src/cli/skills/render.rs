@@ -34,7 +34,7 @@ pub(super) fn print_list_header() {
 pub(super) fn print_empty_list() {
     println!("No skills found.");
     println!("\nCreate a traditional skill:");
-    println!("  vtcode skills create ./my-skill");
+    println!("  diapason skills create ./my-skill");
     println!("\nOr install skills in standard locations:");
     println!("  .agents/skills/       (Repo skills, nearest directory first)");
     println!("  ~/.agents/skills/     (User skills)");
@@ -61,7 +61,7 @@ pub(super) fn print_traditional_skills(rows: &[TraditionalSkillRow], warnings: &
     for warning in warnings {
         println!("  {warning}");
     }
-    println!("\n  Use 'vtcode skills info <name>' for details and alternatives.");
+    println!("\n  Use 'diapason skills info <name>' for details and alternatives.");
 }
 
 pub(super) fn print_cli_tools(rows: &[CliToolRow]) {
@@ -92,8 +92,8 @@ pub(super) fn print_built_in_skills(rows: &[BuiltInSkillRow]) {
 
 pub(super) fn print_list_usage() {
     println!("\nUsage:");
-    println!("  Load skill:    vtcode skills load <name>");
-    println!("  Skill info:    vtcode skills info <name>");
+    println!("  Load skill:    diapason skills load <name>");
+    println!("  Skill info:    diapason skills info <name>");
     println!("  Use in chat:   /skills load <name>");
     println!("  Or:            /skills use <name> <input>");
 }
@@ -106,7 +106,7 @@ pub(super) fn print_loaded_skill(summary: &LoadedSkillSummary) {
 }
 
 pub(super) fn print_skill_ready(name: &str) {
-    println!("\nSkill is ready to use. Use it in chat mode or with: vtcode ask 'Use {name} for...'");
+    println!("\nSkill is ready to use. Use it in chat mode or with: diapason ask 'Use {name} for...'");
 }
 
 pub(super) fn print_skill_config(workspace: &Path) {

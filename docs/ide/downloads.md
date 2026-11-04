@@ -1,120 +1,40 @@
-# VT Code Downloads
+# IDE Setup
 
-Welcome to the VT Code downloads center! VT Code is available across multiple
-platforms and IDEs to enhance your coding experience with AI-powered assistance.
+Diapason does not currently have published editor marketplace listings or
+downloadable extension packages. Install the CLI from this repository and use
+the local editor extensions.
 
-## Available for Your IDE
+## Install the Diapason CLI
 
-Choose your favorite code editor to download VT Code:
-
-### Visual Studio Code
-
-[![VSCode Marketplace][vscode-badge]][vscode]
-
-The original VT Code extension for Visual Studio Code with LLM-native code
-understanding and AI assistance.
-
-### Windsurf
-
-[![Open VSX Registry][openvsx-windsurf-badge]][openvsx]
-
-VT Code is available for Windsurf through the Open VSX Registry. Install
-directly from the extensions marketplace or via VSIX file download.
-
-### Cursor
-
-[![Open VSX Registry][openvsx-cursor-badge]][openvsx]
-
-VT Code is available for Cursor through the Open VSX Registry. Install directly
-from the extensions marketplace, via VSIX file, or using the CLI.
-
-## What is VT Code?
-
-VT Code is a Rust-based AI coding assistant that provides:
-
-- **Semantic Code Understanding**: LLM-native code understanding and ripgrep
-    integration
-- **Multi-Provider AI**: Support for OpenAI, Anthropic, Google, xAI,
-    DeepSeek, and more
-- **Security First**: Built-in safeguards with human-in-the-loop controls
-- **Offline Analysis**: Analyze your codebase without sending code to
-    external services
-- **Configurable**: Customizable through `vtcode.toml` configuration files
-
-## Prerequisites
-
-Before installing VT Code for your IDE, you need to install the VT Code CLI:
+Follow the [source installation guide](../installation/README.md). From a
+checkout, install the CLI with:
 
 ```bash
-# Install with Cargo (recommended)
-cargo install vtcode
-
-# Or with Homebrew
-brew install vtcode
-
-# Or with NPM
-
+cargo install --path . --locked
 ```
 
-## Installation Instructions
+The CLI must be available on your `PATH` before an editor extension can launch
+it.
 
-### Visual Studio Code
+## Visual Studio Code, Cursor, and Windsurf
 
-Install directly from the
-[VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=nguyenxuanvinh.vtcode-companion)
-or search for "vtcode-companion" in the Extensions panel.
+The VS Code extension can be run from a local checkout or packaged locally as a
+VSIX. Open `extensions/vscode-extension` in VS Code and press **F5** to launch
+an Extension Development Host. For a locally packaged VSIX, follow the
+[extension README](../../extensions/vscode-extension/README.md) and
+[development guide](../../extensions/vscode-extension/DEVELOPMENT.md). The
+marketplace listing is not published; do not search a marketplace for a
+Diapason listing.
 
-### Windsurf
+## Zed
 
-VT Code is available in the Windsurf extensions marketplace powered by Open VSX:
+Install the local Zed development extension from the checkout: in Zed, choose
+**Install Dev Extension** and select `extensions/zed-extension`. The
+[Zed extension README](../../extensions/zed-extension/README.md) explains how
+it connects to the local `diapason acp` process.
 
-1. Open the Extensions panel in Windsurf
-2. Search for "vtcode-companion"
-3. Click Install
+## Help
 
-Alternatively, you can install from a VSIX file:
-
-1. Download the `.vsix` file from
-   [Open VSX](https://open-vsx.org/extension/nguyenxuanvinh/vtcode-companion)
-2. In the Extensions panel, click the "…" menu and select "Install from VSIX…"
-3. Select the downloaded file
-
-For detailed setup instructions, see our
-[Cursor and Windsurf Setup Guide](./cursor-windsurf-setup.md).
-
-### Cursor
-
-VT Code is available in Cursor's extensions marketplace powered by Open VSX:
-
-1. Open the Extensions panel in Cursor
-2. Search for "vtcode-companion"
-3. Click Install
-
-Alternative installation methods for Cursor:
-
-- **VSIX file**: Command Palette → **Extensions: Install from VSIX…**
-- **CLI**: `cursor --install-extension vtcode-companion-<version>.vsix`
-- **URL**: Direct installation may be available depending on your Cursor
-    version
-
-For detailed setup instructions, see our
-[Cursor and Windsurf Setup Guide](./cursor-windsurf-setup.md).
-
-## Support and Documentation
-
-- [Documentation](../README.md)
-- [Troubleshooting](./troubleshooting.md)
-- [Community Discord](https://discord.gg/vtcode)
-- [GitHub Issues](https://github.com/vinhnx/vtcode/issues)
-
-______________________________________________________________________
-
-_VT Code is designed to work with your favorite IDE to provide LLM-native code
-understanding and AI assistance. All VS Code compatible editors can use VT Code
-through the Open VSX registry._
-
-[vscode-badge]: https://img.shields.io/visual-studio-marketplace/v/nguyenxuanvinh.vtcode-companion?style=for-the-badge&logo=visual-studio-code&logoColor=white&label=VSCode%20Marketplace
-[vscode]: https://marketplace.visualstudio.com/items?itemName=nguyenxuanvinh.vtcode-companion
-[openvsx-windsurf-badge]: https://img.shields.io/badge/Available-Open%20VSX-4CAF50?style=for-the-badge&logo=opensearch&logoColor=white
-[openvsx-cursor-badge]: https://img.shields.io/badge/Available-Open%20VSX-2196F3?style=for-the-badge&logo=opensearch&logoColor=white
-[openvsx]: https://open-vsx.org/extension/nguyenxuanvinh/vtcode-companion
+- [IDE troubleshooting](./troubleshooting.md)
+- [Diapason documentation](../README.md)
+- [Diapason GitHub issues](https://github.com/leynos/vtcode/issues)

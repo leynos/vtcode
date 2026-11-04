@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-VT Code Agent Skills - Enhanced Production Implementation
+Diapason Agent Skills - Enhanced Production Implementation
 
 This is a comprehensive, production-ready implementation following official
 Claude API Skills authoring best practices with advanced patterns, token
-optimization, and VT Code-specific integrations.
+optimization, and Diapason-specific integrations.
 
 Key improvements from previous version:
 -  Token efficiency measured and optimized
 -  Advanced workflow patterns (plan-validate-execute)
 -  Cross-skill dependencies
--  Integration with VT Code tool system
+-  Integration with Diapason tool system
 -  Comprehensive testing framework
 -  Real-world usage metrics
 """
@@ -144,8 +144,8 @@ class EnhancedSkillManifest:
             'avg_load_time': sum(self.load_times) / len(self.load_times) if self.load_times else 0
         }
 
-class VTCodeEnhancedSkills:
-    """Enhanced VT Code Skills implementation with optimization."""
+class DiapasonEnhancedSkills:
+    """Enhanced Diapason Skills implementation with optimization."""
     
     def __init__(self):
         self.skills_dir = Path("skills")
@@ -153,7 +153,7 @@ class VTCodeEnhancedSkills:
         self.metrics = {}
         self.token_savings = 0
         
-        print(" VT Code Agent Skills - Enhanced Implementation")
+        print(" Diapason Agent Skills - Enhanced Implementation")
         print("=" * 60)
         self.initialize_skills_directory()
     
@@ -179,7 +179,7 @@ class VTCodeEnhancedSkills:
 name: pdf-report-optimized
 description: Generate PDF reports with charts and business formatting. Use for financial reports, presentations, invoices. Use when user mentions PDF, report, or document generation.
 version: 2.0.0
-author: VT Code Team
+author: Diapason Team
 category: content_creation
 tags: [pdf, reports, business, charts]
 estimated_tokens: 240
@@ -198,16 +198,16 @@ Use one of these methods based on available libraries:
 claude_api_skills --skill pdf --spec report.json
 
 # Method 2: Local FPDF (pip install fpdf2)
-python -m vtcode.skills.pdf.local_fpdf --spec report.json
+python -m diapason.skills.pdf.local_fpdf --spec report.json
 
 # Method 3: ReportLab (pip install reportlab)
-python -m vtcode.skills.pdf.reportlab --spec report.json
+python -m diapason.skills.pdf.reportlab --spec report.json
 
 # Method 4: System Pandoc
-python -m vtcode.skills.pdf.pandoc --spec report.json
+python -m diapason.skills.pdf.pandoc --spec report.json
 
 # Method 5: Mock (always works)
-python -m vtcode.skills.pdf.mock --spec report.json
+python -m diapason.skills.pdf.mock --spec report.json
 ```
 
 ## Specification Format
@@ -294,7 +294,7 @@ Professional PDF with:
 ## Command
 
 ```bash
-python -m vtcode.skills.pdf.generate --spec q4_sales.json --output ./reports/
+python -m diapason.skills.pdf.generate --spec q4_sales.json --output ./reports/
 ```
 
 ## Customization
@@ -356,7 +356,7 @@ import matplotlib.pyplot as plt
 name: excel-analysis-optimized
 description: Analyze Excel spreadsheets, create pivot tables, generate charts. Use for sales data, financial reports, data analysis. Use when user mentions Excel, spreadsheet, or .xlsx files.
 version: 2.0.0
-author: VT Code Team
+author: Diapason Team
 category: data_analysis
 tags: [excel, spreadsheets, data, charts]
 estimated_tokens: 180
@@ -370,13 +370,13 @@ complexity: moderate
 
 ```bash
 # Create analysis
-python -m vtcode.skills.excel.analyze --file data.xlsx --config analysis.json
+python -m diapason.skills.excel.analyze --file data.xlsx --config analysis.json
 
 # Generate chart
-python -m vtcode.skills.excel.chart --file data.xlsx --type bar --output chart.png
+python -m diapason.skills.excel.chart --file data.xlsx --type bar --output chart.png
 
 # Create pivot table
-python -m vtcode.skills.excel.pivot --file data.xlsx --config pivot.json
+python -m diapason.skills.excel.pivot --file data.xlsx --config pivot.json
 ```
 
 ## Configuration
@@ -408,7 +408,7 @@ See [examples/](examples/) for common analysis patterns.
         
         # Create two versions to demonstrate optimization
         
-        # Version 1: Unoptimized (verbose, like old VT Code skills)
+        # Version 1: Unoptimized (verbose, like old Diapason skills)
         unoptimized = """---
 name: token-demo-unoptimized
 description: This is a demonstration skill that shows what NOT to do. This skill is designed to help you understand why conciseness matters and how to optimize your skills for token efficiency. Use this skill to learn about best practices for skill authoring and token optimization. This skill should only be used for educational purposes to demonstrate the difference between optimized and unoptimized skill patterns.
@@ -807,12 +807,12 @@ This skill orchestrates multiple steps using dependencies:
 
 ### 1. Extract Data (uses data-processing-utils)
 ```bash
-vtcode skill run data-processing-utils:extract --source database.db --query "SELECT * FROM sales"
+diapason skill run data-processing-utils:extract --source database.db --query "SELECT * FROM sales"
 ```
 
 ### 2. Clean Data (uses data-processing-utils)
 ```bash
-vtcode skill run data-processing-utils:clean --input raw_data.csv --config cleaning_rules.json
+diapason skill run data-processing-utils:clean --input raw_data.csv --config cleaning_rules.json
 ```
 
 ### 3. Analyze (this skill)
@@ -822,7 +822,7 @@ python scripts/analyze.py --cleaned-data cleaned_data.csv --config analysis.json
 
 ### 4. Visualize (uses data-processing-utils)
 ```bash
-vtcode skill run data-processing-utils:visualize --data results.csv --type bar-chart
+diapason skill run data-processing-utils:visualize --data results.csv --type bar-chart
 ```
 
 ## Configuration
@@ -859,7 +859,7 @@ See [examples/complete_pipeline.md](examples/complete_pipeline.md) for end-to-en
         # Test framework
         test_framework = """#!/usr/bin/env python3
 \"\"\"
-VT Code Skills Testing Framework
+Diapason Skills Testing Framework
 
 Comprehensive testing for:
 1. Token efficiency
@@ -956,7 +956,7 @@ TEST_CASES = [
             "platform_compatibility_tests": [
                 {
                     "name": "platform_detection",
-                    "platforms": ["claude_api", "claude_code", "vtcode_local"],
+                    "platforms": ["claude_api", "claude_code", "diapason_local"],
                     "success_criteria": [
                         "correct_capability_detection",
                         "appropriate_fallback_selection",
@@ -1017,7 +1017,7 @@ TEST_CASES = [
 def main():
     """Main demonstration function."""
     
-    print(" VT Code Agent Skills - Enhanced Production Implementation")
+    print(" Diapason Agent Skills - Enhanced Production Implementation")
     print("=" * 60)
     print("version: 2.0.0")
     print("features: token optimization, advanced workflows, cross-skill dependencies")
@@ -1025,7 +1025,7 @@ def main():
     print()
     
     # Initialize enhanced skills
-    skills = VTCodeEnhancedSkills()
+    skills = DiapasonEnhancedSkills()
     
     # Run complete benchmark
     skills.run_complete_benchmark()
@@ -1040,7 +1040,7 @@ def main():
     print("   Cross-skill dependencies: composition and orchestration")
     print("   Comprehensive testing: 4 test categories")
     print("   Production-ready: error handling, validation, recovery")
-    print("   VT Code integration: tool system compatibility")
+    print("   Diapason integration: tool system compatibility")
     print()
     print("Skills created:")
     print("  - pdf-report-optimized (240 tokens, 85% savings)")

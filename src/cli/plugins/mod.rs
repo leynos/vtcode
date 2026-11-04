@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use vtcode_core::cli::args::PluginsSubcommand;
+use diapason_core::cli::args::PluginsSubcommand;
 
 use crate::startup::StartupContext;
 
-use vtcode_agent_plugins::plugin_roots_for;
+use diapason_agent_plugins::plugin_roots_for;
 
 pub(super) async fn dispatch_plugins_command(_startup: &StartupContext, cmd: PluginsSubcommand) -> anyhow::Result<()> {
     match cmd {

@@ -1,18 +1,18 @@
 # Configuration reset and live reload
 
 This guide describes the implementation contract for configuration changes made
-while VT Code is running.
+while Diapason is running.
 
 ## Shared reset service
 
-`vtcode_core::config::ConfigService::reset` is the single reset path for the
+`diapason_core::config::ConfigService::reset` is the single reset path for the
 CLI and settings palette. It resolves the selected layer through the current
 `ConfigDefaultsProvider`, validates an optional explicit path against known
 layers, rejects symlinks and non-regular files, writes an empty TOML document
 atomically, invalidates the workspace cache, and reloads the effective layer
 stack. It never touches credential storage.
 
-The CLI maps `vtcode config reset` to the workspace layer, `--global` to the
+The CLI maps `diapason config reset` to the workspace layer, `--global` to the
 canonical user layer, and `--project` to the current project profile. An
 explicit `--config path` selects the workspace-layer file for that invocation.
 Reset remains command-owned during startup so a malformed configuration can be
@@ -36,7 +36,7 @@ same layer stack and restores its remembered section/selection.
 The settings palette persists a mutation as a field-level update to the
 selected file instead of serializing the merged effective snapshot. This
 preserves lower-precedence layers: for example, a user custom provider is not
-written into a workspace `vtcode.toml` when a workspace-only setting changes.
+written into a workspace `config.toml` when a workspace-only setting changes.
 Provider definitions and endpoint/credential overrides are written to the
 canonical user layer unless the session selected an explicit config file.
 
@@ -57,9 +57,9 @@ endpoint/credential overrides, including stale copies left by older releases.
 Use nextest for focused checks:
 
 ```bash
-cargo nextest run --locked -p vtcode-config
-cargo nextest run --locked -p vtcode-core -E 'test(/reset|settings_reload|selection_memory/)'
-RUSTFLAGS='-D warnings' cargo check --locked --tests -p vtcode-config -p vtcode-core -p vtcode
+cargo nextest run --locked -p diapason-config
+cargo nextest run --locked -p diapason-core -E 'test(/reset|settings_reload|selection_memory/)'
+RUSTFLAGS='-D warnings' cargo check --locked --tests -p diapason-config -p diapason-core -p diapason
 ```
 
 Reset and reload tests must cover layer preservation, cache invalidation,

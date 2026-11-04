@@ -1,14 +1,14 @@
 //! Validates ACP command configuration and launches the selected protocol adapter.
 use anyhow::{Result, bail};
-use vtcode::acp::{StandardAcpAdapter, ZedAcpAdapter};
-use vtcode_core::cli::args::AgentClientProtocolTarget;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::config::{AgentClientProtocolTransport, VTCodeConfig};
-use vtcode_core::core::interfaces::acp::{AcpClientAdapter, AcpLaunchParams};
+use diapason::acp::{StandardAcpAdapter, ZedAcpAdapter};
+use diapason_core::cli::args::AgentClientProtocolTarget;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::config::{AgentClientProtocolTransport, DiapasonConfig};
+use diapason_core::core::interfaces::acp::{AcpClientAdapter, AcpLaunchParams};
 
 pub async fn handle_acp_command(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     target: AgentClientProtocolTarget,
     skip_confirmations: bool,
 ) -> Result<()> {
@@ -18,7 +18,7 @@ pub async fn handle_acp_command(
 
 pub(super) async fn handle_acp_command_with_adapters(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     target: AgentClientProtocolTarget,
     skip_confirmations: bool,
     zed: &dyn AcpClientAdapter,
@@ -26,7 +26,7 @@ pub(super) async fn handle_acp_command_with_adapters(
 ) -> Result<()> {
     if !vt_cfg.acp.enabled {
         bail!(
-            "Agent Client Protocol integration is disabled. Enable it via [acp] in vtcode.toml or set VT_ACP_ENABLED=1."
+            "Agent Client Protocol integration is disabled. Enable it via [acp] in config.toml or set DIAPASON_ACP_ENABLED=1."
         );
     }
 
@@ -34,7 +34,7 @@ pub(super) async fn handle_acp_command_with_adapters(
         AgentClientProtocolTarget::Zed => {
             if !vt_cfg.acp.zed.enabled {
                 bail!(
-                    "Zed integration is disabled. Enable it via [acp.zed] in vtcode.toml or set VT_ACP_ZED_ENABLED=1."
+                    "Zed integration is disabled. Enable it via [acp.zed] in config.toml or set DIAPASON_ACP_ZED_ENABLED=1."
                 );
             }
 

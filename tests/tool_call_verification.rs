@@ -4,17 +4,17 @@
 )]
 //! Comprehensive tool call verification for all LLM providers
 
-use serde_json::json;
-use std::sync::Arc;
-use vtcode_core::config::constants::models;
-use vtcode_core::config::types::VerbosityLevel;
-use vtcode_core::llm::{
+use diapason_core::config::constants::models;
+use diapason_core::config::types::VerbosityLevel;
+use diapason_core::llm::{
     factory::create_provider_for_model,
     provider::{LLMProvider, LLMRequest, Message, ToolCall, ToolChoice, ToolDefinition},
     providers::{
         AnthropicProvider, GeminiProvider, LmStudioProvider, OllamaProvider, OpenAIProvider, OpenRouterProvider,
     },
 };
+use serde_json::json;
+use std::sync::Arc;
 
 #[test]
 fn test_openai_tool_call_format() {

@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use vtcode_core::command_safety::dangerous_commands::command_might_be_dangerous;
+use diapason_core::command_safety::dangerous_commands::command_might_be_dangerous;
 
 const MAX_TOKENS: usize = 8;
 const MAX_INPUT_BYTES: usize = 128;

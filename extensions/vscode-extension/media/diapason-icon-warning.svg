@@ -1,0 +1,5 @@
+<svg width="16" height="16" viewBox="-7.5 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <title>Diapason</title>
+  <rect x="-7.5" y="0" width="32" height="32" fill="#BFB38F"/>
+  <path d="M0.5 5.5h5.25c6.75 0 10.25 3.75 10.25 10.5s-3.5 10.5-10.25 10.5H0.5z" fill="none" stroke="#262626" stroke-width="1.5"/>
+</svg>

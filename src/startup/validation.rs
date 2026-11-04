@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::validator::ConfigValidator;
-use vtcode_core::llm::factory::get_factory;
-use vtcode_core::prompts::system::measure_system_prompt_size;
-use vtcode_core::utils::path::canonicalize_workspace;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::validator::ConfigValidator;
+use diapason_core::llm::factory::get_factory;
+use diapason_core::prompts::system::measure_system_prompt_size;
+use diapason_core::utils::path::canonicalize_workspace;
 
 pub(super) fn apply_cli_permission_overrides(
-    config: &mut VTCodeConfig,
+    config: &mut DiapasonConfig,
     allowed_tools: &[String],
     disallowed_tools: &[String],
 ) {
@@ -95,7 +95,7 @@ pub(super) fn resolve_config_path(workspace: &Path, candidate: &Path) -> PathBuf
     }
 }
 
-pub(super) fn validate_full_auto_configuration(config: &VTCodeConfig, workspace: &Path) -> Result<()> {
+pub(super) fn validate_full_auto_configuration(config: &DiapasonConfig, workspace: &Path) -> Result<()> {
     let automation_cfg = &config.automation.full_auto;
     if !automation_cfg.enabled {
         bail!("Full-auto permission review is disabled in configuration. Enable it under [automation.full_auto].");
@@ -129,7 +129,7 @@ pub(super) fn validate_full_auto_configuration(config: &VTCodeConfig, workspace:
 /// `--provider` value (or broken `[agent].provider` config) only surfaces deep
 /// inside session setup as an opaque "Failed to initialize provider client"
 /// report, after the terminal probe has already started.
-pub(super) fn validate_runtime_provider(config: &VTCodeConfig, provider: &str) -> Result<()> {
+pub(super) fn validate_runtime_provider(config: &DiapasonConfig, provider: &str) -> Result<()> {
     let provider_key = provider.trim();
     if provider_key.is_empty() {
         return Ok(());
@@ -170,13 +170,13 @@ pub(super) fn resolve_workspace_path(workspace_arg: Option<PathBuf>) -> Result<P
 }
 
 pub(super) async fn validate_startup_configuration(
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
     workspace: &Path,
     quiet: bool,
     defer_system_prompt_size_check: bool,
 ) -> Result<()> {
     // Ripgrep availability is checked lazily when search tools are actually
-    // needed (session setup, first-run, `vtcode dependencies`).  Checking it
+    // needed (session setup, first-run, `diapason dependencies`).  Checking it
     // here would fork a subprocess (`rg --version`) on every startup for
     // purely informational logging — not worth the 50-200ms cost.
 
@@ -228,8 +228,8 @@ pub(super) async fn validate_startup_configuration(
 /// - very low `max_system_prompt_tokens` (likely aggressive trimming).
 ///
 /// Kept pure (no logging side effects) so it can be unit-tested in isolation.
-fn collect_token_overhead_warnings(config: &VTCodeConfig) -> Vec<String> {
-    use vtcode_core::config::{SystemPromptMode, ToolDocumentationMode};
+fn collect_token_overhead_warnings(config: &DiapasonConfig) -> Vec<String> {
+    use diapason_core::config::{SystemPromptMode, ToolDocumentationMode};
 
     const MCP_SERVER_OVERHEAD_WARN_THRESHOLD: usize = 8;
     const LOW_SYSTEM_PROMPT_BUDGET_WARN_THRESHOLD: u64 = 4_000;
@@ -287,7 +287,7 @@ fn collect_token_overhead_warnings(config: &VTCodeConfig) -> Vec<String> {
 /// Checks the actual composed system prompt size at startup and warns if it
 /// exceeds `agent.max_system_prompt_tokens`. This is a one-time cost: the
 /// static prompt layers are cached after the first read.
-pub(super) async fn check_system_prompt_size(config: &VTCodeConfig, workspace: &Path) {
+pub(super) async fn check_system_prompt_size(config: &DiapasonConfig, workspace: &Path) {
     if !config.agent.system_prompt_budget_warning {
         return;
     }
@@ -306,15 +306,15 @@ pub(super) async fn check_system_prompt_size(config: &VTCodeConfig, workspace: &
 mod tests {
     use super::*;
     use assert_fs::TempDir;
+    use diapason_commons::canonicalize;
+    use diapason_commons::env_lock;
+    use diapason_config::McpProviderConfig;
+    use diapason_core::config::loader::ConfigBuilder;
     use std::env;
-    use vtcode_commons::canonicalize;
-    use vtcode_commons::env_lock;
-    use vtcode_config::McpProviderConfig;
-    use vtcode_core::config::loader::ConfigBuilder;
 
     #[test]
     fn runtime_provider_validation_rejects_unknown_provider() {
-        let config = VTCodeConfig::default();
+        let config = DiapasonConfig::default();
         let error = validate_runtime_provider(&config, "merge-api").expect_err("unknown provider should fail");
 
         let message = error.to_string();
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn runtime_provider_validation_accepts_builtin_and_codex() {
-        let config = VTCodeConfig::default();
+        let config = DiapasonConfig::default();
         for provider in ["openai", "Merge-Gateway", "codex", "COPILOT"] {
             validate_runtime_provider(&config, provider).expect("known provider should be accepted");
         }
@@ -334,8 +334,8 @@ mod tests {
 
     #[test]
     fn runtime_provider_validation_accepts_configured_custom_provider() {
-        let mut config = VTCodeConfig::default();
-        config.custom_providers.push(vtcode_config::core::CustomProviderConfig {
+        let mut config = DiapasonConfig::default();
+        config.custom_providers.push(diapason_config::core::CustomProviderConfig {
             name: "mycorp".to_string(),
             display_name: "MyCorp".to_string(),
             base_url: "https://llm.example/v1".to_string(),
@@ -344,7 +344,7 @@ mod tests {
             auth: None,
             model: "corp-model".to_string(),
             models: Vec::new(),
-            ..vtcode_config::core::CustomProviderConfig::default()
+            ..diapason_config::core::CustomProviderConfig::default()
         });
 
         validate_runtime_provider(&config, "mycorp").expect("configured custom provider should be accepted");
@@ -352,17 +352,17 @@ mod tests {
 
     #[test]
     fn runtime_provider_validation_accepts_provider_override_key() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config
             .provider_overrides
-            .insert("corp-gateway".to_string(), vtcode_config::core::ProviderOverrideConfig::default());
+            .insert("corp-gateway".to_string(), diapason_config::core::ProviderOverrideConfig::default());
 
         validate_runtime_provider(&config, "corp-gateway").expect("override key should be accepted");
     }
 
     #[test]
     fn runtime_provider_validation_accepts_blank_provider() {
-        validate_runtime_provider(&VTCodeConfig::default(), "  ").expect("blank provider should be a no-op");
+        validate_runtime_provider(&DiapasonConfig::default(), "  ").expect("blank provider should be a no-op");
     }
 
     #[test]
@@ -400,18 +400,18 @@ mod tests {
     fn parses_cli_config_entries_with_overrides() {
         let entries = vec![
             "agent.provider=openai".to_owned(),
-            "custom-config/vtcode.toml".to_owned(),
+            "custom-config/config.toml".to_owned(),
         ];
 
         let (path, overrides) = parse_cli_config_entries(&entries);
 
-        assert_eq!(path, Some(PathBuf::from("custom-config/vtcode.toml")));
+        assert_eq!(path, Some(PathBuf::from("custom-config/config.toml")));
         assert_eq!(overrides, vec![("agent.provider".to_owned(), "openai".to_owned())]);
     }
 
     #[test]
     fn cli_permission_overrides_append_unique_entries() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.permissions.allow = vec!["exec_command".to_string()];
 
         apply_cli_permission_overrides(
@@ -433,7 +433,7 @@ mod tests {
 
     #[test]
     fn cli_permission_overrides_preserve_rule_shaped_entries() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
 
         apply_cli_permission_overrides(
             &mut config,
@@ -449,9 +449,15 @@ mod tests {
     fn applies_inline_overrides_to_config() -> Result<()> {
         let env_guard = env_lock::lock();
         let temp_dir = TempDir::new()?;
-        std::fs::write(temp_dir.path().join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")?;
-        let previous_config_dir = env::var_os("VTCODE_CONFIG");
-        env_guard.set_var("VTCODE_CONFIG", temp_dir.path());
+        let xdg_config_dir = temp_dir.path().join("diapason");
+        std::fs::create_dir_all(&xdg_config_dir)?;
+        std::fs::write(xdg_config_dir.join("config.toml"), "[workspace]\nuse_root_config = true\n")?;
+        let previous_config_dir = env::var_os("XDG_CONFIG_HOME");
+        let previous_config_path = env::var_os("DIAPASON_CONFIG_PATH");
+        let previous_legacy_config = env::var_os("DIAPASON_CONFIG");
+        env_guard.set_var("XDG_CONFIG_HOME", temp_dir.path());
+        env_guard.remove_var("DIAPASON_CONFIG_PATH");
+        env_guard.remove_var("DIAPASON_CONFIG");
 
         let overrides = vec![("agent.provider".to_owned(), "\"openai\"".to_owned())];
 
@@ -463,13 +469,15 @@ mod tests {
 
         assert_eq!(config.agent.provider, "openai");
 
-        env_guard.restore_var("VTCODE_CONFIG", previous_config_dir);
+        env_guard.restore_var("DIAPASON_CONFIG", previous_legacy_config);
+        env_guard.restore_var("DIAPASON_CONFIG_PATH", previous_config_path);
+        env_guard.restore_var("XDG_CONFIG_HOME", previous_config_dir);
         Ok(())
     }
 
     #[test]
     fn token_overhead_warnings_empty_for_default_config() {
-        let config = VTCodeConfig::default();
+        let config = DiapasonConfig::default();
         assert!(
             collect_token_overhead_warnings(&config).is_empty(),
             "default config should not trigger token-overhead warnings"
@@ -478,8 +486,8 @@ mod tests {
 
     #[test]
     fn token_overhead_warns_on_specialized_prompt_mode() {
-        let mut config = VTCodeConfig::default();
-        config.agent.system_prompt_mode = vtcode_core::config::SystemPromptMode::Specialized;
+        let mut config = DiapasonConfig::default();
+        config.agent.system_prompt_mode = diapason_core::config::SystemPromptMode::Specialized;
         let warnings = collect_token_overhead_warnings(&config);
         assert!(
             warnings.iter().any(|w| w.contains("system_prompt_mode = 'specialized'")),
@@ -489,8 +497,8 @@ mod tests {
 
     #[test]
     fn token_overhead_warns_on_full_tool_docs() {
-        let mut config = VTCodeConfig::default();
-        config.agent.tool_documentation_mode = vtcode_core::config::ToolDocumentationMode::Full;
+        let mut config = DiapasonConfig::default();
+        config.agent.tool_documentation_mode = diapason_core::config::ToolDocumentationMode::Full;
         let warnings = collect_token_overhead_warnings(&config);
         assert!(
             warnings.iter().any(|w| w.contains("tool_documentation_mode = 'full'")),
@@ -500,7 +508,7 @@ mod tests {
 
     #[test]
     fn token_overhead_warns_on_disabled_tool_result_clearing() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.harness.tool_result_clearing.enabled = false;
         let warnings = collect_token_overhead_warnings(&config);
         assert!(
@@ -511,7 +519,7 @@ mod tests {
 
     #[test]
     fn token_overhead_warns_on_many_mcp_servers() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         for _ in 0..12 {
             config.mcp.providers.push(McpProviderConfig::default());
         }
@@ -524,7 +532,7 @@ mod tests {
 
     #[test]
     fn token_overhead_warns_when_client_tool_search_disabled_with_mcp() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.tools.client_tool_search = false;
         config.mcp.providers.push(McpProviderConfig::default());
         let warnings = collect_token_overhead_warnings(&config);
@@ -536,7 +544,7 @@ mod tests {
 
     #[test]
     fn token_overhead_warns_when_auto_compaction_disabled() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.harness.auto_compaction_enabled = false;
         let warnings = collect_token_overhead_warnings(&config);
         assert!(
@@ -547,7 +555,7 @@ mod tests {
 
     #[test]
     fn token_overhead_warns_on_low_system_prompt_budget() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.max_system_prompt_tokens = 100;
         let warnings = collect_token_overhead_warnings(&config);
         assert!(

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Quick status checker for VT Code release assets
+# Quick status checker for Diapason release assets
 
 # Source common utilities
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-REPO="vinhnx/vtcode"
+REPO="leynos/vtcode"
 
 RELEASE_TAG=$(get_current_version)
 
@@ -28,16 +28,16 @@ GITHUB_API="https://api.github.com/repos/$REPO/releases/tags/$RELEASE_TAG"
 get_platform() {
     case "$(uname -s)-$(uname -m)" in
         Darwin-arm64)
-            echo "aarch64-apple-darwin|macOS Apple Silicon|vtcode-$RELEASE_TAG-aarch64-apple-darwin.tar.gz"
+            echo "aarch64-apple-darwin|macOS Apple Silicon|diapason-$RELEASE_TAG-aarch64-apple-darwin.tar.gz"
             ;;
         Darwin-x86_64)
-            echo "x86_64-apple-darwin|macOS Intel|vtcode-$RELEASE_TAG-x86_64-apple-darwin.tar.gz"
+            echo "x86_64-apple-darwin|macOS Intel|diapason-$RELEASE_TAG-x86_64-apple-darwin.tar.gz"
             ;;
         Linux-x86_64)
-            echo "x86_64-unknown-linux-musl|Linux|vtcode-$RELEASE_TAG-x86_64-unknown-linux-musl.tar.gz"
+            echo "x86_64-unknown-linux-musl|Linux|diapason-$RELEASE_TAG-x86_64-unknown-linux-musl.tar.gz"
             ;;
         MINGW*-x86_64|MSYS*-x86_64)
-            echo "x86_64-pc-windows-msvc|Windows|vtcode-$RELEASE_TAG-x86_64-pc-windows-msvc.zip"
+            echo "x86_64-pc-windows-msvc|Windows|diapason-$RELEASE_TAG-x86_64-pc-windows-msvc.zip"
             ;;
         *)
             echo "unknown|Unknown|unknown"
@@ -47,7 +47,7 @@ get_platform() {
 }
 
 printf '%b\n' "${MAGENTA}════════════════════════════════════════════════════${NC}"
-printf '%b\n' "${MAGENTA}  VT Code $RELEASE_TAG Release Status${NC}"
+printf '%b\n' "${MAGENTA}  Diapason $RELEASE_TAG Release Status${NC}"
 printf '%b\n' "${MAGENTA}════════════════════════════════════════════════════${NC}"
 echo ""
 
@@ -58,7 +58,7 @@ DESC=$(echo "$PLATFORM_INFO" | cut -d'|' -f2)
 BINARY_NAME=$(echo "$PLATFORM_INFO" | cut -d'|' -f3)
 FALLBACK_BINARY=""
 if [[ "$ARCH" == "x86_64-unknown-linux-musl" ]]; then
-    FALLBACK_BINARY="vtcode-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz"
+    FALLBACK_BINARY="diapason-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz"
 fi
 echo "Your Platform: $DESC"
 echo "Binary Name:   $BINARY_NAME"
@@ -87,7 +87,7 @@ CREATED_AT=$(echo "$RESPONSE" | grep -o '"created_at":"[^"]*' | cut -d'"' -f4)
 PUBLISHED_AT=$(echo "$RESPONSE" | grep -o '"published_at":"[^"]*' | cut -d'"' -f4)
 
 # Count assets
-TOTAL_ASSETS=$(echo "$RESPONSE" | grep -o '"name": "vtcode-' | wc -l)
+TOTAL_ASSETS=$(echo "$RESPONSE" | grep -o '"name": "diapason-' | wc -l)
 HAS_CHECKSUMS=$(echo "$RESPONSE" | grep -q '"name": "checksums.txt"' && echo "yes" || echo "no")
 if echo "$RESPONSE" | grep -q "\"name\": \"$BINARY_NAME\""; then
     HAS_YOUR_BINARY="yes"
@@ -132,8 +132,8 @@ echo ""
 if [[ "$HAS_YOUR_BINARY" == "yes" && "$HAS_CHECKSUMS" == "yes" ]]; then
     printf '%b\n' "${GREEN}✓ READY TO INSTALL${NC}"
     echo ""
-    echo "Install VT Code with:"
-    echo "  curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash"
+    echo "Install Diapason with:"
+    echo "  curl -fsSL https://raw.githubusercontent.com/leynos/vtcode/main/scripts/install.sh | bash"
     echo ""
     exit 0
 else

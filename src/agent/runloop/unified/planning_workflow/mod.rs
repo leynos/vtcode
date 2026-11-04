@@ -2,7 +2,7 @@
 //!
 //! Single module boundary for the planning domain. The runloop must depend only
 //! on this facade (the `pub(crate)` re-exports below), never on individual
-//! submodule paths or on `vtcode-core`'s planning tool internals. Submodules are
+//! submodule paths or on `diapason-core`'s planning tool internals. Submodules are
 //! `pub(crate)` internals so the domain stays cohesively isolated and each piece
 //! remains independently testable (intent detection, HITL confirmation, tool
 //! dispatch, truncation recovery).
@@ -34,16 +34,16 @@ pub(crate) enum PlanExecutionContext {
 use std::path::PathBuf;
 
 use anyhow::Context;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_ui::tui::app::InlineHandle;
 use thiserror::Error;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_ui::tui::app::InlineHandle;
 
 use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
 
-// Keep vtcode-core's planning implementation behind this facade. Runloop
+// Keep diapason-core's planning implementation behind this facade. Runloop
 // modules should depend on these re-exports instead of reaching through the
 // core tool-handler path directly.
-pub(crate) use vtcode_core::tools::handlers::planning_workflow::{
+pub(crate) use diapason_core::tools::handlers::planning_workflow::{
     PlanValidationReport, PlanningWorkflowState, merge_plan_content, persist_plan_draft, tracker_file_for_plan_file,
     validate_plan_content,
 };
@@ -70,12 +70,15 @@ pub(crate) async fn persisted_plan_is_ready(state: &PlanningWorkflowState) -> bo
     }
 
     match state.workspace_root() {
-        Some(workspace_root) => {
-            tokio::fs::read_to_string(workspace_root.join(".vtcode").join("tasks").join("current_task.md"))
-                .await
-                .ok()
-                .is_some_and(|content| !content.trim().is_empty())
-        }
+        Some(workspace_root) => tokio::fs::read_to_string(
+            workspace_root
+                .join(diapason_commons::workspace_dir_name())
+                .join("tasks")
+                .join("current_task.md"),
+        )
+        .await
+        .ok()
+        .is_some_and(|content| !content.trim().is_empty()),
         None => true,
     }
 }
@@ -207,7 +210,7 @@ pub(crate) async fn complete_approved_plan_handoff(
         execution_context,
     };
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         plan_file = %handoff.plan.plan_file.display(),
         implementation_steps = handoff.plan.validation.implementation_step_count,
         tracker_plan_file = %handoff.tracker.plan_file.display(),
@@ -228,7 +231,7 @@ pub(crate) fn resolve_plan_approval(
     emitter: Option<&crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter>,
     fallback_thread_id: &str,
     fallback_turn_id: &str,
-    decision: vtcode_core::exec::events::PlanApprovalDecision,
+    decision: diapason_core::exec::events::PlanApprovalDecision,
     automatic: bool,
 ) {
     let Some(pending) = plan_session.take_pending_plan_approval() else {
@@ -409,7 +412,7 @@ Improve launch time.
             .await
             .expect("invalid plan should be written");
 
-        let collector = std::sync::Arc::new(vtcode_core::metrics::MetricsCollector::new());
+        let collector = std::sync::Arc::new(diapason_core::metrics::MetricsCollector::new());
         let state = PlanningWorkflowState::new(workspace.path().to_path_buf()).with_metrics(collector.clone());
         state.set_plan_file(Some(plan_file)).await;
 

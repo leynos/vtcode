@@ -1,4 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
+use diapason_acp::{AcpError, StdioTransport, StdioTransportOptions};
+use diapason_config::{AgentCodexAppServerConfig, DiapasonConfig};
 use futures::{TryFutureExt, future::BoxFuture};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -11,8 +13,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::sync::broadcast;
-use vtcode_acp::{AcpError, StdioTransport, StdioTransportOptions};
-use vtcode_config::{AgentCodexAppServerConfig, VTCodeConfig};
 
 pub(crate) const CODEX_PROVIDER: &str = "codex";
 const STDIO_LISTEN_TARGET: &str = "stdio://";
@@ -45,7 +45,7 @@ enum RequestRetryPolicy {
 }
 
 impl CodexAppServerClient {
-    pub(crate) async fn connect(vt_cfg: Option<&VTCodeConfig>) -> Result<Self> {
+    pub(crate) async fn connect(vt_cfg: Option<&DiapasonConfig>) -> Result<Self> {
         let sidecar_cfg = sidecar_config(vt_cfg);
         ensure_codex_sidecar_available(vt_cfg)?;
         let mut command = Command::new(&sidecar_cfg.command);
@@ -245,7 +245,7 @@ impl CodexAppServerClient {
     }
 }
 
-pub(crate) async fn launch_app_server_proxy(vt_cfg: Option<&VTCodeConfig>, listen: &str) -> Result<()> {
+pub(crate) async fn launch_app_server_proxy(vt_cfg: Option<&DiapasonConfig>, listen: &str) -> Result<()> {
     let listen = validate_listen_target(listen)?;
     ensure_codex_sidecar_available(vt_cfg)?;
 
@@ -311,8 +311,8 @@ async fn initialize_connection(transport: &Arc<StdioTransport>, sidecar_cfg: &Ag
             "initialize",
             json!({
                 "clientInfo": {
-                    "name": "vtcode",
-                    "title": "VT Code",
+                    "name": "diapason",
+                    "title": "Diapason",
                     "version": env!("CARGO_PKG_VERSION"),
                 },
                 "capabilities": {
@@ -340,7 +340,7 @@ async fn handle_refresh_request(
         let _ = transport.respond_error_value(
             id,
             SERVER_ERROR_CODE,
-            "VT Code does not have a ChatGPT token refresh handler configured",
+            "Diapason does not have a ChatGPT token refresh handler configured",
         );
         return;
     };
@@ -375,11 +375,11 @@ async fn handle_refresh_request(
     }
 }
 
-fn sidecar_config(vt_cfg: Option<&VTCodeConfig>) -> AgentCodexAppServerConfig {
+fn sidecar_config(vt_cfg: Option<&DiapasonConfig>) -> AgentCodexAppServerConfig {
     vt_cfg.map(|cfg| cfg.agent.codex_app_server.clone()).unwrap_or_default()
 }
 
-pub(crate) fn ensure_codex_sidecar_available(vt_cfg: Option<&VTCodeConfig>) -> Result<()> {
+pub(crate) fn ensure_codex_sidecar_available(vt_cfg: Option<&DiapasonConfig>) -> Result<()> {
     let sidecar_cfg = sidecar_config(vt_cfg);
     ensure_codex_sidecar_command_available(&sidecar_cfg.command)
 }

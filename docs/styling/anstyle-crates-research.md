@@ -1,11 +1,11 @@
-# Anstyle Git/LS Crates Research & Vtcode Styling Improvements
+# Anstyle Git/LS Crates Research & Diapason Styling Improvements
 
 ## Overview
 
 **anstyle-git** and **anstyle-ls** are complementary Rust crates that parse
 domain-specific color configuration syntaxes into standardized ANSI styles via
 the `anstyle` crate. This research explores how their parsing approaches can
-improve vtcode's styling system.
+improve diapason's styling system.
 
 ## Crate Analysis
 
@@ -72,12 +72,12 @@ let style = anstyle_ls::parse("34;03").unwrap();
 - Semicolon-separated sequence of codes
 - File type pattern keys precede the colon (e.g., `di=01;34:ln=36`)
 
-## Current Vtcode Styling Architecture
+## Current Diapason Styling Architecture
 
 ### Existing Approach
 
-**Location**: `crates/codegen/vtcode-core/src/ui/tui/style.rs`,
-`crates/codegen/vtcode-core/src/ui/theme.rs`
+**Location**: `crates/codegen/diapason-core/src/ui/tui/style.rs`,
+`crates/codegen/diapason-core/src/ui/theme.rs`
 
 **Current Stack**:
 
@@ -115,7 +115,7 @@ TUI rendering
 
 ### 1. Add Missing Anstyle Crates
 
-**Action**: Update `vtcode-core/Cargo.toml`
+**Action**: Update `diapason-core/Cargo.toml`
 
 ```toml
 [dependencies]
@@ -135,7 +135,7 @@ anstyle-query = "1.0"
 
 ### 2. Expand InlineTextStyle to Support Full Effects
 
-**Current** (`crates/codegen/vtcode-core/src/ui/tui/types.rs`):
+**Current** (`crates/codegen/diapason-core/src/ui/tui/types.rs`):
 
 ```rust
 pub struct InlineTextStyle {
@@ -181,7 +181,7 @@ impl InlineTextStyle {
 
 ### 3. Create a Theme Configuration Parser
 
-**New Module**: `crates/codegen/vtcode-core/src/ui/tui/theme_parser.rs`
+**New Module**: `crates/codegen/diapason-core/src/ui/tui/theme_parser.rs`
 
 ```rust
 use anstyle_git;
@@ -226,7 +226,7 @@ pub enum StyleDialect {
 **Use Case**: When displaying files in the file picker modal, respect system
 `LS_COLORS` preferences
 
-**Location**: `crates/codegen/vtcode-core/src/ui/tui/session/file_palette.rs`
+**Location**: `crates/codegen/diapason-core/src/ui/tui/session/file_palette.rs`
 
 ```rust
 use anstyle_ls;
@@ -271,7 +271,7 @@ impl FileColorizer {
 
 **Use Case**: Parse `.git/config` color settings for diff/status visualization
 
-**Location**: `crates/codegen/vtcode-core/src/ui/diff_renderer.rs`
+**Location**: `crates/codegen/diapason-core/src/ui/diff_renderer.rs`
 
 ```rust
 use anstyle_git;
@@ -317,7 +317,7 @@ impl GitColorConfig {
 
 ### 6. Update convert_style Function
 
-**Location**: `crates/codegen/vtcode-core/src/ui/tui/style.rs`
+**Location**: `crates/codegen/diapason-core/src/ui/tui/style.rs`
 
 ```rust
 use anstyle::{AnsiColor, Color as AnsiColorEnum, Effects, RgbColor, Style as AnsiStyle};
@@ -343,7 +343,7 @@ pub fn convert_style(style: AnsiStyle) -> InlineTextStyle {
 
 ### 7. Update ratatui_style_from_inline
 
-**Location**: `crates/codegen/vtcode-core/src/ui/tui/style.rs`
+**Location**: `crates/codegen/diapason-core/src/ui/tui/style.rs`
 
 ```rust
 use anstyle::Effects;
@@ -430,13 +430,14 @@ pub fn ratatui_style_from_inline(
 
 ## Related Files
 
-- `crates/codegen/vtcode-core/src/ui/tui/style.rs` - Style conversion functions
-- `crates/codegen/vtcode-core/src/ui/tui/types.rs` - InlineTextStyle struct
-- `crates/codegen/vtcode-core/src/ui/theme.rs` - Theme palette management
-- `crates/codegen/vtcode-core/src/ui/tui/session/file_palette.rs` - File
+- `crates/codegen/diapason-core/src/ui/tui/style.rs` - Style conversion
+  functions
+- `crates/codegen/diapason-core/src/ui/tui/types.rs` - InlineTextStyle struct
+- `crates/codegen/diapason-core/src/ui/theme.rs` - Theme palette management
+- `crates/codegen/diapason-core/src/ui/tui/session/file_palette.rs` - File
   listing UI
-- `crates/codegen/vtcode-core/src/ui/diff_renderer.rs` - Diff visualization
-- `vtcode-core/Cargo.toml` - Dependencies
+- `crates/codegen/diapason-core/src/ui/diff_renderer.rs` - Diff visualization
+- `diapason-core/Cargo.toml` - Dependencies
 
 ## References
 

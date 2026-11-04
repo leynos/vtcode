@@ -10,11 +10,11 @@
 //! To update snapshots, run: `cargo insta review`
 
 use anstyle::Effects;
-use insta::assert_snapshot;
-use ratatui::{Terminal, backend::TestBackend};
-use vtcode_core::ui::{
+use diapason_core::ui::{
     InlineCommand, InlineHandle, InlineHeaderContext, InlineMessageKind, InlineSegment, InlineTextStyle,
 };
+use insta::assert_snapshot;
+use ratatui::{Terminal, backend::TestBackend};
 
 fn inline_command_variant_name(command: &InlineCommand) -> &'static str {
     match command {

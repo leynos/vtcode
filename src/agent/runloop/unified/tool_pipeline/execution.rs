@@ -2,11 +2,11 @@
 use std::sync::Arc;
 
 #[cfg(test)]
+use diapason_core::tools::registry::ToolRegistry;
+#[cfg(test)]
 use serde_json::Value;
 #[cfg(test)]
 use tokio::sync::Notify;
-#[cfg(test)]
-use vtcode_core::tools::registry::ToolRegistry;
 
 #[cfg(test)]
 use crate::agent::runloop::unified::progress::ProgressReporter;

@@ -1,11 +1,11 @@
 use hashbrown::HashSet;
 
 use anyhow::Result;
-use vtcode_core::config::constants::{model_helpers, models};
-use vtcode_core::config::models::{ModelId, Provider};
-use vtcode_core::llm::lightweight_model_choices;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::ui::interactive_list::SelectionEntry;
+use diapason_core::config::constants::{model_helpers, models};
+use diapason_core::config::models::{ModelId, Provider};
+use diapason_core::llm::lightweight_model_choices;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::ui::interactive_list::SelectionEntry;
 
 use super::common::{prompt_with_placeholder, run_selection};
 
@@ -68,7 +68,7 @@ pub(crate) fn prompt_lightweight_model(
 ) -> Result<String> {
     renderer.line(
         MessageStyle::Status,
-        "Choose the lightweight model VT Code should prefer for memory triage, prompt suggestions, and smaller delegated tasks.",
+        "Choose the lightweight model Diapason should prefer for memory triage, prompt suggestions, and smaller delegated tasks.",
     )?;
     renderer.line(
         MessageStyle::Info,
@@ -119,7 +119,7 @@ struct LightweightModelOption {
 }
 
 fn lightweight_model_options(provider: Provider, main_model: &str) -> Vec<LightweightModelOption> {
-    let auto_model = vtcode_core::llm::auto_lightweight_model(provider.as_ref(), main_model);
+    let auto_model = diapason_core::llm::auto_lightweight_model(provider.as_ref(), main_model);
     let provider_models = lightweight_model_choices(provider.as_ref(), main_model);
 
     let mut options = vec![

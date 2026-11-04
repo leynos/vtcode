@@ -3,8 +3,8 @@
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
 use clap::CommandFactory;
-use vtcode_core::cli::args::Cli;
-use vtcode_core::cli::help::openai_responses_models_help;
+use diapason_core::cli::args::Cli;
+use diapason_core::cli::help::openai_responses_models_help;
 
 #[test]
 fn help_includes_responses_models_list() {
@@ -16,5 +16,5 @@ fn help_includes_responses_models_list() {
     let mut out: Vec<u8> = Vec::new();
     cmd.write_long_help(&mut out).unwrap();
     let s = String::from_utf8(out).unwrap();
-    assert!(s.contains(vtcode_core::config::constants::models::openai::GPT_5));
+    assert!(s.contains(diapason_core::config::constants::models::openai::GPT_5));
 }

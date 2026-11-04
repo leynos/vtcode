@@ -1,6 +1,6 @@
 use super::*;
 use super::{parse_channel, parse_tagged};
-use vtcode_core::config::constants::tools;
+use diapason_core::config::constants::tools;
 
 // ── contains_pseudo_tool_call_markers ─────────────────────────────────────────
 
@@ -300,7 +300,7 @@ fn test_detect_tagged_tool_call_parses_minimax_xml_invocation() {
 <minimax:tool_call>
 <invoke name="read_file">
 <parameter name="action">read</parameter>
-<parameter name="path">crates/codegen/vtcode-core/src/core/agent/runtime/mod.rs</parameter>
+<parameter name="path">crates/codegen/diapason-core/src/core/agent/runtime/mod.rs</parameter>
 <parameter name="offset">1</parameter>
 <parameter name="limit">400</parameter>
 </invoke>
@@ -312,7 +312,7 @@ fn test_detect_tagged_tool_call_parses_minimax_xml_invocation() {
         args,
         serde_json::json!({
             "action": "read",
-            "path": "crates/codegen/vtcode-core/src/core/agent/runtime/mod.rs",
+            "path": "crates/codegen/diapason-core/src/core/agent/runtime/mod.rs",
             "offset": 1,
             "limit": 400
         })
@@ -340,11 +340,11 @@ fn test_detect_tagged_tool_call_parses_tools_call_dialect_inside_tool_call_wrapp
     let message = r#"I'll research the codebase to understand current launch flow, then draft a focused plan.
 <tool_call>
 <tools:call name="exec_command">
-<parameter name="cmd">ls -la /Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode</parameter>
+<parameter name="cmd">ls -la /Users/vinhnguyenxuan/Developer/learn-by-doing/diapason</parameter>
 </tools:call>
 <tools:call name="code_search">
 <parameter name="pattern">fn main</parameter>
-<parameter name="path">/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode</parameter>
+<parameter name="path">/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason</parameter>
 <parameter name="max_results">30</parameter>
 <parameter name="lang">rust</parameter>
 </tools:call>
@@ -354,7 +354,7 @@ fn test_detect_tagged_tool_call_parses_tools_call_dialect_inside_tool_call_wrapp
     assert_eq!(
         args,
         serde_json::json!({
-            "cmd": "ls -la /Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode",
+            "cmd": "ls -la /Users/vinhnguyenxuan/Developer/learn-by-doing/diapason",
             "action": "run"
         })
     );
@@ -365,7 +365,7 @@ fn test_detect_tagged_tool_call_parses_bare_tools_call_dialect() {
     // Second <tools:call> block from the turn_887 payload, without the wrapper.
     let message = r#"<tools:call name="code_search">
 <parameter name="pattern">async fn main|fn main()</parameter>
-<parameter name="path">/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode</parameter>
+<parameter name="path">/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason</parameter>
 <parameter name="max_results">30</parameter>
 </tools:call>"#;
     let (name, args) = detect_textual_tool_call(message).expect("should parse");
@@ -374,7 +374,7 @@ fn test_detect_tagged_tool_call_parses_bare_tools_call_dialect() {
         args,
         serde_json::json!({
             "pattern": "async fn main|fn main()",
-            "path": "/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode",
+            "path": "/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason",
             "max_results": 30
         })
     );
@@ -643,7 +643,7 @@ I'll create a hello world file named hellovinhnx.md in the workspace root.
 ```rust
 write_file
 path: /Users/example/workspace/hellovinhnx.md
-content: Hello, VinhNX!\n\nThis is a simple hello world file created for you.\nIt demonstrates basic file creation in the VT Code workspace.
+content: Hello, VinhNX!\n\nThis is a simple hello world file created for you.\nIt demonstrates basic file creation in the Diapason workspace.
 mode: overwrite
 ```
 "#;
@@ -654,7 +654,7 @@ mode: overwrite
     assert_eq!(
         args["content"],
         serde_json::json!(
-            "Hello, VinhNX!\\n\\nThis is a simple hello world file created for you.\\nIt demonstrates basic file creation in the VT Code workspace."
+            "Hello, VinhNX!\\n\\nThis is a simple hello world file created for you.\\nIt demonstrates basic file creation in the Diapason workspace."
         )
     );
 }

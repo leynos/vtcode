@@ -1,7 +1,7 @@
-# Vtcode Styling System Documentation
+# Diapason Styling System Documentation
 
 This directory contains research and implementation guides for improving
-vtcode's terminal styling system using `anstyle-git` and `anstyle-ls` crates.
+diapason's terminal styling system using `anstyle-git` and `anstyle-ls` crates.
 
 ## Files
 
@@ -11,7 +11,7 @@ Comprehensive research on `anstyle-git` and `anstyle-ls` crates:
 
 - What each crate does
 - How they parse color configurations
-- Current vtcode styling architecture
+- Current diapason styling architecture
 - Recommended improvements
 - Benefits and risks
 - Implementation priorities
@@ -35,7 +35,7 @@ Step-by-step implementation guide for Phase 1 (Foundation):
 
 ### What We're Doing
 
-Improving vtcode's styling system to:
+Improving diapason's styling system to:
 
 1. Support **full ANSI text effects** (bold, dim, italic, underline,
    strikethrough, reverse)
@@ -68,7 +68,7 @@ anstyle-git / anstyle-ls Parsers
     ↓
 anstyle::Style (abstract representation)
     ↓
-convert_style() → InlineTextStyle (vtcode internal)
+convert_style() → InlineTextStyle (diapason internal)
     ↓
 ratatui_style_from_inline() → ratatui::style::Style
     ↓
@@ -91,12 +91,13 @@ TUI Rendering (Terminal Output)
 
 ## Related Code Locations
 
-- Theme definitions: `crates/codegen/vtcode-core/src/ui/theme.rs`
-- Style conversion: `crates/codegen/vtcode-core/src/ui/tui/style.rs`
-- Style types: `crates/codegen/vtcode-core/src/ui/tui/types.rs`
-- File coloring: `crates/codegen/vtcode-core/src/ui/tui/session/file_palette.rs`
-- Diff rendering: `crates/codegen/vtcode-core/src/ui/diff_renderer.rs`
-- Main theme: `crates/codegen/vtcode-core/src/ui/styled.rs`
+- Theme definitions: `crates/codegen/diapason-core/src/ui/theme.rs`
+- Style conversion: `crates/codegen/diapason-core/src/ui/tui/style.rs`
+- Style types: `crates/codegen/diapason-core/src/ui/tui/types.rs`
+- File coloring:
+  `crates/codegen/diapason-core/src/ui/tui/session/file_palette.rs`
+- Diff rendering: `crates/codegen/diapason-core/src/ui/diff_renderer.rs`
+- Main theme: `crates/codegen/diapason-core/src/ui/styled.rs`
 
 ## Getting Started
 
@@ -128,4 +129,4 @@ For implementation questions, refer to:
 
 - Phase 1 checklist in `implementation-phase1.md`
 - Test examples in same file
-- Existing code patterns in `crates/codegen/vtcode-core/src/ui/`
+- Existing code patterns in `crates/codegen/diapason-core/src/ui/`

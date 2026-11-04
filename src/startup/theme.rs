@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use vtcode_core::cli::args::Cli;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::load_user_config;
-use vtcode_core::ui::theme::{self as ui_theme, DEFAULT_THEME_ID};
-use vtcode_core::utils::dot_config::DotConfig;
+use diapason_core::cli::args::Cli;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::load_user_config;
+use diapason_core::ui::theme::{self as ui_theme, DEFAULT_THEME_ID};
+use diapason_core::utils::dot_config::DotConfig;
 
 /// Resolved theme selection together with the user dot-config that was loaded
 /// during resolution (if available). Returning the loaded config avoids a
@@ -16,7 +16,7 @@ pub(super) struct ThemeResolution {
 
 pub(super) async fn determine_theme(
     args: &Cli,
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
     read_user_preference: bool,
 ) -> Result<ThemeResolution> {
     let color_config = ui_theme::ColorAccessibilityConfig {
@@ -42,11 +42,11 @@ pub(super) async fn determine_theme(
 
     let config_theme = config.agent.theme.trim();
     let auto_theme = match config.ui.color_scheme_mode {
-        vtcode_config::root::ColorSchemeMode::Auto | vtcode_config::root::ColorSchemeMode::Unknown => {
+        diapason_config::root::ColorSchemeMode::Auto | diapason_config::root::ColorSchemeMode::Unknown => {
             Some(ui_theme::suggest_theme_for_terminal().to_owned())
         }
-        vtcode_config::root::ColorSchemeMode::Light => Some("vitesse-light".to_owned()),
-        vtcode_config::root::ColorSchemeMode::Dark => None,
+        diapason_config::root::ColorSchemeMode::Light => Some("vitesse-light".to_owned()),
+        diapason_config::root::ColorSchemeMode::Dark => None,
     };
 
     let mut theme_selection = args
@@ -82,7 +82,7 @@ pub(super) async fn determine_theme(
             theme = %theme_selection,
             "Theme '{}' is {} but your terminal appears {}. \
              The theme background is painted automatically for readability. \
-             Set ui.color_scheme_mode = \"auto\" in vtcode.toml or pick a matching theme.",
+             Set ui.color_scheme_mode = \"auto\" in config.toml or pick a matching theme.",
             theme_selection,
             scheme_kind,
             if scheme_kind == "light" { "dark" } else { "light" },

@@ -1,14 +1,14 @@
 #!/bin/bash
-# monitor_performance.sh - Real-time VT Code performance monitoring
+# monitor_performance.sh - Real-time Diapason performance monitoring
 # Usage: ./scripts/monitor_performance.sh [num_turns] [interval_seconds]
 
 set -e
 
 NUM_TURNS=${1:-100}
 INTERVAL=${2:-5}
-OUTPUT_FILE="vtcode_performance_metrics.csv"
+OUTPUT_FILE="diapason_performance_metrics.csv"
 
-echo "🔍 VT Code Performance Monitor"
+echo "🔍 Diapason Performance Monitor"
 echo "════════════════════════════════════════════════"
 echo "Turns to run: $NUM_TURNS"
 echo "Monitoring interval: ${INTERVAL}s"
@@ -55,10 +55,10 @@ get_metrics() {
 
 # Kill background jobs on exit
 cleanup() {
-    if [[ ! -z "$VTCODE_PID" ]] && kill -0 $VTCODE_PID 2>/dev/null; then
-        echo "Stopping VT Code..."
-        kill $VTCODE_PID 2>/dev/null || true
-        wait $VTCODE_PID 2>/dev/null || true
+    if [[ ! -z "$DIAPASON_PID" ]] && kill -0 $DIAPASON_PID 2>/dev/null; then
+        echo "Stopping Diapason..."
+        kill $DIAPASON_PID 2>/dev/null || true
+        wait $DIAPASON_PID 2>/dev/null || true
     fi
     echo ""
     echo "v Monitoring complete. Results saved to: $OUTPUT_FILE"
@@ -66,7 +66,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-echo "Starting VT Code..."
+echo "Starting Diapason..."
 echo ""
 
 # Create a test script that sends multiple queries
@@ -88,25 +88,25 @@ EOF
 sed -i '' "s/%NUM_TURNS%/$NUM_TURNS/g" "$TEST_SCRIPT"
 chmod +x "$TEST_SCRIPT"
 
-# Start VT Code in the background with test input
+# Start Diapason in the background with test input
 cargo run -- ask "Starting performance test..." &
-VTCODE_PID=$!
+DIAPASON_PID=$!
 
 sleep 2  # Let it start up
 
-echo "Monitoring PID $VTCODE_PID..."
+echo "Monitoring PID $DIAPASON_PID..."
 echo ""
 
 # Monitor process
 TURN=0
-while kill -0 $VTCODE_PID 2>/dev/null; do
+while kill -0 $DIAPASON_PID 2>/dev/null; do
     TURN=$((TURN + 1))
-    get_metrics $VTCODE_PID $TURN
+    get_metrics $DIAPASON_PID $TURN
 
     if [[ $TURN -ge $NUM_TURNS ]]; then
         echo ""
-        echo "Completed $NUM_TURNS turns. Stopping VT Code..."
-        kill $VTCODE_PID 2>/dev/null || true
+        echo "Completed $NUM_TURNS turns. Stopping Diapason..."
+        kill $DIAPASON_PID 2>/dev/null || true
         break
     fi
 
@@ -114,7 +114,7 @@ while kill -0 $VTCODE_PID 2>/dev/null; do
 done
 
 # Wait for process to finish
-wait $VTCODE_PID 2>/dev/null || true
+wait $DIAPASON_PID 2>/dev/null || true
 
 # Cleanup
 rm -f "$TEST_SCRIPT"

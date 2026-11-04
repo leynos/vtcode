@@ -8,11 +8,11 @@ use std::path::Path;
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
 
+use diapason_core::utils::async_line_writer::{AsyncLineWriter, AsyncLineWriterDiagnostics};
+#[cfg(test)]
+use diapason_core::utils::file_utils::ensure_dir_exists_sync;
 #[cfg(test)]
 use tokio::task::spawn_blocking;
-use vtcode_core::utils::async_line_writer::{AsyncLineWriter, AsyncLineWriterDiagnostics};
-#[cfg(test)]
-use vtcode_core::utils::file_utils::ensure_dir_exists_sync;
 
 /// Optional JSONL compatibility/export writer.
 pub(crate) enum LegacyWriter {

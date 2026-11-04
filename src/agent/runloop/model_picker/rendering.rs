@@ -1,12 +1,12 @@
 use anyhow::Result;
 use std::fmt::Write;
 
-use vtcode_core::config::constants::ui;
-use vtcode_core::config::models::{ModelId, Provider};
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::config::validation::effective_model_context_window;
-use vtcode_core::ui::{InlineListItem, InlineListSearchConfig, InlineListSelection};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::constants::ui;
+use diapason_core::config::models::{ModelId, Provider};
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::config::validation::effective_model_context_window;
+use diapason_core::ui::{InlineListItem, InlineListSearchConfig, InlineListSelection};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::dynamic_models::DynamicModelRegistry;
 use super::options::{ModelOption, option_indexes_for_provider};

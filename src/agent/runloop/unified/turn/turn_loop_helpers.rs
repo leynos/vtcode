@@ -8,19 +8,19 @@ use crate::agent::runloop::unified::run_loop_context::HarnessTurnState;
 use crate::agent::runloop::unified::turn::context::TurnLoopResult;
 use crate::agent::runloop::unified::turn::turn_helpers::{display_error, display_status};
 use crate::agent::runloop::unified::turn::turn_loop::TurnLoopContext;
-use vtcode_core::config::constants::defaults::DEFAULT_MAX_REPEATED_TOOL_CALLS;
-use vtcode_core::config::constants::tool_limits::{
+use diapason_core::config::constants::defaults::DEFAULT_MAX_REPEATED_TOOL_CALLS;
+use diapason_core::config::constants::tool_limits::{
     APPROVED_PLAN_MIN_TOOL_CALLS_PER_TURN, APPROVED_PLAN_TOOL_LOOP_INCREMENT, DEFAULT_MAX_CONVERSATION_TURNS,
     DEFAULT_MAX_TOOL_LOOPS, MAX_TOOL_LOOP_CAP_MULTIPLIER, MAX_TOOL_LOOP_INCREMENT_PER_PROMPT,
     MAX_TOOL_LOOP_LIMIT_ABSOLUTE_CAP, PLANNING_WORKFLOW_MAX_TOOL_LOOP_INCREMENT_PER_PROMPT,
     PLANNING_WORKFLOW_MAX_TOOL_LOOP_LIMIT_ABSOLUTE_CAP, PLANNING_WORKFLOW_MIN_TOOL_CALLS_PER_TURN,
     PLANNING_WORKFLOW_MIN_TOOL_LOOPS, PLANNING_WORKFLOW_TOOL_LOOP_CAP_MULTIPLIER,
 };
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::core::agent::features::FeatureSet;
-use vtcode_core::core::agent::steering::SteeringMessage;
-use vtcode_core::llm::provider as uni;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::core::agent::features::FeatureSet;
+use diapason_core::core::agent::steering::SteeringMessage;
+use diapason_core::llm::provider as uni;
 
 #[derive(Debug, Clone)]
 pub(super) struct PrecomputedTurnConfig {
@@ -64,7 +64,7 @@ impl SafetyToolCallLimitOptions {
     /// limit and configured session-turn count.
     pub(super) fn for_fresh_execution(
         max_tool_calls_per_session: Option<usize>,
-        vt_cfg: Option<&VTCodeConfig>,
+        vt_cfg: Option<&DiapasonConfig>,
     ) -> Self {
         let max_session_turns = vt_cfg
             .map(|cfg| cfg.agent.max_conversation_turns)
@@ -77,7 +77,7 @@ impl SafetyToolCallLimitOptions {
     /// A configured `Some(0)` session budget remains unlimited. Without an
     /// explicit session budget, planning mode removes the default session cap;
     /// other modes derive it from the per-turn limit and session-turn count.
-    pub(super) fn for_turn(vt_cfg: Option<&VTCodeConfig>, max_session_turns: usize, planning_active: bool) -> Self {
+    pub(super) fn for_turn(vt_cfg: Option<&DiapasonConfig>, max_session_turns: usize, planning_active: bool) -> Self {
         let max_tool_calls_per_session = vt_cfg.and_then(|cfg| cfg.agent.harness.max_tool_calls_per_session);
         Self::new(max_tool_calls_per_session, max_session_turns, planning_active)
     }
@@ -104,7 +104,7 @@ pub(super) fn initial_tool_loop_limit(configured_limit: usize, approved_plan_exe
 
 #[inline]
 pub(super) fn extract_turn_config(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     planning_active: bool,
     interactive_session: bool,
 ) -> PrecomputedTurnConfig {
@@ -272,7 +272,7 @@ fn emit_loop_hard_cap_break_metric(
     reason: &'static str,
 ) {
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         metric = "loop_hard_cap_break",
         reason,
         run_id = %ctx.harness_state.run_id.0,
@@ -366,7 +366,7 @@ pub(super) async fn handle_steering_messages(
     let steering_interrupted = steering_result?;
     if !ctx.runtime_steering.pending_follow_up_intents_snapshot().is_empty() {
         let session_id = ctx.tool_registry.harness_context_snapshot().session_id;
-        let steering_update = vtcode_core::compaction::memory_envelope::SessionMemoryEnvelopeUpdate {
+        let steering_update = diapason_core::compaction::memory_envelope::SessionMemoryEnvelopeUpdate {
             pending_intents: Some(ctx.runtime_steering.pending_follow_up_intents_snapshot()),
             applied_intent_ids: ctx.runtime_steering.applied_follow_up_intent_ids().iter().cloned().collect(),
             ..Default::default()
@@ -392,8 +392,8 @@ pub(super) async fn handle_steering_messages(
 }
 
 fn queue_follow_up_input(
-    renderer: &mut vtcode_core::utils::ansi::AnsiRenderer,
-    runtime_steering: &mut vtcode_core::core::agent::runtime::RuntimeSteering,
+    renderer: &mut diapason_core::utils::ansi::AnsiRenderer,
+    runtime_steering: &mut diapason_core::core::agent::runtime::RuntimeSteering,
     input: String,
 ) -> Result<()> {
     match runtime_steering.try_queue_follow_up_input(input.clone()) {
@@ -406,7 +406,7 @@ fn queue_follow_up_input(
     Ok(())
 }
 
-async fn cancel_for_steering_stop(tool_registry: &mut vtcode_core::tools::ToolRegistry, result: &mut TurnLoopResult) {
+async fn cancel_for_steering_stop(tool_registry: &mut diapason_core::tools::ToolRegistry, result: &mut TurnLoopResult) {
     if let Err(err) = tool_registry.terminate_all_exec_sessions_async().await {
         tracing::warn!(error = %err, "Failed to terminate exec sessions after steering stop");
     }
@@ -414,12 +414,12 @@ async fn cancel_for_steering_stop(tool_registry: &mut vtcode_core::tools::ToolRe
 }
 
 async fn handle_pause_signal(
-    renderer: &mut vtcode_core::utils::ansi::AnsiRenderer,
-    tool_registry: &mut vtcode_core::tools::ToolRegistry,
+    renderer: &mut diapason_core::utils::ansi::AnsiRenderer,
+    tool_registry: &mut diapason_core::tools::ToolRegistry,
     ctrl_c_state: &crate::agent::runloop::unified::state::CtrlCState,
     ctrl_c_notify: &tokio::sync::Notify,
     receiver: &mut tokio::sync::mpsc::UnboundedReceiver<SteeringMessage>,
-    runtime_steering: &mut vtcode_core::core::agent::runtime::RuntimeSteering,
+    runtime_steering: &mut diapason_core::core::agent::runtime::RuntimeSteering,
     result: &mut TurnLoopResult,
     pending: Vec<SteeringMessage>,
 ) -> Result<bool> {
@@ -502,7 +502,7 @@ pub(super) async fn maybe_handle_planning_enter_trigger(
     display_status(ctx.renderer, PLANNING_WORKFLOW_ENTER_TRIGGER_STATUS)?;
 
     use crate::agent::runloop::unified::tool_pipeline::run_tool_call;
-    use vtcode_core::llm::provider::ToolCall;
+    use diapason_core::llm::provider::ToolCall;
 
     let call = ToolCall::function(
         format!("call_{step_count}_start_planning"),
@@ -658,10 +658,10 @@ mod tests {
     use crate::agent::runloop::unified::run_loop_context::{HarnessTurnState, TurnId, TurnRunId};
     use crate::agent::runloop::unified::turn::context::TurnLoopResult;
     use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::core::agent::steering::SteeringMessage;
     use rstest::rstest;
     use std::time::Duration;
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::core::agent::steering::SteeringMessage;
 
     #[test]
     fn detects_implement_the_plan_trigger() {
@@ -796,7 +796,7 @@ mod tests {
     #[test]
     fn extract_turn_config_applies_planning_workflow_loop_floor() {
         for (configured_limit, expected_limit) in [(20, 60), (40, 60), (60, 60), (80, 80)] {
-            let mut cfg = VTCodeConfig::default();
+            let mut cfg = DiapasonConfig::default();
             cfg.tools.max_tool_loops = configured_limit;
             let turn_cfg = extract_turn_config(Some(&cfg), true, true);
             assert_eq!(turn_cfg.max_tool_loops, expected_limit);
@@ -806,7 +806,7 @@ mod tests {
     #[test]
     fn extract_turn_config_keeps_non_planning_workflow_loop_limit() {
         for configured_limit in [20, 40, 60, 80] {
-            let mut cfg = VTCodeConfig::default();
+            let mut cfg = DiapasonConfig::default();
             cfg.tools.max_tool_loops = configured_limit;
             let turn_cfg = extract_turn_config(Some(&cfg), false, true);
             assert_eq!(turn_cfg.max_tool_loops, configured_limit);
@@ -907,7 +907,7 @@ mod tests {
 
     #[test]
     fn extract_turn_config_honors_request_user_input_setting_in_planning_workflow() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.chat.ask_questions.enabled = false;
 
         let turn_cfg = extract_turn_config(Some(&cfg), true, true);

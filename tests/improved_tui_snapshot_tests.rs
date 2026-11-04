@@ -2,7 +2,7 @@
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
-//! Comprehensive Ratatui snapshot tests for VT Code TUI
+//! Comprehensive Ratatui snapshot tests for Diapason TUI
 //!
 //! These tests use the `insta` crate to capture visual snapshots of the actual terminal UI.
 //! The tests verify that the TUI renders correctly with various content and states.
@@ -10,12 +10,12 @@
 //! To update snapshots, run: `cargo insta review`
 
 use anstyle::Effects;
-use insta::assert_snapshot;
-use ratatui::{Terminal, backend::TestBackend};
-use vtcode_core::ui::{
+use diapason_core::ui::{
     InlineHeaderContext, InlineMessageKind, InlineSegment, InlineTextStyle, InlineTheme, SessionOptions,
     spawn_session_with_options,
 };
+use insta::assert_snapshot;
+use ratatui::{Terminal, backend::TestBackend};
 
 /// Test actual UI rendering with a full terminal backend simulation
 #[test]
@@ -122,7 +122,7 @@ fn test_ui_component_serialization() {
 #[test]
 fn test_header_context_rendering() {
     let context = InlineHeaderContext {
-        app_name: "VT Code".to_string(),
+        app_name: "Diapason".to_string(),
         provider: "openai".to_string(),
         model: "gpt-oss-20b".to_string(),
         context_window_size: None,
@@ -147,7 +147,7 @@ fn test_header_context_rendering() {
     let context_repr = format!("{context:?}");
     assert_snapshot!(
         &context_repr,
-        @"InlineHeaderContext { app_name: \"VT Code\", provider: \"openai\", model: \"gpt-oss-20b\", context_window_size: None, version: \"0.37.1\", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: \"main branch\", reasoning: \"creative\", reasoning_stage: None, workspace_trust: \"trusted\", tools: \"enabled\", mcp: \"available\", primary_agent: None, primary_agent_color: None, highlights: [], subagent_badges: [] }"
+        @"InlineHeaderContext { app_name: \"Diapason\", provider: \"openai\", model: \"gpt-oss-20b\", context_window_size: None, version: \"0.37.1\", search_tools: None, persistent_memory: None, pr_review: None, editor_context: None, git: \"main branch\", reasoning: \"creative\", reasoning_stage: None, workspace_trust: \"trusted\", tools: \"enabled\", mcp: \"available\", primary_agent: None, primary_agent_color: None, highlights: [], subagent_badges: [] }"
     );
 }
 

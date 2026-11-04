@@ -10,7 +10,7 @@ from pathlib import Path
 def cleanup_root_files():
     """Move .md files from root to appropriate directories."""
     
-    base_dir = Path("/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode")
+    base_dir = Path("/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason")
     
     # Mapping of files to their destinations
     file_mappings = {
@@ -18,11 +18,11 @@ def cleanup_root_files():
         "claude_api_skills_tutorial_analysis.md": "docs/skills-enhanced/tutorial-analysis.md",
         "skills_best_practices.md": "docs/skills-enhanced/best-practices.md",
         "skills_usage_guide.md": "docs/skills-enhanced/usage-guide.md",
-        "vtcode_agent_skills_architecture.md": "examples/skills/architecture.md",
-        "vtcode_claude_skills_analysis.md": "docs/skills-enhanced/claude-analysis.md",
-        "vtcode_claude_skills_implementation.md": "docs/skills-enhanced/implementation.md",
-        "vtcode_skills_improvement_guide.md": "docs/skills-enhanced/improvement-guide.md",
-        "vtcode_skills_improvements_proven.md": "docs/skills-enhanced/improvements-proven.md",
+        "diapason_agent_skills_architecture.md": "examples/skills/architecture.md",
+        "diapason_claude_skills_analysis.md": "docs/skills-enhanced/claude-analysis.md",
+        "diapason_claude_skills_implementation.md": "docs/skills-enhanced/implementation.md",
+        "diapason_skills_improvement_guide.md": "docs/skills-enhanced/improvement-guide.md",
+        "diapason_skills_improvements_proven.md": "docs/skills-enhanced/improvements-proven.md",
         "FINAL_SUMMARY.md": "docs/skills-enhanced/final-summary.md",
     }
     

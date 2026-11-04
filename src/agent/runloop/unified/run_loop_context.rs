@@ -3,19 +3,19 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use diapason_config::core::permissions::AgentPermissionsConfig;
+use diapason_core::acp::ToolPermissionCache;
+use diapason_core::config::PermissionsConfig;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::core::trajectory::TrajectoryLogger;
+use diapason_core::llm::provider as uni;
+use diapason_core::tools::{ApprovalRecorder, ToolRegistry, ToolResultCache};
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use hashbrown::{HashMap, HashSet};
 use tokio::sync::RwLock;
-use vtcode_config::core::permissions::AgentPermissionsConfig;
-use vtcode_core::acp::ToolPermissionCache;
-use vtcode_core::config::PermissionsConfig;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::core::trajectory::TrajectoryLogger;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::tools::{ApprovalRecorder, ToolRegistry, ToolResultCache};
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use crate::agent::runloop::mcp_events::McpPanelState;
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
@@ -722,10 +722,10 @@ impl HarnessTurnState {
 
     pub(crate) fn snapshot_turn_diagnostics(
         &self,
-        usage: vtcode_core::exec::events::Usage,
+        usage: diapason_core::exec::events::Usage,
         low_signal_tool_calls: u32,
-    ) -> vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics {
-        vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics {
+    ) -> diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics {
+        diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics {
             usage,
             requested_tool_calls: self.requested_tool_calls,
             admitted_tool_calls: self.admitted_tool_calls,
@@ -1264,7 +1264,7 @@ impl HarnessTurnState {
 
     pub(crate) fn replaceable_task_tracker_count(&self) -> Option<usize> {
         let lines = self.replaceable_task_tracker_block.as_ref()?;
-        vtcode_core::utils::transcript::tail_matches(lines).then_some(lines.len())
+        diapason_core::utils::transcript::tail_matches(lines).then_some(lines.len())
     }
 
     pub(crate) fn remember_task_tracker_block(&mut self, lines: Vec<String>) {
@@ -1489,8 +1489,8 @@ fn bounded_preview_string(value: &str, limit: usize) -> String {
 }
 
 fn bounded_diagnosis_preview(value: &str, limit: usize) -> String {
-    let ansi_free = vtcode_commons::ansi::strip_ansi(value);
-    let sanitized = vtcode_commons::sanitizer::sanitize_provider_diagnostic(ansi_free.as_bytes());
+    let ansi_free = diapason_commons::ansi::strip_ansi(value);
+    let sanitized = diapason_commons::sanitizer::sanitize_provider_diagnostic(ansi_free.as_bytes());
     bounded_preview_string(sanitized.trim(), limit)
 }
 
@@ -1528,7 +1528,7 @@ pub(crate) struct RunLoopContext<'a> {
 
 pub(crate) struct AutoPermissionRuntimeContext<'a> {
     pub config: &'a CoreAgentConfig,
-    pub vt_cfg: Option<&'a VTCodeConfig>,
+    pub vt_cfg: Option<&'a DiapasonConfig>,
     pub provider_client: &'a mut dyn uni::LLMProvider,
     pub working_history: &'a [uni::Message],
 }
@@ -1658,7 +1658,7 @@ mod tests {
             Some("run_pty_cmd"),
             serde_json::json!({
                 "output": "b".repeat(20 * 1024),
-                "spool_path": ".vtcode/context/tool_outputs/run-1.txt",
+                "spool_path": ".diapason/context/tool_outputs/run-1.txt",
                 "spooled_bytes": 20 * 1024,
                 "spool_complete": true,
                 "exit_code": 1,
@@ -1680,7 +1680,7 @@ mod tests {
         );
 
         assert!(second.len() < 2 * 1024);
-        assert!(second.contains(".vtcode/context/tool_outputs/run-1.txt"));
+        assert!(second.contains(".diapason/context/tool_outputs/run-1.txt"));
         assert!(second.contains("\"byte_count\":20480"));
         assert!(second.contains("\"completion_state\":\"complete\""));
         assert!(second.contains("\"exit_code\":1"));

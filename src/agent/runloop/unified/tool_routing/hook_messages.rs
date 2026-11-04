@@ -1,7 +1,7 @@
 use anyhow::Result;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
-use vtcode_core::hooks::{HookMessage, HookMessageLevel};
+use diapason_core::hooks::{HookMessage, HookMessageLevel};
 
 pub(super) fn render_hook_messages(renderer: &mut AnsiRenderer, messages: &[HookMessage]) -> Result<()> {
     for message in messages {

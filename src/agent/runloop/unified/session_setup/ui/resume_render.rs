@@ -1,9 +1,9 @@
 use crate::agent::runloop::ResumeSession;
 use anyhow::Result;
 use chrono::Local;
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 use hashbrown::HashMap;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 pub(super) fn render_resume_state_if_present(
     renderer: &mut AnsiRenderer,
@@ -120,7 +120,7 @@ pub(crate) fn build_structured_resume_lines(
                         .map(str::to_string)
                         .or_else(|| {
                             message.reasoning_details.as_deref().and_then(
-                                vtcode_core::llm::providers::common::extract_reasoning_text_from_detail_values,
+                                diapason_core::llm::providers::common::extract_reasoning_text_from_detail_values,
                             )
                         })
                 } else {
@@ -129,7 +129,7 @@ pub(crate) fn build_structured_resume_lines(
 
                 if let Some(reasoning) = reasoning_text {
                     rendered_any = true;
-                    let compact = vtcode_commons::formatting::compact_reasoning_text(&reasoning);
+                    let compact = diapason_commons::formatting::compact_reasoning_text(&reasoning);
                     lines.push(ResumeRenderLine::new(
                         MessageStyle::Reasoning,
                         if compact.trim().is_empty() { reasoning } else { compact },

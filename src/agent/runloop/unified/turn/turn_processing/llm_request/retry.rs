@@ -1,15 +1,15 @@
-use vtcode_core::llm::provider as uni;
+use diapason_core::llm::provider as uni;
 
-/// Delegate LLM retryability checks to the canonical [`vtcode_commons::ErrorCategory`] classifier.
+/// Delegate LLM retryability checks to the canonical [`diapason_commons::ErrorCategory`] classifier.
 #[cfg(test)]
 pub(super) fn is_retryable_llm_error(message: &str) -> bool {
-    vtcode_commons::is_retryable_llm_error_message(message)
+    diapason_commons::is_retryable_llm_error_message(message)
 }
 
-/// Classify an LLM error message into an [`vtcode_commons::ErrorCategory`] for
+/// Classify an LLM error message into an [`diapason_commons::ErrorCategory`] for
 /// structured logging and user-facing hints.
-pub(super) fn classify_llm_error(message: &str) -> vtcode_commons::ErrorCategory {
-    vtcode_commons::classify_error_message(message)
+pub(super) fn classify_llm_error(message: &str) -> diapason_commons::ErrorCategory {
+    diapason_commons::classify_error_message(message)
 }
 
 const STREAM_TIMEOUT_FALLBACK_PROVIDERS: &[&str] = &[

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Release asset helpers for the legacy updater compatibility bridge.
 #
-# Broken `self_update` 1.0.0-rc.6 updaters (VT Code v0.141.0-v0.141.4) cannot
+# Broken `self_update` 1.0.0-rc.6 updaters (Diapason v0.141.0-v0.141.4) cannot
 # extract gzip tar archives: they were built with the `archive-tar` feature but
 # NOT `compression-tar-gz`, so a real `.tar.gz` fails with
 # `CompressionNotEnabledError: 'gz' compression not supported`.
@@ -15,18 +15,18 @@
 #   3. The downloaded file is saved under the asset's own name, and
 #      `detect_archive` reads the FINAL path extension. Anything other than
 #      zip/tar/tgz/gz -> `ArchiveKind::Plain(None)`, and `extract_file` then
-#      copies the raw bytes verbatim to `<dir>/vtcode` -- no gzip feature used.
+#      copies the raw bytes verbatim to `<dir>/diapason` -- no gzip feature used.
 #
 # The compatibility asset is a raw executable named
-# `compat-vtcode-<v>-<target>.tar.gz.compat`. It contains the `{target}.tar.gz`
+# `compat-diapason-<v>-<target>.tar.gz.compat`. It contains the `{target}.tar.gz`
 # substring (so the legacy identifier matches it) and its final extension is
 # `.compat` (so it is treated as a plain binary). Crucially, the `compat-`
-# prefix sorts BEFORE `vtcode-` (`c` < `v`), so it is the alphabetically-first
+# prefix sorts BEFORE `diapason-` (`c` < `v`), so it is the alphabetically-first
 # match and the legacy updater picks it instead of the broken `.tar.gz`.
 #
 # The v0.141.5+ updater ignores these assets: its matcher requires the name to
-# `starts_with("vtcode-")` AND `ends_with("{target}.tar.gz" | "{target}.zip")`,
-# and `compat-vtcode-...tar.gz.compat` matches neither, so it selects the real
+# `starts_with("diapason-")` AND `ends_with("{target}.tar.gz" | "{target}.zip")`,
+# and `compat-diapason-...tar.gz.compat` matches neither, so it selects the real
 # archive. Both generations therefore install byte-identical binaries.
 #
 # These helpers derive the raw compatibility executables from the same normal
@@ -41,7 +41,7 @@
 #
 # Both `.tar.gz` (macOS/Linux) and `.zip` (Windows) archives map to a
 # `compat-<stem>.tar.gz.compat` asset. The `compat-` prefix is load-bearing:
-# it makes the asset sort before `vtcode-<v>-<target>.tar.gz` so the legacy
+# it makes the asset sort before `diapason-<v>-<target>.tar.gz` so the legacy
 # updater's alphabetically-first `find()` picks the raw binary. Returns
 # nonzero on an unsupported archive extension.
 compatibility_asset_path() {
@@ -68,7 +68,7 @@ compatibility_asset_path() {
 #
 #   create_compatibility_asset <archive> <output>
 #
-# The archive must contain exactly one `vtcode` (Unix) or `vtcode.exe`
+# The archive must contain exactly one `diapason` (Unix) or `diapason.exe`
 # (Windows) entry at any path. Rejects unsupported suffixes, missing binaries,
 # empty output, and multiple matching binary entries.
 create_compatibility_asset() {
@@ -83,9 +83,9 @@ create_compatibility_asset() {
 
     local binary
     if [[ "$name" == *.tar.gz ]]; then
-        binary="vtcode"
+        binary="diapason"
     elif [[ "$name" == *.zip ]]; then
-        binary="vtcode.exe"
+        binary="diapason.exe"
     else
         echo "unsupported archive extension: $name (expected .tar.gz or .zip)" >&2
         return 1
@@ -192,9 +192,9 @@ validate_release_assets() {
     for item in "${required_targets[@]}"; do
         target="${item%%:*}"
         ext="${item##*:}"
-        archive="vtcode-${version}-${target}.${ext}"
-        compat="compat-vtcode-${version}-${target}.tar.gz.compat"
-        checksum="vtcode-${version}-${target}.sha256"
+        archive="diapason-${version}-${target}.${ext}"
+        compat="compat-diapason-${version}-${target}.tar.gz.compat"
+        checksum="diapason-${version}-${target}.sha256"
         for file in "$compat" "$archive" "$checksum"; do
             if [[ ! -f "$stage_dir/$file" ]]; then
                 echo "missing required release asset: $file" >&2

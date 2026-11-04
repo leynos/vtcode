@@ -1,12 +1,12 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use vtcode_core::core::agent::snapshots::SnapshotTurnContext;
-use vtcode_core::exec::events::HarnessEventKind;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::types::CompactStr;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::utils::session_archive::SessionMessage;
+use diapason_core::core::agent::snapshots::SnapshotTurnContext;
+use diapason_core::exec::events::HarnessEventKind;
+use diapason_core::llm::provider as uni;
+use diapason_core::types::CompactStr;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_core::utils::session_archive::SessionMessage;
 
 use crate::agent::runloop::unified::display::reset_inline_input;
 use crate::agent::runloop::unified::turn::context::{TurnLoopResult, TurnOutcomeContext};
@@ -33,7 +33,7 @@ pub(crate) async fn apply_turn_outcome(outcome: TurnLoopOutcome, ctx: TurnOutcom
     match outcome.result {
         TurnLoopResult::Cancelled => {
             if ctx.ctrl_c_state.is_exit_requested() {
-                *ctx.session_end_reason = vtcode_core::hooks::SessionEndReason::Exit;
+                *ctx.session_end_reason = diapason_core::hooks::SessionEndReason::Exit;
                 return Ok(());
             }
             ctx.renderer.line_if_not_empty(MessageStyle::Output)?;
@@ -41,14 +41,14 @@ pub(crate) async fn apply_turn_outcome(outcome: TurnLoopOutcome, ctx: TurnOutcom
                 .line(MessageStyle::Info, "Interrupted current task. Press Esc, Ctrl+C, or /stop again to exit.")?;
             reset_inline_input(
                 ctx.handle,
-                Some(vtcode_config::constants::ui::CHAT_INPUT_PLACEHOLDER_INTERRUPTED.to_owned()),
+                Some(diapason_config::constants::ui::CHAT_INPUT_PLACEHOLDER_INTERRUPTED.to_owned()),
             );
             ctx.ctrl_c_state.mark_cancel_handled();
-            *ctx.session_end_reason = vtcode_core::hooks::SessionEndReason::Cancelled;
+            *ctx.session_end_reason = diapason_core::hooks::SessionEndReason::Cancelled;
             Ok(())
         }
         TurnLoopResult::Exit => {
-            *ctx.session_end_reason = vtcode_core::hooks::SessionEndReason::Exit;
+            *ctx.session_end_reason = diapason_core::hooks::SessionEndReason::Exit;
             Ok(())
         }
         TurnLoopResult::Aborted => {
@@ -128,9 +128,9 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
+    use diapason_core::utils::ansi::AnsiRenderer;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle};
     use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-    use vtcode_core::utils::ansi::AnsiRenderer;
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle};
 
     use super::*;
     use crate::agent::runloop::unified::state::CtrlCState;
@@ -167,7 +167,7 @@ mod tests {
         let (handle, mut renderer, mut receiver) = renderer_with_channel();
         let ctrl_c_state = Arc::new(CtrlCState::new());
         let default_placeholder = None;
-        let mut session_end_reason = vtcode_core::hooks::SessionEndReason::Completed;
+        let mut session_end_reason = diapason_core::hooks::SessionEndReason::Completed;
         let mut next_checkpoint_turn = 1usize;
         let mut conversation_history = Vec::new();
         let outcome = TurnLoopOutcome {
@@ -205,7 +205,7 @@ mod tests {
         .await
         .expect("apply blocked outcome");
 
-        assert!(matches!(session_end_reason, vtcode_core::hooks::SessionEndReason::Completed));
+        assert!(matches!(session_end_reason, diapason_core::hooks::SessionEndReason::Completed));
         let mut saw_clear_input = false;
         let mut saw_default_placeholder = false;
         while let Ok(command) = receiver.try_recv() {
@@ -224,7 +224,7 @@ mod tests {
         let (handle, mut renderer, mut receiver) = renderer_with_channel();
         let ctrl_c_state = Arc::new(CtrlCState::new());
         let default_placeholder = None;
-        let mut session_end_reason = vtcode_core::hooks::SessionEndReason::Completed;
+        let mut session_end_reason = diapason_core::hooks::SessionEndReason::Completed;
         let mut next_checkpoint_turn = 1usize;
         let mut conversation_history = Vec::new();
         let outcome = TurnLoopOutcome {
@@ -272,7 +272,7 @@ mod tests {
         let (handle, mut renderer, mut receiver) = renderer_with_channel();
         let ctrl_c_state = Arc::new(CtrlCState::new());
         let default_placeholder = None;
-        let mut session_end_reason = vtcode_core::hooks::SessionEndReason::Completed;
+        let mut session_end_reason = diapason_core::hooks::SessionEndReason::Completed;
         let mut next_checkpoint_turn = 1usize;
         let mut conversation_history = Vec::new();
         let outcome = TurnLoopOutcome {
@@ -320,7 +320,7 @@ mod tests {
         let (handle, mut renderer, mut receiver) = renderer_with_channel();
         let ctrl_c_state = Arc::new(CtrlCState::new());
         let default_placeholder = None;
-        let mut session_end_reason = vtcode_core::hooks::SessionEndReason::Completed;
+        let mut session_end_reason = diapason_core::hooks::SessionEndReason::Completed;
         let mut next_checkpoint_turn = 1usize;
         let mut conversation_history = Vec::new();
         let outcome = TurnLoopOutcome {

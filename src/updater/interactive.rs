@@ -2,13 +2,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use tokio::sync::Notify;
-use vtcode_core::tools::terminal_app::{TerminalAppLauncher, TerminalCommandStrategy};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::{
+use diapason_core::tools::terminal_app::{TerminalAppLauncher, TerminalCommandStrategy};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::{
     InlineHandle, InlineHeaderContext, InlineHeaderHighlight, InlineListItem, InlineListSelection, InlineMessageKind,
     InlineSegment, InlineSession, InlineTextStyle, ListOverlayRequest, TransientRequest, TransientSubmission,
 };
+use tokio::sync::Notify;
 
 use crate::agent::runloop::unified::overlay_prompt::{OverlayWaitOutcome, show_overlay_and_wait};
 use crate::agent::runloop::unified::state::CtrlCState;
@@ -61,7 +61,7 @@ pub(crate) fn append_notice_highlight(highlights: &mut Vec<InlineHeaderHighlight
 fn format_update_banner(notice: &StartupUpdateNotice, _use_unicode: bool) -> String {
     let lines = [
         format!("Update available! {} -> {}", notice.current_version, notice.latest_version),
-        "Run /update install, or `vtcode update` from the CLI, to update.".to_string(),
+        "Run /update install, or `diapason update` from the CLI, to update.".to_string(),
         String::new(),
         "See full release notes:".to_string(),
         Updater::release_url(&notice.latest_version),
@@ -92,10 +92,10 @@ pub(crate) fn display_release_notes(handle: &InlineHandle, version: &semver::Ver
 
 fn format_release_notes_text(version: &semver::Version, highlights: &[String]) -> String {
     if highlights.is_empty() {
-        return format!("VT Code v{}\n\nSee full release notes:\n{}", version, Updater::release_url(version));
+        return format!("Diapason v{}\n\nSee full release notes:\n{}", version, Updater::release_url(version));
     }
 
-    let mut lines = vec![format!("VT Code v{}", version)];
+    let mut lines = vec![format!("Diapason v{}", version)];
     lines.push(String::new());
     for item in highlights {
         lines.push(format!(" {item}"));
@@ -107,16 +107,17 @@ fn build_update_prompt_request(notice: &StartupUpdateNotice) -> TransientRequest
     TransientRequest::List(ListOverlayRequest {
         title: "Update available".to_string(),
         lines: vec![
-            format!("VT Code {} -> {}", notice.current_version, notice.latest_version),
+            format!("Diapason {} -> {}", notice.current_version, notice.latest_version),
             format!("Release notes: {}", Updater::release_url(&notice.latest_version)),
         ],
         footer_hint: Some(
-            "Choose update and restart, stay on the current version, or run `vtcode update` from the CLI.".to_string(),
+            "Choose update and restart, stay on the current version, or run `diapason update` from the CLI."
+                .to_string(),
         ),
         items: vec![
             InlineListItem {
                 title: "Update and restart".to_string(),
-                subtitle: Some("Run the documented install command and relaunch VT Code.".to_string()),
+                subtitle: Some("Run the documented install command and relaunch Diapason.".to_string()),
                 badge: Some("Recommended".to_string()),
                 indent: 0,
                 selection: Some(InlineListSelection::ConfigAction(UPDATE_AND_RESTART_ACTION.to_string())),
@@ -124,7 +125,7 @@ fn build_update_prompt_request(notice: &StartupUpdateNotice) -> TransientRequest
             },
             InlineListItem {
                 title: "Stay on current version".to_string(),
-                subtitle: Some("Dismiss for now. Run `vtcode update` when ready.".to_string()),
+                subtitle: Some("Dismiss for now. Run `diapason update` when ready.".to_string()),
                 badge: None,
                 indent: 0,
                 selection: Some(InlineListSelection::ConfigAction(STAY_CURRENT_ACTION.to_string())),
@@ -254,7 +255,7 @@ pub(crate) async fn execute_inline_update(
 
     renderer.line(
         MessageStyle::Info,
-        &format!("Updating VT Code {} -> {} ...", notice.current_version, notice.latest_version),
+        &format!("Updating Diapason {} -> {} ...", notice.current_version, notice.latest_version),
     )?;
 
     let updater = Updater::new(&notice.current_version.to_string())?;
@@ -293,7 +294,7 @@ pub(crate) async fn execute_inline_update(
         Ok(InstallOutcome::Updated(version)) => {
             let _ = super::cache::clear_dismissed_version();
             queue_runtime_relaunch(relaunch_preference(notice));
-            renderer.line(MessageStyle::Info, &format!("Update installed (v{version}). Restarting VT Code..."))?;
+            renderer.line(MessageStyle::Info, &format!("Update installed (v{version}). Restarting Diapason..."))?;
             Ok(InlineUpdateOutcome::RestartRequested)
         }
         Ok(InstallOutcome::UpToDate(version)) => {
@@ -325,7 +326,7 @@ fn execute_managed_update(
     match result {
         Ok(command_result) if command_result.success => {
             queue_runtime_relaunch(relaunch_preference(notice));
-            renderer.line(MessageStyle::Info, "Update installed. Restarting VT Code...")?;
+            renderer.line(MessageStyle::Info, "Update installed. Restarting Diapason...")?;
             Ok(InlineUpdateOutcome::RestartRequested)
         }
         Ok(command_result) => {
@@ -346,9 +347,9 @@ fn execute_managed_update(
 mod tests {
     use super::*;
     use crate::agent::runloop::unified::overlay_prompt::OverlayWaitOutcome;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle};
     use semver::Version;
     use tokio::sync::mpsc;
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle};
 
     fn sample_notice() -> StartupUpdateNotice {
         let updater = Updater::new("0.111.0").expect("updater");
@@ -362,9 +363,9 @@ mod tests {
     #[test]
     fn banner_uses_release_specific_url() {
         let banner = format_update_banner(&sample_notice(), true);
-        assert!(banner.contains("https://github.com/vinhnx/vtcode/releases/tag/0.113.0"));
+        assert!(banner.contains("https://github.com/leynos/vtcode/releases/tag/0.113.0"));
         assert!(banner.contains("0.111.0 -> 0.113.0"));
-        assert!(banner.contains("vtcode update"));
+        assert!(banner.contains("diapason update"));
     }
 
     #[test]

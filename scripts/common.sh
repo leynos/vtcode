@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Common utilities and configuration for VT Code scripts
+# Common utilities and configuration for Diapason scripts
 
 # Colors
 RED='\033[0;31m'
@@ -18,8 +18,8 @@ export CARGO_NET_RETRY=${CARGO_NET_RETRY:-5}
 
 # Disable OS keyring access during checks/tests so test binaries do not trigger
 # repeated macOS Keychain authorization prompts. Credential code falls back to
-# encrypted-file storage. Override by exporting VTCODE_DISABLE_KEYRING=0 first.
-export VTCODE_DISABLE_KEYRING=${VTCODE_DISABLE_KEYRING:-1}
+# encrypted-file storage. Override by exporting DIAPASON_DISABLE_KEYRING=0 first.
+export DIAPASON_DISABLE_KEYRING=${DIAPASON_DISABLE_KEYRING:-1}
 
 # Logging functions
 print_info() {

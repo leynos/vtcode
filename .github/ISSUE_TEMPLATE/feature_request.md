@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for VT Code
+about: Suggest an idea for Diapason
 title: '[Feature]: '
 labels: enhancement
 assignees: ''

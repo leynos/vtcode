@@ -2,16 +2,16 @@ use anyhow::Result;
 use std::sync::Arc;
 use std::time::Instant;
 
-use vtcode_core::config::ToolDocumentationMode;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::ToolDocumentationMode;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use crate::agent::runloop::unified::async_mcp_manager::{AsyncMcpManager, McpInitStatus};
 use crate::agent::runloop::unified::mcp_tool_manager::McpToolManager;
 use crate::agent::runloop::unified::session_setup::active_deferred_tool_policy;
 use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
-use vtcode_core::config::loader::VTCodeConfig;
+use diapason_core::config::loader::DiapasonConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RefreshDecision {
@@ -36,11 +36,11 @@ fn decide_refresh_action(pending_refresh: bool, tool_list_changed: bool) -> Refr
 )]
 pub(crate) async fn handle_mcp_updates(
     mcp_manager: &AsyncMcpManager,
-    tool_registry: &mut vtcode_core::tools::registry::ToolRegistry,
+    tool_registry: &mut diapason_core::tools::registry::ToolRegistry,
     tools: &Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
     tool_catalog: &ToolCatalogState,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     provider_client: &dyn uni::LLMProvider,
     tool_documentation_mode: ToolDocumentationMode,
     renderer: &mut AnsiRenderer,

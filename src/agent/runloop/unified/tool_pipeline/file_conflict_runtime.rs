@@ -1,6 +1,6 @@
+use diapason_core::tools::edited_file_monitor::{FILE_CONFLICT_DETECTED_FIELD, FILE_CONFLICT_PATH_FIELD};
+use diapason_core::tools::tool_intent::is_edited_file_conflict_guarded_call;
 use serde_json::Value;
-use vtcode_core::tools::edited_file_monitor::{FILE_CONFLICT_DETECTED_FIELD, FILE_CONFLICT_PATH_FIELD};
-use vtcode_core::tools::tool_intent::is_edited_file_conflict_guarded_call;
 
 use super::status::ToolExecutionStatus;
 
@@ -80,8 +80,8 @@ pub(super) fn into_runtime_tool_execution(
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::constants::tools;
     use serde_json::json;
-    use vtcode_core::config::constants::tools;
 
     use super::{RuntimeToolExecution, into_runtime_tool_execution};
     use crate::agent::runloop::unified::tool_pipeline::ToolExecutionStatus;

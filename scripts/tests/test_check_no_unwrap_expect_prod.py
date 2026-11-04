@@ -17,7 +17,7 @@ class TestPathClassification(unittest.TestCase):
     def test_nested_test_support_module_is_excluded(self) -> None:
         support_path = (
             scanner.REPO_ROOT
-            / "crates/codegen/vtcode-acp/src/zed/agent/tool_config_tests/support.rs"
+            / "crates/codegen/diapason-acp/src/zed/agent/tool_config_tests/support.rs"
         )
 
         self.assertTrue(scanner.is_test_path(support_path))
@@ -25,7 +25,7 @@ class TestPathClassification(unittest.TestCase):
     def test_production_rust_module_remains_scanned(self) -> None:
         production_path = (
             scanner.REPO_ROOT
-            / "crates/codegen/vtcode-acp/src/zed/provider_runtime.rs"
+            / "crates/codegen/diapason-acp/src/zed/provider_runtime.rs"
         )
 
         self.assertFalse(scanner.is_test_path(production_path))

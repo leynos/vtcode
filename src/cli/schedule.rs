@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use chrono::Local;
-use vtcode_core::cli::args::{ScheduleCreateArgs, ScheduleSubcommand};
-use vtcode_core::scheduler::{
+use diapason_core::cli::args::{ScheduleCreateArgs, ScheduleSubcommand};
+use diapason_core::scheduler::{
     DURABLE_SCHEDULER_RUNTIME_HINT, DurableTaskStore, ScheduleCreateInput, SchedulerDaemon, durable_task_is_overdue,
     install_service_file, scheduled_tasks_enabled, uninstall_service_file,
 };
@@ -37,7 +37,7 @@ async fn handle_create(startup: &StartupContext, args: ScheduleCreateArgs) -> Re
         println!("Next run: {}", next_run_at.with_timezone(&Local).format("%Y-%m-%d %H:%M:%S"));
     }
     println!("{DURABLE_SCHEDULER_RUNTIME_HINT}");
-    println!("Use `vtcode schedule install-service` to keep durable tasks running after restart.");
+    println!("Use `diapason schedule install-service` to keep durable tasks running after restart.");
     Ok(())
 }
 
@@ -85,10 +85,10 @@ async fn handle_delete(startup: &StartupContext, id: &str) -> Result<()> {
 
 async fn handle_serve(startup: &StartupContext) -> Result<()> {
     ensure_scheduler_enabled(startup)?;
-    vtcode_core::notifications::apply_global_notification_config_from_vtcode(&startup.config)?;
+    diapason_core::notifications::apply_global_notification_config_from_diapason(&startup.config)?;
     let store = DurableTaskStore::new_default()?;
     let executable = std::env::current_exe()?;
-    println!("VT Code scheduler daemon running.");
+    println!("Diapason scheduler daemon running.");
     println!("Executable: {}", executable.display());
     let daemon = SchedulerDaemon::new(store, executable);
     daemon.serve_forever().await
@@ -100,20 +100,20 @@ async fn handle_install_service(startup: &StartupContext) -> Result<()> {
     let plan = install_service_file(&executable)?;
     println!("Installed scheduler service file at {}", plan.path.display());
     match plan.manager {
-        vtcode_core::scheduler::ServiceManager::Launchd => {
+        diapason_core::scheduler::ServiceManager::Launchd => {
             println!(
                 "Next step: run `launchctl bootstrap gui/$(id -u) {}`",
                 shell_words::quote(plan.path.display().to_string().as_str())
             );
         }
-        vtcode_core::scheduler::ServiceManager::SystemdUser => {
+        diapason_core::scheduler::ServiceManager::SystemdUser => {
             println!("Next step: run `systemctl --user daemon-reload`");
             println!(
                 "Then run: `systemctl --user enable --now {}`",
                 plan.path
                     .file_name()
                     .and_then(|value| value.to_str())
-                    .unwrap_or("vtcode-scheduler.service")
+                    .unwrap_or("diapason-scheduler.service")
             );
         }
     }
@@ -128,14 +128,14 @@ async fn handle_uninstall_service() -> Result<()> {
             println!("Scheduler service file is not installed.");
         }
         match manager {
-            vtcode_core::scheduler::ServiceManager::Launchd => {
+            diapason_core::scheduler::ServiceManager::Launchd => {
                 println!(
                     "If the service is loaded, run `launchctl bootout gui/$(id -u) {}`.",
                     shell_words::quote(path.display().to_string().as_str())
                 );
             }
-            vtcode_core::scheduler::ServiceManager::SystemdUser => {
-                println!("If the service is enabled, run `systemctl --user disable --now vtcode-scheduler.service`.");
+            diapason_core::scheduler::ServiceManager::SystemdUser => {
+                println!("If the service is enabled, run `systemctl --user disable --now diapason-scheduler.service`.");
             }
         }
         return Ok(());
@@ -149,7 +149,7 @@ fn ensure_scheduler_enabled(startup: &StartupContext) -> Result<()> {
     if scheduled_tasks_enabled(startup.config.automation.scheduled_tasks.enabled) {
         return Ok(());
     }
-    bail!("Scheduled tasks are disabled. Enable [automation.scheduled_tasks].enabled or unset VTCODE_DISABLE_CRON.")
+    bail!("Scheduled tasks are disabled. Enable [automation.scheduled_tasks].enabled or unset DIAPASON_DISABLE_CRON.")
 }
 
 fn schedule_create_input(args: ScheduleCreateArgs) -> ScheduleCreateInput {

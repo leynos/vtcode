@@ -1,5 +1,5 @@
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
-use vtcode_core::llm::provider::{Message, ToolDefinition};
+use diapason_core::llm::provider::{Message, ToolDefinition};
 
 #[derive(Copy, Clone)]
 pub(super) struct ToolCatalogCacheMetrics<'a> {
@@ -21,7 +21,7 @@ pub(super) struct ToolCatalogCacheMetrics<'a> {
 
 pub(super) fn emit_tool_catalog_cache_metrics(ctx: &TurnProcessingContext<'_>, metrics: ToolCatalogCacheMetrics<'_>) {
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         metric = "tool_catalog_cache",
         run_id = %ctx.harness_state.run_id.0,
         turn_id = %ctx.harness_state.turn_id.0,
@@ -106,7 +106,7 @@ pub(super) fn emit_llm_retry_metrics(
     let retries_used = attempts_made.saturating_sub(1);
     let exhausted_retry_budget = !success && attempts_made >= max_retries;
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         metric = "llm_retry_outcome",
         run_id = %ctx.harness_state.run_id.0,
         turn_id = %ctx.harness_state.turn_id.0,
@@ -209,7 +209,7 @@ pub(super) struct TokenBudgetBreakdown<'a> {
 
 pub(super) fn emit_token_budget_breakdown(ctx: &TurnProcessingContext<'_>, breakdown: TokenBudgetBreakdown<'_>) {
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         metric = "token_budget_breakdown",
         run_id = %ctx.harness_state.run_id.0,
         turn_id = %ctx.harness_state.turn_id.0,

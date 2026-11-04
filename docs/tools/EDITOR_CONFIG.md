@@ -23,7 +23,7 @@ The guided setup is available from the TUI:
 - In the custom-command step, pressing `Enter` on an empty inline input keeps
   the displayed default command.
 
-Editor settings are configured in the `[tools.editor]` section of `vtcode.toml`:
+Editor settings are configured in the `[tools.editor]` section of `config.toml`:
 
 ```toml
 [tools.editor]
@@ -35,13 +35,13 @@ enabled = true
 # Examples: "vim", "nvim", "emacs", "nano", "code", "code --wait", "zed", "subl -w"
 preferred_editor = ""
 
-# Suspend the TUI while VT Code is waiting on the editor process
+# Suspend the TUI while Diapason is waiting on the editor process
 suspend_tui = true
 ```
 
 ## Editor Detection Order
 
-When no `preferred_editor` is specified, VT Code uses a two-stage detection
+When no `preferred_editor` is specified, Diapason uses a two-stage detection
 process:
 
 ### Stage 1: Environment Variables (Primary)
@@ -51,7 +51,7 @@ process:
 
 ### Stage 2: Fallback Detection (if Stage 1 fails)
 
-If neither environment variable is set, VT Code tries common editors in PATH:
+If neither environment variable is set, Diapason tries common editors in PATH:
 
 **Unix/Linux/macOS:**
 
@@ -86,7 +86,7 @@ returned and inserted into your input when you save and close the editor.
 
 Opens `src/main.rs` in your preferred editor.
 
-For real file opens, VT Code launches GUI editors immediately and returns
+For real file opens, Diapason launches GUI editors immediately and returns
 without waiting, even while an agent turn is active. Single-click transcript
 and modal links use a bounded out-of-band request queue, so they do not become
 `/edit` prompts. VS Code opens use `--reuse-window` and preserve supported
@@ -94,9 +94,9 @@ line/column targets. Duplicate clicks for the same target are coalesced while a
 launch is pending.
 
 If your selected editor is terminal-based (for example `vim`/`nvim`) and
-`suspend_tui = true`, VT Code uses the serialized suspend-and-wait path and
+`suspend_tui = true`, Diapason uses the serialized suspend-and-wait path and
 resumes the TUI after the editor closes. Temporary-file `/edit` flows still
-wait because VT Code has to read edited content back into the composer.
+wait because Diapason has to read edited content back into the composer.
 
 Single-clicking a file path in the transcript or a modal uses the same editor
 workflow and respects configured line and column targets when the selected
@@ -130,7 +130,7 @@ $env:VISUAL = "code"
 
 ### Via Configuration File
 
-Edit `vtcode.toml`:
+Edit `config.toml`:
 
 ```toml
 [tools.editor]
@@ -179,8 +179,8 @@ Code and external editors.
 
 ### "Failed to detect editor" error
 
-This error means no editor was found. VT Code checks both environment variables
-and fallback editors.
+This error means no editor was found. Diapason checks both environment
+variables and fallback editors.
 
 **Solution (choose one):**
 
@@ -205,7 +205,7 @@ and fallback editors.
     which nano
     ```
 
-3. **Explicitly configure in vtcode.toml**:
+3. **Explicitly configure in config.toml**:
 
     ```toml
     [tools.editor]
@@ -246,7 +246,7 @@ When using `/edit` without a file argument:
 Ensure you actually save the file in your editor (e.g., `:w` in vim) before
 closing.
 
-## Integration with VT Code Features
+## Integration with Diapason Features
 
 The `/edit` command works with:
 
@@ -259,5 +259,5 @@ The `/edit` command works with:
 ## See Also
 
 - [editor-command crate documentation](https://docs.rs/editor-command/latest/editor_command/)
-- [VT Code configuration guide](../config/CONFIGURATION_PRECEDENCE.md)
+- [Diapason configuration guide](../config/CONFIGURATION_PRECEDENCE.md)
 - [Tools overview](./TOOL_SPECS.md)

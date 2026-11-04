@@ -3,25 +3,25 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use anyhow::Result;
+use diapason_commons::ui_protocol::ActivityState;
+use diapason_config::loader::SimpleConfigWatcher;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::runtime::AgentRuntime;
+use diapason_core::core::agent::session::AgentSessionState;
+use diapason_core::core::agent::steering::SteeringMessage;
+use diapason_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::exec::events::ThreadCompletionSubtype;
+use diapason_core::hooks::{SessionEndReason, SessionStartTrigger};
+use diapason_core::llm::provider::MessageRole;
+use diapason_core::session::SessionId;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_core::utils::session_archive;
+use diapason_core::utils::session_archive::{SessionMessage, SessionProgressArgs};
+use diapason_ui::tui::app::ArchivedPromptEntry;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep, timeout};
 use tokio_util::sync::CancellationToken;
-use vtcode_commons::ui_protocol::ActivityState;
-use vtcode_config::loader::SimpleConfigWatcher;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::runtime::AgentRuntime;
-use vtcode_core::core::agent::session::AgentSessionState;
-use vtcode_core::core::agent::steering::SteeringMessage;
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
-use vtcode_core::exec::events::ThreadCompletionSubtype;
-use vtcode_core::hooks::{SessionEndReason, SessionStartTrigger};
-use vtcode_core::llm::provider::MessageRole;
-use vtcode_core::session::SessionId;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::utils::session_archive;
-use vtcode_core::utils::session_archive::{SessionMessage, SessionProgressArgs};
-use vtcode_ui::tui::app::ArchivedPromptEntry;
 
 use super::super::{CancelGuard, RECENT_MESSAGE_LIMIT, TerminalCleanupGuard, extract_idle_config};
 use super::archive::{create_session_archive, refresh_runtime_debug_context_for_next_session, workspace_archive_label};
@@ -112,7 +112,7 @@ pub(super) fn resolve_thread_completion_status(
 #[cfg_attr(feature = "profiling", hotpath::measure)]
 pub(crate) async fn run_single_agent_loop_unified_impl(
     config: &CoreAgentConfig,
-    initial_vt_cfg: Option<VTCodeConfig>,
+    initial_vt_cfg: Option<DiapasonConfig>,
     skip_confirmations: bool,
     full_auto: bool,
     primary_agent_explicitly_configured: bool,
@@ -150,8 +150,8 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
             }
         });
         let active_thread_label = resume_ref.map_or("main", ResumeSession::thread_label);
-        let thread_manager = vtcode_core::core::threads::ThreadManager::new();
-        let archive_metadata = vtcode_core::core::threads::build_thread_archive_metadata(
+        let thread_manager = diapason_core::core::threads::ThreadManager::new();
+        let archive_metadata = diapason_core::core::threads::build_thread_archive_metadata(
             &config.workspace,
             &config.model,
             &config.provider,
@@ -170,7 +170,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
         };
         let (thread_handle, mut session_archive) = if let Some(resume) = resume_ref {
             if history_enabled {
-                let mut prepared = vtcode_core::core::threads::prepare_archived_session(
+                let mut prepared = diapason_core::core::threads::prepare_archived_session(
                     resume.listing().clone(),
                     config.workspace.clone(),
                     archive_metadata.clone(),
@@ -231,7 +231,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
             } else {
                 session_archive::generate_session_archive_identifier(&workspace_archive_label(&config.workspace), None)
             };
-            let bootstrap = vtcode_core::core::threads::ThreadBootstrap::new(Some(archive_metadata.clone()));
+            let bootstrap = diapason_core::core::threads::ThreadBootstrap::new(Some(archive_metadata.clone()));
             let archive = if history_enabled {
                 Some(create_session_archive(archive_metadata.clone(), Some(thread_id.clone())).await?)
             } else {
@@ -245,7 +245,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
         {
             tracing::warn!("Failed to checkpoint session archive at startup: {}", err);
         }
-        let session_setup_phase = vtcode_commons::startup_trace::phase_started();
+        let session_setup_phase = diapason_commons::startup_trace::phase_started();
         let mut session_state = initialize_session(
             &config,
             vt_cfg.as_ref(),
@@ -307,7 +307,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
         )
         .await;
         let ui_setup = harness_try!(ui_setup);
-        vtcode_commons::startup_trace::record_phase("session_setup", session_setup_phase);
+        diapason_commons::startup_trace::record_phase("session_setup", session_setup_phase);
         let mut renderer = ui_setup.renderer;
         let mut session = ui_setup.session;
         let handle = ui_setup.handle;
@@ -364,12 +364,12 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
         let max_tool_loops = vt_cfg
             .as_ref()
             .map(|cfg| cfg.tools.max_tool_loops)
-            .unwrap_or(vtcode_config::constants::tool_limits::DEFAULT_MAX_TOOL_LOOPS);
+            .unwrap_or(diapason_config::constants::tool_limits::DEFAULT_MAX_TOOL_LOOPS);
         let effective_model = crate::agent::runloop::unified::turn::turn_processing::resolve_effective_request_model(
             &config.model,
             active_primary_agent.active(),
         );
-        let max_context_tokens = vtcode_core::compaction::effective_context_budget(
+        let max_context_tokens = diapason_core::compaction::effective_context_budget(
             vt_cfg.as_ref(),
             provider_client.as_ref(),
             &effective_model,
@@ -386,7 +386,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
         );
         runtime.state.messages = conversation_history.into();
         let durable_session_id = tool_registry.harness_context_snapshot().session_id;
-        if let Some(envelope) = vtcode_core::compaction::memory_envelope::load_latest_memory_envelope_async(
+        if let Some(envelope) = diapason_core::compaction::memory_envelope::load_latest_memory_envelope_async(
             config.workspace.as_path(),
             &durable_session_id,
         )
@@ -440,7 +440,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                 .metadata
                 .as_ref()
                 .and_then(|metadata| metadata.budget_limit_continuation())
-                .map(|_| vtcode_core::llm::provider::PromptCacheProfile::BudgetContinuation),
+                .map(|_| diapason_core::llm::provider::PromptCacheProfile::BudgetContinuation),
         );
         session_stats.vim_mode_enabled = vt_cfg.as_ref().is_some_and(|cfg| cfg.ui.vim_mode);
         let mut plan_session =
@@ -971,7 +971,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                         runtime
                             .state
                             .messages_mut()
-                            .push(vtcode_core::llm::provider::Message::system(execution_directive));
+                            .push(diapason_core::llm::provider::Message::system(execution_directive));
                         handle.set_activity_state(ActivityState::Building);
                         let (input, prompt_message_index) = append_approved_plan_execution_input(&mut runtime);
                         (input, Some(prompt_message_index))
@@ -1138,7 +1138,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                     planning_active,
                 ) {
                     tracing::warn!(warning = %cross_turn_warning, "Cross-turn loop detector triggered");
-                    working_history.push(vtcode_core::llm::provider::Message::system(cross_turn_warning));
+                    working_history.push(diapason_core::llm::provider::Message::system(cross_turn_warning));
                 }
 
                 agent_touched_paths.extend(
@@ -1254,7 +1254,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                     let color = active_primary_agent.active().color.clone().filter(|c| !c.trim().is_empty());
                     handle.set_primary_agent(Some(display), color);
                     tracing::info!(
-                        target: "vtcode.planning_workflow",
+                        target: "diapason.planning_workflow",
                         agent = %execution_agent,
                         "Switched primary agent after plan approval"
                     );
@@ -1314,7 +1314,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                     runtime
                         .state
                         .messages_mut()
-                        .push(vtcode_core::llm::provider::Message::system(execution_directive));
+                        .push(diapason_core::llm::provider::Message::system(execution_directive));
                     handle.set_activity_state(ActivityState::Building);
                 }
                 if executing_approved_plan {
@@ -1353,7 +1353,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                 });
 
                 last_activity_time = Some(Instant::now());
-                vtcode_core::tools::cache::FILE_CACHE.check_pressure_and_evict().await;
+                diapason_core::tools::cache::FILE_CACHE.check_pressure_and_evict().await;
                 tool_result_cache.write().await.check_pressure_and_evict();
                 let blocked_turn = matches!(&outcome_result, RunLoopTurnLoopResult::Blocked { .. });
                 let mut checkpoint_outcome = SessionCheckpointOutcome::without_archive(blocked_turn);
@@ -1393,7 +1393,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                     } else if session_archive.is_none() || checkpoint_outcome.history_persistence_disabled() {
                         steering.release_in_flight_follow_up_intents_without_persistence();
                     }
-                    vtcode_core::compaction::memory_envelope::SessionMemoryEnvelopeUpdate {
+                    diapason_core::compaction::memory_envelope::SessionMemoryEnvelopeUpdate {
                         pending_intents: Some(steering.pending_follow_up_intents_snapshot()),
                         applied_intent_ids: steering.applied_follow_up_intent_ids().iter().cloned().collect(),
                         ..Default::default()
@@ -1430,7 +1430,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                 match &outcome_result {
                     RunLoopTurnLoopResult::Completed { .. } => {
                         let handoff_resolved =
-                            vtcode_core::core::agent::blocked_handoff::clear_current_blocked_handoff_for_session(
+                            diapason_core::core::agent::blocked_handoff::clear_current_blocked_handoff_for_session(
                                 &config.workspace,
                                 &harness_snapshot.session_id,
                             );
@@ -1438,7 +1438,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
                             Ok(true) => {
                                 if let Some(emitter) = harness_emitter.as_ref() {
                                     let _ = emitter.emit(harness_event(
-                                        vtcode_core::exec::events::HarnessEventKind::BlockedHandoffResolved,
+                                        diapason_core::exec::events::HarnessEventKind::BlockedHandoffResolved,
                                         Some("Blocked handoff resolved".to_owned()),
                                         None,
                                         None,
@@ -1537,7 +1537,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
             super::notifications::emit_session_completion_notification(subtype, session_stats.total_turns()).await;
             if let Err(error) = emitter.finish().await {
                 tracing::error!(
-                    target: "vtcode.harness",
+                    target: "diapason.harness",
                     phase = "canonical_finish",
                     error = %error,
                     "failed to finalize canonical session persistence"
@@ -1556,7 +1556,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
         if !matches!(session_end_reason, SessionEndReason::Exit) {
             match timeout(
                 Duration::from_secs(5),
-                vtcode_core::persistent_memory::finalize_persistent_memory(
+                diapason_core::persistent_memory::finalize_persistent_memory(
                     &config,
                     vt_cfg.as_ref(),
                     &runtime.state.messages,
@@ -1672,8 +1672,8 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
             .and_then(|path| path.file_stem())
             .and_then(|stem| stem.to_str());
         let trust_label = match session_bootstrap.acp_workspace_trust {
-            Some(vtcode_core::config::AgentClientProtocolZedWorkspaceTrustMode::FullAuto) => "full auto",
-            Some(vtcode_core::config::AgentClientProtocolZedWorkspaceTrustMode::ToolsPolicy) => "tools policy",
+            Some(diapason_core::config::AgentClientProtocolZedWorkspaceTrustMode::FullAuto) => "full auto",
+            Some(diapason_core::config::AgentClientProtocolZedWorkspaceTrustMode::ToolsPolicy) => "tools policy",
             None if full_auto => "full auto",
             None => "tools policy",
         };
@@ -1691,11 +1691,11 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
             .unwrap_or_else(|| config.reasoning_effort.as_str().to_string());
         let (code_additions, code_deletions) = code_change_delta.map(|d| (d.additions, d.deletions)).unwrap_or((0, 0));
         if !finalization_succeeded {
-            let _ = vtcode_ui::tui::panic_hook::restore_tui();
+            let _ = diapason_ui::tui::panic_hook::restore_tui();
         }
         let session_total_usage = session_stats.total_usage();
         print_exit_summary(ExitData {
-            app_name: "VT Code",
+            app_name: "Diapason",
             version: env!("CARGO_PKG_VERSION"),
             model: &config.model,
             provider: &provider_label,
@@ -1731,7 +1731,7 @@ pub(crate) async fn run_single_agent_loop_unified_impl(
 
 /// Load user prompts from recent session archives (last 24 hours) and inject
 /// them into the history picker so Ctrl+R can search across sessions.
-async fn load_archived_prompts_for_history(handle: &vtcode_ui::tui::app::InlineHandle) {
+async fn load_archived_prompts_for_history(handle: &diapason_ui::tui::app::InlineHandle) {
     let listings = match session_archive::list_recent_sessions(50).await {
         Ok(listings) => listings,
         Err(_) => return,

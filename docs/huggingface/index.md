@@ -5,9 +5,9 @@ Inference Providers.
 
 ## Featured Integrations
 
-| Tool                   | Description                                                           | Provider Support                   |
-| ---------------------- | --------------------------------------------------------------------- | ---------------------------------- |
-| [VT Code](./vtcode.md) | AI coding agent with semantic code analysis and 53+ specialized tools | Inference API, Dedicated Endpoints |
+| Tool                      | Description                                                           | Provider Support                   |
+| ------------------------- | --------------------------------------------------------------------- | ---------------------------------- |
+| [Diapason](./diapason.md) | AI coding agent with semantic code analysis and 53+ specialized tools | Inference API, Dedicated Endpoints |
 
 ## About This Directory
 
@@ -152,7 +152,7 @@ for chunk in client.chat_stream(messages):
 
 Found a bug or want to improve an integration?
 
-- Open an issue on the [integration's repository](./vtcode.md#support)
+- Open an issue on the [integration's repository](./diapason.md#support)
 - Submit a PR with improvements
 - Share your feedback on
   [Hugging Face discussions](https://github.com/huggingface/hub-docs/discussions)

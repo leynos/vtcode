@@ -10,7 +10,7 @@ the evidence needed for a decision, and synthesize a compact plan instead of
 continuing open-ended research.
 
 This change also fixes the concrete failure captured in turns 985-987. A valid
-shell verification using `target/release/vtcode` was rejected, the model then
+shell verification using `target/release/diapason` was rejected, the model then
 tried to persist the plan through shell redirection, and the read-only gate
 correctly denied that mutation. No canonical plan or task tracker was
 published, so later `continue` messages had nothing approval-ready to execute.
@@ -46,7 +46,7 @@ published, so later `continue` messages had nothing approval-ready to execute.
 ### Discussion-first planning persona
 
 The built-in `plan` and `duck` prompts will share a small discussion-first
-guidance fragment owned by `vtcode-config`. The shared guidance requires the
+guidance fragment owned by `diapason-config`. The shared guidance requires the
 agent to identify ambiguity, ask focused questions, compare relevant options,
 and stop researching when existing evidence supports a decision. Plan-specific
 guidance then adds repository grounding, the canonical plan shape, and the
@@ -56,7 +56,7 @@ The plan prompt must explicitly say that the model never writes the plan file
 with shell or file-editing tools. It emits exactly one `<proposed_plan>` block;
 the runtime validates it, writes the plan and tracker artifacts, and opens the
 approval gate. This removes the ambiguity that caused the model to attempt
-`cat > .vtcode/plans/...` in turn 985.
+`cat > .diapason/plans/...` in turn 985.
 
 The runtime planning guidance will repeat this boundary because primary-agent
 prompts are user-overridable. The compiled system contract, not only the
@@ -82,7 +82,7 @@ Verification parsing will recognize a workspace-relative executable token when
 it contains a path separator and every character is from a conservative path
 alphabet. For example, these are commands:
 
-- `target/release/vtcode --version`
+- `target/release/diapason --version`
 - `scripts/perf/compare.sh before after`
 - `./scripts/check-dev.sh --changed`
 
@@ -152,7 +152,7 @@ include:
 
 - The turn-985 verification shape validates, including a bracket list whose
   second command starts with an environment assignment followed by
-  `target/release/vtcode`.
+  `target/release/diapason`.
 - Unsafe relative-path lookalikes and shell expressions remain invalid.
 - Repair feedback identifies an invalid verification-list ordinal without
   echoing its content.
@@ -174,17 +174,17 @@ discussion-first behavior, canonical persistence boundary, relative command
 validation, and 60-loop planning floor. Update compiled runtime guidance where
 the model-facing contract is defined. After implementation, use the
 `audit-module-agents` skill to determine whether `src/AGENTS.md`,
-`vtcode-core/AGENTS.md`, or `vtcode-config/AGENTS.md` needs a concise invariant
-update.
+`diapason-core/AGENTS.md`, or `diapason-config/AGENTS.md` needs a concise
+invariant update.
 
 ## Expected Files
 
-- `crates/codegen/vtcode-config/src/subagents.rs`
-- `crates/codegen/vtcode-config/src/constants/tool_limits.rs`
-- `crates/codegen/vtcode-core/src/prompts/system.rs`
-- `crates/codegen/vtcode-core/src/prompts/runtime_contract.rs`
-- `crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/artifacts.rs`
-- `crates/codegen/vtcode-core/src/tools/handlers/planning_workflow/mod.rs`
+- `crates/codegen/diapason-config/src/subagents.rs`
+- `crates/codegen/diapason-config/src/constants/tool_limits.rs`
+- `crates/codegen/diapason-core/src/prompts/system.rs`
+- `crates/codegen/diapason-core/src/prompts/runtime_contract.rs`
+- `crates/codegen/diapason-core/src/tools/handlers/planning_workflow/artifacts.rs`
+- `crates/codegen/diapason-core/src/tools/handlers/planning_workflow/mod.rs`
 - Read-only command-classification tests in the existing tool-intent module
 - Planning response/handoff tests under `src/agent/runloop/unified/`
 - `docs/guides/planning-workflow.md`

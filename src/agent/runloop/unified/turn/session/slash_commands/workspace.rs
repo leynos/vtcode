@@ -1,16 +1,16 @@
 use anyhow::{Context, Result};
-use serde::de::DeserializeOwned;
-use vtcode_config::{SubagentSource, SubagentSpec, builtin_subagents};
-use vtcode_core::commands::init::{
+use diapason_config::{SubagentSource, SubagentSpec, builtin_subagents};
+use diapason_core::commands::init::{
     GuidedInitAnswer, GuidedInitAnswers, GuidedInitGrounding, GuidedInitOverwriteState, GuidedInitPlan,
     GuidedInitQuestion, GuidedInitQuestionKey, prepare_guided_init, render_agents_md, write_agents_file,
 };
-use vtcode_core::llm::provider::{AssistantPhase, MessageRole};
-use vtcode_core::subagents::SpawnAgentRequest;
-use vtcode_core::subagents::SubagentStatusEntry;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::{llm::provider::Message, persistent_memory::scaffold_persistent_memory};
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
+use diapason_core::llm::provider::{AssistantPhase, MessageRole};
+use diapason_core::subagents::SpawnAgentRequest;
+use diapason_core::subagents::SubagentStatusEntry;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_core::{llm::provider::Message, persistent_memory::scaffold_persistent_memory};
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
+use serde::de::DeserializeOwned;
 
 use crate::agent::runloop::unified::turn::workspace::{bootstrap_config_files, build_workspace_index};
 use crate::agent::runloop::unified::wizard_modal::{WizardModalOutcome, show_wizard_modal_and_wait};
@@ -20,7 +20,7 @@ use super::{SlashCommandContext, SlashCommandControl, ui};
 const OVERWRITE_PROMPT_ID: &str = "overwrite_agents";
 const INIT_GROUNDING_TIMEOUT_MS: u64 = 120_000;
 const INIT_GROUNDING_AGENT_NAME: &str = "init-grounding-explorer";
-const INIT_GROUNDING_AGENT_PROMPT: &str = r#"You are the VT Code `/init` project grounding explorer.
+const INIT_GROUNDING_AGENT_PROMPT: &str = r#"You are the Diapason `/init` project grounding explorer.
 
 Inspect the repository directly and extract only the agent-facing facts needed to ground `AGENTS.md`.
 Stay read-only, prefer direct repository evidence, and return concise structured results."#;
@@ -52,7 +52,7 @@ pub(crate) async fn handle_initialize_workspace(
     let workspace_label = workspace_path.display().to_string();
 
     ctx.renderer
-        .line(MessageStyle::Info, &format!("Initializing VT Code configuration in {workspace_label}..."))?;
+        .line(MessageStyle::Info, &format!("Initializing Diapason configuration in {workspace_label}..."))?;
 
     let created_files = match bootstrap_config_files(workspace_path.clone(), force).await {
         Ok(files) => files,
@@ -84,7 +84,7 @@ pub(crate) async fn handle_initialize_workspace(
                 Ok(None) => plan,
                 Err(err) => {
                     ctx.renderer
-                        .line(MessageStyle::Info, &format!("Skipped VT Code explorer grounding for `/init`: {err}"))?;
+                        .line(MessageStyle::Info, &format!("Skipped Diapason explorer grounding for `/init`: {err}"))?;
                     plan
                 }
             };
@@ -118,7 +118,7 @@ pub(crate) async fn handle_initialize_workspace(
     match build_workspace_index(workspace_path).await {
         Ok(()) => {
             ctx.renderer
-                .line(MessageStyle::Info, "Workspace indexing complete. Stored under .vtcode/index.")?;
+                .line(MessageStyle::Info, "Workspace indexing complete. Stored under .diapason/index.")?;
         }
         Err(err) => {
             ctx.renderer
@@ -135,11 +135,11 @@ async fn maybe_ground_project_context(ctx: &mut SlashCommandContext<'_>) -> Resu
     };
 
     ctx.renderer
-        .line(MessageStyle::Info, "Grounding project context with VT Code explorer subagent...")?;
+        .line(MessageStyle::Info, "Grounding project context with Diapason explorer subagent...")?;
     let Some(spec) = build_init_grounding_subagent_spec(controller.effective_specs().await.as_slice()) else {
         ctx.renderer.line(
             MessageStyle::Info,
-            "VT Code explorer grounding unavailable: no read-only explorer subagent definition found.",
+            "Diapason explorer grounding unavailable: no read-only explorer subagent definition found.",
         )?;
         return Ok(None);
     };
@@ -158,7 +158,7 @@ async fn maybe_ground_project_context(ctx: &mut SlashCommandContext<'_>) -> Resu
         Ok(spawned) => spawned,
         Err(err) => {
             ctx.renderer
-                .line(MessageStyle::Info, &format!("VT Code explorer grounding unavailable: {err}"))?;
+                .line(MessageStyle::Info, &format!("Diapason explorer grounding unavailable: {err}"))?;
             return Ok(None);
         }
     };
@@ -171,15 +171,17 @@ async fn maybe_ground_project_context(ctx: &mut SlashCommandContext<'_>) -> Resu
 
 async fn wait_for_init_grounding(
     ctx: &mut SlashCommandContext<'_>,
-    controller: &std::sync::Arc<vtcode_core::subagents::SubagentController>,
+    controller: &std::sync::Arc<diapason_core::subagents::SubagentController>,
     spawned: &SubagentStatusEntry,
 ) -> Result<Option<GuidedInitGrounding>> {
     let Some(status) = controller
         .wait(std::slice::from_ref(&spawned.id), Some(INIT_GROUNDING_TIMEOUT_MS))
         .await?
     else {
-        ctx.renderer
-            .line(MessageStyle::Info, "VT Code explorer grounding timed out; continuing with repository heuristics.")?;
+        ctx.renderer.line(
+            MessageStyle::Info,
+            "Diapason explorer grounding timed out; continuing with repository heuristics.",
+        )?;
         return Ok(None);
     };
 
@@ -191,14 +193,14 @@ async fn wait_for_init_grounding(
     };
     if let Some(grounding) = grounding {
         ctx.renderer
-            .line(MessageStyle::Info, "VT Code explorer grounding added repo context to `/init` suggestions.")?;
+            .line(MessageStyle::Info, "Diapason explorer grounding added repo context to `/init` suggestions.")?;
         return Ok(Some(grounding));
     }
 
     let status_message = status.error.as_deref().unwrap_or_else(|| status.status.as_str());
     ctx.renderer.line(
         MessageStyle::Info,
-        &format!("VT Code explorer grounding finished without usable structured output ({status_message})."),
+        &format!("Diapason explorer grounding finished without usable structured output ({status_message})."),
     )?;
     Ok(None)
 }
@@ -210,7 +212,7 @@ fn build_init_grounding_subagent_spec(effective_specs: &[SubagentSpec]) -> Optio
         .cloned()
         .or_else(|| builtin_subagents().into_iter().find(|candidate| candidate.name == "explorer"))?;
     spec.name = INIT_GROUNDING_AGENT_NAME.to_string();
-    spec.description = "VT Code explorer specialized for grounding `/init` AGENTS.md suggestions.".to_string();
+    spec.description = "Diapason explorer specialized for grounding `/init` AGENTS.md suggestions.".to_string();
     spec.prompt = if spec.prompt.trim().is_empty() {
         INIT_GROUNDING_AGENT_PROMPT.to_string()
     } else {
@@ -220,7 +222,7 @@ fn build_init_grounding_subagent_spec(effective_specs: &[SubagentSpec]) -> Optio
     spec.initial_prompt = None;
     spec.nickname_candidates = vec!["init-grounding".to_string()];
     spec.aliases.clear();
-    spec.source = SubagentSource::ProjectVtcode;
+    spec.source = SubagentSource::ProjectDiapason;
     spec.file_path = None;
     spec.warnings.clear();
     Some(spec)
@@ -231,7 +233,7 @@ fn parse_grounding_from_status(status: &SubagentStatusEntry) -> Option<GuidedIni
 }
 
 async fn parse_grounding_from_snapshot(
-    controller: &std::sync::Arc<vtcode_core::subagents::SubagentController>,
+    controller: &std::sync::Arc<diapason_core::subagents::SubagentController>,
     target: &str,
 ) -> Option<GuidedInitGrounding> {
     let snapshot = controller.snapshot_for_thread(target).await.ok()?;
@@ -547,15 +549,15 @@ fn selection_to_answer(selection: InlineListSelection) -> Option<GuidedInitAnswe
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-    use vtcode_core::llm::provider::{AssistantPhase, Message};
+    use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+    use diapason_core::llm::provider::{AssistantPhase, Message};
 
     #[test]
-    fn init_grounding_subagent_spec_is_vtcode_native_and_read_only() {
+    fn init_grounding_subagent_spec_is_diapason_native_and_read_only() {
         let spec = build_init_grounding_subagent_spec(&[]).expect("init grounding spec");
 
         assert_eq!(spec.name, INIT_GROUNDING_AGENT_NAME);
-        assert_eq!(spec.source, SubagentSource::ProjectVtcode);
+        assert_eq!(spec.source, SubagentSource::ProjectDiapason);
         assert!(spec.is_read_only());
         assert_eq!(spec.nickname_candidates.as_slice(), ["init-grounding".to_string()]);
         assert!(spec.prompt.contains("`/init`"));
@@ -571,20 +573,20 @@ mod tests {
             disallowed_tools: vec!["file_operation".to_string()],
             model: Some("inherit".to_string()),
             color: Some("green".to_string()),
-            reasoning_effort: Some(vtcode_config::ReasoningEffortLevel::Medium),
+            reasoning_effort: Some(diapason_config::ReasoningEffortLevel::Medium),
             permissions: AgentPermissionsConfig::new(PermissionDefault::Deny),
             skills: vec!["repo-skill".to_string()],
             mcp_servers: Vec::new(),
             hooks: None,
             background: true,
-            mode: vtcode_config::AgentMode::Subagent,
+            mode: diapason_config::AgentMode::Subagent,
             max_turns: Some(9),
             nickname_candidates: vec!["repo".to_string()],
             initial_prompt: Some("ignored".to_string()),
             memory: None,
             isolation: None,
             aliases: vec!["explore".to_string()],
-            source: SubagentSource::ProjectVtcode,
+            source: SubagentSource::ProjectDiapason,
             file_path: None,
             warnings: vec!["warning".to_string()],
             tool_policy_overrides: std::collections::BTreeMap::new(),

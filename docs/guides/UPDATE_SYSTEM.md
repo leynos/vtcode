@@ -1,11 +1,16 @@
-# VT Code Update System Guide
+# Diapason Update System Guide
 
-This guide covers VT Code's update system, including release channels, version
+This guide covers Diapason's update system, including release channels, version
 pinning, and configuration options.
+
+The updater implementation targets GitHub Releases, but this repository has no
+verified published Diapason release assets. The commands and settings below
+describe the implemented update interface; they do not imply that a released
+Diapason package or update channel is currently available.
 
 ## Overview
 
-VT Code includes a built-in update system that can check for and install
+Diapason includes a built-in update system that can check for and install
 updates from GitHub Releases. The system supports:
 
 - **Multiple release channels** (stable, beta, nightly)
@@ -14,11 +19,11 @@ updates from GitHub Releases. The system supports:
   config directory
 - **Download mirrors** for better availability
 
-Standalone updates use VT Code's native replacement pipeline: the updater
+Standalone updates use Diapason's native replacement pipeline: the updater
 selects the exact target archive, streams it with the configured timeout,
 verifies published SHA-256 metadata when available, rejects unsafe archive
-paths, and replaces only the `vtcode`/`vtcode.exe` executable. When an update
-is triggered from the TUI (`/update` or the startup update prompt), the
+paths, and replaces only the `diapason`/`diapason.exe` executable. When an
+update is triggered from the TUI (`/update` or the startup update prompt), the
 pipeline reports per-phase progress — a live download progress bar with byte
 count and percentage, plus `Verifying checksum`, `Extracting archive`, and
 `Installing new binary` phase messages — so the update never appears to hang.
@@ -31,10 +36,10 @@ lets them self-update to v0.141.6+ without a manual bootstrap install.
 
 The updater picks the archive by target suffix — `.zip` for Windows
 (`x86_64-pc-windows-msvc`) and `.tar.gz` for macOS and Linux — then extracts
-the platform executable (`vtcode` on Unix, `vtcode.exe` on Windows) with
+the platform executable (`diapason` on Unix, `diapason.exe` on Windows) with
 `flate2`+`tar` or `zip`. Checksum sidecars are matched in this order: the modern
 `<archive>.sha256`, the legacy extension-stripped
-`vtcode-<v>-<target>.sha256`, then the aggregate `checksums.txt`. Windows ARM
+`diapason-<v>-<target>.sha256`, then the aggregate `checksums.txt`. Windows ARM
 is unsupported until the build pipeline publishes that target; such users
 should use the install script.
 
@@ -42,7 +47,7 @@ should use the install script.
 
 Releases v0.141.0 through v0.141.4 ship the `self_update` 1.0.0-rc.6 crate with
 the `archive-tar` feature but **not** `compression-tar-gz`, so their
-`vtcode update` fails on a `.tar.gz` archive with
+`diapason update` fails on a `.tar.gz` archive with
 `CompressionNotEnabledError: 'gz' compression not supported`. These binaries
 are already shipped, so the fix has to work with their existing asset-selection
 logic rather than change it.
@@ -58,23 +63,24 @@ How the legacy updater selects an asset (verified against the crate source):
 3. The downloaded file is saved under the asset's own name, and `detect_archive`
    reads the **final** path extension. Anything other than `zip`/`tar`/`tgz`/
    `gz` is treated as a plain uncompressed binary (`ArchiveKind::Plain`), and
-   `extract_file` copies the raw bytes verbatim to `<dir>/vtcode` — no gzip
+   `extract_file` copies the raw bytes verbatim to `<dir>/diapason` — no gzip
    feature required.
 
 Starting with v0.141.6, every release also publishes a raw executable asset
-named `compat-vtcode-<v>-<target>.tar.gz.compat`. It contains the
+named `compat-diapason-<v>-<target>.tar.gz.compat`. It contains the
 `{target}.tar.gz` substring (so the legacy identifier matches it) and its final
 extension is `.compat` (so it is treated as a plain binary). Crucially, the **
-`compat-` prefix sorts before `vtcode-`** (`c` < `v`), so it is the
+`compat-` prefix sorts before `diapason-`** (`c` < `v`), so it is the
 alphabetically-first match and the legacy updater picks it instead of the broken
 `.tar.gz`. The v0.141.5+ updater ignores these assets (its matcher requires
-`starts_with("vtcode-")` AND `ends_with("{target}.tar.gz"` / `"{target}.zip")`)
-and uses the real archive, so both generations install byte-identical binaries.
+`starts_with("diapason-")` AND `ends_with("{target}.tar.gz"` /
+`"{target}.zip")`) and uses the real archive, so both generations install
+byte-identical binaries.
 
 > ⚠️ The `compat-` prefix is **load-bearing**. Naming the asset
-> `vtcode-<v>-<target>.tar.gz.compat` (no prefix) does **not** work: it sorts
+> `diapason-<v>-<target>.tar.gz.compat` (no prefix) does **not** work: it sorts
 > *after*
-> the normal `vtcode-<v>-<target>.tar.gz`, so the legacy updater would still
+> the normal `diapason-<v>-<target>.tar.gz`, so the legacy updater would still
 > pick the
 > broken `.tar.gz` and fail. The invariant "compat name sorts before the normal
 > archive name" is enforced by `scripts/tests/test_release_assets.sh`.
@@ -93,55 +99,55 @@ macOS/Linux rescue when Windows CI is flaky.
 
 ```bash
 # Check and install updates
-vtcode update
+diapason update
 
 # Check only (don't install)
-vtcode update --check
+diapason update --check
 ```
 
 ### List Available Versions
 
 ```bash
 # List recent versions
-vtcode update --list
+diapason update --list
 
 # List more versions
-vtcode update --list --limit 20
+diapason update --list --limit 20
 ```
 
 ### Pin to a Specific Version
 
 ```bash
 # Pin to a specific version
-vtcode update --pin 0.85.3
+diapason update --pin 0.85.3
 
 # Unpin and resume following the channel
-vtcode update --unpin
+diapason update --unpin
 ```
 
 ### Release Channels
 
 ```bash
 # Switch to beta channel
-vtcode update --channel beta
+diapason update --channel beta
 
 # Switch to nightly channel
-vtcode update --channel nightly
+diapason update --channel nightly
 
 # Back to stable
-vtcode update --channel stable
+diapason update --channel stable
 ```
 
 ### View Configuration
 
 ```bash
 # Show current update configuration
-vtcode update --show-config
+diapason update --show-config
 ```
 
 ## Release Channels
 
-VT Code follows three release channels:
+Diapason follows three release channels:
 
 ### Stable (Default)
 
@@ -194,7 +200,7 @@ updates until you unpin.
 ### Pin to a Version
 
 ```bash
-vtcode update --pin 0.85.3
+diapason update --pin 0.85.3
 ```
 
 This creates/updates `update.toml` in the canonical user config directory:
@@ -207,7 +213,7 @@ version = "0.85.3"
 ### Unpin
 
 ```bash
-vtcode update --unpin
+diapason update --unpin
 ```
 
 ## Configuration File
@@ -217,7 +223,7 @@ Location: the canonical user config directory/update.toml
 ### Example Configuration
 
 ```toml
-# VT Code Update Configuration
+# Diapason Update Configuration
 
 # Release channel to follow
 # Options: stable (default), beta, nightly
@@ -232,9 +238,9 @@ channel = "stable"
 
 # Download mirrors (optional)
 # [mirrors]
-# primary = "https://github.com/vinhnx/vtcode/releases"
+# primary = "https://github.com/leynos/vtcode/releases"
 # fallbacks = [
-#     "https://mirror.example.com/vtcode",
+#     "https://mirror.example.com/diapason",
 # ]
 # geo_select = true
 
@@ -269,7 +275,7 @@ auto_rollback = false
 
 ## CLI Reference
 
-### `vtcode update`
+### `diapason update`
 
 Check for and install updates.
 
@@ -288,45 +294,41 @@ Check for and install updates.
 
 ```bash
 # Check and install
-vtcode update
+diapason update
 
 # Check only
-vtcode update --check
+diapason update --check
 
 # List versions
-vtcode update --list
+diapason update --list
 
 # Pin version
-vtcode update --pin 0.85.3
+diapason update --pin 0.85.3
 
 # Switch to beta
-vtcode update --channel beta
+diapason update --channel beta
 ```
 
 ## Update Behavior
 
 ### Managed Installs
 
-If VT Code was installed via a package manager, the update system will detect
-this and provide the appropriate update command:
-
-- **Homebrew**: `brew upgrade vtcode`
-- **Cargo**: `cargo install vtcode --force`
-- **npm**:
-  `npm install -g @vinhnx/vtcode@latest --registry=https://npm.pkg.github.com`
-- **Standalone**: Direct update via `vtcode update`
+Diapason currently documents source installation only. No Diapason Homebrew or
+crates.io package is verified as published. Source-built binaries can use the
+standalone updater only after matching Diapason release assets are published;
+do not use VTCode upstream package listings as Diapason packages.
 
 ### Backup and Rollback
 
 When `keep_backup = true` (default), the previous version is kept after update.
-If `auto_rollback = true`, VT Code will automatically revert to the backup if
+If `auto_rollback = true`, Diapason will automatically revert to the backup if
 the new version fails to start.
 
 ### Update Checks
 
-By default, VT Code checks for updates every 24 hours. The check timestamp is
+By default, Diapason checks for updates every 24 hours. The check timestamp is
 stored in the resolved user cache directory (on Linux/BSD,
-`$XDG_CACHE_HOME/vtcode`, defaulting to `~/.cache/vtcode`). See the
+`$XDG_CACHE_HOME/diapason`, defaulting to `~/.cache/diapason`). See the
 [user data directories guide](user-data-directories.md) when the cache root
 must be changed or diagnosed.
 
@@ -345,7 +347,7 @@ check_interval_hours = 0
 
    ```toml
    [mirrors]
-   primary = "https://mirror.example.com/vtcode"
+   primary = "https://mirror.example.com/diapason"
    ```
 
 3. Increase timeout:
@@ -359,7 +361,7 @@ check_interval_hours = 0
 On Unix systems, ensure the binary has execute permissions:
 
 ```bash
-chmod +x ~/.local/bin/vtcode
+chmod +x ~/.local/bin/diapason
 ```
 
 ### Rollback to Previous Version
@@ -376,7 +378,7 @@ If an update causes issues:
 ### Check Current Version
 
 ```bash
-vtcode --version
+diapason --version
 ```
 
 ### Force Update
@@ -384,7 +386,7 @@ vtcode --version
 If you suspect corruption:
 
 ```bash
-vtcode update --force
+diapason update --force
 ```
 
 ## Integration with CI/CD
@@ -394,7 +396,7 @@ For automated environments, you can:
 1. **Pin versions** to ensure consistency:
 
    ```bash
-   vtcode update --pin 0.85.3
+   diapason update --pin 0.85.3
    ```
 
 2. **Disable auto-checks**:
@@ -421,4 +423,4 @@ For automated environments, you can:
 
 - [Installation Guide](../installation/README.md)
 - [Configuration Precedence](../config/CONFIGURATION_PRECEDENCE.md)
-- [Release Notes](https://github.com/vinhnx/vtcode/releases)
+- [Release Notes](https://github.com/leynos/vtcode/releases)

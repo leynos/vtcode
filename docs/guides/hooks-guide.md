@@ -1,18 +1,18 @@
-# VT Code Hooks System Documentation
+# Diapason Hooks System Documentation
 
-This document describes VT Code's command-based lifecycle hooks. The system is
+This document describes Diapason's command-based lifecycle hooks. The system is
 inspired by Claude Code hooks, but this phase supports shell-command hooks in
-`vtcode.toml` only.
+`config.toml` only.
 
 ## Overview
 
-VT Code hooks enable automation by running shell commands in response to
+Diapason hooks enable automation by running shell commands in response to
 specific events. The system supports various lifecycle events and provides a
 flexible matching mechanism to target specific tools or events.
 
 ## Configuration
 
-Hooks are configured in your `vtcode.toml` file under the `[hooks.lifecycle]`
+Hooks are configured in your `config.toml` file under the `[hooks.lifecycle]`
 section:
 
 ```toml
@@ -21,45 +21,45 @@ section:
 [[hooks.lifecycle.pre_tool_use]]
 matcher = "Bash"  # Match specific tools using regex
 hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/bash-validator.sh", timeout_seconds = 30 }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/bash-validator.sh", timeout_seconds = 30 }
 ]
 
 # Post-tool use hooks - Run after tools execute successfully
 [[hooks.lifecycle.post_tool_use]]
 matcher = "Write|Edit"  # Match Write or Edit tools
 hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/code-formatter.sh" }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/code-formatter.sh" }
 ]
 
 # User prompt submit hooks - Run when user submits a prompt
 [[hooks.lifecycle.user_prompt_submit]]
 hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/prompt-validator.sh" }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/prompt-validator.sh" }
 ]
 
 # Session start hooks - Run when a session begins
 [[hooks.lifecycle.session_start]]
 hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/session-setup.sh" }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/session-setup.sh" }
 ]
 
 # Session end hooks - Run when a session ends
 [[hooks.lifecycle.session_end]]
 hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/session-cleanup.sh" }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/session-cleanup.sh" }
 ]
 
-# Permission request hooks - Run only when VT Code is about to ask for approval
+# Permission request hooks - Run only when Diapason is about to ask for approval
 [[hooks.lifecycle.permission_request]]
 matcher = "exec_command"
 hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/approve-shell.sh" }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/approve-shell.sh" }
 ]
 
 # Stop hooks - Run when the agent is about to finish a turn
 [[hooks.lifecycle.stop]]
 hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/keep-going.sh" }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/keep-going.sh" }
 ]
 ```
 
@@ -69,8 +69,8 @@ hooks = [
 
 The same `[hooks.lifecycle]` configuration applies to Agent Client Protocol
 (ACP) sessions. ACP creates one lifecycle engine per `session/new` or resumed
-session, so `VT_SESSION_ID` and transcript state remain isolated between ACP
-sessions.
+session, so `DIAPASON_SESSION_ID` and transcript state remain isolated between
+ACP sessions.
 
 ACP runs hooks in this order:
 
@@ -92,14 +92,14 @@ ACP runs hooks in this order:
   shutdown wait. It does not run merely because an individual prompt ends.
 
 ACP does not synthesize `Notification` events: notification hooks run only for
-actual VT Code notification events. The current ACP subagent controller does
+actual Diapason notification events. The current ACP subagent controller does
 not expose child lifecycle callbacks, so `SubagentStart` and `SubagentStop`
 remain available to runtimes that provide those triggers but are not emitted
 for ACP subagents today.
 
 ### PreToolUse
 
-- Runs after VT Code creates tool parameters and before processing the tool
+- Runs after Diapason creates tool parameters and before processing the tool
     call
 - Can allow, deny, or force a human approval prompt
 - Common matchers: builtin tool names like `exec_command`, `write_stdin`,
@@ -113,12 +113,12 @@ for ACP subagents today.
 
 ### UserPromptSubmit
 
-- Runs when the user submits a prompt, before VT Code processes it
+- Runs when the user submits a prompt, before Diapason processes it
 - Can validate prompts, add context, or block certain types of prompts
 
 ### SessionStart
 
-- Runs when VT Code starts a new session
+- Runs when Diapason starts a new session
 - Useful for loading development context, installing dependencies, or setting
     up environment variables
 
@@ -127,7 +127,7 @@ Example:
 ```bash
 #!/bin/sh
 cat >/dev/null
-vtcode notify --title "VT Code" "Session started"
+diapason notify --title "Diapason" "Session started"
 ```
 
 If you want a visible TUI line as part of `SessionStart`, emit structured JSON
@@ -136,27 +136,27 @@ instead of plain stdout:
 ```bash
 #!/bin/sh
 cat >/dev/null
-printf '%s\n' '{"systemMessage":"VT Code: SessionStart hook is active.",'\
+printf '%s\n' '{"systemMessage":"Diapason: SessionStart hook is active.",'\
 '"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"SessionStart hook is active."}}'
 ```
 
 ```toml
 [[hooks.lifecycle.session_start]]
 hooks = [
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/send-notification.sh" },
-  { command = "$VT_PROJECT_DIR/.vtcode/hooks/session-banner.sh" }
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/send-notification.sh" },
+  { command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/session-banner.sh" }
 ]
 ```
 
 ### SessionEnd
 
-- Runs when a VT Code session ends
+- Runs when a Diapason session ends
 - Useful for cleanup tasks, logging session statistics, or saving session
     state
 
 ### PermissionRequest
 
-- Runs only when VT Code is about to show a human approval prompt
+- Runs only when Diapason is about to show a human approval prompt
 - Receives `tool_name`, `tool_input`, the normalized permission summary, and
     `permission_suggestions`
 - Can allow, deny, update tool input, or persist session/project permission
@@ -164,21 +164,21 @@ hooks = [
 
 ### Stop
 
-- Runs after VT Code drafts the assistant reply but before the turn is
+- Runs after Diapason drafts the assistant reply but before the turn is
     finalized
 - Can block stop and feed a reason back into the same turn so the agent keeps
     going
 
 ### PreCompact
 
-- Runs before VT Code compresses/summarizes the conversation context
+- Runs before Diapason compresses/summarizes the conversation context
 - Can influence compression behavior or save important context before it's
     compressed
 - Receives current conversation state and compression parameters
 
 ### Notification
 
-- Runs when VT Code sends a notification (desktop, terminal, or hybrid)
+- Runs when Diapason sends a notification (desktop, terminal, or hybrid)
 - Receives notification type, title, and message
 - Can filter, modify, or suppress notifications
 
@@ -196,7 +196,7 @@ hooks = [
 
 ### Deprecated aliases
 
-- `task_completion` and `task_completed` still parse, but VT Code normalizes
+- `task_completion` and `task_completed` still parse, but Diapason normalizes
     them into `stop`
 - New configurations should use `stop`
 
@@ -238,13 +238,13 @@ event-specific data:
 
 Hook scripts have access to these environment variables:
 
-- `VT_PROJECT_DIR`: Path to the project root directory
-- `CLAUDE_PROJECT_DIR`: Same as VT_PROJECT_DIR (for compatibility)
-- `VT_SESSION_ID`: Current session ID
-- `CLAUDE_SESSION_ID`: Same as VT_SESSION_ID (for compatibility)
-- `VT_HOOK_EVENT`: Name of the hook event being executed
-- `VT_TRANSCRIPT_PATH`: Path to the current transcript file
-- `CLAUDE_TRANSCRIPT_PATH`: Same as VT_TRANSCRIPT_PATH (for compatibility)
+- `DIAPASON_PROJECT_DIR`: Path to the project root directory
+- `CLAUDE_PROJECT_DIR`: Same as DIAPASON_PROJECT_DIR (for compatibility)
+- `DIAPASON_SESSION_ID`: Current session ID
+- `CLAUDE_SESSION_ID`: Same as DIAPASON_SESSION_ID (for compatibility)
+- `DIAPASON_HOOK_EVENT`: Name of the hook event being executed
+- `DIAPASON_TRANSCRIPT_PATH`: Path to the current transcript file
+- `CLAUDE_TRANSCRIPT_PATH`: Same as DIAPASON_TRANSCRIPT_PATH (for compatibility)
 
 ## JSON Output Format
 
@@ -264,7 +264,7 @@ Hooks can return structured JSON in stdout for advanced control:
         "updatedInput": {
             "command": "echo approved"
         },
-        "additionalContext": "Additional information for VT Code"
+        "additionalContext": "Additional information for Diapason"
     }
 }
 ```
@@ -290,7 +290,7 @@ For `SessionStart`, plain stdout is added to hidden model context. Use
 
 ## Security Considerations
 
-**USE AT YOUR OWN RISK**: VT Code hooks execute arbitrary shell commands on
+**USE AT YOUR OWN RISK**: Diapason hooks execute arbitrary shell commands on
 your system automatically. Always:
 
 - Validate and sanitize inputs

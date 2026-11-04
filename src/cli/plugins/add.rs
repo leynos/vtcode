@@ -1,5 +1,5 @@
 use anyhow::Context;
-use vtcode_agent_plugins::{FileSystemPluginInstaller, PluginInstaller};
+use diapason_agent_plugins::{FileSystemPluginInstaller, PluginInstaller};
 
 pub(super) async fn handle_add(source: String, name: Option<String>) -> anyhow::Result<()> {
     // `install` runs `git clone` (a blocking subprocess) and recursive

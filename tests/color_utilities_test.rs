@@ -2,7 +2,7 @@
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
-use vtcode_core::utils::colors::*;
+use diapason_core::utils::colors::*;
 
 #[test]
 fn test_basic_colors() {

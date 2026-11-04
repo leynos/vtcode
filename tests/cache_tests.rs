@@ -4,8 +4,8 @@
 )]
 //! Integration tests for quick-cache functionality
 
+use diapason_core::tools::cache::FileCache;
 use serde_json::Value;
-use vtcode_core::tools::cache::FileCache;
 
 #[cfg(test)]
 mod tests {

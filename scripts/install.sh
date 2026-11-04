@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
 
-# VT Code Native Installer
-# Downloads and installs the latest VT Code binary from GitHub Releases
+# Diapason Native Installer
+# Downloads and installs the latest Diapason binary from GitHub Releases
 # Supports: macOS (Intel/Apple Silicon), Linux, Windows (WSL/Git Bash)
 
 set -euo pipefail
-
-# Check for curl existence
-if ! command -v curl >/dev/null 2>&1; then
-    printf '✗ curl is required for installation\n' >&2
-    exit 1
-fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -20,17 +14,16 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-REPO="vinhnx/vtcode"
+REPO="leynos/vtcode"
+INSTALL_SOURCE=0
+LOCAL_BINARY="${DIAPASON_BIN:-}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-BIN_NAME="vtcode"
+BIN_NAME="diapason"
 GITHUB_API="https://api.github.com/repos/$REPO/releases?per_page=10"
 GITHUB_RELEASES="https://github.com/$REPO/releases/download"
 WITH_AST_GREP=0
 WITH_SEARCH_TOOLS=1
 WITH_COMPLETIONS=0
-
-# Ensure INSTALL_DIR exists
-mkdir -p "$INSTALL_DIR"
 
 # Hide/show cursor
 show_cursor() { printf "\033[?25h"; }
@@ -218,7 +211,7 @@ get_download_url() {
 
     # Strip 'v' prefix from tag for filename only
     local version_tag="${release_tag#v}"
-    local filename="vtcode-${version_tag}-${platform}.${file_ext}"
+    local filename="diapason-${version_tag}-${platform}.${file_ext}"
     echo "${GITHUB_RELEASES}/${release_tag}/${filename}"
 }
 
@@ -402,11 +395,40 @@ install_binary() {
     log_success "Binary installed to $target"
 }
 
+# Build into an owned temporary Cargo root, then copy the artifact to target_path.
+install_from_source() (
+    local target_path="$1"
+
+    if ! command -v cargo >/dev/null 2>&1; then
+        log_error "Cargo is required for a source build"
+        exit 1
+    fi
+
+    local source_ref="${DIAPASON_SOURCE_REF:-main}"
+    local cargo_root
+    cargo_root="$(mktemp -d 2>/dev/null || mktemp -d -t 'diapason')"
+    trap 'rm -rf -- "$cargo_root"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    log_info "Building Diapason from leynos/vtcode ($source_ref)..."
+    cargo install --git "https://github.com/$REPO.git" --branch "$source_ref" \
+        --locked --root "$cargo_root" diapason
+
+    local built_binary="$cargo_root/bin/$BIN_NAME"
+    if [[ ! -f "$built_binary" ]]; then
+        log_error "Cargo did not produce the expected binary at $built_binary"
+        exit 1
+    fi
+
+    install_binary "$built_binary" "$target_path"
+)
+
 install_man_and_completions() {
     local archive_source="$1"
     local install_dir="$2"
 
-    local man_source="$archive_source/man/man1/vtcode.1"
+    local man_source="$archive_source/man/man1/diapason.1"
     local completions_source="$archive_source/completions"
 
     if [[ ! -f "$man_source" && ! -d "$completions_source" ]]; then
@@ -420,36 +442,36 @@ install_man_and_completions() {
     if [[ -f "$man_source" ]]; then
         local man_dir="$share_dir/man/man1"
         mkdir -p "$man_dir"
-        cp "$man_source" "$man_dir/vtcode.1"
-        log_success "Man page installed to $man_dir/vtcode.1"
+        cp "$man_source" "$man_dir/diapason.1"
+        log_success "Man page installed to $man_dir/diapason.1"
     fi
 
     if [[ -d "$completions_source" ]]; then
-        if [[ -f "$completions_source/bash/vtcode" ]]; then
+        if [[ -f "$completions_source/bash/diapason" ]]; then
             local bash_dir="$share_dir/bash-completion/completions"
             mkdir -p "$bash_dir"
-            cp "$completions_source/bash/vtcode" "$bash_dir/vtcode"
-            log_success "Bash completions installed to $bash_dir/vtcode"
+            cp "$completions_source/bash/diapason" "$bash_dir/diapason"
+            log_success "Bash completions installed to $bash_dir/diapason"
         fi
 
-        if [[ -f "$completions_source/zsh/_vtcode" ]]; then
+        if [[ -f "$completions_source/zsh/_diapason" ]]; then
             local zsh_dir="$share_dir/zsh/site-functions"
             mkdir -p "$zsh_dir"
-            cp "$completions_source/zsh/_vtcode" "$zsh_dir/_vtcode"
-            log_success "Zsh completions installed to $zsh_dir/_vtcode"
+            cp "$completions_source/zsh/_diapason" "$zsh_dir/_diapason"
+            log_success "Zsh completions installed to $zsh_dir/_diapason"
         fi
 
-        if [[ -f "$completions_source/fish/vtcode.fish" ]]; then
+        if [[ -f "$completions_source/fish/diapason.fish" ]]; then
             local fish_dir="$share_dir/fish/vendor_completions.d"
             mkdir -p "$fish_dir"
-            cp "$completions_source/fish/vtcode.fish" "$fish_dir/vtcode.fish"
-            log_success "Fish completions installed to $fish_dir/vtcode.fish"
+            cp "$completions_source/fish/diapason.fish" "$fish_dir/diapason.fish"
+            log_success "Fish completions installed to $fish_dir/diapason.fish"
         fi
     fi
 
     echo ""
     log_info "To enable completions, add to your shell config:"
-    log_info "  Bash:  source $share_dir/bash-completion/completions/vtcode"
+    log_info "  Bash:  source $share_dir/bash-completion/completions/diapason"
     log_info "  Zsh:   fpath=($share_dir/zsh/site-functions \$fpath)"
     log_info "  Fish:  fish_add_path $share_dir/fish/vendor_completions.d"
 }
@@ -493,97 +515,90 @@ add_to_path() {
     esac
 }
 
-# Cleanup temporary files
-cleanup() {
-    rm -f /tmp/vtcode-* /tmp/vtcode.tar.gz /tmp/vtcode.zip
-}
-
 # Main installation flow
 main() {
-    log_info "VT Code Native Installer"
+    log_info "Diapason Native Installer"
     echo ""
 
-    # Detect preferred platform
-    local current_platform
-    current_platform=$(detect_platform)
-    log_info "Detected platform: $current_platform"
+    local target_path="$INSTALL_DIR/$BIN_NAME"
+    local extract_dir=""
 
-    # Create temporary directory for downloads
-    local temp_dir
-    temp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'vtcode')
-    trap "rm -rf $temp_dir; show_cursor" EXIT INT TERM
-
-    # Fetch recent releases
-    local all_releases
-    if all_releases=$(fetch_recent_releases); then
-        log_info "Fetched release metadata from GitHub API"
-    else
-        log_warning "Failed to fetch release metadata from GitHub API"
-        log_info "Falling back to the latest release redirect endpoint"
-        local fallback_tag=""
-        fallback_tag=$(fetch_latest_release_tag_fallback || true)
-        if [[ -z "$fallback_tag" ]]; then
-            log_error "Could not resolve a release tag from GitHub"
-            log_info "Ensure github.com is reachable, or install via: cargo install vtcode"
+    if [[ -n "$LOCAL_BINARY" ]]; then
+        if [[ ! -f "$LOCAL_BINARY" || ! -x "$LOCAL_BINARY" ]]; then
+            log_error "DIAPASON_BIN must name an executable Diapason binary"
             exit 1
         fi
-        all_releases="[{\"tag_name\":\"$fallback_tag\"}]"
-    fi
-
-    # Find the most recent release with assets for this platform
-    local release_tag=""
-    local selected_platform=""
-    local candidate_platforms
-    candidate_platforms=$(get_candidate_platforms)
-
-    for candidate in $candidate_platforms; do
-        local tag_file
-        tag_file="$temp_dir/tag_$candidate"
-        (find_latest_release_tag "$all_releases" "$candidate" > "$tag_file" 2>/dev/null) &
-        local pid=$!
-        show_spinner "$pid" "Checking for compatible binaries for $candidate..."
-        wait "$pid" || true
-
-        local candidate_tag
-        candidate_tag=$(cat "$tag_file" 2>/dev/null || true)
-        if [[ -n "$candidate_tag" ]]; then
-            release_tag="$candidate_tag"
-            selected_platform="$candidate"
-            break
+        install_binary "$LOCAL_BINARY" "$target_path"
+    elif [[ "$INSTALL_SOURCE" -eq 1 ]]; then
+        install_from_source "$target_path"
+    else
+        if ! command -v curl >/dev/null 2>&1; then
+            log_error "curl is required to check for published Diapason release binaries"
+            log_info "Use --source-build or --binary PATH to install without curl."
+            exit 1
         fi
-    done
+        # Only Diapason-named release artifacts are accepted. Earlier VTCode
+        # releases in this repository therefore cannot be installed here.
+        local current_platform
+        current_platform=$(detect_platform)
+        log_info "Detected platform: $current_platform"
+        local temp_dir
+        temp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'diapason')
+        trap "rm -rf $temp_dir; show_cursor" EXIT INT TERM
 
-    if [[ -z "$release_tag" || -z "$selected_platform" ]]; then
-        log_error "No releases with compatible binaries found for platform: $current_platform"
-        log_info "Available platforms for this host were: $candidate_platforms"
-        exit 1
+        local all_releases
+        if all_releases=$(fetch_recent_releases); then
+            log_info "Fetched release metadata from GitHub API"
+        else
+            log_error "Could not fetch Diapason release metadata from GitHub"
+            log_info "No upstream binary is installed. Use --source-build or DIAPASON_BIN."
+            exit 1
+        fi
+
+        local release_tag=""
+        local selected_platform=""
+        local candidate_platforms
+        candidate_platforms=$(get_candidate_platforms)
+        for candidate in $candidate_platforms; do
+            local tag_file="$temp_dir/tag_$candidate"
+            (find_latest_release_tag "$all_releases" "$candidate" > "$tag_file" 2>/dev/null) &
+            local pid=$!
+            show_spinner "$pid" "Checking for Diapason binaries for $candidate..."
+            wait "$pid" || true
+            local candidate_tag
+            candidate_tag=$(cat "$tag_file" 2>/dev/null || true)
+            if [[ -n "$candidate_tag" ]]; then
+                release_tag="$candidate_tag"
+                selected_platform="$candidate"
+                break
+            fi
+        done
+
+        if [[ -z "$release_tag" || -z "$selected_platform" ]]; then
+            log_error "No Diapason release binary is published for $current_platform"
+            log_info "Build from source with --source-build, or select a local binary with --binary PATH."
+            exit 1
+        fi
+
+        platform="$selected_platform"
+        log_success "Found Diapason version: $release_tag ($platform)"
+        local archive_file="$temp_dir/diapason-binary.tar.gz"
+        local download_url
+        download_url=$(get_download_url "$release_tag" "$platform")
+        download_binary "$download_url" "$archive_file"
+        verify_checksum "$archive_file" "$release_tag" "$(basename "$download_url")"
+        extract_binary "$archive_file" "$platform"
+        local binary_path="$EXTRACTED_BINARY_PATH"
+        extract_dir="$EXTRACTED_TEMP_DIR"
+        install_binary "$binary_path" "$target_path"
     fi
-
-    platform="$selected_platform"
-    log_success "Found compatible version: $release_tag ($platform)"
-
-    # Download binary
-    local archive_file="$temp_dir/vtcode-binary.tar.gz"
-    local download_url
-    download_url=$(get_download_url "$release_tag" "$platform")
-    
-    download_binary "$download_url" "$archive_file"
-    log_success "Downloaded successfully"
-
-    # Verify checksum
-    verify_checksum "$archive_file" "$release_tag" "$(basename "$download_url")"
-
-    # Extract binary
-    extract_binary "$archive_file" "$platform"
-    local binary_path="$EXTRACTED_BINARY_PATH"
-    local extract_dir="$EXTRACTED_TEMP_DIR"
-
-    # Install binary
-    local target_path="$INSTALL_DIR/$BIN_NAME"
-    install_binary "$binary_path" "$target_path"
 
     if [[ "$WITH_COMPLETIONS" -eq 1 ]]; then
-        install_man_and_completions "$extract_dir" "$INSTALL_DIR"
+        if [[ -n "$extract_dir" ]]; then
+            install_man_and_completions "$extract_dir" "$INSTALL_DIR"
+        else
+            log_warning "Completions are available only in published release archives"
+        fi
     fi
 
     # Check if in PATH
@@ -593,12 +608,12 @@ main() {
 
     echo ""
     log_success "Installation complete!"
-    log_info "VT Code is ready to use"
+    log_info "Diapason is ready to use"
     echo ""
 
     # Test installation
     if "$target_path" --version &>/dev/null; then
-        log_success "Version check passed: $($target_path --version)"
+        log_success "Version check passed: $("$target_path" --version)"
     else
         log_warning "Could not verify installation, but binary appears to be installed"
     fi
@@ -615,37 +630,41 @@ main() {
 
     echo ""
     log_success "Next steps:"
-    log_info "  vtcode init          # scaffold project config and AGENTS.md"
-    log_info "  vtcode               # launch interactive TUI"
-    log_info "  vtcode --help        # see all commands"
+    log_info "  diapason init          # scaffold project config and AGENTS.md"
+    log_info "  diapason               # launch interactive TUI"
+    log_info "  diapason --help        # see all commands"
     echo ""
-    log_info "Docs: https://vtcode.dev/docs"
+    log_info "Docs: https://github.com/leynos/vtcode#readme"
 }
 
 # Show usage
 show_usage() {
     cat <<'USAGE'
-VT Code Native Installer
+Diapason Native Installer
 
 Usage: ./install.sh [options]
 
 Options:
   -d, --dir DIR      Installation directory (default: ~/.local/bin)
-  --with-search-tools Install ripgrep and ast-grep after VT Code is installed (default)
+  --source-build     Build and install from the Diapason source repository
+  --binary PATH      Install an explicitly selected local Diapason binary
+  --with-search-tools Install ripgrep and ast-grep after Diapason is installed (default)
   --without-search-tools Skip ripgrep and ast-grep during install
-  --with-ast-grep    Install VT Code-managed ast-grep after VT Code is installed
+  --with-ast-grep    Install Diapason-managed ast-grep after Diapason is installed
   --with-completions Install man page and shell completions (bash/zsh/fish)
   -h, --help         Show this help message
 
 Examples:
-  ./install.sh                           # Install VT Code plus ripgrep and ast-grep
-  ./install.sh --without-search-tools    # Install VT Code only
-  ./install.sh --with-ast-grep           # Install VT Code and managed ast-grep only
+  ./install.sh                           # Install Diapason plus ripgrep and ast-grep
+  ./install.sh --without-search-tools    # Install Diapason only
+  ./install.sh --with-ast-grep           # Install Diapason and managed ast-grep only
   ./install.sh --with-completions        # Install with man page and shell completions
   ./install.sh --dir /usr/local/bin    # Install to /usr/local/bin (may need sudo)
 
 Environment variables:
-  INSTALL_DIR        Set installation directory
+  INSTALL_DIR          Set installation directory
+  DIAPASON_BIN         Select a local executable (same as --binary)
+  DIAPASON_SOURCE_REF  Select the Git ref for --source-build (default: main)
 USAGE
 }
 
@@ -654,6 +673,14 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         -d|--dir)
             INSTALL_DIR="$2"
+            shift 2
+            ;;
+        --source-build)
+            INSTALL_SOURCE=1
+            shift
+            ;;
+        --binary)
+            LOCAL_BINARY="$2"
             shift 2
             ;;
         -h|--help)
@@ -686,4 +713,5 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+mkdir -p -- "$INSTALL_DIR"
 main

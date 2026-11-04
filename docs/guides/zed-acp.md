@@ -1,6 +1,6 @@
 # Zed Agent Client Protocol Integration
 
-VT Code adopts
+Diapason adopts
 [ACP (Agent Client Protocol) by Zed](https://agentclientprotocol.com/).
 
 It took the reference from the official Zed implementations
@@ -12,10 +12,10 @@ end.
 
 ## Setup overview
 
-1. Build VT Code (`target/debug` is fine for local development;
+1. Build Diapason (`target/debug` is fine for local development;
    `target/release` is recommended for regular editor workflows).
-2. Enable the ACP bridge in `vtcode.toml` or via environment overrides.
-3. Wire either the VT Code binary or a small wrapper script into Zed's
+2. Enable the ACP bridge in `config.toml` or via environment overrides.
+3. Wire either the Diapason binary or a small wrapper script into Zed's
    `settings.json` under `agent_servers`.
 4. Start an external agent session in Zed and confirm ACP logs report healthy
    traffic.
@@ -23,33 +23,33 @@ end.
 ## Prerequisites
 
 - Rust toolchain pinned by `rust-toolchain.toml`.
-- VT Code configuration with provider, model, and credentials.
+- Diapason configuration with provider, model, and credentials.
 - Zed `v0.201` or later with the Agent Client Protocol feature flag enabled.
-- An ACP client that advertises the `fs.read_text_file` capability so VT Code
+- An ACP client that advertises the `fs.read_text_file` capability so Diapason
   can proxy `read_file` requests. If the handshake omits it, the bridge keeps
   the tool disabled and reports a reasoning notice.
 
-## Build VT Code
+## Build Diapason
 
 ```bash
 cargo build --release
 ```
 
-Record the resulting binary path (`target/release/vtcode`) or add it to your
+Record the resulting binary path (`target/release/diapason`) or add it to your
 `PATH`.
 
 For local repository development, this is also fine:
 
 ```bash
-cargo build -p vtcode
+cargo build -p diapason
 ```
 
-That produces `target/debug/vtcode`, which is usually the simplest binary to
+That produces `target/debug/diapason`, which is usually the simplest binary to
 point Zed at while iterating on ACP fixes.
 
-## Configure VT Code for ACP
+## Configure Diapason for ACP
 
-Open your `vtcode.toml` (project-local copy or the default in the repo root)
+Open your `config.toml` (project-local copy or the default in the repo root)
 and enable the bridge:
 
 ```toml
@@ -59,7 +59,7 @@ enabled = true
     [acp.audit]
     # Optional; disabled by default. Entries contain metadata and hashes only.
     enabled = false
-    path = "~/.vtcode/audit/acp-tools.jsonl"
+    path = "~/.local/state/diapason/audit/acp-tools.jsonl"
 
     [acp.zed]
     enabled = true
@@ -74,13 +74,13 @@ enabled = true
 
 Environment overrides provide the same control surface:
 
-| Variable                              | Purpose                                                                            |
-| ------------------------------------- | ---------------------------------------------------------------------------------- |
-| `VT_ACP_ENABLED`                      | Toggles the global ACP bridge.                                                     |
-| `VT_ACP_ZED_ENABLED`                  | Enables the Zed transport.                                                         |
-| `VT_ACP_ZED_TOOLS_READ_FILE_ENABLED`  | Switches the `read_file` tool forwarding on or off.                                |
-| `VT_ACP_ZED_TOOLS_LIST_FILES_ENABLED` | Controls whether the `list_files` bridge is available.                             |
-| `VT_ACP_ZED_WORKSPACE_TRUST`          | Forces the workspace trust mode (`full_auto` by default, `tools_policy` optional). |
+| Variable                                    | Purpose                                                                            |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `DIAPASON_ACP_ENABLED`                      | Toggles the global ACP bridge.                                                     |
+| `DIAPASON_ACP_ZED_ENABLED`                  | Enables the Zed transport.                                                         |
+| `DIAPASON_ACP_ZED_TOOLS_READ_FILE_ENABLED`  | Switches the `read_file` tool forwarding on or off.                                |
+| `DIAPASON_ACP_ZED_TOOLS_LIST_FILES_ENABLED` | Controls whether the `list_files` bridge is available.                             |
+| `DIAPASON_ACP_ZED_WORKSPACE_TRUST`          | Forces the workspace trust mode (`full_auto` by default, `tools_policy` optional). |
 
 When targeting models that cannot call tools (for example
 `openai/gpt-oss-20b:free` on OpenRouter), disable the `read_file` bridge. VT
@@ -90,14 +90,14 @@ function calling and automatically downgrades to plain completions.
 ### Session working directories
 
 The ACP client selects the workspace for each new session through the absolute
-`cwd` in `session/new`. VT Code canonicalizes that directory before creating
+`cwd` in `session/new`. Diapason canonicalizes that directory before creating
 the session and rejects missing, relative, or non-directory paths. The launch
 workspace is allowed by default; add absolute paths to
 `[acp.zed].allowed_workspace_roots` to allow other workspaces. Client paths
 must be beneath an allowed root, and filesystem roots and the home directory
 are rejected. The same policy applies when listing, loading or resuming
-sessions, and a rejected path is denied before VT Code persists workspace
-trust. VT Code does not silently fall back to the directory from which the ACP
+sessions, and a rejected path is denied before Diapason persists workspace
+trust. Diapason does not silently fall back to the directory from which the ACP
 server was launched.
 
 The canonical session workspace scopes archive metadata, system instructions,
@@ -137,7 +137,7 @@ an explicit warning when those fields are returned. An `interrupt` decision
 fails the tool safely.
 
 `SessionEnd` runs when a client closes an ACP session and when the ACP
-connection shuts down, not after every prompt. On `session/close`, VT Code
+connection shuts down, not after every prompt. On `session/close`, Diapason
 removes the session from that connection, cancels it, waits for admitted prompt
 work to finish, stops its task-lifecycle forwarder, runs `SessionEnd`, and then
 releases its workspace runtime. The close request waits up to three seconds; if
@@ -146,12 +146,13 @@ continues and retains the workspace runtime until cleanup releases it. Closing
 a session does not delete its durable archive, so the session can still be
 loaded or resumed later when durable history is enabled.
 
-When the ACP connection shuts down, VT Code cancels and drains its registered
+When the ACP connection shuts down, Diapason cancels and drains its registered
 sessions and runs their cleanup within the bounded shutdown wait. If that wait
 expires, cleanup continues in the background. Notification hooks are not
-invented for ACP protocol messages; they run only for real VT Code notification
-events. The current ACP subagent controller does not expose child lifecycle
-callbacks, so ACP does not currently emit `SubagentStart` or `SubagentStop`.
+invented for ACP protocol messages; they run only for real Diapason
+notification events. The current ACP subagent controller does not expose child
+lifecycle callbacks, so ACP does not currently emit `SubagentStart` or
+`SubagentStop`.
 
 MCP connections are scoped to the session that declares them. A subagent does
 not implicitly inherit its parent's MCP connections; declare the required MCP
@@ -162,10 +163,10 @@ servers in the subagent's own configuration.
 Run the bridge directly to ensure it starts cleanly:
 
 ```bash
-./target/release/vtcode acp
+./target/release/diapason acp
 ```
 
-Add `--config /absolute/path/to/vtcode.toml` if the configuration lives outside
+Add `--config /absolute/path/to/config.toml` if the configuration lives outside
 the default lookup locations. You can also mirror Codex CLI behaviour with
 inline overrides such as `--config agent.provider="openai"` when launching the
 bridge. Successful startup leaves the process waiting on stdio; stop it with
@@ -174,14 +175,14 @@ bridge. Successful startup leaves the process waiting on stdio; stop it with
 For a source checkout, test the same binary Zed will use:
 
 ```bash
-./target/debug/vtcode --config /absolute/path/to/vtcode.toml acp
+./target/debug/diapason --config /absolute/path/to/config.toml acp
 ```
 
 If you see a crash or panic here, fix that before debugging Zed itself. Zed can
 only report "server shut down unexpectedly" after the process exits; it will
-not explain VT Code panics for you.
+not explain Diapason panics for you.
 
-## Register VT Code in Zed
+## Register Diapason in Zed
 
 Edit `settings.json` (Command Palette → `zed: open settings`) and add a custom
 agent entry:
@@ -189,27 +190,27 @@ agent entry:
 ```jsonc
 {
     "agent_servers": {
-        "vtcode": {
-            "command": "/absolute/path/to/vtcode",
+        "diapason": {
+            "command": "/absolute/path/to/diapason",
             "args": ["acp"],
             "env": {
-                "VT_ACP_ENABLED": "1",
-                "VT_ACP_ZED_ENABLED": "1",
+                "DIAPASON_ACP_ENABLED": "1",
+                "DIAPASON_ACP_ZED_ENABLED": "1",
                 "RUST_LOG": "info"
             },
-            "cwd": "/workspace/containing/vtcode"
+            "cwd": "/workspace/containing/diapason"
         }
     }
 }
 ```
 
-- Rename the key from `vtcode` if you want a different label in Zed.
-- Trim `command` to just `"vtcode"` when the binary is on `PATH`.
+- Rename the key from `diapason` if you want a different label in Zed.
+- Trim `command` to just `"diapason"` when the binary is on `PATH`.
 - Add CLI flags such as `--config` or `--log-level debug` to `args` if required.
 
 ### Recommended development wrapper
 
-When running VT Code from a local repo checkout, prefer a wrapper script over
+When running Diapason from a local repo checkout, prefer a wrapper script over
 pointing Zed at an installed copy in `~/.local/bin`. A wrapper keeps the binary
 path, config path, provider overrides, and working directory in one place.
 
@@ -219,11 +220,11 @@ Example:
 #!/bin/sh
 set -eu
 
-REPO="/absolute/path/to/VTCode"
+REPO="/absolute/path/to/Diapason"
 cd "$REPO"
 
-exec "$REPO/target/debug/vtcode" \
-  --config "$REPO/vtcode.toml" \
+exec "$REPO/target/debug/diapason" \
+  --config "$REPO/config.toml" \
   acp
 ```
 
@@ -232,9 +233,9 @@ Then register that wrapper in Zed:
 ```jsonc
 {
     "agent_servers": {
-        "vtcode": {
+        "diapason": {
             "type": "custom",
-            "command": "/absolute/path/to/VTCode/scripts/zed-vtcode-acp.sh",
+            "command": "/absolute/path/to/Diapason/scripts/zed-diapason-acp.sh",
             "args": [],
             "env": {}
         }
@@ -248,59 +249,60 @@ that does not match the source tree you are editing.
 ## Use it inside Zed
 
 1. Open the agent panel (`Cmd-?` on macOS) and choose **External Agent**.
-2. Select the `vtcode` entry you added. Zed spawns VT Code and bridges ACP over
-   stdio.
+2. Select the `diapason` entry you added. Zed spawns Diapason and bridges ACP
+   over stdio.
 3. Chat normally. Mention files (`@src/lib.rs`) or attach buffers. When
    enabled, the `read_file` tool proxies to Zed's `fs.readTextFile` capability
-   and streams results back into the turn, while `list_files` uses VT Code's
+   and streams results back into the turn, while `list_files` uses Diapason's
    workspace indexer for directory exploration.
 
-## Package VT Code as a Zed Agent Server Extension
+## Package Diapason as a Zed Agent Server Extension
 
-When you are ready to distribute VT Code to other Zed users, wrap the ACP
+When you are ready to distribute Diapason to other Zed users, wrap the ACP
 bridge inside an Agent Server Extension. Extensions bundle both metadata and
-platform-specific binaries so users can install VT Code from Zed's marketplace
-without touching `settings.json`. This repository ships a ready-to-edit
-manifest at `extensions/zed-extension/extension.toml`; customize it for each
-release and publish the directory as the Zed extension package.
+platform-specific binaries so users can install Diapason from Zed's marketplace
+without touching `settings.json`. This repository ships a manifest at
+`extensions/zed-extension/extension.toml`, but its archive URLs are inherited
+VTCode upstream examples, not Diapason downloads. Diapason has no verified
+published release assets yet, so do not publish this manifest until a Diapason
+release supplies real archives and checksums.
 
 ### Extension manifest layout
 
-Add the VT Code agent definition under the `[agent_servers]` table in
-`extension.toml`. The copy in `extensions/zed-extension/extension.toml` uses
-the latest published macOS artifacts as a baseline (note the required top-level
-metadata):
+Add the Diapason agent definition under the `[agent_servers]` table in
+`extension.toml`. The example below shows the target shape with placeholder
+URLs for a future Diapason release (note the required top-level metadata):
 
 ```toml
-[agent_servers.vtcode]
-name = "VT Code"
-icon = "icons/vtcode.svg"            # Optional, 16x16 monochrome SVG recommended
+[agent_servers.diapason]
+name = "Diapason"
+icon = "icons/diapason.svg"            # Optional, 16x16 monochrome SVG recommended
 
-[agent_servers.vtcode.env]
-VT_ACP_ENABLED = "1"
-VT_ACP_ZED_ENABLED = "1"
+[agent_servers.diapason.env]
+DIAPASON_ACP_ENABLED = "1"
+DIAPASON_ACP_ZED_ENABLED = "1"
 
-[agent_servers.vtcode.targets.darwin-aarch64]
-archive = "https://github.com/vinhnx/vtcode/releases/download/0.133.21/vtcode-darwin-aarch64.tar.gz"
-cmd = "./vtcode"
+[agent_servers.diapason.targets.darwin-aarch64]
+archive = "https://github.com/leynos/vtcode/releases/download/<VERSION>/diapason-<VERSION>-aarch64-apple-darwin.tar.gz"
+cmd = "./diapason"
 args = ["acp"]
 sha256 = "replace-with-real-sha256"
 
-[agent_servers.vtcode.targets.darwin-x86_64]
-archive = "https://github.com/vinhnx/vtcode/releases/download/0.133.21/vtcode-darwin-x86_64.tar.gz"
-cmd = "./vtcode"
+[agent_servers.diapason.targets.darwin-x86_64]
+archive = "https://github.com/leynos/vtcode/releases/download/<VERSION>/diapason-<VERSION>-x86_64-apple-darwin.tar.gz"
+cmd = "./diapason"
 args = ["acp"]
 sha256 = "replace-with-real-sha256"
 
-[agent_servers.vtcode.targets.linux-x86_64]
-archive = "https://github.com/vinhnx/vtcode/releases/download/0.133.21/vtcode-linux-x86_64.tar.gz"
-cmd = "./vtcode"
+[agent_servers.diapason.targets.linux-x86_64]
+archive = "https://github.com/leynos/vtcode/releases/download/<VERSION>/diapason-<VERSION>-x86_64-unknown-linux-gnu.tar.gz"
+cmd = "./diapason"
 args = ["acp"]
 sha256 = "replace-with-real-sha256"
 
-[agent_servers.vtcode.targets.windows-x86_64]
-archive = "https://github.com/vinhnx/vtcode/releases/download/0.133.21/vtcode-windows-x86_64.zip"
-cmd = "./vtcode.exe"
+[agent_servers.diapason.targets.windows-x86_64]
+archive = "https://github.com/leynos/vtcode/releases/download/<VERSION>/diapason-<VERSION>-x86_64-pc-windows-msvc.zip"
+cmd = "./diapason.exe"
 args = ["acp"]
 sha256 = "replace-with-real-sha256"
 ```
@@ -321,7 +323,7 @@ sha256 = "replace-with-real-sha256"
   automatically after the binaries are built; you can also run
   `shasum -a 256 <archive>` on macOS/Linux or
   `certutil -hashfile <archive> SHA256` on Windows to verify them manually.
-- Provide an optional `[agent_servers.vtcode.env]` section when you need to
+- Provide an optional `[agent_servers.diapason.env]` section when you need to
   carry configuration such as ACP toggles or provider credentials. Avoid
   hard-coding secrets; rely on Zed's environment overlays or documented setup
   steps instead.
@@ -330,8 +332,8 @@ sha256 = "replace-with-real-sha256"
 
 1. Produce release builds for every platform you intend to support (see
    `scripts/` for cross-compiling helpers). Bundle the artifacts as `.tar.gz` or
-   `.zip` archives that include the `vtcode` binary at the root, plus any
-   support files (for example `vtcode.toml.example`).
+   `.zip` archives that include the `diapason` binary at the root, plus any
+   support files (for example `config.toml.example`).
 2. Create a GitHub release and upload each archive. Copy the asset URLs into
    `extensions/zed-extension/extension.toml`.
 3. Run `./scripts/release.sh` to execute the automated release flow. It
@@ -347,7 +349,7 @@ sha256 = "replace-with-real-sha256"
 
 1. Use the Command Palette (`Cmd-Shift-P`) → `zed: install dev extension` to
    load the local workspace as an extension.
-2. Open the Agent panel, pick the **VT Code** entry, and confirm the download
+2. Open the Agent panel, pick the **Diapason** entry, and confirm the download
    succeeds on your platform.
 3. Exercise ACP capabilities (tool calls, workspace prompts, cancellation)
    while watching Zed’s ACP logs to ensure the packaged binary behaves the same
@@ -371,11 +373,11 @@ Common cases:
 
 | Symptom                                                          | Likely cause                                     | Fix                                                                     |
 | ---------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------- |
-| `server shut down unexpectedly` in Zed, but no useful ACP stderr | VT Code crashed very early                       | Run `vtcode acp` manually and inspect the generated crash report        |
-| `zsh:1: no such file or directory: .local/bin/vtcode`            | Relative `command` path in Zed                   | Use an absolute path or a wrapper script                                |
-| `Failed to create workspace .vtcode directory at /.vtcode`       | Zed launched VT Code with `/` as cwd             | Set `cwd` correctly or use a wrapper that runs `cd /path/to/repo` first |
-| `Authentication not found for OpenAI` during ACP startup         | ACP is booting with the wrong config or provider | Pass `--config /absolute/path/to/vtcode.toml` or use a wrapper script   |
-| Process is killed immediately on macOS                           | Local binary signature/install issue             | Rebuild locally and point Zed at `target/debug/vtcode` or a wrapper     |
+| `server shut down unexpectedly` in Zed, but no useful ACP stderr | Diapason crashed very early                      | Run `diapason acp` manually and inspect the generated crash report      |
+| `zsh:1: no such file or directory: .local/bin/diapason`          | Relative `command` path in Zed                   | Use an absolute path or a wrapper script                                |
+| `Failed to create workspace .diapason directory at /.diapason`   | Zed launched Diapason with `/` as cwd            | Set `cwd` correctly or use a wrapper that runs `cd /path/to/repo` first |
+| `Authentication not found for OpenAI` during ACP startup         | ACP is booting with the wrong config or provider | Pass `--config /absolute/path/to/config.toml` or use a wrapper script   |
+| Process is killed immediately on macOS                           | Local binary signature/install issue             | Rebuild locally and point Zed at `target/debug/diapason` or a wrapper   |
 
 ### Keep protocol alignment
 
@@ -397,17 +399,18 @@ Common cases:
 ACP continuity uses three independent stores:
 
 1. **Compaction history/artifacts** – Stored under
-   `<workspace>/.vtcode/history/` and controlled by `[context.dynamic] enabled`
-   and `persist_history`. These artifacts support summarization and
-   working-memory recovery, including the session memory envelope. They are not
-   a complete resumable session and are not read by ACP `session/load`.
-2. **Durable session archive** – Stored under `$VT_SESSION_DIR`, or the
-   resolved VT Code configuration directory's `sessions/`, and controlled by
+   `<workspace>/.diapason/history/` and controlled by
+   `[context.dynamic] enabled` and `persist_history`. These artifacts support
+   summarization and working-memory recovery, including the session memory
+   envelope. They are not a complete resumable session and are not read by ACP
+   `session/load`.
+2. **Durable session archive** – Stored under `$DIAPASON_SESSION_DIR`, or the
+   resolved Diapason configuration directory's `sessions/`, and controlled by
    `[history].persistence` and `max_bytes`. These JSON snapshots are used by ACP
    `session/load` and checkpoint user messages, assistant tool requests, tool
    results, completed responses, and incomplete turns. The archive metadata
    also preserves opaque ACP `_meta` values received on `session/new` and
-   `session/prompt` under the `dev.vtcode.acp` archive extension namespace,
+   `session/prompt` under the `dev.diapason.acp` archive extension namespace,
    bounded to 64 entries and 16 KiB. Legacy top-level `acp_meta` and
    `client_metadata` object fields migrate into that namespace on load. Prompt
    values merge into the session map and replace earlier values with the same
@@ -428,19 +431,19 @@ and `[history]` settings do not control ACP audit output.
   discovers durable archives and, when the client supplies `cwd`, returns only
   archives belonging to that workspace. An ACP client can pass a returned
   session ID to either `session/load` or `session/resume`; both restore that
-  archive by exact session ID, including after a VT Code process or editor
+  archive by exact session ID, including after a Diapason process or editor
   restart. Set `history.persistence = "none"` to disable durable archives and
   discovery; sessions then remain process-local.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session
   exposes the canonical `agent` tool. Its actions are `spawn`,
   `spawn_subprocess`, `send_input`, `wait`, `resume`, and `close`. Before
-  delegation, VT Code synchronizes the current parent ACP session identity and
+  delegation, Diapason synchronizes the current parent ACP session identity and
   parent context with the sub-agent controller. The active primary agent's tool
   permissions still apply; delegation does not bypass its allowed or disallowed
   tools.
 - **Task lifecycle notifications** – When the session has an ACP sub-agent
-  controller, VT Code forwards sub-agent and background-process status changes
-  through the `_vtcode/taskLifecycle` extension notification. Clients that do
+  controller, Diapason forwards sub-agent and background-process status changes
+  through the `_diapason/taskLifecycle` extension notification. Clients that do
   not use this extension can ignore it. Its parameters contain the parent
   session ID in both `sessionId` and `acpSessionId`, plus a `message` with a
   `task_id`, `task_type` (`subagent` or `background_process`), `subagent_type`,
@@ -480,7 +483,7 @@ and `[history]` settings do not control ACP audit output.
   support streaming report first-output latency from before stream
   establishment, so response-header delay counts toward the first-output
   timeout. Buffered responses label their time-to-first-token observation as
-  the full buffered response latency. VT Code does not currently gate provider
+  the full buffered response latency. Diapason does not currently gate provider
   requests with a circuit breaker, so provider events report
   `circuit_breaker_state = "not_configured"`; the tool and MCP circuit breakers
   are separate. HTTP 408, 429, 500, 502, 503, and 504 failures are eligible for
@@ -510,43 +513,43 @@ and `[history]` settings do not control ACP audit output.
   is acknowledged but omitted from the prompt payload.
 - **Streaming updates** – Token deltas and reasoning updates arrive via
   `session/update` notifications, keeping Zed's UI responsive during
-  generation. Tool-enabled turns remain streamed: VT Code waits for the
+  generation. Tool-enabled turns remain streamed: Diapason waits for the
   provider's completed tool-call arguments, executes the tool, appends its
   result, and opens the next provider stream. A configured `Stop` lifecycle
-  hook is the deliberate exception; VT Code buffers that draft so the hook can
+  hook is the deliberate exception; Diapason buffers that draft so the hook can
   accept or block it before any text becomes visible. A stream failure after
   visible output is never replayed and checkpoints an incomplete assistant
   response instead.
 - **Provider reasoning** – When a provider response exposes reasoning alongside
-  tool calls, VT Code sends it to ACP as an `AgentThoughtChunk` before
+  tool calls, Diapason sends it to ACP as an `AgentThoughtChunk` before
   executing those tools. Exposed reasoning on the final provider response is
   sent as an `AgentThoughtChunk` as well. Debug logs distinguish
   `Sending provider reasoning to ACP client` from
   `Provider response did not include exposed reasoning for ACP`; they record
   metadata only and never the reasoning content.
-- **Plan tracking** – VT Code emits ACP plans from successful `task_tracker`
+- **Plan tracking** – Diapason emits ACP plans from successful `task_tracker`
   results and replays the persisted checklist when a session is loaded or
   resumed and at the start of a later prompt. It does not synthesize a plan
   merely because a prompt begins. Plan entries retain tracker data under the
-  namespaced `_meta.vtcode.taskTracker` field, while checklist statuses map to
-  ACP pending, in-progress, and completed states (blocked items remain pending
-  and are labelled `[blocked]`). Replay restores the plan view without
+  namespaced `_meta.diapason.taskTracker` field, while checklist statuses map
+  to ACP pending, in-progress, and completed states (blocked items remain
+  pending and are labelled `[blocked]`). Replay restores the plan view without
   repeating a model tool call.
 - **Tool execution** – The `read_file` tool forwards to Zed when enabled. The
-  `list_files` tool uses VT Code's local workspace access, mirroring the CLI
+  `list_files` tool uses Diapason's local workspace access, mirroring the CLI
   experience. When the model lacks function calling or the tool toggle is
-  disabled, VT Code surfaces a reasoning notice and skips the invocation.
+  disabled, Diapason surfaces a reasoning notice and skips the invocation.
   Pending `apply_patch` calls include the decoded patch text as ACP tool-call
   content so the client can show the proposed edit before execution. Paths
   supplied by tools are normalized against the trusted workspace so relative
   segments stay inside the project before the request reaches the client.
-- **Tool policy compatibility** – VT Code advertises the current core tool suite
-  through ACP when the model supports function calling, including
+- **Tool policy compatibility** – Diapason advertises the current core tool
+  suite through ACP when the model supports function calling, including
   `exec_command`, `write_stdin`, `apply_patch`, and advanced `code_search`
   where enabled. The bridge evaluates each request against the workspace's
   tool-policy settings before executing commands locally, ensuring shell access
   and editing tools behave the same as in the native CLI. Policy defaults and
-  overrides defined under `[tools]` in `vtcode.toml` apply to ACP sessions just
+  overrides defined under `[tools]` in `config.toml` apply to ACP sessions just
   like the CLI.
 - **Policy persistence** – Auto-approved tool prompts in ACP mode (for example
   shell execution in a non-interactive environment) are stored in the workspace
@@ -560,7 +563,7 @@ and `[history]` settings do not control ACP audit output.
   each `read_file` invocation so you can confirm access to sensitive paths. If
   Zed cannot surface the prompt, the tool call is cancelled instead of
   executing without consent.
-- **Cancellations** – When you stop a turn in Zed, VT Code stops streaming
+- **Cancellations** – When you stop a turn in Zed, Diapason stops streaming
   tokens, aborts pending tool execution with cancellation notices, and responds
   to the prompt with the ACP `cancelled` stop reason so no extra output appears
   after you abort the run.
@@ -569,7 +572,7 @@ and `[history]` settings do not control ACP audit output.
 
 ### Capability negotiation and safety
 
-- VT Code inspects the Zed initialization payload before enabling each tool.
+- Diapason inspects the Zed initialization payload before enabling each tool.
   When `fs.read_text_file` is absent, the bridge refuses to expose `read_file`
   and inserts a reasoning notice so transcripts document the downgrade.
 - Every filesystem request is paired with a `session/request_permission` call
@@ -591,15 +594,15 @@ and `[history]` settings do not control ACP audit output.
 
 ## Debugging and verification
 
-| Symptom                                     | Resolution                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Only the stdio transport is supported`     | Ensure `transport = "stdio"` in `vtcode.toml`.                                                                                                                                                                                                                                                                                                      |
-| Empty responses in Zed                      | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `vtcode.toml`.                                                                                                                                                                                                                                                         |
-| `read_file` returns placeholders            | Validate the referenced URI is accessible from Zed's workspace.                                                                                                                                                                                                                                                                                     |
-| Tool calls report "Unsupported tool"        | Disable the tool bridge or switch to a model that supports function calling. VT Code emits a reasoning notice when the downgrade occurs.                                                                                                                                                                                                            |
-| Missing thought traces in Zed               | Enable debug logging and inspect whether VT Code reports `Sending provider reasoning to ACP client` or `Provider response did not include exposed reasoning for ACP`. The latter means the provider response exposed no reasoning; verify that the selected provider/model and API format return reasoning. Neither message logs reasoning content. |
-| Sessions cancel unexpectedly                | Inspect VT Code logs (and Zed's ACP logs) for cancellations triggered by the client.                                                                                                                                                                                                                                                                |
-| Tool or MCP failure is suspiciously generic | Default logs report only a bounded `error_category` and `error_chain_depth`. Re-run with debug logging to see the suppressed error chain, and treat that output as sensitive because it can contain workspace paths and payload text.                                                                                                               |
+| Symptom                                     | Resolution                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Only the stdio transport is supported`     | Ensure `transport = "stdio"` in `config.toml`.                                                                                                                                                                                                                                                                                                       |
+| Empty responses in Zed                      | Confirm ACP env vars are present in the `env` map and that ACP is enabled in `config.toml`.                                                                                                                                                                                                                                                          |
+| `read_file` returns placeholders            | Validate the referenced URI is accessible from Zed's workspace.                                                                                                                                                                                                                                                                                      |
+| Tool calls report "Unsupported tool"        | Disable the tool bridge or switch to a model that supports function calling. Diapason emits a reasoning notice when the downgrade occurs.                                                                                                                                                                                                            |
+| Missing thought traces in Zed               | Enable debug logging and inspect whether Diapason reports `Sending provider reasoning to ACP client` or `Provider response did not include exposed reasoning for ACP`. The latter means the provider response exposed no reasoning; verify that the selected provider/model and API format return reasoning. Neither message logs reasoning content. |
+| Sessions cancel unexpectedly                | Inspect Diapason logs (and Zed's ACP logs) for cancellations triggered by the client.                                                                                                                                                                                                                                                                |
+| Tool or MCP failure is suspiciously generic | Default logs report only a bounded `error_category` and `error_chain_depth`. Re-run with debug logging to see the suppressed error chain, and treat that output as sensitive because it can contain workspace paths and payload text.                                                                                                                |
 
 ## Next steps
 

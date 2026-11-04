@@ -1,26 +1,26 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
+use diapason_core::config::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::events::SessionStoreSink;
+use diapason_core::core::agent::runner::{AgentRunner, RunnerSettings};
+use diapason_core::core::agent::task::{ContextItem, Task};
+use diapason_core::core::agent::types::AgentType;
+use diapason_core::exec::events::{
+    ThreadCompletedEvent, ThreadCompletionSubtype, ThreadEvent, ThreadStartedEvent, TurnCompletedEvent,
+    TurnFailedEvent, TurnStartedEvent, Usage,
+};
+use diapason_core::git_info::get_head_commit_hash_async;
+use diapason_core::llm::provider::{FinishReason, LLMResponse};
+use diapason_core::review::ReviewTarget;
+use diapason_core::utils::file_utils::write_file_with_context;
+use diapason_core::utils::session_archive::{SessionMessage, SessionProgressArgs};
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::task::spawn_blocking;
-use vtcode_core::config::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::events::SessionStoreSink;
-use vtcode_core::core::agent::runner::{AgentRunner, RunnerSettings};
-use vtcode_core::core::agent::task::{ContextItem, Task};
-use vtcode_core::core::agent::types::AgentType;
-use vtcode_core::exec::events::{
-    ThreadCompletedEvent, ThreadCompletionSubtype, ThreadEvent, ThreadStartedEvent, TurnCompletedEvent,
-    TurnFailedEvent, TurnStartedEvent, Usage,
-};
-use vtcode_core::git_info::get_head_commit_hash_async;
-use vtcode_core::llm::provider::{FinishReason, LLMResponse};
-use vtcode_core::review::ReviewTarget;
-use vtcode_core::utils::file_utils::write_file_with_context;
-use vtcode_core::utils::session_archive::{SessionMessage, SessionProgressArgs};
 
 use super::event_output::{ExecEventProcessor, exec_archive_transcript, lock_or_recover, open_events_writer};
 use super::{ExecCommandKind, ExecCommandOptions, prep};
@@ -30,11 +30,11 @@ use crate::codex_app_server::{
 
 const EXEC_TASK_ID: &str = "exec-task";
 const EXEC_TASK_TITLE: &str = "Exec Task";
-const EXEC_TASK_INSTRUCTIONS: &str = "You are running vtcode in non-interactive exec mode. Complete the task autonomously using the configured full-auto tool allowlist. Do not request additional user input, confirmations, or allowances—operate solely with the provided information and available tools. Provide a concise summary of the outcome when finished.";
-const EXEC_TASK_INSTRUCTIONS_DRY_RUN: &str = "You are running vtcode as a non-interactive dry-run execution. Plan and validate the approach with read-only permissions, without mutating files, running mutating commands, or requesting additional user input. If the task requires mutations, explain what would be changed and why.";
+const EXEC_TASK_INSTRUCTIONS: &str = "You are running diapason in non-interactive exec mode. Complete the task autonomously using the configured full-auto tool allowlist. Do not request additional user input, confirmations, or allowances—operate solely with the provided information and available tools. Provide a concise summary of the outcome when finished.";
+const EXEC_TASK_INSTRUCTIONS_DRY_RUN: &str = "You are running diapason as a non-interactive dry-run execution. Plan and validate the approach with read-only permissions, without mutating files, running mutating commands, or requesting additional user input. If the task requires mutations, explain what would be changed and why.";
 pub(super) const REVIEW_TASK_ID: &str = "review-task";
 const REVIEW_TASK_TITLE: &str = "Review Task";
-const REVIEW_TASK_INSTRUCTIONS: &str = "You are running vtcode through the non-interactive review command. Review the requested target with read-only permissions. Do not modify files, do not run mutating commands, and do not request user input. Return findings first, ordered by severity, with concrete file and line references when possible. If there are no findings, state that explicitly.";
+const REVIEW_TASK_INSTRUCTIONS: &str = "You are running diapason through the non-interactive review command. Review the requested target with read-only permissions. Do not modify files, do not run mutating commands, and do not request user input. Return findings first, ordered by severity, with concrete file and line references when possible. If there are no findings, state that explicitly.";
 
 async fn open_events_writer_async(path: &Path) -> Result<BufWriter<File>> {
     let path = path.to_path_buf();
@@ -47,23 +47,23 @@ async fn apply_exec_retention(workspace: &Path, session_id: &str) {
     let workspace = workspace.to_path_buf();
     let session_id = session_id.to_string();
     match spawn_blocking(move || {
-        vtcode_memory::apply_retention_preserving(
+        diapason_memory::apply_retention_preserving(
             &workspace,
-            vtcode_memory::RetentionPolicy::default(),
+            diapason_memory::RetentionPolicy::default(),
             Some(session_id.as_str()),
         )
     })
     .await
     {
         Ok(Ok(removed)) if removed > 0 => {
-            tracing::debug!(target: "vtcode.exec", removed, "pruned closed canonical sessions");
+            tracing::debug!(target: "diapason.exec", removed, "pruned closed canonical sessions");
         }
         Ok(Ok(_)) => {}
         Ok(Err(error)) => {
-            tracing::warn!(target: "vtcode.exec", error = %error, "canonical session retention failed");
+            tracing::warn!(target: "diapason.exec", error = %error, "canonical session retention failed");
         }
         Err(error) => {
-            tracing::warn!(target: "vtcode.exec", error = %error, "canonical session retention task failed");
+            tracing::warn!(target: "diapason.exec", error = %error, "canonical session retention task failed");
         }
     }
 }
@@ -138,8 +138,8 @@ pub(super) fn effective_exec_events_path(
 }
 
 async fn checkpoint_exec_archive(
-    archive: &vtcode_core::utils::session_archive::SessionArchive,
-    session_messages: &[vtcode_core::llm::provider::Message],
+    archive: &diapason_core::utils::session_archive::SessionArchive,
+    session_messages: &[diapason_core::llm::provider::Message],
 ) -> Result<()> {
     let messages: Vec<SessionMessage> = session_messages.iter().map(SessionMessage::from).collect();
     archive
@@ -161,7 +161,7 @@ async fn checkpoint_exec_archive(
 
 pub(super) async fn handle_exec_command_impl(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     options: ExecCommandOptions,
 ) -> Result<()> {
     // Handle eval command separately — it runs multiple tasks, not a single one.
@@ -260,7 +260,7 @@ pub(super) async fn handle_exec_command_impl(
             let mut processor = lock_or_recover(&processor);
             processor.finish_events_output();
             if let Err(export_error) = processor.take_error() {
-                tracing::warn!(target: "vtcode.exec", phase = "events_export", error = %export_error, "explicit exec events export failed after task failure");
+                tracing::warn!(target: "diapason.exec", phase = "events_export", error = %export_error, "explicit exec events export failed after task failure");
             }
             return Err(error);
         }
@@ -303,7 +303,7 @@ pub(super) async fn handle_exec_command_impl(
 
 async fn handle_codex_exec_command_impl(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     options: ExecCommandOptions,
 ) -> Result<()> {
     let prepared = prep::prepare_exec_run(config, vt_cfg, &options).await?;
@@ -383,7 +383,7 @@ async fn handle_codex_exec_command_impl(
             let persistence_result = canonical.close().await.context("failed to finalize Codex session events");
             event_processor.finish_events_output();
             if let Err(error) = event_processor.take_error() {
-                tracing::warn!(target: "vtcode.exec", phase = "events_export", error = %error, "explicit Codex events export failed");
+                tracing::warn!(target: "diapason.exec", phase = "events_export", error = %error, "explicit Codex events export failed");
             }
             persistence_result?;
             completed
@@ -391,7 +391,7 @@ async fn handle_codex_exec_command_impl(
         Err(error) => {
             let turn_failed = ThreadEvent::TurnFailed(TurnFailedEvent { message: error.to_string(), usage: None });
             if let Err(event_error) = canonical.emit(&turn_failed) {
-                tracing::error!(target: "vtcode.exec", error = %event_error, "failed to enqueue turn.failed canonical session event");
+                tracing::error!(target: "diapason.exec", error = %event_error, "failed to enqueue turn.failed canonical session event");
             }
             event_processor.process_event(&turn_failed);
             let thread_completed = ThreadEvent::ThreadCompleted(ThreadCompletedEvent {
@@ -406,7 +406,7 @@ async fn handle_codex_exec_command_impl(
                 num_turns: 1,
             });
             if let Err(event_error) = canonical.emit(&thread_completed) {
-                tracing::error!(target: "vtcode.exec", error = %event_error, "failed to enqueue thread.completed canonical session event");
+                tracing::error!(target: "diapason.exec", error = %event_error, "failed to enqueue thread.completed canonical session event");
             }
             event_processor.process_event(&thread_completed);
             let persistence_result = canonical
@@ -415,7 +415,7 @@ async fn handle_codex_exec_command_impl(
                 .context("failed to finalize failed Codex session events");
             event_processor.finish_events_output();
             if let Err(export_error) = event_processor.take_error() {
-                tracing::warn!(target: "vtcode.exec", phase = "events_export", error = %export_error, "explicit Codex events export failed");
+                tracing::warn!(target: "diapason.exec", phase = "events_export", error = %export_error, "explicit Codex events export failed");
             }
             if let Err(persistence_error) = persistence_result {
                 return Err(
@@ -466,10 +466,10 @@ async fn handle_codex_exec_command_impl(
                     .iter()
                     .map(|message| {
                         let role = match message.role {
-                            vtcode_core::llm::provider::MessageRole::User => "user",
-                            vtcode_core::llm::provider::MessageRole::Assistant => "assistant",
-                            vtcode_core::llm::provider::MessageRole::System => "system",
-                            vtcode_core::llm::provider::MessageRole::Tool => "tool",
+                            diapason_core::llm::provider::MessageRole::User => "user",
+                            diapason_core::llm::provider::MessageRole::Assistant => "assistant",
+                            diapason_core::llm::provider::MessageRole::System => "system",
+                            diapason_core::llm::provider::MessageRole::Tool => "tool",
                         };
                         format!("{role}: {}", message.content.as_text())
                     })
@@ -485,7 +485,7 @@ async fn handle_codex_exec_command_impl(
 }
 
 fn codex_exec_turn_instructions(
-    active_primary_agent: &vtcode_core::ActivePrimaryAgent,
+    active_primary_agent: &diapason_core::ActivePrimaryAgent,
     task_instructions: &str,
 ) -> Option<String> {
     let mut sections = Vec::new();
@@ -501,7 +501,7 @@ fn codex_exec_turn_instructions(
     (!sections.is_empty()).then(|| sections.join("\n\n"))
 }
 
-fn external_thread_id_from_bootstrap(bootstrap: &vtcode_core::core::threads::ThreadBootstrap) -> Option<String> {
+fn external_thread_id_from_bootstrap(bootstrap: &diapason_core::core::threads::ThreadBootstrap) -> Option<String> {
     bootstrap
         .metadata
         .as_ref()
@@ -538,19 +538,19 @@ mod tests {
     use super::{checkpoint_exec_archive, native_review_target};
     use anyhow::{Context, Result};
     use chrono::Utc;
-    use std::path::Path;
-    use vtcode_core::llm::provider::Message;
-    use vtcode_core::review::{ReviewSpec, ReviewTarget};
-    use vtcode_core::utils::session_archive::{
+    use diapason_core::llm::provider::Message;
+    use diapason_core::review::{ReviewSpec, ReviewTarget};
+    use diapason_core::utils::session_archive::{
         SessionArchive, SessionArchiveMetadata, SessionListing, SessionSnapshot,
     };
+    use std::path::Path;
 
     #[tokio::test]
     #[expect(clippy::panic_in_result_fn, reason = "test function, assertions are expected")]
     async fn checkpoint_exec_archive_writes_initial_snapshot() -> Result<()> {
         let temp_dir = tempfile::tempdir().context("tempdir")?;
-        let archive_path = temp_dir.path().join("session-vtcode-test-archive.json");
-        let metadata = SessionArchiveMetadata::new("vtcode", "/tmp/vtcode", "gpt-5", "openai", "mono", "low");
+        let archive_path = temp_dir.path().join("session-diapason-test-archive.json");
+        let metadata = SessionArchiveMetadata::new("diapason", "/tmp/diapason", "gpt-5", "openai", "mono", "low");
         let listing = SessionListing {
             path: archive_path.clone(),
             snapshot: SessionSnapshot {

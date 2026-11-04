@@ -16,7 +16,7 @@ describe("AskSelectionCommand", () => {
 	});
 
 	it("should have correct id and title", () => {
-		expect(command.id).toBe("vtcode.askSelection");
+		expect(command.id).toBe("diapason.askSelection");
 		expect(command.title).toBe("Ask About Selection");
 	});
 

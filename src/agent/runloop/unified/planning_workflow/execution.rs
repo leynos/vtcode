@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use diapason_core::config::constants::tools;
+use diapason_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::tools::registry::ExecSettlementMode;
+use diapason_core::utils::ansi::MessageStyle;
 use serde_json::{Value, json};
 use tokio::sync::Notify;
-use vtcode_core::config::constants::tools;
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
-use vtcode_core::tools::registry::ExecSettlementMode;
-use vtcode_core::utils::ansi::MessageStyle;
 
 use crate::agent::runloop::unified::planning_workflow_state::{
     render_planning_workflow_next_step_hint, transition_to_planning_workflow,
@@ -19,7 +19,7 @@ use crate::agent::runloop::unified::tool_pipeline::status::{ToolExecutionStatus,
 
 /// Canonical plan-lifecycle status strings returned by the `start_planning`
 /// tool. Centralized so the runloop's disposition logic and the tool contract
-/// in `vtcode-core` cannot silently drift apart.
+/// in `diapason-core` cannot silently drift apart.
 const PLAN_STATUS_PENDING_CONFIRMATION: &str = "pending_confirmation";
 const PLAN_STATUS_SUCCESS: &str = "success";
 
@@ -130,7 +130,7 @@ async fn enter_planning_workflow_after_start(ctx: &mut RunLoopContext<'_>) {
         tracing::warn!("failed to render planning workflow next-step hint: {}", err);
     }
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         "Agent entered Planning workflow with planner profile (read-only, mutating tools blocked)"
     );
 }

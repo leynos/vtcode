@@ -53,6 +53,6 @@ ratatui = { version = "=0.30.0", default-features = false, features = ["crosster
 ## Additional context
 
 - Pinning commit: `8539a774a` in
-  [vinhnx/vtcode](https://github.com/vinhnx/vtcode)
+  [leynos/vtcode](https://github.com/leynos/vtcode)
 - The `CellEffect` type itself comes from `tachyonfx`, not ratatui directly,
   but the breakage is triggered by the ratatui 0.30.1 upgrade

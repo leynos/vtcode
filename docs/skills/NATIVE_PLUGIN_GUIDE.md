@@ -1,17 +1,17 @@
-# Native Plugin System for VT Code
+# Native Plugin System for Diapason
 
 ## Overview
 
-VT Code's Native Plugin System allows explicitly trusted integrations to extend
-VT Code's capabilities with high-performance, pre-compiled native code plugins.
-Built on the [`libloading`](https://docs.rs/libloading) crate, this system
-enables dynamic loading of native code while making the process-level security
-boundary explicit.
+Diapason's Native Plugin System allows explicitly trusted integrations to
+extend Diapason's capabilities with high-performance, pre-compiled native code
+plugins. Built on the [`libloading`](https://docs.rs/libloading) crate, this
+system enables dynamic loading of native code while making the process-level
+security boundary explicit.
 
 ## What are Native Plugins?
 
 Native plugins are dynamically-loaded libraries (`.dylib` on macOS, `.so` on
-Linux, `.dll` on Windows) that implement the VT Code plugin ABI. They provide:
+Linux, `.dll` on Windows) that implement the Diapason plugin ABI. They provide:
 
 - **High Performance**: Execute compute-intensive tasks at native speed
 - **Code Protection**: Keep proprietary algorithms in compiled form
@@ -62,40 +62,40 @@ my-plugin/
 - `abi_version`: Plugin ABI version (defaults to 1)
 - `when_to_use`: Guidance on when to trigger this plugin
 - `when_not_to_use`: Guidance on when NOT to use this plugin
-- `allowed_tools`: List of VT Code tools the plugin can use
+- `allowed_tools`: List of Diapason tools the plugin can use
 
 ## Plugin ABI
 
 Plugins must export the following C-compatible symbols:
 
-### 1. `vtcode_plugin_version()`
+### 1. `diapason_plugin_version()`
 
 Returns the ABI version number.
 
 ```c
-uint32_t vtcode_plugin_version(void);
+uint32_t diapason_plugin_version(void);
 ```
 
 **Implementation:**
 
 ```c
-uint32_t vtcode_plugin_version(void) {
+uint32_t diapason_plugin_version(void) {
     return 1;  // Current ABI version
 }
 ```
 
-### 2. `vtcode_plugin_metadata()`
+### 2. `diapason_plugin_metadata()`
 
 Returns plugin metadata as a JSON string.
 
 ```c
-const char* vtcode_plugin_metadata(void);
+const char* diapason_plugin_metadata(void);
 ```
 
 **Implementation:**
 
 ```c
-const char* vtcode_plugin_metadata(void) {
+const char* diapason_plugin_metadata(void) {
     return R"({
         "name": "my-plugin",
         "description": "High-performance data processing",
@@ -106,12 +106,12 @@ const char* vtcode_plugin_metadata(void) {
 }
 ```
 
-### 3. `vtcode_plugin_execute()`
+### 3. `diapason_plugin_execute()`
 
 Main execution entry point. Takes JSON input, returns JSON output.
 
 ```c
-const char* vtcode_plugin_execute(const char* input_json);
+const char* diapason_plugin_execute(const char* input_json);
 ```
 
 **Input JSON Format:**
@@ -146,7 +146,7 @@ const char* vtcode_plugin_execute(const char* input_json);
 **Implementation Example:**
 
 ```c
-const char* vtcode_plugin_execute(const char* input_json) {
+const char* diapason_plugin_execute(const char* input_json) {
     // Parse input_json
     // Execute plugin logic
     // Allocate and return result JSON
@@ -179,7 +179,7 @@ You can write plugins in any language that supports C ABI:
 
 ```toml
 [package]
-name = "my-vtcode-plugin"
+name = "my-diapason-plugin"
 version = "1.0.0"
 edition = "2021"
 
@@ -217,12 +217,12 @@ struct PluginOutput {
 }
 
 #[no_mangle]
-pub extern "C" fn vtcode_plugin_version() -> u32 {
+pub extern "C" fn diapason_plugin_version() -> u32 {
     1
 }
 
 #[no_mangle]
-pub extern "C" fn vtcode_plugin_metadata() -> *const c_char {
+pub extern "C" fn diapason_plugin_metadata() -> *const c_char {
     let metadata = r#"{
         "name": "my-plugin",
         "description": "High-performance data processing plugin",
@@ -234,7 +234,7 @@ pub extern "C" fn vtcode_plugin_metadata() -> *const c_char {
 }
 
 #[no_mangle]
-pub extern "C" fn vtcode_plugin_execute(input_json: *const c_char) -> *const c_char {
+pub extern "C" fn diapason_plugin_execute(input_json: *const c_char) -> *const c_char {
     unsafe {
         let input_str = std::ffi::CStr::from_ptr(input_json).to_str().unwrap();
         let input: PluginInput = serde_json::from_str(input_str).unwrap();
@@ -267,13 +267,13 @@ cargo build --release
 
 ### Step 3: Install the Plugin
 
-Copy the plugin to a VT Code plugin directory:
+Copy the plugin to a Diapason plugin directory:
 
 **User Plugins:**
 
 ```bash
 # Set PLUGIN_DIR to the resolved user data directory's plugins/ path
-# shown by `vtcode --version`.
+# shown by `diapason --version`.
 mkdir -p "$PLUGIN_DIR/my-plugin"
 cp target/release/libmy_plugin.dylib "$PLUGIN_DIR/my-plugin/"
 cp plugin.json "$PLUGIN_DIR/my-plugin/"
@@ -282,12 +282,12 @@ cp plugin.json "$PLUGIN_DIR/my-plugin/"
 **Project plugin metadata:**
 
 ```bash
-mkdir -p .vtcode/plugins/my-plugin
-cp plugin.json .vtcode/plugins/my-plugin/
+mkdir -p .diapason/plugins/my-plugin
+cp plugin.json .diapason/plugins/my-plugin/
 ```
 
 Repository plugin directories are metadata-only. Do not place a native library
-in `.vtcode/plugins/` or `.agents/plugins/` expecting the high-level skill
+in `.diapason/plugins/` or `.agents/plugins/` expecting the high-level skill
 loader to open it. Install native libraries in an application-managed user
 plugin directory and obtain explicit user approval before loading them.
 
@@ -301,18 +301,18 @@ reviewing its provenance and process-level privileges.
 
 ### Trusted Directories
 
-VT Code's native loader accepts only explicitly trusted directories:
+Diapason's native loader accepts only explicitly trusted directories:
 
 - canonical user data directory/`plugins/` - application-managed user plugins
 - other application-managed locations explicitly configured by the caller
 
-Repository-controlled `<project>/.vtcode/plugins/` and
+Repository-controlled `<project>/.diapason/plugins/` and
 `<project>/.agents/plugins/` directories are metadata-only and are not native
 plugin trust roots. A plugin manifest, README, or `AGENTS.md` never grants
 permission to load a library.
 
 Trusted roots, plugin directories, and library files are canonicalized before
-loading. VT Code rejects `..` traversal and symlink escapes that would resolve
+loading. Diapason rejects `..` traversal and symlink escapes that would resolve
 outside a trusted root. Because library constructors run during `dlopen`,
 provenance and explicit user consent must be established before calling the
 native loader.
@@ -322,7 +322,7 @@ user privileges.
 
 ### Plugin Validation
 
-VT Code validates plugins before loading:
+Diapason validates plugins before loading:
 
 1. Checks plugin.json exists and is valid JSON
 2. Verifies required metadata fields
@@ -359,16 +359,16 @@ For Rust plugins, use `CString` carefully:
 
 ```rust
 #[no_mangle]
-pub extern "C" fn vtcode_plugin_metadata() -> *const c_char {
+pub extern "C" fn diapason_plugin_metadata() -> *const c_char {
     let metadata = r#"{"name": "my-plugin"}"#;
     CString::new(metadata).unwrap().into_raw()
-    // VT Code will call vtcode_plugin_free_string to free this
+    // Diapason will call diapason_plugin_free_string to free this
 }
 ```
 
 ### 3. Concurrency
 
-ABI v1 plugins should still avoid unsynchronized global state, but VT Code
+ABI v1 plugins should still avoid unsynchronized global state, but Diapason
 currently executes each loaded plugin instance serially:
 
 ```rust
@@ -399,20 +399,20 @@ Provide clear documentation:
 
 ### Plugin Not Found
 
-**Problem:** VT Code doesn't list your plugin
+**Problem:** Diapason doesn't list your plugin
 
 **Solutions:**
 
 1. Verify the plugin is in an application-managed trusted directory
 2. Check plugin.json exists and is valid JSON
 3. Ensure library filename matches plugin name
-4. Run `vtcode skills config` to verify plugin paths
+4. Run `diapason skills config` to verify plugin paths
 
 ### ABI Version Mismatch
 
 **Problem:** "Plugin ABI version mismatch" error
 
-**Solution:** Update your plugin's `vtcode_plugin_version()` to return the
+**Solution:** Update your plugin's `diapason_plugin_version()` to return the
 current ABI version (1).
 
 ### Library Loading Failed
@@ -428,7 +428,7 @@ current ABI version (1).
 
 ### Plugin Crashes
 
-**Problem:** VT Code crashes when using plugin
+**Problem:** Diapason crashes when using plugin
 
 **Solutions:**
 
@@ -472,7 +472,7 @@ Multiple plugins can be used in sequence:
 
 ```bash
 # Future feature
-vtcode skills use plugin-a | vtcode skills use plugin-b
+diapason skills use plugin-a | diapason skills use plugin-b
 ```
 
 ## API Reference
@@ -480,10 +480,10 @@ vtcode skills use plugin-a | vtcode skills use plugin-b
 ### PluginLoader
 
 ```rust
-use vtcode_core::skills::native_plugin::PluginLoader;
+use diapason_core::skills::native_plugin::PluginLoader;
 
 let mut loader = PluginLoader::new();
-loader.add_trusted_dir(PathBuf::from("/path/from-vtcode--version/plugins"));
+loader.add_trusted_dir(PathBuf::from("/path/from-diapason--version/plugins"));
 
 // Call only after establishing provenance and explicit user approval.
 // Discovering plugins opens their dynamic libraries.
@@ -496,7 +496,7 @@ let plugin = loader.load_plugin(&plugin_path)?;
 ### NativePlugin
 
 ```rust
-use vtcode_core::skills::native_plugin::{NativePlugin, PluginContext};
+use diapason_core::skills::native_plugin::{NativePlugin, PluginContext};
 
 let ctx = PluginContext {
     input: HashMap::new(),
@@ -509,7 +509,7 @@ let result = plugin.execute(&ctx)?;
 
 ## Examples
 
-See example plugins in the VT Code repository:
+See example plugins in the Diapason repository:
 
 - `examples/plugins/hello-world/` - Minimal plugin example
 - `examples/plugins/data-processor/` - Data processing plugin
@@ -524,11 +524,11 @@ We welcome plugin contributions! Please:
 3. Document your plugin thoroughly
 4. Share with the community
 
-For questions or support, open an issue on the VT Code repository.
+For questions or support, open an issue on the Diapason repository.
 
 ## License
 
-Native plugins are subject to the VT Code license (MIT OR Apache-2.0). Your
+Native plugins are subject to the Diapason license (MIT OR Apache-2.0). Your
 plugin code can be licensed under terms of your choice.
 
 ______________________________________________________________________

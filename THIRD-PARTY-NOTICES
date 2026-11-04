@@ -1,3 +1,6 @@
+Diapason is a hard fork of VTCode by df12 Productions.
+The following upstream notices preserve original attribution and provenance.
+
 THIRD-PARTY NOTICES
 ================================================================================
 
@@ -11,20 +14,20 @@ OpenAI Codex
   License: Apache License, Version 2.0
 
   Components used as architectural reference or adapted patterns:
-  - OAuth / login flow (vtcode-auth/src/openai_chatgpt_oauth.rs)
-  - PTY process handling (vtcode-bash-runner/src/process.rs)
-  - MCP client building blocks (vtcode-mcp/src/lib.rs)
-  - Ollama provider integration (vtcode-llm/src/providers/ollama/)
-  - LM Studio provider integration (vtcode-llm/src/providers/lmstudio/)
-  - Tool handler patterns (vtcode-core/src/tools/handlers/)
+  - OAuth / login flow (diapason-auth/src/openai_chatgpt_oauth.rs)
+  - PTY process handling (diapason-bash-runner/src/process.rs)
+  - MCP client building blocks (diapason-mcp/src/lib.rs)
+  - Ollama provider integration (diapason-llm/src/providers/ollama/)
+  - LM Studio provider integration (diapason-llm/src/providers/lmstudio/)
+  - Tool handler patterns (diapason-core/src/tools/handlers/)
 
-  vtcode's implementations are original works that follow Codex
+  diapason's implementations are original works that follow Codex
   architectural patterns; they are not direct copies of Codex source.
 
 Kepano (MIT-licensed network allowlist)
   Source: https://github.com/kepano
   License: MIT
-  Component: vtcode-config/data/network_allowlist.toml
+  Component: diapason-config/data/network_allowlist.toml
 
 ================================================================================
 PART I — CRATES.IO / GIT DEPENDENCIES
@@ -1403,65 +1406,65 @@ Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
-  vtcode-a2a 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-a2a 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-acp 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-acp 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-auth 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-auth 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-bash-runner 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-bash-runner 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-config 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-config 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-core 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-core 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-eval 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-eval 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-indexer 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-indexer 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-llm 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-llm 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-mcp 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-mcp 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-memory 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-memory 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-safety 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-safety 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-skills 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-skills 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-ui 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-ui 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-webmcp 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-webmcp 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-agent-plugins 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-agent-plugins 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-commons 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-commons 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-exec-events 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-exec-events 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-macros 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-macros 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode-utility-tool-specs 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason-utility-tool-specs 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
   agent-client-protocol-derive 2.0.0
     Source: https://github.com/agentclientprotocol/rust-sdk
@@ -1783,17 +1786,17 @@ Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
-  vtcode 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
-  vtcode 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0
 --------------------------------------------------------------------------------
-  vtcode 0.156.1
-    Source: https://github.com/vinhnx/vtcode
+  diapason 0.156.1
+    Source: https://github.com/leynos/vtcode
     License: MIT OR Apache-2.0
 --------------------------------------------------------------------------------
 Apache License 2.0 — SPDX: Apache-2.0

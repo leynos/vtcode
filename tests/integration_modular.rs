@@ -7,21 +7,21 @@
 //! These tests validate that all refactored modules work together correctly
 //! and maintain backward compatibility.
 
-use std::sync::Arc;
-use vtcode_commons::StaticWorkspacePaths;
-use vtcode_config::defaults::provider::with_config_defaults_provider_for_test;
-use vtcode_core::{
+use diapason_commons::StaticWorkspacePaths;
+use diapason_config::defaults::provider::with_config_defaults_provider_for_test;
+use diapason_core::{
     code::code_completion::{CompletionContext, CompletionEngine},
     code::code_quality::{FormattingOrchestrator, LintingOrchestrator, QualityMetrics},
-    config::{ConfigManager, ToolPolicy, VTCodeConfig, WorkspacePathsDefaults},
+    config::{ConfigManager, DiapasonConfig, ToolPolicy, WorkspacePathsDefaults},
     gemini::{Client, ClientConfig},
 };
+use std::sync::Arc;
 
 #[test]
 fn test_gemini_module_integration() {
     // Test that we can create a Gemini client with different configurations
     let client = Client::new("test_key".to_string(), "gemini-3-flash-preview".to_string());
-    assert_eq!(client.config().user_agent, "vtcode/1.0.0");
+    assert_eq!(client.config().user_agent, "diapason/1.0.0");
 
     // Test different client configurations
     let high_throughput_config = ClientConfig::high_throughput();
@@ -35,9 +35,9 @@ fn test_gemini_module_integration() {
 #[serial_test::serial]
 fn test_config_module_integration() -> anyhow::Result<()> {
     // Test that we can create and use configurations
-    let config = VTCodeConfig::default();
+    let config = DiapasonConfig::default();
     anyhow::ensure!(
-        config.agent.provider == vtcode_core::config::constants::defaults::DEFAULT_PROVIDER,
+        config.agent.provider == diapason_core::config::constants::defaults::DEFAULT_PROVIDER,
         "default configuration should use the default provider"
     );
     anyhow::ensure!(config.tools.default_policy == ToolPolicy::Prompt, "default tool policy should prompt");
@@ -45,7 +45,7 @@ fn test_config_module_integration() -> anyhow::Result<()> {
     // An empty workspace still inherits user configuration unless the defaults
     // provider excludes those paths. Keep every candidate inside this fixture.
     let temp_workspace = tempfile::tempdir()?;
-    let paths = StaticWorkspacePaths::new(temp_workspace.path(), temp_workspace.path().join(".vtcode"));
+    let paths = StaticWorkspacePaths::new(temp_workspace.path(), temp_workspace.path().join(".diapason"));
     let defaults = WorkspacePathsDefaults::new(Arc::new(paths))
         .with_home_paths(Vec::new())
         .with_system_config_paths(Vec::new());
@@ -54,7 +54,7 @@ fn test_config_module_integration() -> anyhow::Result<()> {
     })?;
     let loaded_config = manager.config();
     anyhow::ensure!(
-        loaded_config.agent.provider == vtcode_core::config::constants::defaults::DEFAULT_PROVIDER,
+        loaded_config.agent.provider == diapason_core::config::constants::defaults::DEFAULT_PROVIDER,
         "isolated configuration should use the default provider"
     );
     anyhow::ensure!(loaded_config.tools.default_policy == ToolPolicy::Prompt, "loaded tool policy should prompt");
@@ -93,14 +93,14 @@ fn test_code_quality_integration() {
 #[test]
 fn test_backward_compatibility() {
     // Test that all the old import patterns still work
-    use vtcode_core::code::code_completion::CompletionEngine;
-    use vtcode_core::code::code_quality::FormattingOrchestrator;
-    use vtcode_core::config::VTCodeConfig;
-    use vtcode_core::gemini::Client;
+    use diapason_core::code::code_completion::CompletionEngine;
+    use diapason_core::code::code_quality::FormattingOrchestrator;
+    use diapason_core::config::DiapasonConfig;
+    use diapason_core::gemini::Client;
 
     // These should all compile and work as before
     let _client = Client::new("key".to_string(), "model".to_string());
-    let _config = VTCodeConfig::default();
+    let _config = DiapasonConfig::default();
     let _engine = CompletionEngine::new();
     let _formatter = FormattingOrchestrator::new();
 }

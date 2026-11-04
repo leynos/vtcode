@@ -18,7 +18,7 @@ can verify command execution, transcript capture, and TUI rendering end-to-end.
    export GEMINI_API_KEY="your_api_key"
    ```
 
-3. Make sure you are in the repository root (`vtcode/`).
+3. Make sure you are in the repository root (`diapason/`).
 
 ## Automated Verification
 
@@ -62,7 +62,7 @@ fails.
    scripts/run-debug.sh
    ```
 
-   The script compiles the binary and starts `vtcode chat` with debug flags
+   The script compiles the binary and starts `diapason chat` with debug flags
    enabled. If you need to override the workspace directory, set
    `WORKSPACE=/path/to/project` before running the script.
 
@@ -90,10 +90,10 @@ fails.
 
 ## Troubleshooting
 
-- **Timeouts** – Increase `command_timeout_seconds` in `vtcode.toml` under
+- **Timeouts** – Increase `command_timeout_seconds` in `config.toml` under
   `[pty]` if long-running commands exceed the default limit.
 - **Terminal size issues** – Adjust `[pty]` `default_rows` and `default_cols` in
-  `vtcode.toml`, then relaunch the agent so the PTY environment variables
+  `config.toml`, then relaunch the agent so the PTY environment variables
   reflect the new size.
 - **Windows hosts** – No additional setup is required; `portable-pty` selects
   the ConPTY backend automatically when available.

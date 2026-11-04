@@ -1,19 +1,19 @@
 # Agent Loop Contract
 
-VT Code keeps its existing harness-first runtime, but its external loop
+Diapason keeps its existing harness-first runtime, but its external loop
 contract now lines up more closely with SDK-style agent runtimes.
 
 This guide describes the public lifecycle semantics shared by interactive runs,
-`vtcode exec`, harness logs, and Open Responses extension events.
+`diapason exec`, harness logs, and Open Responses extension events.
 
 ## Message and Event Mapping
 
-VT Code does not expose Claude-specific SDK structs. The canonical stream stays
-`vtcode_exec_events::ThreadEvent`.
+Diapason does not expose Claude-specific SDK structs. The canonical stream stays
+`diapason_exec_events::ThreadEvent`.
 
 The closest concept mapping is:
 
-| Agent SDK concept            | VT Code event                                                 |
+| Agent SDK concept            | Diapason event                                                |
 | ---------------------------- | ------------------------------------------------------------- |
 | `SystemMessage(init)`        | `thread.started`                                              |
 | `AssistantMessage`           | `item.*` with `agent_message`, `reasoning`, `tool_invocation` |
@@ -40,12 +40,12 @@ after all results in the batch. The warning is rendered to the UI as soon as a
 probe flags output, but its model-facing message is queued and deduplicated so
 it cannot split the provider batch.
 
-Before a provider request, VT Code keeps a borrowed history view when this
+Before a provider request, Diapason keeps a borrowed history view when this
 invariant already holds. Otherwise it builds an idempotent request-only view
 that drops orphaned, causally early, and duplicate results, adds bounded
 cancellation results for missing calls, and groups split results after their
 assistant call. Durable session history is unchanged. If the provider returns
-the specific unmatched-tool-result `400`, VT Code retries once only when this
+the specific unmatched-tool-result `400`, Diapason retries once only when this
 wire view changes; a no-op or repeated failure uses the existing resumable
 fail-closed handoff rather than issuing repeated identical requests.
 
@@ -115,23 +115,23 @@ output; complete evidence remains available through Transcript Review.
 
 ## Terminal Thread Result
 
-VT Code now emits `thread.completed` at the end of a session or exec run.
+Diapason now emits `thread.completed` at the end of a session or exec run.
 
 Fields:
 
 - `thread_id`: stable event-stream thread identifier
-- `session_id`: stable VT Code session identifier
+- `session_id`: stable Diapason session identifier
 - `subtype`: `success`, `error_max_turns`, `error_max_budget_usd`,
   `error_during_execution`, or `cancelled`
-- `outcome_code`: VT Code-specific terminal code
+- `outcome_code`: Diapason-specific terminal code
 - `result`: final assistant summary text on successful completion only
 - `stop_reason`: provider stop reason when available
 - `usage`: aggregate token usage for the full thread
 - `total_cost_usd`: aggregate estimated cost when pricing metadata exists
 - `num_turns`: total turn count
 
-For `vtcode exec`, `outcome_code` comes from `TaskOutcome::code()`. Interactive
-sessions preserve the corresponding VT Code session end semantics.
+For `diapason exec`, `outcome_code` comes from `TaskOutcome::code()`.
+Interactive sessions preserve the corresponding Diapason session end semantics.
 
 ## Canonical event persistence
 
@@ -139,8 +139,8 @@ Interactive and exec runs share one authoritative persistence contract:
 
 | Concern          | Contract                                                                                                                                                   |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Event type       | `vtcode_exec_events::ThreadEvent` is the only runtime event contract.                                                                                      |
-| Canonical path   | `<workspace>/.vtcode/sessions/<session_id>/events.jsonl`, with `manifest.json` and derived artifacts beside it.                                            |
+| Event type       | `diapason_exec_events::ThreadEvent` is the only runtime event contract.                                                                                    |
+| Canonical path   | `<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`, with `manifest.json` and derived artifacts beside it.                            |
 | Ordering         | One dispatch gate feeds canonical persistence and optional exporters in the same order.                                                                    |
 | Backpressure     | Canonical events use bounded non-blocking handoffs to a blocking I/O drain; queue saturation fails closed, and accepted events are never silently dropped. |
 | Shutdown         | The terminal `thread.completed` event is emitted first, then exporters finish and canonical persistence drains before success is reported.                 |
@@ -156,7 +156,7 @@ untouched.
 
 ## Compaction Boundary
 
-Whenever VT Code compacts history itself or via a provider-native compaction
+Whenever Diapason compacts history itself or via a provider-native compaction
 path, it emits `thread.compact_boundary`.
 
 Fields:
@@ -181,8 +181,8 @@ is retained and local compaction seeds the new segment with its summary and
 continuity tail.
 
 This is emitted for manual `/compact` flows, for automatic compaction, and for
-automatic local fallback compaction. When Open Responses is enabled, VT Code
-surfaces these as VT Code custom extension events without changing the core
+automatic local fallback compaction. When Open Responses is enabled, Diapason
+surfaces these as Diapason custom extension events without changing the core
 Open Responses response model.
 
 ## Fresh Plan Execution Context
@@ -197,17 +197,17 @@ build turn with a compact handoff directive.
 The successful handoff emits `context.reset` with `trigger`, `plan_preserved`,
 `previous_context_usage_percent`, and `tool_budget_reset`. The event is also
 written to the normal JSONL/log stream and forwarded by the Open Responses
-bridge as `vtcode.context_reset`.
+bridge as `diapason.context_reset`.
 
 ### Unified auto-compaction
 
 Auto-compaction is **on by default** (`agent.harness.auto_compaction_enabled`,
 default `true`) and is **unified across both runloops**: the core `AgentRunner`
 loop and the binary unified runloop both delegate to the shared
-`vtcode_core::compaction` orchestrator (`auto_compact_messages`) rather than
+`diapason_core::compaction` orchestrator (`auto_compact_messages`) rather than
 maintaining separate compaction logic. It fires at the effective session
 ceiling: an explicit `agent.harness.auto_compaction_threshold_tokens` wins,
-otherwise VT Code applies the 90% ratio to the smaller of the provider's hard
+otherwise Diapason applies the 90% ratio to the smaller of the provider's hard
 context capacity and `context.max_context_tokens` (160,000 by default).
 Explicit thresholds remain capped by the provider capacity. Disabling normal
 auto-compaction does not disable the single bounded recovery compaction used
@@ -294,7 +294,7 @@ metadata, and failure or recovery diagnostics remain available without
 reopening the spool while the response is constructed.
 
 Across a turn, provider-visible tool previews are capped at 32 KiB. Once that
-aggregate budget is exhausted, VTCode retains bounded outcome and control
+aggregate budget is exhausted, Diapason retains bounded outcome and control
 metadata while omitting payload bodies. A successful verifier therefore stays
 authoritative without encouraging duplicate reads or checks. Blocker live
 pointers are cleared only by the session that created them; archived blocker
@@ -306,7 +306,7 @@ cancellation.
 
 Workspace-aware tool responses and execution summaries render paths inside the
 active workspace relative to that workspace (for example,
-`.vtcode/tasks/current_task.md`). Paths outside the workspace keep their
+`.diapason/tasks/current_task.md`). Paths outside the workspace keep their
 absolute form so diagnostics do not hide external locations. The same display
 rule is used for generated planning artifacts and handles canonical workspace
 paths reached through symlinks; planning lifecycle events reuse the same
@@ -322,20 +322,20 @@ history; the public `FollowUpInput(String)` message shape remains unchanged.
 `agent.harness.max_budget_usd` is the shared budget setting for interactive and
 exec sessions.
 
-- VT Code estimates cost from aggregate usage via
+- Diapason estimates cost from aggregate usage via
   `ModelResolver::estimate_cost`.
-- If pricing metadata is unavailable for the active model, VT Code does not
+- If pricing metadata is unavailable for the active model, Diapason does not
   enforce the budget.
-- In that case `total_cost_usd` stays `null` and VT Code emits one warning.
+- In that case `total_cost_usd` stays `null` and Diapason emits one warning.
 
 Turn limits still surface through
 `thread.completed.subtype = "error_max_turns"`.
 
 ## Hooks
 
-VT Code now supports `hooks.lifecycle.pre_compact`.
+Diapason now supports `hooks.lifecycle.pre_compact`.
 
-`pre_compact` runs before VT Code records a compaction boundary. Its payload
+`pre_compact` runs before Diapason records a compaction boundary. Its payload
 includes:
 
 - `session_id`
@@ -359,7 +359,7 @@ progress ledger, harness artifacts, loop memory, and git log to understand the
 current state before acting.
 
 The orient phase produces an `OrientationContext` (see
-`crates/codegen/vtcode-core/src/core/agent/bootstrap.rs`) that includes:
+`crates/codegen/diapason-core/src/core/agent/bootstrap.rs`) that includes:
 
 - Progress ledger summary (goal, completion ratio, confidence, stall status)
 - Harness artifact summaries (spec, contract, sprint contract, evaluation,
@@ -375,7 +375,7 @@ context lean.
 ## Handoff Protocol
 
 When one agent hands off to another, it produces a `HandoffRequest` (see
-`crates/codegen/vtcode-core/src/core/agent/handoff.rs`) that includes:
+`crates/codegen/diapason-core/src/core/agent/handoff.rs`) that includes:
 
 - **State summary**: what was accomplished, what remains
 - **Boundary status**: explicit list of features/deliverables with
@@ -394,7 +394,7 @@ what is done vs. what was left incomplete.
 
 ## Related Controls
 
-These VT Code settings line up with common agent-loop controls:
+These Diapason settings line up with common agent-loop controls:
 
 - Tool allow and deny rules: `[permissions].allow`, `[permissions].deny`, tool
   policy config
@@ -427,8 +427,8 @@ Configured via `agent.harness.context_reset_mode`:
 When a reset triggers:
 
 1. A `ContextResetManifest` is written to
-   `.vtcode/tasks/current_context_reset.md` recording the trigger reason, stall
-   count, and timestamp.
+   `.diapason/tasks/current_context_reset.md` recording the trigger reason,
+   stall count, and timestamp.
 2. The next session starts with **only** `OrientationContext` — no conversation
    history is carried forward.
 3. The orient phase reads the manifest and prepends a `### Context Reset`
@@ -439,7 +439,7 @@ When a reset triggers:
 
 All durable artifacts persist across a reset:
 
-- Progress ledger (`crates/codegen/vtcode-memory/src/progress.rs`)
+- Progress ledger (`crates/codegen/diapason-memory/src/progress.rs`)
 - Harness artifacts (spec, contract, feature list, evaluation, sprint contract)
 - Loop memory (notes, decisions)
 - Git log and working tree state
@@ -452,17 +452,17 @@ The comparison with compaction is summarised in [Context Reset](#context-reset).
 The subagent layer now supports loop-engineering primitives:
 
 - **Worktree isolation**: set `isolation = "worktree"` on an agent spec to run
-  the child in a git worktree under `.vtcode/worktrees/`. The child's file
+  the child in a git worktree under `.diapason/worktrees/`. The child's file
   mutations stay in its own working tree until explicitly merged.
 - **Propose/verify separation**: `SubagentController::verify_proposed_change()`
   spawns a read-only verifier sub-agent that re-reads affected files and
   approves or rejects the change. The verifier has no shared context with the
   proposer.
-- **Loop run state**: `crates/codegen/vtcode-core/src/loop_state.rs` persists
-  step index, cumulative cost, and status to `.vtcode/state/loop-<id>.json` so
-  a scheduler can resume across invocations.
-- **Loop memory**: `crates/codegen/vtcode-core/src/loop_memory.rs` provides an
-  append-only store for agent notes and decisions in `.vtcode/state/notes.md`
+- **Loop run state**: `crates/codegen/diapason-core/src/loop_state.rs` persists
+  step index, cumulative cost, and status to `.diapason/state/loop-<id>.json`
+  so a scheduler can resume across invocations.
+- **Loop memory**: `crates/codegen/diapason-core/src/loop_memory.rs` provides an
+  append-only store for agent notes and decisions in `.diapason/state/notes.md`
   and `decisions.md`.
 - **Cost guardrails**: `CostBudget` in `loop_state.rs` tracks token/cost/step
   limits and reports `BudgetStatus`

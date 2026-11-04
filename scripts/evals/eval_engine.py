@@ -9,8 +9,8 @@ from datetime import datetime
 from metrics import CodeValidity, ContainsMatch, ExactMatch, LLMGrader
 
 TOOL_PROFILE_CONFIG = {
-    "vt_code": "vt_code",
-    "advanced_vtcode": "advanced_vtcode",
+    "diapason": "diapason",
+    "advanced_diapason": "advanced_diapason",
 }
 
 
@@ -39,14 +39,14 @@ class EvaluationEngine:
         }
 
     def build_command(self, prompt, profile, last_message_path):
-        """Build a vtcode command with an explicit model-facing tool profile."""
+        """Build a diapason command with an explicit model-facing tool profile."""
         try:
             tool_profile = TOOL_PROFILE_CONFIG[profile]
         except KeyError as error:
             raise ValueError(f"Unsupported eval profile: {profile}") from error
 
         return [
-            "./target/release/vtcode",
+            "./target/release/diapason",
             "--provider", self.provider,
             "--model", self.model,
             "-c", f"tools.profile={tool_profile}",
@@ -56,8 +56,8 @@ class EvaluationEngine:
         ]
 
     def run_command(self, prompt, profile):
-        """Run a tool-capable vtcode exec session and capture its final response."""
-        with tempfile.TemporaryDirectory(prefix="vtcode-eval-") as temp_dir:
+        """Run a tool-capable diapason exec session and capture its final response."""
+        with tempfile.TemporaryDirectory(prefix="diapason-eval-") as temp_dir:
             last_message_path = os.path.join(temp_dir, "last-message.txt")
             try:
                 args = self.build_command(prompt, profile, last_message_path)
@@ -66,10 +66,10 @@ class EvaluationEngine:
             try:
                 result = subprocess.run(args, capture_output=True, text=True, timeout=120)
                 if result.returncode != 0:
-                    print(f"Error running vtcode: {result.stderr}")
+                    print(f"Error running diapason: {result.stderr}")
                     return {"error": result.stderr}
                 if not os.path.exists(last_message_path):
-                    return {"error": "vtcode exec did not write a final message"}
+                    return {"error": "diapason exec did not write a final message"}
 
                 with open(last_message_path, encoding="utf-8") as final_message:
                     output = final_message.read()
@@ -86,7 +86,7 @@ class EvaluationEngine:
         print(f"Running test case: {test_case['id']} - {test_case['task']}")
 
         start_time = time.time()
-        profile = test_case.get("profile", "vt_code")
+        profile = test_case.get("profile", "diapason")
         response_json = self.run_command(test_case['task'], profile)
         latency = time.time() - start_time
 
@@ -151,7 +151,7 @@ class EvaluationEngine:
         return results
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="vtcode Empirical Evaluation Engine")
+    parser = argparse.ArgumentParser(description="diapason Empirical Evaluation Engine")
     parser.add_argument("--cases", default="evals/test_cases.json", help="Path to test cases JSON")
     parser.add_argument("--provider", default="anthropic", help="LLM provider")
     parser.add_argument("--model", default="claude-sonnet-4-6", help="Model to evaluate")

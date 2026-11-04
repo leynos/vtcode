@@ -1,12 +1,12 @@
 //! Tool outcome handling helpers for turn execution.
 
 use anyhow::Result;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::exec_policy::AskForApproval;
-use vtcode_core::primary_agent::primary_agent_allows_tool;
-use vtcode_core::tools::registry::ToolExecutionError;
-use vtcode_core::tools::registry::labels::tool_action_label;
-use vtcode_core::utils::ansi::MessageStyle;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::exec_policy::AskForApproval;
+use diapason_core::primary_agent::primary_agent_allows_tool;
+use diapason_core::tools::registry::ToolExecutionError;
+use diapason_core::tools::registry::labels::tool_action_label;
+use diapason_core::utils::ansi::MessageStyle;
 
 use super::error_handling::tool_denial_diagnostic;
 use super::helpers::{FAILED_VERIFICATION_FIX_ALLOWANCE, check_is_argument_error, mutation_blocked_until_verification};
@@ -117,7 +117,7 @@ pub(crate) fn handle_preflight_failure(
         // terminating as `Blocked`.
         ctx.harness_state.arm_preflight_circuit_recovery();
         tracing::warn!(
-            target: "vtcode.turn.metrics",
+            target: "diapason.turn.metrics",
             tool = tool_name,
             failure_count,
             max_failures,
@@ -190,7 +190,7 @@ pub(crate) fn flush_interview_denial_recovery(ctx: &mut TurnProcessingContext<'_
     }
     ctx.harness_state.switch_to_tool_free_recovery();
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         "interactive interview denied; scheduling bounded tool-free plan synthesis"
     );
 }
@@ -211,7 +211,7 @@ pub(crate) fn flush_preflight_circuit_recovery(ctx: &mut TurnProcessingContext<'
     }
     ctx.harness_state.switch_to_tool_free_recovery();
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         "preflight circuit breaker tripped; scheduling bounded tool-free synthesis"
     );
 }
@@ -235,7 +235,7 @@ pub(crate) fn flush_blocked_tool_recovery(ctx: &mut TurnProcessingContext<'_>) {
     }
     ctx.harness_state.switch_to_tool_free_recovery();
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         "blocked tool-call fuse tripped; scheduling bounded tool-free synthesis"
     );
 }
@@ -434,14 +434,14 @@ async fn run_safety_validation_loop(
 #[cfg(test)]
 fn build_tool_permissions_context<'ctx, 'a>(
     ctx: &'ctx mut TurnProcessingContext<'a>,
-) -> crate::agent::runloop::unified::tool_routing::ToolPermissionsContext<'ctx, vtcode_ui::tui::app::InlineSession> {
+) -> crate::agent::runloop::unified::tool_routing::ToolPermissionsContext<'ctx, diapason_ui::tui::app::InlineSession> {
     build_tool_permissions_context_with_safety(ctx, None)
 }
 
 fn build_tool_permissions_context_with_safety<'ctx, 'a>(
     ctx: &'ctx mut TurnProcessingContext<'a>,
     safety_approval_justification: Option<&str>,
-) -> crate::agent::runloop::unified::tool_routing::ToolPermissionsContext<'ctx, vtcode_ui::tui::app::InlineSession> {
+) -> crate::agent::runloop::unified::tool_routing::ToolPermissionsContext<'ctx, diapason_ui::tui::app::InlineSession> {
     crate::agent::runloop::unified::tool_routing::ToolPermissionsContext {
         tool_registry: ctx.tool_registry,
         renderer: ctx.renderer,
@@ -746,7 +746,7 @@ pub(crate) async fn validate_tool_call<'a>(
     prepared.effective_args =
         maybe_apply_spool_read_offset_hint(ctx.tool_registry, &canonical_tool_name, &prepared.effective_args);
     prepared.parallel_safe_after_preflight =
-        vtcode_core::tools::tool_intent::is_parallel_safe_call(&canonical_tool_name, &prepared.effective_args);
+        diapason_core::tools::tool_intent::is_parallel_safe_call(&canonical_tool_name, &prepared.effective_args);
     let effective_args = &prepared.effective_args;
 
     // PreToolUse hooks run before the argument-dependent guards, the safety
@@ -800,11 +800,15 @@ pub(crate) async fn validate_tool_call<'a>(
             // Re-derive the intent classification for the rewritten arguments:
             // the parallel-readonly grouping and the mutation bookkeeping below
             // must see what will actually execute, not the pre-rewrite form.
-            prepared.readonly_classification =
-                !vtcode_core::tools::tool_intent::classify_tool_intent(&canonical_tool_name, &prepared.effective_args)
-                    .mutating;
-            prepared.parallel_safe_after_preflight =
-                vtcode_core::tools::tool_intent::is_parallel_safe_call(&canonical_tool_name, &prepared.effective_args);
+            prepared.readonly_classification = !diapason_core::tools::tool_intent::classify_tool_intent(
+                &canonical_tool_name,
+                &prepared.effective_args,
+            )
+            .mutating;
+            prepared.parallel_safe_after_preflight = diapason_core::tools::tool_intent::is_parallel_safe_call(
+                &canonical_tool_name,
+                &prepared.effective_args,
+            );
             Some(PreToolHookPhaseResult::Proceed { rewritten_args: None, requires_prompt })
         }
         Ok(phase) => phase,
@@ -828,7 +832,7 @@ pub(crate) async fn validate_tool_call<'a>(
     }
     let fallback_recommendation =
         recovery_fallback_for_tool(&canonical_tool_name, &prepared.effective_args).map(|(tool_name, args)| {
-            vtcode_core::core::agent::harness_kernel::FallbackRecommendation { tool_name, args, chain: Vec::new() }
+            diapason_core::core::agent::harness_kernel::FallbackRecommendation { tool_name, args, chain: Vec::new() }
         });
     prepared = prepared.with_fallback_recommendation(fallback_recommendation);
     let effective_args = &prepared.effective_args;

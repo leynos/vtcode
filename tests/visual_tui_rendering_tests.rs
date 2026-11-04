@@ -8,10 +8,10 @@
 //! They intentionally do not render the session widget, so the backend remains
 //! blank after each draw.
 
-use ratatui::{Terminal, backend::TestBackend};
-use vtcode_core::ui::{
+use diapason_core::ui::{
     InlineCommand, InlineHandle, InlineHeaderContext, InlineMessageKind, InlineSegment, InlineTextStyle,
 };
+use ratatui::{Terminal, backend::TestBackend};
 
 fn blank_terminal(width: usize, height: usize) -> String {
     let mut output = (0..height)

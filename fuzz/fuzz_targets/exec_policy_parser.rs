@@ -2,7 +2,7 @@
 
 use libfuzzer_sys::fuzz_target;
 use std::path::Path;
-use vtcode_core::exec_policy::PolicyParser;
+use diapason_core::exec_policy::PolicyParser;
 
 const MAX_INPUT_BYTES: usize = 4096;
 

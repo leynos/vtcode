@@ -1,5 +1,5 @@
 use anyhow::Result;
-use vtcode_core::utils::ansi::MessageStyle;
+use diapason_core::utils::ansi::MessageStyle;
 
 use crate::agent::runloop::unified::auto_permission::{ProbeWarning, probe_tool_output};
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;

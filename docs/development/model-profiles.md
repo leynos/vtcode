@@ -1,9 +1,9 @@
 # Model profiles and provider API format
 
-This short development note describes the TOML shape used by VT Code to express
-provider-level API format hints, capability defaults, and sparse per-model
-profiles. It is intended for maintainers and integrators; end-users should
-prefer the higher-level guidance in the Configuration guide.
+This short development note describes the TOML shape used by Diapason to
+express provider-level API format hints, capability defaults, and sparse
+per-model profiles. It is intended for maintainers and integrators; end-users
+should prefer the higher-level guidance in the Configuration guide.
 
 ## Provider-level fields (in `[[custom_providers]]`)
 
@@ -12,14 +12,14 @@ prefer the higher-level guidance in the Configuration guide.
   - Optional hint that describes the provider's preferred API shape.
   - `auto` or omitted: preserve legacy autodetection and existing metadata
     flows.
-  - Explicit value: instructs VT Code to use the specified API shape. VT Code
+  - Explicit value: instructs Diapason to use the specified API shape. Diapason
     will not silently fallback to another format when an explicit value is
     given.
 
 - context_window = <integer tokens> (optional)
   - Provider capability in tokens. Drives UI context sizing, compaction
     thresholds, and preflight token checks.
-  - When omitted VT Code uses the provider/model default (commonly 128000 for
+  - When omitted Diapason uses the provider/model default (commonly 128000 for
     custom OpenAI-compatible endpoints unless otherwise discovered).
 
 - `supports_tools`, `supports_reasoning`, `supports_reasoning_effort`,
@@ -53,7 +53,7 @@ Notes and semantics
 - Explicit boolean `false` is honored and may override an implicit `true` from
   a lower-precedence layer.
 - Omitting `api_format` preserves legacy behavior. Setting `api_format`
-  explicitly instructs VT Code to treat the model with that API shape; it does
+  explicitly instructs Diapason to treat the model with that API shape; it does
   not cause silent fallbacks.
 
 Keep examples small and conservative: prefer to declare only the fields you

@@ -3,8 +3,8 @@
 //! Prevents the model from creating duplicate task tracker entries in the same
 //! turn. Uses a signature-based dedup approach.
 
+use diapason_core::config::constants::tools as tool_names;
 use serde_json::Value;
-use vtcode_core::config::constants::tools as tool_names;
 
 use super::super::ValidationResult;
 use super::super::looping::task_tracker_create_signature;

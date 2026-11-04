@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT_DIR="${ROOT_DIR}/.vtcode/perf"
+OUT_DIR="${ROOT_DIR}/.diapason/perf"
 mkdir -p "${OUT_DIR}"
 
 LABEL="${1:-latest}"
 OUT_JSON="${OUT_DIR}/${LABEL}.json"
-RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vtcode-perf.XXXXXX")"
-RELEASE_BIN="${ROOT_DIR}/target/release/vtcode"
+RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/diapason-perf.XXXXXX")"
+RELEASE_BIN="${ROOT_DIR}/target/release/diapason"
 
 cleanup() {
   rm -rf "${RUN_DIR}"
@@ -27,11 +27,7 @@ run_timed() {
 run_cargo_timed() {
   local name="$1"
   shift
-  if [[ "${PERF_KEEP_RUSTC_WRAPPER:-0}" == "1" ]]; then
-    run_timed "${name}" cargo "$@"
-  else
-    run_timed "${name}" env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= cargo "$@"
-  fi
+  run_timed "${name}" cargo "$@"
 }
 
 ensure_release_binary() {
@@ -39,12 +35,8 @@ ensure_release_binary() {
     return 0
   fi
 
-  echo "[perf] building target/release/vtcode for startup measurement"
-  if [[ "${PERF_KEEP_RUSTC_WRAPPER:-0}" == "1" ]]; then
-    (cd "${ROOT_DIR}" && cargo build --release --locked --quiet --bin vtcode)
-  else
-    (cd "${ROOT_DIR}" && env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= cargo build --release --locked --quiet --bin vtcode)
-  fi
+  echo "[perf] building target/release/diapason for startup measurement"
+  (cd "${ROOT_DIR}" && cargo build --release --locked --quiet --bin diapason)
 }
 
 # Measure a command's mean warm latency (2 warmups + 8 measured runs).
@@ -129,12 +121,12 @@ json_path = Path(sys.argv[3])
 log_path = Path(sys.argv[4])
 runs = []
 environment = os.environ.copy()
-environment["VTCODE_STARTUP_TRACE"] = "0"
+environment["DIAPASON_STARTUP_TRACE"] = "0"
 
 for index in range(3):
     cold_dir = run_dir / f"cold-{index}"
     cold_dir.mkdir()
-    cold_binary = cold_dir / "vtcode"
+    cold_binary = cold_dir / "diapason"
     shutil.copy2(binary, cold_binary)
     cold_binary.chmod(0o755)
     started = time.perf_counter()
@@ -215,9 +207,9 @@ def run_sample(index):
     environment.update(
         {
             "HOME": str(home),
-            "VTCODE_CONFIG": str(config_dir),
-            "VTCODE_DATA": str(run_dir / f"pty-data-{index}"),
-            "VTCODE_STARTUP_TRACE": "0",
+            "DIAPASON_CONFIG": str(config_dir),
+            "DIAPASON_DATA": str(run_dir / f"pty-data-{index}"),
+            "DIAPASON_STARTUP_TRACE": "0",
             "NO_COLOR": "1",
             "TERM": "xterm-256color",
         }
@@ -273,7 +265,7 @@ def run_sample(index):
                 break
             output.extend(chunk)
             respond_to_terminal_queries(fd, chunk)
-            if first_render_ms is None and (b"Type a request" in output or b"> VT Code" in output):
+            if first_render_ms is None and (b"Type a request" in output or b"> Diapason" in output):
                 first_render_ms = (time.perf_counter() - started) * 1000.0
                 terminate_child()
                 break
@@ -314,14 +306,14 @@ check_ms="$(run_cargo_timed cargo_check check --workspace --quiet --locked)"
 tool_pipeline_bench_ms=""
 agent_harness_bench_ms=""
 if [[ "${PERF_RUN_BENCHMARKS:-0}" == "1" ]]; then
-  tool_pipeline_bench_ms="$(run_cargo_timed bench_tool_pipeline bench --locked -p vtcode-core --bench tool_pipeline -- --sample-size 20 --warm-up-time 0.5 --measurement-time 1)"
-  agent_harness_bench_ms="$(run_cargo_timed bench_agent_harness bench --locked -p vtcode-core --bench agent_harness -- --sample-size 20 --warm-up-time 0.5 --measurement-time 1)"
+  tool_pipeline_bench_ms="$(run_cargo_timed bench_tool_pipeline bench --locked -p diapason-core --bench tool_pipeline -- --sample-size 20 --warm-up-time 0.5 --measurement-time 1)"
+  agent_harness_bench_ms="$(run_cargo_timed bench_agent_harness bench --locked -p diapason-core --bench agent_harness -- --sample-size 20 --warm-up-time 0.5 --measurement-time 1)"
 else
   echo "[perf] skipping Criterion workloads (set PERF_RUN_BENCHMARKS=1 to enable)"
 fi
 
 measure_cold_startup
-measure_command warm_startup env VTCODE_STARTUP_TRACE=0 "${RELEASE_BIN}" --version
+measure_command warm_startup env DIAPASON_STARTUP_TRACE=0 "${RELEASE_BIN}" --version
 
 credential_free_home="${RUN_DIR}/credential-free-home"
 credential_free_config_dir="${RUN_DIR}/credential-free-config"
@@ -330,10 +322,10 @@ mkdir -p "${credential_free_home}" "${credential_free_config_dir}"
 printf '%s\n' '# Deliberately empty: exercise startup without credentials or provider calls.' >"${credential_free_config_file}"
 measure_command first_user_io \
   env HOME="${credential_free_home}" \
-  VTCODE_CONFIG="${credential_free_config_dir}" \
-  VTCODE_DATA="${RUN_DIR}/credential-free-data" \
-  VTCODE_CONFIG_PATH="${credential_free_config_file}" \
-  VTCODE_STARTUP_TRACE=0 \
+  DIAPASON_CONFIG="${credential_free_config_dir}" \
+  DIAPASON_DATA="${RUN_DIR}/credential-free-data" \
+  DIAPASON_CONFIG_PATH="${credential_free_config_file}" \
+  DIAPASON_STARTUP_TRACE=0 \
   NO_COLOR=1 \
   "${RELEASE_BIN}" tool-policy status
 

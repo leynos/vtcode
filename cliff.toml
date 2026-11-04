@@ -6,7 +6,7 @@
 header = """
 # Changelog
 
-All notable changes to vtcode will be documented in this file.
+All notable changes to diapason will be documented in this file.
 """
 
 body = """
@@ -205,7 +205,7 @@ remote = "github"
 # Remote configuration
 [remote.github]
 owner = "vinhnx"
-repo = "vtcode"
+repo = "diapason"
 [gitmoji]
 # Enable gitmoji parsing
 enable = false

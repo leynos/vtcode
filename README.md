@@ -1,8 +1,8 @@
-# VT Code
+# Diapason
 
 <div align="center">
 
-<picture> <img src="./resources/logo/vt_code_adaptive.svg" alt="VT Code"
+<picture> <img src="./resources/logo/diapason_adaptive.svg" alt="Diapason"
 width="300" /> </picture>
 
 **Secure, open, universal terminal coding agent in Rust.**
@@ -22,7 +22,7 @@ model-context-protocol] [![Agent Plugins][agent-plugins-badge]][agent-plugins]
 <details> <summary><strong>Contents</strong></summary>
 
 - [Overview](#overview)
-- [Why VT Code](#why-vt-code)
+- [Why Diapason](#why-diapason)
 - [Quick start](#quick-start)
   - [1. Install](#1-install)
   - [2. Configure](#2-configure)
@@ -45,16 +45,21 @@ model-context-protocol] [![Agent Plugins][agent-plugins-badge]][agent-plugins]
 
 <div align="center">
 
-<img src="./resources/gif/vtcode.gif" alt="VT Code demo" width="60%" />
-<em>Secure, open, universal.</em>
+<img src="./resources/provenance/gif/diapason.gif" alt="Upstream VTCode demo,
+preserved as provenance" width="60%" /> <em>Secure, open, universal.</em>
 
 </div>
 
-VT Code is an open-source Rust terminal coding agent for interactive and
+Diapason is an open-source Rust terminal coding agent for interactive and
 long-running autonomous work. It is a **harness, not just an LLM wrapper**: the
 model provides reasoning, while the runtime provides the tools, context,
 sandbox, state, evaluation, and verification needed to turn that reasoning into
 safe, reviewable progress.
+
+Diapason is a hard fork of [VTCode](https://github.com/vinhnx/vtcode),
+originally authored by Vinh Nguyen. DF12 Productions maintains this fork with a
+focus on ACP control and observability (o11y). Historical upstream references
+and original authorship are retained where they describe that provenance.
 
 A responsive TUI, multi-provider LLM support, durable sessions, open protocols,
 and extensible Skills take you from question to reviewed change without leaving
@@ -74,12 +79,12 @@ the terminal.
 > **Video companions:** [Podcast](https://www.youtube.com/watch?v=XLoswcd5rH0) ·
 > [Video](https://www.youtube.com/watch?v=PvL_kPjgU6o).
 
-| Podcast companion                                                                                                                                                            | Video companion                                                                                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <a href="https://www.youtube.com/watch?v=XLoswcd5rH0"><img src="https://img.youtube.com/vi/XLoswcd5rH0/maxresdefault.jpg" alt="VT Code podcast companion" width="400" /></a> | <a href="https://www.youtube.com/watch?v=PvL_kPjgU6o"><img src="https://img.youtube.com/vi/PvL_kPjgU6o/maxresdefault.jpg" alt="VT Code video companion" width="400" /></a> |
-| [Watch the podcast](https://www.youtube.com/watch?v=XLoswcd5rH0)                                                                                                             | [Watch the video](https://www.youtube.com/watch?v=PvL_kPjgU6o)                                                                                                             |
+| Podcast companion                                                                                                                                                             | Video companion                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <a href="https://www.youtube.com/watch?v=XLoswcd5rH0"><img src="https://img.youtube.com/vi/XLoswcd5rH0/maxresdefault.jpg" alt="Diapason podcast companion" width="400" /></a> | <a href="https://www.youtube.com/watch?v=PvL_kPjgU6o"><img src="https://img.youtube.com/vi/PvL_kPjgU6o/maxresdefault.jpg" alt="Diapason video companion" width="400" /></a> |
+| [Watch the podcast](https://www.youtube.com/watch?v=XLoswcd5rH0)                                                                                                              | [Watch the video](https://www.youtube.com/watch?v=PvL_kPjgU6o)                                                                                                              |
 
-## Why VT Code
+## Why Diapason
 
 | Pillar                     | What it means                                                                                                                                 |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -96,32 +101,36 @@ the terminal.
 ### 1. Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash
-# or: brew install vinhnx/tap/vtcode | cargo install vtcode
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
+cargo install --path .
 ```
+
+Packaged Diapason releases are not yet documented here; use the source install
+above until a Diapason package is published.
 
 ### 2. Configure
 
 ```bash
 cd path/to/your/project
-vtcode init                    # scaffolds config + AGENTS.md; review before committing
-export OPENAI_API_KEY="sk-..." # or `vtcode login` for OAuth providers
+diapason init                    # scaffolds config + AGENTS.md; review before committing
+export OPENAI_API_KEY="sk-..." # or `diapason login` for OAuth providers
 ```
 
 ### 3. Run
 
 ```bash
-vtcode                         # interactive TUI
-vtcode ask "explain Rc vs Arc" # one-shot question
-vtcode exec "refactor main.rs" # headless task
-vtcode review                  # review uncommitted changes
+diapason                         # interactive TUI
+diapason ask "explain Rc vs Arc" # one-shot question
+diapason exec "refactor main.rs" # headless task
+diapason review                  # review uncommitted changes
 ```
 
 See [Installation](./docs/installation/README.md) and
 [Getting Started](./docs/user-guide/getting-started.md).
 
 > [!CAUTION]
-> Never commit API keys or put them in `vtcode.toml`.
+> Never commit API keys or put them in `config.toml`.
 
 ### WebMCP browser bridge (opt-in)
 
@@ -134,24 +143,23 @@ See [Installation](./docs/installation/README.md) and
 /webmcp pair <origin>
 
 # Or serve a bounded workspace:
-vtcode webmcp serve --origin <origin> --allowed-root <dir>
+diapason webmcp serve --origin <origin> --allowed-root <dir>
 ```
 
 | Host       | Link                                                      |
 | ---------- | --------------------------------------------------------- |
-| Hosted app | <https://vtcode.vinhnx.chatgpt.site/>                     |
-| Fallback   | <https://vinhnx.github.io/VTCode/>                        |
+| Project    | [Diapason source](https://github.com/leynos/vtcode)       |
 | User guide | [WebMCP user guide](./docs/user-guide/webmcp.md)          |
 | Deployment | [WebMCP deployment reference](./docs/reference/webmcp.md) |
 
 ## Documentation
 
-| Area    | Guides                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Start   | [Installation](./docs/installation/README.md) · [Getting started](./docs/user-guide/getting-started.md) · [Wiki](https://github.com/vinhnx/VTCode/wiki) · [Blog: Building VT Code, a year in](https://huggingface.co/blog/vinhnx90/building-vtcode-a-year-in) · [Podcast companion](https://www.youtube.com/watch?v=XLoswcd5rH0) · [Video companion](https://www.youtube.com/watch?v=PvL_kPjgU6o) |
-| Use     | [TUI](./docs/user-guide/interactive-mode.md) · [CLI](./docs/user-guide/commands.md) · [WebMCP](./docs/user-guide/webmcp.md) · [Automation](./docs/guides/full-automation.md) · [Planning](./docs/guides/planning-workflow.md) · [Configuration](./docs/config/CONFIG_FIELD_REFERENCE.md)                                                                                                          |
-| Extend  | [Skills](./docs/skills/SKILLS_GUIDE.md) · [Plugins](./docs/guides/agent-plugins.md) · [MCP](./docs/guides/mcp-integration.md) · [Editors](./docs/guides/zed-acp.md)                                                                                                                                                                                                                               |
-| Operate | [Safety](./docs/security/SECURITY_MODEL.md) · [Protocols](./docs/protocols/OPEN_RESPONSES.md) · [Loop engineering](./docs/project/PLAN-loop-engineering.md) · [Architecture](./docs/ARCHITECTURE.md)                                                                                                                                                                                              |
+| Area    | Guides                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start   | [Installation](./docs/installation/README.md) · [Getting started](./docs/user-guide/getting-started.md) · [Wiki](https://github.com/leynos/vtcode/wiki) · [Original VTCode blog: Building VT Code, a year in](https://huggingface.co/blog/vinhnx90/building-vtcode-a-year-in) · [Podcast companion](https://www.youtube.com/watch?v=XLoswcd5rH0) · [Video companion](https://www.youtube.com/watch?v=PvL_kPjgU6o) |
+| Use     | [TUI](./docs/user-guide/interactive-mode.md) · [CLI](./docs/user-guide/commands.md) · [WebMCP](./docs/user-guide/webmcp.md) · [Automation](./docs/guides/full-automation.md) · [Planning](./docs/guides/planning-workflow.md) · [Configuration](./docs/config/CONFIG_FIELD_REFERENCE.md) · [Data directories](./docs/guides/user-data-directories.md)                                                             |
+| Extend  | [Skills](./docs/skills/SKILLS_GUIDE.md) · [Plugins](./docs/guides/agent-plugins.md) · [MCP](./docs/guides/mcp-integration.md) · [Editors](./docs/guides/zed-acp.md)                                                                                                                                                                                                                                               |
+| Operate | [Safety](./docs/security/SECURITY_MODEL.md) · [Protocols](./docs/protocols/OPEN_RESPONSES.md) · [Loop engineering](./docs/project/PLAN-loop-engineering.md) · [Architecture](./docs/ARCHITECTURE.md)                                                                                                                                                                                                              |
 
 ## Providers
 
@@ -160,12 +168,12 @@ vtcode webmcp serve --origin <origin> --allowed-root <dir>
 for credentials and model defaults.
 
 ```bash
-vtcode models list
-vtcode models config
+diapason models list
+diapason models config
 ```
 
 > [!TIP]
-> Restrict providers per workspace with `providers_whitelist` in `vtcode.toml`.
+> Restrict providers per workspace with `providers_whitelist` in `config.toml`.
 > Local inference (experimental) via Ollama, LM Studio, and llama.cpp is managed
 > with `/local` in the TUI - see [Local Models](./docs/guides/local-models.md).
 
@@ -179,8 +187,8 @@ graph LR
 1. Clone and run the fast gate:
 
 ```bash
-git clone https://github.com/vinhnx/vtcode.git
-cd vtcode
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
 ./scripts/run-debug.sh
 ./scripts/check-dev.sh   # fast gate: clippy, fmt, check
 cargo nextest run        # tests (never `cargo test`)
@@ -195,13 +203,13 @@ See [Development setup](./docs/development/DEVELOPMENT_SETUP.md) and
 
 ## Contributing
 
-VT Code grows with its community. Bug fixes, docs, ideas, testing, and reviews
+Diapason grows with its community. Bug fixes, docs, ideas, testing, and reviews
 are all welcome.
 
 ### Ways to contribute
 
 - **Security advisories**: Please report vulnerabilities privately first:
-  [Security Policy](https://github.com/vinhnx/VTCode/security/policy).
+  [Security Policy](https://github.com/leynos/vtcode/security/policy).
 - **Bug fixes and patches**: Small or large, every fix counts.
 - **Documentation**: Guides, examples, and corrections help everyone.
 - **Features and ideas**: Open an issue or start a discussion.
@@ -211,7 +219,7 @@ are all welcome.
 ### Getting started
 
 - Browse
-  [good first issues](https://github.com/vinhnx/vtcode/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+  [good first issues](https://github.com/leynos/vtcode/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
 - Read [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for humans
 - Check [AGENTS.md](./AGENTS.md) for AI agents
 
@@ -220,7 +228,7 @@ are all welcome.
 
 ### Contributors
 
-Thank you to everyone who shaped VT Code.
+Thank you to everyone who shaped Diapason.
 
 <details> <summary><strong>Show all contributors</strong></summary>
 
@@ -320,7 +328,7 @@ style="border-radius: 50%; border: 2px solid #B19CD9;" /></a> </div>
 
 ### Sponsorship
 
-VT Code is built and maintained in spare time. If it helped you ship or learn
+Diapason is built and maintained in spare time. If it helped you ship or learn
 something, a [sponsorship](https://github.com/sponsors/vinhnx) keeps the
 project independent.
 
@@ -341,8 +349,8 @@ alt="@KhaiRyth" style="border-radius: 50%" /></a> </div>
 
 [![GitHub Sponsors][sponsors-badge]][sponsors] <a
 href="https://buymeacoffee.com/vinhnx"><img
-src="./resources/screenshots/qr_donate.png" alt="Buy Me a Coffee" width="100"
-/></a>
+src="./resources/provenance/screenshots/qr_donate.png" alt="Buy Me a Coffee"
+width="100" /></a>
 
 </div>
 
@@ -354,7 +362,7 @@ code keeps its original licenses: see
 
 <div align="right">
 
-[Back to top](#vt-code)
+[Back to top](#diapason)
 
 </div>
 
@@ -367,6 +375,6 @@ code keeps its original licenses: see
 [agent-plugins-badge]: https://img.shields.io/badge/Agent_Plugins-5865F2?style=flat-square
 [agent-plugins]: ./docs/guides/agent-plugins.md
 [deepwiki-badge]: https://deepwiki.com/badge.svg
-[deepwiki]: https://deepwiki.com/vinhnx/VTCode
+[deepwiki]: https://deepwiki.com/leynos/vtcode
 [sponsors-badge]: https://img.shields.io/badge/Sponsor-30363D?style=for-the-badge&logo=github-sponsors&logoColor=%23EA4AAA
 [sponsors]: https://github.com/sponsors/vinhnx

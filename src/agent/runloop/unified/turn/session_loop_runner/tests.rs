@@ -14,18 +14,18 @@ use crate::agent::agents::ResumeSession;
 use crate::agent::runloop::git::normalize_workspace_path;
 use crate::agent::runloop::unified::turn::context::TurnLoopResult;
 use chrono::Utc;
+use diapason_core::core::threads::ArchivedSessionIntent;
+use diapason_core::exec::events::ThreadCompletionSubtype;
+use diapason_core::hooks::SessionEndReason;
+use diapason_core::llm::provider::{AssistantPhase, MessageRole, ToolCall};
+use diapason_core::utils::session_archive::{
+    SessionArchive, SessionArchiveMetadata, SessionListing, SessionMessage, SessionSnapshot,
+};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
-use vtcode_core::core::threads::ArchivedSessionIntent;
-use vtcode_core::exec::events::ThreadCompletionSubtype;
-use vtcode_core::hooks::SessionEndReason;
-use vtcode_core::llm::provider::{AssistantPhase, MessageRole, ToolCall};
-use vtcode_core::utils::session_archive::{
-    SessionArchive, SessionArchiveMetadata, SessionListing, SessionMessage, SessionSnapshot,
-};
 
 fn resume_session(intent: ArchivedSessionIntent) -> ResumeSession {
     let listing = SessionListing {
@@ -56,8 +56,8 @@ fn resume_session(intent: ArchivedSessionIntent) -> ResumeSession {
 #[test]
 fn take_pending_resumed_user_prompt_removes_trailing_user_message() {
     let mut history = vec![
-        vtcode_core::llm::provider::Message::system("[Session Memory Envelope]".to_string()),
-        vtcode_core::llm::provider::Message::user("what is this project".to_string()),
+        diapason_core::llm::provider::Message::system("[Session Memory Envelope]".to_string()),
+        diapason_core::llm::provider::Message::user("what is this project".to_string()),
     ];
 
     let pending = take_pending_resumed_user_prompt(&mut history);
@@ -70,9 +70,9 @@ fn take_pending_resumed_user_prompt_removes_trailing_user_message() {
 #[test]
 fn take_pending_resumed_user_prompt_handles_trailing_system_notes() {
     let mut history = vec![
-        vtcode_core::llm::provider::Message::system("[Session Memory Envelope]".to_string()),
-        vtcode_core::llm::provider::Message::user("what is this project".to_string()),
-        vtcode_core::llm::provider::Message::system("Recovered from interrupted session".to_string()),
+        diapason_core::llm::provider::Message::system("[Session Memory Envelope]".to_string()),
+        diapason_core::llm::provider::Message::user("what is this project".to_string()),
+        diapason_core::llm::provider::Message::system("Recovered from interrupted session".to_string()),
     ];
 
     let pending = take_pending_resumed_user_prompt(&mut history);
@@ -86,9 +86,9 @@ fn take_pending_resumed_user_prompt_handles_trailing_system_notes() {
 #[test]
 fn take_pending_resumed_user_prompt_ignores_completed_turns() {
     let mut history = vec![
-        vtcode_core::llm::provider::Message::user("what is this project".to_string()),
-        vtcode_core::llm::provider::Message::assistant("VT Code is a Rust coding agent".to_string()),
-        vtcode_core::llm::provider::Message::system("[Session Memory Envelope]".to_string()),
+        diapason_core::llm::provider::Message::user("what is this project".to_string()),
+        diapason_core::llm::provider::Message::assistant("Diapason is a Rust coding agent".to_string()),
+        diapason_core::llm::provider::Message::system("[Session Memory Envelope]".to_string()),
     ];
 
     let pending = take_pending_resumed_user_prompt(&mut history);
@@ -102,13 +102,13 @@ fn take_pending_resumed_user_prompt_ignores_completed_turns() {
 #[test]
 fn turn_history_checkpoint_truncates_appended_messages() {
     let mut history = vec![
-        vtcode_core::llm::provider::Message::user("before".to_string()),
-        vtcode_core::llm::provider::Message::assistant("baseline".to_string()),
+        diapason_core::llm::provider::Message::user("before".to_string()),
+        diapason_core::llm::provider::Message::assistant("baseline".to_string()),
     ];
     let checkpoint = TurnHistoryCheckpoint::capture(&history);
 
-    history.push(vtcode_core::llm::provider::Message::assistant("during turn".to_string()));
-    history.push(vtcode_core::llm::provider::Message::tool_response(
+    history.push(diapason_core::llm::provider::Message::assistant("during turn".to_string()));
+    history.push(diapason_core::llm::provider::Message::tool_response(
         "call-1".to_string(),
         "{\"ok\":true}".to_string(),
     ));
@@ -123,14 +123,14 @@ fn turn_history_checkpoint_truncates_appended_messages() {
 #[test]
 fn turn_history_checkpoint_preserves_preexisting_history_prefix() {
     let mut history = vec![
-        vtcode_core::llm::provider::Message::system("system".to_string()),
-        vtcode_core::llm::provider::Message::user("request".to_string()),
-        vtcode_core::llm::provider::Message::assistant("response".to_string()),
+        diapason_core::llm::provider::Message::system("system".to_string()),
+        diapason_core::llm::provider::Message::user("request".to_string()),
+        diapason_core::llm::provider::Message::assistant("response".to_string()),
     ];
     let expected_prefix = history.clone();
     let checkpoint = TurnHistoryCheckpoint::capture(&history);
 
-    history.push(vtcode_core::llm::provider::Message::assistant("retryable append".to_string()));
+    history.push(diapason_core::llm::provider::Message::assistant("retryable append".to_string()));
 
     checkpoint.rollback(&mut history);
 
@@ -140,13 +140,13 @@ fn turn_history_checkpoint_preserves_preexisting_history_prefix() {
 #[test]
 fn transient_system_note_cleanup_removes_by_content_from_latest_match() {
     let note = "Freshness note: file changed".to_string();
-    let older = vtcode_core::llm::provider::Message::system(note.clone());
-    let transient = vtcode_core::llm::provider::Message::system(note.clone());
+    let older = diapason_core::llm::provider::Message::system(note.clone());
+    let transient = diapason_core::llm::provider::Message::system(note.clone());
     let mut history = vec![
         older,
-        vtcode_core::llm::provider::Message::assistant("summary".to_string()),
+        diapason_core::llm::provider::Message::assistant("summary".to_string()),
         transient,
-        vtcode_core::llm::provider::Message::user("preserved".to_string()),
+        diapason_core::llm::provider::Message::user("preserved".to_string()),
     ];
 
     remove_transient_system_notes(&mut history, std::slice::from_ref(&note));
@@ -212,8 +212,8 @@ fn init_git_repo() -> TempDir {
     };
 
     run(&["init"]);
-    run(&["config", "user.name", "VT Code"]);
-    run(&["config", "user.email", "vtcode@example.com"]);
+    run(&["config", "user.name", "Diapason"]);
+    run(&["config", "user.email", "diapason@example.com"]);
     temp
 }
 
@@ -413,16 +413,16 @@ fn latest_assistant_result_text_uses_latest_substantive_final_assistant_message(
     let tool_call =
         ToolCall::function("call-1".to_string(), "read_file".to_string(), r#"{"path":"README.md"}"#.to_string());
     let messages = vec![
-        vtcode_core::llm::provider::Message::user("hello".to_string()),
-        vtcode_core::llm::provider::Message::assistant(" older answer ".to_string())
+        diapason_core::llm::provider::Message::user("hello".to_string()),
+        diapason_core::llm::provider::Message::assistant(" older answer ".to_string())
             .with_phase(Some(AssistantPhase::FinalAnswer)),
-        vtcode_core::llm::provider::Message::assistant(" commentary only ".to_string())
+        diapason_core::llm::provider::Message::assistant(" commentary only ".to_string())
             .with_phase(Some(AssistantPhase::Commentary)),
-        vtcode_core::llm::provider::Message::assistant_with_tools("tool call only".to_string(), vec![tool_call])
+        diapason_core::llm::provider::Message::assistant_with_tools("tool call only".to_string(), vec![tool_call])
             .with_phase(Some(AssistantPhase::FinalAnswer)),
-        vtcode_core::llm::provider::Message::assistant(" final answer ".to_string())
+        diapason_core::llm::provider::Message::assistant(" final answer ".to_string())
             .with_phase(Some(AssistantPhase::FinalAnswer)),
-        vtcode_core::llm::provider::Message::assistant("  \n  ".to_string())
+        diapason_core::llm::provider::Message::assistant("  \n  ".to_string())
             .with_phase(Some(AssistantPhase::FinalAnswer)),
     ];
 
@@ -434,10 +434,10 @@ fn latest_assistant_result_text_returns_none_without_substantive_final_response(
     let tool_call =
         ToolCall::function("call-2".to_string(), "read_file".to_string(), r#"{"path":"README.md"}"#.to_string());
     let messages = vec![
-        vtcode_core::llm::provider::Message::assistant("  ".to_string()),
-        vtcode_core::llm::provider::Message::assistant("commentary".to_string())
+        diapason_core::llm::provider::Message::assistant("  ".to_string()),
+        diapason_core::llm::provider::Message::assistant("commentary".to_string())
             .with_phase(Some(AssistantPhase::Commentary)),
-        vtcode_core::llm::provider::Message::assistant_with_tools("tool call".to_string(), vec![tool_call]),
+        diapason_core::llm::provider::Message::assistant_with_tools("tool call".to_string(), vec![tool_call]),
     ];
 
     assert_eq!(latest_assistant_result_text(&messages), None);
@@ -446,7 +446,7 @@ fn latest_assistant_result_text_returns_none_without_substantive_final_response(
 #[tokio::test]
 async fn checkpoint_session_archive_start_writes_initial_snapshot() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
-    let archive_path = temp_dir.path().join("session-vtcode-test-start.json");
+    let archive_path = temp_dir.path().join("session-diapason-test-start.json");
     let metadata = SessionArchiveMetadata::new("workspace", "/tmp/workspace", "model", "provider", "theme", "medium");
     let archive = SessionArchive::resume_from_listing(
         &SessionListing {
@@ -465,11 +465,11 @@ async fn checkpoint_session_archive_start_writes_initial_snapshot() {
         },
         metadata.clone(),
     );
-    let thread_manager = vtcode_core::core::threads::ThreadManager::new();
+    let thread_manager = diapason_core::core::threads::ThreadManager::new();
     let thread_handle = thread_manager.start_thread_with_identifier(
-        "session-vtcode-test-start",
-        vtcode_core::core::threads::ThreadBootstrap::new(Some(metadata))
-            .with_messages(vec![vtcode_core::llm::provider::Message::user("hello".to_string())]),
+        "session-diapason-test-start",
+        diapason_core::core::threads::ThreadBootstrap::new(Some(metadata))
+            .with_messages(vec![diapason_core::llm::provider::Message::user("hello".to_string())]),
     );
 
     checkpoint_session_archive_start(&archive, &thread_handle)

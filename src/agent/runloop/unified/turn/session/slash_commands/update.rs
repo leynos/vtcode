@@ -1,7 +1,7 @@
 use anyhow::Result;
 use crossterm::style::Stylize;
+use diapason_core::utils::ansi::MessageStyle;
 use std::env;
-use vtcode_core::utils::ansi::MessageStyle;
 
 use super::{SlashCommandContext, SlashCommandControl};
 use crate::updater::{InlineUpdateOutcome, Updater, execute_inline_update, run_inline_update_prompt};
@@ -10,7 +10,7 @@ fn control_for_update_outcome(outcome: InlineUpdateOutcome) -> SlashCommandContr
     match outcome {
         InlineUpdateOutcome::Continue => SlashCommandControl::Continue,
         InlineUpdateOutcome::RestartRequested => {
-            SlashCommandControl::BreakWithReason(vtcode_core::hooks::SessionEndReason::Completed)
+            SlashCommandControl::BreakWithReason(diapason_core::hooks::SessionEndReason::Completed)
         }
     }
 }

@@ -78,7 +78,7 @@ impl<'a> TurnProcessingContext<'a> {
         plan_text: &str,
         allow_repair: bool,
     ) -> anyhow::Result<TurnHandlerOutcome> {
-        use vtcode_core::utils::ansi::MessageStyle;
+        use diapason_core::utils::ansi::MessageStyle;
 
         if self.recovery_is_tool_free() && self.is_planning_active() {
             return self.break_planning_recovery_with_handoff(
@@ -93,7 +93,7 @@ impl<'a> TurnProcessingContext<'a> {
             // planning facade so this initial-plan rejection path and the
             // later-turn approval rejection path share identical guidance.
             tracing::warn!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 error = %error,
                 repair_scheduled = true,
                 "plan artefact rejected before approval; scheduling bounded repair"
@@ -108,7 +108,7 @@ impl<'a> TurnProcessingContext<'a> {
         }
         let message = format!("Plan is not ready for approval: {error}");
         self.renderer.line(MessageStyle::Warning, &message)?;
-        tracing::warn!(target: "vtcode.planning_workflow", error = %error, "plan artefact rejected before approval");
+        tracing::warn!(target: "diapason.planning_workflow", error = %error, "plan artefact rejected before approval");
         append_rejected_plan_draft_to_last_assistant(self.working_history, plan_text);
         // Terminal rejection: the draft is never persisted or shown by the
         // approval flow, so render it here — otherwise the user cannot see
@@ -148,7 +148,7 @@ impl<'a> TurnProcessingContext<'a> {
         let mut text = text;
         let detail_reasoning = reasoning_details
             .as_deref()
-            .and_then(vtcode_core::llm::providers::common::extract_reasoning_text_from_serialized_details);
+            .and_then(diapason_core::llm::providers::common::extract_reasoning_text_from_serialized_details);
         if should_suppress_redundant_diff_recap(self.working_history, &text) {
             text.clear();
         }
@@ -158,7 +158,7 @@ impl<'a> TurnProcessingContext<'a> {
             .filter(|text| !text.trim().is_empty());
         if !reasoning.is_empty() || reasoning_details.as_ref().is_some_and(|details| !details.is_empty()) {
             tracing::info!(
-                target: "vtcode.turn.metrics",
+                target: "diapason.turn.metrics",
                 metric = "reasoning_observed",
                 run_id = %self.harness_state.run_id.0,
                 turn_id = %self.harness_state.turn_id.0,
@@ -177,7 +177,7 @@ impl<'a> TurnProcessingContext<'a> {
         }
 
         if !response_streamed {
-            use vtcode_core::utils::ansi::MessageStyle;
+            use diapason_core::utils::ansi::MessageStyle;
 
             if !text.trim().is_empty() {
                 self.renderer.line(MessageStyle::Response, &text)?;
@@ -193,7 +193,7 @@ impl<'a> TurnProcessingContext<'a> {
                 if !reasoning_text.trim().is_empty() {
                     let duplicates_content = has_visible_text && reasoning_duplicates_content(reasoning_text, &text);
                     if !duplicates_content {
-                        let compact = vtcode_commons::formatting::compact_reasoning_text(reasoning_text);
+                        let compact = diapason_commons::formatting::compact_reasoning_text(reasoning_text);
                         if compact.trim().is_empty() {
                             continue;
                         }
@@ -206,7 +206,7 @@ impl<'a> TurnProcessingContext<'a> {
             }
 
             if let Some(detail_text) = detail_reasoning.as_deref() {
-                let cleaned_detail = vtcode_commons::formatting::compact_reasoning_text(detail_text);
+                let cleaned_detail = diapason_commons::formatting::compact_reasoning_text(detail_text);
                 let duplicates_content = has_visible_text && reasoning_duplicates_content(&cleaned_detail, &text);
                 let duplicates_rendered = rendered_reasoning.as_ref().is_some_and(|rendered_reasoning| {
                     rendered_reasoning.iter().any(|existing: &String| {
@@ -456,14 +456,14 @@ impl<'a> TurnProcessingContext<'a> {
         if denied_interview_recovery_retry {
             if looks_like_clarifying_question(&final_text) {
                 tracing::info!(
-                    target: "vtcode.planning_workflow",
+                    target: "diapason.planning_workflow",
                     "denied interview recovery produced a clarifying question; ending turn for user input instead of retrying plan synthesis"
                 );
                 // Fall through to normal turn completion — the question is
                 // already in working_history as the assistant's final answer.
             } else if self.retry_denied_interview_plan_synthesis() {
                 tracing::info!(
-                    target: "vtcode.planning_workflow",
+                    target: "diapason.planning_workflow",
                     "retrying tool-free synthesis after denied interview returned no plan"
                 );
                 return Ok(TurnHandlerOutcome::Continue);
@@ -485,7 +485,7 @@ impl<'a> TurnProcessingContext<'a> {
             self.plan_session.mark_plan_synthesis_retry_used();
             self.push_system_message(DENIED_INTERVIEW_PLAN_SYNTHESIS_RETRY_DIRECTIVE);
             tracing::info!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 "retrying denied interview response as a bounded plan synthesis"
             );
             return Ok(TurnHandlerOutcome::Continue);
@@ -506,14 +506,14 @@ impl<'a> TurnProcessingContext<'a> {
             self.plan_session.mark_plan_pseudo_tool_call_reprompt_used();
             self.push_system_message(PLAN_PSEUDO_TOOL_CALL_REPROMPT_DIRECTIVE);
             tracing::info!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 "re-prompting after pseudo-tool-call markup in plan mode"
             );
             return Ok(TurnHandlerOutcome::Continue);
         }
 
         tracing::info!(
-            target: "vtcode.turn.metrics",
+            target: "diapason.turn.metrics",
             metric = "text_response_decision",
             run_id = %self.harness_state.run_id.0,
             turn_id = %self.harness_state.turn_id.0,
@@ -555,7 +555,7 @@ impl<'a> TurnProcessingContext<'a> {
         // stored assistant message so it survives in history, ATIF, and
         // harness logs. A turn that continued never stores the hint.
         if defer_no_ready_plan_hint {
-            use vtcode_core::utils::ansi::MessageStyle;
+            use diapason_core::utils::ansi::MessageStyle;
             let hint =
                 crate::agent::runloop::unified::planning_workflow_state::PLANNING_WORKFLOW_NO_APPROVAL_READY_PLAN_HINT;
             self.renderer.line(MessageStyle::Info, hint)?;
@@ -566,7 +566,7 @@ impl<'a> TurnProcessingContext<'a> {
             let planning_active = self.is_planning_active();
             let plan_state = self.tool_registry.planning_workflow_state();
             tracing::info!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 plan_ready = true,
                 planning_active,
                 "completed plan reached approval handoff"
@@ -621,7 +621,7 @@ impl<'a> TurnProcessingContext<'a> {
             let require_confirmation = self.vt_cfg.map(|cfg| cfg.agent.require_plan_confirmation).unwrap_or(true);
             let supports_inline = self.renderer.supports_inline_ui();
             tracing::info!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 plan_ready = true,
                 require_confirmation,
                 supports_inline_ui = supports_inline,
@@ -634,7 +634,7 @@ impl<'a> TurnProcessingContext<'a> {
                 self.full_auto,
             );
             tracing::info!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 ?approval_route,
                 "plan approval route selected"
             );
@@ -654,7 +654,7 @@ impl<'a> TurnProcessingContext<'a> {
                         active_agent_name: self.active_primary_agent.active().name(),
                         skip_confirmations: self.skip_confirmations,
                         context_usage_percent: self.context_manager.context_usage_percent(
-                            vtcode_core::compaction::effective_context_budget(
+                            diapason_core::compaction::effective_context_budget(
                                 self.vt_cfg,
                                 &**self.provider_client,
                                 &resolve_effective_request_model(
@@ -673,7 +673,7 @@ impl<'a> TurnProcessingContext<'a> {
                 .await;
             }
 
-            use vtcode_core::utils::ansi::MessageStyle;
+            use diapason_core::utils::ansi::MessageStyle;
             self.renderer.line(MessageStyle::Info, "Plan ready for approval:")?;
             self.renderer.line(MessageStyle::Response, &plan_text)?;
             if approval_route == crate::agent::runloop::unified::planning_workflow::PlanApprovalRoute::Headless {
@@ -701,13 +701,13 @@ impl<'a> TurnProcessingContext<'a> {
             let handoff = match handoff {
                 Ok(handoff) => handoff,
                 Err(error) => {
-                    tracing::warn!(target: "vtcode.planning_workflow", error = %error, "automatic approved-plan handoff blocked");
+                    tracing::warn!(target: "diapason.planning_workflow", error = %error, "automatic approved-plan handoff blocked");
                     crate::agent::runloop::unified::planning_workflow::resolve_plan_approval(
                         self.plan_session,
                         self.harness_emitter,
                         &self.harness_state.run_id.0,
                         &self.harness_state.turn_id.0,
-                        vtcode_core::exec::events::PlanApprovalDecision::Cancel,
+                        diapason_core::exec::events::PlanApprovalDecision::Cancel,
                         true,
                     );
                     let message = format!("Plan execution is blocked: {error}");
@@ -722,7 +722,7 @@ impl<'a> TurnProcessingContext<'a> {
                 self.harness_emitter,
                 &self.harness_state.run_id.0,
                 &self.harness_state.turn_id.0,
-                vtcode_core::exec::events::PlanApprovalDecision::AutoAccept,
+                diapason_core::exec::events::PlanApprovalDecision::AutoAccept,
                 true,
             );
             let execution_agent = handoff.execution_agent;

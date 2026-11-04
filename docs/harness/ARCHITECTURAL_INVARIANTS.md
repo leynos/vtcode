@@ -1,6 +1,6 @@
 # Architectural Invariants
 
-Mechanical enforcement rules for VT Code. These are not suggestions — they are
+Mechanical enforcement rules for Diapason. These are not suggestions — they are
 invariants that must hold at all times. Violations should be caught by CI, not
 code review.
 
@@ -14,7 +14,7 @@ ______________________________________________________________________
 
 ## 1. Layer Dependency Rules
 
-VT Code modules form a strict dependency DAG. No reverse imports.
+Diapason modules form a strict dependency DAG. No reverse imports.
 
 ```
 types / commons
@@ -32,15 +32,16 @@ types / commons
 
 Side crates with no upstream dependents:
 
-- `vtcode-bash-runner` — used by core/exec
-- `vtcode-indexer` — used for workspace file indexing (includes merged markdown
-  storage and file search)
-- `vtcode-exec-events` — event definitions, used by core
-- `vtcode-acp` — Zed integration, used by agent
+- `diapason-bash-runner` — used by core/exec
+- `diapason-indexer` — used for workspace file indexing (includes merged
+  markdown storage and file search)
+- `diapason-exec-events` — event definitions, used by core
+- `diapason-acp` — Zed integration, used by agent
 
 **Violation**: a lower-layer crate imports from a higher-layer crate.
 **Remediation**: move the shared type/function down to the lowest common layer
-(usually `vtcode-commons` or `vtcode-config`). Never add a reverse dependency.
+(usually `diapason-commons` or `diapason-config`). Never add a reverse
+dependency.
 
 ______________________________________________________________________
 
@@ -68,7 +69,7 @@ Enforced mechanically:
 | Enums     | `PascalCase`           | `SafetyDecision`  |
 | Constants | `SCREAMING_SNAKE_CASE` | `DEFAULT_TIMEOUT` |
 | Modules   | `snake_case`           | `golden_path`     |
-| Crates    | `kebab-case`           | `vtcode-core`     |
+| Crates    | `kebab-case`           | `diapason-core`   |
 
 **Violation**: naming does not match the convention for its element type.
 **Remediation**: rename the item. Use your editor's rename refactoring to
@@ -123,11 +124,11 @@ ______________________________________________________________________
 ## 6. No Hardcoded Model IDs
 
 Model identifiers change frequently. All model references must come from
-`docs/models.json` or `crates/codegen/vtcode-core/src/config/constants.rs`.
+`docs/models.json` or `crates/codegen/diapason-core/src/config/constants.rs`.
 
 ```rust
 // Correct
-use vtcode_core::config::constants::DEFAULT_MODEL_ID;
+use diapason_core::config::constants::DEFAULT_MODEL_ID;
 
 // Incorrect
 let model = "gpt-5-mini";
@@ -136,7 +137,7 @@ let model = "gpt-5-mini";
 **Violation**: string literal matching a known model ID pattern (e.g., `"gpt-"`,
 `"claude-"`, `"gemini-"`) in non-test code. **Remediation**: add the model to
 `docs/models.json` and reference it via constants. If it's a default, add it to
-`crates/codegen/vtcode-core/src/config/constants.rs`.
+`crates/codegen/diapason-core/src/config/constants.rs`.
 
 ______________________________________________________________________
 
@@ -174,7 +175,7 @@ workspace without explicit user approval.
 
 ```rust
 // At the tool boundary, before any file operation:
-let canonical = vtcode_commons::canonicalize(path)
+let canonical = diapason_commons::canonicalize(path)
     .with_context(|| format!("Failed to resolve path: {}", path.display()))?;
 if !canonical.starts_with(&workspace_root) {
     anyhow::bail!("Path {} is outside workspace boundary", path.display());
@@ -321,22 +322,22 @@ ______________________________________________________________________
 
 ## 17. Loop Safety
 
-When vtcode-core is invoked by an external loop (scheduler, CI, or a future
+When diapason-core is invoked by an external loop (scheduler, CI, or a future
 loop crate), each invocation must be stateless across runs. No mutable global
 state, leaked temp files, or stale worktrees may persist between loop
 iterations.
 
 Key guarantees:
 
-- **Loop run state** is persisted explicitly to `.vtcode/state/loop-<id>.json`
+- **Loop run state** is persisted explicitly to `.diapason/state/loop-<id>.json`
   via `LoopRunState`. In-memory state is discarded at the end of each
   invocation.
-- **Loop memory** (notes, decisions) is append-only in `.vtcode/state/`. The
+- **Loop memory** (notes, decisions) is append-only in `.diapason/state/`. The
   agent reads previous entries on startup and appends new ones; it never
   overwrites.
 - **Worktree isolation** prevents parallel loop runs from colliding on the
   working tree. Each spawned sub-agent with `isolation = "worktree"` gets its
-  own git worktree under `.vtcode/worktrees/`.
+  own git worktree under `.diapason/worktrees/`.
 - **Cost guardrails** (`CostBudget` in `loop_state.rs`) prevent unbounded
   iteration cost. The loop scheduler reads the budget on resume and stops when
   limits are reached.
@@ -345,7 +346,7 @@ Key guarantees:
 paths left behind after the loop run completes. **Remediation**: use
 `LoopRunState` for persistence, clean up worktrees via
 `WorktreeManager::remove()`, and ensure all state flows through the explicit
-`.vtcode/state/` layout.
+`.diapason/state/` layout.
 
 ______________________________________________________________________
 

@@ -1,20 +1,20 @@
 use anstyle::{AnsiColor, Color as AnsiColorEnum, Effects, RgbColor};
 use anyhow::{Context, Result};
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
-use vtcode_core::config::WorkspaceTrustLevel;
-use vtcode_core::config::constants::ui;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::subagents::SubagentStatusEntry;
-use vtcode_core::tools::search_tool_bundle_status;
-use vtcode_core::utils::dot_config::load_workspace_trust_level;
-use vtcode_ui::tui::app::{
+use diapason_core::config::WorkspaceTrustLevel;
+use diapason_core::config::constants::ui;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::subagents::SubagentStatusEntry;
+use diapason_core::tools::search_tool_bundle_status;
+use diapason_core::utils::dot_config::load_workspace_trust_level;
+use diapason_ui::tui::app::{
     InlineHandle, InlineHeaderBadge, InlineHeaderContext, InlineHeaderStatusBadge, InlineHeaderStatusTone,
     InlineTextStyle,
 };
-use vtcode_ui::tui::core::ThemeConfigParser;
+use diapason_ui::tui::core::ThemeConfigParser;
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
 
 use super::welcome::SessionBootstrap;
 use dirs::home_dir;
@@ -87,7 +87,7 @@ struct WorkspaceHeaderSignals {
 }
 
 fn parse_workspace_header_signals(workspace: &Path) -> WorkspaceHeaderSignals {
-    let config_path = workspace.join("vtcode.toml");
+    let config_path = workspace.join("config.toml");
     let Ok(content) = fs::read_to_string(config_path) else {
         return WorkspaceHeaderSignals::default();
     };
@@ -243,7 +243,7 @@ pub(crate) fn build_search_tools_badge(workspace: &Path) -> InlineHeaderStatusBa
 
 pub(crate) async fn build_inline_header_context(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     session_bootstrap: &SessionBootstrap,
     provider_label: String,
     model_label: String,
@@ -261,10 +261,10 @@ pub(crate) async fn build_inline_header_context(
     // Check if we're running in the home directory and add a warning if so
     let mut highlights = session_bootstrap.header_highlights.clone();
     if is_home_directory(&config.workspace) {
-        highlights.push(vtcode_ui::tui::app::InlineHeaderHighlight {
+        highlights.push(diapason_ui::tui::app::InlineHeaderHighlight {
             title: "Warning".to_string(),
             lines: vec![
-                "You are running VT Code in your home directory. It is recommended to run in a project-specific directory for better organization and safety."
+                "You are running Diapason in your home directory. It is recommended to run in a project-specific directory for better organization and safety."
                     .to_string(),
             ],
         });
@@ -290,8 +290,8 @@ pub(crate) async fn build_inline_header_context(
     let trust_value = match session_bootstrap.acp_workspace_trust {
         Some(level) => {
             let level_str = match level {
-                vtcode_core::config::AgentClientProtocolZedWorkspaceTrustMode::FullAuto => "full_auto",
-                vtcode_core::config::AgentClientProtocolZedWorkspaceTrustMode::ToolsPolicy => "tools_policy",
+                diapason_core::config::AgentClientProtocolZedWorkspaceTrustMode::FullAuto => "full_auto",
+                diapason_core::config::AgentClientProtocolZedWorkspaceTrustMode::ToolsPolicy => "tools_policy",
             };
             format!("{}acp:{}", ui::HEADER_TRUST_PREFIX, level_str)
         }
@@ -322,7 +322,7 @@ pub(crate) async fn build_inline_header_context(
 
     let memory_enabled = workspace_signals
         .memory_enabled
-        .unwrap_or_else(|| vt_cfg.map(VTCodeConfig::persistent_memory_enabled).unwrap_or(false));
+        .unwrap_or_else(|| vt_cfg.map(DiapasonConfig::persistent_memory_enabled).unwrap_or(false));
     let persistent_memory = memory_enabled.then_some(InlineHeaderStatusBadge {
         text: "Memory: On".to_string(),
         tone: InlineHeaderStatusTone::Ready,
@@ -343,7 +343,7 @@ pub(crate) async fn build_inline_header_context(
     .await?;
 
     let context = InlineHeaderContext {
-        app_name: vtcode_core::config::constants::app::DISPLAY_NAME.to_string(),
+        app_name: diapason_core::config::constants::app::DISPLAY_NAME.to_string(),
         provider: provider_value,
         model: model_value,
         context_window_size: Some(context_window_size),
@@ -485,7 +485,7 @@ mod tests {
     };
     use anstyle::{AnsiColor, Color as AnsiColorEnum, RgbColor};
     use chrono::Utc;
-    use vtcode_core::subagents::{SubagentStatus, SubagentStatusEntry};
+    use diapason_core::subagents::{SubagentStatus, SubagentStatusEntry};
 
     fn status_entry(agent_name: &str, color: Option<&str>, status: SubagentStatus) -> SubagentStatusEntry {
         SubagentStatusEntry {

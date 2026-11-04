@@ -1,5 +1,5 @@
+use diapason_core::config::constants::tools;
 use serde_json::json;
-use vtcode_core::config::constants::tools;
 
 use super::classify::{contains_chained_instruction, looks_like_natural_language_request, looks_like_shell_command};
 use super::normalize::normalize_for_shell_detection;

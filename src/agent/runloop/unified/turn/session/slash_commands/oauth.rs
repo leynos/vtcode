@@ -1,19 +1,19 @@
 use anstyle::{AnsiColor, Color, Effects, Style as AnsiStyle};
 use anyhow::Result;
-use vtcode_auth::{
+use diapason_auth::{
     AuthCredentialsStoreMode, AuthStatus, OpenAIChatGptAuthStatus, OpenAIChatGptSessionProvenance,
     OpenAIResolvedAuthSource,
 };
-use vtcode_core::config::api_keys::ApiKeySources;
-use vtcode_core::copilot::{
+use diapason_core::config::api_keys::ApiKeySources;
+use diapason_core::copilot::{
     COPILOT_AUTH_DOC_PATH, CopilotAuthEvent, CopilotAuthStatus, CopilotAuthStatusKind, login_with_events,
     logout_with_events, probe_auth_status,
 };
-use vtcode_core::hooks::SessionEndReason;
-use vtcode_core::llm::factory::{ProviderConfig, create_provider_with_config};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::ansi_codes::notify_attention;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
+use diapason_core::hooks::SessionEndReason;
+use diapason_core::llm::factory::{ProviderConfig, create_provider_with_config};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::ansi_codes::notify_attention;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
 
 use super::{SlashCommandContext, SlashCommandControl, ui};
 use crate::agent::runloop::slash_commands::OAuthProviderAction;
@@ -143,9 +143,9 @@ pub(crate) async fn handle_oauth_login(
                 if overview.codex_fallback_available {
                     ctx.renderer.line(
                         MessageStyle::Info,
-                        "Tip: Codex's auth.json was detected. VT Code can use it automatically at runtime.\n\
-                         Continue below for a VT Code session with full auto-refresh, or cancel and\n\
-                         run `vtcode login openai --from-codex` to validate the Codex credentials.",
+                        "Tip: Codex's auth.json was detected. Diapason can use it automatically at runtime.\n\
+                         Continue below for a Diapason session with full auto-refresh, or cancel and\n\
+                         run `diapason login openai --from-codex` to validate the Codex credentials.",
                     )?;
                 }
             }
@@ -240,7 +240,7 @@ pub(crate) async fn handle_oauth_logout(
         }
         OPENROUTER_PROVIDER => {
             if matches!(openrouter_auth_status(vt_cfg)?, AuthStatus::NotAuthenticated) {
-                if vtcode_core::config::api_keys::get_api_key_with_mode(
+                if diapason_core::config::api_keys::get_api_key_with_mode(
                     OPENROUTER_PROVIDER,
                     &ApiKeySources::default(),
                     credential_storage_mode(&ctx),
@@ -264,7 +264,7 @@ pub(crate) async fn handle_oauth_logout(
         OPENAI_PROVIDER => {
             let overview = summarize_current_openai_credentials(vt_cfg)?;
             if matches!(openai_auth_status(vt_cfg)?, OpenAIChatGptAuthStatus::NotAuthenticated) {
-                if vtcode_core::config::api_keys::get_api_key_with_mode(
+                if diapason_core::config::api_keys::get_api_key_with_mode(
                     OPENAI_PROVIDER,
                     &ApiKeySources::default(),
                     credential_storage_mode(&ctx),
@@ -282,7 +282,7 @@ pub(crate) async fn handle_oauth_logout(
                         .line(MessageStyle::Output, "Run `codex logout` to remove the Codex credentials entirely.")?;
                     ctx.renderer.line(
                         MessageStyle::Output,
-                        "For a VT Code session with full auto-refresh, run /login openai.",
+                        "For a Diapason session with full auto-refresh, run /login openai.",
                     )?;
                 } else {
                     ctx.renderer
@@ -298,7 +298,7 @@ pub(crate) async fn handle_oauth_logout(
             if overview.codex_fallback_available {
                 ctx.renderer.line(
                     MessageStyle::Output,
-                    "Note: Codex's auth.json was detected. VT Code will continue to use it as a\n\
+                    "Note: Codex's auth.json was detected. Diapason will continue to use it as a\n\
                      fallback at runtime. Run `codex logout` to remove those credentials entirely.",
                 )?;
             }
@@ -608,8 +608,8 @@ fn oauth_modal_lines(action: OAuthProviderAction) -> Vec<String> {
     match action {
         OAuthProviderAction::Login => vec![
             "Choose a provider to connect.".to_string(),
-            "VT Code stores OpenAI/OpenRouter credentials securely and uses the official `copilot` CLI for GitHub Copilot.".to_string(),
-            "If you have Codex CLI installed, VT Code automatically uses its auth.json as a fallback for ChatGPT.".to_string(),
+            "Diapason stores OpenAI/OpenRouter credentials securely and uses the official `copilot` CLI for GitHub Copilot.".to_string(),
+            "If you have Codex CLI installed, Diapason automatically uses its auth.json as a fallback for ChatGPT.".to_string(),
         ],
         OAuthProviderAction::Logout => vec![
             "Choose a provider to disconnect.".to_string(),
@@ -625,12 +625,12 @@ fn oauth_modal_lines(action: OAuthProviderAction) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::llm::provider as uni;
+    use diapason_ui::tui::app::InlineHeaderContext;
     use hashbrown::HashMap;
     use std::sync::Arc;
     use tokio::sync::RwLock;
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::llm::provider as uni;
-    use vtcode_ui::tui::app::InlineHeaderContext;
 
     use crate::agent::runloop::model_picker::ModelPickerState;
     use crate::agent::runloop::unified::palettes::ActivePalette;
@@ -639,7 +639,7 @@ mod tests {
     use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
     use crate::agent::runloop::unified::workspace_links::LinkedDirectory;
     use crate::agent::runloop::welcome::SessionBootstrap;
-    use vtcode_core::skills::types::Skill;
+    use diapason_core::skills::types::Skill;
 
     #[tokio::test]
     async fn openrouter_login_returns_continue_when_ctrl_c_is_pending() {
@@ -655,20 +655,21 @@ mod tests {
         let loaded_skills = Box::leak(Box::new(Arc::new(RwLock::new(HashMap::<String, Skill>::new()))));
         let linked_directories = Box::leak(Box::new(Vec::<LinkedDirectory>::new()));
         let session_bootstrap = Box::leak(Box::new(SessionBootstrap::default()));
-        let vt_cfg = Box::leak(Box::new(None::<VTCodeConfig>));
+        let vt_cfg = Box::leak(Box::new(None::<DiapasonConfig>));
         let async_mcp_manager = None;
         let checkpoint_manager = None;
         let lifecycle_hooks = None;
         let harness_emitter = None;
         let (webmcp_prompt_sender, _webmcp_prompt_receiver) = crate::agent::runloop::unified::webmcp::prompt_channel();
         let webmcp_bridge = Box::leak(Box::new(None));
-        let active_primary_agent = Box::leak(Box::new(vtcode_core::primary_agent::ActivePrimaryAgentState::default()));
+        let active_primary_agent =
+            Box::leak(Box::new(diapason_core::primary_agent::ActivePrimaryAgentState::default()));
         let plan_session = Box::leak(Box::new(
             crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState::default(),
         ));
         let thread_handle = Box::leak(Box::new(
-            vtcode_core::core::threads::ThreadManager::new()
-                .start_thread_with_identifier("test-thread", vtcode_core::core::threads::ThreadBootstrap::new(None)),
+            diapason_core::core::threads::ThreadManager::new()
+                .start_thread_with_identifier("test-thread", diapason_core::core::threads::ThreadBootstrap::new(None)),
         ));
 
         let ctx = SlashCommandContext {
@@ -760,7 +761,7 @@ fn copilot_modal_badge(action: OAuthProviderAction, status: &CopilotAuthStatus) 
 fn openai_modal_subtitle(
     action: OAuthProviderAction,
     status: &OpenAIChatGptAuthStatus,
-    overview: &vtcode_config::auth::OpenAICredentialOverview,
+    overview: &diapason_config::auth::OpenAICredentialOverview,
 ) -> String {
     match action {
         OAuthProviderAction::Login => match status {
@@ -770,7 +771,7 @@ fn openai_modal_subtitle(
             ),
             OpenAIChatGptAuthStatus::NotAuthenticated => {
                 if overview.codex_fallback_available {
-                    "Sign in with your ChatGPT subscription. Codex auth.json detected — VT Code can use it as a fallback."
+                    "Sign in with your ChatGPT subscription. Codex auth.json detected — Diapason can use it as a fallback."
                         .to_string()
                 } else {
                     "Sign in with your ChatGPT subscription.".to_string()
@@ -796,7 +797,7 @@ fn openai_modal_subtitle(
 fn openai_modal_badge(
     action: OAuthProviderAction,
     status: &OpenAIChatGptAuthStatus,
-    overview: &vtcode_config::auth::OpenAICredentialOverview,
+    overview: &diapason_config::auth::OpenAICredentialOverview,
 ) -> String {
     if matches!(action, OAuthProviderAction::Refresh) {
         return if matches!(status, OpenAIChatGptAuthStatus::Authenticated { .. }) {
@@ -862,7 +863,7 @@ fn render_openrouter_auth_status(
             }
         }
         AuthStatus::NotAuthenticated => {
-            if vtcode_core::config::api_keys::get_api_key_with_mode(
+            if diapason_core::config::api_keys::get_api_key_with_mode(
                 OPENROUTER_PROVIDER,
                 &ApiKeySources::default(),
                 storage_mode,
@@ -882,9 +883,9 @@ fn render_openai_auth_status(
     renderer: &mut AnsiRenderer,
     status: OpenAIChatGptAuthStatus,
     _storage_mode: AuthCredentialsStoreMode,
-    overview: &vtcode_config::auth::OpenAICredentialOverview,
+    overview: &diapason_config::auth::OpenAICredentialOverview,
 ) -> Result<()> {
-    use vtcode_config::auth::OpenAIResolvedAuthSource;
+    use diapason_config::auth::OpenAIResolvedAuthSource;
     // Drive the headline from overview.active_source — the same field runtime
     // resolution uses — so TUI status never disagrees with actual auth.
     match overview.active_source {
@@ -905,7 +906,7 @@ fn render_openai_auth_status(
                 if overview.chatgpt_session_provenance == Some(OpenAIChatGptSessionProvenance::CodexFallback) {
                     renderer.line(
                         MessageStyle::Output,
-                        "  Source: Codex auth.json fallback (run /login openai for a VT Code session with auto-refresh)",
+                        "  Source: Codex auth.json fallback (run /login openai for a Diapason session with auto-refresh)",
                     )?;
                 }
             }
@@ -921,7 +922,7 @@ fn render_openai_auth_status(
                 }
                 renderer.line(
                     MessageStyle::Output,
-                    "  Run /login openai for a VT Code session with full auto-refresh support.",
+                    "  Run /login openai for a Diapason session with full auto-refresh support.",
                 )?;
             }
         },
@@ -978,7 +979,7 @@ fn render_copilot_auth_status(renderer: &mut AnsiRenderer, status: CopilotAuthSt
 
 fn render_openai_credential_overview(
     renderer: &mut AnsiRenderer,
-    vt_cfg: Option<&vtcode_config::VTCodeConfig>,
+    vt_cfg: Option<&diapason_config::DiapasonConfig>,
     current_provider_is_openai: bool,
 ) -> Result<()> {
     let overview = summarize_current_openai_credentials(vt_cfg)?;
@@ -1038,13 +1039,19 @@ async fn sync_openai_runtime_if_active(ctx: &mut SlashCommandContext<'_>) -> Res
         .as_ref()
         .map(|cfg| cfg.agent.credential_storage_mode)
         .unwrap_or_default();
-    let api_key =
-        vtcode_core::config::api_keys::get_api_key_with_mode(OPENAI_PROVIDER, &ApiKeySources::default(), storage_mode)
-            .ok();
+    let api_key = diapason_core::config::api_keys::get_api_key_with_mode(
+        OPENAI_PROVIDER,
+        &ApiKeySources::default(),
+        storage_mode,
+    )
+    .ok();
     let (runtime_api_key, runtime_auth) = match ctx.vt_cfg.as_ref() {
         Some(cfg) => {
-            match vtcode_config::auth::resolve_openai_auth(&cfg.auth.openai, cfg.agent.credential_storage_mode, api_key)
-            {
+            match diapason_config::auth::resolve_openai_auth(
+                &cfg.auth.openai,
+                cfg.agent.credential_storage_mode,
+                api_key,
+            ) {
                 Ok(resolved) => (resolved.api_key().to_string(), resolved.handle()),
                 Err(_) => (String::new(), None),
             }

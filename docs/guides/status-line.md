@@ -1,16 +1,16 @@
 # Configuring the inline status line
 
 The inline UI can display a single-line status bar beneath the prompt. By
-default VT Code shows the current git branch (with an asterisk when the working
-tree is dirty) on the left and the active model with its reasoning effort on
-the right, with the current clock time (24-hour `HH:MM:SS`) rightmost. The
-`[ui.status_line]` table in `vtcode.toml` lets you override this behaviour or
-turn the status line off entirely.
+default Diapason shows the current git branch (with an asterisk when the
+working tree is dirty) on the left and the active model with its reasoning
+effort on the right, with the current clock time (24-hour `HH:MM:SS`)
+rightmost. The `[ui.status_line]` table in `config.toml` lets you override this
+behaviour or turn the status line off entirely.
 
-If you want VT Code to scaffold the command setup for you, run `/statusline` in
-an interactive session. VT Code asks whether to persist the script in the user
-config layer (`~/.config/vtcode/statusline.sh`) or the current workspace
-(`.vtcode/statusline.sh`), then lets you configure mode, command, script
+If you want Diapason to scaffold the command setup for you, run `/statusline`
+in an interactive session. Diapason asks whether to persist the script in the
+user config layer (`~/.config/diapason/statusline.sh`) or the current workspace
+(`.diapason/statusline.sh`), then lets you configure mode, command, script
 scaffolding, and timing directly in the inline modal.
 
 ## Available modes
@@ -29,7 +29,7 @@ rendering the first line from stdout if it is not empty.
 ```toml
 [ui.status_line]
 mode = "command"
-command = "~/.config/vtcode/statusline.sh"
+command = "~/.config/diapason/statusline.sh"
 refresh_interval_ms = 1000
 command_timeout_ms = 200
 ```
@@ -38,7 +38,7 @@ command_timeout_ms = 200
   refreshes on every render tick.
 - `command_timeout_ms` aborts the command if it takes too long. The default is
   200 ms.
-- If `command` is omitted or resolves to an empty string, VT Code falls back to
+- If `command` is omitted or resolves to an empty string, Diapason falls back to
   `auto` mode.
 - `show_clock` (default `true`) controls whether the current time (`HH:MM:SS`,
   24-hour clock) is appended to the right edge of the status line in `auto`
@@ -48,18 +48,18 @@ command_timeout_ms = 200
 
 The JSON payload written to stdin contains the following fields:
 
-| Field                      | Description                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| `hook_event_name`          | Always set to `"Status"`; VT Code reserves this value for status line updates. |
-| `cwd`                      | Absolute path to the active workspace.                                         |
-| `workspace.current_dir`    | Same as `cwd`.                                                                 |
-| `workspace.project_dir`    | Same as `cwd`.                                                                 |
-| `model.id`                 | Raw model identifier from configuration.                                       |
-| `model.display_name`       | Human-readable name when recognised.                                           |
-| `runtime.reasoning_effort` | Current reasoning effort level.                                                |
-| `git.branch`               | Current branch name when inside a git repository.                              |
-| `git.dirty`                | Boolean indicating whether uncommitted changes exist.                          |
-| `version`                  | VT Code package version.                                                       |
+| Field                      | Description                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `hook_event_name`          | Always set to `"Status"`; Diapason reserves this value for status line updates. |
+| `cwd`                      | Absolute path to the active workspace.                                          |
+| `workspace.current_dir`    | Same as `cwd`.                                                                  |
+| `workspace.project_dir`    | Same as `cwd`.                                                                  |
+| `model.id`                 | Raw model identifier from configuration.                                        |
+| `model.display_name`       | Human-readable name when recognised.                                            |
+| `runtime.reasoning_effort` | Current reasoning effort level.                                                 |
+| `git.branch`               | Current branch name when inside a git repository.                               |
+| `git.dirty`                | Boolean indicating whether uncommitted changes exist.                           |
+| `version`                  | Diapason package version.                                                       |
 
 Scripts can parse this payload with any JSON-capable tool. Only the first line
 of stdout is rendered, so keep the output concise and apply colour escape
@@ -84,5 +84,5 @@ else
 fi
 ```
 
-Mark the script as executable and point `command` to its path. VT Code caches
+Mark the script as executable and point `command` to its path. Diapason caches
 the last successful output and reuses it until the command is refreshed.

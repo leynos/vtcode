@@ -1,0 +1,63 @@
+//! # Core Agent Architecture
+//!
+//! This module contains the core components of the Diapason agent system,
+//! implementing the main agent loop, context management, and supporting infrastructure.
+//!
+//! ## Architecture Overview
+//!
+//! The core system is built around several key components:
+//!
+//! - **Agent**: Main agent implementation with conversation management
+
+//! - **Prompt Caching**: Strategic caching for improved response times
+//! - **Decision Tracking**: Audit trail of agent decisions and actions
+//! - **Error Recovery**: Intelligent error handling with context preservation
+//! - **Timeout Detection**: Prevents runaway operations
+//! - **Trajectory Management**: Session state and history tracking
+//!
+//! ## Key Components
+//!
+//! ### Agent System
+//! ```rust,ignore
+//! use diapason_core::core::agent::core::Agent;
+//! use diapason_core::DiapasonConfig;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let config = DiapasonConfig::load()?;
+//!     let agent = Agent::new(config).await?;
+//!     agent.run().await?;
+//!     Ok(())
+//! }
+//! ```
+//!
+
+//!
+pub mod agent;
+
+pub mod decision_tracker;
+pub mod error_recovery;
+pub mod interfaces;
+pub mod loop_detector;
+pub mod memory_pool;
+pub mod message_metadata;
+pub mod orchestrator_retry;
+pub mod pending_actions;
+pub mod performance_profiler;
+pub mod prompt_caching;
+pub mod state_schema;
+pub mod telemetry;
+pub mod threads;
+pub mod timeout_detector;
+pub mod trajectory;
+
+/// Number of seconds in one day (24 * 60 * 60).
+pub(crate) const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+
+// Re-export main types
+pub use memory_pool::{MemoryPool, global_pool};
+pub use performance_profiler::{BenchmarkResults, BenchmarkUtils, PerformanceProfiler};
+pub use threads::{
+    SubmissionId, ThreadBootstrap, ThreadEventRecord, ThreadId, ThreadManager, ThreadRuntimeHandle, ThreadSnapshot,
+    build_thread_archive_metadata, loaded_skills_from_session_listing, messages_from_session_listing,
+};

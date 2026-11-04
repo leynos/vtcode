@@ -1,0 +1,62 @@
+use anyhow::{Context, Result};
+use diapason_config::{DiscoveredSubagents, SubagentDiscoveryInput, discover_subagents};
+use std::path::{Path, PathBuf};
+
+use crate::plugins::components::AgentsHandler;
+use crate::plugins::manifest::PluginManifest;
+use diapason_commons::DiapasonPaths;
+
+// ─── Subagent Discovery ────────────────────────────────────────────────────
+
+pub(crate) async fn discover_controller_subagents(workspace_root: &Path) -> Result<DiscoveredSubagents> {
+    let plugin_agent_files = discover_plugin_agent_files(workspace_root).await?;
+    let mut input = SubagentDiscoveryInput::new(workspace_root.to_path_buf());
+    input.plugin_agent_files = plugin_agent_files;
+    discover_subagents(&input)
+}
+
+async fn discover_plugin_agent_files(workspace_root: &Path) -> Result<Vec<(String, PathBuf)>> {
+    let mut files = Vec::new();
+    for plugin_root in trusted_plugin_roots(workspace_root) {
+        if !plugin_root.exists() || !plugin_root.is_dir() {
+            continue;
+        }
+
+        let mut plugin_entries = tokio::fs::read_dir(&plugin_root)
+            .await
+            .with_context(|| format!("Failed to read plugin directory {}", plugin_root.display()))?;
+        while let Some(entry) = plugin_entries.next_entry().await? {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let manifest_path = path.join(".diapason-plugin/plugin.json");
+            if !manifest_path.exists() {
+                continue;
+            }
+
+            let manifest: PluginManifest = serde_json::from_str(
+                &tokio::fs::read_to_string(&manifest_path)
+                    .await
+                    .with_context(|| format!("Failed to read plugin manifest {}", manifest_path.display()))?,
+            )
+            .with_context(|| format!("Failed to parse plugin manifest {}", manifest_path.display()))?;
+            for agent_path in AgentsHandler::process_agents(&path, manifest.agents.clone()).await? {
+                files.push((manifest.name.clone(), agent_path));
+            }
+        }
+    }
+    Ok(files)
+}
+
+fn trusted_plugin_roots(workspace_root: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::with_capacity(4);
+    if let Some(codex_home) = std::env::var_os("CODEX_HOME").map(PathBuf::from) {
+        roots.push(codex_home.join("plugins"));
+    } else if let Ok(paths) = DiapasonPaths::resolve() {
+        roots.push(paths.plugins_dir());
+    }
+    roots.push(workspace_root.join(diapason_commons::workspace_dir_name()).join("plugins"));
+    roots.push(workspace_root.join(".agents/plugins"));
+    roots
+}

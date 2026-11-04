@@ -1,7 +1,7 @@
-# Configuration Precedence in VT Code
+# Configuration Precedence in Diapason
 
-This document summarizes how VT Code discovers configuration at startup and how
-default values and runtime validation interact with user-provided settings.
+This document summarizes how Diapason discovers configuration at startup and
+how default values and runtime validation interact with user-provided settings.
 
 ## Resolution Order
 
@@ -9,22 +9,22 @@ When the CLI starts it builds a **layer stack** and merges all present layers
 from lowest to highest precedence.
 
 1. **Built-in defaults** – used only when no config layer exists
-2. **System** – `/etc/vtcode/vtcode.toml` plus `XDG_CONFIG_DIRS` candidates
-   (Unix)
-3. **Legacy user** – `VTCODE_HOME/vtcode.toml` or historical
-   `~/.vtcode/vtcode.toml`
-4. **Canonical user** – the platform config directory's `vtcode.toml`
-5. **Project profile** –
-   `<workspace>/.vtcode/projects/<project>/config/vtcode.toml`
-6. **Workspace fallback** – `<workspace>/.vtcode/vtcode.toml` (when distinct
+2. **System** – system configuration candidates from `XDG_CONFIG_DIRS` (Unix)
+3. **Canonical user** – `config.toml` under `$XDG_CONFIG_HOME/diapason/`
+   (default `~/.config/diapason/config.toml` on Linux/BSD)
+4. **Project profile** –
+   `<workspace>/.diapason/projects/<project>/config/config.toml`
+5. **Workspace fallback** – `<workspace>/.diapason/config.toml` (when distinct
    from root file)
-7. **Workspace root** – `<workspace>/vtcode.toml`
-8. **Explicit config file** – `VTCODE_CONFIG_PATH` or
+6. **Workspace root** – `<workspace>/config.toml`
+7. **Explicit config file** – `DIAPASON_CONFIG_PATH` or
    `--config path/to/file.toml` replaces the normal workspace-file layer while
    retaining the global layers; `--config key=value` remains the inline
    override form
-9. **Runtime overrides** – CLI `-c/--config key=value` and explicit runtime
+8. **Runtime overrides** – CLI `-c/--config key=value` and explicit runtime
    flags (highest precedence)
+
+Diapason does not read or migrate `~/.diapason/` or `.vtcode/` files.
 
 Tables are deep-merged recursively. Scalars and arrays are replaced by the
 higher-precedence layer.
@@ -32,33 +32,33 @@ higher-precedence layer.
 ### Explicit config file (session override)
 
 When an explicit config file is present (`--config path` or
-`VTCODE_CONFIG_PATH`), the resolved path is captured once at startup as the
+`DIAPASON_CONFIG_PATH`), the resolved path is captured once at startup as the
 **session config override**. Every later configuration reload during that
 session — slash-command persistence, the settings palette, live-reload
 watchers, and `ConfigService` reads/writes — reads from and writes to the same
-explicit file instead of drifting back to the default workspace `vtcode.toml`.
+explicit file instead of drifting back to the default workspace `config.toml`.
 Relative paths and `~` are resolved identically for both the CLI flag and the
 environment variable. `--config key=value` overrides and `--model`/`--provider`
 remain runtime layers above all files.
 
-Scope note: global-only operations (for example `vtcode mcp login` /
+Scope note: global-only operations (for example `diapason mcp login` /
 `mcp logout`) always operate on the canonical user configuration and
 intentionally ignore the explicit session override.
 
 ### Inline CLI overrides
 
-Inspired by [OpenAI Codex CLI](https://github.com/openai/codex), VT Code now
+Inspired by [OpenAI Codex CLI](https://github.com/openai/codex), Diapason now
 accepts `-c/--config key=value` overrides directly on the command line. These
 overrides apply as a dedicated runtime layer above all file-based layers. Use
 multiple flags to set several keys during a single run. For example:
 
 ```
-vtcode --workspace ~/repo \
+diapason --workspace ~/repo \
   --config agent.provider="openai" \
   --config context.curation.enabled=false
 ```
 
-Relative config paths passed via `--config path/to/vtcode.toml` remain
+Relative config paths passed via `--config path/to/config.toml` remain
 supported and are resolved against the workspace before falling back to the
 current working directory.
 
@@ -68,12 +68,12 @@ Reset clears one file layer by writing an empty TOML document to the resolved
 target. It does not delete the file's parent directory, remove credentials, or
 change lower-precedence layers:
 
-| Command                         | Layer cleared                                                     |
-| ------------------------------- | ----------------------------------------------------------------- |
-| `vtcode config reset`           | Active workspace file, or the explicit `--config path`            |
-| `vtcode config reset --global`  | Canonical user configuration                                      |
-| `vtcode config reset --project` | Current project's `.vtcode/projects/<project>/config/vtcode.toml` |
-| `/config reset`                 | The target file shown by the settings palette, after confirmation |
+| Command                           | Layer cleared                                                       |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `diapason config reset`           | Active workspace file, or the explicit `--config path`              |
+| `diapason config reset --global`  | Canonical user configuration                                        |
+| `diapason config reset --project` | Current project's `.diapason/projects/<project>/config/config.toml` |
+| `/config reset`                   | The target file shown by the settings palette, after confirmation   |
 
 `--global` and `--project` cannot be combined. The reset service validates
 targets against known configuration paths and rejects symlinked or non-regular
@@ -90,7 +90,7 @@ identity selected for the current session stays stable until a later turn or
 session when switching the active client would be unsafe.
 
 Malformed, inaccessible, or otherwise invalid edits fail closed: the last valid
-runtime snapshot remains active and VT Code displays a warning. Once the file
+runtime snapshot remains active and Diapason displays a warning. Once the file
 is repaired, the next reload applies it. The open settings palette refreshes
 its values from the effective stack while retaining its section and selected
 entry when that entry still exists.
@@ -101,18 +101,18 @@ Layered defaults are defined in the Rust sources so the application can
 generate a baseline configuration and reason about missing fields:
 
 - **Global configuration defaults** live in
-    `crates/codegen/vtcode-core/src/config/defaults/`
+    `crates/codegen/diapason-core/src/config/defaults/`
 - **Syntax highlighting defaults** are centralized in
     `syntax_highlighting.rs` and reused by the loader and serde
 - **Context and tooling defaults** remain close to their owning modules but
     consume the shared constants exported by the defaults module
 
-The CLI uses these defaults when generating sample configs (`vtcode init`) and
-when no user configuration is present.
+The CLI uses these defaults when generating sample configs (`diapason init`)
+and when no user configuration is present.
 
 ## Validation
 
-Every effective configuration goes through `VTCodeConfig::validate`. Loader
+Every effective configuration goes through `DiapasonConfig::validate`. Loader
 errors are now layer-attributed: malformed layers are reported with their exact
 source path.
 
@@ -131,7 +131,7 @@ offending file path.
 
 ### Provider configuration trust boundary
 
-Workspace-root `vtcode.toml`, workspace `.vtcode/vtcode.toml`, and project
+Workspace-root `config.toml`, workspace `.diapason/config.toml`, and project
 profiles are repository-controlled layers. After merging the layers, the loader
 fails closed if a non-empty `custom_providers` value comes from one of those
 layers. This also prevents repository configuration from introducing a custom
@@ -158,10 +158,10 @@ files are never repaired.
 ## Environment Variables
 
 Environment variables such as `GEMINI_API_KEY` still participate in runtime
-behavior (API key selection), but they do not bypass validation.
-`VTCODE_CONFIG` and `VTCODE_DATA` select the canonical user config/data roots;
-`VTCODE_CONFIG_PATH` selects the explicit file layer described above. Once the
-configuration is constructed, the same validation rules are applied.
+behavior (API key selection), but they do not bypass validation. Standard XDG
+variables select the canonical user directory roots; `DIAPASON_CONFIG_PATH`
+selects the explicit session file layer described above. Once the configuration
+is constructed, the same validation rules are applied.
 
 The canonical user directory policy, including XDG defaults, native macOS and
 Windows locations, data/state/cache/runtime/executable roots, migration, and
@@ -172,7 +172,7 @@ rollback behavior, is documented in the
 ## Lifecycle Hooks Configuration
 
 Lifecycle hooks are configured under the `[hooks.lifecycle]` section in
-`vtcode.toml` and allow you to execute shell commands in response to agent
+`config.toml` and allow you to execute shell commands in response to agent
 events. For detailed information about hook types, configuration options, and
 practical examples, see the
 [Lifecycle Hooks Guide](../../docs/guides/lifecycle-hooks.md).
@@ -202,12 +202,12 @@ aggressive_compression_threshold = 15000
 
 **Environment Variables** (override TOML config):
 
-- `VTCODE_SMART_SUMMARIZATION_ENABLED=true` - Enable the feature
-- `VTCODE_SMART_SUMMARIZATION_INTERVAL=30` - Min seconds between
+- `DIAPASON_SMART_SUMMARIZATION_ENABLED=true` - Enable the feature
+- `DIAPASON_SMART_SUMMARIZATION_INTERVAL=30` - Min seconds between
     summarizations
-- `VTCODE_SMART_SUMMARIZATION_MAX_CONCURRENT=4` - Max concurrent tasks
-- `VTCODE_SMART_SUMMARIZATION_MAX_TURN_LENGTH=2000` - Max chars per turn
-- `VTCODE_SMART_SUMMARIZATION_AGGRESSIVE_THRESHOLD=15000` - Compression
+- `DIAPASON_SMART_SUMMARIZATION_MAX_CONCURRENT=4` - Max concurrent tasks
+- `DIAPASON_SMART_SUMMARIZATION_MAX_TURN_LENGTH=2000` - Max chars per turn
+- `DIAPASON_SMART_SUMMARIZATION_AGGRESSIVE_THRESHOLD=15000` - Compression
     threshold
 
 **Features:**
@@ -227,5 +227,5 @@ Enable only for testing long-running sessions.
     knobs so CLI bootstrapping and serde defaults stay aligned.
 - Add focused validation routines next to the structs that own the data to
     keep error messages specific and maintainable.
-- Update unit tests in `crates/codegen/vtcode-core/src/config/loader/mod.rs`
+- Update unit tests in `crates/codegen/diapason-core/src/config/loader/mod.rs`
     when adjusting precedence rules or default values to avoid regressions.

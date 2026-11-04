@@ -7,28 +7,28 @@ use crate::startup::require_full_auto_workspace_trust;
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use dialoguer::{Select, theme::ColorfulTheme};
+use diapason_core::cli::args::AskCommandOptions;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::steering::SteeringMessage;
+use diapason_core::core::interfaces::session::{PlanningEntrySource, SessionRuntime, SessionRuntimeParams};
+use diapason_core::core::threads::build_thread_archive_metadata;
+use diapason_core::llm::provider::{FinishReason, LLMResponse, MessageRole};
+use diapason_core::planning;
+use diapason_core::ui::terminal;
+use diapason_core::utils::session_archive::{
+    SessionArchive, SessionArchiveMetadata, SessionMessage, SessionProgressArgs, generate_session_archive_identifier,
+    history_persistence_enabled, reserve_session_archive_identifier,
+};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::Write as _;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::UnboundedReceiver;
-use vtcode_core::cli::args::AskCommandOptions;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::steering::SteeringMessage;
-use vtcode_core::core::interfaces::session::{PlanningEntrySource, SessionRuntime, SessionRuntimeParams};
-use vtcode_core::core::threads::build_thread_archive_metadata;
-use vtcode_core::llm::provider::{FinishReason, LLMResponse, MessageRole};
-use vtcode_core::planning;
-use vtcode_core::ui::terminal;
-use vtcode_core::utils::session_archive::{
-    SessionArchive, SessionArchiveMetadata, SessionMessage, SessionProgressArgs, generate_session_archive_identifier,
-    history_persistence_enabled, reserve_session_archive_identifier,
-};
 
 const APPROVAL_POLICY_INTERACTIVE: &str = "on-request";
 const APPROVAL_POLICY_AUTOMATIC: &str = "never";
 const MCP_SERVER_STATUS_UPDATED_METHOD: &str = "mcpServerStatus/updated";
-use vtcode_core::prompts::system::{PLANNING_WORKFLOW_HINT, PLANNING_WORKFLOW_IMPLEMENTATION_PROMPT};
+use diapason_core::prompts::system::{PLANNING_WORKFLOW_HINT, PLANNING_WORKFLOW_IMPLEMENTATION_PROMPT};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct CodexSessionRuntime;
@@ -190,12 +190,12 @@ impl SessionRuntime<ResumeSession> for CodexSessionRuntime {
 pub(crate) async fn handle_codex_ask_command(
     config: CoreAgentConfig,
     prompt: Vec<String>,
-    vt_cfg: Option<&vtcode_config::VTCodeConfig>,
+    vt_cfg: Option<&diapason_config::DiapasonConfig>,
     options: AskCommandOptions,
 ) -> Result<()> {
     let prompt_text = prompt.join(" ").trim().to_string();
     if prompt_text.is_empty() {
-        bail!("Prompt is empty. Provide text after `vtcode ask`.");
+        bail!("Prompt is empty. Provide text after `diapason ask`.");
     }
 
     let client = CodexAppServerClient::connect(vt_cfg).await?;
@@ -215,7 +215,7 @@ pub(crate) async fn handle_codex_ask_command(
     )
     .await?;
 
-    if let Some(vtcode_core::cli::args::AskOutputFormat::Json) = options.output_format {
+    if let Some(diapason_core::cli::args::AskOutputFormat::Json) = options.output_format {
         let response = LLMResponse {
             content: Some(output.clone()),
             model: config.model.clone(),
@@ -264,7 +264,7 @@ pub(crate) struct CodexCompletedRun {
 
 pub(crate) async fn run_codex_noninteractive(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&vtcode_config::VTCodeConfig>,
+    vt_cfg: Option<&diapason_config::DiapasonConfig>,
     run: CodexNonInteractiveRun,
 ) -> Result<CodexCompletedRun> {
     run_codex_noninteractive_inner(config, vt_cfg, run, None).await
@@ -272,7 +272,7 @@ pub(crate) async fn run_codex_noninteractive(
 
 pub(crate) async fn run_codex_noninteractive_with_instructions(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&vtcode_config::VTCodeConfig>,
+    vt_cfg: Option<&diapason_config::DiapasonConfig>,
     run: CodexNonInteractiveRun,
     instructions: Option<String>,
 ) -> Result<CodexCompletedRun> {
@@ -281,7 +281,7 @@ pub(crate) async fn run_codex_noninteractive_with_instructions(
 
 async fn run_codex_noninteractive_inner(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&vtcode_config::VTCodeConfig>,
+    vt_cfg: Option<&diapason_config::DiapasonConfig>,
     run: CodexNonInteractiveRun,
     turn_instructions: Option<String>,
 ) -> Result<CodexCompletedRun> {
@@ -357,7 +357,7 @@ fn normalise_turn_instructions(instructions: Option<String>) -> Option<String> {
 
 async fn run_interactive_session(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&vtcode_config::VTCodeConfig>,
+    vt_cfg: Option<&diapason_config::DiapasonConfig>,
     skip_confirmations: bool,
     full_auto: bool,
     planning_entry_source: PlanningEntrySource,
@@ -372,7 +372,7 @@ async fn run_interactive_session(
         require_full_auto_workspace_trust(
             config.workspace.as_path(),
             "interactive full-auto sessions",
-            "vtcode ask / codex full-auto",
+            "diapason ask / codex full-auto",
         )
         .await?;
     }
@@ -747,7 +747,7 @@ fn handle_mcp_startup_notification(event: &ServerEvent, tracker: &mut CodexMcpSt
 
 fn emit_mcp_startup_messages(messages: Vec<String>) {
     for message in messages {
-        vtcode_core::ui::styled::warning(&message);
+        diapason_core::ui::styled::warning(&message);
     }
 }
 
@@ -898,7 +898,7 @@ fn finalize_archive(archive: Option<SessionArchive>, messages: Vec<SessionMessag
 
 fn archive_save_warning_message(context: &str, err: &anyhow::Error) -> String {
     format!(
-        "Failed to save the Codex session archive {context}; VT Code will continue, but persisted session history may be stale. Error: {err}"
+        "Failed to save the Codex session archive {context}; Diapason will continue, but persisted session history may be stale. Error: {err}"
     )
 }
 
@@ -910,7 +910,7 @@ fn workspace_archive_label(workspace: &std::path::Path) -> String {
         .to_string()
 }
 
-fn codex_experimental_features_enabled(vt_cfg: Option<&vtcode_config::VTCodeConfig>) -> bool {
+fn codex_experimental_features_enabled(vt_cfg: Option<&diapason_config::DiapasonConfig>) -> bool {
     vt_cfg.is_some_and(|cfg| cfg.agent.codex_app_server.experimental_features)
 }
 
@@ -931,7 +931,7 @@ fn normalize_planning_input(input: &str, planning_active: &mut bool) -> (String,
 /// Whether the input is an alias that clears the planning-active flag and
 /// switches the session to execution mode.
 ///
-/// The alias literals live in `vtcode_core::planning` so they stay in lockstep
+/// The alias literals live in `diapason_core::planning` so they stay in lockstep
 /// with the runloop's `detect_planning_intent` (previously the bridge silently
 /// missed `approve`/`lgtm`/`ship it`/`implement now`).
 fn should_switch_to_execution_mode(input: &str) -> bool {
@@ -952,10 +952,10 @@ mod tests {
         parse_mcp_startup_notification, persist_archive_progress,
     };
     use anyhow::anyhow;
+    use diapason_core::llm::provider::MessageRole;
+    use diapason_core::prompts::system::PLANNING_WORKFLOW_IMPLEMENTATION_PROMPT;
+    use diapason_core::utils::session_archive::SessionMessage;
     use serde_json::json;
-    use vtcode_core::llm::provider::MessageRole;
-    use vtcode_core::prompts::system::PLANNING_WORKFLOW_IMPLEMENTATION_PROMPT;
-    use vtcode_core::utils::session_archive::SessionMessage;
 
     #[test]
     fn tracker_emits_immediate_failure_and_settled_summary() {
@@ -1095,7 +1095,7 @@ mod tests {
         // Regression: the bridge previously only knew `implement|continue|go|
         // start|yes`, so a Codex server user typing `approve`/`lgtm`/`ship it`/
         // `implement now` stayed stuck in plan mode. These now derive from
-        // `vtcode_core::planning` and must clear the flag + rewrite to the
+        // `diapason_core::planning` and must clear the flag + rewrite to the
         // implementation prompt.
         for alias in [
             "approve",
@@ -1121,7 +1121,7 @@ mod tests {
         // flag-clearing alias) but is *not* an implementation intent, so it must
         // pass through verbatim rather than being rewritten to the
         // implementation prompt. Both alias sets now derive from
-        // `vtcode_core::planning`.
+        // `diapason_core::planning`.
         let mut planning_active = true;
         let (user_input, turn_input) = normalize_planning_input("exit planning workflow", &mut planning_active);
 
@@ -1146,7 +1146,7 @@ mod tests {
             archive_save_warning_message("after turn completion", &anyhow!("disk full while writing archive"));
 
         assert!(warning.contains("after turn completion"));
-        assert!(warning.contains("VT Code will continue"));
+        assert!(warning.contains("Diapason will continue"));
         assert!(warning.contains("disk full while writing archive"));
     }
 

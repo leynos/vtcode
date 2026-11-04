@@ -7,15 +7,15 @@
 //! mention detection (`$pdf-analyzer` or description keyword matching).
 
 use anyhow::Result;
+#[cfg(test)]
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::skills::authoring::SkillAuthor;
+use diapason_core::skills::loader::EnhancedSkillLoader;
+#[cfg(test)]
+use diapason_core::skills::loader::{SkillMentionDetectionOptions, detect_skill_mentions_with_options};
+use diapason_core::skills::types::{Skill, SkillManifest};
 use std::fmt::Write;
 use std::path::PathBuf;
-#[cfg(test)]
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::skills::authoring::SkillAuthor;
-use vtcode_core::skills::loader::EnhancedSkillLoader;
-#[cfg(test)]
-use vtcode_core::skills::loader::{SkillMentionDetectionOptions, detect_skill_mentions_with_options};
-use vtcode_core::skills::types::{Skill, SkillManifest};
 
 use super::skills_commands_parser::parse_skill_command as parse_skill_command_impl;
 
@@ -31,9 +31,9 @@ fn workspace_skill_dir(workspace: &std::path::Path, name: &str) -> PathBuf {
 
 fn list_label_for_manifest(manifest: &SkillManifest) -> &'static str {
     match manifest.variety {
-        vtcode_core::skills::types::SkillVariety::BuiltIn => "built_in",
-        vtcode_core::skills::types::SkillVariety::SystemUtility => "system_utility",
-        vtcode_core::skills::types::SkillVariety::AgentSkill => "agent_skill",
+        diapason_core::skills::types::SkillVariety::BuiltIn => "built_in",
+        diapason_core::skills::types::SkillVariety::SystemUtility => "system_utility",
+        diapason_core::skills::types::SkillVariety::AgentSkill => "agent_skill",
     }
 }
 
@@ -237,7 +237,7 @@ Shortcuts:
 
             match loader.get_skill(&name).await {
                 Ok(enhanced_skill) => match enhanced_skill {
-                    vtcode_core::skills::loader::EnhancedSkill::Traditional(skill) => {
+                    diapason_core::skills::loader::EnhancedSkill::Traditional(skill) => {
                         let message = format!(
                             "✓ Loaded skill: {}\nℹ Instructions are now [ACTIVE] and persistent in the agent prompt.",
                             skill.name()
@@ -247,21 +247,21 @@ Shortcuts:
                             message,
                         })
                     }
-                    vtcode_core::skills::loader::EnhancedSkill::CliTool(_) => {
+                    diapason_core::skills::loader::EnhancedSkill::CliTool(_) => {
                         Ok(SkillCommandOutcome::Error {
                             message: format!(
                                 "Skill '{name}' is a CLI tool, not a traditional skill"
                             ),
                         })
                     }
-                    vtcode_core::skills::loader::EnhancedSkill::BuiltInCommand(_) => {
+                    diapason_core::skills::loader::EnhancedSkill::BuiltInCommand(_) => {
                         Ok(SkillCommandOutcome::Error {
                             message: format!(
                                 "Skill '{name}' is a built-in command skill and cannot be loaded into the persistent session prompt. Use `/skills use {name}` instead."
                             ),
                         })
                     }
-                    vtcode_core::skills::loader::EnhancedSkill::NativePlugin(_) => {
+                    diapason_core::skills::loader::EnhancedSkill::NativePlugin(_) => {
                         Ok(SkillCommandOutcome::Error {
                             message: format!(
                                 "Skill '{name}' is a native plugin, not a traditional skill"
@@ -282,7 +282,7 @@ Shortcuts:
 
             match loader.get_skill(&name).await {
                 Ok(enhanced_skill) => match enhanced_skill {
-                    vtcode_core::skills::loader::EnhancedSkill::Traditional(skill) => {
+                    diapason_core::skills::loader::EnhancedSkill::Traditional(skill) => {
                         let mut output = String::new();
                         let _ = writeln!(output, "Skill: {}", skill.name());
                         let _ = writeln!(output, "Description: {}", skill.description());
@@ -305,7 +305,7 @@ Shortcuts:
 
                         Ok(SkillCommandOutcome::Handled { message: output })
                     }
-                    vtcode_core::skills::loader::EnhancedSkill::CliTool(bridge) => {
+                    diapason_core::skills::loader::EnhancedSkill::CliTool(bridge) => {
                         let mut output = String::new();
                         let _ = writeln!(output, "CLI Tool Skill: {}", bridge.config.name);
                         let _ = writeln!(output, "Description: {}", bridge.config.description);
@@ -313,7 +313,7 @@ Shortcuts:
                         output.push_str("Tool available for execution");
                         Ok(SkillCommandOutcome::Handled { message: output })
                     }
-                    vtcode_core::skills::loader::EnhancedSkill::BuiltInCommand(skill) => {
+                    diapason_core::skills::loader::EnhancedSkill::BuiltInCommand(skill) => {
                         let mut output = String::new();
                         let _ = writeln!(output, "Built-In Command Skill: {}", skill.name());
                         let _ = writeln!(output, "Description: {}", skill.description());
@@ -324,7 +324,7 @@ Shortcuts:
                         output.push_str("Executes the existing slash command backend");
                         Ok(SkillCommandOutcome::Handled { message: output })
                     }
-                    vtcode_core::skills::loader::EnhancedSkill::NativePlugin(plugin) => {
+                    diapason_core::skills::loader::EnhancedSkill::NativePlugin(plugin) => {
                         let meta = plugin.metadata();
                         let mut output = String::new();
                         let _ = writeln!(output, "Native Plugin: {}", meta.name);
@@ -342,25 +342,25 @@ Shortcuts:
 
         SkillCommandAction::Use { name, input } => match loader.get_skill(&name).await {
             Ok(enhanced_skill) => match enhanced_skill {
-                vtcode_core::skills::loader::EnhancedSkill::Traditional(skill) => {
+                diapason_core::skills::loader::EnhancedSkill::Traditional(skill) => {
                     Ok(SkillCommandOutcome::UseSkill {
                         skill: *skill,
                         input,
                     })
                 }
-                vtcode_core::skills::loader::EnhancedSkill::CliTool(_) => {
+                diapason_core::skills::loader::EnhancedSkill::CliTool(_) => {
                     Ok(SkillCommandOutcome::Error {
                         message: format!("Skill '{name}' is a CLI tool, not a traditional skill"),
                     })
                 }
-                vtcode_core::skills::loader::EnhancedSkill::BuiltInCommand(skill) => {
+                diapason_core::skills::loader::EnhancedSkill::BuiltInCommand(skill) => {
                     Ok(SkillCommandOutcome::UseBuiltInCommand {
                         name: skill.name().to_string(),
                         slash_name: skill.slash_name().to_string(),
                         input,
                     })
                 }
-                vtcode_core::skills::loader::EnhancedSkill::NativePlugin(_) => {
+                diapason_core::skills::loader::EnhancedSkill::NativePlugin(_) => {
                     Ok(SkillCommandOutcome::Error {
                         message: format!("Skill '{name}' is a native plugin, not a traditional skill"),
                     })
@@ -434,7 +434,7 @@ async fn detect_mentioned_skills(user_input: &str, workspace: PathBuf) -> Result
     let mut skills = Vec::new();
     for name in mentioned_names {
         if let Ok(enhanced_skill) = loader.get_skill(&name).await
-            && let vtcode_core::skills::loader::EnhancedSkill::Traditional(skill) = enhanced_skill
+            && let diapason_core::skills::loader::EnhancedSkill::Traditional(skill) = enhanced_skill
         {
             skills.push((name.clone(), *skill));
         }

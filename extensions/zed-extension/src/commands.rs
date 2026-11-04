@@ -1,11 +1,11 @@
-//! VT Code Command Implementations
+//! Diapason Command Implementations
 //!
-//! This module implements all VT Code commands that are exposed through
+//! This module implements all Diapason commands that are exposed through
 //! Zed's command palette. Uses CommandBuilder for cleaner construction.
 use crate::command_builder::CommandBuilder;
 use crate::context::{EditorContext, IDE_CONTEXT_ENV_VAR};
 
-/// Response from a VT Code command operation
+/// Response from a Diapason command operation
 #[derive(Debug, Clone)]
 pub struct CommandResponse {
     pub success: bool,
@@ -31,7 +31,7 @@ impl CommandResponse {
     }
 }
 
-/// Ask the VT Code agent an arbitrary question
+/// Ask the Diapason agent an arbitrary question
 pub fn ask_agent(query: &str) -> CommandResponse {
     ask_agent_with_context(query, None)
 }
@@ -120,17 +120,17 @@ pub fn launch_chat_with_context(context: Option<&EditorContext>) -> CommandRespo
     }
 }
 
-/// Check VT Code CLI installation and status
+/// Check Diapason CLI installation and status
 pub fn check_status() -> CommandResponse {
     match CommandBuilder::version().execute() {
         Ok(result) => {
             if result.is_success() {
-                CommandResponse::ok(format!("VT Code CLI is available\n{}", result.stdout))
+                CommandResponse::ok(format!("Diapason CLI is available\n{}", result.stdout))
             } else {
-                CommandResponse::err("VT Code CLI check failed".to_string())
+                CommandResponse::err("Diapason CLI check failed".to_string())
             }
         }
-        Err(e) => CommandResponse::err(format!("VT Code CLI not found: {}", e)),
+        Err(e) => CommandResponse::err(format!("Diapason CLI not found: {}", e)),
     }
 }
 
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn test_find_files_without_limit() {
         let response = find_files("test", None);
-        // This will fail if VT Code is not installed, which is expected
+        // This will fail if Diapason is not installed, which is expected
         // The test verifies the function structure
         assert!(response.error.is_some() || response.success);
     }

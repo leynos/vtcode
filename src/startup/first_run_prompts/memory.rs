@@ -1,22 +1,22 @@
 use anyhow::Result;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::ui::interactive_list::SelectionEntry;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::ui::interactive_list::SelectionEntry;
 
 use super::common::{prompt_with_placeholder, run_selection};
 
-pub(crate) fn resolve_initial_persistent_memory_enabled(config: &VTCodeConfig) -> bool {
+pub(crate) fn resolve_initial_persistent_memory_enabled(config: &DiapasonConfig) -> bool {
     config.persistent_memory_enabled()
 }
 
 pub(crate) fn prompt_persistent_memory(renderer: &mut AnsiRenderer, default_enabled: bool) -> Result<bool> {
     renderer.line(
         MessageStyle::Status,
-        "Persistent memory controls whether VT Code keeps durable repository notes between sessions.",
+        "Persistent memory controls whether Diapason keeps durable repository notes between sessions.",
     )?;
     renderer.line(
         MessageStyle::Info,
-        "Leave it off if you want a lighter first-run setup. You can enable it later in `vtcode.toml`.",
+        "Leave it off if you want a lighter first-run setup. You can enable it later in `config.toml`.",
     )?;
 
     match select_persistent_memory_with_ratatui(default_enabled) {
@@ -88,7 +88,7 @@ fn prompt_persistent_memory_text(renderer: &mut AnsiRenderer, default_enabled: b
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_core::config::loader::VTCodeConfig;
+    use diapason_core::config::loader::DiapasonConfig;
 
     #[test]
     fn persistent_memory_entries_are_unnumbered() {
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn resolve_initial_persistent_memory_enabled_reads_config() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.features.memories = true;
         config.agent.persistent_memory.enabled = true;
 

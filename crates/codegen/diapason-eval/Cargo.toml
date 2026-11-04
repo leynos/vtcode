@@ -1,0 +1,24 @@
+[package]
+name = "diapason-eval"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93.0"
+authors = ["Vinh Nguyen <vinhnguyen2308@gmail.com>", "df12 Productions"]
+description = "Agent evaluation framework for Diapason: pass@k / pass^k metrics, capability and regression evals, and environment-based outcome verification."
+license.workspace = true
+readme = "README.md"
+homepage = "https://github.com/leynos/vtcode"
+repository = "https://github.com/leynos/vtcode"
+documentation = "https://docs.rs/diapason-eval"
+keywords = ["diapason", "agent", "evaluation", "metrics", "testing"]
+categories = ["development-tools"]
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

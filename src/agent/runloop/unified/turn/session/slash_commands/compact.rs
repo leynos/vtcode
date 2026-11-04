@@ -1,11 +1,11 @@
 use std::fs;
 
 use anyhow::{Context, Result};
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::tools::terminal_app::{EditorLaunchConfig, TerminalAppLauncher};
+use diapason_core::utils::ansi::MessageStyle;
 use tempfile::Builder as TempFileBuilder;
 use toml::Value as TomlValue;
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::tools::terminal_app::{EditorLaunchConfig, TerminalAppLauncher};
-use vtcode_core::utils::ansi::MessageStyle;
 
 use crate::agent::runloop::slash_commands::CompactConversationCommand;
 use crate::agent::runloop::unified::palettes::refresh_runtime_config_from_manager;
@@ -50,7 +50,7 @@ async fn edit_default_prompt(ctx: &mut SlashCommandContext<'_>) -> Result<()> {
 
     let initial_prompt = current_default_prompt(ctx).unwrap_or_default();
     let temp_file = TempFileBuilder::new()
-        .prefix("vtcode-compact-prompt-")
+        .prefix("diapason-compact-prompt-")
         .suffix(".md")
         .tempfile_in(&ctx.config.workspace)
         .context("Failed to create temporary prompt file")?;
@@ -89,7 +89,7 @@ async fn reset_default_prompt(ctx: &mut SlashCommandContext<'_>) -> Result<()> {
 
 async fn persist_default_prompt(ctx: &mut SlashCommandContext<'_>, value: Option<String>) -> Result<()> {
     let manager =
-        ConfigManager::load_from_workspace(&ctx.config.workspace).context("Failed to load VT Code configuration")?;
+        ConfigManager::load_from_workspace(&ctx.config.workspace).context("Failed to load Diapason configuration")?;
     let workspace_config_path = preferred_workspace_config_path(&manager, &ctx.config.workspace);
     let mut root = load_toml_value(&workspace_config_path)?;
     let root_table = root.as_table_mut().context("Workspace config root is not a TOML table")?;
@@ -109,7 +109,7 @@ async fn persist_default_prompt(ctx: &mut SlashCommandContext<'_>, value: Option
 
 async fn execute_manual_compaction(
     ctx: &mut SlashCommandContext<'_>,
-    options: vtcode_core::compaction::ManualCompactionOptions,
+    options: diapason_core::compaction::ManualCompactionOptions,
     native_only: bool,
 ) -> Result<SlashCommandControl> {
     if ctx.conversation_history.is_empty() {
@@ -153,7 +153,7 @@ async fn execute_manual_compaction(
         return Ok(SlashCommandControl::Continue);
     };
 
-    ctx.session_stats.auto_compact_suppressed = vtcode_core::compaction::SUPPRESS_NONE;
+    ctx.session_stats.auto_compact_suppressed = diapason_core::compaction::SUPPRESS_NONE;
 
     ctx.renderer.line(
         MessageStyle::Info,
@@ -169,10 +169,10 @@ async fn execute_manual_compaction(
 
 fn resolve_manual_compaction_options(
     ctx: &SlashCommandContext<'_>,
-    options: vtcode_core::compaction::ManualCompactionOptions,
-) -> vtcode_core::compaction::ManualCompactionOptions {
+    options: diapason_core::compaction::ManualCompactionOptions,
+) -> diapason_core::compaction::ManualCompactionOptions {
     let default_prompt = current_default_prompt(ctx);
-    vtcode_core::compaction::ManualCompactionOptions {
+    diapason_core::compaction::ManualCompactionOptions {
         instructions: options.instructions.and_then(trimmed_optional).or(default_prompt),
         max_output_tokens: options.max_output_tokens,
         reasoning_effort: options.reasoning_effort,

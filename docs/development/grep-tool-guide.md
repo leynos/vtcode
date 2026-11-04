@@ -5,7 +5,7 @@
 > with `rg`.
 
 Shell examples follow the active shell prompt profile. Linux, macOS, and WSL
-use the Unix-like profile by default; native Windows uses PowerShell. VT Code
+use the Unix-like profile by default; native Windows uses PowerShell. Diapason
 does not rewrite GNU flags for macOS BSD tools and does not translate Unix
 commands to PowerShell. Use WSL when you want Unix-like workflows on Windows.
 
@@ -296,7 +296,7 @@ are dropped), so `tokio|async-std|runtime` matches any of the three terms; each
 term is escaped as a literal, so `|` is the only character with special meaning.
 
 ```json
-{"query":"ToolRegistration","path":"crates/codegen/vtcode-core/src/tools","file_types":["rust"],"result_types":["definition","usage"],"max_results":20}
+{"query":"ToolRegistration","path":"crates/codegen/diapason-core/src/tools","file_types":["rust"],"result_types":["definition","usage"],"max_results":20}
 ```
 
 Each search component is bounded. `truncated: true` means further candidates
@@ -358,4 +358,4 @@ todos = [line for line in results.stdout.splitlines() if "TODO" in line]
 ## See Also
 
 - [AGENTS.md](../../AGENTS.md) for system prompt integration
-- [Tool Registry](../modules/vtcode_docs_map.md) for tool execution
+- [Tool Registry](../modules/diapason_docs_map.md) for tool execution

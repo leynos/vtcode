@@ -1,9 +1,9 @@
 # Ollama Provider Guide
 
 Ollama can serve models locally on your machine or proxy larger releases
-through the Ollama Cloud service. VT Code integrates with both deployment modes
-so you can keep lightweight workflows offline while bursting to the cloud for
-heavier jobs.
+through the Ollama Cloud service. Diapason integrates with both deployment
+modes so you can keep lightweight workflows offline while bursting to the cloud
+for heavier jobs.
 
 ## Prerequisites
 
@@ -46,9 +46,9 @@ heavier jobs.
 - `OLLAMA_API_KEY` (optional): Required when connecting to Ollama Cloud. Not
   needed for purely local workloads.
 
-### VT Code Configuration
+### Diapason Configuration
 
-Set up `vtcode.toml` in your project root:
+Set up `config.toml` in your project root:
 
 ```toml
 [agent]
@@ -67,18 +67,18 @@ run_pty_cmd = "prompt"           # Prompt before commands
 
 ## Using Custom Ollama Models
 
-VT Code supports custom Ollama models through the interactive model picker or
+Diapason supports custom Ollama models through the interactive model picker or
 directly via CLI:
 
 ```bash
 # Using the interactive model picker (select "custom-ollama")
-vtcode
+diapason
 
 # Direct CLI usage with custom model
-vtcode --provider ollama --model mistral:7b ask "Review this code"
-vtcode --provider ollama --model codellama:7b ask "Explain this function"
-vtcode --provider ollama --model gpt-oss:20b ask "Help with this implementation"
-vtcode --provider ollama --model gpt-oss:120b-cloud ask "Plan this large migration"
+diapason --provider ollama --model mistral:7b ask "Review this code"
+diapason --provider ollama --model codellama:7b ask "Explain this function"
+diapason --provider ollama --model gpt-oss:20b ask "Help with this implementation"
+diapason --provider ollama --model gpt-oss:120b-cloud ask "Plan this large migration"
 ```
 
 The `/model` picker now lists the core Ollama catalog so you can choose them
@@ -99,7 +99,7 @@ Ollama model" option.
 
 ## OpenAI OSS Models Support
 
-VT Code includes support for OpenAI's open-source models that can be run via
+Diapason includes support for OpenAI's open-source models that can be run via
 Ollama locally or through the cloud preview:
 
 - `gpt-oss:20b`: Open-source 20B parameter model from OpenAI (local)
@@ -112,9 +112,9 @@ To use these models:
 ollama pull gpt-oss:20b
 ollama pull gpt-oss:120b-cloud
 
-# Use in VT Code
-vtcode --provider ollama --model gpt-oss:20b ask "Code review this function"
-vtcode --provider ollama --model gpt-oss:120b-cloud ask "Assist with this architecture review"
+# Use in Diapason
+diapason --provider ollama --model gpt-oss:20b ask "Code review this function"
+diapason --provider ollama --model gpt-oss:120b-cloud ask "Assist with this architecture review"
 ```
 
 ## Laguna XS.2 Model
@@ -136,25 +136,25 @@ agentic coding and long-horizon work on a local machine.
 # Pull the model
 ollama pull laguna-xs.2
 
-# Use in VT Code
-vtcode --provider ollama --model laguna-xs.2 ask "Review this code"
+# Use in Diapason
+diapason --provider ollama --model laguna-xs.2 ask "Review this code"
 ```
 
 ## Tool calling and web search integration
 
 Ollama's API exposes OpenAI-compatible
 [tool calling](https://docs.ollama.com/capabilities/tool-calling) as well as the
-[web search](https://docs.ollama.com/capabilities/web-search) helpers. VT Code
-now forwards tool definitions to Ollama and surfaces any `tool_calls` responses
-from the model. A typical workflow looks like this:
+[web search](https://docs.ollama.com/capabilities/web-search) helpers.
+Diapason now forwards tool definitions to Ollama and surfaces any `tool_calls`
+responses from the model. A typical workflow looks like this:
 
-1. Define tools in `vtcode.toml` (or via slash commands) with JSON schemas that
+1. Define tools in `config.toml` (or via slash commands) with JSON schemas that
    match your functions. For example, expose `web_search` and `web_fetch` so
    the agent can call Ollama's hosted knowledge tools.
-2. The agent will stream back `tool_calls` with structured arguments. VT Code
+2. The agent will stream back `tool_calls` with structured arguments. Diapason
    automatically routes each call to the configured tool runner and includes
    the results as `tool` messages in the follow-up request.
-3. Ollama's responses can include multiple tools per turn. VT Code enforces
+3. Ollama's responses can include multiple tools per turn. Diapason enforces
    `tool_call_id` requirements for reliability while still letting the model
    decide when to call a tool.
 
@@ -165,15 +165,15 @@ utilities with your existing MCP toolchain.
 
 Thinking-capable models such as `gpt-oss` and `qwen3` emit a dedicated
 `thinking` channel ([docs](https://docs.ollama.com/capabilities/thinking)). Set
-the reasoning effort to `medium` or `high` (e.g., `vtcode --reasoning high`) or
-configure `reasoning_effort = "high"` in `vtcode.toml` and VT Code forwards the
-appropriate `think` parameter (`low`/`medium`/`high` for GPT-OSS, boolean for
-Qwen). During streaming runs you will now see separate "Reasoning" lines
+the reasoning effort to `medium` or `high` (e.g., `diapason --reasoning high`)
+or configure `reasoning_effort = "high"` in `config.toml` and Diapason forwards
+the appropriate `think` parameter (`low`/`medium`/`high` for GPT-OSS, boolean
+for Qwen). During streaming runs you will now see separate "Reasoning" lines
 followed by the final answer tokens so you can inspect or hide the trace as
 needed.
 
 Ollama continues to support incremental streaming
-([docs](https://docs.ollama.com/capabilities/streaming)), and VT Code uses it
+([docs](https://docs.ollama.com/capabilities/streaming)), and Diapason uses it
 by default. Combine reasoning with streaming to watch the model deliberate
 before it produces the final response.
 
@@ -186,11 +186,11 @@ running a local server:
 export OLLAMA_API_KEY="sk-..."
 export OLLAMA_BASE_URL="https://ollama.com"
 
-vtcode --provider ollama --model gpt-oss:120b-cloud ask "Summarize this spec"
+diapason --provider ollama --model gpt-oss:120b-cloud ask "Summarize this spec"
 ```
 
-VT Code automatically attaches the bearer token to requests when the API key is
-present.
+Diapason automatically attaches the bearer token to requests when the API key
+is present.
 
 ### Direct API Example
 

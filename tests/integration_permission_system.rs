@@ -6,12 +6,12 @@
 
 #[cfg(test)]
 mod integration_tests {
-    use std::path::PathBuf;
-    use tempfile::TempDir;
-    use vtcode_core::{
+    use diapason_core::{
         audit::{PermissionAuditLog, PermissionDecision},
         tools::{CommandResolver, PermissionCache},
     };
+    use std::path::PathBuf;
+    use tempfile::TempDir;
 
     #[test]
     fn test_command_resolver_basic() {

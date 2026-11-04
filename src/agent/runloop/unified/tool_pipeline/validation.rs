@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use diapason_core::core::interfaces::ui::UiSession;
+use diapason_core::tools::ToolInvocationId;
+use diapason_ui::tui::app::InlineHandle;
 use serde_json::Value;
 use tokio::sync::Notify;
-use vtcode_core::core::interfaces::ui::UiSession;
-use vtcode_core::tools::ToolInvocationId;
-use vtcode_ui::tui::app::InlineHandle;
 
 use crate::agent::runloop::unified::state::CtrlCState;
 use crate::agent::runloop::unified::tool_call_safety::{SafetyError, ToolCallSafetyValidator};

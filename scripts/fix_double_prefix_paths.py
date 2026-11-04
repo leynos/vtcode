@@ -64,8 +64,8 @@ def main():
                 dirs.remove("target")
             if ".git" in dirs:
                 dirs.remove(".git")
-            if ".vtcode" in dirs:
-                dirs.remove(".vtcode")
+            if ".diapason" in dirs:
+                dirs.remove(".diapason")
 
             for fname in files:
                 filepath = os.path.join(root, fname)

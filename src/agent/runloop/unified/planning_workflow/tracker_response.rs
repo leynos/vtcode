@@ -5,9 +5,9 @@
 //! a response cannot accidentally be interpreted relative to the process cwd.
 
 use anyhow::{Context, Result, bail};
+use diapason_commons::paths::ensure_path_within_workspace;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
-use vtcode_commons::paths::ensure_path_within_workspace;
 
 use super::tracker_file_for_plan_file;
 

@@ -67,12 +67,12 @@ fn low_signal_family_for_code_search_distinguishes_query_and_filters() {
 #[test]
 fn spool_chunk_read_path_detects_spooled_read_calls() {
     let args = json!({
-        "path": ".vtcode/context/tool_outputs/command_session_123.txt",
+        "path": ".diapason/context/tool_outputs/command_session_123.txt",
         "offset": 41,
         "limit": 40
     });
     let path = spool_chunk_read_path(tool_names::READ_FILE, &args);
-    assert_eq!(path, Some(".vtcode/context/tool_outputs/command_session_123.txt"));
+    assert_eq!(path, Some(".diapason/context/tool_outputs/command_session_123.txt"));
 }
 
 #[test]
@@ -177,20 +177,20 @@ fn task_tracker_create_signature_ignores_non_create_calls() {
 fn shell_run_signature_normalizes_run_pty_command_and_args() {
     let args = json!({
         "command": "  cargo   check  ",
-        "args": ["-p", "vtcode-core"]
+        "args": ["-p", "diapason-core"]
     });
     let signature = shell_run_signature(tool_names::RUN_PTY_CMD, &args);
-    assert_eq!(signature, Some("command_session::cargo check -p vtcode-core".to_string()));
+    assert_eq!(signature, Some("command_session::cargo check -p diapason-core".to_string()));
 }
 
 #[test]
 fn shell_run_signature_handles_command_session_run_action() {
     let args = json!({
         "action": "run",
-        "command": ["cargo", "check", "-p", "vtcode-core"]
+        "command": ["cargo", "check", "-p", "diapason-core"]
     });
     let signature = shell_run_signature(tool_names::UNIFIED_EXEC, &args);
-    assert_eq!(signature, Some("command_session::cargo check -p vtcode-core".to_string()));
+    assert_eq!(signature, Some("command_session::cargo check -p diapason-core".to_string()));
 }
 
 #[test]
@@ -199,14 +199,14 @@ fn shell_run_signature_normalizes_trivial_shell_quoting_differences() {
         tool_names::UNIFIED_EXEC,
         &json!({
             "action": "run",
-            "command": "grep -n '-> Result' vtcode-tui/src/**/*.rs"
+            "command": "grep -n '-> Result' diapason-tui/src/**/*.rs"
         }),
     );
     let second = shell_run_signature(
         tool_names::UNIFIED_EXEC,
         &json!({
             "action": "run",
-            "command": "grep -n \"-> Result\" vtcode-tui/src/**/*.rs"
+            "command": "grep -n \"-> Result\" diapason-tui/src/**/*.rs"
         }),
     );
 

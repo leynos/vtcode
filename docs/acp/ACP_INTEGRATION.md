@@ -2,8 +2,8 @@
 
 ## Overview
 
-VT Code now supports Agent Communication Protocol (ACP) for inter-agent
-communication. This enables vtcode to act as an ACP client, discovering and
+Diapason now supports Agent Communication Protocol (ACP) for inter-agent
+communication. This enables diapason to act as an ACP client, discovering and
 communicating with other agents in a distributed system.
 
 **Key Features:**
@@ -18,7 +18,7 @@ communicating with other agents in a distributed system.
 
 ```
 
-            VT Code Main Agent
+            Diapason Main Agent
   (Primary decision-maker & orchestrator)
 
 
@@ -31,7 +31,7 @@ communicating with other agents in a distributed system.
 
 
 
-          vtcode-acp
+          diapason-acp
            HTTP Communication Layer
            Agent Registry
            Message Handling
@@ -48,9 +48,9 @@ communicating with other agents in a distributed system.
 
 ## Module Structure
 
-### `vtcode-acp` Library
+### `diapason-acp` Library
 
-The ACP client library is located in `vtcode-acp/` and provides:
+The ACP client library is located in `diapason-acp/` and provides:
 
 #### Core Modules
 
@@ -81,7 +81,7 @@ The ACP client library is located in `vtcode-acp/` and provides:
 ### Agent Tool Integration
 
 Three MCP tools expose ACP functionality to the main agent (now in
-`vtcode-core`):
+`diapason-core`):
 
 1. **`acp_call`** - Inter-agent RPC calls
 
@@ -195,7 +195,7 @@ Returns immediately with `message_id`:
 ### In Rust Code
 
 ```rust
-use vtcode_acp::{AcpClient, AgentInfo};
+use diapason_acp::{AcpClient, AgentInfo};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -242,7 +242,7 @@ automatically during agent startup.
 {
     "id": "uuid",
     "type": "request",
-    "sender": "vtcode",
+    "sender": "diapason",
     "recipient": "remote-agent",
     "content": {
         "action": "execute_tool",
@@ -264,7 +264,7 @@ automatically during agent startup.
     "id": "uuid",
     "type": "response",
     "sender": "remote-agent",
-    "recipient": "vtcode",
+    "recipient": "diapason",
     "content": {
         "status": "success",
         "result": {
@@ -284,7 +284,7 @@ automatically during agent startup.
     "id": "uuid",
     "type": "error",
     "sender": "remote-agent",
-    "recipient": "vtcode",
+    "recipient": "diapason",
     "content": {
         "code": "INVALID_ACTION",
         "message": "Unknown action: invalid_tool",
@@ -353,11 +353,11 @@ Health check endpoint.
 
 ## Configuration
 
-Agent registry can be configured via `vtcode.toml`:
+Agent registry can be configured via `config.toml`:
 
 ```toml
 [acp]
-local_agent_id = "vtcode-instance-1"
+local_agent_id = "diapason-instance-1"
 timeout_secs = 30
 
 # Pre-registered agents
@@ -444,4 +444,4 @@ Planned enhancements:
 
 - [ACP Official Spec](https://agentcommunicationprotocol.dev/)
 - [MCP Integration Guide](../guides/mcp-integration.md)
-- [vtcode Configuration](../config/config.md)
+- [diapason Configuration](../config/config.md)

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use diapason_core::config::constants::tools;
+use diapason_core::tools::tool_intent;
 use serde_json::Value;
 use tokio::sync::Notify;
-use vtcode_core::config::constants::tools;
-use vtcode_core::tools::tool_intent;
 
 use crate::agent::runloop::unified::state::CtrlCState;
 
@@ -62,10 +62,10 @@ pub(crate) fn renders_pty_command_header(tool_name: &str, args: &Value) -> bool 
 }
 
 /// Default timeout for tool execution if no policy is configured.
-/// Sourced from `vtcode_config::constants::execution::DEFAULT_TOOL_TIMEOUT_SECS`
+/// Sourced from `diapason_config::constants::execution::DEFAULT_TOOL_TIMEOUT_SECS`
 /// so the value is tunable without touching this file.
 const DEFAULT_TOOL_TIMEOUT: Duration =
-    Duration::from_secs(vtcode_config::constants::execution::DEFAULT_TOOL_TIMEOUT_SECS);
+    Duration::from_secs(diapason_config::constants::execution::DEFAULT_TOOL_TIMEOUT_SECS);
 /// Minimum buffer before cancelling a tool once a warning fires
 const MIN_TIMEOUT_WARNING_HEADROOM: Duration = Duration::from_secs(5);
 const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(200);

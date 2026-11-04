@@ -6,7 +6,7 @@
 > alternation support) across definitions, syntactic usages, text, and paths.
 
 Shell examples follow the active shell prompt profile. Linux, macOS, and WSL
-use the Unix-like profile by default; native Windows uses PowerShell. VT Code
+use the Unix-like profile by default; native Windows uses PowerShell. Diapason
 does not rewrite GNU flags for macOS BSD tools and does not translate Unix
 commands to PowerShell. Use WSL when you want Unix-like workflows on Windows.
 

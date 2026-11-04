@@ -2,13 +2,13 @@ mod status_refresh;
 mod support;
 
 use anyhow::Result;
+use diapason_core::hooks::SessionEndReason;
+use diapason_core::llm::provider as uni;
+use diapason_core::session::SessionId;
+use diapason_core::utils::ansi::MessageStyle;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
-use vtcode_core::hooks::SessionEndReason;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::session::SessionId;
-use vtcode_core::utils::ansi::MessageStyle;
 
 use super::interaction_loop::{InteractionLoopContext, InteractionOutcome, InteractionState};
 use crate::agent::runloop::model_picker::ModelPickerProgress;
@@ -24,6 +24,7 @@ use crate::agent::runloop::unified::state::is_follow_up_prompt_like;
 use crate::agent::runloop::unified::turn::session::{
     mcp_lifecycle, memory_prompt, slash_command_handler, tool_dispatch,
 };
+use diapason_config::loader::SimpleConfigWatcher;
 use status_refresh::{StatusRefreshContext, StatusRefreshReason, StatusRefreshRequest, refresh_interaction_ui};
 use support::{
     InlineLoopActionResolution, apply_live_theme_and_appearance, build_durable_scheduler_daemon,
@@ -33,7 +34,6 @@ use support::{
     sync_mcp_approval_policy_for_context,
 };
 pub(crate) use support::{handle_select_primary_agent, try_resume_latest_session};
-use vtcode_config::loader::SimpleConfigWatcher;
 
 const REPEATED_FOLLOW_UP_DIRECTIVE: &str = "User has asked to continue repeatedly. Do not keep exploring silently. In your next assistant response, provide a concrete status update: completed work, current blocker, and the exact next action. If a recent tool result or tool error already provides `fallback_tool`, `fallback_tool_args`, `hint`, or `next_action`, use that guidance directly instead of retrying the same failing call or asking for more follow-up.";
 const REPEATED_FOLLOW_UP_STALLED_DIRECTIVE: &str = "Previous turn stalled or aborted and the user asked to continue repeatedly. Recover autonomously without asking for more user prompts: identify the likely root cause from recent errors, execute exactly one adjusted strategy, and then provide either a completion summary or a final blocker review with specific next action. If the last tool result or tool error includes `fallback_tool`, `fallback_tool_args`, `hint`, or `next_action`, use that guidance first. Do not repeat a failing tool call when the tool already provided the next step.";
@@ -96,7 +96,7 @@ pub(super) async fn run_interaction_loop_impl(
                     ctx.renderer
                         .set_show_diagnostics_in_transcript(cfg.ui.show_diagnostics_in_transcript);
                     ctx.renderer.set_tool_display_mode(cfg.ui.tool_display_mode);
-                    vtcode_ui::tui::panic_hook::set_show_diagnostics(cfg.ui.show_diagnostics_in_transcript);
+                    diapason_ui::tui::panic_hook::set_show_diagnostics(cfg.ui.show_diagnostics_in_transcript);
                     ctx.config.reasoning_effort = cfg.agent.reasoning_effort;
                     ctx.config.theme.clone_from(&cfg.agent.theme);
                     *ctx.permissions_state.write().await = cfg.permissions.clone();
@@ -333,7 +333,7 @@ pub(super) async fn run_interaction_loop_impl(
             {
                 ctx.renderer.line(MessageStyle::Error, &format!("MCP Error: {error_msg}"))?;
                 ctx.renderer
-                    .line(MessageStyle::Info, "Use /mcp to check status or update your vtcode.toml configuration.")?;
+                    .line(MessageStyle::Info, "Use /mcp to check status or update your config.toml configuration.")?;
             }
         }
 
@@ -343,7 +343,8 @@ pub(super) async fn run_interaction_loop_impl(
         } else if state.input_status_state.is_blocked {
             state.input_status_state.is_blocked = false;
             ctx.handle.set_placeholder(ctx.default_placeholder.clone());
-            ctx.handle.set_activity_state(vtcode_commons::ui_protocol::ActivityState::Idle);
+            ctx.handle
+                .set_activity_state(diapason_commons::ui_protocol::ActivityState::Idle);
         }
 
         if process_slash_commands {

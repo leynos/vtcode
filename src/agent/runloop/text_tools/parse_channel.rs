@@ -1,5 +1,5 @@
+use diapason_core::config::constants::tools;
 use serde_json::Value;
-use vtcode_core::config::constants::tools;
 
 use crate::agent::runloop::text_tools::canonical::{apply_exec_command_defaults, exec_command_defaults_for_name};
 use crate::agent::runloop::text_tools::parse_args::parse_textual_arguments;
@@ -98,7 +98,7 @@ pub(super) fn convert_harmony_args_to_tool_format(tool_name: &str, parsed: Value
     } else {
         match tool_name {
             tools::LIST_FILES => {
-                // Convert harmony list_files format to vtcode format
+                // Convert harmony list_files format to diapason format
                 let mut args = serde_json::Map::new();
 
                 if let Some(path) = parsed.get("path") {

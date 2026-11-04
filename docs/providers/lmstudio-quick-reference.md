@@ -1,6 +1,6 @@
 # LM Studio Client Quick Reference
 
-Quick API lookup for VT Code's LM Studio integration.
+Quick API lookup for Diapason's LM Studio integration.
 
 ## Module
 
@@ -13,7 +13,7 @@ Quick API lookup for VT Code's LM Studio integration.
 ### Connect to LM Studio Server
 
 ```rust
-use vtcode_core::llm::providers::lmstudio::LMStudioClient;
+use diapason_core::llm::providers::lmstudio::LMStudioClient;
 
 let client = LMStudioClient::try_from_base_url("http://localhost:1234").await?;
 // Server is reachable

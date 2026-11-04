@@ -4,11 +4,11 @@ use std::path::Path;
 
 use anstyle::Ansi256Color;
 use anyhow::{Context, Result, bail};
-use vtcode_commons::color256_theme::rgb_to_ansi256_for_theme;
-use vtcode_core::utils::dot_config::{WorkspaceTrustLevel, load_workspace_trust_level, update_workspace_trust};
-use vtcode_core::utils::style_helpers::{ColorPalette, render_styled};
-use vtcode_core::utils::tty::TtyExt;
-use vtcode_core::utils::{ansi_capabilities, ansi_capabilities::ColorScheme};
+use diapason_commons::color256_theme::rgb_to_ansi256_for_theme;
+use diapason_core::utils::dot_config::{WorkspaceTrustLevel, load_workspace_trust_level, update_workspace_trust};
+use diapason_core::utils::style_helpers::{ColorPalette, render_styled};
+use diapason_core::utils::tty::TtyExt;
+use diapason_core::utils::{ansi_capabilities, ansi_capabilities::ColorScheme};
 
 const WARNING_RGB: (u8, u8, u8) = (166, 51, 51);
 const INFO_RGB: (u8, u8, u8) = (217, 154, 78);
@@ -17,13 +17,13 @@ const INVALID_CHOICE_MESSAGE: &str = "Invalid selection. Please enter 'a' or 'q'
 
 /// Environment variable that allows non-interactive (CI / scripted) callers
 /// to grant or deny workspace trust without launching the interactive
-/// VT Code shell. Recognised values (case-insensitive):
+/// Diapason shell. Recognised values (case-insensitive):
 ///
 /// * `full-auto`, `full_auto`, `fullauto`, `trust`, `trusted`, `1`, `yes`,
 ///   `on` — grant full-auto trust for this workspace.
 /// * `deny`, `0`, `no`, `off` — explicitly refuse trust; the calling command
 ///   will abort with a clear error instead of prompting.
-pub(crate) const TRUST_OVERRIDE_ENV: &str = "VTCODE_TRUST_WORKSPACE";
+pub(crate) const TRUST_OVERRIDE_ENV: &str = "DIAPASON_TRUST_WORKSPACE";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrustSelection {
@@ -61,7 +61,7 @@ pub(crate) async fn is_workspace_trusted(workspace: &Path) -> bool {
 /// terminal. Persist the same trust bit the prompt would set so the switch can
 /// complete instead of stopping the session at an unrecoverable warning.
 pub(crate) async fn auto_grant_tui_full_auto_workspace_trust(workspace: &Path) -> Result<()> {
-    if !vtcode_core::ui::is_tui_mode() || is_workspace_trusted(workspace).await {
+    if !diapason_core::ui::is_tui_mode() || is_workspace_trusted(workspace).await {
         return Ok(());
     }
 
@@ -74,7 +74,7 @@ pub(crate) async fn auto_grant_tui_full_auto_workspace_trust(workspace: &Path) -
         .context("Failed to persist full-auto workspace trust for auto agent switch")
 }
 
-/// Best-effort path used by `vtcode benchmark`: prompt the user interactively,
+/// Best-effort path used by `diapason benchmark`: prompt the user interactively,
 /// fall back to env-var overrides, otherwise return `Ok(false)` so the caller
 /// can exit gracefully without a hard error.
 pub(crate) async fn ensure_full_auto_workspace_trust(workspace: &Path) -> Result<bool> {
@@ -102,7 +102,7 @@ pub(crate) async fn ensure_full_auto_workspace_trust(workspace: &Path) -> Result
     }
 }
 
-/// Strict path used by `vtcode exec` and `--auto/--full-auto`: returns Ok only
+/// Strict path used by `diapason exec` and `--auto/--full-auto`: returns Ok only
 /// when trust has been granted (either previously persisted, via env-var, or
 /// freshly accepted at an interactive prompt). Any other outcome surfaces an
 /// actionable error.
@@ -123,7 +123,7 @@ pub(crate) async fn require_full_auto_workspace_trust(
         TrustOutcome::NonInteractive => {
             let workspace_display = workspace.display();
             bail!(
-                "Workspace '{workspace_display}' is not trusted; {denied_action} requires full-auto workspace trust.\nGrant trust by one of:\n  - Re-run {command_name} from a terminal (TTY) and accept the trust prompt\n  - Set {TRUST_OVERRIDE_ENV}=full-auto and re-run {command_name}\n  - Start VT Code interactively once and mark this workspace as full auto"
+                "Workspace '{workspace_display}' is not trusted; {denied_action} requires full-auto workspace trust.\nGrant trust by one of:\n  - Re-run {command_name} from a terminal (TTY) and accept the trust prompt\n  - Set {TRUST_OVERRIDE_ENV}=full-auto and re-run {command_name}\n  - Start Diapason interactively once and mark this workspace as full auto"
             );
         }
     }
@@ -181,7 +181,7 @@ fn prompt_capable() -> bool {
     // println! / stdin.read_line() would corrupt the display and block the
     // event loop, so treat the session as non-interactive here.  The caller
     // will surface the trust requirement through its own renderer.
-    if vtcode_core::ui::is_tui_mode() {
+    if diapason_core::ui::is_tui_mode() {
         return false;
     }
     io::stdin().is_tty_ext() && io::stdout().is_tty_ext()
@@ -191,7 +191,7 @@ fn prompt_capable() -> bool {
 /// terminal and raw println! would corrupt the display; the message is
 /// logged via tracing instead.
 fn tui_safe_println(msg: &str) {
-    if vtcode_core::ui::is_tui_mode() {
+    if diapason_core::ui::is_tui_mode() {
         tracing::info!(target: "workspace_trust", "{msg}");
     } else {
         println!("{msg}");
@@ -199,7 +199,7 @@ fn tui_safe_println(msg: &str) {
 }
 
 fn quiet_env_overrides() -> bool {
-    matches!(env::var("VTCODE_TRUST_WORKSPACE_QUIET").ok().as_deref(), Some("1") | Some("true") | Some("yes"))
+    matches!(env::var("DIAPASON_TRUST_WORKSPACE_QUIET").ok().as_deref(), Some("1") | Some("true") | Some("yes"))
 }
 
 fn parse_env_trust_override() -> Result<Option<EnvTrustOverride>> {
@@ -232,7 +232,7 @@ fn render_prompt(workspace: &Path, require_full_auto_upgrade: bool) {
     println!();
     print_prompt_line("[WARN] Workspace Trust Required", PromptTone::Heading);
     println!();
-    print_prompt_line("VT Code can execute code and access files in your workspace.", PromptTone::Body);
+    print_prompt_line("Diapason can execute code and access files in your workspace.", PromptTone::Body);
     print_prompt_line("Trusting this workspace also trusts all MCP servers configured here.", PromptTone::Body);
     println!();
     print_prompt_line("Full-auto, exec, and autonomous runs require workspace trust.", PromptTone::Body);
@@ -377,12 +377,12 @@ mod tests {
 
     #[tokio::test]
     async fn require_full_auto_workspace_trust_rejects_env_denied() {
-        // An untrusted temp workspace with `VTCODE_TRUST_WORKSPACE=deny` must be
+        // An untrusted temp workspace with `DIAPASON_TRUST_WORKSPACE=deny` must be
         // rejected before any full-auto session starts. This is the gate the
         // interactive codex-app-server path now shares with `--auto`.
         let temp = tempfile::TempDir::new().expect("tempdir");
 
-        let env_guard = vtcode_commons::env_lock::lock();
+        let env_guard = diapason_commons::env_lock::lock();
         let previous = env::var_os(TRUST_OVERRIDE_ENV);
         env_guard.set_var(TRUST_OVERRIDE_ENV, "deny");
 
@@ -402,7 +402,7 @@ mod tests {
         // an actionable error rather than silently proceeding.
         let temp = tempfile::TempDir::new().expect("tempdir");
 
-        let env_guard = vtcode_commons::env_lock::lock();
+        let env_guard = diapason_commons::env_lock::lock();
         let previous = env::var_os(TRUST_OVERRIDE_ENV);
         env_guard.remove_var(TRUST_OVERRIDE_ENV);
 
@@ -418,17 +418,17 @@ mod tests {
     #[tokio::test]
     async fn tui_auto_grant_persists_full_auto_workspace_trust() {
         let temp = tempfile::TempDir::new().expect("tempdir");
-        let env_guard = vtcode_commons::env_lock::lock();
+        let env_guard = diapason_commons::env_lock::lock();
         let previous_env = env::var_os(TRUST_OVERRIDE_ENV);
         env_guard.remove_var(TRUST_OVERRIDE_ENV);
-        let was_tui = vtcode_core::ui::is_tui_mode();
-        vtcode_core::ui::set_tui_mode(true);
+        let was_tui = diapason_core::ui::is_tui_mode();
+        diapason_core::ui::set_tui_mode(true);
 
         auto_grant_tui_full_auto_workspace_trust(temp.path())
             .await
             .expect("TUI auto grant should persist trust");
 
-        vtcode_core::ui::set_tui_mode(was_tui);
+        diapason_core::ui::set_tui_mode(was_tui);
         env_guard.restore_var(TRUST_OVERRIDE_ENV, previous_env);
 
         assert_eq!(load_workspace_trust_level(temp.path()).await.unwrap(), Some(WorkspaceTrustLevel::FullAuto));
@@ -437,17 +437,17 @@ mod tests {
     #[tokio::test]
     async fn tui_auto_grant_respects_explicit_env_deny() {
         let temp = tempfile::TempDir::new().expect("tempdir");
-        let env_guard = vtcode_commons::env_lock::lock();
+        let env_guard = diapason_commons::env_lock::lock();
         let previous_env = env::var_os(TRUST_OVERRIDE_ENV);
         env_guard.set_var(TRUST_OVERRIDE_ENV, "deny");
-        let was_tui = vtcode_core::ui::is_tui_mode();
-        vtcode_core::ui::set_tui_mode(true);
+        let was_tui = diapason_core::ui::is_tui_mode();
+        diapason_core::ui::set_tui_mode(true);
 
         let err = auto_grant_tui_full_auto_workspace_trust(temp.path())
             .await
             .expect_err("explicit deny should block auto grant");
 
-        vtcode_core::ui::set_tui_mode(was_tui);
+        diapason_core::ui::set_tui_mode(was_tui);
         env_guard.restore_var(TRUST_OVERRIDE_ENV, previous_env);
 
         assert!(err.to_string().contains("denied"));

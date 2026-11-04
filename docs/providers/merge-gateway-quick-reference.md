@@ -41,13 +41,13 @@ openai/gpt-5.6-terra
 
 ```bash
 export MERGE_GATEWAY_API_KEY="your-merge-api-key"
-vtcode --provider merge-gateway --model default_routing
+diapason --provider merge-gateway --model default_routing
 ```
 
 For arbitrary valid Merge routes:
 
 ```bash
-vtcode --provider merge-gateway --model deepseek/deepseek-v4-pro
+diapason --provider merge-gateway --model deepseek/deepseek-v4-pro
 ```
 
 Create keys in the [Merge dashboard](https://dashboard.merge.dev/). See the

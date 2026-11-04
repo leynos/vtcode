@@ -1,4 +1,4 @@
-use vtcode_core::config::types::ReasoningEffortLevel;
+use diapason_core::config::types::ReasoningEffortLevel;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ThemePaletteMode {
@@ -96,7 +96,7 @@ pub(crate) enum LocalServerAction {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum CompactConversationCommand {
     Run {
-        options: vtcode_core::compaction::ManualCompactionOptions,
+        options: diapason_core::compaction::ManualCompactionOptions,
         native_only: bool,
     },
     EditDefaultPrompt,
@@ -214,10 +214,10 @@ pub(crate) enum SlashCommandOutcome {
     StartTerminalSetup,
     RewindToTurn {
         turn: usize,
-        scope: vtcode_core::core::agent::snapshots::RevertScope,
+        scope: diapason_core::core::agent::snapshots::RevertScope,
     },
     RewindLatest {
-        scope: vtcode_core::core::agent::snapshots::RevertScope,
+        scope: diapason_core::core::agent::snapshots::RevertScope,
     },
     TogglePlanningWorkflow {
         enable: Option<bool>,

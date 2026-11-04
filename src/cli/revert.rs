@@ -1,7 +1,7 @@
 use anyhow::Result;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::snapshots::{RevertScope, SnapshotManager};
-use vtcode_core::utils::colors::style;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::snapshots::{RevertScope, SnapshotManager};
+use diapason_core::utils::colors::style;
 
 use super::checkpoints::{snapshot_config, snapshot_manager};
 

@@ -1,4 +1,4 @@
-//! Standalone process benchmark for VT Code's release startup paths.
+//! Standalone process benchmark for Diapason's release startup paths.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -59,7 +59,7 @@ struct IsolatedEnvironment {
 impl IsolatedEnvironment {
     fn new() -> Result<Self> {
         let root = Builder::new()
-            .prefix("vtcode-startup-bench-")
+            .prefix("diapason-startup-bench-")
             .tempdir()
             .context("failed to create startup benchmark temporary root")?;
 
@@ -73,7 +73,7 @@ impl IsolatedEnvironment {
         let runtime = root.path().join("runtime");
         let bin = root.path().join("bin");
         let temp = root.path().join("tmp");
-        let config_file = root.path().join("explicit-config").join("vtcode.toml");
+        let config_file = root.path().join("explicit-config").join("config.toml");
         let codex_home = root.path().join("codex-home");
 
         for directory in [
@@ -123,10 +123,10 @@ impl IsolatedEnvironment {
             .current_dir(&self.workspace)
             .env_clear()
             .env("HOME", &self.home)
-            .env("VTCODE_CONFIG", &self.config)
-            .env("VTCODE_DATA", &self.data)
-            .env("VTCODE_HOME", &self.legacy)
-            .env("VTCODE_CONFIG_PATH", &self.config_file)
+            .env("DIAPASON_CONFIG", &self.config)
+            .env("DIAPASON_DATA", &self.data)
+            .env("DIAPASON_HOME", &self.legacy)
+            .env("DIAPASON_CONFIG_PATH", &self.config_file)
             .env("XDG_CONFIG_HOME", &self.config)
             .env("XDG_DATA_HOME", &self.data)
             .env("XDG_STATE_HOME", &self.state)
@@ -134,15 +134,15 @@ impl IsolatedEnvironment {
             .env("XDG_RUNTIME_DIR", &self.runtime)
             .env("XDG_BIN_HOME", &self.bin)
             .env("CODEX_HOME", &self.codex_home)
-            .env("USER", "vtcode-benchmark")
-            .env("LOGNAME", "vtcode-benchmark")
+            .env("USER", "diapason-benchmark")
+            .env("LOGNAME", "diapason-benchmark")
             .env("TMPDIR", &self.temp)
             .env("TMP", &self.temp)
             .env("TEMP", &self.temp)
             .env("TERM", "dumb")
             .env("LANG", "C")
             .env("LC_ALL", "C")
-            .env("VTCODE_STARTUP_TRACE", "0")
+            .env("DIAPASON_STARTUP_TRACE", "0")
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
@@ -177,14 +177,14 @@ fn main() -> Result<()> {
 }
 
 fn resolve_executable() -> Result<PathBuf> {
-    let configured = std::env::var_os("VTCODE_BIN");
+    let configured = std::env::var_os("DIAPASON_BIN");
     let path = match configured {
-        Some(value) if value.is_empty() => bail!("VTCODE_BIN must not be empty"),
+        Some(value) if value.is_empty() => bail!("DIAPASON_BIN must not be empty"),
         Some(value) => PathBuf::from(value),
         None => PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("target")
             .join("release")
-            .join(format!("vtcode{}", std::env::consts::EXE_SUFFIX)),
+            .join(format!("diapason{}", std::env::consts::EXE_SUFFIX)),
     };
     let path = if path.is_absolute() {
         path
@@ -195,9 +195,9 @@ fn resolve_executable() -> Result<PathBuf> {
     };
 
     let metadata = fs::metadata(&path)
-        .with_context(|| format!("VTCODE_BIN does not point to a readable executable: {}", path.display()))?;
+        .with_context(|| format!("DIAPASON_BIN does not point to a readable executable: {}", path.display()))?;
     if !metadata.is_file() {
-        bail!("VTCODE_BIN is not a regular file: {}", path.display());
+        bail!("DIAPASON_BIN is not a regular file: {}", path.display());
     }
 
     #[cfg(unix)]
@@ -205,7 +205,7 @@ fn resolve_executable() -> Result<PathBuf> {
         use std::os::unix::fs::PermissionsExt;
 
         if metadata.permissions().mode() & 0o111 == 0 {
-            bail!("VTCODE_BIN is not executable: {}", path.display());
+            bail!("DIAPASON_BIN is not executable: {}", path.display());
         }
     }
 
@@ -213,19 +213,19 @@ fn resolve_executable() -> Result<PathBuf> {
 }
 
 fn resolve_sample_count() -> Result<usize> {
-    let raw = match std::env::var("VTCODE_BENCH_RUNS") {
+    let raw = match std::env::var("DIAPASON_BENCH_RUNS") {
         Ok(value) => value,
         Err(std::env::VarError::NotPresent) => "5".to_owned(),
         Err(error) => {
-            return Err(anyhow::anyhow!("VTCODE_BENCH_RUNS could not be read as UTF-8: {error}"));
+            return Err(anyhow::anyhow!("DIAPASON_BENCH_RUNS could not be read as UTF-8: {error}"));
         }
     };
     let sample_count = raw
         .trim()
         .parse::<usize>()
-        .with_context(|| format!("VTCODE_BENCH_RUNS must be a positive integer, got '{raw}'"))?;
+        .with_context(|| format!("DIAPASON_BENCH_RUNS must be a positive integer, got '{raw}'"))?;
     if sample_count == 0 {
-        bail!("VTCODE_BENCH_RUNS must be greater than zero");
+        bail!("DIAPASON_BENCH_RUNS must be greater than zero");
     }
     Ok(sample_count)
 }
@@ -278,7 +278,7 @@ fn run_sample(binary: &Path, case: BenchmarkCase, mode: LaunchMode) -> Result<f6
 }
 
 fn copy_for_cold_launch(binary: &Path, environment: &IsolatedEnvironment) -> Result<PathBuf> {
-    let cold_binary = environment.temp.join("vtcode-cold-copy");
+    let cold_binary = environment.temp.join("diapason-cold-copy");
     let _bytes_copied = fs::copy(binary, &cold_binary).with_context(|| {
         format!("failed to copy release executable {} to {}", binary.display(), cold_binary.display())
     })?;

@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
+use diapason_core::config::mcp::McpClientConfig;
+use diapason_core::exec_policy::{AskForApproval, RejectConfig};
+use diapason_core::mcp::{McpClient, McpSandboxContext};
 use std::fmt::{self, Display};
 use std::sync::{Arc, RwLock as StdRwLock};
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{Duration, timeout};
 use tracing::{error, info, warn};
-use vtcode_core::config::mcp::McpClientConfig;
-use vtcode_core::exec_policy::{AskForApproval, RejectConfig};
-use vtcode_core::mcp::{McpClient, McpSandboxContext};
 
 use crate::agent::runloop::mcp_events::McpEvent;
 
@@ -317,7 +317,7 @@ impl AsyncMcpManager {
         info!("Initializing MCP client with {} providers", config.providers.len());
 
         // Validate configuration before initializing
-        if let Err(e) = vtcode_core::mcp::validate_mcp_config(&config) {
+        if let Err(e) = diapason_core::mcp::validate_mcp_config(&config) {
             warn!("MCP configuration validation error: {e}");
         }
 
@@ -427,8 +427,8 @@ impl Drop for AsyncMcpManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_core::config::mcp::McpClientConfig;
-    use vtcode_core::exec_policy::RejectConfig;
+    use diapason_core::config::mcp::McpClientConfig;
+    use diapason_core::exec_policy::RejectConfig;
 
     #[tokio::test]
     async fn test_async_mcp_manager_creation() {
@@ -605,9 +605,9 @@ mod tests {
 
     #[test]
     fn plugin_providers_surface_through_manager_config() {
+        use diapason_core::mcp::plugin_providers::discover_plugin_mcp_providers;
         use std::fs;
         use tempfile::tempdir;
-        use vtcode_core::mcp::plugin_providers::discover_plugin_mcp_providers;
 
         let workspace = tempdir().expect("workspace");
         fs::create_dir(workspace.path().join(".git")).expect("create .git");

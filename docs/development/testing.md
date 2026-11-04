@@ -1,11 +1,11 @@
 # **Testing Guide**
 
-This guide covers VT Code's comprehensive test suite, including unit tests,
+This guide covers Diapason's comprehensive test suite, including unit tests,
 integration tests, benchmarks, and testing best practices.
 
 ## **Test Overview**
 
-VT Code includes a multi-layered test suite designed to ensure reliability and
+Diapason includes a multi-layered test suite designed to ensure reliability and
 performance:
 
 - **Unit Tests**: Test individual components and functions
@@ -21,24 +21,24 @@ Startup measurements use the release executable directly. Build it once, then
 run the standalone harness with an explicit executable path:
 
 ```bash
-cargo build --release --locked --bin vtcode
-VTCODE_BIN="$PWD/target/release/vtcode" \
-  VTCODE_BENCH_RUNS=10 \
+cargo build --release --locked --bin diapason
+DIAPASON_BIN="$PWD/target/release/diapason" \
+  DIAPASON_BENCH_RUNS=10 \
   cargo bench --locked --bench startup -- --noplot
 ```
 
 The case matrix is intentionally limited to short-lived, provider-free commands:
 
 ```text
-vtcode --version
-vtcode --help
-vtcode schema tools --format ndjson --name code_search
+diapason --version
+diapason --help
+diapason schema tools --format ndjson --name code_search
 ```
 
 Each case is measured in two modes. A cold sample launches a freshly copied
 executable (a new copy for every sample); a warm sample launches the same
 executable repeatedly after warm-up. Both modes run with isolated temporary
-`HOME`, `VTCODE_CONFIG`, `VTCODE_DATA`, `VTCODE_CONFIG_PATH`, and workspace
+`HOME`, XDG config/data roots, `DIAPASON_CONFIG_PATH`, and workspace
 directories, so the benchmark cannot read or modify the developer's normal
 configuration, credentials, data, or repository. The workspace is also
 explicitly selected for each child process.
@@ -48,7 +48,7 @@ for every case/mode. Keep the raw samples with the result so regressions can be
 reproduced and distributions can be inspected; do not compare a lone best-case
 launch. Fresh executable copies are a process/loader cold proxy, not an
 operating-system cache flush: the benchmark deliberately does not flush or
-evict OS page caches. `VTCODE_STARTUP_TRACE=1` may be enabled for phase
+evict OS page caches. `DIAPASON_STARTUP_TRACE=1` may be enabled for phase
 diagnostics, but should remain disabled for timing samples.
 
 For the broader local performance capture (which also includes cargo-check,
@@ -58,7 +58,7 @@ first-user-I/O, and PTY first-render measurements), use:
 ./scripts/perf/baseline.sh baseline
 ./scripts/perf/baseline.sh latest
 ./scripts/perf/compare.sh \
-  .vtcode/perf/baseline.json .vtcode/perf/latest.json
+  .diapason/perf/baseline.json .diapason/perf/latest.json
 ```
 
 ### Basic Test Commands
@@ -83,7 +83,7 @@ cargo nextest run -- --nocapture
 cargo nextest run test_name
 
 # Run tests for specific crate
-cargo nextest run -p vtcode-core
+cargo nextest run -p diapason-core
 
 # Run tests in release mode
 cargo nextest run --release
@@ -115,7 +115,7 @@ changed-package filtering because Nextest does not provide Cargo's
 
 Tests that load workspace configuration should install the test-only
 `IsolatedConfigDefaultsGuard` fixture from
-`crates/codegen/vtcode-core/tests/support/config_defaults.rs` for their
+`crates/codegen/diapason-core/tests/support/config_defaults.rs` for their
 temporary workspace. The guard installs workspace-only configuration defaults
 while it is held, serializes access to the shared defaults provider, and
 restores the previous provider when it is dropped. Keep the guard and the
@@ -152,7 +152,7 @@ physics layer explicitly when VidaiMock 0.1.3 is installed:
 
 ```bash
 cargo nextest run --run-ignored ignored-only \
-  -p vtcode-llm vidaimock_
+  -p diapason-llm vidaimock_
 ```
 
 The physics tests bind only to an ephemeral localhost port. Their fixtures are
@@ -163,18 +163,18 @@ and probe instructions.
 
 ### Structural Rule Checks
 
-VT Code bundles a generic `ast-grep` project scaffold and materializes it into
-the current workspace when you run `vtcode init`.
+Diapason bundles a generic `ast-grep` project scaffold and materializes it into
+the current workspace when you run `diapason init`.
 
 ```bash
 # Install ast-grep if needed
-vtcode dependencies install ast-grep
+diapason dependencies install ast-grep
 
 # Materialize sgconfig.yml, rules/, and rule-tests/ in the current workspace
-vtcode init
+diapason init
 
-# Run the VT Code check entrypoint
-vtcode check ast-grep
+# Run the Diapason check entrypoint
+diapason check ast-grep
 
 # Or run the underlying ast-grep commands directly
 ast-grep test --config sgconfig.yml
@@ -182,15 +182,15 @@ ast-grep test --config sgconfig.yml
 # Scan the repository with the configured rules
 ast-grep scan --config sgconfig.yml
 
-# Legacy repo wrapper around `vtcode check ast-grep`
+# Legacy repo wrapper around `diapason check ast-grep`
 ./scripts/check.sh ast-grep
 ```
 
-If `ast-grep` is not installed yet, run `vtcode dependencies install ast-grep`.
-If the workspace does not have `sgconfig.yml` yet, run `vtcode init` before
-invoking the check command. If a user asks for ast-grep installation or
-first-use help, route them to the bundled `ast-grep` skill before falling back
-to external package-manager instructions.
+If `ast-grep` is not installed yet, run
+`diapason dependencies install ast-grep`. If the workspace does not have
+`sgconfig.yml` yet, run `diapason init` before invoking the check command. If a
+user asks for ast-grep installation or first-use help, route them to the bundled
+`ast-grep` skill before falling back to external package-manager instructions.
 
 For ast-grep rule authoring guidance, use the bundled `ast-grep` skill. It now
 covers the atomic / relational / composite / utility rule cheat sheet, the YAML
@@ -246,7 +246,7 @@ documents and language injection, including built-in HTML `<script>` /
 `<style>` extraction, `languageInjections`, `hostLanguage`, `injected`,
 `$CONTENT` captures, styled-components CSS, and GraphQL template literals. It
 also covers ast-grep’s built-in language catalogue, alias selection for
-`--lang` / YAML `language`, built-in extension mapping, and when VT Code’s
+`--lang` / YAML `language`, built-in extension mapping, and when Diapason’s
 local inference subset differs from ast-grep’s full built-in list. It also
 covers the programmatic API surface in more concrete terms: Node NAPI `parse` /
 `kind` / `pattern`, `Lang`, `SgRoot`, `SgNode`, `NapiConfig`, Python `SgRoot` /
@@ -274,8 +274,8 @@ cargo nextest run -E 'binary(/integration/)' -- --nocapture
 cargo bench
 
 # Run specific Criterion benches used in this workspace
-cargo bench -p vtcode-core --bench tool_pipeline
-cargo bench -p vtcode-core --bench agent_harness
+cargo bench -p diapason-core --bench tool_pipeline
+cargo bench -p diapason-core --bench agent_harness
 ```
 
 ### Fuzz Testing (cargo-fuzz)
@@ -302,7 +302,7 @@ tests/
  integration_tests.rs   # End-to-end integration tests
 
 benches/
- tool_pipeline.rs       # vtcode-core tool pipeline benchmarks
+ tool_pipeline.rs       # diapason-core tool pipeline benchmarks
  agent_harness.rs       # interactive prompt/indexer workload benchmarks
 
 src/
@@ -359,7 +359,7 @@ Located in `tests/integration_tests.rs`:
 ```rust
 #[cfg(test)]
 mod integration_tests {
-    use vtcode::tools::ToolRegistry;
+    use diapason::tools::ToolRegistry;
     use serde_json::json;
 
     #[tokio::test]
@@ -510,7 +510,7 @@ fn test_file_operations() {
 ### Core Tool Pipeline Performance
 
 ```bash
-cargo bench -p vtcode-core --bench tool_pipeline
+cargo bench -p diapason-core --bench tool_pipeline
 ```
 
 Measures:
@@ -521,8 +521,8 @@ Measures:
 ### Interactive Prompt and Indexed Search Performance
 
 ```bash
-cargo bench -p vtcode-core --bench agent_harness
-cargo nextest run -p vtcode-indexer
+cargo bench -p diapason-core --bench agent_harness
+cargo nextest run -p diapason-indexer
 ```
 
 Measures warm prompt-resource cache hits, few-shot selection, tool-definition

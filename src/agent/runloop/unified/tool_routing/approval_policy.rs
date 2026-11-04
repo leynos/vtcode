@@ -1,7 +1,7 @@
+use diapason_core::config::constants::tools;
+use diapason_core::exec_policy::AskForApproval;
+use diapason_core::tools::{ToolRiskContext, ToolSource, WorkspaceTrust};
 use serde_json::Value;
-use vtcode_core::config::constants::tools;
-use vtcode_core::exec_policy::AskForApproval;
-use vtcode_core::tools::{ToolRiskContext, ToolSource, WorkspaceTrust};
 
 fn command_matches_subcommands(command_words: &[String], subcommands: &[&str]) -> bool {
     command_words
@@ -24,10 +24,10 @@ fn shell_command_accesses_network(command_words: &[String]) -> bool {
 }
 
 fn tool_accesses_network(tool_name: &str, tool_args: Option<&Value>) -> bool {
-    let canonical = vtcode_core::tools::names::canonical_tool_name(tool_name);
+    let canonical = diapason_core::tools::names::canonical_tool_name(tool_name);
     match canonical {
         "web_search" | "fetch_url" => true,
-        tools::EXEC_COMMAND => vtcode_core::tools::command_args::command_words(tool_args.unwrap_or(&Value::Null))
+        tools::EXEC_COMMAND => diapason_core::tools::command_args::command_words(tool_args.unwrap_or(&Value::Null))
             .ok()
             .flatten()
             .is_some_and(|words| shell_command_accesses_network(&words)),
@@ -38,8 +38,8 @@ fn tool_accesses_network(tool_name: &str, tool_args: Option<&Value>) -> bool {
 pub(super) fn build_tool_risk_context(tool_name: &str, tool_args: Option<&Value>) -> ToolRiskContext {
     let mut risk_context = ToolRiskContext::new(tool_name.to_string(), ToolSource::Internal, WorkspaceTrust::Untrusted);
     let args = tool_args.unwrap_or(&Value::Null);
-    let intent = vtcode_core::tools::tool_intent::classify_tool_intent(tool_name, args);
-    if let Some(command_words) = vtcode_core::tools::command_args::command_words(args).ok().flatten() {
+    let intent = diapason_core::tools::tool_intent::classify_tool_intent(tool_name, args);
+    if let Some(command_words) = diapason_core::tools::command_args::command_words(args).ok().flatten() {
         risk_context.command_args = command_words;
     } else if !args.is_null() {
         risk_context.command_args = vec![args.to_string()];
@@ -68,13 +68,13 @@ pub(super) fn approval_policy_rejects_prompt(
 #[cfg(test)]
 mod tests {
     use super::build_tool_risk_context;
+    use diapason_core::config::constants::tools;
     use serde_json::json;
-    use vtcode_core::config::constants::tools;
 
     #[test]
     fn cargo_check_is_not_marked_as_network_access() {
         let args = json!({
-            "cmd": "cargo check -p vtcode",
+            "cmd": "cargo check -p diapason",
         });
 
         let risk_context = build_tool_risk_context(tools::EXEC_COMMAND, Some(&args));

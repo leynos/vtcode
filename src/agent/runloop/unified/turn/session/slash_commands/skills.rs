@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::skills::loader::EnhancedSkillLoader;
-use vtcode_core::skills::types::SkillVariety;
-use vtcode_core::tools::handlers::ToolModelCapabilities;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection, WizardModalMode, WizardStep};
+use diapason_core::llm::provider as uni;
+use diapason_core::skills::loader::EnhancedSkillLoader;
+use diapason_core::skills::types::SkillVariety;
+use diapason_core::tools::handlers::ToolModelCapabilities;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection, WizardModalMode, WizardStep};
 
 use crate::agent::runloop::unified::tool_catalog::tool_catalog_change_notifier;
 use crate::agent::runloop::unified::turn::utils::{enforce_history_limits, truncate_message_content};
@@ -132,7 +132,7 @@ async fn apply_skill_command_outcome(
             Ok(SlashCommandControl::Continue)
         }
         SkillCommandOutcome::UseSkill { skill, input } => {
-            use vtcode_core::skills::execute_skill_with_sub_llm;
+            use diapason_core::skills::execute_skill_with_sub_llm;
 
             let skill_name = skill.name().to_string();
             let status_message = skill_invocation_status_message(&skill_name);
@@ -223,20 +223,20 @@ fn skill_invocation_status_message(skill_name: &str) -> String {
     format!("Running {invocation_target}...")
 }
 
-fn skill_runtime(ctx: &SlashCommandContext<'_>) -> vtcode_core::tools::skills::SkillToolSessionRuntime {
+fn skill_runtime(ctx: &SlashCommandContext<'_>) -> diapason_core::tools::skills::SkillToolSessionRuntime {
     skill_runtime_for_session(ctx.tool_registry, ctx.tools, ctx.tool_catalog, ctx.config, ctx.vt_cfg.as_ref())
 }
 
 fn skill_runtime_for_session(
-    tool_registry: &vtcode_core::tools::ToolRegistry,
+    tool_registry: &diapason_core::tools::ToolRegistry,
     tools: &Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
     tool_catalog: &Arc<crate::agent::runloop::unified::tool_catalog::ToolCatalogState>,
-    config: &vtcode_core::config::types::AgentConfig,
-    vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
-) -> vtcode_core::tools::skills::SkillToolSessionRuntime {
+    config: &diapason_core::config::types::AgentConfig,
+    vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
+) -> diapason_core::tools::skills::SkillToolSessionRuntime {
     let tool_documentation_mode = vt_cfg.map(|cfg| cfg.agent.tool_documentation_mode).unwrap_or_default();
 
-    vtcode_core::tools::skills::SkillToolSessionRuntime::new(
+    diapason_core::tools::skills::SkillToolSessionRuntime::new(
         Arc::new(tool_registry.clone()),
         Some(Arc::clone(tools)),
         tool_documentation_mode,
@@ -244,9 +244,9 @@ fn skill_runtime_for_session(
         Some(tool_catalog_change_notifier(tool_catalog)),
     )
     .with_tool_profile(configured_tool_profile(vt_cfg))
-    .with_fork_executor(Arc::new(vtcode_core::skills::executor::ChildAgentSkillExecutor::new(
+    .with_fork_executor(Arc::new(diapason_core::skills::executor::ChildAgentSkillExecutor::new(
         Arc::new(tool_registry.clone()),
-        vtcode_core::skills::executor::ForkSkillRuntimeConfig {
+        diapason_core::skills::executor::ForkSkillRuntimeConfig {
             workspace: config.workspace.clone(),
             model: config.model.clone(),
             api_key: config.api_key.clone(),
@@ -257,8 +257,8 @@ fn skill_runtime_for_session(
 }
 
 fn configured_tool_profile(
-    config: Option<&vtcode_core::config::loader::VTCodeConfig>,
-) -> vtcode_core::config::ToolProfile {
+    config: Option<&diapason_core::config::loader::DiapasonConfig>,
+) -> diapason_core::config::ToolProfile {
     config.map(|cfg| cfg.tools.profile).unwrap_or_default()
 }
 
@@ -967,26 +967,26 @@ mod tests {
     use std::sync::Arc;
 
     use clap::Parser;
+    use diapason_core::cli::args::Cli;
+    use diapason_core::config::constants::tools;
+    use diapason_core::config::types::ModelSelectionSource;
+    use diapason_core::config::{DiapasonConfig, ToolProfile};
+    use diapason_core::core::agent::config::{RuntimeModelSelection, build_runtime_agent_config};
+    use diapason_core::skills::{Skill, SkillManifest};
+    use diapason_core::tools::ToolRegistry;
     use hashbrown::HashMap;
     use tempfile::TempDir;
     use tokio::sync::RwLock;
-    use vtcode_core::cli::args::Cli;
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::config::types::ModelSelectionSource;
-    use vtcode_core::config::{ToolProfile, VTCodeConfig};
-    use vtcode_core::core::agent::config::{RuntimeModelSelection, build_runtime_agent_config};
-    use vtcode_core::skills::{Skill, SkillManifest};
-    use vtcode_core::tools::ToolRegistry;
 
     use super::{configured_tool_profile, skill_invocation_status_message, skill_runtime_for_session};
 
     #[test]
     fn skill_runtime_profile_comes_from_effective_config() {
-        let mut config = VTCodeConfig::default();
-        config.tools.profile = ToolProfile::AdvancedVtCode;
+        let mut config = DiapasonConfig::default();
+        config.tools.profile = ToolProfile::AdvancedDiapason;
 
-        assert_eq!(configured_tool_profile(Some(&config)), ToolProfile::AdvancedVtCode);
-        assert_eq!(configured_tool_profile(None), ToolProfile::VtCode);
+        assert_eq!(configured_tool_profile(Some(&config)), ToolProfile::AdvancedDiapason);
+        assert_eq!(configured_tool_profile(None), ToolProfile::Diapason);
     }
 
     #[tokio::test]
@@ -996,10 +996,10 @@ mod tests {
         let tool_catalog = registry.tool_catalog_state();
         let active_tools = Arc::new(RwLock::new(Vec::new()));
         let active_skills = Arc::new(RwLock::new(HashMap::new()));
-        let mut vt_cfg = VTCodeConfig::default();
-        vt_cfg.tools.profile = ToolProfile::AdvancedVtCode;
+        let mut vt_cfg = DiapasonConfig::default();
+        vt_cfg.tools.profile = ToolProfile::AdvancedDiapason;
         let config = build_runtime_agent_config(
-            &Cli::parse_from(["vtcode"]),
+            &Cli::parse_from(["diapason"]),
             &vt_cfg,
             temp.path().to_path_buf(),
             RuntimeModelSelection {
@@ -1009,7 +1009,7 @@ mod tests {
                 model_source: ModelSelectionSource::WorkspaceConfig,
             },
             "test-key".to_string(),
-            vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+            diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         );
         let runtime = skill_runtime_for_session(&registry, &active_tools, &tool_catalog, &config, Some(&vt_cfg));
         let skill = Skill::new(

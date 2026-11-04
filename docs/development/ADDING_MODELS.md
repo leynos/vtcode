@@ -1,4 +1,4 @@
-# Adding New Models to VT Code
+# Adding New Models to Diapason
 
 This guide documents the complete workflow for adding a new LLM model to VT
 Code. Follow these steps to ensure all systems are properly configured.
@@ -22,7 +22,7 @@ provider/model route IDs. Gateway integrations must document which native
 features are intentionally not projected into the compatibility layer. For
 marketplace entries such as Meta Muse on OpenRouter, add generated metadata to
 both `docs/models.json` and the embedded
-`crates/codegen/vtcode-config/build_data/openrouter_models.json`; keep the
+`crates/codegen/diapason-config/build_data/openrouter_models.json`; keep the
 official Meta provider's bare model IDs separate from OpenRouter's `meta/...`
 namespace.
 
@@ -36,7 +36,7 @@ namespace.
       provider/model IDs
 - [ ] If the model is OpenRouter-only, mirror its metadata in
       `build_data/openrouter_models.json`
-- [ ] Add enum variant (`crates/codegen/vtcode-config/src/models/model_id.rs`)
+- [ ] Add enum variant (`crates/codegen/diapason-config/src/models/model_id.rs`)
 - [ ] Update `as_str.rs` - string mapping
 - [ ] Update `display.rs` - human-readable name
 - [ ] Update `description.rs` - model description
@@ -44,13 +44,13 @@ namespace.
 - [ ] Update `collection.rs` - all_models list
 - [ ] Update `capabilities.rs` - generation version
 - [ ] Update `provider.rs` - provider assignment
-- [ ] Verify with `cargo check --package vtcode-config`
+- [ ] Verify with `cargo check --package diapason-config`
 
 ## Detailed Steps
 
 ### Step 1: Add to Provider Constants
 
-**File:** `crates/codegen/vtcode-config/src/constants/models/<provider>.rs`
+**File:** `crates/codegen/diapason-config/src/constants/models/<provider>.rs`
 
 ```rust
 // In the provider's SUPPORTED_MODELS array
@@ -108,7 +108,7 @@ Verify JSON: `python3 -m json.tool docs/models.json > /dev/null`
 
 ### Step 3: Add Enum Variant (model_id.rs)
 
-**File:** `crates/codegen/vtcode-config/src/models/model_id.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id.rs`
 
 Add in the appropriate provider section (OpenAI, Anthropic, etc.):
 
@@ -123,7 +123,7 @@ GPT56Luna,
 
 ### Step 4: Update as_str.rs
 
-**File:** `crates/codegen/vtcode-config/src/models/model_id/as_str.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id/as_str.rs`
 
 Maps enum to constant string:
 
@@ -134,7 +134,7 @@ ModelId::GPT56Luna => models::openai::GPT_5_6_LUNA,
 
 ### Step 5: Update display.rs
 
-**File:** `crates/codegen/vtcode-config/src/models/model_id/display.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id/display.rs`
 
 Human-readable name for UI:
 
@@ -145,7 +145,7 @@ ModelId::GPT56Luna => "GPT-5.4 Mini",
 
 ### Step 6: Update description.rs
 
-**File:** `crates/codegen/vtcode-config/src/models/model_id/description.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id/description.rs`
 
 Full description for help/info:
 
@@ -160,7 +160,7 @@ ModelId::GPT56Luna => {
 
 ### Step 7: Update parse.rs
 
-**File:** `crates/codegen/vtcode-config/src/models/model_id/parse.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id/parse.rs`
 
 String → Enum parsing:
 
@@ -171,7 +171,7 @@ s if s == models::openai::GPT_5_6_LUNA => Ok(ModelId::GPT56Luna),
 
 ### Step 8: Update collection.rs
 
-**File:** `crates/codegen/vtcode-config/src/models/model_id/collection.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id/collection.rs`
 
 Add to `all_models()` vector (keep alphabetically sorted within provider):
 
@@ -185,7 +185,7 @@ ModelId::GPT56Sol,
 
 ### Step 9: Update capabilities.rs
 
-**File:** `crates/codegen/vtcode-config/src/models/model_id/capabilities.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id/capabilities.rs`
 
 Update methods that match on model families:
 
@@ -206,7 +206,7 @@ ModelId::GPT56Sol | ModelId::GPT56Sol | ModelId::GPT56Luna | ModelId::GPT56Luna 
 
 ### Step 10: Update provider.rs
 
-**File:** `crates/codegen/vtcode-config/src/models/model_id/provider.rs`
+**File:** `crates/codegen/diapason-config/src/models/model_id/provider.rs`
 
 Add to provider match:
 
@@ -229,7 +229,7 @@ ModelId::GPT5
 After all changes, verify compilation:
 
 ```bash
-cargo check --package vtcode-config
+cargo check --package diapason-config
 cargo check --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -325,4 +325,4 @@ v **Do:**
 - Provider quick references: `docs/providers/<provider>-quick-reference.md`
 - Configuration precedence: `docs/config/CONFIGURATION_PRECEDENCE.md`
 - Model examples: `docs/models.json`
-- Constants reference: `crates/codegen/vtcode-config/src/constants/models/`
+- Constants reference: `crates/codegen/diapason-config/src/constants/models/`

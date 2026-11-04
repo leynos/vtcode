@@ -1,9 +1,9 @@
 #!/bin/bash
-# diagnose_resource_issues.sh - Quick diagnostic for CPU/memory issues in VT Code
+# diagnose_resource_issues.sh - Quick diagnostic for CPU/memory issues in Diapason
 
 set -e
 
-echo "🔍 VT Code Resource Diagnostic Tool"
+echo "🔍 Diapason Resource Diagnostic Tool"
 echo "═══════════════════════════════════════════════════════════════"
 echo ""
 
@@ -26,19 +26,19 @@ echo "Total Memory: $MEMORY"
 echo "CPU Cores:   $CPU_CORES"
 echo ""
 
-# Check for running VT Code instances
-echo "🔍 Running VT Code Processes"
+# Check for running Diapason instances
+echo "🔍 Running Diapason Processes"
 echo "─────────────────────────────────────────────────────────────"
 
-VTCODE_PIDS=$(pgrep -f "vtcode" 2>/dev/null || true)
+DIAPASON_PIDS=$(pgrep -f "diapason" 2>/dev/null || true)
 
-if [[ -z "$VTCODE_PIDS" ]]; then
-    echo "ℹ️  No running VT Code processes found"
+if [[ -z "$DIAPASON_PIDS" ]]; then
+    echo "ℹ️  No running Diapason processes found"
 else
-    echo "Found $(echo "$VTCODE_PIDS" | wc -l) process(es):"
+    echo "Found $(echo "$DIAPASON_PIDS" | wc -l) process(es):"
     echo ""
 
-    for PID in $VTCODE_PIDS; do
+    for PID in $DIAPASON_PIDS; do
         echo "Process ID: $PID"
 
         if [[ "$OS" == "Darwin" ]]; then
@@ -91,9 +91,9 @@ echo ""
 echo "🗂️  Cache & Temporary Files"
 echo "─────────────────────────────────────────────────────────────"
 
-if [[ -d ".vtcode" ]]; then
-    VTCODE_CACHE=$(du -sh .vtcode 2>/dev/null | cut -f1)
-    echo ".vtcode cache:  $VTCODE_CACHE"
+if [[ -d ".diapason" ]]; then
+    DIAPASON_CACHE=$(du -sh .diapason 2>/dev/null | cut -f1)
+    echo ".diapason cache:  $DIAPASON_CACHE"
 fi
 
 if [[ -d ".cargo" ]]; then
@@ -195,7 +195,7 @@ else
     echo "     perf report"
     echo ""
     echo "  2. Monitor with htop:"
-    echo "     htop -p \$(pgrep -f vtcode)"
+    echo "     htop -p \$(pgrep -f diapason)"
     echo ""
 fi
 

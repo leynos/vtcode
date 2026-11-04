@@ -11,10 +11,10 @@
 
 ```bash
 export NVIDIA_API_KEY="nvapi-..."
-vtcode --provider nvidia --model nvidia/nemotron-3-nano-30b-a3b ask "Summarize this change"
+diapason --provider nvidia --model nvidia/nemotron-3-nano-30b-a3b ask "Summarize this change"
 ```
 
-NVIDIA uses OpenAI-compatible Chat Completions. VT Code supports streaming,
+NVIDIA uses OpenAI-compatible Chat Completions. Diapason supports streaming,
 function tools, structured output, configurable thinking, stream usage, and
 `reasoning_content` extraction. Explicit NVIDIA model IDs are accepted even
 when they are not in the curated picker list.
