@@ -2,6 +2,30 @@
 use super::*;
 use assert_fs::TempDir;
 use diapason_config::{HookCommandConfig, HookGroupConfig, WorkspaceHookCommand, WorkspaceLifecycleHooks};
+use std::ffi::OsString;
+
+/// Restores `DIAPASON_CONFIG` when the test leaves scope, including on panic.
+struct DiapasonConfigGuard {
+    previous: Option<OsString>,
+    environment_lock: diapason_commons::env_lock::EnvGuard,
+}
+
+impl DiapasonConfigGuard {
+    /// Point `DIAPASON_CONFIG` at `config_dir` while holding the process-wide
+    /// environment lock, remembering the value to restore.
+    fn set(config_dir: &Path) -> Self {
+        let environment_lock = diapason_commons::env_lock::lock();
+        let previous = std::env::var_os("DIAPASON_CONFIG");
+        environment_lock.set_var("DIAPASON_CONFIG", config_dir);
+        Self { previous, environment_lock }
+    }
+}
+
+impl Drop for DiapasonConfigGuard {
+    fn drop(&mut self) {
+        self.environment_lock.restore_var("DIAPASON_CONFIG", self.previous.as_ref());
+    }
+}
 
 #[tokio::test]
 async fn new_session_restores_matching_workspace_hook_approval_before_session_start() {
@@ -9,9 +33,7 @@ async fn new_session_restores_matching_workspace_hook_approval_before_session_st
     let dot_config = TempDir::new().unwrap();
     let marker = workspace.path().join("approved-session-start");
     let command = format!("touch {}", marker.display());
-    let env_guard = diapason_commons::env_lock::lock();
-    let previous = std::env::var_os("DIAPASON_CONFIG");
-    env_guard.set_var("DIAPASON_CONFIG", dot_config.path().join("config").to_string_lossy().into_owned());
+    let _config_guard = DiapasonConfigGuard::set(&dot_config.path().join("config"));
     diapason_core::utils::dot_config::initialize_dot_folder().await.unwrap();
 
     let mut vt_config = DiapasonConfig::default();
@@ -50,7 +72,6 @@ async fn new_session_restores_matching_workspace_hook_approval_before_session_st
     let agent = build_agent_with_vt_config(workspace.path(), "duck", Some(&vt_config)).await;
     let result = agent.new_session(acp::NewSessionRequest::new(workspace.path())).await;
     let marker_was_created = marker.exists();
-    env_guard.restore_var("DIAPASON_CONFIG", previous);
 
     assert!(result.is_ok(), "session should start after restoring its matching hook approval");
     assert!(marker_was_created, "matching persisted approval must be restored before SessionStart runs");
@@ -103,3 +124,4 @@ async fn new_session_preserves_workspace_hook_provenance_gate() {
         );
     }
 }
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/session_state_tests/workspace_hooks.rs' for per-hunk detail, 'weave check' to verify your resolution

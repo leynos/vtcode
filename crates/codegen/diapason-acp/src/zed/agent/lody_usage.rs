@@ -14,7 +14,7 @@ use diapason_core::llm::Usage;
 use diapason_core::llm::model_resolver::ModelResolver;
 use diapason_core::llm::usage_cost::{estimate_session_costs_with_pricing, normalized_turn_usage};
 
-use super::redaction::redact_detail;
+use super::redaction::detail_correlation;
 use super::task_lifecycle::bounded_session_correlation;
 use super::{ZedAgent, lody::lody_capabilities_mut};
 
@@ -192,8 +192,10 @@ fn usage_elapsed_ms(started_at: Instant) -> u64 {
 
 /// Records a failed usage publication on its span and in the bounded metrics.
 ///
-/// The session is identified only by its bounded correlation hash, and the
-/// error text carries no usage payload, so the log stays safe to retain.
+/// The session is identified only by its bounded correlation hash. The
+/// transport or serialization error may embed provider payload, paths, URLs or
+/// personal data, so the warning carries fixed fields and a bounded digest
+/// rather than the error's rendering.
 fn record_usage_failure(
     span: &tracing::Span,
     started_at: Instant,
@@ -203,6 +205,7 @@ fn record_usage_failure(
     error: &dyn std::fmt::Display,
 ) {
     let elapsed_ms = usage_elapsed_ms(started_at);
+    let detail = error.to_string();
     let _outcome_recorded = span.record("outcome", "failed");
     let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
     let _error_category_recorded = span.record("error_category", error_category);
@@ -211,7 +214,8 @@ fn record_usage_failure(
         session_correlation,
         error_category,
         elapsed_ms,
-        detail = %redact_detail(&error.to_string()),
+        error_bytes = detail.len(),
+        detail_correlation = %detail_correlation(&detail),
         "Failed to publish Lody ACP usage update"
     );
 }

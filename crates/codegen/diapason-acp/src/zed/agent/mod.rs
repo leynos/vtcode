@@ -53,23 +53,23 @@ fn warn_hook_block_reason(hook_event: &'static str, reason: &str) {
     tracing::warn!(hook_event, reason_bytes = reason.len(), "ACP hook blocked an operation");
 }
 
-/// Record a suppressed ACP failure with fixed fields and a redacted chain.
+/// Record a suppressed ACP failure with fixed fields only.
 ///
 /// ACP clients only ever see the closed-set `operation`/`error_category`
 /// reason codes, because the underlying error may embed workspace paths,
-/// provider payloads, hook text or archive contents. That leaves the local log
-/// as the only place the root cause can be recovered, so the source chain is
-/// emitted here at `debug` level, where trusted diagnostics are enabled
-/// deliberately rather than by default. [`redaction::redact_detail`] collapses
-/// path-like tokens, masks recognized secret shapes, and bounds the result, so
-/// the chain never carries workspace paths or transport URLs even at `debug`.
-/// The operator-visible `warn`/`info` records beside it carry fixed fields only.
+/// provider payloads, hook text, archive contents, transport URLs, secrets or
+/// personal data. Those values are untrusted, and no redaction of free text can
+/// be shown to remove all of them, so the error's rendering is never written to
+/// a log at any level. Operators get the fixed operation and category, the size
+/// of the outer message, and a bounded digest that groups repeated identical
+/// failures without retaining their content.
 fn log_suppressed_error(error: &impl std::fmt::Display, operation: &'static str, error_category: &'static str) {
+    let detail = format!("{error:#}");
     tracing::debug!(
         operation,
         error_category,
         error_bytes = error.to_string().len(),
-        detail = %redaction::redact_detail(&format!("{error:#}")),
+        detail_correlation = %redaction::detail_correlation(&detail),
         "Suppressed ACP failure"
     );
 }
@@ -202,12 +202,15 @@ mod acp_logging_tests {
     }
 
     #[test]
-    fn suppressed_error_detail_keeps_the_redacted_chain_at_debug() {
+    fn suppressed_error_keeps_fixed_fields_and_never_logs_untrusted_text() {
         let capture = HookLogCapture::default();
         let events = Arc::clone(&capture.0);
         let subscriber = Registry::default().with(capture);
-        let error =
-            anyhow::anyhow!("archive write failed for /home/private/archive.json").context("checkpointing ACP session");
+        let error = anyhow::anyhow!(
+            "archive write failed for /home/private/archive.json after POST https://api.example.invalid/v1/chat \
+             with alice@example.com and raw-session-identifier"
+        )
+        .context("checkpointing ACP session");
 
         tracing::subscriber::with_default(subscriber, || {
             log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
@@ -224,10 +227,19 @@ mod acp_logging_tests {
             "the outer message size is retained, got {captured}"
         );
         assert!(
-            captured.contains("detail=checkpointing ACP session: archive write failed for <path>"),
-            "the redacted chain is retained for local diagnosis, got {captured}"
+            captured.contains("detail_correlation="),
+            "the bounded correlation digest is retained, got {captured}"
         );
-        assert!(!captured.contains("/home/private/archive.json"), "paths must stay out, got {captured}");
+        for leaked in [
+            "checkpointing ACP session",
+            "archive write failed",
+            "/home/private",
+            "api.example.invalid",
+            "alice@example.com",
+            "raw-session-identifier",
+        ] {
+            assert!(!captured.contains(leaked), "{leaked} must never be logged, got {captured}");
+        }
     }
 
     #[test]

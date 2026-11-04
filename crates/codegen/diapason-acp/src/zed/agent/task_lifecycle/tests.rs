@@ -233,7 +233,7 @@ fn session_correlation_is_stable_bounded_and_does_not_expose_the_session_id() {
 
     let correlation = bounded_session_correlation(&session_id);
 
-    assert_eq!(correlation.len(), SESSION_CORRELATION_HEX_LENGTH);
+    assert_eq!(correlation.len(), CORRELATION_HEX_LENGTH);
     assert!(correlation.chars().all(|character| character.is_ascii_hexdigit()));
     assert_eq!(correlation, bounded_session_correlation(&session_id));
     assert_ne!(correlation, bounded_session_correlation(&other_session_id));

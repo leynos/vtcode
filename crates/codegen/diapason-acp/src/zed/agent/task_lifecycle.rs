@@ -38,8 +38,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 use tracing::{Span, debug, field, info_span, warn};
-
-use super::redaction::SESSION_CORRELATION_HEX_LENGTH;
+use super::redaction::CORRELATION_HEX_LENGTH;
 
 const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
