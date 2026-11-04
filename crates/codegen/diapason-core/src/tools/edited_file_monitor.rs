@@ -27,9 +27,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Notify;
 
 pub const FILE_CONFLICT_OVERRIDE_ARG: &str = "__diapason_conflict_override";
-
 pub const FILE_CONFLICT_DETECTED_FIELD: &str = "conflict_detected";
-
 pub const FILE_CONFLICT_PATH_FIELD: &str = "conflict_path";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -806,14 +804,12 @@ mod tests {
         };
         monitor.apply_permissions_config(&permissions);
         assert!(monitor.inner.audit_log.lock().is_some());
-
         permissions.audit_directory.clear();
         monitor.apply_permissions_config(&permissions);
         assert!(monitor.inner.audit_log.lock().is_none());
         assert!(std::fs::read_dir(dir.path())?.next().is_none());
         Ok(())
     }
-
     #[tokio::test]
     async fn detects_same_mtime_same_size_hash_mismatch() -> Result<()> {
         let temp = TempDir::new()?;

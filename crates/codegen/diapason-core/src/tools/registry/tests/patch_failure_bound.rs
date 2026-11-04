@@ -17,7 +17,7 @@ async fn repeated_identical_precondition_failures_are_blocked() -> Result<()> {
     registry.allow_all_tools().await?;
 
     let patch = "*** Begin Patch\n*** Update File: stale.txt\n@@\n-current\n+changed\n*** End Patch\n";
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"a different revision\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"a different revision\n"));
     let request = json!({ "input": patch, "expected_content_hash": stale_hash });
 
     for attempt in 1..=2 {
@@ -53,7 +53,7 @@ async fn a_different_request_after_a_refusal_is_still_attempted() -> Result<()> 
     registry.allow_all_tools().await?;
 
     let patch = "*** Begin Patch\n*** Update File: stale.txt\n@@\n-current\n+changed\n*** End Patch\n";
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"a different revision\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"a different revision\n"));
     let stale_request = json!({ "input": patch, "expected_content_hash": stale_hash });
     for _ in 0..2 {
         registry.execute_tool(tools::APPLY_PATCH, stale_request.clone()).await?;
@@ -70,7 +70,7 @@ async fn a_different_request_after_a_refusal_is_still_attempted() -> Result<()> 
         "a different request starts its own ladder: {other:?}"
     );
 
-    let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
+    let current_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"current\n"));
     let applied = registry
         .execute_tool(tools::APPLY_PATCH, json!({ "input": other_patch, "expected_content_hash": current_hash }))
         .await?;

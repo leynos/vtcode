@@ -32,9 +32,7 @@ mod config_defaults;
 mod pipe_session;
 
 mod no_op_ladder;
-
 mod patch_failure_bound;
-
 mod patch_safety;
 
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";
@@ -676,7 +674,7 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
                 .await?
                 .unwrap_or_default();
             let complete_output = format!("{initial_output}{retained_output}");
-            if complete_output.contains("vtcode-terminal") {
+            if complete_output.contains("diapason-terminal") {
                 return Ok::<_, anyhow::Error>(complete_output);
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -2211,4 +2209,3 @@ async fn code_search_executes_with_policy_capped_max_results() -> Result<()> {
     assert_eq!(response["results"].as_array().map(Vec::len), Some(1));
     Ok(())
 }
-// weave: run 'weave explain crates/codegen/diapason-core/src/tools/registry/tests.rs' for per-hunk detail, 'weave check' to verify your resolution

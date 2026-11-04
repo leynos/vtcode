@@ -15,7 +15,7 @@ use tracing::warn;
 
 use super::super::types::SessionHandle;
 use super::ZedAgent;
-use vtcode_core::metrics::{MetricsCollector, PatchCertificationOutcome};
+use diapason_core::metrics::{MetricsCollector, PatchCertificationOutcome};
 
 /// The collector that receives this session's read-certification outcomes.
 ///
@@ -69,7 +69,7 @@ pub(super) async fn expected_read_hash(
         return None;
     }
     if line.is_none() && limit.is_none() {
-        return Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(returned.as_bytes())));
+        return Some(format!("sha256:{}", diapason_commons::utils::calculate_sha256(returned.as_bytes())));
     }
     match ZedAgent::windowed_disk_hash(path, line, limit, returned).await {
         Ok(Some(content_hash)) => Some(content_hash),
@@ -167,11 +167,11 @@ impl ZedAgent {
         // byte offset, and the outcome category alone is what telemetry and the
         // log record. Bind it by name so the discard stays explicit.
         let disk_text = std::str::from_utf8(&disk_bytes).map_err(|_utf8_error| WindowVerificationError::NotUtf8)?;
-        let projected = vtcode_core::line_window(disk_text, line, limit);
+        let projected = diapason_core::line_window(disk_text, line, limit);
         if !window_matches_projection(projected, returned) {
             return Ok(None);
         }
-        Ok(Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&disk_bytes))))
+        Ok(Some(format!("sha256:{}", diapason_commons::utils::calculate_sha256(&disk_bytes))))
     }
 }
 

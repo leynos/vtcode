@@ -90,13 +90,14 @@ async fn patch_safety_events_never_carry_patch_text_paths_or_hashes() -> anyhow:
     let file_name = format!("{MARKER}.txt");
     let path = temp_dir.path().join(&file_name);
     std::fs::write(&path, format!("{MARKER}\n"))?;
-    let on_disk_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(format!("{MARKER}\n").as_bytes()));
+    let on_disk_hash =
+        format!("sha256:{}", diapason_commons::utils::calculate_sha256(format!("{MARKER}\n").as_bytes()));
 
     let registry = crate::tools::ToolRegistry::new(temp_dir.path().to_path_buf()).await;
     registry.allow_all_tools().await?;
 
     let no_op = format!("*** Begin Patch\n*** Update File: {file_name}\n@@\n-{MARKER}\n+{MARKER}\n*** End Patch\n");
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"a different revision\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"a different revision\n"));
     let stale = format!("*** Begin Patch\n*** Update File: {file_name}\n@@\n-{MARKER}\n+changed\n*** End Patch\n");
 
     let captured = CaptureWriter::default();
@@ -142,7 +143,7 @@ async fn deleted_source_file_reports_a_null_current_hash() -> anyhow::Result<()>
     let temp_dir = tempfile::TempDir::new()?;
     let path = temp_dir.path().join("gone.txt");
     std::fs::write(&path, "captured\n")?;
-    let captured_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"captured\n"));
+    let captured_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"captured\n"));
     std::fs::remove_file(&path)?;
 
     let registry = crate::tools::ToolRegistry::new(temp_dir.path().to_path_buf()).await;
@@ -202,7 +203,7 @@ async fn validation_error_records_and_logs_the_validation_failed_outcome() -> an
     assert!(
         metrics
             .export_prometheus()
-            .contains(r#"vtcode_apply_patch_precondition_total{outcome="validation_failed"} 1"#)
+            .contains(r#"diapason_apply_patch_precondition_total{outcome="validation_failed"} 1"#)
     );
 
     let output = String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");

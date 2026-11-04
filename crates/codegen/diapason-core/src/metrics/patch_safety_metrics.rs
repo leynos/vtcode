@@ -238,9 +238,9 @@ mod tests {
         assert!(!rendered.contains("sha256:"));
 
         let prometheus = collector.export_prometheus();
-        assert!(prometheus.contains(r#"vtcode_apply_patch_precondition_total{outcome="content_hash_mismatch"} 1"#));
-        assert!(prometheus.contains(r#"vtcode_apply_patch_no_op_total{decision="no_op_repeated"} 1"#));
-        assert!(prometheus.contains("vtcode_apply_patch_avg_duration_ms 40"));
+        assert!(prometheus.contains(r#"diapason_apply_patch_precondition_total{outcome="content_hash_mismatch"} 1"#));
+        assert!(prometheus.contains(r#"diapason_apply_patch_no_op_total{decision="no_op_repeated"} 1"#));
+        assert!(prometheus.contains("diapason_apply_patch_avg_duration_ms 40"));
     }
 
     #[test]

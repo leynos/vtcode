@@ -31,23 +31,14 @@ use crate::tools::{native_memory, tool_intent};
 use patch_preconditions::repeated_patch_failure_error;
 
 mod cargo_failure_diagnostics;
-
 mod exec_command;
-
 mod exec_output;
-
 mod exec_sessions;
-
 mod exec_support;
-
 mod patch_pipeline;
-
 pub(crate) mod patch_preconditions;
-
 mod sandbox_runtime;
-
 mod search_introspection;
-
 mod subagents;
 
 pub use sandbox_runtime::sandbox_policy_from_runtime_config;

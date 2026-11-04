@@ -13,15 +13,10 @@ use std::path::Path;
 use anyhow::anyhow;
 
 mod applicator;
-
 mod error;
-
 mod matcher;
-
 mod parser;
-
 mod path;
-
 mod semantic;
 
 #[doc(hidden)]

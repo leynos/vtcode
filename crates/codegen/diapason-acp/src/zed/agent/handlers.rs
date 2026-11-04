@@ -68,13 +68,9 @@ use tracing::{Instrument, Span, debug, info, warn};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderDeadlinePolicy, ProviderRequestRuntime};
 
 mod client;
-
 mod prompt;
-
 mod provider;
-
 mod session;
-
 #[cfg(test)]
 mod tests;
 

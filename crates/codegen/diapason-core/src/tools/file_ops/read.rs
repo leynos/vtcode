@@ -14,9 +14,7 @@ use super::is_image_path;
 use super::path_policy::PathSuggestionKind;
 use super::restore_exact_text_content;
 mod legacy;
-
 mod logging;
-
 mod segments;
 use crate::config::constants::tools;
 use crate::telemetry::perf::PerfSpan;
@@ -34,9 +32,7 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 const SPOOL_CHUNK_DEFAULT_LIMIT_LINES: usize = DEFAULT_NEXT_READ_LIMIT;
-
 const SPOOL_CHUNK_MAX_LIMIT_LINES: usize = 50;
-
 const SPOOL_CHUNK_SENTINEL_MAX_TOKENS: usize = 4096;
 
 #[derive(Clone, Copy, Debug)]
@@ -216,7 +212,6 @@ fn has_explicit_offset(args: &Value) -> bool {
 fn is_full_text_read(args: &Value, is_spool_output: bool) -> bool {
     !is_spool_output && !has_explicit_offset(args) && !has_explicit_limit(args)
 }
-
 fn apply_spool_chunk_defaults(handler_args_json: &mut Value, raw_args: &Value) -> SpoolChunkPlan {
     let mut offset = 1usize;
     let mut limit = SPOOL_CHUNK_DEFAULT_LIMIT_LINES;
@@ -270,7 +265,7 @@ fn is_tool_output_spool_path(path: &Path) -> bool {
 ///
 /// `PerfSpan` keeps tags in a map, so a second `tag("cache", ...)` for the same
 /// key overwrites the first. Treating a stale entry as an ordinary miss would
-/// therefore hide the revalidation path from `vtcode.perf.read_file_ms`, which
+/// therefore hide the revalidation path from `diapason.perf.read_file_ms`, which
 /// is the only place it can be observed. Deciding the value once keeps `stale`
 /// distinct from `miss` and from the `skip` case where the cache does not apply.
 fn cache_outcome_tag(has_cache_key: bool, entry_was_stale: bool) -> &'static str {
@@ -786,9 +781,9 @@ mod read_tests {
     use super::*;
     use crate::tools::grep_file::GrepSearchManager;
     use crate::tools::types::Input;
+    use diapason_commons::utils::calculate_sha256;
     use std::fs;
     use std::path::Path;
-    use diapason_commons::utils::calculate_sha256;
     use tempfile::TempDir;
 
     /// Format the canonical `sha256:` content hash for test fixtures.
@@ -813,7 +808,7 @@ mod read_tests {
 
     /// Check a stale cache entry keeps its own tag instead of collapsing to
     /// `miss`; the two are the same code path otherwise and only this value
-    /// lets an operator see revalidation in `vtcode.perf.read_file_ms`.
+    /// lets an operator see revalidation in `diapason.perf.read_file_ms`.
     #[test]
     fn cache_outcome_tag_keeps_stale_distinct_from_miss() {
         assert_eq!(cache_outcome_tag(true, true), "stale");
@@ -1260,13 +1255,8 @@ mod read_tests {
         // inside the workspace so the read path can reach it.
         let env_guard = diapason_commons::env_lock::lock();
         let previous_state = std::env::var_os("XDG_STATE_HOME");
-        env_guard.set_var(
-            "XDG_STATE_HOME",
-            temp_dir.path().join("xdg-state").to_string_lossy().into_owned(),
-        );
-        let history_dir = diapason_commons::workspace_state_dir(&workspace_root)
-            .unwrap()
-            .join("history");
+        env_guard.set_var("XDG_STATE_HOME", temp_dir.path().join("xdg-state").to_string_lossy().into_owned());
+        let history_dir = diapason_commons::workspace_state_dir(&workspace_root).unwrap().join("history");
         fs::create_dir_all(&history_dir).unwrap();
         let history_path = history_dir.join("session.jsonl");
         let original = "a".repeat(300_000);
@@ -1806,7 +1796,7 @@ mod read_tests {
     async fn spool_read_omits_content_hash_when_output_grows_mid_read() {
         let temp_dir = TempDir::new().unwrap();
         let workspace_root = temp_dir.path().to_path_buf();
-        let spool_dir = workspace_root.join(".vtcode/context/tool_outputs");
+        let spool_dir = workspace_root.join(".diapason/context/tool_outputs");
         fs::create_dir_all(&spool_dir).unwrap();
         let spool_file = spool_dir.join("command_session_growing.txt");
         let spool_content = (1..=120).map(|i| format!("line{i}")).collect::<Vec<_>>().join("\n");

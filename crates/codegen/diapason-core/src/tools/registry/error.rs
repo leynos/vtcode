@@ -2,7 +2,7 @@
 //!
 //! Defines [`ToolExecutionError`] and its [`ToolErrorType`] taxonomy, the JSON
 //! `details` payloads surfaced to the model, and the mapping onto
-//! [`vtcode_commons::ErrorCategory`] and retry policy decisions. Executors
+//! [`diapason_commons::ErrorCategory`] and retry policy decisions. Executors
 //! return these values so that callers, the circuit breaker, and users see the
 //! same classification regardless of which tool produced the failure.
 

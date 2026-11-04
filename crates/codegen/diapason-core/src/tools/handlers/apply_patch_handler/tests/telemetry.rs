@@ -12,7 +12,7 @@ use serde_json::json;
 /// Write a UTF-8 fixture and return its canonical version.
 pub(super) fn versioned_fixture(workspace: &TempDir, content: &str) -> String {
     std::fs::write(workspace.path().join("versioned.txt"), content).expect("write fixture");
-    format!("sha256:{}", vtcode_commons::utils::calculate_sha256(content.as_bytes()))
+    format!("sha256:{}", diapason_commons::utils::calculate_sha256(content.as_bytes()))
 }
 
 pub(super) fn update_patch() -> &'static str {
@@ -66,9 +66,9 @@ async fn handler_counts_preflight_revalidation_and_one_evaluation() {
     assert_export_is_content_free(&metrics);
 
     let prometheus = metrics.export_prometheus();
-    assert!(prometheus.contains(r#"vtcode_apply_patch_precondition_total{outcome="matched"} 1"#));
-    assert!(prometheus.contains(r#"vtcode_apply_patch_runtime_revalidation_total{outcome="matched"} 1"#));
-    assert!(prometheus.contains("vtcode_apply_patch_evaluations_total 1"));
+    assert!(prometheus.contains(r#"diapason_apply_patch_precondition_total{outcome="matched"} 1"#));
+    assert!(prometheus.contains(r#"diapason_apply_patch_runtime_revalidation_total{outcome="matched"} 1"#));
+    assert!(prometheus.contains("diapason_apply_patch_evaluations_total 1"));
 }
 
 /// A stale hash is rejected by the preflight, so only the preflight counter
@@ -77,7 +77,7 @@ async fn handler_counts_preflight_revalidation_and_one_evaluation() {
 async fn stale_hash_counts_one_mismatch_and_no_runtime_revalidation() {
     let workspace = TempDir::new().expect("temporary workspace");
     versioned_fixture(&workspace, "current\n");
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"stale\n"));
     let metrics = Arc::new(MetricsCollector::new());
     let arguments = json!({ "input": update_patch(), "expected_content_hash": stale_hash }).to_string();
 
@@ -95,7 +95,7 @@ async fn stale_hash_counts_one_mismatch_and_no_runtime_revalidation() {
     assert!(
         metrics
             .export_prometheus()
-            .contains(r#"vtcode_apply_patch_precondition_total{outcome="content_hash_mismatch"} 1"#)
+            .contains(r#"diapason_apply_patch_precondition_total{outcome="content_hash_mismatch"} 1"#)
     );
 }
 
@@ -121,7 +121,7 @@ async fn missing_source_file_counts_the_missing_file_outcome() {
     assert!(
         metrics
             .export_prometheus()
-            .contains(r#"vtcode_apply_patch_precondition_total{outcome="missing_file"} 1"#)
+            .contains(r#"diapason_apply_patch_precondition_total{outcome="missing_file"} 1"#)
     );
 }
 
@@ -132,7 +132,7 @@ async fn invalid_scope_counts_the_invalid_scope_outcome() {
     let metrics = Arc::new(MetricsCollector::new());
     let arguments = json!({
         "input": "*** Begin Patch\n*** Add File: fresh.txt\n+hello\n*** End Patch\n",
-        "expected_content_hash": format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"anything\n")),
+        "expected_content_hash": format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"anything\n")),
     })
     .to_string();
 
@@ -148,7 +148,7 @@ async fn invalid_scope_counts_the_invalid_scope_outcome() {
     assert!(
         metrics
             .export_prometheus()
-            .contains(r#"vtcode_apply_patch_precondition_total{outcome="invalid_scope"} 1"#)
+            .contains(r#"diapason_apply_patch_precondition_total{outcome="invalid_scope"} 1"#)
     );
 }
 
@@ -172,7 +172,7 @@ async fn malformed_hash_counts_the_malformed_outcome_and_the_evaluation() {
     assert!(
         metrics
             .export_prometheus()
-            .contains(r#"vtcode_apply_patch_precondition_total{outcome="malformed_hash"} 1"#)
+            .contains(r#"diapason_apply_patch_precondition_total{outcome="malformed_hash"} 1"#)
     );
 }
 
@@ -186,7 +186,7 @@ async fn unreadable_source_counts_the_validation_failed_outcome() {
     let metrics = Arc::new(MetricsCollector::new());
     let arguments = json!({
         "input": update_patch(),
-        "expected_content_hash": format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"anything\n")),
+        "expected_content_hash": format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"anything\n")),
     })
     .to_string();
 
@@ -202,7 +202,7 @@ async fn unreadable_source_counts_the_validation_failed_outcome() {
     assert!(
         metrics
             .export_prometheus()
-            .contains(r#"vtcode_apply_patch_precondition_total{outcome="validation_failed"} 1"#)
+            .contains(r#"diapason_apply_patch_precondition_total{outcome="validation_failed"} 1"#)
     );
 }
 
@@ -234,7 +234,7 @@ async fn direct_runtime_records_its_own_evaluation_and_revalidation() {
     assert_eq!(safety.runtime_revalidation_matched, 1);
     assert_eq!(safety.precondition_matched, 0, "a direct runtime has no handler preflight to count");
     assert_export_is_content_free(&metrics);
-    assert!(metrics.export_prometheus().contains("vtcode_apply_patch_evaluations_total 1"));
+    assert!(metrics.export_prometheus().contains("diapason_apply_patch_evaluations_total 1"));
 }
 
 /// A stale hash fails the direct runtime's own revalidation. The failure is
@@ -244,7 +244,7 @@ async fn direct_runtime_records_its_own_evaluation_and_revalidation() {
 async fn direct_runtime_counts_a_failed_revalidation() {
     let workspace = TempDir::new().expect("workspace should be created");
     versioned_fixture(&workspace, "current\n");
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"stale\n"));
     let metrics = Arc::new(MetricsCollector::new());
     let tool_ctx = direct_runtime_ctx_with_metrics(&workspace, Some(Arc::clone(&metrics)));
     let policy = SandboxConfig::default();
@@ -271,6 +271,6 @@ async fn direct_runtime_counts_a_failed_revalidation() {
     assert!(
         metrics
             .export_prometheus()
-            .contains(r#"vtcode_apply_patch_runtime_revalidation_total{outcome="mismatch"} 1"#)
+            .contains(r#"diapason_apply_patch_runtime_revalidation_total{outcome="mismatch"} 1"#)
     );
 }

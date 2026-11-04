@@ -288,6 +288,3 @@ impl ZedAgent {
         self.run_session_list_files_inner(session, args).await
     }
 }
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/tool_execution_local.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/tool_execution_local.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/tool_execution_local.rs' for per-hunk detail, 'weave check' to verify your resolution

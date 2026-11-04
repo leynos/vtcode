@@ -128,9 +128,9 @@ async fn approved_delete_and_rename_patches_deliver_hashed_diffs_over_acp() {
     std::fs::write(workspace.path().join("obsolete.txt"), "gone\n").expect("write delete fixture");
     std::fs::write(workspace.path().join("before.txt"), "moved\n").expect("write rename fixture");
 
-    let delete_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"gone\n"));
+    let delete_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"gone\n"));
     let delete_patch = "*** Begin Patch\n*** Delete File: obsolete.txt\n*** End Patch\n";
-    let rename_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"moved\n"));
+    let rename_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"moved\n"));
     let rename_patch =
         "*** Begin Patch\n*** Update File: before.txt\n*** Move to: after.txt\n@@\n-moved\n+relocated\n*** End Patch\n";
     let delete_arguments =
@@ -150,7 +150,7 @@ async fn approved_delete_and_rename_patches_deliver_hashed_diffs_over_acp() {
                 requests: Arc::clone(&factory_requests),
                 tool_name: "apply_patch",
                 tool_arguments: delete_arguments.clone(),
-                additional_tool_calls: vec![vtcode_core::llm::provider::ToolCall::function(
+                additional_tool_calls: vec![diapason_core::llm::provider::ToolCall::function(
                     "call-rename".to_string(),
                     "apply_patch".to_string(),
                     rename_arguments.clone(),
@@ -163,7 +163,7 @@ async fn approved_delete_and_rename_patches_deliver_hashed_diffs_over_acp() {
     let (agent_channel, client_channel) = Channel::duplex();
     let (updates_tx, mut updates_rx) = mpsc::unbounded_channel();
 
-    let agent_connection = install_handlers(Agent.builder().name("vtcode-apply-patch-diff-test"), Arc::clone(&agent))
+    let agent_connection = install_handlers(Agent.builder().name("diapason-apply-patch-diff-test"), Arc::clone(&agent))
         .connect_with(agent_channel, {
             let agent = Arc::clone(&agent);
             async move |cx: ConnectionTo<Client>| {

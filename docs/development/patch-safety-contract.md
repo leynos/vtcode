@@ -58,7 +58,7 @@ that was never on disk.
 A windowed ACP read is certified through
 `tool_execution_local::windowed_disk_hash` instead of the returned-text hash.
 It projects the same window from the on-disk bytes with
-`vtcode_core::line_window` and certifies the whole-file hash only when that
+`diapason_core::line_window` and certifies the whole-file hash only when that
 projection equals the returned text, tolerating only a client that drops the
 terminator of the final line. That difference is asymmetric: the returned text
 may be one terminator shorter than the projection, never longer, and a returned
@@ -221,12 +221,12 @@ bounded counter sets and one timer:
   derived.
 
 The snapshot appears as `patch_safety` in the metrics summary JSON and as
-`vtcode_apply_patch_precondition_total{outcome=...}`,
-`vtcode_apply_patch_runtime_revalidation_total{outcome=...}`,
-`vtcode_apply_patch_certification_total{outcome=...}`,
-`vtcode_apply_patch_no_op_total{decision=...}`,
-`vtcode_apply_patch_evaluations_total`, and
-`vtcode_apply_patch_avg_duration_ms` in the Prometheus export.
+`diapason_apply_patch_precondition_total{outcome=...}`,
+`diapason_apply_patch_runtime_revalidation_total{outcome=...}`,
+`diapason_apply_patch_certification_total{outcome=...}`,
+`diapason_apply_patch_no_op_total{decision=...}`,
+`diapason_apply_patch_evaluations_total`, and
+`diapason_apply_patch_avg_duration_ms` in the Prometheus export.
 
 ### Where the counters come from
 

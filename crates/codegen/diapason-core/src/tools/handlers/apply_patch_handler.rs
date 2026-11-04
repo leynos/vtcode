@@ -32,11 +32,8 @@ use super::tool_orchestrator::ToolOrchestrator;
 use crate::tools::editing::Patch;
 
 mod changes;
-
 mod preconditions;
-
 mod specs;
-
 #[cfg(test)]
 mod tests;
 

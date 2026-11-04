@@ -74,12 +74,12 @@ impl LLMProvider for ScriptedToolCallProvider {
             let response = LLMResponse {
                 content: Some("Checking files.".to_string()),
                 reasoning: Some("I need the current file version.".to_string()),
-                tool_calls: Some(vec![vtcode_core::llm::provider::ToolCall::function(
+                tool_calls: Some(vec![diapason_core::llm::provider::ToolCall::function(
                     format!("call-tool-{response_index}"),
                     tool_name.clone(),
                     tool_arguments.clone(),
                 )]),
-                finish_reason: vtcode_core::llm::provider::FinishReason::ToolCalls,
+                finish_reason: diapason_core::llm::provider::FinishReason::ToolCalls,
                 model: "wire-model".to_string(),
                 ..LLMResponse::default()
             };
@@ -90,7 +90,7 @@ impl LLMProvider for ScriptedToolCallProvider {
         } else {
             let response = LLMResponse {
                 content: Some("Tool complete.".to_string()),
-                finish_reason: vtcode_core::llm::provider::FinishReason::Stop,
+                finish_reason: diapason_core::llm::provider::FinishReason::Stop,
                 model: "wire-model".to_string(),
                 ..LLMResponse::default()
             };
@@ -136,7 +136,7 @@ fn windowed_read_response(
         Some(buffer) => buffer.to_string(),
         None => std::fs::read_to_string(&request.path).expect("read client fixture"),
     };
-    let window = || vtcode_core::line_window(&content, request.line, request.limit).to_string();
+    let window = || diapason_core::line_window(&content, request.line, request.limit).to_string();
     let response = match mode {
         ClientWindowMode::Honours => window(),
         ClientWindowMode::Ignores => content,
@@ -163,7 +163,7 @@ pub(super) struct WindowedReadFlow {
     pub(super) calls: usize,
     pub(super) requests: Arc<Mutex<Vec<LLMRequest>>>,
     /// Certification counters from the registry this session actually used.
-    pub(super) metrics: Arc<vtcode_core::metrics::MetricsCollector>,
+    pub(super) metrics: Arc<diapason_core::metrics::MetricsCollector>,
     /// Warnings captured while the ACP connection ran.
     pub(super) events: Vec<String>,
     _test_lock: tokio::sync::MutexGuard<'static, ()>,
@@ -172,7 +172,7 @@ pub(super) struct WindowedReadFlow {
 
 impl WindowedReadFlow {
     /// Read the certification counters for this flow.
-    pub(super) fn certification(&self) -> vtcode_core::metrics::PatchSafetyMetrics {
+    pub(super) fn certification(&self) -> diapason_core::metrics::PatchSafetyMetrics {
         self.metrics.get_patch_safety_metrics()
     }
 }
@@ -181,7 +181,10 @@ impl WindowedReadFlow {
 ///
 /// `run_read_file` prefers the session's workspace registry and falls back to
 /// the agent's launch registry, so the test reads the same one.
-fn certification_metrics(agent: &ZedAgent, session_id: &acp::SessionId) -> Arc<vtcode_core::metrics::MetricsCollector> {
+fn certification_metrics(
+    agent: &ZedAgent,
+    session_id: &acp::SessionId,
+) -> Arc<diapason_core::metrics::MetricsCollector> {
     match agent.session_handle(session_id) {
         Ok(Some(handle)) => match handle.workspace_runtime() {
             Ok(Some(runtime)) => runtime.local_tool_registry.metrics_collector(),
@@ -259,14 +262,17 @@ pub(super) async fn run_windowed_read_flow_with_bytes(
     let session_id_capture = Arc::clone(&session_id_slot);
     let (agent_channel, client_channel) = Channel::duplex();
 
-    let agent_connection = install_handlers(Agent.builder().name("vtcode-read-file-version-test"), Arc::clone(&agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(&agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
+    let agent_connection = install_handlers(
+        Agent.builder().name("diapason-read-file-version-test"),
+        Arc::clone(&agent),
+    )
+    .connect_with(agent_channel, {
+        let agent = Arc::clone(&agent);
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        }
+    });
     let agent_task = tokio::spawn(agent_connection);
 
     let client_buffer = client_buffer.map(str::to_string);
@@ -339,8 +345,8 @@ pub(super) async fn run_windowed_read_flow_with_bytes(
 /// Drive the versioned read and no-op guard flow over the official ACP transport.
 #[tokio::test]
 async fn file_versions_and_no_op_guard_survive_the_official_acp_transport() {
-    let before_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"before\n"));
-    let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
+    let before_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"before\n"));
+    let current_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"current\n"));
     let read = serde_json::json!({"path": "versioned.txt", "line": 1, "limit": 1}).to_string();
     let stale = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-before\n+done\n*** End Patch\n";
     let no_op = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+current\n*** End Patch\n";

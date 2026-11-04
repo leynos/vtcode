@@ -27,7 +27,7 @@ async fn stale_apply_patch_hash_returns_diagnostics_without_writing(
     let path = temp_dir.path().join("versioned.txt");
     fs::write(&path, "current\n")?;
     let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n";
-    let expected = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+    let expected = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"stale\n"));
 
     let outcome = registry
         .execute_public_tool_request(ToolExecutionRequest::new(
@@ -44,7 +44,7 @@ async fn stale_apply_patch_hash_returns_diagnostics_without_writing(
     assert_eq!(details["expected_content_hash"], expected);
     assert_eq!(
         details["current_content_hash"],
-        format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"))
+        format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"current\n"))
     );
     assert_eq!(details["can_safely_rebase"], true);
     assert!(
@@ -74,7 +74,8 @@ async fn stale_unrebasable_patch_reports_bounded_anchor_context(
     let path = temp_dir.path().join("versioned.txt");
     fs::write(&path, "fn nearby() {\n    current();\n}\n")?;
     let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@ fn missing()\n-    stale();\n+    changed();\n*** End Patch\n";
-    let expected = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"fn missing() {\n    stale();\n}\n"));
+    let expected =
+        format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"fn missing() {\n    stale();\n}\n"));
 
     let outcome = registry
         .execute_public_tool_request(ToolExecutionRequest::new(
@@ -138,7 +139,7 @@ async fn stale_patch_bounds_oversized_anchor_context_and_caps_failures(
         patch.push_str(&format!("@@ {anchor}\n-{expected}\n+replacement-{index}\n"));
     }
     patch.push_str("*** End Patch\n");
-    let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(patch.as_bytes()));
+    let expected_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(patch.as_bytes()));
 
     let outcome = registry
         .execute_public_tool_request(ToolExecutionRequest::new(
@@ -174,7 +175,7 @@ async fn matching_apply_patch_hash_allows_the_write(#[future] patch_workspace: R
     let PatchWorkspace { registry, _temp_dir: temp_dir } = patch_workspace.await?;
     let path = temp_dir.path().join("versioned.txt");
     fs::write(&path, "current\n")?;
-    let current = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
+    let current = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"current\n"));
     let patch = "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n";
 
     let response = registry
@@ -199,7 +200,7 @@ async fn matching_apply_patch_hash_allows_single_source_delete_and_rename(
     fs::write(&obsolete, "obsolete\n")?;
     fs::write(&renamed_from, "moved\n")?;
 
-    let delete_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"obsolete\n"));
+    let delete_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"obsolete\n"));
     let delete_patch = "*** Begin Patch\n*** Delete File: obsolete.txt\n*** End Patch\n";
     let delete_response = registry
         .execute_tool(tools::APPLY_PATCH, json!({ "input": delete_patch, "expected_content_hash": delete_hash }))
@@ -207,7 +208,7 @@ async fn matching_apply_patch_hash_allows_single_source_delete_and_rename(
     assert_eq!(delete_response["success"], true);
     assert!(!obsolete.exists());
 
-    let rename_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"moved\n"));
+    let rename_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"moved\n"));
     let rename_patch =
         "*** Begin Patch\n*** Update File: before.txt\n*** Move to: after.txt\n@@\n-moved\n+relocated\n*** End Patch\n";
     let rename_response = registry

@@ -78,7 +78,7 @@ impl PatchFailureGuard {
 pub(super) fn request_signature(args: &Value) -> String {
     let mut encoded = String::new();
     encode_value(&mut encoded, args);
-    format!("sha256:{}", vtcode_commons::utils::calculate_sha256(encoded.as_bytes()))
+    format!("sha256:{}", diapason_commons::utils::calculate_sha256(encoded.as_bytes()))
 }
 
 /// Classify one finished attempt as a failure for the repeat bound.

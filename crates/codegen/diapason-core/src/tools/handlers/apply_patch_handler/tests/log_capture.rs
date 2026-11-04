@@ -71,7 +71,7 @@ where
 async fn handler_precondition_rejection_logs_bounded_decision() {
     let workspace = TempDir::new().expect("temporary workspace");
     versioned_fixture(&workspace, "current\n");
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"stale\n"));
     let arguments = json!({ "input": update_patch(), "expected_content_hash": stale_hash.clone() }).to_string();
 
     let (result, output) = capture_logs(|| async {
@@ -99,7 +99,7 @@ async fn handler_precondition_rejection_logs_bounded_decision() {
 async fn runtime_revalidation_rejection_logs_bounded_decision() {
     let workspace = TempDir::new().expect("workspace should be created");
     versioned_fixture(&workspace, "current\n");
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"stale\n"));
     let tool_ctx = direct_runtime_ctx(&workspace);
     let policy = SandboxConfig::default();
     let attempt = sandbox_attempt(&policy, &workspace);

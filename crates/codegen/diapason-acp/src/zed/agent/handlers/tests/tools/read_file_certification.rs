@@ -65,7 +65,7 @@ fn assert_exports_are_content_free(flow: &WindowedReadFlow, file_name: &str) {
 /// spills into a neighbouring outcome.
 fn assert_only_certification_outcome_is(
     flow: &WindowedReadFlow,
-    counted: impl Fn(&vtcode_core::metrics::PatchSafetyMetrics) -> u64,
+    counted: impl Fn(&diapason_core::metrics::PatchSafetyMetrics) -> u64,
     message: &str,
 ) {
     let certification = flow.certification();
@@ -177,7 +177,7 @@ async fn whole_file_read_of_a_removed_file_counts_the_capture_failed_outcome() {
 #[tokio::test]
 async fn windowed_read_certifies_the_whole_file_and_patches_with_its_hash() {
     let disk = "alpha\nbeta\ngamma\n";
-    let whole_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(disk.as_bytes()));
+    let whole_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(disk.as_bytes()));
     let read = serde_json::json!({"path": "windowed.txt", "line": 2, "limit": 1}).to_string();
     let patch = "*** Begin Patch\n*** Update File: windowed.txt\n@@\n-beta\n+beta2\n*** End Patch\n";
     let tool_calls = vec![
@@ -212,7 +212,7 @@ async fn windowed_read_certifies_the_whole_file_and_patches_with_its_hash() {
 async fn windowed_read_of_a_dirty_buffer_returns_no_version_and_rejects_the_stale_hash() {
     let disk = "alpha\nbeta\ngamma\n";
     let buffer = "alpha\nBETA\ngamma\n";
-    let buffer_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(buffer.as_bytes()));
+    let buffer_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(buffer.as_bytes()));
     let read = serde_json::json!({"path": "buffer.txt", "line": 2, "limit": 1}).to_string();
     let patch = "*** Begin Patch\n*** Update File: buffer.txt\n@@\n-beta\n+beta2\n*** End Patch\n";
     let tool_calls = vec![

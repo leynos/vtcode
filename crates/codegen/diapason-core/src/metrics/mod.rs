@@ -18,19 +18,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 pub mod discovery_metrics;
-
 pub mod execution_metrics;
-
 pub mod filtering_metrics;
-
 pub mod patch_safety_metrics;
-
 pub mod planning_metrics;
-
 pub mod sdk_metrics;
-
 pub mod security_metrics;
-
 pub mod skill_metrics;
 
 pub use discovery_metrics::DiscoveryMetrics;
@@ -839,14 +832,14 @@ impl PrometheusMetricsSnapshot {
         // patch content, so the series stay bounded and content-free.
         let _ = write!(
             output,
-            "# HELP vtcode_apply_patch_precondition_total Total apply_patch version precondition outcomes\n\
-             # TYPE vtcode_apply_patch_precondition_total counter\n\
-             vtcode_apply_patch_precondition_total{{outcome=\"matched\"}} {}\n\
-             vtcode_apply_patch_precondition_total{{outcome=\"content_hash_mismatch\"}} {}\n\
-             vtcode_apply_patch_precondition_total{{outcome=\"invalid_scope\"}} {}\n\
-             vtcode_apply_patch_precondition_total{{outcome=\"malformed_hash\"}} {}\n\
-             vtcode_apply_patch_precondition_total{{outcome=\"missing_file\"}} {}\n\
-             vtcode_apply_patch_precondition_total{{outcome=\"validation_failed\"}} {}\n\n",
+            "# HELP diapason_apply_patch_precondition_total Total apply_patch version precondition outcomes\n\
+             # TYPE diapason_apply_patch_precondition_total counter\n\
+             diapason_apply_patch_precondition_total{{outcome=\"matched\"}} {}\n\
+             diapason_apply_patch_precondition_total{{outcome=\"content_hash_mismatch\"}} {}\n\
+             diapason_apply_patch_precondition_total{{outcome=\"invalid_scope\"}} {}\n\
+             diapason_apply_patch_precondition_total{{outcome=\"malformed_hash\"}} {}\n\
+             diapason_apply_patch_precondition_total{{outcome=\"missing_file\"}} {}\n\
+             diapason_apply_patch_precondition_total{{outcome=\"validation_failed\"}} {}\n\n",
             self.patch_safety.precondition_matched,
             self.patch_safety.precondition_content_hash_mismatch,
             self.patch_safety.precondition_invalid_scope,
@@ -857,12 +850,12 @@ impl PrometheusMetricsSnapshot {
 
         let _ = write!(
             output,
-            "# HELP vtcode_apply_patch_no_op_total Total apply_patch no-op ladder decisions\n\
-             # TYPE vtcode_apply_patch_no_op_total counter\n\
-             vtcode_apply_patch_no_op_total{{decision=\"execute\"}} {}\n\
-             vtcode_apply_patch_no_op_total{{decision=\"no_op_first\"}} {}\n\
-             vtcode_apply_patch_no_op_total{{decision=\"no_op_repeated\"}} {}\n\
-             vtcode_apply_patch_no_op_total{{decision=\"no_op_blocked\"}} {}\n\n",
+            "# HELP diapason_apply_patch_no_op_total Total apply_patch no-op ladder decisions\n\
+             # TYPE diapason_apply_patch_no_op_total counter\n\
+             diapason_apply_patch_no_op_total{{decision=\"execute\"}} {}\n\
+             diapason_apply_patch_no_op_total{{decision=\"no_op_first\"}} {}\n\
+             diapason_apply_patch_no_op_total{{decision=\"no_op_repeated\"}} {}\n\
+             diapason_apply_patch_no_op_total{{decision=\"no_op_blocked\"}} {}\n\n",
             self.patch_safety.no_op_execute,
             self.patch_safety.no_op_first,
             self.patch_safety.no_op_repeated,
@@ -871,22 +864,22 @@ impl PrometheusMetricsSnapshot {
 
         let _ = write!(
             output,
-            "# HELP vtcode_apply_patch_runtime_revalidation_total Total apply_patch runtime rechecks\n\
-             # TYPE vtcode_apply_patch_runtime_revalidation_total counter\n\
-             vtcode_apply_patch_runtime_revalidation_total{{outcome=\"matched\"}} {}\n\
-             vtcode_apply_patch_runtime_revalidation_total{{outcome=\"mismatch\"}} {}\n\n",
+            "# HELP diapason_apply_patch_runtime_revalidation_total Total apply_patch runtime rechecks\n\
+             # TYPE diapason_apply_patch_runtime_revalidation_total counter\n\
+             diapason_apply_patch_runtime_revalidation_total{{outcome=\"matched\"}} {}\n\
+             diapason_apply_patch_runtime_revalidation_total{{outcome=\"mismatch\"}} {}\n\n",
             self.patch_safety.runtime_revalidation_matched, self.patch_safety.runtime_revalidation_mismatch
         );
 
         let _ = write!(
             output,
-            "# HELP vtcode_apply_patch_certification_total Total ACP read-version certification outcomes\n\
-             # TYPE vtcode_apply_patch_certification_total counter\n\
-             vtcode_apply_patch_certification_total{{outcome=\"window_projection_mismatch\"}} {}\n\
-             vtcode_apply_patch_certification_total{{outcome=\"window_read_failed\"}} {}\n\
-             vtcode_apply_patch_certification_total{{outcome=\"window_not_utf8\"}} {}\n\
-             vtcode_apply_patch_certification_total{{outcome=\"read_content_mismatch\"}} {}\n\
-             vtcode_apply_patch_certification_total{{outcome=\"read_version_capture_failed\"}} {}\n\n",
+            "# HELP diapason_apply_patch_certification_total Total ACP read-version certification outcomes\n\
+             # TYPE diapason_apply_patch_certification_total counter\n\
+             diapason_apply_patch_certification_total{{outcome=\"window_projection_mismatch\"}} {}\n\
+             diapason_apply_patch_certification_total{{outcome=\"window_read_failed\"}} {}\n\
+             diapason_apply_patch_certification_total{{outcome=\"window_not_utf8\"}} {}\n\
+             diapason_apply_patch_certification_total{{outcome=\"read_content_mismatch\"}} {}\n\
+             diapason_apply_patch_certification_total{{outcome=\"read_version_capture_failed\"}} {}\n\n",
             self.patch_safety.certification_window_projection_mismatch,
             self.patch_safety.certification_window_read_failed,
             self.patch_safety.certification_window_not_utf8,
@@ -896,12 +889,12 @@ impl PrometheusMetricsSnapshot {
 
         let _ = write!(
             output,
-            "# HELP vtcode_apply_patch_evaluations_total Total evaluated apply_patch requests\n\
-             # TYPE vtcode_apply_patch_evaluations_total counter\n\
-             vtcode_apply_patch_evaluations_total {}\n\n\
-             # HELP vtcode_apply_patch_avg_duration_ms Average apply_patch evaluation duration\n\
-             # TYPE vtcode_apply_patch_avg_duration_ms gauge\n\
-             vtcode_apply_patch_avg_duration_ms {}\n\n",
+            "# HELP diapason_apply_patch_evaluations_total Total evaluated apply_patch requests\n\
+             # TYPE diapason_apply_patch_evaluations_total counter\n\
+             diapason_apply_patch_evaluations_total {}\n\n\
+             # HELP diapason_apply_patch_avg_duration_ms Average apply_patch evaluation duration\n\
+             # TYPE diapason_apply_patch_avg_duration_ms gauge\n\
+             diapason_apply_patch_avg_duration_ms {}\n\n",
             self.patch_safety.evaluations,
             self.patch_safety.avg_duration_ms()
         );

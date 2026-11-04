@@ -369,7 +369,7 @@ impl ToolRegistry {
         for write in planned_writes {
             let (path, exists, hash) = match write {
                 PlannedPatchWrite::Text { path, content, .. } => {
-                    (path, true, vtcode_commons::utils::calculate_sha256(content.as_bytes()))
+                    (path, true, diapason_commons::utils::calculate_sha256(content.as_bytes()))
                 }
                 PlannedPatchWrite::Removal { path, .. } => (path, false, String::new()),
             };

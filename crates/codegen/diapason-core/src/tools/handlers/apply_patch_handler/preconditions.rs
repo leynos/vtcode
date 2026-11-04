@@ -138,7 +138,7 @@ pub(super) async fn validate_request_content_hash(
         });
     };
     let disk_path = cwd.join(source_path);
-    vtcode_commons::paths::ensure_path_within_workspace_resolved(&disk_path, workspace_root)
+    diapason_commons::paths::ensure_path_within_workspace_resolved(&disk_path, workspace_root)
         .await
         .map_err(|error| {
             PatchPreconditionFailure::Rejected(format!(
@@ -165,7 +165,7 @@ pub(super) async fn validate_request_content_hash(
             )));
         }
     };
-    let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&bytes));
+    let current_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(&bytes));
     if current_hash == expected_hash {
         return Ok(Some(PatchPreconditionOutcome::Matched));
     }

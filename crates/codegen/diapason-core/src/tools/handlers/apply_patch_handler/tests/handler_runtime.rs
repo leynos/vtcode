@@ -16,7 +16,7 @@ async fn json_handler_enforces_expected_content_hash_before_apply() {
     let patch =
         Patch::parse("*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n")
             .expect("valid patch");
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"stale\n"));
 
     let error = validate_request_content_hash(Some(&stale_hash), &patch, workspace.path(), workspace.path())
         .await
@@ -40,7 +40,7 @@ async fn handler_runtime_rejects_stale_expected_content_hash() {
     let workspace = TempDir::new().expect("temporary workspace");
     let fixture = workspace.path().join("versioned.txt");
     std::fs::write(&fixture, "current\n").expect("write fixture");
-    let stale_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"));
+    let stale_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"stale\n"));
     let arguments = json!({
         "input": "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n",
         "expected_content_hash": stale_hash,
@@ -70,7 +70,7 @@ async fn handler_runtime_applies_patch_with_matching_expected_content_hash() {
     let workspace = TempDir::new().expect("temporary workspace");
     let fixture = workspace.path().join("versioned.txt");
     std::fs::write(&fixture, "current\n").expect("write fixture");
-    let current_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"));
+    let current_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"current\n"));
     let arguments = json!({
         "input": "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n",
         "expected_content_hash": current_hash,
@@ -113,7 +113,7 @@ async fn handler_runtime_rejects_out_of_scope_expected_hash(
     for name in fixtures {
         std::fs::write(workspace.path().join(name), format!("{name}\n")).expect("write fixture");
     }
-    let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"anything\n"));
+    let expected_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"anything\n"));
     let arguments = json!({ "input": patch, "expected_content_hash": expected_hash }).to_string();
 
     let error = ApplyPatchHandler
@@ -154,7 +154,7 @@ async fn handler_runtime_reports_binary_mismatch_shape() {
     let fixture = workspace.path().join("binary.bin");
     let bytes = [0xff_u8, 0xfe, 0xfd];
     std::fs::write(&fixture, bytes).expect("write binary fixture");
-    let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"expected text\n"));
+    let expected_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"expected text\n"));
     let arguments = json!({
         "input": "*** Begin Patch\n*** Update File: binary.bin\n@@\n-old\n+new\n*** End Patch\n",
         "expected_content_hash": expected_hash,
@@ -173,7 +173,7 @@ async fn handler_runtime_reports_binary_mismatch_shape() {
     assert_eq!(details["anchor_failures"], json!([]), "unexpected error: {envelope}");
     assert_eq!(
         details["current_content_hash"],
-        format!("sha256:{}", vtcode_commons::utils::calculate_sha256(&bytes)),
+        format!("sha256:{}", diapason_commons::utils::calculate_sha256(&bytes)),
         "unexpected error: {envelope}"
     );
     assert_eq!(
@@ -190,7 +190,7 @@ async fn deleted_source_file_reports_a_null_current_hash() {
     let workspace = TempDir::new().expect("temporary workspace");
     let fixture = workspace.path().join("gone.txt");
     std::fs::write(&fixture, "captured\n").expect("write fixture");
-    let expected_hash = format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"captured\n"));
+    let expected_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"captured\n"));
     std::fs::remove_file(&fixture).expect("remove fixture");
     let patch = Patch::parse("*** Begin Patch\n*** Update File: gone.txt\n@@\n-captured\n+changed\n*** End Patch\n")
         .expect("valid patch");

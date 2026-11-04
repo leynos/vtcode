@@ -57,7 +57,7 @@ async fn direct_runtime_rejects_stale_expected_content_hash_before_apply() {
     let attempt = sandbox_attempt(&policy, &workspace);
     let request = ApplyPatchRequest {
         patch: "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n".to_string(),
-        expected_content_hash: Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"stale\n"))),
+        expected_content_hash: Some(format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"stale\n"))),
         cwd: workspace.path().to_path_buf(),
         timeout_ms: None,
         user_explicitly_approved: true,
@@ -91,7 +91,7 @@ async fn direct_runtime_applies_patch_with_matching_expected_content_hash() {
     let attempt = sandbox_attempt(&policy, &workspace);
     let request = ApplyPatchRequest {
         patch: "*** Begin Patch\n*** Update File: versioned.txt\n@@\n-current\n+changed\n*** End Patch\n".to_string(),
-        expected_content_hash: Some(format!("sha256:{}", vtcode_commons::utils::calculate_sha256(b"current\n"))),
+        expected_content_hash: Some(format!("sha256:{}", diapason_commons::utils::calculate_sha256(b"current\n"))),
         cwd: workspace.path().to_path_buf(),
         timeout_ms: None,
         user_explicitly_approved: true,

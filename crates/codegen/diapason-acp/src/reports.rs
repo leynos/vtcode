@@ -76,7 +76,7 @@ impl ToolExecutionReport {
     /// preserved in `raw_output`, while the visible content carries the user
     /// message. That keeps an ACP client's structured diagnostics identical to
     /// what the model received instead of flattening them into a string.
-    pub(crate) fn structured_failure(error: &vtcode_core::tools::registry::ToolExecutionError) -> Self {
+    pub(crate) fn structured_failure(error: &diapason_core::tools::registry::ToolExecutionError) -> Self {
         let payload = json!({
             TOOL_RESPONSE_KEY_STATUS: TOOL_ERROR_LABEL,
             TOOL_RESPONSE_KEY_TOOL: error.tool_name,
@@ -138,9 +138,9 @@ mod tests {
     /// Assert structured failure details reach both raw and model-visible output.
     #[test]
     fn structured_failure_preserves_model_visible_error_details() {
-        let error = vtcode_core::tools::registry::ToolExecutionError::new(
+        let error = diapason_core::tools::registry::ToolExecutionError::new(
             "apply_patch",
-            vtcode_core::tools::registry::ToolErrorType::InvalidParameters,
+            diapason_core::tools::registry::ToolErrorType::InvalidParameters,
             "version mismatch",
         )
         .with_details(json!({"reason": "content_hash_mismatch"}));

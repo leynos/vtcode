@@ -31,7 +31,6 @@ pub struct DecodedApplyPatchInput {
     pub source_bytes: usize,
     pub was_base64: bool,
 }
-
 pub const EXPECTED_CONTENT_HASH_ARG: &str = "expected_content_hash";
 
 /// Read and validate the `expected_content_hash` argument from raw tool arguments.
@@ -79,7 +78,6 @@ pub fn patch_precondition_source_paths(patch: &Patch) -> Vec<&str> {
         .into_iter()
         .collect()
 }
-
 
 /// Decide whether `patch` still applies to already-read `current` content.
 ///
@@ -210,7 +208,6 @@ fn line_match_score(expected: &str, candidate: &str) -> usize {
 fn bounded_excerpt(excerpt: &str) -> String {
     excerpt.chars().take(240).collect()
 }
-
 /// Pick the patch source, preferring the patch-shaped alias when both are present.
 pub fn patch_source_from_args(args: &Value) -> Option<&str> {
     let input = args.get("input").and_then(|value| value.as_str());

@@ -106,7 +106,7 @@ fn patch_signature(
     encode_patch(&mut encoded, patch, canonical_operations);
     encode_states(&mut encoded, 'B', before);
     encode_states(&mut encoded, 'A', after);
-    format!("sha256:{}", vtcode_commons::utils::calculate_sha256(encoded.as_bytes()))
+    format!("sha256:{}", diapason_commons::utils::calculate_sha256(encoded.as_bytes()))
 }
 
 /// Return original operation indices in canonical encoding order.
