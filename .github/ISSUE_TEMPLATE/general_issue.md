@@ -1,6 +1,6 @@
 ---
 name: General Issue
-about: Report a general issue or ask a question about VT Code
+about: Report a general issue or ask a question about Diapason
 title: ''
 labels: ''
 assignees: ''
@@ -13,7 +13,7 @@ A clear and concise description of the issue or question.
 ## Environment
 
 - **OS:** [e.g. macOS 14.1, Ubuntu 22.04, Windows 11]
-- **VT Code version:** [e.g. 0.31.0 or commit hash]
+- **Diapason version:** [e.g. 0.31.0 or commit hash]
 - **Rust version:** [e.g. rustc 1.93.0]
 
 ## Additional Context

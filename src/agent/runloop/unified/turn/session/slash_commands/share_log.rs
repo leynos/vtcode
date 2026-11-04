@@ -2,12 +2,12 @@ use std::fmt::Write;
 use std::sync::LazyLock;
 
 use anyhow::{Context, Result};
+use diapason_commons::sanitizer::redact_secrets;
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_core::utils::file_utils::write_file_with_context_sync;
 use regex::Regex;
 use serde_json::{Value, json};
-use vtcode_commons::sanitizer::redact_secrets;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::utils::file_utils::write_file_with_context_sync;
 
 use crate::agent::runloop::slash_commands::SessionLogExportFormat;
 
@@ -61,7 +61,7 @@ fn render_session_log_markdown(
     messages: &[Value],
 ) -> String {
     let mut markdown = String::new();
-    markdown.push_str("# VT Code Session Log\n\n");
+    markdown.push_str("# Diapason Session Log\n\n");
     let _ = writeln!(markdown, "- Exported at: {exported_at}");
     let _ = writeln!(markdown, "- Model: `{model}`");
     let _ = writeln!(markdown, "- Workspace: `{}`", redact_sensitive_text(&workspace.display().to_string()));
@@ -143,7 +143,7 @@ fn redact_json_value(value: &Value) -> Value {
 }
 
 fn canonical_tool_name(name: &str) -> String {
-    vtcode_core::tools::tool_intent::canonical_command_session_tool_name(name)
+    diapason_core::tools::tool_intent::canonical_command_session_tool_name(name)
         .unwrap_or(name)
         .to_string()
 }
@@ -168,9 +168,9 @@ pub(crate) async fn handle_share_log(
         "total_messages": redacted_log_messages.len(),
         "messages": redacted_log_messages,
     });
-    let json_output_path = ctx.config.workspace.join(format!("vtcode-session-log-{timestamp}.json"));
-    let markdown_output_path = ctx.config.workspace.join(format!("vtcode-session-log-{timestamp}.md"));
-    let html_output_path = ctx.config.workspace.join(format!("vtcode-session-timeline-{timestamp}.html"));
+    let json_output_path = ctx.config.workspace.join(format!("diapason-session-log-{timestamp}.json"));
+    let markdown_output_path = ctx.config.workspace.join(format!("diapason-session-log-{timestamp}.md"));
+    let html_output_path = ctx.config.workspace.join(format!("diapason-session-timeline-{timestamp}.html"));
 
     if matches!(format, SessionLogExportFormat::Both | SessionLogExportFormat::Json) {
         let json =

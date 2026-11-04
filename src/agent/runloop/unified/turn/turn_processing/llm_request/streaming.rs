@@ -1,6 +1,6 @@
-use vtcode_core::core::agent::events::{EventSink, event_sink};
-use vtcode_core::core::agent::runtime::StreamingLifecycleBridge as CoreStreamingLifecycleBridge;
-use vtcode_core::exec::events::ThreadEvent;
+use diapason_core::core::agent::events::{EventSink, event_sink};
+use diapason_core::core::agent::runtime::StreamingLifecycleBridge as CoreStreamingLifecycleBridge;
+use diapason_core::exec::events::ThreadEvent;
 
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
 use crate::agent::runloop::unified::ui_interaction::StreamProgressEvent;

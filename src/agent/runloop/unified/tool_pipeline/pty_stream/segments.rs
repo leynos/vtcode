@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use anstyle::{Ansi256Color, AnsiColor, Color as AnsiColorEnum, Effects, RgbColor, Style as AnsiStyle};
-use vtcode_core::ui::theme;
-use vtcode_core::utils::style_helpers::ColorPalette;
-use vtcode_ui::tui::app::{InlineLinkRange, InlineLinkTarget, InlineSegment, InlineTextStyle};
-use vtcode_ui::tui::core::convert_style;
-use vtcode_ui::tui::ui::syntax_highlight;
+use diapason_core::ui::theme;
+use diapason_core::utils::style_helpers::ColorPalette;
+use diapason_ui::tui::app::{InlineLinkRange, InlineLinkTarget, InlineSegment, InlineTextStyle};
+use diapason_ui::tui::core::convert_style;
+use diapason_ui::tui::ui::syntax_highlight;
 
 pub(super) struct PtyLineStyles {
     pub(super) output: Arc<InlineTextStyle>,
@@ -401,7 +401,7 @@ fn ansi_output_segments(text: &str, styles: &PtyLineStyles) -> Option<(Vec<Inlin
                 visible_offset = end;
             }
 
-            if let Some(len) = vtcode_core::utils::ansi_parser::parse_ansi_sequence(remaining) {
+            if let Some(len) = diapason_core::utils::ansi_parser::parse_ansi_sequence(remaining) {
                 if let Some(sequence) = remaining.get(..len) {
                     if let Some(payload) = sgr_payload(sequence) {
                         apply_sgr_codes(payload, &mut current, &fallback);

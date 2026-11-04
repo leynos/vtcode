@@ -1,7 +1,7 @@
 # Tool Search Integration
 
-This document describes VT Code's tool search integration for providers that
-support deferred tool loading. VT Code currently supports:
+This document describes Diapason's tool search integration for providers that
+support deferred tool loading. Diapason currently supports:
 
 - Anthropic advanced-tool-use beta search tools
 - OpenAI hosted `tool_search` with deferred function loading
@@ -19,7 +19,7 @@ solves two critical challenges:
 
 ## Anthropic configuration
 
-Add the following to your `vtcode.toml` under the Anthropic provider section:
+Add the following to your `config.toml` under the Anthropic provider section:
 
 ```toml
 [providers.anthropic.tool_search]
@@ -50,7 +50,7 @@ Claude uses natural language queries to search for tools.
 ### Creating Tool Definitions
 
 ```rust
-use vtcode_core::llm::provider::{ToolDefinition, ToolSearchAlgorithm};
+use diapason_core::llm::provider::{ToolDefinition, ToolSearchAlgorithm};
 
 // Anthropic tool search
 let search_tool = ToolDefinition::tool_search(ToolSearchAlgorithm::Regex);
@@ -79,7 +79,7 @@ For GPT-5.4-family Responses workflows, add
 `ToolDefinition::hosted_tool_search()` to the request and mark candidate
 functions with `.with_defer_loading(true)`.
 
-Current VT Code scope for OpenAI:
+Current Diapason scope for OpenAI:
 
 - Supported: hosted `tool_search`
 - Supported: deferred function schemas
@@ -87,7 +87,7 @@ Current VT Code scope for OpenAI:
   `tool_search_output` tool references
 - Not yet modeled in shared tool definitions: MCP-server search surfaces
 
-VT Code defers any MCP catalogue. For non-MCP catalogues, hosted search starts
+Diapason defers any MCP catalogue. For non-MCP catalogues, hosted search starts
 when at least 15 tools are deferable or their combined schema estimate exceeds
 about 4,000 tokens.
 
@@ -128,7 +128,7 @@ Key changes from earlier behavior:
 ### Client-local deferred loading
 
 When `tools.client_tool_search` is enabled and no provider-hosted search is
-available, VT Code:
+available, Diapason:
 
 1. Omits `defer_loading: true` tools from the wire payload.
 2. Appends a compact, cache-stable summary of discoverable groups.
@@ -199,16 +199,16 @@ anthropic-beta: advanced-tool-use-2025-11-20
 
 ## Auditing first-request token cost
 
-VT Code emits per-request telemetry so you can measure the token overhead the
+Diapason emits per-request telemetry so you can measure the token overhead the
 deferral mechanisms above remove. There is no separate "instruction file" field
 — instruction-file content is merged into the system prompt during assembly, so
 it is included in `system_prompt_tokens`.
 
 ### Per-request token breakdown
 
-Each turn emits a `token_budget_breakdown` metric to the `vtcode.turn.metrics`
-tracing target (and the trajectory log), measured from the real assembled wire
-request:
+Each turn emits a `token_budget_breakdown` metric to the
+`diapason.turn.metrics` tracing target (and the trajectory log), measured from
+the real assembled wire request:
 
 | Field                    | Meaning                                                                                                                |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |

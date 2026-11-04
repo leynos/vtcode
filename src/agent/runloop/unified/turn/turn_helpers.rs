@@ -2,9 +2,9 @@
 
 use crate::agent::runloop::unified::state::CtrlCState;
 use anyhow::Result;
+use diapason_core::llm::provider::LLMError;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 use std::time::Duration;
-use vtcode_core::llm::provider::LLMError;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 /// Centralized error display with consistent formatting.
 ///
@@ -71,7 +71,7 @@ fn llm_error_human_message(error: &LLMError) -> String {
             if let Some(meta) = metadata
                 && let Some(raw) = &meta.message
             {
-                let human = vtcode_core::llm::providers::error_handling::extract_human_error_message(raw);
+                let human = diapason_core::llm::providers::error_handling::extract_human_error_message(raw);
                 if human != *raw {
                     return human;
                 }
@@ -90,7 +90,7 @@ fn llm_error_human_message(error: &LLMError) -> String {
             .and_then(|meta| {
                 meta.message
                     .as_ref()
-                    .map(|raw| vtcode_core::llm::providers::error_handling::extract_human_error_message(raw))
+                    .map(|raw| diapason_core::llm::providers::error_handling::extract_human_error_message(raw))
             })
             .unwrap_or_else(|| error.to_string()),
     }
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn user_error_message_prefers_llm_rate_limit_metadata() {
         let error = anyhow::Error::new(LLMError::RateLimit {
-            metadata: Some(vtcode_core::llm::provider::LLMErrorMetadata::new(
+            metadata: Some(diapason_core::llm::provider::LLMErrorMetadata::new(
                 "OpenAI",
                 Some(429),
                 Some("rate_limit_error".to_string()),
@@ -205,7 +205,7 @@ mod tests {
         let body = r#"{"detail":"The 'gpt-5.4' model is not supported with this method."}"#;
         let error = anyhow::Error::new(LLMError::InvalidRequest {
             message: "Invalid request".to_string(),
-            metadata: Some(vtcode_core::llm::provider::LLMErrorMetadata::new(
+            metadata: Some(diapason_core::llm::provider::LLMErrorMetadata::new(
                 "OpenAI",
                 Some(400),
                 Some("invalid_request".to_string()),
@@ -224,7 +224,7 @@ mod tests {
         let body = r#"{"error":{"message":"Model not found","type":"invalid_request_error","code":"model_not_found"}}"#;
         let error = anyhow::Error::new(LLMError::Provider {
             message: "Provider error".to_string(),
-            metadata: Some(vtcode_core::llm::provider::LLMErrorMetadata::new(
+            metadata: Some(diapason_core::llm::provider::LLMErrorMetadata::new(
                 "OpenAI",
                 Some(404),
                 None,
@@ -243,7 +243,7 @@ mod tests {
         let body = r#"{"detail":"Some error detail"}"#;
         let llm_err = LLMError::InvalidRequest {
             message: "Invalid request".to_string(),
-            metadata: Some(vtcode_core::llm::provider::LLMErrorMetadata::new(
+            metadata: Some(diapason_core::llm::provider::LLMErrorMetadata::new(
                 "OpenAI",
                 Some(400),
                 None,

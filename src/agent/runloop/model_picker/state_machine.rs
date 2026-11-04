@@ -534,7 +534,7 @@ impl ModelPickerState {
         }
         renderer.line(MessageStyle::Info, "Using ChatGPT subscription for OpenAI.")?;
         self.pending_api_key = None;
-        self.pending_credential_source = Some(vtcode_config::api_keys::CredentialSource::OAuth);
+        self.pending_credential_source = Some(diapason_config::api_keys::CredentialSource::OAuth);
         if let Some(current) = self.selection.as_mut() {
             current.requires_api_key = false;
             current.uses_chatgpt_auth = true;
@@ -578,8 +578,8 @@ impl ModelPickerState {
     fn resolve_selection_credential(
         &self,
         selection: &SelectionDetail,
-    ) -> Result<Option<vtcode_config::api_keys::ResolvedCredential>> {
-        vtcode_config::api_keys::resolve_credential_with_mode(
+    ) -> Result<Option<diapason_config::api_keys::ResolvedCredential>> {
+        diapason_config::api_keys::resolve_credential_with_mode(
             &selection.provider_key,
             &selection.env_key,
             self.settings.workspace.as_deref(),
@@ -590,11 +590,11 @@ impl ModelPickerState {
     fn apply_resolved_credential(
         &mut self,
         selection: &mut SelectionDetail,
-        resolved: vtcode_config::api_keys::ResolvedCredential,
+        resolved: diapason_config::api_keys::ResolvedCredential,
     ) {
         selection.env_key = resolved.identity.key_name().to_owned();
         selection.requires_api_key = false;
-        selection.uses_chatgpt_auth = resolved.source == vtcode_config::api_keys::CredentialSource::OAuth
+        selection.uses_chatgpt_auth = resolved.source == diapason_config::api_keys::CredentialSource::OAuth
             && matches!(selection.provider_enum, Some(Provider::OpenAI))
             && resolved.secret.is_none();
         self.pending_api_key = resolved.secret;
@@ -604,27 +604,27 @@ impl ModelPickerState {
 
 fn existing_credential_message(
     selection: &SelectionDetail,
-    resolved: &vtcode_config::api_keys::ResolvedCredential,
+    resolved: &diapason_config::api_keys::ResolvedCredential,
 ) -> String {
     match resolved.source {
-        vtcode_config::api_keys::CredentialSource::OAuth => oauth_auth_message(selection),
-        vtcode_config::api_keys::CredentialSource::Env => format!(
+        diapason_config::api_keys::CredentialSource::OAuth => oauth_auth_message(selection),
+        diapason_config::api_keys::CredentialSource::Env => format!(
             "Using existing environment variable {} for {}.",
             resolved.env_var.as_deref().unwrap_or(&selection.env_key),
             selection.provider_label
         ),
-        vtcode_config::api_keys::CredentialSource::Workspace => format!(
+        diapason_config::api_keys::CredentialSource::Workspace => format!(
             "Loaded {} from the workspace environment for {}.",
             resolved.env_var.as_deref().unwrap_or(&selection.env_key),
             selection.provider_label
         ),
-        vtcode_config::api_keys::CredentialSource::SecureStorage => {
+        diapason_config::api_keys::CredentialSource::SecureStorage => {
             format!("Using stored API key for {}.", selection.provider_label)
         }
-        vtcode_config::api_keys::CredentialSource::ManagedAuth => {
+        diapason_config::api_keys::CredentialSource::ManagedAuth => {
             format!("Using managed authentication for {}.", selection.provider_label)
         }
-        vtcode_config::api_keys::CredentialSource::Local => {
+        diapason_config::api_keys::CredentialSource::Local => {
             format!("Using local authentication for {}.", selection.provider_label)
         }
     }

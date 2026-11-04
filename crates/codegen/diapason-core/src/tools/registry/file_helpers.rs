@@ -1,0 +1,320 @@
+//! File operation helpers and the edit_file tool
+//!
+//! This module provides convenience methods for common file operations and implements
+//! the `edit_file` tool, which is optimized for small, surgical edits (≤800 chars, ≤40 lines).
+//! For larger or multi-file changes, use `apply_patch` instead.
+
+use anyhow::{Context, Result, anyhow};
+use serde_json::{Value, json};
+use std::future::Future;
+use std::path::PathBuf;
+use tokio::fs;
+
+use crate::utils::path::resolve_workspace_path;
+
+use crate::config::constants::tools;
+use crate::tools::edited_file_monitor::{FILE_CONFLICT_OVERRIDE_ARG, conflict_override_snapshot};
+use crate::tools::error_helpers::deserialize_tool_args;
+use crate::tools::grep_file::GrepSearchResult;
+use crate::tools::traits::Tool;
+use crate::tools::types::EditInput;
+
+use super::ToolRegistry;
+use super::utils;
+
+const EDIT_FILE_MAX_CHARS: usize = 800;
+const EDIT_FILE_MAX_LINES: usize = 40;
+const EDIT_FILE_MAX_BYTES: u64 = 1_048_576;
+
+fn line_prefix_len(line: &str) -> Option<usize> {
+    let bytes = line.as_bytes();
+    if bytes.is_empty() {
+        return None;
+    }
+
+    let mut i = 0;
+    if bytes[i] == b'L' {
+        i += 1;
+    }
+
+    let start_digits = i;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+
+    if i == start_digits || i >= bytes.len() || bytes[i] != b':' {
+        return None;
+    }
+
+    i += 1;
+    if i < bytes.len() && bytes[i] == b' ' {
+        i += 1;
+    }
+
+    Some(i)
+}
+
+fn strip_line_prefixes(text: &str) -> (String, bool) {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.is_empty() {
+        return (text.to_string(), false);
+    }
+
+    let mut has_prefix = false;
+    let mut all_prefixed = true;
+
+    for line in &lines {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        if line_prefix_len(line).is_some() {
+            has_prefix = true;
+        } else {
+            all_prefixed = false;
+        }
+    }
+
+    if !has_prefix || !all_prefixed {
+        return (text.to_string(), false);
+    }
+
+    let stripped = lines
+        .iter()
+        .map(|line| match line_prefix_len(line) {
+            Some(prefix_len) => &line[prefix_len..],
+            None => *line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    (stripped, true)
+}
+
+/// Normalize internal whitespace: collapse consecutive whitespace to single spaces.
+fn ws_normalize(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for word in s.split_whitespace() {
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(word);
+    }
+    result
+}
+
+fn apply_edit_replacement(content: &str, effective_old_str: &str, effective_new_str: &str) -> Option<String> {
+    let had_trailing_newline = content.ends_with('\n');
+    let mut replacement_occurred = false;
+    let mut new_content = content.to_owned();
+
+    if let Some(pos) = content.find(effective_old_str) {
+        new_content = format!("{}{}{}", &content[..pos], effective_new_str, &content[pos + effective_old_str.len()..]);
+        replacement_occurred = new_content != content;
+    }
+
+    if !replacement_occurred {
+        let old_lines: Vec<&str> = effective_old_str.lines().collect();
+        let content_lines: Vec<&str> = content.lines().collect();
+        let replacement_lines: Vec<&str> = effective_new_str.lines().collect();
+
+        'outer: for (i, window) in content_lines.windows(old_lines.len()).enumerate() {
+            if utils::lines_match(window, &old_lines) {
+                let mut result_lines = Vec::with_capacity(
+                    i + replacement_lines.len() + content_lines.len().saturating_sub(i + old_lines.len()),
+                );
+                result_lines.extend_from_slice(&content_lines[..i]);
+                result_lines.extend_from_slice(&replacement_lines);
+                result_lines.extend_from_slice(&content_lines[i + old_lines.len()..]);
+
+                new_content = result_lines.join("\n");
+                replacement_occurred = true;
+                break 'outer;
+            }
+        }
+
+        if !replacement_occurred {
+            // Pre-compute normalised old lines once (avoid re-allocation per window).
+            let old_normalized: Vec<String> = old_lines.iter().map(|l| ws_normalize(l)).collect();
+
+            for (i, window) in content_lines.windows(old_lines.len()).enumerate() {
+                let mut ok = true;
+                for (j, line) in window.iter().enumerate() {
+                    if ws_normalize(line) != old_normalized[j] {
+                        ok = false;
+                        break;
+                    }
+                }
+
+                if ok {
+                    let mut result_lines = Vec::with_capacity(
+                        i + replacement_lines.len() + content_lines.len().saturating_sub(i + old_lines.len()),
+                    );
+                    result_lines.extend_from_slice(&content_lines[..i]);
+                    result_lines.extend_from_slice(&replacement_lines);
+                    result_lines.extend_from_slice(&content_lines[i + old_lines.len()..]);
+
+                    new_content = result_lines.join("\n");
+                    replacement_occurred = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if !replacement_occurred {
+        return None;
+    }
+
+    if had_trailing_newline && !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
+
+    Some(new_content)
+}
+
+#[cold]
+fn edit_not_found_error(
+    current_content: &str,
+    effective_old_str: &str,
+    stripped_old: bool,
+    stripped_new: bool,
+) -> anyhow::Error {
+    let content_preview = if current_content.len() > 500 {
+        diapason_commons::preview::condense_text_bytes(current_content, 250, 250)
+    } else {
+        current_content.to_owned()
+    };
+
+    let numbering_note = if stripped_old || stripped_new {
+        "\n\nNote: line-number prefixes were stripped before matching."
+    } else {
+        ""
+    };
+
+    anyhow!(
+        "Could not find text to replace in file.\n\nExpected to replace:\n{effective_old_str}\n\nFile content preview:\n{content_preview}\n\nFix: The old_str must EXACTLY match the file content including all whitespace and newlines. Use read_file first to get the exact text, then copy it precisely into old_str. Do NOT add extra newlines or change indentation.{numbering_note}"
+    )
+}
+
+impl ToolRegistry {
+    /// Inline-delegating wrapper that returns the inner future directly to
+    /// avoid an extra coroutine state machine (audit section 16).
+    pub fn read_file(&self, args: Value) -> impl Future<Output = Result<Value>> + '_ {
+        self.execute_tool(tools::READ_FILE, args)
+    }
+
+    /// Inline-delegating wrapper. See [`Self::read_file`].
+    pub fn write_file(&self, args: Value) -> impl Future<Output = Result<Value>> + '_ {
+        self.execute_tool(tools::WRITE_FILE, args)
+    }
+
+    /// Inline-delegating wrapper. See [`Self::read_file`].
+    pub fn create_file(&self, args: Value) -> impl Future<Output = Result<Value>> + '_ {
+        self.execute_tool(tools::CREATE_FILE, args)
+    }
+
+    pub async fn edit_file(&self, args: Value) -> Result<Value> {
+        let input: EditInput = deserialize_tool_args(&args, "edit_file")?;
+        let override_snapshot = conflict_override_snapshot(&args);
+
+        let (effective_old_str, stripped_old) = strip_line_prefixes(&input.old_str);
+        let (effective_new_str, stripped_new) = strip_line_prefixes(&input.new_str);
+
+        let old_len = effective_old_str.len();
+        let new_len = effective_new_str.len();
+        let old_lines = effective_old_str.lines().count();
+        let new_lines = effective_new_str.lines().count();
+
+        if old_len > EDIT_FILE_MAX_CHARS
+            || new_len > EDIT_FILE_MAX_CHARS
+            || old_lines > EDIT_FILE_MAX_LINES
+            || new_lines > EDIT_FILE_MAX_LINES
+        {
+            let guidance = crate::tools::error_helpers::USE_PATCH_FOR_LARGE_EDITS;
+            return Err(anyhow!(
+                "edit_file is limited to small literal replacements (≤ {EDIT_FILE_MAX_LINES} lines or ≤ {EDIT_FILE_MAX_CHARS} characters). {guidance}",
+            ));
+        }
+
+        let requested_path = PathBuf::from(&input.path);
+        let canonical_path = resolve_workspace_path(self.workspace_root(), &requested_path)
+            .with_context(|| format!("Failed to resolve path: {}", requested_path.display()))?;
+        let _mutation_lease = self.edited_file_monitor_ref().acquire_mutation(&canonical_path).await;
+
+        let metadata = fs::metadata(&canonical_path)
+            .await
+            .with_context(|| format!("Cannot read file metadata: {}", canonical_path.display()))?;
+        if metadata.len() > EDIT_FILE_MAX_BYTES {
+            let actual = metadata.len();
+            let max = EDIT_FILE_MAX_BYTES;
+            let guidance = crate::tools::error_helpers::USE_PATCH_OR_WRITE_FOR_LARGE_FILES;
+            return Err(anyhow!("File too large for edit_file: {actual} bytes (max: {max} bytes). {guidance}",));
+        }
+
+        let intended_content = self
+            .edited_file_monitor_ref()
+            .tracked_read_text(&canonical_path)
+            .await
+            .and_then(|content| apply_edit_replacement(&content, &effective_old_str, &effective_new_str));
+
+        if let Some(conflict) = self
+            .edited_file_monitor_ref()
+            .detect_conflict(&canonical_path, intended_content, override_snapshot.clone())
+            .await?
+        {
+            return Ok(conflict.to_tool_output(self.workspace_root()));
+        }
+
+        let current_content = fs::read_to_string(&canonical_path)
+            .await
+            .with_context(|| format!("Cannot read file: {}", canonical_path.display()))?;
+        let Some(new_content) = apply_edit_replacement(&current_content, &effective_old_str, &effective_new_str) else {
+            return Err(edit_not_found_error(&current_content, &effective_old_str, stripped_old, stripped_new));
+        };
+
+        let mut write_args = json!({
+            "path": input.path,
+            "content": new_content,
+            "mode": "overwrite"
+        });
+        if let Some(snapshot) = args.get(FILE_CONFLICT_OVERRIDE_ARG) {
+            write_args[FILE_CONFLICT_OVERRIDE_ARG] = snapshot.clone();
+        }
+
+        self.file_ops_tool().write_file_internal(write_args, false).await
+    }
+
+    /// Inline-delegating wrapper. See [`Self::read_file`].
+    pub fn delete_file(&self, args: Value) -> impl Future<Output = Result<Value>> + '_ {
+        self.execute_tool(tools::DELETE_FILE, args)
+    }
+
+    pub async fn grep_file(&self, args: Value) -> Result<Value> {
+        let mut payload = args;
+        if let Some(obj) = payload.as_object_mut() {
+            let has_path = obj
+                .get("path")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .is_some_and(|path| !path.is_empty());
+            if !has_path {
+                obj.insert("path".to_string(), json!("."));
+            }
+        }
+
+        let input = serde_json::from_value(payload)?;
+        self.grep_file_manager().perform_search(input).await.map(|result| json!(result))
+    }
+
+    pub fn last_grep_file_result(&self) -> Option<GrepSearchResult> {
+        self.grep_file_manager().last_result()
+    }
+
+    pub async fn list_files(&self, args: Value) -> Result<Value> {
+        // Dispatch directly to the underlying list implementation so a top-level
+        // `list_files` call can safely run alongside `code_search` in the same batch.
+        let tool = self.inventory.file_ops_tool().clone();
+        tool.execute(args).await
+    }
+}

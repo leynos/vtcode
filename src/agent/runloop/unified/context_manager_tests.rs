@@ -1,9 +1,9 @@
 use super::*;
-use std::borrow::Cow;
-use std::path::PathBuf;
-use vtcode_core::{
+use diapason_core::{
     EditorContextSnapshot, EditorFileContext, EditorLineRange, EditorSelectionContext, EditorSelectionRange,
 };
+use std::borrow::Cow;
+use std::path::PathBuf;
 
 #[test]
 fn normalize_history_for_request_borrows_clean_history() {
@@ -254,7 +254,7 @@ async fn request_editor_context_message_skips_disallowed_provider_family() {
     let mut manager = ContextManager::new("System prompt".to_string(), (), Arc::new(RwLock::new(HashMap::new())), None);
     manager.set_workspace_root(workspace.path());
     let snapshot = EditorContextSnapshot {
-        provider_family: vtcode_config::IdeContextProviderFamily::Zed,
+        provider_family: diapason_config::IdeContextProviderFamily::Zed,
         workspace_root: Some(PathBuf::from(workspace.path())),
         active_file: Some(EditorFileContext {
             path: workspace.path().join("src/main.rs").display().to_string(),
@@ -267,7 +267,7 @@ async fn request_editor_context_message_skips_disallowed_provider_family() {
         ..EditorContextSnapshot::default()
     };
     let config = IdeContextConfig {
-        provider_mode: vtcode_config::IdeContextProviderMode::VscodeCompatible,
+        provider_mode: diapason_config::IdeContextProviderMode::VscodeCompatible,
         ..IdeContextConfig::default()
     };
 

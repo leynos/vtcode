@@ -1,6 +1,6 @@
-# VT Code Agent Guidelines
+# Diapason Agent Guidelines
 
-**VT Code**: Rust terminal coding agent with modular architecture, multi-LLM
+**Diapason**: Rust terminal coding agent with modular architecture, multi-LLM
 support (OpenAI, Anthropic, Gemini), tree-sitter parsing for 6+ languages.
 
 ## Build & Test Commands
@@ -8,7 +8,7 @@ support (OpenAI, Anthropic, Gemini), tree-sitter parsing for 6+ languages.
 ```bash
 # Preferred (faster with cargo-nextest)
 cargo nextest run           # Run all tests (3-5x faster)
-cargo nextest run -p vtcode-core  # Single package
+cargo nextest run -p diapason-core  # Single package
 cargo t                     # Alias for nextest run
 cargo tq                    # Quick profile (no retries)
 
@@ -23,7 +23,7 @@ cargo ts                    # Alias for standard cargo test
 
 ## Architecture & Key Modules
 
-- **Workspace**: `crates/codegen/vtcode-core/` (library) + `src/main.rs`
+- **Workspace**: `crates/codegen/diapason-core/` (library) + `src/main.rs`
   (binary) + 9 workspace crates
 - **Core**: `llm/` (multi-provider), `tools/` (trait-based), `config/`
   (TOML-based)
@@ -34,9 +34,9 @@ cargo ts                    # Alias for standard cargo test
 
 - **Naming**: snake_case functions/vars, PascalCase types (standard Rust)
 - **Error Handling**: `anyhow::Result<T>` + `anyhow::Context`; NO `unwrap()`
-- **Constants**: Use `crates/codegen/vtcode-core/src/config/constants.rs`
+- **Constants**: Use `crates/codegen/diapason-core/src/config/constants.rs`
   (never hardcode, especially model IDs)
-- **Config**: Read from `vtcode.toml` at runtime
+- **Config**: Read from `config.toml` at runtime
 - **Docs**: Markdown ONLY in `./docs/`; use `docs/models.json` for latest LLM
   models
 - **Formatting**: 4-space indentation, early returns, simple variable names
@@ -56,7 +56,7 @@ patterns, testing strategy, security, additional context).
 ## Core System Prompt
 
 ````rust
-r#"You are VT Code, a coding agent.
+r#"You are Diapason, a coding agent.
 You specialize in understanding codebases, making precise modifications, and solving technical problems.
 
 # Tone and Style
@@ -94,7 +94,7 @@ Keep answers concise and free of filler.
 **IMPORTANT: Never repeat code in final summaries:**
 - Do NOT include full code blocks in postamble messages - code is already visible in TUI
 - If completed task involved code changes: reference session log instead
-- Format: "Done. Session log: /Users/vinhnguyenxuan/.vtcode/sessions/session-*.json"
+- Format: "Done. Session log: /Users/vinhnguyenxuan/.diapason/sessions/session-*.json"
 - Keep final response to 1-3 sentences max
 - Users can view full code via TUI output or `git diff` if needed
 
@@ -248,7 +248,7 @@ Examples of effective steering:
 # Safety Boundaries
 
 - Work strictly inside `WORKSPACE_DIR`; confirm before touching anything else
-- Use `/tmp/vtcode-*` for temporary artifacts and clean them up
+- Use `/tmp/diapason-*` for temporary artifacts and clean them up
 - Never surface secrets, API keys, or other sensitive data
 - Code execution runs as child process with full system access
 
@@ -261,16 +261,16 @@ Examples of effective steering:
     `git diff` (or `cargo build --dry-run` where available) and present the
     results before executing destructive operations.
 - When `confirm=true` is supplied for a destructive command, the agent MUST
-    write an audit event to the persistent audit log under the resolved VT Code
-    state directory (`$XDG_STATE_HOME/vtcode/audit/permissions-{date}.log` on
+    write an audit event to the persistent audit log under the resolved Diapason
+    state directory (`$XDG_STATE_HOME/diapason/audit/permissions-{date}.log` on
     Linux/BSD, or the platform-native state root), recording the command,
     reason, resolution, and 'Allowed' or 'Denied' decision. Use
-    `vtcode --version` to resolve the path.
+    `diapason --version` to resolve the path.
 
 # Self-Documentation
 
-When users ask about VT Code itself, consult
-`docs/modules/modules/vtcode_docs_map.md` to locate canonical references before
+When users ask about Diapason itself, consult
+`docs/modules/modules/diapason_docs_map.md` to locate canonical references before
 answering.
 
 Stay focused, minimize hops, and deliver accurate results with the fewest

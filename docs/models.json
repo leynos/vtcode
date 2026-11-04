@@ -484,14 +484,14 @@
     ],
     "api": "copilot-cli",
     "name": "GitHub Copilot",
-    "description": "Official GitHub Copilot CLI-backed preview provider. VT Code v1 keeps this provider text-only and discovers the live available model list at runtime.",
+    "description": "Official GitHub Copilot CLI-backed preview provider. Diapason v1 keeps this provider text-only and discovers the live available model list at runtime.",
     "doc": "https://docs.github.com/en/copilot/reference/ai-models/supported-models",
     "default_model": "copilot-auto",
     "models": {
       "copilot-auto": {
         "id": "copilot-auto",
         "name": "GitHub Copilot Auto",
-        "description": "Automatic model selection via the official GitHub Copilot CLI. VT Code uses live Copilot discovery to resolve the concrete model.",
+        "description": "Automatic model selection via the official GitHub Copilot CLI. Diapason uses live Copilot discovery to resolve the concrete model.",
         "reasoning": true,
         "tool_call": false,
         "modalities": {
@@ -507,7 +507,7 @@
       "copilot-gpt-5.1-codex-max": {
         "id": "copilot-gpt-5.1-codex-max",
         "name": "GitHub Copilot GPT-5.1 Codex Max",
-        "description": "Backward-compatible VT Code alias for the Copilot CLI raw model `gpt-5.1-codex-max`.",
+        "description": "Backward-compatible Diapason alias for the Copilot CLI raw model `gpt-5.1-codex-max`.",
         "reasoning": true,
         "tool_call": false,
         "modalities": {
@@ -1239,7 +1239,7 @@
           "structured_output": true,
           "tool_streaming": true
         },
-        "vtcode": {
+        "diapason": {
           "variant": "ZaiGlm52",
           "constant": "Z_AI_GLM_5_2",
           "display": "GLM-5.2",
@@ -1276,7 +1276,7 @@
           "tool_streaming": true,
           "vision": true
         },
-        "vtcode": {
+        "diapason": {
           "variant": "ZaiGlm53Flash",
           "constant": "Z_AI_GLM_5_3_FLASH",
           "display": "GLM-5.3 Flash",
@@ -1311,7 +1311,7 @@
           "structured_output": true,
           "tool_streaming": true
         },
-        "vtcode": {
+        "diapason": {
           "variant": "ZaiGlm53",
           "constant": "Z_AI_GLM_5_3",
           "display": "GLM-5.3",
@@ -1794,7 +1794,7 @@
           "output": 1.5e-06,
           "cache_read": 4e-08
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterMetaMuseGlimmer30b",
           "constant": "META_MUSE_GLIMMER_30B",
           "vendor": "meta",
@@ -1830,7 +1830,7 @@
           "output": 4.25e-06,
           "cache_read": 1.5e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterMetaMuseSpark12",
           "constant": "META_MUSE_SPARK_1_2",
           "vendor": "meta",
@@ -1857,7 +1857,7 @@
           ]
         },
         "context": 256000,
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterStepfunStep35FlashFree",
           "constant": "STEPFUN_STEP_3_5_FLASH_FREE",
           "vendor": "stepfun",
@@ -1890,7 +1890,7 @@
           "input": 3e-06,
           "output": 1.5e-05
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterAnthropicClaudeSonnet5",
           "constant": "ANTHROPIC_CLAUDE_SONNET_5",
           "vendor": "anthropic",
@@ -1917,7 +1917,7 @@
         },
         "context": 1000000,
         "max_output_tokens": 384000,
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterDeepSeekV4Flash",
           "constant": "DEEPSEEK_V4_FLASH",
           "vendor": "deepseek",
@@ -1944,7 +1944,7 @@
         },
         "context": 1000000,
         "max_output_tokens": 384000,
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterDeepSeekV4Pro",
           "constant": "DEEPSEEK_V4_PRO",
           "vendor": "deepseek",
@@ -1975,7 +1975,7 @@
           "input": 4e-07,
           "output": 2e-06
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterDeepSeekR1",
           "constant": "DEEPSEEK_R1",
           "vendor": "deepseek",
@@ -2003,7 +2003,7 @@
           ]
         },
         "context": 1048576,
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterGoogleGemini36Flash",
           "constant": "GOOGLE_GEMINI_3_6_FLASH",
           "vendor": "google",
@@ -2031,7 +2031,7 @@
           ]
         },
         "context": 1048576,
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterGoogleGemini37Flash",
           "constant": "GOOGLE_GEMINI_3_7_FLASH",
           "vendor": "google",
@@ -2059,7 +2059,7 @@
           ]
         },
         "context": 1048576,
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterGoogleGemini38Flash",
           "constant": "GOOGLE_GEMINI_3_8_FLASH",
           "vendor": "google",
@@ -2092,7 +2092,7 @@
           "input": 1.25e-06,
           "output": 1e-05
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterOpenAIGpt5",
           "constant": "OPENAI_GPT_5",
           "vendor": "openai",
@@ -2125,7 +2125,7 @@
           "input": 1.25e-06,
           "output": 1e-05
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterOpenAIGpt5Chat",
           "constant": "OPENAI_GPT_5_CHAT",
           "vendor": "openai",
@@ -2156,7 +2156,7 @@
           "input": 4e-08,
           "output": 4e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterOpenAIGptOss120b",
           "constant": "OPENAI_GPT_OSS_120B",
           "vendor": "openai",
@@ -2187,7 +2187,7 @@
           "input": 0,
           "output": 0
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterOpenAIGptOss120bFree",
           "constant": "OPENAI_GPT_OSS_120B_FREE",
           "vendor": "openai",
@@ -2218,7 +2218,7 @@
           "input": 3e-08,
           "output": 1.4e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterOpenAIGptOss20b",
           "constant": "OPENAI_GPT_OSS_20B",
           "vendor": "openai",
@@ -2249,7 +2249,7 @@
           "input": 2e-06,
           "output": 6e-06
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterMistralaiMistralLarge2512",
           "constant": "MISTRALAI_MISTRAL_LARGE_2512",
           "vendor": "mistralai",
@@ -2280,7 +2280,7 @@
           "input": 2e-07,
           "output": 8e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterNexAgiDeepseekV31NexN1",
           "constant": "NEX_AGI_DEEPSEEK_V3_1_NEX_N1",
           "vendor": "nex-agi",
@@ -2314,7 +2314,7 @@
           "output": 1.5e-05,
           "cache_read": 3e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterMoonshotaiKimiK3",
           "constant": "MOONSHOTAI_KIMI_K3",
           "vendor": "moonshotai",
@@ -2347,7 +2347,7 @@
           "input": 9.5e-07,
           "output": 4e-06
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterMoonshotaiKimiK27Code",
           "constant": "MOONSHOTAI_KIMI_K2_7_CODE",
           "vendor": "moonshotai",
@@ -2378,7 +2378,7 @@
           "input": 6.3e-08,
           "output": 2.1e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterTencentHy3Preview",
           "constant": "TENCENT_HY3_PREVIEW",
           "vendor": "tencent",
@@ -2410,7 +2410,7 @@
           "input": 1e-06,
           "output": 2e-06
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterXAiGrokBuild01",
           "constant": "X_AI_GROK_BUILD_0_1",
           "vendor": "xai",
@@ -2442,7 +2442,7 @@
           "input": 2e-06,
           "output": 6e-06
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterXAiGrok46",
           "constant": "X_AI_GROK_4_6",
           "vendor": "xai",
@@ -2473,7 +2473,7 @@
           "input": 4.35e-07,
           "output": 8.7e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterXiaomiMimoV25Pro",
           "constant": "XIAOMI_MIMO_V2_5_PRO",
           "vendor": "xiaomi",
@@ -2506,7 +2506,7 @@
           "input": 1.4e-07,
           "output": 2.8e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterXiaomiMimoV25",
           "constant": "XIAOMI_MIMO_V2_5",
           "vendor": "xiaomi",
@@ -2534,7 +2534,7 @@
         },
         "context": 1000000,
         "max_output_tokens": 128000,
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterZaiGlm52",
           "constant": "ZAI_GLM_5_2",
           "vendor": "z-ai",
@@ -2568,7 +2568,7 @@
           "output": 5e-07,
           "cache_read": 3e-08
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterZaiGlm53Flash",
           "constant": "ZAI_GLM_5_3_FLASH",
           "vendor": "z-ai",
@@ -2599,7 +2599,7 @@
           "input": 0,
           "output": 0
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterPoolsideLagunaXs2Free",
           "constant": "POOLSIDE_LAGUNA_XS_2_FREE",
           "vendor": "poolside",
@@ -2630,7 +2630,7 @@
           "input": 0,
           "output": 0
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterPoolsideLagunaM1Free",
           "constant": "POOLSIDE_LAGUNA_M_1_FREE",
           "vendor": "poolside",
@@ -2661,7 +2661,7 @@
           "input": 0,
           "output": 0
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterPoolsideLagunaS21Free",
           "constant": "POOLSIDE_LAGUNA_S_2_1_FREE",
           "vendor": "poolside",
@@ -2695,7 +2695,7 @@
           "input": 4.5e-07,
           "output": 3.2e-06
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterQwenQwen3827b",
           "constant": "QWEN_3_8_27B",
           "vendor": "qwen",
@@ -2731,7 +2731,7 @@
           "output": 4.25e-06,
           "cache_read": 1.5e-07
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterMetaMuseSpark13",
           "constant": "META_MUSE_SPARK_1_3",
           "vendor": "meta",
@@ -2767,7 +2767,7 @@
           "output": 2e-07,
           "cache_read": 2e-09
         },
-        "vtcode": {
+        "diapason": {
           "variant": "OpenRouterMetaMuseSpark13Contributor",
           "constant": "META_MUSE_SPARK_1_3_CONTRIBUTOR",
           "vendor": "meta",

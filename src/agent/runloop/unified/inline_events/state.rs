@@ -1,4 +1,4 @@
-use vtcode_core::utils::ansi::AnsiRenderer;
+use diapason_core::utils::ansi::AnsiRenderer;
 
 use super::interrupts::InlineInterruptCoordinator;
 

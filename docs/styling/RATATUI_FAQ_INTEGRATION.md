@@ -1,13 +1,13 @@
-# VT Code Integration of Ratatui FAQ Best Practices
+# Diapason Integration of Ratatui FAQ Best Practices
 
-This document summarizes how VT Code applies best practices from the
+This document summarizes how Diapason applies best practices from the
 [Ratatui FAQ](https://ratatui.rs/faq/).
 
 ## Overview
 
-VT Code is built on Ratatui and uses its terminal UI patterns extensively. The
+Diapason is built on Ratatui and uses its terminal UI patterns extensively. The
 Ratatui FAQ documents many important patterns and anti-patterns. This
-integration ensures VT Code follows these best practices consistently.
+integration ensures Diapason follows these best practices consistently.
 
 ## FAQ Topics Applied
 
@@ -16,9 +16,9 @@ integration ensures VT Code follows these best practices consistently.
 **Ratatui FAQ:**
 [Why am I getting duplicate key events on Windows?](https://ratatui.rs/faq/#why-am-i-getting-duplicate-key-events-on-windows)
 
-**VT Code Implementation:**
+**Diapason Implementation:**
 
-- **File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+- **File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 - **Pattern:** Filter crossterm events to `KeyEventKind::Press` only
 - **Benefit:** Prevents duplicate key events on Windows while working correctly
   on macOS/Linux
@@ -34,15 +34,15 @@ if key.kind == KeyEventKind::Press {
 **Ratatui FAQ:**
 [When should I use tokio and async/await?](https://ratatui.rs/faq/#when-should-i-use-tokio-and-async--await-)
 
-**VT Code Implementation:**
+**Diapason Implementation:**
 
-- **File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/` (event loop),
+- **File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/` (event loop),
   `src/agent/runloop/unified/` (tool execution)
 - **Pattern:** Use `tokio::select!` to multiplex independent event sources
 - **Benefit:** Non-blocking event handling, concurrent tool execution,
   streaming responses
 
-**Three reasons VT Code uses async:**
+**Three reasons Diapason uses async:**
 
 1. **Event multiplexing:** Terminal input, ticks, renders in one async loop
 2. **Concurrent tool execution:** MCP tools, PTY sessions, LLM calls run in
@@ -55,15 +55,15 @@ if key.kind == KeyEventKind::Press {
 **Ratatui FAQ:**
 [Can you use multiple terminal.draw() calls consequently?](https://ratatui.rs/faq/#can-you-use-multiple-terminaldraw-calls-consequently)
 
-**VT Code Implementation:**
+**Diapason Implementation:**
 
-- **File:** `crates/codegen/vtcode-core/src/ui/tui/session.rs:render()` method
+- **File:** `crates/codegen/diapason-core/src/ui/tui/session.rs:render()` method
 - **Pattern:** All UI components render in a single `terminal.draw()` closure
   per frame
 - **Benefit:** Correct use of Ratatui's double buffering; only one screen
   update per frame
 
-  **Incorrect pattern (avoided in VT Code):**
+  **Incorrect pattern (avoided in Diapason):**
 
 ```rust
 terminal.draw(|f| widget1.render(...))?;
@@ -71,7 +71,7 @@ terminal.draw(|f| widget2.render(...))?;  // This overwrites the first!
 terminal.draw(|f| widget3.render(...))?;
 ```
 
-  **Correct pattern (used in VT Code):**
+  **Correct pattern (used in Diapason):**
 
 ```rust
 terminal.draw(|f| {
@@ -86,13 +86,13 @@ terminal.draw(|f| {
 **Ratatui FAQ:**
 [Should I use stdout or stderr?](https://ratatui.rs/faq/#should-i-use-stdout-or-stderr)
 
-**VT Code Implementation:**
+**Diapason Implementation:**
 
-- **File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+- **File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 - **Choice:** Renders to `stderr` (via
   `CrosstermBackend::new(std::io::stderr())`)
-- **Benefit:** Allows piping output (`vtcode ask "task" | jq`) without breaking
-  the TUI
+- **Benefit:** Allows piping output (`diapason ask "task" | jq`) without
+  breaking the TUI
 
 **Why stderr over stdout:**
 
@@ -105,12 +105,12 @@ terminal.draw(|f| {
 **Ratatui FAQ:**
 [Can you change font size in a terminal using ratatui?](https://ratatui.rs/faq/#can-you-change-font-size-in-a-terminal-using-ratatui)
 
-**VT Code Implementation:**
+**Diapason Implementation:**
 
-- **File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/` (Resize event
+- **File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/` (Resize event
   handling)
 - **Pattern:** Listen for `Event::Resize(w, h)` and recalculate layout
-- **Benefit:** VT Code adapts gracefully to terminal size changes
+- **Benefit:** Diapason adapts gracefully to terminal size changes
 
 ### 6. External App Suspension
 
@@ -118,9 +118,9 @@ terminal.draw(|f| {
 [Spawn vim from Ratatui](https://ratatui.rs/recipes/apps/spawn-vim/) (recipe,
 not FAQ)
 
-**VT Code Implementation:**
+**Diapason Implementation:**
 
-- **File:** `crates/codegen/vtcode-ui/src/tui/` (ExternalAppLauncher trait)
+- **File:** `crates/codegen/diapason-ui/src/tui/` (ExternalAppLauncher trait)
 - **Pattern:** Suspend TUI → disable raw mode → run external app → resume TUI
 - **Critical step:** Drain pending events before disabling raw mode
 - **Benefit:** Clean terminal state for external editors/git clients
@@ -130,7 +130,7 @@ not FAQ)
 **Ratatui FAQ:**
 [How do I avoid panics due to out of range calls on the Buffer?](https://ratatui.rs/faq/#how-do-i-avoid-panics-due-to-out-of-range-calls-on-the-buffer)
 
-**VT Code Implementation:**
+**Diapason Implementation:**
 
 - **Pattern:** Use `area.intersection(buf.area)` to clamp rendering regions
 - **Iterators:** Use `Rect::columns()` and `Rect::rows()` for safe iteration
@@ -138,17 +138,17 @@ not FAQ)
 
 ## New Documentation
 
-VT Code now includes comprehensive guides based on these best practices:
+Diapason now includes comprehensive guides based on these best practices:
 
 ### docs/FAQ.md (174 lines)
 
-Common questions about VT Code's architecture, terminal behavior, and
+Common questions about Diapason's architecture, terminal behavior, and
 configuration. Includes Q&A on duplicate key events, async usage, terminal
 resizing, and character rendering.
 
 ### docs/guides/tui-event-handling.md (391 lines)
 
-Detailed guide to VT Code's event-driven architecture:
+Detailed guide to Diapason's event-driven architecture:
 
 - Platform-specific event filtering
 - Async event loop with tokio::select!
@@ -159,9 +159,9 @@ Detailed guide to VT Code's event-driven architecture:
 
 ### docs/guides/async-architecture.md (456 lines)
 
-Comprehensive guide to VT Code's async/tokio design:
+Comprehensive guide to Diapason's async/tokio design:
 
-- When and why VT Code uses async
+- When and why Diapason uses async
 - Tokio patterns (event handler, blocking I/O, concurrent tasks)
 - Graceful shutdown with CancellationToken
 - Shared state management
@@ -184,7 +184,7 @@ Guide to widget rendering and UI composition:
 ## Code Comments
 
 Added clarifying comments to
-`crates/codegen/vtcode-ui/src/tui/core_tui/runner/` explaining the
+`crates/codegen/diapason-ui/src/tui/core_tui/runner/` explaining the
 cross-platform key event filtering:
 
 ```rust
@@ -196,16 +196,16 @@ cross-platform key event filtering:
 
 ## Testing Improvements
 
-VT Code includes tests for event handling patterns:
+Diapason includes tests for event handling patterns:
 
 - **Key event filtering:** Verified via `src/interactive_list.rs` and event
   handler tests
 - **Async patterns:** Tested via `#[tokio::test]` throughout the codebase
-- **Rendering:** Tested via Ratatui's `TestBackend` in `vtcode-core`
+- **Rendering:** Tested via Ratatui's `TestBackend` in `diapason-core`
 
 ## Integration Impact
 
-This integration improves VT Code by:
+This integration improves Diapason by:
 
 1. **Correctness:** Ensures cross-platform compatibility (Windows key events)
 2. **Performance:** Confirms async architecture for non-blocking event handling
@@ -224,5 +224,5 @@ This integration improves VT Code by:
 
 ## Related Documentation
 
-- [docs/FAQ.md](../FAQ.md) - VT Code FAQ
-- [docs/ARCHITECTURE.md](../ARCHITECTURE.md) - VT Code system architecture
+- [docs/FAQ.md](../FAQ.md) - Diapason FAQ
+- [docs/ARCHITECTURE.md](../ARCHITECTURE.md) - Diapason system architecture

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use vtcode_ui::tui::app::{InlineHandle, SubmittedInput};
+use diapason_ui::tui::app::{InlineHandle, SubmittedInput};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct QueuedInput {
@@ -76,7 +76,7 @@ impl<'a> InlineQueueState<'a> {
         // front must also dispatch alone and never absorb following items.
         if !batch.batchable || promoted_latest || batch.input.has_attachments() {
             tracing::debug!(
-                target: "vtcode_ui::queue",
+                target: "diapason_ui::queue",
                 batched_count = 1,
                 text_bytes = batch.input.text.len(),
                 "queue submission drained (single, non-batchable)"
@@ -114,7 +114,7 @@ impl<'a> InlineQueueState<'a> {
             batch.input.text.push_str(&next.input.text);
         }
         tracing::debug!(
-            target: "vtcode_ui::queue",
+            target: "diapason_ui::queue",
             batched_count,
             text_bytes = batch.input.text.len(),
             "queue submission drained"
@@ -217,7 +217,7 @@ mod tests {
 
         queue.push("text one".into(), Some("planner".to_string()));
         queue.push(
-            SubmittedInput::new("with image", vec![vtcode_ui::tui::app::ContentPart::image("img", "image/png")]),
+            SubmittedInput::new("with image", vec![diapason_ui::tui::app::ContentPart::image("img", "image/png")]),
             None,
         );
         queue.push(SubmittedInput::new("text two", Vec::new()).batchable(), None);
@@ -273,7 +273,7 @@ mod tests {
         let mut queue = InlineQueueState::new(&handle, &mut queued_inputs, &mut prefer_latest_once);
 
         queue.push(
-            SubmittedInput::new("see image", vec![vtcode_ui::tui::app::ContentPart::image("img", "image/png")]),
+            SubmittedInput::new("see image", vec![diapason_ui::tui::app::ContentPart::image("img", "image/png")]),
             None,
         );
         queue.push(SubmittedInput::new("follow-up", Vec::new()).batchable(), None);
@@ -379,8 +379,8 @@ mod tests {
         let mut prefer_latest_once = false;
         let mut queue = InlineQueueState::new(&handle, &mut queued_inputs, &mut prefer_latest_once);
 
-        let first = vtcode_ui::tui::app::ContentPart::image("first", "image/png");
-        let second = vtcode_ui::tui::app::ContentPart::image("second", "image/jpeg");
+        let first = diapason_ui::tui::app::ContentPart::image("first", "image/png");
+        let second = diapason_ui::tui::app::ContentPart::image("second", "image/jpeg");
         queue.push(SubmittedInput::new("see images", vec![first.clone(), second.clone()]), None);
 
         let queued = queue.take_next_submission().expect("queued input");

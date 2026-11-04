@@ -1,4 +1,4 @@
-use vtcode_core::config::{StatusLineConfig, StatusLineMode};
+use diapason_core::config::{StatusLineConfig, StatusLineMode};
 
 pub(super) fn build_statusline_preview(
     draft: &StatusLineConfig,

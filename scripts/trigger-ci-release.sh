@@ -56,7 +56,7 @@ if gh workflow run release.yml \
     --ref main; then
     print_success "Release workflow triggered for $TAG"
     print_info "Watch progress: gh run list --workflow=release.yml"
-    print_info "Or visit: https://github.com/vinhnx/vtcode/actions/workflows/release.yml"
+    print_info "Or visit: https://github.com/leynos/vtcode/actions/workflows/release.yml"
 else
     print_error "Failed to trigger release workflow"
     exit 1

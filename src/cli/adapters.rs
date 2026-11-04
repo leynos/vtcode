@@ -1,5 +1,5 @@
 use crate::startup::StartupContext;
-use vtcode_core::cli::args::{AskCommandOptions, AskOutputFormat, Cli};
+use diapason_core::cli::args::{AskCommandOptions, AskOutputFormat, Cli};
 
 use super::SkillsCommandOptions;
 

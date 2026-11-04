@@ -1,5 +1,13 @@
 # Native Installers
 
+> Historical upstream reference: the commands and release URLs below describe
+> VTCode's installers as they existed before the Diapason fork. They do not
+> install Diapason. See [the current installation guide](README.md) for the
+> source installation supported by this repository.
+
+The platform and release details below are historical upstream documentation;
+they do not describe currently published Diapason installers or assets.
+
 ## macOS & Linux (Shell)
 
 ### Install
@@ -15,14 +23,14 @@ curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.
 ### Options
 
 - **Version**: Pass as argument (`v0.85.0` or `latest`)
-- **Install dir**: `VTCode_INSTALL_DIR=/usr/local/bin bash install.sh`
+- **Install dir**: `Diapason_INSTALL_DIR=/usr/local/bin bash install.sh`
 
 ### How It Works
 
 1. Detects OS (macOS/Linux) and architecture
 2. Fetches latest version from GitHub API (or uses specified version)
 3. Downloads release tarball from GitHub Releases
-4. Extracts and installs to `$VTCode_INSTALL_DIR/vtcode`
+4. Extracts and installs to `$Diapason_INSTALL_DIR/diapason`
 5. Adds to PATH if needed (updates `.bashrc`, `.zshrc`, or `.profile`)
 
 ### Supported Platforms
@@ -49,4 +57,4 @@ Windows release builds are currently not guaranteed on every release because
 the Windows pipeline still depends on `cross`, Docker, and GitHub Actions
 minutes, which are costlier than the Linux path.
 
-The Windows installer currently ships only the VT Code binary.
+The Windows installer currently ships only the Diapason binary.

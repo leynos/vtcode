@@ -6,7 +6,7 @@
 //!   - Streaming bridge helpers live in `streaming.rs`.
 //!   - Copilot runtime integration lives in `copilot_runtime.rs`.
 //! - Constraints: Preserve retry semantics, previous-response-chain recovery, and prompt-cache telemetry behavior.
-//! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode llm_request`
+//! - Verify: `cargo check -p diapason && cargo test -p diapason --bin diapason llm_request`
 
 mod context_management;
 mod copilot_runtime;
@@ -24,16 +24,16 @@ mod tests;
 mod tool_shaping;
 
 use anyhow::Result;
+use diapason_core::config::types::ReasoningEffortLevel;
+#[cfg(test)]
+use diapason_core::config::{OpenAIPromptCacheKeyMode, PromptCachingConfig};
+use diapason_core::llm::provider::{self as uni, ParallelToolConfig, supports_responses_chaining};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 use tokio::task;
 #[cfg(debug_assertions)]
 use tracing::debug;
-use vtcode_core::config::types::ReasoningEffortLevel;
-#[cfg(test)]
-use vtcode_core::config::{OpenAIPromptCacheKeyMode, PromptCachingConfig};
-use vtcode_core::llm::provider::{self as uni, ParallelToolConfig, supports_responses_chaining};
 
 use crate::agent::runloop::unified::extract_action_from_messages;
 #[cfg(test)]
@@ -50,6 +50,8 @@ use crate::agent::runloop::unified::wait_feedback::{
     WAIT_KEEPALIVE_INITIAL, WAIT_KEEPALIVE_INTERVAL, wait_keepalive_message,
 };
 use copilot_runtime::{CopilotRuntimeHost, prompt_session_to_stream};
+#[cfg(test)]
+use diapason_core::config::build_openai_prompt_cache_key;
 use metrics::emit_llm_retry_metrics;
 use request_builder::{build_turn_request, interrupted_provider_error};
 use response_chain::update_previous_response_chain_after_success_shared;
@@ -68,8 +70,6 @@ use snapshot::capture_turn_request_snapshot;
 #[cfg(test)]
 use snapshot::{is_openai_prompt_cache_enabled, resolve_prompt_cache_shaping_mode};
 use streaming::HarnessStreamingBridge;
-#[cfg(test)]
-use vtcode_core::config::build_openai_prompt_cache_key;
 
 async fn run_standard_stream_attempt(
     ctx: &mut TurnProcessingContext<'_>,
@@ -204,7 +204,7 @@ async fn execute_llm_request_with_options_impl(
     let mut tool_history_repair_attempted = false;
     let mut last_error_retryable: Option<bool> = None;
     let mut last_error_preview: Option<String> = None;
-    let mut last_error_category: Option<vtcode_commons::ErrorCategory> = None;
+    let mut last_error_category: Option<diapason_commons::ErrorCategory> = None;
 
     #[cfg(debug_assertions)]
     let mut request_timer = Instant::now();
@@ -217,8 +217,8 @@ async fn execute_llm_request_with_options_impl(
             // Use category-aware backoff: rate limits get longer base delays,
             // timeouts get moderate delays, network errors use standard exponential.
             let (base_ms, max_ms) = match last_error_category {
-                Some(vtcode_commons::ErrorCategory::RateLimit) => (1000, 30_000),
-                Some(vtcode_commons::ErrorCategory::Timeout) => (1000, 15_000),
+                Some(diapason_commons::ErrorCategory::RateLimit) => (1000, 30_000),
+                Some(diapason_commons::ErrorCategory::Timeout) => (1000, 15_000),
                 _ => (500, 10_000),
             };
             let delay = calculate_backoff(attempt - 1, base_ms, max_ms);
@@ -275,7 +275,7 @@ async fn execute_llm_request_with_options_impl(
             request_timer = Instant::now();
             let tool_count = request.tools.as_ref().map_or(0, |tools| tools.len());
             debug!(
-                target = "vtcode::agent::llm",
+                target = "diapason::agent::llm",
                 model = %request.model,
                 streaming = use_streaming,
                 step = step_count,
@@ -310,7 +310,7 @@ async fn execute_llm_request_with_options_impl(
                 defer_finish: has_tools,
                 strip_proposed_plan_blocks: turn_snapshot.planning_active,
                 suppress_output,
-                suppress_output_signal: (turn_snapshot.provider_name == vtcode_core::copilot::COPILOT_PROVIDER_KEY)
+                suppress_output_signal: (turn_snapshot.provider_name == diapason_core::copilot::COPILOT_PROVIDER_KEY)
                     .then(|| {
                         Arc::new(AtomicBool::new(
                             suppress_output
@@ -319,7 +319,7 @@ async fn execute_llm_request_with_options_impl(
                     }),
             };
             let mut progress = |event: StreamProgressEvent| stream_bridge.on_progress(event);
-            let stream_result = if turn_snapshot.provider_name == vtcode_core::copilot::COPILOT_PROVIDER_KEY {
+            let stream_result = if turn_snapshot.provider_name == diapason_core::copilot::COPILOT_PROVIDER_KEY {
                 let mut runtime_host = CopilotRuntimeHost::new(
                     ctx.tool_registry,
                     ctx.tool_result_cache,
@@ -476,7 +476,7 @@ async fn execute_llm_request_with_options_impl(
         #[cfg(debug_assertions)]
         {
             debug!(
-                target = "vtcode::agent::llm",
+                target = "diapason::agent::llm",
                 model = %active_model,
                 streaming = use_streaming,
                 step = step_count,
@@ -510,7 +510,7 @@ async fn execute_llm_request_with_options_impl(
                 last_error_category = Some(category);
 
                 tracing::warn!(
-                    target: "vtcode.llm.retry",
+                    target: "diapason.llm.retry",
                     error = %msg,
                     category = %category.user_label(),
                     retryable = is_retryable,
@@ -549,7 +549,7 @@ async fn execute_llm_request_with_options_impl(
                 if is_unmatched_tool_result_error(&msg) {
                     if tool_history_repair_attempted {
                         tracing::warn!(
-                            target: "vtcode.llm.retry",
+                            target: "diapason.llm.retry",
                             "tool-history repair retry failed; refusing repeated unmatched-tool-result requests"
                         );
                         llm_result = Err(err);
@@ -561,7 +561,7 @@ async fn execute_llm_request_with_options_impl(
                     let normalized = ctx.context_manager.normalize_history_for_request(request.messages.as_slice());
                     if normalized.as_ref() == request.messages.as_slice() {
                         tracing::warn!(
-                            target: "vtcode.llm.retry",
+                            target: "diapason.llm.retry",
                             "unmatched-tool-result request was already normalized; failing closed"
                         );
                         llm_result = Err(err);
@@ -572,7 +572,7 @@ async fn execute_llm_request_with_options_impl(
                     request.messages = Arc::new(normalized.into_owned());
                     attempts_made = attempts_made.saturating_add(1);
                     tracing::warn!(
-                        target: "vtcode.llm.retry",
+                        target: "diapason.llm.retry",
                         "repaired provider-facing tool history; retrying unmatched-tool-result request once"
                     );
                     _spinner.finish();
@@ -583,7 +583,7 @@ async fn execute_llm_request_with_options_impl(
                 // on authentication failures, resource exhaustion, or policy violations.
                 if category.is_permanent() {
                     tracing::info!(
-                        target: "vtcode.llm.retry",
+                        target: "diapason.llm.retry",
                         category = %category.user_label(),
                         "Permanent error detected; skipping remaining retries"
                     );
@@ -670,7 +670,7 @@ async fn execute_llm_request_with_options_impl(
     #[cfg(debug_assertions)]
     {
         debug!(
-            target = "vtcode::agent::llm",
+            target = "diapason::agent::llm",
             model = %active_model,
             streaming = use_streaming,
             step = step_count,

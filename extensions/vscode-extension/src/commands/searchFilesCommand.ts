@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
-import { runVtcodeCommand } from "../utils/vtcodeRunner";
+import { runDiapasonCommand } from "../utils/diapasonRunner";
 
 /**
  * Command to search files with pattern and exclusions
@@ -9,7 +9,7 @@ import { runVtcodeCommand } from "../utils/vtcodeRunner";
  * Uses the optimized file search bridge for fast results.
  */
 export class SearchFilesCommand extends BaseCommand {
-    public readonly id = "vtcode.searchFiles";
+    public readonly id = "diapason.searchFiles";
     public readonly title = "Search Files";
     public readonly description = "Search files with pattern and exclusions";
     public readonly icon = "search-fuzzy";
@@ -49,13 +49,13 @@ export class SearchFilesCommand extends BaseCommand {
                 excludeStr.trim(),
             ];
 
-            await runVtcodeCommand(args, {
+            await runDiapasonCommand(args, {
                 title: `Searching for "${pattern}"…`,
                 output: context.output,
             });
 
             void vscode.window.showInformationMessage(
-                "File search completed. Check the VT Code output channel for results."
+                "File search completed. Check the Diapason output channel for results."
             );
         } catch (error) {
             this.handleCommandError("search files", error);

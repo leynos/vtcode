@@ -1,11 +1,11 @@
-# Getting Started with VT Code
+# Getting Started with Diapason
 
-Welcome to VT Code! This guide will help you get up and running with this
+Welcome to Diapason! This guide will help you get up and running with this
 Rust-based terminal coding agent that provides intelligent.
 
-## What Makes VT Code Special
+## What Makes Diapason Special
 
-VT Code represents a modern approach to AI-powered software development,
+Diapason represents a modern approach to AI-powered software development,
 featuring:
 
 - **Multi-Provider LLM Support** - Gemini, OpenAI, Anthropic, Meta AI,
@@ -49,14 +49,14 @@ Choose one of the supported LLM providers:
 - **OpenAI**: `export OPENAI_API_KEY=your_key_here`
 
   - Get from [OpenAI Platform](https://platform.openai.com/api-keys)
-  - **ChatGPT subscription (no API key needed):** Run `vtcode login openai` or
-    use `/login openai` in the TUI. VT Code performs an in-process PKCE browser
-    login — the Codex CLI is **not** required. By default, VT Code reuses
+  - **ChatGPT subscription (no API key needed):** Run `diapason login openai` or
+    use `/login openai` in the TUI. Diapason performs an in-process PKCE browser
+    login — the Codex CLI is **not** required. By default, Diapason reuses
     Codex's public OAuth client identity as an **unofficial compatibility
     mechanism** (OpenAI has not documented or guaranteed third-party reuse; a
     public client ID is not authorization to reuse another tool's
-    registration). If you have Codex CLI installed, VT Code can also reuse its
-    `~/.codex/auth.json` via `vtcode login openai --from-codex`. See the
+    registration). If you have Codex CLI installed, Diapason can also reuse its
+    `~/.codex/auth.json` via `diapason login openai --from-codex`. See the
     [OAuth guide](../guides/oauth-authentication.md) for details.
 
 - **xAI (Grok)**: `export XAI_API_KEY=your_key_here`
@@ -117,13 +117,13 @@ For more providers, see the [Provider Guides](../providers/PROVIDER_GUIDES.md).
 
 ### User data and configuration paths
 
-VT Code keeps project-local `.vtcode` state in the workspace and stores
+Diapason keeps project-local `.diapason` state in the workspace and stores
 user-global configuration, data, state, caches, runtime files, and managed
-binaries in platform-appropriate directories. Run `vtcode --version` to see the
-paths selected for this installation. The
+binaries in platform-appropriate directories. Run `diapason --version` to see
+the paths selected for this installation. The
 [user data directories guide](../guides/user-data-directories.md) documents XDG
-overrides, Windows/macOS locations, permissions, and migration from the
-historical `~/.vtcode` tree.
+overrides, Windows/macOS locations, permissions, and the fact that Diapason
+does not read legacy VTCode directories.
 
 ## Installation
 
@@ -131,21 +131,21 @@ historical `~/.vtcode` tree.
 
 ```bash
 # Clone the repository
-git clone https://github.com/vinhnx/vtcode.git
-cd vtcode
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
 
 # Build the project
 cargo build --release
 
-# The binary will be available at target/release/vtcode
+# The binary will be available at target/release/diapason
 ```
 
 ### Option 2: Using Provided Scripts
 
 ```bash
 # Clone and build using the production script
-git clone https://github.com/vinhnx/vtcode.git
-cd vtcode
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
 
 # Build and run in production mode
 ./scripts/run.sh
@@ -158,17 +158,17 @@ cd vtcode
 
 ```bash
 # When published to crates.io
-cargo install vtcode
+cargo install diapason
 
-# Optional: install search dependencies after VT Code is on PATH
-vtcode dependencies install search-tools
+# Optional: install search dependencies after Diapason is on PATH
+diapason dependencies install search-tools
 ```
 
 ## Quick Start
 
 ### 1. Set Your API Key (Recommended)
 
-Use VT Code's built-in secret management — keys are stored in your OS keyring,
+Use Diapason's built-in secret management — keys are stored in your OS keyring,
 never in a workspace `.env`:
 
 ```bash
@@ -176,13 +176,13 @@ never in a workspace `.env`:
 /secret add gemini
 
 # Or from the command line
-vtcode secret add openai
+diapason secret add openai
 ```
 
-**ChatGPT subscription users:** No API key needed — run `vtcode login openai`
+**ChatGPT subscription users:** No API key needed — run `diapason login openai`
 for in-process PKCE OAuth (full auto-refresh, no Codex CLI required) or
-`vtcode login openai --from-codex` to reuse Codex CLI's existing login. In the
-TUI, use `/login openai`.
+`diapason login openai --from-codex` to reuse Codex CLI's existing login. In
+the TUI, use `/login openai`.
 
 The first-run wizard auto-discovers any key already in your shell environment
 (e.g. `~/.zshrc`) or in your OS keyring, and skips re-prompting. It tells you
@@ -216,7 +216,7 @@ In corporate or air-gapped environments, use `providers_whitelist` to prevent
 accidental use of public APIs:
 
 ```toml
-# vtcode.toml
+# config.toml
 providers_whitelist = ["opencode-zen", "opencode-go", "gemini"]
 ```
 
@@ -226,7 +226,7 @@ custom provider.
 
 ### 2. Confirm Workspace Context
 
-`WORKSPACE_DIR` tells VT Code which project folder to treat as its primary
+`WORKSPACE_DIR` tells Diapason which project folder to treat as its primary
 context. The CLI sets this automatically when you launch inside a directory,
 but you can override or verify it explicitly:
 
@@ -238,40 +238,40 @@ echo "Workspace: $WORKSPACE_DIR"
 export WORKSPACE_DIR="/path/to/your/project"
 
 # One-off override when launching commands
-vtcode chat --workspace-dir /path/to/your/project
-vtcode /path/to/your/project
+diapason chat --workspace-dir /path/to/your/project
+diapason /path/to/your/project
 ```
 
-### 3. Initialize VT Code in Your Project
+### 3. Initialize Diapason in Your Project
 
 ```bash
 # Navigate to your project
 cd /path/to/your/project
 
-# Initialize VT Code (creates vtcode.toml and .vtcodegitignore)
-../vtcode/target/release/vtcode init
+# Initialize Diapason (creates config.toml and .diapasongitignore)
+../diapason/target/release/diapason init
 ```
 
 ### 4. Start Your First Session
 
 ```bash
 # Start interactive chat
-../vtcode/target/release/vtcode chat
+../diapason/target/release/diapason chat
 ```
 
 ### Resume Previous Sessions
 
-- Run `vtcode --resume` to open an interactive picker of recent sessions, or
-  `vtcode --resume <SESSION_ID>` to jump directly to a known session.
-- Use `vtcode --continue` to resume the most recent session automatically
+- Run `diapason --resume` to open an interactive picker of recent sessions, or
+  `diapason --resume <SESSION_ID>` to jump directly to a known session.
+- Use `diapason --continue` to resume the most recent session automatically
   without picking from the list.
 - These flags are global; do not append a subcommand (for example,
-  `vtcode chat --resume` is rejected). Resume or continue first, then start a
+  `diapason chat --resume` is rejected). Resume or continue first, then start a
   new command if needed.
 
 ## Enhanced Terminal Interface
 
-VT Code now features a completely revamped terminal user interface with
+Diapason now features a completely revamped terminal user interface with
 numerous enhancements:
 
 ### Visual Improvements
@@ -324,18 +324,18 @@ primary agent appears in the session header badge and controls the session's
 instructions, model, granular permission policy, and tool access.
 
 Slash commands execute immediately and respect the same tool policies
-configured in `vtcode.toml`.
+configured in `config.toml`.
 
 For delegated child-agent workflows and primary agents, see the dedicated
 [Subagents guide](./subagents.md). Primary agents (`mode: primary` or
 `mode: all`) control the main session directly; subagents (`mode: subagent` or
 `mode: all`) are spawned as child threads via `@agent-name`. New
-`.vtcode/agents/*.md` files should use VT Code tool ids such as `exec_command`,
-`write_stdin`, `apply_patch`, and advanced `code_search`, not Claude-style
-names like `Read` or `Bash`.
+`.diapason/agents/*.md` files should use Diapason tool ids such as
+`exec_command`, `write_stdin`, `apply_patch`, and advanced `code_search`, not
+Claude-style names like `Read` or `Bash`.
 
-VT Code uses a comprehensive TOML configuration system. The `init` command
-creates a `vtcode.toml` file with sensible defaults.
+Diapason uses a comprehensive TOML configuration system. The `init` command
+creates a `config.toml` file with sensible defaults.
 
 ### Basic Configuration
 
@@ -384,7 +384,7 @@ pre_tool_use = [
     matcher = "Bash",
     hooks = [ 
       { 
-        command = "$VT_PROJECT_DIR/.vtcode/hooks/security-check.sh", 
+        command = "$DIAPASON_PROJECT_DIR/.diapason/hooks/security-check.sh",
         timeout_seconds = 10 
       } 
     ] 
@@ -394,7 +394,7 @@ pre_tool_use = [
 
 ### Session Onboarding
 
-VT Code opens each chat with a workspace-specific orientation generated by the
+Diapason opens each chat with a workspace-specific orientation generated by the
 context engine. Configure it with the `[agent.onboarding]` section:
 
 ```toml
@@ -419,8 +419,8 @@ recommended_actions = [
 # chat_placeholder = "Describe the task you want to tackle next."
 ```
 
-When enabled, VT Code prints the onboarding message before the first prompt and
-appends the same context block to the system prompt for the model. Provide
+When enabled, Diapason prints the onboarding message before the first prompt
+and appends the same context block to the system prompt for the model. Provide
 `chat_placeholder` only if you want a custom hint above the initial `>` prompt;
 leaving it unset keeps the input empty by default.
 
@@ -444,7 +444,7 @@ vim_mode = true
 ### Basic Chat Session
 
 ```bash
-vtcode chat
+diapason chat
 ```
 
 The agent will greet you and await your instructions. Try asking:
@@ -459,10 +459,10 @@ The agent will greet you and await your instructions. Try asking:
 For quick questions or piping to other tools, use the `ask` command:
 
 ```bash
-vtcode ask "Write a Python function to calculate Fibonacci numbers" > fib.py
+diapason ask "Write a Python function to calculate Fibonacci numbers" > fib.py
 ```
 
-**Note**: `vtcode ask` sends the raw response code/text to **stdout**, while
+**Note**: `diapason ask` sends the raw response code/text to **stdout**, while
 sending metadata (provider info, reasoning traces) to **stderr**. This makes it
 perfect for shell scripting and piping.
 
@@ -470,13 +470,13 @@ perfect for shell scripting and piping.
 
 ```bash
 # Comprehensive project analysis
-vtcode analyze
+diapason analyze
 
 # Get detailed information
-vtcode info
+diapason info
 
 # Generate project summary
-vtcode summary
+diapason summary
 ```
 
 ## Understanding the Agents
@@ -503,7 +503,7 @@ vtcode summary
 
 ### Context Engineering
 
-VT Code automatically manages conversation context:
+Diapason automatically manages conversation context:
 
 - **Intelligent compression** of long conversations
 - **Persistent context store** across sessions
@@ -548,14 +548,14 @@ export GEMINI_API_KEY=your_key_here
 
 ```bash
 # Validate configuration
-vtcode config --validate
+diapason config --validate
 
 # Clear the active workspace configuration layer
-vtcode config reset
+diapason config reset
 
 # Clear a global or project layer instead
-vtcode config reset --global
-vtcode config reset --project
+diapason config reset --global
+diapason config reset --project
 ```
 
 #### Build Issues
@@ -575,11 +575,11 @@ cargo --version
 - **Documentation**: Comprehensive guides in `docs/` directory
 - **GitHub Issues**: Report bugs and request features
 - **GitHub Discussions**: Community support and discussions
-- **Configuration Examples**: Check `vtcode.toml.example`
+- **Configuration Examples**: Check `config.toml.example`
 
 ## Security & Safety
 
-VT Code is designed with security as a first-class concern:
+Diapason is designed with security as a first-class concern:
 
 ### Built-in Security Features
 
@@ -595,7 +595,8 @@ VT Code is designed with security as a first-class concern:
    canonical user config directory regularly
 2. **Use "Approve Once"** - For unfamiliar operations, don't auto-approve
 3. **Enable Sandbox** - For network commands, configure sandbox policy
-4. **Monitor Logs** - Review `.vtcode/logs/` for suspicious activity
+4. **Monitor Logs** - Review `$XDG_STATE_HOME/diapason/logs/` for suspicious
+   activity
 5. **Be Cautious** - Don't process code from untrusted sources
 
 ### Learn More
@@ -603,12 +604,12 @@ VT Code is designed with security as a first-class concern:
 - **[Security Guide](../guides/security.md)** - Complete security documentation
 - **[Security Model](../security/SECURITY_MODEL.md)** - Architecture and threat
   model
-- **[Tool Policies](../modules/vtcode_tools_policy.md)** - Command execution
+- **[Tool Policies](../modules/diapason_tools_policy.md)** - Command execution
   policies
 
 ## Next Steps
 
-Now that you have VT Code running, explore:
+Now that you have Diapason running, explore:
 
 1. **[Security Guide](../guides/security.md)** - Understand security features
 2. **[Lifecycle Hooks Guide](../guides/lifecycle-hooks.md)** - Execute shell
@@ -633,4 +634,4 @@ Interested in contributing? Check out:
 
 ______________________________________________________________________
 
-**Happy coding with VT Code!**
+**Happy coding with Diapason!**

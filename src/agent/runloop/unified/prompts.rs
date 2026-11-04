@@ -1,14 +1,14 @@
-use std::path::Path;
-use vtcode_core::config::constants::prompt_budget as prompt_budget_constants;
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::config::types::SystemPromptMode;
-use vtcode_core::prompts::PromptContext;
-use vtcode_core::prompts::system::{
+use diapason_core::config::constants::prompt_budget as prompt_budget_constants;
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::config::types::SystemPromptMode;
+use diapason_core::prompts::PromptContext;
+use diapason_core::prompts::system::{
     SystemPromptReport, compose_system_instruction_with_report, default_lightweight_prompt, default_system_prompt,
     minimal_system_prompt, specialized_system_prompt,
 };
+use std::path::Path;
 
-fn fallback_base_system_prompt(vt_cfg: Option<&vtcode_core::config::VTCodeConfig>) -> &'static str {
+fn fallback_base_system_prompt(vt_cfg: Option<&diapason_core::config::DiapasonConfig>) -> &'static str {
     match vt_cfg.map(|cfg| cfg.agent.system_prompt_mode) {
         Some(SystemPromptMode::Minimal) => minimal_system_prompt(),
         Some(SystemPromptMode::Lightweight) => default_lightweight_prompt(),
@@ -163,8 +163,8 @@ fn budget_subagent_section(subagents: &[(String, String, bool)], max_chars: usiz
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_core::config::VTCodeConfig;
-    use vtcode_core::config::types::SystemPromptMode;
+    use diapason_core::config::DiapasonConfig;
+    use diapason_core::config::types::SystemPromptMode;
 
     #[test]
     fn test_fallback_base_system_prompt_defaults_to_default() {
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_fallback_base_system_prompt_uses_minimal_mode() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.system_prompt_mode = SystemPromptMode::Minimal;
 
         assert_eq!(fallback_base_system_prompt(Some(&config)), minimal_system_prompt());
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_fallback_base_system_prompt_uses_lightweight_mode() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.system_prompt_mode = SystemPromptMode::Lightweight;
 
         assert_eq!(fallback_base_system_prompt(Some(&config)), default_lightweight_prompt());
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_fallback_base_system_prompt_uses_specialized_mode() {
-        let mut config = VTCodeConfig::default();
+        let mut config = DiapasonConfig::default();
         config.agent.system_prompt_mode = SystemPromptMode::Specialized;
 
         assert_eq!(fallback_base_system_prompt(Some(&config)), specialized_system_prompt());

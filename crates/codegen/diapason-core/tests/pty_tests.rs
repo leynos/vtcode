@@ -1,0 +1,458 @@
+#![allow(
+    missing_docs,
+    clippy::panic_in_result_fn,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+use std::time::Duration;
+
+use anyhow::Result;
+use portable_pty::PtySize;
+use tempfile::tempdir;
+
+use diapason_core::config::PtyConfig;
+use diapason_core::tools::{PtyCommandRequest, PtyManager};
+
+fn shell_command(script: &str) -> Vec<String> {
+    if cfg!(windows) {
+        let cmd = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+        vec![cmd, "/C".to_string(), script.to_string()]
+    } else {
+        vec!["sh".to_string(), "-c".to_string(), script.to_string()]
+    }
+}
+
+// Deadline-bounded polling helpers to keep PTY tests deterministic under load.
+// Fixed single sleeps flake on slow CI; polling until a condition holds with a
+// generous deadline removes timing sensitivity without changing assertions.
+const POLL_INTERVAL_MS: u64 = 50;
+const SESSION_READY_TIMEOUT_MS: u64 = 2_000;
+const OUTPUT_TIMEOUT_MS: u64 = 2_000;
+#[cfg(unix)]
+const BG_PID_TIMEOUT_MS: u64 = 5_000;
+#[cfg(unix)]
+const KILL_TIMEOUT_MS: u64 = 2_000;
+
+async fn sleep_ms(ms: u64) {
+    tokio::time::sleep(Duration::from_millis(ms)).await;
+}
+
+fn session_screen_contains(manager: &PtyManager, session_id: &str, needle: &str) -> bool {
+    manager
+        .snapshot_session(session_id)
+        .map(|snapshot| {
+            snapshot
+                .screen_contents
+                .as_deref()
+                .map(|contents| contents.contains(needle))
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+
+async fn wait_for_session_screen(manager: &PtyManager, session_id: &str, needle: &str, timeout_ms: u64) -> bool {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
+    while tokio::time::Instant::now() < deadline {
+        if session_screen_contains(manager, session_id, needle) {
+            return true;
+        }
+        sleep_ms(POLL_INTERVAL_MS).await;
+    }
+    session_screen_contains(manager, session_id, needle)
+}
+
+async fn wait_for_session_output(
+    manager: &PtyManager,
+    session_id: &str,
+    needle: &str,
+    timeout_ms: u64,
+    drain: bool,
+) -> Option<String> {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
+    while tokio::time::Instant::now() < deadline {
+        if let Ok(Some(output)) = manager.read_session_output(session_id, drain)
+            && output.contains(needle)
+        {
+            return Some(output);
+        }
+        sleep_ms(POLL_INTERVAL_MS).await;
+    }
+    manager.read_session_output(session_id, drain).ok().flatten()
+}
+
+#[cfg(unix)]
+fn parse_bg_pid(output: &str) -> Option<i32> {
+    output
+        .lines()
+        .find(|line| line.contains("bg_pid:"))
+        .and_then(|line| line.split(':').next_back())
+        .and_then(|pid_str| pid_str.trim().parse::<i32>().ok())
+}
+
+#[cfg(unix)]
+async fn wait_for_bg_pid(manager: &PtyManager, session_id: &str, timeout_ms: u64) -> Option<i32> {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
+    while tokio::time::Instant::now() < deadline {
+        if let Ok(Some(output)) = manager.read_session_output(session_id, false)
+            && let Some(pid) = parse_bg_pid(&output)
+        {
+            return Some(pid);
+        }
+        sleep_ms(POLL_INTERVAL_MS).await;
+    }
+    None
+}
+
+#[tokio::test]
+async fn run_pty_command_captures_output() -> Result<()> {
+    let temp_dir = tempdir()?;
+    let manager = PtyManager::new(temp_dir.path().to_path_buf(), PtyConfig::default());
+
+    let working_dir = manager.resolve_working_dir(Some(".")).await?;
+    let request = PtyCommandRequest {
+        command: vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            "printf 'hello from pty'".to_string(),
+        ],
+        working_dir,
+        timeout: Duration::from_secs(5),
+        size: PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        },
+        max_tokens: None,
+        output_callback: None,
+    };
+
+    let result = manager.run_command(request).await?;
+    assert_eq!(result.exit_code, 0);
+    assert!(result.output.contains("hello from pty"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn create_list_and_close_session_preserves_screen_contents() -> Result<()> {
+    let temp_dir = tempdir()?;
+    let manager = PtyManager::new(temp_dir.path().to_path_buf(), PtyConfig::default());
+
+    let working_dir = manager.resolve_working_dir(Some(".")).await?;
+    let size = PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    };
+
+    let session_id = "session-test".to_string();
+    drop(manager.create_session(
+        session_id.clone(),
+        vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            "printf ready && sleep 0.1".to_string(),
+        ],
+        working_dir,
+        size,
+    )?);
+
+    assert!(
+        wait_for_session_screen(&manager, &session_id, "ready", SESSION_READY_TIMEOUT_MS).await,
+        "session screen should contain 'ready'"
+    );
+
+    let sessions = manager.list_sessions();
+    assert_eq!(sessions.len(), 1);
+    let snapshot = &sessions[0];
+    assert_eq!(snapshot.id, session_id);
+    assert!(
+        snapshot
+            .screen_contents
+            .as_deref()
+            .map(|contents| contents.contains("ready"))
+            .unwrap_or(false)
+    );
+
+    let closed = manager.close_session(&session_id)?;
+    assert!(
+        closed
+            .screen_contents
+            .as_deref()
+            .map(|contents| contents.contains("ready"))
+            .unwrap_or(false)
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn resolve_working_dir_rejects_missing_directory() {
+    let temp_dir = tempdir().unwrap();
+    let manager = PtyManager::new(temp_dir.path().to_path_buf(), PtyConfig::default());
+
+    let error = manager.resolve_working_dir(Some("missing")).await;
+    assert!(error.unwrap_err().to_string().contains("does not exist"));
+}
+
+#[tokio::test]
+async fn session_input_roundtrip_and_resize() -> Result<()> {
+    let temp_dir = tempdir()?;
+    let config = PtyConfig { scrollback_lines: 200, ..Default::default() };
+    let manager = PtyManager::new(temp_dir.path().to_path_buf(), config);
+
+    let working_dir = manager.resolve_working_dir(Some(".")).await?;
+    let size = PtySize { rows: 3, cols: 80, pixel_width: 0, pixel_height: 0 };
+
+    let session_id = "roundtrip".to_string();
+    drop(manager.create_session(
+        session_id.clone(),
+        vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            "while read line; do if [ \"$line\" = \"exit\" ]; then break; fi; printf 'got:%s\\n' \"$line\"; done"
+                .to_string(),
+        ],
+        working_dir,
+        size,
+    )?);
+
+    sleep_ms(150).await;
+
+    let _bytes_written = manager.send_input_to_session(&session_id, b"hello", true)?;
+
+    let drained_text = wait_for_session_output(&manager, &session_id, "got:hello", OUTPUT_TIMEOUT_MS, true)
+        .await
+        .expect("expected drained output containing got:hello");
+    assert!(drained_text.contains("got:hello"));
+
+    assert!(manager.read_session_output(&session_id, false)?.is_none());
+
+    let _bytes_written = manager.send_input_to_session(&session_id, b"world", true)?;
+
+    let peek_text = wait_for_session_output(&manager, &session_id, "got:world", OUTPUT_TIMEOUT_MS, false)
+        .await
+        .expect("expected pending output containing got:world")
+        .to_string();
+    assert!(peek_text.contains("got:world"));
+
+    let drained_again = manager.read_session_output(&session_id, true)?;
+    let drained_again_text = drained_again.as_deref().expect("expected drained output after peek");
+    assert!(drained_again_text.contains("got:world"));
+
+    let updated = manager.resize_session(
+        &session_id,
+        PtySize {
+            rows: 48,
+            cols: 120,
+            pixel_width: 0,
+            pixel_height: 0,
+        },
+    )?;
+    assert_eq!(updated.rows, 48);
+    assert_eq!(updated.cols, 120);
+
+    let snapshot = manager.snapshot_session(&session_id)?;
+    // With the GhosttyCore terminal, scrollback only contains lines that scrolled off
+    // the visible screen. In a 3-row terminal with 2-3 lines of output, nothing
+    // scrolls, so we verify via screen_contents instead.
+    let screen = snapshot.screen_contents.as_deref().unwrap_or("");
+    assert!(
+        screen.contains("got:hello") || screen.contains("got:world"),
+        "screen should contain echoed output, got: {screen:?}"
+    );
+
+    drop(manager.close_session(&session_id)?);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn run_pty_command_applies_max_tokens_truncation() -> Result<()> {
+    let temp_dir = tempdir()?;
+    let manager = PtyManager::new(temp_dir.path().to_path_buf(), PtyConfig::default());
+
+    let working_dir = manager.resolve_working_dir(Some(".")).await?;
+    let script = if cfg!(windows) {
+        "echo 012345678901234567890123456789012345678901234567890123456789"
+    } else {
+        "printf '012345678901234567890123456789012345678901234567890123456789'"
+    };
+    let request = PtyCommandRequest {
+        command: shell_command(script),
+        working_dir,
+        timeout: Duration::from_secs(5),
+        size: PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        },
+        max_tokens: Some(8),
+        output_callback: None,
+    };
+
+    let result = manager.run_command(request).await?;
+    assert_eq!(result.exit_code, 0);
+    assert!(result.output.contains("[... truncated by max_tokens ...]"));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn run_pty_command_returns_timeout_error() -> Result<()> {
+    let temp_dir = tempdir()?;
+    let manager = PtyManager::new(temp_dir.path().to_path_buf(), PtyConfig::default());
+
+    let working_dir = manager.resolve_working_dir(Some(".")).await?;
+    let script = if cfg!(windows) {
+        "ping -n 5 127.0.0.1 > nul"
+    } else {
+        "sleep 2"
+    };
+    let request = PtyCommandRequest {
+        command: shell_command(script),
+        working_dir,
+        timeout: Duration::from_millis(200),
+        size: PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        },
+        max_tokens: None,
+        output_callback: None,
+    };
+
+    let error = match manager.run_command(request).await {
+        Ok(_) => anyhow::bail!("expected timeout error"),
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    assert!(message.contains("timed out"), "unexpected timeout error: {message}");
+
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn pty_terminate_kills_background_children_in_same_process_group() -> Result<()> {
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+
+    let temp_dir = tempdir()?;
+    let manager = PtyManager::new(temp_dir.path().to_path_buf(), PtyConfig::default());
+
+    let working_dir = manager.resolve_working_dir(Some(".")).await?;
+    let size = PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    };
+
+    let session_id = "background-test".to_string();
+    drop(manager.create_session(
+        session_id.clone(),
+        vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            "sleep 1000 & echo \"bg_pid:$!\"; wait".to_string(),
+        ],
+        working_dir,
+        size,
+    )?);
+
+    // Wait for the background process to be spawned and its PID to be printed
+    let bg_pid = wait_for_bg_pid(&manager, &session_id, BG_PID_TIMEOUT_MS)
+        .await
+        .expect("Failed to capture background PID");
+    let pid = Pid::from_raw(bg_pid);
+
+    // Verify background process is running
+    assert!(kill(pid, None).is_ok(), "Background process should be running");
+
+    // Close session, which should kill the process group
+    drop(manager.close_session(&session_id)?);
+
+    // Verify background process is killed (may need a short wait for signal to propagate)
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(KILL_TIMEOUT_MS);
+    let mut killed = false;
+    while tokio::time::Instant::now() < deadline {
+        if kill(pid, None).is_err() {
+            killed = true;
+            break;
+        }
+        sleep_ms(POLL_INTERVAL_MS).await;
+    }
+
+    assert!(killed, "Background process should have been killed");
+
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn run_pty_command_timeout_kills_background_children() -> Result<()> {
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+    use std::fs;
+
+    let temp_dir = tempdir()?;
+    let manager = PtyManager::new(temp_dir.path().to_path_buf(), PtyConfig::default());
+
+    let working_dir = manager.resolve_working_dir(Some(".")).await?;
+
+    // Create a temporary file to store the background PID
+    let pid_file = temp_dir.path().join("bg_pid.txt");
+
+    // Script that spawns a background process and writes its PID to a file, then sleeps
+    let script = format!("sleep 1000 & echo $! > {}; sleep 5", pid_file.display());
+
+    let request = PtyCommandRequest {
+        command: vec!["sh".to_string(), "-c".to_string(), script],
+        working_dir,
+        timeout: Duration::from_millis(500), // Short timeout to trigger kill
+        size: PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        },
+        max_tokens: None,
+        output_callback: None,
+    };
+
+    // run_command should timeout and kill the process group
+    let result = manager.run_command(request).await;
+    let err = match result {
+        Ok(_) => anyhow::bail!("Expected timeout error"),
+        Err(e) => e,
+    };
+    assert!(err.to_string().contains("timed out"));
+
+    // Give a small amount of time for the background process to write the file if it hasn't yet
+    // though the timeout is 500ms, which should be enough for 'echo $! > file'
+    sleep_ms(100).await;
+
+    // Read the background PID
+    let bg_pid_str = fs::read_to_string(&pid_file).expect("Failed to read PID file");
+    let bg_pid = bg_pid_str.trim().parse::<i32>().expect("Failed to parse PID");
+    let pid = Pid::from_raw(bg_pid);
+
+    // Verify background process is killed
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(KILL_TIMEOUT_MS);
+    let mut killed = false;
+    while tokio::time::Instant::now() < deadline {
+        if kill(pid, None).is_err() {
+            killed = true;
+            break;
+        }
+        sleep_ms(POLL_INTERVAL_MS).await;
+    }
+
+    assert!(killed, "Background process should have been killed by run_command timeout");
+
+    Ok(())
+}

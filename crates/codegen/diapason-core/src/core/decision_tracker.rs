@@ -1,0 +1,327 @@
+use crate::utils::current_timestamp;
+use hashbrown::HashMap;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// Represents a single decision made by the agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Decision {
+    pub id: String,
+    pub timestamp: u64,
+    pub context: DecisionContext,
+    pub reasoning: String,
+    pub action: Action,
+    pub outcome: Option<DecisionOutcome>,
+    pub confidence_score: Option<f64>,
+}
+
+/// Context information that led to a decision
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionContext {
+    pub conversation_turn: usize,
+    pub user_input: Option<String>,
+    pub previous_actions: Vec<String>,
+    pub available_tools: Vec<String>,
+    pub current_state: HashMap<String, Value>,
+}
+
+/// Action taken as a result of the decision
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Action {
+    ToolCall {
+        name: String,
+        args: Value,
+        expected_outcome: String,
+    },
+    Response {
+        content: String,
+        response_type: ResponseType,
+    },
+
+    ErrorRecovery {
+        error_type: String,
+        recovery_strategy: String,
+    },
+}
+
+/// Type of response given to user
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum ResponseType {
+    Text,
+    ToolExecution,
+    ErrorHandling,
+    ContextSummary,
+}
+
+/// Outcome of a decision
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DecisionOutcome {
+    Success {
+        result: String,
+        metrics: HashMap<String, Value>,
+    },
+    Failure {
+        error: String,
+        recovery_attempts: usize,
+        context_preserved: bool,
+    },
+    Partial {
+        result: String,
+        issues: Vec<String>,
+    },
+}
+
+/// Decision tracker for maintaining transparency
+pub struct DecisionTracker {
+    decisions: Vec<Decision>,
+    current_context: DecisionContext,
+    session_start: u64,
+}
+
+impl Default for DecisionTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DecisionTracker {
+    pub fn new() -> Self {
+        let now = current_timestamp();
+
+        Self {
+            decisions: Vec::new(),
+            current_context: DecisionContext {
+                conversation_turn: 0,
+                user_input: None,
+                previous_actions: Vec::new(),
+                available_tools: Vec::new(),
+                current_state: HashMap::new(),
+            },
+            session_start: now,
+        }
+    }
+
+    /// Start tracking a new conversation turn
+    #[inline]
+    pub fn start_turn(&mut self, turn_number: usize, user_input: Option<String>) {
+        self.current_context.conversation_turn = turn_number;
+        self.current_context.user_input = user_input;
+    }
+
+    /// Update the current context with available tools
+    #[inline]
+    pub fn update_available_tools(&mut self, tools: Vec<String>) {
+        self.current_context.available_tools = tools;
+    }
+
+    /// Update the current state
+    #[inline]
+    pub fn update_state(&mut self, key: &str, value: Value) {
+        self.current_context.current_state.insert(key.into(), value);
+    }
+
+    /// Record a decision
+    /// Note: Takes ownership of action to avoid cloning when possible
+    pub fn record_decision(&mut self, reasoning: String, action: Action, confidence_score: Option<f64>) -> String {
+        let decision_id = format!("decision_{}_{}", self.session_start, self.decisions.len());
+
+        // Generate action summary before moving action into decision
+        let action_summary: String = match &action {
+            Action::ToolCall { name, .. } => format!("tool_call:{name}"),
+            Action::Response { response_type, .. } => format!("response:{response_type:?}"),
+            Action::ErrorRecovery { .. } => "error_recovery".into(),
+        };
+
+        let decision = Decision {
+            id: decision_id.clone(),
+            timestamp: current_timestamp(),
+            context: self.current_context.clone(),
+            reasoning,
+            action, // Move instead of clone
+            outcome: None,
+            confidence_score,
+        };
+
+        self.decisions.push(decision);
+
+        // Update previous actions for next decision
+        self.current_context.previous_actions.push(action_summary);
+
+        decision_id
+    }
+
+    /// Record the outcome of a decision
+    #[inline]
+    pub fn record_outcome(&mut self, decision_id: &str, outcome: DecisionOutcome) {
+        if let Some(decision) = self.decisions.iter_mut().find(|d| d.id == decision_id) {
+            decision.outcome = Some(outcome);
+        }
+    }
+
+    /// Get all decisions for transparency reporting
+    #[inline]
+    pub fn get_decisions(&self) -> &[Decision] {
+        &self.decisions
+    }
+
+    /// Generate a transparency report
+    pub fn generate_transparency_report(&self) -> TransparencyReport {
+        let total_decisions = self.decisions.len();
+        let successful_decisions = self
+            .decisions
+            .iter()
+            .filter(|d| matches!(d.outcome, Some(DecisionOutcome::Success { .. })))
+            .count();
+        let failed_decisions = self
+            .decisions
+            .iter()
+            .filter(|d| matches!(d.outcome, Some(DecisionOutcome::Failure { .. })))
+            .count();
+
+        let tool_calls = self
+            .decisions
+            .iter()
+            .filter(|d| matches!(d.action, Action::ToolCall { .. }))
+            .count();
+
+        let (sum, count) = self
+            .decisions
+            .iter()
+            .filter_map(|d| d.confidence_score)
+            .fold((0.0, 0usize), |(s, c), v| (s + v, c + 1));
+
+        let avg_confidence = if count == 0 { None } else { Some(sum / count as f64) };
+
+        TransparencyReport {
+            session_duration: current_timestamp().saturating_sub(self.session_start),
+            total_decisions,
+            successful_decisions,
+            failed_decisions,
+            tool_calls,
+            avg_confidence,
+            recent_decisions: self.decisions.iter().rev().take(5).cloned().collect(),
+        }
+    }
+
+    /// Get decision context for error recovery
+    pub fn get_decision_context(&self, decision_id: &str) -> Option<&DecisionContext> {
+        self.decisions.iter().find(|d| d.id == decision_id).map(|d| &d.context)
+    }
+
+    pub fn get_current_context(&self) -> &DecisionContext {
+        &self.current_context
+    }
+
+    /// Get the latest decision made
+    pub fn latest_decision(&self) -> Option<&Decision> {
+        self.decisions.last()
+    }
+
+    /// Get the N most recent decisions
+    pub fn recent_decisions(&self, count: usize) -> Vec<&Decision> {
+        self.decisions.iter().rev().take(count).collect()
+    }
+
+    /// Convenience: record a user goal/intention for this turn
+    pub fn record_goal(&mut self, content: String) -> String {
+        self.record_decision(
+            "User goal provided".to_owned(),
+            Action::Response {
+                content,
+                response_type: ResponseType::ContextSummary,
+            },
+            None,
+        )
+    }
+
+    /// Render a compact Decision Ledger for injection into the system prompt
+    pub fn render_ledger_brief(&self, max_entries: usize) -> String {
+        let mut out = String::new();
+        out.push_str("Decision Ledger (most recent first)\n");
+        let take_n = max_entries.max(1);
+        for d in self.decisions.iter().rev().take(take_n) {
+            let ts = d.timestamp;
+            let turn = d.context.conversation_turn;
+            let line = match &d.action {
+                Action::ToolCall { name, args, .. } => {
+                    let arg_preview = match args {
+                        Value::String(s) => s.clone(),
+                        _ => {
+                            let s = args.to_string();
+                            diapason_commons::formatting::truncate_byte_budget(&s, 120, "…")
+                        }
+                    };
+                    format!("- [turn {turn}] tool:{name} args={arg_preview} (t={ts})")
+                }
+                Action::Response { response_type, content } => {
+                    let preview = diapason_commons::formatting::truncate_byte_budget(content, 120, "…");
+                    format!("- [turn {turn}] response:{response_type:?} {preview} (t={ts})")
+                }
+                Action::ErrorRecovery { error_type, recovery_strategy } => {
+                    format!("- [turn {turn}] recovery {error_type} via {recovery_strategy} (t={ts})")
+                }
+            };
+            out.push_str(&line);
+            out.push('\n');
+        }
+        if out.is_empty() {
+            "(no decisions yet)".to_string()
+        } else {
+            out
+        }
+    }
+
+    /// Prune decisions older than the specified duration (in seconds)
+    /// Returns the number of decisions removed
+    pub fn prune_old_decisions(&mut self, max_age_secs: u64) -> usize {
+        let now = current_timestamp();
+        let cutoff = now.saturating_sub(max_age_secs);
+        let before_len = self.decisions.len();
+
+        self.decisions.retain(|d| d.timestamp >= cutoff);
+
+        before_len.saturating_sub(self.decisions.len())
+    }
+
+    /// Prune decisions to keep only the most recent N entries
+    /// Returns the number of decisions removed
+    pub fn prune_to_count(&mut self, max_count: usize) -> usize {
+        if self.decisions.len() <= max_count {
+            return 0;
+        }
+
+        let excess = self.decisions.len() - max_count;
+        self.decisions.drain(0..excess);
+        excess
+    }
+
+    /// Auto-prune based on sensible defaults: keep last 500 decisions or last 30 minutes
+    /// Call this periodically (e.g., at turn start) to prevent unbounded growth
+    pub fn auto_prune(&mut self) -> usize {
+        const MAX_DECISIONS: usize = 500;
+        const MAX_AGE_SECS: u64 = 30 * 60; // 30 minutes
+
+        let by_age = self.prune_old_decisions(MAX_AGE_SECS);
+        let by_count = self.prune_to_count(MAX_DECISIONS);
+
+        by_age + by_count
+    }
+
+    /// Get the current decision count
+    #[inline]
+    pub fn decision_count(&self) -> usize {
+        self.decisions.len()
+    }
+}
+
+/// Transparency report for the current session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransparencyReport {
+    pub session_duration: u64,
+    pub total_decisions: usize,
+    pub successful_decisions: usize,
+    pub failed_decisions: usize,
+    pub tool_calls: usize,
+    pub avg_confidence: Option<f64>,
+    pub recent_decisions: Vec<Decision>,
+}

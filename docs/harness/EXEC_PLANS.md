@@ -1,7 +1,7 @@
 # Execution Plans
 
 Execution plans are self-contained, living design documents for complex
-multi-step work in VT Code. They capture the goal, context, steps, decisions
+multi-step work in Diapason. They capture the goal, context, steps, decisions
 made during execution, and retrospective notes.
 
 ## Why Exec Plans?
@@ -23,7 +23,7 @@ These are distinct concepts:
 
 Exec Plans are written to `docs/harness/exec-plans/active/` and are part of the
 repository's knowledge base. Planning workflow artefacts may be written to
-`.vtcode/plans/` when the active agent permission policy allows them.
+`.diapason/plans/` when the active agent permission policy allows them.
 
 ## Directory Structure
 

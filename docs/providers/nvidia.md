@@ -1,7 +1,7 @@
 # NVIDIA NIM Provider Guide
 
-VT Code supports NVIDIA NIM through NVIDIA's OpenAI-compatible Chat Completions
-endpoint.
+Diapason supports NVIDIA NIM through NVIDIA's OpenAI-compatible Chat
+Completions endpoint.
 
 ## Setup
 
@@ -10,13 +10,13 @@ select the provider:
 
 ```bash
 export NVIDIA_API_KEY="nvapi-..."
-vtcode --provider nvidia --model nvidia/nemotron-3-ultra-550b-a55b ask "Review this repository"
+diapason --provider nvidia --model nvidia/nemotron-3-ultra-550b-a55b ask "Review this repository"
 ```
 
 The default endpoint is `https://integrate.api.nvidia.com/v1`. Set
 `NVIDIA_BASE_URL` when routing through a compatible gateway or proxy.
 
-Equivalent `vtcode.toml` configuration:
+Equivalent `config.toml` configuration:
 
 ```toml
 [agent]
@@ -40,14 +40,14 @@ NVIDIA's catalog is larger than this curated list. An explicitly configured
 model ID is forwarded without local allowlist rejection:
 
 ```bash
-vtcode --provider nvidia --model nvidia/any-catalog-model ask "Explain this code"
+diapason --provider nvidia --model nvidia/any-catalog-model ask "Explain this code"
 ```
 
 ## Reasoning and tools
 
-VT Code maps any selected reasoning effort other than `none` to NVIDIA's
+Diapason maps any selected reasoning effort other than `none` to NVIDIA's
 `chat_template_kwargs.enable_thinking = true`; no effort or `none` disables
-thinking. When tools are present, VT Code also sends
+thinking. When tools are present, Diapason also sends
 `chat_template_kwargs.force_nonempty_content = true`, as required by NVIDIA's
 Nemotron tool-calling format. Streaming usage totals and `reasoning_content`
 are preserved in both streaming and non-streaming responses.

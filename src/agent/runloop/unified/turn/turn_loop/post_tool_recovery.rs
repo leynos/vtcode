@@ -1,9 +1,9 @@
 //! Turn-loop helpers for recovering after tool output when the follow-up LLM phase fails.
 
 use anyhow::Result;
-use vtcode_commons::ErrorCategory;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_commons::ErrorCategory;
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::{
     MAX_POST_TOOL_RECOVERY_CYCLES, PLANNING_RECOVERY_SYNTHESIS_FALLBACK,
@@ -55,7 +55,7 @@ pub(super) fn has_tool_response_since(messages: &[uni::Message], baseline_len: u
 /// payloads; treating those as prompt overflow would discard useful history
 /// and schedule an unrelated write-capable retry.
 fn is_provider_context_capacity_failure(failure_stage: &str, err: &anyhow::Error) -> bool {
-    failure_stage == "execute_llm_request" && vtcode_commons::is_context_capacity_error(err)
+    failure_stage == "execute_llm_request" && diapason_commons::is_context_capacity_error(err)
 }
 
 fn planning_synthesis_retry_allowed(
@@ -67,7 +67,7 @@ fn planning_synthesis_retry_allowed(
 ) -> bool {
     tool_free_recovery
         && planning_active
-        && vtcode_commons::classify_anyhow_error(err).is_retryable()
+        && diapason_commons::classify_anyhow_error(err).is_retryable()
         && harness_state.recovery_retry_count() < MAX_PLANNING_SYNTHESIS_RECOVERY_RETRIES
         && !harness_state.wall_clock_exhausted_emitted
         && !harness_state.wall_clock_exhausted()
@@ -200,7 +200,7 @@ fn maybe_recover_after_post_tool_llm_failure_with_progress(
         return Ok(PostToolFailureRecovery::StopAfterDirective);
     }
 
-    let err_cat = vtcode_commons::classify_anyhow_error(err);
+    let err_cat = diapason_commons::classify_anyhow_error(err);
     let context_capacity_failure = is_provider_context_capacity_failure(failure_stage, err);
     let retry_scheduled = allow_tool_free_retry || allow_tool_enabled_retry;
     let transient_hint = if err_cat.is_retryable() && !context_capacity_failure {
@@ -473,7 +473,7 @@ pub(super) async fn complete_turn_after_failed_tool_free_recovery_with_events(
     // produced) must be persisted to the session plan file even though tools
     // were disabled during the tool-free recovery pass. Otherwise the plan
     // exists only in chat history while the user-facing notices promise it is
-    // "preserved in the session plan file (.vtcode/plans/)". Best-effort: a
+    // "preserved in the session plan file (.diapason/plans/)". Best-effort: a
     // write failure is logged and must never dead-end the turn.
     let mut plan_session = plan_session;
     let SalvagedPlanPersistence {
@@ -517,7 +517,7 @@ pub(super) async fn complete_turn_after_failed_tool_free_recovery_with_events(
     // forward progress instead of dead-ending. We keep the planning session
     // alive and preserve the research gathered this turn.
     let is_transient_error = err
-        .map(|e| vtcode_commons::classify_anyhow_error(e).is_retryable())
+        .map(|e| diapason_commons::classify_anyhow_error(e).is_retryable())
         .unwrap_or(false);
     if let Some(plan_session) = plan_session {
         if plan_session.is_budget_exhausted()
@@ -976,7 +976,7 @@ async fn check_recovery_cycle_cap(
 mod tests {
     use super::*;
     use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
-    use vtcode_commons::llm::LLMError;
+    use diapason_commons::llm::LLMError;
 
     fn transient_err() -> anyhow::Error {
         anyhow::Error::new(LLMError::Network {
@@ -1369,7 +1369,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_marks_recovery_exhausted_when_wall_clock_exhausted_in_plan_mode() {
         use crate::agent::runloop::unified::run_loop_context::{HarnessTurnState, TurnId, TurnRunId};
-        use vtcode_core::utils::ansi::AnsiRenderer;
+        use diapason_core::utils::ansi::AnsiRenderer;
 
         let mut renderer = AnsiRenderer::stdout();
         let mut working_history: Vec<uni::Message> = Vec::new();
@@ -1567,7 +1567,7 @@ mod tests {
         // not write the file itself), the plan must be persisted to the
         // session plan file so the "preserved in the session plan file"
         // notice is truthful. Previously the plan lived only in chat history
-        // and `.vtcode/plans/` stayed empty/template-only.
+        // and `.diapason/plans/` stayed empty/template-only.
         use crate::agent::runloop::unified::planning_workflow::PlanningWorkflowState;
         use tempfile::TempDir;
 
@@ -1586,7 +1586,7 @@ mod tests {
 Persist a concrete recovery plan without implementing it.
 
 ## Implementation Steps
-1. Add caching -> files: [src/cache.rs] -> verify: [cargo nextest run -p vtcode]
+1. Add caching -> files: [src/cache.rs] -> verify: [cargo nextest run -p diapason]
 
 ## Test Cases and Validation
 1. Run the targeted planning tests.
@@ -1639,7 +1639,7 @@ Persist a concrete recovery plan without implementing it.
 Offer the approval prompt when a real draft was persisted despite the denial.
 
 ## Implementation Steps
-1. Add caching -> files: [src/cache.rs] -> verify: [cargo nextest run -p vtcode]
+1. Add caching -> files: [src/cache.rs] -> verify: [cargo nextest run -p diapason]
 
 ## Test Cases and Validation
 1. Run the targeted planning tests.
@@ -1710,7 +1710,7 @@ Offer the approval prompt when a real draft was persisted despite the denial.
 Offer the preserved-plan notice when recovery is exhausted with a persisted draft.
 
 ## Implementation Steps
-1. Add caching -> files: [src/cache.rs] -> verify: [cargo nextest run -p vtcode]
+1. Add caching -> files: [src/cache.rs] -> verify: [cargo nextest run -p diapason]
 
 ## Test Cases and Validation
 1. Run the targeted planning tests.

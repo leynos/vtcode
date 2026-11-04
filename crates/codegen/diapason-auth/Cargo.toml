@@ -1,0 +1,58 @@
+[package]
+name = "diapason-auth"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93.0"
+authors = ["Vinh Nguyen <vinhnguyen2308@gmail.com>", "df12 Productions"]
+description = "Authentication and OAuth flows shared across Diapason"
+license.workspace = true
+readme = "README.md"
+homepage = "https://github.com/leynos/vtcode"
+repository = "https://github.com/leynos/vtcode"
+documentation = "https://docs.rs/diapason-auth"
+keywords = ["auth", "oauth", "diapason", "keyring"]
+categories = ["authentication", "development-tools"]
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+axum = "0.8"
+base64 = { workspace = true }
+dirs = { workspace = true }
+fs2 = { workspace = true }
+hostname = "0.4"
+keyring-core = { workspace = true }
+reqwest = { workspace = true }
+ring = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+urlencoding = "2.1"
+diapason-commons = { workspace = true }
+schemars = { workspace = true, optional = true, features = ["indexmap2"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust", "vendored"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1.0.0", features = ["keychain"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-native-keyring-store = "1.1.0"
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["user"] }
+
+[features]
+default = []
+schema = ["dep:schemars"]
+
+[dev-dependencies]
+assert_fs = { workspace = true }
+serial_test = { workspace = true }
+
+[lints]
+workspace = true

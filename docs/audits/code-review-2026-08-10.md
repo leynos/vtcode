@@ -1,6 +1,6 @@
 # Code Review + Fixes — 2026-08-10
 
-Scope: `vtcode-auth` and skill sub-LLM production code, with the existing
+Scope: `diapason-auth` and skill sub-LLM production code, with the existing
 sandbox/exec audit changes preserved. The review prioritized credential
 lifecycle correctness, storage coupling, error handling, execution-scope
 enforcement, and security-sensitive module boundaries.
@@ -46,11 +46,11 @@ enforcement, and security-sensitive module boundaries.
 
 ```text
 cargo fmt --all -- --check                                      PASS
-cargo clippy --locked -p vtcode-auth --all-targets -- -D warnings PASS
-cargo clippy --locked -p vtcode-core --all-targets -- -D warnings PASS
-cargo nextest run --locked -p vtcode-auth                         138 passed
-cargo nextest run --locked -p vtcode-safety                       245 passed
-cargo nextest run --locked -p vtcode-core skills::executor::      24 passed
+cargo clippy --locked -p diapason-auth --all-targets -- -D warnings PASS
+cargo clippy --locked -p diapason-core --all-targets -- -D warnings PASS
+cargo nextest run --locked -p diapason-auth                         138 passed
+cargo nextest run --locked -p diapason-safety                       245 passed
+cargo nextest run --locked -p diapason-core skills::executor::      24 passed
 ./scripts/check-dev.sh --changed                              5560 passed
 cargo audit --file Cargo.lock                              PASS (3 allowed
                                                            unmaintained warnings)

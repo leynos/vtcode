@@ -30,7 +30,7 @@ Limit command output:
 
 ```json
 {
-  "cmd": "rg -n \"ToolProfile\" vtcode-core",
+  "cmd": "rg -n \"ToolProfile\" diapason-core",
   "workdir": "/repo",
   "max_output_tokens": 5000
 }

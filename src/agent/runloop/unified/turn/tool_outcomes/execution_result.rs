@@ -6,24 +6,24 @@
 //!   - Auto-mode probe handling and failure-path response shaping now live in `execution_result/` support modules.
 //!   - Success-path notification and turn-result shaping still flow through this root and remain queued for further decomposition.
 //! - Constraints: TD-005 is active here; preserve the root as a coordinator and prefer new responsibility-named support modules over adding more inline branches.
-//! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode inline_events::tests`
+//! - Verify: `cargo check -p diapason && cargo test -p diapason --bin diapason inline_events::tests`
 
 mod auto_permission_probe;
 mod failure_diagnosis;
 mod failure_path;
 
 use anyhow::Result;
-use vtcode_commons::ErrorCategory;
+use diapason_commons::ErrorCategory;
 #[cfg(test)]
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::core::agent::error_recovery::ErrorType as RecoveryErrorType;
-use vtcode_core::notifications::notify_tool_success;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::core::agent::error_recovery::ErrorType as RecoveryErrorType;
+use diapason_core::notifications::notify_tool_success;
 #[cfg(test)]
-use vtcode_core::persistent_memory::GroundedFactRecord;
-use vtcode_core::tools::error_messages::agent_execution;
-use vtcode_core::tools::registry::ToolExecutionError;
-use vtcode_core::tools::registry::labels::tool_action_label;
-use vtcode_core::utils::ansi::MessageStyle;
+use diapason_core::persistent_memory::GroundedFactRecord;
+use diapason_core::tools::error_messages::agent_execution;
+use diapason_core::tools::registry::ToolExecutionError;
+use diapason_core::tools::registry::labels::tool_action_label;
+use diapason_core::utils::ansi::MessageStyle;
 
 use self::auto_permission_probe::push_tool_response_with_auto_permission_probe;
 pub(crate) use self::failure_diagnosis::{
@@ -84,7 +84,7 @@ fn emit_turn_metric_log(
     blocked_cap: usize,
 ) {
     tracing::info!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         metric,
         run_id = %ctx.harness_state.run_id.0,
         turn_id = %ctx.harness_state.turn_id.0,
@@ -99,7 +99,7 @@ fn emit_turn_metric_log(
 }
 
 fn extract_written_path(tool_name: &str, args: &serde_json::Value) -> Option<String> {
-    use vtcode_core::config::constants::tools;
+    use diapason_core::config::constants::tools;
 
     match tool_name {
         tools::UNIFIED_FILE => {
@@ -248,7 +248,7 @@ async fn handle_success<'a>(
     let is_loop_detected_stub = output.get("loop_detected").and_then(|v| v.as_bool()).unwrap_or(false);
     if command_success
         && !is_loop_detected_stub
-        && !vtcode_core::tools::tool_intent::classify_tool_intent(tool_name, args_val).mutating
+        && !diapason_core::tools::tool_intent::classify_tool_intent(tool_name, args_val).mutating
     {
         let signature = signature_key_for(tool_name, args_val);
         t_ctx.ctx.harness_state.record_successful_readonly_signature(signature);
@@ -318,7 +318,8 @@ async fn handle_failure<'a>(
         error.category,
         ErrorCategory::PermissionDenied | ErrorCategory::PolicyViolation | ErrorCategory::PlanningPolicyViolation
     );
-    if tool_name == vtcode_core::config::constants::tools::REQUEST_USER_INPUT && is_permanent_request_user_input_denial
+    if tool_name == diapason_core::config::constants::tools::REQUEST_USER_INPUT
+        && is_permanent_request_user_input_denial
     {
         t_ctx.ctx.plan_session.mark_interview_denied();
         if t_ctx.ctx.is_planning_active() {
@@ -355,7 +356,7 @@ async fn handle_failure<'a>(
         // synthesis fallback. Do not let the generic blocked-call fuse turn
         // that recoverable transition into a terminal `Blocked` outcome.
         let interview_denial_recovery = t_ctx.ctx.is_planning_active()
-            && tool_name == vtcode_core::config::constants::tools::REQUEST_USER_INPUT
+            && tool_name == diapason_core::config::constants::tools::REQUEST_USER_INPUT
             && is_permanent_request_user_input_denial;
         if let Some(fuse_trip) =
             super::handlers::blocked_tool_call_fuse_trip(streak, t_ctx.ctx.harness_state.blocked_tool_calls, limits)

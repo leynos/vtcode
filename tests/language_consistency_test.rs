@@ -449,13 +449,13 @@ pub fn validate_tool_response_language(tool_name: &str, response: &Value) -> Res
     Ok(())
 }
 
-// Integration tests with actual VT Code tool registry
+// Integration tests with actual Diapason tool registry
 #[cfg(test)]
 mod integration_tests {
     use super::*;
     use assert_fs::TempDir;
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::tools::ToolRegistry;
+    use diapason_core::config::constants::tools;
+    use diapason_core::tools::ToolRegistry;
 
     #[tokio::test]
     async fn test_read_file_response_language_consistency() {

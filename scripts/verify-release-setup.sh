@@ -58,10 +58,10 @@ test_scripts_exist() {
         print_error "scripts/build-and-upload-binaries.sh not found"
     fi
     
-    if [[ -f "npm/bin/vtcode" ]]; then
-        print_success "npm/bin/vtcode stub exists"
+    if [[ -f "npm/bin/diapason" ]]; then
+        print_success "npm/bin/diapason stub exists"
     else
-        print_error "npm/bin/vtcode stub not found"
+        print_error "npm/bin/diapason stub not found"
     fi
 }
 
@@ -75,16 +75,16 @@ test_github_cli() {
         if gh auth status >/dev/null 2>&1; then
             print_success "GitHub CLI is authenticated"
             
-            # Check if we're logged in to vinhnx and it's active
-            if gh auth status 2>&1 | grep -q "Logged in to github.com account vinhnx"; then
-                if gh auth status 2>&1 | grep -A 5 "account vinhnx" | grep -q "Active account: true"; then
-                    print_success "Correct GitHub account active (vinhnx)"
+            # Check if we're logged in to leynos and it's active
+            if gh auth status 2>&1 | grep -q "Logged in to github.com account leynos"; then
+                if gh auth status 2>&1 | grep -A 5 "account leynos" | grep -q "Active account: true"; then
+                    print_success "Correct GitHub account active (leynos)"
                 else
-                    print_error "GitHub account 'vinhnx' is logged in but not active"
-                    print_info "Run: gh auth switch --hostname github.com --user vinhnx"
+                    print_error "GitHub account 'leynos' is logged in but not active"
+                    print_info "Run: gh auth switch --hostname github.com --user leynos"
                 fi
             else
-                print_error "Not logged in to GitHub account: vinhnx"
+                print_error "Not logged in to GitHub account: leynos"
                 print_info "Run: gh auth login --hostname github.com"
             fi
         else
@@ -106,9 +106,9 @@ test_npm_package() {
         if jq -e '.bin' npm/package.json >/dev/null 2>&1; then
             print_success "package.json has 'bin' field"
             
-            local bin_path=$(jq -r '.bin.vtcode' npm/package.json 2>/dev/null || echo "")
-            if [[ "$bin_path" == "bin/vtcode" ]]; then
-                print_success "package.json bin field points to bin/vtcode"
+            local bin_path=$(jq -r '.bin.diapason' npm/package.json 2>/dev/null || echo "")
+            if [[ "$bin_path" == "bin/diapason" ]]; then
+                print_success "package.json bin field points to bin/diapason"
             else
                 print_error "package.json bin field incorrect: $bin_path"
             fi
@@ -133,25 +133,25 @@ test_npm_package() {
         print_error "npm/bin directory not found"
     fi
     
-    # Check if bin/vtcode exists and is executable
-    if [[ -f "npm/bin/vtcode" ]]; then
-        print_success "npm/bin/vtcode file exists"
+    # Check if bin/diapason exists and is executable
+    if [[ -f "npm/bin/diapason" ]]; then
+        print_success "npm/bin/diapason file exists"
         
-        if [[ -x "npm/bin/vtcode" ]]; then
-            print_success "npm/bin/vtcode is executable"
+        if [[ -x "npm/bin/diapason" ]]; then
+            print_success "npm/bin/diapason is executable"
         else
-            print_error "npm/bin/vtcode is not executable"
+            print_error "npm/bin/diapason is not executable"
         fi
         
         # Check file size (should be ~1KB)
-        local size=$(wc -c < "npm/bin/vtcode")
+        local size=$(wc -c < "npm/bin/diapason")
         if [[ $size -gt 100 && $size -lt 2000 ]]; then
-            print_success "npm/bin/vtcode has reasonable size ($size bytes)"
+            print_success "npm/bin/diapason has reasonable size ($size bytes)"
         else
-            print_warning "npm/bin/vtcode has unexpected size ($size bytes)"
+            print_warning "npm/bin/diapason has unexpected size ($size bytes)"
         fi
     else
-        print_error "npm/bin/vtcode file not found"
+        print_error "npm/bin/diapason file not found"
     fi
 }
 
@@ -168,11 +168,11 @@ test_npm_validation() {
         print_success "npm pack validation passed (no warnings/errors)"
     fi
     
-    # Check if bin/vtcode is included in package
-    if npm pack --dry-run 2>&1 | grep -q "bin/vtcode"; then
-        print_success "bin/vtcode is included in npm package"
+    # Check if bin/diapason is included in package
+    if npm pack --dry-run 2>&1 | grep -q "bin/diapason"; then
+        print_success "bin/diapason is included in npm package"
     else
-        print_error "bin/vtcode not found in npm package contents"
+        print_error "bin/diapason not found in npm package contents"
     fi
     
     cd ..
@@ -183,8 +183,8 @@ test_release_script() {
     print_header "Test 5: Checking release.sh enhancements"
     
     # Check for GitHub account verification
-    if grep -q "expected_account.*vinhnx" scripts/release.sh; then
-        print_success "release.sh has GitHub account verification"
+    if grep -q "gh auth switch -u leynos" scripts/release.sh; then
+        print_success "release.sh targets the Diapason repository owner"
     else
         print_error "release.sh missing GitHub account verification"
     fi
@@ -210,18 +210,12 @@ test_release_script() {
         print_error "release.sh missing automatic npm bin stub creation"
     fi
 
-    # Check for Homebrew tap publishing
-    if grep -q "publish_homebrew_tap" scripts/release.sh && grep -q "vinhnx/homebrew-tap" scripts/release.sh; then
-        print_success "release.sh publishes the Homebrew tap"
+    # Check that Homebrew is source-build-only and has no unverified tap push.
+    if grep -q "Homebrew is source-build-only" scripts/release.sh \
+        && ! grep -Eq "homebrew-tap|HOMEBREW_TAP_TOKEN|x-access-token:" scripts/release.sh; then
+        print_success "release.sh keeps Homebrew source-only without publishing a tap"
     else
-        print_error "release.sh missing Homebrew tap publication"
-    fi
-
-    # Check for authenticated push to the tap repo
-    if grep -q "HOMEBREW_TAP_TOKEN" scripts/release.sh && grep -q "x-access-token:.*github.com/vinhnx/homebrew-tap.git" scripts/release.sh; then
-        print_success "release.sh pushes to the tap repo via token-authenticated HTTPS"
-    else
-        print_error "release.sh missing token-authenticated HTTPS push for the tap repo"
+        print_error "release.sh has an unsupported Homebrew tap publication"
     fi
 }
 
@@ -230,8 +224,8 @@ test_build_script() {
     print_header "Test 6: Checking build-and-upload-binaries.sh enhancements"
     
     # Check for GitHub account verification
-    if grep -q "expected_account.*vinhnx" scripts/build-and-upload-binaries.sh; then
-        print_success "build-and-upload-binaries.sh has GitHub account verification"
+    if grep -q "gh auth switch -u leynos" scripts/build-and-upload-binaries.sh; then
+        print_success "build-and-upload-binaries.sh targets the Diapason repository owner"
     else
         print_error "build-and-upload-binaries.sh missing GitHub account verification"
     fi
@@ -257,18 +251,12 @@ test_build_script() {
         print_error "build-and-upload-binaries.sh missing release existence check"
     fi
 
-    # Check for Homebrew tap publication
-    if grep -q "vinhnx/homebrew-tap" scripts/build-and-upload-binaries.sh; then
-        print_success "build-and-upload-binaries.sh publishes to vinhnx/homebrew-tap"
+    # Check that Homebrew remains source-build-only without an external tap.
+    if grep -q "Homebrew is source-build-only" scripts/build-and-upload-binaries.sh \
+        && ! grep -Eq "homebrew-tap|HOMEBREW_TAP_TOKEN|x-access-token:" scripts/build-and-upload-binaries.sh; then
+        print_success "build-and-upload-binaries.sh does not publish a Homebrew tap"
     else
-        print_error "build-and-upload-binaries.sh missing Homebrew tap publication"
-    fi
-
-    # Check for authenticated HTTPS push
-    if grep -q "HOMEBREW_TAP_TOKEN" scripts/build-and-upload-binaries.sh && grep -q "x-access-token:.*github.com/vinhnx/homebrew-tap.git" scripts/build-and-upload-binaries.sh; then
-        print_success "build-and-upload-binaries.sh pushes via token-authenticated HTTPS"
-    else
-        print_error "build-and-upload-binaries.sh missing token-authenticated HTTPS push"
+        print_error "build-and-upload-binaries.sh contains an unsupported Homebrew tap"
     fi
 }
 
@@ -306,7 +294,7 @@ test_account_switch() {
     
     print_info "To switch to the correct account, run:"
     echo ""
-    echo "  gh auth switch --hostname github.com --user vinhnx"
+    echo "  gh auth switch --hostname github.com --user leynos"
     echo ""
     print_info "If that doesn't work, re-authenticate:"
     echo ""
@@ -351,8 +339,8 @@ run_all_tests() {
         echo ""
         print_info "Please review the errors above and fix any issues before running a release."
         print_info "Common fixes:"
-        echo "  - Switch to correct GitHub account: gh auth switch --hostname github.com --user vinhnx"
-        echo "  - Ensure npm/bin/vtcode exists and is executable"
+        echo "  - Switch to correct GitHub account: gh auth switch --hostname github.com --user leynos"
+        echo "  - Ensure npm/bin/diapason exists and is executable"
         echo "  - Check that GitHub CLI is installed and authenticated"
         exit 1
     fi
@@ -369,7 +357,7 @@ if [[ "$1" == "--help" || "$1" == "-h" ]]; then
     echo ""
     echo "This script checks:"
     echo "  ✓ Required scripts exist"
-    echo "  ✓ GitHub CLI is installed and using correct account (vinhnx)"
+    echo "  ✓ GitHub CLI is installed and using correct account (leynos)"
     echo "  ✓ npm package structure is valid"
     echo "  ✓ npm package passes validation (no warnings)"
     echo "  ✓ release.sh has all enhancements"

@@ -3,19 +3,19 @@ use crate::agent::runloop::unified::session_setup::ide_context::{IdeContextBridg
 use crate::agent::runloop::unified::{context_manager, palettes};
 use crate::agent::runloop::welcome::SessionBootstrap;
 use anyhow::Result;
+use diapason_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::{InlineHandle, InlineHeaderContext};
 use tracing::warn;
-use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::{InlineHandle, InlineHeaderContext};
 
 use super::persistent_memory::{apply_persistent_memory_header_guide, load_persistent_memory_status};
 
 pub(super) struct HeaderContextInit<'a> {
     pub(super) config: &'a CoreAgentConfig,
-    pub(super) vt_cfg: Option<&'a VTCodeConfig>,
+    pub(super) vt_cfg: Option<&'a DiapasonConfig>,
     pub(super) session_bootstrap: &'a SessionBootstrap,
     pub(super) provider_client: &'a dyn uni::LLMProvider,
     pub(super) header_provider_label: String,
@@ -45,7 +45,7 @@ pub(super) async fn initialize_header_context(
         );
         renderer.line(
             MessageStyle::Warning,
-            "Persistent memory is enabled, but VT Code couldn't load the TUI memory guide.",
+            "Persistent memory is enabled, but Diapason couldn't load the TUI memory guide.",
         )?;
     }
     let persistent_memory_status = persistent_memory_status.ok().flatten();
@@ -56,7 +56,7 @@ pub(super) async fn initialize_header_context(
     maybe_render_openai_priority_notice(renderer, config, vt_cfg)?;
     maybe_render_system_prompt_budget_warning(renderer, vt_cfg, session_bootstrap)?;
 
-    handle.set_theme(vtcode_core::ui::inline_theme_from_core_styles(&vtcode_core::ui::theme::active_styles()));
+    handle.set_theme(diapason_core::ui::inline_theme_from_core_styles(&diapason_core::ui::theme::active_styles()));
     palettes::apply_prompt_style(handle);
 
     let reasoning_label = vt_cfg
@@ -104,17 +104,17 @@ pub(super) async fn initialize_header_context(
 fn maybe_render_openai_priority_notice(
     renderer: &mut AnsiRenderer,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> Result<()> {
     if !config.provider.eq_ignore_ascii_case("openai") {
         return Ok(());
     }
 
-    let default_auth = vtcode_auth::OpenAIAuthConfig::default();
+    let default_auth = diapason_auth::OpenAIAuthConfig::default();
     let auth_cfg = vt_cfg.map(|cfg| &cfg.auth.openai).unwrap_or(&default_auth);
     let storage_mode = vt_cfg.map(|cfg| cfg.agent.credential_storage_mode).unwrap_or_default();
     let api_key = get_api_key_with_mode("openai", &ApiKeySources::default(), storage_mode).ok();
-    let overview = vtcode_config::auth::summarize_openai_credentials(auth_cfg, storage_mode, api_key)?;
+    let overview = diapason_config::auth::summarize_openai_credentials(auth_cfg, storage_mode, api_key)?;
     let Some(notice) = overview.notice.as_deref() else {
         return Ok(());
     };
@@ -132,7 +132,7 @@ fn maybe_render_openai_priority_notice(
 /// and headless sessions surface the same signal.
 fn maybe_render_system_prompt_budget_warning(
     renderer: &mut AnsiRenderer,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     session_bootstrap: &SessionBootstrap,
 ) -> Result<()> {
     let report = &session_bootstrap.system_prompt_report;
@@ -147,7 +147,7 @@ fn maybe_render_system_prompt_budget_warning(
 
     let max_tokens = vt_cfg
         .map(|cfg| cfg.agent.max_system_prompt_tokens)
-        .unwrap_or(vtcode_core::config::constants::prompt_budget::DEFAULT_MAX_SYSTEM_PROMPT_TOKENS);
+        .unwrap_or(diapason_core::config::constants::prompt_budget::DEFAULT_MAX_SYSTEM_PROMPT_TOKENS);
 
     renderer.line(
         MessageStyle::Warning,
@@ -163,8 +163,8 @@ pub(crate) fn apply_ide_context_snapshot(
     header_context: &mut InlineHeaderContext,
     handle: &InlineHandle,
     workspace: &std::path::Path,
-    vt_cfg: Option<&VTCodeConfig>,
-    snapshot: Option<vtcode_core::EditorContextSnapshot>,
+    vt_cfg: Option<&DiapasonConfig>,
+    snapshot: Option<diapason_core::EditorContextSnapshot>,
 ) {
     let ide_context_config = vt_cfg.map(|cfg| &cfg.ide_context);
     context_manager.set_editor_context_snapshot(snapshot.clone(), ide_context_config);

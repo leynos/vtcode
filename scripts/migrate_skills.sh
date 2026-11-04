@@ -3,8 +3,8 @@ set -euo pipefail
 
 usage() {
   echo "Usage: scripts/migrate_skills.sh [--copy|--move]"
-  echo "  --copy   Copy .vtcode/skills to .agents/skills (default)"
-  echo "  --move   Move .vtcode/skills to .agents/skills"
+  echo "  --copy   Copy .diapason/skills to .agents/skills (default)"
+  echo "  --move   Move .diapason/skills to .agents/skills"
 }
 
 mode="copy"
@@ -25,7 +25,7 @@ if [[ $# -eq 1 ]]; then
   esac
 fi
 
-src=".vtcode/skills"
+src=".diapason/skills"
 dst=".agents/skills"
 
 if [[ ! -d "$src" ]]; then

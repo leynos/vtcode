@@ -29,7 +29,7 @@ cargo install cargo-unmaintained
 Run a scan on the entire workspace:
 
 ```bash
-cd /path/to/vtcode
+cd /path/to/diapason
 cargo unmaintained
 ```
 
@@ -54,7 +54,7 @@ cargo unmaintained --json
 Scan only a specific package:
 
 ```bash
-cargo unmaintained --package vtcode-core
+cargo unmaintained --package diapason-core
 ```
 
 ### Show Dependency Paths
@@ -127,7 +127,7 @@ cargo unmaintained --save-token
 | `--tree`               | Show dependency paths to unmaintained packages               |
 | `--verbose`            | Show detailed progress information                           |
 
-## Integration with VT Code Development
+## Integration with Diapason Development
 
 ### Pre-commit Check
 
@@ -169,7 +169,7 @@ export GITHUB_TOKEN_PATH="$HOME/.github_token"
 
 ### Slow Scans
 
-For large workspaces like VT Code, scans can take time. Use these options to
+For large workspaces like Diapason, scans can take time. Use these options to
 speed up:
 
 ```bash
@@ -202,7 +202,7 @@ latest version of `another-crate` using crates.io index...ok (1.2.3)
 `old-crate` appears to be unmaintained
   Repository: https://github.com/user/old-crate
   Last commit: 548 days ago
-  Used by: vtcode-core -> dependency-chain -> old-crate
+  Used by: diapason-core -> dependency-chain -> old-crate
 ```
 
 ## Resources

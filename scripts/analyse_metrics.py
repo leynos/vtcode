@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-analyse_metrics.py - Analyse VT Code performance metrics
-Usage: python3 scripts/analyse_metrics.py vtcode_performance_metrics.csv
+analyse_metrics.py - Analyse Diapason performance metrics
+Usage: python3 scripts/analyse_metrics.py diapason_performance_metrics.csv
 """
 
 import csv
@@ -131,7 +131,7 @@ class PerformanceAnalyser:
     def print_summary(self):
         """Print comprehensive analysis report"""
         print("\n" + "="*70)
-        print(" VT CODE PERFORMANCE ANALYSIS REPORT")
+        print(" DIAPASON PERFORMANCE ANALYSIS REPORT")
         print("="*70)
 
         print(f"\n Analysis of: {self.csv_file}")
@@ -249,7 +249,7 @@ class PerformanceAnalyser:
 <!DOCTYPE html>
 <html>
 <head>
-    <title>VT Code Performance Report</title>
+    <title>Diapason Performance Report</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; }}
@@ -262,7 +262,7 @@ class PerformanceAnalyser:
     </style>
 </head>
 <body>
-    <h1>VT Code Performance Report</h1>
+    <h1>Diapason Performance Report</h1>
     <p>Generated: {datetime.now().isoformat()}</p>
 
     <h2>Memory Usage Over Time</h2>

@@ -7,22 +7,22 @@ use crate::agent::runloop::unified::state::CtrlCState;
 use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
 use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
 use crate::agent::runloop::welcome::SessionBootstrap;
+use diapason_core::acp::ToolPermissionCache;
+use diapason_core::config::PermissionsConfig;
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::core::trajectory::TrajectoryLogger;
+use diapason_core::hooks::{LifecycleHookEngine, SessionEndReason};
+use diapason_core::llm::provider as uni;
+use diapason_core::primary_agent::ActivePrimaryAgentState;
+use diapason_core::tools::ApprovalRecorder;
+use diapason_core::tools::{ToolRegistry, ToolResultCache};
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_core::utils::session_archive::SessionArchive;
+use diapason_ui::tui::app::{InlineHandle, InlineHeaderContext, InlineSession};
 use hashbrown::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::{Notify, RwLock};
-use vtcode_core::acp::ToolPermissionCache;
-use vtcode_core::config::PermissionsConfig;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::core::trajectory::TrajectoryLogger;
-use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::primary_agent::ActivePrimaryAgentState;
-use vtcode_core::tools::ApprovalRecorder;
-use vtcode_core::tools::{ToolRegistry, ToolResultCache};
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_core::utils::session_archive::SessionArchive;
-use vtcode_ui::tui::app::{InlineHandle, InlineHeaderContext, InlineSession};
 
 use crate::updater::{StartupUpdateCheck, StartupUpdateNotice};
 
@@ -50,18 +50,18 @@ pub(crate) struct ToolExecutionContext {
     pub permissions_state: Arc<RwLock<PermissionsConfig>>,
     pub approval_recorder: Arc<ApprovalRecorder>,
     pub safety_validator: Arc<ToolCallSafetyValidator>,
-    pub circuit_breaker: Arc<vtcode_core::tools::circuit_breaker::CircuitBreaker>,
-    pub tool_health_tracker: Arc<vtcode_core::tools::health::ToolHealthTracker>,
-    pub rate_limiter: Arc<vtcode_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
-    pub validation_cache: Arc<vtcode_core::tools::validation_cache::ValidationCache>,
-    pub autonomous_executor: Arc<vtcode_core::tools::autonomous_executor::AutonomousExecutor>,
+    pub circuit_breaker: Arc<diapason_core::tools::circuit_breaker::CircuitBreaker>,
+    pub tool_health_tracker: Arc<diapason_core::tools::health::ToolHealthTracker>,
+    pub rate_limiter: Arc<diapason_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
+    pub validation_cache: Arc<diapason_core::tools::validation_cache::ValidationCache>,
+    pub autonomous_executor: Arc<diapason_core::tools::autonomous_executor::AutonomousExecutor>,
 }
 
 pub(crate) struct SessionMetadataContext {
     pub decision_ledger: Arc<RwLock<DecisionTracker>>,
     pub trajectory: TrajectoryLogger,
-    pub telemetry: Arc<vtcode_core::core::telemetry::TelemetryManager>,
-    pub error_recovery: Arc<RwLock<vtcode_core::core::agent::error_recovery::ErrorRecoveryState>>,
+    pub telemetry: Arc<diapason_core::core::telemetry::TelemetryManager>,
+    pub error_recovery: Arc<RwLock<diapason_core::core::agent::error_recovery::ErrorRecoveryState>>,
 }
 
 pub(crate) struct SessionState {
@@ -78,7 +78,7 @@ pub(crate) struct SessionState {
     pub full_auto_allowlist: Option<Vec<String>>,
     pub async_mcp_manager: Option<Arc<AsyncMcpManager>>,
     pub mcp_panel_state: mcp_events::McpPanelState,
-    pub loaded_skills: Arc<RwLock<HashMap<String, vtcode_core::skills::types::Skill>>>,
+    pub loaded_skills: Arc<RwLock<HashMap<String, diapason_core::skills::types::Skill>>>,
     pub active_primary_agent: ActivePrimaryAgentState,
 }
 
@@ -91,7 +91,7 @@ pub(crate) struct SessionUISetup {
     pub ctrl_c_state: Arc<CtrlCState>,
     pub ctrl_c_notify: Arc<Notify>,
     pub input_activity_counter: Arc<AtomicU64>,
-    pub checkpoint_manager: Option<vtcode_core::core::agent::snapshots::SnapshotManager>,
+    pub checkpoint_manager: Option<diapason_core::core::agent::snapshots::SnapshotManager>,
     pub session_archive: Option<SessionArchive>,
     pub lifecycle_hooks: Option<LifecycleHookEngine>,
     pub session_end_reason: SessionEndReason,
@@ -120,19 +120,21 @@ pub(crate) async fn build_conversation_history_from_resume(resume: Option<&Resum
 mod tests {
     use super::*;
     use chrono::Utc;
+    use diapason_core::core::threads::ArchivedSessionIntent;
+    use diapason_core::llm::provider::MessageRole;
+    use diapason_core::utils::session_archive::{
+        SessionArchiveMetadata, SessionListing, SessionMessage, SessionSnapshot,
+    };
     use std::fs;
     use std::path::PathBuf;
     use tempfile::tempdir;
-    use vtcode_core::core::threads::ArchivedSessionIntent;
-    use vtcode_core::llm::provider::MessageRole;
-    use vtcode_core::utils::session_archive::{
-        SessionArchiveMetadata, SessionListing, SessionMessage, SessionSnapshot,
-    };
 
     #[tokio::test]
     async fn plain_resume_with_full_history_does_not_inject_latest_memory_envelope() {
         let temp = tempdir().expect("tempdir");
-        let history_dir = temp.path().join(".vtcode").join("history");
+        let history_dir = diapason_commons::workspace_state_dir(temp.path())
+            .expect("workspace state")
+            .join("history");
         fs::create_dir_all(&history_dir).expect("history dir");
         fs::write(
             history_dir.join("resume-session.memory.json"),

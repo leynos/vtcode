@@ -1,10 +1,10 @@
 # Fuzzing Guide
 
-This guide describes local fuzz testing for VT Code with `cargo-fuzz`.
+This guide describes local fuzz testing for Diapason with `cargo-fuzz`.
 
 ## Scope
 
-Current fuzz targets focus on security parser surfaces in `vtcode-core`:
+Current fuzz targets focus on security parser surfaces in `diapason-core`:
 
 - `shell_parser`: `command_safety::shell_parser` parsing paths
 - `exec_policy_parser`: `exec_policy::PolicyParser` (simple/TOML/JSON)
@@ -15,7 +15,7 @@ Current fuzz targets focus on security parser surfaces in `vtcode-core`:
 
 ## Prerequisites
 
-VT Code defaults to stable Rust. Fuzzing uses nightly explicitly.
+Diapason defaults to stable Rust. Fuzzing uses nightly explicitly.
 
 ```bash
 # Install cargo-fuzz once

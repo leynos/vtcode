@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use vtcode_core::command_safety::shell_parser::{
+use diapason_core::command_safety::shell_parser::{
     parse_bash_lc_commands, parse_shell_commands, parse_shell_commands_tree_sitter,
 };
 

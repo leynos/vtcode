@@ -37,7 +37,7 @@ describe("TaskTrackerCommand", () => {
     it("executes task-tracker task when available", async () => {
         const task = {
             name: "Task Tracker",
-            definition: { type: "vtcode", command: "task-tracker" },
+            definition: { type: "diapason", command: "task-tracker" },
         } as unknown as vscode.Task;
 
         mockFetchTasks.mockResolvedValue([task]);
@@ -45,7 +45,7 @@ describe("TaskTrackerCommand", () => {
 
         await command.execute(mockContext);
 
-        expect(mockFetchTasks).toHaveBeenCalledWith({ type: "vtcode" });
+        expect(mockFetchTasks).toHaveBeenCalledWith({ type: "diapason" });
         expect(mockExecuteTask).toHaveBeenCalledWith(task);
         expect(mockShowWarningMessage).not.toHaveBeenCalled();
     });
@@ -57,7 +57,7 @@ describe("TaskTrackerCommand", () => {
         await command.execute(mockContext);
 
         expect(mockShowWarningMessage).toHaveBeenCalledWith(
-            "No VT Code task tracker tasks are available. Define a VT Code task in tasks.json to customize the workflow."
+            "No Diapason task tracker tasks are available. Define a Diapason task in tasks.json to customize the workflow."
         );
         expect(mockExecuteTask).not.toHaveBeenCalled();
     });
@@ -65,7 +65,7 @@ describe("TaskTrackerCommand", () => {
     it("shows migration warning when only legacy update-plan tasks exist", async () => {
         const legacyTask = {
             name: "Legacy Update Plan",
-            definition: { type: "vtcode", command: "update-plan" },
+            definition: { type: "diapason", command: "update-plan" },
         } as unknown as vscode.Task;
 
         mockFetchTasks.mockResolvedValue([legacyTask]);
@@ -74,7 +74,7 @@ describe("TaskTrackerCommand", () => {
         await command.execute(mockContext);
 
         expect(mockShowWarningMessage).toHaveBeenCalledWith(
-            'No VT Code task tracker tasks are available. Migrate tasks.json entries from command "update-plan" to "task-tracker".'
+            'No Diapason task tracker tasks are available. Migrate tasks.json entries from command "update-plan" to "task-tracker".'
         );
         expect(mockExecuteTask).not.toHaveBeenCalled();
     });
@@ -82,11 +82,11 @@ describe("TaskTrackerCommand", () => {
     it("uses quick pick when multiple compatible tasks are available", async () => {
         const first = {
             name: "Tracker A",
-            definition: { type: "vtcode", command: "task-tracker" },
+            definition: { type: "diapason", command: "task-tracker" },
         } as unknown as vscode.Task;
         const second = {
             name: "Tracker B",
-            definition: { type: "vtcode", command: "task-tracker" },
+            definition: { type: "diapason", command: "task-tracker" },
         } as unknown as vscode.Task;
 
         mockFetchTasks.mockResolvedValue([first, second]);
@@ -105,11 +105,11 @@ describe("TaskTrackerCommand", () => {
     it("does nothing when quick pick selection is cancelled", async () => {
         const first = {
             name: "Tracker A",
-            definition: { type: "vtcode", command: "task-tracker" },
+            definition: { type: "diapason", command: "task-tracker" },
         } as unknown as vscode.Task;
         const second = {
             name: "Tracker B",
-            definition: { type: "vtcode", command: "task-tracker" },
+            definition: { type: "diapason", command: "task-tracker" },
         } as unknown as vscode.Task;
 
         mockFetchTasks.mockResolvedValue([first, second]);
@@ -121,9 +121,9 @@ describe("TaskTrackerCommand", () => {
     });
 
     it("exposes updated command metadata", () => {
-        expect(command.id).toBe("vtcode.runTaskTrackerTask");
+        expect(command.id).toBe("diapason.runTaskTrackerTask");
         expect(command.title).toBe("Task Tracker");
-        expect(command.description).toBe("Run the VT Code task tracker");
+        expect(command.description).toBe("Run the Diapason task tracker");
         expect(command.icon).toBe("checklist");
     });
 });

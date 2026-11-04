@@ -11,7 +11,7 @@
 
 ```bash
 export ZAI_API_KEY="..."
-vtcode --provider zai --model glm-5.3-flash ask "Recreate this UI from screenshots using Next.js"
+diapason --provider zai --model glm-5.3-flash ask "Recreate this UI from screenshots using Next.js"
 ```
 
 Official Z.AI models:
@@ -22,7 +22,7 @@ Official Z.AI models:
 - `glm-5.2` — flagship long-horizon, 1M context
 
 Recommended Flash settings: `temperature: 1`, `top_p: 0.95`,
-`reasoning_effort: max` (`xhigh` in VT Code), `thinking.type: enabled` (cannot
+`reasoning_effort: max` (`xhigh` in Diapason), `thinking.type: enabled` (cannot
 be disabled), `tool_stream: true` with streaming.
 
 See the [full Z.AI provider guide](./zai.md) and

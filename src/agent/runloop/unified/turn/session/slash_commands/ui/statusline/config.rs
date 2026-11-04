@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
-use vtcode_core::config::{StatusLineConfig, StatusLineMode};
-use vtcode_ui::tui::app::InlineListItem;
+use diapason_core::config::{StatusLineConfig, StatusLineMode};
+use diapason_ui::tui::app::InlineListItem;
 
 use super::super::config_action_item;
 
@@ -21,7 +21,7 @@ pub(super) fn build_statusline_setup_items(draft: &StatusLineConfig, script_exis
     let mut items = Vec::new();
 
     for (mode, label, subtitle) in [
-        (StatusLineMode::Auto, "Use auto permission review", "Show VT Code-built status components."),
+        (StatusLineMode::Auto, "Use auto permission review", "Show Diapason-built status components."),
         (StatusLineMode::Command, "Use command mode", "Run a shell command and render its first output line."),
         (StatusLineMode::Hidden, "Hide status line", "Disable the bottom status line."),
     ] {

@@ -3,9 +3,9 @@ use std::path::Path;
 
 use anyhow::Result;
 use chrono::Local;
+use diapason_core::core::threads::{SessionQueryScope, list_recent_sessions_in_scope};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 use std::time::Duration;
-use vtcode_core::core::threads::{SessionQueryScope, list_recent_sessions_in_scope};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use crate::agent::runloop::unified::palettes::format_duration_label;
 use crate::cli::auth::{COPILOT_PROVIDER, OPENAI_PROVIDER, OPENROUTER_PROVIDER, supports_auth_provider};
@@ -161,9 +161,9 @@ pub(super) fn handle_rewind_command(args: &str, renderer: &mut AnsiRenderer) -> 
     // Determine the revert scope
     let scope = if let Some(scope_str) = scope_str {
         match scope_str.to_ascii_lowercase().as_str() {
-            "conversation" | "chat" => vtcode_core::core::agent::snapshots::RevertScope::Conversation,
-            "code" | "files" => vtcode_core::core::agent::snapshots::RevertScope::Code,
-            "both" | "full" => vtcode_core::core::agent::snapshots::RevertScope::Both,
+            "conversation" | "chat" => diapason_core::core::agent::snapshots::RevertScope::Conversation,
+            "code" | "files" => diapason_core::core::agent::snapshots::RevertScope::Code,
+            "both" | "full" => diapason_core::core::agent::snapshots::RevertScope::Both,
             _ => {
                 renderer.line(
                     MessageStyle::Error,
@@ -174,7 +174,7 @@ pub(super) fn handle_rewind_command(args: &str, renderer: &mut AnsiRenderer) -> 
         }
     } else {
         // Default to both if no scope specified
-        vtcode_core::core::agent::snapshots::RevertScope::Both
+        diapason_core::core::agent::snapshots::RevertScope::Both
     };
 
     // Use turn number if provided, otherwise use a default behaviour
@@ -236,7 +236,7 @@ pub(super) fn handle_login_command(args: &str, renderer: &mut AnsiRenderer) -> R
     }
     if !supports_auth_provider(&provider) {
         renderer
-            .line(MessageStyle::Error, &format!("Provider '{provider}' does not support VT Code authentication."))?;
+            .line(MessageStyle::Error, &format!("Provider '{provider}' does not support Diapason authentication."))?;
         renderer.line(MessageStyle::Info, "Supported authentication providers: openai, openrouter, copilot")?;
         renderer.line(MessageStyle::Output, "")?;
         renderer.line(
@@ -263,7 +263,7 @@ pub(super) fn handle_logout_command(args: &str, renderer: &mut AnsiRenderer) -> 
     if !supports_auth_provider(&provider) {
         renderer.line(
             MessageStyle::Error,
-            &format!("Provider '{provider}' does not use VT Code-managed authentication."),
+            &format!("Provider '{provider}' does not use Diapason-managed authentication."),
         )?;
         return Ok(SlashCommandOutcome::Handled);
     }
@@ -299,9 +299,9 @@ pub(super) fn handle_auth_command(args: &str) -> SlashCommandOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diapason_core::utils::ansi::AnsiRenderer;
+    use diapason_ui::tui::app::InlineHandle;
     use tokio::sync::mpsc::unbounded_channel;
-    use vtcode_core::utils::ansi::AnsiRenderer;
-    use vtcode_ui::tui::app::InlineHandle;
 
     #[test]
     fn rewind_without_args_opens_history_picker() {

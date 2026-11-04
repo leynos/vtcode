@@ -11,7 +11,7 @@ plugins, providing high-performance, pre-compiled capabilities.
 
 ### 1. Core Infrastructure
 
-#### New Module: `crates/codegen/vtcode-core/src/skills/native_plugin.rs`
+#### New Module: `crates/codegen/diapason-core/src/skills/native_plugin.rs`
 
 **Key Components:**
 
@@ -32,10 +32,10 @@ plugins, providing high-performance, pre-compiled capabilities.
   - Platform-specific library naming
 
 - **Plugin ABI Functions**:
-  - `vtcode_plugin_version()` - Returns ABI version (u32)
-  - `vtcode_plugin_metadata()` - Returns JSON metadata string
-  - `vtcode_plugin_execute()` - Main execution entry point
-  - `vtcode_plugin_free_string()` - Memory cleanup (optional)
+  - `diapason_plugin_version()` - Returns ABI version (u32)
+  - `diapason_plugin_metadata()` - Returns JSON metadata string
+  - `diapason_plugin_execute()` - Main execution entry point
+  - `diapason_plugin_free_string()` - Memory cleanup (optional)
 
 #### Data Structures
 
@@ -127,7 +127,7 @@ Added `try_load_plugin_from_dir()` to loader.rs:
 libloading = "0.8"
 ```
 
-#### vtcode-core Dependencies
+#### diapason-core Dependencies
 
 ```toml
 [dependencies]
@@ -221,13 +221,13 @@ The implementation uses `unsafe` for:
 
     ```rust
     #[no_mangle]
-    pub extern "C" fn vtcode_plugin_version() -> u32 { 1 }
+    pub extern "C" fn diapason_plugin_version() -> u32 { 1 }
 
     #[no_mangle]
-    pub extern "C" fn vtcode_plugin_metadata() -> *const c_char { ... }
+    pub extern "C" fn diapason_plugin_metadata() -> *const c_char { ... }
 
     #[no_mangle]
-    pub extern "C" fn vtcode_plugin_execute(input: *const c_char) -> *const c_char { ... }
+    pub extern "C" fn diapason_plugin_execute(input: *const c_char) -> *const c_char { ... }
     ```
 
 3. **Build:**
@@ -247,22 +247,22 @@ The implementation uses `unsafe` for:
 5. **Use:**
 
     ```bash
-    vtcode skills list
-    vtcode skills info my-plugin
+    diapason skills list
+    diapason skills info my-plugin
     ```
 
-### For VT Code Users
+### For Diapason Users
 
 1. **Discover Plugins:**
 
     ```bash
-    vtcode skills list  # Shows all skills including plugins
+    diapason skills list  # Shows all skills including plugins
     ```
 
 2. **View Plugin Info:**
 
     ```bash
-    vtcode skills info plugin-name
+    diapason skills info plugin-name
     ```
 
 3. **Use in Session:**
@@ -293,8 +293,8 @@ Included in hello-world example:
 ### Running Tests
 
 ```bash
-# Test vtcode-core
-cargo test --package vtcode-core skills::native_plugin
+# Test diapason-core
+cargo test --package diapason-core skills::native_plugin
 
 # Test example plugin
 cd examples/plugins/hello-world
@@ -303,10 +303,10 @@ cargo test
 
 ## Build Verification
 
-v **vtcode-core compiles successfully**
+v **diapason-core compiles successfully**
 
 ```bash
-cargo check --package vtcode-core
+cargo check --package diapason-core
 # Finished dev [unoptimized] target(s)
 ```
 
@@ -322,7 +322,7 @@ cargo check
 
 ### New Files
 
-1. `crates/codegen/vtcode-core/src/skills/native_plugin.rs` - Core
+1. `crates/codegen/diapason-core/src/skills/native_plugin.rs` - Core
    implementation
 2. `docs/skills/NATIVE_PLUGIN_GUIDE.md` - User documentation
 3. `examples/plugins/hello-world/Cargo.toml` - Example config
@@ -334,10 +334,10 @@ cargo check
 ### Modified Files
 
 1. `Cargo.toml` - Added libloading dependency
-2. `vtcode-core/Cargo.toml` - Added libloading dependency
-3. `crates/codegen/vtcode-core/src/skills/mod.rs` - Exported native_plugin
+2. `diapason-core/Cargo.toml` - Added libloading dependency
+3. `crates/codegen/diapason-core/src/skills/mod.rs` - Exported native_plugin
    module
-4. `crates/codegen/vtcode-core/src/skills/loader.rs` - Plugin discovery and
+4. `crates/codegen/diapason-core/src/skills/loader.rs` - Plugin discovery and
    loading
 
 ## Architecture Decisions
@@ -413,10 +413,10 @@ cargo check
     - Network isolation
 
 3. **Plugin Manager CLI**
-    - `vtcode plugins install <url>`
-    - `vtcode plugins uninstall <name>`
-    - `vtcode plugins update`
-    - `vtcode plugins list`
+    - `diapason plugins install <url>`
+    - `diapason plugins uninstall <name>`
+    - `diapason plugins update`
+    - `diapason plugins list`
 
 4. **Plugin Registry**
     - Central plugin repository
@@ -467,7 +467,7 @@ cargo check
 4. **Single Threaded Execution**
     - One plugin call at a time
     - No concurrent execution per loaded plugin instance
-    - Public trait stays `Send + Sync`, but VT Code serializes ABI v1 FFI
+    - Public trait stays `Send + Sync`, but Diapason serializes ABI v1 FFI
       calls internally
 
 ## Security Considerations
@@ -529,16 +529,16 @@ cargo check
 - [libloading Documentation](https://docs.rs/libloading)
 - [Rust FFI Guide](https://doc.rust-lang.org/nomicon/ffi.html)
 - [Agent Skills Standard](http://agentskills.io/)
-- [VT Code Skills Guide](./SKILLS_GUIDE.md)
+- [Diapason Skills Guide](./SKILLS_GUIDE.md)
 
 ## Conclusion
 
-The Native Plugin System integrates libloading into VT Code's skill
+The Native Plugin System integrates libloading into Diapason's skill
 architecture, enabling high-performance native code extensions behind an
 explicit trust and approval boundary. Repository-controlled plugin roots remain
 metadata-only, and generic skill lookup does not open native libraries.
 
 ______________________________________________________________________
 
-**Implementation Date:** March 3, 2026 **Implemented By:** VT Code Team
+**Implementation Date:** March 3, 2026 **Implemented By:** Diapason Team
 **Status:** v Complete and Functional

@@ -1,6 +1,6 @@
 use crate::agent::runloop::unified::planning_workflow::PlanExecutionContext;
-use vtcode_core::hooks::SessionEndReason;
-use vtcode_ui::tui::app::SubmittedInput;
+use diapason_core::hooks::SessionEndReason;
+use diapason_ui::tui::app::SubmittedInput;
 
 pub(crate) enum InlineLoopAction {
     Continue,

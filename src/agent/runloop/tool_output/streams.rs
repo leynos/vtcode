@@ -34,7 +34,7 @@
 //! - `INLINE_STREAM_MAX_LINES: 30`: Limits visible output in inline mode
 //! - `MAX_CODE_LINES: 30`: For code fence blocks (full output in spool files)
 //!
-//! Full output is spooled to workspace `.vtcode/tool-output/` for later review.
+//! Full output is spooled to workspace `.diapason/tool-output/` for later review.
 //! For very large outputs, files are saved to the user cache's
 //! `large-output/<session_hash>/call_<id>.output`
 //! with a notification displayed to the client.
@@ -43,22 +43,22 @@ use std::borrow::Cow;
 
 use anstyle::{AnsiColor, Effects, Reset, Style as AnsiStyle};
 use anyhow::Result;
-use smallvec::SmallVec;
-use vtcode_commons::diff_paths::{
+use diapason_commons::diff_paths::{
     is_prose_language_hint, language_hint_from_path, parse_diff_git_path, parse_diff_marker_path,
 };
-use vtcode_commons::diff_preview::{
+use diapason_commons::diff_preview::{
     DiffDisplayKind, DiffDisplayLine, diff_display_line_number_width, display_lines_from_unified_diff,
 };
-use vtcode_commons::preview::{
+use diapason_commons::preview::{
     display_width, excerpt_text_lines, format_hidden_lines_summary as shared_hidden_lines_summary,
     truncate_with_ellipsis,
 };
-use vtcode_core::config::ToolOutputMode;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::tools::tool_intent;
-use vtcode_core::ui::markdown;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::ToolOutputMode;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::tools::tool_intent;
+use diapason_core::ui::markdown;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use smallvec::SmallVec;
 
 use super::files::colorize_diff_summary_line;
 use super::styles::{GitStyles, LsStyles, select_line_style};
@@ -311,9 +311,9 @@ async fn render_run_command_preview(
     tool_name: Option<&str>,
     fallback_style: MessageStyle,
     disable_spool: bool,
-    config: Option<&VTCodeConfig>,
+    config: Option<&DiapasonConfig>,
 ) -> Result<()> {
-    let run_tool_name = tool_name.unwrap_or(vtcode_core::config::constants::tools::RUN_PTY_CMD);
+    let run_tool_name = tool_name.unwrap_or(diapason_core::config::constants::tools::RUN_PTY_CMD);
     if !disable_spool && let Ok(Some(log_path)) = spool_output_if_needed(content, run_tool_name, config).await {
         let total = content.lines().count();
         renderer.line(
@@ -478,14 +478,14 @@ pub(crate) async fn render_stream_section(
     fallback_style: MessageStyle,
     allow_ansi: bool,
     disable_spool: bool,
-    config: Option<&VTCodeConfig>,
+    config: Option<&DiapasonConfig>,
 ) -> Result<()> {
     use std::fmt::Write as FmtWrite;
 
     let is_run_command = tool_name.is_some_and(|name| {
         tool_intent::is_command_run_tool(name)
-            || name == vtcode_core::config::constants::tools::UNIFIED_EXEC
-            || name == vtcode_core::config::constants::tools::EXEC_PTY_CMD
+            || name == diapason_core::config::constants::tools::UNIFIED_EXEC
+            || name == diapason_core::config::constants::tools::EXEC_PTY_CMD
     });
     let allow_ansi_for_tool = allow_ansi && !is_run_command;
     let apply_line_styles = !is_run_command;
@@ -659,11 +659,11 @@ pub(crate) async fn render_stream_section(
 
 #[cfg(test)]
 mod tests {
-    use vtcode_core::ui::InlineHandle;
-    use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+    use diapason_core::ui::InlineHandle;
+    use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
     use anstyle::AnsiColor;
-    use vtcode_commons::diff_preview::{DiffDisplayKind, DiffDisplayLine, display_lines_from_unified_diff};
+    use diapason_commons::diff_preview::{DiffDisplayKind, DiffDisplayLine, display_lines_from_unified_diff};
 
     use crate::agent::runloop::tool_output::collect_inline_output;
 
@@ -841,7 +841,7 @@ mod tests {
         );
         let stripped = strip_ansi_codes(rendered);
         assert!(
-            vtcode_commons::preview::display_width(&stripped) <= MAX_LINE_LENGTH + gutter_width,
+            diapason_commons::preview::display_width(&stripped) <= MAX_LINE_LENGTH + gutter_width,
             "rendered diff line must not exceed MAX_LINE_LENGTH + gutter width"
         );
         assert!(stripped.contains("..."));
@@ -857,7 +857,7 @@ mod tests {
 
     #[test]
     fn language_hint_from_path_extracts_extension() {
-        assert_eq!(language_hint_from_path("vtcode-tui/src/ui/markdown.rs").as_deref(), Some("rs"));
+        assert_eq!(language_hint_from_path("diapason-tui/src/ui/markdown.rs").as_deref(), Some("rs"));
         assert_eq!(language_hint_from_path("Makefile"), None);
     }
 

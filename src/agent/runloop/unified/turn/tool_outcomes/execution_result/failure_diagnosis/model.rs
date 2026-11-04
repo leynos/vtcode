@@ -3,12 +3,12 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
-use serde_json::{Value, json};
-use vtcode_core::llm::provider::{LLMProvider, LLMRequest, Message as LlmMessage};
-use vtcode_core::llm::{
+use diapason_core::llm::provider::{LLMProvider, LLMRequest, Message as LlmMessage};
+use diapason_core::llm::{
     LightweightFeature, collect_single_response, create_provider_for_model_route, resolve_lightweight_route,
 };
+use serde::Deserialize;
+use serde_json::{Value, json};
 
 use super::evidence::{escape_untrusted_evidence, safe_error_text};
 use super::{
@@ -80,7 +80,7 @@ pub(super) async fn diagnose_with_optional_model(
 
 async fn diagnose_with_route(
     ctx: &mut TurnProcessingContext<'_>,
-    route: &vtcode_core::llm::ModelRoute,
+    route: &diapason_core::llm::ModelRoute,
     evidence: &str,
 ) -> Result<String> {
     let same_runtime_provider = !ctx.config.provider.trim().is_empty()
@@ -107,9 +107,9 @@ async fn diagnose_with_route(
 
 async fn request_diagnosis_with_provider(
     provider: &(impl LLMProvider + ?Sized),
-    route: &vtcode_core::llm::ModelRoute,
+    route: &diapason_core::llm::ModelRoute,
     evidence: &str,
-) -> Result<vtcode_core::llm::provider::LLMResponse> {
+) -> Result<diapason_core::llm::provider::LLMResponse> {
     let prompt = diagnosis_prompt(evidence);
     let schema = diagnosis_json_schema();
     let supports_native_json = provider.supports_structured_output(&route.model);

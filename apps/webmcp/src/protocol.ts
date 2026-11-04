@@ -276,7 +276,7 @@ export function isCanonicalRuntimeEvent(value: unknown): value is CanonicalRunti
     default:
       // ThreadEvent has an explicit serde(other) variant. Keep accepting new
       // discriminators so an older browser can observe, but not interpret,
-      // events added by a newer VT Code runtime.
+      // events added by a newer Diapason runtime.
       return true;
   }
 }
@@ -515,5 +515,5 @@ function isThreadItem(value: unknown): boolean {
 }
 
 function protocolError(detail: string): BackendError {
-  return new BackendError(`VT Code sent an invalid WebMCP frame: ${detail}`, "protocol_error");
+  return new BackendError(`Diapason sent an invalid WebMCP frame: ${detail}`, "protocol_error");
 }

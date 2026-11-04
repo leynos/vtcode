@@ -1,0 +1,40 @@
+[package]
+name = "diapason-skills"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93.0"
+authors = ["Vinh Nguyen <vinhnguyen2308@gmail.com>", "df12 Productions"]
+description = "Skill types, discovery, loading, and validation for Diapason"
+license.workspace = true
+readme = "README.md"
+homepage = "https://github.com/leynos/vtcode"
+repository = "https://github.com/leynos/vtcode"
+documentation = "https://docs.rs/diapason-skills"
+categories = ["development-tools"]
+keywords = ["vt", "skills", "agent", "plugins", "discovery"]
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+chrono.workspace = true
+hashbrown.workspace = true
+include_dir = "0.7"
+libloading = "0.9"
+lru = "0.18"
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde-saphyr.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+diapason-commons = { workspace = true }
+diapason-config = { workspace = true }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+serial_test.workspace = true
+
+[lints]
+workspace = true

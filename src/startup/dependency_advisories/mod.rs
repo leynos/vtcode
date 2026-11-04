@@ -2,7 +2,7 @@ mod notice;
 mod storage;
 
 use anyhow::Result;
-use vtcode_core::utils::ansi::AnsiRenderer;
+use diapason_core::utils::ansi::AnsiRenderer;
 
 pub(crate) use notice::OptionalSearchToolsNotice as SearchToolsBundleNotice;
 pub(crate) use storage::take_optional_search_tools_notice as take_search_tools_bundle_notice;

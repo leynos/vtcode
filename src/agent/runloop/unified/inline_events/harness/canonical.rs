@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::path::Path;
 
-use vtcode_core::core::agent::events::SessionStoreSink;
-use vtcode_core::exec::events::ThreadEvent;
+use diapason_core::core::agent::events::SessionStoreSink;
+use diapason_core::exec::events::ThreadEvent;
 
 /// Authoritative session-event sink for one run.
 pub(crate) struct CanonicalEventSink {

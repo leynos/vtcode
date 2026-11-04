@@ -1,6 +1,6 @@
 # Signal Handling Architecture
 
-This document describes the signal handling architecture in vtcode, with
+This document describes the signal handling architecture in diapason, with
 emphasis on the priority guarantees for Ctrl+C (SIGINT) and /exit commands.
 
 ## Priority Guarantees
@@ -105,7 +105,7 @@ This ensures the program exits immediately, even if other tasks are blocked.
 
 ### 3. SIGTERM Emergency Handler
 
-**Location:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/signal.rs`
+**Location:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/signal.rs`
 
 A dedicated thread handles SIGTERM as an emergency fallback. This is necessary
 because the process may not have a running Tokio reactor to observe SIGTERM
@@ -170,7 +170,7 @@ This ensures that:
 
 ## Process Group Management
 
-**Location:** `crates/codegen/vtcode-bash-runner/src/process_group.rs`
+**Location:** `crates/codegen/diapason-bash-runner/src/process_group.rs`
 
 Child processes are managed using process groups to ensure clean termination:
 
@@ -183,7 +183,7 @@ Child processes are managed using process groups to ensure clean termination:
 
 ## Emergency Terminal Cleanup
 
-**Location:** `crates/codegen/vtcode-ui/src/tui/panic_hook.rs`
+**Location:** `crates/codegen/diapason-ui/src/tui/panic_hook.rs`
 
 The `restore_tui()` function ensures the terminal is left in a usable state
 even on emergency exit:

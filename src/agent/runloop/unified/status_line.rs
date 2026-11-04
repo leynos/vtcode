@@ -5,15 +5,15 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use anyhow::Result;
 use chrono::Local;
 
-use vtcode_core::config::constants::ui;
-use vtcode_core::config::{StatusLineConfig, StatusLineMode};
-use vtcode_core::llm::provider::LLMProvider;
-use vtcode_core::models::ModelId;
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_core::config::constants::ui;
+use diapason_core::config::{StatusLineConfig, StatusLineMode};
+use diapason_core::llm::provider::LLMProvider;
+use diapason_core::models::ModelId;
+use diapason_ui::tui::app::InlineHandle;
 
 use super::status_line_command::run_status_line_command;
 use crate::agent::runloop::git::{GitStatusSummary, git_status_summary};
-use vtcode_core::llm::providers::clean_reasoning_text;
+use diapason_core::llm::providers::clean_reasoning_text;
 #[derive(Default, Clone)]
 pub(crate) struct InputStatusState {
     pub(crate) left: Option<String>,
@@ -582,8 +582,8 @@ mod tests {
         clear_input_status, invalidate_for_config_reload, status_line_shows_clock, sync_terminal_title,
         update_thread_context,
     };
-    use vtcode_core::config::StatusLineConfig;
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle};
+    use diapason_core::config::StatusLineConfig;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle};
 
     fn drain_commands(receiver: &mut tokio::sync::mpsc::UnboundedReceiver<InlineCommand>) -> Vec<InlineCommand> {
         let mut commands = Vec::new();

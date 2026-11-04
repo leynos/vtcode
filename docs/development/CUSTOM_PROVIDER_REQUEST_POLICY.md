@@ -8,13 +8,13 @@ OpenAI-compatible endpoint. Configure it under the matching
 
 ## Admission scope
 
-Admission is both per provider and per VT Code process:
+Admission is both per provider and per Diapason process:
 
 - Requests for every model routed through one configured provider share that
   provider's `max_in_flight_requests` limit.
 - A request that reaches the limit waits for a permit for at most
   `queue_timeout_seconds`. If no permit becomes available, the request fails.
-- Each configured provider has its own in-process limit. Separate VT Code
+- Each configured provider has its own in-process limit. Separate Diapason
   processes do not share permits or counters, even when they use the same
   endpoint or configuration file. Enforce an installation-wide limit at the
   provider gateway when that is required.
@@ -29,7 +29,7 @@ Provider failure detection uses four independent deadlines:
 
 - `connect_timeout_seconds` limits HTTP connection establishment (30 seconds
   by default).
-- `first_token_timeout_seconds` starts before VT Code calls the provider's
+- `first_token_timeout_seconds` starts before Diapason calls the provider's
   `stream` method and limits the wait for the first text or reasoning event
   (180 seconds by default). Provider stream setup, response-header delay, and
   the first event all count against this deadline.
@@ -47,11 +47,11 @@ stream.
 
 ## Retry and output safety
 
-For a transient provider failure, VT Code retries the request according to
+For a transient provider failure, Diapason retries the request according to
 `max_retries`, using bounded exponential backoff from
 `retry_initial_backoff_ms` through `retry_max_backoff_ms`. Jitter can be
 disabled with `retry_jitter = false`. A stream is retried only before it has
-published text or reasoning. Once output is visible, VT Code surfaces a later
+published text or reasoning. Once output is visible, Diapason surfaces a later
 failure instead of risking duplicate output. The visible partial text and
 reasoning are checkpointed as an assistant message whose serialized metadata
 marks delivery as incomplete and records the provider error. A later `continue`

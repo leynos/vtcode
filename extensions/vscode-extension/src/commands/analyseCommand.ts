@@ -1,14 +1,14 @@
 import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
-import { runVtcodeCommand } from "../utils/vtcodeRunner";
+import { runDiapasonCommand } from "../utils/diapasonRunner";
 
 /**
- * Command to analyse the workspace with VT Code
+ * Command to analyse the workspace with Diapason
  */
 export class AnalyseCommand extends BaseCommand {
-    public readonly id = "vtcode.runAnalyze";
+    public readonly id = "diapason.runAnalyze";
     public readonly title = "Analyse Workspace";
-    public readonly description = "Analyse the current workspace with VT Code";
+    public readonly description = "Analyse the current workspace with Diapason";
     public readonly icon = "pulse";
 
     async execute(context: CommandContext): Promise<void> {
@@ -17,12 +17,12 @@ export class AnalyseCommand extends BaseCommand {
         }
 
         try {
-            await runVtcodeCommand(["analyse"], {
-                title: "Analysing workspace with VT Code…",
+            await runDiapasonCommand(["analyse"], {
+                title: "Analysing workspace with Diapason…",
                 output: context.output,
             });
             void vscode.window.showInformationMessage(
-                "VT Code finished analysing the workspace. Review the VT Code output channel for results."
+                "Diapason finished analysing the workspace. Review the Diapason output channel for results."
             );
         } catch (error) {
             this.handleCommandError("analyse the workspace", error);
@@ -32,7 +32,7 @@ export class AnalyseCommand extends BaseCommand {
     private handleCommandError(context: string, error: unknown): void {
         const message = error instanceof Error ? error.message : String(error);
         void vscode.window.showErrorMessage(
-            `Failed to ${context} with VT Code: ${message}`
+            `Failed to ${context} with Diapason: ${message}`
         );
     }
 }

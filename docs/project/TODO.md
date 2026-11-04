@@ -1,4 +1,4 @@
-# VT Code TODO scratchpad
+# Diapason TODO scratchpad
 
 Out of curiosity, since I don't understand this too much. Since it is terminal
 coding, could this be ported to work on a vt520 terminal and just use the
@@ -30,10 +30,10 @@ Areas that are complex The most intricate parts are likely:
 
 ===
 
-diagnose and improve vtcode harness based on the session run log.
+diagnose and improve diapason harness based on the session run log.
 
-/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/checkpoints/turn_1032.json
-/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/checkpoints/turn_1031.json
+/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/.diapason/checkpoints/turn_1032.json
+/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/.diapason/checkpoints/turn_1031.json
 
 Diagnosis (from checkpoint evidence) Turns analyzed: turn_1030.json (108,346
 in-tok, 12 tools, 56s), turn_1031.json (32,280 in-tok, 4 tools, 33.7s),
@@ -87,15 +87,16 @@ Evidence: Session replay can't show touched files
 
 improve coloring of grouped tool call commands and wording higlight
 
-'/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot 2026-09-02 at
-21.09.57.png' '/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot
-2026-09-02 at 21.09.55.png'
+'/Users/vinhnguyenxuan/Documents/diapason-resources/bugs/Screenshot 2026-09-02
+at 21.09.57.png'
+'/Users/vinhnguyenxuan/Documents/diapason-resources/bugs/Screenshot 2026-09-02
+at 21.09.55.png'
 
 ______________________________________________________________________
 
 improve and fix UI
-'/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot 2026-09-02 at
-21.00.54.png'
+'/Users/vinhnguyenxuan/Documents/diapason-resources/bugs/Screenshot 2026-09-02
+at 21.00.54.png'
 
 ______________________________________________________________________
 
@@ -106,12 +107,12 @@ and outputs are retained; resume the request to continue.
 ------------------------ Info ------------------------- Recovery tool-call
 limit reached after 3 blocked calls. Last blocked call: 'Run command'. Tools
 remain disabled while the recovery response is finalized. Blocked handoff:
-/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/tasks/current_blocked.md
+/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/.diapason/tasks/current_blocked.md
 Blocked handoff:
 
-/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/tasks/blockers/session-vtcode-20260902t14281-3z_732254-54385-20260902T144229Z.md
+/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/.diapason/tasks/blockers/session-diapason-20260902t14281-3z_732254-54385-20260902T144229Z.md
 
-note: i want you to fix and improve vtcode harness based on the session run
+note: i want you to fix and improve diapason harness based on the session run
 log. The harness should be able to handle blocked calls more gracefully,
 provide better feedback to the user, and ensure that the session can resume
 smoothly after a blockage. Additionally, improve the UI to clearly indicate
@@ -122,8 +123,8 @@ ______________________________________________________________________
 
 fix broken tool call rendering
 
-'/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot 2026-09-02 at
-22.40.46.png'
+'/Users/vinhnguyenxuan/Documents/diapason-resources/bugs/Screenshot 2026-09-02
+at 22.40.46.png'
 
 ===
 
@@ -136,8 +137,8 @@ the last items without getting stuck. Additionally, provide visual indicators
 or feedback to inform users when they have reached the end of the list or if
 there are more items to scroll through.
 
-'/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot 2026-09-03 at
-16.58.38.png'
+'/Users/vinhnguyenxuan/Documents/diapason-resources/bugs/Screenshot 2026-09-03
+at 16.58.38.png'
 
 ===
 
@@ -148,12 +149,12 @@ accurately, preserving formatting, headings, lists, and other elements.
 Additionally, provide clear feedback to the user if there are any issues with
 rendering the markdown content.
 
-'/Users/vinhnguyenxuan/Documents/vtcode-resources/bugs/Screenshot 2026-09-04 at
-10.54.05.png'
+'/Users/vinhnguyenxuan/Documents/diapason-resources/bugs/Screenshot 2026-09-04
+at 10.54.05.png'
 
 ______________________________________________________________________
 
-check plan mode: vtcode on user approval confirmation dialog -> accept and
+check plan mode: diapason on user approval confirmation dialog -> accept and
 implement -> the agent use auto mode -> then later the agent switch to propose
 plan mode, but not implement it? User has to nudge `start implement` manually.
 The harness should ensure that when the agent switches to propose plan mode, it
@@ -163,12 +164,12 @@ current mode and any actions they need to take to ensure the plan is
 implemented correctly.
 
 log:
-/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/sessions/session-vtcode-20260904T034530Z_179873-58689
+/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/.diapason/sessions/session-diapason-20260904T034530Z_179873-58689
 
 ===
 
-check and fix vtcode agent keep getting turn blocked. repeatedly. deep dive and
-fix.
+check and fix diapason agent keep getting turn blocked. repeatedly. deep dive
+and fix.
 
 CRITICAL.
 
@@ -192,7 +193,7 @@ arguments or a narrower scope.
 • Ran cargo check --locked
 
 log:
-/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/.vtcode/sessions/session-vtcode-20260904T034530Z_179873-58689
+/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/.diapason/sessions/session-diapason-20260904T034530Z_179873-58689
 
 ______________________________________________________________________
 

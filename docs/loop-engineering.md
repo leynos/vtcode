@@ -1,24 +1,24 @@
-# Loop Engineering in vtcode
+# Loop Engineering in diapason
 
-This document explains how vtcode implements the loop engineering pattern
+This document explains how diapason implements the loop engineering pattern
 described by [Addy Osmani](https://addyosmani.com/blog/loop-engineering/), and
 maps each primitive to the module that implements it.
 
 ## The Five Primitives
 
-| #   | Primitive       | vtcode Module                                                                                            | Purpose                                                                                                                                                                                                                        |
-| --- | --------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | **Automations** | `crates/codegen/vtcode-config/src/core/automation.rs`                                                    | `LoopEngineConfig` controls `enabled`, `max_iterations`, `reconcile_on_complete`, `preload_skills`. The `loop_engine_enabled()` function gates the loop with an env-var override (`VTCODE_DISABLE_LOOP_ENGINE`).               |
-| 2   | **Worktrees**   | `crates/codegen/vtcode-core/src/git/worktree.rs`                                                         | `WorktreeManager` wraps `git worktree add/list/remove` to give each loop iteration an isolated working tree under `.vtcode/worktrees/`. Parallel loops never collide on the working tree.                                      |
-| 3   | **Skills**      | `crates/codegen/vtcode-core/src/skills/manager.rs`                                                       | `SkillsManager::loop_skills()` preloads named skills into the agent's context. `resolve_skill_by_name()` resolves a single skill on demand. Skills become a structured runtime input, not just a file listing.                 |
-| 4   | **Sub-agents**  | `crates/codegen/vtcode-core/src/subagents/mod.rs` (+ `controller_spawn_run.rs` / `controller_verify.rs`) | `SubagentController` spawns child agents with `spawn_with_spec()`. When `isolation == "worktree"`, the child runs in a git worktree. After the child finishes, `run_worktree_reconciliation()` runs a verify-then-merge cycle. |
-| 5   | **Memory**      | `crates/codegen/vtcode-core/src/loop_memory.rs`                                                          | `LoopMemoryStore` trait with `MarkdownLoopMemory` (default) and `SqliteLoopMemory` (behind `sqlite` feature). Stores loop-level notes and decisions that survive across invocations.                                           |
+| #   | Primitive       | diapason Module                                                                                            | Purpose                                                                                                                                                                                                                        |
+| --- | --------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **Automations** | `crates/codegen/diapason-config/src/core/automation.rs`                                                    | `LoopEngineConfig` controls `enabled`, `max_iterations`, `reconcile_on_complete`, `preload_skills`. The `loop_engine_enabled()` function gates the loop with an env-var override (`DIAPASON_DISABLE_LOOP_ENGINE`).             |
+| 2   | **Worktrees**   | `crates/codegen/diapason-core/src/git/worktree.rs`                                                         | `WorktreeManager` wraps `git worktree add/list/remove` to give each loop iteration an isolated working tree under `.diapason/worktrees/`. Parallel loops never collide on the working tree.                                    |
+| 3   | **Skills**      | `crates/codegen/diapason-core/src/skills/manager.rs`                                                       | `SkillsManager::loop_skills()` preloads named skills into the agent's context. `resolve_skill_by_name()` resolves a single skill on demand. Skills become a structured runtime input, not just a file listing.                 |
+| 4   | **Sub-agents**  | `crates/codegen/diapason-core/src/subagents/mod.rs` (+ `controller_spawn_run.rs` / `controller_verify.rs`) | `SubagentController` spawns child agents with `spawn_with_spec()`. When `isolation == "worktree"`, the child runs in a git worktree. After the child finishes, `run_worktree_reconciliation()` runs a verify-then-merge cycle. |
+| 5   | **Memory**      | `crates/codegen/diapason-core/src/loop_memory.rs`                                                          | `LoopMemoryStore` trait with `MarkdownLoopMemory` (default) and `SqliteLoopMemory` (behind `sqlite` feature). Stores loop-level notes and decisions that survive across invocations.                                           |
 
 ## Reconcile Flow
 
 ```
 External scheduler
-  -> vtcode (harness invocation)
+  -> diapason (harness invocation)
     -> SubagentController::launch_child()
       -> child runs in worktree
       -> child_loop completes

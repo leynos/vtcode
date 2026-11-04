@@ -1,6 +1,6 @@
 use super::*;
+use diapason_core::persistent_memory::MemoryCleanupStatus;
 use std::path::PathBuf;
-use vtcode_core::persistent_memory::MemoryCleanupStatus;
 
 fn sample_memory_status() -> PersistentMemoryStatus {
     PersistentMemoryStatus {
@@ -149,7 +149,7 @@ fn apply_persistent_memory_header_guide_sets_badge_and_highlight() {
 
 #[test]
 fn background_local_agent_visibility_hides_stopped_entries() {
-    let entry = vtcode_core::subagents::BackgroundSubprocessEntry {
+    let entry = diapason_core::subagents::BackgroundSubprocessEntry {
         id: "background-default".to_string(),
         session_id: "session-456".to_string(),
         exec_session_id: String::new(),
@@ -158,7 +158,7 @@ fn background_local_agent_visibility_hides_stopped_entries() {
         description: "Default agent".to_string(),
         source: "builtin".to_string(),
         color: None,
-        status: vtcode_core::subagents::BackgroundSubprocessStatus::Stopped,
+        status: diapason_core::subagents::BackgroundSubprocessStatus::Stopped,
         desired_enabled: false,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
@@ -185,7 +185,7 @@ fn delegated_local_agent_preview_uses_queue_placeholder() {
         description: "Review Rust changes".to_string(),
         source: "project".to_string(),
         color: None,
-        status: vtcode_core::subagents::SubagentStatus::Queued,
+        status: diapason_core::subagents::SubagentStatus::Queued,
         background: false,
         depth: 1,
         created_at: chrono::Utc::now(),
@@ -214,7 +214,7 @@ fn delegated_local_agent_visibility_keeps_failed_entries() {
         description: "Review Rust changes".to_string(),
         source: "project".to_string(),
         color: None,
-        status: vtcode_core::subagents::SubagentStatus::Failed,
+        status: diapason_core::subagents::SubagentStatus::Failed,
         background: false,
         depth: 1,
         created_at: chrono::Utc::now(),
@@ -241,7 +241,7 @@ fn delegated_local_agent_preview_uses_failure_message() {
         description: "Review Rust changes".to_string(),
         source: "project".to_string(),
         color: None,
-        status: vtcode_core::subagents::SubagentStatus::Failed,
+        status: diapason_core::subagents::SubagentStatus::Failed,
         background: false,
         depth: 1,
         created_at: chrono::Utc::now(),
@@ -258,7 +258,7 @@ fn delegated_local_agent_preview_uses_failure_message() {
 
 #[test]
 fn background_local_agent_preview_uses_status_placeholder() {
-    let entry = vtcode_core::subagents::BackgroundSubprocessEntry {
+    let entry = diapason_core::subagents::BackgroundSubprocessEntry {
         id: "background-default".to_string(),
         session_id: "session-456".to_string(),
         exec_session_id: String::new(),
@@ -267,7 +267,7 @@ fn background_local_agent_preview_uses_status_placeholder() {
         description: "Default agent".to_string(),
         source: "builtin".to_string(),
         color: None,
-        status: vtcode_core::subagents::BackgroundSubprocessStatus::Starting,
+        status: diapason_core::subagents::BackgroundSubprocessStatus::Starting,
         desired_enabled: true,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),

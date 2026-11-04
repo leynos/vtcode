@@ -1,6 +1,6 @@
 # Agent Plugins
 
-VT Code supports the [Agent Plugins](https://agent-plugins.org/specification)
+Diapason supports the [Agent Plugins](https://agent-plugins.org/specification)
 portable package format. A plugin is a directory containing a root
 `plugin.json` manifest, optional `skills/*/SKILL.md` Agent Skills, and optional
 `mcp.json` MCP server configuration.
@@ -19,7 +19,7 @@ my-plugin/
 │       ├── scripts/
 │       └── references/
 ├── mcp.json
-└── com.vtcode.client/
+└── com.diapason.client/
     └── hooks/
 ```
 
@@ -38,7 +38,7 @@ top-level fields are non-fatal and reported.
 
 ## Discovery roots
 
-VT Code discovers plugins from two roots:
+Diapason discovers plugins from two roots:
 
 - **Project plugin root**: `<workspace>/.agents/plugins/`
 - **User plugin root**: `~/.agents/plugins/`
@@ -57,18 +57,17 @@ The two roots are used differently:
 
 ## Example usage
 
-[`vinhnx/vtcode-plugins`](https://github.com/vinhnx/vtcode-plugins) is a real,
-open-source plugin that bundles nine general-purpose Agent Skills extracted
-from VT Code itself (Rust coding rules, codemod migrations, code review,
-workspace analysis, and more).
+[VTCode upstream plugin collection](https://github.com/vinhnx/vtcode-plugins)
+is maintained by the original project. It is not a Diapason package; review its
+contents and compatibility before using it.
 
 ```bash
 # Install from GitHub
-vtcode plugins add https://github.com/vinhnx/vtcode-plugins.git
+diapason plugins add https://github.com/vinhnx/vtcode-plugins.git
 
 # Confirm the install
-vtcode plugins list
-vtcode plugins info vtcode-plugins
+diapason plugins list
+diapason plugins info vtcode-plugins
 
 # Use a bundled skill in a session
 # Ask the agent: "Use the rust-skills skill"
@@ -87,17 +86,17 @@ git clone https://github.com/vinhnx/vtcode-plugins.git .agents/plugins/vtcode-pl
 
 Plugin skills are discovered from `skills/*/SKILL.md` (immediate children of
 `skills/` only). Each skill must pass the strict Agent Skills validation that
-VT Code applies: `name` matches the parent directory, `description` is
+Diapason applies: `name` matches the parent directory, `description` is
 required, and only supported frontmatter keys are allowed.
 
 ## MCP servers
 
-Plugin MCP servers are declared in `mcp.json`. VT Code supports:
+Plugin MCP servers are declared in `mcp.json`. Diapason supports:
 
 - `stdio` transport: `command`, `args`, `env`, `cwd`
 - `streamable-http` transport: `url`, `headers`
 
-The legacy `sse` transport is parsed but skipped (unsupported by VT Code's MCP
+The legacy `sse` transport is parsed but skipped (unsupported by Diapason's MCP
 client).
 
 At session startup each plugin MCP server is exposed as an MCP provider named
@@ -106,7 +105,7 @@ through `/mcp` like any other configured server.
 
 ### Environment expansion
 
-For stdio servers, VT Code injects `PLUGIN_ROOT` and `PLUGIN_DATA` environment
+For stdio servers, Diapason injects `PLUGIN_ROOT` and `PLUGIN_DATA` environment
 variables and expands `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` placeholders in
 `args`, `env` values, and `cwd`. `PLUGIN_DATA` defaults to `<plugin-root>/data`
 and is created automatically before the subprocess launches.
@@ -123,11 +122,11 @@ directory.
 ## CLI
 
 ```bash
-vtcode plugins list
-vtcode plugins info <name>
-vtcode plugins validate <path>
-vtcode plugins add <git-url-or-local-path> --name <id>
-vtcode plugins remove <name>
+diapason plugins list
+diapason plugins info <name>
+diapason plugins validate <path>
+diapason plugins add <git-url-or-local-path> --name <id>
+diapason plugins remove <name>
 ```
 
 `plugins add` installs to `~/.agents/plugins/<name>`: git URLs are cloned with
@@ -137,8 +136,8 @@ root.
 
 ## Config
 
-Plugin behavior is controlled by the existing `tools.plugins` section in
-`vtcode.toml`:
+Plugin behavior is controlled by the existing `tools.plugins` section in the
+canonical user `config.toml` or a workspace `config.toml`:
 
 ```toml
 [tools.plugins]
@@ -155,8 +154,8 @@ for the full set of `tools.plugins.*` options.
 
 ## Conformance
 
-VT Code is a conformant Agent Plugins client for both component types (skills +
-stdio/streamable-http MCP). See the
+Diapason is a conformant Agent Plugins client for both skills and MCP servers
+using stdio or streamable HTTP. See the
 [Agent Plugins specification](https://agent-plugins.org/specification) for the
 portable package contract.
 
@@ -164,5 +163,5 @@ portable package contract.
 
 - [Agent Plugins User Guide](../user-guide/agent-plugins.md) — task-oriented
   quick start
-- [vtcode-agent-plugins module](../modules/vtcode_agent_plugins.md) — crate
+- [diapason-agent-plugins module](../modules/diapason_agent_plugins.md) — crate
   reference

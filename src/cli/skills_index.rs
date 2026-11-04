@@ -10,7 +10,7 @@ pub async fn handle_skills_regenerate_index(options: &SkillsCommandOptions) -> R
 
     match generate_comprehensive_skills_index(&options.workspace).await {
         Ok(index_path) => {
-            use vtcode_core::skills::loader::EnhancedSkillLoader;
+            use diapason_core::skills::loader::EnhancedSkillLoader;
             let mut loader = EnhancedSkillLoader::new(options.workspace.clone());
 
             match loader.discover_all_skills().await {
@@ -20,7 +20,7 @@ pub async fn handle_skills_regenerate_index(options: &SkillsCommandOptions) -> R
                         .skills
                         .iter()
                         .filter(|skill_ctx| {
-                            skill_ctx.manifest().variety == vtcode_core::skills::types::SkillVariety::BuiltIn
+                            skill_ctx.manifest().variety == diapason_core::skills::types::SkillVariety::BuiltIn
                         })
                         .count();
                     let traditional_count = discovery_result.skills.len() - built_in_count;
@@ -39,7 +39,7 @@ pub async fn handle_skills_regenerate_index(options: &SkillsCommandOptions) -> R
                         println!("\nTraditional skills:");
                         for skill_ctx in &discovery_result.skills {
                             let manifest = skill_ctx.manifest();
-                            if manifest.variety == vtcode_core::skills::types::SkillVariety::BuiltIn {
+                            if manifest.variety == diapason_core::skills::types::SkillVariety::BuiltIn {
                                 continue;
                             }
                             println!("   - {} - {}", manifest.name, manifest.description);
@@ -50,7 +50,7 @@ pub async fn handle_skills_regenerate_index(options: &SkillsCommandOptions) -> R
                         println!("\nBuilt-in command skills:");
                         for skill_ctx in &discovery_result.skills {
                             let manifest = skill_ctx.manifest();
-                            if manifest.variety != vtcode_core::skills::types::SkillVariety::BuiltIn {
+                            if manifest.variety != diapason_core::skills::types::SkillVariety::BuiltIn {
                                 continue;
                             }
                             println!("   - {} - {}", manifest.name, manifest.description);
@@ -82,9 +82,9 @@ pub async fn handle_skills_regenerate_index(options: &SkillsCommandOptions) -> R
 
 /// Generate comprehensive skills index including all types of skills
 pub async fn generate_comprehensive_skills_index(workspace: &Path) -> Result<std::path::PathBuf> {
+    use diapason_core::exec::skill_manager::SkillManager;
+    use diapason_core::skills::loader::EnhancedSkillLoader;
     use std::fmt::Write;
-    use vtcode_core::exec::skill_manager::SkillManager;
-    use vtcode_core::skills::loader::EnhancedSkillLoader;
 
     let skill_manager = SkillManager::new(workspace);
     let mut loader = EnhancedSkillLoader::new(workspace.to_path_buf());
@@ -110,7 +110,7 @@ pub async fn generate_comprehensive_skills_index(workspace: &Path) -> Result<std
 
             for skill_ctx in &discovery_result.skills {
                 let manifest = skill_ctx.manifest();
-                if manifest.variety == vtcode_core::skills::types::SkillVariety::BuiltIn {
+                if manifest.variety == diapason_core::skills::types::SkillVariety::BuiltIn {
                     continue;
                 }
                 let desc = manifest.description.replace('|', "\\|");
@@ -122,7 +122,7 @@ pub async fn generate_comprehensive_skills_index(workspace: &Path) -> Result<std
         let built_in_skills = discovery_result
             .skills
             .iter()
-            .filter(|skill_ctx| skill_ctx.manifest().variety == vtcode_core::skills::types::SkillVariety::BuiltIn)
+            .filter(|skill_ctx| skill_ctx.manifest().variety == diapason_core::skills::types::SkillVariety::BuiltIn)
             .collect::<Vec<_>>();
         if !built_in_skills.is_empty() {
             content.push_str("### Built-In Command Skills\n\n");
@@ -161,7 +161,7 @@ pub async fn generate_comprehensive_skills_index(workspace: &Path) -> Result<std
             let manifest = skill_ctx.manifest();
             let _ = writeln!(content, "### {}\n", manifest.name);
             let _ = writeln!(content, "{}\n", manifest.description);
-            if manifest.variety == vtcode_core::skills::types::SkillVariety::BuiltIn {
+            if manifest.variety == diapason_core::skills::types::SkillVariety::BuiltIn {
                 let slash_alias = manifest
                     .metadata
                     .as_ref()
@@ -195,7 +195,7 @@ pub async fn generate_comprehensive_skills_index(workspace: &Path) -> Result<std
     content.push_str("*Generated automatically. Do not edit manually.*\n");
 
     let index_path = skill_manager.index_path();
-    vtcode_core::utils::file_utils::write_file_with_context(&index_path, &content, "comprehensive skills index")
+    diapason_core::utils::file_utils::write_file_with_context(&index_path, &content, "comprehensive skills index")
         .await
         .with_context(|| format!("Failed to write comprehensive skills index: {}", index_path.display()))?;
 

@@ -10,11 +10,11 @@
 //! - Interrupt immediately if wrong approach detected
 //! - "Have your finger on the trigger to escape and interrupt any bad behavior"
 
+use diapason_core::config::ReasoningDisplayMode;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::llm::provider as uni;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use vtcode_core::config::ReasoningDisplayMode;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::llm::provider as uni;
 
 static RUSHING_PATTERNS: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(wrapping up|running out of time|quick summary|to conclude|finishing up|just to be safe|that.?s it|time to stop)").expect("valid regex pattern")
@@ -47,7 +47,7 @@ pub(crate) fn model_supports_reasoning(provider: &dyn uni::LLMProvider, model: &
 /// Resolve runtime reasoning visibility with provider/model capability gating.
 ///
 /// Reasoning output is always hidden when the model does not support reasoning traces.
-pub(crate) fn resolve_reasoning_visibility(config: Option<&VTCodeConfig>, supports_reasoning: bool) -> bool {
+pub(crate) fn resolve_reasoning_visibility(config: Option<&DiapasonConfig>, supports_reasoning: bool) -> bool {
     if !supports_reasoning {
         return false;
     }
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn resolve_reasoning_visibility_requires_capability() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.ui.reasoning_display_mode = ReasoningDisplayMode::Always;
         cfg.ui.reasoning_visible_default = true;
 
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn resolve_reasoning_visibility_honors_display_mode() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
 
         cfg.ui.reasoning_display_mode = ReasoningDisplayMode::Always;
         assert!(resolve_reasoning_visibility(Some(&cfg), true));
@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn resolve_reasoning_visibility_uses_visible_default_config() {
-        let cfg = VTCodeConfig::default();
+        let cfg = DiapasonConfig::default();
         assert!(resolve_reasoning_visibility(Some(&cfg), true));
     }
 }

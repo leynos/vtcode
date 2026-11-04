@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
+use diapason_core::tools::registry::ToolRegistry;
 use serde_json::Value;
-use vtcode_core::tools::registry::ToolRegistry;
 
 use super::permission_prompt::{
     extract_shell_approval_command_prefix_words, extract_shell_approval_scope_signature,

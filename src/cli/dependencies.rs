@@ -1,11 +1,11 @@
 use anyhow::Result;
 use crossterm::style::Stylize;
-use vtcode_core::cli::args::{DependenciesSubcommand, ManagedDependency};
-use vtcode_core::tools::ast_grep_binary::AST_GREP_INSTALL_COMMAND;
-use vtcode_core::tools::ripgrep_binary::RIPGREP_INSTALL_COMMAND;
-use vtcode_core::tools::{AstGrepStatus, RipgrepStatus};
+use diapason_core::cli::args::{DependenciesSubcommand, ManagedDependency};
+use diapason_core::tools::ast_grep_binary::AST_GREP_INSTALL_COMMAND;
+use diapason_core::tools::ripgrep_binary::RIPGREP_INSTALL_COMMAND;
+use diapason_core::tools::{AstGrepStatus, RipgrepStatus};
 
-const SEARCH_TOOLS_INSTALL_COMMAND: &str = "vtcode dependencies install search-tools";
+const SEARCH_TOOLS_INSTALL_COMMAND: &str = "diapason dependencies install search-tools";
 
 pub async fn handle_dependencies_command(command: DependenciesSubcommand) -> Result<()> {
     match command {
@@ -53,10 +53,10 @@ fn handle_status(dependency: ManagedDependency) -> Result<()> {
 
 fn print_ast_grep_next_steps() {
     println!(
-        "{} For a local repository, run `vtcode init` to materialize `sgconfig.yml`, `rules/`, and `rule-tests/`.",
+        "{} For a local repository, run `diapason init` to materialize `sgconfig.yml`, `rules/`, and `rule-tests/`.",
         "→".cyan()
     );
-    println!("{} Then run `vtcode check ast-grep`.", "→".cyan());
+    println!("{} Then run `diapason check ast-grep`.", "→".cyan());
 }
 
 fn install_ripgrep() -> Result<()> {
@@ -89,7 +89,7 @@ async fn install_ast_grep() -> Result<()> {
                 "{} Source: {}",
                 "→".cyan(),
                 if managed {
-                    "VT Code-managed"
+                    "Diapason-managed"
                 } else {
                     "system PATH or override"
                 }
@@ -100,7 +100,7 @@ async fn install_ast_grep() -> Result<()> {
             println!(
                 "{} Installing ast-grep into {}",
                 "→".cyan(),
-                vtcode_core::tools::ast_grep_binary::managed_ast_grep_bin_dir()?.display()
+                diapason_core::tools::ast_grep_binary::managed_ast_grep_bin_dir()?.display()
             );
 
             let outcome = AstGrepStatus::install().await?;
@@ -114,7 +114,7 @@ async fn install_ast_grep() -> Result<()> {
                 println!("{} {}", "⚠".yellow(), warning);
             }
 
-            println!("{} Add this to your shell if you want ast-grep outside VT Code:", "→".cyan());
+            println!("{} Add this to your shell if you want ast-grep outside Diapason:", "→".cyan());
             println!("  export PATH=\"{}:$PATH\"", outcome.managed_bin_dir.display());
             print_ast_grep_next_steps();
         }
@@ -152,7 +152,7 @@ fn report_ast_grep_status() {
                 "{} Source: {}",
                 "→".cyan(),
                 if managed {
-                    "VT Code-managed"
+                    "Diapason-managed"
                 } else {
                     "system PATH or override"
                 }

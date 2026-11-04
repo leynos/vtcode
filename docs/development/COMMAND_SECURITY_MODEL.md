@@ -1,4 +1,4 @@
-# VT Code Command Security Model
+# Diapason Command Security Model
 
 Model-facing schemas preserve request intent (`sandbox_permissions`,
 `additional_permissions`, and `justification`) without embedding the active
@@ -23,7 +23,7 @@ downgrading or broadening the request.
 
 ## Overview
 
-VT Code implements a comprehensive, defense-in-depth command security system
+Diapason implements a comprehensive, defense-in-depth command security system
 that enables non-powered users to run safe commands by default while protecting
 against dangerous operations. This system helps the agent use system and build
 tools properly via environment PATH configuration.
@@ -32,7 +32,7 @@ tools properly via environment PATH configuration.
 
 Opening a dynamic library can execute native initialization code before the
 library's metadata or ABI is validated. Repository-controlled
-`.agents/plugins/` and `.vtcode/plugins/` directories therefore remain
+`.agents/plugins/` and `.diapason/plugins/` directories therefore remain
 metadata-only; the high-level skill loader does not add them to the native
 loader's trusted roots. The `load_skill` tool is approval-required because
 executable-backed skill implementations must never inherit the read-only policy
@@ -56,10 +56,11 @@ regardless of allow patterns.
 
 ### Configuration Sources (Precedence Order)
 
-1. **vtcode.toml** - User/project-level overrides (highest priority)
-2. **crates/codegen/vtcode-config/src/core/commands.rs** - Code defaults
+1. **config.toml** - User/project-level overrides (highest priority)
+2. **crates/codegen/diapason-config/src/core/commands.rs** - Code defaults
    (runtime)
-3. **crates/codegen/vtcode-config/src/constants.rs** - System constants (backup)
+3. **crates/codegen/diapason-config/src/constants.rs** - System constants
+   (backup)
 
 ### Command Validation Layers
 
@@ -212,9 +213,9 @@ allow_glob = [
 - `service *` - Legacy service management
 - `crontab`, `at` - Task scheduling (dangerous for automation)
 
-VT Code supports automation through internal scheduling primitives instead:
+Diapason supports automation through internal scheduling primitives instead:
 
-- `vtcode schedule` for durable local automation and reminders
+- `diapason schedule` for durable local automation and reminders
 
 #### 11. Container/Orchestration
 
@@ -370,7 +371,7 @@ GitHub authentication variables as explicit exceptions.
 
 ### Workspace provider configuration trust boundary
 
-The configuration loader treats workspace-root files, workspace `.vtcode/`
+The configuration loader treats workspace-root files, workspace `.diapason/`
 files, and project profiles as repository-controlled input. After layer merge,
 it rejects non-empty `custom_providers` values from those sources before they
 can reach provider registration. This prevents repository configuration from
@@ -409,7 +410,7 @@ cache_ttl_seconds = 300
 - Permission decision cache hits
 - Command resolution paths
 
-## Usage with the VT Code Agent
+## Usage with the Diapason Agent
 
 ### Default Behavior (Non-Powered Users)
 
@@ -618,7 +619,7 @@ deny_glob = [
 
 ## Testing & Validation
 
-Test command permissions using VT Code's built-in validation:
+Test command permissions using Diapason's built-in validation:
 
 ```bash
 # Build and test
@@ -636,5 +637,5 @@ RUST_LOG=debug cargo run
 
 - [docs/development/EXECUTION_POLICY.md](./EXECUTION_POLICY.md) - Overall
     execution policy
-- [crates/codegen/vtcode-config/src/core/commands.rs](../../crates/codegen/vtcode-config/src/core/commands.rs)
+- [crates/codegen/diapason-config/src/core/commands.rs](../../crates/codegen/diapason-config/src/core/commands.rs)
   - Implementation

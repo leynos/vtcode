@@ -1,6 +1,6 @@
 # Full Automation
 
-`--full-auto` lets VT Code run non-interactively on explicitly allow-listed
+`--full-auto` lets Diapason run non-interactively on explicitly allow-listed
 tools. It is an execution and permission layer on top of the active primary
 agent, not a primary agent of its own. Use it only when you fully trust the
 workspace configuration and have reviewed the safeguards below.
@@ -21,13 +21,13 @@ workspace configuration and have reviewed the safeguards below.
 
 Primary-agent selection still works normally. If you explicitly select or
 configure a primary agent, including `duck`, full-auto runs on top of that
-agent. If no primary agent is explicitly selected or configured, VT Code
+agent. If no primary agent is explicitly selected or configured, Diapason
 selects the effective `auto` primary agent. If full-auto needs that defaulted
 `auto` agent and no effective `auto` exists, startup fails fast.
 
 ## Activation Checklist
 
-1. **Update `vtcode.toml`**
+1. **Update `config.toml`**
     - Enable the feature: `automation.full_auto.enabled = true`.
     - Configure the tool allow-list to match your risk tolerance.
     - Keep `require_profile_ack = true` so a profile file is required.
@@ -42,11 +42,11 @@ selects the effective `auto` primary agent. If full-auto needs that defaulted
     - Allow-listed promptable actions use automatic permission review after deny
       and policy checks.
 4. **Launch the agent**
-    - Run `vtcode --full-auto` with any other CLI flags you need.
+    - Run `diapason --full-auto` with any other CLI flags you need.
 
 ## Runtime Behaviour
 
-- VT Code displays the active allow-list at session start.
+- Diapason displays the active allow-list at session start.
 - Full-auto does not grant tools outside `[automation.full_auto].allowed_tools`.
 - Explicit denies and policy blocks are honoured before full-auto review.
 - Promptable allow-listed actions are reviewed automatically instead of
@@ -73,7 +73,7 @@ allowed_tools = [
 
 Tips:
 
-- Use the constants listed in `vtcode_core::config::constants::tools` to avoid
+- Use the constants listed in `diapason_core::config::constants::tools` to avoid
   typos.
 - Include `"*"` only when the workspace is fully isolated.
 - Combine with granular agent permissions if you need per-tool constraints in
@@ -122,8 +122,8 @@ orchestration_mode = "plan_build_evaluate"
 max_revision_rounds = 2
 ```
 
-When enabled, `vtcode exec --full-auto` writes a small set of working artefacts
-under `.vtcode/tasks/`:
+When enabled, `diapason exec --full-auto` writes a small set of working
+artefacts under `.diapason/tasks/`:
 
 - `current_spec.md`: high-level execution spec
 - `current_contract.md`: observable done criteria and verification contract
@@ -157,16 +157,16 @@ the exact wire-order of calls.
 
 ## Regression Testing
 
-For long-running automation, use the `vtcode-eval` crate to build a regression
-eval suite that verifies the agent still handles previously-passing tasks after
-model or harness changes.
+For long-running automation, use the `diapason-eval` crate to build a
+regression eval suite that verifies the agent still handles previously-passing
+tasks after model or harness changes.
 
 ### Running Eval Suites
 
-Use the `vtcode exec eval` CLI command to run an eval suite:
+Use the `diapason exec eval` CLI command to run an eval suite:
 
 ```bash
-vtcode exec eval --suite my-suite.json --output report.md
+diapason exec eval --suite my-suite.json --output report.md
 ```
 
 The suite JSON file contains an `EvalSuite` with tasks, each specifying a
@@ -175,7 +175,8 @@ runner executes each task through the agent, verifies outcomes with environment
 probes (command exit codes), computes pass@k and pass^k metrics, and outputs a
 markdown report.
 
-See [vtcode-eval](../../vtcode-eval/) for the framework and metric definitions.
+See [diapason-eval](../../diapason-eval/) for the framework and metric
+definitions.
 
 ## Profile File Recommendations
 

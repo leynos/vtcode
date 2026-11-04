@@ -1,14 +1,14 @@
 use anstyle::Color;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::tools::registry::{ExecSettlementMode, ToolProgressCallback, ToolRegistry};
+use diapason_core::tools::result_cache::{ToolCacheKey, ToolResultCache};
+use diapason_core::tools::tool_intent;
+use diapason_core::utils::style_helpers::ColorPalette;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Notify;
 use tracing::warn;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::tools::registry::{ExecSettlementMode, ToolProgressCallback, ToolRegistry};
-use vtcode_core::tools::result_cache::{ToolCacheKey, ToolResultCache};
-use vtcode_core::tools::tool_intent;
-use vtcode_core::utils::style_helpers::ColorPalette;
 
 use crate::agent::runloop::tool_output::resolve_stdout_tail_limit;
 use crate::agent::runloop::unified::inline_events::harness::{
@@ -120,7 +120,7 @@ fn should_show_loading_ui_for_tool_call(name: &str, args: &Value) -> bool {
     spool_chunk_read_path(name, args).is_none()
 }
 
-fn set_tool_execution_status(handle: &vtcode_ui::tui::app::InlineHandle, tool_name: &str) {
+fn set_tool_execution_status(handle: &diapason_ui::tui::app::InlineHandle, tool_name: &str) {
     let left = format!("Running {tool_name}...");
     handle.set_input_status(Some(left), None);
 }
@@ -158,9 +158,9 @@ pub(super) async fn execute_with_cache_and_streaming(
     args_val: &Value,
     ctrl_c_state: &Arc<CtrlCState>,
     ctrl_c_notify: &Arc<Notify>,
-    handle: &vtcode_ui::tui::app::InlineHandle,
+    handle: &diapason_ui::tui::app::InlineHandle,
     harness_emitter: Option<HarnessEventEmitter>,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     max_tool_retries: usize,
     exec_settlement_mode: ExecSettlementMode,
     safety_prevalidated: bool,
@@ -201,9 +201,9 @@ async fn execute_with_cache_and_streaming_inner(
     tool_call_id: &str,
     args_val: &Value,
     tokens: &CancellationTokens,
-    handle: &vtcode_ui::tui::app::InlineHandle,
+    handle: &diapason_ui::tui::app::InlineHandle,
     harness_emitter: Option<HarnessEventEmitter>,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     max_tool_retries: usize,
     exec_settlement_mode: ExecSettlementMode,
     safety_prevalidated: bool,
@@ -478,7 +478,7 @@ async fn lookup_cached_status(
         match parse_cached_output(&cached_output) {
             Ok(cached_json) => {
                 tracing::debug!(
-                    target: "vtcode.performance.cache",
+                    target: "diapason.performance.cache",
                     "Cache hit for tool: {} (workspace: {})",
                     name,
                     workspace_path
@@ -492,7 +492,7 @@ async fn lookup_cached_status(
             }
             Err(error) => {
                 warn!(
-                    target: "vtcode.performance.cache",
+                    target: "diapason.performance.cache",
                     tool = name,
                     error = %error,
                     "{}",
@@ -504,7 +504,7 @@ async fn lookup_cached_status(
         }
     } else if phase.should_log_miss() {
         tracing::debug!(
-            target: "vtcode.performance.cache",
+            target: "diapason.performance.cache",
             "Cache miss for tool: {} (workspace: {})",
             name,
             workspace_path
@@ -515,14 +515,14 @@ async fn lookup_cached_status(
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::constants::tools;
+    use diapason_core::tools::registry::{ExecSettlementMode, ToolRegistry};
+    use diapason_core::tools::result_cache::ToolResultCache;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle};
     use serde_json::json;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::mpsc;
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::tools::registry::{ExecSettlementMode, ToolRegistry};
-    use vtcode_core::tools::result_cache::ToolResultCache;
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle};
 
     use super::{
         ProgressCallbackGuard, StreamingOutputCoalescer, execute_prevalidated_read_only_with_cache,
@@ -535,10 +535,10 @@ mod tests {
 
     #[test]
     fn extracts_command_for_run_pty_cmd() {
-        let args = json!({ "command": "cargo check -p vtcode-core" });
+        let args = json!({ "command": "cargo check -p diapason-core" });
         assert_eq!(
             extract_pty_stream_command(tools::RUN_PTY_CMD, &args),
-            Some("cargo check -p vtcode-core".to_string())
+            Some("cargo check -p diapason-core".to_string())
         );
     }
 
@@ -546,11 +546,11 @@ mod tests {
     fn extracts_command_for_command_session_run_action() {
         let args = json!({
             "action": "run",
-            "command": ["cargo", "check", "-p", "vtcode-core"]
+            "command": ["cargo", "check", "-p", "diapason-core"]
         });
         assert_eq!(
             extract_pty_stream_command(tools::UNIFIED_EXEC, &args),
-            Some("cargo check -p vtcode-core".to_string())
+            Some("cargo check -p diapason-core".to_string())
         );
     }
 
@@ -567,11 +567,11 @@ mod tests {
     fn appends_args_suffix_for_run_pty_cmd() {
         let args = json!({
             "command": "cargo",
-            "args": ["check", "-p", "vtcode-core"]
+            "args": ["check", "-p", "diapason-core"]
         });
         assert_eq!(
             extract_pty_stream_command(tools::RUN_PTY_CMD, &args),
-            Some("cargo check -p vtcode-core".to_string())
+            Some("cargo check -p diapason-core".to_string())
         );
     }
 
@@ -627,7 +627,7 @@ mod tests {
         let chunked = json!({
             "content": "partial",
             "next_read_args": {
-                "path": ".vtcode/context/tool_outputs/out.txt",
+                "path": ".diapason/context/tool_outputs/out.txt",
                 "offset": 41,
                 "limit": 40
             }
@@ -701,13 +701,13 @@ mod tests {
     #[test]
     fn suppresses_loading_ui_for_spool_file_reads() {
         let read_args = json!({
-            "path": ".vtcode/context/tool_outputs/command_session_123.txt",
+            "path": ".diapason/context/tool_outputs/command_session_123.txt",
             "offset": 41,
             "limit": 40
         });
         let unified_args = json!({
             "action": "read",
-            "path": ".vtcode/context/tool_outputs/command_session_123.txt",
+            "path": ".diapason/context/tool_outputs/command_session_123.txt",
             "offset": 41,
             "limit": 40
         });
@@ -731,7 +731,7 @@ mod tests {
         });
         let unified_write_args = json!({
             "action": "write",
-            "path": ".vtcode/context/tool_outputs/command_session_123.txt",
+            "path": ".diapason/context/tool_outputs/command_session_123.txt",
             "content": "replacement"
         });
 

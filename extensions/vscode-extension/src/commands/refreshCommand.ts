@@ -2,13 +2,13 @@ import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
 
 /**
- * Command to refresh VT Code quick actions and CLI availability
+ * Command to refresh Diapason quick actions and CLI availability
  */
 export class RefreshCommand extends BaseCommand {
-    public readonly id = "vtcode.refreshQuickActions";
+    public readonly id = "diapason.refreshQuickActions";
     public readonly title = "Refresh";
     public readonly description =
-        "Refresh VT Code quick actions and CLI availability";
+        "Refresh Diapason quick actions and CLI availability";
     public readonly icon = "refresh";
 
     async execute(context: CommandContext): Promise<void> {
@@ -16,10 +16,10 @@ export class RefreshCommand extends BaseCommand {
         // This would be integrated with the main extension's providers
 
         void vscode.window.showInformationMessage(
-            "VT Code quick actions refreshed."
+            "Diapason quick actions refreshed."
         );
 
         // Trigger CLI availability check
-        await vscode.commands.executeCommand("vtcode.verifyWorkspaceTrust");
+        await vscode.commands.executeCommand("diapason.verifyWorkspaceTrust");
     }
 }

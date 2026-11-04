@@ -11,9 +11,9 @@
 
 use std::str::FromStr;
 
-use vtcode_config::context::default_max_context_tokens;
-use vtcode_core::core::agent::features::FeatureSet;
-use vtcode_core::tools::handlers::anthropic_native_memory_enabled_for_runtime;
+use diapason_config::context::default_max_context_tokens;
+use diapason_core::core::agent::features::FeatureSet;
+use diapason_core::tools::handlers::anthropic_native_memory_enabled_for_runtime;
 
 use crate::agent::runloop::unified::turn::compaction::{
     build_server_compaction_context_management, resolve_effective_compaction_threshold,
@@ -44,7 +44,7 @@ pub(super) fn resolve_context_management(
 
 fn resolve_server_compaction_context_management(
     turn: &TurnRequestSnapshot,
-    vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
+    vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
     configured_threshold: Option<u64>,
 ) -> Option<serde_json::Value> {
     let features = FeatureSet::from_config(vt_cfg);
@@ -60,7 +60,7 @@ fn resolve_server_compaction_context_management(
 }
 
 fn build_anthropic_context_management(
-    vt_cfg: &vtcode_core::config::loader::VTCodeConfig,
+    vt_cfg: &diapason_core::config::loader::DiapasonConfig,
     turn: &TurnRequestSnapshot,
     active_model: &str,
 ) -> Option<serde_json::Value> {
@@ -98,13 +98,13 @@ fn build_anthropic_context_management(
         ]);
 
         if anthropic_native_memory_enabled_for_runtime(
-            vtcode_core::config::models::Provider::from_str(&turn.provider_name).ok(),
+            diapason_core::config::models::Provider::from_str(&turn.provider_name).ok(),
             active_model,
             Some(vt_cfg),
         ) {
             edit.insert(
                 "exclude_tools".to_string(),
-                serde_json::json!([vtcode_core::config::constants::tools::MEMORY]),
+                serde_json::json!([diapason_core::config::constants::tools::MEMORY]),
             );
         }
 
@@ -148,14 +148,14 @@ fn build_anthropic_context_management(
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::loader::DiapasonConfig;
     use serde_json::json;
-    use vtcode_core::config::loader::VTCodeConfig;
 
     use crate::agent::runloop::unified::turn::compaction::build_server_compaction_context_management;
 
     #[test]
     fn server_supported_request_build_keeps_context_management_payload() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.agent.harness.auto_compaction_enabled = true;
         cfg.agent.harness.auto_compaction_threshold_tokens = Some(512);
 

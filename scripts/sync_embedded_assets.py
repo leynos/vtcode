@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Synchronize workspace prompt/doc assets with the vtcode-core embedded assets mirror.
+Synchronize workspace prompt/doc assets with the diapason-core embedded assets mirror.
 """
 
 import argparse
@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # embedded_assets_source removed — assets are consumed directly from the workspace root
 
 ASSET_MAPPINGS = {
-    # Asset mappings removed — build.rs reads docs/modules/vtcode_docs_map.md directly from the workspace root
+    # Asset mappings removed — build.rs reads docs/modules/diapason_docs_map.md directly from the workspace root
 }
 
 

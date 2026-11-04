@@ -1,6 +1,6 @@
 use anyhow::Result;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{
     InlineListItem, InlineListSearchConfig, InlineListSelection, ListOverlayRequest, TransientEvent, TransientHotkey,
     TransientHotkeyAction, TransientHotkeyKey, TransientRequest, TransientSelectionChange, TransientSubmission,
 };
@@ -39,7 +39,7 @@ pub(crate) async fn handle_trigger_prompt_suggestions(mut ctx: SlashCommandConte
     ctx.handle.show_list_modal(
         "Prompt suggestions".to_string(),
         vec![
-            "Suggestions are derived from your recent VT Code session state.".to_string(),
+            "Suggestions are derived from your recent Diapason session state.".to_string(),
             "Enter inserts the selected prompt into the composer.".to_string(),
         ],
         items,
@@ -160,8 +160,8 @@ enum JobModalActionKind {
 }
 
 async fn wait_for_jobs_modal_action(
-    handle: &vtcode_ui::tui::app::InlineHandle,
-    session: &mut vtcode_ui::tui::app::InlineSession,
+    handle: &diapason_ui::tui::app::InlineHandle,
+    session: &mut diapason_ui::tui::app::InlineSession,
     ctrl_c_state: &std::sync::Arc<crate::agent::runloop::unified::state::CtrlCState>,
     ctrl_c_notify: &std::sync::Arc<tokio::sync::Notify>,
     initial_selection: Option<InlineListSelection>,
@@ -187,21 +187,21 @@ async fn wait_for_jobs_modal_action(
         };
 
         match event {
-            vtcode_ui::tui::app::InlineEvent::Transient(TransientEvent::SelectionChanged(
+            diapason_ui::tui::app::InlineEvent::Transient(TransientEvent::SelectionChanged(
                 TransientSelectionChange::List(selection),
             )) => {
                 current_selection = Some(selection);
             }
-            vtcode_ui::tui::app::InlineEvent::Transient(TransientEvent::Submitted(TransientSubmission::Selection(
-                selection,
-            ))) => {
+            diapason_ui::tui::app::InlineEvent::Transient(TransientEvent::Submitted(
+                TransientSubmission::Selection(selection),
+            )) => {
                 ctrl_c_state.reset();
                 return Some(JobModalAction {
                     kind: JobModalActionKind::Focus,
                     selection: Some(selection),
                 });
             }
-            vtcode_ui::tui::app::InlineEvent::Transient(TransientEvent::Submitted(TransientSubmission::Hotkey(
+            diapason_ui::tui::app::InlineEvent::Transient(TransientEvent::Submitted(TransientSubmission::Hotkey(
                 action,
             ))) => {
                 ctrl_c_state.reset();
@@ -213,13 +213,13 @@ async fn wait_for_jobs_modal_action(
                 };
                 return Some(JobModalAction { kind, selection: current_selection.clone() });
             }
-            vtcode_ui::tui::app::InlineEvent::Transient(TransientEvent::Cancelled)
-            | vtcode_ui::tui::app::InlineEvent::Cancel
-            | vtcode_ui::tui::app::InlineEvent::Exit => {
+            diapason_ui::tui::app::InlineEvent::Transient(TransientEvent::Cancelled)
+            | diapason_ui::tui::app::InlineEvent::Cancel
+            | diapason_ui::tui::app::InlineEvent::Exit => {
                 ctrl_c_state.reset();
                 return None;
             }
-            vtcode_ui::tui::app::InlineEvent::Interrupt => {
+            diapason_ui::tui::app::InlineEvent::Interrupt => {
                 handle.close_transient();
                 handle.force_redraw();
                 return None;
@@ -351,9 +351,9 @@ fn truncate_job_output(output: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diapason_ui::tui::app::{InlineEvent, InlineHandle, InlineSession};
     use std::sync::Arc;
     use tokio::sync::{Notify, mpsc};
-    use vtcode_ui::tui::app::{InlineEvent, InlineHandle, InlineSession};
 
     use crate::agent::runloop::unified::state::CtrlCState;
 

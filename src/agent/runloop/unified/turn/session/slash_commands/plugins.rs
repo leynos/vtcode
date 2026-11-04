@@ -5,9 +5,9 @@
 //! installing, and removing portable Agent Plugins.
 
 use anyhow::{Context, Result};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection, WizardModalMode};
 use std::sync::Arc;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection, WizardModalMode};
 
 use crate::agent::runloop::unified::session_setup::session_mcp_config;
 use crate::agent::runloop::unified::wizard_modal::{WizardModalOutcome, show_wizard_modal_and_wait};
@@ -149,7 +149,7 @@ async fn run_interactive_plugins_manager(ctx: &mut SlashCommandContext<'_>) -> R
 }
 
 async fn prompt_source(ctx: &mut SlashCommandContext<'_>) -> Result<Option<String>> {
-    let step = vtcode_ui::tui::app::WizardStep {
+    let step = diapason_ui::tui::app::WizardStep {
         title: "Source".to_string(),
         question: "Provide a git URL or local directory to install the plugin from.".to_string(),
         items: vec![InlineListItem {

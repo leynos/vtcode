@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection, WizardModalMode, WizardStep};
 
 use crate::agent::runloop::unified::turn::session::slash_commands::SlashCommandContext;
 use crate::agent::runloop::unified::wizard_modal::{WizardModalOutcome, show_wizard_modal_and_wait};

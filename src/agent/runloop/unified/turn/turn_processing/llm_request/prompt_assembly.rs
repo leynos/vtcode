@@ -15,9 +15,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use vtcode_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
-use vtcode_core::core::agent::runner::prompt_alignment;
-use vtcode_core::prompts::{
+use diapason_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use diapason_core::core::agent::runner::prompt_alignment;
+use diapason_core::prompts::{
     PromptContext, append_deferred_tools_prompt_section, append_runtime_tool_prompt_sections,
     upsert_harness_limits_section,
 };
@@ -67,7 +67,7 @@ async fn build_prompt_output(
         {
             use tracing::Instrument as _;
             system_prompt_future
-                .instrument(tracing::debug_span!(target: "vtcode.prompt", "prompt_assembly.base_prompt"))
+                .instrument(tracing::debug_span!(target: "diapason.prompt", "prompt_assembly.base_prompt"))
                 .await?
         }
         #[cfg(not(feature = "profiling"))]
@@ -85,7 +85,7 @@ async fn build_prompt_output(
 
     {
         #[cfg(feature = "profiling")]
-        let _phase_span = tracing::debug_span!(target: "vtcode.prompt", "prompt_assembly.agent_context").entered();
+        let _phase_span = tracing::debug_span!(target: "diapason.prompt", "prompt_assembly.agent_context").entered();
 
         prompt_sections::append_active_primary_agent_skills(&mut system_prompt, agent, agent_prompt_context.as_ref());
 
@@ -133,7 +133,7 @@ async fn build_prompt_output(
             let base_snapshot = {
                 use tracing::Instrument as _;
                 base_snapshot_future
-                    .instrument(tracing::debug_span!(target: "vtcode.prompt", "prompt_assembly.tool_catalog"))
+                    .instrument(tracing::debug_span!(target: "diapason.prompt", "prompt_assembly.tool_catalog"))
                     .await
             };
             #[cfg(not(feature = "profiling"))]
@@ -149,7 +149,7 @@ async fn build_prompt_output(
 
     {
         #[cfg(feature = "profiling")]
-        let _phase_span = tracing::debug_span!(target: "vtcode.prompt", "prompt_assembly.tool_sections").entered();
+        let _phase_span = tracing::debug_span!(target: "diapason.prompt", "prompt_assembly.tool_sections").entered();
 
         append_runtime_tool_prompt_sections(
             &mut system_prompt,
@@ -179,7 +179,7 @@ async fn build_prompt_output(
 
     // Section 18.3.3 of the agentic-AI guide: inject at most
     // DEFAULT_FEW_SHOT_BUDGET_TOKENS of relevant few-shot examples selected
-    // from `.vtcode/prompts/examples/`. Skip in recovery mode (the model is
+    // from `.diapason/prompts/examples/`. Skip in recovery mode (the model is
     // in "summarize only" mode and adding examples would distract).
     let few_shot_context = {
         if input.turn.tool_free_recovery {
@@ -190,7 +190,7 @@ async fn build_prompt_output(
             {
                 use tracing::Instrument as _;
                 few_shot_future
-                    .instrument(tracing::debug_span!(target: "vtcode.prompt", "prompt_assembly.few_shot"))
+                    .instrument(tracing::debug_span!(target: "diapason.prompt", "prompt_assembly.few_shot"))
                     .await
             }
             #[cfg(not(feature = "profiling"))]
@@ -244,8 +244,8 @@ async fn validate_prompt_output_with_rebuild(
 mod tests {
     use std::sync::Arc;
 
-    use vtcode_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
-    use vtcode_core::prompts::append_runtime_tool_prompt_sections;
+    use diapason_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+    use diapason_core::prompts::append_runtime_tool_prompt_sections;
 
     use super::{PromptAssemblyOutput, validate_prompt_output_alignment};
     use crate::agent::runloop::unified::turn::turn_processing::llm_request::snapshot::capture_turn_request_snapshot;

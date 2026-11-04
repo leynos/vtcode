@@ -6,7 +6,7 @@ significantly reducing command startup time.
 
 ## Problem
 
-Every time VT Code executes a shell command, it traditionally runs the user's
+Every time Diapason executes a shell command, it traditionally runs the user's
 login shell (`$SHELL -lc "command"`) which sources all login scripts
 (`~/.bashrc`, `~/.zshrc`, `~/.bash_profile`, etc.). This can add 100-500ms of
 overhead per command, depending on the complexity of the user's shell
@@ -28,7 +28,7 @@ The shell snapshot feature:
 ### Using the SnapshotExecutor
 
 ```rust
-use vtcode_core::tools::shell::{ShellRunner, SnapshotExecutor};
+use diapason_core::tools::shell::{ShellRunner, SnapshotExecutor};
 
 // Create a shell runner that uses snapshots
 let runner = ShellRunner::<SnapshotExecutor>::with_snapshot(workspace_root);
@@ -40,7 +40,7 @@ let output = runner.exec("cargo build").await?;
 ### Using the Global Snapshot Manager
 
 ```rust
-use vtcode_core::tools::shell_snapshot::global_snapshot_manager;
+use diapason_core::tools::shell_snapshot::global_snapshot_manager;
 
 // Get or capture a snapshot
 let snapshot = global_snapshot_manager().get_or_capture().await?;
@@ -57,7 +57,7 @@ global_snapshot_manager().invalidate();
 ### Applying Snapshot to Commands
 
 ```rust
-use vtcode_core::tools::shell_snapshot::{apply_snapshot_env, global_snapshot_manager};
+use diapason_core::tools::shell_snapshot::{apply_snapshot_env, global_snapshot_manager};
 use tokio::process::Command;
 
 let snapshot = global_snapshot_manager().get_or_capture().await?;
@@ -95,7 +95,7 @@ let output = cmd.output().await?;
 The snapshot is captured by running:
 
 ```sh
-$SHELL -lc "printf '__VTCODE_ENV_BEGIN__\n'; env -0; printf '\n__VTCODE_ENV_END__\n'"
+$SHELL -lc "printf '__DIAPASON_ENV_BEGIN__\n'; env -0; printf '\n__DIAPASON_ENV_END__\n'"
 ```
 
 This:
@@ -156,7 +156,7 @@ Typical improvements:
 
 2. **Indirect Changes**: Changes to files that are `source`d by the monitored
    config files won't trigger invalidation. Use manual invalidation or restart
-   VT Code.
+   Diapason.
 
 3. **Interactive-only Config**: Some shell configurations only apply to
    interactive shells and may not be captured.

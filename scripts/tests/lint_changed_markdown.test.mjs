@@ -20,14 +20,14 @@ import test from "node:test";
 const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const HELPER_PATH = join(TEST_DIRECTORY, "..", "lint_changed_markdown.mjs");
 const WORKFLOW_PATH = join(TEST_DIRECTORY, "..", "..", ".github", "workflows", "ci.yml");
-const CHANGED_FILES_ENV = "VTCODE_CHANGED_MARKDOWN_FILES_JSON";
-const COMMAND_ENV = "VTCODE_MARKDOWNLINT_COMMAND";
-const CAPTURE_ENV = "VTCODE_MARKDOWNLINT_CAPTURE";
-const EXIT_STATUS_ENV = "VTCODE_MARKDOWNLINT_EXIT_STATUS";
+const CHANGED_FILES_ENV = "DIAPASON_CHANGED_MARKDOWN_FILES_JSON";
+const COMMAND_ENV = "DIAPASON_MARKDOWNLINT_COMMAND";
+const CAPTURE_ENV = "DIAPASON_MARKDOWNLINT_CAPTURE";
+const EXIT_STATUS_ENV = "DIAPASON_MARKDOWNLINT_EXIT_STATUS";
 const UNSUPPORTED_SYMLINK_CODES = new Set(["EACCES", "EPERM", "ENOTSUP"]);
 
 function makeTemporaryDirectory() {
-    return mkdtempSync(join(tmpdir(), "vtcode-lint-changed-markdown-"));
+    return mkdtempSync(join(tmpdir(), "diapason-lint-changed-markdown-"));
 }
 
 function makeCaptureExecutable(commandPath) {
@@ -233,7 +233,7 @@ test("passes only non-target Markdown paths from a mixed change set", () => {
 for (const rejectionCase of [
     {
         name: "requires the changed-files environment variable",
-        message: /VTCODE_CHANGED_MARKDOWN_FILES_JSON is required/,
+        message: /DIAPASON_CHANGED_MARKDOWN_FILES_JSON is required/,
     },
     {
         name: "rejects an existing directory with a Markdown suffix",

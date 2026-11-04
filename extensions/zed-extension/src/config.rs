@@ -1,12 +1,12 @@
-/// VT Code Configuration Management
+/// Diapason Configuration Management
 ///
-/// Handles loading and parsing of vtcode.toml configuration files
+/// Handles loading and parsing of config.toml configuration files
 /// from the workspace root.
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-/// Root VT Code configuration structure
+/// Root Diapason configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -110,7 +110,7 @@ impl Default for SecurityConfig {
     }
 }
 
-/// Load configuration from vtcode.toml
+/// Load configuration from config.toml
 pub fn load_config(path: &Path) -> Result<Config, String> {
     // Check if file exists
     if !path.exists() {
@@ -119,21 +119,21 @@ pub fn load_config(path: &Path) -> Result<Config, String> {
 
     // Read the file
     let content =
-        fs::read_to_string(path).map_err(|e| format!("Failed to read vtcode.toml: {}", e))?;
+        fs::read_to_string(path).map_err(|e| format!("Failed to read config.toml: {}", e))?;
 
     // Parse TOML
     let config: Config =
-        toml::from_str(&content).map_err(|e| format!("Failed to parse vtcode.toml: {}", e))?;
+        toml::from_str(&content).map_err(|e| format!("Failed to parse config.toml: {}", e))?;
 
     Ok(config)
 }
 
-/// Find vtcode.toml in workspace root or parent directories
+/// Find config.toml in workspace root or parent directories
 pub fn find_config(start_path: &Path) -> Option<Config> {
     let mut current = start_path.to_path_buf();
 
     loop {
-        let config_path = current.join("vtcode.toml");
+        let config_path = current.join("config.toml");
         if config_path.exists() {
             if let Ok(config) = load_config(&config_path) {
                 return Some(config);

@@ -3,13 +3,13 @@ use std::time::Duration;
 use anyhow::Result;
 use chrono::Local;
 
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig};
-use vtcode_core::ui::theme;
-use vtcode_core::ui::{inline_theme_from_core_styles, to_tui_appearance};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::session_archive::SessionListing;
-use vtcode_ui::tui::app::{InlineHandle, InlineListItem, InlineListSearchConfig, InlineListSelection};
-use vtcode_ui::tui::core::convert_style;
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig};
+use diapason_core::ui::theme;
+use diapason_core::ui::{inline_theme_from_core_styles, to_tui_appearance};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::session_archive::SessionListing;
+use diapason_ui::tui::app::{InlineHandle, InlineListItem, InlineListSearchConfig, InlineListSelection};
+use diapason_ui::tui::core::convert_style;
 
 use crate::agent::runloop::slash_commands::{SessionPaletteMode, ThemePaletteMode};
 use crate::agent::runloop::ui::build_inline_header_context;
@@ -121,7 +121,7 @@ fn theme_search_value(theme_id: &str, theme_label: &str) -> String {
 
 pub(crate) fn show_mode_palette(
     renderer: &mut AnsiRenderer,
-    specs: &[vtcode_config::SubagentSpec],
+    specs: &[diapason_config::SubagentSpec],
     current_name: &str,
 ) -> Result<bool> {
     let primary_specs: Vec<_> = specs.iter().filter(|s| s.is_primary()).collect();
@@ -139,7 +139,7 @@ pub(crate) fn show_mode_palette(
             canonical_current = spec.name.as_str();
         }
         let badge = if is_current { Some("Active".to_string()) } else { None };
-        let subtitle = if spec.permissions.default == vtcode_config::core::permissions::PermissionDefault::Auto {
+        let subtitle = if spec.permissions.default == diapason_config::core::permissions::PermissionDefault::Auto {
             Some(format!("{} (autonomous)", spec.description))
         } else {
             Some(spec.description.clone())
@@ -313,9 +313,9 @@ pub(crate) fn show_fork_mode_palette(renderer: &mut AnsiRenderer, session_id: &s
 pub(crate) async fn refresh_runtime_config_from_manager(
     renderer: &mut AnsiRenderer,
     handle: &InlineHandle,
-    config: &mut vtcode_core::config::types::AgentConfig,
-    vt_cfg: &mut Option<VTCodeConfig>,
-    provider_client: &dyn vtcode_core::llm::provider::LLMProvider,
+    config: &mut diapason_core::config::types::AgentConfig,
+    vt_cfg: &mut Option<DiapasonConfig>,
+    provider_client: &dyn diapason_core::llm::provider::LLMProvider,
     session_bootstrap: &SessionBootstrap,
     _full_auto: bool,
 ) -> Result<()> {
@@ -327,14 +327,14 @@ pub(crate) async fn refresh_runtime_config_from_manager(
         .as_ref()
         .is_some_and(|old| old.custom_providers == runtime_config.custom_providers);
     if !custom_providers_unchanged {
-        vtcode_core::llm::factory::register_custom_providers(&runtime_config.custom_providers);
+        diapason_core::llm::factory::register_custom_providers(&runtime_config.custom_providers);
     }
     *vt_cfg = Some(runtime_config.clone());
     config.reasoning_effort = runtime_config.agent.reasoning_effort;
     config.theme.clone_from(&runtime_config.agent.theme);
     renderer.set_show_diagnostics_in_transcript(runtime_config.ui.show_diagnostics_in_transcript);
     renderer.set_tool_display_mode(runtime_config.ui.tool_display_mode);
-    vtcode_ui::tui::panic_hook::set_show_diagnostics(runtime_config.ui.show_diagnostics_in_transcript);
+    diapason_ui::tui::panic_hook::set_show_diagnostics(runtime_config.ui.show_diagnostics_in_transcript);
 
     theme::set_color_accessibility_config(theme::ColorAccessibilityConfig {
         minimum_contrast: runtime_config.ui.minimum_contrast,
@@ -384,9 +384,9 @@ pub(crate) async fn handle_palette_selection(
     selection: InlineListSelection,
     renderer: &mut AnsiRenderer,
     handle: &InlineHandle,
-    config: &mut vtcode_core::config::types::AgentConfig,
-    vt_cfg: &mut Option<VTCodeConfig>,
-    provider_client: &dyn vtcode_core::llm::provider::LLMProvider,
+    config: &mut diapason_core::config::types::AgentConfig,
+    vt_cfg: &mut Option<DiapasonConfig>,
+    provider_client: &dyn diapason_core::llm::provider::LLMProvider,
     session_bootstrap: &SessionBootstrap,
     full_auto: bool,
 ) -> Result<Option<ActivePalette>> {
@@ -629,7 +629,7 @@ pub(crate) fn apply_prompt_style(handle: &InlineHandle) {
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
-    use vtcode_core::utils::session_archive::{SessionArchiveMetadata, SessionSnapshot};
+    use diapason_core::utils::session_archive::{SessionArchiveMetadata, SessionSnapshot};
 
     #[test]
     fn normalize_config_selection_maps_cycle_prev_to_cycle() {
@@ -664,8 +664,8 @@ mod tests {
             path: "/tmp/session.json".into(),
             snapshot: SessionSnapshot {
                 metadata: SessionArchiveMetadata::new(
-                    "vtcode",
-                    "/workspace/vtcode",
+                    "diapason",
+                    "/workspace/diapason",
                     "gpt-5.6-sol",
                     "openai",
                     "sunrise",
@@ -683,7 +683,7 @@ mod tests {
         };
 
         let value = session_search_value(&listing, "2026-03-11 16:05", "5m 0s", 2);
-        assert!(value.contains("vtcode"));
+        assert!(value.contains("diapason"));
         assert!(value.contains("gpt-5.6-sol"));
         assert!(value.contains("2026-03-11 16:05"));
         assert!(value.contains("5m 0s"));

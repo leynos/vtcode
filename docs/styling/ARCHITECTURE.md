@@ -1,4 +1,4 @@
-# Architecture: Anstyle Integration in Vtcode
+# Architecture: Anstyle Integration in Diapason
 
 Visual diagrams and architectural details for the anstyle integration.
 
@@ -9,7 +9,7 @@ Visual diagrams and architectural details for the anstyle integration.
                      Input Sources                                
 
   Git Config            LS_COLORS Env Var     Custom Config   
-  .git/config           "di=01;34:ln=01:36"  .vtcoderc       
+  .git/config           "di=01;34:ln=01:36"  .diapasonrc
                                                               
  [color "diff"]                              ---              
  new = green bold                                             
@@ -38,7 +38,7 @@ Visual diagrams and architectural details for the anstyle integration.
                    
                               ↓
          
-            crates/codegen/vtcode-core/src/ui/tui/style.rs      
+            crates/codegen/diapason-core/src/ui/tui/style.rs
             convert_style() function             
          
                             ↓
@@ -119,7 +119,7 @@ ______________________________________________________________________
 ## Module Dependencies
 
 ```
-vtcode-core
+diapason-core
  src/ui/
      theme.rs (existing)
         ThemePalette, ThemeStyles
@@ -149,7 +149,7 @@ vtcode-core
            file_palette.rs (FUTURE: Phase 3)
            FileColorizer [not yet added]
        
-        tui/ (existing, moved to vtcode-ui)
+        tui/ (existing, moved to diapason-ui)
     
      diff_renderer.rs (FUTURE: Phase 2)
          GitColorConfig [not yet added]
@@ -271,13 +271,13 @@ When styling a file or element, resolve colors in this order:
    ↓ (not available or key not found)
 3. Git config [color] section
    ↓ (not configured)
-4. Vtcode theme (ThemePalette)
+4. Diapason theme (ThemePalette)
    ↓ (missing)
 5. Terminal default color
 ```
 
-This allows layered customization: system colors → git colors → vtcode theme →
-fallback.
+This allows layered customization: system colors → git colors → diapason theme
+→ fallback.
 
 ______________________________________________________________________
 
@@ -359,7 +359,7 @@ ______________________________________________________________________
 ## Testing Architecture
 
 ```
-Unit Tests (crates/codegen/vtcode-core/src/ui/tui/)
+Unit Tests (crates/codegen/diapason-core/src/ui/tui/)
  test_convert_style
     Bold color conversion
     Background color handling
@@ -377,7 +377,7 @@ Unit Tests (crates/codegen/vtcode-core/src/ui/tui/)
      parse_ls_colors (error cases)
      parse_flexible (fallback logic)
 
-Integration Tests (vtcode-core/examples/)
+Integration Tests (diapason-core/examples/)
  style_parsing.rs
     Full pipeline: parse → convert → render
 
@@ -421,7 +421,7 @@ Phase 3: Features (3-4 hours)
  Week 3: System Colors
     session/file_palette.rs (FileColorizer)
     LS_COLORS env var parsing
-    Config file support (.vtcoderc)
+    Config file support (.diapasonrc)
 ```
 
 ______________________________________________________________________

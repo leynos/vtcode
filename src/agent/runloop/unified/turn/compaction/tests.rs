@@ -10,20 +10,20 @@ use crate::agent::runloop::unified::context_manager::ContextManager;
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
 use crate::agent::runloop::unified::state::SessionStats;
 use async_trait::async_trait;
+use diapason_commons::llm::Usage;
+use diapason_core::compaction::ManualCompactionOptions;
+use diapason_core::compaction::effective_session_context_budget;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::llm::provider::{
+    LLMError, LLMProvider, LLMRequest, LLMResponse, Message, MessageRole, ResponsesCompactionOptions, ToolCall,
+};
 use hashbrown::HashMap;
 use serde_json::json;
 use std::fs;
 use std::sync::Arc;
 use tempfile::tempdir;
 use tokio::sync::RwLock;
-use vtcode_commons::llm::Usage;
-use vtcode_core::compaction::ManualCompactionOptions;
-use vtcode_core::compaction::effective_session_context_budget;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::llm::provider::{
-    LLMError, LLMProvider, LLMRequest, LLMResponse, Message, MessageRole, ResponsesCompactionOptions, ToolCall,
-};
 
 struct LocalCompactionProvider;
 
@@ -420,7 +420,7 @@ fn assistant_with_tool_call(tool_call: ToolCall) -> Message {
 }
 
 fn test_context_manager() -> ContextManager {
-    ContextManager::new("You are VT Code.".to_string(), (), Arc::new(RwLock::new(HashMap::new())), None)
+    ContextManager::new("You are Diapason.".to_string(), (), Arc::new(RwLock::new(HashMap::new())), None)
 }
 
 #[tokio::test]
@@ -443,7 +443,7 @@ async fn manual_compaction_succeeds_without_server_side_support() {
         "stub-model",
         "session-alpha",
         temp.path(),
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &mut history,
         &mut session_stats,
         &mut context_manager,
@@ -481,18 +481,18 @@ async fn manual_compaction_emits_local_compaction_boundary_event() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             Some(&harness_emitter),
         ),
         CompactionState::new(&mut history, &mut session_stats, &mut context_manager),
-        vtcode_core::exec::events::CompactionTrigger::Manual,
+        diapason_core::exec::events::CompactionTrigger::Manual,
     )
     .await
     .expect("compaction succeeds")
     .expect("history should compact");
 
-    assert_eq!(outcome.mode, vtcode_core::exec::events::CompactionMode::Local);
+    assert_eq!(outcome.mode, diapason_core::exec::events::CompactionMode::Local);
     let content = fs::read_to_string(harness_path).expect("read harness log");
     assert!(content.contains("\"type\":\"thread.compact_boundary\""));
     assert!(content.contains("\"mode\":\"local\""));
@@ -516,18 +516,18 @@ async fn provider_compaction_emits_provider_boundary_event() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             Some(&harness_emitter),
         ),
         CompactionState::new(&mut history, &mut session_stats, &mut context_manager),
-        vtcode_core::exec::events::CompactionTrigger::Manual,
+        diapason_core::exec::events::CompactionTrigger::Manual,
     )
     .await
     .expect("compaction succeeds")
     .expect("history should compact");
 
-    assert_eq!(outcome.mode, vtcode_core::exec::events::CompactionMode::Provider);
+    assert_eq!(outcome.mode, diapason_core::exec::events::CompactionMode::Provider);
     let content = fs::read_to_string(harness_path).expect("read harness log");
     assert!(content.contains("\"type\":\"thread.compact_boundary\""));
     assert!(content.contains("\"mode\":\"provider\""));
@@ -549,7 +549,7 @@ async fn manual_compaction_clears_previous_response_chain() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             None,
         ),
@@ -561,7 +561,7 @@ async fn manual_compaction_clears_previous_response_chain() {
     .expect("manual OpenAI compaction succeeds")
     .expect("history should compact");
 
-    assert_eq!(outcome.mode, vtcode_core::exec::events::CompactionMode::Provider);
+    assert_eq!(outcome.mode, diapason_core::exec::events::CompactionMode::Provider);
     assert_eq!(session_stats.previous_response_id_for("provider-stub", "stub-model"), None);
 }
 
@@ -582,7 +582,7 @@ async fn model_switch_compaction_tags_boundary_event_with_model_switch_trigger()
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             Some(&emitter),
         ),
@@ -592,7 +592,7 @@ async fn model_switch_compaction_tags_boundary_event_with_model_switch_trigger()
     .expect("model-switch compaction succeeds")
     .expect("history should compact");
 
-    assert_eq!(outcome.mode, vtcode_core::exec::events::CompactionMode::Provider);
+    assert_eq!(outcome.mode, diapason_core::exec::events::CompactionMode::Provider);
 
     let log = fs::read_to_string(&harness_path).expect("harness log readable");
     assert!(
@@ -617,7 +617,7 @@ async fn manual_compaction_native_only_rejects_provider_without_standalone_compa
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             None,
         ),
@@ -650,7 +650,7 @@ async fn manual_compaction_compacts_locally_for_non_native_provider() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             None,
         ),
@@ -662,7 +662,7 @@ async fn manual_compaction_compacts_locally_for_non_native_provider() {
     .expect("local compaction succeeds")
     .expect("history should compact");
 
-    assert_eq!(outcome.mode, vtcode_core::exec::events::CompactionMode::Local);
+    assert_eq!(outcome.mode, diapason_core::exec::events::CompactionMode::Local);
     assert_history_contains_messages(&history, &test_history());
     assert_local_compaction_history(&history, 0);
 }
@@ -683,7 +683,7 @@ async fn manual_compaction_noop_preserves_existing_history() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             None,
         ),
@@ -714,12 +714,12 @@ async fn provider_compaction_noop_preserves_existing_history() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             None,
         ),
         CompactionState::new(&mut history, &mut session_stats, &mut context_manager),
-        vtcode_core::exec::events::CompactionTrigger::Manual,
+        diapason_core::exec::events::CompactionTrigger::Manual,
     )
     .await
     .expect("noop compaction succeeds");
@@ -771,12 +771,12 @@ async fn provider_compaction_preserves_original_repeated_file_reads() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             None,
         ),
         CompactionState::new(&mut history, &mut session_stats, &mut context_manager),
-        vtcode_core::exec::events::CompactionTrigger::Manual,
+        diapason_core::exec::events::CompactionTrigger::Manual,
     )
     .await
     .expect("provider compaction succeeds");
@@ -960,7 +960,7 @@ fn recovery_context_previews_extract_nested_error_guidance_and_spool_excerpt() {
             "call-1".to_string(),
             json!({
                 "path": "src/main.rs",
-                "spool_path": ".vtcode/context/tool_outputs/read_1.txt",
+                "spool_path": ".diapason/context/tool_outputs/read_1.txt",
                 "preview": "spooled-line-1\nspooled-line-2\nSpool excerpt: nested diagnostic",
                 "error": {
                     "message": "Read failed",
@@ -993,7 +993,7 @@ fn recovery_context_previews_prefer_substantive_reads_over_recent_low_signal_out
             "call-1".to_string(),
             json!({
                 "path": "README.md",
-                "content": "VT Code is an open-source coding agent with LLM-native code understanding."
+                "content": "Diapason is an open-source coding agent with LLM-native code understanding."
             })
             .to_string(),
         ),
@@ -1001,7 +1001,7 @@ fn recovery_context_previews_prefer_substantive_reads_over_recent_low_signal_out
             "call-2".to_string(),
             json!({
                 "path": "docs/ARCHITECTURE.md",
-                "content": "VT Code follows a modular architecture designed for maintainability and extensibility."
+                "content": "Diapason follows a modular architecture designed for maintainability and extensibility."
             })
             .to_string(),
         ),
@@ -1026,8 +1026,8 @@ fn recovery_context_previews_prefer_substantive_reads_over_recent_low_signal_out
     let previews = super::build_recovery_context_previews_with_workspace(&history, None);
 
     assert_eq!(previews[0], "Latest user request: tell me more");
-    assert!(previews[1].contains("VT Code follows a modular architecture"));
-    assert!(previews[2].contains("VT Code is an open-source coding agent"));
+    assert!(previews[1].contains("Diapason follows a modular architecture"));
+    assert!(previews[2].contains("Diapason is an open-source coding agent"));
     assert!(previews[3].contains("Repeated reads of 'docs/ARCHITECTURE.md'"));
     assert!(
         previews.iter().all(|preview| !preview.contains("Listed 20 items")),
@@ -1048,7 +1048,7 @@ fn legacy_memory_envelope_deserializes_with_new_fields_defaulted() {
             "source": "tool:read_file"
         }],
         "touched_files": ["src/lib.rs"],
-        "history_artifact_path": ".vtcode/history/session-alpha.jsonl",
+        "history_artifact_path": ".diapason/history/session-alpha.jsonl",
         "generated_at": "2026-03-14T00:00:00Z"
     }))
     .expect("legacy envelope should deserialize");
@@ -1065,21 +1065,32 @@ fn legacy_memory_envelope_deserializes_with_new_fields_defaulted() {
 #[test]
 fn refresh_session_memory_envelope_merges_existing_continuity_fields() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
-    fs::create_dir_all(temp.path().join(".vtcode").join("tasks")).expect("tasks dir");
+    fs::create_dir_all(temp.path().join(diapason_commons::workspace_dir_name()).join("tasks")).expect("tasks dir");
     fs::write(
-        temp.path().join(".vtcode").join("tasks").join("current_task.md"),
+        temp.path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("tasks")
+            .join("current_task.md"),
         "# Ship compaction cleanup\n- [ ] Run cargo nextest\n- [x] Wire in config\n",
     )
     .expect("write task");
     fs::write(
-        temp.path().join(".vtcode").join("tasks").join("current_spec.md"),
+        temp.path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("tasks")
+            .join("current_spec.md"),
         "# Spec\nKeep local compaction aligned with summarized forks.\n",
     )
     .expect("write spec");
     fs::write(
-        temp.path().join(".vtcode").join("tasks").join("current_evaluation.md"),
+        temp.path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("tasks")
+            .join("current_evaluation.md"),
         "# Eval\nNeed a regression test for repeated reads.\n",
     )
     .expect("write eval");
@@ -1104,7 +1115,7 @@ fn refresh_session_memory_envelope_merges_existing_continuity_fields() {
         delegation_notes: vec!["explorer: looked at compaction flow".to_string()],
         pending_intents: Vec::new(),
         applied_intent_ids: Vec::new(),
-        history_artefact_path: Some(".vtcode/history/session-alpha_0001.jsonl".to_string()),
+        history_artefact_path: Some(".diapason/history/session-alpha_0001.jsonl".to_string()),
         generated_at: "2026-03-14T00:00:00Z".to_string(),
     };
     fs::write(
@@ -1136,7 +1147,7 @@ fn refresh_session_memory_envelope_merges_existing_continuity_fields() {
     let envelope = super::refresh_session_memory_envelope(
         temp.path(),
         "session-alpha",
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &history,
         &session_stats,
         Some(&update),
@@ -1187,15 +1198,17 @@ fn refresh_session_memory_envelope_merges_existing_continuity_fields() {
 #[test]
 fn refresh_session_memory_envelope_prefers_structured_verify_metadata() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
-    fs::create_dir_all(temp.path().join(".vtcode").join("tasks")).expect("tasks dir");
+    fs::create_dir_all(temp.path().join(diapason_commons::workspace_dir_name()).join("tasks")).expect("tasks dir");
     fs::write(
         temp.path()
-            .join(".vtcode")
+            .join(diapason_commons::workspace_dir_name())
             .join("tasks")
             .join("current_task.md"),
-        "# Ship compaction cleanup\n- [x] Analyze current continuity path\n  outcome: Existing envelope flow reviewed.\n- [ ] Update verification preservation\n  verify: cargo check -p vtcode\n- [ ] Run focused regression\n  verify:\n    - cargo test -p vtcode --bin vtcode agent::runloop::unified::turn::compaction::tests::refresh_session_memory_envelope_prefers_structured_verify_metadata -- --exact\n",
+        "# Ship compaction cleanup\n- [x] Analyze current continuity path\n  outcome: Existing envelope flow reviewed.\n- [ ] Update verification preservation\n  verify: cargo check -p diapason\n- [ ] Run focused regression\n  verify:\n    - cargo test -p diapason --bin diapason agent::runloop::unified::turn::compaction::tests::refresh_session_memory_envelope_prefers_structured_verify_metadata -- --exact\n",
     )
     .expect("write task");
 
@@ -1206,7 +1219,7 @@ fn refresh_session_memory_envelope_prefers_structured_verify_metadata() {
     let envelope = super::refresh_session_memory_envelope(
         temp.path(),
         "session-alpha",
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &history,
         &session_stats,
         None,
@@ -1217,7 +1230,7 @@ fn refresh_session_memory_envelope_prefers_structured_verify_metadata() {
     assert_eq!(
         envelope.verification_summary.as_deref(),
         Some(
-            "- cargo check -p vtcode\n- cargo test -p vtcode --bin vtcode agent::runloop::unified::turn::compaction::tests::refresh_session_memory_envelope_prefers_structured_verify_metadata -- --exact"
+            "- cargo check -p diapason\n- cargo test -p diapason --bin diapason agent::runloop::unified::turn::compaction::tests::refresh_session_memory_envelope_prefers_structured_verify_metadata -- --exact"
         )
     );
     assert_eq!(history, original_history, "ordinary refresh should not mutate live history");
@@ -1231,9 +1244,9 @@ fn refresh_session_memory_envelope_prefers_structured_verify_metadata() {
         persisted
             .verification_summary
             .as_deref()
-            .is_some_and(|summary| summary.contains("- cargo check -p vtcode"))
+            .is_some_and(|summary| summary.contains("- cargo check -p diapason"))
     );
-    let focused_regression = "- cargo test -p vtcode --bin vtcode agent::runloop::unified::turn::compaction::tests::refresh_session_memory_envelope_prefers_structured_verify_metadata -- --exact";
+    let focused_regression = "- cargo test -p diapason --bin diapason agent::runloop::unified::turn::compaction::tests::refresh_session_memory_envelope_prefers_structured_verify_metadata -- --exact";
     assert!(
         persisted
             .verification_summary
@@ -1245,11 +1258,16 @@ fn refresh_session_memory_envelope_prefers_structured_verify_metadata() {
 #[test]
 fn refresh_session_memory_envelope_is_throttled_when_nothing_changes() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
-    fs::create_dir_all(temp.path().join(".vtcode").join("tasks")).expect("tasks dir");
+    fs::create_dir_all(temp.path().join(diapason_commons::workspace_dir_name()).join("tasks")).expect("tasks dir");
     fs::write(
-        temp.path().join(".vtcode").join("tasks").join("current_task.md"),
+        temp.path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("tasks")
+            .join("current_task.md"),
         "# Ship compaction cleanup\n- [ ] Run cargo nextest\n",
     )
     .expect("write task");
@@ -1290,7 +1308,7 @@ fn refresh_session_memory_envelope_is_throttled_when_nothing_changes() {
     let first = super::refresh_session_memory_envelope(
         temp.path(),
         "session-alpha",
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &history,
         &session_stats,
         None,
@@ -1303,7 +1321,7 @@ fn refresh_session_memory_envelope_is_throttled_when_nothing_changes() {
     let second = super::refresh_session_memory_envelope(
         temp.path(),
         "session-alpha",
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &history,
         &session_stats,
         None,
@@ -1317,11 +1335,16 @@ fn refresh_session_memory_envelope_is_throttled_when_nothing_changes() {
 #[test]
 fn refresh_session_memory_envelope_summary_is_concise() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
-    fs::create_dir_all(temp.path().join(".vtcode").join("tasks")).expect("tasks dir");
+    fs::create_dir_all(temp.path().join(diapason_commons::workspace_dir_name()).join("tasks")).expect("tasks dir");
     fs::write(
-        temp.path().join(".vtcode").join("tasks").join("current_task.md"),
+        temp.path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("tasks")
+            .join("current_task.md"),
         "# Audit agent loop\n- [ ] Reduce duplicated work\n",
     )
     .expect("write task");
@@ -1337,7 +1360,7 @@ fn refresh_session_memory_envelope_summary_is_concise() {
     let envelope = super::refresh_session_memory_envelope(
         temp.path(),
         "session-alpha",
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &history,
         &session_stats,
         None,
@@ -1367,12 +1390,12 @@ async fn provider_compaction_error_preserves_existing_history() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             None,
         ),
         CompactionState::new(&mut history, &mut session_stats, &mut context_manager),
-        vtcode_core::exec::events::CompactionTrigger::Manual,
+        diapason_core::exec::events::CompactionTrigger::Manual,
     )
     .await
     .expect_err("failing provider should fail");
@@ -1400,7 +1423,7 @@ async fn recovery_compaction_falls_back_to_local_when_inline_request_errors() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             None,
         ),
@@ -1411,7 +1434,7 @@ async fn recovery_compaction_falls_back_to_local_when_inline_request_errors() {
     .expect("recovery compaction should fall back to local")
     .expect("history should compact");
 
-    assert_eq!(outcome.mode, vtcode_core::exec::events::CompactionMode::Local);
+    assert_eq!(outcome.mode, diapason_core::exec::events::CompactionMode::Local);
     assert!(outcome.compacted_len >= outcome.original_len);
     assert_history_contains_messages(&history, &test_history());
 }
@@ -1420,7 +1443,7 @@ async fn recovery_compaction_falls_back_to_local_when_inline_request_errors() {
 async fn auto_compaction_replaces_history_and_clears_response_chain() {
     let temp = tempdir().expect("tempdir");
     let provider = LocalCompactionProvider;
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.harness.auto_compaction_enabled = true;
     vt_cfg.agent.harness.auto_compaction_threshold_tokens = Some(700);
 
@@ -1468,7 +1491,7 @@ async fn auto_compaction_replaces_history_and_clears_response_chain() {
 async fn auto_compaction_uses_the_effective_session_safety_ceiling() {
     let temp = tempdir().expect("tempdir");
     let provider = ContextSizedProvider { context_size: 500_000 };
-    let vt_cfg = VTCodeConfig::default();
+    let vt_cfg = DiapasonConfig::default();
     let mut history = test_history();
     let mut session_stats = SessionStats::default();
     let mut context_manager = test_context_manager();
@@ -1520,7 +1543,7 @@ async fn targeted_compaction_preserves_prefix_and_replaces_suffix() {
         "stub-model",
         "session-alpha",
         temp.path(),
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &mut history,
         1,
         &mut session_stats,
@@ -1583,7 +1606,7 @@ async fn recovery_compaction_preserves_current_turn_suffix_and_emits_event() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             Some(&harness_emitter),
         ),
@@ -1628,7 +1651,7 @@ async fn recovery_compaction_uses_provider_mode_when_supported() {
             "session-alpha",
             "thread-alpha",
             temp.path(),
-            Some(&VTCodeConfig::default()),
+            Some(&DiapasonConfig::default()),
             None,
             Some(&harness_emitter),
         ),
@@ -1639,7 +1662,7 @@ async fn recovery_compaction_uses_provider_mode_when_supported() {
     .expect("provider recovery compaction succeeds")
     .expect("history should compact");
 
-    assert_eq!(outcome.mode, vtcode_core::exec::events::CompactionMode::Provider);
+    assert_eq!(outcome.mode, diapason_core::exec::events::CompactionMode::Provider);
     assert_eq!(history[history.len() - preserved_suffix.len()..], preserved_suffix);
 
     let content = fs::read_to_string(harness_path).expect("read harness log");
@@ -1650,7 +1673,9 @@ async fn recovery_compaction_uses_provider_mode_when_supported() {
 #[test]
 fn inject_latest_memory_envelope_rehydrates_resume_history() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
     let envelope_path = history_dir.join("resume-session_001.memory.json");
     let envelope = SessionMemoryEnvelope {
@@ -1664,7 +1689,7 @@ fn inject_latest_memory_envelope_rehydrates_resume_history() {
         verification_summary: Some("- [ ] Run cargo nextest".to_string()),
         constraints: Vec::new(),
         grounded_facts: vec![GroundedFactRecord {
-            fact: "Cargo.toml declares vtcode-core".to_string(),
+            fact: "Cargo.toml declares diapason-core".to_string(),
             source: "tool:read_file".to_string(),
         }],
         touched_files: vec!["Cargo.toml".to_string()],
@@ -1673,7 +1698,7 @@ fn inject_latest_memory_envelope_rehydrates_resume_history() {
         delegation_notes: Vec::new(),
         pending_intents: Vec::new(),
         applied_intent_ids: Vec::new(),
-        history_artefact_path: Some(".vtcode/history/resume-session_001.jsonl".to_string()),
+        history_artefact_path: Some(".diapason/history/resume-session_001.jsonl".to_string()),
         generated_at: "2026-03-14T00:00:00Z".to_string(),
     };
     fs::write(&envelope_path, serde_json::to_string_pretty(&envelope).expect("serialize envelope"))
@@ -1689,7 +1714,9 @@ fn inject_latest_memory_envelope_rehydrates_resume_history() {
 #[test]
 fn inject_latest_memory_envelope_is_session_scoped() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
 
     for (session_id, summary) in [("session-alpha", "Alpha summary"), ("session-beta", "Beta summary")] {
@@ -1727,7 +1754,9 @@ fn inject_latest_memory_envelope_is_session_scoped() {
 #[test]
 fn inject_latest_memory_envelope_requires_exact_session_prefix_match() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
 
     for (file_name, summary) in [
@@ -1768,7 +1797,7 @@ fn inject_latest_memory_envelope_requires_exact_session_prefix_match() {
 async fn no_envelope_written_when_dynamic_history_is_disabled() {
     let temp = tempdir().expect("tempdir");
     let provider = LocalCompactionProvider;
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.context.dynamic.enabled = false;
 
     let mut history = test_history();
@@ -1807,7 +1836,7 @@ async fn persisted_envelope_uses_recorded_touched_files_only() {
         "stub-model",
         "session-alpha",
         temp.path(),
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &mut history,
         &mut session_stats,
         &mut context_manager,
@@ -1826,7 +1855,9 @@ async fn persisted_envelope_uses_recorded_touched_files_only() {
 #[test]
 fn inject_latest_memory_envelope_uses_exact_session_id_when_prefixes_collide() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
 
     let session_alpha = "01234567890123456789012345678901-alpha";
@@ -1881,7 +1912,7 @@ async fn compaction_strips_existing_memory_envelope_before_recompacting() {
         "stub-model",
         "session-alpha",
         temp.path(),
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &mut history,
         &mut session_stats,
         &mut context_manager,
@@ -1905,7 +1936,9 @@ async fn compaction_strips_existing_memory_envelope_before_recompacting() {
 #[tokio::test]
 async fn summarized_fork_history_reuses_compaction_pipeline_and_prior_envelope() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("history dir");
     let source_envelope = SessionMemoryEnvelope {
         session_id: "session-source".to_string(),
@@ -1927,7 +1960,7 @@ async fn summarized_fork_history_reuses_compaction_pipeline_and_prior_envelope()
         delegation_notes: Vec::new(),
         pending_intents: Vec::new(),
         applied_intent_ids: Vec::new(),
-        history_artefact_path: Some(".vtcode/history/session-source_0001.jsonl".to_string()),
+        history_artefact_path: Some(".diapason/history/session-source_0001.jsonl".to_string()),
         generated_at: "2026-03-14T00:00:00Z".to_string(),
     };
     fs::write(
@@ -1942,7 +1975,7 @@ async fn summarized_fork_history_reuses_compaction_pipeline_and_prior_envelope()
         "session-source",
         "session-target",
         temp.path(),
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &test_history(),
         false,
     )
@@ -1962,7 +1995,9 @@ async fn summarized_fork_history_reuses_compaction_pipeline_and_prior_envelope()
 #[tokio::test]
 async fn budget_resume_summary_reuses_saved_envelope_without_provider_compaction() {
     let temp = tempdir().expect("tempdir");
-    let history_dir = temp.path().join(".vtcode").join("history");
+    let history_dir = diapason_commons::workspace_state_dir(temp.path())
+        .expect("workspace state path")
+        .join("history");
     fs::create_dir_all(&history_dir).expect("create history dir");
 
     let source_envelope = SessionMemoryEnvelope {
@@ -1997,7 +2032,7 @@ async fn budget_resume_summary_reuses_saved_envelope_without_provider_compaction
         "session-source",
         "session-target",
         temp.path(),
-        Some(&VTCodeConfig::default()),
+        Some(&DiapasonConfig::default()),
         &test_history(),
         true,
     )
@@ -2012,7 +2047,7 @@ async fn budget_resume_summary_reuses_saved_envelope_without_provider_compaction
 async fn local_and_fork_compaction_preserve_continuity_tail() {
     let temp = tempdir().expect("tempdir");
     let provider = LocalCompactionProvider;
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.context.dynamic.retained_user_messages = 2;
 
     let mut history = test_history();
@@ -2057,12 +2092,12 @@ fn grounded_fact_extraction_dedupes_caps_and_skips_errors() {
     let history = vec![
         Message::tool_response_with_origin(
             "call_1".to_string(),
-            "{\"result\":\"Cargo.toml declares vtcode-core\"}".to_string(),
+            "{\"result\":\"Cargo.toml declares diapason-core\"}".to_string(),
             "read_file".to_string(),
         ),
         Message::tool_response_with_origin(
             "call_2".to_string(),
-            "{\"result\":\"cargo.toml declares vtcode-core\"}".to_string(),
+            "{\"result\":\"cargo.toml declares diapason-core\"}".to_string(),
             "read_file".to_string(),
         ),
         Message::tool_response_with_origin(
@@ -2103,7 +2138,7 @@ fn resolve_compaction_threshold_requires_context_or_override() {
 fn effective_compaction_threshold_uses_default_session_budget_before_provider_capacity() {
     // Arrange
     let provider = ContextSizedProvider { context_size: 500_000 };
-    let config = VTCodeConfig::default();
+    let config = DiapasonConfig::default();
 
     // Act
     let threshold = effective_compaction_threshold(Some(&config), &provider, "stub-model");
@@ -2116,7 +2151,7 @@ fn effective_compaction_threshold_uses_default_session_budget_before_provider_ca
 fn effective_compaction_threshold_clamps_session_budget_to_provider_capacity() {
     // Arrange
     let provider = ContextSizedProvider { context_size: 100_000 };
-    let config = VTCodeConfig::default();
+    let config = DiapasonConfig::default();
 
     // Act
     let threshold = effective_compaction_threshold(Some(&config), &provider, "stub-model");
@@ -2135,7 +2170,7 @@ fn effective_compaction_threshold_uses_default_session_budget_without_config() {
 #[test]
 fn explicit_compaction_threshold_overrides_session_budget_but_not_provider_capacity() {
     // Arrange
-    let mut config = VTCodeConfig::default();
+    let mut config = DiapasonConfig::default();
     config.context.max_context_tokens = 100_000;
     config.agent.harness.auto_compaction_threshold_tokens = Some(200_000);
 
@@ -2153,7 +2188,7 @@ fn explicit_compaction_threshold_overrides_session_budget_but_not_provider_capac
 #[test]
 fn zero_session_budget_preserves_provider_derived_threshold() {
     // Arrange
-    let mut config = VTCodeConfig::default();
+    let mut config = DiapasonConfig::default();
     config.context.max_context_tokens = 0;
 
     // Act

@@ -7,7 +7,7 @@ use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::process::Command;
 
-#[path = "../crates/codegen/vtcode-core/tests/support/mod.rs"]
+#[path = "../crates/codegen/diapason-core/tests/support/mod.rs"]
 mod support;
 
 use support::TestHarness;
@@ -15,7 +15,7 @@ use support::TestHarness;
 fn base_command(harness: &TestHarness) -> Result<Command> {
     let _workspace_config = harness
         .write_file(
-            "vtcode.toml",
+            "config.toml",
             r#"[workspace]
 use_root_config = true
 
@@ -44,9 +44,6 @@ api_key_env = "OPENROUTER_API_KEY"
     let _runtime = harness
         .write_file(".test-runtime/.keep", "")
         .context("create isolated test runtime directory")?;
-    let _vtcode_home = harness
-        .write_file(".test-vtcode/.keep", "")
-        .context("create isolated VT Code home")?;
 
     let home = harness.workspace().join(".test-home");
     let config = harness.workspace().join(".test-config");
@@ -54,19 +51,16 @@ api_key_env = "OPENROUTER_API_KEY"
     let state = harness.workspace().join(".test-state");
     let cache = harness.workspace().join(".test-cache");
     let runtime = harness.workspace().join(".test-runtime");
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("vtcode"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("diapason"));
     let _configured_command = cmd
         .env_clear()
         .env("HOME", home)
-        .env("VTCODE_HOME", harness.workspace().join(".test-vtcode"))
-        .env("VTCODE_CONFIG", &config)
-        .env("VTCODE_DATA", &data)
         .env("XDG_CONFIG_HOME", config)
         .env("XDG_DATA_HOME", data)
         .env("XDG_STATE_HOME", state)
         .env("XDG_CACHE_HOME", cache)
         .env("XDG_RUNTIME_DIR", runtime)
-        .env_remove("VTCODE_CONFIG_PATH")
+        .env_remove("DIAPASON_CONFIG_PATH")
         .env("NO_COLOR", "1")
         .args(["--provider", "openrouter", "--model", "xiaomi/mimo-v2.5-pro"])
         .current_dir(harness.workspace());
@@ -76,7 +70,9 @@ api_key_env = "OPENROUTER_API_KEY"
 #[test]
 fn print_mode_requires_prompt_or_stdin() -> Result<()> {
     let harness = TestHarness::new().context("initialize harness workspace")?;
-    let _marker = harness.write_file(".vtcode/.keep", "").context("mark workspace initialized")?;
+    let _marker = harness
+        .write_file(".diapason/.keep", "")
+        .context("mark workspace initialized")?;
     let mut cmd = base_command(&harness)?;
     let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print");
 
@@ -91,7 +87,9 @@ fn print_mode_requires_prompt_or_stdin() -> Result<()> {
 #[test]
 fn print_mode_with_prompt_requires_provider_authentication() -> Result<()> {
     let harness = TestHarness::new().context("initialize harness workspace")?;
-    let _marker = harness.write_file(".vtcode/.keep", "").context("mark workspace initialized")?;
+    let _marker = harness
+        .write_file(".diapason/.keep", "")
+        .context("mark workspace initialized")?;
     let mut cmd = base_command(&harness)?;
     let _argument = cmd.env_remove("OPENROUTER_API_KEY").arg("--print").arg("hello");
 
@@ -119,7 +117,7 @@ fn config_override_failure_is_reported() -> Result<()> {
         .current_dir(harness.workspace());
 
     let _assertion = cmd.assert().failure().stderr(
-        predicate::str::contains("failed to initialize VT Code startup context")
+        predicate::str::contains("failed to initialize Diapason startup context")
             .and(predicate::str::contains(missing_config.to_string_lossy())),
     );
 
@@ -129,7 +127,9 @@ fn config_override_failure_is_reported() -> Result<()> {
 #[test]
 fn unknown_positional_token_fails_without_forwarding_prompt_to_llm() -> Result<()> {
     let harness = TestHarness::new().context("initialize harness workspace")?;
-    let _marker = harness.write_file(".vtcode/.keep", "").context("mark workspace initialized")?;
+    let _marker = harness
+        .write_file(".diapason/.keep", "")
+        .context("mark workspace initialized")?;
 
     let mut cmd = base_command(&harness)?;
     let _argument = cmd.arg("hellp");

@@ -3,13 +3,13 @@
 ## Overview
 
 On macOS, the Alt key (also labeled as Option) may not send proper key events
-to VT Code or other terminal applications due to terminal emulator
+to Diapason or other terminal applications due to terminal emulator
 configuration. This guide provides solutions for common issues where Alt
 shortcuts don't work as expected.
 
 ## Common Symptoms
 
-- Alt+key combinations don't trigger expected actions in VT Code
+- Alt+key combinations don't trigger expected actions in Diapason
 - The terminal appears to ignore Alt modifier presses
 - Alt+arrow keys don't work for navigation
 - Only Ctrl and Cmd shortcuts work, but Alt shortcuts are unresponsive
@@ -62,7 +62,7 @@ Upgrade to a terminal emulator with proper Alt key support:
     - Full keyboard protocol support
     - Install: `brew install wezterm`
 
-After installing any of these emulators, Alt shortcuts in VT Code should work
+After installing any of these emulators, Alt shortcuts in Diapason should work
 immediately without additional configuration.
 
 ### Solution 2: Enable Alt Key Passthrough in iTerm2
@@ -83,7 +83,7 @@ If you're using iTerm2, ensure Alt key is configured correctly:
 
 4. **Apply and Restart:**
    - Close and reopen iTerm2
-   - Test Alt shortcuts in VT Code
+   - Test Alt shortcuts in Diapason
 
 ### Solution 3: Configure Shell Bindings
 
@@ -160,21 +160,21 @@ key.
 
 ### Using macOS with Homebrew
 
-If you installed VT Code via Homebrew, it will use your default terminal
+If you installed Diapason via Homebrew, it will use your default terminal
 emulator. To use a specific emulator:
 
 ```bash
-# Open VT Code in your preferred emulator
+# Open Diapason in your preferred emulator
 # Example with iTerm2
-open -a iTerm "$(which vtcode)"
+open -a iTerm "$(which diapason)"
 ```
 
 Or create an alias in your shell configuration:
 
 ```bash
 # In ~/.zshrc or ~/.bashrc
-alias vtcode-iterm='open -a iTerm "$(which vtcode)"'
-alias vtcode-ghostty='open -a Ghostty "$(which vtcode)"'
+alias diapason-iterm='open -a iTerm "$(which diapason)"'
+alias diapason-ghostty='open -a Ghostty "$(which diapason)"'
 ```
 
 ### Default Terminal.app Limitations
@@ -202,20 +202,20 @@ This will output:
 - `Apple_Terminal` → Terminal.app (limited support)
 - Empty → Check manually or use another method
 
-### Step 2: Check VT Code's Terminal Detection
+### Step 2: Check Diapason's Terminal Detection
 
-Run VT Code and check the status line for detected terminal type:
+Run Diapason and check the status line for detected terminal type:
 
 ```bash
-vtcode
+diapason
 ```
 
 Look at the bottom status line—it should show your terminal type (e.g.,
 "Ghostty", "iTerm", "Kitty").
 
-### Step 3: Test Alt Key in VT Code
+### Step 3: Test Alt Key in Diapason
 
-1. Start VT Code
+1. Start Diapason
 2. Try pressing Alt+h (help/hello)
 3. If nothing happens, Alt key is not being passed through
 
@@ -241,22 +241,22 @@ On newer macOS versions, verify terminal emulator has accessibility permissions:
 2. **Ensure your terminal emulator is listed** (e.g., iTerm2, Ghostty)
 3. If missing, click the `+` button and add it
 
-## Common Alt Shortcuts in VT Code
+## Common Alt Shortcuts in Diapason
 
 Once Alt keys are working, these shortcuts should be available:
 
-| Shortcut | Action                                                              |
-| -------- | ------------------------------------------------------------------- |
-| Alt+h    | Help/hint (context-dependent)                                       |
-| Alt+a    | Alternative action                                                  |
-| Alt+j    | Jump/navigation down                                                |
-| Alt+k    | Jump/navigation up                                                  |
-| Alt+v    | Paste clipboard image through VT Code (image-enabled sessions only) |
-| Alt+↑    | Scroll up (if applicable)                                           |
-| Alt+↓    | Scroll down (if applicable)                                         |
-| Ctrl+c   | Interrupt/cancel (always works)                                     |
+| Shortcut | Action                                                               |
+| -------- | -------------------------------------------------------------------- |
+| Alt+h    | Help/hint (context-dependent)                                        |
+| Alt+a    | Alternative action                                                   |
+| Alt+j    | Jump/navigation down                                                 |
+| Alt+k    | Jump/navigation up                                                   |
+| Alt+v    | Paste clipboard image through Diapason (image-enabled sessions only) |
+| Alt+↑    | Scroll up (if applicable)                                            |
+| Alt+↓    | Scroll down (if applicable)                                          |
+| Ctrl+c   | Interrupt/cancel (always works)                                      |
 
-Note: Exact shortcuts depend on your VT Code version and context. Use Alt+h or
+Note: Exact shortcuts depend on your Diapason version and context. Use Alt+h or
 check help text in the UI for the most current list.
 
 ## Testing Your Configuration
@@ -264,10 +264,10 @@ check help text in the UI for the most current list.
 After making changes, test with this sequence:
 
 1. **Restart your terminal emulator** (important!)
-2. **Launch VT Code:**
+2. **Launch Diapason:**
 
    ```bash
-   vtcode
+   diapason
    ```
 
 3. **Try Alt+h** to trigger help
@@ -278,12 +278,12 @@ After making changes, test with this sequence:
 
 If you've tried all solutions and Alt keys still don't work:
 
-1. **Update VT Code:**
+1. **Update Diapason:**
 
    ```bash
-   cargo install --force vtcode
+   cargo install --force diapason
    # or
-   brew upgrade vtcode
+   brew upgrade diapason
    ```
 
 2. **Switch to a different terminal emulator** (see **Solution 1**)
@@ -293,13 +293,13 @@ If you've tried all solutions and Alt keys still don't work:
 4. **Report the issue** with:
    - Your terminal emulator and version
    - Output of `echo $TERM_PROGRAM`
-   - Output of `vtcode ask "Show my terminal type"`
+   - Output of `diapason ask "Show my terminal type"`
    - Steps taken to troubleshoot
 
 ## Related Documentation
 
 - [TUI Event Handling Guide](./tui-event-handling.md) - Technical details on
-  how VT Code handles keyboard input
+  how Diapason handles keyboard input
 - [Terminal Rendering Best Practices](./terminal-rendering-best-practices.md) -
   Terminal emulator compatibility details
 - [ANSI Escape Sequences Reference](../reference/ansi-escape-sequences.md) -
@@ -312,8 +312,8 @@ If you've tried all solutions and Alt keys still don't work:
 - [ ] Alt key configured correctly in terminal settings (if applicable)
 - [ ] Shell key bindings don't conflict with Alt keys
 - [ ] Terminal emulator has accessibility permissions (macOS)
-- [ ] VT Code is up-to-date
-- [ ] Tested Alt+h or Alt+arrow keys in VT Code
+- [ ] Diapason is up-to-date
+- [ ] Tested Alt+h or Alt+arrow keys in Diapason
 
 ## External Resources
 

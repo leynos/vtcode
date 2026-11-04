@@ -1,14 +1,14 @@
 #!/bin/bash
-# VT Code Tools Focused Test
+# Diapason Tools Focused Test
 # Tests availability and basic functionality of external tools
 
 set -e
 
 cargo_cmd() {
-    env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= cargo "$@"
+    env cargo "$@"
 }
 
-echo "VT Code Tools Test"
+echo "Diapason Tools Test"
 echo "================="
 
 # Colors
@@ -48,7 +48,7 @@ echo -e "\nTesting Tool Functionality"
 echo "=========================="
 
 # Test 3: Ripgrep functionality
-run_test "Ripgrep Functionality" "echo 'test content' > /tmp/vtcode_test.txt && rg 'test' /tmp/vtcode_test.txt && rm /tmp/vtcode_test.txt" "test content"
+run_test "Ripgrep Functionality" "echo 'test content' > /tmp/diapason_test.txt && rg 'test' /tmp/diapason_test.txt && rm /tmp/diapason_test.txt" "test content"
 
 echo -e "\nTesting Code Structure"
 echo "========================="
@@ -65,7 +65,7 @@ echo "======================="
 
 set +e
 PTY_LOG=$(mktemp)
-cargo_cmd test --package vtcode-core --test pty_tests >"$PTY_LOG" 2>&1
+cargo_cmd test --package diapason-core --test pty_tests >"$PTY_LOG" 2>&1
 PTY_STATUS=$?
 set -e
 

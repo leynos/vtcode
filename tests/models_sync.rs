@@ -2,12 +2,12 @@
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
+use diapason_core::config::constants::{model_helpers, models};
 /// Integration test to ensure constants.rs stays in sync with docs/models.json
 /// This test enforces the "Always check ./docs/models.json" rule from the project guidelines.
 use hashbrown::HashSet;
 use serde_json::Value;
 use std::fs;
-use vtcode_core::config::constants::{model_helpers, models};
 
 #[test]
 #[ignore = "requires models.json to match constants"]
@@ -73,7 +73,7 @@ fn constants_cover_models_json() {
             assert!(
                 missing_in_constants.is_empty(),
                 "Missing models in constants.rs for provider '{provider_name}': {missing_in_constants:?}\n\
-                 Add these models to models::{provider_name}::SUPPORTED_MODELS in crates/codegen/vtcode-core/src/config/constants.rs"
+                 Add these models to models::{provider_name}::SUPPORTED_MODELS in crates/codegen/diapason-core/src/config/constants.rs"
             );
 
             assert!(

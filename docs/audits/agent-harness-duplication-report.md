@@ -1,9 +1,9 @@
 # Agent / Harness Duplication & Optimization Report
 
 **Date:** 2026-06-05 (initial audit) / 2026-06-06 (implementation) **Scope:**
-`crates/codegen/vtcode-core/src/core/agent/**`,
-`crates/codegen/vtcode-core/src/prompts/**`,
-`crates/codegen/vtcode-core/src/tools/**`, `src/agent/runloop/unified/**`
+`crates/codegen/diapason-core/src/core/agent/**`,
+`crates/codegen/diapason-core/src/prompts/**`,
+`crates/codegen/diapason-core/src/tools/**`, `src/agent/runloop/unified/**`
 **Status:** Implemented — F1 and F4 resolved; F2/F3/F5 verified as non-issues.
 
 All findings below are verified against source and ordered by value-to-risk.
@@ -43,7 +43,7 @@ ______________________________________________________________________
 **Value: High · Risk: Low**
 
 > **Resolved.** Added `truncate_within`, `head_tail_truncate`, and
-> `wrap_text_words` to `vtcode-commons::formatting` (pure, unit + doc tested).
+> `wrap_text_words` to `diapason-commons::formatting` (pure, unit + doc tested).
 > Migrated `truncate_text_for_model`, `truncate_summary`, `truncate_preview`,
 > `truncate_description`, `truncate_chars`, and `wrap_text_words` (2 local
 > copies
@@ -56,22 +56,22 @@ ______________________________________________________________________
 Char-based head/tail/middle truncation was duplicated across the tree. The
 table below shows the original sites and their current status:
 
-| Location                                   | Function                  | Style                 | Status                                           |
-| ------------------------------------------ | ------------------------- | --------------------- | ------------------------------------------------ |
-| `src/.../error_handling.rs:65`             | `truncate_text_for_model` | head+tail with marker | **Migrated** → `head_tail_truncate`              |
-| `vtcode-core/.../executors/exec_output.rs` | `build_head_tail_preview` | line-based head+tail  | Left as-is (line-based, not char-based)          |
-| `vtcode-core/.../harness_kernel.rs:567`    | `truncate_lines`          | line-based            | Left as-is (line counting, different op)         |
-| `vtcode-core/.../orchestration.rs:834`     | `truncate_chars`          | char prefix           | **Migrated** → `truncate_within`                 |
-| `vtcode-core/.../summarizers/mod.rs:27`    | `truncate_line`           | byte prefix, `Cow`    | Left as-is (zero-alloc `Cow`, byte-based)        |
-| `vtcode-core/.../tool_orchestrator.rs:175` | `truncate_output`         | `&str` slice          | Left as-is; **UTF-8 panic fixed**                |
-| `src/.../tool_summary_helpers.rs`          | `truncate_middle`         | middle                | Left as-is (specialized whitespace sanitization) |
-| `vtcode-core/.../session_archive.rs:1765`  | `truncate_preview`        | char prefix           | **Migrated** → `truncate_within`                 |
-| `vtcode-core/.../snapshots.rs:246`         | `truncate_description`    | char prefix           | **Migrated** → `truncate_within`                 |
-| `vtcode-core/.../harness_artifacts.rs:99`  | `truncate_summary`        | char prefix           | **Migrated** → `truncate_within`                 |
-| `src/.../pty_stream/state.rs:357`          | `wrap_text_words`         | word-wrap             | **Migrated** → shared `wrap_text_words`          |
-| `src/.../tool_summary.rs:379`              | `wrap_text_words`         | word-wrap             | **Migrated** → shared `wrap_text_words`          |
+| Location                                     | Function                  | Style                 | Status                                           |
+| -------------------------------------------- | ------------------------- | --------------------- | ------------------------------------------------ |
+| `src/.../error_handling.rs:65`               | `truncate_text_for_model` | head+tail with marker | **Migrated** → `head_tail_truncate`              |
+| `diapason-core/.../executors/exec_output.rs` | `build_head_tail_preview` | line-based head+tail  | Left as-is (line-based, not char-based)          |
+| `diapason-core/.../harness_kernel.rs:567`    | `truncate_lines`          | line-based            | Left as-is (line counting, different op)         |
+| `diapason-core/.../orchestration.rs:834`     | `truncate_chars`          | char prefix           | **Migrated** → `truncate_within`                 |
+| `diapason-core/.../summarizers/mod.rs:27`    | `truncate_line`           | byte prefix, `Cow`    | Left as-is (zero-alloc `Cow`, byte-based)        |
+| `diapason-core/.../tool_orchestrator.rs:175` | `truncate_output`         | `&str` slice          | Left as-is; **UTF-8 panic fixed**                |
+| `src/.../tool_summary_helpers.rs`            | `truncate_middle`         | middle                | Left as-is (specialized whitespace sanitization) |
+| `diapason-core/.../session_archive.rs:1765`  | `truncate_preview`        | char prefix           | **Migrated** → `truncate_within`                 |
+| `diapason-core/.../snapshots.rs:246`         | `truncate_description`    | char prefix           | **Migrated** → `truncate_within`                 |
+| `diapason-core/.../harness_artifacts.rs:99`  | `truncate_summary`        | char prefix           | **Migrated** → `truncate_within`                 |
+| `src/.../pty_stream/state.rs:357`            | `wrap_text_words`         | word-wrap             | **Migrated** → shared `wrap_text_words`          |
+| `src/.../tool_summary.rs:379`                | `wrap_text_words`         | word-wrap             | **Migrated** → shared `wrap_text_words`          |
 
-> **Applied.** 7 of 12 sites migrated to `vtcode-commons::formatting`. 5 left
+> **Applied.** 7 of 12 sites migrated to `diapason-commons::formatting`. 5 left
 > as-is: 2 are line-based (different operation), 1 is byte-based `Cow` (perf),
 > 1 is `&str` slice (signature), 1 has specialized sanitization logic. The
 > shared
@@ -160,7 +160,7 @@ The original "three fragmented builders" claim does not hold:
   re-export at `prompts/mod.rs:25` — zero call sites workspace-wide. The live
   ACP path uses the *async*
   `prompts::system::generate_system_instruction_with_config` instead
-  (`crates/codegen/vtcode-acp/src/zed/session.rs:54`).
+  (`crates/codegen/diapason-acp/src/zed/session.rs:54`).
 
 > **Applied.** Deleted `generator.rs` (260 lines) and its `mod.rs` re-export.
 > No prompt-output change. The two live builders already share the canonical
@@ -194,7 +194,7 @@ ______________________________________________________________________
 
 | Finding | Original claim                            | Verified verdict    | Action                                                                              |
 | ------- | ----------------------------------------- | ------------------- | ----------------------------------------------------------------------------------- |
-| F1      | Truncation duplicated ~15×                | ✅ Real             | **Done** — consolidated into `vtcode-commons` (truncation + word-wrap)              |
+| F1      | Truncation duplicated ~15×                | ✅ Real             | **Done** — consolidated into `diapason-commons` (truncation + word-wrap)            |
 | F2      | Admission split / different rate-limiters | ⚠️ Mostly false     | Rate-limit/policy already shared; only loop-detection differs (maintainer decision) |
 | F3      | Arg normalization duplicated              | ❌ False positive   | None — already shared at registry layer                                             |
 | F4      | Prompt assembly fragmented (3 builders)   | ✅ Corrected + Done | 2 live builders already share; `generator.rs` **deleted** (260 lines dead code)     |
@@ -202,7 +202,7 @@ ______________________________________________________________________
 
 Net: of five reported findings, **F1 and F4 were real issues — both fixed.** F1
 consolidated 7 of 12 truncation/word-wrap sites into
-`vtcode-commons::formatting` (the remaining 5 have different signatures or
+`diapason-commons::formatting` (the remaining 5 have different signatures or
 semantics). F4 deleted 260 lines of dead code (`prompts/generator.rs`). F3 and
 F5 did not survive line-by-line reading. F2's rate-limiting claim was wrong (a
 single shared `SafetyGateway` already governs both loops); only its
@@ -234,11 +234,11 @@ ______________________________________________________________________
 
 ## Changelog
 
-| Date       | Change                                                                                                                                                                                                                                                                |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-06-05 | Initial read-only audit                                                                                                                                                                                                                                               |
-| 2026-06-06 | **F1**: Added `truncate_within`, `head_tail_truncate` to `vtcode-commons::formatting`. Migrated 5 call sites: `truncate_text_for_model` → `head_tail_truncate`; `truncate_chars`, `truncate_summary`, `truncate_preview`, `truncate_description` → `truncate_within`. |
-| 2026-06-06 | **F1**: Added `wrap_text_words` to `vtcode-commons::formatting`; migrated 2 local copies in `pty_stream/state.rs` and `tool_summary.rs` (+121 lines removed). Fixed off-by-one in `split_at_word_boundary`.                                                           |
-| 2026-06-06 | **F4**: Deleted `prompts/generator.rs` (260 lines) and `mod.rs` re-export.                                                                                                                                                                                            |
-| 2026-06-06 | **Bugfix**: Fixed UTF-8 panic in `truncate_output` (`tool_orchestrator.rs`) — now scans to char boundary.                                                                                                                                                             |
-| 2026-06-06 | `cargo fmt --all` reflow on 7 files (no semantic changes).                                                                                                                                                                                                            |
+| Date       | Change                                                                                                                                                                                                                                                                  |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-05 | Initial read-only audit                                                                                                                                                                                                                                                 |
+| 2026-06-06 | **F1**: Added `truncate_within`, `head_tail_truncate` to `diapason-commons::formatting`. Migrated 5 call sites: `truncate_text_for_model` → `head_tail_truncate`; `truncate_chars`, `truncate_summary`, `truncate_preview`, `truncate_description` → `truncate_within`. |
+| 2026-06-06 | **F1**: Added `wrap_text_words` to `diapason-commons::formatting`; migrated 2 local copies in `pty_stream/state.rs` and `tool_summary.rs` (+121 lines removed). Fixed off-by-one in `split_at_word_boundary`.                                                           |
+| 2026-06-06 | **F4**: Deleted `prompts/generator.rs` (260 lines) and `mod.rs` re-export.                                                                                                                                                                                              |
+| 2026-06-06 | **Bugfix**: Fixed UTF-8 panic in `truncate_output` (`tool_orchestrator.rs`) — now scans to char boundary.                                                                                                                                                               |
+| 2026-06-06 | `cargo fmt --all` reflow on 7 files (no semantic changes).                                                                                                                                                                                                              |

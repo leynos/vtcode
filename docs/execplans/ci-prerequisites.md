@@ -16,7 +16,7 @@ weakening dependency/security checks.
 The user requires green deterministic gates before CodeRabbit reviews and green
 hosted checks before merge. The current merged baseline is
 `dddd1352fcdf41e86abe380423221f4b41f171e0`; the worktree is
-`/home/leynos/Projects/VTCode.worktrees/hex-ci-prerequisites`, branch
+`/home/leynos/Projects/Diapason.worktrees/hex-ci-prerequisites`, branch
 `hex/ci-prerequisites`. The prior `6029f6f04` reference is an unmerged Stack37
 branch and is not copied into this work; all current reconciliation uses merged
 baseline `dddd1352`. The merged baseline contains the failures described below.
@@ -37,8 +37,8 @@ Only scrutineer runs gates, after root grants the global sequential slot. Root
 owns publication, external comments, stack integration and merges.
 
 Allowed scope: the two Windows parameter warnings in
-`crates/common/vtcode-commons/src/vtcode_paths.rs`, coverage workflow and its
-directly relevant tests, the top-level documentation location repair, the
+`crates/common/diapason-commons/src/diapason_paths.rs`, coverage workflow and
+its directly relevant tests, the top-level documentation location repair, the
 smallest compatible h2 lockfile update, generated THIRD-PARTY-NOTICES and this
 plan. Root additionally approved `.github/workflows/ci.yml` plus a small Node
 helper and its contract test for safe incremental changed-Markdown linting. The
@@ -47,10 +47,10 @@ prerequisite can satisfy hosted CI alone. The initial CI-foundation source had
 exactly fifteen paths: these ten paths plus issue #108's baseline, checker,
 checker test, guide and plan, with `.github/workflows/ci.yml` shared. After
 hosted validation reached the next Windows warning, root approved one additional
-`vtcode-auth` parameter allowance with the exact `not(unix)` predicate used by
-its consuming body. Root also approved a deterministic notices-generator repair
-after the pinned tool produced different ordering in CI and restoration of the
-lost tracked cargo-nextest `ci` profile. Root also approved the minimal
+`diapason-auth` parameter allowance with the exact `not(unix)` predicate used
+by its consuming body. Root also approved a deterministic notices-generator
+repair after the pinned tool produced different ordering in CI and restoration
+of the lost tracked cargo-nextest `ci` profile. Root also approved the minimal
 three-file `--print` input-before-startup correction from issue #114 because an
 external descendant would leave this foundation PR's coverage gate red and
 create a merge-order cycle. There are no API changes, unrelated dependency
@@ -95,7 +95,7 @@ staging.
   green; record external host limitations separately.
 - [x] P1: CodeRabbit reviewed the staged combined source after all applicable
   deterministic gates; it reported zero findings in
-  `/tmp/coderabbit-VTCode-hex-ci-prerequisites-2.out`.
+  `/tmp/coderabbit-Diapason-hex-ci-prerequisites-2.out`.
 - [x] P2a: Commit and publish draft PR
   [#110](https://github.com/leynos/vtcode/pull/110).
 - [ ] P2b: Repair the approved hosted Windows and notices failures, rerun
@@ -126,7 +126,7 @@ staging.
 - [ ] (2026-09-08) Freeze the candidate for the remaining serial gates. The
   current diff has 24 tracked paths; force-add ignored `.config/nextest.toml`
   as the 25th candidate path before committing. Never stage ignored
-  `target-coverage/` or `vtcode-commons.lcov`, which are local coverage
+  `target-coverage/` or `diapason-commons.lcov`, which are local coverage
   artefacts only.
 - [ ] (2026-09-08) Complete the current-source CI-profile nextest and
   instrumented coverage witnesses, then only the fixture-invalidated Clippy and
@@ -185,7 +185,7 @@ staging.
   assertion, and awaits the focused selector plus hosted reruns.
 - [ ] (2026-09-08) Scope four Unix-only test-fixture imports and helpers after
   hosted Windows at `27efb526` confirmed the WebMCP import repair, then reached
-  pre-existing `vtcode-core` test warnings under `-D warnings`. The repair
+  pre-existing `diapason-core` test warnings under `-D warnings`. The repair
   retains every portable test and Unix symlink/process-group contract; it only
   compiles imports, constants and helpers on the platform of their sole users.
   The next local packet checks formatting, warning-denied core all-target
@@ -228,7 +228,7 @@ document remains outside scripts/docs_top_level_allowlist.txt.
 
 After the WebMCP `filesystem.rs` import repair passed in the Windows job,
 Windows compiled far enough to expose test-only Unix dependencies in
-`vtcode-core`. The four affected modules are byte-identical between merged
+`diapason-core`. The four affected modules are byte-identical between merged
 baseline `dddd1352`, prior PR #110 head `8b98cddf`, and `27efb526`; this is
 pre-existing conditional-fixture debt rather than a regression from the
 foundation work. The source repair gates only items whose existing sole callers
@@ -365,17 +365,17 @@ beyond the two already reviewed components.
 The final combined deterministic packet was green before hosted validation.
 Hosted PR #110 then exposed two further CI-foundation concerns: the approved
 common-platform repair let Windows reach an unused
-`enforce_private_permissions` parameter in `vtcode-auth`, while the hosted
+`enforce_private_permissions` parameter in `diapason-auth`, while the hosted
 notice generation placed `libmimalloc-sys` under a different MIT grouping than
 the separately verified local generator. The production unwrap enforcement
 fails identically on main with twelve unrelated paths and remains outside this
 PR; no allowlist expansion is authorized. The next packet verifies the two
 approved repairs before another review.
 
-When the refreshed hosted Windows job reached `vtcode-core`, root approved the
-smallest platform-scoped fixture correction: imports and helpers used only by
-existing Unix tests must themselves be `#[cfg(unix)]`. This retains the tests
-on Unix and leaves portable test cases compiled on Windows. No broad test
+When the refreshed hosted Windows job reached `diapason-core`, root approved
+the smallest platform-scoped fixture correction: imports and helpers used only
+by existing Unix tests must themselves be `#[cfg(unix)]`. This retains the
+tests on Unix and leaves portable test cases compiled on Windows. No broad test
 skipping, `allow(unused)`, `allow(dead_code)`, public API, or runtime behaviour
 change is permitted.
 
@@ -419,8 +419,8 @@ Restore only that explicit nextest profile, rather than dropping the workflow
 argument and silently losing retry policy.
 
 The coverage job now executes tests, then exposes a product defect:
-`vtcode --print` without a prompt resolves provider startup before it validates
-input, so an unrelated missing OpenRouter credential masks
+`diapason --print` without a prompt resolves provider startup before it
+validates input, so an unrelated missing OpenRouter credential masks
 `No prompt provided`. A fake test API key would conceal the ordering defect.
 Correcting the input-before-startup sequence crosses into runtime dispatch.
 Root approved the exact three-file correction under issue #114 as an exception
@@ -435,8 +435,8 @@ location/link/workflow/actionlint checks, notices with verified cargo-about
 28-identity scanner ratchet. `make -j1 typecheck`, `make -j1 check-fmt`, and
 the full native Make-equivalent passed with warnings denied; the workspace ran
 10,090 tests with 17 skips and required harness suites passed. The dedicated
-vtcode-commons coverage witness ran 359 tests and emitted a 403,998-byte LCOV
-file. Logs are under `/tmp/*-VTCode-hex-ci-prerequisites.out`.
+diapason-commons coverage witness ran 359 tests and emitted a 403,998-byte LCOV
+file. Logs are under `/tmp/*-Diapason-hex-ci-prerequisites.out`.
 
 ## Decision log
 
@@ -485,10 +485,10 @@ the existing Cargo build profile or remove the workflow's `--profile ci`
 argument.
 
 Issue #114 owns the runtime-correctness invariant. Its expected user contract
-is that `vtcode --print` without inline or piped input reports the prompt error
-without requiring any provider credential. The minimal repair is delivered in
-this PR because it is required for the hosted coverage gate. It must not fake
-an API key or otherwise hide the defect.
+is that `diapason --print` without inline or piped input reports the prompt
+error without requiring any provider credential. The minimal repair is
+delivered in this PR because it is required for the hosted coverage gate. It
+must not fake an API key or otherwise hide the defect.
 
 The #114 implementation resolves the existing print helper before
 `StartupContext` construction, carries its resulting prompt through dispatch,
@@ -527,7 +527,7 @@ The later full test batch passed 10,091 tests, skipped 17, and failed only
 selected `arli` despite the fixture's intended OpenRouter assertion. The
 fixture now writes a root-only workspace configuration, passes the explicit
 OpenRouter provider/model flags, clears inherited environment credentials, and
-uses private HOME, VTCODE, and XDG roots under `TestHarness`. This keeps the
+uses private HOME, DIAPASON, and XDG roots under `TestHarness`. This keeps the
 missing-prompt/authentication ordering controls offline and deterministic; it
 does not broaden the expected provider error. The same batch's four rustdoc
 warnings are repaired by making the two private UI references plain code,
@@ -597,8 +597,9 @@ separately tracked by #118.
 Read root AGENTS.md, affected crate AGENTS.md, relevant Rust routing skills,
 and the existing workflow/checker sources before editing. Read context pack
 pk_c7dxboru for CI reconciliation. Exact logs are
-/tmp/vtcode-hex-pr12-ci-failures.log, /tmp/vtcode-hex-pr11-eval-failures.log
-and /tmp/vtcode-hex-pr11-coverage-failures.log. Paths in packs may resolve
+/tmp/diapason-hex-pr12-ci-failures.log,
+/tmp/diapason-hex-pr11-eval-failures.log and
+/tmp/diapason-hex-pr11-coverage-failures.log. Paths in packs may resolve
 against the root worktree; tag any supplied snippets with this worktree and its
 HEAD. Use context_pack for worker code handoffs. CodeGraph has timed out
 repeatedly; use known-path reads and available semantic navigation rather than
@@ -640,8 +641,8 @@ sequentially through scrutineer with tee logs under /tmp and pipefail. Verify
 nextest is installed before any script that otherwise falls back to cargo test.
 Request the global slot before starting any format, lint or test job. Use the
 shared build output directory
-`/home/leynos/Projects/VTCode.worktrees/hex-issue-40-read-metadata/target` via
-CARGO_TARGET_DIR, preserving default CARGO_HOME and registry cache.
+`/home/leynos/Projects/Diapason.worktrees/hex-issue-40-read-metadata/target`
+via CARGO_TARGET_DIR, preserving default CARGO_HOME and registry cache.
 
 Minimum evidence: scoped Markdown/workflow/security checks, generated-notice
 freshness and advisory checks, all required code commit gates, locked Cargo
@@ -672,7 +673,7 @@ lockfile check without suppressing it. Licence regeneration must be idempotent.
 Windows compilation is the witness for platform warning removal.
 
 For the Unix-only fixture correction, the serial packet is limited to
-`cargo fmt --check`, warning-denied `vtcode-core` all-target Clippy, the two
+`cargo fmt --check`, warning-denied `diapason-core` all-target Clippy, the two
 apply-patch symlink contracts, the Unix-only shell-intent assertion, and the
 two PTY process-group contracts, followed by pinned Markdown and spelling for
 this plan. Do not retry this Linux host's direct Windows cross-check: its
@@ -680,7 +681,7 @@ this plan. Do not retry this Linux host's direct Windows cross-check: its
 Windows workflow is the target-platform acceptance proof.
 
 The same serial packet runs the repaired root-binary hook fixture with
-`-p vtcode --bin vtcode` under the CI nextest profile and under scoped
+`-p diapason --bin diapason` under the CI nextest profile and under scoped
 instrumented coverage, so neither command builds the default-member test
 inventory for this one contract. The test keeps its existing timeout and
 rewrite assertion. Its adjacent forwarded-phase control remains in the normal
@@ -730,7 +731,7 @@ candidate was frozen:
 
    This workflow command passed all 10,054 tests and emitted the non-empty LCOV
    witness recorded above. `lcov.info`, `target-coverage/`, and
-   `vtcode-commons.lcov` remain untracked artefacts.
+   `diapason-commons.lcov` remain untracked artefacts.
 4. The pinned changed-Markdown CLI passed for
    `docs/execplans/ci-prerequisites.md`; no other Markdown source changed after
    the focused Markdown evidence.
@@ -768,7 +769,7 @@ Markdown CLI and `git diff --check`, with evidence in
 
 CodeRabbit reviewed the exact staged combined source after the final
 documentation recheck and returned zero findings. Its transcript is
-`/tmp/coderabbit-VTCode-hex-ci-prerequisites-2.out`; no review repair or gate
+`/tmp/coderabbit-Diapason-hex-ci-prerequisites-2.out`; no review repair or gate
 rerun was required before the prior draft commit. The current thirty-two-path
 repair requires a fresh review after its own deterministic packet.
 
@@ -813,7 +814,7 @@ documentation location/links, workflow security, and corrected actionlint.
 Commit `e5a091ece8510315e942a210df61a2e62e1e0fed` and draft PR
 [#110](https://github.com/leynos/vtcode/pull/110) now carry the source. Hosted
 CI, external review equilibrium and merge remain pending. Hosted Windows
-validation exposed the approved `vtcode-auth` allowance after the original
+validation exposed the approved `diapason-auth` allowance after the original
 common-platform repair passed; hosted notice ordering requires the approved
 deterministic-generator repair. Hosted nextest requires the restored `ci`
 profile, and coverage requires the issue #114 input-before-startup repair. The

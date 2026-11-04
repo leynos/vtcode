@@ -1,11 +1,11 @@
-# Cross-Compilation Configuration for VT Code
+# Cross-Compilation Configuration for Diapason
 
-This document explains the cross-compilation setup for the VT Code project
+This document explains the cross-compilation setup for the Diapason project
 using the `cross` tool.
 
 ## Overview
 
-VT Code uses [cross](https://github.com/cross-rs/cross) for reproducible
+Diapason uses [cross](https://github.com/cross-rs/cross) for reproducible
 cross-compilation builds across multiple platforms. The configuration is
 defined in `Cross.toml` to ensure consistent builds for all target platforms.
 

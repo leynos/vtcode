@@ -42,7 +42,7 @@ pub(super) fn extract_binary(
                 }
                 let mut output =
                     File::create(&output_path).with_context(|| format!("failed to stage {binary_name}"))?;
-                io::copy(&mut entry, &mut output).context("failed to extract VT Code binary")?;
+                io::copy(&mut entry, &mut output).context("failed to extract Diapason binary")?;
                 set_executable_permissions(&output_path, entry.header().mode().unwrap_or(0o755))?;
                 matched = true;
             }
@@ -68,7 +68,7 @@ pub(super) fn extract_binary(
                 }
                 let mut output =
                     File::create(&output_path).with_context(|| format!("failed to stage {binary_name}"))?;
-                io::copy(&mut entry, &mut output).context("failed to extract VT Code binary")?;
+                io::copy(&mut entry, &mut output).context("failed to extract Diapason binary")?;
                 set_executable_permissions(&output_path, zip_mode(&entry).unwrap_or(0o755))?;
                 matched = true;
             }
@@ -169,10 +169,10 @@ mod tests {
     #[test]
     fn extracts_tar_gz_binary_and_preserves_executable_permission() {
         let temp = tempdir().expect("temp");
-        let archive = temp.path().join("vtcode.tar.gz");
-        write_tar_gz(&archive, "vtcode-0.1.0/vtcode", b"binary");
+        let archive = temp.path().join("diapason.tar.gz");
+        write_tar_gz(&archive, "diapason-0.1.0/diapason", b"binary");
 
-        let extracted = extract_binary(&archive, ArchiveKind::TarGz, temp.path(), "vtcode").expect("extract");
+        let extracted = extract_binary(&archive, ArchiveKind::TarGz, temp.path(), "diapason").expect("extract");
 
         assert_eq!(fs::read(&extracted).expect("read"), b"binary");
         #[cfg(unix)]
@@ -182,10 +182,10 @@ mod tests {
     #[test]
     fn extracts_zip_binary() {
         let temp = tempdir().expect("temp");
-        let archive = temp.path().join("vtcode.zip");
-        write_zip(&archive, "nested/vtcode.exe", b"binary");
+        let archive = temp.path().join("diapason.zip");
+        write_zip(&archive, "nested/diapason.exe", b"binary");
 
-        let extracted = extract_binary(&archive, ArchiveKind::Zip, temp.path(), "vtcode.exe").expect("extract");
+        let extracted = extract_binary(&archive, ArchiveKind::Zip, temp.path(), "diapason.exe").expect("extract");
 
         assert_eq!(fs::read(extracted).expect("read"), b"binary");
     }
@@ -193,22 +193,22 @@ mod tests {
     #[test]
     fn rejects_archive_path_traversal() {
         let temp = tempdir().expect("temp");
-        let archive = temp.path().join("vtcode.zip");
-        write_zip(&archive, "../../vtcode", b"binary");
+        let archive = temp.path().join("diapason.zip");
+        write_zip(&archive, "../../diapason", b"binary");
 
-        let error = extract_binary(&archive, ArchiveKind::Zip, temp.path(), "vtcode").expect_err("traversal");
+        let error = extract_binary(&archive, ArchiveKind::Zip, temp.path(), "diapason").expect_err("traversal");
 
         assert!(error.to_string().contains("unsafe archive path"));
-        assert!(!temp.path().parent().expect("parent").join("vtcode").exists());
+        assert!(!temp.path().parent().expect("parent").join("diapason").exists());
     }
 
     #[test]
     fn rejects_missing_or_ambiguous_binary() {
         let temp = tempdir().expect("temp");
-        let archive = temp.path().join("vtcode.tar.gz");
-        write_tar_gz(&archive, "nested/not-vtcode", b"binary");
+        let archive = temp.path().join("diapason.tar.gz");
+        write_tar_gz(&archive, "nested/not-diapason", b"binary");
 
-        let error = extract_binary(&archive, ArchiveKind::TarGz, temp.path(), "vtcode").expect_err("missing");
+        let error = extract_binary(&archive, ArchiveKind::TarGz, temp.path(), "diapason").expect_err("missing");
 
         assert!(error.to_string().contains("could not find"));
     }
@@ -216,10 +216,10 @@ mod tests {
     #[test]
     fn rejects_multiple_matching_binaries() {
         let temp = tempdir().expect("temp");
-        let archive = temp.path().join("vtcode.zip");
+        let archive = temp.path().join("diapason.zip");
         let file = File::create(&archive).expect("archive");
         let mut writer = ZipWriter::new(file);
-        for path in ["first/vtcode", "second/vtcode"] {
+        for path in ["first/diapason", "second/diapason"] {
             writer
                 .start_file(path, SimpleFileOptions::default().unix_permissions(0o755))
                 .expect("entry");
@@ -227,9 +227,9 @@ mod tests {
         }
         writer.finish().expect("zip");
 
-        let error = extract_binary(&archive, ArchiveKind::Zip, temp.path(), "vtcode").expect_err("ambiguous");
+        let error = extract_binary(&archive, ArchiveKind::Zip, temp.path(), "diapason").expect_err("ambiguous");
 
-        assert!(error.to_string().contains("multiple vtcode binaries"));
+        assert!(error.to_string().contains("multiple diapason binaries"));
     }
 
     #[cfg(unix)]

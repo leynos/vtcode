@@ -28,15 +28,15 @@ use crate::agent::runloop::unified::turn::context::TurnHandlerOutcome;
 use crate::agent::runloop::unified::turn::context::TurnLoopResult;
 use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
 use anyhow::anyhow;
-use serde_json::json;
-use vtcode_config::{builtin_primary_auto_agent, builtin_primary_build_agent};
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::exec::events::{ThreadEvent, ThreadItemDetails, VersionedThreadEvent};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{
+use diapason_config::{builtin_primary_auto_agent, builtin_primary_build_agent};
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::exec::events::{ThreadEvent, ThreadItemDetails, VersionedThreadEvent};
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{
     InlineEvent, InlineHandle, InlineListSelection, InlineSession, TransientEvent, TransientSubmission,
 };
+use serde_json::json;
 
 const PENDING_VERIFICATION_RESPONSE_MARKER: &str = "Inspection-only checks do not clear the verification gate";
 const CONTEXT_CAPACITY_RESPONSE_MARKER: &str = "context capacity or compaction failed";
@@ -47,7 +47,7 @@ const STREAMED_VALID_PLAN: &str = r#"# Streamed plan
 Preserve the streamed planning handoff.
 
 ## Implementation Steps
-1. Keep the semantic plan -> files: [src/agent/runloop/unified/ui_interaction_stream.rs] -> verify: [target/release/vtcode --version, cargo nextest run -p vtcode --bin vtcode]
+1. Keep the semantic plan -> files: [src/agent/runloop/unified/ui_interaction_stream.rs] -> verify: [target/release/diapason --version, cargo nextest run -p diapason --bin diapason]
 
 ## Test Cases and Validation
 1. Run the focused streamed-plan regression tests.
@@ -778,7 +778,7 @@ async fn normalize_tool_free_recovery_break_outcome_keeps_non_recovery_blocked_r
 
 #[tokio::test]
 async fn plan_mode_recovery_fallback_marks_interview_pending_and_preserves_research() {
-    use vtcode_core::core::interfaces::session::PlanningEntrySource;
+    use diapason_core::core::interfaces::session::PlanningEntrySource;
 
     let mut plan_session = PlanningWorkflowSessionState::default();
     plan_session.enter(PlanningEntrySource::UserRequest);
@@ -814,7 +814,7 @@ async fn plan_mode_recovery_fallback_marks_interview_pending_and_preserves_resea
 
 #[tokio::test]
 async fn plan_mode_recovery_exhausted_finalizes_instead_of_reforcing_interview() {
-    use vtcode_core::core::interfaces::session::PlanningEntrySource;
+    use diapason_core::core::interfaces::session::PlanningEntrySource;
 
     let mut plan_session = PlanningWorkflowSessionState::default();
     plan_session.enter(PlanningEntrySource::UserRequest);
@@ -857,7 +857,7 @@ async fn plan_mode_recovery_exhausted_finalizes_instead_of_reforcing_interview()
 
 #[tokio::test]
 async fn plan_mode_recovery_rejects_non_plan_salvage() {
-    use vtcode_core::core::interfaces::session::PlanningEntrySource;
+    use diapason_core::core::interfaces::session::PlanningEntrySource;
 
     let mut plan_session = PlanningWorkflowSessionState::default();
     plan_session.enter(PlanningEntrySource::UserRequest);
@@ -885,7 +885,7 @@ async fn plan_mode_recovery_rejects_non_plan_salvage() {
 
 #[tokio::test]
 async fn plan_mode_recovery_fallback_lists_files_read_when_present() {
-    use vtcode_core::core::interfaces::session::PlanningEntrySource;
+    use diapason_core::core::interfaces::session::PlanningEntrySource;
 
     let mut plan_session = PlanningWorkflowSessionState::default();
     plan_session.enter(PlanningEntrySource::UserRequest);
@@ -2173,7 +2173,10 @@ async fn streamed_invalid_plan_uses_one_bounded_repair_without_approval_artefact
         "validator feedback must schedule the bounded repair"
     );
 
-    let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
+    let plans_dir = backing
+        .workspace_path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("plans");
     assert!(
         !plans_dir.exists() || fs::read_dir(&plans_dir).expect("read plans directory").next().is_none(),
         "invalid streamed plans must not create approval artefacts"
@@ -2239,7 +2242,10 @@ async fn streamed_invalid_plan_repairs_to_valid_plan_and_persists_it() {
         "repair directives must not elevate rejected draft text into the system role"
     );
 
-    let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
+    let plans_dir = backing
+        .workspace_path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("plans");
     let plan_text = fs::read_dir(&plans_dir)
         .expect("repaired plan should create the plans directory")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
@@ -2284,7 +2290,10 @@ async fn streamed_invalid_plan_repair_is_admitted_after_prior_plain_response() {
         "the invalid plan must get a repair despite the earlier prose response"
     );
     assert!(outcome.plan_approved_execution_pending, "the repaired plan should be approval-ready");
-    let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
+    let plans_dir = backing
+        .workspace_path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("plans");
     assert!(
         plans_dir.exists()
             && fs::read_dir(&plans_dir)
@@ -2325,7 +2334,10 @@ async fn streamed_invalid_plan_gets_a_second_repair_before_terminal_fallback() {
         2,
         "the second invalid draft must schedule the second repair"
     );
-    let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
+    let plans_dir = backing
+        .workspace_path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("plans");
     assert!(
         !plans_dir.exists() || fs::read_dir(&plans_dir).expect("read plans directory").next().is_none(),
         "recoverable invalid drafts must not create approval artefacts"
@@ -2364,7 +2376,10 @@ async fn streamed_third_invalid_plan_is_terminal_and_retains_each_rejected_draft
         .filter(|text| text.contains("<proposed_plan>"))
         .count();
     assert_eq!(rejected_drafts, 3, "each rejected draft must remain available in assistant history");
-    let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
+    let plans_dir = backing
+        .workspace_path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("plans");
     assert!(
         !plans_dir.exists() || fs::read_dir(&plans_dir).expect("read plans directory").next().is_none(),
         "terminally rejected plans must not create approval artefacts"
@@ -2395,7 +2410,10 @@ async fn streamed_valid_plan_is_persisted_and_publishes_approval_ready_events() 
         "automatic approval must retain the typed current-session execution handoff"
     );
 
-    let plans_dir = backing.workspace_path().join(".vtcode").join("plans");
+    let plans_dir = backing
+        .workspace_path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("plans");
     let plan_text = fs::read_dir(&plans_dir)
         .expect("valid streamed plan should create the plans directory")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
@@ -2409,8 +2427,8 @@ async fn streamed_valid_plan_is_persisted_and_publishes_approval_ready_events() 
         .expect("valid streamed plan should be persisted");
     assert!(plan_text.contains("Preserve the streamed planning handoff."));
     assert!(plan_text.contains("src/agent/runloop/unified/ui_interaction_stream.rs"));
-    assert!(plan_text.contains("target/release/vtcode --version"));
-    assert!(plan_text.contains("cargo nextest run -p vtcode --bin vtcode"));
+    assert!(plan_text.contains("target/release/diapason --version"));
+    assert!(plan_text.contains("cargo nextest run -p diapason --bin diapason"));
 
     let tracker_text = fs::read_dir(&plans_dir)
         .expect("valid streamed plan should create the plans directory")
@@ -2451,7 +2469,7 @@ async fn explicit_build_and_auto_approval_selections_handoff_persisted_plan_with
         (InlineListSelection::PlanApprovalSwitchAuto, builtin_primary_auto_agent().name, true),
     ] {
         let workspace = tempfile::TempDir::new().expect("create approval selection workspace");
-        let mut tool_registry = vtcode_core::tools::ToolRegistry::new(workspace.path().to_path_buf()).await;
+        let mut tool_registry = diapason_core::tools::ToolRegistry::new(workspace.path().to_path_buf()).await;
         tool_registry.enable_planning();
         let plan_state = tool_registry.planning_workflow_state();
         persist_plan_draft(&plan_state, STREAMED_VALID_PLAN)
@@ -2461,12 +2479,12 @@ async fn explicit_build_and_auto_approval_selections_handoff_persisted_plan_with
             .await
             .expect("load the canonical persisted plan for approval");
         let mut plan_session = PlanningWorkflowSessionState::default();
-        plan_session.enter(vtcode_core::core::interfaces::session::PlanningEntrySource::UserRequest);
+        plan_session.enter(diapason_core::core::interfaces::session::PlanningEntrySource::UserRequest);
 
         assert!(
             fs::read_dir(workspace.path())
                 .expect("read workspace before approval")
-                .all(|entry| entry.expect("read workspace entry").file_name() == ".vtcode"),
+                .all(|entry| entry.expect("read workspace entry").file_name() == ".diapason"),
             "persisting a plan must not create implementation files before explicit approval"
         );
 
@@ -2515,7 +2533,7 @@ async fn explicit_build_and_auto_approval_selections_handoff_persisted_plan_with
         assert!(
             fs::read_dir(workspace.path())
                 .expect("read workspace after approval handoff")
-                .all(|entry| entry.expect("read workspace entry").file_name() == ".vtcode"),
+                .all(|entry| entry.expect("read workspace entry").file_name() == ".diapason"),
             "approval handoff must remain execution-pending and must not write implementation files"
         );
     }

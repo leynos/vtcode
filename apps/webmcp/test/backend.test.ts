@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { InMemoryBackend, MAX_TURN_PROMPT_BYTES, VtCodeBackend, buildTurnPrompt, createUnifiedDiff, digest } from "../src/backend.ts";
+import { InMemoryBackend, MAX_TURN_PROMPT_BYTES, DiapasonBackend, buildTurnPrompt, createUnifiedDiff, digest } from "../src/backend.ts";
 import {
   BROWSER_SETTINGS_STORAGE_KEY,
   BROWSER_WORKSPACE_STORAGE_KEY,
@@ -293,10 +293,10 @@ test("fallback multi-file apply validates every file before mutating any file", 
   assert.equal((await backend.readFile(second.path)).content, "external\n");
 });
 
-test("fallback turn explains that no VT Code runtime is connected", async () => {
+test("fallback turn explains that no Diapason runtime is connected", async () => {
   const result = await new InMemoryBackend().requestTurn("review this draft");
   assert.equal(result.accepted, false);
-  assert.match(result.reason ?? "", /agent turns require an active VT Code runtime/i);
+  assert.match(result.reason ?? "", /agent turns require an active Diapason runtime/i);
 });
 
 test("turn prompt includes a bounded draft diff", () => {
@@ -357,7 +357,7 @@ test("websocket backend resumes the in-memory session after a dropped socket", a
   const previousWebSocket = installWebSocket(LoopbackWebSocket);
   LoopbackWebSocket.instances = [];
   LoopbackWebSocket.requests = [];
-  const backend = new VtCodeBackend("ws://127.0.0.1:4321/webmcp");
+  const backend = new DiapasonBackend("ws://127.0.0.1:4321/webmcp");
   try {
     await backend.pair("ABCD");
     assert.equal(backend.connected, true);
@@ -395,7 +395,7 @@ test("websocket backend resumes the in-memory session after a dropped socket", a
 
 test("protocol errors invalidate the session and notify connection listeners", async () => {
   const previousWebSocket = installWebSocket(MalformedResponseWebSocket);
-  const backend = new VtCodeBackend("ws://127.0.0.1:4321/webmcp");
+  const backend = new DiapasonBackend("ws://127.0.0.1:4321/webmcp");
   const connectionStates: BackendConnectionEvent[] = [];
   const stopConnection = backend.subscribeToConnection((event) => connectionStates.push(event));
   try {
@@ -417,7 +417,7 @@ test("protocol errors invalidate the session and notify connection listeners", a
 test("malformed response envelopes reject the pending request and fail closed", async () => {
   const previousWebSocket = installWebSocket(InvalidEnvelopeWebSocket);
   LoopbackWebSocket.instances = [];
-  const backend = new VtCodeBackend("ws://127.0.0.1:4321/webmcp");
+  const backend = new DiapasonBackend("ws://127.0.0.1:4321/webmcp");
   try {
     await backend.pair("ABCD");
     await assert.rejects(backend.status(), { code: "protocol_error" });
@@ -432,7 +432,7 @@ test("malformed response envelopes reject the pending request and fail closed", 
 test("invalid operation payloads reject the request and invalidate the session", async () => {
   const previousWebSocket = installWebSocket(InvalidPayloadWebSocket);
   LoopbackWebSocket.instances = [];
-  const backend = new VtCodeBackend("ws://127.0.0.1:4321/webmcp");
+  const backend = new DiapasonBackend("ws://127.0.0.1:4321/webmcp");
   try {
     await backend.pair("ABCD");
     await assert.rejects(backend.status(), { code: "protocol_error" });
@@ -447,7 +447,7 @@ test("invalid operation payloads reject the request and invalidate the session",
 test("invalid event wrappers invalidate the authenticated session", async () => {
   const previousWebSocket = installWebSocket(LoopbackWebSocket);
   LoopbackWebSocket.instances = [];
-  const backend = new VtCodeBackend("ws://127.0.0.1:4321/webmcp");
+  const backend = new DiapasonBackend("ws://127.0.0.1:4321/webmcp");
   try {
     await backend.pair("ABCD");
     instanceAt(0).emitFrame(runtimeEventFrame(1, { type: "error" }));
@@ -463,7 +463,7 @@ test("invalid event wrappers invalidate the authenticated session", async () => 
 test("runtime event sequences must remain contiguous after the first observed event", async () => {
   const previousWebSocket = installWebSocket(LoopbackWebSocket);
   LoopbackWebSocket.instances = [];
-  const backend = new VtCodeBackend("ws://127.0.0.1:4321/webmcp");
+  const backend = new DiapasonBackend("ws://127.0.0.1:4321/webmcp");
   const events: number[] = [];
   const stopEvents = backend.subscribeToEvents((event) => {
     if (event.type === "event") events.push(event.sequence);

@@ -1,7 +1,7 @@
 # CI/CD and Code Quality
 
 This document describes the CI/CD pipeline and code quality tools used in the
-vtcode project.
+diapason project.
 
 ## GitHub Actions Workflows
 
@@ -102,12 +102,12 @@ installing the toolchain, `Swatinem/rust-cache` and
 | `aarch64-unknown-linux-gnu` | `build-linux-windows.yml` | `.tar.gz`                    |
 | `x86_64-pc-windows-msvc`    | `build-linux-windows.yml` | `.zip` (required by default) |
 
-`release.sh` derives a raw `compat-vtcode-<v>-<target>.tar.gz.compat`
+`release.sh` derives a raw `compat-diapason-<v>-<target>.tar.gz.compat`
 executable from each normal archive. These are the legacy updater compatibility
 bridge for v0.141.0-v0.141.4 (see
 [Update System Guide](../guides/UPDATE_SYSTEM.md)). The `compat-` prefix is
 load-bearing: GitHub returns release assets sorted alphabetically by name, and
-the prefix makes the compat asset sort before `vtcode-<v>-<target>.tar.gz` so
+the prefix makes the compat asset sort before `diapason-<v>-<target>.tar.gz` so
 the broken legacy updater picks the raw binary instead of the gzip archive it
 cannot extract. The release fails if any required target archive (including
 Windows by default) is missing. Set `RELEASE_REQUIRE_WINDOWS=false` only for an
@@ -333,8 +333,8 @@ Configure branch protection rules in GitHub:
 Add these badges to your README:
 
 ```markdown
-[![CI](https://github.com/yourusername/vtcode/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/vtcode/actions/workflows/ci.yml)
-[![Code Quality](https://github.com/yourusername/vtcode/actions/workflows/code-quality.yml/badge.svg)](https://github.com/yourusername/vtcode/actions/workflows/code-quality.yml)
+[![CI](https://github.com/leynos/vtcode/actions/workflows/ci.yml/badge.svg)](https://github.com/leynos/vtcode/actions/workflows/ci.yml)
+[![Coverage](https://github.com/leynos/vtcode/actions/workflows/coverage.yml/badge.svg)](https://github.com/leynos/vtcode/actions/workflows/coverage.yml)
 ```
 
 ## Troubleshooting

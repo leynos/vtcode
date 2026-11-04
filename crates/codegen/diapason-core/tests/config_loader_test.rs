@@ -1,0 +1,104 @@
+#![allow(
+    missing_docs,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+//! Test for configuration loading with home directory support
+
+use diapason_commons::paths::WorkspacePaths;
+use diapason_core::config::DiapasonConfig;
+use diapason_core::config::defaults::{self, ConfigDefaultsProvider};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tempfile::TempDir;
+
+struct TestDefaults {
+    inner: Arc<dyn ConfigDefaultsProvider>,
+    home_dir: PathBuf,
+}
+
+impl std::fmt::Debug for TestDefaults {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestDefaults").field("home_dir", &self.home_dir).finish()
+    }
+}
+
+impl TestDefaults {
+    fn new(inner: Arc<dyn ConfigDefaultsProvider>, home_dir: PathBuf) -> Self {
+        Self { inner, home_dir }
+    }
+}
+
+impl ConfigDefaultsProvider for TestDefaults {
+    fn config_file_name(&self) -> &str {
+        self.inner.config_file_name()
+    }
+
+    fn workspace_paths_for(&self, workspace_root: &Path) -> Box<dyn WorkspacePaths> {
+        self.inner.workspace_paths_for(workspace_root)
+    }
+
+    fn home_config_paths(&self, config_file_name: &str) -> Vec<PathBuf> {
+        vec![self.home_dir.join(".diapason").join(config_file_name)]
+    }
+
+    fn syntax_theme(&self) -> String {
+        self.inner.syntax_theme()
+    }
+
+    fn syntax_languages(&self) -> Vec<String> {
+        self.inner.syntax_languages()
+    }
+}
+
+#[test]
+fn test_load_config_from_home_directory() {
+    // Create a temporary directory to simulate home directory
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let home_dir = temp_dir.path();
+    let diapason_dir = home_dir.join(".diapason");
+    fs::create_dir_all(&diapason_dir).expect("Failed to create .diapason directory");
+
+    // Create a sample config file in the home directory
+    let config_content = r#"
+[agent]
+default_model = "test-model"
+provider = "test-provider"
+max_conversation_turns = 50
+
+[security]
+human_in_the_loop = false
+"#;
+
+    let config_path = diapason_dir.join("config.toml");
+    fs::write(&config_path, config_content).expect("Failed to write config file");
+
+    // Create a mock workspace directory
+    let workspace_dir = temp_dir.path().join("workspace");
+    fs::create_dir_all(&workspace_dir).expect("Failed to create workspace directory");
+
+    // Test that we can load the config from home directory
+    // We need to mock the home directory detection for this test
+    // Since we can't easily mock environment variables in a test,
+    // we'll directly test the bootstrap function with our temp directory
+    let created_files = defaults::provider::with_config_defaults_provider_for_test(
+        Arc::new(TestDefaults::new(defaults::current_config_defaults(), home_dir.to_path_buf())),
+        || {
+            DiapasonConfig::bootstrap_project_with_options(
+                &workspace_dir,
+                true, // force
+                true, // use home directory
+            )
+        },
+    )
+    .expect("Failed to bootstrap project with home directory");
+
+    assert!(!created_files.is_empty());
+    assert!(created_files.contains(&"config.toml".to_string()));
+
+    // Check that the files were created in the home directory
+    let home_config_path = diapason_dir.join("config.toml");
+    let home_gitignore_path = diapason_dir.join(".diapasongitignore");
+    assert!(home_config_path.exists());
+    assert!(home_gitignore_path.exists());
+}

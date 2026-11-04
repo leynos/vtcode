@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VT Code Binary Build and Upload Script
+# Diapason Binary Build and Upload Script
 # This script builds binaries locally and uploads them to GitHub Releases
 
 set -e
@@ -18,7 +18,7 @@ package_release_archive() {
     local target=$1
     local dist_dir=$2
     local archive_name=$3
-    local binary_name="${4:-vtcode}"
+    local binary_name="${4:-diapason}"
     local release_dir="target/$target/release"
 
     cp "$release_dir/$binary_name" "$dist_dir/$binary_name"
@@ -33,7 +33,7 @@ package_windows_archive() {
     local target=$1
     local dist_dir=$2
     local archive_name=$3
-    local binary_name="${4:-vtcode.exe}"
+    local binary_name="${4:-diapason.exe}"
     local release_dir="target/$target/release"
 
     if [ -f "$release_dir/$binary_name" ]; then
@@ -80,11 +80,11 @@ check_dependencies() {
         exit 1
     fi
 
-    # Verify GitHub CLI authentication and attempt to switch to vinhnx account
+    # Verify GitHub CLI authentication and attempt to switch to leynos account
     if ! gh auth status >/dev/null 2>&1; then
-        print_info "Attempting to authenticate with GitHub CLI (vinhnx account)..."
-        if gh auth switch -u vinhnx 2>/dev/null; then
-            print_success "Switched to GitHub account vinhnx"
+        print_info "Attempting to authenticate with GitHub CLI (leynos account)..."
+        if gh auth switch -u leynos 2>/dev/null; then
+            print_success "Switched to GitHub account leynos"
         else
             print_error "GitHub CLI is not authenticated. Please run: gh auth login"
             exit 1
@@ -176,9 +176,9 @@ build_with_tool() {
     local cmd=("$BUILD_TOOL" build --locked --release --target "$target")
 
     if [[ ${#TARGET_ENV_ASSIGNMENTS[@]} -gt 0 ]]; then
-        env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= "${TARGET_ENV_ASSIGNMENTS[@]}" "${cmd[@]}"
+        env "${TARGET_ENV_ASSIGNMENTS[@]}" "${cmd[@]}"
     else
-        env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= "${cmd[@]}"
+        env "${cmd[@]}"
     fi
 }
 
@@ -217,10 +217,10 @@ build_binaries() {
     if command -v zig &>/dev/null; then
         build_linux=true
         print_info "Phase 2: Building Linux x86_64 via zigbuild..."
-        ( env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= cargo zigbuild --locked --release --target x86_64-unknown-linux-gnu || print_warning "Linux x86_64 build failed" )
+        ( env cargo zigbuild --locked --release --target x86_64-unknown-linux-gnu || print_warning "Linux x86_64 build failed" )
 
         print_info "Phase 2: Building Linux aarch64 via zigbuild..."
-        ( env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= cargo zigbuild --locked --release --target aarch64-unknown-linux-gnu || print_warning "Linux aarch64 build failed" )
+        ( env cargo zigbuild --locked --release --target aarch64-unknown-linux-gnu || print_warning "Linux aarch64 build failed" )
 
         # Windows builds via zigbuild only if Rust targets are installed
         local win_targets=("x86_64-pc-windows-msvc" "aarch64-pc-windows-msvc")
@@ -230,7 +230,7 @@ build_binaries() {
             if echo "$installed_targets" | grep -q "$wt"; then
                 build_windows=true
                 print_info "Phase 3: Building $wt via zigbuild..."
-                ( env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= cargo zigbuild --locked --release --target "$wt" || print_warning "Windows $wt build failed" )
+                ( env cargo zigbuild --locked --release --target "$wt" || print_warning "Windows $wt build failed" )
             else
                 print_info "Skipping Windows $wt (target not installed, will use CI)"
             fi
@@ -252,44 +252,44 @@ build_binaries() {
     package_release_archive \
         "x86_64-apple-darwin" \
         "$dist_dir" \
-        "vtcode-$version-x86_64-apple-darwin.tar.gz"
+        "diapason-$version-x86_64-apple-darwin.tar.gz"
 
     # macOS aarch64
     package_release_archive \
         "aarch64-apple-darwin" \
         "$dist_dir" \
-        "vtcode-$version-aarch64-apple-darwin.tar.gz"
+        "diapason-$version-aarch64-apple-darwin.tar.gz"
 
     # Linux x86_64
-    if [ "$build_linux" = true ] && [ -f "target/x86_64-unknown-linux-gnu/release/vtcode" ]; then
+    if [ "$build_linux" = true ] && [ -f "target/x86_64-unknown-linux-gnu/release/diapason" ]; then
         package_release_archive \
             "x86_64-unknown-linux-gnu" \
             "$dist_dir" \
-            "vtcode-$version-x86_64-unknown-linux-gnu.tar.gz"
+            "diapason-$version-x86_64-unknown-linux-gnu.tar.gz"
     fi
 
     # Linux aarch64
-    if [ "$build_linux" = true ] && [ -f "target/aarch64-unknown-linux-gnu/release/vtcode" ]; then
+    if [ "$build_linux" = true ] && [ -f "target/aarch64-unknown-linux-gnu/release/diapason" ]; then
         package_release_archive \
             "aarch64-unknown-linux-gnu" \
             "$dist_dir" \
-            "vtcode-$version-aarch64-unknown-linux-gnu.tar.gz"
+            "diapason-$version-aarch64-unknown-linux-gnu.tar.gz"
     fi
 
     # Windows x86_64
-    if [ "$build_windows" = true ] && [ -f "target/x86_64-pc-windows-msvc/release/vtcode.exe" ]; then
+    if [ "$build_windows" = true ] && [ -f "target/x86_64-pc-windows-msvc/release/diapason.exe" ]; then
         package_windows_archive \
             "x86_64-pc-windows-msvc" \
             "$dist_dir" \
-            "vtcode-$version-x86_64-pc-windows-msvc.zip"
+            "diapason-$version-x86_64-pc-windows-msvc.zip"
     fi
 
     # Windows aarch64
-    if [ "$build_windows" = true ] && [ -f "target/aarch64-pc-windows-msvc/release/vtcode.exe" ]; then
+    if [ "$build_windows" = true ] && [ -f "target/aarch64-pc-windows-msvc/release/diapason.exe" ]; then
         package_windows_archive \
             "aarch64-pc-windows-msvc" \
             "$dist_dir" \
-            "vtcode-$version-aarch64-pc-windows-msvc.zip"
+            "diapason-$version-aarch64-pc-windows-msvc.zip"
     fi
 
     print_success "Binaries build and packaging process completed"
@@ -329,22 +329,22 @@ build_binaries_local() {
         print_info "Packaging macOS binaries..."
         
         # Package x86_64
-        if [ -f "target/x86_64-apple-darwin/release/vtcode" ]; then
+        if [ -f "target/x86_64-apple-darwin/release/diapason" ]; then
             package_release_archive \
                 "x86_64-apple-darwin" \
                 "$dist_dir" \
-                "vtcode-$version-x86_64-apple-darwin.tar.gz"
+                "diapason-$version-x86_64-apple-darwin.tar.gz"
             print_success "x86_64 binary packaged"
         else
             print_warning "x86_64 binary not found"
         fi
         
         # Package aarch64
-        if [ -f "target/aarch64-apple-darwin/release/vtcode" ]; then
+        if [ -f "target/aarch64-apple-darwin/release/diapason" ]; then
             package_release_archive \
                 "aarch64-apple-darwin" \
                 "$dist_dir" \
-                "vtcode-$version-aarch64-apple-darwin.tar.gz"
+                "diapason-$version-aarch64-apple-darwin.tar.gz"
             print_success "aarch64 binary packaged"
         else
             print_warning "aarch64 binary not found"
@@ -366,7 +366,7 @@ build_binaries_local() {
         package_release_archive \
             "x86_64-unknown-linux-gnu" \
             "$dist_dir" \
-            "vtcode-$version-x86_64-unknown-linux-gnu.tar.gz"
+            "diapason-$version-x86_64-unknown-linux-gnu.tar.gz"
         print_success "Local Linux build completed"
     else
         print_error "Unsupported platform: $OSTYPE"
@@ -500,163 +500,8 @@ upload_binaries() {
     cd ..
 }
 
-update_homebrew_formula_file() {
-    local formula_path=$1
-    local version=$2
-    local x86_64_macos_sha=$3
-    local aarch64_macos_sha=$4
-    local aarch64_linux_sha=${5:-}
-
-    FORMULA_PATH="$formula_path" \
-    FORMULA_VERSION="$version" \
-    FORMULA_X86_64_MACOS_SHA="$x86_64_macos_sha" \
-    FORMULA_AARCH64_MACOS_SHA="$aarch64_macos_sha" \
-    FORMULA_AARCH64_LINUX_SHA="$aarch64_linux_sha" \
-        python3 <<'PYTHON_SCRIPT'
-import os
-import re
-from pathlib import Path
-
-formula_path = Path(os.environ["FORMULA_PATH"])
-version = os.environ["FORMULA_VERSION"]
-x86_64_macos_sha = os.environ["FORMULA_X86_64_MACOS_SHA"]
-aarch64_macos_sha = os.environ["FORMULA_AARCH64_MACOS_SHA"]
-aarch64_linux_sha = os.environ.get("FORMULA_AARCH64_LINUX_SHA", "")
-
-content = formula_path.read_text()
-content = re.sub(r'version\s+"[^"]*"', f'version "{version}"', content)
-content = re.sub(
-    r'(aarch64-apple-darwin\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-    lambda match: f'{match.group(1)}{aarch64_macos_sha}{match.group(3)}',
-    content,
-)
-content = re.sub(
-    r'(x86_64-apple-darwin\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-    lambda match: f'{match.group(1)}{x86_64_macos_sha}{match.group(3)}',
-    content,
-)
-if aarch64_linux_sha:
-    content = re.sub(
-        r'(aarch64-unknown-linux-gnu\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-        lambda match: f'{match.group(1)}{aarch64_linux_sha}{match.group(3)}',
-        content,
-    )
-
-formula_path.write_text(content)
-PYTHON_SCRIPT
-}
-
-publish_homebrew_tap() {
-    local version=$1
-    local x86_64_macos_sha=$2
-    local aarch64_macos_sha=$3
-    local aarch64_linux_sha=${4:-}
-
-    print_info "Publishing Homebrew formula to vinhnx/homebrew-tap..."
-
-    local temp_dir
-    temp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'vtcode-homebrew')
-
-    if ! (
-        trap 'rm -rf "$temp_dir"' EXIT
-
-        local tap_token="${HOMEBREW_TAP_TOKEN:-${GITHUB_TOKEN:-}}"
-        if [[ -z "$tap_token" ]]; then
-            print_error "No token available for homebrew-tap. Set HOMEBREW_TAP_TOKEN or GITHUB_TOKEN."
-            exit 1
-        fi
-
-        local tap_repo_url="https://x-access-token:${tap_token}@github.com/vinhnx/homebrew-tap.git"
-
-        if ! git clone "$tap_repo_url" "$temp_dir" >/dev/null 2>&1; then
-            print_error "Failed to clone vinhnx/homebrew-tap"
-            exit 1
-        fi
-
-        if ! update_homebrew_formula_file "$temp_dir/vtcode.rb" "$version" "$x86_64_macos_sha" "$aarch64_macos_sha" "$aarch64_linux_sha"; then
-            print_error "Failed to update Homebrew tap formula"
-            exit 1
-        fi
-
-        if git -C "$temp_dir" diff --quiet -- vtcode.rb; then
-            print_info "Homebrew tap formula is already up to date"
-            exit 0
-        fi
-
-        git -C "$temp_dir" add vtcode.rb
-
-        if ! GIT_AUTHOR_NAME="vtcode-release-bot" \
-            GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-            GIT_COMMITTER_NAME="vtcode-release-bot" \
-            GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
-            git -C "$temp_dir" commit -m "Update vtcode formula to v$version"; then
-            print_error "Failed to commit Homebrew tap update"
-            exit 1
-        fi
-
-        if ! git -C "$temp_dir" push "$tap_repo_url" HEAD:main; then
-            print_error "Failed to push Homebrew tap update"
-            exit 1
-        fi
-
-        print_success "Published vtcode formula to vinhnx/homebrew-tap"
-    ); then
-        return 1
-    fi
-}
-
-# Function to update Homebrew formula
-update_homebrew_formula() {
-    local version=$1
-    local formula_path="homebrew/vtcode.rb"
-
-    if [ ! -f "$formula_path" ]; then
-        print_warning "Homebrew formula not found at $formula_path"
-        return 0
-    fi
-
-    if [ "$DRY_RUN" = true ]; then
-        print_info "Dry run: would update Homebrew formula to $version"
-        return 0
-    fi
-
-    print_info "Updating Homebrew formula at $formula_path..."
-
-    local x86_64_macos_sha
-    x86_64_macos_sha=$(cat "dist/vtcode-$version-x86_64-apple-darwin.sha256" 2>/dev/null || echo "")
-    local aarch64_macos_sha
-    aarch64_macos_sha=$(cat "dist/vtcode-$version-aarch64-apple-darwin.sha256" 2>/dev/null || echo "")
-    local aarch64_linux_sha
-    aarch64_linux_sha=$(cat "dist/vtcode-$version-aarch64-unknown-linux-gnu.sha256" 2>/dev/null || echo "")
-    if [ -z "$x86_64_macos_sha" ] || [ -z "$aarch64_macos_sha" ]; then
-        print_error "Missing macOS checksums, cannot update Homebrew formula"
-        return 1
-    fi
-
-    if ! update_homebrew_formula_file "$formula_path" "$version" "$x86_64_macos_sha" "$aarch64_macos_sha" "$aarch64_linux_sha"; then
-        print_error "Failed to update local Homebrew formula"
-        return 1
-    fi
-
-    print_success "Homebrew formula updated locally"
-
-    if ! git diff --quiet -- "$formula_path"; then
-        git add "$formula_path"
-
-        if ! GIT_AUTHOR_NAME="vtcode-release-bot" \
-            GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-            GIT_COMMITTER_NAME="vtcode-release-bot" \
-            GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
-            git commit -m "chore: update homebrew formula to $version"; then
-            print_warning "Failed to commit local Homebrew formula update"
-        elif ! git -c credential.helper='!gh auth git-credential' push https://github.com/vinhnx/vtcode.git main; then
-            print_warning "Failed to push Homebrew update"
-        fi
-    else
-        print_info "Local Homebrew formula is already up to date"
-    fi
-
-    publish_homebrew_tap "$version" "$x86_64_macos_sha" "$aarch64_macos_sha" "$aarch64_linux_sha"
+report_homebrew_source_formula() {
+    print_info "Homebrew is source-build-only; no binary checksums or external tap are published."
 }
 
 # Main function
@@ -695,7 +540,7 @@ main() {
         build_binaries "$version"
         calculate_checksums "$version"
         upload_binaries "$version" "$notes_file"
-        update_homebrew_formula "$version"
+        report_homebrew_source_formula
     else
         if [ "$only_build" = true ]; then
             install_rust_targets
@@ -713,7 +558,7 @@ main() {
         fi
         if [ "$only_homebrew" = true ]; then
             calculate_checksums "$version"
-            update_homebrew_formula "$version"
+            report_homebrew_source_formula
         fi
     fi
 

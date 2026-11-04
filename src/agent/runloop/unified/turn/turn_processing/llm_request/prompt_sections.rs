@@ -6,11 +6,11 @@
 
 use std::fmt::Write as _;
 
+use diapason_core::ActivePrimaryAgent;
+use diapason_core::apply_primary_agent_prompt_context;
+use diapason_core::llm::provider as uni;
+use diapason_core::prompts::{DEFAULT_FEW_SHOT_BUDGET_TOKENS, FewShotStore, PromptContext, render_few_shot_section};
 use dirs::home_dir;
-use vtcode_core::ActivePrimaryAgent;
-use vtcode_core::apply_primary_agent_prompt_context;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::prompts::{DEFAULT_FEW_SHOT_BUDGET_TOKENS, FewShotStore, PromptContext, render_few_shot_section};
 
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 
@@ -46,7 +46,7 @@ pub(super) fn latest_user_query(history: &[uni::Message]) -> Option<String> {
 pub(super) fn append_copilot_runtime_guidance(system_prompt: &mut String) {
     let _ = writeln!(
         system_prompt,
-        "\n[GitHub Copilot Client Tools]\n- the VT Code tools named in this prompt are exposed as Copilot client tools outside the normal JSON tool list\n- when a tool is needed, emit the actual client tool call instead of describing the call in plain text\n- do not claim a tool was rejected, blocked, or unavailable unless the runtime returned that result"
+        "\n[GitHub Copilot Client Tools]\n- the Diapason tools named in this prompt are exposed as Copilot client tools outside the normal JSON tool list\n- when a tool is needed, emit the actual client tool call instead of describing the call in plain text\n- do not claim a tool was rejected, blocked, or unavailable unless the runtime returned that result"
     );
 }
 

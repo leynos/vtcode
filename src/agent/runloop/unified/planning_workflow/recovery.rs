@@ -11,8 +11,8 @@
 //! directive and re-runs the turn loop exactly once (bounded, so a genuinely
 //! oversized plan cannot loop).
 
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use crate::agent::runloop::unified::plan_blocks::has_unclosed_plan_block;
 

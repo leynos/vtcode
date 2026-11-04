@@ -13,18 +13,18 @@ import {
     TrustWorkspaceCommand,
     TaskTrackerCommand,
 } from "./commands";
-import { registerVtcodeLanguageFeatures } from "./languageFeatures";
+import { registerDiapasonLanguageFeatures } from "./languageFeatures";
 import {
     appendMcpProvider,
     loadConfigSummaryFromUri,
-    pickVtcodeConfigUri,
-    registerVtcodeConfigWatcher,
+    pickDiapasonConfigUri,
+    registerDiapasonConfigWatcher,
     revealMcpSection,
     revealToolsPolicySection,
     setHumanInTheLoop,
     setMcpProviderEnabled,
-    VtcodeConfigSummary,
-} from "./vtcodeConfig";
+    DiapasonConfigSummary,
+} from "./diapasonConfig";
 
 type QuickActionItem = vscode.QuickPickItem & {
     run: () => Thenable<unknown> | void;
@@ -48,7 +48,7 @@ class QuickActionTreeItem extends vscode.TreeItem {
             title: action.label,
             arguments: action.args,
         };
-        this.contextValue = "vtcodeQuickAction";
+        this.contextValue = "diapasonQuickAction";
     }
 }
 
@@ -93,7 +93,7 @@ class WorkspaceInsightTreeItem extends vscode.TreeItem {
         if (insight.tooltip) {
             this.tooltip = insight.tooltip;
         }
-        this.contextValue = "vtcodeWorkspaceInsight";
+        this.contextValue = "diapasonWorkspaceInsight";
     }
 }
 
@@ -132,7 +132,7 @@ let terminalCloseListener: vscode.Disposable | undefined;
 let cliAvailable = false;
 let missingCliWarningShown = false;
 let cliAvailabilityCheck: Promise<void> | undefined;
-let currentConfigSummary: VtcodeConfigSummary | undefined;
+let currentConfigSummary: DiapasonConfigSummary | undefined;
 let lastConfigUri: string | undefined;
 let lastConfigParseError: string | undefined;
 let lastAutomationFullAutoEnabled: boolean | undefined;
@@ -141,19 +141,19 @@ let activationContext: vscode.ExtensionContext | undefined;
 let lastProviderModelWarningKey: string | undefined;
 
 const CLI_DETECTION_TIMEOUT_MS = 4000;
-const VT_CODE_CHAT_PARTICIPANT_ID = "vtcode.agent";
-const VT_CODE_TASK_TRACKER_TOOL = "vtcode-taskTracker";
+const DIAPASON_CHAT_PARTICIPANT_ID = "diapason.agent";
+const DIAPASON_TASK_TRACKER_TOOL = "diapason-taskTracker";
 const TASK_TRACKER_TASK_COMMAND = "task-tracker";
-const VT_CODE_MCP_PROVIDER_ID = "vtcode.workspaceMcp";
-const TRUST_PROMPT_STATE_KEY = "vtcode.trustPromptShown";
-const FULL_AUTO_WARNING_STATE_KEY = "vtcode.fullAutoWarningShown";
+const DIAPASON_MCP_PROVIDER_ID = "diapason.workspaceMcp";
+const TRUST_PROMPT_STATE_KEY = "diapason.trustPromptShown";
+const FULL_AUTO_WARNING_STATE_KEY = "diapason.fullAutoWarningShown";
 
 const mcpDefinitionsChanged = new vscode.EventEmitter<void>();
 
 let ideContextBridge: IdeContextFileBridge | undefined;
 
-const CANONICAL_IDE_CONTEXT_ENV_VARIABLE = "VT_IDE_CONTEXT_FILE";
-const LEGACY_IDE_CONTEXT_ENV_VARIABLE = "VT_VSCODE_CONTEXT_FILE";
+const CANONICAL_IDE_CONTEXT_ENV_VARIABLE = "DIAPASON_IDE_CONTEXT_FILE";
+const LEGACY_IDE_CONTEXT_ENV_VARIABLE = "DIAPASON_VSCODE_CONTEXT_FILE";
 const IDE_CONTEXT_SNAPSHOT_VERSION = 1;
 const IDE_CONTEXT_HEADER = "## VS Code Context";
 const MAX_IDE_CONTEXT_CHARS = 6000;
@@ -206,7 +206,7 @@ interface IdeContextFileTarget {
 
 export function activate(context: vscode.ExtensionContext) {
     activationContext = context;
-    outputChannel = vscode.window.createOutputChannel("VT Code");
+    outputChannel = vscode.window.createOutputChannel("Diapason");
     context.subscriptions.push(outputChannel);
 
     // Initialize command registry with modular commands
@@ -231,7 +231,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     ensureStableApi(context);
     logExtensionHostContext(context);
-    registerVtcodeLanguageFeatures(context);
+    registerDiapasonLanguageFeatures(context);
 
     void initializeIdeContextBridge(context);
 
@@ -239,10 +239,10 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.StatusBarAlignment.Left,
         100
     );
-    statusBarItem.name = "VT Code Quick Actions";
+    statusBarItem.name = "Diapason Quick Actions";
     statusBarItem.accessibilityInformation = {
         role: "button",
-        label: "Open VT Code quick actions or installation guide",
+        label: "Open Diapason quick actions or installation guide",
     };
     context.subscriptions.push(statusBarItem);
 
@@ -255,7 +255,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider(
-            "vtcodeWorkspaceStatusView",
+            "diapasonWorkspaceStatusView",
             workspaceInsightsProvider
         )
     );
@@ -265,14 +265,14 @@ export function activate(context: vscode.ExtensionContext) {
     );
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider(
-            "vtcodeQuickActionsView",
+            "diapasonQuickActionsView",
             quickActionsProviderInstance
         )
     );
 
     initializeContextKeys();
 
-    void registerVtcodeConfigWatcher(context, handleConfigUpdate);
+    void registerDiapasonConfigWatcher(context, handleConfigUpdate);
 
     updateWorkspaceTrustState(workspaceTrusted);
     void promptForWorkspaceTrustOnActivation(context);
@@ -299,12 +299,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     if (vscode.env.uiKind === vscode.UIKind.Web) {
         void vscode.window.showWarningMessage(
-            "VT Code Companion is running in VS Code for the Web. Command execution features are disabled, but documentation and configuration helpers remain available."
+            "Diapason Companion is running in VS Code for the Web. Command execution features are disabled, but documentation and configuration helpers remain available."
         );
     }
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("vtcode.openQuickActions", async () => {
+        vscode.commands.registerCommand("diapason.openQuickActions", async () => {
             const actions = createQuickActions(
                 cliAvailable,
                 currentConfigSummary,
@@ -323,7 +323,7 @@ export function activate(context: vscode.ExtensionContext) {
             }));
 
             const selection = await vscode.window.showQuickPick(pickItems, {
-                placeHolder: "Choose a VT Code action to run",
+                placeHolder: "Choose a Diapason action to run",
             });
 
             if (selection) {
@@ -333,16 +333,16 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const verifyWorkspaceTrustCommand = vscode.commands.registerCommand(
-        "vtcode.verifyWorkspaceTrust",
+        "diapason.verifyWorkspaceTrust",
         async () => {
             // Show current trust status
             if (vscode.workspace.isTrusted) {
                 void vscode.window.showInformationMessage(
-                    "Workspace is trusted. VT Code chat prompts will avoid the trust modal while tool executions still require approval."
+                    "Workspace is trusted. Diapason chat prompts will avoid the trust modal while tool executions still require approval."
                 );
             } else {
                 void vscode.window.showWarningMessage(
-                    "Workspace is not trusted. VT Code requires a trusted workspace to execute commands and access tools."
+                    "Workspace is not trusted. Diapason requires a trusted workspace to execute commands and access tools."
                 );
             }
 
@@ -356,7 +356,7 @@ export function activate(context: vscode.ExtensionContext) {
             // Optionally show workspace trust management
             if (!vscode.workspace.isTrusted) {
                 const selection = await vscode.window.showInformationMessage(
-                    "Trust is required for VT Code. Would you like to manage workspace trust settings?",
+                    "Trust is required for Diapason. Would you like to manage workspace trust settings?",
                     "Manage Trust Settings",
                     "Learn More"
                 );
@@ -377,7 +377,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const flushIdeContextCommand = vscode.commands.registerCommand(
-        "vtcode.flushIdeContextSnapshot",
+        "diapason.flushIdeContextSnapshot",
         async () => {
             if (!ideContextBridge) {
                 syncIdeContextEnvironmentVariable();
@@ -390,62 +390,62 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const openDocumentation = vscode.commands.registerCommand(
-        "vtcode.openDocumentation",
+        "diapason.openDocumentation",
         async () => {
             await vscode.env.openExternal(
-                vscode.Uri.parse("https://github.com/vinhnx/vtcode#readme")
+                vscode.Uri.parse("https://github.com/leynos/vtcode#readme")
             );
         }
     );
 
     const openDeepWiki = vscode.commands.registerCommand(
-        "vtcode.openDeepWiki",
+        "diapason.openDeepWiki",
         async () => {
             await vscode.env.openExternal(
-                vscode.Uri.parse("https://deepwiki.com/vinhnx/vtcode")
+                vscode.Uri.parse("https://deepwiki.com/leynos/vtcode")
             );
         }
     );
 
     const openWalkthrough = vscode.commands.registerCommand(
-        "vtcode.openWalkthrough",
+        "diapason.openWalkthrough",
         async () => {
             await vscode.commands.executeCommand(
                 "workbench.action.openWalkthrough",
-                "vtcode.walkthrough"
+                "diapason.walkthrough"
             );
         }
     );
 
     const openInstallGuide = vscode.commands.registerCommand(
-        "vtcode.openInstallGuide",
+        "diapason.openInstallGuide",
         async () => {
             await vscode.env.openExternal(
                 vscode.Uri.parse(
-                    "https://github.com/vinhnx/vtcode#installation"
+                    "https://github.com/leynos/vtcode"
                 )
             );
         }
     );
 
     const toggleHumanInTheLoopCommand = vscode.commands.registerCommand(
-        "vtcode.toggleHumanInTheLoop",
+        "diapason.toggleHumanInTheLoop",
         async () => {
             if (
                 !(await ensureWorkspaceTrustedForCommand(
-                    "change VT Code human-in-the-loop settings"
+                    "change Diapason human-in-the-loop settings"
                 ))
             ) {
                 return;
             }
 
             try {
-                const configUri = await pickVtcodeConfigUri(
+                const configUri = await pickDiapasonConfigUri(
                     currentConfigSummary?.uri
                 );
                 if (!configUri) {
                     void vscode.window.showWarningMessage(
-                        "No vtcode.toml file was found in this workspace."
+                        "No config.toml file was found in this workspace."
                     );
                     return;
                 }
@@ -461,7 +461,7 @@ export function activate(context: vscode.ExtensionContext) {
                 const updated = await setHumanInTheLoop(configUri, newValue);
                 if (!updated) {
                     void vscode.window.showWarningMessage(
-                        "Failed to update human_in_the_loop in vtcode.toml."
+                        "Failed to update human_in_the_loop in config.toml."
                     );
                     return;
                 }
@@ -477,7 +477,7 @@ export function activate(context: vscode.ExtensionContext) {
                 void vscode.window.showInformationMessage(
                     `Human-in-the-loop safeguards are now ${
                         newValue ? "enabled" : "disabled"
-                    } in vtcode.toml.`
+                    } in config.toml.`
                 );
             } catch (error) {
                 handleCommandError("toggle human-in-the-loop mode", error);
@@ -486,7 +486,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const openToolsPolicyGuideCommand = vscode.commands.registerCommand(
-        "vtcode.openToolsPolicyGuide",
+        "diapason.openToolsPolicyGuide",
         async () => {
             try {
                 await openToolsPolicyGuide();
@@ -497,15 +497,15 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const openToolsPolicyConfigCommand = vscode.commands.registerCommand(
-        "vtcode.openToolsPolicyConfig",
+        "diapason.openToolsPolicyConfig",
         async () => {
             try {
-                const configUri = await pickVtcodeConfigUri(
+                const configUri = await pickDiapasonConfigUri(
                     currentConfigSummary?.uri
                 );
                 if (!configUri) {
                     void vscode.window.showWarningMessage(
-                        "No vtcode.toml file was found in this workspace."
+                        "No config.toml file was found in this workspace."
                     );
                     return;
                 }
@@ -518,23 +518,23 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const configureMcpProvidersCommand = vscode.commands.registerCommand(
-        "vtcode.configureMcpProviders",
+        "diapason.configureMcpProviders",
         async () => {
             if (
                 !(await ensureWorkspaceTrustedForCommand(
-                    "edit VT Code MCP provider settings"
+                    "edit Diapason MCP provider settings"
                 ))
             ) {
                 return;
             }
 
             try {
-                const configUri = await pickVtcodeConfigUri(
+                const configUri = await pickDiapasonConfigUri(
                     currentConfigSummary?.uri
                 );
                 if (!configUri) {
                     void vscode.window.showWarningMessage(
-                        "No vtcode.toml file was found in this workspace."
+                        "No config.toml file was found in this workspace."
                     );
                     return;
                 }
@@ -582,13 +582,13 @@ export function activate(context: vscode.ExtensionContext) {
                     },
                     {
                         label: "$(gear) Open MCP configuration",
-                        description: "Edit the MCP section in vtcode.toml.",
+                        description: "Edit the MCP section in config.toml.",
                         action: "open",
                     },
                     {
                         label: "$(book) Open MCP integration guide",
                         description:
-                            "Read the VT Code MCP configuration walkthrough.",
+                            "Read the Diapason MCP configuration walkthrough.",
                         action: "guide",
                     }
                 );
@@ -634,7 +634,7 @@ export function activate(context: vscode.ExtensionContext) {
                         );
                         if (result === "notfound") {
                             void vscode.window.showWarningMessage(
-                                `Provider “${selection.providerName}” was not found in vtcode.toml.`
+                                `Provider “${selection.providerName}” was not found in config.toml.`
                             );
                             return;
                         }
@@ -732,11 +732,11 @@ export function activate(context: vscode.ExtensionContext) {
                                 `[info] Added MCP provider "${name.trim()}" to ${relativePath}.`
                             );
                             void vscode.window.showInformationMessage(
-                                `Added MCP provider “${name.trim()}” to vtcode.toml.`
+                                `Added MCP provider “${name.trim()}” to config.toml.`
                             );
                         } else {
                             void vscode.window.showWarningMessage(
-                                `Provider “${name.trim()}” already exists in vtcode.toml.`
+                                `Provider “${name.trim()}” already exists in config.toml.`
                             );
                         }
                         break;
@@ -757,7 +757,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const launchAgentTerminal = vscode.commands.registerCommand(
-        "vtcode.launchAgentTerminal",
+        "diapason.launchAgentTerminal",
         async () => {
             if (!(await ensureCliAvailableForCommand())) {
                 return;
@@ -766,7 +766,7 @@ export function activate(context: vscode.ExtensionContext) {
             const cwd = getWorkspaceRoot();
             if (!cwd) {
                 void vscode.window.showWarningMessage(
-                    "Open a workspace folder before launching the VT Code agent terminal."
+                    "Open a workspace folder before launching the Diapason agent terminal."
                 );
                 return;
             }
@@ -777,7 +777,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (created) {
                 const channel = getOutputChannel();
                 channel.appendLine(
-                    `[info] Launching VT Code agent terminal with "${commandPath} chat" in ${cwd}.`
+                    `[info] Launching Diapason agent terminal with "${commandPath} chat" in ${cwd}.`
                 );
             }
         }
@@ -787,14 +787,14 @@ export function activate(context: vscode.ExtensionContext) {
     // Note: runTaskTrackerTask is registered via CommandRegistry (TaskTrackerCommand)
     // Note: refreshQuickActions is registered via CommandRegistry (RefreshCommand)
 
-    const taskProvider = vscode.tasks.registerTaskProvider("vtcode", {
-        provideTasks: provideVtcodeTasks,
-        resolveTask: resolveVtcodeTask,
+    const taskProvider = vscode.tasks.registerTaskProvider("diapason", {
+        provideTasks: provideDiapasonTasks,
+        resolveTask: resolveDiapasonTask,
     });
 
     const configurationWatcher = vscode.workspace.onDidChangeConfiguration(
         (event) => {
-            if (event.affectsConfiguration("vtcode.commandPath")) {
+            if (event.affectsConfiguration("diapason.commandPath")) {
                 void refreshCliAvailability("configuration");
             }
         }
@@ -817,7 +817,7 @@ export function activate(context: vscode.ExtensionContext) {
         workspaceFolderWatcher
     );
 
-    registerVtcodeAiIntegrations(context);
+    registerDiapasonAiIntegrations(context);
 
     void refreshCliAvailability("activation");
 }
@@ -841,11 +841,11 @@ async function initializeIdeContextBridge(
 
     const jsonFileUri = vscode.Uri.joinPath(
         storageRoot,
-        "vtcode-ide-context.json"
+        "diapason-ide-context.json"
     );
     const markdownFileUri = vscode.Uri.joinPath(
         storageRoot,
-        "vtcode-ide-context.md"
+        "diapason-ide-context.md"
     );
     const bridge = new IdeContextFileBridge(jsonFileUri, markdownFileUri);
     ideContextBridge = bridge;
@@ -903,7 +903,7 @@ export function deactivate() {
 }
 
 async function ensureCliAvailableForCommand(): Promise<boolean> {
-    if (!(await ensureWorkspaceTrustedForCommand("run VT Code commands"))) {
+    if (!(await ensureWorkspaceTrustedForCommand("run Diapason commands"))) {
         return false;
     }
 
@@ -915,12 +915,12 @@ async function ensureCliAvailableForCommand(): Promise<boolean> {
 
     const commandPath = getConfiguredCommandPath();
     const selection = await vscode.window.showWarningMessage(
-        `The VT Code CLI ("${commandPath}") is not available. Install the CLI or update the "vtcode.commandPath" setting to run this command.`,
+        `The Diapason CLI ("${commandPath}") is not available. Install the CLI or update the "diapason.commandPath" setting to run this command.`,
         "Open Installation Guide"
     );
 
     if (selection === "Open Installation Guide") {
-        await vscode.commands.executeCommand("vtcode.openInstallGuide");
+        await vscode.commands.executeCommand("diapason.openInstallGuide");
     }
 
     return false;
@@ -928,7 +928,7 @@ async function ensureCliAvailableForCommand(): Promise<boolean> {
 
 function createQuickActions(
     cliAvailableState: boolean,
-    summary: VtcodeConfigSummary | undefined,
+    summary: DiapasonConfigSummary | undefined,
     trusted: boolean
 ): QuickActionDescription[] {
     const actions: QuickActionDescription[] = [];
@@ -936,24 +936,24 @@ function createQuickActions(
     if (!trusted) {
         actions.push(
             {
-                label: "Trust this workspace for VT Code",
+                label: "Trust this workspace for Diapason",
                 description:
-                    "Grant workspace trust to enable VT Code automation and CLI access.",
-                command: "vtcode.trustWorkspace",
+                    "Grant workspace trust to enable Diapason automation and CLI access.",
+                command: "diapason.trustWorkspace",
                 icon: "shield",
             },
             {
                 label: "Verify workspace trust flow",
                 description:
-                    "Run the VT Code trust checklist so chat prompts stop requesting trust while tools stay gated.",
-                command: "vtcode.verifyWorkspaceTrust",
+                    "Run the Diapason trust checklist so chat prompts stop requesting trust while tools stay gated.",
+                command: "diapason.verifyWorkspaceTrust",
                 icon: "shield-check",
             },
             {
-                label: "Review VT Code CLI requirements",
+                label: "Review Diapason CLI requirements",
                 description:
-                    "Learn how the VT Code CLI integrates once the workspace is trusted.",
-                command: "vtcode.openInstallGuide",
+                    "Learn how the Diapason CLI integrates once the workspace is trusted.",
+                command: "diapason.openInstallGuide",
                 icon: "tools",
             }
         );
@@ -964,59 +964,59 @@ function createQuickActions(
             {
                 label: "Verify workspace trust flow",
                 description:
-                    "Confirm VT Code chat prompts avoid the trust modal while tool executions still require approval.",
-                command: "vtcode.verifyWorkspaceTrust",
+                    "Confirm Diapason chat prompts avoid the trust modal while tool executions still require approval.",
+                command: "diapason.verifyWorkspaceTrust",
                 icon: "shield-check",
             },
             {
                 label: "Refresh IDE context snapshot",
                 description:
                     "Force a new IDE context snapshot so the agent sees your latest editor state.",
-                command: "vtcode.flushIdeContextSnapshot",
+                command: "diapason.flushIdeContextSnapshot",
                 icon: "history",
             },
             {
-                label: "Ask the VT Code agent…",
+                label: "Ask the Diapason agent…",
                 description:
                     "Send a one-off question and stream the answer in VS Code.",
-                command: "vtcode.askAgent",
+                command: "diapason.askAgent",
                 icon: "comment-discussion",
             },
             {
                 label: "Ask about highlighted selection",
                 description:
-                    "Right-click or trigger VT Code to explain the selected text.",
-                command: "vtcode.askSelection",
+                    "Right-click or trigger Diapason to explain the selected text.",
+                command: "diapason.askSelection",
                 icon: "comment",
             },
             {
-                label: "Run VT Code task tracker",
+                label: "Run Diapason task tracker",
                 description:
                     "Run the predefined VS Code task that drives the task_tracker tool.",
-                command: "vtcode.runTaskTrackerTask",
+                command: "diapason.runTaskTrackerTask",
                 icon: "checklist",
             },
             {
-                label: "Launch interactive VT Code terminal",
+                label: "Launch interactive Diapason terminal",
                 description:
-                    "Open an integrated terminal session running vtcode chat.",
-                command: "vtcode.launchAgentTerminal",
+                    "Open an integrated terminal session running diapason chat.",
+                command: "diapason.launchAgentTerminal",
                 icon: "terminal",
             },
             {
-                label: "Analyse workspace with VT Code",
+                label: "Analyse workspace with Diapason",
                 description:
-                    "Run vtcode analyse and stream the report to the VT Code output channel.",
-                command: "vtcode.runAnalyze",
+                    "Run diapason analyse and stream the report to the Diapason output channel.",
+                command: "diapason.runAnalyze",
                 icon: "pulse",
             }
         );
     } else if (trusted) {
         actions.push({
-            label: "Review VT Code CLI installation",
+            label: "Review Diapason CLI installation",
             description:
-                "Open the VT Code CLI installation instructions required for automation.",
-            command: "vtcode.openInstallGuide",
+                "Open the Diapason CLI installation instructions required for automation.",
+            command: "diapason.openInstallGuide",
             icon: "tools",
         });
     }
@@ -1026,8 +1026,8 @@ function createQuickActions(
             actions.push({
                 label: "Full-auto automation detected (blocked)",
                 description:
-                    "Open vtcode.toml to disable [automation.full_auto]; VS Code will not run autonomous tasks.",
-                command: "vtcode.openConfig",
+                    "Open config.toml to disable [automation.full_auto]; VS Code will not run autonomous tasks.",
+                command: "diapason.openConfig",
                 icon: "shield-off",
             });
         }
@@ -1038,9 +1038,9 @@ function createQuickActions(
                 ? "Disable human-in-the-loop safeguards"
                 : "Enable human-in-the-loop safeguards",
             description: hitlEnabled
-                ? "Allow VT Code to automate tool execution without manual approval."
-                : "Require confirmation before VT Code executes high-impact tools.",
-            command: "vtcode.toggleHumanInTheLoop",
+                ? "Allow Diapason to automate tool execution without manual approval."
+                : "Require confirmation before Diapason executes high-impact tools.",
+            command: "diapason.toggleHumanInTheLoop",
             icon: "shield",
         });
 
@@ -1056,8 +1056,8 @@ function createQuickActions(
             description:
                 providerCount > 0
                     ? `Adjust ${enabledCount}/${providerCount} enabled Model Context Protocol providers.`
-                    : "Connect VT Code to external Model Context Protocol tools.",
-            command: "vtcode.configureMcpProviders",
+                    : "Connect Diapason to external Model Context Protocol tools.",
+            command: "diapason.configureMcpProviders",
             icon: "plug",
         });
 
@@ -1067,20 +1067,20 @@ function createQuickActions(
             description:
                 toolPoliciesCount > 0
                     ? `Inspect ${toolPoliciesCount} explicit tool policy overrides.`
-                    : "Define allow/prompt/deny rules for VT Code tools.",
-            command: "vtcode.openToolsPolicyConfig",
+                    : "Define allow/prompt/deny rules for Diapason tools.",
+            command: "diapason.openToolsPolicyConfig",
             icon: "law",
         });
     }
 
     const toolGuideDescription =
         summary?.hasConfig && trusted
-            ? "Read documentation covering VT Code tool governance and HITL flows."
-            : "Learn how VT Code enforces tool governance and human-in-the-loop safeguards.";
+            ? "Read documentation covering Diapason tool governance and HITL flows."
+            : "Learn how Diapason enforces tool governance and human-in-the-loop safeguards.";
     actions.push({
-        label: "Open VT Code tool policy guide",
+        label: "Open Diapason tool policy guide",
         description: toolGuideDescription,
-        command: "vtcode.openToolsPolicyGuide",
+        command: "diapason.openToolsPolicyGuide",
         icon: "book",
     });
 
@@ -1088,33 +1088,33 @@ function createQuickActions(
         ? `Open ${vscode.workspace.asRelativePath(
               summary.uri,
               false
-          )} to adjust VT Code settings.`
-        : "Jump directly to the workspace VT Code configuration file.";
+          )} to adjust Diapason settings.`
+        : "Jump directly to the workspace Diapason configuration file.";
 
     actions.push(
         {
-            label: "Open vtcode.toml",
+            label: "Open config.toml",
             description: configDescription,
-            command: "vtcode.openConfig",
+            command: "diapason.openConfig",
             icon: "gear",
         },
         {
-            label: "View VT Code documentation",
-            description: "Open the VT Code README in your browser.",
-            command: "vtcode.openDocumentation",
+            label: "View Diapason documentation",
+            description: "Open the Diapason README in your browser.",
+            command: "diapason.openDocumentation",
             icon: "book",
         },
         {
-            label: "Review VT Code DeepWiki overview",
-            description: "Open the DeepWiki page for VT Code capabilities.",
-            command: "vtcode.openDeepWiki",
+            label: "Review Diapason DeepWiki overview",
+            description: "Open the DeepWiki page for Diapason capabilities.",
+            command: "diapason.openDeepWiki",
             icon: "globe",
         },
         {
-            label: "Explore the VT Code walkthrough",
+            label: "Explore the Diapason walkthrough",
             description:
-                "Open the getting-started walkthrough to learn about VT Code features.",
-            command: "vtcode.openWalkthrough",
+                "Open the getting-started walkthrough to learn about Diapason features.",
+            command: "diapason.openWalkthrough",
             icon: "rocket",
         }
     );
@@ -1125,24 +1125,24 @@ function createQuickActions(
 function createWorkspaceInsights(
     trusted: boolean,
     cliAvailableState: boolean,
-    summary: VtcodeConfigSummary | undefined
+    summary: DiapasonConfigSummary | undefined
 ): WorkspaceInsightDescription[] {
     const insights: WorkspaceInsightDescription[] = [];
 
     insights.push({
         label: trusted ? "Workspace trust granted" : "Workspace trust required",
         description: trusted
-            ? "VT Code can run CLI automation in this workspace."
-            : "Grant trust to enable VT Code CLI commands and automation features.",
+            ? "Diapason can run CLI automation in this workspace."
+            : "Grant trust to enable Diapason CLI commands and automation features.",
         icon: trusted ? "shield" : "shield-off",
         command: trusted
             ? undefined
             : {
-                  command: "vtcode.trustWorkspace",
-                  title: "Trust Workspace for VT Code",
+                  command: "diapason.trustWorkspace",
+                  title: "Trust Workspace for Diapason",
               },
         tooltip: trusted
-            ? "Workspace trust allows VT Code to spawn CLI processes."
+            ? "Workspace trust allows Diapason to spawn CLI processes."
             : "Security-sensitive features are disabled until this workspace is trusted.",
     });
 
@@ -1150,10 +1150,10 @@ function createWorkspaceInsights(
         insights.push({
             label: "CLI access blocked",
             description:
-                "Trust the workspace to allow VT Code to detect and launch the CLI.",
+                "Trust the workspace to allow Diapason to detect and launch the CLI.",
             icon: "circle-slash",
             command: {
-                command: "vtcode.openInstallGuide",
+                command: "diapason.openInstallGuide",
                 title: "Review CLI Installation",
             },
         });
@@ -1161,19 +1161,19 @@ function createWorkspaceInsights(
         const commandPath = getConfiguredCommandPath();
         insights.push({
             label: cliAvailableState
-                ? "VT Code CLI detected"
-                : "VT Code CLI unavailable",
+                ? "Diapason CLI detected"
+                : "Diapason CLI unavailable",
             description: cliAvailableState
                 ? `Using ${commandPath}`
-                : `Check ${commandPath} or adjust vtcode.commandPath`,
+                : `Check ${commandPath} or adjust diapason.commandPath`,
             icon: cliAvailableState ? "check" : "warning",
             command: cliAvailableState
                 ? {
-                      command: "vtcode.openQuickActions",
+                      command: "diapason.openQuickActions",
                       title: "Open Quick Actions",
                   }
                 : {
-                      command: "vtcode.openInstallGuide",
+                      command: "diapason.openInstallGuide",
                       title: "Open Installation Guide",
                   },
             tooltip: createStatusBarTooltip(
@@ -1187,14 +1187,14 @@ function createWorkspaceInsights(
     if (summary?.hasConfig) {
         const configPath = summary.uri
             ? vscode.workspace.asRelativePath(summary.uri, false)
-            : "vtcode.toml";
+            : "config.toml";
         insights.push({
-            label: "VT Code configuration detected",
+            label: "Diapason configuration detected",
             description: configPath,
             icon: "gear",
             command: {
-                command: "vtcode.openConfig",
-                title: "Open vtcode.toml",
+                command: "diapason.openConfig",
+                title: "Open config.toml",
             },
         });
 
@@ -1217,12 +1217,12 @@ function createWorkspaceInsights(
                 icon: mismatch ? "alert" : "globe",
                 command: mismatch
                     ? {
-                          command: "vtcode.openConfig",
+                          command: "diapason.openConfig",
                           title: "Review agent provider configuration",
                       }
                     : undefined,
                 tooltip: mismatch
-                    ? "Provider and default_model may require different credentials. Update vtcode.toml to avoid CLI failures."
+                    ? "Provider and default_model may require different credentials. Update config.toml to avoid CLI failures."
                     : undefined,
             });
         }
@@ -1235,7 +1235,7 @@ function createWorkspaceInsights(
                       ", "
                   )}. VS Code blocks autonomous execution; disable automation.full_auto to avoid warnings.`
                 : "automation.full_auto is enabled. VS Code blocks autonomous execution; disable the setting to silence this warning."
-            : "automation.full_auto is disabled. VT Code prompts require explicit approval.";
+            : "automation.full_auto is disabled. Diapason prompts require explicit approval.";
         insights.push({
             label: fullAutoEnabled
                 ? "Full-auto automation detected (blocked)"
@@ -1244,7 +1244,7 @@ function createWorkspaceInsights(
             icon: fullAutoEnabled ? "shield-off" : "shield",
             command: fullAutoEnabled
                 ? {
-                      command: "vtcode.openConfig",
+                      command: "diapason.openConfig",
                       title: "Disable automation.full_auto",
                   }
                 : undefined,
@@ -1261,7 +1261,7 @@ function createWorkspaceInsights(
             command:
                 trusted && summary.uri
                     ? {
-                          command: "vtcode.toggleHumanInTheLoop",
+                          command: "diapason.toggleHumanInTheLoop",
                           title: "Toggle human-in-the-loop safeguards",
                       }
                     : undefined,
@@ -1281,7 +1281,7 @@ function createWorkspaceInsights(
             command:
                 trusted && summary.uri
                     ? {
-                          command: "vtcode.configureMcpProviders",
+                          command: "diapason.configureMcpProviders",
                           title: "Configure MCP providers",
                       }
                     : undefined,
@@ -1299,7 +1299,7 @@ function createWorkspaceInsights(
                     : `No overrides · ${toolPolicyLabel}`,
             icon: "law",
             command: {
-                command: "vtcode.openToolsPolicyConfig",
+                command: "diapason.openToolsPolicyConfig",
                 title: "Review tool policy configuration",
             },
         });
@@ -1311,21 +1311,21 @@ function createWorkspaceInsights(
                 icon: "error",
                 command: summary.uri
                     ? {
-                          command: "vtcode.openConfig",
-                          title: "Open vtcode.toml",
+                          command: "diapason.openConfig",
+                          title: "Open config.toml",
                       }
                     : undefined,
             });
         }
     } else {
         insights.push({
-            label: "No vtcode.toml detected",
+            label: "No config.toml detected",
             description:
-                "Use VT Code: Open Configuration to create a workspace configuration.",
+                "Use Diapason: Open Configuration to create a workspace configuration.",
             icon: "file",
             command: {
-                command: "vtcode.openConfig",
-                title: "Create vtcode.toml",
+                command: "diapason.openConfig",
+                title: "Create config.toml",
             },
         });
     }
@@ -1333,37 +1333,37 @@ function createWorkspaceInsights(
     return insights;
 }
 
-function handleConfigUpdate(summary: VtcodeConfigSummary) {
+function handleConfigUpdate(summary: DiapasonConfigSummary) {
     currentConfigSummary = summary;
 
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.configAvailable",
+        "diapason.configAvailable",
         summary.hasConfig
     );
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.hitlEnabled",
+        "diapason.hitlEnabled",
         summary.humanInTheLoop === true
     );
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.toolPoliciesConfigured",
+        "diapason.toolPoliciesConfigured",
         (summary.toolPoliciesCount ?? 0) > 0
     );
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.mcpConfigured",
+        "diapason.mcpConfigured",
         summary.mcpProviders.length > 0
     );
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.mcpEnabled",
+        "diapason.mcpEnabled",
         summary.mcpEnabled === true
     );
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.fullAutoEnabled",
+        "diapason.fullAutoEnabled",
         summary.automationFullAutoEnabled === true
     );
 
@@ -1371,7 +1371,7 @@ function handleConfigUpdate(summary: VtcodeConfigSummary) {
     if (summary.parseError && summary.parseError !== lastConfigParseError) {
         const channel = getOutputChannel();
         channel.appendLine(
-            `[warn] Failed to parse vtcode.toml: ${summary.parseError}`
+            `[warn] Failed to parse config.toml: ${summary.parseError}`
         );
     } else if (
         !summary.parseError &&
@@ -1381,8 +1381,8 @@ function handleConfigUpdate(summary: VtcodeConfigSummary) {
         const channel = getOutputChannel();
         const label = summary.uri
             ? vscode.workspace.asRelativePath(summary.uri, false)
-            : "vtcode.toml";
-        channel.appendLine(`[info] Using VT Code configuration from ${label}.`);
+            : "config.toml";
+        channel.appendLine(`[info] Using Diapason configuration from ${label}.`);
     }
 
     if (summary.hasConfig) {
@@ -1390,13 +1390,13 @@ function handleConfigUpdate(summary: VtcodeConfigSummary) {
         if (enabled && lastAutomationFullAutoEnabled !== true) {
             const channel = getOutputChannel();
             channel.appendLine(
-                "[warn] VT Code extension: Full-auto permission review is blocked inside VS Code. Human-in-the-loop approval remains required."
+                "[warn] Diapason extension: Full-auto permission review is blocked inside VS Code. Human-in-the-loop approval remains required."
             );
             void maybeWarnAboutFullAuto(summary);
         } else if (!enabled && lastAutomationFullAutoEnabled !== false) {
             const channel = getOutputChannel();
             channel.appendLine(
-                "[info] automation.full_auto is disabled; VT Code will rely on CLI safeguards for prompt execution."
+                "[info] automation.full_auto is disabled; Diapason will rely on CLI safeguards for prompt execution."
             );
         }
         lastAutomationFullAutoEnabled = enabled;
@@ -1507,7 +1507,7 @@ function updateCliAvailabilityState(
 
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.cliAvailable",
+        "diapason.cliAvailable",
         normalizedAvailable && workspaceTrusted
     );
     updateStatusBarItem(commandPath, normalizedAvailable);
@@ -1520,15 +1520,15 @@ function updateCliAvailabilityState(
         const channel = getOutputChannel();
         if (!workspaceTrusted && reason === "untrusted") {
             channel.appendLine(
-                "[info] VT Code CLI checks are paused until the workspace is trusted."
+                "[info] Diapason CLI checks are paused until the workspace is trusted."
             );
         } else if (normalizedAvailable) {
             channel.appendLine(
-                `[info] Detected VT Code CLI using "${commandPath}".`
+                `[info] Detected Diapason CLI using "${commandPath}".`
             );
         } else {
             channel.appendLine(
-                `[warn] VT Code CLI not found using "${commandPath}".`
+                `[warn] Diapason CLI not found using "${commandPath}".`
             );
         }
     }
@@ -1547,7 +1547,7 @@ function setStatusBarChecking(commandPath: string) {
         return;
     }
 
-    statusBarItem.text = "$(sync~spin) VT Code";
+    statusBarItem.text = "$(sync~spin) Diapason";
     statusBarItem.tooltip = `Checking availability of "${commandPath}"`;
     statusBarItem.command = undefined;
     statusBarItem.backgroundColor = undefined;
@@ -1561,7 +1561,7 @@ function updateStatusBarItem(commandPath: string, available: boolean) {
     }
 
     if (!workspaceTrusted) {
-        statusBarItem.text = "$(shield) Trust VT Code Workspace";
+        statusBarItem.text = "$(shield) Trust Diapason Workspace";
         statusBarItem.tooltip = createStatusBarTooltip(
             commandPath,
             available,
@@ -1585,24 +1585,24 @@ function updateStatusBarItem(commandPath: string, available: boolean) {
                 ? " $(person)"
                 : " $(run-all)"
             : "";
-        statusBarItem.text = `$(chevron-right) VT Code${suffix}`; // Using chevron-right icon as requested
+        statusBarItem.text = `$(chevron-right) Diapason${suffix}`; // Using chevron-right icon as requested
 
         statusBarItem.tooltip = createStatusBarTooltip(commandPath, true, true);
-        statusBarItem.command = "vtcode.openQuickActions";
+        statusBarItem.command = "diapason.openQuickActions";
         statusBarItem.backgroundColor = new vscode.ThemeColor(
-            "vtcode.statusBarBackground"
+            "diapason.statusBarBackground"
         );
         statusBarItem.color = new vscode.ThemeColor(
-            "vtcode.statusBarForeground"
+            "diapason.statusBarForeground"
         );
     } else {
-        statusBarItem.text = "$(warning) VT Code CLI Missing";
+        statusBarItem.text = "$(warning) Diapason CLI Missing";
         statusBarItem.tooltip = createStatusBarTooltip(
             commandPath,
             false,
             true
         );
-        statusBarItem.command = "vtcode.openInstallGuide";
+        statusBarItem.command = "diapason.openInstallGuide";
         statusBarItem.backgroundColor = new vscode.ThemeColor(
             "statusBarItem.warningBackground"
         );
@@ -1620,12 +1620,12 @@ function createStatusBarTooltip(
     trusted: boolean
 ): vscode.MarkdownString {
     const tooltip = new vscode.MarkdownString(undefined, true);
-    tooltip.appendMarkdown("**VT Code Workspace**\n\n");
+    tooltip.appendMarkdown("**Diapason Workspace**\n\n");
     tooltip.appendMarkdown(
         `• Workspace trust: ${trusted ? "Trusted" : "Restricted"}\n`
     );
 
-    tooltip.appendMarkdown("\n**VT Code CLI**\n\n");
+    tooltip.appendMarkdown("\n**Diapason CLI**\n\n");
     tooltip.appendMarkdown(`• Path: \`${commandPath}\`\n`);
     const cliStatus = !trusted
         ? "Blocked by workspace trust"
@@ -1636,7 +1636,7 @@ function createStatusBarTooltip(
 
     if (!trusted) {
         tooltip.appendMarkdown(
-            "\nGrant workspace trust to enable VT Code CLI automation.\n"
+            "\nGrant workspace trust to enable Diapason CLI automation.\n"
         );
         tooltip.isTrusted = true;
         return tooltip;
@@ -1679,7 +1679,7 @@ function createStatusBarTooltip(
         }
     } else {
         tooltip.appendMarkdown(
-            "\nNo vtcode.toml detected in this workspace.\n"
+            "\nNo config.toml detected in this workspace.\n"
         );
     }
 
@@ -1694,12 +1694,12 @@ async function maybeShowMissingCliWarning(commandPath: string): Promise<void> {
 
     missingCliWarningShown = true;
     const selection = await vscode.window.showWarningMessage(
-        `VT Code CLI was not found on PATH as "${commandPath}".`,
+        `Diapason CLI was not found on PATH as "${commandPath}".`,
         "Open Installation Guide"
     );
 
     if (selection === "Open Installation Guide") {
-        await vscode.commands.executeCommand("vtcode.openInstallGuide");
+        await vscode.commands.executeCommand("diapason.openInstallGuide");
     }
 }
 
@@ -1707,12 +1707,12 @@ function updateWorkspaceTrustState(trusted: boolean): void {
     workspaceTrusted = trusted;
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.workspaceTrusted",
+        "diapason.workspaceTrusted",
         trusted
     );
     void vscode.commands.executeCommand(
         "setContext",
-        "vtcode.workspaceTrustVerified",
+        "diapason.workspaceTrustVerified",
         trusted
     );
     const commandPath = getConfiguredCommandPath();
@@ -1728,15 +1728,15 @@ function updateWorkspaceTrustState(trusted: boolean): void {
 
 function initializeContextKeys(): void {
     const contextDefaults: Array<[string, boolean]> = [
-        ["vtcode.workspaceTrusted", workspaceTrusted],
-        ["vtcode.cliAvailable", false],
-        ["vtcode.configAvailable", false],
-        ["vtcode.hitlEnabled", false],
-        ["vtcode.toolPoliciesConfigured", false],
-        ["vtcode.mcpConfigured", false],
-        ["vtcode.mcpEnabled", false],
-        ["vtcode.fullAutoEnabled", false],
-        ["vtcode.workspaceTrustVerified", workspaceTrusted],
+        ["diapason.workspaceTrusted", workspaceTrusted],
+        ["diapason.cliAvailable", false],
+        ["diapason.configAvailable", false],
+        ["diapason.hitlEnabled", false],
+        ["diapason.toolPoliciesConfigured", false],
+        ["diapason.mcpConfigured", false],
+        ["diapason.mcpEnabled", false],
+        ["diapason.fullAutoEnabled", false],
+        ["diapason.workspaceTrustVerified", workspaceTrusted],
     ];
 
     for (const [key, value] of contextDefaults) {
@@ -1762,7 +1762,7 @@ async function requestWorkspaceTrust(action: string): Promise<boolean> {
     if (typeof requestFn === "function") {
         try {
             const granted = await requestFn({
-                message: `VT Code requires a trusted workspace to ${action}.`,
+                message: `Diapason requires a trusted workspace to ${action}.`,
                 modal: true,
             });
             if (granted) {
@@ -1794,7 +1794,7 @@ async function ensureWorkspaceTrustedForCommand(
     }
 
     const selection = await vscode.window.showWarningMessage(
-        `VT Code requires a trusted workspace to ${action}.`,
+        `Diapason requires a trusted workspace to ${action}.`,
         "Manage Workspace Trust"
     );
 
@@ -1828,11 +1828,11 @@ async function promptForWorkspaceTrustOnActivation(
     await context.globalState.update(storageKey, true);
     try {
         const granted = await requestWorkspaceTrust(
-            "allow VT Code to process prompts with human-in-the-loop safeguards"
+            "allow Diapason to process prompts with human-in-the-loop safeguards"
         );
         if (!granted && !workspaceTrusted) {
             const selection = await vscode.window.showInformationMessage(
-                "VT Code requires workspace trust to process prompts. Open workspace trust settings?",
+                "Diapason requires workspace trust to process prompts. Open workspace trust settings?",
                 "Manage Workspace Trust"
             );
             if (selection === "Manage Workspace Trust") {
@@ -1860,7 +1860,7 @@ function getWorkspaceStorageKey(base: string): string {
 }
 
 async function maybeWarnAboutFullAuto(
-    summary: VtcodeConfigSummary
+    summary: DiapasonConfigSummary
 ): Promise<void> {
     if (!activationContext || summary.automationFullAutoEnabled !== true) {
         return;
@@ -1873,17 +1873,17 @@ async function maybeWarnAboutFullAuto(
 
     await activationContext.globalState.update(storageKey, true);
     const selection = await vscode.window.showWarningMessage(
-        "VT Code full-auto permission review is blocked in VS Code. The extension will continue to require manual oversight before executing tools.",
-        "Open vtcode.toml",
+        "Diapason full-auto permission review is blocked in VS Code. The extension will continue to require manual oversight before executing tools.",
+        "Open config.toml",
         "Dismiss"
     );
 
-    if (selection === "Open vtcode.toml") {
-        await vscode.commands.executeCommand("vtcode.openConfig");
+    if (selection === "Open config.toml") {
+        await vscode.commands.executeCommand("diapason.openConfig");
     }
 }
 
-function maybeWarnAboutProviderModel(summary: VtcodeConfigSummary): void {
+function maybeWarnAboutProviderModel(summary: DiapasonConfigSummary): void {
     const provider = summary.agentProvider?.trim();
     const defaultModel = summary.agentDefaultModel?.trim();
 
@@ -1917,20 +1917,20 @@ function maybeWarnAboutProviderModel(summary: VtcodeConfigSummary): void {
     lastProviderModelWarningKey = key;
     const channel = getOutputChannel();
     channel.appendLine(
-        `[warn] VT Code config mismatch: provider "${provider}" may not support default_model "${defaultModel}". Update vtcode.toml or configure the required API credentials to avoid CLI failures.`
+        `[warn] Diapason config mismatch: provider "${provider}" may not support default_model "${defaultModel}". Update config.toml or configure the required API credentials to avoid CLI failures.`
     );
 }
 
 function getConfiguredCommandPath(): string {
     return (
         vscode.workspace
-            .getConfiguration("vtcode")
-            .get<string>("commandPath", "vtcode")
-            .trim() || "vtcode"
+            .getConfiguration("diapason")
+            .get<string>("commandPath", "diapason")
+            .trim() || "diapason"
     );
 }
 
-interface RunVtcodeCommandOptions {
+interface RunDiapasonCommandOptions {
     readonly title?: string;
     readonly revealOutput?: boolean;
     readonly showProgress?: boolean;
@@ -1944,19 +1944,19 @@ interface TaskTrackerToolInput {
     readonly steps?: string[];
 }
 
-async function runVtcodeCommand(
+async function runDiapasonCommand(
     args: string[],
-    options: RunVtcodeCommandOptions = {}
+    options: RunDiapasonCommandOptions = {}
 ): Promise<void> {
     if (vscode.env.uiKind === vscode.UIKind.Web) {
         throw new Error(
-            "VT Code commands that spawn the CLI are not available in the web extension host."
+            "Diapason commands that spawn the CLI are not available in the web extension host."
         );
     }
 
     if (!workspaceTrusted) {
         throw new Error(
-            "Trust this workspace to run VT Code CLI commands from VS Code."
+            "Trust this workspace to run Diapason CLI commands from VS Code."
         );
     }
 
@@ -1964,7 +1964,7 @@ async function runVtcodeCommand(
     const cwd = getWorkspaceRoot();
     if (!cwd) {
         throw new Error(
-            "Open a workspace folder before running VT Code commands."
+            "Open a workspace folder before running Diapason commands."
         );
     }
 
@@ -2037,7 +2037,7 @@ async function runVtcodeCommand(
                 } else {
                     reject(
                         new Error(
-                            `VT Code exited with code ${code ?? "unknown"}`
+                            `Diapason exited with code ${code ?? "unknown"}`
                         )
                     );
                 }
@@ -2052,7 +2052,7 @@ async function runVtcodeCommand(
     await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
-            title: options.title ?? "Running VT Code…",
+            title: options.title ?? "Running Diapason…",
         },
         runCommand
     );
@@ -2067,15 +2067,15 @@ function getConfigArguments(): string[] {
     return ["--config", uri.fsPath];
 }
 
-interface VtcodeTaskDefinition extends vscode.TaskDefinition {
-    type: "vtcode";
+interface DiapasonTaskDefinition extends vscode.TaskDefinition {
+    type: "diapason";
     command: "task-tracker";
     summary?: string;
     steps?: string[];
     label?: string;
 }
 
-async function provideVtcodeTasks(): Promise<vscode.Task[]> {
+async function provideDiapasonTasks(): Promise<vscode.Task[]> {
     if (vscode.env.uiKind === vscode.UIKind.Web) {
         return [];
     }
@@ -2093,17 +2093,17 @@ async function provideVtcodeTasks(): Promise<vscode.Task[]> {
         await ideContextBridge.flush();
     }
 
-    const definition: VtcodeTaskDefinition = {
-        type: "vtcode",
+    const definition: DiapasonTaskDefinition = {
+        type: "diapason",
         command: TASK_TRACKER_TASK_COMMAND,
-        label: "Run task tracker with VT Code",
+        label: "Run task tracker with Diapason",
     };
 
     return [createTaskTrackerTask(folder, definition)];
 }
 
-function resolveVtcodeTask(task: vscode.Task): vscode.Task | undefined {
-    const definition = task.definition as VtcodeTaskDefinition;
+function resolveDiapasonTask(task: vscode.Task): vscode.Task | undefined {
+    const definition = task.definition as DiapasonTaskDefinition;
     if (definition.command !== TASK_TRACKER_TASK_COMMAND) {
         return undefined;
     }
@@ -2127,17 +2127,17 @@ function resolveVtcodeTask(task: vscode.Task): vscode.Task | undefined {
 
 function createTaskTrackerTask(
     folder: vscode.WorkspaceFolder,
-    definition: VtcodeTaskDefinition
+    definition: DiapasonTaskDefinition
 ): vscode.Task {
-    const resolvedDefinition: VtcodeTaskDefinition = {
-        type: "vtcode",
+    const resolvedDefinition: DiapasonTaskDefinition = {
+        type: "diapason",
         command: TASK_TRACKER_TASK_COMMAND,
         summary: definition.summary,
         steps: definition.steps,
         label: definition.label,
     };
 
-    const label = definition.label ?? "Run task tracker with VT Code";
+    const label = definition.label ?? "Run task tracker with Diapason";
     const prompt = buildTaskTrackerPrompt(resolvedDefinition);
     const args = [...getConfigArguments(), "exec", prompt];
 
@@ -2146,7 +2146,7 @@ function createTaskTrackerTask(
         args,
         {
             cwd: folder.uri.fsPath,
-            env: getVtcodeEnvironment(),
+            env: getDiapasonEnvironment(),
         }
     );
 
@@ -2154,11 +2154,11 @@ function createTaskTrackerTask(
         resolvedDefinition,
         folder,
         label,
-        "VT Code",
+        "Diapason",
         execution
     );
     task.detail =
-        "Runs `vtcode exec` to synchronize the workspace TODO plan via the task_tracker tool.";
+        "Runs `diapason exec` to synchronize the workspace TODO plan via the task_tracker tool.";
     task.presentationOptions = {
         reveal: vscode.TaskRevealKind.Always,
         echo: true,
@@ -2169,10 +2169,10 @@ function createTaskTrackerTask(
     return task;
 }
 
-function buildTaskTrackerPrompt(definition: VtcodeTaskDefinition): string {
+function buildTaskTrackerPrompt(definition: DiapasonTaskDefinition): string {
     const summary =
         definition.summary?.trim() ??
-        "Refresh the current TODO plan using the VT Code task_tracker tool.";
+        "Refresh the current TODO plan using the Diapason task_tracker tool.";
     const steps = (definition.steps ?? [])
         .map((step) => step.trim())
         .filter((step) => step.length > 0);
@@ -2192,7 +2192,7 @@ function buildTaskTrackerPrompt(definition: VtcodeTaskDefinition): string {
     return lines.join("\n");
 }
 
-function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
+function registerDiapasonAiIntegrations(context: vscode.ExtensionContext): void {
     context.subscriptions.push(mcpDefinitionsChanged);
     const contributedLanguageModelTools = Array.isArray(
         context.extension.packageJSON?.contributes?.languageModelTools
@@ -2200,7 +2200,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
         ? context.extension.packageJSON.contributes.languageModelTools
         : [];
     const hasTaskTrackerToolContribution = contributedLanguageModelTools.some(
-        (tool) => tool?.name === VT_CODE_TASK_TRACKER_TOOL
+        (tool) => tool?.name === DIAPASON_TASK_TRACKER_TOOL
     );
     const contributedChatParticipants = Array.isArray(
         context.extension.packageJSON?.contributes?.chatParticipants
@@ -2208,7 +2208,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
         ? context.extension.packageJSON.contributes.chatParticipants
         : [];
     const hasChatParticipantContribution = contributedChatParticipants.some(
-        (participant) => participant?.id === VT_CODE_CHAT_PARTICIPANT_ID
+        (participant) => participant?.id === DIAPASON_CHAT_PARTICIPANT_ID
     );
 
     if (
@@ -2217,25 +2217,25 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
         typeof vscode.lm?.registerTool === "function"
     ) {
         const toolDisposable = vscode.lm.registerTool<TaskTrackerToolInput>(
-            VT_CODE_TASK_TRACKER_TOOL,
+            DIAPASON_TASK_TRACKER_TOOL,
             {
                 prepareInvocation: async (options) => {
                     const summary = options.input.summary?.trim();
                     const invocationMessage = summary
-                        ? `Running VT Code task tracker: ${summary}`
-                        : "Running VT Code task tracker with vtcode exec.";
+                        ? `Running Diapason task tracker: ${summary}`
+                        : "Running Diapason task tracker with diapason exec.";
                     return { invocationMessage };
                 },
                 invoke: async (options, token) => {
                     if (vscode.env.uiKind === vscode.UIKind.Web) {
                         throw new Error(
-                            "VT Code CLI commands are not available in VS Code for the Web."
+                            "Diapason CLI commands are not available in VS Code for the Web."
                         );
                     }
 
                     if (!workspaceTrusted) {
                         throw new Error(
-                            "Trust this workspace to allow VT Code task tracker updates."
+                            "Trust this workspace to allow Diapason task tracker updates."
                         );
                     }
 
@@ -2243,7 +2243,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                     if (!cliAvailable) {
                         const commandPath = getConfiguredCommandPath();
                         throw new Error(
-                            `The VT Code CLI ("${commandPath}") is not available. Install the CLI or update the vtcode.commandPath setting.`
+                            `The Diapason CLI ("${commandPath}") is not available. Install the CLI or update the diapason.commandPath setting.`
                         );
                     }
 
@@ -2258,8 +2258,8 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                               .filter((value) => value.length > 0)
                         : undefined;
 
-                    const definition: VtcodeTaskDefinition = {
-                        type: "vtcode",
+                    const definition: DiapasonTaskDefinition = {
+                        type: "diapason",
                         command: TASK_TRACKER_TASK_COMMAND,
                         summary,
                         steps,
@@ -2268,8 +2268,8 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                     const outputChunks: string[] = [];
 
                     try {
-                        await runVtcodeCommand(["exec", prompt], {
-                            title: "Running VT Code task tracker…",
+                        await runDiapasonCommand(["exec", prompt], {
+                            title: "Running Diapason task tracker…",
                             revealOutput: false,
                             showProgress: false,
                             cancellationToken: token,
@@ -2289,7 +2289,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                     const content =
                         normalized.length > 0
                             ? `\`\`\`\n${normalized}\n\`\`\``
-                            : "VT Code completed the task_tracker request but did not emit any output.";
+                            : "Diapason completed the task_tracker request but did not emit any output.";
 
                     return {
                         content: [new vscode.LanguageModelTextPart(content)],
@@ -2327,7 +2327,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                 resolveMcpServerDefinition: async (server) => {
                     if (!workspaceTrusted) {
                         throw new Error(
-                            "Trust this workspace before starting VT Code MCP servers."
+                            "Trust this workspace before starting Diapason MCP servers."
                         );
                     }
 
@@ -2336,7 +2336,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
             };
 
         const disposable = vscode.lm.registerMcpServerDefinitionProvider(
-            VT_CODE_MCP_PROVIDER_ID,
+            DIAPASON_MCP_PROVIDER_ID,
             mcpProvider
         );
         context.subscriptions.push(disposable);
@@ -2349,19 +2349,19 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
     ) {
         try {
             const participant = vscode.chat.createChatParticipant(
-                VT_CODE_CHAT_PARTICIPANT_ID,
+                DIAPASON_CHAT_PARTICIPANT_ID,
                 async (request, _context, response, token) => {
                     const basePrompt = request.prompt.trim();
                     if (!basePrompt) {
                         response.markdown(
-                            "Ask a question or describe a task for the VT Code agent to begin."
+                            "Ask a question or describe a task for the Diapason agent to begin."
                         );
                         return;
                     }
 
                     if (vscode.env.uiKind === vscode.UIKind.Web) {
                         const message =
-                            "The VT Code CLI is not available in VS Code for the Web. Open a desktop workspace to chat with the CLI-driven agent.";
+                            "The Diapason CLI is not available in VS Code for the Web. Open a desktop workspace to chat with the CLI-driven agent.";
                         response.markdown(message);
                         return {
                             errorDetails: { message },
@@ -2370,7 +2370,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
 
                     if (!workspaceTrusted) {
                         const message =
-                            "Trust this workspace to allow VT Code to run CLI commands from chat.";
+                            "Trust this workspace to allow Diapason to run CLI commands from chat.";
                         response.markdown(message);
                         return {
                             errorDetails: { message },
@@ -2380,7 +2380,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                     await refreshCliAvailability("manual");
                     if (!cliAvailable) {
                         const commandPath = getConfiguredCommandPath();
-                        const message = `The VT Code CLI (\`${commandPath}\`) is not available. Install it or update the \`vtcode.commandPath\` setting.`;
+                        const message = `The Diapason CLI (\`${commandPath}\`) is not available. Install it or update the \`diapason.commandPath\` setting.`;
                         response.markdown(message);
                         return {
                             errorDetails: { message },
@@ -2396,12 +2396,12 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                         }
                     );
 
-                    response.progress("Running `vtcode ask`…");
+                    response.progress("Running `diapason ask`…");
 
                     const collected: string[] = [];
                     try {
-                        await runVtcodeCommand(["ask", promptWithContext], {
-                            title: "Asking VT Code…",
+                        await runDiapasonCommand(["ask", promptWithContext], {
+                            title: "Asking Diapason…",
                             revealOutput: false,
                             showProgress: false,
                             cancellationToken: token,
@@ -2411,7 +2411,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                     } catch (error) {
                         if (error instanceof vscode.CancellationError) {
                             response.progress(
-                                "VT Code chat request cancelled."
+                                "Diapason chat request cancelled."
                             );
                             return;
                         }
@@ -2421,7 +2421,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                                 ? error.message
                                 : String(error);
                         response.markdown(
-                            `VT Code encountered an error while running the CLI: ${message}`
+                            `Diapason encountered an error while running the CLI: ${message}`
                         );
                         return {
                             errorDetails: { message },
@@ -2434,7 +2434,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                         response.markdown(`\`\`\`\n${normalized}\n\`\`\``);
                     } else {
                         response.markdown(
-                            "VT Code completed the request but did not emit any output."
+                            "Diapason completed the request but did not emit any output."
                         );
                     }
 
@@ -2457,7 +2457,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
                         label: "Audit MCP providers",
                     },
                     {
-                        prompt: "Suggest the next high-priority tasks VT Code should tackle in this workspace.",
+                        prompt: "Suggest the next high-priority tasks Diapason should tackle in this workspace.",
                         label: "Suggest next tasks",
                     },
                 ],
@@ -2467,7 +2467,7 @@ function registerVtcodeAiIntegrations(context: vscode.ExtensionContext): void {
             const message =
                 error instanceof Error ? error.message : String(error);
             getOutputChannel().appendLine(
-                `[warn] Failed to register VT Code chat participant: ${message}`
+                `[warn] Failed to register Diapason chat participant: ${message}`
             );
         }
     }
@@ -3291,7 +3291,7 @@ class IdeContextFileBridge implements vscode.Disposable {
     }
 }
 
-function getVtcodeEnvironment(
+function getDiapasonEnvironment(
     overrides: NodeJS.ProcessEnv = {}
 ): Record<string, string> {
     const merged = { ...process.env, ...overrides };
@@ -3343,7 +3343,7 @@ function createSpawnOptions(
 ): SpawnOptionsWithoutStdio {
     const { env: overrideEnv, ...rest } = overrides;
     return {
-        env: getVtcodeEnvironment(overrideEnv ?? {}),
+        env: getDiapasonEnvironment(overrideEnv ?? {}),
         ...rest,
     };
 }
@@ -3393,13 +3393,13 @@ function getWorkspaceRoot(): string | undefined {
 function handleCommandError(contextLabel: string, error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     void vscode.window.showErrorMessage(
-        `Failed to ${contextLabel} with VT Code: ${message}`
+        `Failed to ${contextLabel} with Diapason: ${message}`
     );
 }
 
 function getOutputChannel(): vscode.OutputChannel {
     if (!outputChannel) {
-        outputChannel = vscode.window.createOutputChannel("VT Code");
+        outputChannel = vscode.window.createOutputChannel("Diapason");
     }
 
     return outputChannel;
@@ -3407,7 +3407,7 @@ function getOutputChannel(): vscode.OutputChannel {
 
 async function openToolsPolicyGuide(): Promise<void> {
     const [guide] = await vscode.workspace.findFiles(
-        "docs/vtcode_tools_policy.md",
+        "docs/diapason_tools_policy.md",
         "**/{node_modules,dist,out,.git,target}/**",
         1
     );
@@ -3419,7 +3419,7 @@ async function openToolsPolicyGuide(): Promise<void> {
 
     await vscode.env.openExternal(
         vscode.Uri.parse(
-            "https://github.com/vinhnx/vtcode/blob/main/docs/vtcode_tools_policy.md"
+            "https://github.com/leynos/vtcode/blob/main/docs/modules/diapason_tools_policy.md"
         )
     );
 }
@@ -3438,7 +3438,7 @@ async function openMcpGuide(): Promise<void> {
 
     await vscode.env.openExternal(
         vscode.Uri.parse(
-            "https://github.com/vinhnx/vtcode/blob/main/docs/guides/mcp-integration.md"
+            "https://github.com/leynos/vtcode/blob/main/docs/guides/mcp-integration.md"
         )
     );
 }
@@ -3452,9 +3452,9 @@ function ensureAgentTerminal(
     }
 
     const terminal = vscode.window.createTerminal({
-        name: "VT Code Agent",
+        name: "Diapason Agent",
         cwd,
-        env: getVtcodeEnvironment(),
+        env: getDiapasonEnvironment(),
         iconPath: new vscode.ThemeIcon("comment-discussion"),
     });
 
@@ -3474,7 +3474,7 @@ function ensureAgentTerminal(
                 argsText.length > 0
                     ? `${quotedCommandPath} ${argsText}`
                     : quotedCommandPath;
-            // Send the VT Code command after a brief delay to allow any environment activation to complete
+            // Send the Diapason command after a brief delay to allow any environment activation to complete
             terminal.sendText(commandText, true);
         })();
     }, 800); // 800ms delay to allow environment activation if it happens
@@ -3517,7 +3517,7 @@ function logExtensionHostContext(context: vscode.ExtensionContext) {
         vscode.env.uiKind === vscode.UIKind.Web ? "web" : "desktop";
     const modeLabel = getExtensionModeLabel(context.extensionMode);
     channel.appendLine(
-        `[info] VT Code Companion activated in ${remoteName} ${hostKind} host (${modeLabel} mode).`
+        `[info] Diapason Companion activated in ${remoteName} ${hostKind} host (${modeLabel} mode).`
     );
 }
 

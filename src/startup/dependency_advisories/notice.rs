@@ -1,12 +1,12 @@
 use anyhow::Result;
-use vtcode_core::tools::ast_grep_binary::AST_GREP_INSTALL_COMMAND;
-use vtcode_core::tools::ripgrep_binary::RIPGREP_INSTALL_COMMAND;
-use vtcode_core::tools::{AstGrepStatus, RipgrepStatus};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::dot_config::DotConfig;
+use diapason_core::tools::ast_grep_binary::AST_GREP_INSTALL_COMMAND;
+use diapason_core::tools::ripgrep_binary::RIPGREP_INSTALL_COMMAND;
+use diapason_core::tools::{AstGrepStatus, RipgrepStatus};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::dot_config::DotConfig;
 
 const SEARCH_TOOLS_INSTALLER_FLAG: &str = "--with-search-tools";
-const SEARCH_TOOLS_INSTALL_COMMAND: &str = "vtcode dependencies install search-tools";
+const SEARCH_TOOLS_INSTALL_COMMAND: &str = "diapason dependencies install search-tools";
 const REASON_PREVIEW_LIMIT: usize = 120;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,9 +58,9 @@ impl OptionalSearchToolsNotice {
 
     pub(crate) fn render(&self, renderer: &mut AnsiRenderer) -> Result<()> {
         let headline = if self.ripgrep.is_some() && self.ast_grep.is_some() {
-            "Search tools bundle is unavailable. VT Code will fall back where possible."
+            "Search tools bundle is unavailable. Diapason will fall back where possible."
         } else {
-            "Search tools bundle is partially unavailable. VT Code will fall back where possible."
+            "Search tools bundle is partially unavailable. Diapason will fall back where possible."
         };
         renderer.line(MessageStyle::Status, headline)?;
         for line in self.lines() {
@@ -76,7 +76,7 @@ impl OptionalSearchToolsNotice {
         if let Some(issue) = &self.ripgrep {
             lines.push(match issue {
                 DependencyIssue::Missing => format!(
-                    "ripgrep (`rg`) missing. VT Code falls back to built-in text search -> `{RIPGREP_INSTALL_COMMAND}`"
+                    "ripgrep (`rg`) missing. Diapason falls back to built-in text search -> `{RIPGREP_INSTALL_COMMAND}`"
                 ),
                 DependencyIssue::Error(reason) => format!(
                     "ripgrep (`rg`) failed to verify: {}. Text search may fall back -> `{RIPGREP_INSTALL_COMMAND}`",
@@ -105,7 +105,7 @@ impl OptionalSearchToolsNotice {
 }
 
 fn compact_reason(reason: &str) -> String {
-    let compact = vtcode_commons::formatting::collapse_whitespace(reason);
+    let compact = diapason_commons::formatting::collapse_whitespace(reason);
     let mut chars = compact.chars();
     let preview: String = chars.by_ref().take(REASON_PREVIEW_LIMIT).collect();
     if chars.next().is_some() {
@@ -118,9 +118,9 @@ fn compact_reason(reason: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{DependencyIssue, OptionalSearchToolsNotice, compact_reason};
-    use vtcode_core::utils::dot_config::DotConfig;
+    use diapason_core::utils::dot_config::DotConfig;
 
-    use vtcode_core::tools::{AstGrepStatus, RipgrepStatus};
+    use diapason_core::tools::{AstGrepStatus, RipgrepStatus};
 
     #[test]
     fn builds_notice_for_unseen_missing_dependencies() {

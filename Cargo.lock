@@ -7540,7 +7540,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
-name = "vtcode"
+name = "diapason"
 version = "0.156.1"
 dependencies = [
  "anstyle",
@@ -7598,22 +7598,22 @@ dependencies = [
  "unicode-width 0.2.2",
  "url",
  "uuid",
- "vtcode-acp",
- "vtcode-agent-plugins",
- "vtcode-auth",
- "vtcode-commons",
- "vtcode-config",
- "vtcode-core",
- "vtcode-eval",
- "vtcode-memory",
- "vtcode-ui",
- "vtcode-webmcp",
+ "diapason-acp",
+ "diapason-agent-plugins",
+ "diapason-auth",
+ "diapason-commons",
+ "diapason-config",
+ "diapason-core",
+ "diapason-eval",
+ "diapason-memory",
+ "diapason-ui",
+ "diapason-webmcp",
  "webbrowser",
  "zip",
 ]
 
 [[package]]
-name = "vtcode-a2a"
+name = "diapason-a2a"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -7638,7 +7638,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vtcode-acp"
+name = "diapason-acp"
 version = "0.156.1"
 dependencies = [
  "agent-client-protocol",
@@ -7663,15 +7663,15 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "vtcode-commons",
- "vtcode-config",
- "vtcode-core",
- "vtcode-llm",
- "vtcode-safety",
+ "diapason-commons",
+ "diapason-config",
+ "diapason-core",
+ "diapason-llm",
+ "diapason-safety",
 ]
 
 [[package]]
-name = "vtcode-agent-plugins"
+name = "diapason-agent-plugins"
 version = "0.156.1"
 dependencies = [
  "dirs",
@@ -7681,12 +7681,12 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
- "vtcode-commons",
- "vtcode-skills",
+ "diapason-commons",
+ "diapason-skills",
 ]
 
 [[package]]
-name = "vtcode-auth"
+name = "diapason-auth"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -7712,12 +7712,12 @@ dependencies = [
  "tokio",
  "tracing",
  "urlencoding",
- "vtcode-commons",
+ "diapason-commons",
  "windows-native-keyring-store",
 ]
 
 [[package]]
-name = "vtcode-bash-runner"
+name = "diapason-bash-runner"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -7734,12 +7734,12 @@ dependencies = [
  "serde",
  "shell-escape",
  "tokio",
- "vtcode-commons",
- "vtcode-exec-events",
+ "diapason-commons",
+ "diapason-exec-events",
 ]
 
 [[package]]
-name = "vtcode-commons"
+name = "diapason-commons"
 version = "0.156.1"
 dependencies = [
  "anstyle",
@@ -7778,7 +7778,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vtcode-config"
+name = "diapason-config"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -7806,12 +7806,12 @@ dependencies = [
  "toml_edit",
  "tracing",
  "url",
- "vtcode-auth",
- "vtcode-commons",
+ "diapason-auth",
+ "diapason-commons",
 ]
 
 [[package]]
-name = "vtcode-core"
+name = "diapason-core"
 version = "0.156.1"
 dependencies = [
  "ansi-to-tui",
@@ -7905,22 +7905,22 @@ dependencies = [
  "unicode-width 0.2.2",
  "url",
  "uuid",
- "vtcode-a2a",
- "vtcode-agent-plugins",
- "vtcode-auth",
- "vtcode-bash-runner",
- "vtcode-commons",
- "vtcode-config",
- "vtcode-exec-events",
- "vtcode-indexer",
- "vtcode-llm",
- "vtcode-macros",
- "vtcode-mcp",
- "vtcode-memory",
- "vtcode-safety",
- "vtcode-skills",
- "vtcode-ui",
- "vtcode-utility-tool-specs",
+ "diapason-a2a",
+ "diapason-agent-plugins",
+ "diapason-auth",
+ "diapason-bash-runner",
+ "diapason-commons",
+ "diapason-config",
+ "diapason-exec-events",
+ "diapason-indexer",
+ "diapason-llm",
+ "diapason-macros",
+ "diapason-mcp",
+ "diapason-memory",
+ "diapason-safety",
+ "diapason-skills",
+ "diapason-ui",
+ "diapason-utility-tool-specs",
  "webbrowser",
  "which",
  "windows-sys 0.61.2",
@@ -7929,7 +7929,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vtcode-eval"
+name = "diapason-eval"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -7941,7 +7941,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vtcode-exec-events"
+name = "diapason-exec-events"
 version = "0.156.1"
 dependencies = [
  "chrono",
@@ -7956,7 +7956,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vtcode-indexer"
+name = "diapason-indexer"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -7975,11 +7975,11 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "vtcode-commons",
+ "diapason-commons",
 ]
 
 [[package]]
-name = "vtcode-llm"
+name = "diapason-llm"
 version = "0.156.1"
 dependencies = [
  "anstyle",
@@ -8020,18 +8020,18 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "vtcode-commons",
- "vtcode-config",
- "vtcode-exec-events",
- "vtcode-macros",
- "vtcode-safety",
- "vtcode-utility-tool-specs",
+ "diapason-commons",
+ "diapason-config",
+ "diapason-exec-events",
+ "diapason-macros",
+ "diapason-safety",
+ "diapason-utility-tool-specs",
  "which",
  "wiremock",
 ]
 
 [[package]]
-name = "vtcode-macros"
+name = "diapason-macros"
 version = "0.156.1"
 dependencies = [
  "quote",
@@ -8039,7 +8039,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vtcode-mcp"
+name = "diapason-mcp"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -8066,15 +8066,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "vtcode-commons",
- "vtcode-config",
- "vtcode-llm",
- "vtcode-safety",
- "vtcode-utility-tool-specs",
+ "diapason-commons",
+ "diapason-config",
+ "diapason-llm",
+ "diapason-safety",
+ "diapason-utility-tool-specs",
 ]
 
 [[package]]
-name = "vtcode-memory"
+name = "diapason-memory"
 version = "0.156.1"
 dependencies = [
  "chrono",
@@ -8084,13 +8084,13 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "uuid",
- "vtcode-commons",
- "vtcode-exec-events",
+ "diapason-commons",
+ "diapason-exec-events",
  "walkdir",
 ]
 
 [[package]]
-name = "vtcode-safety"
+name = "diapason-safety"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -8112,11 +8112,11 @@ dependencies = [
  "tracing",
  "tree-sitter",
  "tree-sitter-bash",
- "vtcode-commons",
+ "diapason-commons",
 ]
 
 [[package]]
-name = "vtcode-skills"
+name = "diapason-skills"
 version = "0.156.1"
 dependencies = [
  "anyhow",
@@ -8135,13 +8135,13 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
- "vtcode-commons",
- "vtcode-config",
+ "diapason-commons",
+ "diapason-config",
  "zip",
 ]
 
 [[package]]
-name = "vtcode-ui"
+name = "diapason-ui"
 version = "0.156.1"
 dependencies = [
  "anstyle",
@@ -8184,12 +8184,12 @@ dependencies = [
  "tui-widget-list",
  "unicode-segmentation",
  "unicode-width 0.2.2",
- "vtcode-commons",
- "vtcode-config",
+ "diapason-commons",
+ "diapason-config",
 ]
 
 [[package]]
-name = "vtcode-utility-tool-specs"
+name = "diapason-utility-tool-specs"
 version = "0.156.1"
 dependencies = [
  "rmcp",
@@ -8198,7 +8198,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vtcode-webmcp"
+name = "diapason-webmcp"
 version = "0.156.1"
 dependencies = [
  "async-trait",
@@ -8224,9 +8224,9 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "vtcode-commons",
- "vtcode-exec-events",
- "vtcode-safety",
+ "diapason-commons",
+ "diapason-exec-events",
+ "diapason-safety",
 ]
 
 [[package]]
@@ -9173,7 +9173,7 @@ dependencies = [
  "clap_complete",
  "semver",
  "toml_edit",
- "vtcode-core",
+ "diapason-core",
 ]
 
 [[package]]

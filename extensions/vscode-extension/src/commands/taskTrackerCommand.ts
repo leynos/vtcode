@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
-import { type VtcodeTaskDefinition } from "../utils/vtcodeRunner";
+import { type DiapasonTaskDefinition } from "../utils/diapasonRunner";
 
 const TASK_TRACKER_COMMAND = "task-tracker";
 const LEGACY_UPDATE_PLAN_COMMAND = "update-plan";
@@ -14,12 +14,12 @@ function hasLegacyUpdatePlanTask(tasks: vscode.Task[]): boolean {
 }
 
 /**
- * Command to run the VT Code task tracker
+ * Command to run the Diapason task tracker
  */
 export class TaskTrackerCommand extends BaseCommand {
-    public readonly id = "vtcode.runTaskTrackerTask";
+    public readonly id = "diapason.runTaskTrackerTask";
     public readonly title = "Task Tracker";
-    public readonly description = "Run the VT Code task tracker";
+    public readonly description = "Run the Diapason task tracker";
     public readonly icon = "checklist";
 
     async execute(context: CommandContext): Promise<void> {
@@ -27,17 +27,17 @@ export class TaskTrackerCommand extends BaseCommand {
             return;
         }
 
-        const tasks = await vscode.tasks.fetchTasks({ type: "vtcode" });
+        const tasks = await vscode.tasks.fetchTasks({ type: "diapason" });
         const taskTrackerTasks = tasks.filter(
             (task) =>
-                (task.definition as VtcodeTaskDefinition).command ===
+                (task.definition as DiapasonTaskDefinition).command ===
                 TASK_TRACKER_COMMAND
         );
 
         if (taskTrackerTasks.length === 0) {
             const warningMessage = hasLegacyUpdatePlanTask(tasks)
-                ? 'No VT Code task tracker tasks are available. Migrate tasks.json entries from command "update-plan" to "task-tracker".'
-                : "No VT Code task tracker tasks are available. Define a VT Code task in tasks.json to customize the workflow.";
+                ? 'No Diapason task tracker tasks are available. Migrate tasks.json entries from command "update-plan" to "task-tracker".'
+                : "No Diapason task tracker tasks are available. Define a Diapason task in tasks.json to customize the workflow.";
             void vscode.window.showWarningMessage(
                 warningMessage
             );
@@ -53,7 +53,7 @@ export class TaskTrackerCommand extends BaseCommand {
                 task,
             }));
             const selection = await vscode.window.showQuickPick(pickItems, {
-                placeHolder: "Select the VT Code task tracker task to run",
+                placeHolder: "Select the Diapason task tracker task to run",
             });
             taskToRun = selection?.task;
         }

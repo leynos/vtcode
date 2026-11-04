@@ -13,20 +13,20 @@
 
 use std::sync::Arc;
 
-use vtcode_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
-use vtcode_core::llm::provider::{self as uni};
-use vtcode_core::permissions::{build_advertised_permission_requests, evaluate_effective_permissions};
-use vtcode_core::{ActivePrimaryAgent, apply_primary_agent_tool_policy};
+use diapason_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use diapason_core::llm::provider::{self as uni};
+use diapason_core::permissions::{build_advertised_permission_requests, evaluate_effective_permissions};
+use diapason_core::{ActivePrimaryAgent, apply_primary_agent_tool_policy};
 
 pub(super) fn uses_out_of_band_copilot_tools(provider_name: &str) -> bool {
-    provider_name.eq_ignore_ascii_case(vtcode_core::copilot::COPILOT_PROVIDER_KEY)
+    provider_name.eq_ignore_ascii_case(diapason_core::copilot::COPILOT_PROVIDER_KEY)
 }
 
 pub(super) fn apply_primary_agent_policy_to_tool_snapshot(
     snapshot: SessionToolCatalogSnapshot,
     active_primary_agent: &ActivePrimaryAgent,
     workspace: &std::path::Path,
-    vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
+    vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
 ) -> SessionToolCatalogSnapshot {
     let filtered = apply_primary_agent_tool_policy(snapshot.snapshot, active_primary_agent);
     let filtered = apply_permission_policy_to_tools(filtered, active_primary_agent, workspace, vt_cfg);
@@ -49,14 +49,14 @@ pub(super) fn apply_primary_agent_policy_to_tool_snapshot(
 /// `automation.full_auto.allowed_tools` config is also enforced so that
 /// interactive `auto` matches the `--full-auto` CLI blast radius.
 fn apply_permission_policy_to_tools(
-    tools: Option<Arc<Vec<vtcode_core::llm::provider::ToolDefinition>>>,
+    tools: Option<Arc<Vec<diapason_core::llm::provider::ToolDefinition>>>,
     active_primary_agent: &ActivePrimaryAgent,
     workspace: &std::path::Path,
-    vt_cfg: Option<&vtcode_core::config::loader::VTCodeConfig>,
-) -> Option<Arc<Vec<vtcode_core::llm::provider::ToolDefinition>>> {
+    vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
+) -> Option<Arc<Vec<diapason_core::llm::provider::ToolDefinition>>> {
+    use diapason_config::core::permissions::PermissionDefault;
+    use diapason_core::permissions::ResolvedPermissionDecision;
     use std::collections::HashSet;
-    use vtcode_config::core::permissions::PermissionDefault;
-    use vtcode_core::permissions::ResolvedPermissionDecision;
 
     let tools = tools?;
     let Some(cfg) = vt_cfg else {
@@ -94,7 +94,7 @@ fn apply_permission_policy_to_tools(
             .collect();
         if !stale.is_empty() {
             tracing::warn!(
-                target: "vtcode.tool_shaping",
+                target: "diapason.tool_shaping",
                 stale_allowlist = ?stale,
                 allowed_tools = ?allowlist,
                 emitted_tools = ?tools.iter().map(|tool| tool.function_name()).collect::<Vec<_>>(),
@@ -143,7 +143,7 @@ fn apply_permission_policy_to_tools(
         && !allowlist_matches_emitted
     {
         tracing::warn!(
-            target: "vtcode.tool_shaping",
+            target: "diapason.tool_shaping",
             allowed_tools = ?allowlist,
             "automation.full_auto.allowed_tools matched no emitted tool; falling back to the full catalog"
         );
@@ -180,10 +180,10 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use vtcode_config::builtin_primary_auto_agent;
-    use vtcode_core::ActivePrimaryAgent;
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::llm::provider::ToolDefinition;
+    use diapason_config::builtin_primary_auto_agent;
+    use diapason_core::ActivePrimaryAgent;
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::llm::provider::ToolDefinition;
 
     use super::apply_permission_policy_to_tools;
 
@@ -209,8 +209,8 @@ mod tests {
         ActivePrimaryAgent::from_spec(&builtin_primary_auto_agent())
     }
 
-    fn cfg_with_full_auto(allowed_tools: Vec<String>) -> VTCodeConfig {
-        let mut cfg = VTCodeConfig::default();
+    fn cfg_with_full_auto(allowed_tools: Vec<String>) -> DiapasonConfig {
+        let mut cfg = DiapasonConfig::default();
         cfg.automation.full_auto.enabled = true;
         cfg.automation.full_auto.allowed_tools = allowed_tools;
         cfg
@@ -298,7 +298,7 @@ mod tests {
         // The build agent (Ask default) must not be constrained by the
         // full-auto allowlist even when it is enabled with stale names.
         let cfg = cfg_with_full_auto(vec!["read_file".into(), "list_files".into()]);
-        let build = ActivePrimaryAgent::from_spec(&vtcode_config::builtin_primary_build_agent());
+        let build = ActivePrimaryAgent::from_spec(&diapason_config::builtin_primary_build_agent());
         let result = apply_permission_policy_to_tools(
             catalog(&["exec_command", "code_search", "web_fetch"]),
             &build,

@@ -3,14 +3,14 @@ use std::io::Write as IoWrite;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+pub(super) use diapason_commons::diff_paths::looks_like_diff_content;
+use diapason_commons::preview::{display_width, truncate_with_ellipsis};
+use diapason_core::config::ToolOutputMode;
+use diapason_core::config::constants::defaults;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::file_utils::ensure_dir_exists_sync;
 use smallvec::SmallVec;
-pub(super) use vtcode_commons::diff_paths::looks_like_diff_content;
-use vtcode_commons::preview::{display_width, truncate_with_ellipsis};
-use vtcode_core::config::ToolOutputMode;
-use vtcode_core::config::constants::defaults;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::file_utils::ensure_dir_exists_sync;
 
 use super::super::large_output::{LargeOutputConfig, spool_large_output};
 use crate::agent::runloop::text_tools::CodeFenceBlock;
@@ -72,7 +72,7 @@ pub(crate) fn build_markdown_code_block(lines: &[&str], language: Option<&str>, 
     markdown
 }
 
-pub(crate) fn resolve_stdout_tail_limit(config: Option<&VTCodeConfig>) -> usize {
+pub(crate) fn resolve_stdout_tail_limit(config: Option<&DiapasonConfig>) -> usize {
     config
         .map(|cfg| {
             if cfg.ui.tool_output_max_lines > 0 {
@@ -95,7 +95,7 @@ pub(crate) fn resolve_stdout_tail_limit(config: Option<&VTCodeConfig>) -> usize 
 pub(super) async fn spool_output_if_needed(
     content: &str,
     tool_name: &str,
-    config: Option<&VTCodeConfig>,
+    config: Option<&DiapasonConfig>,
 ) -> Result<Option<PathBuf>> {
     let threshold = config
         .map(|cfg| cfg.ui.tool_output_spool_bytes)
@@ -120,7 +120,7 @@ pub(super) async fn spool_output_if_needed(
     let spool_dir = config
         .and_then(|cfg| cfg.ui.tool_output_spool_dir.as_deref())
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(".vtcode/tool-output"));
+        .unwrap_or_else(|| diapason_commons::workspace_dir_name().join("tool-output"));
 
     let content_owned = content.to_string();
     let tool_name_owned = tool_name.to_string();
@@ -205,7 +205,7 @@ pub(super) fn select_stream_lines_streaming(
 
 #[cfg(test)]
 mod markdown_block_tests {
-    use vtcode_core::ui::InlineHandle;
+    use diapason_core::ui::InlineHandle;
 
     use crate::agent::runloop::tool_output::collect_inline_output;
 
@@ -257,7 +257,7 @@ mod markdown_block_tests {
 
 #[inline]
 pub(crate) fn strip_ansi_codes(input: &str) -> Cow<'_, str> {
-    vtcode_commons::ansi::strip_ansi_codes(input)
+    diapason_commons::ansi::strip_ansi_codes(input)
 }
 
 #[cfg(test)]

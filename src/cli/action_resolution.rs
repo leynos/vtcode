@@ -1,6 +1,6 @@
 use crate::startup::StartupContext;
 use anyhow::Result;
-use vtcode_core::cli::args::{AskCommandOptions, Cli, Commands};
+use diapason_core::cli::args::{AskCommandOptions, Cli, Commands};
 
 use super::adapters::ask_options;
 

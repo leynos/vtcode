@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
+use diapason_core::utils::tty::TtyExt;
 use std::io::{self, Read};
-use vtcode_core::utils::tty::TtyExt;
 
 pub(crate) fn build_print_prompt(print_value: String) -> Result<String> {
     let piped_input = collect_piped_stdin()?;

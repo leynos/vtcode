@@ -4,7 +4,7 @@
 //!   - Interim progress suppression and continuation heuristics live in `context/continuation.rs`.
 //!   - Turn-processing state and response handling live in `context/runtime_context.rs` and `context/response_handling.rs`.
 //! - Constraints: TD-005 is active for this hotspot; prefer extracting focused support modules over growing this root further.
-//! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode turn::context`
+//! - Verify: `cargo check -p diapason && cargo test -p diapason --bin diapason turn::context`
 
 mod continuation;
 mod message_history;
@@ -14,16 +14,16 @@ mod runtime_context;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::core::agent::runtime::RuntimeSteering;
+use diapason_core::core::agent::snapshots::SnapshotManager;
+use diapason_core::hooks::{LifecycleHookEngine, SessionEndReason};
+use diapason_core::llm::provider as uni;
+use diapason_core::llm::providers::ReasoningSegment;
+use diapason_core::tools::registry::ToolExecutionError;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::InlineHandle;
 use tokio::sync::{Notify, RwLock};
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::core::agent::runtime::RuntimeSteering;
-use vtcode_core::core::agent::snapshots::SnapshotManager;
-use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::llm::providers::ReasoningSegment;
-use vtcode_core::tools::registry::ToolExecutionError;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::InlineHandle;
 
 use self::continuation::{
     AUTONOMOUS_CONTINUE_DIRECTIVE, InterimTextContinuationDecision, evaluate_interim_text_continuation,
@@ -77,9 +77,9 @@ impl PreparedAssistantToolCall {
             match raw_call.execution_arguments() {
                 Ok(args) => {
                     let is_parallel_safe = !raw_call.is_custom()
-                        && vtcode_core::tools::tool_intent::is_parallel_safe_call(tool_name, &args);
+                        && diapason_core::tools::tool_intent::is_parallel_safe_call(tool_name, &args);
                     let is_command_execution = !raw_call.is_custom()
-                        && vtcode_core::tools::tool_intent::is_command_run_tool_call(tool_name, &args);
+                        && diapason_core::tools::tool_intent::is_command_run_tool_call(tool_name, &args);
                     (Some(args), None, is_parallel_safe, is_command_execution)
                 }
                 Err(err) => (None, Some(err.to_string()), false, false),
@@ -264,7 +264,7 @@ impl<'a> TurnProcessingContext<'a> {
         &self,
         scope: &str,
         error: &anyhow::Error,
-        error_type: vtcode_core::core::agent::error_recovery::ErrorType,
+        error_type: diapason_core::core::agent::error_recovery::ErrorType,
     ) {
         let mut recovery = self.error_recovery.write().await;
         recovery.record_error(scope, format!("{error:#}"), error_type);
@@ -274,7 +274,7 @@ impl<'a> TurnProcessingContext<'a> {
         &self,
         scope: &str,
         error: &ToolExecutionError,
-        error_type: vtcode_core::core::agent::error_recovery::ErrorType,
+        error_type: diapason_core::core::agent::error_recovery::ErrorType,
     ) {
         let mut recovery = self.error_recovery.write().await;
         recovery.record_error_with_category(scope, error.message.clone(), error_type, Some(error.category));
@@ -285,7 +285,7 @@ impl<'a> TurnProcessingContext<'a> {
             return Ok(cached.clone());
         }
 
-        let metadata = vtcode_core::turn_metadata::build_turn_metadata_value_with_timeout(
+        let metadata = diapason_core::turn_metadata::build_turn_metadata_value_with_timeout(
             &self.config.workspace,
             Duration::from_millis(250),
         )

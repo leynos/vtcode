@@ -1,7 +1,7 @@
-# VT Code WebMCP app
+# Diapason WebMCP app
 
-This Vite project is the maintained browser app for VT Code's WebMCP bridge. It
-is a real CodeMirror 6 editor for a VT Code workspace and supports editable
+This Vite project is the maintained browser app for Diapason's WebMCP bridge.
+It is a real CodeMirror 6 editor for a Diapason workspace and supports editable
 drafts, syntax highlighting, tabs, line numbers, dirty state, unified diff
 review, checks, prompt requests, and backend events.
 
@@ -14,38 +14,32 @@ For the click-by-click setup and fallback/connected workflow, see the
 [WebMCP app guide](GUIDE.md) or the
 [WebMCP browser bridge user guide](../../docs/user-guide/webmcp.md).
 
-## Published deployments
+## Self-hosted browser app
 
-The same app is published at two public origins:
-
-| Deployment   | URL                                   | Origin used for pairing              |
-| ------------ | ------------------------------------- | ------------------------------------ |
-| ChatGPT Site | <https://vtcode.vinhnx.chatgpt.site/> | `https://vtcode.vinhnx.chatgpt.site` |
-| GitHub Pages | <https://vinhnx.github.io/VTCode/>    | `https://vinhnx.github.io`           |
-
-The page derives its pairing command from `window.location.origin`, so the same
-build works at both sites without weakening the bridge's exact-origin
-allowlist. Use the ChatGPT Site for the hosted demonstration and GitHub Pages
-for the standalone static fallback/reference client. See the
-[deployment reference](../../docs/reference/webmcp.md) for the complete origin
-matrix and verification checklist.
+Diapason does not currently publish a hosted WebMCP browser app. Run the Vite
+app locally with `bun install` and `bun dev`, then pair the exact origin
+printed by the browser (normally `http://localhost:5173`) with the running
+Diapason bridge. For a public deployment, host the built app yourself and add
+its exact origin to the bridge allowlist. See the
+[deployment reference](../../docs/reference/webmcp.md) for configuration and
+verification guidance.
 
 The browser never writes to the local filesystem. With no bridge, the page
 starts in a deterministic `InMemoryBackend`; edits, proposals, checks, and
-reverts are confined to page memory. When paired with `vtcode webmcp serve`,
-the same UI uses an authenticated WebSocket backend. VT Code verifies base
+reverts are confined to page memory. When paired with `diapason webmcp serve`,
+the same UI uses an authenticated WebSocket backend. Diapason verifies base
 digests, owns the authoritative diff, applies terminal or full-auto policy, and
 validates current files before reverts.
 
 The interface is intentionally IDE-shaped. The explorer keeps directories
 collapsed, lists file metadata without loading every file, and reads content
 only when a file is opened. The bottom panel separates `TERMINAL`, `CHANGES`,
-and `VT CODE` output so large files and long command output stay inside their
+and `DIAPASON` output so large files and long command output stay inside their
 own scroll areas.
 
 ## Run locally
 
-From the VT Code repository root:
+From the Diapason repository root:
 
 ```sh
 cd apps/webmcp
@@ -56,8 +50,8 @@ The launcher installs dependencies if needed and starts Vite at
 `http://localhost:5173`. The Vite base is relative, so the generated site also
 works beneath a GitHub Pages project path.
 
-On startup, an unpaired browser opens **Settings** so you can paste the VT Code
-WebSocket URL and one-time pairing code. Close it to use fallback mode.
+On startup, an unpaired browser opens **Settings** so you can paste the
+Diapason WebSocket URL and one-time pairing code. Close it to use fallback mode.
 
 The browser preserves the fallback project, drafts, open tabs, and selected
 file across a browser refresh. A new Vite app instance clears that browser
@@ -73,7 +67,7 @@ Start a connected workflow with the same launcher:
 ./start.sh --active --workspace /absolute/path/to/project
 ```
 
-Use `--headless` for workspace-only access. Use `--active` for **VT CODE
+Use `--headless` for workspace-only access. Use `--active` for **DIAPASON
 TURN**; when the TUI is ready, run `/webmcp pair http://localhost:5173` and
 paste its WebSocket URL and pairing code into the browser. Add `--port 5174`
 when port `5173` is already occupied. See [GUIDE.md](GUIDE.md) for the complete
@@ -106,33 +100,30 @@ external-client run.
 The Vite build supports opt-in
 [WebMCP origin-trial](https://developer.chrome.com/blog/ai-webmcp-origin-trial)
 tokens without storing them in the repository. Tokens are bound to exact
-origins. For a single-origin build, register either
-`https://vtcode.vinhnx.chatgpt.site` or `https://vinhnx.github.io`, then set:
+origins. For a single-origin build, register the exact origin where you host
+the app, then set:
 
 ```sh
 VITE_WEBMCP_ORIGIN_TRIAL_TOKEN='<token for the deployment origin>' bun run build
 ```
 
-When one artifact is served by both deployments, provide both origin-trial
-tokens as a comma- or newline-separated `VITE_WEBMCP_ORIGIN_TRIAL_TOKENS`
-value. The browser ignores a token issued for a different origin. The GitHub
-Pages workflow accepts the corresponding `WEBMCP_ORIGIN_TRIAL_TOKENS`
-repository variable in addition to the legacy singular variable. If no token is
-set, use the Chrome WebMCP testing flag or the normal in-memory fallback. A
-separately published ChatGPT Site artifact must receive equivalent build
-variables from its own publisher; the Pages workflow deploys only GitHub Pages.
-Never reuse a production token for `localhost`; tokens are time-limited and
-origin-specific.
+When one artifact is served from multiple origins, provide origin-trial tokens
+as a comma- or newline-separated `VITE_WEBMCP_ORIGIN_TRIAL_TOKENS` value. The
+browser ignores a token issued for a different origin. If no token is set, use
+the Chrome WebMCP testing flag or the normal in-memory fallback. A separately
+published ChatGPT Site artifact must receive equivalent build variables from
+its own publisher; the Pages workflow deploys only GitHub Pages. Never reuse a
+production token for `localhost`; tokens are time-limited and origin-specific.
 
-## Pair with VT Code
+## Pair with Diapason
 
 Pairing is a two-step handoff:
 
-1. **VT Code TUI:** run `/webmcp pair http://localhost:5173` in the same
+1. **Diapason TUI:** run `/webmcp pair http://localhost:5173` in the same
    interactive session that should receive browser prompts.
-2. **Web app:** open **Settings → Connect or re-pair a VT Code bridge**, paste
+2. **Web app:** open **Settings → Connect or re-pair a Diapason bridge**, paste
    the WebSocket URL and one-time pairing code printed by the TUI, and select
-   **Pair with VT Code**.
+   **Pair with Diapason**.
 
 In the TUI, `/webmcp` shows the current bridge details and available command
 arguments. Use `/webmcp help` to show only the command guide.
@@ -146,7 +137,7 @@ Pairing code: <one-time-code>
 ```
 
 Keep the TUI running. Do not use a URL or code from an old session or from a
-separate headless `webmcp serve` process when you want **VT CODE TURN**.
+separate headless `webmcp serve` process when you want **DIAPASON TURN**.
 
 If the TUI says WebMCP is already listening, it prints the active WebSocket
 URL, pairing code, and expiry. To disconnect that browser and issue a fresh
@@ -162,9 +153,9 @@ when the current browser sessions should be revoked.
 The app's **Settings** dialog contains the workspace path, browser origin,
 generated active-session and workspace-only setup commands, WebSocket URL, and
 pairing code. Enter the absolute workspace path there and copy the setup
-command you need. The browser cannot launch VT Code itself; run the copied
+command you need. The browser cannot launch Diapason itself; run the copied
 command in a terminal, then enter the printed URL and code under **Connect or
-re-pair a VT Code bridge**.
+re-pair a Diapason bridge**.
 
 After pairing, the **Bridge status** section mirrors the terminal-owned
 workspace, runtime mode, listener, pairing lease, and request limits. The
@@ -178,7 +169,7 @@ For workspace inspection without agent turns, start the headless bridge from
 the repository checkout with an explicit origin allowlist:
 
 ```sh
-cd /path/to/vtcode
+cd /path/to/diapason
 cargo run --locked -- webmcp serve \
   --origin http://localhost:5173 \
   --allowed-root /absolute/path/to/workspace
@@ -198,7 +189,7 @@ full-auto permission can inspect and stage proposals but rejects filesystem
 mutation requests; checks also require `exec_command` (or `*`) in the explicit
 full-auto allowlist.
 
-If an installed `vtcode` says `unrecognized subcommand 'serve'`, update it or
+If an installed `diapason` says `unrecognized subcommand 'serve'`, update it or
 run `cargo run --locked -- webmcp serve ...` from the source checkout. The
 configured origin must match the page exactly: `localhost:5173` and
 `127.0.0.1:5173` are different origins.
@@ -218,17 +209,17 @@ active-session workflow, see the
 4. Select **CHANGES** in the bottom panel and review the diff. **Approve
    patch** sends structured changes with their `sha256:` base digests. In
    fallback mode this is an in-memory approval; in connected mode it requests
-   VT Code/terminal approval.
+   Diapason/terminal approval.
 5. Apply only after the backend accepts the proposal. Stale files and
    external changes fail closed.
-6. Select **TERMINAL** to inspect activity and checks, or **VT CODE** to
+6. Select **TERMINAL** to inspect activity and checks, or **DIAPASON** to
    compose an agent turn.
 
-After **Stage for VT Code turn**, the active-session editor opens the **VT
+After **Stage for Diapason turn**, the active-session editor opens the **VT
 CODE** panel and focuses the prompt. Press `Cmd/Ctrl+Enter` in the prompt to
 request the turn without clicking the button.
 
-The prompt composer attaches the reviewed diff to a VT Code turn request. The
+The prompt composer attaches the reviewed diff to a Diapason turn request. The
 static fallback and the standalone headless bridge do not execute an agent
 turn: the editor reports that limitation in the response panel. The active TUI
 bridge started with `/webmcp pair <origin>` is the runtime path for a real
@@ -249,7 +240,7 @@ it is not a full-content search.
 | `?`                | Open or close the help popup when you are not typing.    |
 | `Cmd/Ctrl+K`       | Focus the explorer file filter.                          |
 | `Cmd/Ctrl+S`       | Review the current draft instead of writing immediately. |
-| `Cmd/Ctrl+Enter`   | Request a VT Code turn from the prompt composer.         |
+| `Cmd/Ctrl+Enter`   | Request a Diapason turn from the prompt composer.        |
 | `Esc`              | Close the active popup.                                  |
 
 The **Actions** and **?** buttons in the header provide the same entry points.
@@ -276,7 +267,7 @@ cross-origin embedder.
 This is the browser-agent direction described by WebMCP: a browser-integrated
 or in-page agent discovers tools registered by the page and invokes them in the
 page's execution context. The normal UI remains usable when that API is
-unavailable. Browser WebMCP tools do not bypass the VT Code WebSocket pairing
+unavailable. Browser WebMCP tools do not bypass the Diapason WebSocket pairing
 or terminal approval boundary.
 
 ## WebMCP evaluation workflow
@@ -316,25 +307,18 @@ change. This manual model pass is intentionally separate from the deterministic
 tests: model tool selection is probabilistic and the repository does not bundle
 a browser-agent model runner.
 
-The VT Code connection is a separate authenticated bridge. The browser sends
-workspace, patch, check, and turn requests over that WebSocket; VT Code sends
+The Diapason connection is a separate authenticated bridge. The browser sends
+workspace, patch, check, and turn requests over that WebSocket; Diapason sends
 responses and canonical runtime events back. WebMCP does not define that remote
-VT Code protocol, so this WebMCP app does not claim that the WebSocket itself
+Diapason protocol, so this WebMCP app does not claim that the WebSocket itself
 is the WebMCP API.
 
-## Published deployment
+## Build and host the browser app
 
-The repository workflow at `../../.github/workflows/webmcp.yml` runs
-`bun install --frozen-lockfile`, typechecks and tests the Vite app, then builds
-and publishes `dist/` when the `main` branch is pushed or the workflow is
-started manually. Configure Pages to use **GitHub Actions**.
-
-The resulting browser app is available at <https://vinhnx.github.io/VTCode/>
-with the exact origin `https://vinhnx.github.io`. The hosted ChatGPT Site
-deployment is available at <https://vtcode.vinhnx.chatgpt.site/> with the exact
-origin `https://vtcode.vinhnx.chatgpt.site`. Both deployments start in fallback
-mode; use the [WebMCP deployment reference](../../docs/reference/webmcp.md) for
-pairing, origin-trial, and verification details.
+The repository workflow checks the Vite app. To build it for a host you
+control, run `bun install --frozen-lockfile` and `bun run build`, then serve
+`dist/` from your chosen origin. Pair that exact browser origin with the
+Diapason bridge.
 
 The WebMCP app is covered by the repository's
 [MIT OR Apache-2.0 license](../../LICENSE).

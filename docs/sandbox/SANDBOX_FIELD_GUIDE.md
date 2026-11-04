@@ -1,6 +1,6 @@
-# VT Code Sandbox Field Guide
+# Diapason Sandbox Field Guide
 
-This document describes VT Code's sandboxing architecture, following the
+This document describes Diapason's sandboxing architecture, following the
 principles from the AI sandbox field guide. The system implements
 defense-in-depth through multiple layers of isolation.
 
@@ -12,13 +12,13 @@ When evaluating any sandbox, ask these three questions:
 2. **What can the code touch?** (Policy)
 3. **What survives between runs?** (Lifecycle)
 
-VT Code's sandbox system is designed around these questions.
+Diapason's sandbox system is designed around these questions.
 
 ## Boundaries
 
 ### Local OS Sandboxes (Current Implementation)
 
-VT Code implements kernel-enforced sandboxing using platform-native mechanisms:
+Diapason implements kernel-enforced sandboxing using platform-native mechanisms:
 
 | Platform | Mechanism          | Description                                 |
 | -------- | ------------------ | ------------------------------------------- |
@@ -33,7 +33,7 @@ policy through kernel-level security primitives.
 Container < gVisor < MicroVM < Wasm
      ^
      |
-VT Code uses kernel-enforced isolation at this level
+Diapason uses kernel-enforced isolation at this level
 ```
 
 ### Syscall Surface
@@ -44,7 +44,7 @@ The boundary determines which syscalls reach the host kernel:
 - **Linux Landlock**: Filesystem access rules at kernel level
 - **Linux Seccomp**: BPF program filters syscalls by number and arguments
 
-VT Code blocks dangerous syscalls by default:
+Diapason blocks dangerous syscalls by default:
 
 - `ptrace` - debugger attachment
 - `mount/umount` - filesystem namespace changes
@@ -56,7 +56,7 @@ VT Code blocks dangerous syscalls by default:
 
 ### SandboxPolicy Enum
 
-VT Code defines four policy levels:
+Diapason defines four policy levels:
 
 ```rust
 enum SandboxPolicy {
@@ -137,7 +137,7 @@ Presets:
 
 ## Lifecycle
 
-VT Code uses session-scoped lifecycle:
+Diapason uses session-scoped lifecycle:
 
 - **Fresh run**: Default for most operations
 - **Session approvals**: Commands approved once remain approved for the session
@@ -147,7 +147,7 @@ VT Code uses session-scoped lifecycle:
 
 ### macOS Seatbelt
 
-VT Code generates SBPL profiles dynamically:
+Diapason generates SBPL profiles dynamically:
 
 ```lisp
 (version 1)
@@ -173,7 +173,7 @@ VT Code generates SBPL profiles dynamically:
 
 ### Linux Landlock + Seccomp
 
-VT Code passes policy to a sandbox helper that applies:
+Diapason passes policy to a sandbox helper that applies:
 
 1. **Landlock rules** for filesystem access
 2. **Seccomp-BPF** for syscall filtering
@@ -189,7 +189,8 @@ log_only = false
 
 ## External Sandboxes (Advanced)
 
-For multi-tenant or hostile code scenarios, VT Code supports external sandboxes:
+For multi-tenant or hostile code scenarios, Diapason supports external
+sandboxes:
 
 ### Docker Containers
 
@@ -228,7 +229,7 @@ vcpus = 1
 
 ## Configuration Reference
 
-Full configuration in `vtcode.toml`:
+Full configuration in `config.toml`:
 
 ```toml
 [sandbox]

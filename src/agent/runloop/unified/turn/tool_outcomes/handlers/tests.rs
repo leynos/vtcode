@@ -26,29 +26,29 @@ use crate::agent::runloop::unified::turn::context::{
 use crate::agent::runloop::unified::turn::tool_outcomes::handle_tool_calls;
 use crate::agent::runloop::unified::turn::tool_outcomes::helpers::LoopTracker;
 use anyhow::{Result, anyhow};
+use diapason_config::core::PromptCachingConfig;
+use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+use diapason_config::{SubagentSource, SubagentSpec, builtin_primary_build_agent};
+use diapason_core::acp::{PermissionGrant, ToolPermissionCache};
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::config::types::{AgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
+use diapason_core::core::agent::runtime::RuntimeSteering;
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::core::trajectory::TrajectoryLogger;
+use diapason_core::llm::provider as uni;
+use diapason_core::primary_agent::ActivePrimaryAgentState;
+use diapason_core::tool_policy::ToolPolicy;
+use diapason_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter;
+use diapason_core::tools::circuit_breaker::CircuitBreaker;
+use diapason_core::tools::health::ToolHealthTracker;
+use diapason_core::tools::{ApprovalRecorder, ToolResultCache};
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use hashbrown::HashMap;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Notify, RwLock};
-use vtcode_config::core::PromptCachingConfig;
-use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-use vtcode_config::{SubagentSource, SubagentSpec, builtin_primary_build_agent};
-use vtcode_core::acp::{PermissionGrant, ToolPermissionCache};
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::config::types::{AgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
-use vtcode_core::core::agent::runtime::RuntimeSteering;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::core::trajectory::TrajectoryLogger;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::primary_agent::ActivePrimaryAgentState;
-use vtcode_core::tool_policy::ToolPolicy;
-use vtcode_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter;
-use vtcode_core::tools::circuit_breaker::CircuitBreaker;
-use vtcode_core::tools::health::ToolHealthTracker;
-use vtcode_core::tools::{ApprovalRecorder, ToolResultCache};
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 #[derive(Clone)]
 struct NoopProvider;
@@ -101,11 +101,11 @@ fn create_headless_session() -> InlineSession {
 struct TestContextBacking {
     _temp: tempfile::TempDir,
     sample_file: std::path::PathBuf,
-    tool_registry: vtcode_core::tools::ToolRegistry,
+    tool_registry: diapason_core::tools::ToolRegistry,
     tools: Arc<RwLock<Vec<uni::ToolDefinition>>>,
     tool_result_cache: Arc<RwLock<ToolResultCache>>,
     tool_permission_cache: Arc<RwLock<ToolPermissionCache>>,
-    permissions_state: Arc<RwLock<vtcode_core::config::PermissionsConfig>>,
+    permissions_state: Arc<RwLock<diapason_core::config::PermissionsConfig>>,
     decision_ledger: Arc<RwLock<DecisionTracker>>,
     approval_recorder: Arc<ApprovalRecorder>,
     session_stats: SessionStats,
@@ -116,16 +116,16 @@ struct TestContextBacking {
     input_status_state: InputStatusState,
     session: InlineSession,
     handle: InlineHandle,
-    renderer: vtcode_core::utils::ansi::AnsiRenderer,
+    renderer: diapason_core::utils::ansi::AnsiRenderer,
     ctrl_c_state: Arc<CtrlCState>,
     ctrl_c_notify: Arc<Notify>,
     safety_validator: Arc<ToolCallSafetyValidator>,
     circuit_breaker: Arc<CircuitBreaker>,
     tool_health_tracker: Arc<ToolHealthTracker>,
     rate_limiter: Arc<AdaptiveRateLimiter>,
-    telemetry: Arc<vtcode_core::core::telemetry::TelemetryManager>,
-    autonomous_executor: Arc<vtcode_core::tools::autonomous_executor::AutonomousExecutor>,
-    error_recovery: Arc<RwLock<vtcode_core::core::agent::error_recovery::ErrorRecoveryState>>,
+    telemetry: Arc<diapason_core::core::telemetry::TelemetryManager>,
+    autonomous_executor: Arc<diapason_core::tools::autonomous_executor::AutonomousExecutor>,
+    error_recovery: Arc<RwLock<diapason_core::core::agent::error_recovery::ErrorRecoveryState>>,
     harness_state: HarnessTurnState,
     auto_finish_planning_attempted: bool,
     working_history: Vec<uni::Message>,
@@ -142,15 +142,15 @@ struct TestContextBacking {
 impl TestContextBacking {
     async fn new(max_tool_calls: usize) -> Self {
         let temp = tempfile::TempDir::new().expect("temp workspace");
-        let workspace = vtcode_commons::canonicalize(temp.path()).expect("canonical temp workspace");
+        let workspace = diapason_commons::canonicalize(temp.path()).expect("canonical temp workspace");
         let sample_file = workspace.join("sample.txt");
         std::fs::write(&sample_file, "hello\n").expect("write sample file");
 
-        let tool_registry = vtcode_core::tools::ToolRegistry::new(workspace.clone()).await;
+        let tool_registry = diapason_core::tools::ToolRegistry::new(workspace.clone()).await;
         let tools = Arc::new(RwLock::new(Vec::new()));
         let tool_result_cache = Arc::new(RwLock::new(ToolResultCache::new(8)));
         let tool_permission_cache = Arc::new(RwLock::new(ToolPermissionCache::new()));
-        let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+        let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
         let decision_ledger = Arc::new(RwLock::new(DecisionTracker::new()));
         let approval_recorder = Arc::new(ApprovalRecorder::new(workspace.clone()));
         let session_stats = SessionStats::default();
@@ -164,7 +164,7 @@ impl TestContextBacking {
         let mut session = create_headless_session();
         session.set_skip_confirmations(true);
         let handle = session.clone_inline_handle();
-        let renderer = vtcode_core::utils::ansi::AnsiRenderer::with_inline_ui(handle.clone(), Default::default());
+        let renderer = diapason_core::utils::ansi::AnsiRenderer::with_inline_ui(handle.clone(), Default::default());
         let ctrl_c_state = Arc::new(CtrlCState::new());
         let ctrl_c_notify = Arc::new(Notify::new());
         let safety_validator = Arc::new(ToolCallSafetyValidator::new());
@@ -172,10 +172,10 @@ impl TestContextBacking {
         let circuit_breaker = Arc::new(CircuitBreaker::default());
         let tool_health_tracker = Arc::new(ToolHealthTracker::new(3));
         let rate_limiter = Arc::new(AdaptiveRateLimiter::default());
-        let telemetry = Arc::new(vtcode_core::core::telemetry::TelemetryManager::new());
-        let autonomous_executor = Arc::new(vtcode_core::tools::autonomous_executor::AutonomousExecutor::new());
+        let telemetry = Arc::new(diapason_core::core::telemetry::TelemetryManager::new());
+        let autonomous_executor = Arc::new(diapason_core::tools::autonomous_executor::AutonomousExecutor::new());
         let error_recovery =
-            Arc::new(RwLock::new(vtcode_core::core::agent::error_recovery::ErrorRecoveryState::default()));
+            Arc::new(RwLock::new(diapason_core::core::agent::error_recovery::ErrorRecoveryState::default()));
         let harness_state = HarnessTurnState::new(
             TurnRunId("run-test".to_string()),
             TurnId("turn-test".to_string()),
@@ -338,14 +338,14 @@ fn test_primary_agent_spec(name: &str) -> SubagentSpec {
         mcp_servers: Vec::new(),
         hooks: None,
         background: false,
-        mode: vtcode_config::AgentMode::Primary,
+        mode: diapason_config::AgentMode::Primary,
         max_turns: None,
         nickname_candidates: Vec::new(),
         initial_prompt: None,
         memory: None,
         isolation: None,
         aliases: Vec::new(),
-        source: SubagentSource::ProjectVtcode,
+        source: SubagentSource::ProjectDiapason,
         file_path: None,
         warnings: Vec::new(),
         tool_policy_overrides: BTreeMap::new(),

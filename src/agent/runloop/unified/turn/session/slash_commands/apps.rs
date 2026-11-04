@@ -1,17 +1,17 @@
 use std::path::Path;
 
 use anyhow::Result;
-use vtcode_commons::resolve_editor_target;
-use vtcode_core::config::EditorToolConfig;
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::tools::terminal_app::{EditorLaunchConfig, TerminalAppLauncher};
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{
+use diapason_commons::resolve_editor_target;
+use diapason_core::config::EditorToolConfig;
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::tools::terminal_app::{EditorLaunchConfig, TerminalAppLauncher};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{
     InlineListItem, InlineListSelection, ListOverlayRequest, TransientRequest, TransientSubmission, WizardModalMode,
     WizardStep,
 };
 
-use vtcode_core::hooks::SessionEndReason;
+use diapason_core::hooks::SessionEndReason;
 
 use super::{SlashCommandContext, SlashCommandControl};
 use crate::agent::runloop::unified::external_editor::run_blocking_with_event_loop_suspended;
@@ -26,7 +26,7 @@ use crate::agent::runloop::unified::settings_interactive::{
 use crate::agent::runloop::unified::url_guard::open_external_url;
 use crate::agent::runloop::unified::wizard_modal::{WizardModalOutcome, show_wizard_modal_and_wait};
 
-const DOCS_URL: &str = "https://deepwiki.com/vinhnx/vtcode";
+const DOCS_URL: &str = "https://github.com/leynos/vtcode/tree/main/docs";
 const DONATE_URL: &str = "https://buymeacoffee.com/vinhnx";
 const PROJECT_URL: &str = "https://github.com/sponsors/vinhnx";
 const EXTERNAL_EDITOR_TITLE: &str = "External Editor";
@@ -79,7 +79,7 @@ pub(crate) async fn handle_open_docs(ctx: SlashCommandContext<'_>) -> Result<Sla
 
 pub(crate) async fn handle_open_donate_links(ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
     let request = TransientRequest::List(ListOverlayRequest {
-        title: "Support VT Code".to_string(),
+        title: "Support Diapason and its upstream author".to_string(),
         lines: vec![
             "Choose a link to open in your browser.".to_string(),
             format!("Coffee: {DONATE_URL}"),
@@ -88,7 +88,7 @@ pub(crate) async fn handle_open_donate_links(ctx: SlashCommandContext<'_>) -> Re
         footer_hint: Some("Esc cancels".to_string()),
         items: vec![
             InlineListItem {
-                title: "Sponsor VT Code developement".to_string(),
+                title: "Support Vinh Nguyen, original VTCode author".to_string(),
                 subtitle: Some(DONATE_URL.to_string()),
                 badge: Some("Support".to_string()),
                 indent: 0,
@@ -96,7 +96,7 @@ pub(crate) async fn handle_open_donate_links(ctx: SlashCommandContext<'_>) -> Re
                 search_value: None,
             },
             InlineListItem {
-                title: "Sponsor VT Code developement on GitHub".to_string(),
+                title: "Open the Diapason project".to_string(),
                 subtitle: Some(PROJECT_URL.to_string()),
                 badge: Some("GitHub".to_string()),
                 indent: 0,
@@ -190,7 +190,7 @@ pub(crate) async fn launch_editor_from_context(
         ctx.renderer.line(
             MessageStyle::Info,
             if opening_existing_file {
-                "Launching editor, with the existing file, close the tab or editor to continue on the VT Code session..."
+                "Launching editor, with the existing file, close the tab or editor to continue on the Diapason session..."
             } else {
                 "Launching editor with current input..."
             },
@@ -625,7 +625,7 @@ async fn prompt_for_custom_editor_command(
 fn build_custom_editor_command_step(placeholder: String) -> WizardStep {
     WizardStep {
         title: "Custom command".to_string(),
-        question: "Enter the raw editor command. Include any flags you want VT Code to keep using.".to_string(),
+        question: "Enter the raw editor command. Include any flags you want Diapason to keep using.".to_string(),
         items: vec![InlineListItem {
             title: "Save command".to_string(),
             subtitle: Some("Press Tab to type the command, then Enter to save.".to_string()),
@@ -765,7 +765,7 @@ mod tests {
     #[test]
     fn persist_editor_workflow_choices_writes_preferred_editor_fields() {
         let workspace = tempdir().expect("workspace");
-        fs::write(workspace.path().join("vtcode.toml"), "[workspace]\nuse_root_config = true\n")
+        fs::write(workspace.path().join("config.toml"), "[workspace]\nuse_root_config = true\n")
             .expect("write isolated workspace config");
 
         persist_editor_workflow_choices(

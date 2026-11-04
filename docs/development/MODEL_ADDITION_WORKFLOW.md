@@ -5,8 +5,8 @@ automation approach.
 
 ## Why This Workflow?
 
-Adding a new LLM model to VT Code requires updates across **three architectural
-layers**:
+Adding a new LLM model to Diapason requires updates across **three
+architectural layers**:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -152,7 +152,7 @@ openai.rs (constants)
 ### Compile Check
 
 ```bash
-cargo check --package vtcode-config
+cargo check --package diapason-config
 cargo check --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -161,7 +161,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ```bash
 # Model appears in palette
-vtcode ask --model gpt-5.4-nano "test"
+diapason ask --model gpt-5.4-nano "test"
 
 # String parsing works
 echo 'gpt-5.4-nano' | cargo test -- --nocapture
@@ -203,7 +203,7 @@ fn test_new_model() {
 4. **Run verification:**
 
     ```bash
-    cargo check --package vtcode-config
+    cargo check --package diapason-config
     cargo clippy --workspace --all-targets -- -D warnings
     ```
 

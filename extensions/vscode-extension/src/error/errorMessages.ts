@@ -42,7 +42,7 @@ const ERROR_MESSAGES: Record<string, ErrorMessage> = {
         title: "API key configuration error",
         description: "The API key is missing, invalid, or expired.",
         suggestion:
-            "Check your VT Code configuration and verify the API key is correct. See the troubleshooting guide.",
+            "Check your Diapason configuration and verify the API key is correct. See the troubleshooting guide.",
         documentationLink: "docs/TROUBLESHOOTING.md#api-key",
     },
     MODEL_OVERLOADED: {
@@ -84,7 +84,7 @@ const ERROR_MESSAGES: Record<string, ErrorMessage> = {
         description:
             "The requested tool is not installed or not available in this context.",
         suggestion:
-            "Verify the tool is properly configured in your VT Code setup.",
+            "Verify the tool is properly configured in your Diapason setup.",
     },
     TOOL_PERMISSION_DENIED: {
         title: "Tool execution denied",
@@ -117,8 +117,8 @@ const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     // Configuration errors
     CONFIG_ERROR: {
         title: "Configuration error",
-        description: "The VT Code configuration contains invalid settings.",
-        suggestion: "Review your vtcode.toml file and fix any errors.",
+        description: "The Diapason configuration contains invalid settings.",
+        suggestion: "Review your config.toml file and fix any errors.",
         documentationLink: "docs/CONFIGURATION.md",
     },
     INVALID_MODEL: {
@@ -132,7 +132,7 @@ const ERROR_MESSAGES: Record<string, ErrorMessage> = {
     // System errors
     INTERNAL_ERROR: {
         title: "Internal error occurred",
-        description: "An unexpected error occurred in VT Code.",
+        description: "An unexpected error occurred in Diapason.",
         suggestion:
             "Check the output logs for details. Try restarting VS Code if the problem persists.",
         retryable: true,

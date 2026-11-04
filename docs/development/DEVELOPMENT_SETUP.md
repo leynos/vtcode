@@ -1,6 +1,6 @@
 # Development Setup
 
-Canonical local setup for contributing to VT Code.
+Canonical local setup for contributing to Diapason.
 
 ## Prerequisites
 
@@ -10,13 +10,13 @@ Canonical local setup for contributing to VT Code.
   `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
   `ZAI_API_KEY`, `MOONSHOT_API_KEY`, `STEPFUN_API_KEY`, or `MINIMAX_API_KEY`,
   (b) an OAuth session for an auth-managed provider, or (c) a key stored via
-  `vtcode secret add <provider>`.
+  `diapason secret add <provider>`.
 
 ## One-Time Setup
 
 ```bash
-git clone https://github.com/vinhnx/vtcode.git
-cd vtcode
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
 ./scripts/setup.sh --with-hooks
 ```
 
@@ -30,9 +30,9 @@ is the environment variable used for that credential. This keeps multiple
 profiles for one provider independent:
 
 ```bash
-vtcode secret add mimo --key-name MIMO_API_KEY
-vtcode secret add mimo --key-name MIMO_TOKEN_PLAN_KEY
-vtcode secret status mimo --key-name MIMO_TOKEN_PLAN_KEY
+diapason secret add mimo --key-name MIMO_API_KEY
+diapason secret add mimo --key-name MIMO_TOKEN_PLAN_KEY
+diapason secret status mimo --key-name MIMO_TOKEN_PLAN_KEY
 ```
 
 Environment variables and workspace `.env` values take precedence over secure
@@ -80,21 +80,21 @@ available separately and is not part of the default `check` dependency list.
 
 These are the public targets:
 
-| Target           | Runs                                                    |
-| ---------------- | ------------------------------------------------------- |
-| `check`          | The complete sequential gate                            |
-| `check-fmt`      | `cargo fmt --all -- --check`                            |
-| `lint`           | Shell, policy, Clippy and documentation checks          |
-| `lint-shell`     | Shell syntax and truncated-command checks               |
-| `lint-policies`  | Workflow-security and structured-logging checks         |
-| `lint-clippy`    | Workspace Clippy with warnings denied                   |
-| `lint-docs`      | Workspace documentation generation without dependencies |
-| `build`          | Locked workspace build                                  |
-| `typecheck`      | Locked workspace check with all targets and features    |
-| `test`           | Locked workspace Nextest run                            |
-| `test-harness`   | PTY, pipe and inline-event harness suites               |
-| `check-ast-grep` | The VT Code ast-grep check when `ast-grep` is installed |
-| `advisory`       | Warn-mode source hygiene and legibility reports         |
+| Target           | Runs                                                     |
+| ---------------- | -------------------------------------------------------- |
+| `check`          | The complete sequential gate                             |
+| `check-fmt`      | `cargo fmt --all -- --check`                             |
+| `lint`           | Shell, policy, Clippy and documentation checks           |
+| `lint-shell`     | Shell syntax and truncated-command checks                |
+| `lint-policies`  | Workflow-security and structured-logging checks          |
+| `lint-clippy`    | Workspace Clippy with warnings denied                    |
+| `lint-docs`      | Workspace documentation generation without dependencies  |
+| `build`          | Locked workspace build                                   |
+| `typecheck`      | Locked workspace check with all targets and features     |
+| `test`           | Locked workspace Nextest run                             |
+| `test-harness`   | PTY, pipe and inline-event harness suites                |
+| `check-ast-grep` | The Diapason ast-grep check when `ast-grep` is installed |
+| `advisory`       | Warn-mode source hygiene and legibility reports          |
 
 The gate accepts these variables for local toolchain and test-runner overrides:
 
@@ -133,13 +133,13 @@ cargo doc --workspace --no-deps --document-private-items
 - `cargo nextest` missing:
   - Run `cargo install cargo-nextest --locked`
 - No provider credential found:
-  - Run `vtcode secret add <provider>` to store a key in your OS keyring
+  - Run `diapason secret add <provider>` to store a key in your OS keyring
     (recommended), or
-  - Use `vtcode secret add <provider> --key-name <ENV_VAR>` for a non-default
+  - Use `diapason secret add <provider> --key-name <ENV_VAR>` for a non-default
     provider profile, or
   - `export OPENAI_API_KEY="sk-..."` (or the equivalent env var for your
     provider) in your shell, or
-  - Run `vtcode login <provider>` for OAuth/managed-auth providers (copilot,
+  - Run `diapason login <provider>` for OAuth/managed-auth providers (copilot,
     openai, openrouter).
 - Script permissions:
   - Run `chmod +x scripts/*.sh`

@@ -1,11 +1,11 @@
 # Styling Integration: anstyle-crossterm
 
-This document describes how VT Code integrates `anstyle-crossterm` for unified
+This document describes how Diapason integrates `anstyle-crossterm` for unified
 styling across CLI and TUI components.
 
 ## Overview
 
-VT Code uses `anstyle` as the core styling library for ANSI terminal output,
+Diapason uses `anstyle` as the core styling library for ANSI terminal output,
 providing a generic, crate-agnostic way to define colors and text effects. The
 `anstyle-crossterm` adapter bridge integrates this with `crossterm` (used by
 our TUI), and our custom `ratatui_styles` module further bridges to `ratatui`
@@ -84,7 +84,7 @@ let crossterm_style = to_crossterm(anstyle);
 Custom module that bridges `anstyle` to `ratatui` styles for widget rendering:
 
 ```rust
-use vtcode_core::utils::ratatui_styles::anstyle_to_ratatui;
+use diapason_core::utils::ratatui_styles::anstyle_to_ratatui;
 use anstyle::Style;
 use ratatui::style::Color;
 
@@ -108,7 +108,7 @@ let ratatui_style = anstyle_to_ratatui(anstyle);
 ### CLI Output (Direct anstyle)
 
 ```rust
-use vtcode_core::utils::colors::style;
+use diapason_core::utils::colors::style;
 
 // Simple usage
 println!("{}", style("Success").green().bold());
@@ -119,7 +119,7 @@ println!("{}", style("Error").red());
 ### TUI Widgets (Using ratatui_styles)
 
 ```rust
-use vtcode_core::utils::ratatui_styles::anstyle_to_ratatui;
+use diapason_core::utils::ratatui_styles::anstyle_to_ratatui;
 use anstyle::{Style, Color, AnsiColor, Effects};
 use ratatui::widgets::Paragraph;
 use ratatui::text::{Line, Span};

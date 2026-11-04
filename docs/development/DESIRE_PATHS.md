@@ -1,4 +1,4 @@
-# Desire Paths in VT Code
+# Desire Paths in Diapason
 
 This document explains the design philosophy of paving "desire paths" in VT
 Code—optimizing the tool to work naturally with how agents think and work.
@@ -88,9 +88,9 @@ exec_command "rg -n 'fn main' src/"
 
 **Intuitive expectation**:
 
-- `vtcode config set llm.model gpt-4`
-- `vtcode config get llm.model`
-- `vtcode config edit` (opens default editor)
+- `diapason config set llm.model gpt-4`
+- `diapason config get llm.model`
+- `diapason config edit` (opens default editor)
 
 **Priority**: Low (workaround exists: direct file editing)
 

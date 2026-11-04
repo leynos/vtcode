@@ -1,16 +1,18 @@
-# VT Code Native Installer (Windows PowerShell)
-# Downloads and installs the latest VT Code binary from GitHub Releases
+# Diapason Native Installer (Windows PowerShell)
+# Downloads and installs the latest Diapason binary from GitHub Releases
 
 param(
     [string]$InstallDir = "$env:USERPROFILE\.local\bin",
+    [string]$BinaryPath = "",
+    [switch]$SourceBuild,
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 
 # Configuration
-$Repo = "vinhnx/vtcode"
-$BinName = "vtcode.exe"
+$Repo = "leynos/vtcode"
+$BinName = "diapason.exe"
 $GitHubAPI = "https://api.github.com/repos/$Repo/releases?per_page=10"
 $GitHubReleases = "https://github.com/$Repo/releases/download"
 
@@ -23,17 +25,19 @@ function Write-Warning { Write-Host "⚠ $args" -ForegroundColor Yellow }
 # Show help
 function Show-Help {
     Write-Host @"
-VT Code Native Installer (Windows PowerShell)
+Diapason Native Installer (Windows PowerShell)
 
 Usage: .\install.ps1 [options]
 
 Options:
   -InstallDir <path>   Installation directory (default: $env:USERPROFILE\.local\bin)
+  -SourceBuild         Build from the Diapason source repository with Cargo
+  -BinaryPath <path>   Install an explicitly selected local Diapason binary
   -Help                Show this help message
 
 Examples:
   .\install.ps1                                         # Install to user directory
-  .\install.ps1 -InstallDir "C:\Program Files\vtcode" # Install to Program Files
+  .\install.ps1 -InstallDir "C:\Program Files\diapason" # Install to Program Files
 
 Note: Installing to Program Files may require administrator privileges.
 "@
@@ -52,7 +56,7 @@ if (-not (Test-Path $InstallDir)) {
 
 # Fetch recent releases from GitHub API
 function Get-RecentReleases {
-    Write-Info "Fetching recent VT Code releases from GitHub..."
+    Write-Info "Fetching recent Diapason releases from GitHub..."
     
     try {
         $response = Invoke-RestMethod -Uri $GitHubAPI -ErrorAction Stop
@@ -72,7 +76,7 @@ function Get-DownloadFilename {
     if ($VersionTag.StartsWith("v")) {
         $VersionTag = $VersionTag.Substring(1)
     }
-    return "vtcode-$VersionTag-x86_64-pc-windows-msvc.zip"
+    return "diapason-$VersionTag-x86_64-pc-windows-msvc.zip"
 }
 
 function Test-AssetAvailable {
@@ -110,7 +114,7 @@ function Get-DownloadUrl {
     }
 
     Write-Error "No recent releases include a Windows native binary asset"
-    Write-Info "Use cargo fallback: cargo install vtcode"
+    Write-Info "Use -SourceBuild to build from leynos/vtcode or -BinaryPath for a local binary"
     exit 1
 }
 
@@ -152,7 +156,7 @@ function Verify-Checksum {
     } else {
         $ReleaseFilename
     }
-    $TempChecksumFile = Join-Path $env:TEMP "vtcode-checksums.txt"
+    $TempChecksumFile = Join-Path $env:TEMP "diapason-checksums.txt"
     $ExpectedChecksum = ""
 
     # Try to download checksums.txt first
@@ -283,39 +287,52 @@ function Add-ToPath {
 
 # Cleanup temporary files
 function Cleanup {
-    Get-ChildItem -Path $env:TEMP -Name "vtcode-*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $env:TEMP -Name "diapason-*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
 # Main installation flow
 function Main {
-    Write-Host "VT Code Native Installer (Windows)" -ForegroundColor Magenta
+    Write-Host "Diapason Native Installer (Windows)" -ForegroundColor Magenta
     Write-Host ""
     
     # Create temporary directory for downloads
-    $TempDir = New-Item -ItemType Directory -Path "$env:TEMP\vtcode-install-$(Get-Random)" -Force
+    $TempDir = New-Item -ItemType Directory -Path "$env:TEMP\diapason-install-$(Get-Random)" -Force
     
     try {
-        # Fetch recent releases
-        $Releases = Get-RecentReleases
-        
-        # Get latest compatible download URL
-        $DownloadInfo = Get-DownloadUrl $Releases
-        
-        # Download binary
-        $ArchivePath = Join-Path $TempDir "vtcode-binary.zip"
-        Download-Binary -Url $DownloadInfo.Url -OutputPath $ArchivePath
-        
-        # Verify checksum
-        Verify-Checksum -BinaryPath $ArchivePath -ReleaseTag $DownloadInfo.Tag -ReleaseFilename $DownloadInfo.Filename
-        
-        # Extract binary
-        $ExtractDir = Join-Path $TempDir "extract"
-        New-Item -ItemType Directory -Path $ExtractDir -Force > $null
-        $BinaryPath = Extract-Binary -ZipPath $ArchivePath -OutputDir $ExtractDir
-        
-        # Install binary
         $TargetPath = Join-Path $InstallDir $BinName
-        Install-Binary -Source $BinaryPath -Target $TargetPath
+
+        if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
+            if (-not (Test-Path -Path $BinaryPath -PathType Leaf)) {
+                throw "Local Diapason binary not found: $BinaryPath"
+            }
+            Install-Binary -Source $BinaryPath -Target $TargetPath
+        }
+        elseif ($SourceBuild) {
+            $Cargo = Get-Command cargo -ErrorAction SilentlyContinue
+            if ($null -eq $Cargo) {
+                throw "Cargo is required for a source build"
+            }
+            $SourceRef = if ([string]::IsNullOrWhiteSpace($env:DIAPASON_SOURCE_REF)) { "main" } else { $env:DIAPASON_SOURCE_REF }
+            $CargoRoot = Split-Path -Parent $InstallDir
+            Write-Info "Building Diapason from leynos/vtcode ($SourceRef)..."
+            & cargo install --git "https://github.com/$Repo.git" --branch $SourceRef --locked --root $CargoRoot diapason
+            if ($LASTEXITCODE -ne 0) {
+                throw "Cargo source installation failed with exit code $LASTEXITCODE"
+            }
+        }
+        else {
+            # Release matching accepts only Diapason-named binaries. Existing
+            # VTCode release assets cannot be selected by this installer.
+            $Releases = Get-RecentReleases
+            $DownloadInfo = Get-DownloadUrl $Releases
+            $ArchivePath = Join-Path $TempDir "diapason-binary.zip"
+            Download-Binary -Url $DownloadInfo.Url -OutputPath $ArchivePath
+            Verify-Checksum -BinaryPath $ArchivePath -ReleaseTag $DownloadInfo.Tag -ReleaseFilename $DownloadInfo.Filename
+            $ExtractDir = Join-Path $TempDir "extract"
+            New-Item -ItemType Directory -Path $ExtractDir -Force > $null
+            $DownloadedBinary = Extract-Binary -ZipPath $ArchivePath -OutputDir $ExtractDir
+            Install-Binary -Source $DownloadedBinary -Target $TargetPath
+        }
 
         # Check if in PATH
         if (-not (Check-Path $InstallDir)) {
@@ -324,7 +341,7 @@ function Main {
         
         Write-Host ""
         Write-Success "Installation complete!"
-        Write-Info "VT Code is ready to use"
+        Write-Info "Diapason is ready to use"
         Write-Host ""
         
         # Test installation
@@ -337,7 +354,7 @@ function Main {
         }
         
         Write-Host ""
-        Write-Info "To get started, run: vtcode ask 'hello world'"
+        Write-Info "To get started, run: diapason ask 'hello world'"
     }
     finally {
         # Cleanup

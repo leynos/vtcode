@@ -4,17 +4,17 @@
 )]
 use std::collections::HashMap;
 
-use serde_json::Value;
-use vtcode::acp::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};
-use vtcode::acp::reports::{
+use diapason::acp::permissions::{AcpPermissionPrompter, DefaultPermissionPrompter};
+use diapason::acp::reports::{
     TOOL_PERMISSION_ALLOW_ALWAYS_OPTION_ID, TOOL_PERMISSION_ALLOW_OPTION_ID, TOOL_PERMISSION_CANCELLED_MESSAGE,
     TOOL_PERMISSION_DENIED_MESSAGE, TOOL_PERMISSION_DENY_ALWAYS_OPTION_ID, TOOL_PERMISSION_DENY_OPTION_ID,
     TOOL_PERMISSION_REQUEST_FAILURE_MESSAGE,
 };
-use vtcode::acp::tooling::{
+use diapason::acp::tooling::{
     SupportedTool, TOOL_LIST_FILES_MODE_ARG, TOOL_LIST_FILES_PATH_ARG, TOOL_READ_FILE_PATH_ARG, TOOL_READ_FILE_URI_ARG,
     ToolDescriptor, ToolRegistryProvider,
 };
+use serde_json::Value;
 
 // -- Fixtures -----------------------------------------------------------
 
@@ -79,7 +79,7 @@ impl ToolRegistryProvider for FakeRegistry {
         &self,
         _enabled_tools: &[SupportedTool],
         _include_local: bool,
-    ) -> Vec<vtcode_core::llm::provider::ToolDefinition> {
+    ) -> Vec<diapason_core::llm::provider::ToolDefinition> {
         Vec::new()
     }
 

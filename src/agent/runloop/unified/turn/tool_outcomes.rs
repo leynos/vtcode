@@ -5,8 +5,8 @@
 //! - Execution with caching
 //! - Success/failure/timeout/cancelled handling
 
+use diapason_core::config::constants::tools as tool_names;
 use serde_json::Value;
-use vtcode_core::config::constants::tools as tool_names;
 
 mod apply;
 mod dispatch;

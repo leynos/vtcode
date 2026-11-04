@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Organize VT Code skills files and remove emojis
+Organize Diapason skills files and remove emojis
 """
 
 import os
@@ -49,31 +49,31 @@ def organize_file(source_path, dest_path):
 def main():
     """Organize files and remove emojis."""
     
-    base_dir = Path("/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode")
+    base_dir = Path("/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason")
     
     # Define file mappings
     file_mappings = [
         # Documentation files
-        ("vtcode_skills_improvements_proven.md", "docs/skills-enhanced/improvements-proven.md"),
+        ("diapason_skills_improvements_proven.md", "docs/skills-enhanced/improvements-proven.md"),
         ("FINAL_SUMMARY.md", "docs/skills-enhanced/final-summary.md"),
-        ("vtcode_skills_improvement_guide.md", "docs/skills-enhanced/improvement-guide.md"),
+        ("diapason_skills_improvement_guide.md", "docs/skills-enhanced/improvement-guide.md"),
         ("claude_api_skills_tutorial.py", "docs/skills-enhanced/claude-api-tutorial.py"),
         ("claude_api_skills_tutorial_analysis.md", "docs/skills-enhanced/tutorial-analysis.md"),
         ("claude_api_skills_integration.md", "docs/skills-enhanced/api-integration.md"),
         
         # Core implementation
-        ("vtcode_skills_production.py", "src/skills-enhanced/production.py"),
-        ("vtcode_skills_enhanced.py", "src/skills-enhanced/enhanced.py"),
+        ("diapason_skills_production.py", "src/skills-enhanced/production.py"),
+        ("diapason_skills_enhanced.py", "src/skills-enhanced/enhanced.py"),
         
         # Examples
-        ("vtcode_agent_skills_demo.py", "examples/skills/demo.py"),
-        ("vtcode_agent_skills_architecture.md", "examples/skills/architecture-example.md"),
+        ("diapason_agent_skills_demo.py", "examples/skills/demo.py"),
+        ("diapason_agent_skills_architecture.md", "examples/skills/architecture-example.md"),
         
         # Tests
-        ("vtcode_skills_enhanced.py", "tests/skills/test_enhanced.py"),
+        ("diapason_skills_enhanced.py", "tests/skills/test_enhanced.py"),
     ]
     
-    print("Organizing VT Code skills files and removing emojis...")
+    print("Organizing Diapason skills files and removing emojis...")
     print("=" * 60)
     
     processed = 0

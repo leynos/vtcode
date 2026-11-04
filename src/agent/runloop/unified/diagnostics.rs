@@ -1,12 +1,12 @@
 use anyhow::Result;
 
-use vtcode_core::config::LifecycleHooksConfig;
-use vtcode_core::config::ToolPolicy;
-use vtcode_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig};
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::tools::ripgrep_binary::RIPGREP_INSTALL_COMMAND;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::LifecycleHooksConfig;
+use diapason_core::config::ToolPolicy;
+use diapason_core::config::api_keys::{ApiKeySources, get_api_key_with_mode};
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig};
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::tools::ripgrep_binary::RIPGREP_INSTALL_COMMAND;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::async_mcp_manager::{AsyncMcpManager, McpInitStatus};
 use super::workspace_links::LinkedDirectory;
@@ -46,12 +46,12 @@ enum DoctorCheckOutcome {
 pub(crate) async fn run_checkup_diagnostics(
     renderer: &mut AnsiRenderer,
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     provider_name: &str,
     async_mcp_manager: Option<&AsyncMcpManager>,
     linked_directories: &[LinkedDirectory],
     loaded_skills: Option<
-        &std::sync::Arc<tokio::sync::RwLock<hashbrown::HashMap<String, vtcode_core::skills::types::Skill>>>,
+        &std::sync::Arc<tokio::sync::RwLock<hashbrown::HashMap<String, diapason_core::skills::types::Skill>>>,
     >,
     options: CheckupOptions,
 ) -> Result<()> {
@@ -59,7 +59,7 @@ pub(crate) async fn run_checkup_diagnostics(
 
     renderer.line(MessageStyle::Info, "")?;
     renderer.line(MessageStyle::Status, "═══════════════════════════════════════════════════════════════")?;
-    renderer.line(MessageStyle::Status, &format!("VT Code Doctor v{}", env!("CARGO_PKG_VERSION")))?;
+    renderer.line(MessageStyle::Status, &format!("Diapason Doctor v{}", env!("CARGO_PKG_VERSION")))?;
     renderer.line(MessageStyle::Status, "═══════════════════════════════════════════════════════════════")?;
     if options.quick {
         renderer
@@ -76,7 +76,7 @@ pub(crate) async fn run_checkup_diagnostics(
     };
     render_doctor_check(renderer, &mut summary, "Workspace", workspace_result)?;
 
-    let cli_version = format!("VT Code {}", env!("CARGO_PKG_VERSION"));
+    let cli_version = format!("Diapason {}", env!("CARGO_PKG_VERSION"));
     render_doctor_check(renderer, &mut summary, "CLI Version", DoctorCheckOutcome::Pass(cli_version))?;
 
     renderer.line(MessageStyle::Info, "")?;
@@ -87,7 +87,7 @@ pub(crate) async fn run_checkup_diagnostics(
             if let Some(path) = manager.config_path() {
                 DoctorCheckOutcome::Pass(format!("Loaded from {}", path.display()))
             } else {
-                DoctorCheckOutcome::Warn("Using runtime defaults (no vtcode.toml found)".to_string())
+                DoctorCheckOutcome::Warn("Using runtime defaults (no config.toml found)".to_string())
             }
         }
         Err(err) => DoctorCheckOutcome::Fail(err.to_string()),
@@ -351,7 +351,7 @@ pub(crate) async fn run_checkup_diagnostics(
     } else if summary.warnings > 0 {
         renderer.line(MessageStyle::Warning, "[WARN] Core checks passed, but there are warnings to review.")?;
     } else {
-        renderer.line(MessageStyle::Status, "[OK] All checks passed. You are ready to use VT Code.")?;
+        renderer.line(MessageStyle::Status, "[OK] All checks passed. You are ready to use Diapason.")?;
     }
 
     renderer.line(MessageStyle::Info, "")?;
@@ -394,7 +394,7 @@ pub(crate) async fn run_checkup_diagnostics(
 /// with the user before making any change.
 fn render_checkup_optimizations(
     renderer: &mut AnsiRenderer,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     _config: &CoreAgentConfig,
 ) -> Result<()> {
     renderer.line(MessageStyle::Status, "[Optimization Suggestions]")?;
@@ -403,7 +403,7 @@ fn render_checkup_optimizations(
         if !cfg.automation.full_auto.enabled {
             renderer.line(
                 MessageStyle::Info,
-                "[TIP] Auto mode is disabled. Enable [automation.full_auto] in vtcode.toml (or run `vtcode --auto`) to let VT Code run unattended.",
+                "[TIP] Auto mode is disabled. Enable [automation.full_auto] in config.toml (or run `diapason --auto`) to let Diapason run unattended.",
             )?;
         }
 
@@ -430,7 +430,7 @@ fn render_checkup_optimizations(
         Some(ToolPolicy::Allow) | None => {}
     }
 
-    renderer.line(MessageStyle::Info, "[TIP] Run `/update` or `vtcode update` to check for the latest version.")?;
+    renderer.line(MessageStyle::Info, "[TIP] Run `/update` or `diapason update` to check for the latest version.")?;
     renderer.line(
         MessageStyle::Info,
         "[TIP] Remove unused skills/MCPs and deduplicate or split your CLAUDE.md into nested files to save context.",
@@ -491,11 +491,11 @@ fn get_suggestion_for_issue(label: &str, detail: &str) -> Option<String> {
         Some("Ensure workspace directory is accessible and not deleted.".to_string())
     } else if label_lower.contains("api key") {
         Some(
-            "Set the provider API key in your environment or vtcode.toml, then rerun `/checkup` (alias `/doctor`)."
+            "Set the provider API key in your environment or config.toml, then rerun `/checkup` (alias `/doctor`)."
                 .to_string(),
         )
-    } else if label_lower.contains("config file") && detail_lower.contains("no vtcode.toml") {
-        Some("Run `/init` to generate vtcode.toml with guided setup.".to_string())
+    } else if label_lower.contains("config file") && detail_lower.contains("no config.toml") {
+        Some("Run `/init` to generate config.toml with guided setup.".to_string())
     } else if label_lower.contains("node.js") {
         Some("Install Node.js: brew install node (macOS) or see nodejs.org".to_string())
     } else if label_lower == "npm" {
@@ -505,7 +505,7 @@ fn get_suggestion_for_issue(label: &str, detail: &str) -> Option<String> {
             "Run `{RIPGREP_INSTALL_COMMAND}` for guided installation, or install `ripgrep` manually with your package manager."
         ))
     } else if label_lower.contains("mcp") && detail_lower.contains("error") {
-        Some("Check MCP configuration in vtcode.toml, server availability, and timeouts.".to_string())
+        Some("Check MCP configuration in config.toml, server availability, and timeouts.".to_string())
     } else {
         None
     }

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use vtcode_core::tools::registry::{ToolErrorType, ToolExecutionError};
+use diapason_core::tools::registry::{ToolErrorType, ToolExecutionError};
 
 use super::*;
 
@@ -17,14 +17,14 @@ fn fallback_from_error_extracts_command_session_poll() {
 
 #[test]
 fn fallback_from_error_extracts_read_file_for_patch_context_mismatch() {
-    let error = "Tool 'apply_patch' execution failed: failed to locate expected lines in 'crates/common/vtcode-exec-events/src/trace.rs': context mismatch";
+    let error = "Tool 'apply_patch' execution failed: failed to locate expected lines in 'crates/common/diapason-exec-events/src/trace.rs': context mismatch";
     let fallback = fallback_from_error(tool_names::APPLY_PATCH, error, None);
     assert_eq!(
         fallback,
         Some((
             tool_names::READ_FILE.to_string(),
             serde_json::json!({
-                "path": "crates/common/vtcode-exec-events/src/trace.rs",
+                "path": "crates/common/diapason-exec-events/src/trace.rs",
                 "offset": 1,
                 "limit": 120
             }),
@@ -202,7 +202,7 @@ fn maybe_inline_spooled_removes_redundant_fields() {
         tool_names::UNIFIED_EXEC,
         &serde_json::json!({
             "output": "tail",
-            "spool_path": ".vtcode/context/tool_outputs/run-1.txt",
+            "spool_path": ".diapason/context/tool_outputs/run-1.txt",
             "spool_hint": "verbose hint",
             "spooled_bytes": 12345,
             "success": true,
@@ -213,7 +213,7 @@ fn maybe_inline_spooled_removes_redundant_fields() {
             "id": "run-1",
             "session_id": "run-1",
             "process_id": "run-1",
-            "command": "cargo check -p vtcode",
+            "command": "cargo check -p diapason",
             "is_exited": false,
             "working_directory": null,
             "rows": 24,
@@ -269,13 +269,13 @@ fn maybe_inline_spooled_compacts_next_read_duplicates() {
     let serialized = maybe_inline_spooled(
         tool_names::READ_FILE,
         &serde_json::json!({
-            "path": ".vtcode/context/tool_outputs/command_session_1.txt",
-            "spool_path": ".vtcode/context/tool_outputs/command_session_1.txt",
+            "path": ".diapason/context/tool_outputs/command_session_1.txt",
+            "spool_path": ".diapason/context/tool_outputs/command_session_1.txt",
             "has_more": true,
             "next_offset": 81,
             "chunk_limit": 40,
             "next_read_args": {
-                "path": ".vtcode/context/tool_outputs/command_session_1.txt",
+                "path": ".diapason/context/tool_outputs/command_session_1.txt",
                 "offset": 81,
                 "limit": 40
             }
@@ -288,11 +288,11 @@ fn maybe_inline_spooled_compacts_next_read_duplicates() {
     assert!(parsed.get("next_offset").is_none());
     assert!(parsed.get("chunk_limit").is_none());
     assert!(parsed.get("spool_path").is_none());
-    assert_eq!(parsed.get("path"), Some(&serde_json::json!(".vtcode/context/tool_outputs/command_session_1.txt")));
+    assert_eq!(parsed.get("path"), Some(&serde_json::json!(".diapason/context/tool_outputs/command_session_1.txt")));
     assert_eq!(
         parsed.get("next_read_args"),
         Some(&serde_json::json!({
-            "p": ".vtcode/context/tool_outputs/command_session_1.txt",
+            "p": ".diapason/context/tool_outputs/command_session_1.txt",
             "o": 81,
             "l": 40
         }))
@@ -328,9 +328,9 @@ fn maybe_inline_spooled_keeps_loop_recovery_fields() {
         tool_names::READ_FILE,
         &serde_json::json!({
             "loop_detected": true,
-            "spool_path": ".vtcode/context/tool_outputs/command_session_loop.txt",
+            "spool_path": ".diapason/context/tool_outputs/command_session_loop.txt",
             "next_read_args": {
-                "path": ".vtcode/context/tool_outputs/command_session_loop.txt",
+                "path": ".diapason/context/tool_outputs/command_session_loop.txt",
                 "offset": 81,
                 "limit": 40
             },
@@ -348,12 +348,12 @@ fn maybe_inline_spooled_keeps_loop_recovery_fields() {
     assert!(parsed.get("loop_detected").is_none());
     assert_eq!(
         parsed.get("spool_path"),
-        Some(&serde_json::json!(".vtcode/context/tool_outputs/command_session_loop.txt"))
+        Some(&serde_json::json!(".diapason/context/tool_outputs/command_session_loop.txt"))
     );
     assert_eq!(
         parsed.get("next_read_args"),
         Some(&serde_json::json!({
-            "p": ".vtcode/context/tool_outputs/command_session_loop.txt",
+            "p": ".diapason/context/tool_outputs/command_session_loop.txt",
             "o": 81,
             "l": 40
         }))
@@ -379,7 +379,7 @@ fn maybe_inline_spooled_uses_reference_only_for_spooled_exec_output() {
             "output": "preview text",
             "stdout": "preview text",
             "stderr": "warning text",
-            "spool_path": ".vtcode/context/tool_outputs/command_session_1.txt",
+            "spool_path": ".diapason/context/tool_outputs/command_session_1.txt",
             "exit_code": 0,
             "is_exited": true
         }),
@@ -392,7 +392,7 @@ fn maybe_inline_spooled_uses_reference_only_for_spooled_exec_output() {
     assert_eq!(parsed.get("exit_code"), Some(&serde_json::json!(0)));
     assert_eq!(
         parsed.get("spool_path"),
-        Some(&serde_json::json!(".vtcode/context/tool_outputs/command_session_1.txt"))
+        Some(&serde_json::json!(".diapason/context/tool_outputs/command_session_1.txt"))
     );
     assert_eq!(parsed.get("stderr_preview"), Some(&serde_json::json!("warning text")));
     assert_eq!(parsed.get("result_ref_only"), Some(&serde_json::json!(true)));
@@ -406,14 +406,17 @@ fn maybe_inline_spooled_uses_reference_only_for_spooled_code_search_output() {
         &serde_json::json!({
             "query": "Widget",
             "results": [{"result_type":"text","path":"src/lib.rs","line":1,"column":1,"snippet":large_result_payload}],
-            "spool_path": ".vtcode/context/tool_outputs/code_search_1.txt",
+            "spool_path": ".diapason/context/tool_outputs/code_search_1.txt",
             "truncated": true
         }),
     );
 
     let parsed: serde_json::Value = serde_json::from_str(&serialized).expect("serialized JSON payload");
     assert!(parsed.get("results").is_none());
-    assert_eq!(parsed.get("spool_path"), Some(&serde_json::json!(".vtcode/context/tool_outputs/code_search_1.txt")));
+    assert_eq!(
+        parsed.get("spool_path"),
+        Some(&serde_json::json!(".diapason/context/tool_outputs/code_search_1.txt"))
+    );
     assert_eq!(parsed.get("result_ref_only"), Some(&serde_json::json!(true)));
     assert!(
         serialized.len() < 1_000,
@@ -424,7 +427,7 @@ fn maybe_inline_spooled_uses_reference_only_for_spooled_code_search_output() {
 
 #[test]
 fn turn_911_style_exec_inspection_preview_keeps_head_tail_within_budget() {
-    let spool_relative = ".vtcode/context/tool_outputs/command_session_test.txt";
+    let spool_relative = ".diapason/context/tool_outputs/command_session_test.txt";
     let mut content = String::new();
     for idx in 0..40 {
         content.push_str(&format!("./crate/file_{idx}.rs\n"));
@@ -434,7 +437,7 @@ fn turn_911_style_exec_inspection_preview_keeps_head_tail_within_budget() {
         &serde_json::json!({
             "command": "rg --files crate",
             "output": "",
-            "spool_path": ".vtcode/context/tool_outputs/command_session_test.txt",
+            "spool_path": ".diapason/context/tool_outputs/command_session_test.txt",
             "preview": content,
             "exit_code": 0,
             "is_exited": true
@@ -459,7 +462,7 @@ fn turn_911_style_exec_inspection_preview_keeps_head_tail_within_budget() {
 
 #[test]
 fn maybe_inline_spooled_with_preview_uses_tail_focused_preview_for_verification_logs() {
-    let spool_relative = ".vtcode/context/tool_outputs/verification_log.txt";
+    let spool_relative = ".diapason/context/tool_outputs/verification_log.txt";
     let mut content = String::new();
     for idx in 101..=120 {
         content.push_str(&format!("build-line-{idx}\n"));
@@ -468,8 +471,8 @@ fn maybe_inline_spooled_with_preview_uses_tail_focused_preview_for_verification_
         tool_names::EXEC_COMMAND,
         &serde_json::json!({
             "output": "",
-            "command": "cargo nextest run -p vtcode-core",
-            "spool_path": ".vtcode/context/tool_outputs/verification_log.txt",
+            "command": "cargo nextest run -p diapason-core",
+            "spool_path": ".diapason/context/tool_outputs/verification_log.txt",
             "preview": content,
             "exit_code": 101,
             "is_exited": true
@@ -498,8 +501,8 @@ fn maybe_inline_spooled_with_preview_skips_preview_when_spool_missing() {
         tool_names::UNIFIED_EXEC,
         &serde_json::json!({
             "output": "",
-            "command": "cargo check -p vtcode-core",
-            "spool_path": ".vtcode/context/tool_outputs/missing.txt",
+            "command": "cargo check -p diapason-core",
+            "spool_path": ".diapason/context/tool_outputs/missing.txt",
             "exit_code": 0,
             "is_exited": true
         }),
@@ -508,7 +511,7 @@ fn maybe_inline_spooled_with_preview_skips_preview_when_spool_missing() {
     let parsed: serde_json::Value = serde_json::from_str(&serialized).expect("serialized JSON payload");
     assert!(parsed.get("preview").is_none());
     assert_eq!(parsed.get("result_ref_only"), Some(&serde_json::json!(true)));
-    assert_eq!(parsed.get("spool_path"), Some(&serde_json::json!(".vtcode/context/tool_outputs/missing.txt")));
+    assert_eq!(parsed.get("spool_path"), Some(&serde_json::json!(".diapason/context/tool_outputs/missing.txt")));
 }
 
 #[test]
@@ -532,7 +535,7 @@ fn maybe_inline_spooled_with_preview_keeps_spool_reference_when_path_is_invalid(
 
 #[test]
 fn maybe_inline_spooled_with_preview_keeps_preview_and_failure_diagnostics() {
-    let spool_relative = ".vtcode/context/tool_outputs/test_failure.txt";
+    let spool_relative = ".diapason/context/tool_outputs/test_failure.txt";
     let serialized = maybe_inline_spooled_with_preview(
         tool_names::UNIFIED_EXEC,
         &serde_json::json!({
@@ -574,7 +577,7 @@ fn maybe_inline_spooled_drops_terminal_exec_metadata_without_continuation() {
         tool_names::UNIFIED_EXEC,
         &serde_json::json!({
             "output": "ok",
-            "command": "cargo check -p vtcode-core",
+            "command": "cargo check -p diapason-core",
             "session_id": "run-1",
             "process_id": "run-1",
             "working_directory": "/workspace",
@@ -702,7 +705,7 @@ fn tool_output_summary_input_uses_bounded_preview_for_exec_output() {
     let output = serde_json::json!({
         "output": "preview text",
         "stderr_preview": "warning text",
-        "spool_path": ".vtcode/context/tool_outputs/command_session_1.txt",
+        "spool_path": ".diapason/context/tool_outputs/command_session_1.txt",
         "preview": spool_content,
         "exit_code": 0,
         "is_exited": true
@@ -722,7 +725,7 @@ fn tool_output_summary_input_uses_bounded_preview_excerpt_for_large_reads() {
     let spool_content = (1..=200).map(|idx| format!("read-line-{idx}")).collect::<Vec<_>>().join("\n");
     let output = serde_json::json!({
         "path": "src/main.rs",
-        "spool_path": ".vtcode/context/tool_outputs/read_1.txt",
+        "spool_path": ".diapason/context/tool_outputs/read_1.txt",
         "preview": spool_content
     });
     let serialized = serialize_json_for_model(&output);
@@ -737,7 +740,7 @@ fn tool_output_summary_input_uses_bounded_preview_excerpt_for_large_reads() {
 #[test]
 fn tool_output_summary_input_falls_back_to_serialized_output_when_spool_missing() {
     let output = serde_json::json!({
-        "spool_path": ".vtcode/context/tool_outputs/missing.txt",
+        "spool_path": ".diapason/context/tool_outputs/missing.txt",
         "exit_code": 0,
         "is_exited": true
     });
@@ -753,7 +756,7 @@ fn tool_output_summary_input_preserves_utf8_preview() {
     let output = serde_json::json!({
         "output": "preview text",
         "stderr_preview": "warning text",
-        "spool_path": ".vtcode/context/tool_outputs/command_session_invalid.txt",
+        "spool_path": ".diapason/context/tool_outputs/command_session_invalid.txt",
         "preview": "ok\n�\nlast line\n",
         "exit_code": 0,
         "is_exited": true

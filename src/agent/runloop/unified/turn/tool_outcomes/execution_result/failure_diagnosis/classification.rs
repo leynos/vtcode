@@ -1,8 +1,8 @@
 //! Deterministic failure classification and safe fallback guidance.
 
+use diapason_commons::ErrorCategory;
+use diapason_core::tools::registry::ToolExecutionError;
 use serde_json::Value;
-use vtcode_commons::ErrorCategory;
-use vtcode_core::tools::registry::ToolExecutionError;
 
 use super::ToolFailureDiagnosis;
 use super::evidence::bounded_field;

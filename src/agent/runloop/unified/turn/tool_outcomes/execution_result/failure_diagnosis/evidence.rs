@@ -1,7 +1,7 @@
 //! Sanitized, bounded evidence for failure diagnosis.
 
+use diapason_core::tools::registry::ToolExecutionError;
 use serde_json::{Map, Value};
-use vtcode_core::tools::registry::ToolExecutionError;
 
 use super::{DIAGNOSIS_MAX_EVIDENCE_BYTES, DIAGNOSIS_MAX_FIELD_BYTES, DIAGNOSIS_TRUNCATION_MARKER};
 
@@ -18,7 +18,7 @@ pub(super) fn build_output_evidence(tool_name: &str, args: &Value, output: &Valu
     // each value before serialization and retains only the existing in-memory
     // spool preview; it never reopens a spool file.
     let mut bounded_output = sanitize_diagnostic_value(output);
-    if vtcode_core::tools::tool_intent::should_use_spool_reference_only(Some(tool_name), output) {
+    if diapason_core::tools::tool_intent::should_use_spool_reference_only(Some(tool_name), output) {
         apply_spool_reference_only(&mut bounded_output, output);
     }
     build_value_evidence(tool_name, args, &bounded_output)
@@ -68,8 +68,8 @@ fn build_value_evidence(tool_name: &str, args: &Value, result: &Value) -> String
 fn build_evidence_text(tool_name: &str, args: &str, result: &str) -> String {
     let tool_name = bounded_field(tool_name);
     let raw = format!("tool={tool_name}\narguments={args}\nresult={result}");
-    let ansi_free = vtcode_commons::ansi::strip_ansi(&raw);
-    let sanitized = vtcode_commons::sanitizer::sanitize_provider_diagnostic(ansi_free.as_bytes());
+    let ansi_free = diapason_commons::ansi::strip_ansi(&raw);
+    let sanitized = diapason_commons::sanitizer::sanitize_provider_diagnostic(ansi_free.as_bytes());
     bound_text(&sanitized, DIAGNOSIS_MAX_EVIDENCE_BYTES)
 }
 
@@ -212,9 +212,9 @@ fn sanitize_diagnostic_text(value: &str) -> String {
     // Sample before stripping ANSI so a hostile field cannot force a full-size
     // intermediate allocation. Run the sanitizer again after ANSI removal so
     // secrets split by escape sequences are still covered.
-    let sampled = vtcode_commons::sanitizer::sanitize_provider_diagnostic(value.as_bytes());
-    let ansi_free = vtcode_commons::ansi::strip_ansi(&sampled);
-    vtcode_commons::sanitizer::sanitize_provider_diagnostic(ansi_free.as_bytes())
+    let sampled = diapason_commons::sanitizer::sanitize_provider_diagnostic(value.as_bytes());
+    let ansi_free = diapason_commons::ansi::strip_ansi(&sampled);
+    diapason_commons::sanitizer::sanitize_provider_diagnostic(ansi_free.as_bytes())
 }
 
 fn bound_text(value: &str, max_bytes: usize) -> String {

@@ -13,19 +13,19 @@ ______________________________________________________________________
 
 ### [x] 1. ReasoningEffortLevel silently defaults to Medium for unknown values
 
-**File:** `crates/common/vtcode-commons/src/reasoning.rs:103-114` **Impact:**
+**File:** `crates/common/diapason-commons/src/reasoning.rs:103-114` **Impact:**
 User typos in config (e.g., `reasoning_effort = "hig"`) silently become
 `Medium` instead of producing an error. **Fix applied:** Added `Unknown`
 variant to `ReasoningEffortLevel` enum. Changed custom `Deserialize` impl to
 return `Unknown` instead of `default()` for unrecognized values. Updated all 24
-match expressions across vtcode-core, vtcode-llm, vtcode-acp, and src/ crates.
-Updated action plan: `docs/project/code-review-action-plan.md`. **Effort:** 1
-hour **Risk:** Low - follows established pattern in codebase
+match expressions across diapason-core, diapason-llm, diapason-acp, and src/
+crates. Updated action plan: `docs/project/code-review-action-plan.md`.
+**Effort:** 1 hour **Risk:** Low - follows established pattern in codebase
 
 ### [x] 2. MiMoAuthMethod::Unknown silently falls back to PayAsYouGo behavior
 
 **Files:** `src/agent/runloop/unified/session_setup/init.rs`
-(`resolve_provider_label`), `crates/codegen/vtcode-llm/src/providers/mimo.rs`
+(`resolve_provider_label`), `crates/codegen/diapason-llm/src/providers/mimo.rs`
 **Impact:** Invalid `mimo_auth_method` config values (e.g., `"oauth"`) silently
 use PayAsYouGo API key header format, base URL, and model list - wrong behavior
 with no warning. **Fix applied:** `resolve_provider_label` in
@@ -37,7 +37,7 @@ instead of silently treating it as PayAsYouGo. **Effort:** Small (30 minutes)
 
 ### [x] 3. TOCTOU race in pipe session creation
 
-**File:** `crates/codegen/vtcode-core/src/tools/exec_session.rs:163`
+**File:** `crates/codegen/diapason-core/src/tools/exec_session.rs:163`
 **Impact:** Two concurrent calls with the same `session_id` could both pass the
 existence check, both spawn processes, and the second `insert()` silently
 overwrites the first - leaking the spawned process and its background tasks.
@@ -55,13 +55,13 @@ contention is not a practical concern
 
 **Files:**
 
-- `crates/codegen/vtcode-core/src/tools/pty/manager.rs:37`
+- `crates/codegen/diapason-core/src/tools/pty/manager.rs:37`
   (`WORKSPACE_COMMAND_LOCKS`)
-- `crates/codegen/vtcode-core/src/tools/search_runtime.rs:80`
+- `crates/codegen/diapason-core/src/tools/search_runtime.rs:80`
   (`SEARCH_RUNTIME_CACHE`)
-- `crates/codegen/vtcode-core/src/llm/providers/llamacpp.rs:130`
+- `crates/codegen/diapason-core/src/llm/providers/llamacpp.rs:130`
   (`MANAGED_LLAMACPP_SERVERS`)
-- `crates/codegen/vtcode-core/src/llm/providers/local_server.rs:140`
+- `crates/codegen/diapason-core/src/llm/providers/local_server.rs:140`
   (`MANAGED_PROCESSES`)
 
 **Impact:** Long-running sessions accumulate entries without eviction, leaking
@@ -74,11 +74,11 @@ memory. **Fix applied:** Both genuine leak sites are now bounded:
 - `SEARCH_RUNTIME_CACHE` (`search_runtime.rs:75`): replaced unbounded `HashMap`
   with `lru::LruCache` capped at 16 workspaces (`SEARCH_RUNTIME_CACHE_CAP`),
   with poisoned-mutex recovery preserved.
-- `MANAGED_LLAMACPP_SERVERS` (`vtcode-llm/providers/llamacpp/managed.rs:113`):
+- `MANAGED_LLAMACPP_SERVERS` (`diapason-llm/providers/llamacpp/managed.rs:113`):
   keyed by distinct llama.cpp endpoint (`base_url_to_host_root`) - bounded by
   configured endpoints, not by usage; no change needed.
-- `MANAGED_PROCESSES` (`vtcode-llm/providers/local_server.rs:138`): keyed by the
-  `LocalProvider` enum - inherently bounded; no change needed. **Effort:**
+- `MANAGED_PROCESSES` (`diapason-llm/providers/local_server.rs:138`): keyed by
+  the `LocalProvider` enum - inherently bounded; no change needed. **Effort:**
   Medium **Risk:** Low - lifecycle handled via Weak refs / LRU cap
 
 ______________________________________________________________________
@@ -87,8 +87,8 @@ ______________________________________________________________________
 
 ### [x] 5. Duplicate AST_GREP_OVERRIDE statics
 
-**Files:** `crates/codegen/vtcode-core/src/tools/ast_grep_binary.rs`,
-`crates/codegen/vtcode-core/src/tools/editing/patch/semantic.rs` **Impact:**
+**Files:** `crates/codegen/diapason-core/src/tools/ast_grep_binary.rs`,
+`crates/codegen/diapason-core/src/tools/editing/patch/semantic.rs` **Impact:**
 Two independent `Lazy<Mutex<AstGrepBinaryOverride>>` statics manage override
 state independently. Setting a path override in `semantic.rs` does not affect
 `ast_grep_binary.rs` and vice versa, leading to inconsistent behavior. **Fix
@@ -99,7 +99,7 @@ straightforward consolidation
 
 ### [x] 6. TOCTOU in shell cd method
 
-**File:** `crates/codegen/vtcode-core/src/tools/shell.rs:257-266` **Impact:**
+**File:** `crates/codegen/diapason-core/src/tools/shell.rs:257-266` **Impact:**
 Directory could be removed between `target.exists()` check and actual use.
 Results in confusing error message. **Fix applied:** Replaced separate
 `exists()` and `is_dir()` checks with a single `target.metadata()` call, which
@@ -108,8 +108,8 @@ is atomic. Error message now includes "or is not accessible" for clarity.
 
 ### [x] 7. Unbounded VecDeque in memory pool
 
-**File:** `crates/codegen/vtcode-core/src/core/memory_pool.rs:89-93` **Impact:**
-`return_string` uses `pool.capacity()` as limit, but capacity grows
+**File:** `crates/codegen/diapason-core/src/core/memory_pool.rs:89-93`
+**Impact:** `return_string` uses `pool.capacity()` as limit, but capacity grows
 dynamically. Pool can exceed intended max size. **Fix applied:** Replaced
 `String::with_capacity(256)` (which allocates new memory) with
 `s.shrink_to(256)` (which reuses existing allocation). Simplified the control
@@ -118,7 +118,7 @@ minutes **Risk:** Very low
 
 ### [x] 8. Unbounded output accumulation in pipe sessions
 
-**File:** `crates/codegen/vtcode-core/src/tools/exec_session.rs`
+**File:** `crates/codegen/diapason-core/src/tools/exec_session.rs`
 (`PipeOutputBuffer`) **Impact:** Commands producing very large output (e.g.,
 `find / -type f`) cause unbounded memory growth. **Fix applied:** Resolved by
 the bounded head/tail window design (supersedes a configurable max-size cap).
@@ -136,7 +136,7 @@ previews, while the spool file captures the full output. `drain_pending` uses
 
 ### [x] 9. Discarded error in middleware error handler
 
-**File:** `crates/codegen/vtcode-core/src/tools/tool_middleware.rs:93`
+**File:** `crates/codegen/diapason-core/src/tools/tool_middleware.rs:93`
 **Impact:** `let _ = mw.on_error(req, err).await;` silently discards errors
 from middleware error handlers. **Fix applied:** Changed `let _ = ...` to
 `if let Err(handler_err) = ... { tracing::warn!(...) }` so middleware handler
@@ -146,19 +146,19 @@ Very low
 
 ### [x] 10. Spawned task not joined (resource leak on disconnect)
 
-**File:** `crates/codegen/vtcode-llm/src/providers/common.rs`
+**File:** `crates/codegen/diapason-llm/src/providers/common.rs`
 (`spawn_openai_compatible_stream`),
-`crates/codegen/vtcode-llm/src/providers/opencode_shared.rs` **Impact:** If the
-receiver is dropped before the spawned task completes (client disconnect), the
-task continues running for up to 5 minutes, wasting network/memory resources.
-**Fix applied:** Added `TaskAbortGuard` (a `JoinHandle<()>` wrapper that aborts
-on `Drop`) in `common.rs` and moved it into the returned stream. When the
-consumer drops the stream (disconnect), the guard aborts the background task;
-on normal completion the abort is a no-op. Applied to both spawn sites
-(`spawn_openai_compatible_stream` and the OpenCode compat streaming path).
-**Effort:** Medium **Risk:** Medium - task aborts at an arbitrary `await`
-point; safe because the receiver is already gone and all sends are best-effort
-(`let _ =`).
+`crates/codegen/diapason-llm/src/providers/opencode_shared.rs` **Impact:** If
+the receiver is dropped before the spawned task completes (client disconnect),
+the task continues running for up to 5 minutes, wasting network/memory
+resources. **Fix applied:** Added `TaskAbortGuard` (a `JoinHandle<()>` wrapper
+that aborts on `Drop`) in `common.rs` and moved it into the returned stream.
+When the consumer drops the stream (disconnect), the guard aborts the
+background task; on normal completion the abort is a no-op. Applied to both
+spawn sites (`spawn_openai_compatible_stream` and the OpenCode compat streaming
+path). **Effort:** Medium **Risk:** Medium - task aborts at an arbitrary
+`await` point; safe because the receiver is already gone and all sends are
+best-effort (`let _ =`).
 
 ### [x] 11. Mutex `.expect()` inconsistency across codebase
 
@@ -168,9 +168,9 @@ Inconsistent panic behavior - some code recovers from poisoned mutexes, some
 crashes. **Fix applied:** Fixed `.expect()` on mutex in:
 
 - `src/updater/preflight.rs` - changed to `if let Ok()` / `.ok().and_then()`
-- `crates/codegen/vtcode-core/src/tools/ast_grep_binary.rs` - changed to
+- `crates/codegen/diapason-core/src/tools/ast_grep_binary.rs` - changed to
   `if let Ok()` for Drop, `.unwrap_or_else(|e| e.into_inner())` for others
-- `crates/codegen/vtcode-core/src/tools/editing/patch/semantic.rs` - same
+- `crates/codegen/diapason-core/src/tools/editing/patch/semantic.rs` - same
   pattern Remaining `.expect()` calls in other files are in test-only code or
   are acceptable (e.g., regex compilation). **Effort:** 30 minutes **Risk:**
   Very low

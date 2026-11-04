@@ -1,5 +1,5 @@
+use diapason_core::config::constants::tools;
 use serde_json::Value;
-use vtcode_core::config::constants::tools;
 
 use crate::agent::runloop::text_tools::parse_args::normalize_command_string;
 

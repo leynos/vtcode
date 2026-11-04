@@ -4,8 +4,8 @@ use libfuzzer_sys::fuzz_target;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tokio::runtime::{Builder, Runtime};
-use vtcode_commons::canonicalize;
-use vtcode_core::tools::validation::unified_path::validate_and_resolve_path;
+use diapason_commons::canonicalize;
+use diapason_core::tools::validation::unified_path::validate_and_resolve_path;
 
 const MAX_INPUT_BYTES: usize = 1024;
 

@@ -1,14 +1,14 @@
-# VT Code Configuration
+# Diapason Configuration
 
-VT Code configuration gives you fine-grained control over the model, execution
+Diapason configuration gives you fine-grained control over the model, execution
 environment, and integrations available to the CLI. Use this guide alongside
 the workflows in the extension, the participant system, and the tool approval
 mechanisms available in the application.
 
-VT Code uses a configuration file named `vtcode.toml` that can be placed at the
-root of your project workspace to customize behavior. Interactive sessions poll
-the active workspace, project, user, and explicit config layers and apply safe
-changes without restarting.
+Diapason uses a configuration file named `config.toml` that can be placed at
+the root of your project workspace to customize behavior. Interactive sessions
+poll the active workspace, project, user, and explicit config layers and apply
+safe changes without restarting.
 
 ## Quick navigation
 
@@ -33,20 +33,20 @@ changes without restarting.
 - [Reference table](#config-reference)
 - [Generated field reference](./CONFIG_FIELD_REFERENCE.md)
 
-VT Code supports several mechanisms for setting config values:
+Diapason supports several mechanisms for setting config values:
 
-- The canonical platform config directory's `vtcode.toml` (for example,
-  `$XDG_CONFIG_HOME/vtcode/vtcode.toml` on Linux/BSD). See the
-  [user data directories guide](../guides/user-data-directories.md) for all
-  category roots and overrides.
-- The legacy `$VTCODE_HOME/vtcode.toml` file, defaulting to
-  `~/.vtcode/vtcode.toml`, remains a read-compatibility and migration source.
-- The workspace-level `vtcode.toml` file that can be placed at the root of your
-  project (similar to `AGENTS.md` in the OpenAI Codex).
-- Environment variables that can override certain configuration options.
+- The canonical user configuration file, `config.toml`, under
+  `$XDG_CONFIG_HOME/diapason/` (default `~/.config/diapason/` on Linux/BSD).
+  User agent instructions are in `AGENTS.md` in the same directory. See the
+  [user data directories guide](../guides/user-data-directories.md).
+- A workspace-level `config.toml` at the project root, plus project profile
+  files under the configured workspace data directory.
+- An explicit file selected with `--config /path/to/file.toml` or
+  `DIAPASON_CONFIG_PATH`, and inline `--config key=value` overrides.
 
-Both the workspace `vtcode.toml` and the main `vtcode.toml` file support the
-following options:
+Diapason does not read or migrate files from `~/.diapason/` or `.vtcode/`.
+
+Workspace `config.toml` and user `config.toml` support the following options:
 
 ## SessionConfig compatibility
 
@@ -76,14 +76,14 @@ The CLI exposes the same service for non-interactive repair and cleanup:
 
 ```bash
 # Clear the active workspace layer (or the explicit --config file)
-vtcode config reset
+diapason config reset
 
 # Clear the canonical user or current project-profile layer
-vtcode config reset --global
-vtcode config reset --project
+diapason config reset --global
+diapason config reset --project
 
 # Select an explicit workspace-layer file for this invocation
-vtcode --config ./nightly.toml config reset
+diapason --config ./nightly.toml config reset
 ```
 
 `--global` and `--project` are mutually exclusive. The CLI prints the resolved
@@ -99,7 +99,7 @@ provider definitions are applied without restarting. A provider/model identity
 selected for the current session remains stable until a later turn or session
 when changing it would invalidate the active client.
 
-If a watched edit is malformed, inaccessible, or fails validation, VT Code
+If a watched edit is malformed, inaccessible, or fails validation, Diapason
 keeps the last valid configuration and displays a warning. Fixing the file
 causes the next debounced reload to apply it. File creation and deletion are
 also observed, including user/project layers and an explicit `--config` file.
@@ -111,7 +111,7 @@ back to the first available item.
 ## Feature flags
 
 Optional and experimental capabilities are toggled via the `[features]` table in
-`vtcode.toml`. These allow you to customize the behavior of various VT Code
+`config.toml`. These allow you to customize the behavior of various Diapason
 features.
 
 ```toml
@@ -136,7 +136,7 @@ Supported features:
 
 ### agent.provider
 
-The AI provider that VT Code should use.
+The AI provider that Diapason should use.
 
 ```toml
 [agent]
@@ -198,7 +198,7 @@ base_url = "https://api.meta.ai/v1"
 env_key = "META_API_KEY"
 ```
 
-Note this makes it possible to use VT Code with non-default models, so long as
+Note this makes it possible to use Diapason with non-default models, so long as
 they are properly configured with the correct API endpoints and authentication.
 
 Or a third-party provider (using a distinct environment variable for the API
@@ -229,7 +229,7 @@ env_http_headers = { "X-Example-Features" = "EXAMPLE_FEATURES" }
 
 ### Codex app-server sidecar
 
-Use these settings when you want VT Code to launch the official Codex
+Use these settings when you want Diapason to launch the official Codex
 app-server locally.
 
 ```toml
@@ -250,7 +250,7 @@ experimental_features = false
   instead.
 - `experimental_features = false` keeps experimental Codex app-server discovery
   and native `review/start` routing disabled unless you explicitly opt in.
-- If the sidecar command is missing, VT Code disables the Codex runtime path
+- If the sidecar command is missing, Diapason disables the Codex runtime path
   early and falls back to another authenticated provider when available.
 - In the interactive UI you can open this section directly with `/config codex`
   or `/config agent.codex_app_server`.
@@ -258,13 +258,13 @@ experimental_features = false
 You can also enable the experimental Codex behavior for a single run:
 
 ```bash
-vtcode --codex-experimental
+diapason --codex-experimental
 ```
 
 ### custom_providers
 
 Use `custom_providers` for named OpenAI-compatible endpoints that are not one
-of VT Code's built-in providers. Each entry has a stable `name`, a
+of Diapason's built-in providers. Each entry has a stable `name`, a
 human-friendly `display_name`, a `base_url`, an optional `api_key_env`, a
 default `model`, and an optional `context_window` in tokens. When omitted, the
 provider uses the default context window. This describes the provider
@@ -273,7 +273,7 @@ a lower session budget. Secure credentials are scoped by `(name, api_key_env)`;
 they are not shared with another configured endpoint that uses the same API-key
 environment variable.
 
-Custom provider definitions are trusted configuration. VT Code rejects a
+Custom provider definitions are trusted configuration. Diapason rejects a
 non-empty `custom_providers` value when its winning value comes from a
 repository-controlled workspace or project layer, including command-backed
 `auth.command` entries. Put custom providers in the system or user config, or
@@ -309,11 +309,11 @@ Notes:
 - `context_window` declares the provider's capability in tokens and drives the
   context size shown in the UI, compaction thresholds, and preflight token
   checks.
-- `api_format` is a hint to VT Code about how this provider / endpoint expects
+- `api_format` is a hint to Diapason about how this provider / endpoint expects
   model traffic. Accepted values are: `auto`, `openai-chat`,
-  `openai-responses`, and `anthropic-messages`. When omitted VT Code preserves
+  `openai-responses`, and `anthropic-messages`. When omitted Diapason preserves
   legacy behavior and will try to autodetect; an explicit value is honored and
-  VT Code will not silently fallback to a different format.
+  Diapason will not silently fallback to a different format.
 - `request_policy` controls admission and transient retries for this provider.
   The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
   `retry_initial_backoff_ms = 10000`, `retry_max_backoff_ms = 160000`, and
@@ -321,9 +321,9 @@ Notes:
   180 seconds to the first streamed token, 120 seconds between streamed tokens,
   and 600 seconds for the whole generation. Set an individual timeout to `0` to
   disable it; omit `max_in_flight_requests` for unrestricted concurrency.
-- Admission is per provider and per VT Code process. Requests for every model
+- Admission is per provider and per Diapason process. Requests for every model
   routed through one configured provider share its limit, while another
-  provider has its own limit. Separate VT Code processes do not share permits
+  provider has its own limit. Separate Diapason processes do not share permits
   or counters, so use the provider gateway for an installation-wide limit.
 - In ACP sessions, a request waits for an in-process permit for at most
   `queue_timeout_seconds`. Transient failures are retried with bounded backoff;
@@ -353,7 +353,7 @@ For fine-grained overrides you can declare sparse per-model profiles. Profiles
 live in `custom_providers.profiles."<model-id>"` and only modify runtime
 defaults for that specific model identifier. IMPORTANT: profiles do not add or
 enable models in the picker — `model` / `models` remain the allowlist/default.
-A profile only changes how VT Code treats an already-selected model at runtime
+A profile only changes how Diapason treats an already-selected model at runtime
 (capabilities, context window, api_format, sampling values, etc.).
 
 Example per-model profile:
@@ -380,7 +380,7 @@ supports_context_edits = false
 
 Precedence and semantics
 
-When determining a model's runtime shape VT Code applies values in the
+When determining a model's runtime shape Diapason applies values in the
 following order (highest wins):
 
 1. per-model profile (`custom_providers.profiles."<model-id>"`)
@@ -402,7 +402,7 @@ Additional rules:
 - An explicit boolean `false` in any overriding layer is honored and prevents a
   higher-level implicit `true` from taking effect.
 - Omitting `api_format` preserves legacy autodetection behavior; explicitly
-  setting `api_format` to a value instructs VT Code to use this API shape and
+  setting `api_format` to a value instructs Diapason to use this API shape and
   not silently fall back.
 - Profiles do not make a model available in the picker — use `model` or
   `models` to control availability.
@@ -424,8 +424,8 @@ Store a custom provider key with the same explicit identity used by the
 configuration:
 
 ```bash
-vtcode secret add mycorp --key-name MYCORP_API_KEY
-vtcode secret status mycorp --key-name MYCORP_API_KEY
+diapason secret add mycorp --key-name MYCORP_API_KEY
+diapason secret status mycorp --key-name MYCORP_API_KEY
 ```
 
 `api_key_env` defaults to a derived `NAME_API_KEY` value when omitted. Process
@@ -489,7 +489,7 @@ api_key_env = "MY_PROXY_KEY"
 
 ### Provider whitelisting
 
-Use `providers_whitelist` to restrict which providers VT Code may access. This
+Use `providers_whitelist` to restrict which providers Diapason may access. This
 is a governance control for environments where only approved inference
 endpoints should be reachable — for example, a corporate gateway or an
 air-gapped setup.
@@ -534,11 +534,11 @@ top_p = 0.9                # Top-P sampling parameter
 
 ## Instruction Guidance and Persistent Memory
 
-VT Code separates authored guidance from learned persistent memory.
+Diapason separates authored guidance from learned persistent memory.
 
 - Authored guidance automatically includes the canonical user config
-  `AGENTS.md` (and legacy `~/.vtcode/AGENTS.md`), project `AGENTS.md`, project
-  `.vtcode/rules/`, and any `agent.instruction_files` entries you configure.
+  `$XDG_CONFIG_HOME/diapason/AGENTS.md`, project `AGENTS.md`, project
+  `.diapason/rules/`, and any `agent.instruction_files` entries you configure.
   The full content of these files is inlined into the prompt up to
   `agent.instruction_max_bytes` (default 16384); files that exceed the budget
   are truncated with a notice in the prompt.
@@ -547,35 +547,34 @@ VT Code separates authored guidance from learned persistent memory.
 
 ### Instruction discovery controls
 
-Use these fields to control how VT Code discovers and expands guidance files:
+Use these fields to control how Diapason discovers and expands guidance files:
 
 ```toml
 [agent]
 instruction_files = ["docs/runbooks/**/*.md"]
-instruction_excludes = ["**/other-team/.vtcode/rules/**"]
+instruction_excludes = ["**/other-team/.diapason/rules/**"]
 instruction_import_max_depth = 5
 ```
 
 - `instruction_files` adds explicit files or globs to the authored-guidance
   bundle.
-- `instruction_excludes` removes matching `AGENTS.md` or `.vtcode/rules/` files
-  from discovery.
+- `instruction_excludes` removes matching `AGENTS.md` or `.diapason/rules/`
+  files from discovery.
 - `instruction_import_max_depth` limits recursive `@path` imports inside
   guidance files.
 
-Workspace rules live under project `.vtcode/rules/`. Rules without frontmatter
-are always loaded. Rules with YAML `paths` frontmatter are loaded only when the
-current instruction context matches those paths.
+Workspace rules live under project `.diapason/rules/`. Rules without
+frontmatter are always loaded. Rules with YAML `paths` frontmatter are loaded
+only when the current instruction context matches those paths.
 
 ### Persistent memory controls
 
 Persistent memory uses `memory_summary.md` as the source for a compact startup
 summary and stores the durable registry under the repository memory directory.
 
-By default, that directory is the user state directory's
-`projects/<project>/memory/` path. VT Code also migrates older per-repository
-memory directories from the legacy `VTCODE_HOME` root into the canonical state
-directory when it resolves repository memory.
+By default, that directory is below the user state directory at
+`$XDG_STATE_HOME/diapason/projects/<project>/memory/`. Diapason does not read
+or migrate `.vtcode/` directories.
 
 ```toml
 [agent.persistent_memory]
@@ -590,9 +589,9 @@ use_for_memory = true
 
 - `agent.persistent_memory.enabled` turns per-repository persistent memory on
   or off. It defaults to `false`.
-- `agent.persistent_memory.auto_write` controls whether VT Code stages and
+- `agent.persistent_memory.auto_write` controls whether Diapason stages and
   consolidates rollout summaries at session finalization.
-- `startup_line_limit` and `startup_byte_limit` cap the scan VT Code uses to
+- `startup_line_limit` and `startup_byte_limit` cap the scan Diapason uses to
   build the compact startup summary from `memory_summary.md`.
 - `agent.small_model.use_for_memory` enables lightweight-model routing for
   memory planning, classification, cleanup, and summary refresh.
@@ -601,7 +600,7 @@ use_for_memory = true
 > `/settings` model-config view — those surfaces only edit the main model
 > (`agent.provider` + `agent.default_model`). The lightweight route is
 > auto-selected from the main model's provider, or you can set
-> `[agent.small_model]` directly in `vtcode.toml`.
+> `[agent.small_model]` directly in `config.toml`.
 
 Memory mutation is LLM-assisted only:
 
@@ -609,12 +608,12 @@ Memory mutation is LLM-assisted only:
   planner response
 - session-finalization memory writes use the same LLM-assisted normalization
   path
-- VT Code blocks the mutation instead of falling back to a plain or
+- Diapason blocks the mutation instead of falling back to a plain or
   heuristic-only write when the memory LLM route is unavailable
 
 `agent.persistent_memory.directory_override` is supported, but it may only be
 set from system, user, or project-profile config layers. A workspace-root
-`vtcode.toml` cannot redirect memory storage.
+`config.toml` cannot redirect memory storage.
 
 ### Interactive controls
 
@@ -630,10 +629,10 @@ You can manage this feature without editing TOML directly:
 
 ### OpenAI hosted shell skills
 
-For native OpenAI Responses models, VT Code can replace the local `shell` tool
+For native OpenAI Responses models, Diapason can replace the local `shell` tool
 with OpenAI's hosted shell environment and mount hosted skills into that
-environment. This path is separate from VT Code's local `SKILL.md` discovery
-system: VT Code does not upload or manage hosted skills for you in this
+environment. This path is separate from Diapason's local `SKILL.md` discovery
+system: Diapason does not upload or manage hosted skills for you in this
 workflow.
 
 Use a pre-registered hosted skill by ID:
@@ -706,7 +705,7 @@ preferred_editor = ""
 suspend_tui = true
 ```
 
-For real file opens, VT Code launches GUI editors immediately and returns to
+For real file opens, Diapason launches GUI editors immediately and returns to
 the session without waiting, including when an agent turn is active. Transcript
 and modal file links use an out-of-band bounded request queue; they do not
 submit `/edit` input. VS Code reuses the current window when supported and
@@ -714,9 +713,9 @@ preserves line/column targets. Duplicate pending requests for the same target
 are coalesced.
 
 If the selected editor is terminal-based (for example `vim`/`nvim`) and
-`suspend_tui = true`, VT Code suspends the TUI and waits for the editor to
+`suspend_tui = true`, Diapason suspends the TUI and waits for the editor to
 close through the serialized terminal-editor path. Temporary-file `/edit` flows
-still wait so VT Code can read edited content back into the composer.
+still wait so Diapason can read edited content back into the composer.
 
 ### Interactive controls
 
@@ -732,7 +731,7 @@ For full editor detection, launcher behavior, and examples, see
 
 ## Fullscreen interaction
 
-When VT Code is using alternate-screen rendering, you can tune
+When Diapason is using alternate-screen rendering, you can tune
 fullscreen-specific mouse and transcript behavior with the `ui.fullscreen`
 table.
 
@@ -743,20 +742,21 @@ copy_on_select = true
 scroll_speed = 3
 ```
 
-- `mouse_capture` keeps mouse events inside VT Code for click-to-expand,
+- `mouse_capture` keeps mouse events inside Diapason for click-to-expand,
   click-to-position, link activation, and wheel scrolling. Set it to `false`
   when you want the terminal's native text selection while keeping fullscreen
   rendering.
-- `copy_on_select` controls whether text selected inside VT Code is copied
+- `copy_on_select` controls whether text selected inside Diapason is copied
   automatically on mouse release.
 - `scroll_speed` multiplies mouse-wheel scrolling from `1` to `20`. It only
   affects wheel accumulation; page-based keyboard navigation is unchanged.
 
-VT Code also honors these environment variables for default fullscreen behavior:
+Diapason also honors these environment variables for default fullscreen
+behavior:
 
-- `VTCODE_FULLSCREEN_MOUSE_CAPTURE=0|1`
-- `VTCODE_FULLSCREEN_COPY_ON_SELECT=0|1`
-- `VTCODE_FULLSCREEN_SCROLL_SPEED=<1-20>`
+- `DIAPASON_FULLSCREEN_MOUSE_CAPTURE=0|1`
+- `DIAPASON_FULLSCREEN_COPY_ON_SELECT=0|1`
+- `DIAPASON_FULLSCREEN_SCROLL_SPEED=<1-20>`
 
 Transcript Review uses the same fullscreen rendering surface:
 
@@ -804,17 +804,17 @@ For the full shortcut list and tmux notes, see
 
 ### workspace.settings
 
-Controls various workspace-specific settings for VT Code execution.
+Controls various workspace-specific settings for Diapason execution.
 
 > **Note:** The `[workspace]` section is now implemented. When
 > `use_root_config = true`,
-> only the workspace root `vtcode.toml` is used as the active config layer;
+> only the workspace root `config.toml` is used as the active config layer;
 > system,
 > user, project, and dot-dir layers are discarded.
 
 ```toml
 [workspace]
-# When true, force workspace root vtcode.toml as the sole active config layer
+# When true, force workspace root config.toml as the sole active config layer
 # (system, user, project, and dot-dir layers are discarded)
 use_root_config = true
 
@@ -865,7 +865,7 @@ later wait can observe the completed spool.
 
 ## Context compaction and session history
 
-VT Code has two compaction paths:
+Diapason has two compaction paths:
 
 - provider-native compaction for providers that support Responses/API-managed
   compaction
@@ -873,7 +873,7 @@ VT Code has two compaction paths:
 
 Local fallback compaction preserves a continuity tail of approximately 20,000
 estimated tokens. The tail is made of complete user/assistant/tool protocol
-groups; an incomplete trailing tool call is dropped. VT Code summarizes only
+groups; an incomplete trailing tool call is dropped. Diapason summarizes only
 the older history prefix and rebuilds the preserved history as:
 
 1. one structured summary message
@@ -909,10 +909,10 @@ Notes:
   post-tool recovery compaction used to recover from a provider failure after
   tool output.
 - `agent.harness.auto_compaction_threshold_tokens` applies to both
-  provider-native compaction and VT Code's local fallback compaction. It
+  provider-native compaction and Diapason's local fallback compaction. It
   remains authoritative when set, but never exceeds the provider's hard context
   capacity.
-- When the harness threshold is unset, VT Code derives the effective hard
+- When the harness threshold is unset, Diapason derives the effective hard
   threshold from `min(provider_context_size, context.max_context_tokens)` and
   applies the 90% trigger ratio. The default 160,000-token session budget
   therefore triggers at approximately 144,000 tokens for providers with larger
@@ -920,14 +920,14 @@ Notes:
 - `context.max_context_tokens = 0` preserves provider-only threshold resolution
   for compatibility; a known provider capacity is still a hard upper bound.
 - `context.dynamic.enabled = true` and `context.dynamic.persist_history = true`
-  let VT Code persist compaction artifacts and the session memory envelope for
+  let Diapason persist compaction artifacts and the session memory envelope for
   summarization and working-memory recovery. These artifacts are distinct from
   the durable session archive used for ACP resume; see
   [ACP storage boundaries](../guides/zed-acp.md#storage-boundaries).
 - `context.dynamic.retained_user_messages` controls how many recent real user
-  messages VT Code preserves verbatim on the local fallback compaction path and
-  in summarized forks. The default is `4`.
-- The session memory envelope is VT Code's durable working-memory artifact. It
+  messages Diapason preserves verbatim on the local fallback compaction path
+  and in summarized forks. The default is `4`.
+- The session memory envelope is Diapason's durable working-memory artifact. It
   is refreshed at turn boundaries and after completed child-agent results, then
   persisted beside history artifacts as `.memory.json`.
 - A soft compaction threshold at 90% of the effective hard threshold defers
@@ -958,9 +958,9 @@ discovery and cross-process resume. These settings do not control
 
 ### mcp
 
-You can configure VT Code to use
+You can configure Diapason to use
 [Model Context Protocol (MCP) servers](https://modelcontextprotocol.io/) to
-give VT Code access to external applications, resources, or services.
+give Diapason access to external applications, resources, or services.
 
 #### Server configuration
 
@@ -1007,8 +1007,8 @@ Each MCP provider supports these options:
 WebMCP is a first-class, opt-in bridge for a browser editor. It is not an MCP
 provider and does not reuse `[mcp]` settings. The browser receives no direct
 filesystem capability: it sends digest-checked proposals over an
-origin-validated WebSocket, while VT Code or the headless full-auto policy
-remains the mutation authority. The bridge is shipped in the main `vtcode`
+origin-validated WebSocket, while Diapason or the headless full-auto policy
+remains the mutation authority. The bridge is shipped in the main `diapason`
 binary; the repository's Vite project is the WebMCP browser app.
 
 ```toml
@@ -1026,7 +1026,7 @@ max_in_flight_requests = 8
 enabled = false
 public_url = "https://mcp.example.com/sse/"
 authorization_server = "https://login.example.com"
-proxy_token_env = "VTCODE_WEBMCP_MCP_PROXY_TOKEN"
+proxy_token_env = "DIAPASON_WEBMCP_MCP_PROXY_TOKEN"
 allowed_origins = []
 max_results = 20
 max_scan_files = 256
@@ -1055,7 +1055,7 @@ threat model.
 
 ### security
 
-The security section defines how VT Code handles potentially dangerous
+The security section defines how Diapason handles potentially dangerous
 operations:
 
 ```toml
@@ -1090,7 +1090,7 @@ custom_tool_example = "deny"
 
 ### automation
 
-Control automation behavior in VT Code:
+Control automation behavior in Diapason:
 
 ```toml
 [automation]
@@ -1107,18 +1107,18 @@ allowed_tools = ["exec_command", "write_stdin", "apply_patch"]
 enabled = false
 ```
 
-`automation.scheduled_tasks.enabled` controls VT Code's internal scheduler
+`automation.scheduled_tasks.enabled` controls Diapason's internal scheduler
 surfaces:
 
 - one-shot reminder interception such as `remind me at 3pm to ...`
 - scheduler tool `cron` (actions: `create`, `list`, `delete`; legacy names
   `cron_create`, `cron_list`, `cron_delete` still route to it)
-- durable `vtcode schedule ...` commands and the local scheduler daemon
+- durable `diapason schedule ...` commands and the local scheduler daemon
 
-This subsystem is opt-in. Set it to `true` when you want VT Code scheduling
+This subsystem is opt-in. Set it to `true` when you want Diapason scheduling
 enabled.
 
-Set `VTCODE_DISABLE_CRON=1` to disable the scheduler entirely, regardless of
+Set `DIAPASON_DISABLE_CRON=1` to disable the scheduler entirely, regardless of
 config.
 
 ## Participant system
@@ -1188,10 +1188,10 @@ include_diff = false
 ### profiles
 
 A _profile_ is a collection of configuration values that can be set together.
-Multiple profiles can be defined in `vtcode.toml` and you can specify the one
+Multiple profiles can be defined in `config.toml` and you can specify the one
 you want to use depending on the project type or your current task.
 
-Here is an example of a `vtcode.toml` that defines multiple profiles:
+Here is an example of a `config.toml` that defines multiple profiles:
 
 ```toml
 # Default settings
@@ -1245,17 +1245,15 @@ Users can specify config values at multiple levels. Values are merged from
 lowest to highest precedence as follows:
 
 1. Built-in defaults
-2. System-level `/etc/vtcode/vtcode.toml` and `XDG_CONFIG_DIRS` candidates
-   (Unix)
-3. Legacy user-level `$VTCODE_HOME/vtcode.toml` (default
-   `~/.vtcode/vtcode.toml`)
-4. Canonical user-level config-directory `vtcode.toml`
-5. Project profile `.vtcode/projects/<project>/config/vtcode.toml`
-6. Workspace fallback `.vtcode/vtcode.toml`
-7. Workspace root `vtcode.toml`
-8. Explicit config file (`VTCODE_CONFIG_PATH` or `--config path/to/file.toml`),
-   retaining the global layers
-9. Runtime overrides (`-c/--config key=value`) and explicit runtime flags
+2. System-level `XDG_CONFIG_DIRS` candidates (Unix)
+3. Canonical user-level `$XDG_CONFIG_HOME/diapason/config.toml` (default
+   `~/.config/diapason/config.toml`)
+4. Project profile `.diapason/projects/<project>/config/config.toml`
+5. Workspace fallback `.diapason/config.toml`
+6. Workspace root `config.toml`
+7. Explicit config file (`DIAPASON_CONFIG_PATH` or
+   `--config path/to/file.toml`), retaining the global layers
+8. Runtime overrides (`-c/--config key=value`) and explicit runtime flags
 
 Merge semantics are layered: tables merge recursively, while scalar and array
 values are replaced by higher-precedence layers.
@@ -1286,7 +1284,7 @@ default_participants = ["@workspace", "@code", "@terminal", "@git"]
 
 ### telemetry
 
-VT Code can emit telemetry data about usage and performance:
+Diapason can emit telemetry data about usage and performance:
 
 ```toml
 [telemetry]
@@ -1306,7 +1304,7 @@ level = "minimal"
 
 ### logging
 
-Configure logging behavior in VT Code:
+Configure logging behavior in Diapason:
 
 ```toml
 [logging]
@@ -1353,7 +1351,7 @@ OLLAMA_HOST=http://localhost:11434  # For Ollama
 
 ### auth.settings
 
-Authentication settings for VT Code:
+Authentication settings for Diapason:
 
 ```toml
 [auth]
@@ -1371,7 +1369,7 @@ timeout = 30  # seconds
 
 ### ide_context
 
-VT Code can ingest active-editor context from supported IDE families through a
+Diapason can ingest active-editor context from supported IDE families through a
 shared file bridge:
 
 ```toml
@@ -1399,7 +1397,7 @@ enabled = true
 - `provider_mode` can force one family: `auto`, `vscode_compatible`, `zed`, or
   `generic`.
 - `generic` is the stable bridge for JetBrains and other external adapters that
-  write a canonical JSON snapshot and set `VT_IDE_CONTEXT_FILE`.
+  write a canonical JSON snapshot and set `DIAPASON_IDE_CONTEXT_FILE`.
 
 For the generic file contract and example payload, see
 [`docs/ide/editor-context-bridge.md`](../ide/editor-context-bridge.md).
@@ -1408,21 +1406,21 @@ For the generic file contract and example payload, see
 
 ### VS Code Commands for Configuration
 
-VT Code VS Code extension provides several commands to help manage
+Diapason VS Code extension provides several commands to help manage
 configuration:
 
-- `VT Code: Open Configuration` - Opens the workspace `vtcode.toml` file if it
+- `Diapason: Open Configuration` - Opens the workspace `config.toml` file if it
   exists
-- `VT Code: Toggle Human-in-the-Loop` - Quickly toggle the human_in_the_loop
+- `Diapason: Toggle Human-in-the-Loop` - Quickly toggle the human_in_the_loop
   setting
-- `VT Code: Configure MCP Providers` - Helper command to manage MCP provider
+- `Diapason: Configure MCP Providers` - Helper command to manage MCP provider
   settings
-- `VT Code: Open Tools Policy Configuration` - Opens the tools policy section
+- `Diapason: Open Tools Policy Configuration` - Opens the tools policy section
   of the config
 
 ### Command System Integration
 
-The VT Code extension uses a command system that can be configured through the
+The Diapason extension uses a command system that can be configured through the
 settings:
 
 ```toml
@@ -1440,7 +1438,7 @@ command_timeout = 300
 
 ### Workspace Trust
 
-VT Code follows VS Code's workspace trust model. Some features are only
+Diapason follows VS Code's workspace trust model. Some features are only
 available in trusted workspaces:
 
 ```toml
@@ -1449,20 +1447,20 @@ available in trusted workspaces:
 trusted_workspace_mode = true
 ```
 
-In untrusted workspaces, VT Code limits CLI automation capabilities to protect
+In untrusted workspaces, Diapason limits CLI automation capabilities to protect
 your system.
 
 ## Configuration Validation and Troubleshooting
 
 ### Validation
 
-VT Code validates the configuration file on load. You can check for
+Diapason validates the configuration file on load. You can check for
 configuration errors by:
 
-1. Looking at the VT Code output channel in VS Code
-2. Using the `VT Code: Open Configuration` command which will highlight any
+1. Looking at the Diapason output channel in VS Code
+2. Using the `Diapason: Open Configuration` command which will highlight any
    parsing errors
-3. Running `vtcode check-config` from the command line if you have the CLI
+3. Running `diapason check-config` from the command line if you have the CLI
    installed
 
 Common configuration errors include:
@@ -1473,7 +1471,7 @@ Common configuration errors include:
 
 ### Troubleshooting
 
-If VT Code is not behaving as expected with your configuration:
+If Diapason is not behaving as expected with your configuration:
 
 1. First, verify the configuration file parses correctly:
 
@@ -1502,60 +1500,60 @@ If VT Code is not behaving as expected with your configuration:
 
 ## Config reference
 
-For complete field coverage generated from the live `vtcode-config` schema, use
-[`docs/config/CONFIG_FIELD_REFERENCE.md`](./CONFIG_FIELD_REFERENCE.md).
+For complete field coverage generated from the live `diapason-config` schema,
+use [`docs/config/CONFIG_FIELD_REFERENCE.md`](./CONFIG_FIELD_REFERENCE.md).
 
 For harness behavior, read `agent.harness`, `automation.full_auto`, and
 `context.dynamic` together: they jointly define continuation, turn limits, and
 context reuse for long-running exec sessions.
 
-| Key                                     | Type / Values                                                          | Notes                                                                                                                                                                                               |
-| --------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent.provider`                        | string                                                                 | Provider to use (e.g., `openai`, `anthropic`, `google`, `meta`, `nvidia`, `merge-gateway`, `ollama`).                                                                                               |
-| `agent.default_model`                   | string                                                                 | Default model for the selected provider.                                                                                                                                                            |
-| `agent.context_window`                  | number                                                                 | Context window tokens.                                                                                                                                                                              |
-| `agent.max_output_tokens`               | number                                                                 | Max output tokens.                                                                                                                                                                                  |
-| `agent.temperature`                     | number                                                                 | Model temperature (0.0-2.0).                                                                                                                                                                        |
-| `agent.top_p`                           | number                                                                 | Top-P sampling parameter (0.0-1.0).                                                                                                                                                                 |
-| `context.semantic_compression`          | boolean                                                                | Enable structural-aware context compression (default: false).                                                                                                                                       |
-| `context.tool_aware_retention`          | boolean                                                                | Extend retention for recent tool outputs (default: false).                                                                                                                                          |
-| `context.max_structural_depth`          | number                                                                 | AST depth preserved when semantic compression is enabled (default: 3).                                                                                                                              |
-| `context.preserve_recent_tools`         | number                                                                 | Recent tool outputs to preserve when retention is enabled (default: 5).                                                                                                                             |
-| `security.human_in_the_loop`            | boolean                                                                | Enable tool approval prompts (default: true).                                                                                                                                                       |
-| `security.default_tool_policy`          | `ask` \| `allow` \| `deny`                                             | Default tool execution policy.                                                                                                                                                                      |
-| `tools.policies.*`                      | `ask` \| `allow` \| `deny`                                             | Policies for specific tools.                                                                                                                                                                        |
-| `mcp.enabled`                           | boolean                                                                | Enable MCP integration (default: false).                                                                                                                                                            |
-| `mcp.providers[].name`                  | string                                                                 | MCP provider name.                                                                                                                                                                                  |
-| `mcp.providers[].command`               | string                                                                 | MCP provider command to execute.                                                                                                                                                                    |
-| `mcp.providers[].args`                  | array                                                                  | Arguments for the MCP command.                                                                                                                                                                      |
-| `mcp.providers[].enabled`               | boolean                                                                | Whether the provider is enabled.                                                                                                                                                                    |
-| `participants.enabled`                  | boolean                                                                | Enable participant system (default: true).                                                                                                                                                          |
-| `participants.default_participants`     | array                                                                  | Default participants to include.                                                                                                                                                                    |
-| `participants.timeout`                  | number                                                                 | Timeout for participant context (seconds).                                                                                                                                                          |
-| `automation.full_auto.enabled`          | boolean                                                                | Enable full automation.                                                                                                                                                                             |
-| `automation.full_auto.allowed_tools`    | array                                                                  | Tools allowed during full automation.                                                                                                                                                               |
-| `automation.full_auto.max_turns`        | integer                                                                | Upper bound for autonomous turns before exec pauses.                                                                                                                                                |
-| `automation.scheduled_tasks.enabled`    | boolean                                                                | Enable VT Code's internal scheduler for reminders, cron tools, and `vtcode schedule`. Can still be force-disabled with `VTCODE_DISABLE_CRON=1`.                                                     |
-| `agent.harness.continuation_policy`     | `off` \| `exec_only` \| `all`                                          | Controls when the harness may auto-continue after a completion attempt. Default: `all` in interactive and exec sessions; use `exec_only` to keep interactive sessions manual.                       |
-| `agent.harness.event_log_path`          | string \| null                                                         | Optional compatibility/export JSONL sink for harness events. Canonical events always live at `<workspace>/.vtcode/sessions/<session_id>/events.jsonl`; unset does not create a global harness file. |
-| `sandbox.default_policy`                | `read_only` \| `workspace_write` \| `danger_full_access` \| `external` | Default sandbox policy.                                                                                                                                                                             |
-| `workspace.use_root_config`             | boolean                                                                | When true, force workspace root vtcode.toml as the sole active config layer (system, user, project, and dot-dir layers discarded).                                                                  |
-| `workspace.include_context`             | boolean                                                                | Include workspace context.                                                                                                                                                                          |
-| `workspace.max_context_size`            | number                                                                 | Max size of workspace context (bytes).                                                                                                                                                              |
-| `execution.tool_timeout`                | number                                                                 | Timeout for tool executions (seconds).                                                                                                                                                              |
-| `execution.api_timeout`                 | number                                                                 | Timeout for API calls (seconds).                                                                                                                                                                    |
-| `telemetry.enabled`                     | boolean                                                                | Enable telemetry (default: false).                                                                                                                                                                  |
-| `telemetry.analytics`                   | boolean                                                                | Enable usage analytics.                                                                                                                                                                             |
-| `logging.enabled`                       | boolean                                                                | Enable detailed logging.                                                                                                                                                                            |
-| `logging.level`                         | `error` \| `warn` \| `info` \| `debug` \| `trace`                      | Log level.                                                                                                                                                                                          |
-| `auth.secure_storage`                   | boolean                                                                | Store credentials securely (default: true).                                                                                                                                                         |
-| `auth.validate_keys`                    | boolean                                                                | Validate API keys on startup.                                                                                                                                                                       |
-| `commands.ask_agent_enabled`            | boolean                                                                | Enable the ask agent command.                                                                                                                                                                       |
-| `commands.analyze_enabled`              | boolean                                                                | Enable the analyze command.                                                                                                                                                                         |
-| `commands.command_timeout`              | number                                                                 | Command execution timeout (seconds).                                                                                                                                                                |
-| `profiles.*.agent.provider`             | string                                                                 | Provider override for a profile.                                                                                                                                                                    |
-| `profiles.*.security.human_in_the_loop` | boolean                                                                | Security setting override for a profile.                                                                                                                                                            |
-| `profiles.*.tools.policies.*`           | `ask` \| `allow` \| `deny`                                             | Tool policy override for a profile.                                                                                                                                                                 |
-| `providers.<name>.models`               | array                                                                  | Additional model identifiers to add to a built-in provider's model picker.                                                                                                                          |
-| `providers.<name>.base_url`             | string                                                                 | Override the provider's default API endpoint.                                                                                                                                                       |
-| `providers.<name>.api_key_env`          | string                                                                 | Override the provider's default API key environment variable.                                                                                                                                       |
+| Key                                     | Type / Values                                                          | Notes                                                                                                                                                                                                               |
+| --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent.provider`                        | string                                                                 | Provider to use (e.g., `openai`, `anthropic`, `google`, `meta`, `nvidia`, `merge-gateway`, `ollama`).                                                                                                               |
+| `agent.default_model`                   | string                                                                 | Default model for the selected provider.                                                                                                                                                                            |
+| `agent.context_window`                  | number                                                                 | Context window tokens.                                                                                                                                                                                              |
+| `agent.max_output_tokens`               | number                                                                 | Max output tokens.                                                                                                                                                                                                  |
+| `agent.temperature`                     | number                                                                 | Model temperature (0.0-2.0).                                                                                                                                                                                        |
+| `agent.top_p`                           | number                                                                 | Top-P sampling parameter (0.0-1.0).                                                                                                                                                                                 |
+| `context.semantic_compression`          | boolean                                                                | Enable structural-aware context compression (default: false).                                                                                                                                                       |
+| `context.tool_aware_retention`          | boolean                                                                | Extend retention for recent tool outputs (default: false).                                                                                                                                                          |
+| `context.max_structural_depth`          | number                                                                 | AST depth preserved when semantic compression is enabled (default: 3).                                                                                                                                              |
+| `context.preserve_recent_tools`         | number                                                                 | Recent tool outputs to preserve when retention is enabled (default: 5).                                                                                                                                             |
+| `security.human_in_the_loop`            | boolean                                                                | Enable tool approval prompts (default: true).                                                                                                                                                                       |
+| `security.default_tool_policy`          | `ask` \| `allow` \| `deny`                                             | Default tool execution policy.                                                                                                                                                                                      |
+| `tools.policies.*`                      | `ask` \| `allow` \| `deny`                                             | Policies for specific tools.                                                                                                                                                                                        |
+| `mcp.enabled`                           | boolean                                                                | Enable MCP integration (default: false).                                                                                                                                                                            |
+| `mcp.providers[].name`                  | string                                                                 | MCP provider name.                                                                                                                                                                                                  |
+| `mcp.providers[].command`               | string                                                                 | MCP provider command to execute.                                                                                                                                                                                    |
+| `mcp.providers[].args`                  | array                                                                  | Arguments for the MCP command.                                                                                                                                                                                      |
+| `mcp.providers[].enabled`               | boolean                                                                | Whether the provider is enabled.                                                                                                                                                                                    |
+| `participants.enabled`                  | boolean                                                                | Enable participant system (default: true).                                                                                                                                                                          |
+| `participants.default_participants`     | array                                                                  | Default participants to include.                                                                                                                                                                                    |
+| `participants.timeout`                  | number                                                                 | Timeout for participant context (seconds).                                                                                                                                                                          |
+| `automation.full_auto.enabled`          | boolean                                                                | Enable full automation.                                                                                                                                                                                             |
+| `automation.full_auto.allowed_tools`    | array                                                                  | Tools allowed during full automation.                                                                                                                                                                               |
+| `automation.full_auto.max_turns`        | integer                                                                | Upper bound for autonomous turns before exec pauses.                                                                                                                                                                |
+| `automation.scheduled_tasks.enabled`    | boolean                                                                | Enable Diapason's internal scheduler for reminders, cron tools, and `diapason schedule`. Can still be force-disabled with `DIAPASON_DISABLE_CRON=1`.                                                                |
+| `agent.harness.continuation_policy`     | `off` \| `exec_only` \| `all`                                          | Controls when the harness may auto-continue after a completion attempt. Default: `all` in interactive and exec sessions; use `exec_only` to keep interactive sessions manual.                                       |
+| `agent.harness.event_log_path`          | string \| null                                                         | Optional compatibility/export JSONL sink for harness events. Canonical events always live at `<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`; unset does not create a global harness file. |
+| `sandbox.default_policy`                | `read_only` \| `workspace_write` \| `danger_full_access` \| `external` | Default sandbox policy.                                                                                                                                                                                             |
+| `workspace.use_root_config`             | boolean                                                                | When true, force workspace root config.toml as the sole active config layer (system, user, project, and dot-dir layers discarded).                                                                                  |
+| `workspace.include_context`             | boolean                                                                | Include workspace context.                                                                                                                                                                                          |
+| `workspace.max_context_size`            | number                                                                 | Max size of workspace context (bytes).                                                                                                                                                                              |
+| `execution.tool_timeout`                | number                                                                 | Timeout for tool executions (seconds).                                                                                                                                                                              |
+| `execution.api_timeout`                 | number                                                                 | Timeout for API calls (seconds).                                                                                                                                                                                    |
+| `telemetry.enabled`                     | boolean                                                                | Enable telemetry (default: false).                                                                                                                                                                                  |
+| `telemetry.analytics`                   | boolean                                                                | Enable usage analytics.                                                                                                                                                                                             |
+| `logging.enabled`                       | boolean                                                                | Enable detailed logging.                                                                                                                                                                                            |
+| `logging.level`                         | `error` \| `warn` \| `info` \| `debug` \| `trace`                      | Log level.                                                                                                                                                                                                          |
+| `auth.secure_storage`                   | boolean                                                                | Store credentials securely (default: true).                                                                                                                                                                         |
+| `auth.validate_keys`                    | boolean                                                                | Validate API keys on startup.                                                                                                                                                                                       |
+| `commands.ask_agent_enabled`            | boolean                                                                | Enable the ask agent command.                                                                                                                                                                                       |
+| `commands.analyze_enabled`              | boolean                                                                | Enable the analyze command.                                                                                                                                                                                         |
+| `commands.command_timeout`              | number                                                                 | Command execution timeout (seconds).                                                                                                                                                                                |
+| `profiles.*.agent.provider`             | string                                                                 | Provider override for a profile.                                                                                                                                                                                    |
+| `profiles.*.security.human_in_the_loop` | boolean                                                                | Security setting override for a profile.                                                                                                                                                                            |
+| `profiles.*.tools.policies.*`           | `ask` \| `allow` \| `deny`                                             | Tool policy override for a profile.                                                                                                                                                                                 |
+| `providers.<name>.models`               | array                                                                  | Additional model identifiers to add to a built-in provider's model picker.                                                                                                                                          |
+| `providers.<name>.base_url`             | string                                                                 | Override the provider's default API endpoint.                                                                                                                                                                       |
+| `providers.<name>.api_key_env`          | string                                                                 | Override the provider's default API key environment variable.                                                                                                                                                       |

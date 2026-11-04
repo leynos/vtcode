@@ -1,6 +1,6 @@
 # Performance Hasher Policy
 
-VT Code uses `rustc_hash` selectively, not globally.
+Diapason uses `rustc_hash` selectively, not globally.
 
 ## Default
 

@@ -1,15 +1,15 @@
 [package]
-name = "vtcode"
+name = "diapason"
 version = "0.156.1"
 edition = "2024"
 rust-version = "1.93.0"
-authors = ["Vinh Nguyen <vinhnguyen2308@gmail.com>"]
-description = "A Rust-based terminal coding agent with modular architecture supporting multiple LLM providers"
+authors = ["Vinh Nguyen <vinhnguyen2308@gmail.com>", "df12 Productions"]
+description = "Diapason, a df12 Productions hard fork of VTCode focused on ACP control and observability (o11y)."
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-homepage = "https://github.com/vinhnx/vtcode"
-repository = "https://github.com/vinhnx/vtcode"
-documentation = "https://docs.rs/vtcode"
+homepage = "https://github.com/leynos/vtcode"
+repository = "https://github.com/leynos/vtcode"
+documentation = "https://docs.rs/diapason"
 keywords = ["ai", "coding", "agent", "llm", "cli"]
 categories = ["command-line-utilities", "development-tools", "api-bindings"]
 exclude = [
@@ -25,7 +25,7 @@ exclude = [
     "npm/",
     "resources/",
 ]
-default-run = "vtcode"
+default-run = "diapason"
 
 [lints]
 workspace = true
@@ -114,26 +114,26 @@ axum = { version = "0.8", features = ["ws"] }
 
 
 # Internal workspace crates
-vtcode-commons = { path = "crates/common/vtcode-commons", version = "0.156.1" }
-vtcode-acp = { path = "crates/codegen/vtcode-acp", version = "0.156.1" }
-vtcode-auth = { path = "crates/codegen/vtcode-auth", version = "0.156.1" }
-vtcode-config = { path = "crates/codegen/vtcode-config", version = "0.156.1" }
-vtcode-core = { path = "crates/codegen/vtcode-core", version = "0.156.1" }
-vtcode-ui = { path = "crates/codegen/vtcode-ui", version = "0.156.1" }
-vtcode-indexer = { path = "crates/codegen/vtcode-indexer", version = "0.156.1" }
-vtcode-bash-runner = { path = "crates/codegen/vtcode-bash-runner", version = "0.156.1" }
-vtcode-exec-events = { path = "crates/common/vtcode-exec-events", version = "0.156.1" }
-vtcode-safety = { path = "crates/codegen/vtcode-safety", version = "0.156.1" }
-vtcode-a2a = { path = "crates/codegen/vtcode-a2a", version = "0.156.1" }
-vtcode-mcp = { path = "crates/codegen/vtcode-mcp", version = "0.156.1" }
-vtcode-llm = { path = "crates/codegen/vtcode-llm", version = "0.156.1" }
-vtcode-skills = { path = "crates/codegen/vtcode-skills", version = "0.156.1" }
-vtcode-memory = { path = "crates/codegen/vtcode-memory", version = "0.156.1" }
-vtcode-eval = { path = "crates/codegen/vtcode-eval", version = "0.156.1" }
-vtcode-webmcp = { path = "crates/codegen/vtcode-webmcp", version = "0.156.1" }
-vtcode-macros = { path = "crates/common/vtcode-macros", version = "0.156.1" }
-vtcode-utility-tool-specs = { path = "crates/common/vtcode-utility-tool-specs", version = "0.156.1" }
-vtcode-agent-plugins = { path = "crates/common/vtcode-agent-plugins", version = "0.156.1" }
+diapason-commons = { path = "crates/common/diapason-commons", version = "0.156.1" }
+diapason-acp = { path = "crates/codegen/diapason-acp", version = "0.156.1" }
+diapason-auth = { path = "crates/codegen/diapason-auth", version = "0.156.1" }
+diapason-config = { path = "crates/codegen/diapason-config", version = "0.156.1" }
+diapason-core = { path = "crates/codegen/diapason-core", version = "0.156.1" }
+diapason-ui = { path = "crates/codegen/diapason-ui", version = "0.156.1" }
+diapason-indexer = { path = "crates/codegen/diapason-indexer", version = "0.156.1" }
+diapason-bash-runner = { path = "crates/codegen/diapason-bash-runner", version = "0.156.1" }
+diapason-exec-events = { path = "crates/common/diapason-exec-events", version = "0.156.1" }
+diapason-safety = { path = "crates/codegen/diapason-safety", version = "0.156.1" }
+diapason-a2a = { path = "crates/codegen/diapason-a2a", version = "0.156.1" }
+diapason-mcp = { path = "crates/codegen/diapason-mcp", version = "0.156.1" }
+diapason-llm = { path = "crates/codegen/diapason-llm", version = "0.156.1" }
+diapason-skills = { path = "crates/codegen/diapason-skills", version = "0.156.1" }
+diapason-memory = { path = "crates/codegen/diapason-memory", version = "0.156.1" }
+diapason-eval = { path = "crates/codegen/diapason-eval", version = "0.156.1" }
+diapason-webmcp = { path = "crates/codegen/diapason-webmcp", version = "0.156.1" }
+diapason-macros = { path = "crates/common/diapason-macros", version = "0.156.1" }
+diapason-utility-tool-specs = { path = "crates/common/diapason-utility-tool-specs", version = "0.156.1" }
+diapason-agent-plugins = { path = "crates/common/diapason-agent-plugins", version = "0.156.1" }
 
 [workspace.package]
 version = "0.156.1"
@@ -141,39 +141,39 @@ edition = "2024"
 rust-version = "1.93.0"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-homepage = "https://github.com/vinhnx/vtcode"
-repository = "https://github.com/vinhnx/vtcode"
-documentation = "https://docs.rs/vtcode"
+homepage = "https://github.com/leynos/vtcode"
+repository = "https://github.com/leynos/vtcode"
+documentation = "https://docs.rs/diapason"
 
 [workspace]
 resolver = "3"
 members = [
-    "crates/common/vtcode-commons",
-    "crates/common/vtcode-exec-events",
-    "crates/common/vtcode-macros",
-    "crates/common/vtcode-utility-tool-specs",
-    "crates/common/vtcode-agent-plugins",
-    "crates/codegen/vtcode-acp",
-    "crates/codegen/vtcode-a2a",
-    "crates/codegen/vtcode-auth",
-    "crates/codegen/vtcode-bash-runner",
-    "crates/codegen/vtcode-config",
-    "crates/codegen/vtcode-core",
-    "crates/codegen/vtcode-eval",
-    "crates/codegen/vtcode-indexer",
-    "crates/codegen/vtcode-llm",
-    "crates/codegen/vtcode-mcp",
-    "crates/codegen/vtcode-safety",
-    "crates/codegen/vtcode-memory",
-    "crates/codegen/vtcode-skills",
-    "crates/codegen/vtcode-ui",
-    "crates/codegen/vtcode-webmcp",
+    "crates/common/diapason-commons",
+    "crates/common/diapason-exec-events",
+    "crates/common/diapason-macros",
+    "crates/common/diapason-utility-tool-specs",
+    "crates/common/diapason-agent-plugins",
+    "crates/codegen/diapason-acp",
+    "crates/codegen/diapason-a2a",
+    "crates/codegen/diapason-auth",
+    "crates/codegen/diapason-bash-runner",
+    "crates/codegen/diapason-config",
+    "crates/codegen/diapason-core",
+    "crates/codegen/diapason-eval",
+    "crates/codegen/diapason-indexer",
+    "crates/codegen/diapason-llm",
+    "crates/codegen/diapason-mcp",
+    "crates/codegen/diapason-safety",
+    "crates/codegen/diapason-memory",
+    "crates/codegen/diapason-skills",
+    "crates/codegen/diapason-ui",
+    "crates/codegen/diapason-webmcp",
     "crates/codegen/xtask",
 ]
 default-members = [
     ".",
-    "crates/codegen/vtcode-core",
-    "crates/codegen/vtcode-ui",
+    "crates/codegen/diapason-core",
+    "crates/codegen/diapason-ui",
 ]
 exclude = [
     "extensions/zed-extension",
@@ -181,24 +181,24 @@ exclude = [
 ]
 
 [patch.crates-io]
-vtcode-commons = { path = "crates/common/vtcode-commons" }
-vtcode-acp = { path = "crates/codegen/vtcode-acp" }
-vtcode-auth = { path = "crates/codegen/vtcode-auth" }
-vtcode-config = { path = "crates/codegen/vtcode-config" }
-vtcode-core = { path = "crates/codegen/vtcode-core" }
-vtcode-ui = { path = "crates/codegen/vtcode-ui" }
-vtcode-indexer = { path = "crates/codegen/vtcode-indexer" }
-vtcode-bash-runner = { path = "crates/codegen/vtcode-bash-runner" }
-vtcode-exec-events = { path = "crates/common/vtcode-exec-events" }
-vtcode-safety = { path = "crates/codegen/vtcode-safety" }
-vtcode-a2a = { path = "crates/codegen/vtcode-a2a" }
-vtcode-mcp = { path = "crates/codegen/vtcode-mcp" }
-vtcode-llm = { path = "crates/codegen/vtcode-llm" }
-vtcode-skills = { path = "crates/codegen/vtcode-skills" }
-vtcode-memory = { path = "crates/codegen/vtcode-memory" }
-vtcode-eval = { path = "crates/codegen/vtcode-eval" }
-vtcode-agent-plugins = { path = "crates/common/vtcode-agent-plugins" }
-vtcode-webmcp = { path = "crates/codegen/vtcode-webmcp" }
+diapason-commons = { path = "crates/common/diapason-commons" }
+diapason-acp = { path = "crates/codegen/diapason-acp" }
+diapason-auth = { path = "crates/codegen/diapason-auth" }
+diapason-config = { path = "crates/codegen/diapason-config" }
+diapason-core = { path = "crates/codegen/diapason-core" }
+diapason-ui = { path = "crates/codegen/diapason-ui" }
+diapason-indexer = { path = "crates/codegen/diapason-indexer" }
+diapason-bash-runner = { path = "crates/codegen/diapason-bash-runner" }
+diapason-exec-events = { path = "crates/common/diapason-exec-events" }
+diapason-safety = { path = "crates/codegen/diapason-safety" }
+diapason-a2a = { path = "crates/codegen/diapason-a2a" }
+diapason-mcp = { path = "crates/codegen/diapason-mcp" }
+diapason-llm = { path = "crates/codegen/diapason-llm" }
+diapason-skills = { path = "crates/codegen/diapason-skills" }
+diapason-memory = { path = "crates/codegen/diapason-memory" }
+diapason-eval = { path = "crates/codegen/diapason-eval" }
+diapason-agent-plugins = { path = "crates/common/diapason-agent-plugins" }
+diapason-webmcp = { path = "crates/codegen/diapason-webmcp" }
 simdutf = { path = "patches/simdutf" }
 
 [workspace.lints]
@@ -280,16 +280,16 @@ allow_attributes_without_reason = "warn"
 
 
 [dependencies]
-vtcode-acp = { path = "crates/codegen/vtcode-acp", version = "0.156.1" }
-vtcode-commons = { path = "crates/common/vtcode-commons", version = "0.156.1" }
-vtcode-ui = { path = "crates/codegen/vtcode-ui", version = "0.156.1" }
-vtcode-config = { path = "crates/codegen/vtcode-config", version = "0.156.1" }
-vtcode-auth = { path = "crates/codegen/vtcode-auth", version = "0.156.1" }
-vtcode-core = { path = "crates/codegen/vtcode-core", version = "0.156.1", default-features = false }
-vtcode-webmcp = { path = "crates/codegen/vtcode-webmcp", version = "0.156.1" }
-vtcode-agent-plugins = { path = "crates/common/vtcode-agent-plugins", version = "0.156.1" }
-vtcode-memory = { path = "crates/codegen/vtcode-memory", version = "0.156.1" }
-vtcode-eval = { path = "crates/codegen/vtcode-eval", version = "0.156.1" }
+diapason-acp = { path = "crates/codegen/diapason-acp", version = "0.156.1" }
+diapason-commons = { path = "crates/common/diapason-commons", version = "0.156.1" }
+diapason-ui = { path = "crates/codegen/diapason-ui", version = "0.156.1" }
+diapason-config = { path = "crates/codegen/diapason-config", version = "0.156.1" }
+diapason-auth = { path = "crates/codegen/diapason-auth", version = "0.156.1" }
+diapason-core = { path = "crates/codegen/diapason-core", version = "0.156.1", default-features = false }
+diapason-webmcp = { path = "crates/codegen/diapason-webmcp", version = "0.156.1" }
+diapason-agent-plugins = { path = "crates/common/diapason-agent-plugins", version = "0.156.1" }
+diapason-memory = { path = "crates/codegen/diapason-memory", version = "0.156.1" }
+diapason-eval = { path = "crates/codegen/diapason-eval", version = "0.156.1" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
@@ -344,7 +344,7 @@ hotpath = { workspace = true, optional = true }
 [features]
 default = ["tool-chat", "desktop-notifications"]
 tool-chat = []
-profiling = ["dep:hotpath", "hotpath/hotpath", "hotpath/hotpath-cpu", "hotpath/futures", "hotpath/tokio", "vtcode-core/profiling"]
+profiling = ["dep:hotpath", "hotpath/hotpath", "hotpath/hotpath-cpu", "hotpath/futures", "hotpath/tokio", "diapason-core/profiling"]
 hotpath = ["dep:hotpath", "hotpath/hotpath"]
 hotpath-alloc = ["dep:hotpath", "hotpath/hotpath-alloc"]
 hotpath-cpu = ["dep:hotpath", "hotpath/hotpath-cpu"]
@@ -358,11 +358,11 @@ hotpath-futures = ["dep:hotpath", "hotpath/futures"]
 # Linux servers/containers, where it returns memory to the OS between bursty/sparse
 # idle gaps. On macOS `background_thread` is unsupported, so jemalloc pins like
 # mimalloc there; the default allocator is mimalloc. See src/allocator.rs and
-# `vtcode bench-allocator`.
+# `diapason bench-allocator`.
 allocator-jemalloc = ["dep:tikv-jemallocator"]
-anthropic-api = ["vtcode-core/anthropic-api"]
-a2a-server = ["vtcode-core/a2a-server"]   # Enable OAuth callback server for provider authentication
-desktop-notifications = ["vtcode-core/desktop-notifications"]
+anthropic-api = ["diapason-core/anthropic-api"]
+a2a-server = ["diapason-core/a2a-server"]   # Enable OAuth callback server for provider authentication
+desktop-notifications = ["diapason-core/desktop-notifications"]
 
 [[bench]]
 name = "allocator_throughput"
@@ -508,7 +508,7 @@ panic = "unwind"
 
 
 [[bin]]
-name = "vtcode"
+name = "diapason"
 path = "src/main.rs"
 
 [dev-dependencies]

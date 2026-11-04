@@ -1,8 +1,8 @@
-# VT Code Async Architecture Reference
+# Diapason Async Architecture Reference
 
 ## Overview
 
-VT Code uses a **fully async architecture** for all I/O operations, providing
+Diapason uses a **fully async architecture** for all I/O operations, providing
 non-blocking execution and excellent responsiveness.
 
 ## Architecture Diagram
@@ -45,7 +45,7 @@ non-blocking execution and excellent responsiveness.
     ::run_command       ::read_to_string
                         ::write
     Uses:               ::metadata
-    spawn_blocking      vtcode_commons::canonicalize
+    spawn_blocking      diapason_commons::canonicalize
 
 
 
@@ -69,7 +69,7 @@ non-blocking execution and excellent responsiveness.
 
 ### 1. PTY Manager (Async)
 
-**File**: `crates/codegen/vtcode-core/src/tools/pty.rs`
+**File**: `crates/codegen/diapason-core/src/tools/pty.rs`
 
 ```rust
 impl PtyManager {
@@ -97,7 +97,7 @@ impl PtyManager {
 
 ### 2. Tool Registry (Async)
 
-**File**: `crates/codegen/vtcode-core/src/tools/registry/mod.rs`
+**File**: `crates/codegen/diapason-core/src/tools/registry/mod.rs`
 
 ```rust
 impl ToolRegistry {
@@ -168,8 +168,8 @@ tokio::fs::write(path, data).await?;
 // Metadata
 let metadata = tokio::fs::metadata(path).await?;
 
-// Canonicalize (dunce-backed via vtcode_commons)
-let canonical = vtcode_commons::canonicalize(path)?;
+// Canonicalize (dunce-backed via diapason_commons)
+let canonical = diapason_commons::canonicalize(path)?;
 
 // Create directories
 tokio::fs::create_dir_all(path).await?;

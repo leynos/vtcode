@@ -1,6 +1,6 @@
 # Benchmark Comparison
 
-This document compares VT Code's performance across different models and
+This document compares Diapason's performance across different models and
 configurations.
 
 ## Current Results

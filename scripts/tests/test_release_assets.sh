@@ -20,16 +20,16 @@ fail_test() { echo "  ✗ $1"; fail=1; }
 
 echo "Testing compatibility_asset_path..."
 
-got=$(compatibility_asset_path "vtcode-0.141.6-aarch64-apple-darwin.tar.gz" "$tmp")
-if [[ "$got" == "$tmp/compat-vtcode-0.141.6-aarch64-apple-darwin.tar.gz.compat" ]]; then
-    pass "tar.gz -> compat-vtcode-...tar.gz.compat"
+got=$(compatibility_asset_path "diapason-0.141.6-aarch64-apple-darwin.tar.gz" "$tmp")
+if [[ "$got" == "$tmp/compat-diapason-0.141.6-aarch64-apple-darwin.tar.gz.compat" ]]; then
+    pass "tar.gz -> compat-diapason-...tar.gz.compat"
 else
     fail_test "tar.gz path: got $got"
 fi
 
-got=$(compatibility_asset_path "vtcode-0.141.6-x86_64-pc-windows-msvc.zip" "$tmp")
-if [[ "$got" == "$tmp/compat-vtcode-0.141.6-x86_64-pc-windows-msvc.tar.gz.compat" ]]; then
-    pass "zip -> compat-vtcode-...tar.gz.compat (keeps <target>.tar.gz substring)"
+got=$(compatibility_asset_path "diapason-0.141.6-x86_64-pc-windows-msvc.zip" "$tmp")
+if [[ "$got" == "$tmp/compat-diapason-0.141.6-x86_64-pc-windows-msvc.tar.gz.compat" ]]; then
+    pass "zip -> compat-diapason-...tar.gz.compat (keeps <target>.tar.gz substring)"
 else
     fail_test "zip path: got $got"
 fi
@@ -47,9 +47,9 @@ echo "Testing compat asset sorts BEFORE the normal archive (load-bearing)..."
 # triple and the `{target}.tar.gz` identifier. Both the normal `.tar.gz` and
 # the compat asset match, so the compat name MUST sort first or the legacy
 # updater selects the broken `.tar.gz` and fails with CompressionNotEnabledError.
-compat_name=$(compatibility_asset_path "vtcode-0.141.6-aarch64-apple-darwin.tar.gz" "$tmp")
+compat_name=$(compatibility_asset_path "diapason-0.141.6-aarch64-apple-darwin.tar.gz" "$tmp")
 compat_base=$(basename "$compat_name")
-normal_base="vtcode-0.141.6-aarch64-apple-darwin.tar.gz"
+normal_base="diapason-0.141.6-aarch64-apple-darwin.tar.gz"
 # `LC_ALL=C sort` gives byte-order (ASCII) ordering, matching GitHub's sort.
 sorted=$(printf '%s\n%s\n' "$compat_base" "$normal_base" | LC_ALL=C sort | head -1)
 if [[ "$sorted" == "$compat_base" ]]; then
@@ -66,27 +66,27 @@ fi
 
 echo "Testing create_compatibility_asset byte identity..."
 
-# Fixture tar.gz with a root-level vtcode binary (matches CI packaging).
+# Fixture tar.gz with a root-level diapason binary (matches CI packaging).
 mkdir -p "$tmp/src1"
-printf 'unix-binary-bytes' >"$tmp/src1/vtcode"
-tar -C "$tmp/src1" -czf "$tmp/vtcode-0.141.6-aarch64-apple-darwin.tar.gz" vtcode
-out=$(compatibility_asset_path "$tmp/vtcode-0.141.6-aarch64-apple-darwin.tar.gz" "$tmp")
-if create_compatibility_asset "$tmp/vtcode-0.141.6-aarch64-apple-darwin.tar.gz" "$out" \
-    && cmp -s "$tmp/src1/vtcode" "$out"; then
-    pass "tar.gz compat bytes match extracted vtcode"
+printf 'unix-binary-bytes' >"$tmp/src1/diapason"
+tar -C "$tmp/src1" -czf "$tmp/diapason-0.141.6-aarch64-apple-darwin.tar.gz" diapason
+out=$(compatibility_asset_path "$tmp/diapason-0.141.6-aarch64-apple-darwin.tar.gz" "$tmp")
+if create_compatibility_asset "$tmp/diapason-0.141.6-aarch64-apple-darwin.tar.gz" "$out" \
+    && cmp -s "$tmp/src1/diapason" "$out"; then
+    pass "tar.gz compat bytes match extracted diapason"
 else
     fail_test "tar.gz compat bytes mismatch"
 fi
 
-# Fixture zip with a root-level vtcode.exe binary (matches CI packaging).
+# Fixture zip with a root-level diapason.exe binary (matches CI packaging).
 if command -v zip >/dev/null 2>&1; then
     mkdir -p "$tmp/src2"
-    printf 'windows-binary-bytes' >"$tmp/src2/vtcode.exe"
-    (cd "$tmp/src2" && zip -q "$tmp/vtcode-0.141.6-x86_64-pc-windows-msvc.zip" vtcode.exe)
-    out2=$(compatibility_asset_path "$tmp/vtcode-0.141.6-x86_64-pc-windows-msvc.zip" "$tmp")
-    if create_compatibility_asset "$tmp/vtcode-0.141.6-x86_64-pc-windows-msvc.zip" "$out2" \
-        && cmp -s "$tmp/src2/vtcode.exe" "$out2"; then
-        pass "zip compat bytes match extracted vtcode.exe"
+    printf 'windows-binary-bytes' >"$tmp/src2/diapason.exe"
+    (cd "$tmp/src2" && zip -q "$tmp/diapason-0.141.6-x86_64-pc-windows-msvc.zip" diapason.exe)
+    out2=$(compatibility_asset_path "$tmp/diapason-0.141.6-x86_64-pc-windows-msvc.zip" "$tmp")
+    if create_compatibility_asset "$tmp/diapason-0.141.6-x86_64-pc-windows-msvc.zip" "$out2" \
+        && cmp -s "$tmp/src2/diapason.exe" "$out2"; then
+        pass "zip compat bytes match extracted diapason.exe"
     else
         fail_test "zip compat bytes mismatch"
     fi
@@ -98,8 +98,8 @@ echo "Testing create_compatibility_asset rejection..."
 
 # Missing binary.
 mkdir -p "$tmp/src3"
-printf 'other' >"$tmp/src3/not-vtcode"
-tar -C "$tmp/src3" -czf "$tmp/bad.tar.gz" not-vtcode
+printf 'other' >"$tmp/src3/not-diapason"
+tar -C "$tmp/src3" -czf "$tmp/bad.tar.gz" not-diapason
 if create_compatibility_asset "$tmp/bad.tar.gz" "$tmp/should-not-exist" >/dev/null 2>&1; then
     fail_test "missing binary should be rejected"
 else
@@ -109,9 +109,9 @@ fi
 
 # Multiple matching binaries.
 mkdir -p "$tmp/src4/a" "$tmp/src4/b"
-printf 'x' >"$tmp/src4/a/vtcode"
-printf 'y' >"$tmp/src4/b/vtcode"
-tar -C "$tmp/src4" -czf "$tmp/multi.tar.gz" a/vtcode b/vtcode
+printf 'x' >"$tmp/src4/a/diapason"
+printf 'y' >"$tmp/src4/b/diapason"
+tar -C "$tmp/src4" -czf "$tmp/multi.tar.gz" a/diapason b/diapason
 if create_compatibility_asset "$tmp/multi.tar.gz" "$tmp/should-not-exist2" >/dev/null 2>&1; then
     fail_test "multiple binaries should be rejected"
 else
@@ -120,8 +120,8 @@ fi
 
 # Empty extracted output (binary is zero-length).
 mkdir -p "$tmp/src5"
-: >"$tmp/src5/vtcode"
-tar -C "$tmp/src5" -czf "$tmp/empty.tar.gz" vtcode
+: >"$tmp/src5/diapason"
+tar -C "$tmp/src5" -czf "$tmp/empty.tar.gz" diapason
 if create_compatibility_asset "$tmp/empty.tar.gz" "$tmp/empty-out" >/dev/null 2>&1; then
     fail_test "empty binary should be rejected"
 else
@@ -132,10 +132,10 @@ echo "Testing generate_checksums_manifest..."
 
 manifest_stage="$tmp/manifest-stage"
 mkdir -p "$manifest_stage"
-printf 'archive' >"$manifest_stage/vtcode-0.141.7-aarch64-apple-darwin.tar.gz"
-printf 'compatibility binary' >"$manifest_stage/compat-vtcode-0.141.7-aarch64-apple-darwin.tar.gz.compat"
+printf 'archive' >"$manifest_stage/diapason-0.141.7-aarch64-apple-darwin.tar.gz"
+printf 'compatibility binary' >"$manifest_stage/compat-diapason-0.141.7-aarch64-apple-darwin.tar.gz.compat"
 if generate_checksums_manifest "$manifest_stage"; then
-    if grep -q '  vtcode-0.141.7-aarch64-apple-darwin.tar.gz$' "$manifest_stage/checksums.txt" \
+    if grep -q '  diapason-0.141.7-aarch64-apple-darwin.tar.gz$' "$manifest_stage/checksums.txt" \
         && ! grep -q 'compat-' "$manifest_stage/checksums.txt"; then
         pass "aggregate manifest includes archives without ambiguous compatibility assets"
     else
@@ -156,11 +156,11 @@ targets=("x86_64-apple-darwin" "aarch64-apple-darwin" "x86_64-unknown-linux-gnu"
 for target in "${targets[@]}"; do
     ext="tar.gz"
     [[ "$target" == *pc-windows* ]] && ext="zip"
-    archive="$stage/vtcode-${version}-${target}.${ext}"
+    archive="$stage/diapason-${version}-${target}.${ext}"
     printf 'placeholder' >"$archive"
-    compat="$stage/compat-vtcode-${version}-${target}.tar.gz.compat"
+    compat="$stage/compat-diapason-${version}-${target}.tar.gz.compat"
     printf 'placeholder' >"$compat"
-    printf 'placeholder-checksum' >"$stage/vtcode-${version}-${target}.sha256"
+    printf 'placeholder-checksum' >"$stage/diapason-${version}-${target}.sha256"
 done
 printf 'aggregate-checksums\n' >"$stage/checksums.txt"
 
@@ -171,7 +171,7 @@ else
 fi
 
 # Remove a compat asset -> validation must fail.
-rm -f "$stage/compat-vtcode-${version}-aarch64-apple-darwin.tar.gz.compat"
+rm -f "$stage/compat-diapason-${version}-aarch64-apple-darwin.tar.gz.compat"
 if validate_release_assets "$stage" "$version" >/dev/null 2>&1; then
     fail_test "missing compat asset should fail validation"
 else
@@ -181,8 +181,8 @@ fi
 # Remove a normal archive -> validation must fail.
 stage2="$tmp/stage-missing-archive"
 cp -r "$stage" "$stage2"
-cp "$tmp/stage-good/compat-vtcode-${version}-aarch64-apple-darwin.tar.gz.compat" "$stage2/" 2>/dev/null || true
-rm -f "$stage2/vtcode-${version}-x86_64-pc-windows-msvc.zip"
+cp "$tmp/stage-good/compat-diapason-${version}-aarch64-apple-darwin.tar.gz.compat" "$stage2/" 2>/dev/null || true
+rm -f "$stage2/diapason-${version}-x86_64-pc-windows-msvc.zip"
 if validate_release_assets "$stage2" "$version" >/dev/null 2>&1; then
     fail_test "missing normal archive should fail validation"
 else
@@ -193,7 +193,7 @@ echo "Testing two-phase upload ordering (belt-and-suspenders)..."
 
 # The real guarantee that the legacy updater picks the compat asset is
 # ALPHABETICAL NAME SORT (asserted above): GitHub returns assets sorted by
-# name, and `compat-` sorts before `vtcode-`. Upload order does NOT control
+# name, and `compat-` sorts before `diapason-`. Upload order does NOT control
 # selection. The release script still uploads compat assets first as
 # defense-in-depth; this test asserts that ordering is preserved.
 gh_calls="$tmp/gh-calls"
@@ -206,7 +206,7 @@ gh() {
 export -f gh
 
 compat_glob="$stage/compat-*.tar.gz.compat"
-normal_glob="$stage/vtcode-*.tar.gz $stage/vtcode-*.zip"
+normal_glob="$stage/diapason-*.tar.gz $stage/diapason-*.zip"
 # Simulate the two-phase upload the release script performs.
 # shellcheck disable=SC2086
 gh release upload "$version" $compat_glob --clobber

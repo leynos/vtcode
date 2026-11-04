@@ -42,7 +42,7 @@ const DIFF_CONTEXT_LINES = 3;
 const MAX_DIFF_TRACE_CELLS = 1_000_000;
 
 const SEED_FILES: Readonly<Record<string, string>> = Object.freeze({
-  "README.md": "# hello-world\n\nA tiny project for the VT Code WebMCP app.\n\nThe workflow is inspect → edit → review → approve → verify.",
+  "README.md": "# hello-world\n\nA tiny project for the Diapason WebMCP app.\n\nThe workflow is inspect → edit → review → approve → verify.",
   "src/greeting.js": "import { name } from './config.js';\n\nexport function greeting() {\n  return `Hello, ${name}!`;\n}\n",
   "src/config.js": "export const name = 'WebMCP';\n",
 });
@@ -553,7 +553,7 @@ export class InMemoryBackend extends WorkspaceBackend {
     return {
       accepted: false,
       mode: this.kind,
-      reason: "Fallback mode is browser-only. Pair a WebMCP bridge for workspace access; agent turns require an active VT Code runtime.",
+      reason: "Fallback mode is browser-only. Pair a WebMCP bridge for workspace access; agent turns require an active Diapason runtime.",
       prompt,
     };
   }
@@ -585,7 +585,7 @@ export class InMemoryBackend extends WorkspaceBackend {
   }
 }
 
-export class VtCodeBackend extends WorkspaceBackend {
+export class DiapasonBackend extends WorkspaceBackend {
   override readonly kind = "websocket" as const;
   override connected = false;
   readonly url: string;
@@ -685,7 +685,7 @@ export class VtCodeBackend extends WorkspaceBackend {
   }
 
   private protocolError(detail: string): BackendError {
-    const error = backendError(`VT Code sent an invalid WebMCP frame: ${detail}`, "protocol_error");
+    const error = backendError(`Diapason sent an invalid WebMCP frame: ${detail}`, "protocol_error");
     this.invalidateSession(error);
     return error;
   }
@@ -699,7 +699,7 @@ export class VtCodeBackend extends WorkspaceBackend {
   }
 
   async pair(code: string): Promise<PairPayload> {
-    if (!/^[A-Z0-9-]{4,64}$/.test(code)) throw backendError("Enter the pairing code shown by VT Code", "invalid_request");
+    if (!/^[A-Z0-9-]{4,64}$/.test(code)) throw backendError("Enter the pairing code shown by Diapason", "invalid_request");
     await this.open();
     const payload = await this.send("pair", {
       code,
@@ -716,7 +716,7 @@ export class VtCodeBackend extends WorkspaceBackend {
   }
 
   private async resume(): Promise<PairPayload> {
-    if (!this.token) throw backendError("Pair this browser with VT Code first", "unauthorized");
+    if (!this.token) throw backendError("Pair this browser with Diapason first", "unauthorized");
     if (this.resuming) return this.resuming;
     const token = this.token;
     this.setConnectionState("reconnecting");
@@ -762,16 +762,16 @@ export class VtCodeBackend extends WorkspaceBackend {
       socket.onerror = () => {
         if (this.socket === socket) {
           fail(backendError(
-            "VT Code WebSocket connection failed. Keep the current bridge running and use its newest WebSocket URL and pairing code.",
+            "Diapason WebSocket connection failed. Keep the current bridge running and use its newest WebSocket URL and pairing code.",
             "connection_failed",
           ));
         }
       };
       socket.onclose = () => {
         if (this.socket !== socket) return;
-        const error = backendError("VT Code WebSocket disconnected", "connection_closed");
+        const error = backendError("Diapason WebSocket disconnected", "connection_closed");
         this.disconnectSocket(error);
-        fail(backendError("VT Code WebSocket closed before pairing", "connection_closed"));
+        fail(backendError("Diapason WebSocket closed before pairing", "connection_closed"));
       };
       socket.onmessage = (event) => this.receive(event.data as unknown);
     });
@@ -785,7 +785,7 @@ export class VtCodeBackend extends WorkspaceBackend {
       message = parseBridgeFrame(raw, MAX_BRIDGE_FRAME_BYTES);
     } catch (error: unknown) {
       const detail = error instanceof BackendError
-        ? error.message.replace("VT Code sent an invalid WebMCP frame: ", "")
+        ? error.message.replace("Diapason sent an invalid WebMCP frame: ", "")
         : String(error);
       this.protocolError(detail);
       return;
@@ -811,7 +811,7 @@ export class VtCodeBackend extends WorkspaceBackend {
     this.pending.delete(message.request_id);
     clearTimeout(pending.timeout);
     if (!message.ok) {
-      const error = backendError(message.error?.message ?? "VT Code request failed", message.error?.code ?? "runtime_error");
+      const error = backendError(message.error?.message ?? "Diapason request failed", message.error?.code ?? "runtime_error");
       if (error.code === "unauthorized" || error.code === "pairing_expired") this.invalidateSession(error);
       pending.reject(error);
       return;
@@ -820,7 +820,7 @@ export class VtCodeBackend extends WorkspaceBackend {
       pending.resolve(validateResponsePayload(pending.operation, message.payload));
     } catch (error: unknown) {
       const detail = error instanceof BackendError
-        ? error.message.replace("VT Code sent an invalid WebMCP frame: ", "")
+        ? error.message.replace("Diapason sent an invalid WebMCP frame: ", "")
         : String(error);
       const protocolError = this.protocolError(detail);
       pending.reject(protocolError);
@@ -834,7 +834,7 @@ export class VtCodeBackend extends WorkspaceBackend {
   ): Promise<OperationPayloads[K]> {
     await this.open();
     if (authenticated && this.token && !this.connected) await this.resume();
-    if (authenticated && !this.token) throw backendError("Pair this browser with VT Code first", "unauthorized");
+    if (authenticated && !this.token) throw backendError("Pair this browser with Diapason first", "unauthorized");
     const requestId = `browser-${this.nextId++}`;
     const token = this.token;
     const request = {
@@ -851,7 +851,7 @@ export class VtCodeBackend extends WorkspaceBackend {
         const pending = this.pending.get(requestId);
         if (!pending) return;
         this.pending.delete(requestId);
-        pending.reject(backendError("VT Code request timed out", "request_timeout"));
+        pending.reject(backendError("Diapason request timed out", "request_timeout"));
       }, REQUEST_TIMEOUT_MS);
       const pending: PendingRequest = {
         operation: type,
@@ -864,7 +864,7 @@ export class VtCodeBackend extends WorkspaceBackend {
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         clearTimeout(timeout);
         this.pending.delete(requestId);
-        const connectionError = backendError("VT Code WebSocket could not send the request", "connection_closed");
+        const connectionError = backendError("Diapason WebSocket could not send the request", "connection_closed");
         this.disconnectSocket(connectionError, "reconnecting");
         reject(connectionError);
         return;
@@ -874,7 +874,7 @@ export class VtCodeBackend extends WorkspaceBackend {
       } catch {
         clearTimeout(timeout);
         this.pending.delete(requestId);
-        const connectionError = backendError("VT Code WebSocket could not send the request", "connection_closed");
+        const connectionError = backendError("Diapason WebSocket could not send the request", "connection_closed");
         this.disconnectSocket(connectionError, "reconnecting");
         reject(connectionError);
       }
@@ -929,9 +929,9 @@ export class VtCodeBackend extends WorkspaceBackend {
     this.connectionState = "closed";
     this.expectedEventSequence = null;
     this.setStatusPayload(null);
-    this.openingReject?.(backendError("VT Code WebSocket disconnected", "connection_closed"));
+    this.openingReject?.(backendError("Diapason WebSocket disconnected", "connection_closed"));
     this.openingReject = null;
-    this.rejectPending(backendError("VT Code WebSocket disconnected", "connection_closed"));
+    this.rejectPending(backendError("Diapason WebSocket disconnected", "connection_closed"));
     socket?.close();
   }
 
@@ -944,14 +944,14 @@ export class VtCodeBackend extends WorkspaceBackend {
   override check(): Promise<CheckResult> { return this.runChecks(); }
 }
 
-export const WebSocketVtCodeBackend = VtCodeBackend;
+export const WebSocketDiapasonBackend = DiapasonBackend;
 
 export function createBackend(initialFiles: Readonly<Record<string, string>> = SEED_FILES): InMemoryBackend {
   return new InMemoryBackend(initialFiles);
 }
 
-export async function connectVtCode(url: string, code: string): Promise<VtCodeBackend> {
-  const backend = new VtCodeBackend(url);
+export async function connectDiapason(url: string, code: string): Promise<DiapasonBackend> {
+  const backend = new DiapasonBackend(url);
   try {
     await backend.pair(code);
     await backend.status();

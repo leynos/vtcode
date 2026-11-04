@@ -1,4 +1,4 @@
-/// VT Code Output Channel
+/// Diapason Output Channel
 ///
 /// Manages output display in Zed's output panel.
 /// Handles formatting, history, and user interaction.
@@ -36,7 +36,7 @@ impl MessageType {
     }
 }
 
-/// Output channel for displaying VT Code results
+/// Output channel for displaying Diapason results
 pub struct OutputChannel {
     /// Message history
     messages: Arc<Mutex<Vec<OutputMessage>>>,

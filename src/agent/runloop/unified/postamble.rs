@@ -1,9 +1,9 @@
+use diapason_commons::ansi_codes::{BOLD, DIM, RESET, fg_256};
+use diapason_commons::color256_theme::rgb_to_ansi256_for_theme;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::ui::theme;
 use std::borrow::Cow;
 use std::time::Duration;
-use vtcode_commons::ansi_codes::{BOLD, DIM, RESET, fg_256};
-use vtcode_commons::color256_theme::rgb_to_ansi256_for_theme;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::ui::theme;
 
 /// Zero-allocation exit data — all borrowed, no clones.
 /// All token fields (`prompt_tokens`, `completion_tokens`, `cached_tokens`,
@@ -87,7 +87,7 @@ fn print_exit_metrics(data: &ExitData<'_>) {
     }
 
     if let Some(session_id) = data.resume_identifier {
-        println!("{DIM}Resume: {resume_style}vtcode --resume {session_id}{RESET}");
+        println!("{DIM}Resume: {resume_style}diapason --resume {session_id}{RESET}");
     }
 
     println!();
@@ -250,7 +250,7 @@ mod tests {
         code_deletions: u64,
     ) -> ExitData<'static> {
         ExitData {
-            app_name: "VT Code",
+            app_name: "Diapason",
             version: "0.0.0",
             model: "",
             provider: "",

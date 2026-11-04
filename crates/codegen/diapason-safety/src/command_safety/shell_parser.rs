@@ -1,0 +1,1083 @@
+#![expect(
+    clippy::indexing_slicing,
+    clippy::string_slice,
+    reason = "Shell parsing tracks byte offsets at character boundaries while validating operator pairs."
+)]
+
+//! Shell script parser for `bash -lc` and similar commands.
+//!
+//! This module parses shell commands like:
+//! ```sh
+//! bash -lc "git status && cargo check"
+//! ```
+//!
+//! Into individual command vectors for independent safety checking:
+//! ```text
+//! [["git", "status"], ["cargo", "check"]]
+//! ```
+//!
+//! **Phase 4 Implementation**: Uses tree-sitter for accurate bash AST parsing.
+//! Falls back to basic tokenization for minimal shell syntax.
+
+use std::sync::Mutex;
+use std::sync::OnceLock;
+
+/// Lazy-initialized tree-sitter bash parser (wrapped in Mutex for mutation)
+static BASH_PARSER: OnceLock<Result<Mutex<tree_sitter::Parser>, String>> = OnceLock::new();
+
+/// Returns whether a shell command contains syntax whose meaning depends on
+/// shell expansion rather than the literal argument text.
+///
+/// Safety-sensitive classification must only operate on static command
+/// shapes. Parameter expansion, command substitution, brace expansion,
+/// globbing, and unquoted backslash escapes can otherwise turn a
+/// harmless-looking token into a different executable argument at runtime.
+/// Backslash escapes inside double-quoted arguments are consumed as literal
+/// argument syntax so patterns such as `rg -n "\\[profile"` remain classifiable.
+pub fn contains_dynamic_shell_syntax(command: &str) -> bool {
+    enum ShellQuote {
+        Single,
+        Double,
+    }
+
+    let mut quote: Option<ShellQuote> = None;
+    let mut characters = command.chars();
+
+    while let Some(character) = characters.next() {
+        match quote {
+            Some(ShellQuote::Single) => {
+                if character == '\'' {
+                    quote = None;
+                }
+            }
+            Some(ShellQuote::Double) => match character {
+                '"' => quote = None,
+                '$' | '`' => return true,
+                '\\' => {
+                    // Backslash escapes inside double quotes are literal
+                    // argument syntax. Consume the escaped character so an
+                    // escaped quote cannot incorrectly end the quoted region;
+                    // unquoted escapes remain rejected below because they can
+                    // alter the command token or its shell structure.
+                    if characters.next().is_none() {
+                        return true;
+                    }
+                }
+                _ => {}
+            },
+            None => match character {
+                '\'' => quote = Some(ShellQuote::Single),
+                '"' => quote = Some(ShellQuote::Double),
+                '\\' | '$' | '`' | '{' | '}' | '*' | '?' | '[' | ']' => return true,
+                _ => {}
+            },
+        }
+    }
+
+    quote.is_some()
+}
+
+/// Returns whether a `find` command contains shell syntax that can change the
+/// literal option tokens after approval-time tokenization.
+pub fn contains_dynamic_find_syntax(script: &str) -> bool {
+    FindScript(script).contains_dynamic_syntax()
+}
+
+#[derive(Clone, Copy)]
+struct FindScript<'a>(&'a str);
+
+impl FindScript<'_> {
+    fn contains_dynamic_syntax(self) -> bool {
+        match parse_shell_commands_tree_sitter(self.0) {
+            Ok(commands) => commands.iter().any(|command| FindCommand(command).contains_dynamic_syntax()),
+            Err(_) => self.raw_script_might_be_dynamic(),
+        }
+    }
+
+    fn raw_script_might_be_dynamic(self) -> bool {
+        // Be conservative when the grammar cannot identify the command shape: a
+        // raw script containing a find invocation and dynamic syntax must not pass
+        // preflight just because parsing was incomplete.
+        let has_find_invocation = self.0.split_whitespace().any(|word| {
+            let command = word.trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '/');
+            base_command_name(command) == "find"
+        });
+        has_find_invocation && contains_dynamic_shell_syntax(self.0)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FindCommand<'a>(&'a [String]);
+
+impl FindCommand<'_> {
+    fn contains_dynamic_syntax(self) -> bool {
+        let is_find_command = self.0.first().is_some_and(|program| base_command_name(program) == "find");
+        if !is_find_command {
+            return false;
+        }
+
+        let mut classifier = FindExecSyntaxClassifier::default();
+        self.0
+            .iter()
+            .any(|word| classifier.contains_dynamic_syntax(FindExecArgument(word)))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FindExecArgument<'a>(&'a str);
+
+#[derive(Default)]
+struct FindExecSyntaxClassifier {
+    context: FindCommandContext,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum FindCommandContext {
+    #[default]
+    Expression,
+    ExecProgram,
+    ExecArguments,
+    EnvArguments,
+    EnvOptionArgument,
+    EnvCommand,
+    ShellArguments,
+    ShellCommand,
+}
+
+impl FindExecSyntaxClassifier {
+    fn contains_dynamic_syntax(&mut self, argument: FindExecArgument<'_>) -> bool {
+        let word = argument.0;
+        if matches!(word, "-exec" | "-execdir") {
+            self.context = FindCommandContext::ExecProgram;
+            return false;
+        }
+
+        match self.context {
+            FindCommandContext::ExecProgram => {
+                if word.contains("{}") {
+                    return true;
+                }
+
+                if matches!(word, ";" | "\\;" | "+") {
+                    self.context = FindCommandContext::Expression;
+                } else {
+                    self.context = match base_command_name(word) {
+                        "env" => FindCommandContext::EnvArguments,
+                        _ if is_shell_interpreter(word) => FindCommandContext::ShellArguments,
+                        _ => FindCommandContext::ExecArguments,
+                    };
+                }
+
+                contains_dynamic_shell_syntax(word)
+            }
+            FindCommandContext::EnvArguments if is_env_split_string_option(word) => true,
+            FindCommandContext::EnvArguments if is_env_option_with_argument(word) => {
+                self.context = FindCommandContext::EnvOptionArgument;
+                false
+            }
+            FindCommandContext::EnvArguments if is_env_option(word) => false,
+            FindCommandContext::EnvArguments if is_env_assignment(word) => false,
+            FindCommandContext::EnvArguments if word == "--" => {
+                self.context = FindCommandContext::EnvCommand;
+                false
+            }
+            FindCommandContext::EnvArguments if word.starts_with('-') => true,
+            FindCommandContext::EnvArguments if matches!(word, ";" | "\\;" | "+") => {
+                self.context = FindCommandContext::Expression;
+                false
+            }
+            FindCommandContext::EnvCommand if matches!(word, ";" | "\\;" | "+") => {
+                self.context = FindCommandContext::Expression;
+                false
+            }
+            FindCommandContext::EnvArguments | FindCommandContext::EnvCommand => {
+                self.context = if is_shell_interpreter(word) {
+                    FindCommandContext::ShellArguments
+                } else {
+                    FindCommandContext::ExecArguments
+                };
+                contains_dynamic_shell_syntax(word)
+            }
+            FindCommandContext::EnvOptionArgument => {
+                self.context = FindCommandContext::EnvArguments;
+                false
+            }
+            FindCommandContext::ShellArguments if is_shell_command_option(word) => {
+                self.context = FindCommandContext::ShellCommand;
+                false
+            }
+            FindCommandContext::ShellCommand => {
+                self.context = FindCommandContext::ExecArguments;
+                word.contains("{}") || contains_dynamic_shell_syntax(word)
+            }
+            context => {
+                let is_static_exec_token = context != FindCommandContext::Expression && matches!(word, "{}" | "\\;");
+                let is_dynamic = !is_static_exec_token && contains_dynamic_shell_syntax(word);
+
+                if context != FindCommandContext::Expression && matches!(word, ";" | "\\;" | "+") {
+                    self.context = FindCommandContext::Expression;
+                } else if context != FindCommandContext::Expression && is_shell_interpreter(word) {
+                    // A shell interpreter reached through wrappers such as
+                    // `timeout`, `nice`, `nohup`, `stdbuf`, or `xargs` is still
+                    // an executable position; without this transition a
+                    // following `-c {}` would stay classified as static.
+                    self.context = FindCommandContext::ShellArguments;
+                }
+
+                is_dynamic
+            }
+        }
+    }
+}
+
+fn is_env_option(argument: &str) -> bool {
+    matches!(
+        argument,
+        "-i" | "--ignore-environment" | "-0" | "--null" | "-v" | "--debug" | "--list-signal-handling"
+    ) || argument.starts_with("--unset=")
+        || argument.starts_with("--chdir=")
+        || argument.starts_with("--argv0=")
+        || argument.starts_with("--block-signal=")
+        || argument.starts_with("--default-signal=")
+        || argument.starts_with("--ignore-signal=")
+}
+
+fn is_env_option_with_argument(argument: &str) -> bool {
+    matches!(argument, "-u" | "--unset" | "-C" | "--chdir" | "--argv0")
+}
+
+fn is_env_split_string_option(argument: &str) -> bool {
+    argument == "-S"
+        || argument.starts_with("-S")
+        || argument == "--split-string"
+        || argument.starts_with("--split-string=")
+        || argument
+            .strip_prefix('-')
+            .is_some_and(|short_options| !short_options.starts_with('-') && short_options.contains('S'))
+}
+
+fn is_env_assignment(argument: &str) -> bool {
+    argument.split_once('=').is_some_and(|(name, _)| !name.is_empty())
+}
+
+fn is_shell_interpreter(program: &str) -> bool {
+    matches!(
+        base_command_name(program).to_ascii_lowercase().as_str(),
+        "sh" | "bash" | "dash" | "zsh" | "ksh" | "ksh93" | "ash" | "mksh"
+    )
+}
+
+fn is_shell_command_option(argument: &str) -> bool {
+    if argument == "-c" {
+        return true;
+    }
+
+    argument.strip_prefix('-').is_some_and(|short_options| {
+        short_options.len() > 1 && !short_options.starts_with('-') && short_options.contains('c')
+    })
+}
+
+/// Gets or initializes the bash parser
+fn get_bash_parser() -> Result<&'static Mutex<tree_sitter::Parser>, String> {
+    BASH_PARSER
+        .get_or_init(|| {
+            let mut parser = tree_sitter::Parser::new();
+            let lang: tree_sitter::Language = tree_sitter_bash::LANGUAGE.into();
+            parser
+                .set_language(&lang)
+                .map_err(|e| format!("Failed to load bash grammar: {e}"))?;
+            Ok(Mutex::new(parser))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// Detects the input shape documented in tree-sitter-bash issue #337, where a
+/// brace before a later four-byte UTF-8 character can crash the native parser.
+fn matches_tree_sitter_bash_issue_337_shape(script: &str) -> bool {
+    let mut saw_open_brace = false;
+
+    script.bytes().any(|byte| {
+        if byte == b'{' {
+            saw_open_brace = true;
+        }
+
+        saw_open_brace && (0xF0..=0xF4).contains(&byte)
+    })
+}
+
+/// Ensures the bash tree-sitter parser is initialized.
+pub fn prewarm_bash_parser() -> Result<(), String> {
+    let _ = get_bash_parser()?;
+    Ok(())
+}
+
+/// Parses a shell script into individual commands using tree-sitter bash grammar
+///
+/// # Example
+/// ```text
+/// Input:  "git status && cargo check"
+/// Output: Ok([["git", "status"], ["cargo", "check"]])
+/// ```
+///
+/// # Fallback
+/// If tree-sitter parsing fails, falls back to simple tokenization
+pub fn parse_shell_commands(script: &str) -> Result<Vec<Vec<String>>, String> {
+    // Try tree-sitter parsing first
+    match parse_with_tree_sitter(script, false) {
+        Ok(commands) if !commands.is_empty() => return Ok(commands),
+        Ok(_) => {} // Empty result, fall through to basic parsing
+        Err(e) => {
+            tracing::debug!("Tree-sitter bash parsing failed: {}, falling back to basic tokenization", e);
+        }
+    }
+
+    // Fallback to simple tokenization
+    parse_with_basic_tokenization(script)
+}
+
+/// Parses a shell script using tree-sitter bash grammar only (no fallback tokenization).
+///
+/// Use this when caller behavior must be strictly gated on bash grammar validity.
+pub fn parse_shell_commands_tree_sitter(script: &str) -> Result<Vec<Vec<String>>, String> {
+    parse_with_tree_sitter(script, true)
+}
+
+/// Returns whether every redirection in a static shell script only routes
+/// command output. Input, heredoc, and descriptor-closing redirections remain
+/// unsupported so progress classification can fail closed.
+pub fn has_only_output_redirections(script: &str) -> bool {
+    if !has_static_shell_shape_for_redirection_check(script) {
+        return false;
+    }
+
+    parsed_script_has_only_output_redirections(script)
+}
+
+fn has_static_shell_shape_for_redirection_check(script: &str) -> bool {
+    !matches_tree_sitter_bash_issue_337_shape(script)
+        && !contains_dynamic_shell_syntax(script)
+        && !contains_background_operator(script)
+}
+
+fn parsed_script_has_only_output_redirections(script: &str) -> bool {
+    let Ok(parser) = get_bash_parser() else {
+        return false;
+    };
+    let Ok(mut parser) = parser.lock() else {
+        return false;
+    };
+    let Some(tree) = parser.parse(script, None) else {
+        return false;
+    };
+    if tree.root_node().has_error() {
+        return false;
+    }
+
+    let mut saw_redirection = false;
+    if !collect_output_redirections(tree.root_node(), script, &mut saw_redirection) {
+        return false;
+    }
+    saw_redirection
+}
+
+fn contains_background_operator(script: &str) -> bool {
+    let chars = script.chars().collect::<Vec<_>>();
+    let mut index = 0;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+
+    while index < chars.len() {
+        let character = chars[index];
+        if character == '\'' && !in_double_quote {
+            in_single_quote = !in_single_quote;
+            index += 1;
+            continue;
+        }
+        if character == '"' && !in_single_quote {
+            in_double_quote = !in_double_quote;
+            index += 1;
+            continue;
+        }
+        if in_single_quote || in_double_quote {
+            index += 1;
+            continue;
+        }
+
+        if character == '&' {
+            let previous = index.checked_sub(1).and_then(|position| chars.get(position));
+            let next = chars.get(index + 1);
+            if next == Some(&'&') {
+                index += 2;
+                continue;
+            }
+            let part_of_allowed_operator = next == Some(&'&')
+                || next == Some(&'>')
+                || previous == Some(&'>')
+                || previous == Some(&'|')
+                || previous == Some(&'<');
+            if !part_of_allowed_operator {
+                return true;
+            }
+        }
+        index += 1;
+    }
+
+    false
+}
+
+fn collect_output_redirections(node: tree_sitter::Node, source: &str, saw_redirection: &mut bool) -> bool {
+    match node.kind() {
+        "file_redirect" => {
+            *saw_redirection = true;
+            let Ok(text) = node.utf8_text(source.as_bytes()) else {
+                return false;
+            };
+            if !is_output_redirection(text) {
+                return false;
+            }
+        }
+        "heredoc_redirect" | "herestring_redirect" => return false,
+        _ => {}
+    }
+
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .all(|child| collect_output_redirections(child, source, saw_redirection))
+}
+
+fn is_output_redirection(text: &str) -> bool {
+    let redirect = text.trim_start_matches(|character: char| character.is_ascii_digit());
+    if redirect.starts_with("&>") {
+        return !redirect.starts_with("&>-");
+    }
+    if let Some(destination) = redirect.strip_prefix(">&") {
+        return destination.trim().chars().all(|character| character.is_ascii_digit());
+    }
+
+    redirect.starts_with('>') && !redirect.starts_with(">&-")
+}
+
+/// Parses shell script using tree-sitter bash grammar.
+fn parse_with_tree_sitter(script: &str, reject_syntax_errors: bool) -> Result<Vec<Vec<String>>, String> {
+    if matches_tree_sitter_bash_issue_337_shape(script) {
+        return Err("Shell script matches the tree-sitter-bash issue #337 crash pattern".to_string());
+    }
+
+    let parser_guard = get_bash_parser()?;
+    let mut parser = parser_guard.lock().map_err(|e| format!("Failed to lock parser: {e}"))?;
+
+    let tree = parser.parse(script, None).ok_or_else(|| "Failed to parse script".to_string())?;
+
+    let mut commands = Vec::new();
+    let root = tree.root_node();
+    if reject_syntax_errors && root.has_error() {
+        return Err("Shell script contains syntax errors".to_string());
+    }
+
+    // Walk the full tree so commands inside loops/conditionals are remembered
+    // for approval and checked for safety.  Top-level-only extraction misses
+    // common read loops such as `for f in ...; do grep ...; done`.
+    collect_commands_from_node(root, script, &mut commands);
+
+    Ok(commands)
+}
+
+fn collect_commands_from_node(node: tree_sitter::Node, source: &str, commands: &mut Vec<Vec<String>>) {
+    match node.kind() {
+        "command" | "simple_command" => {
+            if let Some(cmd) = extract_command_from_node(node, source)
+                && !cmd.is_empty()
+            {
+                commands.push(cmd);
+            }
+        }
+        _ => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                collect_commands_from_node(child, source, commands);
+            }
+        }
+    }
+}
+
+/// Extracts a command vector from a tree-sitter node
+fn extract_command_from_node(node: tree_sitter::Node, source: &str) -> Option<Vec<String>> {
+    let mut command = Vec::new();
+    let mut cursor = node.walk();
+
+    // For pipeline nodes, extract the first command in the pipeline
+    if node.kind() == "pipeline" {
+        for child in node.children(&mut cursor) {
+            if child.kind() == "command" || child.kind() == "simple_command" {
+                return extract_command_from_node(child, source);
+            }
+        }
+    }
+
+    // Extract arguments from command node
+    for child in node.children(&mut cursor) {
+        if child.kind() == "command_name" {
+            if let Ok(arg) = child.utf8_text(source.as_bytes()) {
+                let trimmed = arg.trim();
+                if !trimmed.is_empty() {
+                    command.push(trimmed.to_string());
+                }
+            }
+            continue;
+        }
+
+        if matches!(
+            child.kind(),
+            "word"
+                | "string"
+                | "raw_string"
+                | "ansi_c_string"
+                | "concatenation"
+                | "brace_expression"
+                | "expansion"
+                | "simple_expansion"
+                | "variable_expansion"
+                | "command_substitution"
+                | "process_substitution"
+        ) {
+            let text = child.utf8_text(source.as_bytes());
+            if let Ok(arg) = text {
+                let trimmed = arg.trim();
+                if !trimmed.is_empty() {
+                    command.push(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    if command.is_empty() { None } else { Some(command) }
+}
+
+/// Fallback: Parses shell script with simple tokenization
+fn parse_with_basic_tokenization(script: &str) -> Result<Vec<Vec<String>>, String> {
+    let mut commands = Vec::new();
+    let mut current_command = String::new();
+    let mut in_quotes = false;
+    let mut quote_char = ' ';
+    let mut escaped = false;
+
+    for ch in script.chars() {
+        if escaped {
+            current_command.push(ch);
+            escaped = false;
+            continue;
+        }
+
+        match ch {
+            '\\' => {
+                escaped = true;
+            }
+            '\'' | '"' if !in_quotes => {
+                in_quotes = true;
+                quote_char = ch;
+            }
+            c if c == quote_char && in_quotes => {
+                in_quotes = false;
+            }
+            '&' | '|' | ';' if !in_quotes => {
+                if !current_command.trim().is_empty()
+                    && let Ok(cmd) = tokenize_command(&current_command)
+                {
+                    commands.push(cmd);
+                }
+                current_command.clear();
+            }
+            _ => current_command.push(ch),
+        }
+    }
+
+    if !current_command.trim().is_empty()
+        && let Ok(cmd) = tokenize_command(&current_command)
+    {
+        commands.push(cmd);
+    }
+
+    Ok(commands)
+}
+
+/// Splits a command string into arguments
+/// Respects quoted strings and escapes
+fn tokenize_command(cmd: &str) -> Result<Vec<String>, String> {
+    shell_words::split(cmd).map_err(|err| format!("failed to tokenize command: {err}"))
+}
+
+/// Parses `bash -lc "script"` style invocations
+///
+/// # Example
+/// ```text
+/// Input:  vec!["bash", "-lc", "git status && rm /"]
+/// Output: Some([["git", "status"], ["rm", "/"]])
+/// ```
+pub fn parse_bash_lc_commands(command: &[String]) -> Option<Vec<Vec<String>>> {
+    if command.is_empty() {
+        return None;
+    }
+
+    let cmd_name = command[0].as_str();
+    let base_cmd = std::path::Path::new(cmd_name)
+        .file_name()
+        .and_then(|osstr| osstr.to_str())
+        .unwrap_or("");
+
+    if base_cmd != "bash" && base_cmd != "zsh" && base_cmd != "sh" {
+        return None;
+    }
+
+    // Look for -lc or -c pattern
+    for window in command.windows(2) {
+        if matches!(window[0].as_str(), "-lc" | "-c" | "-il" | "-ic") {
+            let script = &window[1];
+            return parse_shell_commands(script).ok();
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn tokenize_simple_command() {
+        let cmd = "git status";
+        let tokens = tokenize_command(cmd).unwrap();
+        assert_eq!(tokens, vec!["git", "status"]);
+    }
+
+    #[test]
+    fn tokenize_quoted_arguments() {
+        let cmd = r#"echo "hello world""#;
+        let tokens = tokenize_command(cmd).unwrap();
+        assert_eq!(tokens, vec!["echo", "hello world"]);
+    }
+
+    #[test]
+    fn parse_single_command() {
+        let script = "git status";
+        let commands = parse_shell_commands(script).unwrap();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0][0], "git");
+    }
+
+    #[test]
+    fn parse_chained_commands_with_and() {
+        let script = "git status && cargo check";
+        let commands = parse_shell_commands(script).unwrap();
+        assert_eq!(commands.len(), 2);
+        assert_eq!(commands[0][0], "git");
+        assert_eq!(commands[1][0], "cargo");
+    }
+
+    #[test]
+    fn parse_loop_body_commands() {
+        let script = "cd crates/codegen/diapason-core/src/tools/registry && for f in *.rs; do echo \"=== $f ===\"; grep -nE '^(pub )?(struct|enum|fn)' \"$f\" | head -50; done";
+        let commands = parse_shell_commands(script).unwrap();
+
+        let expected_directory_change = vec![
+            "cd".to_owned(),
+            "crates/codegen/diapason-core/src/tools/registry".to_owned(),
+        ];
+        assert_eq!(commands.first(), Some(&expected_directory_change));
+
+        let expected_loop_commands = ["echo", "grep", "head"];
+        let loop_commands_were_extracted = expected_loop_commands.iter().all(|expected| {
+            commands
+                .iter()
+                .any(|command| command.first().is_some_and(|name| name == *expected))
+        });
+        assert!(loop_commands_were_extracted);
+    }
+
+    #[test]
+    fn parse_chained_commands_with_semicolon() {
+        let script = "git status; cargo check";
+        let commands = parse_shell_commands(script).unwrap();
+        assert_eq!(commands.len(), 2);
+    }
+
+    #[test]
+    fn parse_bash_lc_git_status() {
+        let cmd = vec!["bash".to_string(), "-lc".to_string(), "git status".to_string()];
+        let commands = parse_bash_lc_commands(&cmd);
+        assert!(commands.is_some());
+        let commands = commands.unwrap();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0][0], "git");
+    }
+
+    #[test]
+    fn parse_bash_lc_chained() {
+        let cmd = vec![
+            "bash".to_string(),
+            "-lc".to_string(),
+            "git status && cargo check".to_string(),
+        ];
+        let commands = parse_bash_lc_commands(&cmd);
+        assert!(commands.is_some());
+        let commands = commands.unwrap();
+        assert_eq!(commands.len(), 2);
+    }
+
+    #[test]
+    fn parse_non_bash_command_returns_none() {
+        let cmd = vec!["echo".to_string(), "hello".to_string()];
+        let commands = parse_bash_lc_commands(&cmd);
+        assert!(commands.is_none());
+    }
+
+    #[test]
+    fn parse_bash_without_lc_returns_none() {
+        let cmd = vec!["bash".to_string(), "script.sh".to_string()];
+        let commands = parse_bash_lc_commands(&cmd);
+        assert!(commands.is_none());
+    }
+
+    // Phase 4 tests: Tree-sitter based parsing
+
+    #[test]
+    fn parse_complex_pipeline() {
+        let script = "cat file.txt | grep -i pattern | sort";
+        let commands = parse_shell_commands(script).unwrap();
+        assert!(!commands.is_empty());
+    }
+
+    #[test]
+    fn parse_with_pipes_and_redirects() {
+        let script = "ls -la | grep file > output.txt";
+        let commands = parse_shell_commands(script).unwrap();
+        assert!(!commands.is_empty());
+    }
+
+    #[test]
+    fn parse_command_substitution_fallback() {
+        let script = "echo $(git status)";
+        let commands = parse_shell_commands(script).unwrap();
+        assert!(!commands.is_empty());
+    }
+
+    #[test]
+    fn parse_escaped_quotes() {
+        let script = r#"echo "hello \"world\"""#;
+        let commands = parse_shell_commands(script).unwrap();
+        assert!(!commands.is_empty());
+    }
+
+    #[test]
+    fn parse_tree_sitter_preserves_command_name_with_quoted_args() {
+        let script = r#"echo "fish and chips""#;
+        let commands = parse_shell_commands_tree_sitter(script).unwrap();
+        assert!(!commands.is_empty());
+        assert_eq!(commands[0][0], "echo");
+    }
+
+    #[test]
+    fn parse_tree_sitter_preserves_single_and_ansi_quoted_args() {
+        let script = r#"printf '\n' && git diff '--output=out.txt' && printf $'\n'"#;
+        let commands = parse_shell_commands_tree_sitter(script).unwrap();
+        assert!(
+            commands
+                .iter()
+                .any(|command| command.iter().any(|word| word.contains("--output=out.txt")))
+        );
+        assert!(commands.iter().any(|command| command.iter().any(|word| word.contains("\\n"))));
+    }
+
+    #[test]
+    fn dynamic_syntax_allows_literal_escapes_inside_double_quoted_arguments() {
+        assert!(!contains_dynamic_shell_syntax(r#"rg -n "\[profile|lto|codegen-units|strip" Cargo.toml"#));
+        assert!(!contains_dynamic_shell_syntax(r#"printf "\nTop-level:\n""#));
+        assert!(!contains_dynamic_shell_syntax(r#"printf "quoted: \"value\"""#));
+        assert!(contains_dynamic_shell_syntax(r#"echo "safe\"$(id)""#));
+    }
+
+    #[test]
+    fn dynamic_syntax_rejects_unquoted_escapes() {
+        assert!(contains_dynamic_shell_syntax(r"rg -n \[profile Cargo.toml"));
+    }
+
+    #[test]
+    fn output_redirection_guard_rejects_input_and_heredoc_shapes() {
+        assert!(has_only_output_redirections("cargo check > build.log 2>&1"));
+        assert!(has_only_output_redirections("cargo check | head -40 > build.log"));
+        assert!(has_only_output_redirections("cargo check &> build.log"));
+        assert!(has_only_output_redirections("cargo check &>> build.log"));
+        assert!(!has_only_output_redirections("cargo check < build-input.log"));
+        assert!(!has_only_output_redirections("cargo check <<'EOF'\ninput\nEOF"));
+        assert!(!has_only_output_redirections("cargo check > $(printf build.log)"));
+        assert!(!has_only_output_redirections("cargo check > build.log &"));
+        assert!(!has_only_output_redirections("cargo check 2>&-"));
+    }
+
+    #[test]
+    fn strict_tree_sitter_parser_rejects_incomplete_shell_syntax() {
+        assert!(parse_shell_commands_tree_sitter("cargo check &&").is_err());
+        assert!(parse_shell_commands_tree_sitter("echo '").is_err());
+    }
+
+    #[test]
+    fn tree_sitter_issue_337_inputs_are_rejected_before_native_parsing() {
+        for script in ["{𱡀", "{echo; printf '💩'}"] {
+            assert_eq!(
+                parse_shell_commands_tree_sitter(script),
+                Err("Shell script matches the tree-sitter-bash issue #337 crash pattern".to_string())
+            );
+            assert_eq!(parse_shell_commands(script), parse_with_basic_tokenization(script));
+            assert!(!has_only_output_redirections(script));
+        }
+
+        // Quoting would normally let the output-redirection check reach the
+        // native parser, so this verifies its issue-pattern preflight directly.
+        assert!(!has_only_output_redirections("echo '{' '💩' > build.log"));
+    }
+
+    #[test]
+    fn tree_sitter_issue_337_guard_requires_brace_before_four_byte_character() {
+        assert!(!matches_tree_sitter_bash_issue_337_shape("𱡀{"));
+    }
+
+    #[test]
+    fn parse_bash_lc_with_pipe() {
+        let cmd = vec!["bash".to_string(), "-lc".to_string(), "ls -la | head -5".to_string()];
+        let commands = parse_bash_lc_commands(&cmd);
+        assert!(commands.is_some());
+        let cmds = commands.unwrap();
+        assert!(!cmds.is_empty());
+    }
+
+    #[test]
+    fn parse_dangerous_shell_command() {
+        let script = "rm -rf /; echo done";
+        let commands = parse_shell_commands(script).unwrap();
+        assert_eq!(commands.len(), 2);
+        assert_eq!(commands[0][0], "rm");
+    }
+
+    #[test]
+    fn prewarm_bash_parser_initializes_successfully() {
+        prewarm_bash_parser().expect("bash parser should initialize");
+    }
+
+    #[test]
+    fn dynamic_find_syntax_is_detected_without_rejecting_quoted_globs() {
+        assert!(contains_dynamic_find_syntax("find src -maxdepth 0 -exe$''c touch /tmp/DIAPASON_BYPASS_POC {} +"));
+        assert!(!contains_dynamic_find_syntax("find src -type f -name '*.rs'"));
+    }
+
+    #[test]
+    fn find_exec_placeholder_is_distinct_from_dynamic_braces_and_expansions() {
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec printf '%s\\n' {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find src -type f -execdir wc -l {} +"));
+        assert!(contains_dynamic_find_syntax("find . -exec {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec sh -c {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec printf {} \\;"));
+        assert!(contains_dynamic_find_syntax("find src -name {}"));
+        assert!(contains_dynamic_find_syntax("find src -name {one,two}"));
+        assert!(contains_dynamic_find_syntax("find src -exec printf '%s\\n' ${path} \\;"));
+    }
+
+    #[test]
+    fn find_exec_bash_command_option_classifies_command_source_as_dynamic() {
+        assert!(contains_dynamic_find_syntax("find . -exec bash -c {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_combined_shell_flags_detect_command_source_without_reclassifying_placeholders() {
+        assert!(contains_dynamic_find_syntax("find . -exec sh -ec {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec sh -ec 'printf %s' {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec sh -e printf {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_recognizes_supported_shell_interpreters() {
+        for shell in ["sh", "bash", "dash", "zsh", "ksh", "ksh93", "ash", "mksh"] {
+            let script = format!("find . -exec {shell} -c {{}} \\;");
+            assert!(contains_dynamic_find_syntax(&script), "expected dynamic shell source: {script}");
+        }
+    }
+
+    #[test]
+    fn find_exec_wrapped_shell_interpreter_detects_command_source() {
+        for script in [
+            "find . -exec timeout 5 bash -c {} \\;",
+            "find . -exec nice -n 5 sh -c {} \\;",
+            "find . -exec nohup bash -c {} \\;",
+            "find . -exec stdbuf -oL bash -c {} \\;",
+            "find . -exec xargs bash -c {} \\;",
+        ] {
+            assert!(contains_dynamic_find_syntax(script), "expected dynamic shell source: {script}");
+        }
+
+        // A literal interpreter-name argument is not an executable position.
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec cp bash {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find src -type f -exec grep -e bash {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_env_wrapper_detects_nested_shell_command_source() {
+        assert!(contains_dynamic_find_syntax("find . -exec env bash -c {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -i -- bash -ec {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env -u HOME -- bash -c {} \\;"));
+        assert!(contains_dynamic_find_syntax("find . -exec env --split-string 'bash -c {}' \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec env bash -c 'printf %s' {} \\;"));
+    }
+
+    #[test]
+    fn find_exec_env_end_of_options_preserves_following_find_expressions() {
+        assert!(contains_dynamic_find_syntax("find . -exec env -- \\; -exec bash -c {} \\;"));
+        assert!(!contains_dynamic_find_syntax("find . -exec env -- \\; -exec printf {} \\;"));
+    }
+
+    proptest! {
+        #[test]
+        fn literal_placeholder_remains_static_across_find_exec_commands(
+            root in "[a-zA-Z0-9_./-]{1,40}",
+            utility in "[a-zA-Z][a-zA-Z0-9_-]{0,20}",
+            argument in "[a-zA-Z0-9_./:-]{1,40}",
+            exec_option in prop_oneof![Just("-exec"), Just("-execdir")],
+            terminator in prop_oneof![Just("+"), Just("\\;")],
+        ) {
+            let script = format!("find {root} -type f {exec_option} {utility} {argument} {{}} {terminator}");
+
+            prop_assert!(!contains_dynamic_find_syntax(&script), "unexpectedly dynamic: {script}");
+        }
+    }
+}
+
+// === Injection detection (moved from tools::validation::commands) ===
+
+use anyhow::{Result, bail};
+
+/// Quote state for shell segment splitting.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum QuoteState {
+    None,
+    Single,
+    Double,
+}
+
+/// Split a shell command into segments on unquoted `|` and `&` boundaries,
+/// while detecting injection patterns (`;`, backticks, `$()`, newlines).
+pub(crate) fn split_shell_segments(command: &str) -> Result<Vec<String>> {
+    let mut segments = Vec::new();
+    let mut state = QuoteState::None;
+    let mut escaped = false;
+    let mut segment_start = 0usize;
+    let mut chars = command.char_indices().peekable();
+
+    while let Some((idx, ch)) = chars.next() {
+        match state {
+            QuoteState::Single => {
+                if ch == '\'' {
+                    state = QuoteState::None;
+                }
+            }
+            QuoteState::Double => {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+
+                match ch {
+                    '\\' => escaped = true,
+                    '"' => state = QuoteState::None,
+                    '`' => bail!("Command injection pattern detected"),
+                    '$' if matches!(chars.peek(), Some((_, '('))) => {
+                        bail!("Command injection pattern detected");
+                    }
+                    _ => {}
+                }
+            }
+            QuoteState::None => {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+
+                match ch {
+                    '\\' => escaped = true,
+                    '\'' => state = QuoteState::Single,
+                    '"' => state = QuoteState::Double,
+                    '`' => bail!("Command injection pattern detected"),
+                    '$' if matches!(chars.peek(), Some((_, '('))) => {
+                        bail!("Command injection pattern detected");
+                    }
+                    ';' => bail!("Unquoted command chaining detected"),
+                    '\n' => bail!("Command injection pattern detected"),
+                    '|' | '&' => {
+                        push_segment(command, segment_start, idx, &mut segments);
+                        segment_start = idx + ch.len_utf8();
+                        if let Some((next_idx, next_ch)) = chars.peek().copied()
+                            && next_ch == ch
+                        {
+                            let _next = chars.next();
+                            segment_start = next_idx + next_ch.len_utf8();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    push_segment(command, segment_start, command.len(), &mut segments);
+    Ok(segments)
+}
+
+fn push_segment(command: &str, start: usize, end: usize, segments: &mut Vec<String>) {
+    let segment = command[start..end].trim();
+    if !segment.is_empty() {
+        segments.push(segment.to_string());
+    }
+}
+
+/// Check for additional dangerous patterns not covered by the central dangerous-command detector.
+pub(crate) fn additional_dangerous_pattern(segment: &str) -> Option<&'static str> {
+    let segment_lower = segment.to_ascii_lowercase();
+    if segment_lower.starts_with(":(){:|:&};:") {
+        return Some(":(){:|:&};:");
+    }
+
+    let tokens =
+        shell_words::split(segment).unwrap_or_else(|_| segment.split_whitespace().map(ToString::to_string).collect());
+    let first = tokens.first()?;
+    let command_name = base_command_name(strip_wrapping_quotes(first)).to_ascii_lowercase();
+
+    match command_name.as_str() {
+        "rmdir" => Some("rmdir"),
+        "wget" => Some("wget"),
+        "curl" => Some("curl"),
+        "chmod" if tokens.iter().skip(1).any(|arg| strip_wrapping_quotes(arg).starts_with("777")) => Some("chmod 777"),
+        "chown"
+            if tokens.iter().skip(1).any(|arg| {
+                let arg = strip_wrapping_quotes(arg).to_ascii_lowercase();
+                arg == "root" || arg.starts_with("root:")
+            }) =>
+        {
+            Some("chown root")
+        }
+        _ => None,
+    }
+}
+
+fn strip_wrapping_quotes(token: &str) -> &str {
+    token
+        .strip_prefix('\'')
+        .and_then(|token| token.strip_suffix('\''))
+        .or_else(|| token.strip_prefix('"').and_then(|token| token.strip_suffix('"')))
+        .unwrap_or(token)
+}
+
+fn base_command_name(command: &str) -> &str {
+    std::path::Path::new(command)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(command)
+}

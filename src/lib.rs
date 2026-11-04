@@ -7,9 +7,9 @@
     missing_docs,
     reason = "The binary preserves existing compatibility lints while the workspace migration addresses actionable lint families."
 )]
-//! # VT Code - Terminal Coding Agent
+//! # Diapason - Terminal Coding Agent
 //!
-//! VT Code is a Rust-based terminal coding agent that pairs a streamlined
+//! Diapason is a Rust-based terminal coding agent that pairs a streamlined
 //! crossterm-powered interface with LLM-native code understanding and robust shell safety.
 //! It is designed for developers who need precise context handling,
 //! secure tool execution, and configurable multi-provider AI workflows.
@@ -27,30 +27,30 @@
 //! - **Workspace-aware automation**: git-aware fuzzy navigation, workspace
 //!   boundary enforcement, command allowlists, and human-in-the-loop
 //!   confirmation.
-//! - **Config-driven behaviour**: every agent control lives in `vtcode.toml`,
-//!   anchored by constants in `vtcode_core::config::constants` and curated model
+//! - **Config-driven behaviour**: every agent control lives in `config.toml`,
+//!   anchored by constants in `diapason_core::config::constants` and curated model
 //!   metadata in `docs/models.json`.
 //!
 //! ## Quickstart
 //!
 //! ```bash
 //! # Install the CLI (cargo, npm, or Homebrew are also supported)
-//! cargo install vtcode
+//! cargo install diapason
 //!
 //! # Export the API key for your provider
 //! export OPENAI_API_KEY="your-key"
 //!
 //! # Launch the agent with explicit provider/model overrides
-//! vtcode --provider openai --model gpt-5-codex
+//! diapason --provider openai --model gpt-5-codex
 //!
 //! # Run a one-off prompt with streaming output
-//! vtcode ask "Summarize diagnostics in src/lib.rs"
+//! diapason ask "Summarize diagnostics in src/lib.rs"
 //!
 //! # Perform a dry run without tool execution
-//! vtcode --no-tools ask "Review recent changes in src/main.rs"
+//! diapason --no-tools ask "Review recent changes in src/main.rs"
 //! ```
 //!
-//! Persist long-lived defaults in `vtcode.toml` instead of hardcoding them:
+//! Persist long-lived defaults in `config.toml` instead of hardcoding them:
 //!
 //! ```toml
 //! [agent]
@@ -59,14 +59,14 @@
 //! ```
 //!
 //! The configuration loader resolves aliases through
-//! `vtcode_core::config::constants`, while `docs/models.json` tracks the latest
+//! `diapason_core::config::constants`, while `docs/models.json` tracks the latest
 //! vetted provider model identifiers.
 //!
 //! ## Architecture Overview
 //!
-//! VT Code separates reusable library components from the CLI entrypoint:
+//! Diapason separates reusable library components from the CLI entrypoint:
 //!
-//! - `vtcode-core/` exposes the agent runtime, provider abstractions (`llm/`),
+//! - `diapason-core/` exposes the agent runtime, provider abstractions (`llm/`),
 //!   tool registry (`tools/`), configuration loaders, and shell safety
 //!   integrations orchestrated with Tokio.
 //! - `src/main.rs` embeds the inline UI, Clap-based CLI, and runtime wiring.
@@ -81,11 +81,11 @@
 //!
 //! ## Distribution Channels
 //!
-//! VT Code is distributed via multiple ecosystems:
+//! Diapason is distributed via multiple ecosystems:
 //!
-//! - **crates.io**: `cargo install vtcode`
-//! - **npm**: `npm install -g vtcode`
-//! - **Homebrew**: `brew install vtcode`
+//! - **crates.io**: `cargo install diapason`
+//! - **npm**: `npm install -g diapason`
+//! - **Homebrew**: `brew install diapason`
 //! - **GitHub Releases**: pre-built binaries for macOS, Linux, and Windows
 //!
 //! ## crates.io Categories
@@ -101,11 +101,11 @@
 //! ### Starting an Agent Programmatically
 //!
 //! ```rust,ignore
-//! use vtcode_core::{Agent, VTCodeConfig};
+//! use diapason_core::{Agent, DiapasonConfig};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), anyhow::Error> {
-//!     let config = VTCodeConfig::load()?;
+//!     let config = DiapasonConfig::load()?;
 //!     let agent = Agent::new(config).await?;
 //!     agent.run().await?;
 //!     Ok(())
@@ -115,7 +115,7 @@
 //! ### Registering a Custom Tool
 //!
 //! ```rust,ignore
-//! use vtcode_core::tools::{ToolRegistry, ToolRegistration};
+//! use diapason_core::tools::{ToolRegistry, ToolRegistration};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), anyhow::Error> {
@@ -144,12 +144,12 @@
 //!
 //! ## Agent Client Protocol (ACP)
 //!
-//! VT Code ships an ACP bridge tailored for Zed. Enable it via the `[acp]` section in
-//! `vtcode.toml`, launch `vtcode acp`, and register the binary inside Zed's
+//! Diapason ships an ACP bridge tailored for Zed. Enable it via the `[acp]` section in
+//! `config.toml`, launch `diapason acp`, and register the binary inside Zed's
 //! `agent_servers` list. The full walkthrough lives in the
-//! [Zed ACP integration guide](https://github.com/vinhnx/vtcode/blob/main/docs/guides/zed-acp.md),
+//! [Zed ACP integration guide](https://github.com/leynos/vtcode/tree/main/docs/guides/zed-acp.md),
 //! and the rendered API guarantees appear on
-//! [docs.rs](https://docs.rs/vtcode/latest/vtcode/#agent-client-protocol-acp).
+//! [docs.rs](https://docs.rs/diapason/latest/diapason/#agent-client-protocol-acp).
 //!
 //! ### Bridge guarantees
 //!
@@ -163,19 +163,19 @@
 //!   progress so Zed mirrors the agent's workflow.
 //! - Strict absolute-path validation blocks relative or out-of-workspace arguments before they
 //!   reach the client.
-//! - When the model lacks tool calling, VT Code emits reasoning notices and downgrades to plain
+//! - When the model lacks tool calling, Diapason emits reasoning notices and downgrades to plain
 //!   completions while keeping the plan timeline consistent.
 
 //!
-//! VT Code binary package
+//! Diapason binary package
 //!
-//! This package contains the binary executable for VT Code.
-//! For the core library functionality, see [`vtcode-core`](https://docs.rs/vtcode-core).
+//! This package contains the binary executable for Diapason.
+//! For the core library functionality, see [`diapason-core`](https://docs.rs/diapason-core).
 
-pub use vtcode_acp as acp;
+pub use diapason_acp as acp;
 
-/// Re-exports from vtcode-config's config watcher module.
+/// Re-exports from diapason-config's config watcher module.
 pub mod config_watcher {
-    pub use vtcode_config::loader::watch::*;
+    pub use diapason_config::loader::watch::*;
 }
-pub use vtcode_ui::tui::ui::interactive_list;
+pub use diapason_ui::tui::ui::interactive_list;

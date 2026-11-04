@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="VT Code WebMCP browser code editor with a safe in-memory fallback">
+  <meta name="description" content="Diapason WebMCP browser code editor with a safe in-memory fallback">
   <link rel="icon" href="./favicon.ico" type="image/x-icon">
-  <title>VT Code · WebMCP editor</title>
+  <title>Diapason · WebMCP editor</title>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href=".">
         <span class="brand-mark">VT</span>
-        <span>VT CODE <small>WEBMCP EDITOR</small></span>
+        <span>DIAPASON <small>WEBMCP EDITOR</small></span>
       </a>
       <div class="workspace-identity">
         <span class="label">WORKSPACE</span>
@@ -21,9 +21,9 @@
       </div>
       <div class="top-actions">
         <span id="supportStatus" class="support-pill" role="status">Fallback mode</span>
-        <nav class="resource-links" aria-label="VT Code resources">
-          <a class="button subtle resource-link" href="https://github.com/vinhnx/VTCode/releases/latest" target="_blank" rel="noopener noreferrer" aria-label="Download the latest VT Code binary installer">Download installer</a>
-          <a class="button subtle resource-link" href="https://github.com/vinhnx/VTCode" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <nav class="resource-links" aria-label="Diapason resources">
+          <a class="button subtle resource-link" href="https://github.com/leynos/vtcode#installation" target="_blank" rel="noopener noreferrer" aria-label="Build and install Diapason">Installation</a>
+          <a class="button subtle resource-link" href="https://github.com/leynos/vtcode" target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
         <button id="quickActions" class="button subtle shortcut-button" type="button" title="Open quick actions (Cmd/Ctrl+Shift+P)" aria-keyshortcuts="Meta+Shift+P Control+Shift+P">Actions <kbd>⌘⇧P</kbd></button>
         <button id="helpButton" class="button subtle help-button" type="button" title="Show keyboard shortcuts and help (?)" aria-label="Show keyboard shortcuts and help">?</button>
@@ -39,10 +39,10 @@
           <div><span class="dialog-kicker">SETTINGS</span><h2 id="settingsTitle">Connection and workspace</h2></div>
           <button id="closeSettings" class="toolbar-button" type="button">Close</button>
         </div>
-        <p class="settings-intro">New here? Close Settings to try fallback, or pair VT Code below. Press <kbd>?</kbd> after closing this dialog for the quick guide. The paired VT Code TUI remains the source of truth for workspace, policy, pairing, and writes.</p>
+        <p class="settings-intro">New here? Close Settings to try fallback, or pair Diapason below. Press <kbd>?</kbd> after closing this dialog for the quick guide. The paired Diapason TUI remains the source of truth for workspace, policy, pairing, and writes.</p>
 
         <section class="settings-sync" aria-labelledby="settingsSyncTitle">
-          <div class="settings-sync-header"><div><span class="terminal-label">VT CODE CONFIGURATION</span><h3 id="settingsSyncTitle">Bridge status</h3></div><span id="settingsSyncState" class="settings-sync-state">Fallback defaults</span></div>
+          <div class="settings-sync-header"><div><span class="terminal-label">DIAPASON CONFIGURATION</span><h3 id="settingsSyncTitle">Bridge status</h3></div><span id="settingsSyncState" class="settings-sync-state">Fallback defaults</span></div>
           <dl class="settings-grid">
             <div><dt>Connection</dt><dd id="settingsConnection">In-memory fallback</dd></div>
             <div><dt>Workspace</dt><dd id="settingsWorkspace">Browser memory</dd></div>
@@ -56,40 +56,40 @@
         </section>
 
         <details id="connectionPanel" class="connection-panel" open>
-          <summary><span>Connect or re-pair a VT Code bridge</span><span id="connectionSummary" class="connection-summary">Two-step pairing</span></summary>
+          <summary><span>Connect or re-pair a Diapason bridge</span><span id="connectionSummary" class="connection-summary">Two-step pairing</span></summary>
           <div class="pairing-instructions" aria-label="Two-step pairing instructions">
             <div class="pairing-step">
               <span class="pairing-number">1</span>
               <div class="pairing-step-content">
-                <strong>Start in the VT Code TUI</strong>
-                <p>For <strong>VT CODE TURN</strong>, run this in the same interactive session:</p>
+                <strong>Start in the Diapason TUI</strong>
+                <p>For <strong>DIAPASON TURN</strong>, run this in the same interactive session:</p>
                 <div class="pairing-command"><code id="pairingCommand">/webmcp pair http://localhost:5173</code><button id="copyPairingCommand" class="toolbar-button" type="button">Copy command</button></div>
-                <small>VT Code prints a WebSocket URL and a one-time pairing code.</small>
+                <small>Diapason prints a WebSocket URL and a one-time pairing code.</small>
               </div>
             </div>
             <div class="pairing-step">
               <span class="pairing-number">2</span>
               <div class="pairing-step-content">
                 <strong>Paste into this web app</strong>
-                <p>Copy both values from that same running VT Code session, then pair below.</p>
+                <p>Copy both values from that same running Diapason session, then pair below.</p>
                 <small>Keep the TUI running while the browser is connected.</small>
               </div>
             </div>
           </div>
-          <div class="connection-alternative"><strong>Workspace only?</strong> Start <code>vtcode webmcp serve</code> instead. It does not provide VT CODE TURN.</div>
+          <div class="connection-alternative"><strong>Workspace only?</strong> Start <code>diapason webmcp serve</code> instead. It does not provide DIAPASON TURN.</div>
           <div class="connection-form">
             <label>WebSocket URL<input id="bridgeUrl" type="url" placeholder="ws://127.0.0.1:<port>/webmcp" autocomplete="off" spellcheck="false"></label>
             <label>One-time pairing code<input id="pairingCode" type="password" inputmode="text" maxlength="64" autocomplete="off" spellcheck="false"></label>
-            <button id="connectBridge" class="button primary" type="button">Pair with VT Code</button>
+            <button id="connectBridge" class="button primary" type="button">Pair with Diapason</button>
           </div>
-          <p class="connection-note"><strong>Nothing is written by the browser.</strong> The code and session token stay in browser memory. VT Code remains the approval authority.</p>
+          <p class="connection-note"><strong>Nothing is written by the browser.</strong> The code and session token stay in browser memory. Diapason remains the approval authority.</p>
         </details>
 
         <details id="workspaceSetupPanel" class="workspace-setup-panel">
           <summary><span>Choose a workspace and setup mode</span><span class="connection-summary">Terminal-assisted</span></summary>
           <div class="setup-intro">
             <strong>Choose the workspace from this page</strong>
-            <p>The browser cannot launch VT Code or grant filesystem access. Enter a path, copy one setup command, run it in a terminal, then pair here.</p>
+            <p>The browser cannot launch Diapason or grant filesystem access. Enter a path, copy one setup command, run it in a terminal, then pair here.</p>
           </div>
           <div class="setup-form">
             <label>Workspace path<input id="workspacePath" type="text" maxlength="4096" placeholder="/absolute/path/to/workspace" autocomplete="off" spellcheck="false"></label>
@@ -97,16 +97,16 @@
           </div>
           <div class="setup-options">
             <article class="setup-option">
-              <span class="terminal-label">ACTIVE SESSION · VT CODE TURN</span>
-              <h2>Open with the VT Code agent</h2>
-              <p>Starts VT Code in the selected workspace. Then run the shown <code>/webmcp pair</code> command in its TUI.</p>
+              <span class="terminal-label">ACTIVE SESSION · DIAPASON TURN</span>
+              <h2>Open with the Diapason agent</h2>
+              <p>Starts Diapason in the selected workspace. Then run the shown <code>/webmcp pair</code> command in its TUI.</p>
               <pre id="activeSetupCommand"></pre>
               <button id="copyActiveSetup" class="toolbar-button" type="button">Copy active setup</button>
             </article>
             <article class="setup-option">
               <span class="terminal-label">WORKSPACE ONLY</span>
               <h2>Open for editing</h2>
-              <p>Starts the headless bridge for workspace inspection and proposals. It does not provide VT CODE TURN.</p>
+              <p>Starts the headless bridge for workspace inspection and proposals. It does not provide DIAPASON TURN.</p>
               <pre id="headlessSetupCommand"></pre>
               <button id="copyHeadlessSetup" class="toolbar-button" type="button">Copy workspace setup</button>
             </article>
@@ -116,7 +116,7 @@
       </div>
     </dialog>
 
-    <main class="ide-shell" aria-label="VT Code coding workspace">
+    <main class="ide-shell" aria-label="Diapason coding workspace">
       <aside class="explorer" aria-label="Workspace explorer">
         <div class="explorer-header">
           <div><span class="label">EXPLORER</span><h2>Files</h2></div>
@@ -153,12 +153,12 @@
         <div id="editor" class="code-editor" aria-label="Selected file editor"></div>
         <div class="editor-footer"><span id="cursorPosition">Ln 1, Col 1</span><span class="editor-footer-hint">Drafts stay in this browser until reviewed</span></div>
 
-        <section class="terminal-panel" aria-label="Terminal and VT Code output">
+        <section class="terminal-panel" aria-label="Terminal and Diapason output">
           <header class="terminal-header">
             <nav class="terminal-tabs" role="tablist" aria-label="Bottom panel">
               <button class="terminal-tab active" type="button" role="tab" aria-selected="true" data-terminal="activity">TERMINAL</button>
               <button class="terminal-tab" type="button" role="tab" aria-selected="false" data-terminal="changes">CHANGES <span id="proposalState" class="state-badge">No proposal</span></button>
-              <button class="terminal-tab" type="button" role="tab" aria-selected="false" data-terminal="turn">VT CODE</button>
+              <button class="terminal-tab" type="button" role="tab" aria-selected="false" data-terminal="turn">DIAPASON</button>
             </nav>
             <div class="terminal-status"><strong id="statusText" role="status">Ready for inspection</strong><span id="statusDetail">Fallback mode is memory-only.</span></div>
             <div class="terminal-actions"><button id="runChecks" class="toolbar-button" type="button">Run checks</button><small id="webmcpCapability">Checking browser WebMCP support…</small></div>
@@ -185,10 +185,10 @@
 
           <div id="terminalTurn" class="terminal-pane" role="tabpanel" hidden>
             <div class="turn-grid">
-              <div class="turn-heading"><span class="terminal-label">VT CODE TURN</span><h2>Prompt composer</h2><small id="promptDetail">Browser-only fallback: pair a bridge for workspace access; agent turns need an active runtime.</small></div>
-              <textarea id="promptInput" maxlength="4000" rows="2" placeholder="Ask VT Code to inspect the reviewed change"></textarea>
+              <div class="turn-heading"><span class="terminal-label">DIAPASON TURN</span><h2>Prompt composer</h2><small id="promptDetail">Browser-only fallback: pair a bridge for workspace access; agent turns need an active runtime.</small></div>
+              <textarea id="promptInput" maxlength="4000" rows="2" placeholder="Ask Diapason to inspect the reviewed change"></textarea>
               <button id="requestTurn" class="button subtle" type="button" aria-keyshortcuts="Meta+Enter Control+Enter"><span id="requestTurnLabel">Pair editor first</span><kbd>⌘↵</kbd></button>
-              <div class="turn-output-wrap"><span class="terminal-label">RESPONSE</span><pre id="turnOutput">No VT Code turn requested.</pre></div>
+              <div class="turn-output-wrap"><span class="terminal-label">RESPONSE</span><pre id="turnOutput">No Diapason turn requested.</pre></div>
             </div>
           </div>
         </section>
@@ -248,7 +248,7 @@
             <li><kbd>?</kbd><span>Open this help popup when you are not typing</span></li>
             <li><kbd>⌘/Ctrl+K</kbd><span>Focus the file filter</span></li>
             <li><kbd>⌘/Ctrl+S</kbd><span>Review the current draft</span></li>
-            <li><kbd>⌘/Ctrl+Enter</kbd><span>Request VT Code turn from the prompt</span></li>
+            <li><kbd>⌘/Ctrl+Enter</kbd><span>Request Diapason turn from the prompt</span></li>
             <li><kbd>Esc</kbd><span>Close the active popup</span></li>
           </ul>
         </section>
@@ -256,8 +256,8 @@
           <span class="terminal-label">GETTING STARTED</span>
           <ul class="help-list help-copy">
             <li><span><strong>Fallback:</strong> close Settings, open a file, edit it, and select <strong>Review changes</strong>.</span></li>
-            <li><span><strong>Connected:</strong> pair VT Code, stage the diff, then request a VT Code turn.</span></li>
-            <li><span><strong>Safety:</strong> VT Code approves real writes; the browser never writes directly to disk.</span></li>
+            <li><span><strong>Connected:</strong> pair Diapason, stage the diff, then request a Diapason turn.</span></li>
+            <li><span><strong>Safety:</strong> Diapason approves real writes; the browser never writes directly to disk.</span></li>
           </ul>
         </section>
       </div>

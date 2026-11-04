@@ -1,4 +1,4 @@
-# VT Code Companion Extension Development Guide
+# Diapason Companion Extension Development Guide
 
 This guide provides instructions for setting up, developing, and running the VT
 Code Companion VSCode extension.
@@ -17,7 +17,7 @@ Before you begin, ensure you have the following installed:
 
 ```bash
 # Navigate to your extension directory
-cd /path/to/vtcode/extensions/vscode-extension
+cd /path/to/diapason/extensions/vscode-extension
 
 # Install dependencies
 npm install
@@ -123,18 +123,18 @@ When using the "Run Extension" launch configuration:
 1. Set breakpoints in your TypeScript files in the original VSCode window
 2. Interact with the extension in the "Extension Development Host" window
 3. Debug output will appear in the Debug Console of the original window
-4. Extension logs can be viewed in the Output panel (select "VT Code" from the
+4. Extension logs can be viewed in the Output panel (select "Diapason" from the
    dropdown)
 
 ## Commands Available
 
 The extension contributes the following commands:
 
-- `vtcode.openQuickActions` - Open the quick actions panel
-- `vtcode.askAgent` - Send a question to the VT Code agent
-- `vtcode.askSelection` - Ask about the selected text
-- `vtcode.openConfig` - Open the vtcode.toml configuration file
-- `vtcode.launchAgentTerminal` - Launch an integrated VT Code terminal
+- `diapason.openQuickActions` - Open the quick actions panel
+- `diapason.askAgent` - Send a question to the Diapason agent
+- `diapason.askSelection` - Ask about the selected text
+- `diapason.openConfig` - Open the config.toml configuration file
+- `diapason.launchAgentTerminal` - Launch an integrated Diapason terminal
 - And more…
 
 Access these commands via the Command Palette (Ctrl+Shift+P or Cmd+Shift+P).
@@ -142,9 +142,9 @@ Access these commands via the Command Palette (Ctrl+Shift+P or Cmd+Shift+P).
 ## Troubleshooting Terminal Activation
 
 If you're seeing activation commands like `source /path/to/venv/bin/activate`
-when launching the VT Code agent terminal, this might be due to VSCode's
+when launching the Diapason agent terminal, this might be due to VSCode's
 terminal profile settings automatically activating Python environments. The
-extension simply sends the `vtcode chat` command to the terminal; if you're
+extension simply sends the `diapason chat` command to the terminal; if you're
 seeing environment activation, it's likely due to your VSCode configuration.
 
 To resolve this:
@@ -156,35 +156,42 @@ To resolve this:
     - Check your terminal profile settings in VSCode preferences
 
 2. The extension itself does not activate Python environments - it launches a
-   terminal with the appropriate working directory and sends the `vtcode chat`
-   command.
+   terminal with the appropriate working directory and sends the
+   `diapason chat` command.
 
 ## CLI Installation Requirements
 
-The VT Code extension requires the VT Code CLI to be installed separately on
+The Diapason extension requires the Diapason CLI to be installed separately on
 your system. The extension cannot install the CLI automatically for security
 and policy reasons.
 
 The CLI can be installed via:
 
-- Cargo: `cargo install vtcode` (if available)
-- Homebrew: `brew install vtcode` (if available)
-- npm: `npm install -g vtcode` (if available)
+- Cargo source install:
+
+  ```bash
+  cargo install --git https://github.com/leynos/vtcode.git \
+    --branch main --locked diapason
+  ```
+
+- Homebrew source formula, run from the repository root:
+  `brew install --HEAD ./homebrew/diapason.rb`
+- npm packages are not published for Diapason.
 - Or by following the manual installation instructions
 
 The extension checks for the CLI availability when activated and will show
 appropriate warnings if it's not found. Users can update the
-`vtcode.commandPath` setting in VSCode to specify a custom path if the CLI is
+`diapason.commandPath` setting in VSCode to specify a custom path if the CLI is
 installed in a non-standard location.
 
 ## Adding a Status Bar Icon
 
 The extension already includes functionality to add a status bar icon that
-indicates VT Code status. In the `extension.ts` file, you'll find:
+indicates Diapason status. In the `extension.ts` file, you'll find:
 
 1. A status bar item is created in the `activate` function
 2. The status bar item has a tooltip and command associated with it
-3. The `vtcode.launchAgentTerminal` command already exists to open the agent
+3. The `diapason.launchAgentTerminal` command already exists to open the agent
    terminal
 
 To customize the icon or add additional functionality to the status bar item:
@@ -203,19 +210,19 @@ instead:
 2. Find this line in the available (true) section:
 
     ```typescript
-    statusBarItem.command = "vtcode.openQuickActions";
+    statusBarItem.command = "diapason.openQuickActions";
     ```
 
 3. Change it to:
 
     ```typescript
-    statusBarItem.command = "vtcode.launchAgentTerminal";
+    statusBarItem.command = "diapason.launchAgentTerminal";
     ```
 
 ### Customizing Status Bar Icon
 
-To show a dedicated VT Code icon in the status bar (similar to other extensions
-in VSCode):
+To show a dedicated Diapason icon in the status bar (similar to other
+extensions in VSCode):
 
 1. The status bar item is created in the `activate` function in `extension.ts`:
 
@@ -230,7 +237,7 @@ in VSCode):
    displays a robot icon:
 
     ```typescript
-    statusBarItem.text = `$(hubot) VT Code${suffix}`;
+    statusBarItem.text = `$(hubot) Diapason${suffix}`;
     ```
 
     The `$(hubot)` part is a VSCode codicon that displays a robot icon,
@@ -238,7 +245,7 @@ in VSCode):
     like:
 
     - `$(comment-discussion)` for a discussion/chat icon
-    - `$(terminal)` for a terminal icon (appropriate for VT Code chat)
+    - `$(terminal)` for a terminal icon (appropriate for Diapason chat)
     - `$(rocket)` for a rocket icon
     - `$(zap)` for a lightning bolt icon
     - `$(tools)` for a tools icon
@@ -248,11 +255,11 @@ in VSCode):
    `updateStatusBarItem` function:
 
     ```typescript
-    statusBarItem.text = `$(hubot) VT Code`; // Using a robot icon
+    statusBarItem.text = `$(hubot) Diapason`; // Using a robot icon
     ```
 
-4. For the VT Code chat functionality specifically, you might consider using the
-   `$(terminal)` icon since it launches a terminal with the VT Code chat
+4. For the Diapason chat functionality specifically, you might consider using
+   the `$(terminal)` icon since it launches a terminal with the Diapason chat
    interface.
 
 5. VSCode status bar items do not directly support custom SVG/PNG images. They
@@ -272,7 +279,7 @@ in VSCode):
     `updateStatusBarItem` function in `extension.ts`:
 
         ```typescript
-        statusBarItem.text = `$(hubot) VT Code${suffix}`; // Using a robot icon
+        statusBarItem.text = `$(hubot) Diapason${suffix}`; // Using a robot icon
         ```
 
     - The media folder and custom icon files are still useful for other
@@ -280,7 +287,7 @@ in VSCode):
 
         ```json
         {
-            "icon": "media/vtcode-icon.svg",
+            "icon": "media/diapason-icon.svg",
             "files": [
                 "dist/**/*",
                 "media/**/*",
@@ -296,7 +303,7 @@ in VSCode):
     statusBarItem.text = "$(hubot)"; // Just the icon
     ```
 
-This will make the status bar icon launch the VT Code agent terminal when
+This will make the status bar icon launch the Diapason agent terminal when
 clicked instead of opening the quick actions panel.
 
 You can also customize the appearance of the status bar, including text and
@@ -308,13 +315,13 @@ and you can customize its appearance and behavior by modifying the code in
 
 ## Common Issues
 
-### Missing VT Code CLI
+### Missing Diapason CLI
 
-If you see messages about the VT Code CLI being missing:
+If you see messages about the Diapason CLI being missing:
 
-1. Install the VT Code CLI according to the
-   [official installation guide](https://github.com/vinhnx/vtcode#installation)
-2. Or update the `vtcode.commandPath` setting in VSCode preferences
+1. Install the Diapason CLI according to the
+   [Diapason repository](https://github.com/leynos/vtcode)
+2. Or update the `diapason.commandPath` setting in VSCode preferences
 
 ### Extension Not Loading
 
@@ -410,13 +417,13 @@ The automated release script performs the following steps:
 
 ### Tag Naming Convention
 
-The extension uses a **different naming convention** from the main VT Code
+The extension uses a **different naming convention** from the main Diapason
 binary to avoid version conflicts:
 
-- **Main VT Code binary tags**: `v0.39.0`, `v0.39.1`, etc.
+- **Main Diapason binary tags**: `v0.39.0`, `v0.39.1`, etc.
 - **VSCode extension tags**: `vscode-v0.1.0`, `vscode-v0.1.1`, etc.
 
-This ensures that extension releases don't conflict with the core VT Code CLI
+This ensures that extension releases don't conflict with the core Diapason CLI
 releases in the same repository.
 
 ### Manual Release Steps
@@ -469,11 +476,11 @@ If you prefer to release manually without the script:
 6. **Publish to Open VSX Registry**:
 
     ```bash
-    ovsx publish vtcode-companion-0.1.2.vsix
+    ovsx publish diapason-companion-0.1.2.vsix
     ```
 
 7. **Create GitHub Release**:
-    - Go to <https://github.com/vinhnx/vtcode/releases/new>
+    - Go to <https://github.com/leynos/vtcode/releases/new>
     - Select tag: `vscode-v0.1.2`
     - Add release notes from CHANGELOG
     - Attach the `.vsix` file
@@ -499,16 +506,16 @@ After publishing, test the extension:
 
 ```bash
 # Install from marketplace
-code --install-extension nguyenxuanvinh.vtcode-companion
+code --install-extension df12productions.diapason-companion
 
 # Or install from local .vsix file
-code --install-extension vtcode-companion-0.1.2.vsix
+code --install-extension diapason-companion-0.1.2.vsix
 ```
 
 ## Useful Links
 
 - [VSCode Extension API Documentation](https://code.visualstudio.com/api)
 - [Extension Development Tutorial](https://code.visualstudio.com/api/get-started/your-first-extension)
-- [VT Code Companion GitHub Repository](https://github.com/vinhnx/vtcode)
+- [Diapason Companion GitHub Repository](https://github.com/leynos/vtcode)
 - [Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
 - [Open VSX Registry](https://open-vsx.org/)

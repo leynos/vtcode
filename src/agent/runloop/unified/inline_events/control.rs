@@ -1,10 +1,10 @@
 use anyhow::Result;
 
-use vtcode_core::utils::ansi::MessageStyle;
+use diapason_core::utils::ansi::MessageStyle;
 
 use super::action::InlineLoopAction;
 use super::state::InlineEventState;
-use vtcode_core::hooks::SessionEndReason;
+use diapason_core::hooks::SessionEndReason;
 
 pub(crate) struct InlineControlProcessor<'a, 'state> {
     state: &'a mut InlineEventState<'state>,

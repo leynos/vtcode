@@ -1,7 +1,7 @@
 use super::{CompactConversationCommand, SessionLogExportFormat};
-use vtcode_core::compaction::ManualCompactionOptions;
-use vtcode_core::config::{ReasoningEffortLevel, VerbosityLevel};
-use vtcode_core::review::{ReviewSpec, build_review_spec};
+use diapason_core::compaction::ManualCompactionOptions;
+use diapason_core::config::{ReasoningEffortLevel, VerbosityLevel};
+use diapason_core::review::{ReviewSpec, build_review_spec};
 
 /// Iterate over whitespace-separated tokens in `args`, normalising each to
 /// lowercase ASCII before passing it to `f`.  Returns the first `Err` produced
@@ -270,9 +270,9 @@ mod tests {
         CompactConversationCommand, SessionLogExportFormat, parse_analyse_scope, parse_compact_command,
         parse_review_spec, parse_session_log_export_format,
     };
-    use vtcode_core::compaction::ManualCompactionOptions;
-    use vtcode_core::config::{ReasoningEffortLevel, VerbosityLevel};
-    use vtcode_core::review::ReviewTarget;
+    use diapason_core::compaction::ManualCompactionOptions;
+    use diapason_core::config::{ReasoningEffortLevel, VerbosityLevel};
+    use diapason_core::review::ReviewTarget;
 
     #[test]
     fn compact_defaults_to_automatic_run() {

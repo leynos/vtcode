@@ -1,12 +1,12 @@
 //! Shared planning approval events for interactive and headless runtimes.
 
-use std::path::Path;
-use vtcode_commons::workspace_relative_display;
-use vtcode_core::exec::events::{
+use diapason_commons::workspace_relative_display;
+use diapason_core::exec::events::{
     ContextResetEvent, ContextResetTrigger, HarnessEventKind, ItemCompletedEvent, ItemStartedEvent,
     PlanApprovalDecision, PlanApprovalRequestedEvent, PlanApprovalResolvedEvent, PlanDeltaEvent, PlanItem, ThreadEvent,
     ThreadItem, ThreadItemDetails,
 };
+use std::path::Path;
 
 use super::PlanningWorkflowState;
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
@@ -148,27 +148,33 @@ pub(crate) fn emit_plan_approval_resolved(
 mod tests {
     use super::PlanningWorkflowState;
     use super::{display_plan_path, emit_plan_approval_requested, emit_plan_approval_resolved};
+    use diapason_core::exec::events::{PlanApprovalDecision, ThreadEvent, VersionedThreadEvent};
     use std::path::PathBuf;
     use tempfile::tempdir;
-    use vtcode_core::exec::events::{PlanApprovalDecision, ThreadEvent, VersionedThreadEvent};
 
     #[test]
     fn plan_event_paths_use_workspace_relative_display() {
         let directory = tempdir().expect("temporary workspace");
         let state = PlanningWorkflowState::new(directory.path().to_path_buf());
-        let plan_file = directory.path().join(".vtcode/plans/task.md");
+        let plan_file = directory
+            .path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("plans/task.md");
 
-        assert_eq!(display_plan_path(&state, &plan_file), ".vtcode/plans/task.md");
+        assert_eq!(display_plan_path(&state, &plan_file), ".diapason/plans/task.md");
     }
 
     #[tokio::test]
     async fn plan_ready_events_emit_workspace_relative_plan_paths() {
         use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
         use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
-        use vtcode_core::exec::events::{HarnessEventKind, ThreadItemDetails};
+        use diapason_core::exec::events::{HarnessEventKind, ThreadItemDetails};
 
         let directory = tempdir().expect("temporary workspace");
-        let plan_file = directory.path().join(".vtcode/plans/task.md");
+        let plan_file = directory
+            .path()
+            .join(diapason_commons::workspace_dir_name())
+            .join("plans/task.md");
         std::fs::create_dir_all(plan_file.parent().expect("plan directory")).expect("plan directory");
         std::fs::write(&plan_file, "# Task\n").expect("plan file");
 
@@ -201,7 +207,7 @@ mod tests {
             _ => None,
         });
 
-        assert!(plan_paths.clone().all(|path| path == ".vtcode/plans/task.md"));
+        assert!(plan_paths.clone().all(|path| path == ".diapason/plans/task.md"));
         assert_eq!(plan_paths.count(), 2);
     }
 
@@ -211,7 +217,7 @@ mod tests {
         let path = directory.path().join(PathBuf::from("events.jsonl"));
         let emitter = super::HarnessEventEmitter::new(path.clone()).expect("harness emitter");
 
-        emit_plan_approval_requested(Some(&emitter), "thread-1", "turn-1", Some(".vtcode/plans/task.md".to_string()));
+        emit_plan_approval_requested(Some(&emitter), "thread-1", "turn-1", Some(".diapason/plans/task.md".to_string()));
         emit_plan_approval_resolved(Some(&emitter), "thread-1", "turn-2", PlanApprovalDecision::SwitchAuto, false);
 
         let lines = std::fs::read_to_string(path)

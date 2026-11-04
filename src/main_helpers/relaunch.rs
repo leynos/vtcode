@@ -71,7 +71,7 @@ pub(crate) fn perform_queued_runtime_relaunch() {
     let manual_command = attempts
         .first()
         .map(format_manual_restart_command)
-        .unwrap_or_else(|| "vtcode".to_string());
+        .unwrap_or_else(|| "diapason".to_string());
     let mut last_error: Option<String> = None;
     prepare_for_runtime_relaunch();
 
@@ -84,7 +84,7 @@ pub(crate) fn perform_queued_runtime_relaunch() {
         }
     }
 
-    eprintln!("warning: VT Code updated but could not restart automatically.");
+    eprintln!("warning: Diapason updated but could not restart automatically.");
     eprintln!("warning: restart it manually with `{manual_command}`.");
     if let Some(err) = last_error {
         eprintln!("warning: last relaunch attempt failed: {err}");
@@ -92,7 +92,7 @@ pub(crate) fn perform_queued_runtime_relaunch() {
 }
 
 fn prepare_for_runtime_relaunch() {
-    vtcode_core::utils::trace_writer::flush_trace_log();
+    diapason_core::utils::trace_writer::flush_trace_log();
     let _ = std::io::stdout().flush();
     let _ = std::io::stderr().flush();
 }
@@ -138,9 +138,9 @@ fn relaunch_attempts(
     let current_exe = current_exe.map(|path| path.as_os_str().to_os_string());
 
     let candidates = match preference {
-        RelaunchPreference::PreferPathCommand => vec![Some(OsString::from("vtcode")), original_program, current_exe],
+        RelaunchPreference::PreferPathCommand => vec![Some(OsString::from("diapason")), original_program, current_exe],
         RelaunchPreference::PreferOriginalExecutable => {
-            vec![current_exe, original_program, Some(OsString::from("vtcode"))]
+            vec![current_exe, original_program, Some(OsString::from("diapason"))]
         }
     };
 
@@ -161,48 +161,48 @@ mod tests {
     #[test]
     fn relaunch_attempts_prefer_path_for_managed_installs() {
         let attempts = relaunch_attempts(
-            &[OsString::from("/usr/local/bin/vtcode"), OsString::from("--resume")],
-            Some(Path::new("/tmp/current-vtcode")),
+            &[OsString::from("/usr/local/bin/diapason"), OsString::from("--resume")],
+            Some(Path::new("/tmp/current-diapason")),
             RelaunchPreference::PreferPathCommand,
         );
 
-        assert_eq!(attempts[0].program, OsString::from("vtcode"));
+        assert_eq!(attempts[0].program, OsString::from("diapason"));
         assert_eq!(attempts[0].args, vec![OsString::from("--resume")]);
-        assert_eq!(attempts[1].program, OsString::from("/usr/local/bin/vtcode"));
+        assert_eq!(attempts[1].program, OsString::from("/usr/local/bin/diapason"));
     }
 
     #[test]
     fn relaunch_attempts_prefer_original_binary_for_standalone_installs() {
         let attempts = relaunch_attempts(
-            &[OsString::from("/Users/dev/.local/bin/vtcode")],
-            Some(Path::new("/tmp/current-vtcode")),
+            &[OsString::from("/Users/dev/.local/bin/diapason")],
+            Some(Path::new("/tmp/current-diapason")),
             RelaunchPreference::PreferOriginalExecutable,
         );
 
-        assert_eq!(attempts[0].program, OsString::from("/tmp/current-vtcode"));
-        assert_eq!(attempts[1].program, OsString::from("/Users/dev/.local/bin/vtcode"));
+        assert_eq!(attempts[0].program, OsString::from("/tmp/current-diapason"));
+        assert_eq!(attempts[1].program, OsString::from("/Users/dev/.local/bin/diapason"));
     }
 
     #[test]
     fn relaunch_attempts_try_current_exe_first_for_bare_command_standalone() {
         let attempts = relaunch_attempts(
-            &[OsString::from("vtcode"), OsString::from("--resume")],
-            Some(Path::new("/tmp/current-vtcode")),
+            &[OsString::from("diapason"), OsString::from("--resume")],
+            Some(Path::new("/tmp/current-diapason")),
             RelaunchPreference::PreferOriginalExecutable,
         );
 
-        assert_eq!(attempts[0].program, OsString::from("/tmp/current-vtcode"));
+        assert_eq!(attempts[0].program, OsString::from("/tmp/current-diapason"));
         assert_eq!(attempts[0].args, vec![OsString::from("--resume")]);
-        assert_eq!(attempts[1].program, OsString::from("vtcode"));
+        assert_eq!(attempts[1].program, OsString::from("diapason"));
     }
 
     #[test]
     fn manual_restart_command_includes_original_args() {
         let command = format_manual_restart_command(&RelaunchAttempt {
-            program: OsString::from("vtcode"),
+            program: OsString::from("diapason"),
             args: vec![OsString::from("--resume"), OsString::from("session-1")],
         });
 
-        assert_eq!(command, "vtcode --resume session-1");
+        assert_eq!(command, "diapason --resume session-1");
     }
 }

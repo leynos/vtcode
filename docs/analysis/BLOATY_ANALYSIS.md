@@ -1,10 +1,10 @@
-# Bloaty Analysis Report for vtcode
+# Bloaty Analysis Report for diapason
 
 ## Overview
 
 [Bloaty](https://github.com/google/bloaty) is a size profiler for binaries that
 helps understand what's making the binary large. This report analyzes the
-vtcode project binary size composition.
+diapason project binary size composition.
 
 ## Binary Size Summary
 
@@ -90,12 +90,12 @@ parsers.
 
 ### Largest Individual Symbols
 
-| Symbol                                                                                       | Size     | Description                   |
-| -------------------------------------------------------------------------------------------- | -------- | ----------------------------- |
-| `vtcode_core::tools::registry::declarations::base_function_declarations`                     | 192 KiB  | Tool registry declarations    |
-| `vtcode::agent::runloop::unified::turn::guards::validate_tool_args_security::EMPTY_REQUIRED` | 82.8 KiB | Security validation constants |
-| `vtcode_core::tools::registry::execution_facade::{{closure}}`                                | 76.4 KiB | Tool execution closure        |
-| `vtcode_core::exec::cancellation::ACTIVE_TOOL_TOKEN`                                         | 61.8 KiB | Cancellation token            |
+| Symbol                                                                                         | Size     | Description                   |
+| ---------------------------------------------------------------------------------------------- | -------- | ----------------------------- |
+| `diapason_core::tools::registry::declarations::base_function_declarations`                     | 192 KiB  | Tool registry declarations    |
+| `diapason::agent::runloop::unified::turn::guards::validate_tool_args_security::EMPTY_REQUIRED` | 82.8 KiB | Security validation constants |
+| `diapason_core::tools::registry::execution_facade::{{closure}}`                                | 76.4 KiB | Tool execution closure        |
+| `diapason_core::exec::cancellation::ACTIVE_TOOL_TOKEN`                                         | 61.8 KiB | Cancellation token            |
 
 ______________________________________________________________________
 
@@ -161,32 +161,32 @@ ______________________________________________________________________
 brew install bloaty
 
 # Basic analysis
-bloaty -d segments ./target/release-fast/vtcode
-bloaty -d sections ./target/release-fast/vtcode
-bloaty -d symbols ./target/release-fast/vtcode
+bloaty -d segments ./target/release-fast/diapason
+bloaty -d sections ./target/release-fast/diapason
+bloaty -d symbols ./target/release-fast/diapason
 
 # With debug info (for compileunits)
 cargo build --profile bloaty
-bloaty -d compileunits ./target/bloaty/vtcode
-bloaty -d inlines ./target/bloaty/vtcode
+bloaty -d compileunits ./target/bloaty/diapason
+bloaty -d inlines ./target/bloaty/diapason
 
 # Filter specific patterns
-bloaty -d symbols ./target/debug/vtcode --source-filter="tree_sitter"
-bloaty -d symbols ./target/debug/vtcode --source-filter="vtcode_core"
+bloaty -d symbols ./target/debug/diapason --source-filter="tree_sitter"
+bloaty -d symbols ./target/debug/diapason --source-filter="diapason_core"
 
 # Show top N symbols
-bloaty -d symbols -n 50 ./target/release-fast/vtcode
+bloaty -d symbols -n 50 ./target/release-fast/diapason
 
 # CSV output for further analysis
-bloaty -d sections --csv ./target/release-fast/vtcode > sections.csv
+bloaty -d sections --csv ./target/release-fast/diapason > sections.csv
 ```
 
 ______________________________________________________________________
 
 ## Conclusion
 
-The vtcode binary is **32 MiB** in release-fast mode, which is reasonable for a
-Rust application with:
+The diapason binary is **32 MiB** in release-fast mode, which is reasonable for
+a Rust application with:
 
 - Multiple LLM provider integrations
 - Tree-sitter code parsing

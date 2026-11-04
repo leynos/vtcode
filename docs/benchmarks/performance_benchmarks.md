@@ -1,8 +1,8 @@
-# VT Code Performance Benchmarks
+# Diapason Performance Benchmarks
 
 ## Overview
 
-This document tracks performance metrics for the VT Code LLM provider system
+This document tracks performance metrics for the Diapason LLM provider system
 after optimization.
 
 **Last Updated:** 2025-11-27T14:17:16+07:00 **Optimization Phase:** Complete
@@ -201,13 +201,13 @@ ______________________________________________________________________
 
 ```bash
 # Full benchmark suite (requires nightly for some features)
-cargo bench --package vtcode-core
+cargo bench --package diapason-core
 
 # Specific benchmark
-cargo bench --package vtcode-core -- error_handling
+cargo bench --package diapason-core -- error_handling
 
 # With profiling
-cargo bench --package vtcode-core --features profiling
+cargo bench --package diapason-core --features profiling
 ```
 
 ### Custom Benchmarks
@@ -246,13 +246,13 @@ ______________________________________________________________________
 
 ```bash
 # Run benchmarks and save baseline
-cargo bench --package vtcode-core -- --save-baseline main
+cargo bench --package diapason-core -- --save-baseline main
 
 # Compare against baseline
-cargo bench --package vtcode-core -- --baseline main
+cargo bench --package diapason-core -- --baseline main
 
 # Generate performance report
-cargo bench --package vtcode-core -- --output-format bencher | tee perf-report.txt
+cargo bench --package diapason-core -- --output-format bencher | tee perf-report.txt
 ```
 
 ______________________________________________________________________

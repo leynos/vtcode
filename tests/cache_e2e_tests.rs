@@ -5,11 +5,11 @@
 //! End-to-end tests for file operations with quick-cache integration
 
 use assert_fs::TempDir;
+use diapason_commons::canonicalize;
+use diapason_core::tools::cache::FileCache;
+use diapason_core::tools::registry::{ExecSettlementMode, ToolRegistry};
 use serde_json::{Value, json};
 use std::fs;
-use vtcode_commons::canonicalize;
-use vtcode_core::tools::cache::FileCache;
-use vtcode_core::tools::registry::{ExecSettlementMode, ToolRegistry};
 
 #[cfg(test)]
 mod e2e_tests {
@@ -47,7 +47,7 @@ mod e2e_tests {
         });
 
         let result1 =
-            execute_harness_tool(&registry, vtcode_core::config::constants::tools::READ_FILE, &read_args).await;
+            execute_harness_tool(&registry, diapason_core::config::constants::tools::READ_FILE, &read_args).await;
         assert!(result1.is_ok(), "First read should succeed");
 
         let content1 = result1.unwrap();
@@ -55,7 +55,7 @@ mod e2e_tests {
 
         // Test 2: Second read should use cache (verify by checking cache stats)
         let result2 =
-            execute_harness_tool(&registry, vtcode_core::config::constants::tools::READ_FILE, &read_args).await;
+            execute_harness_tool(&registry, diapason_core::config::constants::tools::READ_FILE, &read_args).await;
         assert!(result2.is_ok(), "Second read should succeed");
 
         let content2 = result2.unwrap();
@@ -79,7 +79,7 @@ mod e2e_tests {
         });
 
         let result3 =
-            execute_harness_tool(&registry, vtcode_core::config::constants::tools::READ_FILE, &read_args2).await;
+            execute_harness_tool(&registry, diapason_core::config::constants::tools::READ_FILE, &read_args2).await;
         assert!(result3.is_ok(), "Read after write should succeed");
 
         let content3 = result3.unwrap();
@@ -158,12 +158,12 @@ mod e2e_tests {
         let list_args = json!({ "path": "subdir" });
 
         let result1 =
-            execute_harness_tool(&registry, vtcode_core::config::constants::tools::LIST_FILES, &list_args).await;
+            execute_harness_tool(&registry, diapason_core::config::constants::tools::LIST_FILES, &list_args).await;
         assert!(result1.is_ok(), "First list should succeed");
 
         // Second list should use cache
         let result2 =
-            execute_harness_tool(&registry, vtcode_core::config::constants::tools::LIST_FILES, &list_args).await;
+            execute_harness_tool(&registry, diapason_core::config::constants::tools::LIST_FILES, &list_args).await;
         assert!(result2.is_ok(), "Second list should succeed");
 
         // Second list should reuse the cached result. The second call annotates
@@ -197,7 +197,7 @@ mod e2e_tests {
         });
 
         let result1 =
-            execute_harness_tool(&registry, vtcode_core::config::constants::tools::READ_FILE, &read_args).await;
+            execute_harness_tool(&registry, diapason_core::config::constants::tools::READ_FILE, &read_args).await;
         assert!(result1.is_ok());
         assert_eq!(result1.unwrap()["content"], "original");
 
@@ -209,12 +209,12 @@ mod e2e_tests {
         });
 
         let edit_result =
-            execute_harness_tool(&registry, vtcode_core::config::constants::tools::EDIT_FILE, &edit_args).await;
+            execute_harness_tool(&registry, diapason_core::config::constants::tools::EDIT_FILE, &edit_args).await;
         assert!(edit_result.is_ok(), "Edit should succeed");
 
         // Read again - should get updated content (cache should be invalidated)
         let result2 =
-            execute_harness_tool(&registry, vtcode_core::config::constants::tools::READ_FILE, &read_args).await;
+            execute_harness_tool(&registry, diapason_core::config::constants::tools::READ_FILE, &read_args).await;
         assert!(result2.is_ok());
         assert_eq!(result2.unwrap()["content"], "modified");
     }
@@ -345,7 +345,7 @@ mod e2e_tests {
             "new_str": "Hello Universe"
         });
 
-        let result = execute_harness_tool(&registry, vtcode_core::config::constants::tools::EDIT_FILE, &edit_args)
+        let result = execute_harness_tool(&registry, diapason_core::config::constants::tools::EDIT_FILE, &edit_args)
             .await
             .expect("file_edit should succeed");
         assert_eq!(result["success"], true);
@@ -379,7 +379,7 @@ mod e2e_tests {
             "new_str": "example"
         });
 
-        let result = execute_harness_tool(&registry, vtcode_core::config::constants::tools::EDIT_FILE, &edit_args)
+        let result = execute_harness_tool(&registry, diapason_core::config::constants::tools::EDIT_FILE, &edit_args)
             .await
             .expect("file_edit should succeed");
         assert_eq!(result["success"], true);
@@ -413,7 +413,7 @@ mod e2e_tests {
             "new_str": "New Line 1\nNew Line 2"
         });
 
-        let result = execute_harness_tool(&registry, vtcode_core::config::constants::tools::EDIT_FILE, &edit_args)
+        let result = execute_harness_tool(&registry, diapason_core::config::constants::tools::EDIT_FILE, &edit_args)
             .await
             .expect("file_edit should succeed");
         assert_eq!(result["success"], true);

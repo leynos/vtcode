@@ -1,7 +1,7 @@
 use anyhow::Result;
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::utils::dot_config::load_workspace_trust_level;
+use diapason_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_core::utils::dot_config::load_workspace_trust_level;
 
 use crate::agent::runloop::unified::planning_workflow::PlanningFinishReason;
 use crate::agent::runloop::unified::state::should_enforce_safe_mode_prompts;
@@ -50,7 +50,7 @@ pub(crate) async fn handle_toggle_planning_workflow(
             .line(MessageStyle::Output, "  The agent will focus on analysis and planning with a structured plan.")?;
         ctx.renderer.line(
             MessageStyle::Output,
-            "  Mutating tools are blocked; optional plan-file writes under `.vtcode/plans/` (or an explicit custom plan path) remain allowed.",
+            "  Mutating tools are blocked; optional plan-file writes under `.diapason/plans/` (or an explicit custom plan path) remain allowed.",
         )?;
         ctx.renderer.line(MessageStyle::Output, "")?;
         ctx.renderer.line(
@@ -64,7 +64,7 @@ pub(crate) async fn handle_toggle_planning_workflow(
             ctx.harness_emitter,
             ctx.thread_id,
             ctx.thread_id,
-            vtcode_core::exec::events::PlanApprovalDecision::Cancel,
+            diapason_core::exec::events::PlanApprovalDecision::Cancel,
             false,
         );
         crate::agent::runloop::unified::planning_workflow::finish_planning_workflow(

@@ -7,7 +7,7 @@ use super::ValidationResult;
 
 const MAX_RATE_LIMIT_ACQUIRE_ATTEMPTS: usize = 4;
 const MAX_RATE_LIMIT_WAIT: Duration =
-    Duration::from_secs(vtcode_config::constants::execution::MAX_RATE_LIMIT_WAIT_SECS);
+    Duration::from_secs(diapason_config::constants::execution::MAX_RATE_LIMIT_WAIT_SECS);
 
 fn ctrl_c_break_outcome(ctx: &TurnProcessingContext<'_>, prefer_exit: bool) -> Option<ValidationResult> {
     let (first_requested, first_outcome, second_requested, second_outcome) = if prefer_exit {

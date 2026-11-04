@@ -1,15 +1,15 @@
 //! Builds runtime tracing layers and prepares session-scoped log destinations.
 use anyhow::{Context, Result};
-use std::path::Path;
-use vtcode_core::utils::error_log_collector::ErrorLogCollectorLayer;
-use vtcode_core::utils::session_debug::{
+use diapason_core::utils::error_log_collector::ErrorLogCollectorLayer;
+use diapason_core::utils::session_debug::{
     DEFAULT_MAX_DEBUG_LOG_AGE_DAYS, DEFAULT_MAX_DEBUG_LOG_SIZE_MB, current_debug_session_id, prepare_debug_log_file,
     set_runtime_debug_log_path,
 };
-use vtcode_core::utils::trace_writer::FlushableWriter;
-use vtcode_ui::tui::log::{is_tui_log_capture_enabled, make_tui_log_layer};
+use diapason_core::utils::trace_writer::FlushableWriter;
+use diapason_ui::tui::log::{is_tui_log_capture_enabled, make_tui_log_layer};
+use std::path::Path;
 
-fn maybe_tui_log_layer() -> Option<vtcode_ui::tui::log::TuiLogLayer> {
+fn maybe_tui_log_layer() -> Option<diapason_ui::tui::log::TuiLogLayer> {
     if is_tui_log_capture_enabled() {
         Some(make_tui_log_layer())
     } else {
@@ -75,10 +75,10 @@ pub(crate) fn initialize_default_error_tracing() -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn initialize_tracing_from_config(config: &vtcode_core::config::loader::VTCodeConfig) -> Result<()> {
+pub(crate) fn initialize_tracing_from_config(config: &diapason_core::config::loader::DiapasonConfig) -> Result<()> {
     let debug_cfg = &config.debug;
     let targets = if debug_cfg.trace_targets.is_empty() {
-        vec!["vtcode_core", "vtcode"]
+        vec!["diapason_core", "diapason"]
     } else {
         debug_cfg.trace_targets.iter().map(String::as_str).collect()
     };
@@ -136,8 +136,8 @@ mod tests {
     #[test]
     fn trace_level_applies_to_every_configured_target() {
         assert_eq!(
-            trace_filter_directives(&["vtcode", "vtcode_core", "vtcode_acp"], "debug"),
-            "vtcode=debug,vtcode_core=debug,vtcode_acp=debug"
+            trace_filter_directives(&["diapason", "diapason_core", "diapason_acp"], "debug"),
+            "diapason=debug,diapason_core=debug,diapason_acp=debug"
         );
     }
 }

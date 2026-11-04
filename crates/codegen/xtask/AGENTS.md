@@ -1,24 +1,10 @@
-# xtask
+# xtask guidance
 
-[Root AGENTS.md](../../../../AGENTS.md) | Release packaging automation for
-`cargo-binstall` extra-files layout.
+[Root guidance](../../../AGENTS.md) applies. See the
+[release automation guide](../../../docs/development/ci-cd.md).
 
-## Role
-
-Generates release archives with man pages and shell completions in the
-directory layout that `cargo-binstall` auto-detects.
-
-## Commands
-
-```
-cargo xtask package-release --target <triple> --version <ver> --binary <path>
-```
-
-## Rules
-
-- Runs on the host (not cross-compiled) -- only generates text files and copies
-  binaries.
-- Archive layout: `vtcode-{target}-v{version}/` with `man/`, `completions/`.
-- The archive stage allowlist is intentional: package only `vtcode`, `man/`, and
-  `completions/`; project instruction files never ship.
-- Uses `vtcode_core::Cli::command()` for man page and completion generation.
+- Keep release and repository automation deterministic and safe to rerun.
+- Validate inputs before writing, publishing or deleting artifacts.
+- Keep command help and developer documentation aligned with actual behavior.
+Detailed module guidance:
+[xtask](../../../docs/development/module-guidance/xtask.md).

@@ -20,5 +20,5 @@ ignores:
   - "**/test_*.py"
   - "**/*_test.py"
   - "scripts/**"
-  - "crates/codegen/vtcode-skills/src/skills/assets/samples/**"
+  - "crates/codegen/diapason-skills/src/skills/assets/samples/**"
   - "patches/**"

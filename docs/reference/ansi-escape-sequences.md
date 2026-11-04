@@ -44,12 +44,12 @@ reference:
     new one.
 - `CAN` (`0x18`) and `SUB` (`0x1A`) abort the current sequence.
 
-VT Code's shared ANSI stripper follows these rules to avoid over-consuming text
-when streams contain broken or partial escape sequences.
+Diapason's shared ANSI stripper follows these rules to avoid over-consuming
+text when streams contain broken or partial escape sequences.
 
 ### CSI Byte Classes (ECMA-48 / ANSI)
 
-For `CSI` (`ESC [`), VT Code follows the standard byte classes:
+For `CSI` (`ESC [`), Diapason follows the standard byte classes:
 
 - Parameter bytes: `0x30`–`0x3F`
 - Intermediate bytes: `0x20`–`0x2F`
@@ -408,11 +408,11 @@ The parameters for this escape sequence are defined as follows:
 | \+ (keypad)              | 43       | 43         | (0;150)   | (0;55)    |
 | 5 (keypad)               | (0;76)   | 53         | (0;143)   | \--       |
 
-## VT Code-Specific Applications
+## Diapason-Specific Applications
 
 ### PTY Output Processing
 
-When processing PTY output in VT Code, we need to handle ANSI escape sequences
+When processing PTY output in Diapason, we need to handle ANSI escape sequences
 properly:
 
 1. **Strip for Display**: Remove escape sequences when showing output to users
@@ -429,10 +429,10 @@ The TUI uses ANSI sequences for:
 - Progress indicators and spinners
 - Status bar formatting
 
-### Common Patterns in VT Code
+### Common Patterns in Diapason
 
 ```rust
-use vtcode_core::utils::ansi_parser::strip_ansi;
+use diapason_core::utils::ansi_parser::strip_ansi;
 
 let raw = "ok \x1b[32mgreen\x1b[0m \u{009b}31mred\u{009b}0m";
 let clean = strip_ansi(raw);

@@ -2,7 +2,7 @@
 
 ## Overview
 
-VT Code implements comprehensive ANSI code stripping for PTY command output to
+Diapason implements comprehensive ANSI code stripping for PTY command output to
 ensure clean, machine-readable output for agent processing.
 
 ## Architecture
@@ -10,7 +10,7 @@ ensure clean, machine-readable output for agent processing.
 ### 1. Prevention at Source (Preferred)
 
 Environment variables set in
-`crates/codegen/vtcode-core/src/tools/pty.rs::set_command_environment()`:
+`crates/codegen/diapason-core/src/tools/pty.rs::set_command_environment()`:
 
 ```rust
 // Disable automatic color output from build tools
@@ -30,7 +30,7 @@ reliable approach.
 ### 2. Capture-Time Stripping
 
 `PtyScrollback::push_text()` in
-`crates/codegen/vtcode-core/src/tools/pty.rs:206-209`:
+`crates/codegen/diapason-core/src/tools/pty.rs:206-209`:
 
 ```rust
 fn push_text(&mut self, text: &str) {
@@ -46,7 +46,7 @@ fn push_text(&mut self, text: &str) {
 ### 3. Return-Path Stripping
 
 Multiple locations under
-`crates/codegen/vtcode-core/src/tools/registry/executors/`:
+`crates/codegen/diapason-core/src/tools/registry/executors/`:
 
 | Function                          | Location               | Output Field |
 | --------------------------------- | ---------------------- | ------------ |
@@ -55,7 +55,7 @@ Multiple locations under
 | `execute_command_session_inspect` | `exec_sessions.rs:294` | `output`     |
 
 PTY snapshots (`screen_contents`, `scrollback`) are produced in
-`crates/codegen/vtcode-core/src/tools/pty/session.rs`.
+`crates/codegen/diapason-core/src/tools/pty/session.rs`.
 
 Example:
 
@@ -87,7 +87,7 @@ Handles:
 - **2-char escapes**: `ESC[`, `ESC]`, etc.
 - **Incomplete sequences**: Gracefully handles partial ANSI at EOF
 
-Tests in `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` verify:
+Tests in `crates/codegen/diapason-core/src/utils/ansi_parser.rs` verify:
 
 - Basic colors: `\x1b[31mRed\x1b[0m` → `Red`
 - Bold: `\x1b[1;32mbold\x1b[0m` → `bold`
@@ -127,9 +127,9 @@ Clean, machine-readable output to agent
 
 ### Existing Tests
 
-- `crates/codegen/vtcode-core/src/utils/ansi_parser.rs`: 10+ tests covering
+- `crates/codegen/diapason-core/src/utils/ansi_parser.rs`: 10+ tests covering
     CSI, OSC, edge cases
-- `crates/codegen/vtcode-core/src/tools/pty.rs`: Scrollback size, overflow,
+- `crates/codegen/diapason-core/src/tools/pty.rs`: Scrollback size, overflow,
     metrics tests
 - Implicit: Every `strip_ansi()` call prevents malformed output
 
@@ -162,10 +162,10 @@ Both commands should produce **zero matches** after these changes.
 
 ## Related Files
 
-- `crates/codegen/vtcode-core/src/tools/pty.rs` - PTY management and ANSI
+- `crates/codegen/diapason-core/src/tools/pty.rs` - PTY management and ANSI
     prevention
-- `crates/codegen/vtcode-core/src/utils/ansi_parser.rs` - Core stripping logic
-- `crates/codegen/vtcode-core/src/tools/registry/executors/` - Return-path
+- `crates/codegen/diapason-core/src/utils/ansi_parser.rs` - Core stripping logic
+- `crates/codegen/diapason-core/src/tools/registry/executors/` - Return-path
     stripping
 - `src/agent/runloop/tool_output/streams.rs` - Render-time stripping
 - `src/acp/zed.rs` - ACP integration with stripping

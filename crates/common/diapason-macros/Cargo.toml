@@ -1,0 +1,21 @@
+[package]
+name = "diapason-macros"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93.0"
+authors = ["Vinh Nguyen <vinhnguyen2308@gmail.com>", "df12 Productions"]
+description = "Procedural macros for Diapason"
+license.workspace = true
+readme = "README.md"
+homepage = "https://github.com/leynos/vtcode"
+repository = "https://github.com/leynos/vtcode"
+documentation = "https://docs.rs/diapason-macros"
+keywords = ["macros", "proc-macro", "diapason", "codegen"]
+categories = ["development-tools"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = { workspace = true }
+syn = { workspace = true, features = ["full"] }

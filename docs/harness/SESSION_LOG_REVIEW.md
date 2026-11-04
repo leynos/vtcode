@@ -1,10 +1,14 @@
 # Session Log Review
 
+> Historical engineering notes: examples and storage paths below describe the
+> implementation at the dated review entries. Current path policy is documented
+> in [user data directories](../guides/user-data-directories.md).
+
 ## 2026-08-16 | Checkpoints 912–917 diagnostics audit
 
 ### Baseline
 
-Reviewing `.vtcode/checkpoints/turn_912.json` through `turn_917.json` showed
+Reviewing `.diapason/checkpoints/turn_912.json` through `turn_917.json` showed
 every turn that executed tools reported `requested_tool_calls: 0` alongside a
 non-zero `admitted_tool_calls` (26 in turn 912, 52 in turn 913, 2 in turn 917),
 making the requested/admitted ratio unusable for admission-rate diagnostics.
@@ -13,19 +17,20 @@ making the requested/admitted ratio unusable for admission-rate diagnostics.
 | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `requested_tool_calls` stayed 0 on interactive turns while `admitted_tool_calls` grew.       | `record_requested_tool_calls` was only called on the full-auto batch path (`handle_tool_call_batch_prepared`); `record_admitted_tool_call` increments in the shared permission gate reached from every path. Recording moved to the single dispatch entry point (`handle_tool_calls`) so batch and single-call paths count identically; the duplicate call in the batch handler was removed. Regression test: `single_tool_call_dispatch_records_requested_tool_calls`. |
 | Turn 917 reported `cached_input_tokens: 0, cache_creation_tokens: 0` on ~36k input.          | Not a harness defect: `accumulate_turn_usage` sums usage across all calls in the turn and recovery messages are appended without mutating the history prefix; the zeros are provider-reported (endpoint does not return cache fields).                                                                                                                                                                                                                                  |
-| Turn 916's session-memory envelope carried a task tracker from an unrelated prior objective. | By design: the task tracker is durable workspace state (`.vtcode/tasks/current_task.md`) shared across sessions for long-horizon resume.                                                                                                                                                                                                                                                                                                                                |
+| Turn 916's session-memory envelope carried a task tracker from an unrelated prior objective. | By design: the task tracker is durable workspace state (`.diapason/tasks/current_task.md`) shared across sessions for long-horizon resume.                                                                                                                                                                                                                                                                                                                              |
 | Turn 916 history contains consecutive user messages ("hello", "Hello").                      | Normal resubmission after an aborted turn; the first submission stays in history.                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ### Verification
 
-- `cargo check --locked`: clean. `cargo nextest run --profile quick -p vtcode`:
-  2,356 tests pass, including the new dispatch counter regression test.
+- `cargo check --locked`: clean.
+  `cargo nextest run --profile quick -p diapason`: 2,356 tests pass, including
+  the new dispatch counter regression test.
 
 ## 2026-08-12 | Planning wire-catalog collapse (turns 912–913)
 
 ### Baseline
 
-The planning turns 912 and 913 ("make a simple plan to improve vtcode launch
+The planning turns 912 and 913 ("make a simple plan to improve diapason launch
 time") each burned ~157k input tokens across 54 `code_search` calls, persisted
 no plan, and ended with the planning reminder bullet as the only visible
 assistant text.
@@ -40,9 +45,9 @@ assistant text.
 
 ### Verification
 
-- `vtcode-config`: 389 tests pass, including updated builtin-agent contract
+- `diapason-config`: 389 tests pass, including updated builtin-agent contract
   tests.
-- `vtcode-core`: new `builtin_plan_agent_keeps_planning_catalog_wire_visible`
+- `diapason-core`: new `builtin_plan_agent_keeps_planning_catalog_wire_visible`
   (permission-layer wire shaping against the real plan spec), planning-catalog
   profile tests (Interactive + AgentRunner surfaces),
   `planning_workflow_keeps_exec_command_read_only`, prompt canonical-format
@@ -98,19 +103,20 @@ The most recent examples showed that the defects were still live:
 
 These changes preserve public tool names, sandbox permission enum values,
 duplicate-signature guards, and hard tool-call ceilings.
-`vtcode-exec-events::ThreadEvent` remains the authoritative runtime accounting
-contract.
+`diapason-exec-events::ThreadEvent` remains the authoritative runtime
+accounting contract.
 
 ## 2026-08-11 | Harness token-waste and startup-noise audit
 
 ### Scope
 
-Reviewed legacy session logs under the historical `VTCODE_HOME/sessions/` path:
+Reviewed legacy session logs under the historical `DIAPASON_HOME/sessions/`
+path:
 
-- `debug-session-vtcode-20260811t063743z_863637-66412.log` (startup debug log)
-- `harness-session-vtcode-20260808T223648Z_961150-70620-*.jsonl` (2.6 MB, 3
+- `debug-session-diapason-20260811t063743z_863637-66412.log` (startup debug log)
+- `harness-session-diapason-20260808T223648Z_961150-70620-*.jsonl` (2.6 MB, 3
   turns, 3253 events)
-- `harness-session-vtcode-20260731T234131Z_673442-70655-*.jsonl` (1.1 MB,
+- `harness-session-diapason-20260731T234131Z_673442-70655-*.jsonl` (1.1 MB,
   comparison baseline)
 
 Goal: identify bottlenecks, duplicate work, wasted tokens, and log noise that
@@ -154,27 +160,27 @@ degrade long-running harness stability.
 
 ```text
 cargo fmt --all -- --check
-cargo nextest run -p vtcode-skills -E 'test(manifest)'
-cargo nextest run -p vtcode-core -E 'test(lifecycle)'
-cargo nextest run -p vtcode-config -p vtcode-llm --profile quick
-cargo clippy --locked -p vtcode-skills -p vtcode-core --all-targets -- -D warnings
-cargo clippy --locked -p vtcode-config -p vtcode-llm -p vtcode --all-targets -- -D warnings
-cargo check --locked -p vtcode
+cargo nextest run -p diapason-skills -E 'test(manifest)'
+cargo nextest run -p diapason-core -E 'test(lifecycle)'
+cargo nextest run -p diapason-config -p diapason-llm --profile quick
+cargo clippy --locked -p diapason-skills -p diapason-core --all-targets -- -D warnings
+cargo clippy --locked -p diapason-config -p diapason-llm -p diapason --all-targets -- -D warnings
+cargo check --locked -p diapason
 ```
 
 All passed.
 
 ### Files changed
 
-| File                                                            | Change                                                                                                                                        |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `crates/codegen/vtcode-core/src/core/agent/events/lifecycle.rs` | Throttled tool-argument `item.updated` emissions; added `last_emitted_args_len`/`update_events` to `ToolCallStreamState`; 2 regression tests. |
-| `crates/codegen/vtcode-skills/src/manifest.rs`                  | Column-zero-only frontmatter key validation; consolidated warning; 5 regression tests.                                                        |
-| `crates/codegen/vtcode-llm/src/providers/ollama.rs`             | `fetch_ollama_models` connection-refused log: `WARN`→`DEBUG`.                                                                                 |
-| `crates/codegen/vtcode-llm/src/providers/llamacpp/probe.rs`     | `fetch_llamacpp_models` connection-refused log: `WARN`→`DEBUG`.                                                                               |
-| `crates/codegen/vtcode-llm/src/providers/lmstudio.rs`           | `fetch_lmstudio_models` connection-refused log: `WARN`→`DEBUG`.                                                                               |
-| `crates/codegen/vtcode-config/src/core/custom_provider.rs`      | Added `PartialEq, Eq` derives to `CustomProviderConfig`.                                                                                      |
-| `src/agent/runloop/unified/turn/workspace.rs`                   | Skip `register_custom_providers` when `custom_providers` unchanged.                                                                           |
+| File                                                              | Change                                                                                                                                        |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crates/codegen/diapason-core/src/core/agent/events/lifecycle.rs` | Throttled tool-argument `item.updated` emissions; added `last_emitted_args_len`/`update_events` to `ToolCallStreamState`; 2 regression tests. |
+| `crates/codegen/diapason-skills/src/manifest.rs`                  | Column-zero-only frontmatter key validation; consolidated warning; 5 regression tests.                                                        |
+| `crates/codegen/diapason-llm/src/providers/ollama.rs`             | `fetch_ollama_models` connection-refused log: `WARN`→`DEBUG`.                                                                                 |
+| `crates/codegen/diapason-llm/src/providers/llamacpp/probe.rs`     | `fetch_llamacpp_models` connection-refused log: `WARN`→`DEBUG`.                                                                               |
+| `crates/codegen/diapason-llm/src/providers/lmstudio.rs`           | `fetch_lmstudio_models` connection-refused log: `WARN`→`DEBUG`.                                                                               |
+| `crates/codegen/diapason-config/src/core/custom_provider.rs`      | Added `PartialEq, Eq` derives to `CustomProviderConfig`.                                                                                      |
+| `src/agent/runloop/unified/turn/workspace.rs`                     | Skip `register_custom_providers` when `custom_providers` unchanged.                                                                           |
 
 ______________________________________________________________________
 
@@ -183,10 +189,10 @@ ______________________________________________________________________
 ### Scope
 
 Deep audit of the actual harness core logic in
-`crates/codegen/vtcode-core/src/core/agent/` (runtime, session, error recovery,
-progress monitor, runner). Goal: find systemic patterns — duplicated logic,
-dead code, wasted work, tight coupling, long-running stability risks — and
-mitigate with KISS/DRY fixes. Focus on production/main code.
+`crates/codegen/diapason-core/src/core/agent/` (runtime, session, error
+recovery, progress monitor, runner). Goal: find systemic patterns — duplicated
+logic, dead code, wasted work, tight coupling, long-running stability risks —
+and mitigate with KISS/DRY fixes. Focus on production/main code.
 
 ### Findings and disposition
 
@@ -220,25 +226,25 @@ mitigate with KISS/DRY fixes. Focus on production/main code.
 
 ```text
 cargo fmt --all -- --check
-cargo nextest run -p vtcode-core -E 'test(runtime) | test(update_throttle) | test(lifecycle) |
+cargo nextest run -p diapason-core -E 'test(runtime) | test(update_throttle) | test(lifecycle) |
   test(error_recovery) | test(flush_open_tool_call) | test(append_tool_call_delta)'
-cargo nextest run -p vtcode --no-fail-fast -E 'test(harness_streaming_bridge)'
-cargo nextest run --profile quick -p vtcode-core -p vtcode
-cargo clippy --locked -p vtcode-core -p vtcode --all-targets -- -D warnings
+cargo nextest run -p diapason --no-fail-fast -E 'test(harness_streaming_bridge)'
+cargo nextest run --profile quick -p diapason-core -p diapason
+cargo clippy --locked -p diapason-core -p diapason --all-targets -- -D warnings
 ```
 
-All passed: 5573 tests across `vtcode-core` + `vtcode`, clippy clean with
+All passed: 5573 tests across `diapason-core` + `diapason`, clippy clean with
 `-D warnings`, formatting clean.
 
 ### Files changed
 
-| File                                                                  | Change                                                                                                                                                       |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `crates/codegen/vtcode-core/src/core/agent/events/lifecycle.rs`       | Added `flush_open_tool_call_arguments` to emit full accumulated args for open tool calls; 2 regression tests.                                                |
-| `crates/codegen/vtcode-core/src/core/agent/runtime/mod.rs`            | Extracted `UpdateThrottle` shared by `StreamingLifecycleBridge` and `AgentRuntime`; `complete_open_items` now flushes tool-call args; 5 throttle unit tests. |
-| `crates/codegen/vtcode-core/src/core/agent/session/mod.rs`            | Removed dead `pub mod loop_detection;` export.                                                                                                               |
-| `crates/codegen/vtcode-core/src/core/agent/session/loop_detection.rs` | Deleted (dead code with divergent semantics).                                                                                                                |
-| `crates/codegen/vtcode-core/src/core/agent/error_recovery.rs`         | `circuit_events` → `VecDeque` with `pop_front`; `detect_error_patterns` now public and lazy (not computed in `get_diagnostics`); updated unit test.          |
+| File                                                                    | Change                                                                                                                                                       |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `crates/codegen/diapason-core/src/core/agent/events/lifecycle.rs`       | Added `flush_open_tool_call_arguments` to emit full accumulated args for open tool calls; 2 regression tests.                                                |
+| `crates/codegen/diapason-core/src/core/agent/runtime/mod.rs`            | Extracted `UpdateThrottle` shared by `StreamingLifecycleBridge` and `AgentRuntime`; `complete_open_items` now flushes tool-call args; 5 throttle unit tests. |
+| `crates/codegen/diapason-core/src/core/agent/session/mod.rs`            | Removed dead `pub mod loop_detection;` export.                                                                                                               |
+| `crates/codegen/diapason-core/src/core/agent/session/loop_detection.rs` | Deleted (dead code with divergent semantics).                                                                                                                |
+| `crates/codegen/diapason-core/src/core/agent/error_recovery.rs`         | `circuit_events` → `VecDeque` with `pop_front`; `detect_error_patterns` now public and lazy (not computed in `get_diagnostics`); updated unit test.          |
 
 ______________________________________________________________________
 
@@ -247,7 +253,7 @@ ______________________________________________________________________
 ### Scope
 
 Continuation of the harness core audit. Reviewed remaining session-log waste
-patterns across 100 legacy session files under `VTCODE_HOME/sessions/`,
+patterns across 100 legacy session files under `DIAPASON_HOME/sessions/`,
 verified the abort/cancel streaming-termination path, and confirmed the
 `AgentRuntime` vs `StreamingLifecycleBridge` divergence is intentional.
 
@@ -263,27 +269,27 @@ verified the abort/cancel streaming-termination path, and confirmed the
 ### Verification
 
 ```text
-cargo check --locked -p vtcode-core -p vtcode
-cargo nextest run --profile quick -p vtcode-core -E 'test(strip_view) | test(result_reducers) |
+cargo check --locked -p diapason-core -p diapason
+cargo nextest run --profile quick -p diapason-core -E 'test(strip_view) | test(result_reducers) |
   test(task_tracker) | test(update_throttle) | test(streaming_lifecycle) |
   test(flush_open_tool_call) | test(recovery)'
-cargo nextest run --profile quick -p vtcode -E 'test(tool_output) | test(tracker) |
+cargo nextest run --profile quick -p diapason -E 'test(tool_output) | test(tracker) |
   test(harness_streaming_bridge) | test(response_content) | test(task_tracker)'
-cargo nextest run --profile quick -p vtcode-core -p vtcode
-cargo clippy --locked -p vtcode-core -p vtcode --all-targets -- -D warnings
+cargo nextest run --profile quick -p diapason-core -p diapason
+cargo clippy --locked -p diapason-core -p diapason --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-All passed: 5,578 tests across `vtcode-core` + `vtcode`, 62 focused core tests,
-334 focused binary tests, clippy clean, formatting clean.
+All passed: 5,578 tests across `diapason-core` + `diapason`, 62 focused core
+tests, 334 focused binary tests, clippy clean, formatting clean.
 
 ### Files changed
 
-| File                                                            | Change                                                                                                                          |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `crates/codegen/vtcode-core/src/core/agent/result_reducers.rs`  | Added `strip_tui_display_fields` — strips TUI-only `view` from `task_tracker` results before model serialization; 5 unit tests. |
-| `crates/codegen/vtcode-core/src/core/agent/harness_kernel.rs`   | Re-export `strip_tui_display_fields` alongside `reduce_tool_result`.                                                            |
-| `crates/codegen/vtcode-core/src/core/agent/runner/tool_exec.rs` | `apply_tool_success` strips `view` before `push_tool_result`; the TUI event still uses the full result with `view`.             |
+| File                                                              | Change                                                                                                                          |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `crates/codegen/diapason-core/src/core/agent/result_reducers.rs`  | Added `strip_tui_display_fields` — strips TUI-only `view` from `task_tracker` results before model serialization; 5 unit tests. |
+| `crates/codegen/diapason-core/src/core/agent/harness_kernel.rs`   | Re-export `strip_tui_display_fields` alongside `reduce_tool_result`.                                                            |
+| `crates/codegen/diapason-core/src/core/agent/runner/tool_exec.rs` | `apply_tool_success` strips `view` before `push_tool_result`; the TUI event still uses the full result with `view`.             |
 
 ______________________________________________________________________
 
@@ -310,24 +316,24 @@ harness paths, and removed dead parallel abstractions.
 
 ```text
 cargo fmt --all -- --check
-cargo check --locked -p vtcode-core -p vtcode
-cargo clippy --locked -p vtcode-core -p vtcode --all-targets -- -D warnings
-cargo nextest run --profile quick -p vtcode-core -p vtcode
+cargo check --locked -p diapason-core -p diapason
+cargo clippy --locked -p diapason-core -p diapason --all-targets -- -D warnings
+cargo nextest run --profile quick -p diapason-core -p diapason
 ```
 
-All passed: 5,571 tests across `vtcode-core` + `vtcode` (7 fewer from deleted
-`tracking_state.rs` tests), 46 circuit/recovery tests, 238 session/push_tool
-tests, clippy clean, formatting clean.
+All passed: 5,571 tests across `diapason-core` + `diapason` (7 fewer from
+deleted `tracking_state.rs` tests), 46 circuit/recovery tests, 238
+session/push_tool tests, clippy clean, formatting clean.
 
 ### Files changed
 
 | File                                                                     | Change                                                                                                                                                                       |
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `crates/codegen/vtcode-core/src/core/agent/runner/tool_exec.rs`          | `apply_fallback_success` now strips TUI display fields before `push_tool_result`; `record_circuit_transition` delegates to shared `record_circuit_transition_from_snapshot`. |
-| `crates/codegen/vtcode-core/src/core/agent/error_recovery.rs`            | Added `record_circuit_transition_from_snapshot` shared seam; imported `CircuitBreaker`.                                                                                      |
-| `crates/codegen/vtcode-core/src/core/agent/session/mod.rs`               | `push_tool_result` deduplicates tool names before pushing; removed dead `pub mod tracking_state`.                                                                            |
-| `crates/codegen/vtcode-core/src/core/agent/session/tracking_state.rs`    | Deleted (dead code, never wired into `AgentSessionState`).                                                                                                                   |
-| `crates/codegen/vtcode-core/src/core/agent/session/turn_metrics.rs`      | Deleted (dead code, same pattern as `tracking_state.rs`).                                                                                                                    |
+| `crates/codegen/diapason-core/src/core/agent/runner/tool_exec.rs`        | `apply_fallback_success` now strips TUI display fields before `push_tool_result`; `record_circuit_transition` delegates to shared `record_circuit_transition_from_snapshot`. |
+| `crates/codegen/diapason-core/src/core/agent/error_recovery.rs`          | Added `record_circuit_transition_from_snapshot` shared seam; imported `CircuitBreaker`.                                                                                      |
+| `crates/codegen/diapason-core/src/core/agent/session/mod.rs`             | `push_tool_result` deduplicates tool names before pushing; removed dead `pub mod tracking_state`.                                                                            |
+| `crates/codegen/diapason-core/src/core/agent/session/tracking_state.rs`  | Deleted (dead code, never wired into `AgentSessionState`).                                                                                                                   |
+| `crates/codegen/diapason-core/src/core/agent/session/turn_metrics.rs`    | Deleted (dead code, same pattern as `tracking_state.rs`).                                                                                                                    |
 | `src/agent/runloop/unified/turn/tool_outcomes/response_content.rs`       | `maybe_inline_spooled_with_preview` skips `tail_preview` when `failure_diagnostics` is present.                                                                              |
 | `src/agent/runloop/unified/turn/tool_outcomes/handlers_batch.rs`         | `record_circuit_transition` delegates to shared `record_circuit_transition_from_snapshot`.                                                                                   |
 | `src/agent/runloop/unified/turn/tool_outcomes/execution_result/tests.rs` | 1 test for `failure_diagnostics` tail-preview skip.                                                                                                                          |
@@ -356,29 +362,29 @@ adding `ErrorCategory::as_str()`.
 
 ```text
 cargo fmt --all
-cargo check --locked -p vtcode-commons -p vtcode-core -p vtcode
-cargo nextest run --profile quick -p vtcode-core -E 'test(warning) | test(session) | test(retry) |
+cargo check --locked -p diapason-commons -p diapason-core -p diapason
+cargo nextest run --profile quick -p diapason-core -E 'test(warning) | test(session) | test(retry) |
   test(tool_exec) | test(error_category) | test(push_warning)'
-cargo nextest run --profile quick -p vtcode-core -p vtcode
-cargo clippy --locked -p vtcode-commons -p vtcode-core -p vtcode --all-targets -- -D warnings
+cargo nextest run --profile quick -p diapason-core -p diapason
+cargo clippy --locked -p diapason-commons -p diapason-core -p diapason --all-targets -- -D warnings
 ```
 
-All passed: 5,569 tests across `vtcode-core` + `vtcode` (3 new `push_warning`
-tests), 293 focused tests, clippy clean, formatting clean.
+All passed: 5,569 tests across `diapason-core` + `diapason` (3 new
+`push_warning` tests), 293 focused tests, clippy clean, formatting clean.
 
 ### Files changed
 
-| File                                                                 | Change                                                                                                                          |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `crates/codegen/vtcode-core/src/core/agent/session/mod.rs`           | Added `push_warning` method (dedup + cap + elision marker); `MAX_SESSION_WARNINGS=200`; `WARNINGS_ELIDED_MARKER`; 3 unit tests. |
-| `crates/codegen/vtcode-core/src/core/agent/runner/tool_exec.rs`      | 1 call site migrated to `push_warning`; 2 call sites changed from `e.category.to_string()` to `e.category.as_str()`.            |
-| `crates/codegen/vtcode-core/src/core/agent/runner/telemetry.rs`      | 2 call sites migrated to `push_warning`.                                                                                        |
-| `crates/codegen/vtcode-core/src/core/agent/runner/execute.rs`        | 4 call sites migrated to `push_warning`.                                                                                        |
-| `crates/codegen/vtcode-core/src/core/agent/runner/tool_args.rs`      | 2 call sites migrated to `push_warning`.                                                                                        |
-| `crates/codegen/vtcode-core/src/core/agent/runner/task_setup.rs`     | 2 call sites migrated to `push_warning`.                                                                                        |
-| `crates/codegen/vtcode-core/src/core/agent/runner/tool_rejection.rs` | 1 call site migrated to `push_warning`.                                                                                         |
-| `crates/codegen/vtcode-core/src/core/agent/completion.rs`            | 1 call site migrated to `push_warning`.                                                                                         |
-| `crates/common/vtcode-commons/src/error_category.rs`                 | Added `as_str() -> &'static str` const method delegating to `user_label()`.                                                     |
+| File                                                                   | Change                                                                                                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `crates/codegen/diapason-core/src/core/agent/session/mod.rs`           | Added `push_warning` method (dedup + cap + elision marker); `MAX_SESSION_WARNINGS=200`; `WARNINGS_ELIDED_MARKER`; 3 unit tests. |
+| `crates/codegen/diapason-core/src/core/agent/runner/tool_exec.rs`      | 1 call site migrated to `push_warning`; 2 call sites changed from `e.category.to_string()` to `e.category.as_str()`.            |
+| `crates/codegen/diapason-core/src/core/agent/runner/telemetry.rs`      | 2 call sites migrated to `push_warning`.                                                                                        |
+| `crates/codegen/diapason-core/src/core/agent/runner/execute.rs`        | 4 call sites migrated to `push_warning`.                                                                                        |
+| `crates/codegen/diapason-core/src/core/agent/runner/tool_args.rs`      | 2 call sites migrated to `push_warning`.                                                                                        |
+| `crates/codegen/diapason-core/src/core/agent/runner/task_setup.rs`     | 2 call sites migrated to `push_warning`.                                                                                        |
+| `crates/codegen/diapason-core/src/core/agent/runner/tool_rejection.rs` | 1 call site migrated to `push_warning`.                                                                                         |
+| `crates/codegen/diapason-core/src/core/agent/completion.rs`            | 1 call site migrated to `push_warning`.                                                                                         |
+| `crates/common/diapason-commons/src/error_category.rs`                 | Added `as_str() -> &'static str` const method delegating to `user_label()`.                                                     |
 
 ______________________________________________________________________
 
@@ -404,7 +410,7 @@ approval phrase routing, and normalized tracker deduplication were retained.
 
 ### Runtime invariants
 
-- `vtcode-exec-events::ThreadEvent` remains the only runtime event contract.
+- `diapason-exec-events::ThreadEvent` remains the only runtime event contract.
 - Cancellation uses an explicit `Cancelled` finish reason; approval uses
   `Approved` and cannot disable planning until the tracker gate succeeds.
 - Direct, queued, automatic, and fresh-context approvals preserve the validated
@@ -420,7 +426,7 @@ checks, agent-legibility check, docs-link check, and `git diff --check` listed
 in the root `AGENTS.md`. The targeted compile gate is:
 
 ```text
-cargo check --locked -p vtcode --bin vtcode
+cargo check --locked -p diapason --bin diapason
 ```
 
 ______________________________________________________________________
@@ -431,7 +437,7 @@ Date: 2026-08-11
 
 ### Scope
 
-Cross-check of `.vtcode/checkpoints/` (50 JSON files, ~5 MB, turns 860–910)
+Cross-check of `.diapason/checkpoints/` (50 JSON files, ~5 MB, turns 860–910)
 against the harness preflight path. The checkpoints are independent
 conversation snapshots; cross-turn tool-result duplication is mostly expected
 (model reissues, not harness double execution) and was not treated as a harness
@@ -443,7 +449,7 @@ defect.
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Repeated `code_search` preflight failures from stringified JSON arguments (`result_types: "[\"path\"]"`, `max_results: "10"`) — six validation failures in a single turn (`turn_864`), continuing into `turn_865`. Each failure + retry wasted several KB and tool attempts. | Medium-High | Added strict, schema-aware string-type coercion in `normalize_schema_aliases_in_place` (`execution_kernel.rs`): a JSON-encoded string is parsed and accepted only when it unambiguously matches the schema-declared top-level type (array/object/integer/number/boolean). Strict `jsonschema` validation still runs afterward, so enum/bounds checks still apply. |
 | `max_output_tokens` has a dedicated strict validator that deliberately rejects strings/floats.                                                                                                                                                                               | —           | Excluded from coercion via the shared `MAX_OUTPUT_TOKENS_FIELD` constant so the guardrail is preserved. The contract test confirming string rejection still passes.                                                                                                                                                                                               |
-| The `"max_output_tokens"` field name was duplicated as a literal across `output_limits.rs` and `vtcode-utility-tool-specs`.                                                                                                                                                  | Low         | Centralized as `vtcode_utility_tool_specs::MAX_OUTPUT_TOKENS_FIELD`; all four call sites and the schema builder now reference the constant (DRY).                                                                                                                                                                                                                 |
+| The `"max_output_tokens"` field name was duplicated as a literal across `output_limits.rs` and `diapason-utility-tool-specs`.                                                                                                                                                | Low         | Centralized as `diapason_utility_tool_specs::MAX_OUTPUT_TOKENS_FIELD`; all four call sites and the schema builder now reference the constant (DRY).                                                                                                                                                                                                               |
 
 ### Coercion boundaries (what it deliberately does NOT do)
 
@@ -461,9 +467,9 @@ defect.
 
 ```text
 cargo fmt --all -- --check
-cargo check --locked -p vtcode-utility-tool-specs -p vtcode-core -p vtcode
-cargo clippy --locked -p vtcode-utility-tool-specs -p vtcode-core -p vtcode --all-targets -- -D warnings
-cargo nextest run --profile quick -p vtcode-core -p vtcode
+cargo check --locked -p diapason-utility-tool-specs -p diapason-core -p diapason
+cargo clippy --locked -p diapason-utility-tool-specs -p diapason-core -p diapason --all-targets -- -D warnings
+cargo nextest run --profile quick -p diapason-core -p diapason
 ```
 
 Result: 5,579/5,579 tests passed, 12 skipped; format and clippy clean. New
@@ -511,9 +517,9 @@ the coercion logic.
 
 ```text
 cargo fmt --all -- --check
-cargo check --locked -p vtcode-utility-tool-specs -p vtcode-core -p vtcode
-cargo clippy --locked -p vtcode-utility-tool-specs -p vtcode-core -p vtcode --all-targets -- -D warnings
-cargo nextest run --profile quick -p vtcode-core -p vtcode
+cargo check --locked -p diapason-utility-tool-specs -p diapason-core -p diapason
+cargo clippy --locked -p diapason-utility-tool-specs -p diapason-core -p diapason --all-targets -- -D warnings
+cargo nextest run --profile quick -p diapason-core -p diapason
 ```
 
 Result: 5,579/5,579 tests passed, 12 skipped; format and clippy clean. No new
@@ -528,7 +534,7 @@ ______________________________________________________________________
 
 Revisited the sampled 3,253-event session and the harness persistence paths
 after the token/context fixes. The implementation now treats the workspace
-`vtcode-memory` session store as authoritative for both interactive and exec
+`diapason-memory` session store as authoritative for both interactive and exec
 runs.
 
 ### Findings and disposition
@@ -536,8 +542,8 @@ runs.
 | Finding                                                                                         | Severity | Disposition                                                                                                                                                                                                                                                                                                                                                                               |
 | ----------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Synchronous JSON serialization, file writes, and `flush()` ran on every harness event.          | High     | Canonical events now use one bounded non-blocking handoff with event-count and estimated-byte limits to a blocking drain; saturation fails closed instead of growing memory or silently dropping authoritative events. Explicit legacy, Open Responses, and ATIF exporters are isolated; JSONL exporters use `AsyncLineWriter`, while ATIF serialization and writes use `spawn_blocking`. |
-| Interactive harness logs and exec logs used a global default path in addition to session state. | High     | Canonical events are stored at `<workspace>/.vtcode/sessions/<session_id>/events.jsonl`. `agent.harness.event_log_path` and exec `--events` are explicit compatibility exports; unset configuration creates no global harness file.                                                                                                                                                       |
-| Retention trusted `manifest.json.session_id` when constructing deletion paths.                  | High     | Retention enumerates direct child directories, skips symlinks and active sessions, and deletes only validated children of `.vtcode/sessions`. Manifest IDs cannot redirect deletion.                                                                                                                                                                                                      |
+| Interactive harness logs and exec logs used a global default path in addition to session state. | High     | Canonical events are stored at `<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`. `agent.harness.event_log_path` and exec `--events` are explicit compatibility exports; unset configuration creates no global harness file.                                                                                                                                       |
+| Retention trusted `manifest.json.session_id` when constructing deletion paths.                  | High     | Retention enumerates direct child directories, skips symlinks and active sessions, and deletes only validated children of `.diapason/sessions`. Manifest IDs cannot redirect deletion.                                                                                                                                                                                                    |
 | Independent exporter locks allowed consumers to observe divergent ordering.                     | Medium   | One dispatch gate feeds canonical, legacy, Open Responses, and ATIF consumers in the same order.                                                                                                                                                                                                                                                                                          |
 | Millisecond-only harness IDs collided in the sampled logs.                                      | Medium   | Harness-generated item IDs use UUIDs; the 3,253-event regression test asserts uniqueness.                                                                                                                                                                                                                                                                                                 |
 | Session status became terminal at turn boundaries.                                              | Medium   | `thread.started`/`turn.started` establish activity; only `thread.completed` makes the manifest terminal.                                                                                                                                                                                                                                                                                  |
@@ -552,7 +558,7 @@ runs.
 - Optional exporter drops are reported separately and never redefine the
   canonical event contract (`ThreadEvent`).
 - Native Codex exec emits lifecycle-only canonical events because it does not
-  have VT Code tool-event data available; it does not synthesize tool events.
+  have Diapason tool-event data available; it does not synthesize tool events.
 
 ### Post-implementation adversarial review
 
@@ -567,9 +573,9 @@ failures. No actionable Medium findings remain.
 ### Verification
 
 ```text
-cargo nextest run -p vtcode-memory
-cargo nextest run -p vtcode-core -E 'test(/session_store_sink|event/)'
-cargo nextest run -p vtcode -E 'test(/harness/)'
+cargo nextest run -p diapason-memory
+cargo nextest run -p diapason-core -E 'test(/session_store_sink|event/)'
+cargo nextest run -p diapason -E 'test(/harness/)'
 cargo fmt --all -- --check
 ```
 

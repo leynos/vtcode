@@ -1,8 +1,8 @@
 use anstyle::Color;
+use diapason_core::tools::registry::ToolExecutionError;
+use diapason_core::utils::style_helpers::ColorPalette;
 use serde_json::Value;
 use std::fmt::Write;
-use vtcode_core::tools::registry::ToolExecutionError;
-use vtcode_core::utils::style_helpers::ColorPalette;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ToolDisplayStatus {
@@ -350,7 +350,7 @@ mod tests {
         let failure = ToolExecutionStatus::Failure {
             error: ToolExecutionError::new(
                 "tool".to_string(),
-                vtcode_core::tools::registry::ToolErrorType::PermissionDenied,
+                diapason_core::tools::registry::ToolErrorType::PermissionDenied,
                 "permission denied".to_string(),
             ),
         };
@@ -371,7 +371,7 @@ mod tests {
         let failure = ToolExecutionStatus::Failure {
             error: ToolExecutionError::new(
                 "tool".to_string(),
-                vtcode_core::tools::registry::ToolErrorType::ExecutionError,
+                diapason_core::tools::registry::ToolErrorType::ExecutionError,
                 "boom".to_string(),
             ),
         };
@@ -385,7 +385,7 @@ mod tests {
         let timeout = ToolExecutionStatus::Timeout {
             error: ToolExecutionError::new(
                 "slow_tool".to_string(),
-                vtcode_core::tools::registry::ToolErrorType::Timeout,
+                diapason_core::tools::registry::ToolErrorType::Timeout,
                 "timed out after 30s".to_string(),
             ),
         };

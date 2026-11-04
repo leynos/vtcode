@@ -2,14 +2,14 @@
 
 ## Overview
 
-VT Code uses [tree-sitter](https://tree-sitter.github.io/tree-sitter/) for
+Diapason uses [tree-sitter](https://tree-sitter.github.io/tree-sitter/) for
 robust, syntax-aware parsing of shell commands. This is a critical security
 feature that ensures shell commands are correctly decomposed and validated
 before execution.
 
 ## Shell Safety Parsing
 
-The primary use of tree-sitter in VT Code is within the `command_safety`
+The primary use of tree-sitter in Diapason is within the `command_safety`
 module. When an agent attempts to run a shell command (especially complex ones
 involving pipes, redirects, or logical operators), tree-sitter-bash is used to
 parse the command into an Abstract Syntax Tree (AST).
@@ -34,7 +34,7 @@ The integration is centered around the following components:
 
 ## Technical Details
 
-VT Code has deliberately moved away from full-scale AST parsing for general
+Diapason has deliberately moved away from full-scale AST parsing for general
 programming languages (Rust, Python, etc.) to minimize binary bloat and
 dependency complexity. Modern LLMs are highly proficient at understanding code
 from raw text, making AST-level parsing for general coding tasks largely
@@ -50,7 +50,7 @@ does not require manual configuration.
 
 ______________________________________________________________________
 
-*Note: Previous versions of VT Code included broader language support (Rust,
+*Note: Previous versions of Diapason included broader language support (Rust,
 Python, JavaScript, etc.) via tree-sitter. This was removed in favor of
 simpler, more efficient text-based analysis which proved equally effective for
 LLM-assisted coding while significantly reducing the binary size.*

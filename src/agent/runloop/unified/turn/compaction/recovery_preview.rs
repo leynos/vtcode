@@ -1,5 +1,5 @@
 use super::*;
-use vtcode_core::tools::SpooledOutputReference;
+use diapason_core::tools::SpooledOutputReference;
 
 fn structured_tool_preview_from_spool(value: &Value, _workspace_root: &Path) -> Option<String> {
     let reference = SpooledOutputReference::from_value(value)?;

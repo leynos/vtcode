@@ -8,7 +8,7 @@ TUI-only, removing all CLI-specific code and dependencies.
 ## Problem Statement
 
 The original `prompt_user_for_tool()` function in
-`crates/codegen/vtcode-core/src/tool_policy.rs` contained CLI-specific code
+`crates/codegen/diapason-core/src/tool_policy.rs` contained CLI-specific code
 with a guard to prevent execution in TUI mode. This created several issues:
 
 1. The function could corrupt the terminal if accidentally called in TUI mode
@@ -58,7 +58,7 @@ impl ToolPolicyManager {
 The original `prompt_user_for_tool()` function (lines 874-952) was completely
 removed, including:
 
-- `VTCODE_TUI_MODE` environment variable check
+- `DIAPASON_TUI_MODE` environment variable check
 - Interactive terminal detection
 - `AnsiRenderer` usage
 - `notify_attention()` calls
@@ -72,7 +72,7 @@ removed, including:
 In the binary crate (src/agent/runloop/…), set up a TUI permission handler:
 
 ```rust
-use vtcode_core::tool_policy::{ToolPolicyManager, PermissionPromptHandler};
+use diapason_core::tool_policy::{ToolPolicyManager, PermissionPromptHandler};
 
 // Create handler that integrates with TUI system
 struct TuiPermissionHandler {
@@ -99,8 +99,8 @@ policy_manager.set_permission_handler(Box::new(TuiPermissionHandler::new(...)));
 For CLI applications using the library:
 
 ```rust
-use vtcode_core::tool_policy::{ToolPolicyManager, PermissionPromptHandler};
-use vtcode_core::ui::user_confirmation::UserConfirmation;
+use diapason_core::tool_policy::{ToolPolicyManager, PermissionPromptHandler};
+use diapason_core::ui::user_confirmation::UserConfirmation;
 
 struct CliPermissionHandler;
 
@@ -126,7 +126,7 @@ policy_manager.set_permission_handler(Box::new(CliPermissionHandler));
 ### For Headless/Non-Interactive Mode
 
 ```rust
-use vtcode_core::tool_policy::{ToolPolicyManager, PermissionPromptHandler};
+use diapason_core::tool_policy::{ToolPolicyManager, PermissionPromptHandler};
 
 struct HeadlessPermissionHandler {
     default_decision: ToolExecutionDecision,
@@ -165,8 +165,8 @@ The refactoring maintains backward compatibility:
 
 ## Files Modified
 
-- `crates/codegen/vtcode-core/src/tool_policy.rs`: Main refactoring location
-- `crates/codegen/vtcode-core/src/tool_policy_handlers.rs`: New file with
+- `crates/codegen/diapason-core/src/tool_policy.rs`: Main refactoring location
+- `crates/codegen/diapason-core/src/tool_policy_handlers.rs`: New file with
   example implementations (optional)
 
 ## Migration Guide
@@ -182,7 +182,7 @@ If you're using `ToolPolicyManager` directly in your application:
 
 ### For Binary / Application Code
 
-The main VT Code binary should:
+The main Diapason binary should:
 
 1. Create a TUI permission handler that integrates with `tool_routing.rs`
 2. Set the handler on the policy manager during session setup

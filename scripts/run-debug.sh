@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# VTCODE - Debug Mode Launch Script
+# DIAPASON - Debug Mode Launch Script
 # This script provides fast development builds
 
 set -eo pipefail
 
 restore_terminal_state() {
 	if [[ -t 1 || -t 2 ]]; then
-		# Best-effort restore for raw/alternate-screen/mouse modes in case vtcode aborts.
-		# Order mirrors vtcode_ui::tui::panic_hook::restore_tui: LeaveAlternateScreen first,
+		# Best-effort restore for raw/alternate-screen/mouse modes in case diapason aborts.
+		# Order mirrors diapason_ui::tui::panic_hook::restore_tui: LeaveAlternateScreen first,
 		# then bracketed paste/focus/mouse, pop keyboard flags, reset OSC 22 pointer,
 		# default cursor shape, show cursor.
 		printf '\r\033[K\033[?1049l\033[?2004l\033[?1004l\033[?1006l\033[?1015l\033[?1003l\033[?1002l\033[?1000l\033[<1u\033]22;default\007\033[0 q\033[?25h' >/dev/tty 2>/dev/null || true
@@ -26,41 +26,32 @@ unset MALLOCSTACKTOOLSDIR
 unset MallocErrorAbort
 unset MallocNanoZone
 
-if [[ -z "${VT_SESSION_DIR:-}" ]]; then
+if [[ -z "${DIAPASON_SESSION_DIR:-}" ]]; then
 	case "$(uname -s)" in
 	Darwin)
-		VT_STATE_DIR="$HOME/Library/Application Support/com.vinhnx.vtcode/state"
+		DIAPASON_STATE_DIR="$HOME/Library/Application Support/diapason"
 		;;
 	*)
 		if [[ "${XDG_STATE_HOME:-}" = /* ]]; then
-			VT_STATE_DIR="$XDG_STATE_HOME/vtcode"
+			DIAPASON_STATE_DIR="$XDG_STATE_HOME/diapason"
 		else
-			VT_STATE_DIR="$HOME/.local/state/vtcode"
+			DIAPASON_STATE_DIR="$HOME/.local/state/diapason"
 		fi
 		;;
 	esac
-	export VT_SESSION_DIR="$VT_STATE_DIR/sessions"
+	export DIAPASON_SESSION_DIR="$DIAPASON_STATE_DIR/sessions"
 fi
 
 # Check if we're in the right directory
 if [[ ! -f "Cargo.toml" ]]; then
-	echo "Error: Please run this script from the vtcode project root directory"
+	echo "Error: Please run this script from the diapason project root directory"
 	exit 1
 fi
 
 # --- Fast iteration tuning -------------------------------------------------
-# For a local edit->run loop, incremental compilation rebuilds only changed
-# crates and is dramatically faster than a from-scratch cache lookup. sccache
-# requires incremental=false (see Cargo.toml [profile.dev]) and rejects any
-# build with CARGO_INCREMENTAL=1, so we disable sccache here and let rust's
-# incremental cache drive fast rebuilds instead. Use ./scripts/rrf.sh for
-# release builds where sccache's cross-build cache wins.
-
-# `unset` actually clears a wrapper that may be set in the parent shell;
-# `${VAR:-}` only defaults on unset vars, so `export RUSTC_WRAPPER=""`
-# would not drop a pre-existing value.
-unset RUSTC_WRAPPER
-export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-1}"
+# Keep the managed compiler wrapper enabled so this build participates in
+# shared compile admission. The dev profile disables incremental compilation
+# for compatibility with the shared sccache service.
 
 # On Apple Silicon, rustc is heavy enough per-thread that pinning cargo
 # jobs to the P-core count (vs. all logical CPUs) usually wins for the

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/config/CONFIG_FIELD_REFERENCE.md from vtcode-config schema."""
+"""Generate docs/config/CONFIG_FIELD_REFERENCE.md from diapason-config schema."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ CARGO_SCHEMA_CMD = [
     "run",
     "-q",
     "-p",
-    "vtcode-config",
+    "diapason-config",
     "--features",
     "schema",
     "--example",
@@ -40,7 +40,7 @@ class FieldEntry:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate config field reference docs from vtcode-config schema."
+        description="Generate config field reference docs from diapason-config schema."
     )
     parser.add_argument(
         "--output",
@@ -66,7 +66,7 @@ def load_schema_from_cargo() -> dict[str, Any]:
             "Failed to export configuration schema.\n"
             "Remediation:\n"
             "1. Ensure Rust toolchain is installed and `cargo` is available.\n"
-            "2. Run: cargo run -p vtcode-config --features schema --example schema_dump\n"
+            "2. Run: cargo run -p diapason-config --features schema --example schema_dump\n"
             f"3. Cargo stderr:\n{stderr}"
         )
 
@@ -77,7 +77,7 @@ def load_schema_from_cargo() -> dict[str, Any]:
             "Schema export output was not valid JSON.\n"
             "Remediation:\n"
             "1. Re-run cargo command directly to inspect output.\n"
-            "2. Ensure vtcode-config example `schema_dump` prints JSON only."
+            "2. Ensure diapason-config example `schema_dump` prints JSON only."
         ) from exc
 
 
@@ -380,7 +380,7 @@ def apply_reference_overrides(entries: list[FieldEntry]) -> None:
         "acp.audit.max_size_bytes": "Maximum active ACP audit file size before rotation",
         "acp.audit.path": (
             "JSONL path for the opt-in ACP tool audit. The default resolves "
-            'through `VtCodePaths::state_path("audit/tools.jsonl")`.'
+            'through `DiapasonPaths::state_path("audit/tools.jsonl")`.'
         ),
     }
     matched: set[str] = set()
@@ -405,7 +405,7 @@ def render_markdown(entries: list[FieldEntry]) -> str:
     lines = [
         "# Config Field Reference",
         "",
-        "Generated from `vtcode-config` schema (`VTCodeConfig`) for complete field coverage.",
+        "Generated from `diapason-config` schema (`DiapasonConfig`) for complete field coverage.",
         "",
         "Regenerate:",
         "",

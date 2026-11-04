@@ -1,13 +1,13 @@
 use anyhow::Result;
 
-use vtcode_config::api_keys::{clear_credential_with_mode, credential_metadata_key, store_credential_with_mode};
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::models::Provider;
-use vtcode_core::utils::dot_config::update_model_preference;
+use diapason_config::api_keys::{clear_credential_with_mode, credential_metadata_key, store_credential_with_mode};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::models::Provider;
+use diapason_core::utils::dot_config::update_model_preference;
 
 use super::ModelSelectionResult;
 
-fn synced_openai_service_tier(selection: &ModelSelectionResult) -> Option<vtcode_config::OpenAIServiceTier> {
+fn synced_openai_service_tier(selection: &ModelSelectionResult) -> Option<diapason_config::OpenAIServiceTier> {
     (selection.provider_enum == Some(Provider::OpenAI) && selection.service_tier_supported)
         .then_some(selection.service_tier)
         .flatten()
@@ -16,7 +16,7 @@ fn synced_openai_service_tier(selection: &ModelSelectionResult) -> Option<vtcode
 pub(super) async fn persist_selection(
     workspace: &std::path::Path,
     selection: &ModelSelectionResult,
-) -> Result<VTCodeConfig> {
+) -> Result<DiapasonConfig> {
     let mut manager = crate::main_helpers::load_workspace_config(workspace)?;
     let config = manager.config();
     if !config.providers_whitelist.is_empty()
@@ -45,7 +45,7 @@ pub(super) async fn persist_selection(
     Ok(config)
 }
 
-fn apply_api_key_state(config: &mut VTCodeConfig, selection: &ModelSelectionResult) -> Result<()> {
+fn apply_api_key_state(config: &mut DiapasonConfig, selection: &ModelSelectionResult) -> Result<()> {
     if selection.provider_enum == Some(Provider::OpenAI) && selection.uses_chatgpt_auth {
         config.agent.api_key_env = selection.env_key.clone();
         config.agent.custom_api_keys.remove(&selection.provider);
@@ -82,7 +82,7 @@ fn uses_provider_api_key(selection: &ModelSelectionResult) -> bool {
     }
 }
 
-fn sync_stored_api_key(config: &mut VTCodeConfig, selection: &ModelSelectionResult) -> Result<()> {
+fn sync_stored_api_key(config: &mut DiapasonConfig, selection: &ModelSelectionResult) -> Result<()> {
     if selection.provider_enum == Some(Provider::OpenAI) && selection.uses_chatgpt_auth {
         return Ok(());
     }
@@ -100,7 +100,7 @@ fn sync_stored_api_key(config: &mut VTCodeConfig, selection: &ModelSelectionResu
     clear_stored_api_key(config, selection)
 }
 
-fn clear_stored_api_key(config: &mut VTCodeConfig, selection: &ModelSelectionResult) -> Result<()> {
+fn clear_stored_api_key(config: &mut DiapasonConfig, selection: &ModelSelectionResult) -> Result<()> {
     config.agent.custom_api_keys.remove(&selection.provider);
     if let Some(metadata_key) = credential_metadata_key(&selection.provider, &selection.env_key)? {
         config.agent.custom_api_keys.remove(&metadata_key);
@@ -114,9 +114,9 @@ fn clear_stored_api_key(config: &mut VTCodeConfig, selection: &ModelSelectionRes
 mod tests {
     use super::{synced_openai_service_tier, uses_provider_api_key};
     use crate::agent::runloop::model_picker::ModelSelectionResult;
-    use vtcode_config::OpenAIServiceTier;
-    use vtcode_core::config::models::Provider;
-    use vtcode_core::config::types::ReasoningEffortLevel;
+    use diapason_config::OpenAIServiceTier;
+    use diapason_core::config::models::Provider;
+    use diapason_core::config::types::ReasoningEffortLevel;
 
     fn selection(provider_enum: Option<Provider>, provider: &str, model: &str) -> ModelSelectionResult {
         ModelSelectionResult {
@@ -161,7 +161,7 @@ mod tests {
         assert!(!uses_provider_api_key(&selection(
             Some(Provider::Copilot),
             "copilot",
-            vtcode_core::config::constants::models::copilot::DEFAULT_MODEL
+            diapason_core::config::constants::models::copilot::DEFAULT_MODEL
         )));
     }
 

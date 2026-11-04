@@ -1,7 +1,7 @@
-# VT Code Empirical Evaluation Framework
+# Diapason Empirical Evaluation Framework
 
 This directory contains the tools and test cases for performing empirical
-evaluations of the `vtcode` agent. The framework allows you to measure model
+evaluations of the `diapason` agent. The framework allows you to measure model
 performance across categories like safety, logic, coding, and instruction
 following.
 
@@ -9,7 +9,7 @@ following.
 
 ### Prerequisites
 
-1. **Build vtcode**: Ensure you have a compiled release binary of `vtcode`.
+1. **Build diapason**: Ensure you have a compiled release binary of `diapason`.
 
     ```bash
     cargo build --release
@@ -40,7 +40,7 @@ python3 evals/eval_engine.py --cases evals/test_cases.json --provider gemini --m
 
 ## Directory Structure
 
-- `eval_engine.py`: The main orchestrator that runs tool-capable `vtcode exec`
+- `eval_engine.py`: The main orchestrator that runs tool-capable `diapason exec`
   cases with an explicit tool profile and generates reports.
 - `metrics.py`: Contains grading logic and metric implementations.
 - `test_cases.json`: The primary benchmark suite.
@@ -62,8 +62,8 @@ Test cases are defined in JSON format:
 }
 ```
 
-An optional `profile` selects `vt_code` or `advanced_vtcode`. Cases that omit
-it run with an explicit `vt_code` override.
+An optional `profile` selects `diapason` or `advanced_diapason`. Cases that
+omit it run with an explicit `diapason` override.
 
 The focused advanced-profile code-search cases live in
 [`docs/development/ai-tool-surface-eval-cases.json`](../docs/development/ai-tool-surface-eval-cases.json).
@@ -91,10 +91,10 @@ Reports are saved in the `reports/` directory with a timestamp. They include:
   - `grade`: The score or result from the metric.
   - `reasoning`: The agent's thinking process (if supported by the model).
   - `raw_response`: The final response and raw JSON event stream from
-      `vtcode exec --json`.
+      `diapason exec --json`.
 
 ## Grading with LLMs
 
-The `llm_grader` metric uses `vtcode ask` internally to perform evaluations. By
-default, it uses `gemini-3-flash-preview` for grading to keep costs low and
+The `llm_grader` metric uses `diapason ask` internally to perform evaluations.
+By default, it uses `gemini-3-flash-preview` for grading to keep costs low and
 ensure reliability. You can configure this in `evals/metrics.py`.

@@ -1,11 +1,11 @@
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
-use serde_json::Value;
-use vtcode_core::core::agent::events::{
+use diapason_core::core::agent::events::{
     ToolOutputPayload, error_item_completed_event, tool_invocation_completed_event, tool_output_completed_event,
     tool_output_payload_from_value,
 };
-use vtcode_core::exec::events::{ToolCallStatus, tool_outcome_from_status};
-use vtcode_core::tools::registry::ToolExecutionError;
+use diapason_core::exec::events::{ToolCallStatus, tool_outcome_from_status};
+use diapason_core::tools::registry::ToolExecutionError;
+use serde_json::Value;
 
 use super::status::ToolExecutionStatus;
 
@@ -151,20 +151,20 @@ mod tests {
     fn prefers_spool_reference_over_inline_output() {
         let output = json!({
             "output": "preview",
-            "spool_path": ".vtcode/context/tool_outputs/run-1.txt"
+            "spool_path": ".diapason/context/tool_outputs/run-1.txt"
         });
 
         let payload = tool_output_payload_from_value(&output);
         assert_eq!(payload.aggregated_output, "");
-        assert_eq!(payload.spool_path.as_deref(), Some(".vtcode/context/tool_outputs/run-1.txt"));
+        assert_eq!(payload.spool_path.as_deref(), Some(".diapason/context/tool_outputs/run-1.txt"));
     }
 
     #[test]
     fn structured_list_output_emits_compact_summary() {
         let output = json!({
             "items": [
-                {"path": "vtcode-tui/src/app.rs", "type": "file"},
-                {"path": "vtcode-tui/src/core_tui", "type": "directory"}
+                {"path": "diapason-tui/src/app.rs", "type": "file"},
+                {"path": "diapason-tui/src/core_tui", "type": "directory"}
             ],
             "count": 2,
             "total": 11
@@ -172,7 +172,7 @@ mod tests {
 
         let payload = tool_output_payload_from_value(&output);
         assert!(payload.aggregated_output.contains("Listed 11 items"));
-        assert!(payload.aggregated_output.contains("vtcode-tui/src/app.rs"));
+        assert!(payload.aggregated_output.contains("diapason-tui/src/app.rs"));
     }
 
     #[test]
@@ -213,7 +213,7 @@ mod tests {
     fn failure_payload_preserves_structured_error_context() {
         let error = ToolExecutionError::new(
             "write_file",
-            vtcode_core::tools::registry::ToolErrorType::ExecutionError,
+            diapason_core::tools::registry::ToolErrorType::ExecutionError,
             "write failed",
         )
         .with_partial_state(true, false)

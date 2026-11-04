@@ -1,4 +1,4 @@
-//! Analysis command implementations for VT Code
+//! Analysis command implementations for Diapason
 
 use serde::{Deserialize, Serialize};
 

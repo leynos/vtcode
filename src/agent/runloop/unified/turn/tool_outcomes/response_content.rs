@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use vtcode_commons::preview::{condense_text_bytes, tail_preview_text};
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::core::agent::result_reducers::strip_tui_display_fields;
-use vtcode_core::llm::provider::{LLMRequest, Message as LlmMessage};
-use vtcode_core::llm::{
+use diapason_commons::preview::{condense_text_bytes, tail_preview_text};
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::core::agent::result_reducers::strip_tui_display_fields;
+use diapason_core::llm::provider::{LLMRequest, Message as LlmMessage};
+use diapason_core::llm::{
     LightweightFeature, collect_single_response, create_provider_for_model_route, resolve_lightweight_route,
 };
-use vtcode_core::tools::SpooledOutputReference;
-use vtcode_core::tools::continuation::{PtyContinuationArgs, ReadChunkContinuationArgs};
+use diapason_core::tools::SpooledOutputReference;
+use diapason_core::tools::continuation::{PtyContinuationArgs, ReadChunkContinuationArgs};
 
 use super::error_handling::{serialize_json_for_model, truncate_text_for_model};
 use super::helpers::serialize_output;
@@ -18,7 +18,7 @@ use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 
 const TOOL_OUTPUT_SUMMARY_MAX_INPUT_CHARS: usize = 12_000;
 const TOOL_OUTPUT_SUMMARY_MAX_OUTPUT_TOKENS: u32 = 400;
-const TOOL_OUTPUT_SUMMARY_SYSTEM_PROMPT: &str = "You summarize tool outputs for VT Code before they are added to the model context. Preserve actionable facts, concrete errors, file paths, commands, and next steps. Keep it concise, faithful, and specific. Do not invent details.";
+const TOOL_OUTPUT_SUMMARY_SYSTEM_PROMPT: &str = "You summarize tool outputs for Diapason before they are added to the model context. Preserve actionable facts, concrete errors, file paths, commands, and next steps. Keep it concise, faithful, and specific. Do not invent details.";
 const TOOL_OUTPUT_SUMMARY_READ_HEAD_BYTES: usize = 6_000;
 const TOOL_OUTPUT_SUMMARY_READ_TAIL_BYTES: usize = 4_000;
 const TOOL_OUTPUT_SUMMARY_EXEC_TAIL_BYTES: usize = 10_000;
@@ -130,7 +130,7 @@ pub(crate) fn compact_model_tool_payload(output: serde_json::Value) -> serde_jso
 }
 
 fn should_prefer_spool_reference_only(tool_name: &str, output: &serde_json::Value) -> bool {
-    vtcode_core::tools::tool_intent::should_use_spool_reference_only(Some(tool_name), output)
+    diapason_core::tools::tool_intent::should_use_spool_reference_only(Some(tool_name), output)
 }
 
 pub(super) fn truncate_stderr_preview(stderr: &str) -> String {
@@ -335,13 +335,13 @@ fn tool_output_summary_feature(
 }
 
 async fn summarize_tool_output_with_provider(
-    provider: &dyn vtcode_core::llm::provider::LLMProvider,
+    provider: &dyn diapason_core::llm::provider::LLMProvider,
     model: &str,
     tool_name: &str,
     serialized_output: &str,
 ) -> Result<String> {
     let prompt = format!(
-        "Tool: {tool_name}\n\nOutput:\n{}\n\nReturn a concise summary that preserves the actionable details VT Code should remember for the next model turn.",
+        "Tool: {tool_name}\n\nOutput:\n{}\n\nReturn a concise summary that preserves the actionable details Diapason should remember for the next model turn.",
         truncate_text_for_model(serialized_output, TOOL_OUTPUT_SUMMARY_MAX_INPUT_CHARS).0
     );
     let request = LLMRequest {
@@ -361,7 +361,7 @@ async fn summarize_tool_output_with_provider(
 
 async fn summarize_tool_output_with_route(
     ctx: &mut TurnProcessingContext<'_>,
-    route: &vtcode_core::llm::ModelRoute,
+    route: &diapason_core::llm::ModelRoute,
     tool_name: &str,
     serialized_output: &str,
 ) -> Result<String> {
@@ -660,7 +660,7 @@ mod tests {
         let output = json!({
             "content_kind": "text",
             "path": "big.log",
-            "spool_path": ".vtcode/context/tool_outputs/big.log"
+            "spool_path": ".diapason/context/tool_outputs/big.log"
         });
         let feature = tool_output_summary_feature(tool_names::UNIFIED_FILE, &args, &output, 200_000);
         assert!(matches!(feature, Some(LightweightFeature::LargeReadSummary)));
@@ -687,7 +687,7 @@ mod tests {
     #[test]
     fn prepared_spooled_response_records_spool_metadata_without_visible_bytes() {
         let output = json!({
-            "spool_path": ".vtcode/context/tool_outputs/command.log",
+            "spool_path": ".diapason/context/tool_outputs/command.log",
             "spooled_bytes": 12_345,
             "preview": "bounded command preview",
             "exit_code": 1,
@@ -713,7 +713,7 @@ mod tests {
     #[test]
     fn generic_reference_only_spooled_response_preserves_spool_metadata_and_preview() {
         let output = json!({
-            "spool_path": ".vtcode/context/tool_outputs/command.log",
+            "spool_path": ".diapason/context/tool_outputs/command.log",
             "spooled_bytes": 38_912,
             "preview": "bounded command preview",
             "output": "large output that was written to the spool"
@@ -730,7 +730,7 @@ mod tests {
     #[tokio::test]
     async fn successful_prepared_tool_response_counts_visible_bytes_once_after_history_push() {
         let output = json!({
-            "spool_path": ".vtcode/context/tool_outputs/command.log",
+            "spool_path": ".diapason/context/tool_outputs/command.log",
             "spooled_bytes": 12_345,
             "preview": "bounded command preview",
             "exit_code": 1,
@@ -767,10 +767,10 @@ mod tests {
             ctx.push_tool_response("call_1", Some(tool_names::READ_FILE), first_content);
             ctx.push_tool_response("call_1", Some(tool_names::READ_FILE), final_content.clone());
 
-            let tool_messages: Vec<&vtcode_core::llm::provider::Message> = ctx
+            let tool_messages: Vec<&diapason_core::llm::provider::Message> = ctx
                 .working_history
                 .iter()
-                .filter(|message| matches!(message.role, vtcode_core::llm::provider::MessageRole::Tool))
+                .filter(|message| matches!(message.role, diapason_core::llm::provider::MessageRole::Tool))
                 .collect();
             assert_eq!(tool_messages.len(), 1, "same-call overwrite should replace the in-place history entry");
             assert_eq!(tool_messages[0].content.as_text_borrowed(), Some(final_content.as_str()));

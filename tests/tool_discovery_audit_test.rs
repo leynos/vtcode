@@ -4,11 +4,11 @@
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
 use assert_fs::TempDir;
-use vtcode_core::config::ToolDocumentationMode;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::types::CapabilityLevel;
-use vtcode_core::tools::ToolRegistry;
-use vtcode_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities, ToolProfile};
+use diapason_core::config::ToolDocumentationMode;
+use diapason_core::config::constants::tools;
+use diapason_core::config::types::CapabilityLevel;
+use diapason_core::tools::ToolRegistry;
+use diapason_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities, ToolProfile};
 
 fn default_public_tool_names() -> Vec<String> {
     vec![
@@ -77,7 +77,7 @@ async fn audit_code_search_is_advanced_only() {
                 ToolDocumentationMode::Full,
                 ToolModelCapabilities::default(),
             )
-            .with_tool_profile(ToolProfile::AdvancedVtCode),
+            .with_tool_profile(ToolProfile::AdvancedDiapason),
         )
         .await
         .into_iter()

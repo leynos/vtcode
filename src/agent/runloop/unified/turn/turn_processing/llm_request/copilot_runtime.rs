@@ -7,28 +7,28 @@ use anstyle::Color;
 use anyhow::{Context, Result, anyhow};
 use async_stream::stream;
 use async_trait::async_trait;
-use serde_json::{Value, json};
-use tokio::sync::RwLock;
-use vtcode_config::auth::CopilotAuthConfig;
-use vtcode_config::core::permissions::AgentPermissionsConfig;
-use vtcode_core::acp::{PermissionGrant, ToolPermissionCache};
-use vtcode_core::config::PtyConfig;
-use vtcode_core::copilot::{
+use diapason_config::auth::CopilotAuthConfig;
+use diapason_config::core::permissions::AgentPermissionsConfig;
+use diapason_core::acp::{PermissionGrant, ToolPermissionCache};
+use diapason_core::config::PtyConfig;
+use diapason_core::copilot::{
     CopilotAcpCompatibilityState, CopilotObservedToolCall, CopilotObservedToolCallStatus, CopilotPermissionDecision,
     CopilotPermissionRequest, CopilotRuntimeRequest, CopilotTerminalCreateRequest, CopilotTerminalCreateResponse,
     CopilotTerminalExitStatus, CopilotTerminalOutputResponse, CopilotToolCallFailure, CopilotToolCallRequest,
     CopilotToolCallResponse, CopilotToolCallSuccess, PromptSession, PromptSessionCancelHandle, PromptUpdate,
 };
-use vtcode_core::core::trajectory::TrajectoryLogger;
-use vtcode_core::exec::events::ToolCallStatus;
-use vtcode_core::exec_policy::AskForApproval;
-use vtcode_core::llm::provider::{self as uni, LLMStreamEvent, LLMStreamEvent::Completed};
-use vtcode_core::llm::provider::{LLMResponse, ToolDefinition};
-use vtcode_core::tools::registry::{ToolProgressCallback, ToolRegistry};
-use vtcode_core::types::CompactStr;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_core::utils::style_helpers::ColorPalette;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
+use diapason_core::core::trajectory::TrajectoryLogger;
+use diapason_core::exec::events::ToolCallStatus;
+use diapason_core::exec_policy::AskForApproval;
+use diapason_core::llm::provider::{self as uni, LLMStreamEvent, LLMStreamEvent::Completed};
+use diapason_core::llm::provider::{LLMResponse, ToolDefinition};
+use diapason_core::tools::registry::{ToolProgressCallback, ToolRegistry};
+use diapason_core::types::CompactStr;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_core::utils::style_helpers::ColorPalette;
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
+use serde_json::{Value, json};
+use tokio::sync::RwLock;
 
 use super::request_builder::COLLAPSED_TOOL_OUTPUT_NOTICE;
 use crate::agent::runloop::mcp_events::McpPanelState;
@@ -66,7 +66,7 @@ use crate::agent::runloop::unified::ui_interaction_stream::CopilotRuntimeRequest
 
 pub(super) struct CopilotRuntimeHost<'a> {
     tool_registry: &'a mut ToolRegistry,
-    tool_result_cache: &'a Arc<RwLock<vtcode_core::tools::ToolResultCache>>,
+    tool_result_cache: &'a Arc<RwLock<diapason_core::tools::ToolResultCache>>,
     session: &'a mut InlineSession,
     session_stats: &'a mut SessionStats,
     plan_session: &'a mut PlanningWorkflowSessionState,
@@ -75,17 +75,17 @@ pub(super) struct CopilotRuntimeHost<'a> {
     ctrl_c_state: &'a Arc<CtrlCState>,
     ctrl_c_notify: &'a Arc<tokio::sync::Notify>,
     default_placeholder: Option<String>,
-    approval_recorder: &'a vtcode_core::tools::ApprovalRecorder,
-    decision_ledger: &'a Arc<RwLock<vtcode_core::core::decision_tracker::DecisionTracker>>,
+    approval_recorder: &'a diapason_core::tools::ApprovalRecorder,
+    decision_ledger: &'a Arc<RwLock<diapason_core::core::decision_tracker::DecisionTracker>>,
     tool_permission_cache: &'a Arc<RwLock<ToolPermissionCache>>,
-    permissions_state: &'a Arc<RwLock<vtcode_core::config::PermissionsConfig>>,
+    permissions_state: &'a Arc<RwLock<diapason_core::config::PermissionsConfig>>,
     active_agent_permissions: Option<&'a AgentPermissionsConfig>,
     safety_validator: &'a Arc<ToolCallSafetyValidator>,
-    lifecycle_hooks: Option<&'a vtcode_core::hooks::LifecycleHookEngine>,
+    lifecycle_hooks: Option<&'a diapason_core::hooks::LifecycleHookEngine>,
     approval_policy: AskForApproval,
     hitl_notification_bell: bool,
     skip_confirmations: bool,
-    vt_cfg: Option<&'a vtcode_config::loader::VTCodeConfig>,
+    vt_cfg: Option<&'a diapason_config::loader::DiapasonConfig>,
     traj: &'a TrajectoryLogger,
     harness_state: &'a mut HarnessTurnState,
     loop_tracker: Option<&'a mut LoopTracker>,
@@ -107,7 +107,7 @@ impl<'a> CopilotRuntimeHost<'a> {
     )]
     pub(super) fn new(
         tool_registry: &'a mut ToolRegistry,
-        tool_result_cache: &'a Arc<RwLock<vtcode_core::tools::ToolResultCache>>,
+        tool_result_cache: &'a Arc<RwLock<diapason_core::tools::ToolResultCache>>,
         session: &'a mut InlineSession,
         session_stats: &'a mut SessionStats,
         plan_session: &'a mut PlanningWorkflowSessionState,
@@ -116,14 +116,14 @@ impl<'a> CopilotRuntimeHost<'a> {
         ctrl_c_state: &'a Arc<CtrlCState>,
         ctrl_c_notify: &'a Arc<tokio::sync::Notify>,
         default_placeholder: Option<String>,
-        approval_recorder: &'a vtcode_core::tools::ApprovalRecorder,
-        decision_ledger: &'a Arc<RwLock<vtcode_core::core::decision_tracker::DecisionTracker>>,
+        approval_recorder: &'a diapason_core::tools::ApprovalRecorder,
+        decision_ledger: &'a Arc<RwLock<diapason_core::core::decision_tracker::DecisionTracker>>,
         tool_permission_cache: &'a Arc<RwLock<ToolPermissionCache>>,
-        permissions_state: &'a Arc<RwLock<vtcode_core::config::PermissionsConfig>>,
+        permissions_state: &'a Arc<RwLock<diapason_core::config::PermissionsConfig>>,
         active_agent_permissions: Option<&'a AgentPermissionsConfig>,
         safety_validator: &'a Arc<ToolCallSafetyValidator>,
-        lifecycle_hooks: Option<&'a vtcode_core::hooks::LifecycleHookEngine>,
-        vt_cfg: Option<&'a vtcode_config::loader::VTCodeConfig>,
+        lifecycle_hooks: Option<&'a diapason_core::hooks::LifecycleHookEngine>,
+        vt_cfg: Option<&'a diapason_config::loader::DiapasonConfig>,
         traj: &'a TrajectoryLogger,
         harness_state: &'a mut HarnessTurnState,
         loop_tracker: Option<&'a mut LoopTracker>,
@@ -134,8 +134,8 @@ impl<'a> CopilotRuntimeHost<'a> {
         harness_item_prefix: String,
     ) -> Self {
         let allowlist = vt_cfg
-            .map(|cfg| cfg.auth.copilot.vtcode_tool_allowlist.clone())
-            .unwrap_or_else(|| CopilotAuthConfig::default().vtcode_tool_allowlist);
+            .map(|cfg| cfg.auth.copilot.diapason_tool_allowlist.clone())
+            .unwrap_or_else(|| CopilotAuthConfig::default().diapason_tool_allowlist);
         let exposed_tools = filter_copilot_tools(available_tools, &allowlist);
         let exposed_tool_names = exposed_tools
             .iter()
@@ -275,7 +275,7 @@ impl<'a> CopilotRuntimeHost<'a> {
         }
     }
 
-    async fn handle_vtcode_tool_call(
+    async fn handle_diapason_tool_call(
         &mut self,
         renderer: &mut AnsiRenderer,
         request: CopilotToolCallRequest,
@@ -296,7 +296,12 @@ impl<'a> CopilotRuntimeHost<'a> {
         }
 
         if let Some(response) = self
-            .prepare_vtcode_tool_execution(renderer, &request.tool_call_id, &canonical_tool_name, &effective_arguments)
+            .prepare_diapason_tool_execution(
+                renderer,
+                &request.tool_call_id,
+                &canonical_tool_name,
+                &effective_arguments,
+            )
             .await?
         {
             return Ok(response);
@@ -461,7 +466,7 @@ impl<'a> CopilotRuntimeHost<'a> {
         }
     }
 
-    async fn prepare_vtcode_tool_execution(
+    async fn prepare_diapason_tool_execution(
         &mut self,
         renderer: &mut AnsiRenderer,
         tool_call_id: &str,
@@ -610,9 +615,9 @@ impl<'a> CopilotRuntimeHost<'a> {
                 let text = if let Some(diag) = diagnostic.as_ref() {
                     let impact = diag["impact"].as_str().unwrap_or("");
                     let fix = diag["fix"]["action"].as_str().unwrap_or("");
-                    format!("VT Code denied the tool `{tool_name}`. {impact} {fix}")
+                    format!("Diapason denied the tool `{tool_name}`. {impact} {fix}")
                 } else {
-                    format!("VT Code denied the tool `{tool_name}`.")
+                    format!("Diapason denied the tool `{tool_name}`.")
                 };
                 return Ok(Some(CopilotToolCallResponse::Failure(CopilotToolCallFailure {
                     text_result_for_llm: text,
@@ -677,7 +682,7 @@ impl<'a> CopilotRuntimeHost<'a> {
     }
 
     fn record_tool_use(&mut self, tool_name: &str) {
-        // Copilot executes VTCode tools inside the streaming request, so its
+        // Copilot executes Diapason tools inside the streaming request, so its
         // progress boundary is absent from `working_history`. Record it in the
         // authoritative turn state only after admission; denied calls never
         // reach this method and cannot erase the response streak.
@@ -950,7 +955,7 @@ impl CopilotRuntimeRequestHandler for CopilotRuntimeHost<'_> {
                 self.harness_state.record_requested_tool_calls(1);
                 let admitted_before = self.harness_state.admitted_tool_call_count();
                 let response = self
-                    .handle_vtcode_tool_call(renderer, request_event.request.clone())
+                    .handle_diapason_tool_call(renderer, request_event.request.clone())
                     .await
                     .map_err(|error| {
                         self.harness_state.record_failed_tool_call();
@@ -1840,13 +1845,13 @@ struct PermissionPromptSummary {
     reason: Option<String>,
 }
 
-fn map_copilot_finish_reason(stop_reason: &str) -> vtcode_core::llm::provider::FinishReason {
+fn map_copilot_finish_reason(stop_reason: &str) -> diapason_core::llm::provider::FinishReason {
     match stop_reason.trim() {
-        "end_turn" => vtcode_core::llm::provider::FinishReason::Stop,
-        "max_tokens" | "length" => vtcode_core::llm::provider::FinishReason::Length,
-        "refusal" => vtcode_core::llm::provider::FinishReason::Refusal,
-        "cancelled" => vtcode_core::llm::provider::FinishReason::Error("cancelled".to_string()),
-        other => vtcode_core::llm::provider::FinishReason::Error(other.to_string()),
+        "end_turn" => diapason_core::llm::provider::FinishReason::Stop,
+        "max_tokens" | "length" => diapason_core::llm::provider::FinishReason::Length,
+        "refusal" => diapason_core::llm::provider::FinishReason::Refusal,
+        "cancelled" => diapason_core::llm::provider::FinishReason::Error("cancelled".to_string()),
+        other => diapason_core::llm::provider::FinishReason::Error(other.to_string()),
     }
 }
 
@@ -1876,7 +1881,7 @@ fn map_builtin_permission_prompt_decision(
 fn auto_approve_builtin_permission(request: &CopilotPermissionRequest) -> Option<(CopilotPermissionDecision, bool)> {
     match request {
         // Copilot ACP keeps asking permission for these descriptive custom-tool
-        // requests even though VT Code still controls the actual tool-call path.
+        // requests even though Diapason still controls the actual tool-call path.
         CopilotPermissionRequest::CustomTool { .. } => Some((CopilotPermissionDecision::ApprovedAlways, true)),
         _ => None,
     }
@@ -1884,19 +1889,19 @@ fn auto_approve_builtin_permission(request: &CopilotPermissionRequest) -> Option
 
 fn denied_tool_response(tool_name: &str, reason: &str) -> CopilotToolCallResponse {
     CopilotToolCallResponse::Failure(CopilotToolCallFailure {
-        text_result_for_llm: format!("VT Code denied the tool `{tool_name}`."),
+        text_result_for_llm: format!("Diapason denied the tool `{tool_name}`."),
         error: format!("tool '{tool_name}' {reason}"),
     })
 }
 
 fn tool_not_exposed_response(tool_name: &str) -> CopilotToolCallResponse {
-    denied_tool_response(tool_name, "is not allowlisted in VT Code")
+    denied_tool_response(tool_name, "is not allowlisted in Diapason")
 }
 
 fn tool_exceeded_budget_response(tool_name: &str, max_tool_calls: usize) -> CopilotToolCallResponse {
     CopilotToolCallResponse::Failure(CopilotToolCallFailure {
         text_result_for_llm: format!(
-            "VT Code denied the tool `{tool_name}` because the turn exceeded its tool-call budget."
+            "Diapason denied the tool `{tool_name}` because the turn exceeded its tool-call budget."
         ),
         error: format!("tool '{tool_name}' exceeded max tool calls per turn ({max_tool_calls})"),
     })
@@ -1910,7 +1915,7 @@ fn copilot_failure_response_with_diagnosis(
 ) -> CopilotToolCallResponse {
     let escaped_evidence = escape_untrusted_evidence(evidence);
     let failure_text =
-        copilot_tool_result_text(tool_name, format!("VT Code failed to execute the tool `{tool_name}`."));
+        copilot_tool_result_text(tool_name, format!("Diapason failed to execute the tool `{tool_name}`."));
     CopilotToolCallResponse::Failure(CopilotToolCallFailure {
         text_result_for_llm: format!(
             "{failure_text}\n\n<untrusted_tool_evidence>\n{escaped_evidence}\n</untrusted_tool_evidence>\n\n{}",
@@ -1921,7 +1926,7 @@ fn copilot_failure_response_with_diagnosis(
 }
 
 fn copilot_tool_result_text(tool_name: &str, text: String) -> String {
-    if vtcode_core::tools::tool_intent::is_command_tool(tool_name) {
+    if diapason_core::tools::tool_intent::is_command_tool(tool_name) {
         format!("{text}\n\n{COLLAPSED_TOOL_OUTPUT_NOTICE}")
     } else {
         text

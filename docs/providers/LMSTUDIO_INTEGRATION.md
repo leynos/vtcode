@@ -1,8 +1,8 @@
-# LM Studio Integration for VT Code
+# LM Studio Integration for Diapason
 
 ## Overview
 
-VT Code now includes native support for [LM Studio](https://lmstudio.ai), an
+Diapason now includes native support for [LM Studio](https://lmstudio.ai), an
 open-source desktop application for running large language models locally. This
 integration is based on the architecture proven in
 [OpenAI's Codex](https://github.com/openai/codex/tree/main/codex-rs/lmstudio).
@@ -29,12 +29,12 @@ In LM Studio:
 2. Click "Start Server"
 3. Note the default URL: `http://localhost:1234`
 
-### 3. Configure VT Code
+### 3. Configure Diapason
 
 Set the provider in your config:
 
 ```toml
-# vtcode.toml
+# config.toml
 [agent]
 provider = "lmstudio"
 default_model = "lmstudio-community/openai-gpt-oss-20b"
@@ -43,15 +43,15 @@ default_model = "lmstudio-community/openai-gpt-oss-20b"
 Or via environment variable:
 
 ```bash
-export VTCODE_PROVIDER=lmstudio
+export DIAPASON_PROVIDER=lmstudio
 export LMSTUDIO_URL=http://localhost:1234
 ```
 
 ### 4. Use It
 
 ```rust
-use vtcode_config::ConfigManager;
-use vtcode_lmstudio::ensure_oss_ready;
+use diapason_config::ConfigManager;
+use diapason_lmstudio::ensure_oss_ready;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -71,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
 ### Module Structure
 
 ```
-crates/codegen/vtcode-llm/src/providers/
+crates/codegen/diapason-llm/src/providers/
 ├── lmstudio.rs        # LM Studio provider implementation
 ├── lmstudio/
 │   └── client.rs      # Low-level HTTP client (LMStudioClient)
@@ -106,7 +106,7 @@ crates/codegen/vtcode-llm/src/providers/
 
 ### Public Functions
 
-#### `ensure_oss_ready(config: &VTCodeConfig) -> io::Result<()>`
+#### `ensure_oss_ready(config: &DiapasonConfig) -> io::Result<()>`
 
 High-level convenience function that:
 
@@ -135,7 +135,7 @@ HTTP client for communicating with LM Studio servers.
 
 **Methods:**
 
-- `async fn try_from_provider(config: &VTCodeConfig) -> io::Result<Self>`
+- `async fn try_from_provider(config: &DiapasonConfig) -> io::Result<Self>`
   - Create client from configuration
   - Verifies server is reachable before returning
   - Uses `LMSTUDIO_URL` env var or defaults to `http://localhost:1234`
@@ -172,10 +172,10 @@ config.
 
 ### Environment Variables
 
-| Variable          | Purpose                   | Default                 |
-| ----------------- | ------------------------- | ----------------------- |
-| `LMSTUDIO_URL`    | LM Studio server endpoint | `http://localhost:1234` |
-| `VTCODE_PROVIDER` | Active LLM provider       | (varies by config)      |
+| Variable            | Purpose                   | Default                 |
+| ------------------- | ------------------------- | ----------------------- |
+| `LMSTUDIO_URL`      | LM Studio server endpoint | `http://localhost:1234` |
+| `DIAPASON_PROVIDER` | Active LLM provider       | (varies by config)      |
 
 ### TOML Configuration
 
@@ -225,7 +225,7 @@ compatibility:
 Run tests with:
 
 ```bash
-cargo test --package vtcode-llm lmstudio
+cargo test --package diapason-llm lmstudio
 ```
 
 **Test Coverage:**
@@ -305,8 +305,8 @@ tokio::spawn({
 
 The LM Studio provider is a standalone module that:
 
-- Can be used independently of VT Code
-- Doesn't pull in vtcode-core dependencies
+- Can be used independently of Diapason
+- Doesn't pull in diapason-core dependencies
 - Follows Rust packaging best practices
 - Mirrors OpenAI's Codex architecture
 

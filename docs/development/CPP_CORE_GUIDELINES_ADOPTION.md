@@ -8,7 +8,7 @@ integrations, tools, or future modules).
 
 ## Scope
 
-- Applies to all C and C++ code introduced or modified in `vtcode`.
+- Applies to all C and C++ code introduced or modified in `diapason`.
 - For non-C++ code (including Rust), use the same intent: explicit ownership,
   strong interfaces, safety-first defaults, and minimal complexity.
 

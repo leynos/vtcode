@@ -1,8 +1,8 @@
 use anyhow::{Result, anyhow};
+use diapason_core::skills::enhanced_validator::ComprehensiveSkillValidator;
+use diapason_core::skills::loader::EnhancedSkillLoader;
+use diapason_core::skills::manifest::parse_skill_file;
 use std::path::Path;
-use vtcode_core::skills::enhanced_validator::ComprehensiveSkillValidator;
-use vtcode_core::skills::loader::EnhancedSkillLoader;
-use vtcode_core::skills::manifest::parse_skill_file;
 
 use crate::cli::SkillsCommandOptions;
 
@@ -21,7 +21,7 @@ pub async fn handle_skills_validate_all(options: &SkillsCommandOptions) -> Resul
                 println!("  1. Use skills marked with  for guaranteed compatibility");
                 println!("  2. Skills marked with   work but require following fallback instructions");
                 println!("  3. For incompatible skills, use the suggested Python libraries through `exec_command`");
-                println!("  4. Check 'vtcode skills info <name>' for detailed compatibility info");
+                println!("  4. Check 'diapason skills info <name>' for detailed compatibility info");
             }
         }
         Err(err) => {

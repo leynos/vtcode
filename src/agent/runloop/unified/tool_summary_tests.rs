@@ -1,6 +1,6 @@
+use diapason_core::config::constants::tools;
 use serde_json::json;
 use std::path::Path;
-use vtcode_core::config::constants::tools;
 
 use super::tool_summary::{describe_tool_action, is_file_modification_tool};
 

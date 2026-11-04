@@ -1,9 +1,16 @@
 //! Tool call safety validation and safeguards.
 //!
 //! This adapter keeps the runloop-facing API stable while delegating safety
-//! checks to `vtcode_core::tools::SafetyGateway` for single-source consistency.
+//! checks to `diapason_core::tools::SafetyGateway` for single-source consistency.
 
 use anyhow::anyhow;
+#[cfg(test)]
+use diapason_core::config::constants::tools;
+#[cfg(test)]
+use diapason_core::tools::SafetyGatewayConfig;
+use diapason_core::tools::{
+    SafetyContext, SafetyDecision, SafetyError as GatewaySafetyError, SafetyGateway, ToolInvocationId,
+};
 #[cfg(test)]
 use serde_json::Map;
 use serde_json::Value;
@@ -11,13 +18,6 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::sync::Mutex;
 use thiserror::Error;
-#[cfg(test)]
-use vtcode_core::config::constants::tools;
-#[cfg(test)]
-use vtcode_core::tools::SafetyGatewayConfig;
-use vtcode_core::tools::{
-    SafetyContext, SafetyDecision, SafetyError as GatewaySafetyError, SafetyGateway, ToolInvocationId,
-};
 
 /// Safety violation errors
 #[derive(Debug, Error)]
@@ -164,7 +164,7 @@ impl ToolCallSafetyValidator {
     #[cfg(test)]
     fn is_destructive(&self, tool_name: &str) -> bool {
         let normalized = tool_name.trim().to_ascii_lowercase();
-        vtcode_core::tools::tool_intent::classify_tool_intent(normalized.as_str(), &Value::Object(Map::new()))
+        diapason_core::tools::tool_intent::classify_tool_intent(normalized.as_str(), &Value::Object(Map::new()))
             .destructive
     }
 }

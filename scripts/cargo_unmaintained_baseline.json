@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "repository": "leynos/vtcode",
+  "repository": "leynos/diapason",
   "entries": [
     {
       "name": "better-panic",
@@ -10,7 +10,7 @@
         { "name": "console", "req": "^0.15.0", "version_used": "0.15.11", "version_latest": "0.16.6" }
       ],
       "classification": "direct-stale-dependency-requirement",
-      "rationale": "Direct VT Code dependency with a stale console requirement; tracked for focused review in #108.",
+      "rationale": "Direct Diapason dependency with a stale console requirement; tracked for focused review in #108.",
       "issue": 108
     },
     {

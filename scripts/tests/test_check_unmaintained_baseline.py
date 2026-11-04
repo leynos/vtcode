@@ -115,7 +115,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         )
         baseline = {
             "schema_version": 1,
-            "repository": "leynos/vtcode",
+            "repository": "leynos/diapason",
             "entries": baseline_entries if baseline_entries is not None else [],
         }
         with CheckerHarness(output, scanner_status, baseline) as harness:
@@ -220,12 +220,12 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         baselines = [
             {
                 "schema_version": 1,
-                "repository": "leynos/vtcode",
+                "repository": "leynos/diapason",
                 "entries": [baseline_entry(known) | {"unknown": True}],
             },
             {
                 "schema_version": 1,
-                "repository": "leynos/vtcode",
+                "repository": "leynos/diapason",
                 "entries": [baseline_entry(known), baseline_entry(known)],
             },
             {
@@ -248,7 +248,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         known = finding()
         valid_baseline = {
             "schema_version": 1,
-            "repository": "leynos/vtcode",
+            "repository": "leynos/diapason",
             "entries": [baseline_entry(known)],
         }
         cases = [
@@ -326,7 +326,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
     def test_scanner_launch_failure_fails_closed(self) -> None:
         baseline = {
             "schema_version": 1,
-            "repository": "leynos/vtcode",
+            "repository": "leynos/diapason",
             "entries": [],
         }
         with CheckerHarness("[]", 0, baseline) as harness:
@@ -354,7 +354,7 @@ class CheckUnmaintainedBaselineTests(unittest.TestCase):
         output = json.dumps([package])
         baseline_document = {
             "schema_version": 1,
-            "repository": "leynos/vtcode",
+            "repository": "leynos/diapason",
             "entries": [baseline],
         }
         with CheckerHarness(output, 1, baseline_document) as harness:

@@ -1,7 +1,7 @@
 use super::action::InlineLoopAction;
 use super::queue::InlineQueueState;
 use super::state::InlineEventState;
-use vtcode_ui::tui::app::SubmittedInput;
+use diapason_ui::tui::app::SubmittedInput;
 
 pub(crate) struct InlineInputProcessor<'a, 'state> {
     state: &'a mut InlineEventState<'state>,
@@ -50,9 +50,9 @@ mod tests {
     use crate::agent::runloop::unified::inline_events::interrupts::InlineInterruptCoordinator;
     use crate::agent::runloop::unified::inline_events::state::InlineEventState;
     use crate::agent::runloop::unified::state::CtrlCState;
-    use vtcode_core::core::interfaces::ui::UiSession;
-    use vtcode_core::utils::ansi::AnsiRenderer;
-    use vtcode_ui::tui::app::{InlineEvent, InlineHandle, InlineSession};
+    use diapason_core::core::interfaces::ui::UiSession;
+    use diapason_core::utils::ansi::AnsiRenderer;
+    use diapason_ui::tui::app::{InlineEvent, InlineHandle, InlineSession};
 
     #[test]
     fn webmcp_prompt_keeps_slash_commands_as_prompt_text() {

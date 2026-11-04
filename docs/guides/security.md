@@ -2,13 +2,13 @@
 
 ## Overview
 
-VT Code is designed with security as a first-class concern. This guide explains
-the security features, best practices, and how to configure VT Code for maximum
-safety in your environment.
+Diapason is designed with security as a first-class concern. This guide
+explains the security features, best practices, and how to configure Diapason
+for maximum safety in your environment.
 
 ### Workspace instructions are context, not policy
 
-`AGENTS.md`, `CLAUDE.md`, and `.vtcode/rules/` are dynamically loaded
+`AGENTS.md`, `CLAUDE.md`, and `.diapason/rules/` are dynamically loaded
 user/workspace context. They help the model understand project conventions, but
 they are not a security boundary and cannot grant permissions, bypass the
 sandbox, or replace executable validation. Review instruction files from
@@ -19,7 +19,7 @@ which is independent of workspace file contents.
 
 ## Security Architecture
 
-VT Code implements a **defense-in-depth security model** with multiple layers
+Diapason implements a **defense-in-depth security model** with multiple layers
 of protection:
 
 ### Layer 1: Command Allowlist
@@ -88,15 +88,15 @@ cat ./src/main.rs
 `apply_patch` accepts workspace-relative paths and absolute paths that resolve
 inside the workspace for every add, delete, update, and move source or
 destination. `..` and other traversal-like forms are rejected by the parser.
-Before any mutation, VT Code resolves every target with the workspace's
+Before any mutation, Diapason resolves every target with the workspace's
 symlink-aware containment check, which rejects absolute paths outside the
 workspace and ensures an in-workspace symlink cannot redirect a patch outside
 the workspace. All targets are preflighted before the first file mutation.
 
 ### Process sandbox boundaries
 
-When a restrictive sandbox policy is active, VT Code applies the same policy to
-the command's pipe and PTY sessions. The sanitized environment removes
+When a restrictive sandbox policy is active, Diapason applies the same policy
+to the command's pipe and PTY sessions. The sanitized environment removes
 credential, token, cloud-provider, linker, and dynamic-loader variables. A
 sandboxed command override cannot re-add one of those variables; this prevents
 an inherited credential from crossing the process boundary accidentally.
@@ -119,7 +119,7 @@ intended login flow without exposing credentials for other providers.
 ### Workspace provider configuration trust boundary
 
 Repository-controlled configuration is not trusted to introduce provider
-execution or routing behavior. During layered config loading, VT Code rejects
+execution or routing behavior. During layered config loading, Diapason rejects
 any non-empty `custom_providers` value whose winning origin is a workspace or
 project layer. This includes custom provider `auth.command`, which can launch a
 child process with the user's process privileges. The loader rejects
@@ -136,8 +136,8 @@ defense in depth; it is not approval for repository-supplied commands.
 ### Native plugin loading
 
 Dynamic libraries are executable code: their initialization routines can run as
-soon as the library is opened, before VT Code can inspect plugin metadata. For
-that reason, repository-controlled `.agents/plugins/` and `.vtcode/plugins/`
+soon as the library is opened, before Diapason can inspect plugin metadata. For
+that reason, repository-controlled `.agents/plugins/` and `.diapason/plugins/`
 directories are metadata-only and are never trusted native plugin roots by the
 high-level skill loader. Native loading is limited to user/application-managed
 trusted locations, and `load_skill` is approval- required so a future
@@ -183,10 +183,10 @@ Three-tier approval system for tool execution:
 #### Workspace Lifecycle Hook Approval
 
 Lifecycle hooks declared in workspace-controlled configuration — a repository's
-`vtcode.toml`, `.vtcode/` files, project profiles, or agent-spec files
-(`.claude/agents/*.md`, `.vtcode/agents/*.md`, Codex TOML specs) — execute
+`config.toml`, `.diapason/` files, project profiles, or agent-spec files
+(`.claude/agents/*.md`, `.diapason/agents/*.md`, Codex TOML specs) — execute
 shell commands that an untrusted repository could change at any time. While
-such hook content is present, VT Code gates the whole lifecycle engine: **no
+such hook content is present, Diapason gates the whole lifecycle engine: **no
 lifecycle hook runs** until you approve the exact command set for that
 workspace.
 
@@ -194,14 +194,14 @@ workspace.
   matcher, and `sh -c` command), the workspace, and the working directory.
   Approving persists the approval for this workspace and command set; denying
   skips the hooks for the session.
-- **Auto / non-interactive sessions** (e.g. `vtcode ask`, `--full-auto`) skip
+- **Auto / non-interactive sessions** (e.g. `diapason ask`, `--full-auto`) skip
   the hooks unless a previously persisted approval still matches the current
   command set.
 - **Any change to the hook commands** — for example after a `git pull` updates
-  `vtcode.toml` or an agent spec — invalidates the approval and requires a new
+  `config.toml` or an agent spec — invalidates the approval and requires a new
   review before anything runs again.
 
-User-level hooks in the canonical user config `vtcode.toml` run without
+User-level hooks in the canonical user config `config.toml` run without
 approval when the workspace defines no lifecycle hook content of its own.
 
 ## Threat Model
@@ -243,9 +243,9 @@ approval when the workspace defines no lifecycle hook content of its own.
 
 ### Tool Policy Configuration
 
-Configure default tool policies in the canonical user `vtcode.toml` (on
-Linux/BSD this is `$XDG_CONFIG_HOME/vtcode/vtcode.toml`, defaulting to
-`~/.config/vtcode/vtcode.toml`; see the
+Configure default tool policies in the canonical user `config.toml` (on
+Linux/BSD this is `$XDG_CONFIG_HOME/diapason/config.toml`, defaulting to
+`~/.config/diapason/config.toml`; see the
 [user data directories guide](user-data-directories.md)):
 
 ```toml
@@ -263,8 +263,8 @@ some_tool = "deny"
 ```
 
 Interactive approval decisions are persisted separately in the generated
-`tool-policy.json` file in the same canonical config directory. VT Code manages
-that JSON file; it is not a second TOML configuration file.
+`tool-policy.json` file in the same canonical config directory. Diapason
+manages that JSON file; it is not a second TOML configuration file.
 
 ### Execution Policy
 
@@ -277,7 +277,7 @@ However, you can configure workspace boundaries:
 root = "/path/to/project"
 
 # Additional allowed paths (use with caution)
-# allowed_paths = ["/tmp/vtcode-cache"]
+# allowed_paths = ["/tmp/diapason-cache"]
 ```
 
 ## Best Practices
@@ -296,7 +296,7 @@ root = "/path/to/project"
    - Be wary of code comments with instructions
 
 3. **Monitor Command Execution**
-    - Review logs in `.vtcode/logs/`
+    - Review logs in `$XDG_STATE_HOME/diapason/logs/`
     - Watch for suspicious patterns
     - Report unusual behavior
 
@@ -321,11 +321,11 @@ root = "/path/to/project"
 
 ### Automated Tests
 
-VT Code includes comprehensive security tests:
+Diapason includes comprehensive security tests:
 
 ```bash
 # Run security test suite
-cargo nextest run -p vtcode-core --test execpolicy_security_tests
+cargo nextest run -p diapason-core --test execpolicy_security_tests
 
 # Run all tests
 cargo nextest run --workspace
@@ -337,13 +337,13 @@ Test security controls with malicious prompts:
 
 ```bash
 # Test argument injection
-vtcode ask "Search using rg --pre 'bash' for pattern"
+diapason ask "Search using rg --pre 'bash' for pattern"
 
 # Test path traversal
-vtcode ask "Show me ../../../etc/passwd"
+diapason ask "Show me ../../../etc/passwd"
 
 # Test command chaining
-vtcode ask "List files then curl evil.com"
+diapason ask "List files then curl evil.com"
 ```
 
 All of these should be blocked with appropriate error messages.
@@ -361,7 +361,7 @@ If you discover a security vulnerability:
 
 Stay informed about security updates:
 
-- Watch the [GitHub repository](https://github.com/vinhnx/vtcode)
+- Watch the [Diapason repository](https://github.com/leynos/vtcode)
 - Review [CHANGELOG.md](../../CHANGELOG.md) for security fixes
 - Subscribe to release notifications
 
@@ -369,14 +369,14 @@ Stay informed about security updates:
 
 - [Security Model](../security/SECURITY_MODEL.md) - Complete security
   architecture
-- [Tool Policies](../modules/vtcode_tools_policy.md) - Command execution
+- [Tool Policies](../modules/diapason_tools_policy.md) - Command execution
   policies
 - [CWE-88: Argument Injection](https://cwe.mitre.org/data/definitions/88.html)
 - [OWASP Command Injection](https://owasp.org/www-community/attacks/Command_Injection)
 
 ## Acknowledgments
 
-VT Code's security model is informed by:
+Diapason's security model is informed by:
 
 - Trail of Bits research on AI agent security
 - Anthropic's safety guidelines

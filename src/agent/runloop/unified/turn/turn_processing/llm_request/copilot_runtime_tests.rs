@@ -4,23 +4,23 @@ use super::{
     harness_call_item_id, map_builtin_permission_prompt_decision, map_copilot_finish_reason,
     normalize_copilot_reasoning_delta, summarize_permission_request,
 };
+use diapason_core::config::CommandsConfig;
+use diapason_core::copilot::{
+    CopilotObservedToolCall, CopilotObservedToolCallStatus, CopilotPermissionRequest, CopilotTerminalCreateRequest,
+    CopilotTerminalEnvVar, CopilotToolCallResponse,
+};
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::core::trajectory::TrajectoryLogger;
+use diapason_core::llm::provider::{FinishReason, ToolDefinition};
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::tools::{ApprovalRecorder, ToolResultCache};
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_core::utils::transcript;
+use diapason_ui::tui::app::{InlineCommand, InlineHandle, InlineSession};
 use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use vtcode_core::config::CommandsConfig;
-use vtcode_core::copilot::{
-    CopilotObservedToolCall, CopilotObservedToolCallStatus, CopilotPermissionRequest, CopilotTerminalCreateRequest,
-    CopilotTerminalEnvVar, CopilotToolCallResponse,
-};
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::core::trajectory::TrajectoryLogger;
-use vtcode_core::llm::provider::{FinishReason, ToolDefinition};
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::tools::{ApprovalRecorder, ToolResultCache};
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_core::utils::transcript;
-use vtcode_ui::tui::app::{InlineCommand, InlineHandle, InlineSession};
 
 use crate::agent::runloop::mcp_events::McpPanelState;
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
@@ -30,9 +30,9 @@ use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
 use crate::agent::runloop::unified::tool_routing::HitlDecision;
 use crate::agent::runloop::unified::turn::tool_outcomes::ToolFailureDiagnosis;
 use crate::agent::runloop::unified::turn::tool_outcomes::helpers::{LoopTracker, mutation_blocked_until_verification};
+use diapason_core::acp::ToolPermissionCache;
 use tempfile::TempDir;
 use tokio::sync::{Notify, RwLock, mpsc::unbounded_channel};
-use vtcode_core::acp::ToolPermissionCache;
 
 fn create_headless_session() -> InlineSession {
     let (command_tx, _command_rx) = unbounded_channel();
@@ -171,7 +171,7 @@ fn interrupted_builtin_permission_becomes_interactive_denial() {
     assert!(!cache_for_session);
     assert_eq!(
         decision,
-        vtcode_core::copilot::CopilotPermissionDecision::DeniedInteractivelyByUser {
+        diapason_core::copilot::CopilotPermissionDecision::DeniedInteractivelyByUser {
             feedback: Some("Run cargo check".to_string()),
         }
     );
@@ -183,8 +183,8 @@ fn interrupted_tool_permission_returns_failure_response() {
 
     assert_eq!(
         response,
-        CopilotToolCallResponse::Failure(vtcode_core::copilot::CopilotToolCallFailure {
-            text_result_for_llm: "VT Code denied the tool `exec_command`.".to_string(),
+        CopilotToolCallResponse::Failure(diapason_core::copilot::CopilotToolCallFailure {
+            text_result_for_llm: "Diapason denied the tool `exec_command`.".to_string(),
             error: "tool 'exec_command' permission request interrupted".to_string(),
         })
     );
@@ -240,7 +240,7 @@ fn custom_tool_permissions_are_auto_approved_for_session() {
         args: Some(json!({"path": "CHANGELOG.md"})),
     });
 
-    assert_eq!(approval, Some((vtcode_core::copilot::CopilotPermissionDecision::ApprovedAlways, true)));
+    assert_eq!(approval, Some((diapason_core::copilot::CopilotPermissionDecision::ApprovedAlways, true)));
 }
 
 #[test]
@@ -296,7 +296,7 @@ async fn observed_tool_calls_emit_incremental_output_updates() {
     let approval_recorder = ApprovalRecorder::new(workspace.clone());
     let decision_ledger = Arc::new(RwLock::new(DecisionTracker::new()));
     let tool_permission_cache = Arc::new(RwLock::new(ToolPermissionCache::new()));
-    let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+    let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
     let safety_validator = Arc::new(ToolCallSafetyValidator::new());
     let ctrl_c_state = Arc::new(CtrlCState::new());
     let ctrl_c_notify = Arc::new(Notify::new());
@@ -343,7 +343,7 @@ async fn observed_tool_calls_emit_incremental_output_updates() {
         tool_name: "Run cargo check on the workspace".to_string(),
         status: CopilotObservedToolCallStatus::InProgress,
         arguments: Some(json!({"command": "cargo check"})),
-        output: Some("Compiling vtcode-core".to_string()),
+        output: Some("Compiling diapason-core".to_string()),
         terminal_id: None,
     });
     runtime_host.handle_observed_tool_call(CopilotObservedToolCall {
@@ -351,7 +351,7 @@ async fn observed_tool_calls_emit_incremental_output_updates() {
         tool_name: "Run cargo check on the workspace".to_string(),
         status: CopilotObservedToolCallStatus::Completed,
         arguments: Some(json!({"command": "cargo check"})),
-        output: Some("Compiling vtcode-core\nFinished `dev` profile".to_string()),
+        output: Some("Compiling diapason-core\nFinished `dev` profile".to_string()),
         terminal_id: None,
     });
     runtime_host.handle_observed_tool_call(CopilotObservedToolCall {
@@ -373,7 +373,7 @@ async fn observed_tool_calls_emit_incremental_output_updates() {
     assert!(events.iter().any(|entry| {
         entry["event"]["type"] == "item.updated"
             && entry["event"]["item"]["type"] == "tool_output"
-            && entry["event"]["item"]["output"] == "Compiling vtcode-core"
+            && entry["event"]["item"]["output"] == "Compiling diapason-core"
             && entry["event"]["item"]["status"] == "in_progress"
     }));
     assert!(events.iter().any(|entry| {
@@ -406,7 +406,7 @@ async fn observed_shell_tool_calls_stream_into_inline_pty_ui() {
     let approval_recorder = ApprovalRecorder::new(workspace.clone());
     let decision_ledger = Arc::new(RwLock::new(DecisionTracker::new()));
     let tool_permission_cache = Arc::new(RwLock::new(ToolPermissionCache::new()));
-    let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+    let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
     let safety_validator = Arc::new(ToolCallSafetyValidator::new());
     let ctrl_c_state = Arc::new(CtrlCState::new());
     let ctrl_c_notify = Arc::new(Notify::new());
@@ -456,7 +456,7 @@ async fn observed_shell_tool_calls_stream_into_inline_pty_ui() {
             "description": "Run cargo check on workspace",
             "mode": "sync",
         })),
-        output: Some("Checking vtcode-core\n".to_string()),
+        output: Some("Checking diapason-core\n".to_string()),
         terminal_id: None,
     });
 
@@ -471,7 +471,7 @@ async fn observed_shell_tool_calls_stream_into_inline_pty_ui() {
             "description": "Run cargo check on workspace",
             "mode": "sync",
         })),
-        output: Some("Checking vtcode-core\nFinished `dev` profile\n".to_string()),
+        output: Some("Checking diapason-core\nFinished `dev` profile\n".to_string()),
         terminal_id: None,
     });
 
@@ -479,7 +479,7 @@ async fn observed_shell_tool_calls_stream_into_inline_pty_ui() {
 
     let inline_output = collect_inline_output(&mut command_rx);
     assert!(inline_output.contains("• Ran cd /tmp && cargo check 2>&1"));
-    assert!(inline_output.contains("Checking vtcode-core"));
+    assert!(inline_output.contains("Checking diapason-core"));
     assert!(inline_output.contains("Finished `dev` profile"));
 }
 
@@ -499,7 +499,7 @@ async fn copilot_terminal_sessions_bind_local_pty_output_and_release_cleanly() {
     let approval_recorder = ApprovalRecorder::new(workspace.clone());
     let decision_ledger = Arc::new(RwLock::new(DecisionTracker::new()));
     let tool_permission_cache = Arc::new(RwLock::new(ToolPermissionCache::new()));
-    let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+    let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
     let safety_validator = Arc::new(ToolCallSafetyValidator::new());
     let ctrl_c_state = Arc::new(CtrlCState::new());
     let ctrl_c_notify = Arc::new(Notify::new());
@@ -547,7 +547,7 @@ async fn copilot_terminal_sessions_bind_local_pty_output_and_release_cleanly() {
             args: vec!["ACP_TEST_TOKEN".to_string()],
             env: vec![CopilotTerminalEnvVar {
                 name: "ACP_TEST_TOKEN".to_string(),
-                value: "vtcode-terminal".to_string(),
+                value: "diapason-terminal".to_string(),
             }],
             cwd: None,
             output_byte_limit: Some(1024),
@@ -565,7 +565,7 @@ async fn copilot_terminal_sessions_bind_local_pty_output_and_release_cleanly() {
         .handle_terminal_output(&response.terminal_id)
         .await
         .expect("read local terminal output");
-    assert_eq!(output.output.trim(), "vtcode-terminal");
+    assert_eq!(output.output.trim(), "diapason-terminal");
     assert!(!output.truncated);
     assert_eq!(output.exit_status, Some(exit_status.clone()));
 
@@ -595,7 +595,7 @@ async fn copilot_terminal_sessions_bind_local_pty_output_and_release_cleanly() {
             && entry["event"]["item"]["type"] == "tool_output"
             && entry["event"]["item"]["output"]
                 .as_str()
-                .is_some_and(|output| output.trim() == "vtcode-terminal")
+                .is_some_and(|output| output.trim() == "diapason-terminal")
     }));
     assert!(events.iter().any(|entry| {
         entry["event"]["type"] == "item.completed"
@@ -603,7 +603,7 @@ async fn copilot_terminal_sessions_bind_local_pty_output_and_release_cleanly() {
             && entry["event"]["item"]["status"] == "completed"
             && entry["event"]["item"]["output"]
                 .as_str()
-                .is_some_and(|output| output.trim() == "vtcode-terminal")
+                .is_some_and(|output| output.trim() == "diapason-terminal")
     }));
 
     runtime_host
@@ -614,7 +614,7 @@ async fn copilot_terminal_sessions_bind_local_pty_output_and_release_cleanly() {
 }
 
 #[tokio::test]
-async fn vtcode_tool_calls_render_transcript_output_via_shared_pipeline() {
+async fn diapason_tool_calls_render_transcript_output_via_shared_pipeline() {
     let temp = TempDir::new().expect("temp workspace");
     let workspace = temp.path().to_path_buf();
     let sample_file = workspace.join("sample.txt");
@@ -634,7 +634,7 @@ async fn vtcode_tool_calls_render_transcript_output_via_shared_pipeline() {
     let approval_recorder = ApprovalRecorder::new(workspace.clone());
     let decision_ledger = Arc::new(RwLock::new(DecisionTracker::new()));
     let tool_permission_cache = Arc::new(RwLock::new(ToolPermissionCache::new()));
-    let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+    let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
     let safety_validator = Arc::new(ToolCallSafetyValidator::new());
     safety_validator.start_turn();
     let traj = TrajectoryLogger::new(&workspace);
@@ -642,7 +642,7 @@ async fn vtcode_tool_calls_render_transcript_output_via_shared_pipeline() {
         HarnessTurnState::new(TurnRunId("run-test".to_string()), TurnId("turn-test".to_string()), 8, 60, 0);
     let tools = Arc::new(vec![ToolDefinition::function(
         "exec_command".to_string(),
-        "Run a VT Code command".to_string(),
+        "Run a Diapason command".to_string(),
         json!({"type": "object"}),
     )]);
 
@@ -676,9 +676,9 @@ async fn vtcode_tool_calls_render_transcript_output_via_shared_pipeline() {
         "turn-test-step-1".to_string(),
     );
     let response = runtime_host
-        .handle_vtcode_tool_call(
+        .handle_diapason_tool_call(
             &mut renderer,
-            vtcode_core::copilot::CopilotToolCallRequest {
+            diapason_core::copilot::CopilotToolCallRequest {
                 tool_call_id: "call_1".to_string(),
                 tool_name: "exec_command".to_string(),
                 arguments: json!({
@@ -688,7 +688,7 @@ async fn vtcode_tool_calls_render_transcript_output_via_shared_pipeline() {
             },
         )
         .await
-        .expect("copilot VT Code tool call should succeed");
+        .expect("copilot Diapason tool call should succeed");
 
     match response {
         CopilotToolCallResponse::Success(success) => {
@@ -698,7 +698,7 @@ async fn vtcode_tool_calls_render_transcript_output_via_shared_pipeline() {
     }
 
     let transcript_text = transcript::snapshot().join("\n");
-    let stripped_text = vtcode_core::utils::ansi_parser::strip_ansi(&transcript_text);
+    let stripped_text = diapason_core::utils::ansi_parser::strip_ansi(&transcript_text);
     assert!(runtime_host.harness_state.tool_calls >= 1);
     assert!(
         !stripped_text.contains("hello from acp"),
@@ -731,7 +731,7 @@ async fn copilot_blocks_mutating_tool_calls_while_verification_is_pending() {
     let approval_recorder = ApprovalRecorder::new(temp.path().to_path_buf());
     let decision_ledger = Arc::new(RwLock::new(DecisionTracker::new()));
     let tool_permission_cache = Arc::new(RwLock::new(ToolPermissionCache::new()));
-    let permissions_state = Arc::new(RwLock::new(vtcode_core::config::PermissionsConfig::default()));
+    let permissions_state = Arc::new(RwLock::new(diapason_core::config::PermissionsConfig::default()));
     let safety_validator = Arc::new(ToolCallSafetyValidator::new());
     safety_validator.start_turn();
     let traj = TrajectoryLogger::new(temp.path());
@@ -741,12 +741,12 @@ async fn copilot_blocks_mutating_tool_calls_while_verification_is_pending() {
     harness_state.record_assistant_text_response();
     let tools = Arc::new(vec![
         ToolDefinition::function(
-            vtcode_core::config::constants::tools::APPLY_PATCH.to_string(),
+            diapason_core::config::constants::tools::APPLY_PATCH.to_string(),
             "Apply a patch".to_string(),
             json!({"type": "object"}),
         ),
         ToolDefinition::function(
-            vtcode_core::config::constants::tools::EXEC_COMMAND.to_string(),
+            diapason_core::config::constants::tools::EXEC_COMMAND.to_string(),
             "Run a command".to_string(),
             json!({"type": "object"}),
         ),
@@ -756,7 +756,7 @@ async fn copilot_blocks_mutating_tool_calls_while_verification_is_pending() {
         crate::agent::runloop::unified::turn::tool_outcomes::helpers::BLIND_EDITING_THRESHOLD - 1;
     assert!(!mutation_blocked_until_verification(
         &loop_tracker,
-        vtcode_core::config::constants::tools::APPLY_PATCH,
+        diapason_core::config::constants::tools::APPLY_PATCH,
         &json!({"patch": "*** Begin Patch\n*** End Patch\n"}),
     ));
     let suppress_output_signal = Arc::new(AtomicBool::new(false));
@@ -791,11 +791,11 @@ async fn copilot_blocks_mutating_tool_calls_while_verification_is_pending() {
         "turn-test-step-1".to_string(),
     );
     let response = runtime_host
-        .handle_vtcode_tool_call(
+        .handle_diapason_tool_call(
             &mut renderer,
-            vtcode_core::copilot::CopilotToolCallRequest {
+            diapason_core::copilot::CopilotToolCallRequest {
                 tool_call_id: "mutation-call".to_string(),
-                tool_name: vtcode_core::config::constants::tools::APPLY_PATCH.to_string(),
+                tool_name: diapason_core::config::constants::tools::APPLY_PATCH.to_string(),
                 arguments: json!({
                     "patch": "*** Begin Patch\n*** Add File: blocked.txt\n+mutation must trigger verification\n*** End Patch\n"
                 }),
@@ -821,11 +821,11 @@ async fn copilot_blocks_mutating_tool_calls_while_verification_is_pending() {
 
     runtime_host.harness_state.record_assistant_text_response();
     let response = runtime_host
-        .handle_vtcode_tool_call(
+        .handle_diapason_tool_call(
             &mut renderer,
-            vtcode_core::copilot::CopilotToolCallRequest {
+            diapason_core::copilot::CopilotToolCallRequest {
                 tool_call_id: "blocked-call".to_string(),
-                tool_name: vtcode_core::config::constants::tools::APPLY_PATCH.to_string(),
+                tool_name: diapason_core::config::constants::tools::APPLY_PATCH.to_string(),
                 arguments: json!({
                     "patch": "*** Begin Patch\n*** Add File: blocked-after-checkpoint.txt\n+must stay absent\n*** End Patch\n"
                 }),
@@ -848,11 +848,11 @@ async fn copilot_blocks_mutating_tool_calls_while_verification_is_pending() {
 
     assert!(runtime_host.session_stats.verification_snapshot().0);
     let response = runtime_host
-        .handle_vtcode_tool_call(
+        .handle_diapason_tool_call(
             &mut renderer,
-            vtcode_core::copilot::CopilotToolCallRequest {
+            diapason_core::copilot::CopilotToolCallRequest {
                 tool_call_id: "verification-call".to_string(),
-                tool_name: vtcode_core::config::constants::tools::EXEC_COMMAND.to_string(),
+                tool_name: diapason_core::config::constants::tools::EXEC_COMMAND.to_string(),
                 arguments: json!({
                     "action": "run",
                     "command": "rustc --version"
@@ -881,7 +881,7 @@ async fn copilot_blocks_mutating_tool_calls_while_verification_is_pending() {
     let resumed_tracker = LoopTracker::with_verification_snapshot(runtime_host.session_stats.verification_snapshot());
     assert!(!mutation_blocked_until_verification(
         &resumed_tracker,
-        vtcode_core::config::constants::tools::APPLY_PATCH,
+        diapason_core::config::constants::tools::APPLY_PATCH,
         &json!({
             "patch": "*** Begin Patch\n*** Add File: resumed.txt\n+mutation is unblocked\n*** End Patch\n"
         }),

@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::context::{ConversationMemory, EntityResolver, WorkspaceState};
-use vtcode_core::llm::{
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::context::{ConversationMemory, EntityResolver, WorkspaceState};
+use diapason_core::llm::{
     LightweightFeature, collect_single_response, create_provider_for_model_route, provider as uni,
     resolve_lightweight_route,
 };
@@ -29,7 +29,7 @@ use prompt_refinement::{should_accept_refinement, should_attempt_refinement};
 pub(crate) async fn refine_and_enrich_prompt(
     raw: &str,
     cfg: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> String {
     // Step 1: Apply standard refinement first
     let refined = refine_user_prompt_if_enabled(raw, cfg, vt_cfg).await;
@@ -49,7 +49,7 @@ pub(crate) async fn refine_and_enrich_prompt(
 pub(crate) async fn refine_user_prompt_if_enabled(
     raw: &str,
     cfg: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> String {
     let Some(vtc) = vt_cfg else {
         return raw.to_string();
@@ -57,7 +57,7 @@ pub(crate) async fn refine_user_prompt_if_enabled(
     if !vtc.agent.refine_prompts_enabled {
         return raw.to_string();
     }
-    if std::env::var("VTCODE_PROMPT_REFINER_STUB").is_ok() {
+    if std::env::var("DIAPASON_PROMPT_REFINER_STUB").is_ok() {
         return format!("[REFINED] {raw}");
     }
 
@@ -96,8 +96,8 @@ pub(crate) async fn refine_user_prompt_if_enabled(
 async fn try_refine_prompt_with_route(
     raw: &str,
     cfg: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
-    route: &vtcode_core::llm::ModelRoute,
+    vt_cfg: Option<&DiapasonConfig>,
+    route: &diapason_core::llm::ModelRoute,
 ) -> Result<Option<String>, anyhow::Error> {
     let Some(vt_cfg) = vt_cfg else {
         return Ok(None);
@@ -290,7 +290,7 @@ pub(crate) fn detect_vague_references(prompt: &str) -> Vec<VagueReference> {
 }
 
 /// Check if prompt should be enriched (vibe coding enabled)
-pub(crate) fn should_enrich_prompt(prompt: &str, vt_cfg: Option<&VTCodeConfig>) -> bool {
+pub(crate) fn should_enrich_prompt(prompt: &str, vt_cfg: Option<&DiapasonConfig>) -> bool {
     let Some(vtc) = vt_cfg else {
         return false;
     };
@@ -329,12 +329,12 @@ pub(crate) struct PromptEnricher {
     conversation_memory: Arc<RwLock<ConversationMemory>>,
 
     /// Configuration
-    vt_cfg: VTCodeConfig,
+    vt_cfg: DiapasonConfig,
 }
 
 impl PromptEnricher {
     /// Create new enricher
-    pub(crate) fn new(_workspace_root: PathBuf, vt_cfg: VTCodeConfig) -> Self {
+    pub(crate) fn new(_workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> Self {
         let workspace_state = Arc::new(RwLock::new(WorkspaceState::new()));
         let entity_resolver = Arc::new(RwLock::new(EntityResolver::new()));
         let conversation_memory = Arc::new(RwLock::new(ConversationMemory::new()));

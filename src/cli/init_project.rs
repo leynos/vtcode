@@ -1,11 +1,11 @@
 //! Init-project command implementation
 
 use anyhow::{Context, Result};
+use diapason_commons::walk::build_walker_single_threaded;
+use diapason_core::utils::colors::style;
+use diapason_core::utils::file_utils::ensure_dir_exists;
+use diapason_core::{ProjectData, SimpleProjectManager};
 use std::path::Path;
-use vtcode_commons::walk::build_walker_single_threaded;
-use vtcode_core::utils::colors::style;
-use vtcode_core::utils::file_utils::ensure_dir_exists;
-use vtcode_core::{ProjectData, SimpleProjectManager};
 
 /// Handle the init-project command
 pub async fn handle_init_project_command(name: Option<String>, force: bool, migrate: bool) -> Result<()> {
@@ -39,13 +39,13 @@ pub async fn handle_init_project_command(name: Option<String>, force: bool, migr
     }
 
     // Create project structure
-    project_manager.create_project(&project_name, Some("VT Code project"))?;
+    project_manager.create_project(&project_name, Some("Diapason project"))?;
     println!("{} Created project structure in: {}", style("Success").green(), project_dir.display());
 
     // Create or update project metadata
     let current_dir = std::env::current_dir()?;
     let mut metadata = ProjectData::new(&project_name);
-    metadata.description = Some("VT Code project".to_string());
+    metadata.description = Some("Diapason project".to_string());
     project_manager.update_project(&metadata)?;
     println!("{} Created project metadata", style("Success").green());
 
@@ -72,24 +72,24 @@ async fn migrate_existing_files(
 
     let mut files_to_migrate = Vec::new();
 
-    // Check for vtcode.toml in current directory
-    let local_config = current_dir.join("vtcode.toml");
+    // Check for config.toml in current directory
+    let local_config = current_dir.join("config.toml");
     if local_config.exists() {
-        files_to_migrate.push(("vtcode.toml", local_config.clone()));
+        files_to_migrate.push(("config.toml", local_config.clone()));
     }
 
-    // Check for .vtcode directory
-    let local_vtcode = current_dir.join(".vtcode");
-    if local_vtcode.exists() && local_vtcode.is_dir() {
-        // Look for config files in .vtcode directory
-        let vtcode_config = local_vtcode.join("vtcode.toml");
-        if vtcode_config.exists() {
-            files_to_migrate.push(("vtcode.toml (from .vtcode)", vtcode_config));
+    // Check for .diapason directory
+    let local_diapason = current_dir.join(diapason_commons::workspace_dir_name());
+    if local_diapason.exists() && local_diapason.is_dir() {
+        // Look for config files in .diapason directory
+        let diapason_config = local_diapason.join("config.toml");
+        if diapason_config.exists() {
+            files_to_migrate.push(("config.toml (from .diapason)", diapason_config));
         }
 
-        let vtcode_gitignore = local_vtcode.join(".vtcodegitignore");
-        if vtcode_gitignore.exists() {
-            files_to_migrate.push((".vtcodegitignore (from .vtcode)", vtcode_gitignore));
+        let diapason_gitignore = local_diapason.join(".diapasongitignore");
+        if diapason_gitignore.exists() {
+            files_to_migrate.push((".diapasongitignore (from .diapason)", diapason_gitignore));
         }
     }
 
@@ -124,8 +124,8 @@ async fn migrate_existing_files(
     for (name, path) in files_to_migrate {
         let destination = if name.contains("cache") {
             _project_manager.cache_dir(_project_name).join(name)
-        } else if name.contains("vtcode.toml") {
-            _project_manager.config_dir(_project_name).join("vtcode.toml")
+        } else if name.contains("config.toml") {
+            _project_manager.config_dir(_project_name).join("config.toml")
         } else {
             _project_manager.project_data_dir(_project_name).join(name)
         };

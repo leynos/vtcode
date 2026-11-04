@@ -1,4 +1,4 @@
-# VT Code Developer Guide
+# Diapason Developer Guide
 
 - [Development setup and workflows](./development/README.md)
 - [Architecture](./ARCHITECTURE.md)

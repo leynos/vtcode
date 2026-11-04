@@ -1,6 +1,6 @@
 # Changelog Generation with git-cliff
 
-VT Code uses [git-cliff](https://git-cliff.org) for automated changelog
+Diapason uses [git-cliff](https://git-cliff.org) for automated changelog
 generation from Git commit history. This provides consistent, well-formatted
 changelogs that follow conventional commit standards.
 
@@ -138,7 +138,7 @@ available:
 
 ## Commit Message Format
 
-VT Code follows [Conventional Commits](https://www.conventionalcommits.org/):
+Diapason follows [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 <type>(<scope>): <description>

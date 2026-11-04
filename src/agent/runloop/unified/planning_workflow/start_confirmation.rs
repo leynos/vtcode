@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
-use tokio::sync::Notify;
-use vtcode_ui::tui::app::{
+use diapason_ui::tui::app::{
     InlineHandle, InlineListItem, InlineListSelection, InlineSession, ListOverlayRequest, TransientRequest,
     TransientSubmission,
 };
+use tokio::sync::Notify;
 
 use crate::agent::runloop::unified::overlay_prompt::{OverlayWaitOutcome, show_overlay_and_wait};
 use crate::agent::runloop::unified::state::CtrlCState;
@@ -30,7 +30,7 @@ pub(crate) enum StartPlanningDecision {
 ///
 /// This is the UI boundary for the start-planning confirmation: it isolates the
 /// TUI overlay construction (list items, selection mapping) from the runloop
-/// planning logic so the latter stays decoupled from `vtcode_ui` list types and
+/// planning logic so the latter stays decoupled from `diapason_ui` list types and
 /// remains testable without a renderer.
 pub(crate) async fn present_start_planning_confirmation(
     handle: &InlineHandle,
@@ -58,7 +58,7 @@ pub(crate) async fn present_start_planning_confirmation(
         items: vec![
             InlineListItem {
                 title: "Enter Planning workflow".to_string(),
-                subtitle: Some("Enter the Planning workflow and persist the draft under .vtcode/plans.".to_string()),
+                subtitle: Some("Enter the Planning workflow and persist the draft under .diapason/plans.".to_string()),
                 badge: Some("Recommended".to_string()),
                 indent: 0,
                 selection: Some(InlineListSelection::ConfigAction(START_PLANNING_APPROVE_ACTION.to_string())),

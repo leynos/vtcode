@@ -44,7 +44,7 @@ configuration.
 
 H1 was not falsified. The reconnaissance agent traced the workspace loader to
 the system and user layers in
-`crates/codegen/vtcode-config/src/loader/manager.rs`. An empty workspace does
+`crates/codegen/diapason-config/src/loader/manager.rs`. An empty workspace does
 not exclude those layers. The observed provider's precise source was not
 inspected because the loader trace is sufficient to establish the isolation gap
 without reading private configuration.
@@ -176,7 +176,7 @@ the full layer test gate was unresolved.
 
 Earlier after the restart, `make test` completed 10,085 tests: 10,059 passed,
 26 failed, and 17 skipped. The log is
-`/tmp/resume-test-vtcode-df12-onboarding-test-quality-sweep.out`. All PTY
+`/tmp/resume-test-diapason-df12-onboarding-test-quality-sweep.out`. All PTY
 tests, H7 parent-death tests, and H8 project-memory tests passed. This is the
 current historical result and was superseded by the completion-sweep run below.
 
@@ -228,7 +228,7 @@ contextual results with exact argument, cwd, and error assertions; removed
 decorative `Result` plumbing from the theme validity test; and changed commons
 diff-wire checks to exact JSON assertions. The latest `make check-fmt` and lint
 gates passed
-(`/tmp/check-fmt-2-vtcode-df12-onboarding-test-quality-sweep.out`). The first
+(`/tmp/check-fmt-2-diapason-df12-onboarding-test-quality-sweep.out`). The first
 post-wave Clippy run found one qualification, which the parent repaired. Build
 and harness (49 passed, 2,714 filtered), advisory, and documentation gates also
 passed. The optional ast-grep scan was unavailable and was skipped. Four old
@@ -236,7 +236,7 @@ rustdoc warnings from the old configuration were accepted; no new warning was
 introduced.
 
 The latest completed full suite ran 10,075 tests: 10,075 passed and 17 skipped.
-Its log is `/tmp/test-vtcode-df12-onboarding-test-quality-sweep.out`. The ten
+Its log is `/tmp/test-diapason-df12-onboarding-test-quality-sweep.out`. The ten
 earlier failure groups are cleared: seven prompt-wording or golden cases, two
 startup duplicate-TOML-table cases during raw serialization and append, and one
 Gemini legacy-reasoning case. The two new WebMCP tests, prequeued stop,

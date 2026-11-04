@@ -4,9 +4,9 @@
 )]
 #[cfg(test)]
 mod minimax_integration_tests {
-    use vtcode_core::config::constants::{model_helpers, models, urls};
-    use vtcode_core::llm::provider::LLMProvider;
-    use vtcode_core::llm::providers::AnthropicProvider;
+    use diapason_core::config::constants::{model_helpers, models, urls};
+    use diapason_core::llm::provider::LLMProvider;
+    use diapason_core::llm::providers::AnthropicProvider;
 
     #[test]
     fn test_minimax_m3_constants_exist() {

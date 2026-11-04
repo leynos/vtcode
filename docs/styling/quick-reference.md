@@ -156,12 +156,12 @@ Supported style values:
 
 ______________________________________________________________________
 
-## Vtcode Integration Points
+## Diapason Integration Points
 
 ### 1. Theme Parser (Phase 1)
 
 ```rust
-use vtcode_core::ui::tui::ThemeConfigParser;
+use diapason_core::ui::tui::ThemeConfigParser;
 
 // Parse Git style
 let style = ThemeConfigParser::parse_git_style("bold red")?;
@@ -194,7 +194,7 @@ let style = InlineTextStyle::default()
 ### 3. File Colorizer (Phase 3 Future)
 
 ```rust
-use vtcode_core::ui::tui::FileColorizer;
+use diapason_core::ui::tui::FileColorizer;
 
 let colorizer = FileColorizer::new();  // Reads LS_COLORS
 let style = colorizer.style_for_file(&path)?;
@@ -213,7 +213,7 @@ ______________________________________________________________________
 // LS_COLORS style
 "01;31"                 // Bold (01) + red (31)
 
-// In Vtcode
+// In Diapason
 let error_style = ThemeConfigParser::parse_git_style("bold red")?;
 ```
 
@@ -226,7 +226,7 @@ let error_style = ThemeConfigParser::parse_git_style("bold red")?;
 // LS_COLORS style
 "32"                    // Green foreground
 
-// In Vtcode
+// In Diapason
 let success_style = ThemeConfigParser::parse_git_style("green")?;
 ```
 
@@ -239,7 +239,7 @@ let success_style = ThemeConfigParser::parse_git_style("green")?;
 // LS_COLORS style
 "02;37"                 // Dim (02) + white (37)
 
-// In Vtcode
+// In Diapason
 let dim_style = ThemeConfigParser::parse_git_style("dim white")?;
 ```
 

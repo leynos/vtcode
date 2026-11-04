@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::snapshots::{SnapshotConfig, SnapshotManager};
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::snapshots::{SnapshotConfig, SnapshotManager};
 
 pub(super) fn snapshot_config(config: &CoreAgentConfig) -> SnapshotConfig {
     let mut snapshot_cfg = SnapshotConfig::new(config.workspace.clone());

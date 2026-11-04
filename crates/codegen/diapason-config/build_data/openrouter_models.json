@@ -1,0 +1,677 @@
+{
+  "id": "openrouter",
+  "env": [
+    "OPENROUTER_API_KEY"
+  ],
+  "api": "https://openrouter.ai/api/v1",
+  "name": "OpenRouter",
+  "doc": "https://openrouter.ai/models",
+  "models": {
+    "meta/muse-glimmer-30b": {
+      "id": "meta/muse-glimmer-30b",
+      "name": "Meta: Muse Glimmer 30B",
+      "description": "Meta Muse Glimmer 30B reasoning model via OpenRouter.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 131072,
+      "cost": {
+        "input": 3.5e-7,
+        "output": 1.5e-6,
+        "cache_read": 4e-8
+      },
+      "diapason": {
+        "variant": "OpenRouterMetaMuseGlimmer30b",
+        "constant": "META_MUSE_GLIMMER_30B",
+        "vendor": "meta",
+        "display": "Muse Glimmer 30B (OpenRouter)",
+        "description": "Meta Muse Glimmer 30B reasoning model via OpenRouter",
+        "efficient": true,
+        "top_tier": false,
+        "generation": "Muse-Glimmer-30B",
+        "doc_comment": "Muse Glimmer 30B - Meta Muse Glimmer 30B reasoning model via OpenRouter"
+      }
+    },
+    "meta/muse-spark-1.2": {
+      "id": "meta/muse-spark-1.2",
+      "name": "Meta: Muse Spark 1.2",
+      "description": "Meta Muse Spark 1.2 reasoning model via OpenRouter.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video",
+          "file",
+          "audio"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 1048576,
+      "cost": {
+        "input": 1.25e-6,
+        "output": 4.25e-6,
+        "cache_read": 1.5e-7
+      },
+      "diapason": {
+        "variant": "OpenRouterMetaMuseSpark12",
+        "constant": "META_MUSE_SPARK_1_2",
+        "vendor": "meta",
+        "display": "Muse Spark 1.2 (OpenRouter)",
+        "description": "Meta Muse Spark 1.2 reasoning model via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "Muse-Spark-1.2",
+        "doc_comment": "Muse Spark 1.2 - Meta Muse Spark 1.2 reasoning model via OpenRouter"
+      }
+    },
+    "mistralai/mistral-large-2512": {
+      "id": "mistralai/mistral-large-2512",
+      "name": "Mistral: Mistral Large 3 2512",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 128000,
+      "max_output_tokens": 8192,
+      "cost": {
+        "input": 2e-06,
+        "output": 6e-06
+      },
+      "diapason": {
+        "variant": "OpenRouterMistralaiMistralLarge2512",
+        "constant": "MISTRALAI_MISTRAL_LARGE_2512",
+        "vendor": "mistralai",
+        "display": "Mistral Large 3 2512",
+        "description": "Mistral Large 3 2512 model via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "Mistral-Large-3",
+        "doc_comment": "Mistral Large 3 2512 - Mistral Large 3 2512 model via OpenRouter"
+      }
+    },
+
+    "google/gemini-3.6-flash": {
+      "id": "google/gemini-3.6-flash",
+      "name": "Google: Gemini 3.6 Flash",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "file"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 1048576,
+      "diapason": {
+        "variant": "OpenRouterGoogleGemini36Flash",
+        "constant": "GOOGLE_GEMINI_3_6_FLASH",
+        "vendor": "google",
+        "display": "Gemini 3.6 Flash",
+        "description": "Latest Gemini flash model with improved reasoning and efficiency via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "3.6",
+        "doc_comment": "Gemini 3.6 Flash - Latest Gemini flash model with improved reasoning and efficiency via OpenRouter"
+      }
+    },
+    "google/gemini-3.7-flash": {
+      "id": "google/gemini-3.7-flash",
+      "name": "Google: Gemini 3.7 Flash",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "file"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 1048576,
+      "diapason": {
+        "variant": "OpenRouterGoogleGemini37Flash",
+        "constant": "GOOGLE_GEMINI_3_7_FLASH",
+        "vendor": "google",
+        "display": "Gemini 3.7 Flash",
+        "description": "Flash model with 1M context and tunable thinking levels via OpenRouter",
+        "efficient": true,
+        "top_tier": true,
+        "generation": "3.7",
+        "doc_comment": "Gemini 3.7 Flash - Flash model with 1M context and tunable thinking levels via OpenRouter"
+      }
+    },
+    "google/gemini-3.8-flash": {
+      "id": "google/gemini-3.8-flash",
+      "name": "Google: Gemini 3.8 Flash",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "file"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 1048576,
+      "diapason": {
+        "variant": "OpenRouterGoogleGemini38Flash",
+        "constant": "GOOGLE_GEMINI_3_8_FLASH",
+        "vendor": "google",
+        "display": "Gemini 3.8 Flash",
+        "description": "Most intelligent Flash for long-horizon SWE, agents, and enterprise workflows with 1M context via OpenRouter",
+        "efficient": true,
+        "top_tier": true,
+        "generation": "3.8",
+        "doc_comment": "Gemini 3.8 Flash - Most intelligent Flash for long-horizon SWE, agents, and enterprise workflows via OpenRouter"
+      }
+    },
+    "stepfun/step-3.5-flash:free": {
+      "id": "stepfun/step-3.5-flash:free",
+      "name": "Step 3.5 Flash (free)",
+      "description": "Step 3.5 Flash is StepFun's most capable open-source foundation model. Built on a sparse Mixture of Experts (MoE) architecture, it selectively activates only 11B of its 196B parameters per token. It is a reasoning model that is incredibly speed efficient even at long contexts.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 256000,
+      "diapason": {
+        "variant": "OpenRouterStepfunStep35FlashFree",
+        "constant": "STEPFUN_STEP_3_5_FLASH_FREE",
+        "vendor": "stepfun",
+        "display": "Step 3.5 Flash (free)",
+        "description": "Step 3.5 Flash (free) model via OpenRouter",
+        "efficient": true,
+        "top_tier": true,
+        "generation": "Step-3.5",
+        "doc_comment": "Step 3.5 Flash (free) - StepFun's most capable open-source reasoning model via OpenRouter"
+      }
+    },
+
+    "nex-agi/deepseek-v3.1-nex-n1": {
+      "id": "nex-agi/deepseek-v3.1-nex-n1",
+      "name": "Nex AGI: DeepSeek V3.1 Nex N1",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 163840,
+      "max_output_tokens": 163840,
+      "cost": {
+        "input": 2e-07,
+        "output": 8e-07
+      },
+      "diapason": {
+        "variant": "OpenRouterNexAgiDeepseekV31NexN1",
+        "constant": "NEX_AGI_DEEPSEEK_V3_1_NEX_N1",
+        "vendor": "nex-agi",
+        "display": "DeepSeek V3.1 Nex N1",
+        "description": "Nex AGI DeepSeek V3.1 Nex N1 model via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "V3.1-Nex",
+        "doc_comment": "DeepSeek V3.1 Nex N1 - Nex AGI DeepSeek V3.1 Nex N1 model via OpenRouter"
+      }
+    },
+    "deepseek/deepseek-chat": {
+      "id": "deepseek/deepseek-chat",
+      "name": "DeepSeek: DeepSeek V3.2 Chat",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 128000,
+      "max_output_tokens": 8192,
+      "cost": {
+        "input": 2.8e-07,
+        "output": 1.1e-06
+      },
+      "diapason": {
+        "variant": "OpenRouterDeepSeekV4Flash",
+        "constant": "DEEPSEEK_V4_FLASH",
+        "vendor": "deepseek",
+        "display": "DeepSeek V4 Flash",
+        "description": "DeepSeek V4 Flash model via OpenRouter",
+        "efficient": true,
+        "top_tier": true,
+        "generation": "4",
+        "doc_comment": "DeepSeek V4 Flash - Official Flash model via OpenRouter"
+      }
+    },
+    "deepseek/deepseek-r1": {
+      "id": "deepseek/deepseek-r1",
+      "name": "DeepSeek: R1",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 163840,
+      "max_output_tokens": 163840,
+      "cost": {
+        "input": 4e-07,
+        "output": 2e-06
+      },
+      "diapason": {
+        "variant": "OpenRouterDeepSeekR1",
+        "constant": "DEEPSEEK_R1",
+        "vendor": "deepseek",
+        "display": "DeepSeek R1",
+        "description": "DeepSeek R1 reasoning model with chain-of-thought",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "2025-01-20",
+        "doc_comment": "DeepSeek R1 - DeepSeek R1 reasoning model with chain-of-thought"
+      }
+    },
+    "deepseek/deepseek-reasoner": {
+      "id": "deepseek/deepseek-reasoner",
+      "name": "DeepSeek: DeepSeek V3.2 Reasoner (Thinking)",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 128000,
+      "max_output_tokens": 8192,
+      "cost": {
+        "input": 5.5e-06,
+        "output": 2.2e-05
+      },
+      "diapason": {
+        "variant": "OpenRouterDeepSeekV4Pro",
+        "constant": "DEEPSEEK_V4_PRO",
+        "vendor": "deepseek",
+        "display": "DeepSeek V4 Pro",
+        "description": "DeepSeek V4 Pro thinking mode model via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "4",
+        "doc_comment": "DeepSeek V4 Pro - Thinking mode via OpenRouter"
+      }
+    },
+    "openai/gpt-5": {
+      "id": "openai/gpt-5",
+      "name": "OpenAI: GPT-5",
+      "reasoning": false,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "file"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 400000,
+      "max_output_tokens": 128000,
+      "cost": {
+        "input": 1.25e-06,
+        "output": 1e-05
+      },
+      "diapason": {
+        "variant": "OpenRouterOpenAIGpt5",
+        "constant": "OPENAI_GPT_5",
+        "vendor": "openai",
+        "display": "OpenAI GPT-5",
+        "description": "OpenAI GPT-5 model accessed through OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "2025-09-20",
+        "doc_comment": "OpenAI GPT-5 - OpenAI GPT-5 model accessed through OpenRouter"
+      }
+    },
+
+    "z-ai/glm-5.3-flash": {
+      "id": "z-ai/glm-5.3-flash",
+      "name": "Z.AI: GLM-5.3 Flash",
+      "description": "Z.AI efficient multimodal model with hybrid sparse+linear attention (320B total / 18B active, 3.01x less attention compute, 4.44x smaller KV cache), 1M context and native vision for efficient coding and long-horizon agent tasks.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 1310720,
+      "max_output_tokens": 131072,
+      "cost": {
+        "input": 1.5e-07,
+        "output": 5e-07,
+        "cache_read": 3e-08
+      },
+      "diapason": {
+        "variant": "OpenRouterZaiGlm53Flash",
+        "constant": "ZAI_GLM_5_3_FLASH",
+        "vendor": "z-ai",
+        "display": "GLM-5.3 Flash",
+        "description": "Z.AI GLM-5.3 Flash efficient multimodal model via OpenRouter",
+        "efficient": true,
+        "top_tier": true,
+        "generation": "5.3",
+        "doc_comment": "GLM-5.3 Flash - Z.AI efficient multimodal model with hybrid sparse+linear attention via OpenRouter"
+      }
+    },
+    "openai/gpt-5-chat": {
+      "id": "openai/gpt-5-chat",
+      "name": "OpenAI: GPT-5 Chat",
+      "reasoning": false,
+      "tool_call": false,
+      "modalities": {
+        "input": [
+          "file",
+          "image",
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 128000,
+      "max_output_tokens": 16384,
+      "cost": {
+        "input": 1.25e-06,
+        "output": 1e-05
+      },
+      "diapason": {
+        "variant": "OpenRouterOpenAIGpt5Chat",
+        "constant": "OPENAI_GPT_5_CHAT",
+        "vendor": "openai",
+        "display": "OpenAI GPT-5 Chat",
+        "description": "Chat optimised GPT-5 endpoint without tool use",
+        "efficient": false,
+        "top_tier": false,
+        "generation": "2025-09-20",
+        "doc_comment": "OpenAI GPT-5 Chat - Chat optimised GPT-5 endpoint without tool use"
+      }
+    },
+    "openai/gpt-oss-120b": {
+      "id": "openai/gpt-oss-120b",
+      "name": "OpenAI: gpt-oss-120b",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 131072,
+      "max_output_tokens": 131072,
+      "cost": {
+        "input": 4e-08,
+        "output": 4e-07
+      },
+      "diapason": {
+        "variant": "OpenRouterOpenAIGptOss120b",
+        "constant": "OPENAI_GPT_OSS_120B",
+        "vendor": "openai",
+        "display": "OpenAI gpt-oss-120b",
+        "description": "Open-weight 120B reasoning model via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "OSS-120B",
+        "doc_comment": "OpenAI gpt-oss-120b - Open-weight 120B reasoning model via OpenRouter"
+      }
+    },
+    "openai/gpt-oss-20b": {
+      "id": "openai/gpt-oss-20b",
+      "name": "OpenAI: gpt-oss-20b",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 131072,
+      "max_output_tokens": null,
+      "cost": {
+        "input": 3e-08,
+        "output": 1.4e-07
+      },
+      "diapason": {
+        "variant": "OpenRouterOpenAIGptOss20b",
+        "constant": "OPENAI_GPT_OSS_20B",
+        "vendor": "openai",
+        "display": "OpenAI gpt-oss-20b",
+        "description": "Open-weight 20B deployment via OpenRouter",
+        "efficient": false,
+        "top_tier": false,
+        "generation": "OSS-20B",
+        "doc_comment": "OpenAI gpt-oss-20b - Open-weight 20B deployment via OpenRouter"
+      }
+    },
+    "moonshotai/kimi-k3": {
+      "id": "moonshotai/kimi-k3",
+      "name": "MoonshotAI: Kimi K3",
+      "description": "Kimi K3 is Kimi's most capable model to date, with 2.8 trillion parameters. Built on Kimi Delta Attention, a hybrid linear attention mechanism, and Attention Residuals, it offers native visual understanding and a 1M-token context window for frontier intelligence scenarios such as software engineering, knowledge work, and deep reasoning.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 1048576,
+      "max_output_tokens": 131072,
+      "cost": {
+        "input": 3e-06,
+        "output": 1.5e-05,
+        "cache_read": 3e-07
+      },
+      "diapason": {
+        "variant": "OpenRouterMoonshotaiKimiK3",
+        "constant": "MOONSHOTAI_KIMI_K3",
+        "vendor": "moonshotai",
+        "display": "Kimi K3",
+        "description": "Kimi K3 2.8T parameter flagship with 1M context, native vision, and deep reasoning via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "K3",
+        "doc_comment": "Kimi K3 - Moonshot AI's 2.8T parameter flagship model via OpenRouter"
+      }
+    },
+    "moonshotai/kimi-k2.7-code": {
+      "id": "moonshotai/kimi-k2.7-code",
+      "name": "MoonshotAI: Kimi K2.7 Code",
+      "description": "Kimi K2.7 Code is Moonshot AI's most capable coding model, with a breakthrough in long-horizon coding tasks across Rust, Go, Python and more. Supports 256K context, multi-step tool invocation, and strong reasoning capabilities.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 262144,
+      "max_output_tokens": 32768,
+      "cost": {
+        "input": 9.5e-07,
+        "output": 4e-06
+      },
+      "diapason": {
+        "variant": "OpenRouterMoonshotaiKimiK27Code",
+        "constant": "MOONSHOTAI_KIMI_K2_7_CODE",
+        "vendor": "moonshotai",
+        "display": "Kimi K2.7 Code",
+        "description": "Kimi K2.7 Code most capable coding model with long-horizon coding breakthrough via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "K2.7",
+        "doc_comment": "Kimi K2.7 Code - Moonshot AI's most capable coding model with long-horizon coding breakthrough via OpenRouter"
+      }
+    },
+    "xiaomi/mimo-v2.5-pro": {
+      "id": "xiaomi/mimo-v2.5-pro",
+      "name": "Xiaomi: MiMo-V2.5-Pro",
+      "description": "MiMo-V2.5-Pro is Xiaomi's flagship model, delivering strong performance in general agentic capabilities, complex software engineering, and long-horizon tasks, with top rankings on benchmarks such as ClawEval, GDPVal, and SWE-bench Pro.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 1000000,
+      "cost": {
+        "input": 4.35e-07,
+        "output": 8.7e-07
+      },
+      "diapason": {
+        "variant": "OpenRouterXiaomiMimoV25Pro",
+        "constant": "XIAOMI_MIMO_V2_5_PRO",
+        "vendor": "xiaomi",
+        "display": "MiMo-V2.5-Pro",
+        "description": "Xiaomi MiMo-V2.5-Pro flagship agentic model for complex software engineering via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "MiMo-V2.5",
+        "doc_comment": "MiMo-V2.5-Pro - Xiaomi's flagship agentic model for complex software engineering via OpenRouter"
+      }
+    },
+    "xiaomi/mimo-v2.5": {
+      "id": "xiaomi/mimo-v2.5",
+      "name": "Xiaomi: MiMo-V2.5",
+      "description": "MiMo-V2.5 is a native omnimodal model by Xiaomi. It delivers Pro-level agentic performance at roughly half the inference cost, while surpassing MiMo-V2-Omni in multimodal perception across image and video understanding tasks. Its 1M context window supports complete documents, extended conversations, and complex task contexts in a single pass.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 1000000,
+      "max_output_tokens": 131072,
+      "cost": {
+        "input": 1.4e-07,
+        "output": 2.8e-07
+      },
+      "diapason": {
+        "variant": "OpenRouterXiaomiMimoV25",
+        "constant": "XIAOMI_MIMO_V2_5",
+        "vendor": "xiaomi",
+        "display": "MiMo-V2.5",
+        "description": "Xiaomi MiMo-V2.5 omnimodal agentic model for complex software engineering via OpenRouter",
+        "efficient": false,
+        "top_tier": true,
+        "generation": "MiMo-V2.5",
+        "doc_comment": "MiMo-V2.5 - Xiaomi's omnimodal agentic model for complex software engineering via OpenRouter"
+      }
+    },
+    "qwen/qwen3.8-27b": {
+      "id": "qwen/qwen3.8-27b",
+      "name": "Qwen: Qwen3.8 27B",
+      "description": "Qwen3.8 27B is an open-weight dense vision-language model from Qwen. It is suited for coding, professional workflows, research, multimodal interaction, and long-running agent tasks, with flexible thinking that can be enabled or disabled.",
+      "reasoning": true,
+      "tool_call": true,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context": 262144,
+      "max_output_tokens": 131072,
+      "cost": {
+        "input": 4.5e-07,
+        "output": 3.2e-06
+      },
+      "diapason": {
+        "variant": "OpenRouterQwenQwen3827b",
+        "constant": "QWEN_3_8_27B",
+        "vendor": "qwen",
+        "display": "Qwen3.8 27B",
+        "description": "Qwen3.8 27B open-weight dense vision-language model with flexible thinking via OpenRouter",
+        "efficient": false,
+        "top_tier": false,
+        "generation": "3.8",
+        "doc_comment": "Qwen3.8 27B - Qwen's open-weight dense vision-language model with flexible thinking via OpenRouter"
+      }
+    }
+  },
+  "default_model": "xiaomi/mimo-v2.5-pro"
+}

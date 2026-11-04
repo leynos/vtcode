@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-VT Code was evaluated on the complete HumanEval benchmark (164 programming
+Diapason was evaluated on the complete HumanEval benchmark (164 programming
 problems) using two models:
 
 1. **gpt-5-nano (OpenAI):** Achieved **94.5% pass@1 rate** - frontier-tier
@@ -82,7 +82,7 @@ pass rates, latency distributions, and detailed metrics.
 | Output Tokens      | 0\*         |
 | **Estimated Cost** | **$0.0000** |
 
-> **Note:** Token counts not currently reported by vtcode. The
+> **Note:** Token counts not currently reported by diapason. The
 > `gemini-3-flash-preview` model is in Google's free tier, resulting in zero
 > actual cost for this benchmark.
 
@@ -176,7 +176,7 @@ Of the 63 failed tests:
 # Install dependencies
 pip install datasets
 
-# Build vtcode
+# Build diapason
 cargo build --release
 ```
 
@@ -257,5 +257,5 @@ export GEMINI_API_KEY="your_api_key_here"
 
 ______________________________________________________________________
 
-**Generated:** 2025-10-22 **VT Code Version:** 0.133.21 **Benchmark Duration:**
-~2 minutes (164 tasks × ~0.97s avg)
+**Generated:** 2025-10-22 **Diapason Version:** 0.133.21 **Benchmark
+Duration:** ~2 minutes (164 tasks × ~0.97s avg)

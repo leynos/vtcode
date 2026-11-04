@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VT Code Distribution Test Script
+# Diapason Distribution Test Script
 # This script helps test the distribution setup before releasing
 
 set -e
@@ -73,16 +73,16 @@ validate_cargo_toml() {
     print_success "Cargo.toml metadata is valid"
 }
 
-# Function to validate vtcode-core Cargo.toml
-validate_vtcode_core_toml() {
-    print_info "Validating vtcode-core/Cargo.toml metadata..."
+# Function to validate diapason-core Cargo.toml
+validate_diapason_core_toml() {
+    print_info "Validating diapason-core/Cargo.toml metadata..."
 
-    if ! grep -q '^description = ' vtcode-core/Cargo.toml; then
-        print_error "Missing description in vtcode-core/Cargo.toml"
+    if ! grep -q '^description = ' diapason-core/Cargo.toml; then
+        print_error "Missing description in diapason-core/Cargo.toml"
         return 1
     fi
 
-    print_success "vtcode-core/Cargo.toml metadata is valid"
+    print_success "diapason-core/Cargo.toml metadata is valid"
 }
 
 # Function to check if binary builds successfully
@@ -121,7 +121,7 @@ validate_npm_package() {
         return 1
     fi
 
-    if [[ ! -f "npm/bin/vtcode" ]]; then
+    if [[ ! -f "npm/bin/diapason" ]]; then
         print_error "npm bin script not found"
         return 1
     fi
@@ -168,7 +168,7 @@ validate_workflows() {
 
 # Main test function
 main() {
-    print_info "Starting VT Code distribution validation..."
+    print_info "Starting Diapason distribution validation..."
 
     local errors=0
 
@@ -176,7 +176,7 @@ main() {
     check_npm || true  # Don't fail if npm not available
 
     validate_cargo_toml || ((errors++))
-    validate_vtcode_core_toml || ((errors++))
+    validate_diapason_core_toml || ((errors++))
 
     test_build || ((errors++))
 

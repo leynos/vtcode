@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { promptCacheCompletion } from "./userDataPaths";
 
 interface SectionMetadata {
     readonly label: string;
@@ -14,11 +15,11 @@ interface KeyMetadata {
 const SECTION_METADATA: Record<string, SectionMetadata> = {
     agent: {
         label: "Agent",
-        description: "Core VT Code agent behaviour and model defaults.",
+        description: "Core Diapason agent behaviour and model defaults.",
     },
     "agent.onboarding": {
         label: "Onboarding",
-        description: "Customize the guidance presented when VT Code starts.",
+        description: "Customize the guidance presented when Diapason starts.",
     },
     prompt_cache: {
         label: "Prompt Cache",
@@ -30,7 +31,7 @@ const SECTION_METADATA: Record<string, SectionMetadata> = {
     },
     tools: {
         label: "Tool Policies",
-        description: "Global defaults and execution limits for VT Code tools.",
+        description: "Global defaults and execution limits for Diapason tools.",
     },
     "tools.policies": {
         label: "Tool Policy Overrides",
@@ -42,7 +43,7 @@ const SECTION_METADATA: Record<string, SectionMetadata> = {
     },
     mcp: {
         label: "Model Context Protocol",
-        description: "Settings for connecting VT Code to MCP-compatible tools.",
+        description: "Settings for connecting Diapason to MCP-compatible tools.",
     },
     "mcp.providers": {
         label: "MCP Provider",
@@ -59,13 +60,13 @@ const SECTION_KEYS: Record<string, Record<string, KeyMetadata>> = {
         provider: {
             detail: "Primary LLM provider",
             documentation:
-                "Sets the default provider that VT Code should use for conversations.",
+                "Sets the default provider that Diapason should use for conversations.",
             insertText: 'provider = "${1|openai,anthropic,gemini,openrouter|}"',
         },
         api_key_env: {
             detail: "Environment variable for the API key",
             documentation:
-                "Points VT Code at the environment variable that stores credentials for the selected provider.",
+                "Points Diapason at the environment variable that stores credentials for the selected provider.",
             insertText: 'api_key_env = "${1:OPENAI_API_KEY}"',
         },
         default_model: {
@@ -76,26 +77,26 @@ const SECTION_KEYS: Record<string, Record<string, KeyMetadata>> = {
         },
         theme: {
             detail: "Terminal theme",
-            documentation: "Controls the VT Code terminal interface theme.",
+            documentation: "Controls the Diapason terminal interface theme.",
             insertText:
                 'theme = "${1|ciapre,ciapre-dark,ciapre-blue,solarized-dark,solarized-light,solarized-dark-hc,gruvbox-dark,gruvbox-dark-hard,gruvbox-light,gruvbox-light-hard,gruvbox-material,gruvbox-material-dark,gruvbox-material-light,zenburn,tomorrow,tomorrow-night,tomorrow-night-blue,tomorrow-night-bright,tomorrow-night-burns,tomorrow-night-eighties,material-ocean,material-dark,material,github-dark,github,dracula,monokai-classic,night-owl,spacegray,spacegray-bright,spacegray-eighties,spacegray-eighties-dull,atom,atom-one-dark,atom-one-light,man-page,jetbrains-darcula,homebrew,framer,espresso,adventure-time,afterglow,apple-classic,apple-system-colors,apple-system-colors-light,ayu,ayu-mirage,catppuccin-macchiato,kanagawa|}"',
         },
         todo_planning_mode: {
             detail: "Enable structured planning",
             documentation:
-                "Toggle to have VT Code create TODO plans for larger tasks automatically.",
+                "Toggle to have Diapason create TODO plans for larger tasks automatically.",
             insertText: "todo_planning_mode = ${1|true,false|}",
         },
         ui_surface: {
             detail: "UI rendering surface",
             documentation:
-                "Choose how VT Code should present output in the terminal UI.",
+                "Choose how Diapason should present output in the terminal UI.",
             insertText: 'ui_surface = "${1|auto,alternate,inline|}"',
         },
         reasoning_effort: {
             detail: "Reasoning effort level",
             documentation:
-                "Controls how much deliberation VT Code applies when solving a task.",
+                "Controls how much deliberation Diapason applies when solving a task.",
             insertText: 'reasoning_effort = "${1|low,medium,high|}"',
         },
     },
@@ -103,13 +104,13 @@ const SECTION_KEYS: Record<string, Record<string, KeyMetadata>> = {
         enabled: {
             detail: "Toggle onboarding",
             documentation:
-                "Determines whether VT Code shows the onboarding introduction at startup.",
+                "Determines whether Diapason shows the onboarding introduction at startup.",
             insertText: "enabled = ${1|true,false|}",
         },
         intro_text: {
             detail: "Custom introduction",
             documentation:
-                "Overrides the greeting text shown when VT Code launches.",
+                "Overrides the greeting text shown when Diapason launches.",
             insertText: 'intro_text = "${1}"',
         },
         include_project_overview: {
@@ -135,8 +136,8 @@ const SECTION_KEYS: Record<string, Record<string, KeyMetadata>> = {
         cache_dir: {
             detail: "Cache directory",
             documentation:
-                "Filesystem path where VT Code should persist prompt cache entries.",
-            insertText: 'cache_dir = "${1:~/.vtcode/cache/prompts}"',
+                "Concrete path under $XDG_CACHE_HOME/diapason/prompts (default: ~/.cache/diapason/prompts). Shell variables are resolved by this completion, not by TOML.",
+            insertText: promptCacheCompletion(),
         },
         max_entries: {
             detail: "Maximum cache entries",
@@ -147,7 +148,7 @@ const SECTION_KEYS: Record<string, Record<string, KeyMetadata>> = {
         enable_auto_cleanup: {
             detail: "Automatic cleanup",
             documentation:
-                "Whether VT Code should prune stale cache entries automatically.",
+                "Whether Diapason should prune stale cache entries automatically.",
             insertText: "enable_auto_cleanup = ${1|true,false|}",
         },
         "providers.openai.prompt_cache_retention": {
@@ -161,13 +162,13 @@ const SECTION_KEYS: Record<string, Record<string, KeyMetadata>> = {
         human_in_the_loop: {
             detail: "Require human approval",
             documentation:
-                "When true, VT Code pauses for approval before executing high-impact tools.",
+                "When true, Diapason pauses for approval before executing high-impact tools.",
             insertText: "human_in_the_loop = ${1|true,false|}",
         },
         require_write_tool_for_claims: {
             detail: "Enforce write tool usage",
             documentation:
-                "Ensures VT Code must use explicit write tools before claiming file changes.",
+                "Ensures Diapason must use explicit write tools before claiming file changes.",
             insertText: "require_write_tool_for_claims = ${1|true,false|}",
         },
         auto_apply_detected_patches: {
@@ -256,24 +257,24 @@ const SECTION_KEYS: Record<string, Record<string, KeyMetadata>> = {
         enabled: {
             detail: "Enable MCP integration",
             documentation:
-                "Allows VT Code to connect to Model Context Protocol tools.",
+                "Allows Diapason to connect to Model Context Protocol tools.",
             insertText: "enabled = ${1|true,false|}",
         },
         max_concurrent_connections: {
             detail: "Maximum concurrent connections",
             documentation:
-                "Limits how many MCP connections VT Code may open simultaneously.",
+                "Limits how many MCP connections Diapason may open simultaneously.",
             insertText: "max_concurrent_connections = ${1:5}",
         },
         request_timeout_seconds: {
             detail: "MCP request timeout",
             documentation:
-                "How long VT Code should wait before timing out an MCP request.",
+                "How long Diapason should wait before timing out an MCP request.",
             insertText: "request_timeout_seconds = ${1:30}",
         },
         retry_attempts: {
             detail: "Retry attempts",
-            documentation: "Number of times VT Code retries failed MCP calls.",
+            documentation: "Number of times Diapason retries failed MCP calls.",
             insertText: "retry_attempts = ${1:3}",
         },
     },
@@ -310,18 +311,18 @@ const SECTION_KEYS: Record<string, Record<string, KeyMetadata>> = {
     },
 };
 
-export const VT_CODE_DOCUMENT_SELECTOR: vscode.DocumentSelector = [
-    { language: "vtcode-config", scheme: "file" },
-    { language: "vtcode-config", scheme: "untitled" },
-    { pattern: "**/vtcode.toml", scheme: "file" },
+export const DIAPASON_DOCUMENT_SELECTOR: vscode.DocumentSelector = [
+    { language: "diapason-config", scheme: "file" },
+    { language: "diapason-config", scheme: "untitled" },
+    { pattern: "**/config.toml", scheme: "file" },
 ];
 
 const SECTION_COMPLETIONS = createSectionCompletions();
 
-export function registerVtcodeLanguageFeatures(
+export function registerDiapasonLanguageFeatures(
     context: vscode.ExtensionContext
 ): vscode.Disposable[] {
-    const selector = VT_CODE_DOCUMENT_SELECTOR;
+    const selector = DIAPASON_DOCUMENT_SELECTOR;
 
     const completionProvider = vscode.languages.registerCompletionItemProvider(
         selector,

@@ -1,17 +1,17 @@
 use anyhow::{Context, Result, bail};
+use diapason_config::update::ReleaseChannel;
 use semver::Version;
 use serde::Deserialize;
 use std::time::Duration;
 use url::Url;
-use vtcode_config::update::ReleaseChannel;
 
 use super::Updater;
 use super::archive::ArchiveKind;
 use super::types::{UpdateInfo, VersionInfo};
 
-const REPO_SLUG: &str = "vinhnx/vtcode";
+const REPO_SLUG: &str = "leynos/vtcode";
 const GITHUB_HOST: &str = "github.com";
-const RELEASE_ASSET_PATH_PREFIX: &str = "/vinhnx/vtcode/releases/download/";
+const RELEASE_ASSET_PATH_PREFIX: &str = "/leynos/vtcode/releases/download/";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub(super) struct ReleaseAsset {
@@ -36,7 +36,7 @@ pub(super) fn select_archive_asset<'a>(
         .iter()
         .filter(|asset| {
             let name = asset.name.to_ascii_lowercase();
-            name.starts_with("vtcode-") && name.ends_with(&target_suffix)
+            name.starts_with("diapason-") && name.ends_with(&target_suffix)
         })
         .collect();
 
@@ -71,7 +71,7 @@ pub(super) fn validate_asset_download_url(raw_url: &str) -> Result<()> {
 
     let path = url.path().to_ascii_lowercase();
     let Some(download_path) = path.strip_prefix(RELEASE_ASSET_PATH_PREFIX) else {
-        bail!("release asset URL is outside the VT Code release path");
+        bail!("release asset URL is outside the Diapason release path");
     };
 
     let mut path_segments = download_path.split('/');
@@ -113,7 +113,7 @@ fn parse_release(value: &serde_json::Value) -> Result<GithubRelease> {
 }
 
 pub(super) fn github_client() -> Result<reqwest::Client> {
-    let mut builder = reqwest::Client::builder().user_agent("vtcode-updater");
+    let mut builder = reqwest::Client::builder().user_agent("diapason-updater");
 
     // Authenticate with GitHub API when a token is available.
     // Unauthenticated requests are limited to 60/hour per IP; authenticated
@@ -142,7 +142,7 @@ pub(super) fn github_token() -> Option<String> {
 /// never receive the GitHub API token.
 pub(super) fn unauthenticated_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
-        .user_agent("vtcode-updater")
+        .user_agent("diapason-updater")
         .build()
         .context("Failed to create HTTP client")
 }
@@ -314,21 +314,21 @@ mod tests {
     fn selects_macos_tar_gz_for_exact_target() {
         let assets = vec![
             asset("checksums.txt"),
-            asset("vtcode-1.0.0-x86_64-apple-darwin.sha256"),
-            asset("vtcode-1.0.0-aarch64-apple-darwin.tar.gz"),
-            asset("vtcode-1.0.0-x86_64-apple-darwin.tar.gz"),
+            asset("diapason-1.0.0-x86_64-apple-darwin.sha256"),
+            asset("diapason-1.0.0-aarch64-apple-darwin.tar.gz"),
+            asset("diapason-1.0.0-x86_64-apple-darwin.tar.gz"),
         ];
 
         let (selected, kind) = select_archive_asset(&assets, "aarch64-apple-darwin").expect("asset");
 
-        assert_eq!(selected.name, "vtcode-1.0.0-aarch64-apple-darwin.tar.gz");
+        assert_eq!(selected.name, "diapason-1.0.0-aarch64-apple-darwin.tar.gz");
         assert_eq!(kind, ArchiveKind::TarGz);
     }
 
     #[test]
     fn accepts_github_release_asset_url() {
         let url =
-            "https://github.com/vinhnx/VTCode/releases/download/0.150.0/vtcode-0.150.0-aarch64-apple-darwin.tar.gz";
+            "https://github.com/leynos/vtcode/releases/download/0.150.0/diapason-0.150.0-aarch64-apple-darwin.tar.gz";
 
         assert!(validate_asset_download_url(url).is_ok());
     }
@@ -336,11 +336,11 @@ mod tests {
     #[test]
     fn rejects_release_asset_urls_outside_expected_github_endpoint() {
         let urls = [
-            "http://github.com/vinhnx/VTCode/releases/download/0.150.0/vtcode.tar.gz",
-            "https://example.com/vinhnx/VTCode/releases/download/0.150.0/vtcode.tar.gz",
-            "https://github.com/other/repo/releases/download/0.150.0/vtcode.tar.gz",
-            "https://github.com/vinhnx/VTCode/releases/download/0.150.0/vtcode.tar.gz?token=secret",
-            "https://github.com:444/vinhnx/VTCode/releases/download/0.150.0/vtcode.tar.gz",
+            "http://github.com/leynos/vtcode/releases/download/0.150.0/diapason.tar.gz",
+            "https://example.com/leynos/vtcode/releases/download/0.150.0/diapason.tar.gz",
+            "https://github.com/other/repo/releases/download/0.150.0/diapason.tar.gz",
+            "https://github.com/leynos/vtcode/releases/download/0.150.0/diapason.tar.gz?token=secret",
+            "https://github.com:444/leynos/vtcode/releases/download/0.150.0/diapason.tar.gz",
         ];
 
         for url in urls {
@@ -350,8 +350,8 @@ mod tests {
 
     #[test]
     fn selects_linux_tar_gz_and_windows_zip() {
-        let linux = vec![asset("vtcode-1.0.0-x86_64-unknown-linux-musl.tar.gz")];
-        let windows = vec![asset("vtcode-1.0.0-x86_64-pc-windows-msvc.zip")];
+        let linux = vec![asset("diapason-1.0.0-x86_64-unknown-linux-musl.tar.gz")];
+        let windows = vec![asset("diapason-1.0.0-x86_64-pc-windows-msvc.zip")];
 
         assert_eq!(select_archive_asset(&linux, "x86_64-unknown-linux-musl").expect("linux").1, ArchiveKind::TarGz);
         assert_eq!(select_archive_asset(&windows, "x86_64-pc-windows-msvc").expect("windows").1, ArchiveKind::Zip);
@@ -361,8 +361,8 @@ mod tests {
     fn rejects_checksums_signatures_and_wrong_targets() {
         let assets = vec![
             asset("checksums.txt"),
-            asset("vtcode-1.0.0-x86_64-pc-windows-msvc.sha256"),
-            asset("vtcode-1.0.0-x86_64-pc-windows-msvc.zip.sig"),
+            asset("diapason-1.0.0-x86_64-pc-windows-msvc.sha256"),
+            asset("diapason-1.0.0-x86_64-pc-windows-msvc.zip.sig"),
             asset("other-1.0.0-aarch64-pc-windows-msvc.zip"),
         ];
 
@@ -374,35 +374,35 @@ mod tests {
     #[test]
     fn ignores_legacy_compat_assets_and_selects_real_archive() {
         // The legacy updater compatibility bridge publishes a raw executable
-        // named `compat-vtcode-<v>-<target>.tar.gz.compat` (it sorts before the
+        // named `compat-diapason-<v>-<target>.tar.gz.compat` (it sorts before the
         // normal archive so the broken v0.141.0-v0.141.4 `self_update` matcher
         // picks it). The v0.141.5+ matcher must IGNORE it: the name does not
-        // `starts_with("vtcode-")` and does not `ends_with("{target}.tar.gz")`,
+        // `starts_with("diapason-")` and does not `ends_with("{target}.tar.gz")`,
         // so exactly one candidate (the real archive) remains.
         let assets = vec![
             asset("checksums.txt"),
-            asset("compat-vtcode-1.0.0-aarch64-apple-darwin.tar.gz.compat"),
-            asset("vtcode-1.0.0-aarch64-apple-darwin.sha256"),
-            asset("vtcode-1.0.0-aarch64-apple-darwin.tar.gz"),
+            asset("compat-diapason-1.0.0-aarch64-apple-darwin.tar.gz.compat"),
+            asset("diapason-1.0.0-aarch64-apple-darwin.sha256"),
+            asset("diapason-1.0.0-aarch64-apple-darwin.tar.gz"),
         ];
 
         let (selected, kind) = select_archive_asset(&assets, "aarch64-apple-darwin").expect("asset");
 
-        assert_eq!(selected.name, "vtcode-1.0.0-aarch64-apple-darwin.tar.gz");
+        assert_eq!(selected.name, "diapason-1.0.0-aarch64-apple-darwin.tar.gz");
         assert_eq!(kind, ArchiveKind::TarGz);
     }
 
     #[test]
     fn ignores_legacy_compat_assets_for_windows() {
         let assets = vec![
-            asset("compat-vtcode-1.0.0-x86_64-pc-windows-msvc.tar.gz.compat"),
-            asset("vtcode-1.0.0-x86_64-pc-windows-msvc.sha256"),
-            asset("vtcode-1.0.0-x86_64-pc-windows-msvc.zip"),
+            asset("compat-diapason-1.0.0-x86_64-pc-windows-msvc.tar.gz.compat"),
+            asset("diapason-1.0.0-x86_64-pc-windows-msvc.sha256"),
+            asset("diapason-1.0.0-x86_64-pc-windows-msvc.zip"),
         ];
 
         let (selected, kind) = select_archive_asset(&assets, "x86_64-pc-windows-msvc").expect("asset");
 
-        assert_eq!(selected.name, "vtcode-1.0.0-x86_64-pc-windows-msvc.zip");
+        assert_eq!(selected.name, "diapason-1.0.0-x86_64-pc-windows-msvc.zip");
         assert_eq!(kind, ArchiveKind::Zip);
     }
 }

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
-import { runVtcodeCommand } from "../utils/vtcodeRunner";
+import { runDiapasonCommand } from "../utils/diapasonRunner";
 
 /**
  * Command to list all files in the workspace
@@ -9,7 +9,7 @@ import { runVtcodeCommand } from "../utils/vtcodeRunner";
  * Respects .gitignore files by default.
  */
 export class ListFilesCommand extends BaseCommand {
-    public readonly id = "vtcode.listFiles";
+    public readonly id = "diapason.listFiles";
     public readonly title = "List Files";
     public readonly description = "List all files in the workspace";
     public readonly icon = "list-flat";
@@ -31,13 +31,13 @@ export class ListFilesCommand extends BaseCommand {
                 args.push("--exclude", excludeStr.trim());
             }
 
-            await runVtcodeCommand(args, {
+            await runDiapasonCommand(args, {
                 title: "Listing workspace files…",
                 output: context.output,
             });
 
             void vscode.window.showInformationMessage(
-                "File listing completed. Check the VT Code output channel for results."
+                "File listing completed. Check the Diapason output channel for results."
             );
         } catch (error) {
             this.handleCommandError("list files", error);

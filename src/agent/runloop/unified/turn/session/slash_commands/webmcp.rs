@@ -1,13 +1,13 @@
 use anyhow::Result;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 
 use crate::agent::runloop::unified::webmcp::ActiveWebmcpBridge;
 
 use super::{SlashCommandContext, SlashCommandControl};
 
 const BROWSER_PAIRING_INSTRUCTION: &str =
-    "In the WebMCP editor, open Connect to a local VT Code bridge and paste the WebSocket URL and pairing code above.";
+    "In the WebMCP editor, open Connect to a local Diapason bridge and paste the WebSocket URL and pairing code above.";
 const CONFIRM_WEBMCP_ACTION: &str = "webmcp:confirm";
 const CANCEL_WEBMCP_ACTION: &str = "webmcp:cancel";
 const WEBMCP_COMMAND_GUIDE: &[&str] = &[
@@ -19,7 +19,7 @@ const WEBMCP_COMMAND_GUIDE: &[&str] = &[
     "  /webmcp tools                             List available browser tools.",
     "  /webmcp roots                             Show configured workspace-root guidance.",
     "  /webmcp unpair                            Confirm and disconnect the bridge.",
-    "Active agent turns require pairing from this same VT Code TUI session.",
+    "Active agent turns require pairing from this same Diapason TUI session.",
     "The browser origin must exactly match the origin entered in the pair command.",
     "Pairing another configured origin keeps existing authenticated sessions active.",
 ];
@@ -33,7 +33,7 @@ pub(crate) async fn handle_start_webmcp(
         ctx.webmcp_bridge.as_ref().map(bridge_details)
     {
         ctx.renderer
-            .line(MessageStyle::Info, "WebMCP is already listening in this VT Code session.")?;
+            .line(MessageStyle::Info, "WebMCP is already listening in this Diapason session.")?;
 
         if !replace && pairing_origin != origin {
             let Some(bridge) = ctx.webmcp_bridge.as_mut() else {
@@ -57,7 +57,7 @@ pub(crate) async fn handle_start_webmcp(
         }
 
         ctx.renderer
-            .line(MessageStyle::Info, "WebMCP is listening in the active VT Code session.")?;
+            .line(MessageStyle::Info, "WebMCP is listening in the active Diapason session.")?;
         render_bridge_details(&mut ctx, &endpoint, &pairing_origin, &pairing_code, expires_in_secs)?;
 
         if !replace {
@@ -131,7 +131,7 @@ pub(crate) async fn handle_start_webmcp(
     ctx.renderer.line(MessageStyle::Info, BROWSER_PAIRING_INSTRUCTION)?;
     ctx.renderer.line(
         MessageStyle::Info,
-        "Browser writes remain proposals; VT Code's terminal permission flow is authoritative.",
+        "Browser writes remain proposals; Diapason's terminal permission flow is authoritative.",
     )?;
     Ok(SlashCommandControl::Continue)
 }
@@ -141,7 +141,7 @@ pub(crate) async fn handle_show_webmcp_status(mut ctx: SlashCommandContext<'_>) 
         ctx.webmcp_bridge.as_ref().map(bridge_details)
     {
         ctx.renderer
-            .line(MessageStyle::Info, "WebMCP is listening in the active VT Code session.")?;
+            .line(MessageStyle::Info, "WebMCP is listening in the active Diapason session.")?;
         render_bridge_details(&mut ctx, &endpoint, &pairing_origin, &pairing_code, expires_in_secs)?;
         ctx.renderer.line(MessageStyle::Info, BROWSER_PAIRING_INSTRUCTION)?;
         ctx.renderer.line(
@@ -173,7 +173,7 @@ pub(crate) async fn handle_stop_webmcp(mut ctx: SlashCommandContext<'_>) -> Resu
     };
 
     ctx.renderer
-        .line(MessageStyle::Info, "WebMCP is listening in the active VT Code session.")?;
+        .line(MessageStyle::Info, "WebMCP is listening in the active Diapason session.")?;
     render_bridge_details(&mut ctx, &endpoint, &pairing_origin, &pairing_code, expires_in_secs)?;
 
     if !ctx.renderer.supports_inline_ui() {

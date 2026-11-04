@@ -4,10 +4,10 @@ use super::recovery_guidance::{
     recovery_empty_response_fallback_message,
 };
 use anyhow::Result;
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::MessageStyle;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::MessageStyle;
 
 use crate::agent::runloop::unified::run_loop_context::RecoveryMode;
 use crate::agent::runloop::unified::turn::context::{
@@ -172,7 +172,7 @@ pub(crate) async fn handle_turn_processing_result<'a>(
             )?;
             record_assistant_tool_calls(params.ctx.working_history, &tool_calls, history_len_before_assistant);
             tracing::info!(
-                target: "vtcode.turn.metrics",
+                target: "diapason.turn.metrics",
                 metric = "tool_call_turn_start",
                 run_id = %params.ctx.harness_state.run_id.0,
                 turn_id = %params.ctx.harness_state.turn_id.0,
@@ -197,7 +197,7 @@ pub(crate) async fn handle_turn_processing_result<'a>(
 
             if let Some(res) = outcome {
                 tracing::info!(
-                    target: "vtcode.turn.metrics",
+                    target: "diapason.turn.metrics",
                     metric = "tool_call_turn_outcome",
                     run_id = %params.ctx.harness_state.run_id.0,
                     turn_id = %params.ctx.harness_state.turn_id.0,
@@ -216,7 +216,7 @@ pub(crate) async fn handle_turn_processing_result<'a>(
             )
             .await;
             tracing::info!(
-                target: "vtcode.turn.metrics",
+                target: "diapason.turn.metrics",
                 metric = "tool_call_turn_outcome",
                 run_id = %params.ctx.harness_state.run_id.0,
                 turn_id = %params.ctx.harness_state.turn_id.0,
@@ -435,7 +435,7 @@ mod tests {
     use crate::agent::runloop::unified::turn::tool_outcomes::helpers::LoopTracker;
     use crate::agent::runloop::unified::turn::turn_loop::RECOVERY_CONTRACT_VIOLATION_REASON;
     use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
-    use vtcode_core::llm::provider as uni;
+    use diapason_core::llm::provider as uni;
 
     fn prepared_command_tool_call() -> PreparedAssistantToolCall {
         PreparedAssistantToolCall::new(uni::ToolCall::function(
@@ -706,7 +706,7 @@ mod tests {
             "call_1".to_string(),
             serde_json::json!({
                 "path": "src/main.rs",
-                "spool_path": ".vtcode/context/tool_outputs/read_1.txt",
+                "spool_path": ".diapason/context/tool_outputs/read_1.txt",
                 "preview": "fallback-line-1\nfallback-line-2"
             })
             .to_string(),
@@ -791,7 +791,7 @@ mod tests {
 <minimax:tool_call>
 <invoke name="apply_patch">
 <parameter name="action">read</parameter>
-<parameter name="path">crates/codegen/vtcode-core/src/core/agent/runtime/mod.rs</parameter>
+<parameter name="path">crates/codegen/diapason-core/src/core/agent/runtime/mod.rs</parameter>
 </invoke>
 </minimax:tool_call>
 "#

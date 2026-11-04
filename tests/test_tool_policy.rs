@@ -17,12 +17,12 @@
 
 use anyhow::{Context, Result};
 use assert_fs::TempDir;
+use diapason_core::config::constants::tools;
+use diapason_core::utils::colors::style;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use vtcode_core::config::constants::tools;
-use vtcode_core::utils::colors::style;
 
 /// Tool execution policy
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -37,7 +37,7 @@ pub enum ToolPolicy {
     Deny,
 }
 
-/// Tool policy configuration stored in ~/.vtcode/tool-policy.json
+/// Tool policy configuration stored in ~/.diapason/tool-policy.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolPolicyConfig {
     /// Configuration version for future compatibility

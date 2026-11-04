@@ -1,8 +1,8 @@
-# Context Engineering in VT Code
+# Context Engineering in Diapason
 
 ## Overview
 
-VT Code implements context engineering principles based on
+Diapason implements context engineering principles based on
 [Anthropic's research](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
 to manage the "attention budget" of large language models effectively. This
 document explains the strategies and features we use to prevent context rot and
@@ -47,21 +47,21 @@ pass to the model on each turn:
 context engineering is **iterative** - the curation phase happens each time we
 decide what to pass to the model.
 
-## VT Code's Three Context Primitives
+## Diapason's Three Context Primitives
 
-VT Code now treats long-horizon context management as three separate jobs:
+Diapason now treats long-horizon context management as three separate jobs:
 
-- **Memory** keeps durable facts outside the live prompt. VT Code uses
+- **Memory** keeps durable facts outside the live prompt. Diapason uses
   persistent per-repository memory under `/memories` (`memory_summary.md`,
   `preferences.md`, `repository-facts.md`, `notes/**`) plus the session-local
   `SessionMemoryEnvelope` used for resume and summarized forks.
 - **Compaction** shrinks the whole in-session transcript when token pressure
-  gets high. VT Code can use provider-native compaction where available, and
+  gets high. Diapason can use provider-native compaction where available, and
   otherwise falls back to local compaction that preserves a structured summary,
   recent user prompts, and the session memory envelope.
 - **Tool-result clearing / offloading** keeps re-fetchable tool output out of
-  the live window. VT Code does this locally with split tool results and output
-  spooling, and on Anthropic it can now emit provider-native
+  the live window. Diapason does this locally with split tool results and
+  output spooling, and on Anthropic it can now emit provider-native
   `clear_tool_uses_*` edits alongside native compaction.
 
 Those layers compose, but they solve different problems:
@@ -73,8 +73,8 @@ Those layers compose, but they solve different problems:
 
 ## Accuracy Optimization Loop
 
-VT Code treats LLM optimization as a diagnosis problem, not a fixed ladder from
-prompt engineering to RAG to fine-tuning.
+Diapason treats LLM optimization as a diagnosis problem, not a fixed ladder
+from prompt engineering to RAG to fine-tuning.
 
 ### Start with a baseline
 
@@ -96,7 +96,7 @@ When an eval fails, classify the issue before changing the stack:
     inconsistently, ignores instructions, uses the wrong tone, or reasons
     unreliably. Improve instructions, examples, decomposition, or training.
 
-These levers stack, but they do different jobs. VT Code should not add
+These levers stack, but they do different jobs. Diapason should not add
 retrieval or longer prompts unless the failure suggests a context problem.
 
 ### Retrieval and long-context guidance
@@ -156,7 +156,7 @@ Instead of pre-loading everything, we use lightweight references:
 We track token usage across the context window to prevent exceeding limits:
 
 ```rust
-use vtcode_core::core::token_budget::{TokenBudgetManager, TokenBudgetConfig, ContextComponent};
+use diapason_core::core::token_budget::{TokenBudgetManager, TokenBudgetConfig, ContextComponent};
 
 // Initialize tracker - use latest models from docs/models.json
 let config = TokenBudgetConfig::for_model("gpt-5-mini", 400_000);
@@ -187,7 +187,7 @@ if manager.is_alert_threshold_exceeded().await {
 The decision tracker maintains persistent memory across turns:
 
 ```rust
-use vtcode_core::core::decision_tracker::DecisionTracker;
+use diapason_core::core::decision_tracker::DecisionTracker;
 
 let mut tracker = DecisionTracker::new();
 
@@ -196,7 +196,7 @@ let decision_id = tracker.record_decision(
     "Reading config file to understand project structure".to_string(),
     Action::ToolCall {
         name: "exec_command".to_string(),
-        args: json!({"cmd": "sed -n '1,120p' vtcode.toml"}),
+        args: json!({"cmd": "sed -n '1,120p' config.toml"}),
         expected_outcome: "Configuration loaded".to_string(),
     },
     Some(0.9), // confidence score
@@ -283,7 +283,7 @@ preserve_in_compression = true
 ```
 
 `context.max_context_tokens` is the session prompt safety budget. With no
-explicit harness compaction threshold, VT Code compacts at 90% of the smaller
+explicit harness compaction threshold, Diapason compacts at 90% of the smaller
 of this budget and the provider's hard context capacity. Set it to `0` only to
 restore provider-only threshold resolution.
 

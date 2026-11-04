@@ -4,16 +4,16 @@
 //!   - Session overview aggregation stays in this root.
 //!   - Timeline row shaping, redaction, and HTML presentation live in `timeline/presentation.rs`.
 //! - Constraints: Keep thread-event exports preferred over conversation fallback exports, and preserve redaction-on-export behavior.
-//! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode timeline`
+//! - Verify: `cargo check -p diapason && cargo test -p diapason --bin diapason timeline`
 
 use anyhow::Result;
+use diapason_core::core::threads::ThreadEventRecord;
+use diapason_core::exec::events::{PatchChangeKind, ThreadEvent, ThreadItemDetails};
+use diapason_core::llm::provider as uni;
 use serde::Serialize;
 use serde_json::Value;
 #[cfg(test)]
 use serde_json::json;
-use vtcode_core::core::threads::ThreadEventRecord;
-use vtcode_core::exec::events::{PatchChangeKind, ThreadEvent, ThreadItemDetails};
-use vtcode_core::llm::provider as uni;
 
 #[path = "timeline/presentation.rs"]
 mod presentation;
@@ -227,8 +227,8 @@ fn build_session_overview(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_core::core::threads::{ThreadEventRecord, ThreadId};
-    use vtcode_core::exec::events::{
+    use diapason_core::core::threads::{ThreadEventRecord, ThreadId};
+    use diapason_core::exec::events::{
         AgentMessageItem, CommandExecutionItem, CommandExecutionStatus, ItemCompletedEvent, ItemStartedEvent,
         ThreadItem, ThreadStartedEvent, ToolCallStatus, ToolInvocationItem, TurnCompletedEvent, Usage,
     };
@@ -371,8 +371,8 @@ mod tests {
         assert!(html.contains("id=\"category-filter\""));
         assert!(html.contains("id=\"status-filter\""));
         assert!(html.contains("id=\"hide-low-signal\""));
-        assert!(html.contains("vtcode-session-data"));
-        assert!(html.contains("vtcode-session-log-data"));
+        assert!(html.contains("diapason-session-data"));
+        assert!(html.contains("diapason-session-log-data"));
         assert!(!html.contains("http://"));
         assert!(!html.contains("https://"));
         assert!(!html.contains("<script>alert('xss')</script>"));
@@ -426,7 +426,7 @@ mod tests {
         assert!(!html.contains("border-top:4px solid var(--accent)"));
         assert!(html.contains("Session Overview"));
         assert!(html.contains("Shared Thread"));
-        assert!(html.contains("VT Code Thread Share"));
+        assert!(html.contains("Diapason Thread Share"));
         assert!(html.contains("Search &amp; Filters"));
         assert!(html.contains("Open redacted JSON log"));
     }
@@ -529,8 +529,8 @@ mod tests {
                 turn_id: None,
                 submission_id: None,
                 title: "Assistant message".to_string(),
-                summary: "This is VT Code.".to_string(),
-                body: "This is VT Code.\n\nKey features:\n- Safe shell execution\n- Thread timeline exports"
+                summary: "This is Diapason.".to_string(),
+                body: "This is Diapason.\n\nKey features:\n- Safe shell execution\n- Thread timeline exports"
                     .to_string(),
                 detail_json: Some("{\"role\":\"Assistant\"}".to_string()),
                 is_low_signal: false,
@@ -557,7 +557,7 @@ mod tests {
                         id: "cmd-1".to_string(),
                         details: ThreadItemDetails::CommandExecution(Box::new(CommandExecutionItem {
                             command: "cargo check".to_string(),
-                            arguments: Some(json!({"args": ["-p", "vtcode"]})),
+                            arguments: Some(json!({"args": ["-p", "diapason"]})),
                             aggregated_output: "Finished dev [unoptimized]".to_string(),
                             exit_code: Some(0),
                             status: CommandExecutionStatus::Completed,
@@ -571,7 +571,7 @@ mod tests {
                 id: "cmd-1".to_string(),
                 details: ThreadItemDetails::CommandExecution(Box::new(CommandExecutionItem {
                     command: "cargo check".to_string(),
-                    arguments: Some(json!({"args": ["-p", "vtcode"]})),
+                    arguments: Some(json!({"args": ["-p", "diapason"]})),
                     aggregated_output: "Finished dev [unoptimized]".to_string(),
                     exit_code: Some(0),
                     status: CommandExecutionStatus::Completed,

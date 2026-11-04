@@ -1,8 +1,8 @@
-# Context-Generic Programming (CGP) in VT Code
+# Context-Generic Programming (CGP) in Diapason
 
 ## Overview
 
-VT Code applies the **Context-Generic Programming** pattern from the
+Diapason applies the **Context-Generic Programming** pattern from the
 [RustLab 2025 talk](https://contextgeneric.dev/blog/rustlab-2025-coherence/) to
 its tool runtime system and LLM provider construction path. The pattern solves
 two concrete architectural problems:
@@ -13,7 +13,7 @@ two concrete architectural problems:
   explosion.
 - The same LLM provider metadata and construction rules were duplicated across
   factory registration, zero-sized provider config types, and the
-  `vtcode-core::llm::config_adapter` layer.
+  `diapason-core::llm::config_adapter` layer.
 
 ## Core Concepts
 
@@ -71,7 +71,7 @@ delegate_components!(InteractiveCtx {
 
 ### 5. Consumer Traits (blanket impls)
 
-The RustLab pattern does not stop at provider traits. VT Code restores an
+The RustLab pattern does not stop at provider traits. Diapason restores an
 ergonomic API through blanket consumer traits implemented for any context with
 the required component wiring:
 
@@ -208,7 +208,7 @@ Ownership-first rule: prefer `wrap_native_tool_interactive()` /
 Use this path when the tool instance already has genuine shared ownership.
 
 ```rust
-use vtcode_core::components::wrap_tool_interactive;
+use diapason_core::components::wrap_tool_interactive;
 
 let tool: Arc<dyn Tool> = Arc::new(MyTool::new());
 let facade = wrap_tool_interactive(tool, workspace_root);
@@ -247,7 +247,7 @@ let facade = ToolFacade::new(MyCtx);
 ### Wrapping a concrete tool natively
 
 ```rust
-use vtcode_core::components::wrap_native_tool_interactive;
+use diapason_core::components::wrap_native_tool_interactive;
 
 let facade = wrap_native_tool_interactive(MyTool::new(), workspace_root);
 let reg = ToolRegistration::from_cgp_tool("my_tool", CapabilityLevel::Basic, facade);
@@ -292,7 +292,7 @@ the runtime string-keyed lookup model.
 ### LLM contexts
 
 The zero-sized provider config types in
-`crates/codegen/vtcode-core/src/llm/provider_config.rs` are the CGP contexts:
+`crates/codegen/diapason-core/src/llm/provider_config.rs` are the CGP contexts:
 
 - `GeminiProviderConfig`
 - `OpenAIProviderConfig`
@@ -307,8 +307,8 @@ The zero-sized provider config types in
 - `LmStudioProviderConfig`
 - `ZAIProviderConfig`
 
-Each context is wired once in `crates/codegen/vtcode-core/src/llm/cgp.rs`, then
-consumed by:
+Each context is wired once in `crates/codegen/diapason-core/src/llm/cgp.rs`,
+then consumed by:
 
 - `register_builtin_cgp_providers(...)` and
   `LLMFactory::register_cgp_provider::<Ctx>()` for built-in and custom
@@ -323,7 +323,7 @@ This keeps public entrypoints stable while removing the old `BuiltinProvider`/
 types now serve directly as the metadata providers too, so there is no extra
 descriptor-to-metadata adapter layer.
 
-`vtcode-core::llm::config_adapter` uses the same `HasComponent` substrate for
+`diapason-core::llm::config_adapter` uses the same `HasComponent` substrate for
 its `FactoryConfigProjectionComponent`, so the external config adapter does not
 carry a second parallel lookup trait.
 
@@ -421,7 +421,7 @@ The production runtime wiring stays conservative for now:
 ### Key APIs
 
 ```rust
-use vtcode_core::tools::CgpRuntimeMode;
+use diapason_core::tools::CgpRuntimeMode;
 
 // Wrap all existing tools through CGP pipeline
 tool_registry.enable_cgp_pipeline(CgpRuntimeMode::Interactive).await;
@@ -436,9 +436,9 @@ tool_registry.register_cgp_tool(
 
 ## File Locations
 
-- `crates/codegen/vtcode-core/src/components.rs` — CGP substrate, provider
+- `crates/codegen/diapason-core/src/components.rs` — CGP substrate, provider
   traits, facades, runtime contexts
-- `crates/codegen/vtcode-core/src/tools/registry/cgp_facade.rs` — Registry
+- `crates/codegen/diapason-core/src/tools/registry/cgp_facade.rs` — Registry
   integration (enable/register)
 - `src/agent/runloop/unified/session_setup/init.rs` — Bootstrap wiring
 

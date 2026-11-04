@@ -1,5 +1,5 @@
 use anyhow::Result;
-use vtcode_core::cli::args::AgentClientProtocolTarget;
+use diapason_core::cli::args::AgentClientProtocolTarget;
 
 /// Detect available IDE for automatic connection when --ide flag is used.
 pub(crate) fn detect_available_ide() -> Result<Option<AgentClientProtocolTarget>> {

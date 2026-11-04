@@ -1,9 +1,10 @@
 # Subagents
 
-VT Code subagents let the main session delegate bounded work into child threads
-with their own context, tool restrictions, runtime config overlay, and archived
-history. They are the closest VT Code feature to Claude Code subagents and
-Codex subagent workflows, but VT Code keeps its own CLI and runtime semantics.
+Diapason subagents let the main session delegate bounded work into child
+threads with their own context, tool restrictions, runtime config overlay, and
+archived history. They are the closest Diapason feature to Claude Code
+subagents and Codex subagent workflows, but Diapason keeps its own CLI and
+runtime semantics.
 
 Subagents help you:
 
@@ -15,16 +16,16 @@ Subagents help you:
 - inspect delegated child threads with `/agent`
 - switch the main session's active primary agent with `Tab`
 
-VT Code ships with built-in primary agents and subagents, and can also load
-custom agents from `.vtcode`, `.claude`, `.codex`, and enabled plugins.
+Diapason ships with built-in primary agents and subagents, and can also load
+custom agents from `.diapason`, `.claude`, `.codex`, and enabled plugins.
 
 The same agent specification format can describe delegated child agents and
 primary agents. A subagent is delegated child work with its own thread. A
 primary agent controls the main session and changes the request-time
-instructions, tools, permission notes, model, and reasoning effort that VT Code
-applies for subsequent turns.
+instructions, tools, permission notes, model, and reasoning effort that
+Diapason applies for subsequent turns.
 
-For new `.vtcode/agents/*.md` files, use VT Code tool ids in frontmatter.
+For new `.diapason/agents/*.md` files, use Diapason tool ids in frontmatter.
 Claude-style names such as `Read`, `Grep`, `Glob`, `Edit`, `Write`, and `Bash`
 are compatibility imports for `.claude` files, not the recommended VT
 Code-native format.
@@ -85,14 +86,14 @@ Code can merge back into the parent session memory:
 ```
 
 Use `- None` for empty sections. If a child reply does not follow this
-contract, VT Code preserves the raw summary as delegation notes but skips
+contract, Diapason preserves the raw summary as delegation notes but skips
 structured merge.
 
 ## Quickstart
 
 1. Run `/agents`.
 2. Choose `Create project agent` or `Create user agent`.
-3. VT Code writes a scaffold to `.vtcode/agents/<name>.md` or the canonical
+3. Diapason writes a scaffold to `.diapason/agents/<name>.md` or the canonical
    user config directory's `agents/<name>.md`.
 4. Edit the scaffold. A minimal read-only reviewer looks like this:
 
@@ -132,28 +133,28 @@ structured merge.
 
 ## Discovery And Precedence
 
-VT Code loads subagents from highest to lowest precedence:
+Diapason loads subagents from highest to lowest precedence:
 
 | Priority | Location                                      | Format                | Scope                       |
 | -------- | --------------------------------------------- | --------------------- | --------------------------- |
-| 1        | `.vtcode/agents/*.md`                         | VT Code markdown      | current project             |
+| 1        | `.diapason/agents/*.md`                       | Diapason markdown     | current project             |
 | 2        | `.claude/agents/*.md`                         | Claude-style markdown | current project             |
 | 3        | `.codex/agents/*.toml`                        | Codex TOML            | current project             |
-| 4        | canonical user config directory/`agents/*.md` | VT Code markdown      | all projects                |
+| 4        | canonical user config directory/`agents/*.md` | Diapason markdown     | all projects                |
 | 5        | `~/.claude/agents/*.md`                       | Claude-style markdown | all projects                |
 | 6        | `~/.codex/agents/*.toml`                      | Codex TOML            | all projects                |
 | 7        | plugin agents                                 | plugin-provided       | where the plugin is enabled |
 | 8        | built-ins                                     | internal              | always available            |
 
 If two definitions share the same `name`, the higher-priority source wins. At
-the same priority, VT Code-native `.vtcode` definitions win over imported
+the same priority, Diapason-native `.diapason` definitions win over imported
 `.claude` or `.codex` definitions.
 
 ## File Formats
 
 ### Markdown Agents
 
-Use Markdown with YAML frontmatter in `.vtcode/agents/` or `.claude/agents/`:
+Use Markdown with YAML frontmatter in `.diapason/agents/` or `.claude/agents/`:
 
 ```markdown
 ---
@@ -175,7 +176,7 @@ and return a concise summary with any remaining risks.
 
 ### Codex TOML Agents
 
-VT Code also loads Codex-style TOML agents from `.codex/agents/`:
+Diapason also loads Codex-style TOML agents from `.codex/agents/`:
 
 ```toml
 name = "reviewer"
@@ -196,27 +197,27 @@ auto = []
 deny = ["write_stdin", "apply_patch"]
 ```
 
-VT Code reads `developer_instructions` and also accepts `instructions` for
+Diapason reads `developer_instructions` and also accepts `instructions` for
 compatibility.
 
 Imported Claude-style agent files may still use aliases such as `Read`, `Write`,
-`Edit`, `Grep`, `Glob`, and `Bash`. VT Code normalizes those aliases to VT
-Code tool names when it loads the file. For new VT Code-native agent files,
-write the VT Code tool names directly.
+`Edit`, `Grep`, `Glob`, and `Bash`. Diapason normalizes those aliases to VT
+Code tool names when it loads the file. For new Diapason-native agent files,
+write the Diapason tool names directly.
 
-### VT Code Tool Names
+### Diapason Tool Names
 
-For `.vtcode/agents/*.md`, prefer the exact VT Code tool ids returned by
-`vtcode schema tools`.
+For `.diapason/agents/*.md`, prefer the exact Diapason tool ids returned by
+`diapason schema tools`.
 
 ```bash
-vtcode schema tools
-vtcode schema tools --name exec_command --name write_stdin --name apply_patch --name code_search
+diapason schema tools
+diapason schema tools --name exec_command --name write_stdin --name apply_patch --name code_search
 ```
 
 Common starting points:
 
-| Use case                    | Recommended VT Code tool ids                                         |
+| Use case                    | Recommended Diapason tool ids                                        |
 | --------------------------- | -------------------------------------------------------------------- |
 | Read-only review            | `exec_command`, advanced `code_search`                               |
 | Read plus shell execution   | `exec_command`, `write_stdin`, advanced `code_search`                |
@@ -226,7 +227,7 @@ Common starting points:
 
 Compatibility alias mapping for imported `.claude` agents:
 
-| Claude-style name         | VT Code tool id                      |
+| Claude-style name         | Diapason tool id                     |
 | ------------------------- | ------------------------------------ |
 | `Read`                    | `exec_command` shell file inspection |
 | `Grep`                    | `exec_command` shell `rg` search     |
@@ -241,27 +242,27 @@ Compatibility alias mapping for imported `.claude` agents:
 
 Only `name` and `description` are required.
 
-| Field                                  | Purpose                                                               | Notes                                                                                                                            |
-| -------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                                 | unique agent identifier                                               | use lowercase letters, digits, and hyphens                                                                                       |
-| `description`                          | delegation hint for VT Code and the model                             | include phrases like "use proactively" when you want read-only delegation to be attractive                                       |
-| `mode`                                 | agent availability                                                    | `primary`, `subagent`, or `all`; omitted mode defaults to `subagent`                                                             |
-| `tools`                                | allowlist of tool names                                               | use VT Code tool ids from `vtcode schema tools`, such as `exec_command`, `write_stdin`, `apply_patch`, or advanced `code_search` |
-| `disallowedTools` / `disallowed_tools` | denylist removed from inherited or allowed tools                      | use the same VT Code tool ids as `tools`; applied before runtime filtering                                                       |
-| `model`                                | model override                                                        | defaults to `inherit`; also accepts `small`, `haiku`, `sonnet`, `opus`, or a full model id                                       |
-| `color`                                | TUI color metadata                                                    | optional; accepts simple color names such as `blue`, hex like `#4f8fd8`, or Git-style fg/bg strings such as `white #4f8fd8`      |
-| `aliases`                              | alternate names for lookup                                            | exact `name` matches still win over aliases                                                                                      |
-| `reasoning_effort`                     | per-agent reasoning override                                          | `effort` and `model_reasoning_effort` are also accepted                                                                          |
-| `permissions`                          | granular permission policy                                            | required; set `default` plus optional `allow`, `ask`, `auto`, and `deny` tool lists                                              |
-| `skills`                               | skills to preload                                                     | primary agents replace the active skill set while selected; subagents preload skills into the child context                      |
-| `mcpServers` / `mcp_servers`           | MCP servers                                                           | primary agents can add inline providers while active; subagents can use named or inline providers in the child config overlay    |
-| `hooks`                                | lifecycle hooks                                                       | primary agents support main-session events; subagents support child-thread events                                                |
-| `memory`                               | persistent memory scope                                               | `user`, `project`, or `local`                                                                                                    |
-| `background`                           | marks an agent as eligible for the managed background subprocess flow | launch these agents with `spawn_background_subprocess`; `spawn_agent` stays foreground-only                                      |
-| `maxTurns`                             | per-agent turn ceiling                                                | can also be overridden per call                                                                                                  |
-| `nickname_candidates`                  | preferred thread labels                                               | shown in `/agent` and `/agents` thread lists                                                                                     |
-| `initialPrompt`                        | default task prompt when the spawn request omits one                  | useful for compatibility imports                                                                                                 |
-| `isolation`                            | workspace isolation for child agents                                  | `worktree` creates a git worktree under `.vtcode/worktrees/` so the child runs in its own working tree                           |
+| Field                                  | Purpose                                                               | Notes                                                                                                                               |
+| -------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                                 | unique agent identifier                                               | use lowercase letters, digits, and hyphens                                                                                          |
+| `description`                          | delegation hint for Diapason and the model                            | include phrases like "use proactively" when you want read-only delegation to be attractive                                          |
+| `mode`                                 | agent availability                                                    | `primary`, `subagent`, or `all`; omitted mode defaults to `subagent`                                                                |
+| `tools`                                | allowlist of tool names                                               | use Diapason tool ids from `diapason schema tools`, such as `exec_command`, `write_stdin`, `apply_patch`, or advanced `code_search` |
+| `disallowedTools` / `disallowed_tools` | denylist removed from inherited or allowed tools                      | use the same Diapason tool ids as `tools`; applied before runtime filtering                                                         |
+| `model`                                | model override                                                        | defaults to `inherit`; also accepts `small`, `haiku`, `sonnet`, `opus`, or a full model id                                          |
+| `color`                                | TUI color metadata                                                    | optional; accepts simple color names such as `blue`, hex like `#4f8fd8`, or Git-style fg/bg strings such as `white #4f8fd8`         |
+| `aliases`                              | alternate names for lookup                                            | exact `name` matches still win over aliases                                                                                         |
+| `reasoning_effort`                     | per-agent reasoning override                                          | `effort` and `model_reasoning_effort` are also accepted                                                                             |
+| `permissions`                          | granular permission policy                                            | required; set `default` plus optional `allow`, `ask`, `auto`, and `deny` tool lists                                                 |
+| `skills`                               | skills to preload                                                     | primary agents replace the active skill set while selected; subagents preload skills into the child context                         |
+| `mcpServers` / `mcp_servers`           | MCP servers                                                           | primary agents can add inline providers while active; subagents can use named or inline providers in the child config overlay       |
+| `hooks`                                | lifecycle hooks                                                       | primary agents support main-session events; subagents support child-thread events                                                   |
+| `memory`                               | persistent memory scope                                               | `user`, `project`, or `local`                                                                                                       |
+| `background`                           | marks an agent as eligible for the managed background subprocess flow | launch these agents with `spawn_background_subprocess`; `spawn_agent` stays foreground-only                                         |
+| `maxTurns`                             | per-agent turn ceiling                                                | can also be overridden per call                                                                                                     |
+| `nickname_candidates`                  | preferred thread labels                                               | shown in `/agent` and `/agents` thread lists                                                                                        |
+| `initialPrompt`                        | default task prompt when the spawn request omits one                  | useful for compatibility imports                                                                                                    |
+| `isolation`                            | workspace isolation for child agents                                  | `worktree` creates a git worktree under `.diapason/worktrees/` so the child runs in its own working tree                            |
 
 ### Field Availability
 
@@ -292,13 +293,13 @@ Subagent-only fields describe child-thread launch behaviour. `background`
 selects the managed background subprocess flow, `maxTurns` limits a delegated
 run, `nickname_candidates` label child threads, `initialPrompt` fills in a
 missing delegated task, and `isolation` controls workspace isolation (set to
-`"worktree"` to run the child in a git worktree under `.vtcode/worktrees/`).
+`"worktree"` to run the child in a git worktree under `.diapason/worktrees/`).
 Primary agents run in the main session, so they do not need child launch
 defaults, child labels, or a separate background or isolation boundary.
 
 ## Model Resolution
 
-VT Code resolves a subagent model in this order:
+Diapason resolves a subagent model in this order:
 
 1. `spawn_agent.model` from the current delegated call
 2. the agent file's `model`
@@ -314,23 +315,23 @@ Special model values:
   parent model
 - `haiku`, `sonnet`, and `opus` map to provider-appropriate siblings of the
   active provider
-- VT Code only honors `spawn_agent.model` when the current user turn explicitly
+- Diapason only honors `spawn_agent.model` when the current user turn explicitly
   asks for that model; opportunistic overrides from the model are ignored
-- if `spawn_agent.model` cannot be resolved, VT Code warns, ignores that
+- if `spawn_agent.model` cannot be resolved, Diapason warns, ignores that
   override, and falls back to the agent file's `model` or the parent session
   model
 
 ## Active Subagent Badges
 
-When one or more child threads are active, VT Code shows each active agent name
-in the TUI header as a full-background badge.
+When one or more child threads are active, Diapason shows each active agent
+name in the TUI header as a full-background badge.
 
 - Set `color` in the agent definition to control that badge color.
-- If the color string includes only one color, VT Code uses it as the badge
+- If the color string includes only one color, Diapason uses it as the badge
   background and chooses a readable foreground automatically.
-- If the color string includes both foreground and background, VT Code uses
+- If the color string includes both foreground and background, Diapason uses
   both directly.
-- If `color` is omitted, VT Code falls back to a default badge color.
+- If `color` is omitted, Diapason falls back to a default badge color.
 
 ## Control Capabilities
 
@@ -338,16 +339,16 @@ in the TUI header as a full-background badge.
 
 - Use `tools` for an allowlist and `disallowedTools` or `disallowed_tools` for
   a denylist.
-- Prefer the exact VT Code tool ids returned by `vtcode schema tools`.
-- For new VT Code-native agent files, do not use Claude-style tool names such as
-  `Read`, `Grep`, `Glob`, `Write`, `Edit`, or `Bash`.
-- Use the narrowest VT Code tool set that fits the job instead of granting
+- Prefer the exact Diapason tool ids returned by `diapason schema tools`.
+- For new Diapason-native agent files, do not use Claude-style tool names such
+  as `Read`, `Grep`, `Glob`, `Write`, `Edit`, or `Bash`.
+- Use the narrowest Diapason tool set that fits the job instead of granting
   broad umbrella access by default.
 - Delegation tools (`spawn_agent`, `send_input`, `wait_agent`, `resume_agent`,
   `close_agent`) are available to a child only while `subagents.max_depth`
   permits deeper nesting; read-only children never receive them.
   `spawn_background_subprocess` stays unavailable to children at any depth.
-- If the agent is effectively read-only, VT Code strips mutating tools at
+- If the agent is effectively read-only, Diapason strips mutating tools at
   runtime even if they are listed.
 
 ### Permissions
@@ -379,29 +380,29 @@ mcpServers:
 ---
 ```
 
-Plugin-provided agents are safer by default: VT Code ignores `hooks`,
+Plugin-provided agents are safer by default: Diapason ignores `hooks`,
 `mcpServers`, and permission policy fields when those fields come from a plugin
 agent file.
 
 ### Persistent Memory
 
-When `memory` is enabled, VT Code uses the same directory scheme for primary
+When `memory` is enabled, Diapason uses the same directory scheme for primary
 agents and subagents:
 
 | Scope     | Directory                                         |
 | --------- | ------------------------------------------------- |
-| `project` | `.vtcode/agent-memory/<agent-name>/`              |
-| `local`   | `.vtcode/agent-memory-local/<agent-name>/`        |
+| `project` | `.diapason/agent-memory/<agent-name>/`            |
+| `local`   | `.diapason/agent-memory-local/<agent-name>/`      |
 | `user`    | user state directory/`agent-memory/<agent-name>/` |
 
 The directory key is the canonical `name`, not an alias.
 
-For subagents, VT Code creates the memory directory when needed and injects a
+For subagents, Diapason creates the memory directory when needed and injects a
 compact appendix for `MEMORY.md`. Memory does not automatically add file-write
 tools, so if the subagent should update memory files you must let it inherit
 write-capable file tools or explicitly allow them.
 
-For primary agents, memory is read-only. VT Code looks for the existing
+For primary agents, memory is read-only. Diapason looks for the existing
 `MEMORY.md`, does not create the directory or file, and appends memory context
 only when that file is present. Primary-agent memory does not grant extra tools
 or permissions.
@@ -423,7 +424,7 @@ Primary agents support these main-session events while selected:
 Primary-agent hooks do not run lifecycle events that belong to the whole
 session or subagent controller: `SessionStart`, `SessionEnd`, `SubagentStart`,
 `SubagentStop`, `task_completion`, and `task_completed`. Put those hooks in
-`vtcode.toml`.
+`config.toml`.
 
 Subagent files are best for child-local hooks such as:
 
@@ -431,7 +432,7 @@ Subagent files are best for child-local hooks such as:
 - `PostToolUse`
 - `Stop`
 
-Parent-session subagent lifecycle hooks belong in `vtcode.toml`:
+Parent-session subagent lifecycle hooks belong in `config.toml`:
 
 ```toml
 [hooks.lifecycle]
@@ -449,7 +450,7 @@ payload fields such as `parent_session_id`, `child_thread_id`, `agent_name`,
 
 ## Runtime Controls
 
-Subagent runtime behavior lives under `[subagents]` in `vtcode.toml`:
+Subagent runtime behavior lives under `[subagents]` in `config.toml`:
 
 ```toml
 [subagents]
@@ -465,7 +466,7 @@ Key behaviors:
 - `max_depth = 1` keeps nested delegation off by default; set `max_depth = 2`
   or higher to allow delegated child agents to spawn their own children
 - `max_concurrent` limits simultaneous child threads at each nesting level
-- `auto_delegate_read_only` controls whether VT Code may proactively launch
+- `auto_delegate_read_only` controls whether Diapason may proactively launch
   read-only agents without an explicit user delegation request
 
 ### Nested Delegation
@@ -493,7 +494,7 @@ child-scoped controller already runs inside the parent's worktree.
 
 ### Automatic Delegation
 
-VT Code keeps delegation rules simple and deterministic:
+Diapason keeps delegation rules simple and deterministic:
 
 - read-only agents may be launched proactively only when
   `subagents.auto_delegate_read_only = true`
@@ -525,9 +526,9 @@ An explicit mention guarantees the selection for that turn:
 @agent-github:reviewer check the PR changes
 ```
 
-VT Code treats a single explicit mention as the selected agent for the turn. If
-the model later tries to spawn a different agent, the call is rejected instead
-of silently switching.
+Diapason treats a single explicit mention as the selected agent for the turn.
+If the model later tries to spawn a different agent, the call is rejected
+instead of silently switching.
 
 `/agent` and `/agents` can inspect agent definitions and delegated child runs.
 `@agent-name` is only for subagent-capable definitions; primary-only agents
@@ -541,7 +542,7 @@ cycle includes discovered agent specs marked with `mode: primary` or
 imported definitions, plugin definitions, and built-ins according to the
 discovery order above.
 
-When you select a primary agent, VT Code keeps you in the main session rather
+When you select a primary agent, Diapason keeps you in the main session rather
 than spawning a child thread. The active primary agent is shown in the header.
 
 Primary agents use the same agent definition format:
@@ -568,12 +569,12 @@ memory: project
 mcpServers:
   - docs-search:
       type: stdio
-      command: vtcode-docs-mcp
+      command: diapason-docs-mcp
 hooks:
   lifecycle:
     user_prompt_submit:
       - hooks:
-          - command: "$VT_PROJECT_DIR/.vtcode/hooks/review-prompt.sh"
+          - command: "$DIAPASON_PROJECT_DIR/.diapason/hooks/review-prompt.sh"
 ---
 
 Review code in the main session. Focus on correctness, risky assumptions,
@@ -593,8 +594,8 @@ agent.
 
 To create a custom primary agent:
 
-1. Create a markdown file in `.vtcode/agents/` (project scope) or the canonical
-   user config directory's `agents/` path (user scope):
+1. Create a markdown file in `.diapason/agents/` (project scope) or the
+   canonical user config directory's `agents/` path (user scope):
 
    ```markdown
    ---
@@ -619,7 +620,7 @@ To create a custom primary agent:
        pre_tool_use:
          - matcher: code_search
            hooks:
-             - command: "$VT_PROJECT_DIR/.vtcode/hooks/log-review-search.sh"
+             - command: "$DIAPASON_PROJECT_DIR/.diapason/hooks/log-review-search.sh"
    ---
 
    You are a code review specialist.
@@ -644,7 +645,7 @@ instructions when selected.
 - `/agents threads` and `/agents active` are aliases for the same in-place
   inspector flow
 - selecting an active child opens a read-only inspector modal; `Esc` closes it
-  and returns to the main VT Code session immediately
+  and returns to the main Diapason session immediately
 - `Ctrl+R` reloads the selected inspector, `Ctrl+K` cancels the selected agent,
   and completed transcripts can still be opened in your editor
 
@@ -653,7 +654,7 @@ Approval prompts raised by child runs still include `Source: <label>`. Use
 
 ### Background Subagents And Subprocesses
 
-VT Code can also run a background subagent as a managed child `vtcode`
+Diapason can also run a background subagent as a managed child `diapason`
 subprocess. This path is separate from foreground child threads and is now
 explicitly opt-in:
 
@@ -676,7 +677,7 @@ explicitly opt-in:
   background subprocess
 
 Background subprocess state is persisted under
-`.vtcode/state/background_subagents.json`. On restart, VT Code only respawns
+`.diapason/state/background_subagents.json`. On restart, Diapason only respawns
 enabled background agents when both `subagents.background.enabled = true` and
 `subagents.background.auto_restore = true`.
 
@@ -717,7 +718,7 @@ subagents:
 }
 ```
 
-If you omit `default_agent`, VT Code keeps background mode disabled for launch
+If you omit `default_agent`, Diapason keeps background mode disabled for launch
 purposes and treats `Ctrl+B` and `/subprocesses toggle` as setup entrypoints
 only.
 
@@ -727,7 +728,7 @@ For a minimal demo pair, see
 
 ### Continue Existing Child Work
 
-Delegated child threads keep their own history. VT Code can continue them with
+Delegated child threads keep their own history. Diapason can continue them with
 follow-up input instead of starting from scratch. The runtime exposes
 `send_input`, `resume_agent`, `wait_agent`, and `close_agent` to the model for
 this purpose.

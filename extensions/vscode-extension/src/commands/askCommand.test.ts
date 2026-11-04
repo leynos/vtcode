@@ -15,8 +15,8 @@ describe("AskCommand", () => {
     });
 
     it("should have correct id, title, and icon", () => {
-        expect(command.id).toBe("vtcode.ask");
-        expect(command.title).toBe("Ask VT Code Agent");
+        expect(command.id).toBe("diapason.ask");
+        expect(command.title).toBe("Ask Diapason Agent");
         expect(command.icon).toBe("comment-discussion");
     });
 
@@ -27,7 +27,7 @@ describe("AskCommand", () => {
 
     it("should have description", () => {
         expect(command.description).toBeDefined();
-        expect(command.description).toContain("VT Code agent");
+        expect(command.description).toContain("Diapason agent");
     });
 
     it("should handle empty question gracefully", async () => {

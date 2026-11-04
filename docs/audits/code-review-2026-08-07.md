@@ -1,6 +1,7 @@
 # Code Review + Fixes — 2026-08-07
 
-Scope: vtcode-core, vtcode-llm. Everything green: `./scripts/check-dev.sh` (fmt
+Scope: diapason-core, diapason-llm. Everything green: `./scripts/check-dev.sh`
+(fmt
 
 - clippy + check) and `cargo nextest run --workspace --profile quick` (8635
 tests pass). Transport tests under `--features copilot` (8/8 pass).
@@ -9,8 +10,8 @@ tests pass). Transport tests under `--features copilot` (8/8 pass).
 
 | Finding                                                | Root cause                                                                                                                                                           | Fix                                                                                                                                                                                        | Files                                                                            | Regression tests                                                                                                                                              |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| acp_client `send_prompt_update` deadlock               | `active_prompt: StdMutex<Option<ActivePrompt>>`; let-chain kept the std Mutex guard alive while `clear_active_prompt_state` re-locked the same Mutex → self-deadlock | Clone the `UnboundedSender` under the lock, drop the guard, then send and clear outside                                                                                                    | `vtcode-llm/…/acp_client.rs`                                                     | 1 (deadlock no longer panics)                                                                                                                                 |
-| transport pending-map leak                             | `StdioTransport::call` removes pending entry on response dispatch, but not on timeout path                                                                           | `map_err` closure now removes the pending entry                                                                                                                                            | `vtcode-llm/…/transport.rs`                                                      | `timed_out_call_clears_pending_entry`                                                                                                                         |
+| acp_client `send_prompt_update` deadlock               | `active_prompt: StdMutex<Option<ActivePrompt>>`; let-chain kept the std Mutex guard alive while `clear_active_prompt_state` re-locked the same Mutex → self-deadlock | Clone the `UnboundedSender` under the lock, drop the guard, then send and clear outside                                                                                                    | `diapason-llm/…/acp_client.rs`                                                   | 1 (deadlock no longer panics)                                                                                                                                 |
+| transport pending-map leak                             | `StdioTransport::call` removes pending entry on response dispatch, but not on timeout path                                                                           | `map_err` closure now removes the pending entry                                                                                                                                            | `diapason-llm/…/transport.rs`                                                    | `timed_out_call_clears_pending_entry`                                                                                                                         |
 | compaction `coherence_tool_call_pairs` dead force-keep | Force-keep filtered args from a single source instead of accumulating the union across all history entries                                                           | Emit from union of `keep` set across all indices, drop orphaned Tool results                                                                                                               | `compaction/mod.rs`                                                              | 2 (distributed-batch + orphaned-tool cases)                                                                                                                   |
 | web_fetch O(n²) UTF-8 truncation                       | Byte-by-byte decrement over multibyte chars                                                                                                                          | `err.valid_up_to()` for O(1) boundary; Content-Length precheck + streaming `bytes_stream()` capped at `MAX_BODY_BYTES`                                                                     | `tools/web_fetch/mod.rs`                                                         | 3 (multibyte truncation, cap-at-limit, oversize-body)                                                                                                         |
 | read_file / file_ops unbounded line reads              | `read_until` on unbounded reader could over-allocate                                                                                                                 | New `read_bounded_line` in `file_ops/mod.rs` via `reader.take(MAX_LINE_READ_BYTES + 1).read_until`; drain uses chunked `take(4096).read_until`                                             | `tools/file_ops/mod.rs`, `tools/handlers/read_file.rs`, `tools/file_ops/read.rs` | 1 regression (oversized-line bails early)                                                                                                                     |
@@ -33,7 +34,7 @@ tests pass). Transport tests under `--features copilot` (8/8 pass).
   `pub(super)`; re-exported via `use self::normalization::*;` so all internal
   call sites and tests keep working unchanged.
 - Old `loop_detector.rs` deleted. No external caller referenced the moved
-  helpers (verified across `vtcode-core/src`).
+  helpers (verified across `diapason-core/src`).
 - 62/62 loop_detector tests pass; 8635 workspace tests pass.
 
 ## Intentionally not changed
@@ -46,9 +47,9 @@ tests pass). Transport tests under `--features copilot` (8/8 pass).
 
 ```
 ./scripts/check-dev.sh            # fmt + clippy + check → PASS
-cargo nextest run -p vtcode-core -E 'test(loop_detector)'   # 62/62
+cargo nextest run -p diapason-core -E 'test(loop_detector)'   # 62/62
 ./scripts/check-dev.sh --changed --test                    # 5480/5480
-cargo nextest run -p vtcode-llm --features copilot -E 'test(transport)'  # 8/8
+cargo nextest run -p diapason-llm --features copilot -E 'test(transport)'  # 8/8
 cargo nextest run --workspace --profile quick              # 8635/8635
 ```
 

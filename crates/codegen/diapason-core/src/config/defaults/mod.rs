@@ -1,0 +1,13 @@
+pub use diapason_config::defaults::{
+    ConfigDefaultsProvider, ContextStoreDefaults, PerformanceDefaults, ScenarioDefaults, SyntaxHighlightingDefaults,
+    WorkspacePathsDefaults, current_config_defaults, get_config_dir, get_data_dir, install_config_defaults_provider,
+    reset_to_default_config_defaults, with_config_defaults,
+};
+
+pub mod provider {
+    pub use diapason_config::defaults::provider::*;
+}
+
+pub mod syntax_highlighting {
+    pub use diapason_config::defaults::syntax_highlighting::*;
+}

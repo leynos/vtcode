@@ -5,25 +5,25 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::OnceCell;
 
-use uuid::Uuid;
-use vtcode_config::OpenResponsesConfig;
-use vtcode_core::core::agent::events::{
+use diapason_config::OpenResponsesConfig;
+use diapason_core::core::agent::events::{
     tool_invocation_completed_event as shared_tool_invocation_completed_event,
     tool_output_completed_event as shared_tool_output_completed_event,
     tool_output_started_event as shared_tool_output_started_event,
     tool_output_updated_event as shared_tool_output_updated_event, tool_started_event as shared_tool_started_event,
 };
 #[cfg(test)]
-use vtcode_core::exec::events::ThreadStartedEvent;
-use vtcode_core::exec::events::{
+use diapason_core::exec::events::ThreadStartedEvent;
+use diapason_core::exec::events::{
     AgentMessageItem, CompactionMode, CompactionTrigger, HarnessEventItem, HarnessEventKind, ItemCompletedEvent,
     ReasoningItem, ThreadCompactBoundaryEvent, ThreadCompletedEvent, ThreadCompletionSubtype, ThreadEvent, ThreadItem,
     ThreadItemDetails, ToolCallStatus, ToolOutcome, TurnBlockedEvent, TurnCompletedEvent, TurnFailedEvent,
     TurnStartedEvent, Usage, VersionedThreadEvent,
 };
 #[cfg(test)]
-use vtcode_webmcp::EventHubConfig;
-use vtcode_webmcp::WebmcpEventHub;
+use diapason_webmcp::EventHubConfig;
+use diapason_webmcp::WebmcpEventHub;
+use uuid::Uuid;
 
 mod atif;
 mod canonical;
@@ -83,13 +83,13 @@ impl HarnessEventEmitter {
     /// explicit compatibility/export path configured by the user.
     pub(crate) async fn new_async(workspace: &Path, session_id: &str, legacy_path: Option<PathBuf>) -> Result<Self> {
         let canonical = CanonicalEventSink::open(workspace, session_id).await?;
-        let session_path = vtcode_memory::session_directory(workspace, session_id);
+        let session_path = diapason_memory::session_directory(workspace, session_id)?;
         let legacy = match legacy_path {
             Some(path) => match LegacyWriter::new_async(path).await {
                 Ok(writer) => Some(writer),
                 Err(error) => {
                     tracing::warn!(
-                        target: "vtcode.harness",
+                        target: "diapason.harness",
                         phase = "legacy_export_setup",
                         error = %error,
                         "optional legacy harness export setup failed; continuing with canonical persistence"
@@ -208,7 +208,7 @@ impl HarnessEventEmitter {
                         // the canonical event (already persisted above) or
                         // the remaining exporters from observing this event.
                         tracing::warn!(
-                            target: "vtcode.harness",
+                            target: "diapason.harness",
                             phase = "webmcp_export",
                             path = %self.inner.path.display(),
                             error = %error,
@@ -218,7 +218,7 @@ impl HarnessEventEmitter {
                 }
                 Err(error) => {
                     tracing::warn!(
-                        target: "vtcode.harness",
+                        target: "diapason.harness",
                         phase = "webmcp_export",
                         path = %self.inner.path.display(),
                         error = %error,
@@ -234,16 +234,16 @@ impl HarnessEventEmitter {
                 match serde_json::to_string(&VersionedThreadEvent::new(event.clone())) {
                     Ok(serialized) => {
                         if let Err(error) = writer.write_line(serialized) {
-                            tracing::warn!(target: "vtcode.harness", phase = "legacy_export", path = %self.inner.path.display(), error = %error, "legacy harness export write failed");
+                            tracing::warn!(target: "diapason.harness", phase = "legacy_export", path = %self.inner.path.display(), error = %error, "legacy harness export write failed");
                         }
                     }
                     Err(error) => {
-                        tracing::warn!(target: "vtcode.harness", phase = "legacy_export", path = %self.inner.path.display(), error = %error, "legacy harness event serialization failed")
+                        tracing::warn!(target: "diapason.harness", phase = "legacy_export", path = %self.inner.path.display(), error = %error, "legacy harness event serialization failed")
                     }
                 }
             }
         } else {
-            tracing::warn!(target: "vtcode.harness", phase = "legacy_export", path = %self.inner.path.display(), "legacy harness exporter lock poisoned");
+            tracing::warn!(target: "diapason.harness", phase = "legacy_export", path = %self.inner.path.display(), "legacy harness exporter lock poisoned");
         }
 
         // All consumers are fed while holding one gate, so their observed order
@@ -255,7 +255,7 @@ impl HarnessEventEmitter {
                 }
             }
             Err(error) => {
-                tracing::warn!(target: "vtcode.harness", phase = "open_responses_export", path = %self.inner.path.display(), error = %error, "Open Responses exporter lock poisoned")
+                tracing::warn!(target: "diapason.harness", phase = "open_responses_export", path = %self.inner.path.display(), error = %error, "Open Responses exporter lock poisoned")
             }
         }
 
@@ -266,7 +266,7 @@ impl HarnessEventEmitter {
                 }
             }
             Err(error) => {
-                tracing::warn!(target: "vtcode.harness", phase = "atif_export", path = %self.inner.path.display(), error = %error, "ATIF exporter lock poisoned")
+                tracing::warn!(target: "diapason.harness", phase = "atif_export", path = %self.inner.path.display(), error = %error, "ATIF exporter lock poisoned")
             }
         }
 
@@ -350,18 +350,18 @@ impl HarnessEventEmitter {
 
         self.finish_open_responses_async().await;
         if let Err(error) = self.finish_atif().await {
-            tracing::warn!(target: "vtcode.harness", phase = "atif_finish", path = %self.inner.path.display(), error = %error, "ATIF export finalization failed");
+            tracing::warn!(target: "diapason.harness", phase = "atif_finish", path = %self.inner.path.display(), error = %error, "ATIF export finalization failed");
         }
 
         let legacy = self.inner.legacy.lock().ok().and_then(|mut guard| guard.take());
         if let Some(writer) = legacy {
             if let Err(error) = writer.flush().await {
-                tracing::warn!(target: "vtcode.harness", phase = "legacy_export_flush", path = %self.inner.path.display(), error = %error, "legacy harness export flush failed");
+                tracing::warn!(target: "diapason.harness", phase = "legacy_export_flush", path = %self.inner.path.display(), error = %error, "legacy harness export flush failed");
             }
             let diagnostics = writer.diagnostics();
             if diagnostics.dropped_lines > 0 || diagnostics.write_failures > 0 {
                 tracing::warn!(
-                    target: "vtcode.harness",
+                    target: "diapason.harness",
                     phase = "legacy_export_drops",
                     path = %self.inner.path.display(),
                     dropped_lines = diagnostics.dropped_lines,
@@ -392,7 +392,7 @@ impl HarnessEventEmitter {
         };
         if let Err(error) = self.emit(turn_failed_event("interactive session exited before harness finalization", None))
         {
-            tracing::error!(target: "vtcode.harness", phase = "drop_finalize", error = %error, "failed to enqueue unexpected-exit turn.failed event");
+            tracing::error!(target: "diapason.harness", phase = "drop_finalize", error = %error, "failed to enqueue unexpected-exit turn.failed event");
         }
         if let Err(error) = self.emit(thread_completed_event(
             session_id.clone(),
@@ -405,10 +405,10 @@ impl HarnessEventEmitter {
             None,
             0,
         )) {
-            tracing::error!(target: "vtcode.harness", phase = "drop_finalize", error = %error, "failed to enqueue unexpected-exit thread.completed event");
+            tracing::error!(target: "diapason.harness", phase = "drop_finalize", error = %error, "failed to enqueue unexpected-exit thread.completed event");
         }
         if let Err(error) = self.finish().await {
-            tracing::error!(target: "vtcode.harness", phase = "drop_finalize", error = %error, "failed to finalize harness after an unexpected session exit");
+            tracing::error!(target: "diapason.harness", phase = "drop_finalize", error = %error, "failed to finalize harness after an unexpected session exit");
         }
     }
 
@@ -439,7 +439,7 @@ impl Drop for HarnessEventEmitter {
 
         let emitter = self.clone();
         let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-            tracing::error!(target: "vtcode.harness", phase = "drop_finalize", "cannot finalize harness after an unexpected session exit without a Tokio runtime");
+            tracing::error!(target: "diapason.harness", phase = "drop_finalize", "cannot finalize harness after an unexpected session exit without a Tokio runtime");
             return;
         };
         runtime.spawn(async move { emitter.finish_after_unexpected_exit().await });
@@ -581,11 +581,11 @@ pub(crate) fn harness_event(
 mod tests {
     use super::*;
     use crate::agent::runloop::unified::run_loop_context::TurnRunId;
+    use diapason_core::exec::events::ItemStartedEvent;
+    use diapason_memory::DEFAULT_MAX_EVENTS;
     use serde_json::json;
     use std::fs;
     use tempfile::TempDir;
-    use vtcode_core::exec::events::ItemStartedEvent;
-    use vtcode_memory::DEFAULT_MAX_EVENTS;
 
     #[test]
     fn resolve_event_log_path_appends_jsonl_when_directory() {
@@ -615,7 +615,7 @@ mod tests {
 
         assert_eq!(
             value.get("schema_version").and_then(|v| v.as_str()),
-            Some(vtcode_core::exec::events::EVENT_SCHEMA_VERSION)
+            Some(diapason_core::exec::events::EVENT_SCHEMA_VERSION)
         );
         assert_eq!(value.get("event").and_then(|v| v.get("type")).and_then(|v| v.as_str()), Some("turn.started"));
     }
@@ -720,7 +720,9 @@ mod tests {
         }
         emitter.finish().await.expect("canonical drain");
 
-        let event_path = tmp.path().join(".vtcode/sessions/large-session/events.jsonl");
+        let event_path = diapason_memory::session_directory(tmp.path(), "large-session")
+            .expect("session directory")
+            .join("events.jsonl");
         let lines = fs::read_to_string(event_path)
             .expect("read canonical events")
             .lines()
@@ -750,7 +752,9 @@ mod tests {
         emitter.emit(turn_started_event()).expect("emit canonical event");
         emitter.finish().await.expect("canonical drain");
 
-        let event_path = tmp.path().join(".vtcode/sessions/canonical-session/events.jsonl");
+        let event_path = diapason_memory::session_directory(tmp.path(), "canonical-session")
+            .expect("session directory")
+            .join("events.jsonl");
         let event_lines = fs::read_to_string(event_path).expect("read canonical events").lines().count();
         assert_eq!(event_lines, 1);
     }
@@ -769,7 +773,9 @@ mod tests {
             .expect("optional WebMCP failure must be isolated");
         emitter.finish().await.expect("canonical emitter should still finish");
 
-        let event_path = tmp.path().join(".vtcode/sessions/webmcp-failure-session/events.jsonl");
+        let event_path = diapason_memory::session_directory(tmp.path(), "webmcp-failure-session")
+            .expect("session directory")
+            .join("events.jsonl");
         let event_lines = fs::read_to_string(event_path).expect("read canonical events").lines().count();
         assert_eq!(event_lines, 1);
     }
@@ -805,8 +811,12 @@ mod tests {
         emitter.finish().await.expect("finish exporters");
         emitter.finish().await.expect("second finish is idempotent");
 
-        let canonical = fs::read_to_string(tmp.path().join(".vtcode/sessions/ordered-session/events.jsonl"))
-            .expect("read canonical events");
+        let canonical = fs::read_to_string(
+            diapason_memory::session_directory(tmp.path(), "ordered-session")
+                .expect("session directory")
+                .join("events.jsonl"),
+        )
+        .expect("read canonical events");
         let legacy = fs::read_to_string(legacy_path).expect("read legacy events");
         assert_eq!(canonical.lines().collect::<Vec<_>>(), legacy.lines().collect::<Vec<_>>());
 
@@ -828,7 +838,7 @@ mod tests {
         emitter.finish().await.expect("finish active session");
 
         let active =
-            vtcode_memory::open(tmp.path(), "lifecycle-session", DEFAULT_MAX_EVENTS).expect("open active session");
+            diapason_memory::open(tmp.path(), "lifecycle-session", DEFAULT_MAX_EVENTS).expect("open active session");
         assert_eq!(active.manifest().status, "active");
     }
 
@@ -943,7 +953,7 @@ mod tests {
     fn tool_updated_event_captures_streamed_output() {
         let event = tool_updated_event("tool-1".to_string(), Some("tool_call_0"), "On branch main");
 
-        let ThreadEvent::ItemUpdated(vtcode_core::exec::events::ItemUpdatedEvent { item }) = event else {
+        let ThreadEvent::ItemUpdated(diapason_core::exec::events::ItemUpdatedEvent { item }) = event else {
             panic!("expected item.updated");
         };
         assert_eq!(item.id, "tool-1:output");

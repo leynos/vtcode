@@ -7,13 +7,13 @@ pub(crate) use runtime::PtyStreamRuntime;
 #[cfg(test)]
 mod tests {
     use anstyle::{AnsiColor, Color as AnsiColorEnum};
+    use diapason_core::config::PtyConfig;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle, InlineSegment};
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
     use std::time::Duration;
     use tokio::sync::{mpsc, oneshot};
     use tokio::time::timeout;
-    use vtcode_core::config::PtyConfig;
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle, InlineSegment};
 
     use super::runtime::PtyStreamRuntime;
     use super::segments::{PtyLineStyles, line_to_segments, tokenize_preserve_whitespace};
@@ -151,18 +151,18 @@ mod tests {
 
     #[test]
     fn normalizes_command_prompt_whitespace() {
-        let state = PtyStreamState::new(Some("  cargo   check \n -p  vtcode  ".to_string()), test_pty_config(), None);
+        let state = PtyStreamState::new(Some("  cargo   check \n -p  diapason  ".to_string()), test_pty_config(), None);
         let rendered = state.render_lines(5);
-        assert_eq!(rendered, vec!["• Ran cargo check -p vtcode".to_string()]);
+        assert_eq!(rendered, vec!["• Ran cargo check -p diapason".to_string()]);
     }
 
     #[test]
     fn wraps_long_command_header() {
-        let command = "cargo test -p vtcode run_command_preview_ build_tool_summary_formats_run_command_as_ran";
+        let command = "cargo test -p diapason run_command_preview_ build_tool_summary_formats_run_command_as_ran";
         let state = PtyStreamState::new(Some(command.to_string()), test_pty_config(), None);
         let rendered = state.render_lines(5);
         assert_eq!(rendered.len(), 2);
-        assert!(rendered[0].starts_with("• Ran cargo test -p vtcode run_command_preview_"));
+        assert!(rendered[0].starts_with("• Ran cargo test -p diapason run_command_preview_"));
         assert!(rendered[1].starts_with("  │ build_tool_summary_formats_run_command_as_ran"));
     }
 
@@ -177,8 +177,8 @@ mod tests {
 
     #[test]
     fn tokenization_preserves_whitespace() {
-        let tokens = tokenize_preserve_whitespace("cargo   check -p  vtcode");
-        assert_eq!(tokens, vec!["cargo", "   ", "check", " ", "-p", "  ", "vtcode"]);
+        let tokens = tokenize_preserve_whitespace("cargo   check -p  diapason");
+        assert_eq!(tokens, vec!["cargo", "   ", "check", " ", "-p", "  ", "diapason"]);
     }
 
     #[test]

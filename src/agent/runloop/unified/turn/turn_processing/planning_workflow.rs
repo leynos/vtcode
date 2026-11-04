@@ -4,7 +4,7 @@
 //!   - Pure readiness/need-state predicates (no I/O) live in `gating.rs` — extend those for new interview-skip conditions.
 //!   - Static fallback question shaping lives in `interview_payload.rs` (`build_fallback_question`); plan draft / open-decision detection helpers live in `interview_context.rs`.
 //! - Constraints: This file is intentionally kept to orchestration + shared constants only. Put new logic in `gating.rs` (pure predicates) or `interview_payload.rs` (question shaping) — do not grow this root file's function bodies.
-//! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode inline_events::tests`
+//! - Verify: `cargo check -p diapason && cargo test -p diapason --bin diapason inline_events::tests`
 
 use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
 
@@ -30,10 +30,10 @@ use interview_forcing::{
 use super::response_processing::prepare_tool_calls;
 
 #[cfg(test)]
-use vtcode_core::llm::provider as uni;
+use diapason_core::llm::provider as uni;
 
 const MIN_PLANNING_WORKFLOW_TURNS_BEFORE_INTERVIEW: usize = 1;
-const PLANNING_WORKFLOW_REMINDER: &str = vtcode_core::prompts::system::PLANNING_WORKFLOW_IMPLEMENT_REMINDER;
+const PLANNING_WORKFLOW_REMINDER: &str = diapason_core::prompts::system::PLANNING_WORKFLOW_IMPLEMENT_REMINDER;
 
 pub(crate) fn maybe_force_planning_workflow_interview(
     processing_result: TurnProcessingResult,

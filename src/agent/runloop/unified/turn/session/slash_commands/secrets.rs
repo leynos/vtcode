@@ -1,14 +1,14 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use vtcode_auth::AuthCredentialsStoreMode;
-use vtcode_config::VTCodeConfig;
-use vtcode_config::api_keys::CredentialSource;
-use vtcode_config::workspace_env::workspace_env_path;
-use vtcode_core::config::models::Provider;
-use vtcode_core::llm::factory::{ProviderConfig, create_provider_with_config};
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineEvent, InlineListItem, InlineListSelection, TransientEvent};
+use diapason_auth::AuthCredentialsStoreMode;
+use diapason_config::DiapasonConfig;
+use diapason_config::api_keys::CredentialSource;
+use diapason_config::workspace_env::workspace_env_path;
+use diapason_core::config::models::Provider;
+use diapason_core::llm::factory::{ProviderConfig, create_provider_with_config};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineEvent, InlineListItem, InlineListSelection, TransientEvent};
 
 use super::{SlashCommandContext, SlashCommandControl};
 use crate::agent::runloop::slash_commands::SecretCommandAction;
@@ -130,7 +130,7 @@ pub(crate) async fn handle_manage_secrets(
 }
 
 fn resolve_secret_target(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     name: &str,
     key_name: Option<&str>,
 ) -> Result<SecretTarget, String> {
@@ -185,7 +185,7 @@ fn resolve_secret_target(
     })
 }
 
-fn all_secret_targets(vt_cfg: Option<&VTCodeConfig>) -> Vec<SecretTarget> {
+fn all_secret_targets(vt_cfg: Option<&DiapasonConfig>) -> Vec<SecretTarget> {
     let mut targets = Provider::all_providers()
         .into_iter()
         .filter_map(|provider| resolve_secret_target(vt_cfg, provider.as_ref(), None).ok())
@@ -209,7 +209,7 @@ fn should_show_secret_items(
         return false;
     }
     !matches!(
-        vtcode_config::api_keys::resolve_credential_with_mode(
+        diapason_config::api_keys::resolve_credential_with_mode(
             &target.provider_name,
             &target.env_key,
             Some(workspace),
@@ -318,7 +318,7 @@ async fn handle_add_secret(ctx: &mut SlashCommandContext<'_>, target: SecretTarg
         platform_hint,
         "Secure display hint: \u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}".to_string(),
         "Key will be stored in secure storage (OS keyring or encrypted file).".to_string(),
-        "Key will NOT be stored in vtcode.toml or workspace environment files.".to_string(),
+        "Key will NOT be stored in config.toml or workspace environment files.".to_string(),
         "Paste the key now, or press Esc to cancel.".to_string(),
     ];
 
@@ -342,8 +342,8 @@ async fn handle_add_secret(ctx: &mut SlashCommandContext<'_>, target: SecretTarg
             ctx.renderer
                 .line(MessageStyle::Info, &format!("API key for {label} stored in secure storage."))?;
             ctx.renderer.line(MessageStyle::Output, "The key will be used automatically.")?;
-            if vtcode_config::read_workspace_env_value(&ctx.config.workspace, env_key)?.is_some() {
-                vtcode_config::remove_workspace_env_value(&ctx.config.workspace, env_key)?;
+            if diapason_config::read_workspace_env_value(&ctx.config.workspace, env_key)?.is_some() {
+                diapason_config::remove_workspace_env_value(&ctx.config.workspace, env_key)?;
                 ctx.renderer.line(
                     MessageStyle::Info,
                     &format!("Removed stale {env_key} from workspace .env to avoid conflicts."),
@@ -393,13 +393,13 @@ async fn handle_migrate_secrets(
     let mut failed = 0usize;
     for target in targets {
         let env_key = target.env_key.as_str();
-        let Some(value) = vtcode_config::read_workspace_env_value(&ctx.config.workspace, env_key)? else {
+        let Some(value) = diapason_config::read_workspace_env_value(&ctx.config.workspace, env_key)? else {
             skipped += 1;
             continue;
         };
         match storage.store(&target.provider_name, env_key, value.trim()) {
             Ok(()) => {
-                vtcode_config::remove_workspace_env_value(&ctx.config.workspace, env_key)?;
+                diapason_config::remove_workspace_env_value(&ctx.config.workspace, env_key)?;
                 ctx.renderer
                     .line(MessageStyle::Info, &format!("Migrated {} API key to secure storage.", target.label))?;
                 migrated += 1;
@@ -636,7 +636,7 @@ fn show_secret_actions_modal(ctx: &mut SlashCommandContext<'_>) {
         "Secrets",
         vec![
             "Manage API keys in secure storage (OS keyring or encrypted file).".to_string(),
-            "Keys are never written to vtcode.toml or workspace environment files.".to_string(),
+            "Keys are never written to config.toml or workspace environment files.".to_string(),
         ],
         items,
         Some(selected),
@@ -646,7 +646,7 @@ fn show_secret_actions_modal(ctx: &mut SlashCommandContext<'_>) {
 
 fn build_secret_action_items(
     current_provider: &str,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     workspace: &std::path::Path,
     storage_mode: AuthCredentialsStoreMode,
 ) -> (Vec<InlineListItem>, InlineListSelection) {
@@ -748,7 +748,7 @@ fn render_secret_status_table(
         } else if target.managed_auth {
             Some(CredentialSource::ManagedAuth)
         } else {
-            vtcode_config::api_keys::resolve_credential_with_mode(
+            diapason_config::api_keys::resolve_credential_with_mode(
                 &target.provider_name,
                 &target.env_key,
                 Some(&ctx.config.workspace),
@@ -803,7 +803,7 @@ fn render_secret_status_table(
         ctx.renderer.line(MessageStyle::Info, "Run `/login <provider>` for those.")?;
         ctx.renderer.line(
             MessageStyle::Output,
-            "  Tip: If you have Codex CLI installed, VT Code automatically reuses its ChatGPT auth.json.",
+            "  Tip: If you have Codex CLI installed, Diapason automatically reuses its ChatGPT auth.json.",
         )?;
     }
 

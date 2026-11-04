@@ -1,6 +1,6 @@
-# A2A Protocol Support for VT Code
+# A2A Protocol Support for Diapason
 
-VT Code now implements the
+Diapason now implements the
 [Agent2Agent (A2A) Protocol](https://a2a-protocol.org), an open standard
 enabling communication and interoperability between AI agents.
 
@@ -18,10 +18,10 @@ The A2A Protocol enables:
 
 ## Architecture
 
-VT Code's A2A implementation spans across modules:
+Diapason's A2A implementation spans across modules:
 
 ```
-crates/codegen/vtcode-core/src/a2a/
+crates/codegen/diapason-core/src/a2a/
 ├── mod.rs                  # Module organization & re-exports
 ├── types.rs                # Core data structures (Task, Message, Part, Artifact)
 ├── rpc.rs                  # JSON-RPC 2.0 protocol (requests, responses, methods)
@@ -157,8 +157,8 @@ Returns the agent's capability card:
 ```json
 {
     "protocolVersion": "1.0",
-    "name": "VT Code Agent",
-    "description": "AI code assistant powered by VT Code",
+    "name": "Diapason Agent",
+    "description": "AI code assistant powered by Diapason",
     "version": "0.54.1",
     "url": "https://example.com",
     "capabilities": {
@@ -285,7 +285,7 @@ data: {"event":{"taskStatus":{...},"state":"completed",...}}
 Connect to remote A2A agents:
 
 ```rust
-use vtcode_core::a2a::A2aClient;
+use diapason_core::a2a::A2aClient;
 
 let client = A2aClient::new("https://agent.example.com");
 
@@ -350,7 +350,7 @@ a2a-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:tokio-stream"]
 ### Create and Query Task
 
 ```rust
-use vtcode_core::a2a::TaskManager;
+use diapason_core::a2a::TaskManager;
 
 #[tokio::main]
 async fn main() {
@@ -381,18 +381,18 @@ async fn main() {
 ### Setup Server
 
 ```rust
-use vtcode_core::a2a::{AgentCard, TaskManager};
-use vtcode_core::a2a::server::A2aServerState;
+use diapason_core::a2a::{AgentCard, TaskManager};
+use diapason_core::a2a::server::A2aServerState;
 
 #[tokio::main]
 async fn main() {
-    let agent_card = AgentCard::vtcode_default("http://localhost:8080");
+    let agent_card = AgentCard::diapason_default("http://localhost:8080");
     let task_manager = TaskManager::new();
     let server_state = A2aServerState::new(task_manager, agent_card);
     println!("Bearer token: {}", server_state.auth_token());
 
     // Create router
-    let router = vtcode_core::a2a::server::create_router(server_state);
+    let router = diapason_core::a2a::server::create_router(server_state);
 
     // Start listening
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
@@ -406,7 +406,7 @@ async fn main() {
 ### Connect to Remote Agent
 
 ```rust
-use vtcode_core::a2a::A2aClient;
+use diapason_core::a2a::A2aClient;
 
 #[tokio::main]
 async fn main() {
@@ -417,7 +417,7 @@ async fn main() {
     println!("Agent: {} ({})", card.name, card.version);
 
     // Send message
-    use vtcode_core::a2a::{Message, MessageSendParams};
+    use diapason_core::a2a::{Message, MessageSendParams};
     let params = MessageSendParams::new(
         Message::user_text("What can you do?")
     );
@@ -442,7 +442,7 @@ Integration tests cover:
 Run tests:
 
 ```bash
-cargo nextest run -p vtcode-a2a --features a2a-server
+cargo nextest run -p diapason-a2a --features a2a-server
 ```
 
 ## Implementation Status

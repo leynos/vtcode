@@ -2,8 +2,8 @@
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
-use vtcode_core::config::PluginRuntimeConfig;
-use vtcode_core::plugins::{PluginManager, PluginManifest, PluginValidator};
+use diapason_core::config::PluginRuntimeConfig;
+use diapason_core::plugins::{PluginManager, PluginManifest, PluginValidator};
 
 #[tokio::test]
 async fn test_plugin_system_compilation() {

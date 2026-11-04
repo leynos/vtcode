@@ -1,0 +1,201 @@
+#![allow(
+    missing_docs,
+    reason = "Intentional compatibility, platform, or test-only suppression."
+)]
+use assert_fs::TempDir;
+use diapason_core::tools::file_ops::FileOpsTool;
+use diapason_core::tools::grep_file::GrepSearchManager;
+use diapason_core::tools::traits::Tool;
+use serde_json::json;
+use std::sync::Arc;
+
+#[tokio::test]
+async fn create_file_rejects_workspace_escape() {
+    let workspace = TempDir::new().expect("temp workspace");
+    let outside = workspace.path().parent().expect("temp dir parent").join("outside.txt");
+    if outside.exists() {
+        drop(tokio::fs::remove_file(&outside).await);
+    }
+
+    let grep_manager = Arc::new(GrepSearchManager::new(workspace.path().to_path_buf()));
+    let file_tool = FileOpsTool::new(workspace.path().to_path_buf(), grep_manager);
+
+    let args = json!({
+        "path": "../outside.txt",
+        "content": "blocked"
+    });
+    let value = file_tool.create_file(args).await.expect_err("tool should reject escapes");
+
+    let message = value.to_string();
+    assert!(message.contains("outside the workspace"), "expected workspace guard in error, got: {message}");
+    assert!(!outside.exists(), "create_file must not materialize escaped paths");
+}
+
+#[tokio::test]
+async fn list_files_all_modes_reject_workspace_escape_paths() {
+    let workspace = TempDir::new().expect("temp workspace");
+    let grep_manager = Arc::new(GrepSearchManager::new(workspace.path().to_path_buf()));
+    let file_tool = FileOpsTool::new(workspace.path().to_path_buf(), grep_manager);
+    let outside = workspace
+        .path()
+        .parent()
+        .expect("temp dir parent")
+        .join("diapason-list-outside");
+
+    for path in [
+        "../diapason-list-outside",
+        outside.to_str().expect("absolute outside path"),
+    ] {
+        for (mode, extra) in [
+            ("list", json!({})),
+            ("recursive", json!({})),
+            ("find_name", json!({"name_pattern": "Cargo.toml"})),
+            ("find_content", json!({"content_pattern": "secret"})),
+            ("largest", json!({})),
+            ("tree", json!({})),
+        ] {
+            let mut args = json!({"path": path, "mode": mode});
+            args.as_object_mut()
+                .expect("list arguments object")
+                .extend(extra.as_object().expect("mode arguments object").clone());
+            let error = file_tool
+                .execute(args)
+                .await
+                .expect_err("list_files should reject paths outside the workspace")
+                .to_string();
+            assert!(error.contains("outside the workspace"), "mode={mode}, error={error}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn move_file_rejects_workspace_escape_source() {
+    let workspace = TempDir::new().expect("temp workspace");
+    let outside = workspace
+        .path()
+        .parent()
+        .expect("temp dir parent")
+        .join("outside-move-source.txt");
+    tokio::fs::write(&outside, "keep-me")
+        .await
+        .expect("outside source file should be created");
+
+    let grep_manager = Arc::new(GrepSearchManager::new(workspace.path().to_path_buf()));
+    let file_tool = FileOpsTool::new(workspace.path().to_path_buf(), grep_manager);
+
+    let args = json!({
+        "path": "../outside-move-source.txt",
+        "destination": "moved.txt"
+    });
+    let error = file_tool
+        .move_file(args)
+        .await
+        .expect_err("move_file should reject source path traversal")
+        .to_string();
+
+    assert!(error.contains("outside the workspace"));
+    assert!(outside.exists(), "source file outside workspace should remain untouched");
+    assert!(!workspace.path().join("moved.txt").exists(), "destination should not be created for blocked move");
+}
+
+#[tokio::test]
+async fn copy_file_rejects_workspace_escape_destination() {
+    let workspace = TempDir::new().expect("temp workspace");
+    let inside = workspace.path().join("inside-copy-source.txt");
+    tokio::fs::write(&inside, "copy-me")
+        .await
+        .expect("inside source file should be created");
+    let outside = workspace
+        .path()
+        .parent()
+        .expect("temp dir parent")
+        .join("outside-copy-destination.txt");
+    if outside.exists() {
+        drop(tokio::fs::remove_file(&outside).await);
+    }
+
+    let grep_manager = Arc::new(GrepSearchManager::new(workspace.path().to_path_buf()));
+    let file_tool = FileOpsTool::new(workspace.path().to_path_buf(), grep_manager);
+
+    let args = json!({
+        "path": "inside-copy-source.txt",
+        "destination": "../outside-copy-destination.txt"
+    });
+    let error = file_tool
+        .copy_file(args)
+        .await
+        .expect_err("copy_file should reject destination path traversal")
+        .to_string();
+
+    assert!(error.contains("outside the workspace"));
+    assert!(!outside.exists(), "destination outside workspace should not be created");
+    assert!(inside.exists(), "source file should remain in workspace after blocked copy");
+}
+
+#[tokio::test]
+async fn move_file_rejects_workspace_escape_destination() {
+    let workspace = TempDir::new().expect("temp workspace");
+    let source = workspace.path().join("inside-move-source.txt");
+    tokio::fs::write(&source, "move-me")
+        .await
+        .expect("inside source file should be created");
+    let outside = workspace
+        .path()
+        .parent()
+        .expect("temp dir parent")
+        .join("outside-move-destination.txt");
+    if outside.exists() {
+        drop(tokio::fs::remove_file(&outside).await);
+    }
+
+    let grep_manager = Arc::new(GrepSearchManager::new(workspace.path().to_path_buf()));
+    let file_tool = FileOpsTool::new(workspace.path().to_path_buf(), grep_manager);
+
+    let args = json!({
+        "path": "inside-move-source.txt",
+        "destination": "../outside-move-destination.txt"
+    });
+    let error = file_tool
+        .move_file(args)
+        .await
+        .expect_err("move_file should reject destination path traversal")
+        .to_string();
+
+    assert!(error.contains("outside the workspace"));
+    assert!(!outside.exists(), "outside destination should not be created by blocked move");
+    assert!(source.exists(), "source should remain in workspace after blocked move");
+}
+
+#[tokio::test]
+async fn copy_file_rejects_workspace_escape_source() {
+    let workspace = TempDir::new().expect("temp workspace");
+    let outside = workspace
+        .path()
+        .parent()
+        .expect("temp dir parent")
+        .join("outside-copy-source.txt");
+    tokio::fs::write(&outside, "copy-source")
+        .await
+        .expect("outside source file should be created");
+    let inside_destination = workspace.path().join("inside-copy-destination.txt");
+    if inside_destination.exists() {
+        drop(tokio::fs::remove_file(&inside_destination).await);
+    }
+
+    let grep_manager = Arc::new(GrepSearchManager::new(workspace.path().to_path_buf()));
+    let file_tool = FileOpsTool::new(workspace.path().to_path_buf(), grep_manager);
+
+    let args = json!({
+        "path": "../outside-copy-source.txt",
+        "destination": "inside-copy-destination.txt"
+    });
+    let error = file_tool
+        .copy_file(args)
+        .await
+        .expect_err("copy_file should reject source path traversal")
+        .to_string();
+
+    assert!(error.contains("outside the workspace"));
+    assert!(!inside_destination.exists(), "blocked copy should not create destination in workspace");
+    assert!(outside.exists(), "outside source file should remain untouched after blocked copy");
+}

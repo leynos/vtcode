@@ -1,11 +1,11 @@
-# VT Code Benchmarks
+# Diapason Benchmarks
 
 This directory contains benchmark results and documentation for evaluating VT
 Code's code generation capabilities.
 
 ## Overview
 
-VT Code is evaluated on industry-standard benchmarks to measure:
+Diapason is evaluated on industry-standard benchmarks to measure:
 
 - **Code Generation Quality**: Correctness and functionality of generated code
 - **Performance**: Response latency and throughput
@@ -15,35 +15,35 @@ VT Code is evaluated on industry-standard benchmarks to measure:
 
 [Next.js AI Agent Evaluations](https://nextjs.org/evals) measure AI coding
 agents on Next.js code generation and migration tasks. The public leaderboard
-currently lists merged `vercel/next-evals-oss` results; the VT Code result
+currently lists merged `vercel/next-evals-oss` results; the Diapason result
 below is submitted in
 [PR #83](https://github.com/vercel/next-evals-oss/pull/83) and is pending
 upstream merge.
 
-### Leaderboard Snapshot + Pending VT Code Submission
+### Leaderboard Snapshot + Pending Diapason Submission
 
-| Status      | Model                         | Agent       | Avg Duration | Success Rate | Success Rate with AGENTS.md |
-| ----------- | ----------------------------- | ----------- | ------------ | ------------ | --------------------------- |
-| Merged      | Cursor Composer 2.5           | Cursor      | 149.18s      | 92%          | 96%                         |
-| Merged      | Claude Opus 4.8               | Claude Code | 166.30s      | 88%          | 96%                         |
-| Merged      | GPT 5.5 Pro                   | Codex       | 777.79s      | 83%          | 83%                         |
-| Merged      | GPT 5.4 (xhigh)               | Codex       | 219.37s      | 83%          | 92%                         |
-| Merged      | GPT 5.3 Codex (xhigh)         | Codex       | 178.20s      | 83%          | 96%                         |
-| Merged      | GLM 5.1                       | OpenCode    | 254.36s      | 75%          | 100%                        |
-| Merged      | Claude Opus 4.7 (max)         | Claude Code | 142.63s      | 75%          | 100%                        |
-| Merged      | Gemini 3.1 Pro Preview        | Gemini CLI  | 244.70s      | 75%          | 96%                         |
-| Merged      | Claude Opus 4.6               | Claude Code | 186.96s      | 75%          | 100%                        |
-| Merged      | Cursor Composer 2.0           | Cursor      | 113.53s      | 75%          | 96%                         |
-| Merged      | Gemini 3.0 Pro Preview        | Gemini CLI  | 256.87s      | 67%          | 88%                         |
-| Merged      | Cursor Composer 1.5           | Cursor      | 120.63s      | 67%          | 88%                         |
-| Merged      | Claude Sonnet 4.6             | Claude Code | 156.89s      | 58%          | 100%                        |
-| Merged      | GPT 5.2 Codex (xhigh)         | Codex       | 148.75s      | 58%          | 83%                         |
-| Merged      | MiniMax M2.7                  | OpenCode    | 294.01s      | 50%          | 63%                         |
-| Merged      | Claude Sonnet 4.5             | Claude Code | 149.24s      | 50%          | 88%                         |
-| **Pending** | `moonshotai/Kimi-K2.6:novita` | **VT Code** | **90.5s**    | **33%**      | N/A                         |
-| Merged      | Kimi K2.5                     | OpenCode    | 135.42s      | 21%          | 58%                         |
+| Status      | Model                         | Agent        | Avg Duration | Success Rate | Success Rate with AGENTS.md |
+| ----------- | ----------------------------- | ------------ | ------------ | ------------ | --------------------------- |
+| Merged      | Cursor Composer 2.5           | Cursor       | 149.18s      | 92%          | 96%                         |
+| Merged      | Claude Opus 4.8               | Claude Code  | 166.30s      | 88%          | 96%                         |
+| Merged      | GPT 5.5 Pro                   | Codex        | 777.79s      | 83%          | 83%                         |
+| Merged      | GPT 5.4 (xhigh)               | Codex        | 219.37s      | 83%          | 92%                         |
+| Merged      | GPT 5.3 Codex (xhigh)         | Codex        | 178.20s      | 83%          | 96%                         |
+| Merged      | GLM 5.1                       | OpenCode     | 254.36s      | 75%          | 100%                        |
+| Merged      | Claude Opus 4.7 (max)         | Claude Code  | 142.63s      | 75%          | 100%                        |
+| Merged      | Gemini 3.1 Pro Preview        | Gemini CLI   | 244.70s      | 75%          | 96%                         |
+| Merged      | Claude Opus 4.6               | Claude Code  | 186.96s      | 75%          | 100%                        |
+| Merged      | Cursor Composer 2.0           | Cursor       | 113.53s      | 75%          | 96%                         |
+| Merged      | Gemini 3.0 Pro Preview        | Gemini CLI   | 256.87s      | 67%          | 88%                         |
+| Merged      | Cursor Composer 1.5           | Cursor       | 120.63s      | 67%          | 88%                         |
+| Merged      | Claude Sonnet 4.6             | Claude Code  | 156.89s      | 58%          | 100%                        |
+| Merged      | GPT 5.2 Codex (xhigh)         | Codex        | 148.75s      | 58%          | 83%                         |
+| Merged      | MiniMax M2.7                  | OpenCode     | 294.01s      | 50%          | 63%                         |
+| Merged      | Claude Sonnet 4.5             | Claude Code  | 149.24s      | 50%          | 88%                         |
+| **Pending** | `moonshotai/Kimi-K2.6:novita` | **Diapason** | **90.5s**    | **33%**      | N/A                         |
+| Merged      | Kimi K2.5                     | OpenCode     | 135.42s      | 21%          | 58%                         |
 
-VT Code's pending run passed **8/24** evals using HuggingFace Inference
+Diapason's pending run passed **8/24** evals using HuggingFace Inference
 Providers. The merged leaderboard snapshot was fetched from nextjs.org on
 2026-05-31; check the live leaderboard for the latest ordering.
 
@@ -102,7 +102,7 @@ includes:
 See [README.md](README.md) for detailed comparison.
 | Estimated Cost | $0.0000 |
 
-> **Note:** Token counts are not currently reported by vtcode. The model is in
+> **Note:** Token counts are not currently reported by diapason. The model is in
 > Google's free tier, so actual cost is $0.
 
 ### Comparison with Other Models
@@ -128,7 +128,7 @@ See [README.md](README.md) for detailed comparison.
 # Install Python dependencies
 pip install datasets
 
-# Ensure vtcode is built
+# Ensure diapason is built
 cargo build --release
 ```
 
@@ -198,8 +198,8 @@ Each report includes:
 
 ### Known Issues
 
-1. **Token Counting**: vtcode doesn't currently report token usage from the LLM
-   API
+1. **Token Counting**: diapason doesn't currently report token usage from the
+   LLM API
 2. **Stderr Pollution**: Fixed in v0.30.4 - .env loading message no longer
    pollutes output
 3. **CLI Flags**: `--temperature` and `--max-output-tokens` not supported by
@@ -228,4 +228,4 @@ To add new benchmarks or improve existing ones:
     paper
 - [OpenAI HumanEval](https://github.com/openai/human-eval) - Official
     implementation
-- [Benchmark Scripts](../../scripts/) - VT Code benchmark implementations
+- [Benchmark Scripts](../../scripts/) - Diapason benchmark implementations

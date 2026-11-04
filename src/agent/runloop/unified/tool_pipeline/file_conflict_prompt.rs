@@ -2,18 +2,18 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-use serde_json::{Value, json};
-use tokio::sync::Notify;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::core::interfaces::ui::UiSession;
-use vtcode_core::notifications::{NotificationEvent, send_global_notification};
-use vtcode_core::tools::edited_file_monitor::FILE_CONFLICT_OVERRIDE_ARG;
-use vtcode_core::tools::registry::{ExecSettlementMode, ToolRegistry};
-use vtcode_core::tools::result_cache::ToolResultCache;
-use vtcode_ui::tui::app::{
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::core::interfaces::ui::UiSession;
+use diapason_core::notifications::{NotificationEvent, send_global_notification};
+use diapason_core::tools::edited_file_monitor::FILE_CONFLICT_OVERRIDE_ARG;
+use diapason_core::tools::registry::{ExecSettlementMode, ToolRegistry};
+use diapason_core::tools::result_cache::ToolResultCache;
+use diapason_ui::tui::app::{
     DiffOverlayRequest, DiffPreviewMode, InlineHandle, InlineListItem, InlineListSelection, ListOverlayRequest,
     TransientRequest, TransientSubmission,
 };
+use serde_json::{Value, json};
+use tokio::sync::Notify;
 
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
 use crate::agent::runloop::unified::overlay_prompt::{OverlayWaitOutcome, show_overlay_and_wait};
@@ -59,7 +59,7 @@ pub(super) async fn resolve_file_conflict_status<S>(
     ctrl_c_state: &Arc<CtrlCState>,
     ctrl_c_notify: &Arc<Notify>,
     harness_emitter: Option<HarnessEventEmitter>,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     max_tool_retries: usize,
     safety_prevalidated: bool,
     show_live_pty_preview: bool,
@@ -112,7 +112,7 @@ async fn resolve_file_conflict_status_inner<S>(
     mut execution: RuntimeToolExecution,
     tokens: &CancellationTokens,
     harness_emitter: Option<HarnessEventEmitter>,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     max_tool_retries: usize,
     safety_prevalidated: bool,
     show_live_pty_preview: bool,
@@ -393,12 +393,12 @@ async fn read_disk_text(path: &Path) -> Option<String> {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use diapason_core::config::constants::tools;
+    use diapason_core::core::interfaces::ui::UiSession;
+    use diapason_core::tools::result_cache::ToolResultCache;
+    use diapason_ui::tui::app::{InlineCommand, InlineEvent, TransientEvent};
     use tempfile::TempDir;
     use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::core::interfaces::ui::UiSession;
-    use vtcode_core::tools::result_cache::ToolResultCache;
-    use vtcode_ui::tui::app::{InlineCommand, InlineEvent, TransientEvent};
 
     use crate::agent::runloop::unified::state::CtrlCState;
 

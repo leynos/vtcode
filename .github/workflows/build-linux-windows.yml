@@ -61,7 +61,7 @@ jobs:
         shell: bash
         run: |
           for _ in $(seq 1 12); do
-            if git ls-remote --exit-code --tags "https://github.com/vinhnx/VTCode.git" "${{ inputs.tag }}"; then
+            if git ls-remote --exit-code --tags "https://github.com/leynos/vtcode.git" "${{ inputs.tag }}"; then
               echo "Tag ${{ inputs.tag }} found"
               exit 0
             fi
@@ -159,11 +159,11 @@ jobs:
       - name: Check Binary
         shell: bash
         run: |
-          if [ -f "target/${{ matrix.target }}/release-fast/vtcode" ]; then
-            echo "✓ Found Unix binary: vtcode"
+          if [ -f "target/${{ matrix.target }}/release-fast/diapason" ]; then
+            echo "✓ Found Unix binary: diapason"
             # Report binary size for cold-start tracking (smaller binary = faster dyld load)
-            BINARY_SIZE=$(stat -c %s "target/${{ matrix.target }}/release-fast/vtcode" 2>/dev/null || stat -f %z "target/${{ matrix.target }}/release-fast/vtcode" 2>/dev/null || echo "unknown")
-            BINARY_SIZE_H=$(du -h "target/${{ matrix.target }}/release-fast/vtcode" 2>/dev/null | awk '{print $1}')
+            BINARY_SIZE=$(stat -c %s "target/${{ matrix.target }}/release-fast/diapason" 2>/dev/null || stat -f %z "target/${{ matrix.target }}/release-fast/diapason" 2>/dev/null || echo "unknown")
+            BINARY_SIZE_H=$(du -h "target/${{ matrix.target }}/release-fast/diapason" 2>/dev/null | awk '{print $1}')
             echo "📦 Binary size: ${BINARY_SIZE_H} (${BINARY_SIZE} bytes)"
           else
             echo "✗ Binary not found!" && exit 1
@@ -173,21 +173,21 @@ jobs:
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release-fast
-          tar -czf ../../../vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz vtcode
+          tar -czf ../../../diapason-${{ inputs.tag }}-${{ matrix.target }}.tar.gz diapason
           cd ../../../
           if command -v sha256sum &> /dev/null; then
-            sha256sum vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz > vtcode-${{ inputs.tag }}-${{ matrix.target }}.sha256
+            sha256sum diapason-${{ inputs.tag }}-${{ matrix.target }}.tar.gz > diapason-${{ inputs.tag }}-${{ matrix.target }}.sha256
           elif command -v shasum &> /dev/null; then
-            shasum -a 256 vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz > vtcode-${{ inputs.tag }}-${{ matrix.target }}.sha256
+            shasum -a 256 diapason-${{ inputs.tag }}-${{ matrix.target }}.tar.gz > diapason-${{ inputs.tag }}-${{ matrix.target }}.sha256
           fi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: vtcode-${{ inputs.tag }}-${{ matrix.target }}
+          name: diapason-${{ inputs.tag }}-${{ matrix.target }}
           path: |
-            vtcode-${{ inputs.tag }}-${{ matrix.target }}.tar.gz
-            vtcode-${{ inputs.tag }}-${{ matrix.target }}.sha256
+            diapason-${{ inputs.tag }}-${{ matrix.target }}.tar.gz
+            diapason-${{ inputs.tag }}-${{ matrix.target }}.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 6
@@ -208,7 +208,7 @@ jobs:
         shell: bash
         run: |
           for _ in $(seq 1 12); do
-            if git ls-remote --exit-code --tags "https://github.com/vinhnx/VTCode.git" "${{ inputs.tag }}"; then
+            if git ls-remote --exit-code --tags "https://github.com/leynos/vtcode.git" "${{ inputs.tag }}"; then
               echo "Tag ${{ inputs.tag }} found"
               exit 0
             fi
@@ -245,10 +245,10 @@ jobs:
       - name: Check Binary
         shell: bash
         run: |
-          if [ -f "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" ]; then
-            echo "✓ Found Windows binary: vtcode.exe"
+          if [ -f "target/x86_64-pc-windows-msvc/release-fast-windows/diapason.exe" ]; then
+            echo "✓ Found Windows binary: diapason.exe"
             # Report binary size for cold-start tracking
-            FILE_SIZE=$(stat -c %s "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" 2>/dev/null || wc -c < "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" | tr -d ' ')
+            FILE_SIZE=$(stat -c %s "target/x86_64-pc-windows-msvc/release-fast-windows/diapason.exe" 2>/dev/null || wc -c < "target/x86_64-pc-windows-msvc/release-fast-windows/diapason.exe" | tr -d ' ')
             echo "📦 Binary size: ${FILE_SIZE} bytes"
           else
             echo "✗ Binary not found!" && exit 1
@@ -257,18 +257,18 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $archive = "vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc.zip"
-          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release-fast-windows/vtcode.exe" -DestinationPath $archive -Force
+          $archive = "diapason-${{ inputs.tag }}-x86_64-pc-windows-msvc.zip"
+          Compress-Archive -Path "target/x86_64-pc-windows-msvc/release-fast-windows/diapason.exe" -DestinationPath $archive -Force
           $hash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLower()
-          Set-Content -Path "vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc.sha256" -Value $hash -NoNewline
+          Set-Content -Path "diapason-${{ inputs.tag }}-x86_64-pc-windows-msvc.sha256" -Value $hash -NoNewline
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc
+          name: diapason-${{ inputs.tag }}-x86_64-pc-windows-msvc
           path: |
-            vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc.zip
-            vtcode-${{ inputs.tag }}-x86_64-pc-windows-msvc.sha256
+            diapason-${{ inputs.tag }}-x86_64-pc-windows-msvc.zip
+            diapason-${{ inputs.tag }}-x86_64-pc-windows-msvc.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 6

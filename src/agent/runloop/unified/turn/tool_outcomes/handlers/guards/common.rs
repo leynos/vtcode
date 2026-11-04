@@ -5,8 +5,8 @@
 //! - `is_read_action`: Checks if a tool call is a file read operation
 //! - `extract_read_path`: Extracts the file path from read tool arguments
 
+use diapason_core::config::constants::tools as tool_names;
 use serde_json::Value;
-use vtcode_core::config::constants::tools as tool_names;
 
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 

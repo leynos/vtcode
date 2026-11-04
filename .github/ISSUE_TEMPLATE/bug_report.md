@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help us improve VT Code
+about: Create a report to help us improve Diapason
 title: '[Bug]: '
 labels: bug
 assignees: ''
@@ -33,13 +33,13 @@ If applicable, add screenshots to help explain your problem.
 
 - **OS:** [e.g. macOS 14.1, Ubuntu 22.04, Windows 11]
 - **Rust version:** [e.g. rustc 1.93.0]
-- **VT Code version:** [e.g. 0.31.0 or commit hash]
+- **Diapason version:** [e.g. 0.31.0 or commit hash]
 - **Terminal:** [e.g. iTerm2, GNOME Terminal, Windows Terminal]
 - **Shell:** [e.g. bash, zsh, PowerShell]
 
 ## Configuration
 
-If applicable, share relevant parts of your `vtcode.toml` configuration file
+If applicable, share relevant parts of your `config.toml` configuration file
 (be sure to remove any sensitive information like API keys):
 
 ```toml

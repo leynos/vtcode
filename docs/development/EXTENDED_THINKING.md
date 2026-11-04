@@ -1,6 +1,6 @@
-# Anthropic Thinking in VT Code
+# Anthropic Thinking in Diapason
 
-VT Code currently splits direct Anthropic Claude thinking into two runtime
+Diapason currently splits direct Anthropic Claude thinking into two runtime
 paths:
 
 - Adaptive by default: `claude-opus-4-8`, `claude-sonnet-4-6`
@@ -8,15 +8,15 @@ paths:
 
 ## Compact Runtime Matrix
 
-| Model               | VT Code default | What VT Code emits                                                                                              |
-| ------------------- | --------------- | --------------------------------------------------------------------------------------------------------------- |
-| `claude-opus-4-8`   | Adaptive        | `thinking: { type: "adaptive" }`, default `effort = xhigh`, optional `task_budget`                              |
-| `claude-sonnet-4-6` | Adaptive        | `thinking: { type: "adaptive" }`, default `effort = high`, explicit `thinking_budget` falls back to manual mode |
-| `claude-haiku-4-5`  | Manual budget   | `thinking: { type: "enabled", budget_tokens: N }`                                                               |
+| Model               | Diapason default | What Diapason emits                                                                                             |
+| ------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| `claude-opus-4-8`   | Adaptive         | `thinking: { type: "adaptive" }`, default `effort = xhigh`, optional `task_budget`                              |
+| `claude-sonnet-4-6` | Adaptive         | `thinking: { type: "adaptive" }`, default `effort = high`, explicit `thinking_budget` falls back to manual mode |
+| `claude-haiku-4-5`  | Manual budget    | `thinking: { type: "enabled", budget_tokens: N }`                                                               |
 
 ## Configuration
 
-Configure Anthropic thinking in `vtcode.toml`:
+Configure Anthropic thinking in `config.toml`:
 
 ```toml
 [provider.anthropic]
@@ -38,7 +38,7 @@ thinking_display = "summarized"
 
 ## Adaptive Thinking Behavior
 
-For adaptive models, VT Code sends:
+For adaptive models, Diapason sends:
 
 ```json
 {
@@ -49,7 +49,7 @@ For adaptive models, VT Code sends:
 
 ### Adaptive model notes
 
-- Claude Opus 4.8/4.7 is adaptive-only in VT Code
+- Claude Opus 4.8/4.7 is adaptive-only in Diapason
 - Claude Opus 4.6 and Claude Sonnet 4.6 are adaptive by default, but still
   accept explicit manual budgets for backward compatibility
 - `thinking_budget` is rejected on adaptive-only models and forces manual mode
@@ -61,7 +61,7 @@ For adaptive models, VT Code sends:
 
 ## Budgeted Thinking Behavior
 
-For budgeted-thinking models, VT Code sends:
+For budgeted-thinking models, Diapason sends:
 
 ```json
 {
@@ -84,13 +84,13 @@ For budgeted-thinking models, VT Code sends:
 - Claude Haiku 4.5 stays on the budgeted path
 - Claude Sonnet 4.6 only uses the interleaved-thinking beta header when it
   falls back to manual mode; adaptive thinking does not require it
-- Claude Opus 4.6 can still use manual budgets, but VT Code does not enable
+- Claude Opus 4.6 can still use manual budgets, but Diapason does not enable
   interleaved manual thinking for it
 - When interleaving is unavailable, `budget_tokens` must stay below `max_tokens`
 
 ## Feature Compatibility
 
-When thinking is active, VT Code enforces or normalizes the following behavior:
+When thinking is active, Diapason enforces or normalizes the following behavior:
 
 - `tool_choice` is limited to `auto` or `none`
 - assistant prefills are incompatible with Claude Opus 4.6/4.7 and Claude
@@ -101,14 +101,14 @@ When thinking is active, VT Code enforces or normalizes the following behavior:
 
 ## Disabling Thinking
 
-To disable thinking where VT Code allows it:
+To disable thinking where Diapason allows it:
 
 ```toml
 [provider.anthropic]
 extended_thinking_enabled = false
 ```
 
-Current VT Code behavior:
+Current Diapason behavior:
 
 - Disabled thinking is allowed for Claude Opus 4.8/4.7
 - Disabled thinking is allowed for Claude Opus 4.6 and Claude Sonnet 4.6

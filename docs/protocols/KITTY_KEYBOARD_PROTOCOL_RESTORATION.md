@@ -3,7 +3,7 @@
 ## Overview
 
 This document describes the complete restoration of the Kitty keyboard protocol
-support in VT Code. The protocol allows modern terminals to send richer
+support in Diapason. The protocol allows modern terminals to send richer
 keyboard event information (press/release/repeat, alternate keys, etc.) to
 improve the user input experience.
 
@@ -15,7 +15,7 @@ The Kitty keyboard protocol is integrated at multiple layers of the TUI
 initialization pipeline:
 
 ```
-VTCodeConfig (vtcode.toml)
+DiapasonConfig (config.toml)
     ↓
 KeyboardProtocolConfig (ui.keyboard_protocol)
     ↓
@@ -32,7 +32,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ### Core Configuration
 
-#### crates/codegen/vtcode-config/src/root.rs
+#### crates/codegen/diapason-config/src/root.rs
 
 - **Status**: ✓ Already present
 - **Details**: Contains `KeyboardProtocolConfig` struct with fields:
@@ -40,10 +40,10 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
   - `mode`: Preset modes ("default", "full", "minimal", "custom")
   - Individual flag controls for custom mode
 - **Defaults**: Enabled by default, using "default" mode
-- **Environment overrides**: `VTCODE_KEYBOARD_PROTOCOL_ENABLED`,
-  `VTCODE_KEYBOARD_PROTOCOL_MODE`
+- **Environment overrides**: `DIAPASON_KEYBOARD_PROTOCOL_ENABLED`,
+  `DIAPASON_KEYBOARD_PROTOCOL_MODE`
 
-#### crates/codegen/vtcode-core/src/config/mod.rs
+#### crates/codegen/diapason-core/src/config/mod.rs
 
 - **Status**: ✓ Already present
 - **Details**:
@@ -54,7 +54,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ### TUI Layer - Modern Implementation
 
-#### crates/codegen/vtcode-core/src/ui/tui/modern_tui.rs
+#### crates/codegen/diapason-core/src/ui/tui/modern_tui.rs
 
 - **Status**: ✓ Restored
 - **Changes**:
@@ -65,7 +65,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
   - Updated `exit()` to pop keyboard flags if configured
   - Updated `suspend()` to pop keyboard flags if configured
 
-#### crates/codegen/vtcode-core/src/ui/tui/modern_integration.rs
+#### crates/codegen/diapason-core/src/ui/tui/modern_integration.rs
 
 - **Status**: ✓ Restored
 - **Changes**:
@@ -76,7 +76,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ### TUI Layer - Runner Implementation
 
-#### crates/codegen/vtcode-core/src/ui/tui/runner.rs
+#### crates/codegen/diapason-core/src/ui/tui/runner.rs
 
 - **Status**: ✓ Restored
 - **Changes**:
@@ -93,7 +93,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ### Public API Layer
 
-#### crates/codegen/vtcode-core/src/ui/tui.rs
+#### crates/codegen/diapason-core/src/ui/tui.rs
 
 - **Status**: ✓ Updated
 - **Changes**:
@@ -115,7 +115,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ### Documentation & Comments
 
-#### crates/codegen/vtcode-core/src/ui/tui/alternate_screen.rs
+#### crates/codegen/diapason-core/src/ui/tui/alternate_screen.rs
 
 - **Status**: ✓ Comments already present
 - **Details**:
@@ -124,7 +124,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
   - Actual protocol implementation happens at higher TUI layer (modern_tui.rs,
     runner.rs)
 
-#### crates/codegen/vtcode-core/src/ui/tui/panic_hook.rs
+#### crates/codegen/diapason-core/src/ui/tui/panic_hook.rs
 
 - **Status**: ✓ Already present
 - **Details**:
@@ -173,13 +173,13 @@ mode = "default"  # Options: "default", "full", "minimal", "custom"
 ### Environment Variable Overrides
 
 ```bash
-export VTCODE_KEYBOARD_PROTOCOL_ENABLED=true
-export VTCODE_KEYBOARD_PROTOCOL_MODE=full
+export DIAPASON_KEYBOARD_PROTOCOL_ENABLED=true
+export DIAPASON_KEYBOARD_PROTOCOL_MODE=full
 ```
 
 ## Data Flow
 
-1. **Config Load**: `VTCodeConfig` loads from `vtcode.toml` and environment
+1. **Config Load**: `DiapasonConfig` loads from `config.toml` and environment
 2. **Session Setup**: `session_setup.rs` reads `vt_cfg.ui.keyboard_protocol`
 3. **Session Spawn**: Passes config to `spawn_session_with_prompts()`
 4. **TUI Setup**: `run_tui()` or `run_modern_tui()` receives config
@@ -205,7 +205,7 @@ sequences, so enabling is safe across environments.
 
 The restoration includes:
 
-- Unit tests in `crates/codegen/vtcode-core/src/config/mod.rs` for
+- Unit tests in `crates/codegen/diapason-core/src/config/mod.rs` for
   `keyboard_protocol_to_flags()`
 - Tests for all mode conversions (default, full, minimal, custom)
 - Tests for disabled protocol

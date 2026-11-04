@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
-use vtcode_config::api_keys::{CredentialSource, store_credential_with_mode};
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_core::config::models::Provider;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_config::api_keys::{CredentialSource, store_credential_with_mode};
+use diapason_config::auth::AuthCredentialsStoreMode;
+use diapason_core::config::models::Provider;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::common::prompt_with_placeholder;
 use super::secret_input::{mask_key, read_secret_line};
@@ -11,7 +11,7 @@ use super::secret_input::{mask_key, read_secret_line};
 ///
 /// Resolution (no paste prompt unless everything else misses):
 /// 1. Local provider → no key required.
-/// 2. Managed-auth provider → defer to its CLI (`vtcode login <provider>`).
+/// 2. Managed-auth provider → defer to its CLI (`diapason login <provider>`).
 /// 3. Credential already discoverable in the process environment (shell export
 ///    or loaded `.env`) or in secure storage / OAuth → confirm and skip. When
 ///    a key is already in secure storage, the user may choose to replace it.
@@ -37,7 +37,7 @@ pub(crate) fn prompt_api_key_interactive(
         renderer.line(
             MessageStyle::Info,
             &format!(
-                "{} auth is managed by its official CLI. Run `vtcode login {}` to authenticate.",
+                "{} auth is managed by its official CLI. Run `diapason login {}` to authenticate.",
                 provider.label(),
                 provider
             ),
@@ -46,14 +46,14 @@ pub(crate) fn prompt_api_key_interactive(
     }
 
     let env_key = provider.default_api_key_env();
-    let detail = vtcode_config::api_keys::provider_credential_detail_with_mode(provider, storage_mode);
+    let detail = diapason_config::api_keys::provider_credential_detail_with_mode(provider, storage_mode);
 
     // Discovery intentionally returns a compact `Option` for UI summaries. A
     // launch-time prompt must still distinguish "no key" from an unreadable
     // persisted key, otherwise a transient backend/decryption failure looks
     // like a request to paste a replacement secret.
     if detail.is_none() {
-        vtcode_config::api_keys::load_stored_api_key_with_mode(provider.as_ref(), storage_mode)
+        diapason_config::api_keys::load_stored_api_key_with_mode(provider.as_ref(), storage_mode)
             .with_context(|| format!("failed to read stored {} credential", provider.label()))?;
     }
 

@@ -61,16 +61,16 @@ of TUI work easier to review, test, and continue across sessions.
       command models moved into `slash_commands/models.rs`, routing into
       `slash_commands/dispatch.rs`, built-in command execution into
       `slash_commands/builtins.rs`, and test coverage into
-      `slash_commands/tests.rs`. Verify: `cargo test -p vtcode slash_commands`
-      and `cargo check -p vtcode`.
+      `slash_commands/tests.rs`. Verify: `cargo test -p diapason slash_commands`
+      and `cargo check -p diapason`.
 - [x] Step 3: Decompose unified slash-command outcome routing in
       `src/agent/runloop/unified/turn/session/slash_commands/mod.rs` and
       `handlers.rs` by grouping related outcomes into smaller modules. Outcome:
       `slash_commands/mod.rs` now delegates outcome fan-out through
       `slash_commands/outcome_router.rs`, while `handlers.rs` is a thin hub
       over extracted `control.rs` and `rewind.rs` modules plus the existing
-      feature handlers. Verify: `cargo check -p vtcode` and
-      `cargo test -p vtcode slash_commands`.
+      feature handlers. Verify: `cargo check -p diapason` and
+      `cargo test -p diapason slash_commands`.
 - [x] Step 4: Break the oversized UI-heavy slash-command modules into
       feature-oriented submodules, starting with
       `src/agent/runloop/unified/turn/session/slash_commands/ui.rs`. Outcome:
@@ -78,8 +78,8 @@ of TUI work easier to review, test, and continue across sessions.
       theme/session/history/model flows, while status line setup moved into
       `ui/statusline.rs` and terminal-title setup moved into
       `ui/terminal_title.rs`; `ui.rs` dropped to 407 lines. Verify:
-      `cargo test -p vtcode slash_commands`,
-      `cargo test -p vtcode --bin vtcode inline_events::tests`, and
+      `cargo test -p diapason slash_commands`,
+      `cargo test -p diapason --bin diapason inline_events::tests`, and
       `wc -l src/agent/runloop/unified/turn/session/slash_commands/ui.rs`.
 - [x] Step 5: Decompose the highest-risk slash-command feature modules that
       remain oversized after the routing split, prioritizing
@@ -93,8 +93,8 @@ of TUI work easier to review, test, and continue across sessions.
       export/HTML pipeline and focused tests moved into `share_log/timeline.rs`;
       `diagnostics.rs` is now a 208-line status/doctor root with memory
       controls, prompt helpers, config persistence, and focused tests moved into
-      `diagnostics/memory.rs`. Verify: `cargo check -p vtcode` and
-      `cargo test -p vtcode slash_commands`.
+      `diagnostics/memory.rs`. Verify: `cargo check -p diapason` and
+      `cargo test -p diapason slash_commands`.
 - [x] Step 6: Reduce the surrounding session-loop complexity where command
       handling still fans out through large orchestration files such as
       `src/agent/runloop/unified/turn/session/interaction_loop_runner.rs`.
@@ -104,8 +104,8 @@ of TUI work easier to review, test, and continue across sessions.
       moved into `interaction_loop_runner/support.rs`; the inline-action
       modal/resume match now routes through a dedicated resolver, making loop
       continuation easier to trace from input to outcome. Verify:
-      `cargo check -p vtcode`, `cargo test -p vtcode interaction_loop_runner`,
-      and `cargo test -p vtcode --bin vtcode inline_events::tests`.
+      `cargo check -p diapason`, `cargo test -p diapason interaction_loop_runner`,
+      and `cargo test -p diapason --bin diapason inline_events::tests`.
 - [x] Step 7: Refresh the harness evidence after the code split. Outcome:
       [TECH_DEBT_TRACKER.md](../../TECH_DEBT_TRACKER.md) and
       [QUALITY_SCORE.md](../../QUALITY_SCORE.md) now reflect the updated

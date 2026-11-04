@@ -1,8 +1,8 @@
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::llm::provider as uni;
 use serde_json::Value;
 use std::fmt::Write;
 use std::sync::{Arc, LazyLock};
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::llm::provider as uni;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ReplyKind {
@@ -467,9 +467,9 @@ impl DirectToolCompletion<'_> {
 #[cfg(test)]
 mod tests {
     use super::{ReplyKind, completion_reply_text};
-    use vtcode_core::config::constants::tools as tool_names;
-    use vtcode_core::llm::provider as uni;
-    use vtcode_core::llm::provider::{LLMError, LLMRequest, LLMResponse};
+    use diapason_core::config::constants::tools as tool_names;
+    use diapason_core::llm::provider as uni;
+    use diapason_core::llm::provider::{LLMError, LLMRequest, LLMResponse};
 
     struct PanicProvider;
 

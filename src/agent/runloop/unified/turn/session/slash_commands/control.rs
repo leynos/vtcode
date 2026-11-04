@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::hooks::SessionEndReason;
+use diapason_core::llm::provider::MessageRole;
+use diapason_core::notifications::{NotificationEvent, send_global_notification_force};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_core::utils::transcript;
 use std::path::PathBuf;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::hooks::SessionEndReason;
-use vtcode_core::llm::provider::MessageRole;
-use vtcode_core::notifications::{NotificationEvent, send_global_notification_force};
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_core::utils::transcript;
 
 use crate::agent::runloop::unified::palettes::ActivePalette;
 use crate::agent::runloop::unified::settings_interactive::{
@@ -20,12 +20,12 @@ use super::ui;
 
 pub(crate) async fn handle_notify(ctx: SlashCommandContext<'_>, message: String) -> Result<SlashCommandControl> {
     send_global_notification_force(NotificationEvent::Custom {
-        title: "VT Code".to_string(),
+        title: "Diapason".to_string(),
         message: message.clone(),
     })
     .await?;
     ctx.renderer
-        .line(MessageStyle::Info, &format!("Sent VT Code notification: {message}"))?;
+        .line(MessageStyle::Info, &format!("Sent Diapason notification: {message}"))?;
     Ok(SlashCommandControl::Continue)
 }
 
@@ -106,7 +106,7 @@ pub(crate) async fn handle_stop_agent(ctx: SlashCommandContext<'_>) -> Result<Sl
     match request_local_stop(ctx.ctrl_c_state, ctx.ctrl_c_notify) {
         CtrlCSignal::Cancel => {
             ctx.renderer
-                .line(MessageStyle::Info, "Stop requested. VT Code is cancelling the current turn.")?;
+                .line(MessageStyle::Info, "Stop requested. Diapason is cancelling the current turn.")?;
             Ok(SlashCommandControl::Continue)
         }
         CtrlCSignal::Exit => Ok(SlashCommandControl::BreakWithReason(SessionEndReason::Exit)),
@@ -195,7 +195,7 @@ pub(crate) async fn handle_copy_latest_assistant_reply(ctx: SlashCommandContext<
     });
 
     if let Some(reply) = latest_reply {
-        if vtcode_ui::tui::core::MouseSelectionState::copy_to_clipboard(&reply) {
+        if diapason_ui::tui::core::MouseSelectionState::copy_to_clipboard(&reply) {
             ctx.renderer
                 .line(MessageStyle::Info, "Copied latest assistant reply to clipboard.")?;
         } else {

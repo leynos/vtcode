@@ -6,15 +6,15 @@
 //! - `list` - List discovered skills
 
 use anyhow::{Context, Result};
+use diapason_core::skills::discovery::SkillDiscovery;
+use diapason_core::skills::manifest::parse_skill_file;
+use diapason_core::skills::model::SkillScope;
+use diapason_core::skills::prompt_integration::generate_skills_prompt_xml;
 use std::path::{Path, PathBuf};
-use vtcode_core::skills::discovery::SkillDiscovery;
-use vtcode_core::skills::manifest::parse_skill_file;
-use vtcode_core::skills::model::SkillScope;
-use vtcode_core::skills::prompt_integration::generate_skills_prompt_xml;
 
 /// Validate a skill directory (skills-ref compatible)
 ///
-/// Usage: vtcode skills-ref validate <path>
+/// Usage: diapason skills-ref validate <path>
 pub async fn handle_skills_ref_validate(path: &Path) -> Result<()> {
     println!("Validating skill at: {}\n", path.display());
 
@@ -44,9 +44,9 @@ pub async fn handle_skills_ref_validate(path: &Path) -> Result<()> {
 
 /// Generate <available_skills> XML for agent prompts (skills-ref compatible)
 ///
-/// Usage: vtcode skills-ref to-prompt <path>...
+/// Usage: diapason skills-ref to-prompt <path>...
 pub async fn handle_skills_ref_to_prompt(paths: &[PathBuf]) -> Result<()> {
-    use vtcode_core::skills::model::SkillMetadata;
+    use diapason_core::skills::model::SkillMetadata;
 
     let mut skills = Vec::new();
 
@@ -85,7 +85,7 @@ pub async fn handle_skills_ref_to_prompt(paths: &[PathBuf]) -> Result<()> {
 
 /// List all discovered skills (skills-ref compatible)
 ///
-/// Usage: vtcode skills-ref list [path]
+/// Usage: diapason skills-ref list [path]
 pub async fn handle_skills_ref_list(path: Option<&Path>) -> Result<()> {
     let workspace_root = path
         .map(PathBuf::from)

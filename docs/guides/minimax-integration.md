@@ -1,6 +1,6 @@
 # MiniMax Integration Guide
 
-VT Code supports MiniMax models through the Anthropic-compatible API. You can
+Diapason supports MiniMax models through the Anthropic-compatible API. You can
 use it in two ways:
 
 - Use provider `anthropic` with model `MiniMax-M2.5` (recommended) or
@@ -11,9 +11,9 @@ use it in two ways:
 ## Overview
 
 MiniMax provides an Anthropic API-compatible endpoint that allows seamless
-integration with tools built for Anthropic's API. VT Code automatically detects
-when you're using MiniMax models and routes requests to the appropriate
-endpoint. When using the `minimax` provider alias, VT Code sends requests
+integration with tools built for Anthropic's API. Diapason automatically
+detects when you're using MiniMax models and routes requests to the appropriate
+endpoint. When using the `minimax` provider alias, Diapason sends requests
 through the Anthropic Messages API (`/v1/messages`) rather than OpenAI-style
 `/chat/completions`.
 
@@ -31,9 +31,9 @@ Set your MiniMax API key as the Anthropic API key:
 export ANTHROPIC_API_KEY=your_minimax_api_key_here
 ```
 
-### 3. Configure vtcode.toml
+### 3. Configure config.toml
 
-Update your `vtcode.toml` to use the MiniMax model:
+Update your `config.toml` to use the MiniMax model:
 
 ```toml
 [agent]
@@ -54,11 +54,11 @@ api_key_env = "ANTHROPIC_API_KEY"
 
 ### 4. Start Using MiniMax
 
-Run VT Code and it will automatically use the MiniMax-M2.5 model (the latest
+Run Diapason and it will automatically use the MiniMax-M2.5 model (the latest
 MiniMax model) through the Anthropic-compatible API:
 
 ```bash
-vtcode
+diapason
 ```
 
 ## Configuration Options
@@ -110,7 +110,7 @@ supported:
 ### Simple Query
 
 ```bash
-vtcode ask "Explain machine learning in simple terms"
+diapason ask "Explain machine learning in simple terms"
 ```
 
 ### With Tool Calling
@@ -131,13 +131,13 @@ outside this range will return an error. The recommended value is 1.0.
 
 ## API Endpoint
 
-VT Code automatically routes MiniMax-M2.5 requests to:
+Diapason automatically routes MiniMax-M2.5 requests to:
 
 ```
 https://api.minimax.io/anthropic/v1/messages
 ```
 
-The base URL is `https://api.minimax.io/anthropic/v1`, and VT Code appends
+The base URL is `https://api.minimax.io/anthropic/v1`, and Diapason appends
 `/messages` automatically.
 
 This is handled transparently - you don't need to configure anything special
@@ -145,8 +145,8 @@ unless you want to override the base URL via environment variable.
 
 ### Droid-style custom model example
 
-You can mirror Droid's custom model config using VT Code's user config
-(`vtcode.toml` in the canonical platform config directory). Add a `minimax`
+You can mirror Droid's custom model config using Diapason's user config
+(`config.toml` in the canonical platform config directory). Add a `minimax`
 provider entry with base URL and API key:
 
 ```toml
@@ -188,7 +188,7 @@ If you see "model not found" errors:
 If you see temperature-related errors:
 
 1. Ensure temperature is in the range (0.0, 1.0]
-2. The default temperature in VT Code should work fine
+2. The default temperature in Diapason should work fine
 
 ## Comparison with Claude Models
 

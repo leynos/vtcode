@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT_DIR="${ROOT_DIR}/.vtcode/perf"
+OUT_DIR="${ROOT_DIR}/.diapason/perf"
 BASELINE="${1:-${OUT_DIR}/baseline.json}"
 CURRENT="${2:-${OUT_DIR}/latest.json}"
 OUT_MD="${OUT_DIR}/diff.md"
@@ -54,7 +54,7 @@ for key in keys:
     rows.append((key, b, c, pct, direction))
 
 lines = [
-    "# VT Code Performance Diff",
+    "# Diapason Performance Diff",
     "",
     f"Baseline: `{baseline_path}`",
     f"Current: `{current_path}`",

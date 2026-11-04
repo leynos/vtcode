@@ -1,10 +1,10 @@
 use crate::updater::{InstallOutcome, UpdateExecutionStrategy, UpdateInfo, Updater};
 use anyhow::{Context, Result, anyhow};
 use crossterm::style::Stylize;
+use diapason_config::update::{ReleaseChannel, UpdateConfig};
+use diapason_core::ui::user_confirmation::UserConfirmation;
 use std::env;
 use std::process::Command;
-use vtcode_config::update::{ReleaseChannel, UpdateConfig};
-use vtcode_core::ui::user_confirmation::UserConfirmation;
 
 /// Options for the update command
 #[derive(Debug, Clone)]
@@ -52,7 +52,7 @@ pub async fn handle_update_command(options: UpdateCommandOptions) -> Result<()> 
         return handle_pin_version(version_str);
     }
 
-    println!("{} VT Code v{}", "Checking for updates...".cyan(), current_version);
+    println!("{} Diapason v{}", "Checking for updates...".cyan(), current_version);
 
     let mut updater = Updater::new(current_version).context("Failed to initialize updater")?;
 
@@ -65,7 +65,7 @@ pub async fn handle_update_command(options: UpdateCommandOptions) -> Result<()> 
         Ok(Some(update_info)) => handle_update_available(&updater, &update_info, options).await,
         Ok(None) => {
             println!("{} You're already on the latest version (v{})", "✓".green(), current_version);
-            println!("{} vtcode init   # scaffold project if needed", "→".cyan());
+            println!("{} diapason init   # scaffold project if needed", "→".cyan());
 
             if options.force {
                 println!("{} Force mode enabled, attempting reinstall...", "→".cyan());
@@ -243,14 +243,14 @@ async fn handle_update_available(updater: &Updater, update: &UpdateInfo, options
     }
 
     let proceed = UserConfirmation::confirm_action(
-        &format!("Install VT Code v{} now? This will replace the current binary.", update.version),
+        &format!("Install Diapason v{} now? This will replace the current binary.", update.version),
         true,
     )
     .context("Failed to read confirmation input")?;
 
     if !proceed {
         println!("{} Update canceled.", "✗".yellow());
-        println!("{} You can run this again with `vtcode update`.", "→".cyan());
+        println!("{} You can run this again with `diapason update`.", "→".cyan());
         return Ok(());
     }
 
@@ -305,9 +305,9 @@ async fn install_update(updater: &Updater, force: bool) -> Result<()> {
 
         if status.success() {
             println!("{} Update command completed successfully!", "✓".green());
-            println!("\n{} Restart VT Code to use the new version", "→".cyan());
-            println!("{} vtcode init   # scaffold project if needed", "→".cyan());
-            println!("{} vtcode        # launch TUI", "→".cyan());
+            println!("\n{} Restart Diapason to use the new version", "→".cyan());
+            println!("{} diapason init   # scaffold project if needed", "→".cyan());
+            println!("{} diapason        # launch TUI", "→".cyan());
         } else {
             let code = status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".to_string());
             println!("{} Update command exited with status: {}", "!".yellow(), code);
@@ -322,9 +322,9 @@ async fn install_update(updater: &Updater, force: bool) -> Result<()> {
     match updater.install_update(force).await? {
         InstallOutcome::Updated(version) => {
             println!("{} {} installed successfully!", "✓".green(), version.bold());
-            println!("\n{} Restart VT Code to use the new version", "→".cyan());
-            println!("{} vtcode init   # scaffold project if needed", "→".cyan());
-            println!("{} vtcode        # launch TUI", "→".cyan());
+            println!("\n{} Restart Diapason to use the new version", "→".cyan());
+            println!("{} diapason init   # scaffold project if needed", "→".cyan());
+            println!("{} diapason        # launch TUI", "→".cyan());
         }
         InstallOutcome::UpToDate(version) => {
             println!("{} Already up to date ({})", "✓".green(), version.bold());

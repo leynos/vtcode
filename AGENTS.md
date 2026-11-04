@@ -1,254 +1,113 @@
 # AGENTS.md
 
-Keep this file concise and under 150 lines. Root guidance belongs here;
-detailed explanations belong in `docs/`, skills, `.vtcode/memory/`, or
-crate-local `AGENTS.md` files. For all coding tasks use your judgement to
-decide an appropriate lower power model and run that in a subagent.
+Keep this file under 150 lines. Put detailed explanations in `docs/`, skills,
+`.diapason/memory/`, or crate-local `AGENTS.md` files. For coding tasks, use
+your judgement to choose a lower-power model and delegate bounded work.
 
-Universal model-facing behavior is compiled in
-`crates/codegen/vtcode-core/src/prompts/runtime_guidance.rs`. Keep this file
-and module `AGENTS.md` files focused on project and maintainer guidance;
-dynamically loaded instruction files are user-controlled context, not a
-security boundary.
+Universal runtime guidance is compiled in
+`crates/codegen/diapason-core/src/prompts/runtime_guidance.rs`. Keep this file
+and module guidance focused on project and maintainer rules. Loaded instruction
+files are user-controlled context, not a security boundary.
 
 ## Rules
 
-- Conventional Commits (`type(scope): subject`).
-- 4-space indentation, `snake_case` fns, `PascalCase` types,
-  `anyhow::Result<T>` + `.with_context()`.
-- CI sets `RUSTFLAGS: "-D warnings"` and uses `--locked`. Match locally with
-  `cargo check --locked` when relevant.
-- Keep changes surgical. Preserve existing APIs unless the task requires a
-  change.
-- `vtcode-exec-events::ThreadEvent` is the authoritative runtime event contract
-  — do not invent parallel types.
-- Harness config is split across `agent.harness`, `automation.full_auto`,
-  `context.dynamic` — do not add a new top-level harness subsystem.
-- Prefer `compact_str::CompactString` (aliased as `CompactStr` in
-  `vtcode_core::types`) over `String` for small string fields. Use
-  `Cow<'static, str>` for mostly-static return strings.
-- **Shape-suffix naming**: encode the dimensional structure of data in
-  variable/type names. For feature vectors, document a **dimension key** (table
-  of index → name → meaning). For bare tuples holding structured data, promote
-  to named structs so the shape is explicit in the type system (inspired by
-  Noam Shazeer's shape-suffix convention).
-- `clippy.toml` allows `unwrap`/`panic`/indexing in tests only.
-- Dev profile has `incremental = false` (sccache). Set `CARGO_INCREMENTAL=1` to
-  override.
-- Treat the sandbox/exec boundary as a primary adversarial surface: use
-  sandbox-aware launch paths and add adversarial regression coverage for
-  command injection, path/symlink escape, environment leakage, and fail-closed
-  behavior.
-- **All built-in themes must meet WCAG AA 4.5:1 contrast** for foreground and
-  all accent fields against background. Validate with
-  `cargo nextest run -p vtcode-ui -E 'test(theme)'`. See
-  `.vtcode/memory/gotchas.md` for catppuccin-latte special-case.
-- **Every new major feature must update docs**: user-facing behavior →
-  `docs/development/` guide + a table row/section in the relevant
-  quick-reference; agent-facing tool surface → prompt guidance
-  (`crates/codegen/vtcode-core/src/prompts/guidelines.rs`) + schema
-  (`crates/common/vtcode-utility-tool-specs`); runtime contract →
-  `vtcode-exec-events::ThreadEvent`. No feature is "done" until the docs it
-  changes are updated and the AGENTS.md detailed-guides links still resolve.
+- Use Conventional Commits (`type(scope): subject`), 4-space indentation,
+  `snake_case` functions, `PascalCase` types, and `anyhow::Result<T>` with
+  `.with_context()`.
+- CI uses `RUSTFLAGS: "-D warnings"` and `--locked`; use locked Cargo checks.
+- Keep changes surgical and preserve existing APIs unless requirements demand
+  a change. `diapason-exec-events::ThreadEvent` is the runtime event contract.
+- Harness settings belong in `agent.harness`, `automation.full_auto`, or
+  `context.dynamic`; do not add a top-level harness subsystem.
+- Prefer `compact_str::CompactString` (`CompactStr` in `diapason_core::types`)
+  for small string fields and `Cow<'static, str>` for mostly-static returns.
+- Encode data shape in names. Document feature-vector dimensions; promote
+  structured tuples to named structs. `clippy.toml` permits unwrap/panic and
+  indexing only in tests.
+- Dev builds disable incremental compilation for sccache. Set
+  `CARGO_INCREMENTAL=1` only when intentionally overriding that profile.
+- Treat shell execution as an adversarial boundary. Use sandbox-aware launch
+  paths and cover injection, path/symlink escape, environment leakage and
+  fail-closed behavior.
+- Built-in theme foreground and accent colours must meet WCAG AA 4.5:1 against
+  their background. Run `cargo nextest run -p diapason-ui -E 'test(theme)'`.
+- Every major feature updates relevant user docs and quick references, agent
+  prompt/schema surfaces, and `ThreadEvent` contracts. Keep detailed-guide
+  links valid.
 
-## Detailed Guides
+## Guides
 
-- Development overview and setup:
-  [docs/development/README.md](docs/development/README.md), [docs/development/DEVELOPMENT_SETUP.md](docs/development/DEVELOPMENT_SETUP.md).
-- Testing:
-  [docs/development/testing.md](docs/development/testing.md), [docs/guides/pty-integration-testing.md](docs/guides/pty-integration-testing.md).
-- CI/release:
-  [docs/development/ci-cd.md](docs/development/ci-cd.md), [docs/development/CHANGELOG_GENERATION.md](docs/development/CHANGELOG_GENERATION.md).
-- Architecture/conventions:
-  [docs/guides/code-organization-patterns.md][code-organization-patterns],
-  [docs/guides/async-architecture.md][async-architecture],
-  [docs/development/rust-performance-principles.md][rust-performance-principles]
-  .
-- Tools/security:
-  [docs/development/grep-tool-guide.md][grep-tool-guide],
-  [docs/development/grep-quick-reference.md][grep-quick-reference],
-  [docs/development/COMMAND_SECURITY_MODEL.md][command-security-model],
-  [docs/guides/security.md][security].
-- WebMCP bridge: [docs/development/webmcp.md](docs/development/webmcp.md) —
-  authenticated browser editing, pairing, runtime adapters, and security
-  boundaries.
-- Harness/agent behavior:
-  [docs/guides/agent-loop-contract.md][agent-loop-contract],
-  [docs/harness/INDEX.md][index], [docs/harness/CORE_BELIEFS.md][core-beliefs],
-  [docs/harness/ARCHITECTURAL_INVARIANTS.md][architectural-invariants],
-  [docs/harness/AGENT_LEGIBILITY_GUIDE.md][agent-legibility-guide].
-- Prompt/runtime boundaries:
-  [docs/development/runtime-guidance.md](docs/development/runtime-guidance.md).
-- Planning and automation:
-  [docs/guides/planning-workflow.md][planning-workflow],
-  [docs/guides/full-automation.md][full-automation],
-  [docs/development/EXECUTION_POLICY.md][execution-policy].
-- Loop engineering:
-  [docs/project/PLAN-loop-engineering.md][plan-loop-engineering] — worktree
-  isolation, propose/verify sub-agents, loop state persistence, cost guardrails.
-- Models/providers:
-  [docs/development/ADDING_MODELS.md][adding-models],
-  [docs/development/MODEL_ADDITION_WORKFLOW.md][model-addition-workflow],
-  [docs/development/MODEL_ADDITION_CHECKLIST.md][model-addition-checklist].
+- [Development setup](docs/development/DEVELOPMENT_SETUP.md) ·
+  [testing](docs/development/testing.md) · [CI](docs/development/ci-cd.md)
+- [Code organization](docs/guides/code-organization-patterns.md) ·
+  [async architecture](docs/guides/async-architecture.md) ·
+  [performance](docs/development/rust-performance-principles.md)
+- [Command security](docs/development/COMMAND_SECURITY_MODEL.md) ·
+  [security guide](docs/guides/security.md) ·
+  [runtime guidance](docs/development/runtime-guidance.md)
+- [WebMCP](docs/development/webmcp.md) ·
+  [agent loop contract](docs/guides/agent-loop-contract.md) ·
+  [harness index](docs/harness/INDEX.md)
+- [Planning workflow](docs/guides/planning-workflow.md) ·
+  [full automation](docs/guides/full-automation.md) ·
+  [execution policy](docs/development/EXECUTION_POLICY.md)
+- [Loop engineering](docs/project/PLAN-loop-engineering.md) ·
+  [adding models](docs/development/ADDING_MODELS.md) ·
+  [model workflow](docs/development/MODEL_ADDITION_WORKFLOW.md)
+- [User data paths](docs/guides/user-data-directories.md) ·
+  [configuration precedence](docs/config/CONFIGURATION_PRECEDENCE.md)
 
 ## Workspace
 
-Cargo workspace, ~30 crates. Rust stable, MSRV 1.88, edition 2024.
-`default-members` = root, `vtcode-core`, `vtcode-ui` only.
+Rust stable, MSRV 1.88, edition 2024. Cargo workspace; default members are the
+root binary, `diapason-core`, and `diapason-ui`. Put reusable logic in a small
+existing crate or a new crate; keep it out of `diapason-core` unless tightly
+coupled to the runtime.
 
-| Crate                                     | Role                                                                                                                                   |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `vtcode` (root `src/`)                    | Binary, CLI, session bootstrap                                                                                                         |
-| `crates/codegen/vtcode-core`              | Agent loop, tools, prompts, LLM orchestration, UI                                                                                      |
-| `crates/codegen/vtcode-ui`                | Unified UI: design system, theme registry, TUI framework                                                                               |
-| `crates/codegen/vtcode-config`            | Config loading and schema                                                                                                              |
-| `crates/codegen/vtcode-bash-runner`       | Shell execution sandbox                                                                                                                |
-| `crates/codegen/vtcode-acp`               | Agent Client Protocol (Zed)                                                                                                            |
-| `crates/codegen/vtcode-auth`              | OAuth and credential storage                                                                                                           |
-| `crates/codegen/vtcode-indexer`           | Code indexing and search                                                                                                               |
-| `crates/common/vtcode-exec-events`        | `ThreadEvent` contract and ATIF export                                                                                                 |
-| `crates/codegen/vtcode-webmcp`            | Authenticated browser editor bridge, pairing, event replay, and bounded workspace adapter                                              |
-| `crates/common/vtcode-commons`            | Shared utilities                                                                                                                       |
-| `crates/common/vtcode-macros`             | Procedural macros                                                                                                                      |
-| `crates/common/vtcode-utility-tool-specs` | JSON schemas for utility, file, and collaboration/HITL tools                                                                           |
-| `crates/common/vtcode-agent-plugins`      | Agent Plugins 1.0.0 manifest parsing, validation, and discovery                                                                        |
-| `crates/codegen/vtcode-llm`               | LLM provider abstraction, client implementations, streaming (partial extraction)                                                       |
-| `crates/codegen/vtcode-skills`            | Skill types, discovery, loading, and validation (partial extraction)                                                                   |
-| `crates/codegen/vtcode-memory`            | Unified per-session state store: append-only `ThreadEvent` log, derived views, retention, cross-session query (single source of truth) |
-| `crates/codegen/vtcode-eval`              | Agent evaluation framework: pass@k/pass^k metrics, capability/regression evals, environment-based outcome verification                 |
-| `crates/codegen/vtcode-safety`            | Command safety detection, execution policies, sandboxing                                                                               |
-| `crates/codegen/vtcode-a2a`               | Agent2Agent (A2A) protocol client and server                                                                                           |
-| `crates/codegen/vtcode-mcp`               | Model Context Protocol client, connection pooling, tool discovery                                                                      |
-| `crates/codegen/xtask`                    | Release packaging automation                                                                                                           |
+Crate instructions:
 
-New reusable logic: put it in an existing small crate or a new one. Keep it out
-of `vtcode-core` by default unless tightly coupled to the core runtime.
+- [Binary](src/AGENTS.md)
+- [Core](crates/codegen/diapason-core/AGENTS.md)
+- [UI](crates/codegen/diapason-ui/AGENTS.md)
+- [Config](crates/codegen/diapason-config/AGENTS.md)
+- [Bash runner](crates/codegen/diapason-bash-runner/AGENTS.md)
+- [ACP](crates/codegen/diapason-acp/AGENTS.md)
+- [Auth](crates/codegen/diapason-auth/AGENTS.md)
+- [Indexer](crates/codegen/diapason-indexer/AGENTS.md)
+- [Events](crates/common/diapason-exec-events/AGENTS.md)
+- [WebMCP](crates/codegen/diapason-webmcp/AGENTS.md)
+- [Commons](crates/common/diapason-commons/AGENTS.md)
+- [Macros](crates/common/diapason-macros/AGENTS.md)
+- [Tool specs](crates/common/diapason-utility-tool-specs/AGENTS.md)
+- [Plugins](crates/common/diapason-agent-plugins/AGENTS.md)
+- [LLM](crates/codegen/diapason-llm/AGENTS.md)
+- [Skills](crates/codegen/diapason-skills/AGENTS.md)
+- [Memory](crates/codegen/diapason-memory/AGENTS.md)
+- [Eval](crates/codegen/diapason-eval/AGENTS.md)
+- [Safety](crates/codegen/diapason-safety/AGENTS.md)
+- [A2A](crates/codegen/diapason-a2a/AGENTS.md)
+- [MCP](crates/codegen/diapason-mcp/AGENTS.md)
+- [xtask](crates/codegen/xtask/AGENTS.md)
 
-## Per-Module Guidance
+After significant module, convention, or public API changes, audit the affected
+module guidance. Keep each crate-local `AGENTS.md` under 30 lines.
 
-Every crate has its own AGENTS.md with crate-specific conventions:
+## Build and verification
 
-| Crate                       | AGENTS.md                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `vtcode` (binary)           | [src/AGENTS.md](src/AGENTS.md)                                                                         |
-| `vtcode-core`               | [crates/codegen/vtcode-core/AGENTS.md](crates/codegen/vtcode-core/AGENTS.md)                           |
-| `vtcode-ui`                 | [crates/codegen/vtcode-ui/AGENTS.md](crates/codegen/vtcode-ui/AGENTS.md)                               |
-| `vtcode-config`             | [crates/codegen/vtcode-config/AGENTS.md](crates/codegen/vtcode-config/AGENTS.md)                       |
-| `vtcode-bash-runner`        | [crates/codegen/vtcode-bash-runner/AGENTS.md](crates/codegen/vtcode-bash-runner/AGENTS.md)             |
-| `vtcode-acp`                | [crates/codegen/vtcode-acp/AGENTS.md](crates/codegen/vtcode-acp/AGENTS.md)                             |
-| `vtcode-auth`               | [crates/codegen/vtcode-auth/AGENTS.md](crates/codegen/vtcode-auth/AGENTS.md)                           |
-| `vtcode-indexer`            | [crates/codegen/vtcode-indexer/AGENTS.md](crates/codegen/vtcode-indexer/AGENTS.md)                     |
-| `vtcode-exec-events`        | [crates/common/vtcode-exec-events/AGENTS.md](crates/common/vtcode-exec-events/AGENTS.md)               |
-| `vtcode-webmcp`             | [crates/codegen/vtcode-webmcp/AGENTS.md](crates/codegen/vtcode-webmcp/AGENTS.md)                       |
-| `vtcode-commons`            | [crates/common/vtcode-commons/AGENTS.md](crates/common/vtcode-commons/AGENTS.md)                       |
-| `vtcode-macros`             | [crates/common/vtcode-macros/AGENTS.md](crates/common/vtcode-macros/AGENTS.md)                         |
-| `vtcode-utility-tool-specs` | [crates/common/vtcode-utility-tool-specs/AGENTS.md](crates/common/vtcode-utility-tool-specs/AGENTS.md) |
-| `vtcode-agent-plugins`      | [crates/common/vtcode-agent-plugins/AGENTS.md](crates/common/vtcode-agent-plugins/AGENTS.md)           |
-| `vtcode-llm`                | [crates/codegen/vtcode-llm/AGENTS.md](crates/codegen/vtcode-llm/AGENTS.md)                             |
-| `vtcode-skills`             | [crates/codegen/vtcode-skills/AGENTS.md](crates/codegen/vtcode-skills/AGENTS.md)                       |
-| `vtcode-memory`             | [crates/codegen/vtcode-memory/AGENTS.md](crates/codegen/vtcode-memory/AGENTS.md)                       |
-| `vtcode-eval`               | [crates/codegen/vtcode-eval/AGENTS.md](crates/codegen/vtcode-eval/AGENTS.md)                           |
-| `vtcode-safety`             | [crates/codegen/vtcode-safety/AGENTS.md](crates/codegen/vtcode-safety/AGENTS.md)                       |
-| `vtcode-a2a`                | [crates/codegen/vtcode-a2a/AGENTS.md](crates/codegen/vtcode-a2a/AGENTS.md)                             |
-| `vtcode-mcp`                | [crates/codegen/vtcode-mcp/AGENTS.md](crates/codegen/vtcode-mcp/AGENTS.md)                             |
-| `xtask`                     | [crates/codegen/xtask/AGENTS.md](crates/codegen/xtask/AGENTS.md)                                       |
+Prefer `./scripts/check-dev.sh` for iteration. Repository gates run
+sequentially in this order: formatting, format check, lint, tests. Use the
+targets in `Makefile`; `make check` runs the full local gate. Cargo builds
+share the host cache and compile admission queue; do not bypass either. Never
+use `cargo test`; use `cargo nextest run`.
 
-After significant changes (new modules, convention shifts, discovered gotchas,
-public API changes), use the `audit-module-agents` skill to check if the
-affected crate's AGENTS.md needs updating. Keep each local AGENTS.md under 30
-lines.
+- Fast gate: `./scripts/check-dev.sh`
+- Changed crates: `./scripts/check-dev.sh --changed`
+- Workspace/lints: `./scripts/check-dev.sh --workspace` / `--lints`
+- Full gate: `make check` or `./scripts/check.sh`
+- Harness: `./scripts/check.sh harness`
+- AST-grep: `diapason check ast-grep`; scanner: `ast-grep scan`
+- Hawk: `./scripts/hawk.sh` or `./scripts/hawk.sh --deny`
 
-## Project Memory
-
-Session-independent knowledge lives in `.vtcode/memory/` (gitignored):
-`gotchas.md`, `issues.md`, `library.md`, `decisions.md`, and `scratch.md`. Read
-these files when context is needed. Write durable learnings there. See
-`.vtcode/memory/README.md` for format rules.
-
-## Build & Verification
-
-- CI build caching: `Swatinem/rust-cache` keys off the target triple only when
-  `CARGO_BUILD_TARGET` is set or you pass `key:`. Builds that pass `--target`
-  via the CLI (e.g. `cross build --target`) share ONE cache key across matrix
-  jobs on the same runner OS, causing colliding/failing saves and every target
-  restoring a mismatched cache. Always namespace the cache per target
-  (`with: { key: ${{ matrix.target }} }`) in cross-target matrix jobs.
-- Prefer `./scripts/check-dev.sh` (10-30s) over `./scripts/check.sh` (2-5m) for
-  iteration.
-- Release builds keep `debug-assertions = true` and `overflow-checks = true` in
-  `[profile.release]`. `debug_assert!` and overflow checks are NOT disabled in
-  prod: a violated invariant must crash loud, not let the program run under
-  wrong assumptions (see kristoff.it/blog/fix-your-asserts). Use `assert!`/
-  `debug_assert!` for invariants that always hold; gate expensive diagnostics
-  behind `#[cfg(debug_assertions)]` since that branch still compiles out of
-  release when the flag is off elsewhere.
-
-| Change                    | Command                                              |
-| ------------------------- | ---------------------------------------------------- |
-| Fast gate                 | `./scripts/check-dev.sh`                             |
-| + tests (quick)           | `./scripts/check-dev.sh --test`                      |
-| + tests (changed crates)  | `./scripts/check-dev.sh --changed`                   |
-| + workspace               | `./scripts/check-dev.sh --workspace`                 |
-| + lints                   | `./scripts/check-dev.sh --lints`                     |
-| Harness PTY/TUI           | `./scripts/check.sh harness`                         |
-| Release/PR                | `./scripts/check.sh`                                 |
-| Ast-grep rules            | `vtcode check ast-grep`                              |
-| Hawk dead-code/visibility | `./scripts/hawk.sh`                                  |
-| Hawk (deny warnings)      | `./scripts/hawk.sh --deny`                           |
-| Ast-grep scan             | `ast-grep scan` (requires `sgconfig.yml` + `rules/`) |
-
-Narrow commands: `cargo check`, `cargo nextest run`,
-`cargo nextest run --profile quick`, `cargo fmt`, `cargo clippy`. **Never use
-`cargo test` — always use `cargo nextest run`.**
-
-## Testing
-
-- Runner: `cargo nextest run` (parallel, fast). **Always use nextest — never
-  `cargo test`**.
-- Single test: `cargo nextest run test_name`.
-- Single crate: `cargo nextest run -p vtcode-core`.
-- Profiles: `default` (full), `quick` (TDD, skips integration/e2e/slow),
-  `changed` (delta since HEAD~1), `ci` (retries flaky, no fail-fast).
-- Harness regressions:
-  `cargo nextest run -p vtcode-core -E 'binary(/pty_tests/)'`;
-  `cargo nextest run -p vtcode-bash-runner -E 'binary(/pipe_tests/)'`;
-  `cargo nextest run -p vtcode -E 'binary(/inline_events/)'`.
-- Integration tests (Rust): `tests/` at workspace root. Shell/script tests:
-  `scripts/tests/`. Unit tests: in-module.
-
-## Skills & Special Workflows
-
-- Skills are invoked via the Skill tool; subagents are spawned via the Agent
-  tool. Project slash commands live in `.claude/commands/`; agents live in
-  `.claude/agents/`.
-- LLM providers: use the `adding-llm-providers` skill. The `/model` picker uses
-  `ModelId::all_models()`; `builtin_model_presets()` is used by
-  `ModelsManager`. Both may need updates.
-- New workspace crates: use the `adding-workspace-crate` skill. This affects
-  more than `Cargo.toml`; all workspace path dependencies need `version` fields.
-- Structural code work: prefer `ast-grep` over text grep for code shape, calls,
-  impls, and codemods. Use `rg` for prose, logs, and config strings. Always
-  invoke `ast-grep`, not the `sg` alias. Use `exec_command` or the ast-grep
-  skill for arbitrary structural patterns. Advanced `code_search` accepts one
-  literal query and bounded filters.
-- Cap large command output: `COMMAND 2>&1 | head -c 4000`.
-
-[code-organization-patterns]: docs/guides/code-organization-patterns.md
-[async-architecture]: docs/guides/async-architecture.md
-[rust-performance-principles]: docs/development/rust-performance-principles.md
-[grep-tool-guide]: docs/development/grep-tool-guide.md
-[grep-quick-reference]: docs/development/grep-quick-reference.md
-[command-security-model]: docs/development/COMMAND_SECURITY_MODEL.md
-[security]: docs/guides/security.md
-[agent-loop-contract]: docs/guides/agent-loop-contract.md
-[index]: docs/harness/INDEX.md
-[core-beliefs]: docs/harness/CORE_BELIEFS.md
-[architectural-invariants]: docs/harness/ARCHITECTURAL_INVARIANTS.md
-[agent-legibility-guide]: docs/harness/AGENT_LEGIBILITY_GUIDE.md
-[planning-workflow]: docs/guides/planning-workflow.md
-[full-automation]: docs/guides/full-automation.md
-[execution-policy]: docs/development/EXECUTION_POLICY.md
-[plan-loop-engineering]: docs/project/PLAN-loop-engineering.md
-[adding-models]: docs/development/ADDING_MODELS.md
-[model-addition-workflow]: docs/development/MODEL_ADDITION_WORKFLOW.md
-[model-addition-checklist]: docs/development/MODEL_ADDITION_CHECKLIST.md
+Use `cargo fmt`, `cargo clippy`, `cargo check --locked`, and
+`cargo nextest run` for focused gates. See
+[testing](docs/development/testing.md) for profiles.

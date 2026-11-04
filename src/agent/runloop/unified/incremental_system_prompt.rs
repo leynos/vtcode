@@ -79,7 +79,7 @@ impl IncrementalSystemPrompt {
         base_prompt_hash: u64,
         context_hash: u64,
         context: &SystemPromptContext,
-        agent_config: Option<&vtcode_config::core::AgentConfig>,
+        agent_config: Option<&diapason_config::core::AgentConfig>,
     ) -> String {
         let read_guard = self.cached_prompt.read().await;
 
@@ -106,7 +106,7 @@ impl IncrementalSystemPrompt {
         base_prompt_hash: u64,
         context_hash: u64,
         context: &SystemPromptContext,
-        agent_config: Option<&vtcode_config::core::AgentConfig>,
+        agent_config: Option<&diapason_config::core::AgentConfig>,
     ) -> String {
         let mut write_guard = self.cached_prompt.write().await;
 
@@ -132,17 +132,17 @@ impl IncrementalSystemPrompt {
     /// Build the full system prompt content.
     ///
     /// Assembly order:
-    /// 1. Base system prompt (from `vtcode_core::prompts::system`)
+    /// 1. Base system prompt (from `diapason_core::prompts::system`)
     /// 2. Instruction appendix (from AGENTS.md, CLAUDE.md, and project docs)
     /// 3. Runtime prompt contract sections
     async fn build_prompt_content(
         &self,
         base_system_prompt: &str,
         context: &SystemPromptContext,
-        agent_config: Option<&vtcode_config::core::AgentConfig>,
+        agent_config: Option<&diapason_config::core::AgentConfig>,
     ) -> String {
+        use diapason_core::project_doc::build_instruction_appendix_with_context_and_home;
         use std::fmt::Write;
-        use vtcode_core::project_doc::build_instruction_appendix_with_context_and_home;
 
         let mut prompt = String::with_capacity(base_system_prompt.len() + 1024);
         prompt.push_str(base_system_prompt);
@@ -163,9 +163,9 @@ impl IncrementalSystemPrompt {
             let _ = writeln!(prompt, "\n# SKILLS\nUse `list_skills` to see available capabilities.");
         }
 
-        vtcode_core::prompts::append_runtime_mode_sections(
+        diapason_core::prompts::append_runtime_mode_sections(
             &mut prompt,
-            vtcode_core::prompts::RuntimePromptContract {
+            diapason_core::prompts::RuntimePromptContract {
                 full_auto: context.full_auto,
                 planning_active: context.planning_active,
                 request_user_input_enabled: context.request_user_input_enabled,
@@ -198,7 +198,7 @@ pub(crate) struct SystemPromptContext {
     /// Whether `request_user_input` can be called in the current runtime.
     pub(crate) request_user_input_enabled: bool,
     /// Discovered skills for immediate awareness
-    pub(crate) discovered_skills: Vec<vtcode_core::skills::types::Skill>,
+    pub(crate) discovered_skills: Vec<diapason_core::skills::types::Skill>,
     /// Explicit scope root for AGENTS.md and instruction discovery.
     pub(crate) active_instruction_directory: Option<PathBuf>,
     /// Files and directories used to activate path-scoped instruction rules.

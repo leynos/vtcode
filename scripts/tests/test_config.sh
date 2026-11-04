@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 
-# Test script for VT Code config loading from the canonical user directory
+# Test script for Diapason config loading from the canonical user directory
 
-echo "Testing VT Code configuration loading..."
+echo "Testing Diapason configuration loading..."
 
 CONFIG_DIR=""
-case "${VTCODE_CONFIG:-}" in
-    /*) CONFIG_DIR="$VTCODE_CONFIG" ;;
+case "${DIAPASON_CONFIG:-}" in
+    /*) CONFIG_DIR="$DIAPASON_CONFIG" ;;
 esac
 if [ -z "$CONFIG_DIR" ]; then
     case "${XDG_CONFIG_HOME:-}" in
-        /*) CONFIG_DIR="$XDG_CONFIG_HOME/vtcode" ;;
-        *) CONFIG_DIR="$HOME/.config/vtcode" ;;
+        /*) CONFIG_DIR="$XDG_CONFIG_HOME/diapason" ;;
+        *) CONFIG_DIR="$HOME/.config/diapason" ;;
     esac
 fi
 
@@ -19,17 +19,17 @@ fi
 if [ -d "$CONFIG_DIR" ]; then
     echo "✓ Found $CONFIG_DIR"
 
-    if [ -f "$CONFIG_DIR/vtcode.toml" ]; then
-        echo "✓ Found $CONFIG_DIR/vtcode.toml"
+    if [ -f "$CONFIG_DIR/config.toml" ]; then
+        echo "✓ Found $CONFIG_DIR/config.toml"
 
         # Check if the file has content
-        if [ -s "$CONFIG_DIR/vtcode.toml" ]; then
+        if [ -s "$CONFIG_DIR/config.toml" ]; then
             echo "✓ Configuration file has content"
         else
             echo "⚠ Configuration file is empty"
         fi
     else
-        echo "✗ $CONFIG_DIR/vtcode.toml not found"
+        echo "✗ $CONFIG_DIR/config.toml not found"
     fi
 else
     echo "✗ $CONFIG_DIR not found"

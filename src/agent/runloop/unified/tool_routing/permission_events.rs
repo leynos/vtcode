@@ -1,4 +1,4 @@
-use vtcode_core::exec::events::{PermissionDecision, ThreadEvent};
+use diapason_core::exec::events::{PermissionDecision, ThreadEvent};
 
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
 
@@ -15,7 +15,7 @@ pub(super) fn map_hitl_to_permission_decision(decision: &super::HitlDecision) ->
 
 pub(super) fn emit_permission_requested(harness_emitter: Option<&HarnessEventEmitter>, tool_name: &str) {
     let Some(emitter) = harness_emitter else { return };
-    let _ = emitter.emit(ThreadEvent::PermissionRequested(vtcode_core::exec::events::PermissionRequestedEvent {
+    let _ = emitter.emit(ThreadEvent::PermissionRequested(diapason_core::exec::events::PermissionRequestedEvent {
         tool_name: tool_name.to_string(),
     }));
 }
@@ -27,7 +27,7 @@ pub(super) fn emit_permission_resolved(
     wait_ms: u64,
 ) {
     let Some(emitter) = harness_emitter else { return };
-    let _ = emitter.emit(ThreadEvent::PermissionResolved(vtcode_core::exec::events::PermissionResolvedEvent {
+    let _ = emitter.emit(ThreadEvent::PermissionResolved(diapason_core::exec::events::PermissionResolvedEvent {
         tool_name: tool_name.to_string(),
         decision,
         wait_ms,

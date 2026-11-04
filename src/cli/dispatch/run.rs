@@ -1,15 +1,15 @@
 use crate::startup::SessionResumeMode;
 use anyhow::Result;
-use vtcode_core::cli::args::AskCommandOptions;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::cli::args::AskCommandOptions;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::interfaces::session::PlanningEntrySource;
 
 use crate::cli::{analyse, sessions};
 
 pub(crate) async fn handle_ask_single_command(
     core_cfg: CoreAgentConfig,
-    vt_cfg: Option<VTCodeConfig>,
+    vt_cfg: Option<DiapasonConfig>,
     prompt: Option<String>,
     options: AskCommandOptions,
 ) -> Result<()> {
@@ -17,13 +17,13 @@ pub(crate) async fn handle_ask_single_command(
     if core_cfg.provider.eq_ignore_ascii_case(crate::codex_app_server::CODEX_PROVIDER) {
         crate::codex_app_server::handle_codex_ask_command(core_cfg, prompt_vec, vt_cfg.as_ref(), options).await
     } else {
-        vtcode_core::commands::ask::handle_ask_command(core_cfg, prompt_vec, options).await
+        diapason_core::commands::ask::handle_ask_command(core_cfg, prompt_vec, options).await
     }
 }
 
 pub(crate) async fn handle_chat_command(
     core_cfg: CoreAgentConfig,
-    vt_cfg: VTCodeConfig,
+    vt_cfg: DiapasonConfig,
     skip_confirmations: bool,
     full_auto_requested: bool,
     primary_agent_explicitly_configured: bool,
@@ -43,7 +43,7 @@ pub(crate) async fn handle_chat_command(
 
 pub(super) async fn handle_analyse_command(
     core_cfg: CoreAgentConfig,
-    vt_cfg: Option<VTCodeConfig>,
+    vt_cfg: Option<DiapasonConfig>,
     analysis_type: analyse::AnalysisType,
 ) -> Result<()> {
     if core_cfg.provider.eq_ignore_ascii_case(crate::codex_app_server::CODEX_PROVIDER) {
@@ -66,7 +66,7 @@ pub(super) async fn handle_analyse_command(
         return Ok(());
     }
 
-    vtcode_core::commands::analyse::handle_analyse_command(
+    diapason_core::commands::analyse::handle_analyse_command(
         core_cfg,
         analysis_type.default_depth().to_string(),
         "text".to_string(),

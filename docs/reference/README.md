@@ -9,7 +9,7 @@ verification checklist.
 ## Overview
 
 This directory contains comprehensive documentation on ANSI escape sequences
-and their usage in VT Code.
+and their usage in Diapason.
 
 ## Documents
 
@@ -30,11 +30,11 @@ Comprehensive reference covering:
 **Use this when**: You need to understand what a specific ANSI sequence does or
 find the right sequence for a terminal operation.
 
-### 2. [ansi-in-vtcode.md](./ansi-in-vtcode.md)
+### 2. [ansi-in-diapason.md](./ansi-in-diapason.md)
 
-**VT Code Implementation Guide**
+**Diapason Implementation Guide**
 
-Detailed guide on how VT Code uses ANSI sequences:
+Detailed guide on how Diapason uses ANSI sequences:
 
 - Module overview (ansi_parser, anstyle_utils, ansi renderer)
 - PTY output processing flow
@@ -43,7 +43,7 @@ Detailed guide on how VT Code uses ANSI sequences:
 - Best practices and patterns
 - Testing strategies
 
-**Use this when**: You're working on VT Code features that involve ANSI
+**Use this when**: You're working on Diapason features that involve ANSI
 handling, PTY output, or TUI rendering.
 
 ### 3. [ansi-quick-reference.md](./ansi-quick-reference.md)
@@ -53,7 +53,7 @@ handling, PTY output, or TUI rendering.
 Quick lookup for common sequences:
 
 - Most-used ANSI codes
-- VT Code-specific patterns
+- Diapason-specific patterns
 - Regex patterns for matching
 - Common mistakes and solutions
 - Debugging tips
@@ -68,19 +68,19 @@ while coding.
 
 **Stripping ANSI codes**:
 
-- Implementation: `crates/codegen/vtcode-core/src/utils/ansi_parser.rs`
+- Implementation: `crates/codegen/diapason-core/src/utils/ansi_parser.rs`
 - Guide:
-    [ansi-in-vtcode.md#ansi-parser](./ansi-in-vtcode.md#1-ansi-parser-vtcode-coresrcutilsansi_parserrs)
+    [ansi-in-diapason.md#ansi-parser](./ansi-in-diapason.md#1-ansi-parser-diapason-coresrcutilsansi_parserrs)
 - Quick ref:
     [ansi-quick-reference.md#stripping-ansi](./ansi-quick-reference.md#stripping-ansi)
 
 **Converting ANSI to Ratatui styles**:
 
-- Implementation: `crates/codegen/vtcode-core/src/utils/anstyle_utils.rs`
+- Implementation: `crates/codegen/diapason-core/src/utils/anstyle_utils.rs`
 - Guide:
-    [ansi-in-vtcode.md#ansi-style-utilities](./ansi-in-vtcode.md#2-ansi-style-utilities-vtcode-coresrcutilsanstyle_utilsrs)
+    [ansi-in-diapason.md#ansi-style-utilities](./ansi-in-diapason.md#2-ansi-style-utilities-diapason-coresrcutilsanstyle_utilsrs)
 - Quick ref:
-    [ansi-quick-reference.md#vtcode-usage-examples](./ansi-quick-reference.md#vtcode-usage-examples)
+    [ansi-quick-reference.md#diapason-usage-examples](./ansi-quick-reference.md#diapason-usage-examples)
 
 **Understanding ANSI sequences**:
 
@@ -91,15 +91,15 @@ while coding.
 **PTY output processing**:
 
 - Flow diagram:
-    [ansi-in-vtcode.md#pty-output-processing](./ansi-in-vtcode.md#pty-output-processing)
-- Implementation: `crates/codegen/vtcode-core/src/tools/pty.rs`
+    [ansi-in-diapason.md#pty-output-processing](./ansi-in-diapason.md#pty-output-processing)
+- Implementation: `crates/codegen/diapason-core/src/tools/pty.rs`
 
 **TUI rendering**:
 
 - Color mapping:
-    [ansi-in-vtcode.md#tui-rendering](./ansi-in-vtcode.md#tui-rendering)
+    [ansi-in-diapason.md#tui-rendering](./ansi-in-diapason.md#tui-rendering)
 - Effects mapping:
-    [ansi-in-vtcode.md#effects-mapping](./ansi-in-vtcode.md#effects-mapping)
+    [ansi-in-diapason.md#effects-mapping](./ansi-in-diapason.md#effects-mapping)
 
 ### By Use Case
 
@@ -112,13 +112,13 @@ while coding.
     → [ansi-escape-sequences.md#8-16-colors](./ansi-escape-sequences.md#8-16-colors)
 
 - **Convert ANSI styles for TUI**
-    → [ansi-in-vtcode.md#ansi-style-utilities](./ansi-in-vtcode.md#2-ansi-style-utilities-vtcode-coresrcutilsanstyle_utilsrs)
+    → [ansi-in-diapason.md#ansi-style-utilities](./ansi-in-diapason.md#2-ansi-style-utilities-diapason-coresrcutilsanstyle_utilsrs)
 
 - **Debug ANSI-related issues**
     → [ansi-quick-reference.md#debugging-ansi-issues](./ansi-quick-reference.md#debugging-ansi-issues)
 
 - **Process PTY output correctly**
-    → [ansi-in-vtcode.md#pty-output-processing](./ansi-in-vtcode.md#pty-output-processing)
+    → [ansi-in-diapason.md#pty-output-processing](./ansi-in-diapason.md#pty-output-processing)
 
 - **Add color to terminal output**
     → [ansi-escape-sequences.md#colors-graphics-mode](./ansi-escape-sequences.md#colors--graphics-mode)
@@ -137,17 +137,17 @@ while coding.
 ### Strip ANSI from PTY output
 
 ```rust
-use vtcode_core::utils::ansi_parser::strip_ansi;
+use diapason_core::utils::ansi_parser::strip_ansi;
 
-let pty_output = "\x1b[32mCompiling\x1b[0m vtcode";
+let pty_output = "\x1b[32mCompiling\x1b[0m diapason";
 let clean = strip_ansi(pty_output);
-// clean == "Compiling vtcode"
+// clean == "Compiling diapason"
 ```
 
 ### Convert ANSI to Ratatui style
 
 ```rust
-use vtcode_core::utils::anstyle_utils::ansi_style_to_ratatui_style;
+use diapason_core::utils::anstyle_utils::ansi_style_to_ratatui_style;
 
 let ansi_style = anstyle::Style::new()
     .fg_color(Some(AnsiColor::Red))
@@ -158,7 +158,7 @@ let ratatui_style = ansi_style_to_ratatui_style(ansi_style);
 ### Render colored text
 
 ```rust
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 let mut renderer = AnsiRenderer::stdout();
 renderer.render("Success!", MessageStyle::Success);
@@ -169,16 +169,16 @@ renderer.render("Success!", MessageStyle::Success);
 
 All ANSI-related code has comprehensive tests:
 
-- **Parser tests**: `crates/codegen/vtcode-core/src/utils/ansi_parser.rs`
+- **Parser tests**: `crates/codegen/diapason-core/src/utils/ansi_parser.rs`
 - **Style conversion tests**:
-    `crates/codegen/vtcode-core/src/utils/anstyle_utils.rs`
+    `crates/codegen/diapason-core/src/utils/anstyle_utils.rs`
 - **Integration tests**:
-    `crates/codegen/vtcode-core/src/tools/registry/executors/`
+    `crates/codegen/diapason-core/src/tools/registry/executors/`
 
 Run tests:
 
 ```bash
-cargo test --package vtcode-core ansi
+cargo test --package diapason-core ansi
 ```
 
 ## External Resources
@@ -200,12 +200,12 @@ When adding new ANSI-related features:
 
 ## Summary
 
-| Document                                               | Purpose                | When to Use         |
-| ------------------------------------------------------ | ---------------------- | ------------------- |
-| [ansi-escape-sequences.md](./ansi-escape-sequences.md) | Complete ANSI spec     | Reference lookup    |
-| [ansi-in-vtcode.md](./ansi-in-vtcode.md)               | VT Code implementation | Feature development |
-| [ansi-quick-reference.md](./ansi-quick-reference.md)   | Quick lookup           | Daily coding        |
+| Document                                               | Purpose                 | When to Use         |
+| ------------------------------------------------------ | ----------------------- | ------------------- |
+| [ansi-escape-sequences.md](./ansi-escape-sequences.md) | Complete ANSI spec      | Reference lookup    |
+| [ansi-in-diapason.md](./ansi-in-diapason.md)           | Diapason implementation | Feature development |
+| [ansi-quick-reference.md](./ansi-quick-reference.md)   | Quick lookup            | Daily coding        |
 
 ______________________________________________________________________
 
-**Last Updated**: 2025-11-22 **Maintainer**: VT Code Team
+**Last Updated**: 2025-11-22 **Maintainer**: Diapason Team

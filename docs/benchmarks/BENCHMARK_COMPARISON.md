@@ -84,7 +84,7 @@ def has_close_elements(numbers: List[float], threshold: float) -> bool:
 - **Mid-range:** 60-75%
 - **Entry-level:** 45-60%
 
-**VT Code:** 61.6% (mid-range)
+**Diapason:** 61.6% (mid-range)
 
 ______________________________________________________________________
 
@@ -147,7 +147,7 @@ assert similar_elements((3, 4, 5, 6),(5, 7, 4, 10)) == (4, 5)
 - **High-performance:** 80-90%
 - **Mid-range:** 65-80%
 
-**VT Code:** Not yet benchmarked (estimated ~68-72%)
+**Diapason:** Not yet benchmarked (estimated ~68-72%)
 
 ______________________________________________________________________
 
@@ -216,7 +216,7 @@ Task: Generate a unified diff to fix the bug
 - **Mid-range:** 10-25%
 - **Entry-level:** 5-15%
 
-**VT Code:** Not yet benchmarked (estimated ~12-18%)
+**Diapason:** Not yet benchmarked (estimated ~12-18%)
 
 ______________________________________________________________________
 
@@ -263,7 +263,7 @@ MBPP          HumanEval          SWE-bench
 - Fast (2-3 minutes)
 - Industry standard
 - Easy to compare
-- Free with VT Code
+- Free with Diapason
 
 ```bash
 make bench-humaneval PROVIDER=gemini MODEL='gemini-3-flash-preview'
@@ -316,7 +316,7 @@ python3 scripts/bench_swe_lite_dry.py N_SWE=25
 **Best Choice:** HumanEval
 
 - Fast feedback
-- Free with VT Code
+- Free with Diapason
 - Good enough signal
 - Easy to track progress
 
@@ -334,14 +334,14 @@ SWE-bench Score ≈ HumanEval Score × 0.2-0.3
 - HumanEval: 70% → MBPP: ~75-80%, SWE-bench: ~14-21%
 - HumanEval: 85% → MBPP: ~90-95%, SWE-bench: ~17-26%
 
-**VT Code (61.6% HumanEval):**
+**Diapason (61.6% HumanEval):**
 
 - Estimated MBPP: ~68-72%
 - Estimated SWE-bench: ~12-18%
 
 ## Our Recommendation
 
-### For VT Code Users
+### For Diapason Users
 
 **Start with HumanEval:**
 
@@ -392,7 +392,7 @@ python3 scripts/bench_swe_lite_dry.py N_SWE=100
 **For most users, start with HumanEval** because it's:
 
 - Fast (2-3 minutes)
-- Free (with VT Code)
+- Free (with Diapason)
 - Industry standard
 - Easy to interpret
 - Good signal for code generation capabilities
@@ -405,4 +405,4 @@ python3 scripts/bench_swe_lite_dry.py N_SWE=100
 ______________________________________________________________________
 
 **Last Updated:** October 22, 2025  
-**VT Code Version:** 0.133.21
+**Diapason Version:** 0.133.21

@@ -1,17 +1,17 @@
 {
-  "name": "vtcode-companion",
-  "displayName": "VT Code",
-  "description": "VS Code extension for VT Code, a Rust-based terminal coding agent with semantic code intelligence and multi-provider AI support. Provides deep integration with the VT Code AI coding assistant for enhanced productivity.",
-  "version": "0.50.14",
-  "publisher": "nguyenxuanvinh",
+  "name": "diapason-companion",
+  "displayName": "Diapason",
+  "description": "Diapason editor integration, a df12 Productions hard fork of VTCode by Vinh Nguyen focused on ACP control and observability.",
+  "version": "0.1.0",
+  "publisher": "df12productions",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vinhnx/vtcode"
+    "url": "https://github.com/leynos/vtcode"
   },
   "sponsor": {
     "url": "https://buymeacoffee.com/vinhnx"
   },
-  "icon": "media/vtcode-icon-marketplace.png",
+  "icon": "media/diapason-icon-marketplace.png",
   "engines": {
     "vscode": "^1.87.0"
   },
@@ -26,7 +26,7 @@
     "AI"
   ],
   "keywords": [
-    "vtcode",
+    "diapason",
     "agent",
     "ai",
     "productivity",
@@ -44,61 +44,61 @@
     "security"
   ],
   "activationEvents": [
-    "workspaceContains:vtcode.toml",
-    "onView:vtcodeQuickActionsView",
-    "onView:vtcodeWorkspaceStatusView",
-    "onCommand:vtcode.openQuickActions",
-    "onCommand:vtcode.askAgent",
-    "onCommand:vtcode.askSelection",
-    "onCommand:vtcode.openConfig",
-    "onCommand:vtcode.openDocumentation",
-    "onCommand:vtcode.openDeepWiki",
-    "onCommand:vtcode.openWalkthrough",
-    "onCommand:vtcode.openInstallGuide",
-    "onCommand:vtcode.trustWorkspace",
-    "onCommand:vtcode.toggleHumanInTheLoop",
-    "onCommand:vtcode.openToolsPolicyGuide",
-    "onCommand:vtcode.openToolsPolicyConfig",
-    "onCommand:vtcode.configureMcpProviders",
-    "onCommand:vtcode.launchAgentTerminal",
-    "onCommand:vtcode.runAnalyze",
-    "onCommand:vtcode.runTaskTrackerTask",
-    "onCommand:vtcode.refreshQuickActions"
+    "workspaceContains:config.toml",
+    "onView:diapasonQuickActionsView",
+    "onView:diapasonWorkspaceStatusView",
+    "onCommand:diapason.openQuickActions",
+    "onCommand:diapason.askAgent",
+    "onCommand:diapason.askSelection",
+    "onCommand:diapason.openConfig",
+    "onCommand:diapason.openDocumentation",
+    "onCommand:diapason.openDeepWiki",
+    "onCommand:diapason.openWalkthrough",
+    "onCommand:diapason.openInstallGuide",
+    "onCommand:diapason.trustWorkspace",
+    "onCommand:diapason.toggleHumanInTheLoop",
+    "onCommand:diapason.openToolsPolicyGuide",
+    "onCommand:diapason.openToolsPolicyConfig",
+    "onCommand:diapason.configureMcpProviders",
+    "onCommand:diapason.launchAgentTerminal",
+    "onCommand:diapason.runAnalyze",
+    "onCommand:diapason.runTaskTrackerTask",
+    "onCommand:diapason.refreshQuickActions"
   ],
   "main": "./dist/extension.js",
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": true,
-      "description": "VT Code limits CLI automation to trusted workspaces.",
+      "description": "Diapason limits CLI automation to trusted workspaces.",
       "restrictedConfigurations": [
-        "vtcode.commandPath"
+        "diapason.commandPath"
       ]
     }
   },
   "contributes": {
     "languages": [
       {
-        "id": "vtcode-config",
+        "id": "diapason-config",
         "aliases": [
-          "VT Code Config",
-          "vtcode.toml"
+          "Diapason Config",
+          "config.toml"
         ],
         "filenames": [
-          "vtcode.toml"
+          "config.toml"
         ],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "vtcode-config",
+        "language": "diapason-config",
         "scopeName": "source.toml",
-        "path": "./syntaxes/vtcode.tmLanguage.json"
+        "path": "./syntaxes/diapason.tmLanguage.json"
       }
     ],
     "taskDefinitions": [
       {
-        "type": "vtcode",
+        "type": "diapason",
         "required": [
           "command"
         ],
@@ -108,7 +108,7 @@
             "enum": [
               "task-tracker"
             ],
-            "description": "VT Code CLI command to execute."
+            "description": "Diapason CLI command to execute."
           },
           "summary": {
             "type": "string",
@@ -130,9 +130,9 @@
     ],
     "languageModelTools": [
       {
-        "name": "vtcode-taskTracker",
-        "displayName": "VT Code Task Tracker",
-        "modelDescription": "Synchronize the workspace TODO plan using the VT Code CLI task_tracker workflow.",
+        "name": "diapason-taskTracker",
+        "displayName": "Diapason Task Tracker",
+        "modelDescription": "Synchronize the workspace TODO plan using the Diapason CLI task_tracker workflow.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -154,222 +154,222 @@
     ],
     "mcpServerDefinitionProviders": [
       {
-        "id": "vtcode.workspaceMcp",
-        "label": "VT Code Workspace MCP Providers"
+        "id": "diapason.workspaceMcp",
+        "label": "Diapason Workspace MCP Providers"
       }
     ],
     "commands": [
       {
-        "command": "vtcode.openQuickActions",
+        "command": "diapason.openQuickActions",
         "title": "Open Quick Actions",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(rocket)"
       },
       {
-        "command": "vtcode.trustWorkspace",
-        "title": "Trust Workspace for VT Code",
-        "category": "VT Code",
+        "command": "diapason.trustWorkspace",
+        "title": "Trust Workspace for Diapason",
+        "category": "Diapason",
         "icon": "$(shield)"
       },
       {
-        "command": "vtcode.verifyWorkspaceTrust",
+        "command": "diapason.verifyWorkspaceTrust",
         "title": "Verify Workspace Trust Flow",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(shield-check)"
       },
       {
-        "command": "vtcode.flushIdeContextSnapshot",
+        "command": "diapason.flushIdeContextSnapshot",
         "title": "Refresh IDE Context Snapshot",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(symbol-structure)"
       },
       {
-        "command": "vtcode.askAgent",
+        "command": "diapason.askAgent",
         "title": "Ask the Agent",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "vtcode.askSelection",
+        "command": "diapason.askSelection",
         "title": "Ask About Selection",
-        "shortTitle": "Ask with VT Code",
-        "category": "VT Code",
+        "shortTitle": "Ask with Diapason",
+        "category": "Diapason",
         "icon": "$(comment)"
       },
       {
-        "command": "vtcode.openConfig",
+        "command": "diapason.openConfig",
         "title": "Open Configuration",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(gear)"
       },
       {
-        "command": "vtcode.openDocumentation",
+        "command": "diapason.openDocumentation",
         "title": "Open Documentation",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(book)"
       },
       {
-        "command": "vtcode.openDeepWiki",
+        "command": "diapason.openDeepWiki",
         "title": "Open DeepWiki Overview",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(globe)"
       },
       {
-        "command": "vtcode.openWalkthrough",
+        "command": "diapason.openWalkthrough",
         "title": "Getting Started Walkthrough",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(question)"
       },
       {
-        "command": "vtcode.refreshQuickActions",
+        "command": "diapason.refreshQuickActions",
         "title": "Refresh Quick Actions",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(refresh)"
       },
       {
-        "command": "vtcode.openInstallGuide",
+        "command": "diapason.openInstallGuide",
         "title": "View CLI Installation Guide",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(tools)"
       },
       {
-        "command": "vtcode.launchAgentTerminal",
+        "command": "diapason.launchAgentTerminal",
         "title": "Launch Agent Terminal",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(terminal)"
       },
       {
-        "command": "vtcode.runAnalyze",
+        "command": "diapason.runAnalyze",
         "title": "Analyse Workspace",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(pulse)"
       },
       {
-        "command": "vtcode.runTaskTrackerTask",
-        "title": "Run Task Tracker with VT Code Task",
-        "category": "VT Code",
+        "command": "diapason.runTaskTrackerTask",
+        "title": "Run Task Tracker with Diapason Task",
+        "category": "Diapason",
         "icon": "$(checklist)"
       },
       {
-        "command": "vtcode.toggleHumanInTheLoop",
+        "command": "diapason.toggleHumanInTheLoop",
         "title": "Toggle Human-in-the-Loop",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(shield)"
       },
       {
-        "command": "vtcode.openToolsPolicyGuide",
+        "command": "diapason.openToolsPolicyGuide",
         "title": "Open Tool Policy Guide",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(book)"
       },
       {
-        "command": "vtcode.openToolsPolicyConfig",
+        "command": "diapason.openToolsPolicyConfig",
         "title": "Open Tool Policy Configuration",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(settings-gear)"
       },
       {
-        "command": "vtcode.configureMcpProviders",
+        "command": "diapason.configureMcpProviders",
         "title": "Configure MCP Providers",
-        "category": "VT Code",
+        "category": "Diapason",
         "icon": "$(plug)"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "vtcode.askSelection",
-          "when": "editorHasSelection && vtcode.cliAvailable && vtcode.workspaceTrusted",
+          "command": "diapason.askSelection",
+          "when": "editorHasSelection && diapason.cliAvailable && diapason.workspaceTrusted",
           "group": "navigation@20"
         }
       ],
       "editor/title": [
         {
-          "command": "vtcode.askSelection",
-          "when": "editorHasSelection && vtcode.cliAvailable && vtcode.workspaceTrusted",
+          "command": "diapason.askSelection",
+          "when": "editorHasSelection && diapason.cliAvailable && diapason.workspaceTrusted",
           "group": "navigation@20"
         }
       ],
       "commandPalette": [
         {
-          "command": "vtcode.askAgent",
-          "when": "vtcode.cliAvailable && vtcode.workspaceTrusted"
+          "command": "diapason.askAgent",
+          "when": "diapason.cliAvailable && diapason.workspaceTrusted"
         },
         {
-          "command": "vtcode.askSelection",
-          "when": "editorHasSelection && vtcode.cliAvailable && vtcode.workspaceTrusted"
+          "command": "diapason.askSelection",
+          "when": "editorHasSelection && diapason.cliAvailable && diapason.workspaceTrusted"
         },
         {
-          "command": "vtcode.launchAgentTerminal",
-          "when": "vtcode.cliAvailable && vtcode.workspaceTrusted"
+          "command": "diapason.launchAgentTerminal",
+          "when": "diapason.cliAvailable && diapason.workspaceTrusted"
         },
         {
-          "command": "vtcode.runAnalyze",
-          "when": "vtcode.cliAvailable && vtcode.workspaceTrusted"
+          "command": "diapason.runAnalyze",
+          "when": "diapason.cliAvailable && diapason.workspaceTrusted"
         },
         {
-          "command": "vtcode.openInstallGuide",
-          "when": "!vtcode.cliAvailable || !vtcode.workspaceTrusted"
+          "command": "diapason.openInstallGuide",
+          "when": "!diapason.cliAvailable || !diapason.workspaceTrusted"
         },
         {
-          "command": "vtcode.toggleHumanInTheLoop",
-          "when": "vtcode.configAvailable && vtcode.workspaceTrusted"
+          "command": "diapason.toggleHumanInTheLoop",
+          "when": "diapason.configAvailable && diapason.workspaceTrusted"
         },
         {
-          "command": "vtcode.openToolsPolicyConfig",
-          "when": "vtcode.configAvailable"
+          "command": "diapason.openToolsPolicyConfig",
+          "when": "diapason.configAvailable"
         },
         {
-          "command": "vtcode.runTaskTrackerTask",
-          "when": "vtcode.cliAvailable && vtcode.workspaceTrusted"
+          "command": "diapason.runTaskTrackerTask",
+          "when": "diapason.cliAvailable && diapason.workspaceTrusted"
         },
         {
-          "command": "vtcode.openToolsPolicyGuide"
+          "command": "diapason.openToolsPolicyGuide"
         },
         {
-          "command": "vtcode.configureMcpProviders",
-          "when": "vtcode.configAvailable && vtcode.workspaceTrusted"
+          "command": "diapason.configureMcpProviders",
+          "when": "diapason.configAvailable && diapason.workspaceTrusted"
         }
       ],
       "view/title": [
         {
-          "command": "vtcode.refreshQuickActions",
-          "when": "view == vtcodeQuickActionsView",
+          "command": "diapason.refreshQuickActions",
+          "when": "view == diapasonQuickActionsView",
           "group": "navigation@10"
         },
         {
-          "command": "vtcode.openWalkthrough",
-          "when": "view == vtcodeQuickActionsView",
+          "command": "diapason.openWalkthrough",
+          "when": "view == diapasonQuickActionsView",
           "group": "navigation@20"
         },
         {
-          "command": "vtcode.openInstallGuide",
-          "when": "view == vtcodeQuickActionsView && (!vtcode.cliAvailable || !vtcode.workspaceTrusted)",
+          "command": "diapason.openInstallGuide",
+          "when": "view == diapasonQuickActionsView && (!diapason.cliAvailable || !diapason.workspaceTrusted)",
           "group": "navigation@30"
         },
         {
-          "command": "vtcode.launchAgentTerminal",
-          "when": "view == vtcodeQuickActionsView && vtcode.cliAvailable && vtcode.workspaceTrusted",
+          "command": "diapason.launchAgentTerminal",
+          "when": "view == diapasonQuickActionsView && diapason.cliAvailable && diapason.workspaceTrusted",
           "group": "navigation@15"
         },
         {
-          "command": "vtcode.runAnalyze",
-          "when": "view == vtcodeQuickActionsView && vtcode.cliAvailable && vtcode.workspaceTrusted",
+          "command": "diapason.runAnalyze",
+          "when": "view == diapasonQuickActionsView && diapason.cliAvailable && diapason.workspaceTrusted",
           "group": "navigation@25"
         },
         {
-          "command": "vtcode.runTaskTrackerTask",
-          "when": "view == vtcodeQuickActionsView && vtcode.cliAvailable && vtcode.workspaceTrusted",
+          "command": "diapason.runTaskTrackerTask",
+          "when": "view == diapasonQuickActionsView && diapason.cliAvailable && diapason.workspaceTrusted",
           "group": "navigation@18"
         },
         {
-          "command": "vtcode.configureMcpProviders",
-          "when": "view == vtcodeQuickActionsView && vtcode.configAvailable && vtcode.workspaceTrusted",
+          "command": "diapason.configureMcpProviders",
+          "when": "view == diapasonQuickActionsView && diapason.configAvailable && diapason.workspaceTrusted",
           "group": "navigation@35"
         },
         {
-          "command": "vtcode.toggleHumanInTheLoop",
-          "when": "view == vtcodeQuickActionsView && vtcode.configAvailable && vtcode.workspaceTrusted",
+          "command": "diapason.toggleHumanInTheLoop",
+          "when": "view == diapasonQuickActionsView && diapason.configAvailable && diapason.workspaceTrusted",
           "group": "navigation@40"
         }
       ]
@@ -377,30 +377,30 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "vtcode",
-          "title": "VT Code",
-          "icon": "media/vtcode-activitybar.svg",
+          "id": "diapason",
+          "title": "Diapason",
+          "icon": "media/diapason-activitybar.svg",
           "when": "workbenchState != 'empty'"
         }
       ],
       "secondary": [
         {
-          "id": "vtcode",
-          "title": "VT Code",
-          "icon": "media/vtcode-activitybar.svg",
+          "id": "diapason",
+          "title": "Diapason",
+          "icon": "media/diapason-activitybar.svg",
           "when": "workbenchState != 'empty'"
         }
       ]
     },
     "views": {
-      "vtcode": [
+      "diapason": [
         {
-          "id": "vtcodeWorkspaceStatusView",
+          "id": "diapasonWorkspaceStatusView",
           "name": "Workspace Status",
           "when": "workbenchState != 'empty'"
         },
         {
-          "id": "vtcodeQuickActionsView",
+          "id": "diapasonQuickActionsView",
           "name": "Quick Actions",
           "when": "workbenchState != 'empty'"
         }
@@ -408,56 +408,56 @@
     },
     "walkthroughs": [
       {
-        "id": "vtcode.walkthrough",
-        "title": "Get started with VT Code",
-        "description": "Learn how VT Code streamlines agent collaboration inside VS Code.",
+        "id": "diapason.walkthrough",
+        "title": "Get started with Diapason",
+        "description": "Learn how Diapason streamlines agent collaboration inside VS Code.",
         "steps": [
           {
-            "id": "vtcode.walkthrough.quickActions",
+            "id": "diapason.walkthrough.quickActions",
             "title": "Open quick actions",
-            "description": "Use the VT Code quick actions view or command palette to explore helpful shortcuts.",
+            "description": "Use the Diapason quick actions view or command palette to explore helpful shortcuts.",
             "media": {
               "type": "markdown",
-              "markdown": "Use **VT Code: Open Quick Actions** from the Command Palette or the status bar to explore available shortcuts."
+              "markdown": "Use **Diapason: Open Quick Actions** from the Command Palette or the status bar to explore available shortcuts."
             },
             "completionEvents": [
-              "onCommand:vtcode.openQuickActions"
+              "onCommand:diapason.openQuickActions"
             ]
           },
           {
-            "id": "vtcode.walkthrough.askAgent",
-            "title": "Ask the VT Code agent",
-            "description": "Send a question from VS Code and review the response in the VT Code output channel.",
+            "id": "diapason.walkthrough.askAgent",
+            "title": "Ask the Diapason agent",
+            "description": "Send a question from VS Code and review the response in the Diapason output channel.",
             "media": {
               "type": "markdown",
-              "markdown": "Select **VT Code: Ask the Agent** to stream a response directly into the VT Code output channel."
+              "markdown": "Select **Diapason: Ask the Agent** to stream a response directly into the Diapason output channel."
             },
             "completionEvents": [
-              "onCommand:vtcode.askAgent"
+              "onCommand:diapason.askAgent"
             ]
           },
           {
-            "id": "vtcode.walkthrough.askSelection",
+            "id": "diapason.walkthrough.askSelection",
             "title": "Ask about highlighted code",
-            "description": "Highlight code and ask VT Code to summarize or explain the selection.",
+            "description": "Highlight code and ask Diapason to summarize or explain the selection.",
             "media": {
               "type": "markdown",
-              "markdown": "Highlight a block of code, right-click, and choose **Ask About Selection with VT Code**."
+              "markdown": "Highlight a block of code, right-click, and choose **Ask About Selection with Diapason**."
             },
             "completionEvents": [
-              "onCommand:vtcode.askSelection"
+              "onCommand:diapason.askSelection"
             ]
           },
           {
-            "id": "vtcode.walkthrough.config",
-            "title": "Review vtcode.toml",
-            "description": "Open your workspace configuration to adjust VT Code preferences.",
+            "id": "diapason.walkthrough.config",
+            "title": "Review config.toml",
+            "description": "Open your workspace configuration to adjust Diapason preferences.",
             "media": {
               "type": "markdown",
-              "markdown": "Run [VT Code: Open Configuration](command:vtcode.openConfig) to jump directly into the workspace `vtcode.toml`."
+              "markdown": "Run [Diapason: Open Configuration](command:diapason.openConfig) to jump directly into the workspace `config.toml`."
             },
             "completionEvents": [
-              "onCommand:vtcode.openConfig"
+              "onCommand:diapason.openConfig"
             ]
           }
         ]
@@ -465,8 +465,8 @@
     ],
     "colors": [
       {
-        "id": "vtcode.statusBarBackground",
-        "description": "Background color for the VT Code status bar entry when the CLI is available.",
+        "id": "diapason.statusBarBackground",
+        "description": "Background color for the Diapason status bar entry when the CLI is available.",
         "defaults": {
           "dark": "#1D4ED8",
           "light": "#2563EB",
@@ -474,8 +474,8 @@
         }
       },
       {
-        "id": "vtcode.statusBarForeground",
-        "description": "Foreground color for the VT Code status bar entry when the CLI is available.",
+        "id": "diapason.statusBarForeground",
+        "description": "Foreground color for the Diapason status bar entry when the CLI is available.",
         "defaults": {
           "dark": "#FFFFFF",
           "light": "#FFFFFF",
@@ -485,12 +485,12 @@
     ],
     "configuration": {
       "type": "object",
-      "title": "VT Code",
+      "title": "Diapason",
       "properties": {
-        "vtcode.commandPath": {
+        "diapason.commandPath": {
           "type": "string",
-          "default": "vtcode",
-          "description": "Executable used to run VT Code commands. Change this if VT Code is installed with a custom path."
+          "default": "diapason",
+          "description": "Executable used to run Diapason commands. Change this if Diapason is installed with a custom path."
         }
       }
     }
@@ -503,6 +503,7 @@
     "typecheck": "echo \"Skipping typecheck - using precompiled files\"",
     "lint": "echo \"Skipping lint - using precompiled files\"",
     "test": "echo \"Skipping tests - using precompiled files\"",
+    "test:paths": "bun test ./src/test/userDataPaths.test.ts",
     "package": "vsce package",
     "release": "./release.sh",
     "release:patch": "./release.sh patch",
@@ -528,5 +529,6 @@
     "mocha": "^11.7.4",
     "ovsx": "^0.10.9",
     "typescript": "^5.3.3"
-  }
+  },
+  "author": "df12 Productions (hard fork of VTCode by Vinh Nguyen)"
 }

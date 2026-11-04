@@ -20,7 +20,7 @@ scanner operational errors, and invalid baseline metadata. Do not compare
 volatile age counters or scan timestamps. Preserve repository identity.
 
 The reviewed source now replays into the combined CI-foundation worktree
-`/home/leynos/Projects/VTCode.worktrees/hex-ci-prerequisites`, branch
+`/home/leynos/Projects/Diapason.worktrees/hex-ci-prerequisites`, branch
 `hex/ci-prerequisites`, based on dddd1352. Commit
 `0b51c9ba1bf2b09b74f55201e06c882fb3589894` and its original branch remain
 recovery and review provenance; do not edit that worktree. Other agents own the
@@ -63,7 +63,7 @@ from workflow event text. No credentials or paid probes are needed.
   tests and the live accepted 28-identity scan passed with the full native
   packet.
 - [x] Run CodeRabbit on the exact staged documented source; it returned zero
-  findings in `/tmp/coderabbit-VTCode-hex-ci-prerequisites-2.out`.
+  findings in `/tmp/coderabbit-Diapason-hex-ci-prerequisites-2.out`.
 - [x] Publish the focused CI-foundation draft
   [#110](https://github.com/leynos/vtcode/pull/110) after commit
   `62548b081afb01014e787a812a504e4ab8a2eec6`.

@@ -1,4 +1,4 @@
-# cargo-about configuration for VT Code.
+# cargo-about configuration for Diapason.
 #
 # Regenerate THIRD-PARTY-NOTICES with:
 #   cargo about generate scripts/templates/third-party-notices.hbs > /tmp/tpn-body.txt
@@ -6,19 +6,19 @@
 #
 # See https://embarkstudios.github.io/cargo-about/ for full documentation.
 
-# All SPDX license identifiers that VT Code accepts in its dependency tree.
+# All SPDX license identifiers that Diapason accepts in its dependency tree.
 #
 # Policy notes (audited 2026-08):
 # - Most entries are permissive (MIT/Apache/BSD/ISC/Zlib/0BSD/CC0/Unlicense/BSL).
 # - `LGPL-2.1-or-later` only appears as one branch of `MIT OR Apache-2.0 OR
-#   LGPL-2.1-or-later` (r-efi). Because it is an OR expression, VT Code complies
+#   LGPL-2.1-or-later` (r-efi). Because it is an OR expression, Diapason complies
 #   via MIT/Apache, so the LGPL obligations never attach. cargo-about requires
 #   every branch of an OR to be accepted, hence the entry.
 # - `Apache-2.0 WITH LLVM-exception` is permissive (Apache-2.0 plus a patent/
 #   exception grant); also appears only in OR expressions with MIT/Apache-2.0.
 # - `MPL-2.0` covers nucleo-matcher and option-ext. MPL-2.0 is weak, file-level
 #   copyleft: unmodified dependency use is fine and imposes no obligations on
-#   VT Code's own source. Accepted intentionally for the fuzzy-matching stack.
+#   Diapason's own source. Accepted intentionally for the fuzzy-matching stack.
 # - `WTFPL` is a permissive, public-domain-style license; no current crate uses
 #   it, but it is accepted for forward compatibility.
 # - `Unicode-DFS-2016` / `Unicode-3.0` cover the Unicode data tables used by

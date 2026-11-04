@@ -1,14 +1,18 @@
 # Installer Development Guide
 
-Information for VT Code maintainers and contributors.
+> Historical upstream reference: this guide describes VTCode's installer
+> pipeline and release assets. Diapason has no verified published installer
+> packages. Every script, package manager, tap, release, and support claim below
+> describes that upstream pipeline, not current Diapason support. For current
+> installation instructions, use [the source installation guide](README.md).
 
 ## Overview
 
-VT Code provides native installers for three platforms:
+Diapason provides native installers for three platforms:
 
 - **Shell script** (macOS, Linux) - `scripts/install.sh`
 - **PowerShell script** (Windows) - `scripts/install.ps1`
-- **Homebrew formula** - `homebrew/vtcode.rb`
+- **Homebrew formula** - `homebrew/diapason.rb`
 
 ## Platform Detection
 
@@ -29,8 +33,8 @@ VT Code provides native installers for three platforms:
 Required for installation. Must be generated for all platforms:
 
 ```
-vtcode-v{VERSION}-{PLATFORM}.tar.gz  (macOS, Linux, etc.)
-vtcode-v{VERSION}-{PLATFORM}.zip     (Windows)
+diapason-v{VERSION}-{PLATFORM}.tar.gz  (macOS, Linux, etc.)
+diapason-v{VERSION}-{PLATFORM}.zip     (Windows)
 ```
 
 ### Supported Platforms
@@ -89,17 +93,17 @@ jobs:
       - name: Package
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            7z a vtcode-v${{ github.ref_name }}-${{ matrix.target }}.zip \
-              target/${{ matrix.target }}/release/vtcode.exe
+            7z a diapason-v${{ github.ref_name }}-${{ matrix.target }}.zip \
+              target/${{ matrix.target }}/release/diapason.exe
           else
-            tar -czf vtcode-v${{ github.ref_name }}-${{ matrix.target }}.tar.gz \
-              -C target/${{ matrix.target }}/release vtcode
+            tar -czf diapason-v${{ github.ref_name }}-${{ matrix.target }}.tar.gz \
+              -C target/${{ matrix.target }}/release diapason
           fi
       
       - name: Upload
         uses: softprops/action-gh-release@v1
         with:
-          files: vtcode-v*
+          files: diapason-v*
 ```
 
 ## Testing Installers
@@ -111,14 +115,14 @@ jobs:
 ```bash
 bash scripts/install.sh
 # Verify
-vtcode --version
+diapason --version
 ```
 
 #### On Linux (local)
 
 ```bash
 bash scripts/install.sh
-vtcode --version
+diapason --version
 ```
 
 #### In Docker
@@ -136,25 +140,25 @@ docker run -it --rm ubuntu:latest bash -c \
 
 ```powershell
 .\scripts\install.ps1
-vtcode --version
+diapason --version
 ```
 
 #### Via PowerShell Core (cross-platform)
 
 ```powershell
 pwsh -File scripts/install.ps1
-vtcode --version
+diapason --version
 ```
 
 ### Homebrew Formula
 
 ```bash
 # Test locally
-brew install --verbose --formula ./homebrew/vtcode.rb
-vtcode --version
+brew install --verbose --formula ./homebrew/diapason.rb
+diapason --version
 
 # Uninstall
-brew uninstall vtcode
+brew uninstall diapason
 ```
 
 ## Updating for New Releases
@@ -167,10 +171,10 @@ brew uninstall vtcode
 
 ### 2. Update Homebrew Formula
 
-Edit `homebrew/vtcode.rb`:
+Edit `homebrew/diapason.rb`:
 
 ```ruby
-class Vtcode < Formula
+class Diapason < Formula
   version "X.Y.Z"
   
   on_macos do
@@ -198,19 +202,19 @@ end
 Get SHA256:
 
 ```bash
-shasum -a 256 vtcode-v*.tar.gz
-shasum -a 256 vtcode-v*.zip
+shasum -a 256 diapason-v*.tar.gz
+shasum -a 256 diapason-v*.zip
 ```
 
 ### 3. Update Homebrew Tap (if applicable)
 
-If using a personal tap (github.com/vinhnx/homebrew-vtcode):
+If using a personal tap (github.com/vinhnx/homebrew-diapason):
 
 ```bash
-cd ~/homebrew-vtcode
-cp ../vtcode/homebrew/vtcode.rb Formula/
-git add Formula/vtcode.rb
-git commit -m "Update VT Code to v{VERSION}"
+cd ~/homebrew-diapason
+cp ../diapason/homebrew/diapason.rb Formula/
+git add Formula/diapason.rb
+git commit -m "Update Diapason to v{VERSION}"
 git push
 ```
 
@@ -221,15 +225,15 @@ Test on each platform:
 ```bash
 # macOS/Linux
 curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash
-vtcode --version
+diapason --version
 
 # Windows
 irm https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.ps1 | iex
-vtcode --version
+diapason --version
 
 # Homebrew
-brew install vtcode
-vtcode --version
+brew install diapason
+diapason --version
 ```
 
 ## Installer Scripts Structure
@@ -244,7 +248,7 @@ Key functions:
 - `download_binary()` - Download and extract
 - `determine_install_path()` - Find best installation location
 - `install_binary()` - Copy binary and make executable
-- `verify_installation()` - Run vtcode --version
+- `verify_installation()` - Run diapason --version
 - `print_next_steps()` - Show post-install guidance
 
 Error handling: `set -e` (exit on error)
@@ -329,7 +333,7 @@ curl https://api.github.com/repos/vinhnx/vtcode/releases/latest | jq '.assets'
 Regenerate SHA256:
 
 ```bash
-shasum -a 256 vtcode-v*.tar.gz
+shasum -a 256 diapason-v*.tar.gz
 ```
 
 Update formula with new hashes.

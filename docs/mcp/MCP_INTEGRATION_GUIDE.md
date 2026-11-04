@@ -1,6 +1,6 @@
-# MCP Integration Guide for VT Code
+# MCP Integration Guide for Diapason
 
-This document outlines how VT Code implements Model Context Protocol (MCP)
+This document outlines how Diapason implements Model Context Protocol (MCP)
 based on Claude's official MCP specifications and best practices.
 
 > **Note:** This file is a high-level architecture reference. For accurate,
@@ -9,8 +9,8 @@ based on Claude's official MCP specifications and best practices.
 
 ## Overview
 
-VT Code integrates MCP to connect with external tools, databases, and APIs
-through the `crates/codegen/vtcode-core/src/mcp/` module. MCP provides a
+Diapason integrates MCP to connect with external tools, databases, and APIs
+through the `crates/codegen/diapason-core/src/mcp/` module. MCP provides a
 standardized interface for AI agents to access tools beyond their native
 capabilities.
 
@@ -18,7 +18,7 @@ capabilities.
 
 ### Core Components
 
-**Location**: `crates/codegen/vtcode-core/src/mcp/`
+**Location**: `crates/codegen/diapason-core/src/mcp/`
 
 ```
 mcp/
@@ -38,7 +38,7 @@ mcp/
 **McpClient** (`mod.rs:176`)
 
 - High-level client managing multiple MCP providers
-- Enforces VT Code policies (tool allowlists, security validation)
+- Enforces Diapason policies (tool allowlists, security validation)
 - Handles provider lifecycle (initialize, shutdown, tool execution)
 
 **McpProvider**
@@ -50,16 +50,16 @@ mcp/
 **McpToolExecutor** (trait, `mod.rs:167`)
 
 - Interface for the tool registry to execute MCP tools
-- Enables integration with VT Code's native tool system
+- Enables integration with Diapason's native tool system
 
 ## Configuration
 
 ### Configuration Files
 
-**Runtime Configuration (`vtcode.toml`)**:
+**Runtime Configuration (`config.toml`)**:
 
 ```toml
-# vtcode.toml
+# config.toml
 [mcp]
 enabled = true
 startup_timeout_seconds = 10
@@ -79,21 +79,21 @@ max_concurrent_requests = 1
    - `MCP_TIMEOUT`: Startup timeout in milliseconds (default: 10000)
    - `MAX_MCP_OUTPUT_TOKENS`: Maximum output token limit (default: 25000)
    - API keys and authentication tokens
-   - Custom timezone via `VT_LOCAL_TIMEZONE`
+   - Custom timezone via `DIAPASON_LOCAL_TIMEZONE`
 
-2. **vtcode.toml** (runtime configuration)
+2. **config.toml** (runtime configuration)
    - MCP enablement
    - Timeout settings
    - Provider definitions
    - Security policies
 
-3. **Code Constants** (`crates/codegen/vtcode-core/src/config/constants.rs`)
+3. **Code Constants** (`crates/codegen/diapason-core/src/config/constants.rs`)
    - Default values
    - Built-in limits
 
 ## Transport Types
 
-VT Code supports three transport mechanisms for MCP servers:
+Diapason supports three transport mechanisms for MCP servers:
 
 ### 1. Stdio Transport
 
@@ -128,7 +128,7 @@ transport = {
 
 - Requires `experimental_use_rmcp_client = true`
 - Remote server integration
-- OAuth CLI login/logout flows are not implemented in VT Code yet
+- OAuth CLI login/logout flows are not implemented in Diapason yet
 
 ### 3. Child Process Transport (Advanced)
 
@@ -230,7 +230,7 @@ async fn run_with_timeout<F, T>(
 
 - Per-provider startup timeout
 - Per-tool execution timeout
-- Configurable via `vtcode.toml` or environment
+- Configurable via `config.toml` or environment
 
 ## Resources & Prompts
 
@@ -250,7 +250,7 @@ pub async fn read_resource(&self, uri: &str) -> Result<McpResourceData>
 - MIME type support
 - Size metadata
 
-**Usage in VT Code**:
+**Usage in Diapason**:
 
 - File system resources (`file://` URIs)
 - Database resources
@@ -281,7 +281,7 @@ pub async fn get_prompt(
 
 ### Notification Types
 
-**From MCP Provider to VT Code**:
+**From MCP Provider to Diapason**:
 
 1. **Logging** (`on_logging_message`)
    - Standard logging integration
@@ -328,11 +328,11 @@ pub struct McpElicitationResponse {
 - Schema-based validation
 - Examples: interactive authentication, file selection
 
-## Integration with VT Code Tools
+## Integration with Diapason Tools
 
 ### Tool Registry Integration
 
-MCP tools are exposed through VT Code's `McpToolExecutor` trait:
+MCP tools are exposed through Diapason's `McpToolExecutor` trait:
 
 ```rust
 pub async fn execute_mcp_tool(&self, tool_name: &str, args: &Value) -> Result<Value>
@@ -558,7 +558,7 @@ Implement additional transport types by extending `rmcp_transport.rs`:
    - Monitor token usage with `MAX_MCP_OUTPUT_TOKENS`
 
 4. **Configuration Management**
-   - Configure MCP providers in `vtcode.toml`
+   - Configure MCP providers in `config.toml`
    - Keep secrets in environment variables
    - Document custom servers in project README
 
@@ -572,16 +572,17 @@ Implement additional transport types by extending `rmcp_transport.rs`:
 
 - **MCP Official**: <https://modelcontextprotocol.io/>
 - **Claude MCP Docs**: <https://code.claude.com/docs/en/mcp>
-- **VT Code Architecture**: `docs/ARCHITECTURE.md`
+- **Diapason Architecture**: `docs/ARCHITECTURE.md`
 - **Configuration Guide**: `docs/config/CONFIGURATION_PRECEDENCE.md`
 - **Security Model**: `docs/SECURITY_MODEL.md`
 
 ## References
 
-- `crates/codegen/vtcode-core/src/mcp/mod.rs`: Main MCP client implementation
+- `crates/codegen/diapason-core/src/mcp/mod.rs`: Main MCP client implementation
   (2200+ lines)
-- `crates/codegen/vtcode-core/src/mcp/rmcp_transport.rs`: Transport abstractions
-- `crates/codegen/vtcode-core/src/mcp/schema.rs`: JSON schema validation
-- `crates/codegen/vtcode-core/src/mcp/tool_discovery.rs`: Tool discovery and
+- `crates/codegen/diapason-core/src/mcp/rmcp_transport.rs`: Transport
+  abstractions
+- `crates/codegen/diapason-core/src/mcp/schema.rs`: JSON schema validation
+- `crates/codegen/diapason-core/src/mcp/tool_discovery.rs`: Tool discovery and
   caching
-- `crates/codegen/vtcode-core/src/config/mcp.rs`: Configuration types
+- `crates/codegen/diapason-core/src/config/mcp.rs`: Configuration types

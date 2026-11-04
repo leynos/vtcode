@@ -18,10 +18,10 @@ Usage: ./start.sh [mode] [options]
 Modes:
   (default)       Start the browser in fallback mode.
   --headless      Start the browser and a standalone workspace bridge.
-  --active        Start the browser and an interactive VT Code session.
+  --active        Start the browser and an interactive Diapason session.
 
 Options:
-  --workspace DIR Workspace root exposed to VT Code (default: the repository root).
+  --workspace DIR Workspace root exposed to Diapason (default: the repository root).
   --host HOST    Browser host (default: localhost).
   --port PORT    Browser port (default: 5173).
   -h, --help     Show this help.
@@ -85,7 +85,7 @@ workspace="$(cd -- "$workspace" && pwd)"
 origin="http://${host}:${port}"
 vite_bin="$script_dir/node_modules/.bin/vite"
 
-command -v bun >/dev/null 2>&1 || fail "bun is required to run the VT Code WebMCP app"
+command -v bun >/dev/null 2>&1 || fail "bun is required to run the Diapason WebMCP app"
 if [[ ! -x "$vite_bin" ]]; then
     echo "Installing browser dependencies..."
     (cd "$script_dir" && bun install --frozen-lockfile)
@@ -93,7 +93,7 @@ fi
 [[ -x "$vite_bin" ]] || fail "Vite was not installed at $vite_bin"
 
 if [[ "$mode" != "fallback" ]]; then
-    command -v cargo >/dev/null 2>&1 || fail "cargo is required for the VT Code bridge"
+    command -v cargo >/dev/null 2>&1 || fail "cargo is required for the Diapason bridge"
 fi
 
 existing_vite_pid=""
@@ -113,7 +113,7 @@ if [[ -n "$existing_vite_pid" ]]; then
     if [[ "$existing_command" == *"$script_dir/node_modules/.bin/vite"* ||
         "$existing_command" == *"$script_dir/node_modules/vite"* ||
         "$existing_cwd" == "$script_dir" ||
-        "$existing_page" == *"<title>VT Code · WebMCP editor</title>"* ]]; then
+        "$existing_page" == *"<title>Diapason · WebMCP editor</title>"* ]]; then
         vite_is_running="true"
         echo "Reusing the existing WebMCP Vite server (PID $existing_vite_pid)."
     else

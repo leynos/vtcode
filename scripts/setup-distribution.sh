@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VT Code Distribution Setup Script
+# Diapason Distribution Setup Script
 # This script helps set up and test the distribution configuration
 
 set -e
@@ -102,13 +102,13 @@ validate_packages() {
 
     print_success "Main Cargo.toml is valid"
 
-    # Check vtcode-core Cargo.toml
-    if [[ ! -f "vtcode-core/Cargo.toml" ]]; then
-        print_error "vtcode-core/Cargo.toml not found"
+    # Check diapason-core Cargo.toml
+    if [[ ! -f "diapason-core/Cargo.toml" ]]; then
+        print_error "diapason-core/Cargo.toml not found"
         return 1
     fi
 
-    print_success "vtcode-core Cargo.toml exists"
+    print_success "diapason-core Cargo.toml exists"
 
     # Check npm package
     if [[ -d "npm" ]]; then
@@ -170,11 +170,11 @@ show_next_steps() {
 # Main function
 main() {
     echo "========================================"
-    echo "  VT Code Distribution Setup Script"
+    echo "  Diapason Distribution Setup Script"
     echo "========================================"
     echo
 
-    print_info "This script will help you set up VT Code distribution"
+    print_info "This script will help you set up Diapason distribution"
     echo
 
     setup_cargo

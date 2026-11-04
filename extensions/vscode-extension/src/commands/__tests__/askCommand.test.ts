@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
-import * as vtcodeRunner from "../../utils/vtcodeRunner";
+import * as diapasonRunner from "../../utils/diapasonRunner";
 import { AskCommand } from "../askCommand";
 
-// Mock the vtcodeRunner module
-jest.mock("../../utils/vtcodeRunner");
+// Mock the diapasonRunner module
+jest.mock("../../utils/diapasonRunner");
 
 describe("AskCommand", () => {
     let command: AskCommand;
@@ -45,11 +45,11 @@ describe("AskCommand", () => {
     });
 
     describe("execute", () => {
-        it("should prompt user for question and execute vtcode command", async () => {
+        it("should prompt user for question and execute diapason command", async () => {
             // Arrange
             const mockQuestion = "What is the meaning of life?";
             mockShowInputBox.mockResolvedValue(mockQuestion);
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockResolvedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockResolvedValue(
                 undefined
             );
             mockShowInformationMessage.mockResolvedValue(undefined as any);
@@ -59,26 +59,26 @@ describe("AskCommand", () => {
 
             // Assert
             expect(mockShowInputBox).toHaveBeenCalledWith({
-                prompt: "What would you like the VT Code agent to help with?",
+                prompt: "What would you like the Diapason agent to help with?",
                 placeHolder: "Summarize src/main.rs",
                 ignoreFocusOut: true,
             });
-            expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
+            expect(diapasonRunner.runDiapasonCommand).toHaveBeenCalledWith(
                 ["ask", mockQuestion],
                 {
-                    title: "Asking VT Code…",
+                    title: "Asking Diapason…",
                     output: mockContext.output,
                 }
             );
             expect(mockShowInformationMessage).toHaveBeenCalledWith(
-                "VT Code finished processing your request. Check the VT Code output channel for details."
+                "Diapason finished processing your request. Check the Diapason output channel for details."
             );
         });
 
         it("should handle empty question gracefully", async () => {
             // Arrange
             mockShowInputBox.mockResolvedValue("");
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockResolvedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockResolvedValue(
                 undefined
             );
 
@@ -86,14 +86,14 @@ describe("AskCommand", () => {
             await command.execute(mockContext);
 
             // Assert
-            expect(vtcodeRunner.runVtcodeCommand).not.toHaveBeenCalled();
+            expect(diapasonRunner.runDiapasonCommand).not.toHaveBeenCalled();
             expect(mockShowInformationMessage).not.toHaveBeenCalled();
         });
 
         it("should handle cancelled input", async () => {
             // Arrange
             mockShowInputBox.mockResolvedValue(undefined);
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockResolvedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockResolvedValue(
                 undefined
             );
 
@@ -101,7 +101,7 @@ describe("AskCommand", () => {
             await command.execute(mockContext);
 
             // Assert
-            expect(vtcodeRunner.runVtcodeCommand).not.toHaveBeenCalled();
+            expect(diapasonRunner.runDiapasonCommand).not.toHaveBeenCalled();
             expect(mockShowInformationMessage).not.toHaveBeenCalled();
         });
 
@@ -110,7 +110,7 @@ describe("AskCommand", () => {
             const mockQuestion = "Test question";
             const mockError = new Error("Command failed");
             mockShowInputBox.mockResolvedValue(mockQuestion);
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockRejectedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockRejectedValue(
                 mockError
             );
             mockShowErrorMessage.mockResolvedValue(undefined as any);
@@ -119,9 +119,9 @@ describe("AskCommand", () => {
             await command.execute(mockContext);
 
             // Assert
-            expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalled();
+            expect(diapasonRunner.runDiapasonCommand).toHaveBeenCalled();
             expect(mockShowErrorMessage).toHaveBeenCalledWith(
-                "Failed to ask with VT Code: Command failed"
+                "Failed to ask with Diapason: Command failed"
             );
             expect(mockShowInformationMessage).not.toHaveBeenCalled();
         });
@@ -130,7 +130,7 @@ describe("AskCommand", () => {
             // Arrange
             const mockQuestion = "  Test question  ";
             mockShowInputBox.mockResolvedValue(mockQuestion);
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockResolvedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockResolvedValue(
                 undefined
             );
             mockShowInformationMessage.mockResolvedValue(undefined as any);
@@ -139,7 +139,7 @@ describe("AskCommand", () => {
             await command.execute(mockContext);
 
             // Assert
-            expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
+            expect(diapasonRunner.runDiapasonCommand).toHaveBeenCalledWith(
                 ["ask", "Test question"],
                 expect.any(Object)
             );
@@ -148,10 +148,10 @@ describe("AskCommand", () => {
 
     describe("command metadata", () => {
         it("should have correct command metadata", () => {
-            expect(command.id).toBe("vtcode.askAgent");
+            expect(command.id).toBe("diapason.askAgent");
             expect(command.title).toBe("Ask Agent");
             expect(command.description).toBe(
-                "Ask the VT Code agent a question"
+                "Ask the Diapason agent a question"
             );
             expect(command.icon).toBe("comment-discussion");
         });

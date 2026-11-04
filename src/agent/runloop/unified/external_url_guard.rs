@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use diapason_ui::tui::app::{InlineHandle, InlineSession, TransientSubmission};
 use tokio::sync::Notify;
 use tokio::task;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession, TransientSubmission};
 
 use crate::agent::runloop::unified::overlay_prompt::{OverlayWaitOutcome, show_overlay_and_wait};
 use crate::agent::runloop::unified::state::CtrlCState;
@@ -111,13 +111,13 @@ mod tests {
     };
     use crate::agent::runloop::unified::state::CtrlCState;
     use crate::agent::runloop::unified::url_guard::URL_GUARD_TITLE;
-    use std::sync::Arc;
-    use tokio::sync::Notify;
-    use tokio::sync::mpsc;
-    use vtcode_ui::tui::app::{
+    use diapason_ui::tui::app::{
         InlineCommand, InlineEvent, InlineHandle, InlineListSelection, InlineSession, TransientEvent, TransientRequest,
         TransientSubmission,
     };
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+    use tokio::sync::mpsc;
 
     fn session_with_channels() -> (
         InlineHandle,

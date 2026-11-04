@@ -1,0 +1,2 @@
+pub(super) const ROLE_USER: &str = "user";
+pub(super) use diapason_config::constants::execution::{LOOP_THROTTLE_BASE_MS, LOOP_THROTTLE_MAX_MS};

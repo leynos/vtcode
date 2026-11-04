@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use vtcode_core::core::agent::blocked_handoff::{BlockedHandoffResume, write_blocked_handoff_with_resume};
-use vtcode_core::core::agent::harness_artefacts::existing_harness_artefact_paths;
-use vtcode_core::exec::events::HarnessEventKind;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::session_archive::{
+use diapason_core::core::agent::blocked_handoff::{BlockedHandoffResume, write_blocked_handoff_with_resume};
+use diapason_core::core::agent::harness_artefacts::existing_harness_artefact_paths;
+use diapason_core::exec::events::HarnessEventKind;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::session_archive::{
     SessionArchive, SessionProgressArgs, SessionProgressPersistenceStatus, VerifiedSessionArchiveIdentifier,
 };
 
@@ -138,7 +138,7 @@ pub(super) fn write_blocked_handoff_after_checkpoint(
     resume: BlockedHandoffResume<'_>,
     renderer: &mut AnsiRenderer,
     harness_emitter: Option<&HarnessEventEmitter>,
-    handle: Option<&vtcode_ui::tui::app::InlineHandle>,
+    handle: Option<&diapason_ui::tui::app::InlineHandle>,
 ) {
     match write_blocked_handoff_with_resume(
         workspace,
@@ -157,8 +157,10 @@ pub(super) fn write_blocked_handoff_after_checkpoint(
             );
             match resume {
                 BlockedHandoffResume::Available(id) => {
-                    let _ = renderer
-                        .line(MessageStyle::Info, &format!("  • From terminal: Run `vtcode --resume {}`", id.as_str()));
+                    let _ = renderer.line(
+                        MessageStyle::Info,
+                        &format!("  • From terminal: Run `diapason --resume {}`", id.as_str()),
+                    );
                 }
                 BlockedHandoffResume::Unavailable(_) => {}
             }
@@ -166,16 +168,16 @@ pub(super) fn write_blocked_handoff_after_checkpoint(
                 .line(MessageStyle::Info, &format!("  • Blocker details: {}", artefacts.current_path.display()));
 
             if let Some(handle) = handle {
+                use diapason_ui::tui::app::{InlineMessageKind, InlineSegment, InlineTextStyle};
                 use std::sync::Arc;
-                use vtcode_ui::tui::app::{InlineMessageKind, InlineSegment, InlineTextStyle};
                 let text_style = Arc::new(InlineTextStyle::default());
                 let line = |text: String| vec![InlineSegment { text, style: text_style.clone() }];
                 handle.append_line(InlineMessageKind::Warning, line(format!("Turn blocked: {blocker_summary}")));
                 handle.append_line(
                     InlineMessageKind::Info,
-                    line("What you can do: Type 'continue' to resume, describe alternative instructions, or run `vtcode --resume <session>`; details: .vtcode/tasks/current_blocked.md".to_string()),
+                    line("What you can do: Type 'continue' to resume, describe alternative instructions, or run `diapason --resume <session>`; details: .diapason/tasks/current_blocked.md".to_string()),
                 );
-                handle.set_activity_state(vtcode_commons::ui_protocol::ActivityState::Blocked);
+                handle.set_activity_state(diapason_commons::ui_protocol::ActivityState::Blocked);
             }
 
             if let Some(emitter) = harness_emitter {

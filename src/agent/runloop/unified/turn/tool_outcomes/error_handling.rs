@@ -1,7 +1,7 @@
-use vtcode_commons::ErrorCategory;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::tools::error_messages::agent_execution;
-use vtcode_core::tools::registry::ToolExecutionError;
+use diapason_commons::ErrorCategory;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::tools::error_messages::agent_execution;
+use diapason_core::tools::registry::ToolExecutionError;
 
 use super::helpers::check_is_argument_error;
 use super::response_content::compact_model_tool_payload;
@@ -41,8 +41,8 @@ pub(crate) fn tool_denial_diagnostic(tool_name: &str) -> Option<serde_json::Valu
                 "fix": {
                     "action": "Change the tool policy from 'deny' to 'allow' (or 'prompt') in the configuration files.",
                     "files": [
-                    format!("vtcode.toml: [tools.policies] section - set '{tool_name}' to \"allow\""),
-                    format!(".vtcode/tool-policy.json: policies object - set '{tool_name}' to \"allow\""),
+                    format!("config.toml: [tools.policies] section - set '{tool_name}' to \"allow\""),
+                    format!(".diapason/tool-policy.json: policies object - set '{tool_name}' to \"allow\""),
                     "Recognized shell aliases: run_pty_cmd, unified_exec, exec_command; update the exact alias shown in this denial.".to_string()
                     ],
                 "note": format!("Update that exact tool alias '{tool_name}' (recognized shell aliases: run_pty_cmd, unified_exec, exec_command), then restart the session so the policy snapshot is rebuilt. Configuration changes do not alter the current session policy snapshot.")
@@ -71,7 +71,7 @@ pub(crate) fn tool_denial_diagnostic(tool_name: &str) -> Option<serde_json::Valu
 
 pub(super) fn truncate_text_for_model(value: &str, max_chars: usize) -> (String, bool) {
     const MARKER: &str = " ... [truncated] ... ";
-    vtcode_commons::formatting::head_tail_truncate(value, max_chars, MARKER)
+    diapason_commons::formatting::head_tail_truncate(value, max_chars, MARKER)
 }
 
 fn compact_json_preview(serialized: &str, max_chars: usize) -> String {

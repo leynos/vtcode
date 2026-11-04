@@ -1,10 +1,10 @@
 use anyhow::Result;
-use vtcode_core::core::interfaces::ui::UiSession;
-use vtcode_core::exec::events::PermissionDecision;
-use vtcode_core::tool_policy::ToolPolicy;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_core::core::interfaces::ui::UiSession;
+use diapason_core::exec::events::PermissionDecision;
+use diapason_core::tool_policy::ToolPolicy;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::InlineHandle;
 
 use super::{
     HitlDecision, ToolPermissionFlow,
@@ -20,7 +20,7 @@ use crate::agent::runloop::unified::turn::tool_outcomes::error_handling::tool_de
 pub(super) async fn handle_policy_denied<S: UiSession + ?Sized>(
     tool_registry: &ToolRegistry,
     tool_name: &str,
-    tool_permission_cache: Option<&std::sync::Arc<tokio::sync::RwLock<vtcode_core::acp::ToolPermissionCache>>>,
+    tool_permission_cache: Option<&std::sync::Arc<tokio::sync::RwLock<diapason_core::acp::ToolPermissionCache>>>,
     renderer: &mut AnsiRenderer,
     handle: &InlineHandle,
     ctrl_c_state: &std::sync::Arc<CtrlCState>,

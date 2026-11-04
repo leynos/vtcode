@@ -6,7 +6,7 @@
 //!   - Persistent-memory guide and header badges live in `ui/persistent_memory.rs`.
 //!   - Resume rendering and transcript projection live in `ui/resume_render.rs`.
 //! - Constraints: TD-005 is active for this surface; keep this file as an orchestration root and prefer responsibility-named support modules for new helper clusters.
-//! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode inline_events::tests`
+//! - Verify: `cargo check -p diapason && cargo test -p diapason --bin diapason inline_events::tests`
 
 mod header_context;
 mod local_agents;
@@ -23,33 +23,33 @@ use crate::agent::runloop::unified::stop_requests::request_local_stop;
 use crate::agent::runloop::unified::turn::utils::{append_additional_context, render_hook_messages};
 use crate::agent::runloop::unified::{context_manager, state};
 use anyhow::{Context, Result};
+use diapason_core::config::constants::ui;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::steering::SteeringMessage;
+use diapason_core::hooks::{LifecycleHookEngine, SessionEndReason, SessionStartTrigger};
+use diapason_core::notifications::{set_global_notification_hook_engine, set_global_terminal_focused};
+use diapason_core::primary_agent::build_primary_agent_hook_config;
+use diapason_core::prompts::discover_prompt_templates;
+use diapason_core::ui::slash::visible_commands;
+use diapason_core::ui::theme;
+use diapason_core::ui::{
+    inline_theme_from_core_styles, is_tui_mode, set_tui_mode, to_tui_appearance, to_tui_fullscreen,
+    to_tui_keyboard_protocol, to_tui_slash_commands, to_tui_surface,
+};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::dot_config::{load_user_config, take_startup_user_config};
+use diapason_core::utils::session_archive::SessionArchive;
+use diapason_core::utils::transcript;
+use diapason_ui::tui::app::{
+    AgentPaletteItem, FocusChangeCallback, InlineEvent, InlineEventCallback, InlineListSelection, PreviewCallback,
+    SessionOptions, SlashCommandItem, spawn_session_with_options,
+};
 use hashbrown::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::{Notify, mpsc::UnboundedSender};
 use tracing::warn;
-use vtcode_core::config::constants::ui;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::steering::SteeringMessage;
-use vtcode_core::hooks::{LifecycleHookEngine, SessionEndReason, SessionStartTrigger};
-use vtcode_core::notifications::{set_global_notification_hook_engine, set_global_terminal_focused};
-use vtcode_core::primary_agent::build_primary_agent_hook_config;
-use vtcode_core::prompts::discover_prompt_templates;
-use vtcode_core::ui::slash::visible_commands;
-use vtcode_core::ui::theme;
-use vtcode_core::ui::{
-    inline_theme_from_core_styles, is_tui_mode, set_tui_mode, to_tui_appearance, to_tui_fullscreen,
-    to_tui_keyboard_protocol, to_tui_slash_commands, to_tui_surface,
-};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::dot_config::{load_user_config, take_startup_user_config};
-use vtcode_core::utils::session_archive::SessionArchive;
-use vtcode_core::utils::transcript;
-use vtcode_ui::tui::app::{
-    AgentPaletteItem, FocusChangeCallback, InlineEvent, InlineEventCallback, InlineListSelection, PreviewCallback,
-    SessionOptions, SlashCommandItem, spawn_session_with_options,
-};
 
 pub(crate) use self::header_context::apply_ide_context_snapshot;
 use self::header_context::{HeaderContextInit, initialize_header_context};
@@ -69,15 +69,15 @@ use self::persistent_memory::{persistent_memory_guide_lines, persistent_memory_h
 #[cfg(test)]
 use self::resume_render::infer_legacy_line_style;
 #[cfg(test)]
-use vtcode_core::llm::provider as uni;
+use diapason_core::llm::provider as uni;
 #[cfg(test)]
-use vtcode_core::persistent_memory::PersistentMemoryStatus;
+use diapason_core::persistent_memory::PersistentMemoryStatus;
 #[cfg(test)]
-use vtcode_core::subagents::SubagentStatusEntry;
+use diapason_core::subagents::SubagentStatusEntry;
 #[cfg(test)]
-use vtcode_ui::tui::app::InlineHeaderContext;
+use diapason_ui::tui::app::InlineHeaderContext;
 #[cfg(test)]
-use vtcode_ui::tui::app::InlineHeaderStatusTone;
+use diapason_ui::tui::app::InlineHeaderStatusTone;
 
 pub(crate) struct SessionUiLaunchOptions {
     pub session_archive: Option<SessionArchive>,
@@ -88,7 +88,7 @@ pub(crate) struct SessionUiLaunchOptions {
 
 pub(crate) async fn initialize_session_ui(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     session_id: &str,
     session_state: &mut SessionState,
     session_trigger: SessionStartTrigger,
@@ -248,9 +248,13 @@ pub(crate) async fn initialize_session_ui(
             surface_preference: vt_cfg
                 .and_then(|cfg| cfg.tui.alternate_screen)
                 .map(|mode| match mode {
-                    vtcode_core::config::TuiAlternateScreen::Always => vtcode_ui::tui::app::SessionSurface::Alternate,
-                    vtcode_core::config::TuiAlternateScreen::Never
-                    | vtcode_core::config::TuiAlternateScreen::Unknown => vtcode_ui::tui::app::SessionSurface::Inline,
+                    diapason_core::config::TuiAlternateScreen::Always => {
+                        diapason_ui::tui::app::SessionSurface::Alternate
+                    }
+                    diapason_core::config::TuiAlternateScreen::Never
+                    | diapason_core::config::TuiAlternateScreen::Unknown => {
+                        diapason_ui::tui::app::SessionSurface::Inline
+                    }
                 })
                 .unwrap_or_else(|| to_tui_surface(config.ui_surface)),
             inline_rows,
@@ -265,8 +269,8 @@ pub(crate) async fn initialize_session_ui(
             workspace_root: Some(config.workspace.clone()),
             slash_commands: slash_command_items,
             appearance: vt_cfg.map(to_tui_appearance),
-            app_name: "VT Code".to_string(),
-            non_interactive_hint: Some("Use `vtcode ask \"your prompt\"` for non-interactive input.".to_string()),
+            app_name: "Diapason".to_string(),
+            non_interactive_hint: Some("Use `diapason ask \"your prompt\"` for non-interactive input.".to_string()),
             key_bindings: user_key_bindings,
             preview_callback: Some(preview_callback),
         },
@@ -299,16 +303,16 @@ pub(crate) async fn initialize_session_ui(
     // background task below.
     handle_for_palette.configure_file_palette(
         workspace_for_palette.clone(),
-        vtcode_ui::tui::core_tui::app::session::file_palette::DirLister::new({
+        diapason_ui::tui::core_tui::app::session::file_palette::DirLister::new({
             let ws = workspace_for_palette.clone();
-            move |dir| vtcode_core::SimpleIndexer::new(ws.clone()).discover_dir_entries(dir)
+            move |dir| diapason_core::SimpleIndexer::new(ws.clone()).discover_dir_entries(dir)
         }),
     );
     let workspace_for_search = config.workspace.clone();
     let handle_for_search = handle.clone();
     let file_palette_task_guard = BackgroundTaskGuard::new(tokio::spawn(async move {
         match tokio::task::spawn_blocking(move || {
-            vtcode_core::SimpleIndexer::new(workspace_for_search.clone()).discover_files(&workspace_for_search)
+            diapason_core::SimpleIndexer::new(workspace_for_search.clone()).discover_files(&workspace_for_search)
         })
         .await
         {
@@ -378,12 +382,12 @@ pub(crate) async fn initialize_session_ui(
     };
     let header_provider_label = provider_label.clone();
 
-    let mut checkpoint_config = vtcode_core::core::agent::snapshots::SnapshotConfig::new(config.workspace.clone());
+    let mut checkpoint_config = diapason_core::core::agent::snapshots::SnapshotConfig::new(config.workspace.clone());
     checkpoint_config.enabled = config.checkpointing_enabled;
     checkpoint_config.storage_dir = config.checkpointing_storage_dir.clone();
     checkpoint_config.max_snapshots = config.checkpointing_max_snapshots;
     checkpoint_config.max_age_days = config.checkpointing_max_age_days;
-    let checkpoint_manager = match vtcode_core::core::agent::snapshots::SnapshotManager::new(checkpoint_config) {
+    let checkpoint_manager = match diapason_core::core::agent::snapshots::SnapshotManager::new(checkpoint_config) {
         Ok(manager) => Some(manager),
         Err(err) => {
             warn!("Failed to initialize checkpoint manager: {}", err);
@@ -405,7 +409,7 @@ pub(crate) async fn initialize_session_ui(
     {
         let digest = hooks.command_digest().to_string();
         let pre_approved = matches!(
-            vtcode_core::load_lifecycle_hook_approval(&config.workspace).await,
+            diapason_core::load_lifecycle_hook_approval(&config.workspace).await,
             Ok(Some(record)) if record.config_digest == digest
         );
         if pre_approved {
@@ -428,7 +432,7 @@ pub(crate) async fn initialize_session_ui(
             .await
             {
                 Ok(hook_approval::HookApprovalDecision::Approved) => {
-                    if let Err(err) = vtcode_core::update_lifecycle_hook_approval(&config.workspace, digest).await {
+                    if let Err(err) = diapason_core::update_lifecycle_hook_approval(&config.workspace, digest).await {
                         tracing::warn!(
                             error = %err,
                             "Failed to persist workspace lifecycle hook approval; approval applies to this session only"

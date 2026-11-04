@@ -13,7 +13,7 @@ static ARRAY_INDEX_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[(\d+)\]").expec
 
 static SECTION_HEADINGS: &[(&str, &str, &str)] = &[
     ("acp", "ACP Bridge", "IDE and Agent Client Protocol integrations."),
-    ("acp.zed", "Zed Integration", "How VT Code connects commands and trust settings to Zed."),
+    ("acp.zed", "Zed Integration", "How Diapason connects commands and trust settings to Zed."),
     ("acp.zed.auth", "Zed Authentication", "Default authentication flow for ACP sessions in Zed."),
     ("acp.zed.tools", "Zed Tool Bridge", "Which file tools are exposed to the Zed client."),
     ("agent", "Agent Defaults", "Primary model, prompt, and chat behaviour."),
@@ -58,7 +58,7 @@ static SECTION_HEADINGS: &[(&str, &str, &str)] = &[
     (
         "custom_providers",
         "Custom Providers",
-        "Named OpenAI-compatible endpoints configured in vtcode.toml.",
+        "Named OpenAI-compatible endpoints configured in config.toml.",
     ),
     (
         "custom_providers[]",
@@ -105,7 +105,7 @@ static SECTION_HEADINGS: &[(&str, &str, &str)] = &[
         "Concurrency and throughput guardrails for MCP traffic.",
     ),
     ("mcp.security.validation", "MCP Validation", "Schema and payload checks for MCP requests."),
-    ("mcp.server", "MCP Server Transport", "How VT Code hosts its own MCP server."),
+    ("mcp.server", "MCP Server Transport", "How Diapason hosts its own MCP server."),
     ("mcp.ui", "MCP UI", "How MCP tools and events appear in the interface."),
     ("mcp.ui.renderers", "MCP Renderers", "Presentation rules for specific MCP tool outputs."),
     ("model", "Model Defaults", "Shared model selection and context settings."),
@@ -252,7 +252,7 @@ fn format_human_token(token: &str) -> String {
         "oauth" => "OAuth".to_string(),
         "pty" => "PTY".to_string(),
         "ui" => "UI".to_string(),
-        "vtcode" => "VT Code".to_string(),
+        "diapason" => "Diapason".to_string(),
         "openai" => "OpenAI".to_string(),
         "openrouter" => "OpenRouter".to_string(),
         "deepseek" => "DeepSeek".to_string(),

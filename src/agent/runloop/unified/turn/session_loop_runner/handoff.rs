@@ -1,8 +1,8 @@
 use anyhow::Result;
+use diapason_core::core::agent::runtime::AgentRuntime;
+use diapason_core::primary_agent::{ActivePrimaryAgent, ActivePrimaryAgentState};
+use diapason_core::tools::registry::ToolRegistry;
 use std::path::Path;
-use vtcode_core::core::agent::runtime::AgentRuntime;
-use vtcode_core::primary_agent::{ActivePrimaryAgent, ActivePrimaryAgentState};
-use vtcode_core::tools::registry::ToolRegistry;
 
 use crate::agent::runloop::unified::planning_workflow::PlanExecutionContext;
 use crate::agent::runloop::unified::turn::primary_agent_runtime::{
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn approved_plan_execution_input_is_appended_as_a_single_user_message() {
-        let state = vtcode_core::core::agent::session::AgentSessionState::new("session".to_string(), 16, 4, 128_000);
+        let state = diapason_core::core::agent::session::AgentSessionState::new("session".to_string(), 16, 4, 128_000);
         let mut runtime = AgentRuntime::new(state, None, None);
 
         let (input, prompt_message_index) = append_approved_plan_execution_input(&mut runtime);
@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(input, PLAN_APPROVED_EXECUTION_INPUT);
         assert_eq!(prompt_message_index, 0);
         assert_eq!(runtime.state.messages.len(), 1);
-        assert_eq!(runtime.state.messages[0].role, vtcode_core::llm::provider::MessageRole::User);
+        assert_eq!(runtime.state.messages[0].role, diapason_core::llm::provider::MessageRole::User);
         assert_eq!(runtime.state.messages[0].get_text_content(), PLAN_APPROVED_EXECUTION_INPUT);
     }
 }

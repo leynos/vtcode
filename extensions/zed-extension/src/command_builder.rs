@@ -1,6 +1,6 @@
-//! Command Builder - Fluent API for constructing VT Code commands
+//! Command Builder - Fluent API for constructing Diapason commands
 //!
-//! This module provides a builder pattern for constructing complex VT Code
+//! This module provides a builder pattern for constructing complex Diapason
 //! commands with a clean, chainable API for better code readability.
 
 use crate::executor::{
@@ -9,7 +9,7 @@ use crate::executor::{
 use std::collections::HashMap;
 use std::time::Duration;
 
-/// Fluent builder for VT Code commands
+/// Fluent builder for Diapason commands
 pub struct CommandBuilder {
     command: String,
     args: Vec<String>,

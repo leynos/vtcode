@@ -9,10 +9,10 @@
 
 use std::path::Path;
 
+use diapason_core::config::constants::defaults::DEFAULT_MAX_SEQUENTIAL_SPOOL_CHUNK_READS_PER_TURN;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::tools::registry::labels::tool_action_label;
 use serde_json::{Value, json};
-use vtcode_core::config::constants::defaults::DEFAULT_MAX_SEQUENTIAL_SPOOL_CHUNK_READS_PER_TURN;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::tools::registry::labels::tool_action_label;
 
 use super::super::ValidationResult;
 use super::super::looping::spool_chunk_read_path;
@@ -265,7 +265,7 @@ mod tests {
 
     #[tokio::test]
     async fn spool_chunk_guard_error_resolves_to_pty_poll_for_run_prefix() {
-        let payload = build_spool_chunk_guard_error_content(".vtcode/context/tool_outputs/run-1.txt", 3).await;
+        let payload = build_spool_chunk_guard_error_content(".diapason/context/tool_outputs/run-1.txt", 3).await;
         let parsed: Value = serde_json::from_str(&payload).expect("spool chunk guard payload should be json");
 
         assert_eq!(parsed.get("fallback_tool").and_then(Value::as_str), Some(tool_names::WRITE_STDIN));
@@ -279,7 +279,7 @@ mod tests {
     #[tokio::test]
     async fn spool_chunk_guard_error_resolves_to_search_grep_for_search_prefix() {
         let payload = build_spool_chunk_guard_error_content(
-            ".vtcode/context/tool_outputs/unified_search_1782625284532136.txt",
+            ".diapason/context/tool_outputs/unified_search_1782625284532136.txt",
             3,
         )
         .await;
@@ -297,7 +297,8 @@ mod tests {
 
     #[tokio::test]
     async fn spool_chunk_guard_error_falls_back_to_warning_error_todo_for_unknown_prefix() {
-        let payload = build_spool_chunk_guard_error_content(".vtcode/context/tool_outputs/custom_tool_42.txt", 3).await;
+        let payload =
+            build_spool_chunk_guard_error_content(".diapason/context/tool_outputs/custom_tool_42.txt", 3).await;
         let parsed: Value = serde_json::from_str(&payload).expect("spool chunk guard payload should be json");
 
         assert_eq!(parsed.get("fallback_tool").and_then(Value::as_str), Some(tool_names::EXEC_COMMAND));
@@ -310,7 +311,7 @@ mod tests {
 
     #[test]
     fn derive_spool_fallback_recognizes_pty_session_id() {
-        let (tool, args) = derive_spool_fallback(".vtcode/context/tool_outputs/run-abc123.txt")
+        let (tool, args) = derive_spool_fallback(".diapason/context/tool_outputs/run-abc123.txt")
             .expect("pty session spool should resolve to a fallback");
         assert_eq!(tool, tool_names::WRITE_STDIN);
         assert_eq!(args["session_id"], "abc123");

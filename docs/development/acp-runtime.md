@@ -3,19 +3,19 @@
 This guide describes the implementation boundaries behind the
 [Zed ACP integration](../guides/zed-acp.md). The ACP crate owns protocol
 translation and session orchestration; reusable agent behaviour remains in
-`vtcode-core`, and provider transport and custom-provider admission remain in
-`vtcode-llm`.
+`diapason-core`, and provider transport and custom-provider admission remain in
+`diapason-llm`.
 
 ## Boundaries and request flow
 
-- `vtcode-acp/src/zed/` owns SACP request and notification handlers, the
+- `diapason-acp/src/zed/` owns SACP request and notification handlers, the
   `ZedAgent` adapter, client updates, ACP tool authorization, and conversion of
   core task events into ACP messages. Keep ACP schema types and wire-specific
   conventions at this boundary.
-- `vtcode-core` owns the agent loop, tool execution and task/sub-agent state.
+- `diapason-core` owns the agent loop, tool execution and task/sub-agent state.
   Its progress observer reports protocol-neutral status snapshots; it does not
   send ACP notifications.
-- `vtcode-llm` owns provider interfaces and the custom-provider router. The
+- `diapason-llm` owns provider interfaces and the custom-provider router. The
   router enforces the configured per-provider request limit once, so ACP and
   child-agent calls routed through the same configured provider share permits.
   ACP's provider runtime supplies cancellation, retry, deadline, and telemetry
@@ -23,9 +23,9 @@ translation and session orchestration; reusable agent behaviour remains in
 
 When changing a contract, keep translation at the adapter and preserve shared
 core/provider behaviour for non-ACP callers. The crate-specific rules are in
-[`vtcode-acp/AGENTS.md`](../../crates/codegen/vtcode-acp/AGENTS.md),
-[`vtcode-core/AGENTS.md`](../../crates/codegen/vtcode-core/AGENTS.md), and
-[`vtcode-llm/AGENTS.md`](../../crates/codegen/vtcode-llm/AGENTS.md).
+[`diapason-acp/AGENTS.md`](../../crates/codegen/diapason-acp/AGENTS.md),
+[`diapason-core/AGENTS.md`](../../crates/codegen/diapason-core/AGENTS.md), and
+[`diapason-llm/AGENTS.md`](../../crates/codegen/diapason-llm/AGENTS.md).
 
 ## Session workspace and durability
 
@@ -41,9 +41,9 @@ metadata. Do not substitute the server launch directory when the requested
 workspace is invalid.
 
 Durable session archives are controlled by `[history].persistence` and
-`max_bytes`, and live under `$VT_SESSION_DIR` or the configured VT Code data
-directory's `sessions/`. Checkpoints preserve user messages, assistant tool
-requests, tool results, completed responses and incomplete streamed turns.
+`max_bytes`, and live under `$DIAPASON_SESSION_DIR` or the configured Diapason
+data directory's `sessions/`. Checkpoints preserve user messages, assistant
+tool requests, tool results, completed responses and incomplete streamed turns.
 Archive metadata also carries bounded opaque ACP metadata from `session/new` and
 `session/prompt`. `session/list` discovers persisted sessions and filters by
 workspace when the client supplies `cwd`; `session/load` and `session/resume`
@@ -51,7 +51,7 @@ restore a session by its exact identifier, including its checkpointed
 conversation. With `history.persistence = "none"`, archives and discovery are
 disabled and sessions are process-local.
 
-Compaction history under `<workspace>/.vtcode/history/` is a separate store,
+Compaction history under `<workspace>/.diapason/history/` is a separate store,
 controlled by `[context.dynamic]`; it supports summarization but is not a
 resumable ACP archive. ACP tool audit output is a third, independent store.
 Changing one store's configuration does not enable or disable the others.
@@ -136,22 +136,23 @@ therefore does not detect a missing final-guard notification.
 
 ## Task updates
 
-`vtcode-core` publishes protocol-neutral sub-agent and background-process
+`diapason-core` publishes protocol-neutral sub-agent and background-process
 status snapshots through its progress observer. The ACP adapter forwards those
-snapshots as extension notifications using the method `_vtcode/taskLifecycle`.
-Notification parameters have `sessionId`, `acpSessionId`, and `message` fields.
-`message` uses `task_started`, `task_progress`, or `task_updated` with
-`task_id`, `task_type`, `subagent_type`, and the status/details for that
-snapshot. Terminal updates place status and details under `patch`; non-terminal
-updates place them at the message top level. A queued task or starting
-background process maps to `task_started`; active work maps to `task_progress`;
-completion, failure, closure, stop, or error maps to `task_updated` with its
-terminal status in the patch. This is a VT Code extension notification rather
-than a standard ACP session update.
+snapshots as extension notifications using the method
+`_diapason/taskLifecycle`. Notification parameters have `sessionId`,
+`acpSessionId`, and `message` fields. `message` uses `task_started`,
+`task_progress`, or `task_updated` with `task_id`, `task_type`,
+`subagent_type`, and the status/details for that snapshot. Terminal updates
+place status and details under `patch`; non-terminal updates place them at the
+message top level. A queued task or starting background process maps to
+`task_started`; active work maps to `task_progress`; completion, failure,
+closure, stop, or error maps to `task_updated` with its terminal status in the
+patch. This is a Diapason extension notification rather than a standard ACP
+session update.
 
 The model-facing `task_tracker` tool remains implemented by core. The ACP
 adapter converts each successful checklist result to a standard ACP plan
-update, retaining tracker metadata under `_meta.vtcode.taskTracker`. Checklist
+update, retaining tracker metadata under `_meta.diapason.taskTracker`. Checklist
 `in_progress` and `completed` map to the corresponding ACP entry states;
 blocked items are pending and marked `[blocked]`. On `session/load`,
 `session/resume`, and a later prompt, ACP reads the persisted tracker state and
@@ -163,17 +164,17 @@ model-visible tool call or repeat a tool side effect.
 Run the ACP and provider crate suites when changing these boundaries:
 
 ```sh
-cargo nextest run -p vtcode-acp task_tracker_tool_result_emits_standard_acp_plan
-cargo nextest run -p vtcode-acp forwards_lifecycle_events_through_the_official_acp_duplex
-cargo nextest run -p vtcode-acp checkpoint_session_persists_messages_for_a_fresh_runtime
-cargo nextest run -p vtcode-acp -E 'test(session_activity_matches_the_reference_model)'
-cargo nextest run -p vtcode-acp -E 'test(workspace_lease_accounting_matches_the_reference_model)'
-cargo nextest run -p vtcode-llm request_admission
+cargo nextest run -p diapason-acp task_tracker_tool_result_emits_standard_acp_plan
+cargo nextest run -p diapason-acp forwards_lifecycle_events_through_the_official_acp_duplex
+cargo nextest run -p diapason-acp checkpoint_session_persists_messages_for_a_fresh_runtime
+cargo nextest run -p diapason-acp -E 'test(session_activity_matches_the_reference_model)'
+cargo nextest run -p diapason-acp -E 'test(workspace_lease_accounting_matches_the_reference_model)'
+cargo nextest run -p diapason-llm request_admission
 ```
 
 These cover ACP plan projection and replay, duplex lifecycle forwarding,
 session checkpoint persistence, the sequential activity and lease reference
 models, and the custom-provider admission regressions. The relevant provider
 retry/deadline unit tests are in the ACP `zed/provider_runtime.rs` module; run
-them with `cargo nextest run -p vtcode-acp <test-name>` after selecting a test
-name from that module.
+them with `cargo nextest run -p diapason-acp <test-name>` after selecting a
+test name from that module.

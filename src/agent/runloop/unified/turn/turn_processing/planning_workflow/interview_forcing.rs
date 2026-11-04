@@ -1,5 +1,5 @@
+use diapason_core::llm::provider as uni;
 use serde_json::json;
-use vtcode_core::llm::provider as uni;
 
 use super::super::response_processing::prepare_tool_calls;
 use super::PLANNING_WORKFLOW_REMINDER;
@@ -68,7 +68,7 @@ pub(super) fn inject_planning_workflow_interview(
     plan_session: &mut crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState,
     conversation_len: usize,
 ) -> TurnProcessingResult {
-    use vtcode_core::config::constants::tools;
+    use diapason_core::config::constants::tools;
 
     let args = json!({ "questions": [ build_fallback_question() ] });
     let args_json = serde_json::to_string(&args).unwrap_or_else(|_| "{}".to_string());
@@ -138,7 +138,7 @@ pub(super) fn filter_interview_tool_calls(
     processing_result: TurnProcessingResult,
     policy: InterviewToolCallFilterPolicy,
 ) -> InterviewToolCallFilter {
-    use vtcode_core::config::constants::tools;
+    use diapason_core::config::constants::tools;
 
     let TurnProcessingResult::ToolCalls {
         tool_calls,

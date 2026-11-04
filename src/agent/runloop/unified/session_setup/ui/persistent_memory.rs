@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::persistent_memory::{PersistentMemoryStatus, persistent_memory_status};
-use vtcode_ui::tui::app::{
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::persistent_memory::{PersistentMemoryStatus, persistent_memory_status};
+use diapason_ui::tui::app::{
     InlineHeaderContext, InlineHeaderHighlight, InlineHeaderStatusBadge, InlineHeaderStatusTone,
 };
 
@@ -15,16 +15,16 @@ pub(super) fn persistent_memory_guide_lines(memory_status: &PersistentMemoryStat
     }
     lines.push("Use `remember ...` to save a note or `forget ...` to remove one.".to_string());
     lines.push(if memory_status.auto_write {
-        "Auto-write is on: VT Code may consolidate durable notes after a session.".to_string()
+        "Auto-write is on: Diapason may consolidate durable notes after a session.".to_string()
     } else {
-        "Auto-write is off: VT Code will only change memory through explicit actions.".to_string()
+        "Auto-write is off: Diapason will only change memory through explicit actions.".to_string()
     });
     lines
 }
 
 pub(super) async fn load_persistent_memory_status(
     config: &CoreAgentConfig,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> Result<Option<PersistentMemoryStatus>> {
     let Some(vt_cfg) = vt_cfg else {
         return Ok(None);

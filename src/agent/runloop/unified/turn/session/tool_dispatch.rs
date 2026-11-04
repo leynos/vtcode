@@ -13,12 +13,12 @@ use crate::agent::runloop::unified::turn::session::direct_tool_completion::{
 };
 use crate::agent::runloop::unified::turn::session::interaction_loop::{InteractionLoopContext, InteractionOutcome};
 use crate::agent::runloop::unified::turn::tool_outcomes::handlers::{ToolOutcomeContext, handle_single_tool_call};
-use vtcode_config::SubagentSpec;
-use vtcode_core::command_safety::shell_parser::parse_shell_commands_tree_sitter;
-use vtcode_core::config::constants::tools;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::session::SessionId;
-use vtcode_core::subagents::delegated_task_requires_clarification;
+use diapason_config::SubagentSpec;
+use diapason_core::command_safety::shell_parser::parse_shell_commands_tree_sitter;
+use diapason_core::config::constants::tools;
+use diapason_core::llm::provider as uni;
+use diapason_core::session::SessionId;
+use diapason_core::subagents::delegated_task_requires_clarification;
 
 struct DirectSubagentInvocation {
     tool_name: &'static str,
@@ -58,14 +58,14 @@ pub(crate) async fn handle_direct_tool_execution(
         DirectToolInput::Execute { tool_name, args, is_bang_prefix } => (tool_name, args, is_bang_prefix),
         DirectToolInput::InvalidBang { command, diagnosis } => {
             ctx.interaction_ctx.renderer.line(
-                vtcode_core::utils::ansi::MessageStyle::Info,
+                diapason_core::utils::ansi::MessageStyle::Info,
                 "Shell mode (!): command rejected (invalid shell syntax).",
             )?;
             ctx.interaction_ctx
                 .renderer
-                .line(vtcode_core::utils::ansi::MessageStyle::Info, &format!("Diagnosis: {diagnosis}"))?;
+                .line(diapason_core::utils::ansi::MessageStyle::Info, &format!("Diagnosis: {diagnosis}"))?;
             ctx.interaction_ctx.renderer.line(
-                vtcode_core::utils::ansi::MessageStyle::Info,
+                diapason_core::utils::ansi::MessageStyle::Info,
                 &format!("Recovery: fix syntax and retry as `!{command}`, or remove `!` to ask in natural language."),
             )?;
             return Ok(Some(InteractionOutcome::DirectToolHandled));
@@ -121,7 +121,7 @@ pub(crate) async fn execute_direct_tool_call(
             t_ctx
                 .ctx
                 .renderer
-                .line(vtcode_core::utils::ansi::MessageStyle::Info, "Shell mode (!): executing command directly.")?;
+                .line(diapason_core::utils::ansi::MessageStyle::Info, "Shell mode (!): executing command directly.")?;
         }
         if matches!(tool_name, tools::SPAWN_AGENT | tools::SPAWN_BACKGROUND_SUBPROCESS)
             && let Some(controller) = t_ctx.ctx.tool_registry.subagent_controller()
@@ -151,7 +151,9 @@ pub(crate) async fn execute_direct_tool_call(
             let outcome = handle_single_tool_call(&mut t_ctx, &tool_call_id, &current_tool_name, current_args).await?;
 
             if let Some(TurnHandlerOutcome::Break(TurnLoopResult::Exit)) = outcome {
-                return Ok(Some(InteractionOutcome::Exit { reason: vtcode_core::hooks::SessionEndReason::Exit }));
+                return Ok(Some(InteractionOutcome::Exit {
+                    reason: diapason_core::hooks::SessionEndReason::Exit,
+                }));
             }
 
             if !consumed_fallback
@@ -160,7 +162,7 @@ pub(crate) async fn execute_direct_tool_call(
             {
                 consumed_fallback = true;
                 t_ctx.ctx.renderer.line(
-                    vtcode_core::utils::ansi::MessageStyle::Info,
+                    diapason_core::utils::ansi::MessageStyle::Info,
                     &format!("Retrying with tool-provided fallback `{fallback_tool}`."),
                 )?;
                 pending_tool = Some((fallback_tool, fallback_args));
@@ -184,7 +186,7 @@ pub(crate) async fn execute_direct_tool_call(
             t_ctx
                 .ctx
                 .renderer
-                .line(vtcode_core::utils::ansi::MessageStyle::Response, &reply)?;
+                .line(diapason_core::utils::ansi::MessageStyle::Response, &reply)?;
             t_ctx
                 .ctx
                 .working_history
@@ -497,7 +499,7 @@ fn trim_wrapping_quotes_and_punctuation(target: &str) -> &str {
 }
 
 fn normalize_direct_tool_mentions(input: &str, workspace_root: &Path) -> String {
-    let matches = vtcode_commons::at_pattern::find_at_patterns(input);
+    let matches = diapason_commons::at_pattern::find_at_patterns(input);
     if matches.is_empty() {
         return input.to_string();
     }
@@ -537,7 +539,7 @@ fn resolve_direct_tool_mention(alias: &str, input: &str, at_pos: usize, workspac
         || trimmed.starts_with("http://")
         || trimmed.starts_with("https://")
         || trimmed.starts_with("data:")
-        || !vtcode_commons::paths::is_safe_relative_path(trimmed)
+        || !diapason_commons::paths::is_safe_relative_path(trimmed)
     {
         return None;
     }
@@ -546,7 +548,7 @@ fn resolve_direct_tool_mention(alias: &str, input: &str, at_pos: usize, workspac
         return None;
     }
 
-    let resolved = vtcode_commons::paths::resolve_workspace_path(workspace_root, Path::new(trimmed)).ok()?;
+    let resolved = diapason_commons::paths::resolve_workspace_path(workspace_root, Path::new(trimmed)).ok()?;
     if !resolved.exists() {
         return None;
     }
@@ -587,12 +589,12 @@ mod tests {
         DirectToolInput, direct_subagent_spawn_args, direct_subagent_tool_name, direct_tool_fallback,
         direct_tool_skips_confirmations, parse_direct_tool_input,
     };
+    use diapason_config::SubagentSource;
+    use diapason_config::SubagentSpec;
+    use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+    use diapason_core::config::constants::tools;
+    use diapason_core::llm::provider as uni;
     use tempfile::TempDir;
-    use vtcode_config::SubagentSource;
-    use vtcode_config::SubagentSpec;
-    use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::llm::provider as uni;
 
     fn test_subagent_spec(name: &str) -> SubagentSpec {
         SubagentSpec {
@@ -609,7 +611,7 @@ mod tests {
             mcp_servers: Vec::new(),
             hooks: None,
             background: false,
-            mode: vtcode_config::AgentMode::Subagent,
+            mode: diapason_config::AgentMode::Subagent,
             max_turns: None,
             nickname_candidates: Vec::new(),
             initial_prompt: None,
@@ -791,7 +793,7 @@ mod tests {
     #[test]
     fn direct_subagent_spawn_args_ignores_primary_specs() {
         let mut primary_plan = test_subagent_spec("plan");
-        primary_plan.mode = vtcode_config::AgentMode::Primary;
+        primary_plan.mode = diapason_config::AgentMode::Primary;
         let child_plan = test_subagent_spec("plan");
 
         let args = direct_subagent_spawn_args("use plan subagent and review code", &[primary_plan, child_plan])

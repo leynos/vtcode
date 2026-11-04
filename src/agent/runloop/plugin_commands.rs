@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use vtcode_agent_plugins::{FileSystemPluginInstaller, FileSystemPluginLoader, PluginInstaller, PluginLoader};
+use diapason_agent_plugins::{FileSystemPluginInstaller, FileSystemPluginLoader, PluginInstaller, PluginLoader};
 
 use super::plugin_commands_parser::parse_plugin_command as parse_plugin_command_impl;
 
@@ -107,7 +107,7 @@ pub(crate) async fn handle_plugin_command(
                 Some(entry) => Ok(PluginCommandOutcome::Handled { message: render_plugin_info(&entry) }),
                 None => Ok(PluginCommandOutcome::Error {
                     message: format!(
-                        "Plugin '{name}' is not installed. Install it with 'vtcode plugins add <source>' or '/plugin add <source>'."
+                        "Plugin '{name}' is not installed. Install it with 'diapason plugins add <source>' or '/plugin add <source>'."
                     ),
                 }),
             }
@@ -200,7 +200,7 @@ pub(crate) async fn handle_plugin_command(
 /// Performs recursive `read_dir` and manifest loads. Must not be called on a
 /// Tokio worker thread — wrap in `spawn_blocking`.
 pub(crate) fn discover_installed_plugins(workspace: &Path) -> Vec<InstalledPluginEntry> {
-    discover_installed_plugins_from_roots(vtcode_agent_plugins::plugin_roots_for(workspace))
+    discover_installed_plugins_from_roots(diapason_agent_plugins::plugin_roots_for(workspace))
 }
 
 /// Discover installed plugins from an ordered list of roots (project first,
@@ -259,7 +259,7 @@ fn find_installed_plugin(workspace: &Path, name: &str) -> Option<InstalledPlugin
 
 fn render_plugin_list(entries: &[InstalledPluginEntry]) -> String {
     if entries.is_empty() {
-        return "No Agent Plugins installed. Install one with 'vtcode plugins add <source>' or '/plugin add <source>'."
+        return "No Agent Plugins installed. Install one with 'diapason plugins add <source>' or '/plugin add <source>'."
             .to_string();
     }
     let mut output = String::from("Installed Agent Plugins:\n");

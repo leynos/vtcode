@@ -1,87 +1,77 @@
-# VT Code Agent Server Extension
+# Diapason Rust Extension for Zed
 
-This extension provides the VT Code AI coding assistant as an Agent Server in
-Zed through the Agent Client Protocol (ACP).
+This repository includes the Diapason Rust editor extension for Zed. To run the
+CLI as an ACP External Agent, add it as a custom agent in Zed's user-level
+`settings.json`. Current
+[Zed External Agents documentation](https://zed.dev/docs/ai/external-agents#custom-agents)
+describes custom agents in settings and notes that extension-provided agents
+are deprecated. Diapason is a df12 Productions hard fork of VTCode by Vinh
+Nguyen, focused on ACP control and observability.
 
-## Features
+## Diapason Features in Zed
 
-- Full integration with Zed's Agent panel
+- Use Diapason from Zed's Agent panel through the custom ACP configuration
 - Semantic code intelligence via Tree-sitter
 - Support for multiple LLM providers (OpenAI, Anthropic, Google Gemini, etc.)
 - Secure execution with workspace boundaries and tool policies
 - Real-time streaming responses and reasoning
 
-## Configuration
+## Configure the ACP Agent
 
-The extension automatically configures the necessary environment variables for
-ACP:
+Install Diapason from source and ensure `diapason` is on `PATH`. Merge this
+entry into Zed's user-level `settings.json`; it is separate from
+`extension.toml`:
 
-- `VT_ACP_ENABLED=1` - Enables the Agent Client Protocol bridge
-- `VT_ACP_ZED_ENABLED=1` - Enables the Zed transport
+```json
+{
+  "agent_servers": {
+    "Diapason": {
+      "type": "custom",
+      "command": "diapason",
+      "args": ["acp"],
+      "env": {
+        "DIAPASON_ACP_ENABLED": "1",
+        "DIAPASON_ACP_ZED_ENABLED": "1"
+      }
+    }
+  }
+}
+```
 
-## Platform Support
-
-The extension supports the following platforms:
-
-- macOS (darwin-aarch64, darwin-x86_64)
-- Linux (linux-x86_64)
-- Windows (windows-x86_64)
+Open Zed's Agent Settings and choose **Add Custom Agent**, or follow the
+[current Zed External Agents documentation](https://zed.dev/docs/ai/external-agents#custom-agents).
+Zed currently deprecates extension-provided agent servers; this Rust extension
+manifest does not register the ACP agent.
 
 ## Building from Source
 
-To modify and build the extension:
+From the repository root, install the CLI with Cargo:
 
-1. Build VT Code with `cargo build --release`
-2. Create release archives with your built binary
-3. Update the archive URLs in `extension.toml` to point to your built binaries
-4. Generate SHA-256 checksums for security
-5. Install the extension in Zed as a development extension
+```bash
+cargo install --path . --locked
+```
+
+To load the Rust editor extension during development, use Zed's **Install Dev
+Extension** command and select `extensions/zed-extension`. Configure the CLI as
+a custom ACP agent separately using the settings above.
 
 ## Development and Testing
 
-For local development and testing:
-
-1. Build VT Code: `cd /path/to/vtcode && cargo build --release`
-2. Create a test release archive:
-    - `mkdir temp_package && cp target/release/vtcode temp_package/`
-    - `cd temp_package && tar -czf vtcode-PLATFORM.tar.gz vtcode`
-3. Calculate the SHA-256 checksum of your archive:
-   `shasum -a 256 vtcode-PLATFORM.tar.gz`
-4. Update `extension.toml` archive URLs to point to your local test archive
-   file (host via HTTP server or use GitHub release)
-5. Update SHA-256 hashes in `extension.toml` with actual values from your test
-   file
-6. Install as a development extension in Zed: Command Palette →
-   `zed: install dev extension` → select this directory
-7. Check the ACP logs in Zed to verify the agent server is communicating
-   properly
-8. Test the agent functionality in the Agent panel
+For local development, build the CLI with `cargo build --release`, ensure
+`target/release` is on `PATH` (or install with
+`cargo install --path . --locked`), and install this directory as a Zed
+development extension. Check Zed's ACP logs to verify the agent server is
+communicating.
 
 ## Installation Troubleshooting
 
 If you encounter "failed to install zed extensions" errors:
 
-1. **Check Release Availability**: The extension tries to download VT Code
-   binaries from GitHub releases. Ensure that the version specified in
-   `extension.toml` exists as a release on GitHub.
-
-2. **Verify Checksums**: If using custom binaries, make sure the SHA-256
-   checksums in `extension.toml` match your actual binary files.
-
-3. **Use Development Installation**: For local development, use Zed's "Install
-   Dev Extension" feature to sidestep release availability issues.
-
-4. **Network Access**: Verify that Zed can access the URLs specified in the
-   extension.toml file.
-
-5. **Build from Source**: If binaries aren't available, build VT Code from
-   source using `cargo build --release` and create your own release archive.
-
-**Important**: The default extension.toml references GitHub releases that may
-not exist for all versions. When in doubt, use the development installation
-method.
+1. Confirm `diapason` is installed and available on `PATH`.
+2. Use Zed's **Install Dev Extension** command to install this directory.
+3. Check Zed's ACP logs if the agent server does not start.
 
 ## Requirements
 
-- Zed v0.201 or later with Agent Client Protocol support
-- VT Code configuration with your AI provider settings
+- A Zed version with custom ACP External Agent support
+- Diapason configuration with your AI provider settings

@@ -1,20 +1,20 @@
 use anyhow::{Context, Result};
+use diapason_config::{SubagentDiscoveryInput, SubagentSpec, discover_subagents};
+use diapason_core::config::DiapasonConfig;
+use diapason_core::{ActivePrimaryAgent, build_primary_agent_runtime_config};
 use std::path::Path;
-use vtcode_config::{SubagentDiscoveryInput, SubagentSpec, discover_subagents};
-use vtcode_core::config::VTCodeConfig;
-use vtcode_core::{ActivePrimaryAgent, build_primary_agent_runtime_config};
 
 use crate::agent::runloop::unified::session_setup::active_primary_agent_from_specs_for_mode;
 
 #[derive(Debug)]
 pub(crate) struct FullAutoPrimaryAgentRuntime {
-    pub(crate) vt_cfg: VTCodeConfig,
+    pub(crate) vt_cfg: DiapasonConfig,
     pub(crate) active_primary_agent: ActivePrimaryAgent,
 }
 
 pub(crate) fn resolve_full_auto_primary_agent_runtime(
     workspace: &Path,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     primary_agent_explicitly_configured: bool,
 ) -> Result<FullAutoPrimaryAgentRuntime> {
     let discovered = discover_subagents(&SubagentDiscoveryInput::new(workspace.to_path_buf()))
@@ -29,7 +29,7 @@ pub(crate) fn resolve_full_auto_primary_agent_runtime(
 
 fn resolve_full_auto_primary_agent_runtime_from_specs(
     specs: &[SubagentSpec],
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     primary_agent_explicitly_configured: bool,
 ) -> Result<FullAutoPrimaryAgentRuntime> {
     let active =
@@ -44,11 +44,11 @@ fn resolve_full_auto_primary_agent_runtime_from_specs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_config::{
+    use diapason_config::{
         builtin_primary_auto_agent, builtin_primary_build_agent,
         core::permissions::{AgentPermissionsConfig, PermissionDefault},
     };
-    use vtcode_core::config::types::ReasoningEffortLevel;
+    use diapason_core::config::types::ReasoningEffortLevel;
 
     #[test]
     fn defaulted_full_auto_uses_effective_custom_auto() {
@@ -58,7 +58,7 @@ mod tests {
         auto.reasoning_effort = Some(ReasoningEffortLevel::High);
         auto.permissions = AgentPermissionsConfig::new(PermissionDefault::Deny);
 
-        let resolved = resolve_full_auto_primary_agent_runtime_from_specs(&[auto], &VTCodeConfig::default(), false)
+        let resolved = resolve_full_auto_primary_agent_runtime_from_specs(&[auto], &DiapasonConfig::default(), false)
             .expect("defaulted auto should resolve");
 
         assert_eq!(resolved.active_primary_agent.identity.name, "auto");
@@ -78,9 +78,9 @@ mod tests {
 
     #[test]
     fn explicit_missing_primary_for_full_auto_falls_back_to_build_with_notice() {
-        let cfg = VTCodeConfig {
+        let cfg = DiapasonConfig {
             default_primary_agent: "duck".to_string(),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         };
 
         let resolved = resolve_full_auto_primary_agent_runtime_from_specs(&[builtin_primary_auto_agent()], &cfg, true)
@@ -89,7 +89,7 @@ mod tests {
         // "duck" is not in the provided specs, so the resolver falls back to
         // the built-in "build" agent. Unlike the previously silent behaviour,
         // `from_specs_with_default` now emits a `tracing::warn!` fallback
-        // notice (see `fallback_notice` in `vtcode-core::primary_agent`) so the
+        // notice (see `fallback_notice` in `diapason-core::primary_agent`) so the
         // operator learns the configured "duck" agent was dropped under
         // full-auto. The behaviour here is unchanged: build is selected.
         assert_eq!(resolved.active_primary_agent.identity.name, "build");
@@ -108,7 +108,7 @@ mod tests {
     fn missing_defaulted_auto_fails_fast() {
         let err = resolve_full_auto_primary_agent_runtime_from_specs(
             &[builtin_primary_build_agent()],
-            &VTCodeConfig::default(),
+            &DiapasonConfig::default(),
             false,
         )
         .expect_err("missing auto should fail");

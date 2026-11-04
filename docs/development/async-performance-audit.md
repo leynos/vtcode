@@ -1,12 +1,12 @@
-# VT Code Async Performance Audit
+# Diapason Async Performance Audit
 
 > **Note (2026-06):** The cache, middleware, patterns, executor, and optimizer
-> modules referenced below have been merged into `vtcode-core::tools` as part
+> modules referenced below have been merged into `diapason-core::tools` as part
 > of the crate consolidation. File paths in this document reflect their
 > pre-consolidation locations.
 
-Date: 2026-03-04 Scope: Runtime-critical paths first (`vtcode-core`,
-`vtcode-bash-runner`)
+Date: 2026-03-04 Scope: Runtime-critical paths first (`diapason-core`,
+`diapason-bash-runner`)
 
 ## Audit Rubric
 
@@ -25,7 +25,7 @@ Each module was reviewed for:
 
 1. Awaiting observer hooks while cache write locks are held
 
-   - File: `crates/codegen/vtcode-core/src/tools/registry/cache.rs`
+   - File: `crates/codegen/diapason-core/src/tools/registry/cache.rs`
    - Impact: lock contention amplification, potential stall chains under load
    - Status: fixed in this batch
 
@@ -33,7 +33,7 @@ Each module was reviewed for:
 
 1. Async-facing notification manager used std sync locks in hot path
 
-   - File: `crates/codegen/vtcode-core/src/notifications/mod.rs`
+   - File: `crates/codegen/diapason-core/src/notifications/mod.rs`
    - Impact: unnecessary poisoning/recovery branches and slower lock path
    - Status: improved in this batch (`parking_lot::{RwLock, Mutex}`)
 
@@ -41,7 +41,7 @@ Each module was reviewed for:
 
 1. Graceful process-group termination uses polling sleeps in synchronous loop
 
-   - File: `crates/codegen/vtcode-bash-runner/src/process_group.rs`
+   - File: `crates/codegen/diapason-bash-runner/src/process_group.rs`
    - Note: currently called from synchronous PTY cleanup paths and
      `spawn_blocking` paths, so runtime risk is lower than the above critical/high
      items
@@ -51,7 +51,7 @@ Each module was reviewed for:
 
 2. Deprecated synchronous retry middleware uses blocking sleep
 
-   - File: `crates/codegen/vtcode-core/src/tools/middleware.rs`
+   - File: `crates/codegen/diapason-core/src/tools/middleware.rs`
    - Note: type is marked deprecated in favor of `AsyncRetryMiddleware`
    - Deferred action: keep behavior stable; avoid churn unless deprecated path
      is
@@ -61,7 +61,7 @@ Each module was reviewed for:
 
 ### 1) Cache lock/await safety remediation
 
-Updated `crates/codegen/vtcode-core/src/tools/registry/cache.rs`:
+Updated `crates/codegen/diapason-core/src/tools/registry/cache.rs`:
 
 - `insert_arc`:
   - removed `await` while `entries/access_order` locks are held
@@ -77,7 +77,7 @@ Outcome: no external async callback is awaited while cache write locks are held.
 
 ### 2) Notification lock path optimization
 
-Updated `crates/codegen/vtcode-core/src/notifications/mod.rs`:
+Updated `crates/codegen/diapason-core/src/notifications/mod.rs`:
 
 - switched lock types from `std::sync::{RwLock, Mutex}` to
   `parking_lot::{RwLock, Mutex}`
@@ -89,14 +89,14 @@ flow.
 
 ### 3) KISS/DRY follow-up pass
 
-Updated `crates/codegen/vtcode-core/src/tools/registry/cache.rs`:
+Updated `crates/codegen/diapason-core/src/tools/registry/cache.rs`:
 
 - simplified `insert_arc` lock scope using a single inner block (removed
   explicit `drop(...)`)
 - emit manual-eviction observer events only when an entry was actually removed
 - added early-return in `prune_expired` for empty expired set
 
-Updated `crates/codegen/vtcode-core/src/notifications/mod.rs`:
+Updated `crates/codegen/diapason-core/src/notifications/mod.rs`:
 
 - async config methods now delegate to sync methods (`update_config` ->
   `update_config_sync`, `get_config` -> `get_config_sync`) to remove duplicated
@@ -104,8 +104,8 @@ Updated `crates/codegen/vtcode-core/src/notifications/mod.rs`:
 
 ### 4) Async-safe process termination helper + cache lock scope tightening
 
-Updated `crates/codegen/vtcode-bash-runner/src/process_group.rs` and
-`crates/codegen/vtcode-bash-runner/src/lib.rs`:
+Updated `crates/codegen/diapason-bash-runner/src/process_group.rs` and
+`crates/codegen/diapason-bash-runner/src/lib.rs`:
 
 - added `graceful_kill_process_group_default_async(pid)` that runs graceful
   kill in `spawn_blocking`
@@ -119,7 +119,7 @@ Updated `src/agent/runloop/unified/tool_pipeline/execution_runtime.rs`:
 
 ### 5) Async runtime safety for PTY session close path
 
-Updated `crates/codegen/vtcode-core/src/tools/registry/executors/`:
+Updated `crates/codegen/diapason-core/src/tools/registry/executors/`:
 
 - `execute_close_pty_session` now executes `PtyManager::close_session` in
   `tokio::task::spawn_blocking`
@@ -129,7 +129,7 @@ Updated `crates/codegen/vtcode-core/src/tools/registry/executors/`:
 
 ### 6) Final KISS/DRY + hot-path cleanup pass
 
-Updated `crates/codegen/vtcode-core/src/tools/registry/cache.rs`:
+Updated `crates/codegen/diapason-core/src/tools/registry/cache.rs`:
 
 - `insert_arc` now removes prior key occurrence from LRU order before
   re-inserting
@@ -139,7 +139,7 @@ Updated `crates/codegen/vtcode-core/src/tools/registry/cache.rs`:
   - prunes access-order with a single `retain(...)` using a set of expired keys
   - reduces repeated `retain` scans and simplifies flow
 
-Updated `crates/codegen/vtcode-bash-runner/src/process_group.rs`:
+Updated `crates/codegen/diapason-bash-runner/src/process_group.rs`:
 
 - removed duplicate cfg-specific `graceful_kill_process_group_default` wrappers
 - kept one unified default wrapper calling cfg-specific
@@ -147,8 +147,8 @@ Updated `crates/codegen/vtcode-bash-runner/src/process_group.rs`:
 
 ### 7) Async-safe PTY bulk termination in runloop timeout/guard paths
 
-Updated `crates/codegen/vtcode-core/src/tools/registry/pty.rs` and
-`crates/codegen/vtcode-core/src/tools/registry/pty_facade.rs`:
+Updated `crates/codegen/diapason-core/src/tools/registry/pty.rs` and
+`crates/codegen/diapason-core/src/tools/registry/pty_facade.rs`:
 
 - added `PtySessionManager::terminate_all_async()` using
   `tokio::task::spawn_blocking`
@@ -288,7 +288,7 @@ following policy rather than mass rewrites:
 
 - Track the upstream Project Goal in this audit; revisit on each `rustup`
   toolchain bump.
-- For NEW code in `vtcode-core` runtime hot paths:
+- For NEW code in `diapason-core` runtime hot paths:
   - Do not write `async fn` for a body that contains no `.await` unless
     required by a trait signature; use a plain `fn` instead.
   - For pure single-step delegations (`async fn x(a) { y(a).await }`) on free
@@ -312,38 +312,38 @@ are trait method implementations whose `async` keyword is mandated by the trait
 signature and cannot be removed. Genuine pure-delegation candidates (single
 inner `.await`, free or inherent fn, not a trait impl) cluster in:
 
-- [crates/codegen/vtcode-core/src/tools/registry/builder.rs][builder-rs]
+- [crates/codegen/diapason-core/src/tools/registry/builder.rs][builder-rs]
   — five `ToolRegistry::new*` constructors all delegate to
   `Self::build_with_policy(...).await`.
-- [crates/codegen/vtcode-core/src/tools/registry/pty_facade.rs][pty_facade-rs]
+- [crates/codegen/diapason-core/src/tools/registry/pty_facade.rs][pty_facade-rs]
   — `terminate_all_pty_sessions_async`, `terminate_all_exec_sessions_async`.
-- [crates/codegen/vtcode-core/src/tools/registry/harness_facade.rs][harness_facade-rs]
+- [crates/codegen/diapason-core/src/tools/registry/harness_facade.rs][harness_facade-rs]
   — `harness_exec_session_completed`, `terminate_harness_exec_session`.
-- [crates/codegen/vtcode-core/src/tools/registry/file_helpers.rs][file_helpers-rs]
+- [crates/codegen/diapason-core/src/tools/registry/file_helpers.rs][file_helpers-rs]
   — `read_file`, `write_file`, `create_file`, `delete_file` thin wrappers around
   `execute_tool`.
-- [crates/codegen/vtcode-core/src/tools/registry/execution_facade.rs][execution_facade-rs]
+- [crates/codegen/diapason-core/src/tools/registry/execution_facade.rs][execution_facade-rs]
   — `execute_public_tool_request`, `execute_tool`.
-- [crates/codegen/vtcode-core/src/tools/cache.rs][cache-rs]
+- [crates/codegen/diapason-core/src/tools/cache.rs][cache-rs]
   — `put_file`, `put_directory` arc wrappers.
-- [crates/codegen/vtcode-core/src/llm/providers/openai/provider/provider_impl.rs][provider_impl-rs]
+- [crates/codegen/diapason-core/src/llm/providers/openai/provider/provider_impl.rs][provider_impl-rs]
   — `stream`, `stream_normalized`, `generate` delegations.
-- [crates/codegen/vtcode-core/src/project_doc.rs][project_doc-rs]
+- [crates/codegen/diapason-core/src/project_doc.rs][project_doc-rs]
   — `get_user_instructions`, `build_instruction_appendix`.
-- [crates/codegen/vtcode-core/src/tools/file_ops/path_policy.rs][path_policy-rs]
+- [crates/codegen/diapason-core/src/tools/file_ops/path_policy.rs][path_policy-rs]
   — `normalize_user_path`.
-- [crates/codegen/vtcode-core/src/tools/file_ops/write.rs][write-rs]
+- [crates/codegen/diapason-core/src/tools/file_ops/write.rs][write-rs]
   — `write_file` wrapper around `write_file_internal`.
 
 Pattern 4 ("Collapsing states") yielded one match in
-`crates/codegen/vtcode-core/src/mcp/cli.rs:164`, but each arm calls a
+`crates/codegen/diapason-core/src/mcp/cli.rs:164`, but each arm calls a
 *different* function (`run_list`, `run_get`, `run_add`, …) so the saved suspend
 types differ and there is nothing to collapse. No source change is warranted.
 
 #### Status
 
 - Documented and applied opportunistically in touched runtime files (per policy
-  above), focused on pure-delegation wrappers in `vtcode-core`.
+  above), focused on pure-delegation wrappers in `diapason-core`.
 - Re-scan after the next `rust-toolchain.toml` bump to see how many candidates
   the upstream `coroutine_resume` work has obsoleted.
 - If the upstream Project Goal lands an `unwind = abort` / `panic = abort`
@@ -368,7 +368,7 @@ boundaries without changing public wire contracts:
   ordering.
 - The registry captures the effective persistent-memory configuration during
   its workspace tool-config parse, so each memory-tool call avoids reparsing
-  `vtcode.toml`; the existing disabled-memory guard remains in place.
+  `config.toml`; the existing disabled-memory guard remains in place.
 - Basic and legacy directory listings reuse awaited metadata instead of making
   synchronous `Path` probes on the runtime thread; list filters compile once
   per directory, and the basic-list cache key includes workspace and
@@ -388,40 +388,56 @@ compatibility helper or isolated inside `spawn_blocking`.
 
 Executed:
 
-- `cargo test -p vtcode-core notifications::tests:: -- --nocapture`
-- `cargo check -p vtcode-core`
-- `RUSTC_WRAPPER= cargo test -p vtcode-bash-runner graceful_kill -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode-bash-runner graceful_kill -- --nocapture`
+- `cargo test -p diapason-core notifications::tests:: -- --nocapture`
+- `cargo check -p diapason-core`
+- `RUSTC_WRAPPER= cargo test -p diapason-bash-runner graceful_kill -- --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason-bash-runner graceful_kill -- --nocapture`
   (re-run after process-group cleanup)
-- `RUSTC_WRAPPER= cargo check -p vtcode-bash-runner`
-- `RUSTC_WRAPPER= cargo check -p vtcode`
-- `RUSTC_WRAPPER= cargo check -p vtcode-core` (after async PTY bulk termination
+- `RUSTC_WRAPPER= cargo check -p diapason-bash-runner`
+- `RUSTC_WRAPPER= cargo check -p diapason`
+- `RUSTC_WRAPPER= cargo check -p diapason-core` (after async PTY bulk
+  termination migration)
+- `RUSTC_WRAPPER= cargo check -p diapason` (after async PTY bulk termination
   migration)
-- `RUSTC_WRAPPER= cargo check -p vtcode` (after async PTY bulk termination
-  migration)
-- `RUSTC_WRAPPER= cargo check -p vtcode` (after redraw batcher cancellation fix)
-- `RUSTC_WRAPPER= cargo check -p vtcode` (after signal/progress lifecycle
+- `RUSTC_WRAPPER= cargo check -p diapason` (after redraw batcher cancellation
+  fix)
+- `RUSTC_WRAPPER= cargo check -p diapason` (after signal/progress lifecycle
   tightening)
-- `RUSTC_WRAPPER= cargo test -p vtcode-core pty_test -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode-core pty_tests -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode turn::utils -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode progress::tests -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode turn::utils -- --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason-core pty_test -- --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason-core pty_tests -- --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason --bin diapason turn::utils -- --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason --bin diapason progress::tests -- --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason --bin diapason turn::utils -- --nocapture`
   (re-run after `force_redraw` fix)
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode session_setup -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode async_mcp_manager::tests --
-  --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode async_mcp_manager::tests --
-  --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason --bin diapason session_setup -- --nocapture`
+- Command:
+
+  ```bash
+  RUSTC_WRAPPER= cargo test -p diapason --bin diapason \
+    async_mcp_manager::tests -- --nocapture
+  ```
+
+- Re-run command:
+
+  ```bash
+  RUSTC_WRAPPER= cargo test -p diapason --bin diapason \
+    async_mcp_manager::tests -- --nocapture
+  ```
+
   (re-run after duplicate-init guard test)
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode tool_routing -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode tool_pipeline -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode
+- `RUSTC_WRAPPER= cargo test -p diapason --bin diapason tool_routing -- --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason --bin diapason tool_pipeline -- --nocapture`
+- `RUSTC_WRAPPER= cargo test -p diapason --bin diapason
   tool_pipeline::execution_runtime -- --nocapture`
-- `RUSTC_WRAPPER= cargo test -p vtcode --bin vtcode tool_pipeline::pty_stream --
-  --nocapture`
-- `rustfmt --check crates/codegen/vtcode-core/src/tools/registry/pty.rs`
-- `rustfmt --check crates/codegen/vtcode-core/src/tools/registry/pty_facade.rs`
+- Command:
+
+  ```bash
+  RUSTC_WRAPPER= cargo test -p diapason --bin diapason \
+    tool_pipeline::pty_stream -- --nocapture
+  ```
+
+- `rustfmt --check crates/codegen/diapason-core/src/tools/registry/pty.rs`
+- `rustfmt --check crates/codegen/diapason-core/src/tools/registry/pty_facade.rs`
 - `rustfmt --check src/agent/runloop/unified/turn/session_loop_runner.rs`
 - `rustfmt --check src/agent/runloop/unified/turn/tool_outcomes/handlers.rs`
 - `rustfmt --check src/agent/runloop/unified/turn/utils.rs`
@@ -442,10 +458,10 @@ Note on strict clippy:
 
 - `RUSTC_WRAPPER= cargo clippy --workspace --all-targets -- -D warnings`
   currently fails due pre-existing unrelated lint debt in other crates
-  (`vtcode-ui`, `vtcode-config`, `vtcode-core`, `vtcode` tests)
+  (`diapason-ui`, `diapason-config`, `diapason-core`, `diapason` tests)
 - touched packages were validated with focused checks/tests and format checks
 
-Performance sample output was written to `.vtcode/perf/diff.md` (single local
+Performance sample output was written to `.diapason/perf/diff.md` (single local
 sample; interpret as directional only).
 
 ## Next Batch (Recommended)
@@ -462,13 +478,13 @@ sample; interpret as directional only).
    - run `./scripts/perf/baseline.sh` before/after targeted lock-path changes in
      cache-heavy flows
 
-[builder-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/registry/builder.rs
-[pty_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/registry/pty_facade.rs#L43-L49
-[harness_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/registry/harness_facade.rs#L82-L88
-[file_helpers-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/registry/file_helpers.rs
-[execution_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/registry/execution_facade.rs#L266
-[cache-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/cache.rs
-[provider_impl-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/llm/providers/openai/provider/provider_impl.rs#L101-L115
-[project_doc-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/project_doc.rs#L112-L125
-[path_policy-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/file_ops/path_policy.rs#L267
-[write-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode/crates/codegen/vtcode-core/src/tools/file_ops/write.rs#L48
+[builder-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/builder.rs
+[pty_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/pty_facade.rs#L43-L49
+[harness_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/harness_facade.rs#L82-L88
+[file_helpers-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/file_helpers.rs
+[execution_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/execution_facade.rs#L266
+[cache-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/cache.rs
+[provider_impl-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/llm/providers/openai/provider/provider_impl.rs#L101-L115
+[project_doc-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/project_doc.rs#L112-L125
+[path_policy-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/file_ops/path_policy.rs#L267
+[write-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/file_ops/write.rs#L48

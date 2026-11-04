@@ -5,12 +5,12 @@
 //! configured backend selection in one independently testable interface.
 
 use anyhow::{Context, Result, bail};
-use std::path::Path;
-use vtcode_auth::AuthCredentialsStoreMode;
-use vtcode_config::api_keys::{
+use diapason_auth::AuthCredentialsStoreMode;
+use diapason_config::api_keys::{
     clear_credential_with_mode, load_stored_credential_with_mode, resolve_credential_with_mode,
     store_credential_with_mode,
 };
+use std::path::Path;
 
 pub(super) struct SecretStorage {
     mode: AuthCredentialsStoreMode,

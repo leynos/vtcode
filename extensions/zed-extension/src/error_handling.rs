@@ -4,7 +4,7 @@
 /// Implements graceful degradation and helpful troubleshooting guidance.
 use std::fmt;
 
-/// Error type for VT Code extension operations
+/// Error type for Diapason extension operations
 #[derive(Debug, Clone)]
 pub struct ExtensionError {
     /// Error code for programmatic handling
@@ -19,12 +19,12 @@ pub struct ExtensionError {
     pub severity: ErrorSeverity,
 }
 
-/// Error codes for VT Code extension
+/// Error codes for Diapason extension
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ErrorCode {
-    /// VT Code CLI not found in PATH
+    /// Diapason CLI not found in PATH
     CliNotFound,
-    /// VT Code CLI execution failed
+    /// Diapason CLI execution failed
     CliExecutionFailed,
     /// Configuration file not found or invalid
     ConfigError,
@@ -110,14 +110,14 @@ impl ExtensionError {
     pub fn cli_not_found() -> Self {
         let mut err = Self::new(
             ErrorCode::CliNotFound,
-            "VT Code CLI not found in PATH".to_string(),
+            "Diapason CLI not found in PATH".to_string(),
         );
         err.suggestions = vec![
-            "Install VT Code: cargo install vtcode".to_string(),
+            "Install Diapason: cargo install --git https://github.com/leynos/vtcode.git --branch main --locked diapason".to_string(),
             "Check PATH: echo $PATH".to_string(),
-            "Verify installation: which vtcode".to_string(),
+            "Verify installation: which diapason".to_string(),
         ];
-        err.details = Some("The vtcode command is not available in your system PATH".to_string());
+        err.details = Some("The diapason command is not available in your system PATH".to_string());
         err
     }
 
@@ -125,12 +125,12 @@ impl ExtensionError {
     pub fn cli_execution_failed(reason: String) -> Self {
         let mut err = Self::new(
             ErrorCode::CliExecutionFailed,
-            format!("VT Code CLI execution failed: {}", reason),
+            format!("Diapason CLI execution failed: {}", reason),
         );
         err.suggestions = vec![
-            "Check VT Code installation: vtcode --version".to_string(),
-            "Verify configuration: vtcode config".to_string(),
-            "Check logs: ~/.vtcode/logs/".to_string(),
+            "Check Diapason installation: diapason --version".to_string(),
+            "Verify configuration: diapason config".to_string(),
+            "Check logs: $XDG_STATE_HOME/diapason/ (default: ~/.local/state/diapason/); workspace logs are under workspaces/<workspace-key>/logs/".to_string(),
         ];
         err.severity = ErrorSeverity::Error;
         err
@@ -143,8 +143,8 @@ impl ExtensionError {
             format!("Configuration error: {}", reason),
         );
         err.suggestions = vec![
-            "Check vtcode.toml syntax".to_string(),
-            "Validate configuration: vtcode config validate".to_string(),
+            "Check config.toml syntax".to_string(),
+            "Validate configuration: diapason config validate".to_string(),
             "Review configuration guide: docs/config/config.md".to_string(),
         ];
         err
@@ -320,13 +320,13 @@ impl RecoveryStrategy {
     /// Strategy for CLI not found
     pub fn cli_not_found_recovery() -> Self {
         Self::new(
-            "Install VT Code CLI".to_string(),
-            "The VT Code command-line interface is not installed".to_string(),
-            "VT Code CLI available in PATH".to_string(),
+            "Install Diapason CLI".to_string(),
+            "The Diapason command-line interface is not installed".to_string(),
+            "Diapason CLI available in PATH".to_string(),
         )
         .add_step("Install Rust: https://rustup.rs/".to_string())
-        .add_step("Install VT Code: cargo install vtcode".to_string())
-        .add_step("Verify: vtcode --version".to_string())
+        .add_step("Install Diapason: cargo install --git https://github.com/leynos/vtcode.git --branch main --locked diapason".to_string())
+        .add_step("Verify: diapason --version".to_string())
     }
 
     /// Strategy for degraded workspace analysis
@@ -336,7 +336,7 @@ impl RecoveryStrategy {
             "Workspace is too large for full analysis".to_string(),
             "Workspace analysed with reduced scope".to_string(),
         )
-        .add_step("Create .vtcodeignore file".to_string())
+        .add_step("Create .diapasonignore file".to_string())
         .add_step("Add large directories: node_modules, build, .git".to_string())
         .add_step("Retry analysis".to_string())
     }
@@ -521,7 +521,7 @@ mod tests {
     #[test]
     fn test_cli_not_found_recovery() {
         let recovery = RecoveryStrategy::cli_not_found_recovery();
-        assert!(recovery.name.contains("VT Code"));
+        assert!(recovery.name.contains("Diapason"));
         assert_eq!(recovery.steps.len(), 3);
     }
 
@@ -552,7 +552,7 @@ mod tests {
     fn test_extension_error_display() {
         let err = ExtensionError::cli_not_found();
         let display = format!("{}", err);
-        assert!(display.contains("VT Code CLI not found"));
+        assert!(display.contains("Diapason CLI not found"));
     }
 
     #[test]

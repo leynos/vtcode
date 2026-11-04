@@ -1,6 +1,6 @@
-# VT Code Execution Policy
+# Diapason Execution Policy
 
-This document describes what commands and operations the VT Code agent can
+This document describes what commands and operations the Diapason agent can
 execute without prompting, and which require confirmation.
 
 ## Summary
@@ -50,7 +50,7 @@ tools work automatically, while dangerous operations require confirmation.
 ## Tool Policies
 
 Canonical public tool names in the default profile are `exec_command`,
-`write_stdin`, and `apply_patch`. The advanced VT Code profile may also expose
+`write_stdin`, and `apply_patch`. The advanced Diapason profile may also expose
 `code_search` for bounded code search. Plain text search and file inspection
 use shell commands inside `exec_command.cmd`.
 
@@ -133,14 +133,14 @@ Example pivot:
 
 Policies are defined in:
 
-- **Core defaults**: `crates/codegen/vtcode-config/src/core/tools.rs` (tool
+- **Core defaults**: `crates/codegen/diapason-config/src/core/tools.rs` (tool
   policies)
-- **Command validation**: `crates/codegen/vtcode-core/src/exec_policy/mod.rs`
+- **Command validation**: `crates/codegen/diapason-core/src/exec_policy/mod.rs`
   (command whitelisting)
-- **User overrides**: `vtcode.toml` in project root or the canonical user
+- **User overrides**: `config.toml` in project root or the canonical user
   config directory
 
-Override examples in `vtcode.toml`:
+Override examples in `config.toml`:
 
 ```toml
 [tools.policies]
@@ -179,8 +179,8 @@ bounded.
   raise the cap. Builtin tool schemas in `progressive` mode fit in a ~3k-token
   envelope.
 - **Startup token-overhead warnings.** At session start (unless `--quiet`),
-  VT Code logs non-fatal `tracing::warn!` messages when the config is likely to
-  inflate per-request cost: more than 8 configured MCP servers,
+  Diapason logs non-fatal `tracing::warn!` messages when the config is likely
+  to inflate per-request cost: more than 8 configured MCP servers,
   `tools.client_tool_search = false` while MCP servers are configured,
   `system_prompt_mode = "specialized"`, `tool_documentation_mode = "full"`,
   `tool_result_clearing` disabled, `auto_compaction_enabled` disabled, or
@@ -209,15 +209,15 @@ bounded.
 
 A first-request budget guard rail is enforced by tests:
 
-- `crates/codegen/vtcode-core/src/tools/registry/builtins.rs::emitted_model_tool_schema_fits_within_first_request_budget`
+- `crates/codegen/diapason-core/src/tools/registry/builtins.rs::emitted_model_tool_schema_fits_within_first_request_budget`
   asserts builtin tool schemas stay within the budget in `progressive` mode.
-- `crates/codegen/vtcode-core/src/tools/handlers/session_tool_catalog.rs` tests
-  assert MCP tools defer (small or large catalog) and that the client-local
-  policy defers small MCP catalogs.
+- `crates/codegen/diapason-core/src/tools/handlers/session_tool_catalog.rs`
+  tests assert MCP tools defer (small or large catalog) and that the
+  client-local policy defers small MCP catalogs.
 
 Run them with:
 
 ```bash
-cargo nextest run -p vtcode-core emitted_model_tool_schema_fits_within_first_request_budget
-cargo nextest run -p vtcode-core -E 'test(session_tool_catalog)'
+cargo nextest run -p diapason-core emitted_model_tool_schema_fits_within_first_request_budget
+cargo nextest run -p diapason-core -E 'test(session_tool_catalog)'
 ```

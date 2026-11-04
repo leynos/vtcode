@@ -1,10 +1,10 @@
-# VT Code Architecture Guide
+# Diapason Architecture Guide
 
 ## Overview
 
-VT Code follows a modular architecture designed for maintainability,
-extensibility, and performance. Internally, VT Code uses Rust traits for
-runtime composition. Externally, VT Code prefers protocol- and manifest-driven
+Diapason follows a modular architecture designed for maintainability,
+extensibility, and performance. Internally, Diapason uses Rust traits for
+runtime composition. Externally, Diapason prefers protocol- and manifest-driven
 extension seams such as MCP, skills, plugin manifests, and
 `[[custom_providers]]` so third-party integrations do not need to land new Rust
 impls in the core workspace. This is deliberate: Rust coherence and orphan-rule
@@ -13,34 +13,34 @@ ecosystem-style project.
 
 For internal composition, prefer explicit provider selection over "clever"
 trait resolution when a boundary starts depending on many overlapping impls,
-associated types, or context-specific behaviour. In practice, VT Code treats
+associated types, or context-specific behaviour. In practice, Diapason treats
 `HasComponent<Name>::Provider` as an elaborated dictionary: the context chooses
 the provider once, and blanket consumer traits delegate through that explicit
-selection. See `crates/codegen/vtcode-core/src/components.rs` and
-`crates/codegen/vtcode-core/src/llm/cgp.rs`.
+selection. See `crates/codegen/diapason-core/src/components.rs` and
+`crates/codegen/diapason-core/src/llm/cgp.rs`.
 
 ## Internal crate boundaries
 
 Workspace crates separate the main runtime responsibilities:
 
-- `vtcode-core` owns agent orchestration, tools, prompts, and runtime
+- `diapason-core` owns agent orchestration, tools, prompts, and runtime
   integration.
-- `vtcode-llm` owns provider abstractions, clients, and streaming;
-  `vtcode-config` owns configuration loading and schema.
-- `vtcode-skills` owns skill discovery, loading, and validation;
-  `vtcode-memory` owns per-session event storage and derived queries.
-- `vtcode-exec-events` defines the shared `ThreadEvent` contract and ATIF
-  export; `vtcode-safety` owns command safety and sandboxing.
+- `diapason-llm` owns provider abstractions, clients, and streaming;
+  `diapason-config` owns configuration loading and schema.
+- `diapason-skills` owns skill discovery, loading, and validation;
+  `diapason-memory` owns per-session event storage and derived queries.
+- `diapason-exec-events` defines the shared `ThreadEvent` contract and ATIF
+  export; `diapason-safety` owns command safety and sandboxing.
 
 Keep reusable logic in a narrow existing crate where it fits, and keep the
-runtime event contract in `vtcode-exec-events` rather than defining a parallel
-event type in a consumer crate.
+runtime event contract in `diapason-exec-events` rather than defining a
+parallel event type in a consumer crate.
 
 ### ACP runtime boundary
 
-- `vtcode-core` defines the `AcpClientAdapter::serve` launch interface;
-  `vtcode-acp` implements the standard and Zed adapters. Its agent handlers map
-  ACP requests such as session creation, resume, and prompt, plus cancel
+- `diapason-core` defines the `AcpClientAdapter::serve` launch interface;
+  `diapason-acp` implements the standard and Zed adapters. Its agent handlers
+  map ACP requests such as session creation, resume, and prompt, plus cancel
   notifications, to runtime operations and send session updates to the client.
 - `SessionHandle` holds per-session state, cancellation, the thread handle, and
   its archive. `SessionWorkspaceRuntime` groups the prompt, agent catalog, tool
@@ -57,9 +57,9 @@ event type in a consumer crate.
 
 ## Model + Harness
 
-VT Code treats the model as the reasoning engine and the harness as the runtime
-that makes that reasoning useful. Phase 1 of the exec/full-auto runtime is
-built around that split rather than around a separate agent subsystem.
+Diapason treats the model as the reasoning engine and the harness as the
+runtime that makes that reasoning useful. Phase 1 of the exec/full-auto runtime
+is built around that split rather than around a separate agent subsystem.
 
 > **Capability is a composition.** The model is one of seven reinforcing
 > subsystems (model · harness · context · tools · evals · sandbox · state)
@@ -68,33 +68,34 @@ built around that split rather than around a separate agent subsystem.
 > [`docs/guides/agent-capability-composition.md`](guides/agent-capability-composition.md)
 > for the full mapping.
 
-Harness primitives in VT Code map to the runtime like this:
+Harness primitives in Diapason map to the runtime like this:
 
 - **Instruction memory**: AGENTS.md loading, project docs, prompt assembly,
   onboarding guidance, and session bootstrap live in
-  `crates/codegen/vtcode-core/src/prompts/`,
-  `crates/codegen/vtcode-core/src/core/agent/`, and the workspace instruction
+  `crates/codegen/diapason-core/src/prompts/`,
+  `crates/codegen/diapason-core/src/core/agent/`, and the workspace instruction
   loaders.
-- **Tools**: `crates/codegen/vtcode-core/src/tools/`, MCP integration, slash
+- **Tools**: `crates/codegen/diapason-core/src/tools/`, MCP integration, slash
   commands, and the tool registry expose shell execution, stdin continuation,
   patch editing, bounded syntactic code search, and protocol-backed
   capabilities to the model.
-- **Sandbox / execution environment**: `vtcode-bash-runner/`, `vtcode-safety/`
-  (command safety, exec policy, sandboxing), workspace trust, command policies,
-  and tool allow-lists define where generated code runs and what it can touch.
+- **Sandbox / execution environment**: `diapason-bash-runner/`,
+  `diapason-safety/` (command safety, exec policy, sandboxing), workspace
+  trust, command policies, and tool allow-lists define where generated code
+  runs and what it can touch.
 - **Dynamic context**: context assembly, instruction merging, task tracker
-  state, history, plan sidecars, and spooled tool outputs let VT Code rehydrate
-  long-running work without keeping every token in the live window. The
-  persisted `SessionMemoryEnvelope` is the harness working-memory artifact: it
-  summarizes objective, constraints, touched files, grounded facts,
+  state, history, plan sidecars, and spooled tool outputs let Diapason
+  rehydrate long-running work without keeping every token in the live window.
+  The persisted `SessionMemoryEnvelope` is the harness working-memory artifact:
+  it summarizes objective, constraints, touched files, grounded facts,
   verification status, verification TODOs, and delegated findings for resume
-  and summarized-fork handoff. Compaction artifacts under `.vtcode/history/`
+  and summarized-fork handoff. Compaction artifacts under `.diapason/history/`
   support summarization and working-memory recovery; they are not complete
   resumable sessions.
 - **Compaction / offloading**: split tool results, spool files, and
   provider-aware auto-compaction reduce context rot while preserving compaction
   recovery state on disk. Durable session archives and checkpoints provide
-  resumable ACP/CLI sessions separately. On VT Code's local compaction path,
+  resumable ACP/CLI sessions separately. On Diapason's local compaction path,
   older repeated single-file reads are deduplicated before summarization so the
   summary prompt keeps the newest copy and avoids re-injecting stale file
   payloads.
@@ -105,21 +106,21 @@ Harness primitives in VT Code map to the runtime like this:
   controller that accepts completion only when tracker state is complete and
   verification commands pass.
 - **Scheduling**: session-scoped reminders live on the interactive runtime,
-  while durable `vtcode schedule` jobs persist definitions under the VT Code
-  config/data directories and launch fresh `vtcode exec` runs through a local
+  while durable `diapason schedule` jobs persist definitions under the Diapason
+  config/data directories and launch fresh `diapason exec` runs through a local
   daemon.
 - **Session archives and traces**: durable session archives, checkpoints,
   thread events, Open Responses emission, ATIF trajectory export, and optional
   harness event logs capture what happened for resume and downstream tooling.
   The [ATIF](https://www.harborframework.com/docs/agents/trajectory-format)
-  exporter (`vtcode-exec-events::atif`) converts live `ThreadEvent` streams
+  exporter (`diapason-exec-events::atif`) converts live `ThreadEvent` streams
   into the standardized Agent Trajectory Interchange Format for SFT/RL
   pipelines, debugging, and visualization.
 - **Security auditing**: the opt-in ACP audit JSONL is a separate security
   record. It stores tool-invocation metadata, status, timing, and hashes, not
   conversation bodies, and is not a source for resume or compaction.
 
-`vtcode-exec-events::ThreadEvent` is the authoritative runtime event contract
+`diapason-exec-events::ThreadEvent` is the authoritative runtime event contract
 across exec mode, harness logs, and interactive lifecycle emission. Item
 lifecycle events come from the shared runtime/event builders, while outer
 `TurnStarted` / `TurnCompleted` / `TurnFailed` events remain wrapper-owned
@@ -128,14 +129,14 @@ one-at-a-time only after a turn reaches an idle boundary.
 
 ### Prompt guidance boundaries
 
-VT Code separates universal runtime behaviour from project-specific developer
+Diapason separates universal runtime behaviour from project-specific developer
 instructions:
 
 - The compiled, cache-stable guidance in
-  `crates/codegen/vtcode-core/src/prompts/runtime_guidance.rs` applies to every
-  user and every static prompt profile. It contains only concise user-facing
-  behaviour and is capped before prompt assembly.
-- `AGENTS.md`, `CLAUDE.md`, and `.vtcode/rules/` remain dynamically loaded
+  `crates/codegen/diapason-core/src/prompts/runtime_guidance.rs` applies to
+  every user and every static prompt profile. It contains only concise
+  user-facing behaviour and is capped before prompt assembly.
+- `AGENTS.md`, `CLAUDE.md`, and `.diapason/rules/` remain dynamically loaded
   project/user instruction maps. Their precedence, path scoping, exclusions,
   and active-directory behaviour are preserved by the instruction loader.
 - Workspace instruction content is user-controlled context, not a security
@@ -156,21 +157,21 @@ instead of a new top-level subsystem:
 - `context.dynamic` controls how much state and history are reintroduced on
   each turn.
 
-That split keeps VT Code aligned with the current runtime while making the
+That split keeps Diapason aligned with the current runtime while making the
 harness explicit enough to evolve.
 
 When `agent.harness.orchestration_mode = "plan_build_evaluate"` is enabled for
-`exec/full-auto`, VT Code adds a lightweight planner/evaluator loop on top of
+`exec/full-auto`, Diapason adds a lightweight planner/evaluator loop on top of
 the single-agent runtime instead of introducing a separate always-on agent
 subsystem:
 
-- The planner writes `.vtcode/tasks/current_spec.md` and
-  `.vtcode/tasks/current_contract.md`, then seeds `current_task.md`.
+- The planner writes `.diapason/tasks/current_spec.md` and
+  `.diapason/tasks/current_contract.md`, then seeds `current_task.md`.
 - The generator still runs on the main session, but it is constrained by those
   artifacts plus tracker completion and verification.
 - The evaluator performs a skeptical post-build pass over the spec, contract,
   tracker, verification results, warnings, and changed files, then writes
-  `.vtcode/tasks/current_evaluation.md`.
+  `.diapason/tasks/current_evaluation.md`.
 - Failed evaluation triggers bounded revision rounds rather than silent
   acceptance, and the artifacts survive blocked handoff, resume, and local
   compaction.
@@ -181,7 +182,7 @@ plan/build/evaluate path is stable.
 
 ### Explicit Delegation Model
 
-VT Code treats delegation like explicit thread spawning rather than ambient
+Diapason treats delegation like explicit thread spawning rather than ambient
 background concurrency.
 
 - The main session stays responsible for the current control flow, user-visible
@@ -199,16 +200,16 @@ background concurrency.
 
 ### Rig Alignment Boundary
 
-VT Code borrows selected request-shaping patterns from the Rig ecosystem
+Diapason borrows selected request-shaping patterns from the Rig ecosystem
 without delegating runtime control to `rig-core` agents.
 
-- Rig-backed usage in VT Code is limited to provider/model validation and
+- Rig-backed usage in Diapason is limited to provider/model validation and
   provider-specific reasoning payload shaping.
-- The VT Code harness remains the execution engine for turns, tool routing,
+- The Diapason harness remains the execution engine for turns, tool routing,
   continuation, compaction, and resume flows.
-- Session continuity stays on VT Code primitives: `.vtcode/history/` artifacts,
-  local/server compaction, and prompt-side memory injection.
-- This keeps VT Code’s existing tool registry, sandboxing, and resume semantics
+- Session continuity stays on Diapason primitives: `.diapason/history/`
+  artifacts, local/server compaction, and prompt-side memory injection.
+- This keeps Diapason’s existing tool registry, sandboxing, and resume semantics
   intact while still adopting Rig’s provider-facing patterns where they reduce
   duplication.
 
@@ -222,7 +223,7 @@ interoperability:
 2. **Standard Argument Parsing**: Uses `clap` for POSIX/GNU compliance,
     supporting standard flags and behaviour.
 3. **Command Isolation**: Each sub-command (`ask`, `exec`, `chat`) is handled
-    by a dedicated module in `src/cli/`, sharing core logic via `vtcode-core`.
+    by a dedicated module in `src/cli/`, sharing core logic via `diapason-core`.
 4. **Signal Handling**: Graceful handling of `SIGINT`/`SIGTERM` to ensure
     resource cleanup (e.g., restoring terminal state). See
     [Signal Handling Architecture](signal_handling.md) for details.
@@ -233,30 +234,31 @@ interoperability:
 
 The terminal UI now has a dedicated crate boundary:
 
-- `vtcode-ui`: public UI-facing API surface for downstream consumers (TUI,
+- `diapason-ui`: public UI-facing API surface for downstream consumers (TUI,
   design, theme)
-- `vtcode-core::ui::tui`: canonical runtime type surface for VT Code internals
+- `diapason-core::ui::tui`: canonical runtime type surface for Diapason
+  internals
 
 This separation allows external code to import TUI types and session APIs from
-`vtcode-ui` while keeping host-specific integrations inside `vtcode-core`.
+`diapason-ui` while keeping host-specific integrations inside `diapason-core`.
 
-`vtcode-ui` now exposes standalone launch primitives (`SessionOptions`,
+`diapason-ui` now exposes standalone launch primitives (`SessionOptions`,
 `SessionSurface`, `KeyboardProtocolSettings`) plus host adapters
 (`host::HostAdapter`) so downstream projects can start sessions without
-importing `vtcode_core::config` types directly.
+importing `diapason_core::config` types directly.
 
 The full TUI source tree is now located in:
 
-- `crates/codegen/vtcode-ui/src/tui/core_tui/`
+- `crates/codegen/diapason-ui/src/tui/core_tui/`
 
-`crates/codegen/vtcode-core/src/ui/tui.rs` is a compatibility shim that
-compiles this migrated source tree to preserve existing `vtcode_core::ui::tui`
-paths.
+`crates/codegen/diapason-core/src/ui/tui.rs` is a compatibility shim that
+compiles this migrated source tree to preserve existing
+`diapason_core::ui::tui` paths.
 
 The TUI runner is organized into focused modules:
 
 ```
-crates/codegen/vtcode-ui/src/tui/core_tui/runner/
+crates/codegen/diapason-ui/src/tui/core_tui/runner/
  mod.rs           # Orchestration entrypoint (`run_tui`)
  drive.rs         # Main terminal/event loop drive logic
  events.rs        # Async event stream + tick scheduling
@@ -336,7 +338,7 @@ pub trait CacheableTool: Tool {
 1. **Internal Traits, External Protocols** - Keep Rust traits as internal
    composition seams; prefer config, manifests, and protocols for third-party
    extension points so external integrations do not depend on compile-time impl
-   slots in VT Code
+   slots in Diapason
 2. **Prefer Explicit Provider Dictionaries** - When internal Rust abstractions
    become coherence-sensitive, move behaviour behind context-selected providers
    instead of adding more blanket impl magic
@@ -399,21 +401,21 @@ impl ModeTool for MyTool {
 
 ## RL Optimization Loop (Adaptive Action Selection)
 
-- **Module:** `crates/codegen/vtcode-core/src/llm/rl` (bandit and actor-critic
+- **Module:** `crates/codegen/diapason-core/src/llm/rl` (bandit and actor-critic
   implementations)
 - **Config:** `[optimization]` with `strategy = "bandit" | "actor_critic"` plus
   reward shaping knobs
 - **Signals:** Success/timeout + latency feed `RewardSignal`, stored in a
   rolling `RewardLedger`
-- **Usage:** Construct `RlEngine::from_config(&VTCodeConfig::optimization)` and
-  call `select(actions, PolicyContext)`; on completion emit `apply_reward`
+- **Usage:** Construct `RlEngine::from_config(&DiapasonConfig::optimization)`
+  and call `select(actions, PolicyContext)`; on completion emit `apply_reward`
 - **Goal:** Prefer low-latency, high-success actions (e.g., choose edge vs
   cloud executors) while remaining pluggable for future policies
 
 ## Training & Evaluation Alignment
 
 To operationalize the staged training paradigm introduced in
-`docs/research/kimi_dev_agentless_training.md`, VT Code couples its modular
+`docs/research/kimi_dev_agentless_training.md`, Diapason couples its modular
 runtime with a data and evaluation strategy designed for agentless skill priors:
 
 - **Dual Roles** – Prompt templates for `BugFixer` and `TestWriter` share the

@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use vtcode_core::config::constants::{env_vars, urls};
-use vtcode_core::config::models::Provider;
-use vtcode_core::utils::dot_config::{DotConfig, load_user_config};
+use diapason_core::config::constants::{env_vars, urls};
+use diapason_core::config::models::Provider;
+use diapason_core::utils::dot_config::{DotConfig, load_user_config};
 
 #[derive(Clone, Default)]
 pub(super) struct ProviderEndpointConfig {

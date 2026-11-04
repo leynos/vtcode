@@ -1,48 +1,48 @@
-# VT Code Environment Setup and PATH Visibility Guide
+# Diapason Environment Setup and PATH Visibility Guide
 
 ## Overview
 
-This guide explains how VT Code manages environment variables when executing
+This guide explains how Diapason manages environment variables when executing
 commands, how the PATH visibility fix works, and how to ensure your tools are
 accessible to the agent.
 
-## VT Code storage environment
+## Diapason storage environment
 
 The path variables are inherited by sandboxed child processes so tools launched
-by VT Code resolve the same user directories as the parent process. The
+by Diapason resolve the same user directories as the parent process. The
 canonical list and precedence rules are in the
 [user data directories guide](../guides/user-data-directories.md).
 
 The most useful variables are:
 
-- `VTCODE_CONFIG` and `VTCODE_DATA` — absolute canonical config and data root
-  overrides;
-- `VTCODE_CONFIG_PATH` — explicit config file override;
-- `VTCODE_HOME` — preserved legacy root used for migration and fallback reads;
-- `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`,
-  `XDG_RUNTIME_DIR`, and `XDG_BIN_HOME` — Linux/BSD category roots;
+- `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, and
+  `XDG_CACHE_HOME` — standard category root overrides;
+- `DIAPASON_CONFIG_PATH` — explicit session config file;
+- `DIAPASON_WORKSPACE_DIR` — optional single relative directory name for
+  repository-local agent data;
+- `XDG_RUNTIME_DIR` and `XDG_BIN_HOME` — additional Linux/BSD roots;
 - `XDG_CONFIG_DIRS` and `XDG_DATA_DIRS` — ordered system search roots.
 
-Empty or relative XDG values are ignored. Use `vtcode --version` to inspect the
-resolved paths and the environment values visible to VT Code.
+Empty or relative XDG values are ignored. Use `diapason --version` to inspect
+the resolved paths and the environment values visible to Diapason.
 
 ## Quick Start
 
-If you just installed VT Code and want your custom tools (cargo, npm, python,
+If you just installed Diapason and want your custom tools (cargo, npm, python,
 etc.) to work:
 
 1. **Ensure PATH is set**: Run `echo $PATH` in your shell to verify your
    environment is configured
-2. **Rebuild VT Code**: Use `cargo build --release` to get the latest version
+2. **Rebuild Diapason**: Use `cargo build --release` to get the latest version
    with PATH inheritance
 3. **Test availability**: Run `which cargo` to verify your tools are in PATH
 4. **Use the agent**: Custom tools should now be accessible
 
-## How VT Code Manages Environment Variables
+## How Diapason Manages Environment Variables
 
 ### Environment Inheritance Model
 
-VT Code now inherits the parent shell's environment variables and applies
+Diapason now inherits the parent shell's environment variables and applies
 strategic overrides:
 
 ```
@@ -55,10 +55,10 @@ strategic overrides:
  • Custom env vars (preserved)
 
             ↓
-        VT Code Process
+        Diapason Process
             ↓
 
- VT Code Environment (modified)
+ Diapason Environment (modified)
 
  • All inherited variables PLUS:
  • PAGER → "cat"
@@ -95,10 +95,10 @@ The following variables are inherited from the parent environment:
 - `NODE_*` variables - Node.js environment
 - Custom user-defined variables
 
-**VT Code-Added Variables**:
+**Diapason-Added Variables**:
 
 - `WORKSPACE_DIR` - Path to the workspace root
-- `VT_SANDBOX_*` - Sandbox-related variables (if configured)
+- `DIAPASON_SANDBOX_*` - Sandbox-related variables (if configured)
 
 ### Environment Overrides (for Consistency)
 
@@ -193,10 +193,10 @@ stat --format="%A %n" ~/.cargo/bin/cargo  # Linux
 
 ### Default Behavior
 
-By default, VT Code allows a comprehensive set of safe commands. See
+By default, Diapason allows a comprehensive set of safe commands. See
 `ALLOWED_COMMANDS_REFERENCE.md` for the full list.
 
-### Custom Configuration (vtcode.toml)
+### Custom Configuration (config.toml)
 
 ```toml
 [commands]
@@ -250,7 +250,7 @@ shell
 
 **Solutions**:
 
-1. **Rebuild VT Code** - Ensure you have the latest version with the PATH fix:
+1. **Rebuild Diapason** - Ensure you have the latest version with the PATH fix:
 
     ```bash
     cargo build --release
@@ -276,18 +276,18 @@ shell
     cargo --version
     ```
 
-### Issue: Command works in shell but not in VT Code agent
+### Issue: Command works in shell but not in Diapason agent
 
 **Possible causes**:
 
 1. **Command not in allow-list**
 
     - Check `ALLOWED_COMMANDS_REFERENCE.md`
-    - Add to `allow_list` or `allow_glob` in `vtcode.toml`
+    - Add to `allow_list` or `allow_glob` in `config.toml`
 
 2. **Command in deny-list**
 
-    - Check `deny_list` or `deny_glob` in `vtcode.toml`
+    - Check `deny_list` or `deny_glob` in `config.toml`
     - Remove from deny list or check policy enforcement
 
 3. **PATH difference**
@@ -301,7 +301,7 @@ shell
 
 ### Issue: Colors are disabled in output
 
-**This is expected** - VT Code disables colors for consistent parsing:
+**This is expected** - Diapason disables colors for consistent parsing:
 
 ```toml
 [tools.policies]
@@ -346,8 +346,8 @@ PATH includes $GOPATH/bin
 1. **Keep PATH minimal** - Only include necessary directories
 2. **Use version managers** - rbenv, nvm, pyenv, rustup provide clean PATH
    management
-3. **Test in shell first** - Verify commands work before debugging in VT Code
-4. **Check allow-lists** - Ensure custom commands are in vtcode.toml if needed
+3. **Test in shell first** - Verify commands work before debugging in Diapason
+4. **Check allow-lists** - Ensure custom commands are in config.toml if needed
 5. **Use absolute paths** - For debugging: `/full/path/to/command --version`
 6. **Enable tool policies** - Use `allow`, `prompt`, or `deny` appropriately
 
@@ -359,13 +359,13 @@ You can set up custom environment initialization via hooks:
 [hooks.lifecycle]
 session_start = [
     { hooks = [
-        { command = "/absolute/path/to/vtcode-config/setup-env.sh", timeout_seconds = 30 }
+        { command = "/absolute/path/to/diapason-config/setup-env.sh", timeout_seconds = 30 }
     ] }
 ]
 ```
 
-Use an absolute path for the script. VT Code does not inject a
-`VT_CODE_CONFIG_DIR` variable into hook commands; run `vtcode --version` to
+Use an absolute path for the script. Diapason does not inject a
+`DIAPASON_CONFIG_DIR` variable into hook commands; run `diapason --version` to
 find the canonical config directory if the script is stored there, then replace
 the placeholder above.
 
@@ -385,7 +385,7 @@ export NODE_OPTIONS="--max-old-space-size=4096"
 - `docs/development/EXECUTION_POLICY.md` - Detailed execution policy
     documentation
 - `docs/guides/security.md` - Security best practices
-- `vtcode.toml` - Configuration file reference
+- `config.toml` - Configuration file reference
 
 ## Environment Inheritance Changelog
 
@@ -416,5 +416,5 @@ If you discover environment-related issues or improvements:
 
 - Check the examples in this directory
 - Review test cases in `tests/integration_path_env.rs`
-- Look at actual source in `crates/codegen/vtcode-core/src/tools/command.rs`
-    and `crates/codegen/vtcode-core/src/tools/pty.rs`
+- Look at actual source in `crates/codegen/diapason-core/src/tools/command.rs`
+    and `crates/codegen/diapason-core/src/tools/pty.rs`

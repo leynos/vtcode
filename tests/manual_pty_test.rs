@@ -7,8 +7,8 @@
 
 use anyhow::Result;
 use assert_fs::TempDir;
+use diapason_core::tools::ToolRegistry;
 use serde_json::{Value, json};
-use vtcode_core::tools::ToolRegistry;
 
 #[tokio::main]
 #[expect(clippy::panic_in_result_fn, reason = "test function, assertions are expected")]
@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
     });
 
     match registry
-        .execute_tool(vtcode_core::config::constants::tools::RUN_PTY_CMD, args)
+        .execute_tool(diapason_core::config::constants::tools::RUN_PTY_CMD, args)
         .await
     {
         Ok(result) => {
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     });
 
     match registry
-        .execute_tool(vtcode_core::config::constants::tools::RUN_PTY_CMD, args)
+        .execute_tool(diapason_core::config::constants::tools::RUN_PTY_CMD, args)
         .await
     {
         Ok(result) => {

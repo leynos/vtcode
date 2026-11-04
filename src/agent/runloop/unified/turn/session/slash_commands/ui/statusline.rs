@@ -8,10 +8,10 @@ mod persistence;
 mod preview;
 
 use anyhow::{Context, Result};
-use vtcode_core::config::StatusLineMode;
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
+use diapason_core::config::StatusLineMode;
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 
 use crate::agent::runloop::slash_commands::StatuslineTargetMode;
 use crate::agent::runloop::unified::turn::session::slash_commands::{SlashCommandContext, SlashCommandControl};
@@ -47,7 +47,7 @@ pub(crate) async fn handle_start_statusline_setup(
     };
 
     let manager =
-        ConfigManager::load_from_workspace(&ctx.config.workspace).context("Failed to load VT Code configuration")?;
+        ConfigManager::load_from_workspace(&ctx.config.workspace).context("Failed to load Diapason configuration")?;
     let config_path = match target {
         StatuslineTargetMode::User => manager
             .preferred_user_config_path()
@@ -227,14 +227,14 @@ async fn select_statusline_target(ctx: &mut SlashCommandContext<'_>) -> Result<O
     ctx.handle.show_list_modal(
         "Status line setup".to_string(),
         vec![
-            "Choose where VT Code should persist status line changes.".to_string(),
-            "User writes to your home config and ~/.config/vtcode/statusline.sh.".to_string(),
-            "Workspace writes to the current workspace and .vtcode/statusline.sh.".to_string(),
+            "Choose where Diapason should persist status line changes.".to_string(),
+            "User writes to your home config and ~/.config/diapason/statusline.sh.".to_string(),
+            "Workspace writes to the current workspace and .diapason/statusline.sh.".to_string(),
         ],
         vec![
             InlineListItem {
                 title: "User config".to_string(),
-                subtitle: Some("Personal VT Code setup in your user config layer".to_string()),
+                subtitle: Some("Personal Diapason setup in your user config layer".to_string()),
                 badge: Some("User".to_string()),
                 indent: 0,
                 selection: Some(InlineListSelection::ConfigAction("statusline:user".to_string())),
@@ -274,7 +274,7 @@ async fn select_statusline_target(ctx: &mut SlashCommandContext<'_>) -> Result<O
 mod tests {
     use std::path::Path;
 
-    use vtcode_core::config::{StatusLineConfig, StatusLineMode};
+    use diapason_core::config::{StatusLineConfig, StatusLineMode};
 
     use super::{
         StatuslineSetupAction, apply_statusline_action, build_statusline_preview, build_statusline_setup_items,
@@ -330,13 +330,13 @@ mod tests {
     fn statusline_preview_in_command_mode_never_executes() {
         let draft = StatusLineConfig {
             mode: StatusLineMode::Command,
-            command: Some(".vtcode/statusline.sh".to_string()),
+            command: Some(".diapason/statusline.sh".to_string()),
             ..StatusLineConfig::default()
         };
 
         let preview = build_statusline_preview(&draft, Some(("main", false)), Some("thread-1"), "gpt-5.6-sol");
 
-        assert_eq!(preview, "command mode (setup does not execute command): .vtcode/statusline.sh");
+        assert_eq!(preview, "command mode (setup does not execute command): .diapason/statusline.sh");
     }
 
     #[test]

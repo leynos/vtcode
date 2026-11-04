@@ -1,8 +1,8 @@
 use anyhow::Result;
+use diapason_core::config::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::review::ReviewSpec;
 use std::path::PathBuf;
-use vtcode_core::config::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::review::ReviewSpec;
 
 use super::exec::{ExecCommandKind, ExecCommandOptions};
 
@@ -17,7 +17,7 @@ pub struct ReviewCommandOptions {
 
 pub async fn handle_review_command(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     options: ReviewCommandOptions,
 ) -> Result<()> {
     let exec_options = ExecCommandOptions {

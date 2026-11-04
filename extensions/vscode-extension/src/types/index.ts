@@ -1,5 +1,5 @@
 /**
- * Core type definitions for VT Code extension
+ * Core type definitions for Diapason extension
  */
 
 export type { CommandContext, ICommand } from "./command";

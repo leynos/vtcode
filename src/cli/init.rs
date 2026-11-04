@@ -1,23 +1,23 @@
 use anyhow::{Context, Result, anyhow, bail};
-use std::collections::BTreeMap;
-use std::io::{self, Write};
-use std::path::Path;
-use vtcode_core::commands::init::{
+use diapason_core::commands::init::{
     GuidedInitAnswer, GuidedInitAnswers, GuidedInitOverwriteState, GuidedInitQuestion, GuidedInitQuestionKey,
     prepare_guided_init, render_agents_md, write_agents_file,
 };
-use vtcode_core::config::core::PromptCachingConfig;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::{
+use diapason_core::config::core::PromptCachingConfig;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::{
     AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
 };
-use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
-use vtcode_core::ui::theme::DEFAULT_THEME_ID;
-use vtcode_core::utils::colors::style;
-use vtcode_core::utils::file_utils::ensure_dir_exists;
-use vtcode_core::utils::tty::TtyExt;
+use diapason_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
+use diapason_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::ui::theme::DEFAULT_THEME_ID;
+use diapason_core::utils::colors::style;
+use diapason_core::utils::file_utils::ensure_dir_exists;
+use diapason_core::utils::tty::TtyExt;
+use std::collections::BTreeMap;
+use std::io::{self, Write};
+use std::path::Path;
 
 /// Handle the init command
 pub async fn handle_init_command(workspace: &Path, force: bool, run: bool) -> Result<()> {
@@ -28,14 +28,14 @@ pub async fn handle_init_command(workspace: &Path, force: bool, run: bool) -> Re
 
     ensure_dir_exists(workspace).await?;
 
-    VTCodeConfig::bootstrap_project(workspace, force).with_context(|| "failed to initialize configuration files")?;
+    DiapasonConfig::bootstrap_project(workspace, force).with_context(|| "failed to initialize configuration files")?;
 
     let plan = prepare_guided_init(workspace, force)?;
     let stdin_is_tty = io::stdin().is_tty_ext();
 
     if matches!(plan.overwrite_state, GuidedInitOverwriteState::Confirm) && !stdin_is_tty {
         bail!(
-            "AGENTS.md already exists at {}. Re-run interactively or pass `vtcode init --force` to overwrite it non-interactively.",
+            "AGENTS.md already exists at {}. Re-run interactively or pass `diapason init --force` to overwrite it non-interactively.",
             plan.path.display()
         );
     }

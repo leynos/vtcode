@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use vtcode_config::loader::ConfigManager;
-use vtcode_core::config::ToolPolicy;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
+use diapason_config::loader::ConfigManager;
+use diapason_core::config::ToolPolicy;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 
 use crate::agent::runloop::unified::diagnostics::{CheckupOptions, count_configured_hooks, run_checkup_diagnostics};
 use crate::agent::runloop::unified::ui_interaction::display_session_status;
@@ -30,7 +30,7 @@ struct CheckupRemediation {
 }
 
 /// Compute the optimizations that are currently applicable for the active config.
-fn compute_checkup_remediations(vt_cfg: &Option<VTCodeConfig>) -> Vec<CheckupRemediation> {
+fn compute_checkup_remediations(vt_cfg: &Option<DiapasonConfig>) -> Vec<CheckupRemediation> {
     let Some(cfg) = vt_cfg else {
         return Vec::new();
     };
@@ -40,7 +40,7 @@ fn compute_checkup_remediations(vt_cfg: &Option<VTCodeConfig>) -> Vec<CheckupRem
         items.push(CheckupRemediation {
             id: "enable_auto_mode",
             title: "Enable auto mode".to_string(),
-            subtitle: "Let VT Code run unattended ([automation.full_auto]).".to_string(),
+            subtitle: "Let Diapason run unattended ([automation.full_auto]).".to_string(),
             search_value: "optimize auto mode unattended full_auto".to_string(),
         });
     }
@@ -68,9 +68,9 @@ fn compute_checkup_remediations(vt_cfg: &Option<VTCodeConfig>) -> Vec<CheckupRem
 
 /// Apply a single optimization to the given config in place.
 ///
-/// Pure and reversible: it only mutates the provided `VTCodeConfig` and returns a
+/// Pure and reversible: it only mutates the provided `DiapasonConfig` and returns a
 /// human-readable description of what changed. Persistence is the caller's job.
-fn apply_checkup_remediation_to_config(id: &str, cfg: &mut VTCodeConfig) -> Result<String> {
+fn apply_checkup_remediation_to_config(id: &str, cfg: &mut DiapasonConfig) -> Result<String> {
     match id {
         "enable_auto_mode" => {
             if cfg.automation.full_auto.enabled {
@@ -218,7 +218,7 @@ pub(crate) async fn handle_apply_checkup_optimization(
 ) -> Result<SlashCommandControl> {
     let mut manager = ConfigManager::load_from_workspace(&ctx.config.workspace)
         .context("Failed to load the workspace config manager")?;
-    let mut cfg = ctx.vt_cfg.clone().context("No active VT Code configuration to optimize")?;
+    let mut cfg = ctx.vt_cfg.clone().context("No active Diapason configuration to optimize")?;
 
     let description = apply_checkup_remediation_to_config(&id, &mut cfg)?;
     manager.save_config(&cfg)?;
@@ -251,8 +251,8 @@ async fn run_checkup(ctx: &mut SlashCommandContext<'_>, quick: bool) -> Result<(
 }
 
 pub(crate) async fn handle_start_terminal_setup(ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
-    let vt_cfg = ctx.vt_cfg.as_ref().context("VT Code configuration not available")?;
-    vtcode_core::terminal_setup::run_terminal_setup_wizard(ctx.renderer, vt_cfg).await?;
+    let vt_cfg = ctx.vt_cfg.as_ref().context("Diapason configuration not available")?;
+    diapason_core::terminal_setup::run_terminal_setup_wizard(ctx.renderer, vt_cfg).await?;
     ctx.renderer.line_if_not_empty(MessageStyle::Output)?;
     Ok(SlashCommandControl::Continue)
 }
@@ -302,7 +302,7 @@ fn show_checkup_actions_modal(ctx: &mut SlashCommandContext<'_>) {
     ctx.renderer.show_list_modal(
         "Checkup",
         vec![
-            "Choose how to run the VT Code checkup.".to_string(),
+            "Choose how to run the Diapason checkup.".to_string(),
             "Use Enter to run an action, Esc to close.".to_string(),
         ],
         items,
@@ -315,15 +315,15 @@ fn show_checkup_actions_modal(ctx: &mut SlashCommandContext<'_>) {
 mod tests {
     use super::*;
 
-    fn cfg_with_hooks() -> VTCodeConfig {
-        let mut cfg = VTCodeConfig::default();
+    fn cfg_with_hooks() -> DiapasonConfig {
+        let mut cfg = DiapasonConfig::default();
         cfg.hooks.lifecycle.pre_tool_use.push(Default::default());
         cfg
     }
 
     #[test]
     fn no_remediations_when_config_is_already_optimized() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.automation.full_auto.enabled = true;
         cfg.tools.default_policy = ToolPolicy::Allow;
         // lifecycle defaults to empty
@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn enable_auto_mode_mutates_config() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         assert!(!cfg.automation.full_auto.enabled);
         let msg = apply_checkup_remediation_to_config("enable_auto_mode", &mut cfg).unwrap();
         assert!(cfg.automation.full_auto.enabled);
@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn preapprove_readonly_sets_allow_policy() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         cfg.tools.default_policy = ToolPolicy::Prompt;
         let msg = apply_checkup_remediation_to_config("preapprove_readonly", &mut cfg).unwrap();
         assert_eq!(cfg.tools.default_policy, ToolPolicy::Allow);
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn unknown_remediation_id_errors() {
-        let mut cfg = VTCodeConfig::default();
+        let mut cfg = DiapasonConfig::default();
         assert!(apply_checkup_remediation_to_config("bogus", &mut cfg).is_err());
     }
 }

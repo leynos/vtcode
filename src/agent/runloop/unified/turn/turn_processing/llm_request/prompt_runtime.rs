@@ -6,11 +6,11 @@
 
 use std::fmt::Write as _;
 
-use vtcode_core::ActivePrimaryAgent;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
-use vtcode_core::prompts::PromptContext;
-use vtcode_core::subagents::load_primary_memory_appendix_async;
+use diapason_core::ActivePrimaryAgent;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use diapason_core::prompts::PromptContext;
+use diapason_core::subagents::load_primary_memory_appendix_async;
 
 use super::snapshot::TurnRequestSnapshot;
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;

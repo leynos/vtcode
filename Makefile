@@ -77,14 +77,14 @@ test:
 
 # These focused suites are a separate full-gate step in scripts/check.sh.
 test-harness:
-	$(CARGO) nextest run --locked -p vtcode-core -E 'binary(/pty_tests/)' $(BUILD_JOBS)
-	$(CARGO) nextest run --locked -p vtcode-bash-runner -E 'binary(/pipe_tests/)' $(BUILD_JOBS)
-	$(CARGO) nextest run --locked -p vtcode -E 'test(/inline_events/)' $(BUILD_JOBS)
+	$(CARGO) nextest run --locked -p diapason-core -E 'binary(/pty_tests/)' $(BUILD_JOBS)
+	$(CARGO) nextest run --locked -p diapason-bash-runner -E 'binary(/pipe_tests/)' $(BUILD_JOBS)
+	$(CARGO) nextest run --locked -p diapason -E 'test(/inline_events/)' $(BUILD_JOBS)
 
 # The legacy full gate treats ast-grep as optional when it is not installed.
 check-ast-grep:
 	if command -v ast-grep >/dev/null 2>&1; then \
-		$(CARGO) run --locked --bin vtcode -- check ast-grep; \
+		$(CARGO) run --locked --bin diapason -- check ast-grep; \
 	else \
 		echo "ast-grep is not installed; skipping optional repository scan."; \
 	fi

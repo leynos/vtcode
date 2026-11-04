@@ -1,8 +1,8 @@
 use std::time::Duration;
 
+use diapason_core::tools::ApprovalRecorder;
 use serde_json::Value;
 use url::Url;
-use vtcode_core::tools::ApprovalRecorder;
 
 use super::shell_approval::ApprovalLearningTarget;
 
@@ -74,11 +74,11 @@ pub(super) fn cache_key(tool_name: &str, tool_args: Option<&Value>) -> String {
         return format!("{tool_name}:{suffix}");
     }
 
-    use vtcode_core::config::constants::tools::{CODE_SEARCH, FETCH_URL, WEB_FETCH};
+    use diapason_core::config::constants::tools::{CODE_SEARCH, FETCH_URL, WEB_FETCH};
 
     if tool_name == CODE_SEARCH
         && let Some(args) = tool_args
-        && let Some(identity) = vtcode_core::tools::normalised_code_search_identity(args)
+        && let Some(identity) = diapason_core::tools::normalised_code_search_identity(args)
     {
         return format!("{tool_name}:{identity}");
     }

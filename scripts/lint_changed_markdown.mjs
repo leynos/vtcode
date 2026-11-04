@@ -6,8 +6,8 @@ import { spawnSync } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
-const CHANGED_FILES_ENV = "VTCODE_CHANGED_MARKDOWN_FILES_JSON";
-const COMMAND_ENV = "VTCODE_MARKDOWNLINT_COMMAND";
+const CHANGED_FILES_ENV = "DIAPASON_CHANGED_MARKDOWN_FILES_JSON";
+const COMMAND_ENV = "DIAPASON_MARKDOWNLINT_COMMAND";
 const DEFAULT_COMMAND = "npx";
 const MARKDOWNLINT_PACKAGE = "markdownlint-cli2@0.23.2";
 

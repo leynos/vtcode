@@ -4,9 +4,9 @@
 //! shared rendering parameters, reducing the 12-parameter signature
 //! of `render_stream_section` to a single context parameter.
 
-use vtcode_core::config::ToolOutputMode;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::ToolOutputMode;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::styles::{GitStyles, LsStyles};
 
@@ -24,7 +24,7 @@ pub struct StreamRenderContext<'a> {
     pub fallback_style: MessageStyle,
     pub allow_ansi: bool,
     pub disable_spool: bool,
-    pub config: Option<&'a VTCodeConfig>,
+    pub config: Option<&'a DiapasonConfig>,
 }
 
 impl<'a> StreamRenderContext<'a> {
@@ -39,7 +39,7 @@ impl<'a> StreamRenderContext<'a> {
         fallback_style: MessageStyle,
         allow_ansi: bool,
         disable_spool: bool,
-        config: Option<&'a VTCodeConfig>,
+        config: Option<&'a DiapasonConfig>,
     ) -> Self {
         Self {
             renderer,

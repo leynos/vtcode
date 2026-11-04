@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# fuzz-test.sh — Weekly fuzz testing routine for vtcode
+# fuzz-test.sh — Weekly fuzz testing routine for diapason
 #
 # Runs proptest-based fuzz tests (fast, stable) and, if nightly toolchain is
 # available, also runs cargo-fuzz targets (slow, LLVM coverage).
@@ -54,25 +54,25 @@ run_test() {
 # ─── Phase 1: proptest-based fuzz tests (fast, works on stable) ────
 
 run_test "proptest: core_fuzz_props (dangerous_commands, policy, paths, parser)" \
-    cargo test -p vtcode-core --test core_fuzz_props
+    cargo test -p diapason-core --test core_fuzz_props
 
 run_test "proptest: loop_detector_props" \
-    cargo test -p vtcode-core --test loop_detector_props
+    cargo test -p diapason-core --test loop_detector_props
 
 run_test "unit: dangerous_commands" \
-    cargo test -p vtcode-core command_safety::dangerous_commands::tests
+    cargo test -p diapason-core command_safety::dangerous_commands::tests
 
 run_test "unit: shell_parser" \
-    cargo test -p vtcode-core command_safety::shell_parser::tests
+    cargo test -p diapason-core command_safety::shell_parser::tests
 
 run_test "unit: exec_policy::policy" \
-    cargo test -p vtcode-core exec_policy::policy::tests
+    cargo test -p diapason-core exec_policy::policy::tests
 
 run_test "unit: exec_policy::parser" \
-    cargo test -p vtcode-core exec_policy::parser::tests
+    cargo test -p diapason-core exec_policy::parser::tests
 
 run_test "unit: tools::validation::paths" \
-    cargo test -p vtcode-core tools::validation::paths::tests
+    cargo test -p diapason-core tools::validation::paths::tests
 
 # ─── Phase 2: cargo-fuzz (slow, nightly-only, LLVM coverage) ────
 
@@ -84,19 +84,19 @@ if [ $# -eq 0 ] || [ "$1" = "--cargo-fuzz" ] || [ "$1" = "--all" ]; then
         echo "=============================================="
 
         run_test "cargo-fuzz: shell_parser (30s)" \
-            bash -c "cd fuzz && RUSTC_WRAPPER='' CARGO_INCREMENTAL=1 cargo +nightly fuzz run shell_parser -- -max_total_time=30 -runs=50000 2>&1"
+            bash -c "cd fuzz && cargo +nightly fuzz run shell_parser -- -max_total_time=30 -runs=50000 2>&1"
 
         run_test "cargo-fuzz: exec_policy_parser (30s)" \
-            bash -c "cd fuzz && RUSTC_WRAPPER='' CARGO_INCREMENTAL=1 cargo +nightly fuzz run exec_policy_parser -- -max_total_time=30 -runs=50000 2>&1"
+            bash -c "cd fuzz && cargo +nightly fuzz run exec_policy_parser -- -max_total_time=30 -runs=50000 2>&1"
 
         run_test "cargo-fuzz: unified_path_validation (30s)" \
-            bash -c "cd fuzz && RUSTC_WRAPPER='' CARGO_INCREMENTAL=1 cargo +nightly fuzz run unified_path_validation -- -max_total_time=30 -runs=50000 2>&1"
+            bash -c "cd fuzz && cargo +nightly fuzz run unified_path_validation -- -max_total_time=30 -runs=50000 2>&1"
 
         run_test "cargo-fuzz: dangerous_commands (30s)" \
-            bash -c "cd fuzz && RUSTC_WRAPPER='' CARGO_INCREMENTAL=1 cargo +nightly fuzz run dangerous_commands -- -max_total_time=30 -runs=50000 2>&1"
+            bash -c "cd fuzz && cargo +nightly fuzz run dangerous_commands -- -max_total_time=30 -runs=50000 2>&1"
 
         run_test "cargo-fuzz: exec_policy_command_validation (30s)" \
-            bash -c "cd fuzz && RUSTC_WRAPPER='' CARGO_INCREMENTAL=1 cargo +nightly fuzz run exec_policy_command_validation -- -max_total_time=30 -runs=50000 2>&1"
+            bash -c "cd fuzz && cargo +nightly fuzz run exec_policy_command_validation -- -max_total_time=30 -runs=50000 2>&1"
     else
         echo ""
         echo -e "${YELLOW}[skip] cargo-fuzz: nightly toolchain or cargo-fuzz not available${NC}"

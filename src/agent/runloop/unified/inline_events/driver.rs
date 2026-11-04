@@ -5,13 +5,13 @@ use std::time::Duration;
 use anyhow::Result;
 use tokio::sync::Notify;
 
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::exec::events::{InterjectedEvent, InterjectionSource, RedirectKind, ThreadEvent};
-use vtcode_core::hooks::LifecycleHookEngine;
-use vtcode_core::llm::provider::{self as uni};
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{InlineEvent, InlineHandle, InlineHeaderContext, InlineSession, SubmittedInput};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::exec::events::{InterjectedEvent, InterjectionSource, RedirectKind, ThreadEvent};
+use diapason_core::hooks::LifecycleHookEngine;
+use diapason_core::llm::provider::{self as uni};
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{InlineEvent, InlineHandle, InlineHeaderContext, InlineSession, SubmittedInput};
 
 use crate::agent::runloop::model_picker::ModelPickerState;
 use crate::agent::runloop::unified::context_manager::ContextManager;
@@ -34,7 +34,7 @@ struct InlineEventLoop<'a> {
     model_picker_state: &'a mut Option<ModelPickerState>,
     palette_state: &'a mut Option<ActivePalette>,
     config: &'a mut CoreAgentConfig,
-    vt_cfg: &'a mut Option<VTCodeConfig>,
+    vt_cfg: &'a mut Option<DiapasonConfig>,
     provider_client: &'a mut Box<dyn uni::LLMProvider>,
     ctrl_c_state: &'a Arc<CtrlCState>,
     ctrl_c_notify: &'a Arc<Notify>,
@@ -170,7 +170,7 @@ impl<'a> InlineEventLoop<'a> {
         // further input; polling would spin a 100% CPU busy-loop because
         // next_event() resolves to None instantly on a closed channel. Exit.
         if session.events.is_closed() && !session.handle.has_deferred_event() {
-            return Ok(InlineLoopAction::Exit(vtcode_core::hooks::SessionEndReason::Exit));
+            return Ok(InlineLoopAction::Exit(diapason_core::hooks::SessionEndReason::Exit));
         }
 
         let maybe_event = tokio::select! {
@@ -343,7 +343,7 @@ pub(crate) struct InlineEventLoopResources<'a> {
     pub model_picker_state: &'a mut Option<ModelPickerState>,
     pub palette_state: &'a mut Option<ActivePalette>,
     pub config: &'a mut CoreAgentConfig,
-    pub vt_cfg: &'a mut Option<VTCodeConfig>,
+    pub vt_cfg: &'a mut Option<DiapasonConfig>,
     pub provider_client: &'a mut Box<dyn uni::LLMProvider>,
     pub ctrl_c_state: &'a Arc<CtrlCState>,
     pub ctrl_c_notify: &'a Arc<Notify>,
@@ -404,19 +404,19 @@ async fn recv_webmcp_prompt(receiver: &mut Option<tokio::sync::mpsc::Receiver<St
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use diapason_core::config::core::PromptCachingConfig;
+    use diapason_core::config::models::Provider;
+    use diapason_core::config::types::{
+        AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
+    };
+    use diapason_core::core::agent::snapshots::{
+        DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
+    };
+    use diapason_core::llm::provider::{LLMError, LLMRequest, LLMResponse};
+    use diapason_ui::tui::app::InlineEvent;
     use semver::Version;
     use std::collections::VecDeque;
     use tokio::sync::Notify;
-    use vtcode_core::config::core::PromptCachingConfig;
-    use vtcode_core::config::models::Provider;
-    use vtcode_core::config::types::{
-        AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
-    };
-    use vtcode_core::core::agent::snapshots::{
-        DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
-    };
-    use vtcode_core::llm::provider::{LLMError, LLMRequest, LLMResponse};
-    use vtcode_ui::tui::app::InlineEvent;
 
     #[derive(Clone)]
     struct DummyProvider;
@@ -454,14 +454,14 @@ mod tests {
 
     fn runtime_config() -> CoreAgentConfig {
         CoreAgentConfig {
-            model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+            model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
             api_key: "test-key".to_string(),
             provider: "gemini".to_string(),
             api_key_env: Provider::Gemini.default_api_key_env().to_string(),
             workspace: std::env::current_dir().expect("current_dir"),
             verbose: false,
             quiet: false,
-            theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+            theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
             reasoning_effort: ReasoningEffortLevel::default(),
             ui_surface: UiSurfacePreference::default(),
             prompt_cache: PromptCachingConfig::default(),

@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::tools::tool_intent;
 use serde_json::{Value, json};
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::tools::tool_intent;
 
 pub(super) use crate::agent::runloop::unified::tool_reads::spool_chunk_read_path;
 use crate::agent::runloop::unified::tool_reads::{is_read_file_style_call, read_file_path_arg};
@@ -37,7 +37,7 @@ fn normalize_shell_command_text(value: &str, max_chars: usize) -> String {
 }
 
 fn normalized_shell_command_arg(args: &Value, max_chars: usize) -> Option<String> {
-    vtcode_core::tools::command_args::command_text(args)
+    diapason_core::tools::command_args::command_text(args)
         .ok()
         .flatten()
         .map(|command| normalize_shell_command_text(&command, max_chars))
@@ -245,7 +245,7 @@ pub(crate) fn low_signal_family_key(canonical_tool_name: &str, args: &Value) -> 
         tool_names::UNIFIED_EXEC | tool_names::EXEC_COMMAND => {
             normalized_shell_command_arg(args, 160).map(|command| format!("{label}::run::{command}"))
         }
-        tool_names::CODE_SEARCH => vtcode_core::tools::normalised_code_search_loop_identity(args)
+        tool_names::CODE_SEARCH => diapason_core::tools::normalised_code_search_loop_identity(args)
             .map(|identity| format!("{canonical_tool_name}::{identity}")),
         tool_names::UNIFIED_SEARCH => {
             let action = args.get("action").and_then(Value::as_str).unwrap_or("grep");
@@ -276,8 +276,8 @@ pub(crate) fn low_signal_family_key(canonical_tool_name: &str, args: &Value) -> 
 
 #[cfg(test)]
 mod tests {
+    use diapason_core::config::constants::tools as tool_names;
     use serde_json::json;
-    use vtcode_core::config::constants::tools as tool_names;
 
     use super::{
         read_file_has_limit_arg, read_file_has_offset_arg, read_file_limit_value, read_file_offset_value,

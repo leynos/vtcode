@@ -2,7 +2,7 @@
 
 ## Overview
 
-Phase 3a integrates the optimized file search system into the VT Code Zed
+Phase 3a integrates the optimized file search system into the Diapason Zed
 extension, exposing file enumeration and discovery capabilities directly
 through Zed's command palette and IDE interface.
 
@@ -41,7 +41,7 @@ if response.success {
 **Command Line Usage** (via Zed):
 
 ```
-vtcode find-files --pattern component --limit 50
+diapason find-files --pattern component --limit 50
 ```
 
 ### 2. List Files Command
@@ -71,7 +71,7 @@ if response.success {
 **Command Line Usage**:
 
 ```
-vtcode list-files --exclude "target/**,node_modules/**"
+diapason list-files --exclude "target/**,node_modules/**"
 ```
 
 ### 3. Search Files Command
@@ -101,7 +101,7 @@ if response.success {
 **Command Line Usage**:
 
 ```
-vtcode find-files --pattern test --exclude "**/__pycache__/**"
+diapason find-files --pattern test --exclude "**/__pycache__/**"
 ```
 
 ## Architecture
@@ -128,7 +128,7 @@ pub fn search_files(pattern: impl Into<String>, exclude: impl Into<String>) -> S
 
 ### Extension Integration
 
-The VTCodeExtension struct provides convenience methods:
+The DiapasonExtension struct provides convenience methods:
 
 ```rust
 pub fn find_files_command(&self, pattern: &str, limit: Option<usize>) -> CommandResponse {
@@ -162,7 +162,7 @@ pub fn search_files_command(&self, pattern: &str, exclude: &str) -> CommandRespo
 
 3. **src/lib.rs**
     - Exported new file search commands
-    - Added convenience methods to VTCodeExtension
+    - Added convenience methods to DiapasonExtension
     - Added documentation for new methods
 
 ## API Reference
@@ -289,16 +289,16 @@ To expose these commands in Zed's command palette, add to `extension.toml`:
 
 ```toml
 [[commands]]
-title = "VT Code: Find Files"
-command = "vtcode.findFiles"
+title = "Diapason: Find Files"
+command = "diapason.findFiles"
 
 [[commands]]
-title = "VT Code: List Files"
-command = "vtcode.listFiles"
+title = "Diapason: List Files"
+command = "diapason.listFiles"
 
 [[commands]]
-title = "VT Code: Search Files"
-command = "vtcode.searchFiles"
+title = "Diapason: Search Files"
+command = "diapason.searchFiles"
 ```
 
 ### Using in Keybindings
@@ -306,8 +306,8 @@ command = "vtcode.searchFiles"
 ```json
 {
     "bindings": {
-        "cmd-shift-f": "vtcode.findFiles",
-        "cmd-shift-l": "vtcode.listFiles"
+        "cmd-shift-f": "diapason.findFiles",
+        "cmd-shift-l": "diapason.listFiles"
     }
 }
 ```
@@ -365,7 +365,7 @@ v **100% Backward Compatible**
 **Before**:
 
 ```rust
-// Manual file enumeration in VTCodeExtension
+// Manual file enumeration in DiapasonExtension
 let files = list_files_recursively(&workspace);
 ```
 
@@ -388,7 +388,7 @@ let files = parse_response(response);
 
 | Issue               | Solution                          |
 | ------------------- | --------------------------------- |
-| "Command not found" | Ensure VT Code CLI is in PATH     |
+| "Command not found" | Ensure Diapason CLI is in PATH    |
 | Slow search         | Reduce limit or add exclusions    |
 | Missing files       | Check .gitignore (it's respected) |
 
@@ -401,7 +401,7 @@ let files = parse_response(response);
 - v Three new file search commands implemented
 - v CommandBuilder shortcuts created
 - v Unit tests written and passing (7/7)
-- v Integration methods added to VTCodeExtension
+- v Integration methods added to DiapasonExtension
 - v Documentation complete
 
 **Phase 3b**: [wait] In Progress

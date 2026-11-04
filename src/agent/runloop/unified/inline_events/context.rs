@@ -4,12 +4,12 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio::sync::mpsc::error::TrySendError;
 
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::hooks::LifecycleHookEngine;
-use vtcode_core::llm::provider::{self as uni};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::{
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::hooks::LifecycleHookEngine;
+use diapason_core::llm::provider::{self as uni};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::{
     InlineEvent, InlineHandle, InlineHeaderContext, TransientEvent, TransientHotkeyAction, TransientSelectionChange,
     TransientSubmission,
 };
@@ -54,7 +54,7 @@ impl<'a> InlineEventContext<'a> {
         model_picker_state: &'a mut Option<ModelPickerState>,
         palette_state: &'a mut Option<ActivePalette>,
         config: &'a mut CoreAgentConfig,
-        vt_cfg: &'a mut Option<VTCodeConfig>,
+        vt_cfg: &'a mut Option<DiapasonConfig>,
         provider_client: &'a mut Box<dyn uni::LLMProvider>,
         ctrl_c_state: &'a Arc<crate::agent::runloop::unified::state::CtrlCState>,
         ctrl_c_notify: &'a Arc<Notify>,
@@ -229,10 +229,9 @@ impl<'a> InlineEventContext<'a> {
                 self.state.reset_interrupt_state();
                 let mode = self.state.renderer().toggle_tool_display_mode();
                 let label = match mode {
-                    vtcode_core::config::ToolDisplayMode::Compact => "compact",
-                    vtcode_core::config::ToolDisplayMode::Expanded | vtcode_core::config::ToolDisplayMode::Unknown => {
-                        "expanded"
-                    }
+                    diapason_core::config::ToolDisplayMode::Compact => "compact",
+                    diapason_core::config::ToolDisplayMode::Expanded
+                    | diapason_core::config::ToolDisplayMode::Unknown => "expanded",
                 };
                 self.state
                     .renderer()
@@ -295,7 +294,7 @@ impl<'a> InlineEventContext<'a> {
         // double-tap cannot escalate past CancelRequested.
         crate::agent::runloop::unified::stop_requests::request_local_stop(self.ctrl_c_state, self.ctrl_c_notify);
         if self.ctrl_c_state.is_exit_requested() {
-            return InlineLoopAction::Exit(vtcode_core::hooks::SessionEndReason::Exit);
+            return InlineLoopAction::Exit(diapason_core::hooks::SessionEndReason::Exit);
         }
         InlineLoopAction::Continue
     }

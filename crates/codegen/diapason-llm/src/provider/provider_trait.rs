@@ -1,0 +1,362 @@
+use async_stream::try_stream;
+use async_trait::async_trait;
+use compact_str::format_compact;
+use diapason_commons::llm::BackendKind;
+use once_cell::sync::Lazy;
+use rustc_hash::FxHashMap;
+use std::sync::RwLock;
+
+use diapason_commons::tool_types::CompactStr;
+
+use super::{
+    LLMNormalizedStream, LLMRequest, LLMResponse, LLMStream, LLMStreamEvent, Message, ResponsesCompactionOptions,
+    SamplingOverrides,
+};
+pub use diapason_commons::llm::{LLMError, LLMErrorMetadata};
+
+/// Cached provider capabilities to reduce repeated trait method calls
+#[derive(Debug, Clone)]
+pub struct ProviderCapabilities {
+    pub(crate) provider_name: String,
+    pub(crate) model: String,
+    pub streaming: bool,
+    pub reasoning: bool,
+    pub reasoning_effort: bool,
+    pub tools: bool,
+    pub parallel_tool_config: bool,
+    pub(crate) structured_output: bool,
+    pub(crate) context_caching: bool,
+    pub responses_compaction: bool,
+    pub context_edits: bool,
+    /// Whether the selected provider/model can carry Anthropic's native
+    /// turn-scoped system-message lifecycle field on the wire.
+    pub turn_scoped_system_messages: bool,
+    pub(crate) vision: bool,
+    pub(crate) context_size: usize,
+}
+
+impl ProviderCapabilities {
+    fn detect(provider: &dyn LLMProvider, model: &str) -> Self {
+        Self {
+            provider_name: provider.name().to_string(),
+            model: model.to_string(),
+            streaming: provider.supports_streaming(),
+            reasoning: provider.supports_reasoning(model),
+            reasoning_effort: provider.supports_reasoning_effort(model),
+            tools: provider.supports_tools(model),
+            parallel_tool_config: provider.supports_parallel_tool_config(model),
+            structured_output: provider.supports_structured_output(model),
+            context_caching: provider.supports_context_caching(model),
+            responses_compaction: provider.supports_responses_compaction(model),
+            context_edits: provider.supports_context_edits(model),
+            turn_scoped_system_messages: provider.supports_turn_scoped_system_messages(model),
+            vision: provider.supports_vision(model),
+            context_size: provider.effective_context_size(model),
+        }
+    }
+
+    pub(crate) fn has_advanced_features(&self) -> bool {
+        self.reasoning || self.structured_output || self.context_caching || self.reasoning_effort
+    }
+
+    pub(crate) fn summary(&self) -> String {
+        let mut features = Vec::new();
+
+        if self.streaming {
+            features.push("streaming");
+        }
+        if self.reasoning {
+            features.push("advanced-reasoning");
+        }
+        if self.reasoning_effort {
+            features.push("reasoning-effort");
+        }
+        if self.structured_output {
+            features.push("structured-output");
+        }
+        if self.context_caching {
+            features.push("context-caching");
+        }
+        if self.parallel_tool_config {
+            features.push("parallel-tools");
+        }
+        if self.responses_compaction {
+            features.push("responses-compaction");
+        }
+        if self.context_edits {
+            features.push("context-edits");
+        }
+
+        let features_str = if features.is_empty() {
+            "basic".to_string()
+        } else {
+            features.join(", ")
+        };
+
+        format!("{} ({} tokens): {}", self.model, self.context_size, features_str)
+    }
+}
+
+/// Global cache for provider capabilities (provider_name::model -> capabilities)
+static CAPABILITY_CACHE: Lazy<RwLock<FxHashMap<CompactStr, ProviderCapabilities>>> =
+    Lazy::new(|| RwLock::new(FxHashMap::default()));
+
+/// Extract and cache provider capabilities for a given provider and model
+pub fn get_cached_capabilities(provider: &dyn LLMProvider, model: &str) -> ProviderCapabilities {
+    let cache_key = format_compact!("{}::{}", provider.name(), model);
+
+    // Check if already cached
+    if let Ok(cache) = CAPABILITY_CACHE.read()
+        && let Some(caps) = cache.get(&cache_key)
+    {
+        return caps.clone();
+    }
+
+    // Compute capabilities
+    let caps = ProviderCapabilities::detect(provider, model);
+
+    // Cache for future use
+    if let Ok(mut cache) = CAPABILITY_CACHE.write() {
+        cache.insert(cache_key, caps.clone());
+    }
+
+    caps
+}
+
+/// Universal LLM provider trait
+#[async_trait]
+pub trait LLMProvider: Send + Sync {
+    /// Provider name (e.g., "gemini", "openai", "anthropic")
+    fn name(&self) -> &str;
+
+    /// The canonical backend kind for this provider.
+    ///
+    /// Defaults to matching on [`name()`](LLMProvider::name) against the
+    /// well-known provider names. Providers should override this when their
+    /// name does not match the canonical mapping (e.g., dynamic names).
+    fn backend_kind(&self) -> BackendKind {
+        match self.name() {
+            "gemini" => BackendKind::Gemini,
+            "openai" => BackendKind::OpenAI,
+            "anthropic" => BackendKind::Anthropic,
+            "deepseek" => BackendKind::DeepSeek,
+            "meta" => BackendKind::Meta,
+            "mistral" => BackendKind::Mistral,
+            "openrouter" => BackendKind::OpenRouter,
+            "ollama" => BackendKind::Ollama,
+            "llamacpp" => BackendKind::LlamaCpp,
+            "zai" => BackendKind::ZAI,
+            "moonshot" => BackendKind::Moonshot,
+            "huggingface" => BackendKind::HuggingFace,
+            "minimax" => BackendKind::Minimax,
+            "mimo" => BackendKind::MiMo,
+            "opencode-zen" => BackendKind::OpenCodeZen,
+            "opencode-go" => BackendKind::OpenCodeGo,
+            "qwen" => BackendKind::Qwen,
+            "stepfun" => BackendKind::StepFun,
+            "evolink" => BackendKind::Evolink,
+            "poolside" => BackendKind::Poolside,
+            "nvidia" => BackendKind::Nvidia,
+            "merge-gateway" => BackendKind::MergeGateway,
+            _ => BackendKind::OpenAI,
+        }
+    }
+
+    /// Whether the provider has native streaming support
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    /// Whether the provider can service non-streaming generation requests for the model.
+    fn supports_non_streaming(&self, _model: &str) -> bool {
+        true
+    }
+
+    /// Whether the provider surfaces structured reasoning traces for the given model
+    fn supports_reasoning(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the provider accepts configurable reasoning effort for the model
+    fn supports_reasoning_effort(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Provider/model-specific sampling parameter overrides.
+    ///
+    /// Custom-provider profiles may pin exact sampling values per model; every
+    /// field defaults to `None`, meaning the agent loop's global config value
+    /// applies unchanged.
+    fn sampling_overrides(&self, _model: &str) -> SamplingOverrides {
+        SamplingOverrides::default()
+    }
+
+    /// Whether the provider supports structured tool calling for the given model
+    fn supports_tools(&self, _model: &str) -> bool {
+        true
+    }
+
+    /// Whether the provider understands parallel tool configuration payloads
+    fn supports_parallel_tool_config(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the provider supports structured output (JSON schema guarantees)
+    fn supports_structured_output(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the provider supports prompt/context caching
+    fn supports_context_caching(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the provider supports vision (image analysis) for given model
+    fn supports_vision(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the provider supports Responses API server-side compaction.
+    fn supports_responses_compaction(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the request path can enforce a provider-native `allowed_tools` subset.
+    fn supports_native_allowed_tools(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the provider supports provider-native context editing such as
+    /// tool-result clearing.
+    fn supports_context_edits(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the selected provider/model can carry Anthropic's native
+    /// turn-scoped system-message lifecycle field on the wire.
+    ///
+    /// This is intentionally narrower than [`Self::supports_context_edits`]: a
+    /// provider can expose Anthropic-shaped requests without supporting the
+    /// `clear_at` field, and a provider name does not necessarily identify the
+    /// wire protocol for every model. The runtime keeps the typed marker in
+    /// canonical history either way, translating it to an ordinary system or
+    /// history directive when this capability is false.
+    fn supports_turn_scoped_system_messages(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the provider supports the interactive manual `/compact` command path.
+    ///
+    /// This is narrower than general Responses compaction support and may exclude
+    /// compatible endpoints that do not match Diapason's native OpenAI UX contract.
+    fn supports_manual_openai_compaction(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Whether the provider supports threshold-triggered inline compaction via
+    /// request fields (Anthropic `compact_20260112`).
+    ///
+    /// This is distinct from [`supports_responses_compaction`](LLMProvider::supports_responses_compaction),
+    /// which is overloaded: OpenAI-compatible endpoints report it for their
+    /// standalone `/responses/compact` endpoint while Anthropic reports it for
+    /// inline compaction. Only the latter can be driven through `generate` with a
+    /// `compact_20260112` context-management edit, so the unified compaction
+    /// dispatch uses this method (not the overloaded flag) to pick the
+    /// `NativeInline` strategy and avoid sending an Anthropic-specific payload to
+    /// an OpenAI-compatible endpoint (which would only be rejected and fall back
+    /// to local summarization anyway).
+    fn supports_native_inline_compaction(&self, _model: &str) -> bool {
+        false
+    }
+
+    /// Explain why the `--native-only` manual `/compact` path is unavailable.
+    ///
+    /// This message only surfaces when the user explicitly passes `--native-only`
+    /// and the provider does not expose a native server-side compaction endpoint.
+    /// The plain `/compact` command is provider-agnostic and always falls back to
+    /// local summarization, so it is never refused on capability grounds.
+    fn manual_openai_compaction_unavailable_message(&self, model: &str) -> String {
+        format!(
+            "`--native-only` `/compact` requires a provider that exposes a native server-side compaction endpoint, which this provider does not. Active provider/model: {} / {}. Run `/compact` without `--native-only` to compact via the universal local summarization fallback.",
+            self.name(),
+            model,
+        )
+    }
+
+    /// Get the effective context window size for a model
+    fn effective_context_size(&self, _model: &str) -> usize {
+        // Default to 128k context window (common baseline)
+        128_000
+    }
+
+    /// Compact conversation history using provider-native Responses `/compact`
+    /// support when available.
+    async fn compact_history(&self, _model: &str, _history: &[Message]) -> Result<Vec<Message>, LLMError> {
+        Err(LLMError::Provider {
+            message: "Conversation compaction is not supported by this provider".to_string(),
+            metadata: None,
+        })
+    }
+
+    /// Compact conversation history with standalone Responses compaction options.
+    async fn compact_history_with_options(
+        &self,
+        _model: &str,
+        _history: &[Message],
+        _options: &ResponsesCompactionOptions,
+    ) -> Result<Vec<Message>, LLMError> {
+        Err(LLMError::Provider {
+            message: "manual OpenAI compaction is not supported by this provider".to_string(),
+            metadata: None,
+        })
+    }
+
+    /// Generate completion
+    async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError>;
+
+    /// Stream completion (optional)
+    async fn stream(&self, request: LLMRequest) -> Result<LLMStream, LLMError> {
+        // Default implementation falls back to non-streaming
+        let response = self.generate(request).await?;
+        let stream = try_stream! {
+            yield LLMStreamEvent::Completed { response: Box::new(response) };
+        };
+        Ok(Box::pin(stream))
+    }
+
+    /// Normalized streaming contract layered on top of the legacy provider stream.
+    async fn stream_normalized(&self, request: LLMRequest) -> Result<LLMNormalizedStream, LLMError> {
+        let mut legacy_stream = self.stream(request).await?;
+        let stream = try_stream! {
+            while let Some(event) = futures::StreamExt::next(&mut legacy_stream).await {
+                for normalized in event?.into_normalized() {
+                    yield normalized;
+                }
+            }
+        };
+        Ok(Box::pin(stream))
+    }
+
+    /// Provider-specific streaming path that can service interactive runtime
+    /// requests while the stream is active. Copilot uses this to bridge ACP
+    /// tool calls and permission prompts back into Diapason's turn runtime.
+    #[cfg(feature = "copilot")]
+    fn start_copilot_prompt_session<'a>(
+        &'a self,
+        _request: LLMRequest,
+        _tools: &'a [super::ToolDefinition],
+    ) -> Option<crate::copilot::CopilotPromptSessionFuture<'a>> {
+        None
+    }
+
+    /// Get supported models
+    fn supported_models(&self) -> Vec<String>;
+
+    /// Fetch account balance for this provider, if supported.
+    async fn get_balance(&self) -> Result<Option<diapason_commons::llm::BalanceInfo>, LLMError> {
+        Ok(None)
+    }
+
+    /// Validate request for this provider
+    fn validate_request(&self, request: &LLMRequest) -> Result<(), LLMError>;
+}

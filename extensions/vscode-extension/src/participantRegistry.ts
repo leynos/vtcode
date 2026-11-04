@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { ChatParticipant, ParticipantContext } from "./types/participant";
 
 /**
- * Registry for managing VT Code chat participants
+ * Registry for managing Diapason chat participants
  */
 export class ParticipantRegistry {
     private participants = new Map<string, ChatParticipant>();

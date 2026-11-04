@@ -1,12 +1,12 @@
 # Granular Permissions
 
-VT Code uses explicit permission decisions instead of session permission
+Diapason uses explicit permission decisions instead of session permission
 states. Primary agents and subagents carry their own local policy, and global
 `[permissions]` rules can still provide workspace-wide ceilings and prompts.
 
 ## Agent Permission Schema
 
-Every VT Code-native agent spec must provide `permissions.default`. Optional
+Every Diapason-native agent spec must provide `permissions.default`. Optional
 rule buckets are evaluated in this order: `deny`, `ask`, `auto`, `allow`, then
 `default`.
 
@@ -27,12 +27,12 @@ permissions:
 Allowed default decisions are `ask`, `allow`, `auto`, and `deny`.
 
 `permissions.auto` means classifier-backed review. Matching tool calls are
-reviewed by VT Code's permission reviewer; they are not treated as unrestricted
-execution.
+reviewed by Diapason's permission reviewer; they are not treated as
+unrestricted execution.
 
 ## Global Rules
 
-The top-level `[permissions]` table in `vtcode.toml` defines workspace-wide
+The top-level `[permissions]` table in `config.toml` defines workspace-wide
 rule ceilings and prompts:
 
 ```toml
@@ -68,12 +68,12 @@ trusted_git_orgs = []
 trusted_services = []
 ```
 
-After repeated classifier denials, VT Code falls back to manual prompts where
+After repeated classifier denials, Diapason falls back to manual prompts where
 an interactive prompt is possible.
 
 ## Rule Grammar
 
-`allow`, `ask`, `auto`, and `deny` accept exact VT Code tool ids and richer
+`allow`, `ask`, `auto`, and `deny` accept exact Diapason tool ids and richer
 rule grammar:
 
 - `exec_command` or `exec_command(cargo check *)`
@@ -82,7 +82,7 @@ rule grammar:
 - `code_search`
 - `WebFetch(domain:example.com)`
 - `mcp__context7`, `mcp__context7__*`, `mcp__context7__search-docs`
-- Exact VT Code tool ids such as `exec_command` or `apply_patch`
+- Exact Diapason tool ids such as `exec_command` or `apply_patch`
 
 ## Path Matching
 

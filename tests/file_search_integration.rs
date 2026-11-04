@@ -5,7 +5,7 @@
 //! Integration tests for file search bridge integration with grep_file.rs
 //!
 //! Phase 2C: Tool Integration Testing
-//! Tests the integration of vtcode-indexer::file_search into existing tools
+//! Tests the integration of diapason-indexer::file_search into existing tools
 
 #[cfg(test)]
 mod file_search_integration_tests {
@@ -15,7 +15,7 @@ mod file_search_integration_tests {
 
     #[test]
     fn test_file_search_config_builder() {
-        use vtcode_core::tools::file_search_bridge::FileSearchConfig;
+        use diapason_core::tools::file_search_bridge::FileSearchConfig;
 
         let config = FileSearchConfig::new("test".to_string(), PathBuf::from("."))
             .exclude("target/**")
@@ -33,7 +33,7 @@ mod file_search_integration_tests {
 
     #[test]
     fn test_file_search_config_defaults() {
-        use vtcode_core::tools::file_search_bridge::FileSearchConfig;
+        use diapason_core::tools::file_search_bridge::FileSearchConfig;
 
         let config = FileSearchConfig::new("search_pattern".to_string(), PathBuf::from("src"));
 
@@ -47,8 +47,8 @@ mod file_search_integration_tests {
 
     #[test]
     fn test_file_search_in_current_directory() {
+        use diapason_core::tools::file_search_bridge;
         use std::panic;
-        use vtcode_core::tools::file_search_bridge;
 
         let config = file_search_bridge::FileSearchConfig::new(
             "Cargo".to_string(),
@@ -74,7 +74,7 @@ mod file_search_integration_tests {
 
     #[test]
     fn test_file_search_cancellation() {
-        use vtcode_core::tools::file_search_bridge;
+        use diapason_core::tools::file_search_bridge;
 
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let cancel_flag_clone = cancel_flag.clone();
@@ -126,7 +126,7 @@ mod file_search_integration_tests {
 
     #[test]
     fn test_grep_search_manager_new() {
-        use vtcode_core::tools::grep_file::GrepSearchManager;
+        use diapason_core::tools::grep_file::GrepSearchManager;
 
         let _manager = GrepSearchManager::new(PathBuf::from("."));
         // Just verify it can be created without panicking
@@ -134,8 +134,8 @@ mod file_search_integration_tests {
 
     #[test]
     fn test_grep_search_manager_enumerate_files() {
+        use diapason_core::tools::grep_file::GrepSearchManager;
         use std::panic;
-        use vtcode_core::tools::grep_file::GrepSearchManager;
 
         let manager = GrepSearchManager::new(PathBuf::from("."));
 
@@ -159,7 +159,7 @@ mod file_search_integration_tests {
 
     #[test]
     fn test_grep_search_manager_list_all_files() {
-        use vtcode_core::tools::grep_file::GrepSearchManager;
+        use diapason_core::tools::grep_file::GrepSearchManager;
 
         let manager = GrepSearchManager::new(PathBuf::from("."));
 

@@ -1,6 +1,6 @@
 //! File search service for Zed extension
 //!
-//! Integrates vtcode-indexer::file_search with Zed's file picker and quick-open features.
+//! Integrates diapason-indexer::file_search with Zed's file picker and quick-open features.
 //! Provides async, cancellable file search with fuzzy matching and gitignore support.
 
 use std::path::PathBuf;

@@ -1,0 +1,46 @@
+//! Shared markdown rendering types.
+//!
+//! The actual rendering implementation lives in `diapason-ui`.  These structs
+//! define the output format so that `diapason-core` can work with rendered
+//! markdown lines regardless of whether the TUI crate is compiled in.
+
+use anstyle::Style;
+
+/// A styled segment inside a rendered markdown line.
+#[derive(Clone, Debug)]
+pub struct MarkdownSegment {
+    style: Style,
+    text: String,
+    link_target: Option<String>,
+}
+
+/// A single rendered markdown line made up of styled segments.
+#[derive(Clone, Debug, Default)]
+pub struct MarkdownLine {
+    segments: Vec<MarkdownSegment>,
+}
+
+impl MarkdownLine {
+    pub fn is_empty(&self) -> bool {
+        self.segments.iter().all(|segment| segment.text.trim().is_empty())
+    }
+}
+
+/// Options for the markdown rendering pipeline.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RenderMarkdownOptions {
+    preserve_code_indentation: bool,
+    disable_code_block_table_reparse: bool,
+    /// Available content width for tables. Headered tables use their intrinsic
+    /// column widths when they fit; otherwise they fall back to labeled,
+    /// wrapped blocks. Headerless tables retain their table layout. Only
+    /// effective in TUI mode.
+    table_max_width: Option<usize>,
+}
+
+/// A syntax-highlighted text segment.
+#[derive(Clone, Debug)]
+pub struct HighlightedSegment {
+    style: Style,
+    text: String,
+}

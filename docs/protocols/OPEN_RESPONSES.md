@@ -4,19 +4,19 @@
 src="https://img.shields.io/badge/Open%20Responses-Conformant-4CAF50?style=flat-square"
 alt="Open Responses Conformant"/></a>
 
-VT Code conforms to the [Open Responses](https://www.openresponses.org/)
+Diapason conforms to the [Open Responses](https://www.openresponses.org/)
 specification, an open, vendor-neutral standard for large language model APIs.
 This enables interoperable LLM workflows across different providers.
 
 ## Conformance Overview
 
-VT Code provides full conformance with the Open Responses specification in two
+Diapason provides full conformance with the Open Responses specification in two
 ways:
 
-1. **Producer Conformance**: VT Code can emit Open Responses-conformant events
+1. **Producer Conformance**: Diapason can emit Open Responses-conformant events
     and objects from its internal agent loop, allowing external tools to
-    monitor and interact with VT Code using a standardized protocol.
-2. **Consumer Conformance**: VT Code can use any Open Responses-compatible API
+    monitor and interact with Diapason using a standardized protocol.
+2. **Consumer Conformance**: Diapason can use any Open Responses-compatible API
     as a backend provider, enabling seamless switching between different LLM
     providers that support the standard.
 
@@ -34,8 +34,8 @@ interoperable LLM interfaces** based on the OpenAI Responses API. It defines:
 ## Implementation Details
 
 The Open Responses implementation is located in
-`crates/codegen/vtcode-core/src/open_responses/` (for production) and
-`crates/codegen/vtcode-core/src/llm/providers/openresponses/` (for
+`crates/codegen/diapason-core/src/open_responses/` (for production) and
+`crates/codegen/diapason-core/src/llm/providers/openresponses/` (for
 consumption). It provides:
 
 - **Unified Item Types**: State machine-based items with defined lifecycle
@@ -45,11 +45,11 @@ consumption). It provides:
 - **Response Objects**: Standardized structure per the specification
 - **Error Handling**: Structured errors with type, code, param, and message
   fields
-- **Extension Points**: Support for VT Code-specific item types and events
+- **Extension Points**: Support for Diapason-specific item types and events
 
 ## Conformance Levels
 
-VT Code implements the following core components of the specification:
+Diapason implements the following core components of the specification:
 
 ### 1. Items as State Machines
 
@@ -68,7 +68,7 @@ All items follow a state machine model with defined lifecycle states:
 ```
 
 ```rust
-use vtcode_core::ItemStatus;
+use diapason_core::ItemStatus;
 
 let status = ItemStatus::InProgress;
 assert!(!status.is_terminal());
@@ -94,7 +94,7 @@ Streaming is modeled as semantic events, not raw text deltas:
 | `response.failed`            | Response failed with error     |
 
 ```rust
-use vtcode_core::{ResponseStreamEvent, Response, VecStreamEmitter, StreamEventEmitter};
+use diapason_core::{ResponseStreamEvent, Response, VecStreamEmitter, StreamEventEmitter};
 
 let mut emitter = VecStreamEmitter::new();
 let response = Response::new("resp_123", "gpt-5");
@@ -109,7 +109,7 @@ assert_eq!(events.len(), 3);
 
 ### Output Item Types
 
-VT Code supports these Open Responses item types:
+Diapason supports these Open Responses item types:
 
 | Type                   | Description                      |
 | ---------------------- | -------------------------------- |
@@ -117,10 +117,10 @@ VT Code supports these Open Responses item types:
 | `reasoning`            | Model's internal thought process |
 | `function_call`        | Tool/function invocation request |
 | `function_call_output` | Tool execution result            |
-| `custom`               | VT Code-specific extensions      |
+| `custom`               | Diapason-specific extensions     |
 
 ```rust
-use vtcode_core::{OutputItem, MessageRole, ContentPart, ItemStatus};
+use diapason_core::{OutputItem, MessageRole, ContentPart, ItemStatus};
 
 // Create an assistant message
 let message = OutputItem::message(
@@ -142,7 +142,7 @@ let function_call = OutputItem::function_call(
 The `Response` object follows the Open Responses specification:
 
 ```rust
-use vtcode_core::{OpenResponse as Response, ResponseStatus};
+use diapason_core::{OpenResponse as Response, ResponseStatus};
 
 let mut response = Response::new("resp_123", "gpt-5-mini");
 assert_eq!(response.status, ResponseStatus::InProgress);
@@ -166,19 +166,19 @@ Key fields:
 - `usage`: Token usage statistics
 - `error`: Error details (if failed)
 
-## Bridging VT Code Events
+## Bridging Diapason Events
 
-The `ResponseBuilder` bridges VT Code's internal `ThreadEvent` system to Open
+The `ResponseBuilder` bridges Diapason's internal `ThreadEvent` system to Open
 Responses:
 
 ```rust
-use vtcode_core::{ResponseBuilder, VecStreamEmitter, StreamEventEmitter};
-use vtcode_exec_events::{ThreadEvent, ThreadStartedEvent, TurnCompletedEvent, Usage};
+use diapason_core::{ResponseBuilder, VecStreamEmitter, StreamEventEmitter};
+use diapason_exec_events::{ThreadEvent, ThreadStartedEvent, TurnCompletedEvent, Usage};
 
 let mut builder = ResponseBuilder::new("gpt-5");
 let mut emitter = VecStreamEmitter::new();
 
-// Process VT Code events
+// Process Diapason events
 builder.process_event(
     &ThreadEvent::ThreadStarted(ThreadStartedEvent {
         thread_id: "thread_1".to_string(),
@@ -192,7 +192,7 @@ let response = builder.response();
 
 ### Event Mapping
 
-| VT Code Event   | Open Responses Event                                      |
+| Diapason Event  | Open Responses Event                                      |
 | --------------- | --------------------------------------------------------- |
 | `ThreadStarted` | `response.created` + `response.in_progress`               |
 | `TurnCompleted` | `response.completed`                                      |
@@ -203,24 +203,24 @@ let response = builder.response();
 
 ### Item Type Mapping
 
-| VT Code Item           | Open Responses Type                         |
-| ---------------------- | ------------------------------------------- |
-| `AgentMessageItem`     | `message` (role: assistant)                 |
-| `ReasoningItem`        | `reasoning`                                 |
-| `ToolInvocationItem`   | `function_call`                             |
-| `ToolOutputItem`       | `function_call_output`                      |
-| `CommandExecutionItem` | `custom` (type: `vtcode:command_execution`) |
-| `McpToolCallItem`      | `function_call`                             |
-| `FileChangeItem`       | `custom` (type: `vtcode:file_change`)       |
-| `WebSearchItem`        | `custom` (type: `vtcode:web_search`)        |
-| `ErrorItem`            | `custom` (type: `vtcode:error`)             |
+| Diapason Item          | Open Responses Type                           |
+| ---------------------- | --------------------------------------------- |
+| `AgentMessageItem`     | `message` (role: assistant)                   |
+| `ReasoningItem`        | `reasoning`                                   |
+| `ToolInvocationItem`   | `function_call`                               |
+| `ToolOutputItem`       | `function_call_output`                        |
+| `CommandExecutionItem` | `custom` (type: `diapason:command_execution`) |
+| `McpToolCallItem`      | `function_call`                               |
+| `FileChangeItem`       | `custom` (type: `diapason:file_change`)       |
+| `WebSearchItem`        | `custom` (type: `diapason:web_search`)        |
+| `ErrorItem`            | `custom` (type: `diapason:error`)             |
 
 ## Error Handling
 
 Structured errors follow the Open Responses specification:
 
 ```rust
-use vtcode_core::{OpenResponseError, OpenResponseErrorType, OpenResponseErrorCode};
+use diapason_core::{OpenResponseError, OpenResponseErrorType, OpenResponseErrorCode};
 
 // Create an error with type and message
 let error = OpenResponseError::invalid_param("model", "Invalid model ID")
@@ -240,18 +240,18 @@ Error types:
 
 ## Extension Points
 
-VT Code-specific extensions use the `vtcode:` prefix:
+Diapason-specific extensions use the `diapason:` prefix:
 
 ```rust
-use vtcode_core::open_responses::{CustomItem, is_valid_extension_type};
+use diapason_core::open_responses::{CustomItem, is_valid_extension_type};
 
 // Validate extension type naming
-assert!(is_valid_extension_type("vtcode:file_change"));
+assert!(is_valid_extension_type("diapason:file_change"));
 assert!(is_valid_extension_type("acme:search_result"));
 assert!(!is_valid_extension_type("file_change")); // Missing prefix
 
 // Create a custom item
-let custom = CustomItem::vtcode(
+let custom = CustomItem::diapason(
     "custom_1",
     "file_change",
     serde_json::json!({
@@ -259,7 +259,7 @@ let custom = CustomItem::vtcode(
         "kind": "update",
     }),
 );
-assert_eq!(custom.custom_type, "vtcode:file_change");
+assert_eq!(custom.custom_type, "diapason:file_change");
 ```
 
 ## Usage Statistics
@@ -267,7 +267,7 @@ assert_eq!(custom.custom_type, "vtcode:file_change");
 Token usage follows the Open Responses format:
 
 ```rust
-use vtcode_core::{OpenUsage, InputTokensDetails};
+use diapason_core::{OpenUsage, InputTokensDetails};
 
 let usage = OpenUsage {
     input_tokens: 1000,
@@ -281,8 +281,8 @@ let usage = OpenUsage {
     output_tokens_details: None,
 };
 
-// Convert from VT Code's internal usage
-use vtcode_exec_events::Usage as ExecUsage;
+// Convert from Diapason's internal usage
+use diapason_exec_events::Usage as ExecUsage;
 let exec_usage = ExecUsage {
     input_tokens: 1000,
     cached_input_tokens: 500,
@@ -309,7 +309,7 @@ response.created
 
 ## Configuration
 
-Enable Open Responses in your `vtcode.toml`:
+Enable Open Responses in your `config.toml`:
 
 ```toml
 [agent.open_responses]
@@ -321,7 +321,7 @@ enabled = true
 # (response.created, response.output_item.added, response.output_text.delta, etc.)
 emit_events = true
 
-# Include VT Code extension items (vtcode:file_change, vtcode:web_search, etc.)
+# Include Diapason extension items (diapason:file_change, diapason:web_search, etc.)
 include_extensions = true
 
 # Map internal tool calls to Open Responses function_call items
@@ -333,30 +333,30 @@ include_reasoning = true
 
 ### Configuration Options
 
-| Option               | Default | Description                              |
-| -------------------- | ------- | ---------------------------------------- |
-| `enabled`            | `false` | Enable the Open Responses layer (opt-in) |
-| `emit_events`        | `true`  | Emit semantic streaming events           |
-| `include_extensions` | `true`  | Include VT Code-specific extension items |
-| `map_tool_calls`     | `true`  | Map tool calls to `function_call` items  |
-| `include_reasoning`  | `true`  | Include reasoning/thinking items         |
+| Option               | Default | Description                               |
+| -------------------- | ------- | ----------------------------------------- |
+| `enabled`            | `false` | Enable the Open Responses layer (opt-in)  |
+| `emit_events`        | `true`  | Emit semantic streaming events            |
+| `include_extensions` | `true`  | Include Diapason-specific extension items |
+| `map_tool_calls`     | `true`  | Map tool calls to `function_call` items   |
+| `include_reasoning`  | `true`  | Include reasoning/thinking items          |
 
 ### Session output path
 
 Interactive Open Responses exports are derived from the canonical session
 stream. When file output is enabled, the JSONL stream is written to
-`<workspace>/.vtcode/sessions/<session_id>/derived/open-responses.jsonl` and
-the authoritative source remains
-`<workspace>/.vtcode/sessions/<session_id>/events.jsonl`.
+`<state>/workspaces/<workspace-hash>/sessions/<session_id>/derived/open-responses.jsonl`
+and the authoritative source remains
+`<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`.
 
-There is no default global Open Responses artifact. Existing files under legacy
-`VTCODE_HOME/sessions/` files remain untouched.
+There is no default separate Open Responses artifact; exports are derived
+beside the workspace-scoped canonical session stream.
 
 ### Programmatic Integration
 
 ```rust
-use vtcode_core::{OpenResponsesIntegration, OpenResponsesCallback};
-use vtcode_config::OpenResponsesConfig;
+use diapason_core::{OpenResponsesIntegration, OpenResponsesCallback};
+use diapason_config::OpenResponsesConfig;
 use std::sync::{Arc, Mutex};
 
 // Create integration with config
@@ -375,7 +375,7 @@ integration.set_callback(callback);
 // Start a response session
 integration.start_response("gpt-5");
 
-// Process VT Code events (automatically converts to Open Responses)
+// Process Diapason events (automatically converts to Open Responses)
 // integration.process_event(&thread_event);
 
 // Get the final response
@@ -386,7 +386,7 @@ if let Some(response) = integration.finish_response() {
 
 ## Compliance Testing
 
-VT Code includes a comprehensive compliance test suite to ensure strict
+Diapason includes a comprehensive compliance test suite to ensure strict
 adherence to the Open Responses specification. This suite validates:
 
 - **Object Validity**: Verifies that `Response` and `Request` objects contain

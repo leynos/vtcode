@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VT Code Release Library — shared helpers for release.sh
+# Diapason Release Library — shared helpers for release.sh
 # Source: source "$(dirname "${BASH_SOURCE[0]}")/release-lib.sh"
 
 [ -z "${SCRIPT_DIR:-}" ] && SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +24,7 @@ get_github_username() {
 	local email=$1
 	case "$email" in
 	vinhnguyen*) echo "vinhnx" ;;
-	noreply@vtcode.com) echo "vtcode-release-bot" ;;
+	noreply@diapason.com) echo "diapason-release-bot" ;;
 	*)
 		local username="${email%%@*}"
 		echo "$username"
@@ -133,7 +133,7 @@ clean_commit_message() {
 generate_contributors_section() {
 	local commits_range=$1
 	local contributors
-	contributors=$(git log "$commits_range" --no-merges --format="%aN" 2>/dev/null | sort -u | grep -v "^$" | grep -v "vtcode-release-bot" || true)
+	contributors=$(git log "$commits_range" --no-merges --format="%aN" 2>/dev/null | sort -u | grep -v "^$" | grep -v "diapason-release-bot" || true)
 	if [[ -n "$contributors" ]]; then
 		echo ""
 		echo "**Contributors**"
@@ -234,9 +234,9 @@ update_changelog_from_commits() {
 			version_section=$(echo "$changelog_content" | awk '/^## /{if(++n==2)exit} n==1' 2>/dev/null || true)
 			local full_changelog_url
 			if [[ -n "$previous_version" ]]; then
-				full_changelog_url="https://github.com/vinhnx/vtcode/compare/${previous_version}...${version}"
+				full_changelog_url="https://github.com/leynos/vtcode/compare/${previous_version}...${version}"
 			else
-				full_changelog_url="https://github.com/vinhnx/vtcode/releases/tag/${version}"
+				full_changelog_url="https://github.com/leynos/vtcode/releases/tag/${version}"
 			fi
 			{
 				echo "## What's Changed"
@@ -284,10 +284,10 @@ update_changelog_from_commits() {
 	fi
 	git add CHANGELOG.md
 	if ! git diff --cached --quiet; then
-		GIT_AUTHOR_NAME="vtcode-release-bot" \
-			GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-			GIT_COMMITTER_NAME="vtcode-release-bot" \
-			GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
+		GIT_AUTHOR_NAME="diapason-release-bot" \
+			GIT_AUTHOR_EMAIL="noreply@diapason.com" \
+			GIT_COMMITTER_NAME="diapason-release-bot" \
+			GIT_COMMITTER_EMAIL="noreply@diapason.com" \
 			git commit -m "docs: update changelog for $version [skip ci]"
 		print_success "Changelog updated and committed for version $version"
 	else
@@ -319,9 +319,9 @@ update_changelog_builtin() {
 		echo "$structured_changelog"
 		echo ""
 		if [[ -n "$previous_tag" ]]; then
-			echo "**Full Changelog**: https://github.com/vinhnx/vtcode/compare/${previous_tag}...${version}"
+			echo "**Full Changelog**: https://github.com/leynos/vtcode/compare/${previous_tag}...${version}"
 		else
-			echo "**Full Changelog**: https://github.com/vinhnx/vtcode/releases/tag/${version}"
+			echo "**Full Changelog**: https://github.com/leynos/vtcode/releases/tag/${version}"
 		fi
 	} >"$RELEASE_NOTES_FILE"
 	if [[ "$dry_run_flag" == 'true' ]]; then
@@ -349,19 +349,19 @@ update_changelog_builtin() {
 		fi
 	else
 		{
-			printf '%s\n' "# Changelog - vtcode"
+			printf '%s\n' "# Changelog - diapason"
 			printf '%s\n' ""
-			printf '%s\n' "All notable changes to vtcode will be documented in this file."
+			printf '%s\n' "All notable changes to diapason will be documented in this file."
 			printf '%s\n' ""
 			printf '%b\n' "$changelog_entry"
 		} >CHANGELOG.md
 	fi
 	git add CHANGELOG.md
 	if ! git diff --cached --quiet; then
-		GIT_AUTHOR_NAME="vtcode-release-bot" \
-			GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-			GIT_COMMITTER_NAME="vtcode-release-bot" \
-			GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
+		GIT_AUTHOR_NAME="diapason-release-bot" \
+			GIT_AUTHOR_EMAIL="noreply@diapason.com" \
+			GIT_COMMITTER_NAME="diapason-release-bot" \
+			GIT_COMMITTER_EMAIL="noreply@diapason.com" \
 			git commit -m "docs: update changelog for $version [skip ci]"
 		print_success "Changelog updated and committed for version $version"
 	else
@@ -406,171 +406,14 @@ trigger_docs_rs_rebuild() {
 	fi
 	print_distribution "Triggering docs.rs rebuild for version $version..."
 	local crates=(
-		vtcode-commons vtcode-auth vtcode-exec-events vtcode-webmcp vtcode-memory vtcode-macros
-		vtcode-config vtcode-indexer vtcode-bash-runner vtcode-utility-tool-specs vtcode-eval
-		vtcode-safety vtcode-a2a vtcode-llm vtcode-skills vtcode-agent-plugins vtcode-ui vtcode-mcp
-		vtcode-core vtcode-acp vtcode
+		diapason-commons diapason-auth diapason-exec-events diapason-webmcp diapason-memory diapason-macros
+		diapason-config diapason-indexer diapason-bash-runner diapason-utility-tool-specs diapason-eval
+		diapason-safety diapason-a2a diapason-llm diapason-skills diapason-agent-plugins diapason-ui diapason-mcp
+		diapason-core diapason-acp diapason
 	)
 	for crate in "${crates[@]}"; do
 		curl -s -o /dev/null "https://docs.rs/${crate}/${version}" || true
 	done
-}
-
-# ── Homebrew ─────────────────────────────────────────────────────────
-
-update_homebrew_formula_file() {
-	local formula_path=$1
-	local version=$2
-	local x86_64_macos_sha=$3
-	local aarch64_macos_sha=$4
-	local aarch64_linux_sha=${5:-}
-	FORMULA_PATH="$formula_path" \
-		FORMULA_VERSION="$version" \
-		FORMULA_X86_64_MACOS_SHA="$x86_64_macos_sha" \
-		FORMULA_AARCH64_MACOS_SHA="$aarch64_macos_sha" \
-		FORMULA_AARCH64_LINUX_SHA="$aarch64_linux_sha" \
-		python3 <<'PYTHON_SCRIPT'
-import os
-import re
-from pathlib import Path
-
-formula_path = Path(os.environ["FORMULA_PATH"])
-version = os.environ["FORMULA_VERSION"]
-x86_64_macos_sha = os.environ["FORMULA_X86_64_MACOS_SHA"]
-aarch64_macos_sha = os.environ["FORMULA_AARCH64_MACOS_SHA"]
-aarch64_linux_sha = os.environ.get("FORMULA_AARCH64_LINUX_SHA", "")
-
-content = formula_path.read_text()
-content = re.sub(r'version\s+"[^"]*"', f'version "{version}"', content)
-content = re.sub(
-    r'(aarch64-apple-darwin\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-    lambda match: f'{match.group(1)}{aarch64_macos_sha}{match.group(3)}',
-    content,
-)
-content = re.sub(
-    r'(x86_64-apple-darwin\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-    lambda match: f'{match.group(1)}{x86_64_macos_sha}{match.group(3)}',
-    content,
-)
-if aarch64_linux_sha:
-    content = re.sub(
-        r'(aarch64-unknown-linux-gnu\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-        lambda match: f'{match.group(1)}{aarch64_linux_sha}{match.group(3)}',
-        content,
-    )
-
-formula_path.write_text(content)
-PYTHON_SCRIPT
-}
-
-publish_homebrew_tap() {
-	local version=$1
-	local x86_64_macos_sha=${2:-}
-	local aarch64_macos_sha=${3:-}
-	local aarch64_linux_sha=${4:-}
-	local formula_path="homebrew/vtcode.rb"
-
-	if [[ -z "$x86_64_macos_sha" ]]; then
-		x86_64_macos_sha=$(cat "dist/vtcode-$version-x86_64-apple-darwin.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-	fi
-	if [[ -z "$aarch64_macos_sha" ]]; then
-		aarch64_macos_sha=$(cat "dist/vtcode-$version-aarch64-apple-darwin.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-	fi
-	if [[ -z "$aarch64_linux_sha" ]]; then
-		aarch64_linux_sha=$(cat "dist/vtcode-$version-aarch64-unknown-linux-gnu.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-	fi
-	if [[ -z "$x86_64_macos_sha" || -z "$aarch64_macos_sha" ]]; then
-		print_info "Fetching checksums from GitHub release $version..."
-		local sha_tmp
-		sha_tmp=$(mktemp -d)
-		if gh release download "$version" --dir "$sha_tmp" --pattern "*.sha256" 2>/dev/null; then
-			if [[ -z "$x86_64_macos_sha" ]]; then
-				x86_64_macos_sha=$(cat "$sha_tmp/vtcode-$version-x86_64-apple-darwin.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-			fi
-			if [[ -z "$aarch64_macos_sha" ]]; then
-				aarch64_macos_sha=$(cat "$sha_tmp/vtcode-$version-aarch64-apple-darwin.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-			fi
-			if [[ -z "$aarch64_linux_sha" ]]; then
-				aarch64_linux_sha=$(cat "$sha_tmp/vtcode-$version-aarch64-unknown-linux-gnu.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-			fi
-		fi
-		rm -rf "$sha_tmp"
-	fi
-
-	if [[ -z "$x86_64_macos_sha" || -z "$aarch64_macos_sha" ]]; then
-		print_error "Missing macOS checksums, cannot publish Homebrew tap"
-		return 1
-	fi
-
-	print_info "Updating local Homebrew formula at $formula_path..."
-	if ! update_homebrew_formula_file "$formula_path" "$version" "$x86_64_macos_sha" "$aarch64_macos_sha" "$aarch64_linux_sha"; then
-		print_error "Failed to update local Homebrew formula"
-		return 1
-	fi
-
-	if git diff --quiet -- "$formula_path"; then
-		print_info "Local Homebrew formula is already up to date"
-	else
-		git add "$formula_path"
-		if GIT_AUTHOR_NAME="vtcode-release-bot" \
-			GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-			GIT_COMMITTER_NAME="vtcode-release-bot" \
-			GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
-			git commit -m "chore: update homebrew formula to $version [skip ci]"; then
-			print_success "Local Homebrew formula updated and committed"
-			if git push origin main --no-verify; then
-				print_success "Homebrew formula commit pushed to origin"
-			else
-				print_warning "Failed to push Homebrew formula commit to origin"
-			fi
-		else
-			print_warning "Failed to commit local Homebrew formula update"
-		fi
-	fi
-
-	print_info "Publishing Homebrew formula to vinhnx/homebrew-tap..."
-
-	local temp_dir
-	temp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'vtcode-homebrew')
-
-	if ! (
-		trap 'rm -rf "$temp_dir"' EXIT
-
-		local tap_token="${HOMEBREW_TAP_TOKEN:-${GITHUB_TOKEN:-}}"
-		if [[ -z "$tap_token" ]]; then
-			print_error "No token available for homebrew-tap. Set HOMEBREW_TAP_TOKEN or GITHUB_TOKEN."
-			exit 1
-		fi
-
-		local tap_repo_url="https://x-access-token:${tap_token}@github.com/vinhnx/homebrew-tap.git"
-
-		if ! git clone "$tap_repo_url" "$temp_dir" >/dev/null 2>&1; then
-			print_error "Failed to clone vinhnx/homebrew-tap"
-			exit 1
-		fi
-
-		cp "$formula_path" "$temp_dir/vtcode.rb"
-		if git -C "$temp_dir" diff --quiet -- vtcode.rb; then
-			print_info "Homebrew tap formula is already up to date"
-			exit 0
-		fi
-		git -C "$temp_dir" add vtcode.rb
-		if ! GIT_AUTHOR_NAME="vtcode-release-bot" \
-			GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-			GIT_COMMITTER_NAME="vtcode-release-bot" \
-			GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
-			git -C "$temp_dir" commit -m "Update vtcode formula to v$version"; then
-			print_error "Failed to commit Homebrew tap update"
-			exit 1
-		fi
-		if ! git -C "$temp_dir" push "$tap_repo_url" HEAD:main; then
-			print_error "Failed to push Homebrew tap update"
-			exit 1
-		fi
-		print_success "Published vtcode formula to vinhnx/homebrew-tap"
-	); then
-		return 1
-	fi
 }
 
 # ── CI ───────────────────────────────────────────────────────────────
@@ -669,14 +512,14 @@ create_and_upload_release() {
 		print_success "GitHub Release $released_version created"
 	fi
 
-	local binaries_dir="/tmp/vtcode-release-$released_version"
+	local binaries_dir="/tmp/diapason-release-$released_version"
 	mkdir -p "$binaries_dir"
 
 	# Use pre-built artefacts from dist/ (step 1 built & packaged everything there)
 	print_info "Collecting pre-built artefacts from dist/..."
-	if ls dist/vtcode-*.tar.gz dist/vtcode-*.zip 2>/dev/null >/dev/null; then
-		cp dist/vtcode-*.tar.gz "$binaries_dir/" 2>/dev/null || true
-		cp dist/vtcode-*.zip "$binaries_dir/" 2>/dev/null || true
+	if ls dist/diapason-*.tar.gz dist/diapason-*.zip 2>/dev/null >/dev/null; then
+		cp dist/diapason-*.tar.gz "$binaries_dir/" 2>/dev/null || true
+		cp dist/diapason-*.zip "$binaries_dir/" 2>/dev/null || true
 		for archive in "$binaries_dir"/*.tar.gz "$binaries_dir"/*.zip; do
 			if [[ -f "$archive" && ! -f "$archive.sha256" ]]; then
 				shasum -a 256 "$archive" >"$archive.sha256"
@@ -687,10 +530,10 @@ create_and_upload_release() {
 	# Download CI artefacts if zig wasn't available locally
 	if [[ -n "$CI_RUN_ID" ]]; then
 		print_info "Downloading CI-built binaries (run #$CI_RUN_ID)..."
-		local ci_dir="/tmp/vtcode-ci-$released_version"
+		local ci_dir="/tmp/diapason-ci-$released_version"
 		mkdir -p "$ci_dir"
 		for target in x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do
-			if gh run download "$CI_RUN_ID" --name "vtcode-${released_version}-${target}" --dir "$ci_dir" 2>/dev/null; then
+			if gh run download "$CI_RUN_ID" --name "diapason-${released_version}-${target}" --dir "$ci_dir" 2>/dev/null; then
 				mv "$ci_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
 				mv "$ci_dir"/*.zip "$binaries_dir/" 2>/dev/null || true
 				mv "$ci_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
@@ -750,12 +593,12 @@ create_and_upload_release() {
 	local x86_sha=""
 	local arm_sha=""
 	local arm_linux_sha=""
-	[[ -f "$binaries_dir/vtcode-$released_version-x86_64-apple-darwin.sha256" ]] &&
-		x86_sha=$(awk '{print $1}' "$binaries_dir/vtcode-$released_version-x86_64-apple-darwin.sha256")
-	[[ -f "$binaries_dir/vtcode-$released_version-aarch64-apple-darwin.sha256" ]] &&
-		arm_sha=$(awk '{print $1}' "$binaries_dir/vtcode-$released_version-aarch64-apple-darwin.sha256")
-	[[ -f "$binaries_dir/vtcode-$released_version-aarch64-unknown-linux-gnu.sha256" ]] &&
-		arm_linux_sha=$(awk '{print $1}' "$binaries_dir/vtcode-$released_version-aarch64-unknown-linux-gnu.sha256")
+	[[ -f "$binaries_dir/diapason-$released_version-x86_64-apple-darwin.sha256" ]] &&
+		x86_sha=$(awk '{print $1}' "$binaries_dir/diapason-$released_version-x86_64-apple-darwin.sha256")
+	[[ -f "$binaries_dir/diapason-$released_version-aarch64-apple-darwin.sha256" ]] &&
+		arm_sha=$(awk '{print $1}' "$binaries_dir/diapason-$released_version-aarch64-apple-darwin.sha256")
+	[[ -f "$binaries_dir/diapason-$released_version-aarch64-unknown-linux-gnu.sha256" ]] &&
+		arm_linux_sha=$(awk '{print $1}' "$binaries_dir/diapason-$released_version-aarch64-unknown-linux-gnu.sha256")
 
 	rm -rf "$binaries_dir"
 

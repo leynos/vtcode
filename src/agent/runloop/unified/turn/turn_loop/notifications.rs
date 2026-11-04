@@ -1,15 +1,15 @@
 //! Turn-loop completion notification helpers.
 
 use anyhow::Result;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::notifications::{CompletionStatus, NotificationEvent, send_global_notification};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::llm::provider as uni;
+use diapason_core::notifications::{CompletionStatus, NotificationEvent, send_global_notification};
 
 use super::HarnessTurnState;
 use crate::agent::runloop::unified::turn::context::TurnLoopResult;
 
 pub(super) async fn emit_turn_outcome_notification(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     working_history: &[uni::Message],
     workspace: &std::path::Path,
     harness_state: &HarnessTurnState,
@@ -53,7 +53,7 @@ pub(super) async fn emit_turn_outcome_notification(
 }
 
 async fn maybe_run_external_turn_complete_notify(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     working_history: &[uni::Message],
     workspace: &std::path::Path,
     harness_state: &HarnessTurnState,

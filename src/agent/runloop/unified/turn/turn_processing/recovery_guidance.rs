@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use vtcode_core::llm::provider as uni;
+use diapason_core::llm::provider as uni;
 
 use crate::agent::runloop::unified::run_loop_context::RecoveryMode;
 
@@ -142,8 +142,8 @@ fn push_recovery_fallback_assistant_message(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_core::llm::provider as uni;
-    use vtcode_core::llm::provider::AssistantPhase;
+    use diapason_core::llm::provider as uni;
+    use diapason_core::llm::provider::AssistantPhase;
 
     #[test]
     fn safety_message_is_non_empty_for_all_modes() {

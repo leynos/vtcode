@@ -242,7 +242,7 @@ mod tests {
         r#"
 # Test Project
 
-This is a test project for demonstrating vtcode capabilities.
+This is a test project for demonstrating diapason capabilities.
 
 ## Features
 

@@ -1,12 +1,12 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 
-suite("VT Code configuration language features", () => {
+suite("Diapason configuration language features", () => {
     suiteSetup(async () => {
         const extension = vscode.extensions.getExtension(
-            "vtcode.vtcode-companion"
+            "df12productions.diapason-companion"
         );
-        assert.ok(extension, "VT Code Companion extension not found");
+        assert.ok(extension, "Diapason Companion extension not found");
         await extension.activate();
     });
 
@@ -15,21 +15,21 @@ suite("VT Code configuration language features", () => {
             language: "toml",
             content: "[agent]\n",
         });
-        const vtcodeDocument = await vscode.languages.setTextDocumentLanguage(
+        const diapasonDocument = await vscode.languages.setTextDocumentLanguage(
             document,
-            "vtcode-config"
+            "diapason-config"
         );
-        await vscode.window.showTextDocument(vtcodeDocument);
+        await vscode.window.showTextDocument(diapasonDocument);
 
         const position = new vscode.Position(1, 0);
         const completionList =
             await vscode.commands.executeCommand<vscode.CompletionList>(
                 "vscode.executeCompletionItemProvider",
-                vtcodeDocument.uri,
+                diapasonDocument.uri,
                 position
             );
 
-        assert.ok(completionList, "Expected completions for vtcode.toml");
+        assert.ok(completionList, "Expected completions for config.toml");
         const labels = completionList?.items.map((item) =>
             typeof item.label === "string" ? item.label : item.label.label
         );
@@ -44,14 +44,14 @@ suite("VT Code configuration language features", () => {
             language: "toml",
             content: "[agent]\n",
         });
-        const vtcodeDocument = await vscode.languages.setTextDocumentLanguage(
+        const diapasonDocument = await vscode.languages.setTextDocumentLanguage(
             document,
-            "vtcode-config"
+            "diapason-config"
         );
 
         const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
             "vscode.executeHoverProvider",
-            vtcodeDocument.uri,
+            diapasonDocument.uri,
             new vscode.Position(0, 1)
         );
 
@@ -66,7 +66,7 @@ suite("VT Code configuration language features", () => {
             )
             .join("\n");
         assert.ok(
-            hoverText.includes("Core VT Code agent behaviour"),
+            hoverText.includes("Core Diapason agent behaviour"),
             "Hover text should describe agent section"
         );
     });
@@ -77,18 +77,18 @@ suite("VT Code configuration language features", () => {
             content:
                 '[agent]\nprovider = "openai"\n\n[agent.onboarding]\nenabled = true\n',
         });
-        const vtcodeDocument = await vscode.languages.setTextDocumentLanguage(
+        const diapasonDocument = await vscode.languages.setTextDocumentLanguage(
             document,
-            "vtcode-config"
+            "diapason-config"
         );
 
         const symbols = await vscode.commands.executeCommand<
             vscode.DocumentSymbol[]
-        >("vscode.executeDocumentSymbolProvider", vtcodeDocument.uri);
+        >("vscode.executeDocumentSymbolProvider", diapasonDocument.uri);
 
         assert.ok(
             symbols && symbols.length > 0,
-            "Expected document symbols for vtcode.toml"
+            "Expected document symbols for config.toml"
         );
         const symbolNames = flattenSymbols(symbols).map(
             (symbol) => symbol.name

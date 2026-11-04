@@ -1,63 +1,42 @@
-# VT Code Zed Extension - Quick Start
+# Diapason Zed Extension - Quick Start
 
-Get up and running with the VT Code extension for Zed in 5 minutes.
+Use the Diapason CLI in Zed through a custom ACP External Agent.
 
 ## 1. Install Prerequisites
 
-### VT Code CLI
+### Diapason CLI
 
-Choose your preferred installation method:
+Clone the repository and install Diapason from source:
 
 ```bash
-# Option A: With Cargo (recommended)
-cargo install vtcode
-
-# Option B: With Homebrew (macOS)
-brew install vtcode
-
-# Option C: With NPM
-npm install -g vtcode-ai
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
+cargo install --path . --locked
 ```
 
 Verify installation:
 
 ```bash
-vtcode --version
+diapason --version
 ```
 
-### Rust (for development only)
+### Rust Toolchain
 
-If you plan to build from source:
+Cargo requires the Rust toolchain to build Diapason from source:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-## 2. Install the Extension
+## 2. Load the Rust Editor Extension (Optional)
 
-### Option A: From Zed Extension Registry (Recommended)
+The Rust editor extension is separate from the ACP agent configuration. To load
+it during development, open Zed's Extensions panel, choose **Install Dev
+Extension**, and select `extensions/zed-extension` from the `diapason` checkout.
 
-1. Open Zed
-2. Open Extensions panel (Cmd/Ctrl + Shift + X)
-3. Search for "vtcode"
-4. Click "Install"
+## 3. Configure Diapason
 
-### Option B: Install as Dev Extension
-
-```bash
-# Clone this repository
-git clone https://github.com/vinhnx/vtcode.git
-cd vtcode/extensions/zed-extension
-
-# In Zed:
-# 1. Open Extensions panel (Cmd/Ctrl + Shift + X)
-# 2. Click "Install Dev Extension"
-# 3. Select the extensions/zed-extension directory
-```
-
-## 3. Configure VT Code
-
-Create a `vtcode.toml` in your workspace root:
+Create a `config.toml` in your workspace root:
 
 ```toml
 [ai]
@@ -88,37 +67,45 @@ export ANTHROPIC_API_KEY="your-api-key"
 export OPENAI_API_KEY="your-api-key"
 ```
 
-## 4. First Use
+## 4. Configure the Custom ACP Agent
+
+Open Zed's Agent Settings and add a custom agent in the user-level
+`settings.json`. Merge this entry into the existing JSON:
+
+```json
+{
+  "agent_servers": {
+    "Diapason": {
+      "type": "custom",
+      "command": "diapason",
+      "args": ["acp"],
+      "env": {
+        "DIAPASON_ACP_ENABLED": "1",
+        "DIAPASON_ACP_ZED_ENABLED": "1"
+      }
+    }
+  }
+}
+```
+
+See
+[Zed's custom External Agent documentation](https://zed.dev/docs/ai/external-agents#custom-agents).
+Zed currently deprecates extension-provided agent servers.
+
+## 5. First Use
 
 ### Test Installation
 
-1. Open a workspace with `vtcode.toml`
-2. Open the command palette (Cmd/Ctrl + Shift + P)
-3. Search for "vtcode" to see available commands
+1. Open a workspace with `config.toml`
+2. Open Zed's Agent panel
+3. Start a new thread and select **Diapason**
 
 ### Basic Workflow
 
-**Ask a Question:**
+Start a thread with Diapason from the Agent panel and ask a question. Diapason
+uses the selected workspace and its `config.toml`.
 
-1. Open command palette
-2. Type "VT Code: Ask the Agent"
-3. Enter your question
-4. Response appears in the output
-
-**Analyze Your Code:**
-
-1. Highlight code in editor
-2. Right-click → "Ask with VT Code"
-3. Follow prompts in output
-
-**Edit Configuration:**
-
-1. Open command palette
-2. Type "VT Code: Open Configuration"
-3. Edit `vtcode.toml` with syntax highlighting
-4. Save and your changes apply immediately
-
-## 5. Common Configuration Patterns
+## 6. Common Configuration Patterns
 
 ### Minimal Setup (OpenAI)
 
@@ -163,21 +150,23 @@ log_level = "debug"
 
 ## Troubleshooting
 
-### Extension Not Found
+### Diapason Is Unavailable
 
-- **Issue**: "vtcode" command not found
-- **Solution**: Verify installation with `which vtcode` or `vtcode --version`
+- **Issue**: Zed cannot start the Diapason agent
+- **Solution**: Verify `diapason` is on `PATH` with `which diapason` or
+  `diapason --version`
 
-### Commands Don't Appear
+### Diapason Does Not Appear in the New-Thread Menu
 
-- **Issue**: VT Code commands missing from command palette
-- **Solution**: Reload Zed (Cmd/Ctrl + R) or close and reopen
+- **Issue**: The custom agent is missing from the Agent panel
+- **Solution**: Check the `agent_servers` entry in Zed user settings and reload
+  Zed if needed
 
 ### API Key Errors
 
 - **Issue**: "Invalid API key" or authentication errors
 - **Solution**:
-  - Check your `vtcode.toml` provider configuration
+  - Check your `config.toml` provider configuration
   - Verify API key is set: `echo $ANTHROPIC_API_KEY` (for Anthropic)
   - Get a new API key from your provider's console
 
@@ -185,7 +174,7 @@ log_level = "debug"
 
 - **Issue**: Settings not being applied
 - **Solution**:
-  - Ensure `vtcode.toml` is in workspace root
+  - Ensure `config.toml` is in workspace root
   - Check file syntax (should be valid TOML)
   - Reload workspace (close/reopen folder in Zed)
 
@@ -193,27 +182,28 @@ log_level = "debug"
 
 1. **Read Configuration Guide**:
    [Full configuration options](extension-features.md)
-2. **Check VT Code Documentation**:
-   [Main VT Code repo](https://github.com/vinhnx/vtcode)
+2. **Check Diapason Documentation**:
+   [Main Diapason repo](https://github.com/leynos/vtcode)
 3. **Join Community**: Star the repo and share feedback
 4. **Contribute**: [Development guide](DEVELOPMENT.md)
 
 ## Support
 
-- **GitHub Issues**: [VT Code Issues](https://github.com/vinhnx/vtcode/issues)
+- **GitHub Issues**: [Diapason Issues](https://github.com/leynos/vtcode/issues)
 - **Documentation**:
-  [VT Code Docs](https://github.com/vinhnx/vtcode#documentation)
+  [Diapason Docs](https://github.com/leynos/vtcode#documentation)
 - **Discord**: [Join our community](https://discord.com/invite/...)
 
 ## Tips & Tricks
 
 ### Pro Tips
 
-1. **Keyboard Shortcuts**: Bind VT Code commands to keybindings in Zed
+1. **Keyboard Shortcuts**: Bind `agent: new external agent thread` to a
+   keybinding
 2. **Context**: The more context you provide, the better responses
 3. **Iterations**: Use "Ask the Agent" for follow-up questions in a conversation
-4. **Analysis**: Use "Analyze Workspace" for large refactoring tasks
-5. **Config as Code**: Version control your `vtcode.toml` in git
+4. **Analysis**: Ask Diapason to analyse the workspace or selected code
+5. **Config as Code**: Version control your `config.toml` in git
 
 ### Performance Tips
 
@@ -224,5 +214,5 @@ log_level = "debug"
 
 ______________________________________________________________________
 
-**Ready to start?** Open Zed, install the extension, create a `vtcode.toml`,
-and ask your first question!
+**Ready to start?** Configure Diapason as a custom ACP agent in Zed, create a
+`config.toml`, and start a new thread.

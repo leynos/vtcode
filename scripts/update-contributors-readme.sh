@@ -37,7 +37,7 @@ fi
 
 print_info "Fetching contributors from GitHub API..."
 
-contributors=$(gh api repos/vinhnx/vtcode/contributors --paginate --jq '
+contributors=$(gh api repos/leynos/vtcode/contributors --paginate --jq '
     [.[] | select(.type == "User") | {login: .login, contributions: .contributions, avatar_url: .avatar_url, html_url: .html_url}]
 ')
 

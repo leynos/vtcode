@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, bail};
+use diapason_core::cli::args::{WebmcpCommand, WebmcpPairArgs, WebmcpServeArgs};
+use diapason_webmcp::{FilesystemWorkspace, RemoteMcpServerConfig, WebmcpServer, WebmcpServerConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
-use vtcode_core::cli::args::{WebmcpCommand, WebmcpPairArgs, WebmcpServeArgs};
-use vtcode_webmcp::{FilesystemWorkspace, RemoteMcpServerConfig, WebmcpServer, WebmcpServerConfig};
 
 use crate::startup::{StartupContext, require_full_auto_workspace_trust};
 
@@ -88,14 +88,14 @@ async fn run_server(startup: &StartupContext, args: &WebmcpServeArgs, pairing_or
     };
     let full_auto_enabled = startup.full_auto_requested && startup.config.automation.full_auto.enabled;
     if full_auto_enabled
-        && (full_auto_allows_tool(startup, vtcode_core::config::constants::tools::APPLY_PATCH)
-            || full_auto_allows_tool(startup, vtcode_core::config::constants::tools::EXEC_COMMAND))
+        && (full_auto_allows_tool(startup, diapason_core::config::constants::tools::APPLY_PATCH)
+            || full_auto_allows_tool(startup, diapason_core::config::constants::tools::EXEC_COMMAND))
     {
         require_full_auto_workspace_trust(&workspace_root, "headless WebMCP mutations and checks", "webmcp serve")
             .await?;
     }
-    let mutations_allowed = full_auto_allows_tool(startup, vtcode_core::config::constants::tools::APPLY_PATCH);
-    let checks_allowed = full_auto_allows_tool(startup, vtcode_core::config::constants::tools::EXEC_COMMAND);
+    let mutations_allowed = full_auto_allows_tool(startup, diapason_core::config::constants::tools::APPLY_PATCH);
+    let checks_allowed = full_auto_allows_tool(startup, diapason_core::config::constants::tools::EXEC_COMMAND);
     let adapter = FilesystemWorkspace::new(&workspace_root, roots, mutations_allowed)
         .await
         .with_context(|| format!("failed to initialize WebMCP workspace {}", workspace_root.display()))?
@@ -132,7 +132,7 @@ async fn run_server(startup: &StartupContext, args: &WebmcpServeArgs, pairing_or
         println!("Remote MCP protected-resource metadata: {metadata_url}");
     }
     println!(
-        "Agent turns are unavailable in standalone mode; use `/webmcp pair <origin>` inside an interactive `vtcode chat` session for VT Code turns."
+        "Agent turns are unavailable in standalone mode; use `/webmcp pair <origin>` inside an interactive `diapason chat` session for Diapason turns."
     );
     if let Some(public_url) = args.public_url.as_deref() {
         println!(
@@ -158,7 +158,7 @@ fn full_auto_allows_tool(startup: &StartupContext, tool: &str) -> bool {
         && startup.config.automation.full_auto.enabled
         && startup.config.automation.full_auto.allowed_tools.iter().any(|allowed| {
             let allowed = allowed.trim();
-            allowed == tool || allowed == vtcode_core::config::constants::tools::WILDCARD_ALL
+            allowed == tool || allowed == diapason_core::config::constants::tools::WILDCARD_ALL
         })
 }
 
@@ -203,7 +203,7 @@ fn print_tools() -> Result<()> {
 fn build_remote_mcp_config(
     startup: &StartupContext,
     args: &WebmcpServeArgs,
-    configured: &vtcode_config::WebmcpConfig,
+    configured: &diapason_config::WebmcpConfig,
 ) -> Result<Option<RemoteMcpServerConfig>> {
     let enabled = args.mcp || configured.remote_mcp.enabled;
     if !enabled {
@@ -249,7 +249,7 @@ fn print_roots(startup: &StartupContext) -> Result<()> {
     let roots: &[PathBuf] = &startup.config.webmcp.allowed_roots;
     if roots.is_empty() {
         println!(
-            "No configured headless roots. `vtcode webmcp serve --allowed-root <path>` is required for root changes."
+            "No configured headless roots. `diapason webmcp serve --allowed-root <path>` is required for root changes."
         );
     } else {
         for root in roots {

@@ -9,7 +9,7 @@ use tempfile::tempdir;
 fn pods_list_dispatches_through_the_binary() {
     let home = tempdir().expect("create temp home");
 
-    let _assertion = assert_cmd::cargo::cargo_bin_cmd!("vtcode")
+    let _assertion = assert_cmd::cargo::cargo_bin_cmd!("diapason")
         .env("HOME", home.path())
         .args(["pods", "list"])
         .assert()

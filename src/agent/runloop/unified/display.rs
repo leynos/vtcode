@@ -1,13 +1,13 @@
 use crate::agent::runloop::unified::shell::{detect_explicit_run_command, strip_run_command_prefixes};
 use anstyle::{AnsiColor, Color as AnsiColorEnum, Effects, Reset, Style as AnsiStyle};
 use anyhow::{Context, Result};
+use diapason_core::command_safety::shell_parser::parse_shell_commands_tree_sitter;
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig};
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::dot_config::update_theme_preference;
+use diapason_ui::tui::app::InlineHandle;
 use std::path::Path;
-use vtcode_core::command_safety::shell_parser::parse_shell_commands_tree_sitter;
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig};
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::dot_config::update_theme_preference;
-use vtcode_ui::tui::app::InlineHandle;
 
 pub(crate) async fn persist_theme_preference(
     renderer: &mut AnsiRenderer,
@@ -18,14 +18,14 @@ pub(crate) async fn persist_theme_preference(
         renderer.line(MessageStyle::Error, &format!("Failed to persist theme preference: {err}"))?;
     }
     if let Err(err) = persist_theme_config(workspace, theme_id) {
-        renderer.line(MessageStyle::Error, &format!("Failed to persist theme in vtcode.toml: {err}"))?;
+        renderer.line(MessageStyle::Error, &format!("Failed to persist theme in config.toml: {err}"))?;
     }
     Ok(())
 }
 
 pub(crate) fn sync_runtime_theme_selection(
     config: &mut CoreAgentConfig,
-    vt_cfg: Option<&mut VTCodeConfig>,
+    vt_cfg: Option<&mut DiapasonConfig>,
     theme_id: &str,
 ) {
     config.theme = theme_id.to_string();
@@ -245,13 +245,13 @@ fn highlight_shell_user_input(message: &str) -> Option<String> {
 #[cfg(test)]
 mod theme_sync_tests {
     use super::sync_runtime_theme_selection;
-    use std::collections::BTreeMap;
-    use vtcode_core::config::core::PromptCachingConfig;
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, ModelSelectionSource, UiSurfacePreference};
-    use vtcode_core::core::agent::snapshots::{
+    use diapason_core::config::core::PromptCachingConfig;
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::config::types::{AgentConfig as CoreAgentConfig, ModelSelectionSource, UiSurfacePreference};
+    use diapason_core::core::agent::snapshots::{
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
+    use std::collections::BTreeMap;
 
     fn runtime_config(theme: &str) -> CoreAgentConfig {
         CoreAgentConfig {
@@ -281,7 +281,7 @@ mod theme_sync_tests {
     #[test]
     fn sync_runtime_theme_selection_updates_runtime_and_loaded_config() {
         let mut runtime = runtime_config("ansi");
-        let mut vt_cfg = VTCodeConfig::default();
+        let mut vt_cfg = DiapasonConfig::default();
         vt_cfg.agent.theme = "ansi".to_string();
 
         sync_runtime_theme_selection(&mut runtime, Some(&mut vt_cfg), "vitesse-light");
@@ -332,7 +332,7 @@ fn extract_run_command_for_highlight(input: &str) -> Option<(usize, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_core::utils::ansi_parser::strip_ansi;
+    use diapason_core::utils::ansi_parser::strip_ansi;
 
     #[test]
     fn highlights_run_prefix_user_input() {

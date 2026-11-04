@@ -4,7 +4,7 @@
 //! down the process before untrusted code can run.
 
 #[cfg(unix)]
-use vtcode_commons::env_lock;
+use diapason_commons::env_lock;
 
 #[cfg(unix)]
 use std::ffi::OsString;
@@ -64,7 +64,7 @@ fn verify_hardening_effectiveness() {
         return;
     };
     if soft != 0 {
-        eprintln!("warning: vtcode-process-hardening: RLIMIT_CORE is not zero after hardening");
+        eprintln!("warning: diapason-process-hardening: RLIMIT_CORE is not zero after hardening");
     }
 }
 
@@ -106,7 +106,7 @@ fn pre_main_hardening_linux() {
     // For "defense in depth," set the core file size limit to 0.
     set_core_file_size_limit_to_zero();
 
-    // VT Code is primarily MUSL-linked in release builds, which means that variables such
+    // Diapason is primarily MUSL-linked in release builds, which means that variables such
     // as LD_PRELOAD are ignored anyway, but just to be sure, clear them here.
     remove_env_vars_with_prefix(b"LD_");
 }

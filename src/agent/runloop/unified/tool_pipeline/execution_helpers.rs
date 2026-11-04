@@ -1,8 +1,8 @@
 use anyhow::anyhow;
+use diapason_core::config::constants::tools;
+use diapason_core::tools::registry::{ToolErrorType, ToolExecutionError};
+use diapason_core::tools::tool_intent;
 use serde_json::Value;
-use vtcode_core::config::constants::tools;
-use vtcode_core::tools::registry::{ToolErrorType, ToolExecutionError};
-use vtcode_core::tools::tool_intent;
 
 use super::status::ToolExecutionStatus;
 
@@ -169,7 +169,7 @@ mod tests {
     fn falls_back_to_output_for_inspect_payload() {
         let status = process_llm_tool_output(json!({
             "output": "1: src/main.rs",
-            "spool_path": ".vtcode/context/tool_outputs/run-1.txt",
+            "spool_path": ".diapason/context/tool_outputs/run-1.txt",
             "content_type": "exec_inspect"
         }));
 

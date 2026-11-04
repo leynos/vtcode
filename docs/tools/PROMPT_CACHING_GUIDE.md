@@ -5,15 +5,15 @@ deterministic core-first ordering followed by tool name and type, and the
 serialized catalog is reused for the segment. Catalog expansion through tool
 discovery takes effect at the next segment boundary.
 
-Prompt caching lets VT Code reuse validated conversation prefixes across
+Prompt caching lets Diapason reuse validated conversation prefixes across
 providers to reduce latency and token consumption. This guide explains how to
 configure the feature globally and fine-tune the per-provider behaviour exposed
-in `vtcode.toml`.
+in `config.toml`.
 
 ## Global Settings
 
 All prompt caching controls live under the `[prompt_cache]` section in
-`vtcode.toml`.
+`config.toml`.
 
 | Key                             | Type    | Description                                                                                                               |
 | ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -46,22 +46,22 @@ surface_metrics = true
 - `idle_expiration_seconds` — how long (in seconds) a cached prefix can
     remain idle before expiry.
 - `surface_metrics` — when enabled, OpenAI usage responses expose cache-hit
-    statistics surfaced through VT Code’s usage telemetry.
+    statistics surfaced through Diapason’s usage telemetry.
 - `prompt_cache_retention` — optional OpenAI Responses API retention policy
     for cached prefixes. Supported values are `"in_memory"` and `"24h"`.
-- Default: `None` (opt-in) - VT Code does not set prompt_cache_retention by
+- Default: `None` (opt-in) - Diapason does not set prompt_cache_retention by
     default; so OpenAI keeps its default `in_memory` behavior unless you opt in
     explicitly.
 - Example CLI override to enable 24h retention for Responses model:
 
     ```bash
-    vtcode --model gpt-5 --config prompt_cache.providers.openai.prompt_cache_retention=24h ask "Explain this function"
+    diapason --model gpt-5 --config prompt_cache.providers.openai.prompt_cache_retention=24h ask "Explain this function"
     ```
 
 - To list all Response-API-enabled OpenAI models:
 
     ```bash
-    vtcode models list --provider openai
+    diapason models list --provider openai
     ```
 
 - Applies only to OpenAI models that use the Responses API; for other models
@@ -70,18 +70,18 @@ surface_metrics = true
 ## Prefix Stability Rules
 
 Prompt caching on Responses-style providers only hits when the new request
-keeps an exact prefix match. In VT Code, the most common cache breakers are:
+keeps an exact prefix match. In Diapason, the most common cache breakers are:
 
 - Changing `model`, `tools`, or sandbox/environment instruction blocks
     mid-session.
 - Reordering tools between requests.
 - Injecting new dynamic context above existing prompt items.
 
-To reduce avoidable misses, VT Code keeps tool ordering deterministic and
+To reduce avoidable misses, Diapason keeps tool ordering deterministic and
 defers MCP `tools/list_changed` refreshes to turn boundaries so an active turn
-sees a stable tool catalog. VT Code enables
+sees a stable tool catalog. Diapason enables
 `prompt_cache.cache_friendly_prompt_shaping = true` by default. When it is
-enabled, VT Code applies provider-aware shaping:
+enabled, Diapason applies provider-aware shaping:
 
 - OpenAI, Gemini, DeepSeek, OpenRouter, Moonshot, Z.AI: move volatile counters
   to a trailing `[Runtime Context]` block.
@@ -91,8 +91,8 @@ enabled, VT Code applies provider-aware shaping:
 OpenAI additionally keeps `prompt_cache_key` stable per session (unless
 `prompt_cache_key_mode = "off"`).
 
-VT Code surfaces prompt-cache churn using the same terminology in
-`vtcode trajectory` and `/share-log` exports:
+Diapason surfaces prompt-cache churn using the same terminology in
+`diapason trajectory` and `/share-log` exports:
 
 - `stable_prefix` means the cache-friendly stable system prefix changed while
   the model stayed the same.
@@ -117,8 +117,9 @@ segment; unchanged turns reuse the existing envelope byte-for-byte.
 The `tool_catalog_cache_metrics` trajectory record includes ordered wire tool
 names, catalog/wire/deferred counts, and active loaded-skill names on startup
 or when that catalog identity changes. Unchanged turns omit those repeated
-lists. `vtcode trajectory` compares the ordered snapshots so a catalog reorder
-across starts is visible instead of being hidden by an unchanged tool count.
+lists. `diapason trajectory` compares the ordered snapshots so a catalog
+reorder across starts is visible instead of being hidden by an unchanged tool
+count.
 
 ### Anthropic (Claude)
 
@@ -138,7 +139,7 @@ min_message_length_for_cache = 256
 - `tools_ttl_seconds` — TTL for tool definitions and system prompt cache
     hints.
 - `messages_ttl_seconds` — TTL for user message cache hints.
-- `extended_ttl_seconds` — optional longer-lived TTL. When present, VT Code
+- `extended_ttl_seconds` — optional longer-lived TTL. When present, Diapason
     automatically opts into Anthropic’s extended prompt caching beta header.
 - `max_breakpoints` — maximum number of cache insertion points per request
     (tools, system prompt, user messages).
@@ -185,7 +186,7 @@ report_savings = true
 enabled = true
 ```
 
-Z.AI handles caching server-side. When the override is enabled, VT Code honors
+Z.AI handles caching server-side. When the override is enabled, Diapason honors
 upstream behavior and surfaces usage metrics when available.
 
 ## Usage Telemetry
@@ -198,19 +199,19 @@ When caching is active, `Usage` structs now include:
 - `cache_read_tokens` — tokens satisfied from an existing cache entry
     (Anthropic, OpenRouter).
 
-These metrics flow through `vtcode-core::llm::types::Usage` and appear anywhere
-VT Code reports token accounting.
+These metrics flow through `diapason-core::llm::types::Usage` and appear
+anywhere Diapason reports token accounting.
 
 ## Validation & Testing
 
-- Unit tests in `crates/codegen/vtcode-core/src/llm/providers/anthropic.rs`
+- Unit tests in `crates/codegen/diapason-core/src/llm/providers/anthropic.rs`
     validate cache control insertion and beta header composition.
-- `crates/codegen/vtcode-core/src/llm/providers/openrouter.rs` exercises
+- `crates/codegen/diapason-core/src/llm/providers/openrouter.rs` exercises
     usage parsing to ensure cache metrics are preserved.
 - Local cache behavior tests in
-    `crates/codegen/vtcode-core/src/core/prompt_caching.rs` verify caching,
+    `crates/codegen/diapason-core/src/core/prompt_caching.rs` verify caching,
     eviction, and persistence.
-- Configuration loading tests ensure settings from `vtcode.toml` are applied
+- Configuration loading tests ensure settings from `config.toml` are applied
     correctly.
 - Run `cargo test` to execute all fast tests after updating configuration
     logic.
@@ -220,13 +221,13 @@ VT Code reports token accounting.
 The prompt caching system is implemented as a multi-layered architecture:
 
 1. **Global Configuration Layer**: Managed in
-   `crates/codegen/vtcode-config/src/core/prompt_cache.rs` with global and
+   `crates/codegen/diapason-config/src/core/prompt_cache.rs` with global and
    per-provider settings
 2. **Provider Integration Layer**: Each provider has specific cache control
-   implementation in `crates/codegen/vtcode-core/src/llm/providers/`
+   implementation in `crates/codegen/diapason-core/src/llm/providers/`
 3. **Local Caching Layer**: File-based caching engine in
-   `crates/codegen/vtcode-core/src/core/prompt_caching.rs` for optimized prompt
-   storage
+   `crates/codegen/diapason-core/src/core/prompt_caching.rs` for optimized
+   prompt storage
 4. **Runtime Integration**: Cache configuration flows through the provider
    factory to ensure proper initialization
 
@@ -234,7 +235,7 @@ The prompt caching system is implemented as a multi-layered architecture:
 
 When upgrading to the new prompt caching system:
 
-1. Add the `[prompt_cache]` section to your `vtcode.toml` if you want to
+1. Add the `[prompt_cache]` section to your `config.toml` if you want to
    customize caching behavior
 2. Review provider-specific settings to optimize for your usage patterns
 3. Monitor cache metrics to verify the system is performing as expected
@@ -248,5 +249,5 @@ When upgrading to the new prompt caching system:
 - Enable verbose logging to see cache interaction details
 
 By tuning these values you can balance latency, cost, and cache freshness per
-provider while keeping the behaviour consistent across the VT Code agent
+provider while keeping the behaviour consistent across the Diapason agent
 ecosystem.

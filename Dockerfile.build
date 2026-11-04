@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for building vtcode with sufficient memory and resources
+# Multi-stage Dockerfile for building diapason with sufficient memory and resources
 FROM rust:1.90.0-bookworm as builder
 
 # Install required system dependencies
@@ -27,7 +27,7 @@ ENV SCCACHE_CACHE_SIZE=
 RUN cargo build --release
 
 # Verify the binary was created
-RUN test -f /build/target/release/vtcode
+RUN test -f /build/target/release/diapason
 
 # Optional: Create a minimal runtime image
 FROM debian:bookworm-slim as runtime
@@ -39,8 +39,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the built binary from builder stage
-COPY --from=builder /build/target/release/vtcode /usr/local/bin/vtcode
+COPY --from=builder /build/target/release/diapason /usr/local/bin/diapason
 
 # Set the entrypoint
-ENTRYPOINT ["/usr/local/bin/vtcode"]
+ENTRYPOINT ["/usr/local/bin/diapason"]
 CMD ["--help"]

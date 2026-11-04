@@ -4,9 +4,9 @@
 //! reached, recovery is activated to prevent the model from stuck in a loop
 //! of running the same command repeatedly.
 
+use diapason_core::config::constants::defaults::DEFAULT_MAX_REPEATED_TOOL_CALLS;
+use diapason_core::tools::registry::labels::tool_action_label;
 use serde_json::Value;
-use vtcode_core::config::constants::defaults::DEFAULT_MAX_REPEATED_TOOL_CALLS;
-use vtcode_core::tools::registry::labels::tool_action_label;
 
 use super::super::ValidationResult;
 use super::super::looping::shell_run_signature;

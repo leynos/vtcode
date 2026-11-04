@@ -1,5 +1,5 @@
+use diapason_core::config::constants::tools;
 use serde_json::Value;
-use vtcode_core::config::constants::tools;
 
 pub(super) const TEXTUAL_TOOL_PREFIXES: &[&str] = &["default_api."];
 pub(super) const DIRECT_FUNCTION_ALIASES: &[&str] = &[

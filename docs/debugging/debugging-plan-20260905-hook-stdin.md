@@ -23,7 +23,7 @@ without the prefix, and reports a payload-write error.
 ## Falsification experiment
 
 Use only `test_pre_tool_use_hook_chain_rewrites_feed_later_hooks` in
-`vtcode-core`, with the shared Cargo cache and existing target directory. The
+`diapason-core`, with the shared Cargo cache and existing target directory. The
 gate runner is paused. Capture commands and output with `tee` under `/tmp`.
 
 1. Save exact original bytes of `engine.rs` and `tests/hook_tooling.rs` under
@@ -78,7 +78,7 @@ fixture repair follows the guide's existing stdin-draining contract and adds
 hook messages to the assertion diagnostic. It changes no production handling
 and does not close issue #54.
 
-Both focused runs used `cargo nextest run --locked -p vtcode-core` with the
+Both focused runs used `cargo nextest run --locked -p diapason-core` with the
 single named test filter. The forced-order run failed one test; the control
 passed one test. Each skipped 3,560 other tests. Logs are under `/tmp`, with
 these action prefixes and the worktree and branch suffixes:

@@ -1,25 +1,26 @@
-# VT Code Configuration
+# Diapason Configuration
 
-VT Code configuration gives you fine-grained control over the model, execution
+Diapason configuration gives you fine-grained control over the model, execution
 environment, and integrations available to the CLI. Use this guide alongside
 the workflows in the extension, the participant system, and the tool approval
 mechanisms available in the application.
 
-VT Code uses a configuration file named `vtcode.toml` that can be placed at the
-root of your project workspace to customize behavior. The extension watches for
-changes to this file and will automatically update settings when it's modified.
+Diapason uses a configuration file named `config.toml` that can be placed at
+the root of your project workspace to customize behavior. The extension watches
+for changes to this file and will automatically update settings when it's
+modified.
 
 ## Getting Started with Configuration
 
-To help you get started with VT Code configuration, we provide these example
+To help you get started with Diapason configuration, we provide these example
 files:
 
-- `vtcode.toml` - A basic configuration file to get you started
-- `vtcode.toml.example` - A comprehensive example with all configuration
+- `config.toml` - A basic configuration file to get you started
+- `config.toml.example` - A comprehensive example with all configuration
   options and explanations
 
 You can copy either of these files to your project root to begin customizing
-your VT Code experience.
+your Diapason experience.
 
 ## Quick navigation
 
@@ -34,21 +35,21 @@ your VT Code experience.
 - [Configuration Validation and Troubleshooting](#configuration-validation-and-troubleshooting)
 - [Reference table](#config-reference)
 
-VT Code supports several mechanisms for setting config values:
+Diapason supports several mechanisms for setting config values:
 
-- The `$VTCODE_HOME/config.toml` configuration file where the `VTCODE_HOME`
-  environment value defaults to `~/.vtcode`.
-- The workspace-level `vtcode.toml` file that can be placed at the root of your
+- The `$DIAPASON_HOME/config.toml` configuration file where the `DIAPASON_HOME`
+  environment value defaults to `~/.diapason`.
+- The workspace-level `config.toml` file that can be placed at the root of your
   project (similar to `AGENTS.md` in the OpenAI Codex).
 - Environment variables that can override certain configuration options.
 
-Both the workspace `vtcode.toml` and the main `config.toml` file support the
+Both the workspace `config.toml` and the main `config.toml` file support the
 following options:
 
 ## Feature flags
 
 Optional and experimental capabilities are toggled via the `[features]` table in
-`vtcode.toml`. These allow you to customize the behavior of various VT Code
+`config.toml`. These allow you to customize the behavior of various Diapason
 features.
 
 ```toml
@@ -73,7 +74,7 @@ Supported features:
 
 ### agent.provider
 
-The AI provider that VT Code should use.
+The AI provider that Diapason should use.
 
 ```toml
 [agent]
@@ -117,7 +118,7 @@ base_url = "http://localhost:11434/v1"
 # No API key required for local Ollama instance
 ```
 
-Note this makes it possible to use VT Code with non-default models, so long as
+Note this makes it possible to use Diapason with non-default models, so long as
 they are properly configured with the correct API endpoints and authentication.
 
 Or a third-party provider (using a distinct environment variable for the API
@@ -162,17 +163,17 @@ top_p = 0.9                # Top-P sampling parameter
 
 ### workspace.settings
 
-Controls various workspace-specific settings for VT Code execution.
+Controls various workspace-specific settings for Diapason execution.
 
 > **Note:** The `[workspace]` section is now implemented. When
 > `use_root_config = true`,
-> only the workspace root `vtcode.toml` is used as the active config layer;
+> only the workspace root `config.toml` is used as the active config layer;
 > system,
 > user, project, and dot-dir layers are discarded.
 
 ```toml
 [workspace]
-# When true, force workspace root vtcode.toml as the sole active config layer
+# When true, force workspace root config.toml as the sole active config layer
 # (system, user, project, and dot-dir layers are discarded)
 use_root_config = true
 
@@ -203,9 +204,9 @@ participant_timeout = 30  # 30 seconds
 
 ### mcp
 
-You can configure VT Code to use
+You can configure Diapason to use
 [Model Context Protocol (MCP) servers](https://modelcontextprotocol.io/) to
-give VT Code access to external applications, resources, or services.
+give Diapason access to external applications, resources, or services.
 
 #### Server configuration
 
@@ -251,7 +252,7 @@ Each MCP provider supports these options:
 
 ### security
 
-The security section defines how VT Code handles potentially dangerous
+The security section defines how Diapason handles potentially dangerous
 operations:
 
 ```toml
@@ -285,7 +286,7 @@ custom_tool_example = "deny"
 
 ### automation
 
-Control automation behavior in VT Code:
+Control automation behavior in Diapason:
 
 ```toml
 [automation]
@@ -366,10 +367,10 @@ include_diff = false
 ### profiles
 
 A _profile_ is a collection of configuration values that can be set together.
-Multiple profiles can be defined in `vtcode.toml` and you can specify the one
+Multiple profiles can be defined in `config.toml` and you can specify the one
 you want to use depending on the project type or your current task.
 
-Here is an example of a `vtcode.toml` that defines multiple profiles:
+Here is an example of a `config.toml` that defines multiple profiles:
 
 ```toml
 # Default settings
@@ -422,8 +423,8 @@ default_tool_policy = "allow"
 Users can specify config values at multiple levels. Order of precedence is as
 follows:
 
-1. Workspace-level `vtcode.toml` (highest precedence in the workspace)
-2. User-level `$VTCODE_HOME/config.toml`
+1. Workspace-level `config.toml` (highest precedence in the workspace)
+2. User-level `$DIAPASON_HOME/config.toml`
 3. Extension defaults (lowest precedence)
 
 ### workspace-specific overrides
@@ -452,21 +453,21 @@ default_participants = ["@workspace", "@code", "@terminal", "@git"]
 
 ### VS Code Commands for Configuration
 
-VT Code VS Code extension provides several commands to help manage
+Diapason VS Code extension provides several commands to help manage
 configuration:
 
-- `VT Code: Open Configuration` - Opens the workspace `vtcode.toml` file if it
+- `Diapason: Open Configuration` - Opens the workspace `config.toml` file if it
   exists
-- `VT Code: Toggle Human-in-the-Loop` - Quickly toggle the human_in_the_loop
+- `Diapason: Toggle Human-in-the-Loop` - Quickly toggle the human_in_the_loop
   setting
-- `VT Code: Configure MCP Providers` - Helper command to manage MCP provider
+- `Diapason: Configure MCP Providers` - Helper command to manage MCP provider
   settings
-- `VT Code: Open Tools Policy Configuration` - Opens the tools policy section
+- `Diapason: Open Tools Policy Configuration` - Opens the tools policy section
   of the config
 
 ### Command System Integration
 
-The VT Code extension uses a command system that can be configured through the
+The Diapason extension uses a command system that can be configured through the
 settings:
 
 ```toml
@@ -484,7 +485,7 @@ command_timeout = 300
 
 ### Workspace Trust
 
-VT Code follows VS Code's workspace trust model. Some features are only
+Diapason follows VS Code's workspace trust model. Some features are only
 available in trusted workspaces:
 
 ```toml
@@ -493,7 +494,7 @@ available in trusted workspaces:
 trusted_workspace_mode = true
 ```
 
-In untrusted workspaces, VT Code limits CLI automation capabilities to protect
+In untrusted workspaces, Diapason limits CLI automation capabilities to protect
 your system.
 
 ## Authentication and authorization
@@ -515,7 +516,7 @@ OLLAMA_HOST=http://localhost:11434  # For Ollama
 
 ### auth.settings
 
-Authentication settings for VT Code:
+Authentication settings for Diapason:
 
 ```toml
 [auth]
@@ -533,13 +534,13 @@ timeout = 30  # seconds
 
 ### Validation
 
-VT Code validates the configuration file on load. You can check for
+Diapason validates the configuration file on load. You can check for
 configuration errors by:
 
-1. Looking at the VT Code output channel in VS Code
-2. Using the `VT Code: Open Configuration` command which will highlight any
+1. Looking at the Diapason output channel in VS Code
+2. Using the `Diapason: Open Configuration` command which will highlight any
    parsing errors
-3. Running `vtcode check-config` from the command line if you have the CLI
+3. Running `diapason check-config` from the command line if you have the CLI
    installed
 
 Common configuration errors include:
@@ -550,7 +551,7 @@ Common configuration errors include:
 
 ### Troubleshooting
 
-If VT Code is not behaving as expected with your configuration:
+If Diapason is not behaving as expected with your configuration:
 
 1. First, verify the configuration file parses correctly:
 
@@ -600,7 +601,7 @@ If VT Code is not behaving as expected with your configuration:
 | `participants.timeout`                  | number                                            | Timeout for participant context (seconds).                                   |
 | `automation.full_auto.enabled`          | boolean                                           | Enable full automation mode.                                                 |
 | `automation.full_auto.allowed_tools`    | array                                             | Tools allowed in automation mode.                                            |
-| `workspace.use_root_config`             | boolean                                           | When true, force workspace root vtcode.toml as the sole active config layer. |
+| `workspace.use_root_config`             | boolean                                           | When true, force workspace root config.toml as the sole active config layer. |
 | `workspace.include_context`             | boolean                                           | Include workspace context.                                                   |
 | `workspace.max_context_size`            | number                                            | Max size of workspace context (bytes).                                       |
 | `execution.tool_timeout`                | number                                            | Timeout for tool executions (seconds).                                       |

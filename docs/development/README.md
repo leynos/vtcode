@@ -1,6 +1,6 @@
 # Development Guide
 
-Entry point for VT Code contributor workflows.
+Entry point for Diapason contributor workflows.
 
 ## Getting Started
 
@@ -26,8 +26,8 @@ Entry point for VT Code contributor workflows.
   inheritance, and provider diagnostic redaction.
 - [Runtime Guidance](./runtime-guidance.md) - Boundary between compiled
   universal behavior and dynamic project instructions.
-- [vtcode Binary Gotchas](./vtcode-binary-gotchas.md) - Binary startup, runloop
-  recovery, allocator, and request-assembly invariants.
+- [diapason Binary Gotchas](./diapason-binary-gotchas.md) - Binary startup,
+  runloop recovery, allocator, and request-assembly invariants.
 - [AI Tool Surface Migration](./ai-tool-surface-migration.md) - Breaking-change
   notes for the Codex-style default tools.
 

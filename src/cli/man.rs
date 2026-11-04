@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use vtcode_core::cli::ManPageGenerator;
-use vtcode_core::utils::file_utils::write_file_with_context_sync;
+use diapason_core::cli::ManPageGenerator;
+use diapason_core::utils::file_utils::write_file_with_context_sync;
 
 pub async fn handle_man_command(command: Option<String>, output: Option<std::path::PathBuf>) -> Result<()> {
     let content = match command.as_deref() {

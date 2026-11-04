@@ -1,10 +1,10 @@
 use anyhow::{Context, Result, bail};
+use diapason_core::skills::container_validation::ContainerSkillsRequirement;
+use diapason_core::skills::loader::{EnhancedSkill, EnhancedSkillLoader};
+use diapason_core::skills::manifest::parse_skill_file;
+use diapason_core::skills::types::Skill;
 use std::path::{Path, PathBuf};
 use tracing::info;
-use vtcode_core::skills::container_validation::ContainerSkillsRequirement;
-use vtcode_core::skills::loader::{EnhancedSkill, EnhancedSkillLoader};
-use vtcode_core::skills::manifest::parse_skill_file;
-use vtcode_core::skills::types::Skill;
 
 use crate::cli::SkillsCommandOptions;
 use crate::cli::messages;
@@ -144,13 +144,13 @@ pub async fn handle_skills_info(options: &SkillsCommandOptions, name: &str) -> R
             println!("\n--- Compatibility ---");
             match analysis.requirement {
                 ContainerSkillsRequirement::Required => {
-                    println!(" Requires Anthropic container skills - NOT COMPATIBLE with VT Code");
+                    println!(" Requires Anthropic container skills - NOT COMPATIBLE with Diapason");
                 }
                 ContainerSkillsRequirement::RequiredWithFallback => {
-                    println!("  Uses container skills but provides VT Code-compatible alternatives");
+                    println!("  Uses container skills but provides Diapason-compatible alternatives");
                 }
                 ContainerSkillsRequirement::NotRequired => {
-                    println!(" Fully compatible with VT Code");
+                    println!(" Fully compatible with Diapason");
                 }
                 ContainerSkillsRequirement::Unknown => {
                     println!(" Compatibility unknown - proceed with caution");

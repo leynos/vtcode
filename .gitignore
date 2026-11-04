@@ -37,8 +37,8 @@ GOOGLE_API_KEY
 *.log
 logs/
 *.log.*
-.vtcode/perf/
-.vtcode/auth/
+.diapason/perf/
+.diapason/auth/
 harness-*.jsonl
 open-responses-*.jsonl
 
@@ -759,7 +759,7 @@ $RECYCLE.BIN/
 .temp/
 .tmuxp.yaml
 
-# Custom ignores for vtcode
+# Custom ignores for diapason
 *.session
 *.conversation
 *.context
@@ -772,8 +772,8 @@ build_artifacts/
 
 # Agent snapshots for debugging and reproducibility
 snapshots/
-!vtcode-tui/src/core_tui/widgets/snapshots/
-!vtcode-tui/src/core_tui/widgets/snapshots/*.snap
+!diapason-tui/src/core_tui/widgets/snapshots/
+!diapason-tui/src/core_tui/widgets/snapshots/*.snap
 TODO2.md
 
 # START Ruler Generated Files
@@ -828,42 +828,42 @@ TODO2.md
 .amazonq/
 .github/copilot/
 .github/copilot-instructions.md
-# VT Code runtime files (excluded from git, but accessible to agent)
-# `**/` prefix matches nested `.vtcode/` dirs (e.g. crate-local runtimes)
-**/.vtcode/index/
-**/.vtcode/checkpoints/
-**/.vtcode/plan/
-**/.vtcode/plans/
-**/.vtcode/skills/
-**/.vtcode/skills/INDEX.md
-**/.vtcode/context/tool_outputs/
-**/.vtcode/context/history/
-**/.vtcode/mcp/tools/
-**/.vtcode/mcp/status.json
-**/.vtcode/terminals/
-**/.vtcode/sessions/
-**/.vtcode/tasks/
-**/.vtcode/tasks/current_blocked.md
+# Diapason runtime files (excluded from git, but accessible to agent)
+# `**/` prefix matches nested `.diapason/` dirs (e.g. crate-local runtimes)
+**/.diapason/index/
+**/.diapason/checkpoints/
+**/.diapason/plan/
+**/.diapason/plans/
+**/.diapason/skills/
+**/.diapason/skills/INDEX.md
+**/.diapason/context/tool_outputs/
+**/.diapason/context/history/
+**/.diapason/mcp/tools/
+**/.diapason/mcp/status.json
+**/.diapason/terminals/
+**/.diapason/sessions/
+**/.diapason/tasks/
+**/.diapason/tasks/current_blocked.md
 **/plans/
 
 .claude/
 .agent/
 .pi/
-resources/vhs/.vtcode/
+resources/vhs/.diapason/
 .agents/
 GEMINI.md
-vtcode.toml
+config.toml
 
 plans/
-.vtcode/reviews/
-.vtcode/tool-policy.json
-.vtcode/state/
-.vtcode/tasks/
-.vtcode/tasks/current_task.md
-.vtcode/memory/
-.vtcode/history/vtcode-share-hf/
-.vtcode/logs/
-.vtcode/history/
+.diapason/reviews/
+.diapason/tool-policy.json
+.diapason/state/
+.diapason/tasks/
+.diapason/tasks/current_task.md
+.diapason/memory/
+.diapason/history/diapason-share-hf/
+.diapason/logs/
+.diapason/history/
 
 .node-version
 .worktrees/

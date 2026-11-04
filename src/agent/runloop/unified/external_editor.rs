@@ -2,7 +2,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use anyhow::Result;
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_ui::tui::app::InlineHandle;
 
 /// Runs `launch` on a blocking thread via `spawn_blocking`, giving the
 /// external application exclusive access to the terminal while it runs.
@@ -135,8 +135,8 @@ impl Drop for OwnedTuiSuspensionGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diapason_ui::tui::app::{InlineCommand, InlineHandle};
     use tokio::sync::{mpsc, oneshot};
-    use vtcode_ui::tui::app::{InlineCommand, InlineHandle};
 
     #[tokio::test]
     async fn cancellation_restores_suspended_event_loop() {

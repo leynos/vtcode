@@ -3,7 +3,7 @@
 use libfuzzer_sys::fuzz_target;
 use std::sync::OnceLock;
 use tokio::runtime::{Builder, Runtime};
-use vtcode_core::exec_policy::command_validation::validate_command;
+use diapason_core::exec_policy::command_validation::validate_command;
 
 const MAX_INPUT_BYTES: usize = 2048;
 const MAX_TOKENS: usize = 12;

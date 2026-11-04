@@ -1,10 +1,10 @@
 use anyhow::{Result, anyhow, bail};
+use diapason_commons::DiapasonPaths;
+use diapason_commons::fs::write_private_file_atomic;
+use diapason_core::constants::tools;
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{AgentPaletteItem, InlineListItem, InlineListSearchConfig, InlineListSelection};
 use std::path::PathBuf;
-use vtcode_commons::VtCodePaths;
-use vtcode_commons::fs::write_private_file_atomic;
-use vtcode_core::constants::tools;
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{AgentPaletteItem, InlineListItem, InlineListSearchConfig, InlineListSelection};
 
 use super::ui::{ensure_selection_ui_available, wait_for_list_modal_selection};
 use super::{SlashCommandContext, SlashCommandControl};
@@ -36,8 +36,8 @@ const SUBPROCESS_ARCHIVE_PREFIX: &str = "subprocesses:archive:";
 const SUBPROCESS_STOP_PREFIX: &str = "subprocesses:stop:";
 const SUBPROCESS_CANCEL_PREFIX: &str = "subprocesses:cancel:";
 const ACTIVE_AGENT_INSPECTOR_REFRESH_MS: u64 = 750;
-const DEFAULT_AGENT_DESCRIPTION_TEXT: &str = "Describe when VT Code should delegate to this agent.";
-const DEFAULT_AGENT_BODY_TEXT: &str = "\nYou are a focused VT Code subagent.\n\nScope:\n- Describe the tasks this agent should handle.\n- Keep behaviour narrow and task-specific.\n\nConstraints:\n- Use `exec_command` for shell inspection, `apply_patch` for edits, and advanced `code_search` for focused literal queries.\n- Prefer the narrowest tool set that fits the job.\n- Return concise, actionable results.\n\nOutput:\n- State what you checked.\n- Summarise findings or changes.\n- Call out verification or remaining risks when relevant.\n";
+const DEFAULT_AGENT_DESCRIPTION_TEXT: &str = "Describe when Diapason should delegate to this agent.";
+const DEFAULT_AGENT_BODY_TEXT: &str = "\nYou are a focused Diapason subagent.\n\nScope:\n- Describe the tasks this agent should handle.\n- Keep behaviour narrow and task-specific.\n\nConstraints:\n- Use `exec_command` for shell inspection, `apply_patch` for edits, and advanced `code_search` for focused literal queries.\n- Prefer the narrowest tool set that fits the job.\n- Return concise, actionable results.\n\nOutput:\n- State what you checked.\n- Summarise findings or changes.\n- Call out verification or remaining risks when relevant.\n";
 const DEFAULT_AGENT_TOOL_IDS: [&str; 3] = [tools::EXEC_COMMAND, tools::APPLY_PATCH, tools::CODE_SEARCH];
 const SUBAGENT_CONTROLLER_INACTIVE_MESSAGE: &str = "Subagent controller is not active in this session.";
 
@@ -190,21 +190,21 @@ async fn show_agents_manager(mut ctx: SlashCommandContext<'_>) -> Result<SlashCo
             ),
             action_item(
                 "Create project agent",
-                "Guided flow for `.vtcode/agents/<name>.md` with VT Code-native frontmatter",
+                "Guided flow for `.diapason/agents/<name>.md` with Diapason-native frontmatter",
                 Some("Project"),
                 "create project agent guided authoring",
                 "create-project",
             ),
             action_item(
                 "Create user agent",
-                "Guided flow for a user agent in the canonical config directory with VT Code-native frontmatter",
+                "Guided flow for a user agent in the canonical config directory with Diapason-native frontmatter",
                 Some("User"),
                 "create user agent guided authoring",
                 "create-user",
             ),
             action_item(
                 "Edit custom agent",
-                "Guided editor for native `.vtcode` agents; imported files still open in your editor",
+                "Guided editor for native `.diapason` agents; imported files still open in your editor",
                 None,
                 "edit custom agent guided authoring",
                 "edit",
@@ -365,8 +365,13 @@ async fn legacy_create_agent_scaffold(
 ) -> Result<SlashCommandControl> {
     validate_agent_name(name)?;
     let path = match scope {
-        AgentDefinitionScope::Project => ctx.config.workspace.join(".vtcode/agents").join(format!("{name}.md")),
-        AgentDefinitionScope::User => VtCodePaths::resolve()
+        AgentDefinitionScope::Project => ctx
+            .config
+            .workspace
+            .join(diapason_commons::workspace_dir_name())
+            .join("agents")
+            .join(format!("{name}.md")),
+        AgentDefinitionScope::User => DiapasonPaths::resolve()
             .and_then(|paths| paths.config_path(format!("agents/{name}.md")))
             .map_err(|error| anyhow!("Cannot resolve user-scope agent path: {error}"))?,
     };
@@ -383,7 +388,7 @@ async fn legacy_create_agent_scaffold(
         Err(error) => return Err(error.into()),
     }
 
-    VtCodePaths::ensure_user_dir(
+    DiapasonPaths::ensure_user_dir(
         path.parent()
             .ok_or_else(|| anyhow!("Invalid agent destination {}", path.display()))?,
     )?;
@@ -401,7 +406,7 @@ async fn legacy_create_agent_scaffold(
 
     ctx.renderer.line(
         MessageStyle::Info,
-        &format!("Created agent scaffold at {} with VT Code-native subagent frontmatter.", path.display()),
+        &format!("Created agent scaffold at {} with Diapason-native subagent frontmatter.", path.display()),
     )?;
     Ok(SlashCommandControl::Continue)
 }
@@ -527,7 +532,7 @@ async fn resolve_custom_agent_path(ctx: &SlashCommandContext<'_>, name: &str) ->
 
 fn render_agent_details(
     ctx: &mut SlashCommandContext<'_>,
-    spec: &vtcode_config::SubagentSpec,
+    spec: &diapason_config::SubagentSpec,
     shadowed_count: usize,
 ) -> Result<()> {
     ctx.renderer
@@ -594,20 +599,20 @@ fn action_item(title: &str, subtitle: &str, badge: Option<&str>, search_value: &
     }
 }
 
-fn agent_badge(spec: &vtcode_config::SubagentSpec) -> String {
+fn agent_badge(spec: &diapason_config::SubagentSpec) -> String {
     match spec.mode {
-        vtcode_config::AgentMode::Primary => "Primary".to_string(),
-        vtcode_config::AgentMode::Subagent => "Subagent".to_string(),
-        vtcode_config::AgentMode::All => "All".to_string(),
+        diapason_config::AgentMode::Primary => "Primary".to_string(),
+        diapason_config::AgentMode::Subagent => "Subagent".to_string(),
+        diapason_config::AgentMode::All => "All".to_string(),
     }
 }
 
-fn agent_subtitle(spec: &vtcode_config::SubagentSpec, shadowed: bool) -> String {
+fn agent_subtitle(spec: &diapason_config::SubagentSpec, shadowed: bool) -> String {
     let mut parts = vec![spec.source.label().to_string(), spec.description.clone()];
     let kind = match spec.mode {
-        vtcode_config::AgentMode::Primary => "primary",
-        vtcode_config::AgentMode::Subagent => "subagent",
-        vtcode_config::AgentMode::All => "all",
+        diapason_config::AgentMode::Primary => "primary",
+        diapason_config::AgentMode::Subagent => "subagent",
+        diapason_config::AgentMode::All => "all",
     };
     parts.push(kind.to_string());
     if spec.is_read_only() {
@@ -619,20 +624,20 @@ fn agent_subtitle(spec: &vtcode_config::SubagentSpec, shadowed: bool) -> String 
     parts.join(" | ")
 }
 
-fn status_label(status: vtcode_core::subagents::SubagentStatus) -> &'static str {
+fn status_label(status: diapason_core::subagents::SubagentStatus) -> &'static str {
     match status {
-        vtcode_core::subagents::SubagentStatus::Queued => "[queued]",
-        vtcode_core::subagents::SubagentStatus::Running => "[running]",
-        vtcode_core::subagents::SubagentStatus::Waiting => "[waiting]",
-        vtcode_core::subagents::SubagentStatus::Completed => "[completed]",
-        vtcode_core::subagents::SubagentStatus::Failed => "[failed]",
-        vtcode_core::subagents::SubagentStatus::Closed => "[closed]",
+        diapason_core::subagents::SubagentStatus::Queued => "[queued]",
+        diapason_core::subagents::SubagentStatus::Running => "[running]",
+        diapason_core::subagents::SubagentStatus::Waiting => "[waiting]",
+        diapason_core::subagents::SubagentStatus::Completed => "[completed]",
+        diapason_core::subagents::SubagentStatus::Failed => "[failed]",
+        diapason_core::subagents::SubagentStatus::Closed => "[closed]",
     }
 }
 
 async fn refresh_agent_palette(
-    handle: &vtcode_ui::tui::app::InlineHandle,
-    controller: &vtcode_core::subagents::SubagentController,
+    handle: &diapason_ui::tui::app::InlineHandle,
+    controller: &diapason_core::subagents::SubagentController,
 ) {
     let specs = controller.effective_specs().await;
     handle.configure_agent_palette(

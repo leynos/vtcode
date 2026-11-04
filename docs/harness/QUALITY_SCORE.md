@@ -1,6 +1,6 @@
 # Quality Score
 
-Quality grading for each VT Code domain. Grades are A (excellent), B (good), C
+Quality grading for each Diapason domain. Grades are A (excellent), B (good), C
 (needs improvement), D (critical attention required).
 
 ## Snapshot
@@ -86,7 +86,7 @@ ______________________________________________________________________
 
 ## LLM System
 
-**Scope**: `crates/codegen/vtcode-core/src/llm/` **Related debt**: none open
+**Scope**: `crates/codegen/diapason-core/src/llm/` **Related debt**: none open
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                                       |
 | ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -104,7 +104,7 @@ ______________________________________________________________________
 
 ## Tool System
 
-**Scope**: `crates/codegen/vtcode-core/src/tools/` **Related debt**: none open
+**Scope**: `crates/codegen/diapason-core/src/tools/` **Related debt**: none open
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                 |
 | ---------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -121,7 +121,7 @@ ______________________________________________________________________
 
 ## Configuration
 
-**Scope**: `vtcode-config/` **Related debt**: TD-010 (resolved)
+**Scope**: `diapason-config/` **Related debt**: TD-010 (resolved)
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                                          |
 | ---------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -132,7 +132,7 @@ ______________________________________________________________________
 | Documentation    | A-    | `docs/config/CONFIG_FIELD_REFERENCE.md` now provides generated field-level reference.                                                                     |
 
 **Overall: B+** **Priority action**: extend tests for precedence edge cases and
-malformed overrides. **Verify**: `cargo nextest run -p vtcode-config`
+malformed overrides. **Verify**: `cargo nextest run -p diapason-config`
 
 ______________________________________________________________________
 
@@ -151,13 +151,13 @@ debt**: none open
 
 **Overall: B+** **Priority action**: expand sandbox/policy integration tests
 across more allow/deny edge matrices and OS-specific hardening scenarios.
-**Verify**: `cargo nextest run -p vtcode process_hardening`
+**Verify**: `cargo nextest run -p diapason process_hardening`
 
 ______________________________________________________________________
 
 ## MCP Integration
 
-**Scope**: `crates/codegen/vtcode-core/src/mcp/` **Related debt**: TD-008
+**Scope**: `crates/codegen/diapason-core/src/mcp/` **Related debt**: TD-008
 (in-progress)
 
 | Dimension        | Grade | Evidence / Notes                                                                                                                                                                                                  |
@@ -176,22 +176,22 @@ ______________________________________________________________________
 
 ## PTY/Exec
 
-**Scope**: `vtcode-bash-runner/`, `crates/codegen/vtcode-core/src/exec/`
+**Scope**: `diapason-bash-runner/`, `crates/codegen/diapason-core/src/exec/`
 **Related debt**: TD-007 (in-progress)
 
-| Dimension        | Grade | Evidence / Notes                                                                                                                                                            |
-| ---------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test Coverage    | B+    | PTY command/session paths now include timeout and output-truncation regressions in `vtcode-core/tests/pty_tests.rs`, alongside existing session lifecycle and runner tests. |
-| API Stability    | B     | Standard/PTY/streaming execution modes are stable.                                                                                                                          |
-| Agent Legibility | B     | `exec_command` is the stable top-level entrypoint; PTY lifecycle and shell-init flows still force deeper traversal through lower-level plumbing.                            |
-| Error Handling   | B     | Exit code and timeout handling are in place; shell-init edge paths can improve.                                                                                             |
-| Documentation    | B     | Runner docs and workflow docs exist and are current.                                                                                                                        |
+| Dimension        | Grade | Evidence / Notes                                                                                                                                                              |
+| ---------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Test Coverage    | B+    | PTY command/session paths now include timeout and output-truncation regressions in `diapason-core/tests/pty_tests.rs`, alongside existing session lifecycle and runner tests. |
+| API Stability    | B     | Standard/PTY/streaming execution modes are stable.                                                                                                                            |
+| Agent Legibility | B     | `exec_command` is the stable top-level entrypoint; PTY lifecycle and shell-init flows still force deeper traversal through lower-level plumbing.                              |
+| Error Handling   | B     | Exit code and timeout handling are in place; shell-init edge paths can improve.                                                                                               |
+| Documentation    | B     | Runner docs and workflow docs exist and are current.                                                                                                                          |
 
 **Overall: B** **Priority action**: expand PTY regression coverage for
 additional shell-init and cross-platform behavior paths. **Verify**:
 
 ```sh
-cargo test -p vtcode-core --test pty_tests && cargo test -p vtcode-bash-runner --test pipe_tests
+cargo test -p diapason-core --test pty_tests && cargo test -p diapason-bash-runner --test pipe_tests
 ```
 
 ______________________________________________________________________
@@ -222,15 +222,15 @@ find src -name '*.rs' -type f -exec wc -l {} + | sort -nr | head -n 20 && \
   find src/agent/runloop/unified/turn/compaction -name '*.rs' -type f \
   -exec wc -l {} + | sort -nr && \
   python3 scripts/check_agent_legibility.py --mode warn && \
-  cargo test -p vtcode --bin vtcode inline_events::tests
+  cargo test -p diapason --bin diapason inline_events::tests
 ```
 
 ______________________________________________________________________
 
 ## Optimized Code Understanding & Bash Safety
 
-**Scope**: `vtcode-indexer/`, `crates/codegen/vtcode-core/src/command_safety/`
-**Related debt**: none open
+**Scope**: `diapason-indexer/`,
+`crates/codegen/diapason-core/src/command_safety/` **Related debt**: none open
 
 | Dimension        | Grade | Evidence / Notes                                                                                                               |
 | ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -242,7 +242,7 @@ ______________________________________________________________________
 
 **Overall: B+** **Priority action**: expand bash safety tests with more complex
 obfuscation patterns and edge-case shell syntax. **Verify**:
-`cargo nextest run -p vtcode-core --test shell_parser_tests`
+`cargo nextest run -p diapason-core --test shell_parser_tests`
 
 ______________________________________________________________________
 

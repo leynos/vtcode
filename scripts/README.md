@@ -1,7 +1,7 @@
 # Development Scripts
 
 This directory contains scripts to help with development, testing, and
-maintaining the VT Code codebase.
+maintaining the Diapason codebase.
 
 ## Available Scripts
 
@@ -63,10 +63,10 @@ Performance scripts are grouped under `scripts/perf` and are intentionally
 local/manual (not CI-gated).
 
 ```bash
-# Capture a baseline (writes .vtcode/perf/baseline.json + logs)
+# Capture a baseline (writes .diapason/perf/baseline.json + logs)
 ./scripts/perf/baseline.sh baseline
 
-# Capture current metrics (writes .vtcode/perf/latest.json + logs)
+# Capture current metrics (writes .diapason/perf/latest.json + logs)
 ./scripts/perf/baseline.sh latest
 
 # Compare baseline vs latest
@@ -82,7 +82,7 @@ local/manual (not CI-gated).
 
 ### `release.sh` - Release Management
 
-Creates multi-crate releases for VT Code using
+Creates multi-crate releases for Diapason using
 [`cargo-release`](https://github.com/crate-ci/cargo-release).
 
 ```bash
@@ -109,7 +109,7 @@ Creates multi-crate releases for VT Code using
 
 - Delegates version management, tagging, pushing, and changelog updates to
     `cargo release`
-- Keeps `vtcode` and `vtcode-core` versions in sync and updates
+- Keeps `diapason` and `diapason-core` versions in sync and updates
     `npm/package.json`
 - Creates GitHub releases populated with the relevant changelog section
 - Hands off crates.io publishing to `publish_extracted_crates.sh` so the
@@ -148,7 +148,7 @@ published.
 ./scripts/publish_extracted_crates.sh --dry-run
 
 # Resume from a specific crate after an interruption
-./scripts/publish_extracted_crates.sh --start-from vtcode-config
+./scripts/publish_extracted_crates.sh --start-from diapason-config
 ```
 
 **What it does:**
@@ -180,7 +180,7 @@ For new developers:
 
     ```bash
     git clone <repository-url>
-    cd vtcode
+    cd diapason
     ```
 
 2. **Set up development environment**
@@ -215,12 +215,12 @@ For new developers:
 
 ## API Key Configuration
 
-VT Code supports multiple ways to configure API keys, with the following
+Diapason supports multiple ways to configure API keys, with the following
 priority:
 
 1. **Environment variables** (highest priority) - Most secure
 2. **.env file** - Convenient for development
-3. **Configuration file** (vtcode.toml) - Least secure, but convenient
+3. **Configuration file** (config.toml) - Least secure, but convenient
 
 Example `.env` file:
 
@@ -230,7 +230,7 @@ ANTHROPIC_API_KEY=your_anthropic_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-Example `vtcode.toml` configuration:
+Example `config.toml` configuration:
 
 ```toml
 [agent]

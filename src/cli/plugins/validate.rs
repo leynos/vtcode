@@ -1,4 +1,4 @@
-use vtcode_agent_plugins::{FileSystemPluginLoader, PluginLoader};
+use diapason_agent_plugins::{FileSystemPluginLoader, PluginLoader};
 
 pub(super) async fn handle_validate(path: &std::path::Path) -> anyhow::Result<()> {
     let loader = FileSystemPluginLoader::new();

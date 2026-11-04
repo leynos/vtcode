@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines improvements made to VT Code's use of
+This document outlines improvements made to Diapason's use of
 `anstyle-crossterm`, a bridge library that adapts generic `anstyle` styling to
 `crossterm` (and thus `ratatui` TUI) compatibility.
 
@@ -20,7 +20,7 @@ Combines foreground and background colors in a single style.
 
 ```rust
 use anstyle::{Color, AnsiColor};
-use vtcode_core::utils::ratatui_styles::fg_bg_colors;
+use diapason_core::utils::ratatui_styles::fg_bg_colors;
 
 let style = fg_bg_colors(
     Color::Ansi(AnsiColor::Black),
@@ -35,7 +35,7 @@ foreground).
 
 ```rust
 use anstyle::{Color, AnsiColor, Effects};
-use vtcode_core::utils::ratatui_styles::bg_colored_with_effects;
+use diapason_core::utils::ratatui_styles::bg_colored_with_effects;
 
 let style = bg_colored_with_effects(
     Color::Ansi(AnsiColor::Blue),
@@ -49,7 +49,7 @@ Creates a complete style from all three components in one call.
 
 ```rust
 use anstyle::{Color, AnsiColor, Effects};
-use vtcode_core::utils::ratatui_styles::full_style;
+use diapason_core::utils::ratatui_styles::full_style;
 
 let style = full_style(
     Some(Color::Ansi(AnsiColor::White)),
@@ -174,7 +174,7 @@ renderer.line_with_style(style, "styled text")?;
 Convert to ratatui style:
 
 ```rust
-use vtcode_core::utils::ratatui_styles::{anstyle_to_ratatui, colored_with_effects};
+use diapason_core::utils::ratatui_styles::{anstyle_to_ratatui, colored_with_effects};
 
 let anstyle_style = Style::new()
     .fg_color(Some(Color::Ansi(AnsiColor::Blue)))
@@ -198,7 +198,7 @@ let style = colored_with_effects(
 All improvements are covered by comprehensive tests:
 
 ```bash
-cargo test -p vtcode-core --lib utils::ratatui_styles
+cargo test -p diapason-core --lib utils::ratatui_styles
 ```
 
 **Result**: 20 tests passed
@@ -225,8 +225,8 @@ cargo test -p vtcode-core --lib utils::ratatui_styles
 ## Related Files
 
 - **Main integration**:
-    `crates/codegen/vtcode-core/src/utils/ratatui_styles.rs`
-- **CLI rendering**: `crates/codegen/vtcode-core/src/utils/ansi.rs` (uses
+    `crates/codegen/diapason-core/src/utils/ratatui_styles.rs`
+- **CLI rendering**: `crates/codegen/diapason-core/src/utils/ansi.rs` (uses
     `AnsiRenderer`)
 - **Documentation**: `docs/styling_integration.md`
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VT Code Full Quality Gate Script
+# Diapason Full Quality Gate Script
 # This script runs COMPREHENSIVE quality checks intended for:
 #   - Pre-release validation
 #   - Final PR review before merging
@@ -31,7 +31,7 @@ print_timing() {
     fi
 }
 
-echo "Running VT Code Full Quality Gate..."
+echo "Running Diapason Full Quality Gate..."
 echo "========================================"
 echo "NOTE: This is the comprehensive check for release/PR review."
 echo "      For daily development, use: ./scripts/check-dev.sh"
@@ -71,28 +71,28 @@ find_ast_grep() {
     return 1
 }
 
-run_vtcode_command() {
-    if [ -n "${VTCODE_CHECK_SCRIPT_VTCODE_BIN:-}" ] && [ -x "${VTCODE_CHECK_SCRIPT_VTCODE_BIN}" ]; then
-        "${VTCODE_CHECK_SCRIPT_VTCODE_BIN}" "$@"
+run_diapason_command() {
+    if [ -n "${DIAPASON_CHECK_SCRIPT_DIAPASON_BIN:-}" ] && [ -x "${DIAPASON_CHECK_SCRIPT_DIAPASON_BIN}" ]; then
+        "${DIAPASON_CHECK_SCRIPT_DIAPASON_BIN}" "$@"
         return $?
     fi
 
-    if [ -x "./target/debug/vtcode" ]; then
-        ./target/debug/vtcode "$@"
+    if [ -x "./target/debug/diapason" ]; then
+        ./target/debug/diapason "$@"
         return $?
     fi
 
     if command -v cargo > /dev/null 2>&1 && [ -f "Cargo.toml" ]; then
-        RUSTC_WRAPPER= cargo run --quiet --bin vtcode -- "$@"
+        cargo run --quiet --bin diapason -- "$@"
         return $?
     fi
 
-    if command -v vtcode > /dev/null 2>&1; then
-        vtcode "$@"
+    if command -v diapason > /dev/null 2>&1; then
+        diapason "$@"
         return $?
     fi
 
-    print_error "VT Code is not available. Install it or build the local binary before running '$0 ast-grep'."
+    print_error "Diapason is not available. Install it or build the local binary before running '$0 ast-grep'."
     return 1
 }
 
@@ -199,18 +199,18 @@ run_ast_grep_scan() {
     local require_binary="${1:-optional}"
     if [ "$require_binary" != "required" ]; then
         if ! find_ast_grep > /dev/null 2>&1; then
-            print_warning "ast-grep is not available. Skipping repository scan. Install it with 'vtcode dependencies install ast-grep'."
+            print_warning "ast-grep is not available. Skipping repository scan. Install it with 'diapason dependencies install ast-grep'."
             return 0
         fi
     fi
 
-    print_status "Running ast-grep rule tests and scan via VT Code..."
-    if run_vtcode_command check ast-grep; then
+    print_status "Running ast-grep rule tests and scan via Diapason..."
+    if run_diapason_command check ast-grep; then
         print_success "ast-grep rules passed!"
         return 0
     fi
 
-    print_error "VT Code ast-grep check failed."
+    print_error "Diapason ast-grep check failed."
     return 1
 }
 
@@ -218,9 +218,9 @@ run_ast_grep_scan() {
 run_harness_regression_tests() {
     print_status "Running harness PTY/TUI regression tests..."
 
-    if cargo nextest run -p vtcode-core -E 'binary(/pty_tests/)' \
-        && cargo nextest run -p vtcode-bash-runner -E 'binary(/pipe_tests/)' \
-        && cargo nextest run -p vtcode -E 'test(/inline_events/)'; then
+    if cargo nextest run -p diapason-core -E 'binary(/pty_tests/)' \
+        && cargo nextest run -p diapason-bash-runner -E 'binary(/pipe_tests/)' \
+        && cargo nextest run -p diapason -E 'test(/inline_events/)'; then
         print_success "Harness PTY/TUI regression tests passed!"
         return 0
     else
@@ -290,7 +290,7 @@ run_shell_scripts_lint() {
 # Rust code" — use miri to verify unsafe findings and eliminate false
 # positives. miri cannot execute FFI or most syscalls, so we scope to the
 # crate(s) that contain pure-Rust unsafe code. Pass extra crate names as args
-# to widen the scope, e.g. `./scripts/check.sh miri vtcode-skills`.
+# to widen the scope, e.g. `./scripts/check.sh miri diapason-skills`.
 run_miri() {
     print_status "Running Miri (Tree Borrows aliasing model, detecting UB/aliasing issues)..."
     print_warning "Miri interprets code and is slow. Scoped to pure-Rust unsafe by default."
@@ -300,11 +300,11 @@ run_miri() {
     # model; disable-isolation lets env/fs-touching tests run under miri.
     #
     # Default to the crate(s) with pure-Rust unsafe (miri cannot run FFI/syscalls).
-    # Extra args widen the scope, e.g. `./scripts/check.sh miri vtcode-skills`.
+    # Extra args widen the scope, e.g. `./scripts/check.sh miri diapason-skills`.
     # Use one `-p` per crate: `cargo test -p a b` treats `b` as a test-name filter.
     local -a crates=("$@")
     if [ "${#crates[@]}" -eq 0 ]; then
-        crates=("vtcode-commons")
+        crates=("diapason-commons")
     fi
     local -a pkg_args=()
     local c
@@ -402,14 +402,14 @@ case "${1:-}" in
         run_docs
         ;;
     "help"|"-h"|"--help")
-        echo "VT Code Code Quality Check Script"
+        echo "Diapason Code Quality Check Script"
         echo ""
         echo "Usage: $0 [COMMAND]"
         echo ""
         echo "Commands:"
         echo "  fmt     - Check code formatting with rustfmt"
         echo "  clippy  - Run clippy lints"
-        echo "  ast-grep - Run repo ast-grep rule tests and scan via 'vtcode check ast-grep'"
+        echo "  ast-grep - Run repo ast-grep rule tests and scan via 'diapason check ast-grep'"
         echo "  test    - Run tests"
         echo "  harness - Run focused PTY/TUI harness regression tests"
         echo "  build   - Build the project"

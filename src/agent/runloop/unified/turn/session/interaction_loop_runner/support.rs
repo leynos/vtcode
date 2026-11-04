@@ -8,20 +8,20 @@ use std::fs;
 use std::io::{self, Write as _};
 use std::path::Path;
 
-use vtcode_config::models::{ModelId, Provider};
-use vtcode_core::config::EditorToolConfig;
-use vtcode_core::config::constants::tools as tool_names;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::core::threads::ArchivedSessionIntent;
-use vtcode_core::llm::ModelResolver;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::scheduler::{DurableTaskStore, SchedulerDaemon};
-use vtcode_core::tools::continuation::{PtyContinuationArgs, ReadChunkContinuationArgs};
-use vtcode_core::tools::terminal_app::{EditorLaunchConfig, TerminalAppLauncher};
-use vtcode_core::ui::theme;
-use vtcode_core::ui::{inline_theme_from_core_styles, to_tui_appearance};
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{ContentPart as UiContentPart, SubmittedInput};
+use diapason_config::models::{ModelId, Provider};
+use diapason_core::config::EditorToolConfig;
+use diapason_core::config::constants::tools as tool_names;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::core::threads::ArchivedSessionIntent;
+use diapason_core::llm::ModelResolver;
+use diapason_core::llm::provider as uni;
+use diapason_core::scheduler::{DurableTaskStore, SchedulerDaemon};
+use diapason_core::tools::continuation::{PtyContinuationArgs, ReadChunkContinuationArgs};
+use diapason_core::tools::terminal_app::{EditorLaunchConfig, TerminalAppLauncher};
+use diapason_core::ui::theme;
+use diapason_core::ui::{inline_theme_from_core_styles, to_tui_appearance};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{ContentPart as UiContentPart, SubmittedInput};
 
 use crate::agent::runloop::prompt::refine_and_enrich_prompt;
 use crate::agent::runloop::unified::async_mcp_manager::{AsyncMcpManager, approval_policy_from_human_in_the_loop};
@@ -38,7 +38,7 @@ use crate::startup::{auto_grant_tui_full_auto_workspace_trust, ensure_full_auto_
 use crate::agent::runloop::unified::planning_workflow::PlanningFinishReason;
 use crate::agent::runloop::unified::planning_workflow_state::transition_to_planning_workflow;
 use crate::agent::runloop::welcome::SessionBootstrap;
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::core::interfaces::session::PlanningEntrySource;
 
 use super::super::interaction_loop::{InteractionLoopContext, InteractionOutcome, InteractionState};
 
@@ -57,7 +57,7 @@ struct ToolErrorPayloadHint {
 
 #[derive(Default)]
 pub(super) struct LiveIdeContextUpdate {
-    pub(super) snapshot: Option<vtcode_core::EditorContextSnapshot>,
+    pub(super) snapshot: Option<diapason_core::EditorContextSnapshot>,
     pub(super) changed: bool,
 }
 
@@ -393,7 +393,7 @@ async fn handle_inline_prompt_suggestion_request(
     {
         ctx.renderer.line(
             MessageStyle::Info,
-            "Inline prompt suggestions may use tokens when VT Code calls your configured LLM provider.",
+            "Inline prompt suggestions may use tokens when Diapason calls your configured LLM provider.",
         )?;
         *state.inline_prompt_cost_notice_shown = true;
     }
@@ -405,7 +405,7 @@ async fn handle_inline_prompt_suggestion_request(
 
 fn build_file_reference_metadata(input: &str, workspace: &Path) -> Option<String> {
     let mut alias_to_full_path = BTreeMap::new();
-    for at_match in vtcode_commons::at_pattern::find_at_patterns(input) {
+    for at_match in diapason_commons::at_pattern::find_at_patterns(input) {
         let alias = at_match.path.trim();
         if alias.is_empty() {
             continue;
@@ -436,12 +436,12 @@ fn resolve_full_path_for_alias(alias: &str, workspace: &Path) -> Option<String> 
         || trimmed.starts_with("http://")
         || trimmed.starts_with("https://")
         || trimmed.starts_with("data:")
-        || !vtcode_commons::paths::is_safe_relative_path(trimmed)
+        || !diapason_commons::paths::is_safe_relative_path(trimmed)
     {
         return None;
     }
 
-    let resolved = vtcode_commons::paths::resolve_workspace_path(workspace, Path::new(trimmed)).ok()?;
+    let resolved = diapason_commons::paths::resolve_workspace_path(workspace, Path::new(trimmed)).ok()?;
     Some(resolved.to_string_lossy().to_string())
 }
 
@@ -454,10 +454,10 @@ pub(super) async fn build_user_message_content(
         &ctx.config.provider,
         ctx.provider_client.supports_responses_compaction(&ctx.config.model),
     );
-    let processed_content = match vtcode_core::utils::at_pattern::parse_at_patterns_with_options(
+    let processed_content = match diapason_core::utils::at_pattern::parse_at_patterns_with_options(
         text,
         &ctx.config.workspace,
-        vtcode_core::utils::at_pattern::AtPatternOptions {
+        diapason_core::utils::at_pattern::AtPatternOptions {
             allow_local_non_image_file_inputs: allow_structured_non_image_file_inputs,
             allow_remote_non_image_file_inputs: allow_structured_non_image_file_inputs,
         },
@@ -532,8 +532,8 @@ pub(super) fn submitted_images_are_unsupported(
     workspace: &Path,
 ) -> bool {
     !model_supports_vision
-        && (input.attachments.iter().any(vtcode_ui::tui::app::ContentPart::is_image)
-            || vtcode_core::utils::at_pattern::input_may_parse_image_parts(&input.text, workspace))
+        && (input.attachments.iter().any(diapason_ui::tui::app::ContentPart::is_image)
+            || diapason_core::utils::at_pattern::input_may_parse_image_parts(&input.text, workspace))
 }
 
 pub(super) fn selected_model_supports_image_input(
@@ -621,7 +621,7 @@ pub(super) fn replace_submitted_input_text(input: &mut SubmittedInput, text: Str
 }
 
 pub(super) fn refresh_ide_context_before_user_turn(ctx: &mut InteractionLoopContext<'_>) {
-    let latest_editor_snapshot: Option<vtcode_core::EditorContextSnapshot> =
+    let latest_editor_snapshot: Option<diapason_core::EditorContextSnapshot> =
         if let Some(bridge) = ctx.ide_context_bridge.as_mut() {
             match bridge.refresh() {
                 Ok((snapshot, _)) => snapshot,
@@ -644,8 +644,8 @@ pub(super) fn refresh_ide_context_before_user_turn(ctx: &mut InteractionLoopCont
 }
 
 pub(super) fn apply_live_theme_and_appearance(
-    handle: &vtcode_ui::tui::app::InlineHandle,
-    cfg: &VTCodeConfig,
+    handle: &diapason_ui::tui::app::InlineHandle,
+    cfg: &DiapasonConfig,
     session_bootstrap: &SessionBootstrap,
 ) {
     let color_config = theme::ColorAccessibilityConfig {
@@ -678,7 +678,7 @@ pub(super) fn apply_live_theme_and_appearance(
     handle.force_redraw();
 }
 
-fn sync_mcp_approval_policy(async_mcp_manager: Option<&AsyncMcpManager>, vt_cfg: Option<&VTCodeConfig>) {
+fn sync_mcp_approval_policy(async_mcp_manager: Option<&AsyncMcpManager>, vt_cfg: Option<&DiapasonConfig>) {
     let (Some(mcp_manager), Some(cfg)) = (async_mcp_manager, vt_cfg) else {
         return;
     };
@@ -698,7 +698,7 @@ pub(super) fn scheduler_enabled(ctx: &InteractionLoopContext<'_>) -> bool {
         .as_ref()
         .map(|cfg| cfg.automation.scheduled_tasks.enabled)
         .unwrap_or(false);
-    vtcode_core::scheduler::scheduled_tasks_enabled(enabled)
+    diapason_core::scheduler::scheduled_tasks_enabled(enabled)
 }
 
 pub(super) fn build_durable_scheduler_daemon() -> Result<SchedulerDaemon> {
@@ -735,11 +735,11 @@ pub(super) fn refresh_live_ide_context_update(
 /// returns the resume outcome. Returns `Ok(None)` if no sessions are found or
 /// the session cannot be loaded (error is rendered to the user).
 pub(crate) async fn try_resume_latest_session(
-    renderer: &mut vtcode_core::utils::ansi::AnsiRenderer,
+    renderer: &mut diapason_core::utils::ansi::AnsiRenderer,
     workspace: &Path,
     show_all: bool,
 ) -> Result<Option<InteractionOutcome>> {
-    use vtcode_core::core::threads::{SessionQueryScope, list_recent_sessions_in_scope};
+    use diapason_core::core::threads::{SessionQueryScope, list_recent_sessions_in_scope};
 
     let scope = if show_all {
         SessionQueryScope::All
@@ -768,7 +768,7 @@ pub(crate) async fn try_resume_latest_session(
 }
 
 async fn try_resume_archived_session(
-    renderer: &mut vtcode_core::utils::ansi::AnsiRenderer,
+    renderer: &mut diapason_core::utils::ansi::AnsiRenderer,
     session_id: &str,
     intent: ArchivedSessionIntent,
     loading_message: &str,
@@ -979,7 +979,7 @@ pub(crate) async fn handle_select_primary_agent(
                     ctx.harness_emitter,
                     ctx.thread_id,
                     ctx.thread_id,
-                    vtcode_core::exec::events::PlanApprovalDecision::Cancel,
+                    diapason_core::exec::events::PlanApprovalDecision::Cancel,
                     false,
                 );
                 crate::agent::runloop::unified::planning_workflow::finish_planning_workflow(
@@ -1015,7 +1015,7 @@ pub(crate) async fn handle_select_primary_agent(
                 .await;
             }
         }
-        Err(vtcode_core::primary_agent::PrimaryAgentResolutionError::UnknownAgent { requested }) => {
+        Err(diapason_core::primary_agent::PrimaryAgentResolutionError::UnknownAgent { requested }) => {
             ctx.renderer
                 .line(MessageStyle::Error, &format!("Unknown primary agent '{requested}'."))?;
         }
@@ -1047,7 +1047,7 @@ async fn sync_primary_agent_runtime(
 
 async fn load_primary_agent_specs_or_report(
     ctx: &mut InteractionLoopContext<'_>,
-) -> Result<Option<Vec<vtcode_config::SubagentSpec>>> {
+) -> Result<Option<Vec<diapason_config::SubagentSpec>>> {
     match load_primary_agent_specs(ctx).await {
         Ok(specs) => Ok(Some(specs)),
         Err(err) => {
@@ -1058,7 +1058,7 @@ async fn load_primary_agent_specs_or_report(
     }
 }
 
-async fn load_primary_agent_specs(ctx: &InteractionLoopContext<'_>) -> Result<Vec<vtcode_config::SubagentSpec>> {
+async fn load_primary_agent_specs(ctx: &InteractionLoopContext<'_>) -> Result<Vec<diapason_config::SubagentSpec>> {
     load_primary_agent_specs_for_runtime(ctx.tool_registry, &ctx.config.workspace).await
 }
 
@@ -1070,8 +1070,8 @@ fn set_primary_agent_display(ctx: &mut InteractionLoopContext<'_>, name: String)
 }
 
 fn next_primary_agent_name(
-    active: &vtcode_core::primary_agent::ActivePrimaryAgent,
-    specs: &[vtcode_config::SubagentSpec],
+    active: &diapason_core::primary_agent::ActivePrimaryAgent,
+    specs: &[diapason_config::SubagentSpec],
 ) -> Option<String> {
     let names = primary_agent_names(specs);
 
@@ -1086,8 +1086,8 @@ fn next_primary_agent_name(
 }
 
 fn previous_primary_agent_name(
-    active: &vtcode_core::primary_agent::ActivePrimaryAgent,
-    specs: &[vtcode_config::SubagentSpec],
+    active: &diapason_core::primary_agent::ActivePrimaryAgent,
+    specs: &[diapason_config::SubagentSpec],
 ) -> Option<String> {
     let names = primary_agent_names(specs);
 
@@ -1101,7 +1101,7 @@ fn previous_primary_agent_name(
     })
 }
 
-fn primary_agent_names(specs: &[vtcode_config::SubagentSpec]) -> Vec<String> {
+fn primary_agent_names(specs: &[diapason_config::SubagentSpec]) -> Vec<String> {
     let mut names = specs
         .iter()
         .filter(|spec| spec.is_primary())
@@ -1130,10 +1130,10 @@ fn primary_agent_cycle_rank(name: &str) -> u8 {
 
 /// Returns `true` when the named agent requires workspace trust (i.e. it has
 /// `PermissionDefault::Auto`).
-fn agent_needs_trust(specs: &[vtcode_config::SubagentSpec], name: &str) -> bool {
+fn agent_needs_trust(specs: &[diapason_config::SubagentSpec], name: &str) -> bool {
     specs.iter().any(|s| {
         s.name.eq_ignore_ascii_case(name)
-            && s.permissions.default == vtcode_config::core::permissions::PermissionDefault::Auto
+            && s.permissions.default == diapason_config::core::permissions::PermissionDefault::Auto
     })
 }
 
@@ -1141,9 +1141,9 @@ fn agent_needs_trust(specs: &[vtcode_config::SubagentSpec], name: &str) -> bool 
 mod tests {
     use super::*;
     use crate::agent::runloop::unified::session_setup::IdeContextBridge;
+    use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+    use diapason_config::{SubagentSource, SubagentSpec};
     use tempfile::TempDir;
-    use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-    use vtcode_config::{SubagentSource, SubagentSpec};
 
     #[test]
     fn next_primary_agent_name_starts_with_first_sorted_agent() {
@@ -1155,7 +1155,7 @@ mod tests {
     #[test]
     fn next_primary_agent_name_cycles_to_next_sorted_agent() {
         let specs = vec![test_subagent_spec("beta"), test_subagent_spec("alpha")];
-        let active = vtcode_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[1]);
+        let active = diapason_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[1]);
 
         assert_eq!(next_primary_agent_name(&active, &specs), Some("beta".to_string()));
     }
@@ -1163,7 +1163,7 @@ mod tests {
     #[test]
     fn next_primary_agent_name_cycles_last_agent_to_first() {
         let specs = vec![test_subagent_spec("build"), test_subagent_spec("duck")];
-        let active = vtcode_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[1]);
+        let active = diapason_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[1]);
 
         assert_eq!(next_primary_agent_name(&active, &specs), Some("build".to_string()));
     }
@@ -1200,7 +1200,7 @@ mod tests {
             test_subagent_spec("build"),
             test_subagent_spec("duck"),
         ];
-        let active = vtcode_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[0]);
+        let active = diapason_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[0]);
 
         assert_eq!(previous_primary_agent_name(&active, &specs), Some("plan".to_string()));
     }
@@ -1208,7 +1208,7 @@ mod tests {
     #[test]
     fn next_primary_agent_name_skips_non_primary_subagents() {
         let mut worker = test_subagent_spec("worker");
-        worker.mode = vtcode_config::AgentMode::Subagent;
+        worker.mode = diapason_config::AgentMode::Subagent;
         let specs = vec![worker, test_subagent_spec("duck")];
 
         assert_eq!(next_primary_agent_name(&default_active_primary_agent(), &specs), Some("duck".to_string()));
@@ -1220,16 +1220,18 @@ mod tests {
         auto.permissions = AgentPermissionsConfig::new(PermissionDefault::Auto);
         let specs = vec![test_subagent_spec("build"), test_subagent_spec("plan"), auto];
 
-        let build = vtcode_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[0]);
-        let plan = vtcode_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[1]);
+        let build = diapason_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[0]);
+        let plan = diapason_core::primary_agent::ActivePrimaryAgent::from_spec(&specs[1]);
 
         assert_eq!(next_primary_agent_name(&build, &specs), Some("plan".to_string()));
         assert_eq!(next_primary_agent_name(&plan, &specs), Some("auto".to_string()));
         assert!(agent_needs_trust(&specs, "auto"));
     }
 
-    fn default_active_primary_agent() -> vtcode_core::primary_agent::ActivePrimaryAgent {
-        vtcode_core::primary_agent::ActivePrimaryAgentState::default().active().clone()
+    fn default_active_primary_agent() -> diapason_core::primary_agent::ActivePrimaryAgent {
+        diapason_core::primary_agent::ActivePrimaryAgentState::default()
+            .active()
+            .clone()
     }
 
     fn test_subagent_spec(name: &str) -> SubagentSpec {
@@ -1247,14 +1249,14 @@ mod tests {
             mcp_servers: Vec::new(),
             hooks: None,
             background: false,
-            mode: vtcode_config::AgentMode::Primary,
+            mode: diapason_config::AgentMode::Primary,
             max_turns: None,
             nickname_candidates: Vec::new(),
             initial_prompt: None,
             memory: None,
             isolation: None,
             aliases: Vec::new(),
-            source: SubagentSource::ProjectVtcode,
+            source: SubagentSource::ProjectDiapason,
             file_path: None,
             warnings: Vec::new(),
             tool_policy_overrides: BTreeMap::new(),
@@ -1441,7 +1443,7 @@ mod tests {
             "call_1".to_string(),
             serde_json::json!({
                 "next_read_args": {
-                    "path": ".vtcode/context/tool_outputs/out.txt",
+                    "path": ".diapason/context/tool_outputs/out.txt",
                     "offset": 41,
                     "limit": 40
                 }
@@ -1456,7 +1458,7 @@ mod tests {
                 tool_names::UNIFIED_FILE.to_string(),
                 serde_json::json!({
                     "action": "read",
-                    "path": ".vtcode/context/tool_outputs/out.txt",
+                    "path": ".diapason/context/tool_outputs/out.txt",
                     "offset": 41,
                     "limit": 40
                 })
@@ -1560,10 +1562,10 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir");
         let image_path = temp_dir.path().join("sample.png");
         fs::write(&image_path, tiny_png_bytes()).expect("write image");
-        let mut content = vtcode_core::utils::at_pattern::parse_at_patterns_with_options(
+        let mut content = diapason_core::utils::at_pattern::parse_at_patterns_with_options(
             "look @sample.png",
             temp_dir.path(),
-            vtcode_core::utils::at_pattern::AtPatternOptions::default(),
+            diapason_core::utils::at_pattern::AtPatternOptions::default(),
         )
         .await
         .expect("parse image");
@@ -1575,10 +1577,10 @@ mod tests {
 
     #[tokio::test]
     async fn data_image_stays_before_pasted_image() {
-        let mut content = vtcode_core::utils::at_pattern::parse_at_patterns_with_options(
+        let mut content = diapason_core::utils::at_pattern::parse_at_patterns_with_options(
             "look data:image/png;base64,parsedimage",
             Path::new("."),
-            vtcode_core::utils::at_pattern::AtPatternOptions::default(),
+            diapason_core::utils::at_pattern::AtPatternOptions::default(),
         )
         .await
         .expect("parse data image");
@@ -1790,9 +1792,9 @@ mod tests {
     fn refresh_live_ide_context_update_tracks_active_file_changes() {
         let temp_dir = TempDir::new().expect("temp dir");
         let workspace = temp_dir.path();
-        fs::create_dir_all(workspace.join(".vtcode")).expect("create ide context dir");
+        fs::create_dir_all(workspace.join(diapason_commons::workspace_dir_name())).expect("create ide context dir");
 
-        let snapshot_path = workspace.join(".vtcode/ide-context.json");
+        let snapshot_path = workspace.join(diapason_commons::workspace_dir_name()).join("ide-context.json");
         let mut bridge = Some(IdeContextBridge::new(workspace));
 
         fs::write(

@@ -1,6 +1,6 @@
-use vtcode_core::core::agent::error_recovery::ErrorType as RecoveryErrorType;
-use vtcode_core::notifications::notify_tool_failure;
-use vtcode_core::tools::registry::ToolExecutionError;
+use diapason_core::core::agent::error_recovery::ErrorType as RecoveryErrorType;
+use diapason_core::notifications::notify_tool_failure;
+use diapason_core::tools::registry::ToolExecutionError;
 
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 

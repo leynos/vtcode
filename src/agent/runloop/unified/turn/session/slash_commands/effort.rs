@@ -1,12 +1,12 @@
 use std::str::FromStr;
 
 use anyhow::Result;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::models_manager::{ModelPreset, builtin_model_presets};
-use vtcode_core::utils::ansi::MessageStyle;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::models_manager::{ModelPreset, builtin_model_presets};
+use diapason_core::utils::ansi::MessageStyle;
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 
 use crate::agent::runloop::ui::build_inline_header_context;
 
@@ -67,7 +67,7 @@ pub(crate) async fn handle_set_effort(
             vec![
                 format!("Set effort for '{}' in this conversation.", ctx.config.model),
                 if persist {
-                    "The selected level will also be written to vtcode.toml.".to_string()
+                    "The selected level will also be written to config.toml.".to_string()
                 } else {
                     "The selected level only affects the active conversation unless you use --persist.".to_string()
                 },
@@ -194,7 +194,7 @@ fn sync_thread_reasoning_effort(ctx: &mut SlashCommandContext<'_>, effort: Reaso
 
 fn persist_effort_preference(
     workspace: &std::path::Path,
-    vt_cfg: &mut Option<VTCodeConfig>,
+    vt_cfg: &mut Option<DiapasonConfig>,
     effort: ReasoningEffortLevel,
 ) -> Result<()> {
     let mut manager = crate::main_helpers::load_workspace_config(workspace)?;
@@ -260,7 +260,7 @@ fn effort_description(level: ReasoningEffortLevel, model: &str) -> &'static str 
 #[cfg(test)]
 mod tests {
     use super::effort_description;
-    use vtcode_core::config::types::ReasoningEffortLevel;
+    use diapason_core::config::types::ReasoningEffortLevel;
 
     #[test]
     fn xhigh_description_matches_requested_opus_copy() {

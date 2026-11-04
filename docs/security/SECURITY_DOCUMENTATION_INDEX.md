@@ -1,10 +1,10 @@
 # Security Documentation Index
 
-Complete guide to VT Code's security documentation.
+Complete guide to Diapason's security documentation.
 
 ## Quick Start
 
-**New to VT Code Security?** Start here:
+**New to Diapason Security?** Start here:
 
 - [Security Model](./SECURITY_MODEL.md) - Complete security architecture
 
@@ -40,7 +40,7 @@ Complete guide to VT Code's security documentation.
 
 ### For Organizations
 
-**[Tool Policies](../modules/vtcode_tools_policy.md)**
+**[Tool Policies](../modules/diapason_tools_policy.md)**
 
 - Command execution policies
 - Approval workflows
@@ -50,29 +50,29 @@ Complete guide to VT Code's security documentation.
 
 ### Layer 1: Command Allowlist
 
-- **Location**: `crates/codegen/vtcode-core/src/execpolicy/mod.rs`
+- **Location**: `crates/codegen/diapason-core/src/execpolicy/mod.rs`
 - **Documentation**:
   [Security Model - Layer 1](./SECURITY_MODEL.md#layer-1-command-allowlist)
 - **Only 9 commands allowed**: ls, cat, cp, head, printenv, pwd, rg, sed, which
 
 ### Layer 2: Argument Validation
 
-- **Location**: `crates/codegen/vtcode-core/src/execpolicy/mod.rs`
+- **Location**: `crates/codegen/diapason-core/src/execpolicy/mod.rs`
 - **Documentation**:
   [Security Model - Layer 2](./SECURITY_MODEL.md#layer-2-per-command-argument-validation)
 - **Per-command validators**: Explicit flag allowlists, execution flag blocking
 
 ### Layer 3: Workspace Isolation
 
-- **Location**: `crates/codegen/vtcode-core/src/execpolicy/mod.rs`
+- **Location**: `crates/codegen/diapason-core/src/execpolicy/mod.rs`
 - **Documentation**:
   [Security Model - Layer 3](./SECURITY_MODEL.md#layer-3-workspace-boundary-enforcement)
 - **Path validation**: Normalization, symlink resolution, boundary checks
 
 ### Layer 4: Sandbox Integration
 
-- **Location**: `crates/codegen/vtcode-core/src/sandbox/`,
-  `crates/codegen/vtcode-core/src/tools/bash_tool.rs`
+- **Location**: `crates/codegen/diapason-core/src/sandbox/`,
+  `crates/codegen/diapason-core/src/tools/bash_tool.rs`
 - **Documentation**:
   [Security Guide - Sandbox](../guides/security.md#sandbox-configuration)
 - **Anthropic sandbox**: Filesystem isolation, network allowlist
@@ -87,7 +87,7 @@ Complete guide to VT Code's security documentation.
 ### Layer 6: Shell Shape Validation and Approval Learning
 
 - **Location**:
-  `crates/codegen/vtcode-safety/src/command_safety/shell_parser.rs`,
+  `crates/codegen/diapason-safety/src/command_safety/shell_parser.rs`,
   `src/agent/runloop/unified/tool_routing/shell_approval.rs`
 - **Documentation**:
   [Security Model - Shell Shape Validation](./SECURITY_MODEL.md#layer-6-shell-shape-validation-and-approval-learning)
@@ -96,15 +96,15 @@ Complete guide to VT Code's security documentation.
 
 ### Layer 7: Workspace Lifecycle Hook Approval
 
-- **Location**: `crates/codegen/vtcode-config/src/loader/manager.rs`
+- **Location**: `crates/codegen/diapason-config/src/loader/manager.rs`
   (workspace-hook collection),
-  `crates/codegen/vtcode-core/src/hooks/lifecycle/engine.rs` (fail-closed gate
+  `crates/codegen/diapason-core/src/hooks/lifecycle/engine.rs` (fail-closed gate
   - SHA-256 digest), `src/agent/runloop/unified/session_setup/hook_approval.rs`
   (approval overlay)
 - **Documentation**:
   [Security Model - Workspace Lifecycle Hook Approval][sec-model-l7],
   [Security Guide - Workspace Lifecycle Hook Approval][sec-guide-l7]
-- **Workspace-controlled hooks** (`vtcode.toml`, `.vtcode/`, project profiles,
+- **Workspace-controlled hooks** (`config.toml`, `.diapason/`, project profiles,
   agent-spec files): gate the whole engine — no lifecycle hook runs until the
   exact command set is approved for the workspace; digest-bound approval
   revalidated before every spawn, after config reload, and across primary-agent
@@ -112,7 +112,7 @@ Complete guide to VT Code's security documentation.
 
 ### Layer 8: Workspace Provider Configuration Trust Boundary
 
-- **Location**: `crates/codegen/vtcode-config/src/loader/manager.rs`
+- **Location**: `crates/codegen/diapason-config/src/loader/manager.rs`
 - **Documentation**:
   [Security Model - Workspace Provider Configuration Trust Boundary][sec-model-l8]
   ,
@@ -126,20 +126,20 @@ Complete guide to VT Code's security documentation.
 
 ### Tool Policy
 
-- **Defaults**: `vtcode.toml` in the canonical user config directory
+- **Defaults**: `config.toml` in the canonical user config directory
 - **Persisted approvals**: `tool-policy.json` in the canonical user config
   directory
 - **Documentation**:
-  [Tool Policies](../modules/vtcode_tools_policy.md), [User Data Directories](../guides/user-data-directories.md)
+  [Tool Policies](../modules/diapason_tools_policy.md), [User Data Directories](../guides/user-data-directories.md)
 
 ### Workspace Configuration
 
-- **File**: `vtcode.toml`
+- **File**: `config.toml`
 - **Documentation**: [Configuration Guide](../config/config.md)
 
 ### Sandbox Configuration
 
-- **File**: `vtcode.toml` (sandbox section)
+- **File**: `config.toml` (sandbox section)
 - **Documentation**:
   [Security Guide - Sandbox](../guides/security.md#sandbox-configuration)
 
@@ -155,7 +155,7 @@ Complete guide to VT Code's security documentation.
 ### Contact
 
 - **GitHub**:
-  [Security Advisories](https://github.com/vinhnx/vtcode/security/advisories)
+  [Security Advisories](https://github.com/leynos/vtcode/security/advisories)
 - **Email**: See GitHub profile
 
 ______________________________________________________________________

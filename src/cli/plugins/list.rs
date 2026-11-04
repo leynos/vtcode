@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use vtcode_agent_plugins::{FileSystemPluginLoader, PluginLoader};
+use diapason_agent_plugins::{FileSystemPluginLoader, PluginLoader};
 
 pub(super) async fn handle_list() -> anyhow::Result<()> {
     println!("Installed Agent Plugins:");

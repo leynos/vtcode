@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use diapason_config::DiapasonConfig;
+use diapason_core::exec::events::PlanApprovalDecision;
+use diapason_core::llm::provider as uni;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use tokio::sync::Notify;
-use vtcode_config::VTCodeConfig;
-use vtcode_core::exec::events::PlanApprovalDecision;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use crate::agent::runloop::unified::planning_workflow::{
     PlanApprovalRequestContext, PlanApprovalRoute, PlanApprovalTelemetryContext, PlanArtefactError,
@@ -28,7 +28,7 @@ pub(crate) struct PlanningExitContext<'a> {
     pub(crate) session: &'a mut InlineSession,
     pub(crate) ctrl_c_state: &'a Arc<CtrlCState>,
     pub(crate) ctrl_c_notify: &'a Arc<Notify>,
-    pub(crate) vt_cfg: Option<&'a VTCodeConfig>,
+    pub(crate) vt_cfg: Option<&'a DiapasonConfig>,
     pub(crate) skip_confirmations: bool,
     pub(crate) full_auto: bool,
     pub(crate) context_usage_percent: u8,
@@ -149,7 +149,7 @@ pub(crate) async fn maybe_handle_planning_exit_trigger(
                 }
                 Err(error) => {
                     display_status(renderer, &format!("Plan approval is blocked: {error}"))?;
-                    tracing::warn!(target: "vtcode.planning_workflow", error = %error, "persisted plan rejected before approval");
+                    tracing::warn!(target: "diapason.planning_workflow", error = %error, "persisted plan rejected before approval");
                     if plan_session.plan_validation_repair_allowed() {
                         plan_session.mark_plan_validation_repair_used();
                         // The error→feedback mapping and bounded repair policy
@@ -176,7 +176,7 @@ pub(crate) async fn maybe_handle_planning_exit_trigger(
                 exit_context.full_auto,
             );
             tracing::info!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 ?approval_route,
                 "textual plan approval requested"
             );
@@ -256,7 +256,7 @@ pub(crate) async fn maybe_handle_planning_exit_trigger(
                 Ok(handoff) => handoff,
                 Err(error) => {
                     display_status(renderer, &format!("Plan execution is blocked: {error}"))?;
-                    tracing::warn!(target: "vtcode.planning_workflow", error = %error, "textual approved-plan handoff blocked");
+                    tracing::warn!(target: "diapason.planning_workflow", error = %error, "textual approved-plan handoff blocked");
                     return Ok(PlanningTransition::StayInPlanning);
                 }
             };
@@ -311,7 +311,7 @@ pub(crate) async fn maybe_handle_planning_exit_trigger(
 }
 
 fn display_status(renderer: &mut AnsiRenderer, message: &str) -> anyhow::Result<()> {
-    renderer.line(vtcode_core::utils::ansi::MessageStyle::Status, message)
+    renderer.line(diapason_core::utils::ansi::MessageStyle::Status, message)
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-# VT Code Styling System - Complete Documentation Index
+# Diapason Styling System - Complete Documentation Index
 
 ## Quick Navigation
 
@@ -28,11 +28,12 @@ Achievements:
 
 **Key Files**:
 
-- `crates/codegen/vtcode-core/src/ui/tui/types.rs` - InlineTextStyle struct
-- `crates/codegen/vtcode-core/src/ui/tui/style.rs` - Style conversion functions
-- `crates/codegen/vtcode-core/src/ui/tui/theme_parser.rs` - Config parsing
-- `crates/codegen/vtcode-core/src/utils/style_helpers.rs` - Style factories
-- `crates/codegen/vtcode-core/src/utils/diff_styles.rs` - Diff color palettes
+- `crates/codegen/diapason-core/src/ui/tui/types.rs` - InlineTextStyle struct
+- `crates/codegen/diapason-core/src/ui/tui/style.rs` - Style conversion
+  functions
+- `crates/codegen/diapason-core/src/ui/tui/theme_parser.rs` - Config parsing
+- `crates/codegen/diapason-core/src/utils/style_helpers.rs` - Style factories
+- `crates/codegen/diapason-core/src/utils/diff_styles.rs` - Diff color palettes
 
 ## Document Guide
 
@@ -51,12 +52,12 @@ Achievements:
 
 ```rust
 // CLI output with colors
-use vtcode_core::utils::colors::style;
+use diapason_core::utils::colors::style;
 println!("{}", style("Success").green());
 println!("{}", style("Error").red().bold());
 
 // TUI widgets
-use vtcode_core::utils::style_helpers::{ColorPalette, render_styled};
+use diapason_core::utils::style_helpers::{ColorPalette, render_styled};
 use ratatui::text::Span;
 
 let palette = ColorPalette::default();
@@ -67,7 +68,7 @@ let span = Span::styled("Text", palette.success);
 
 ```rust
 use anstyle::Style;
-use vtcode_core::utils::ratatui_styles::anstyle_to_ratatui;
+use diapason_core::utils::ratatui_styles::anstyle_to_ratatui;
 
 let anstyle = Style::new().bold().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green)));
 let ratatui_style = anstyle_to_ratatui(anstyle);
@@ -76,7 +77,7 @@ let ratatui_style = anstyle_to_ratatui(anstyle);
 ### Parsing Configuration
 
 ```rust
-use vtcode_core::ui::tui::ThemeConfigParser;
+use diapason_core::ui::tui::ThemeConfigParser;
 
 // Parse Git color syntax
 let git_style = ThemeConfigParser::parse_git_style("bold red #ff0000")?;
@@ -100,7 +101,7 @@ let style = ThemeConfigParser::parse_flexible("green")?;
 | `ratatui`       | 0.30    | TUI rendering                       |
 | `catppuccin`    | 2.5     | Theme color palettes                |
 
-All crates are in `vtcode-core/Cargo.toml`
+All crates are in `diapason-core/Cargo.toml`
 
 ## Architecture Overview
 
@@ -121,7 +122,7 @@ Style Objects (anstyle::Style)
 Run styling tests:
 
 ```bash
-cargo test vtcode_ui           # UI/styling tests
+cargo test diapason_ui           # UI/styling tests
 cargo test style_helpers       # Style helper tests
 cargo test theme_parser        # Config parser tests
 cargo test --lib              # All library tests

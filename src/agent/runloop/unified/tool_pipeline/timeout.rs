@@ -1,9 +1,9 @@
 use std::time::{Duration, Instant};
 
+use diapason_core::tools::registry::{ToolErrorType, ToolExecutionError, ToolTimeoutCategory};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
-use vtcode_core::tools::registry::{ToolErrorType, ToolExecutionError, ToolTimeoutCategory};
 
 use crate::agent::runloop::unified::progress::ProgressReporter;
 use crate::agent::runloop::unified::wait_feedback::{resolve_fractional_warning_delay, wait_timeout_warning_message};
@@ -134,7 +134,7 @@ mod tests {
 
         let after = wait_for_message(&reporter).await;
         assert!(after.message.contains("is nearing the"));
-        assert!(after.message.contains(vtcode_commons::stop_hints::STOP_HINT_INLINE));
+        assert!(after.message.contains(diapason_commons::stop_hints::STOP_HINT_INLINE));
 
         handle.await.expect("warning task should complete");
     }

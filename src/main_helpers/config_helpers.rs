@@ -3,7 +3,7 @@
 
 //! Shared helpers for loading workspace configuration with consistent error context.
 //!
-//! Every call to [`vtcode_config::loader::manager::ConfigManager::load_from_workspace_with_repository_repair`]
+//! Every call to [`diapason_config::loader::manager::ConfigManager::load_from_workspace_with_repository_repair`]
 //! across the codebase produced a slightly different `.with_context(…)` string, making
 //! log searches unreliable and hiding the workspace path in some variants. This module
 //! centralises all loading paths behind a single function so the error message is
@@ -12,7 +12,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use vtcode_config::ConfigManager;
+use diapason_config::ConfigManager;
 
 /// Load the workspace configuration with a consistent, path-inclusive error context.
 ///
@@ -25,10 +25,10 @@ use vtcode_config::ConfigManager;
 ///
 /// Returns an error if the configuration file cannot be read or parsed, with a
 /// message in the form:
-/// `"Failed to load VT Code configuration for workspace '<path>'"`
+/// `"Failed to load Diapason configuration for workspace '<path>'"`
 #[must_use = "loading the config has no effect unless the result is used"]
 pub(crate) fn load_workspace_config(workspace: impl AsRef<Path>) -> Result<ConfigManager> {
     let workspace = workspace.as_ref();
     ConfigManager::load_from_workspace_with_repository_repair(workspace)
-        .with_context(|| format!("Failed to load VT Code configuration for workspace '{}'", workspace.display()))
+        .with_context(|| format!("Failed to load Diapason configuration for workspace '{}'", workspace.display()))
 }

@@ -1,6 +1,6 @@
 # OpenRouter Integration Guide
 
-OpenRouter expands VT Code with access to the full model marketplace. This
+OpenRouter expands Diapason with access to the full model marketplace. This
 guide covers configuration, CLI usage, and tips for working with custom
 OpenRouter model IDs.
 
@@ -20,21 +20,21 @@ ENV
 
 ## Quickstart
 
-Run VT Code against the Xiaomi MiMo V2.5 Pro model (the default OpenRouter
+Run Diapason against the Xiaomi MiMo V2.5 Pro model (the default OpenRouter
 model):
 
 ```bash
-vtcode --provider openrouter --model xiaomi/mimo-v2.5-pro chat
+diapason --provider openrouter --model xiaomi/mimo-v2.5-pro chat
 ```
 
 Or use the lightweight MiMo V2.5:
 
 ```bash
-vtcode --provider openrouter --model xiaomi/mimo-v2.5 chat
+diapason --provider openrouter --model xiaomi/mimo-v2.5 chat
 ```
 
 Both commands stream responses using the OpenAI-compatible Chat Completions API
-and support VT Code tooling out of the box.
+and support Diapason tooling out of the box.
 
 ## Meta Muse models
 
@@ -42,8 +42,8 @@ For direct Meta access, prefer the [official Meta AI provider](./meta.md).
 OpenRouter also exposes these marketplace model IDs:
 
 ```bash
-vtcode --provider openrouter --model meta/muse-spark-1.2 chat
-vtcode --provider openrouter --model meta/muse-glimmer-30b chat
+diapason --provider openrouter --model meta/muse-spark-1.2 chat
+diapason --provider openrouter --model meta/muse-glimmer-30b chat
 ```
 
 These routes use `OPENROUTER_API_KEY` and OpenRouter billing. The `meta/...`
@@ -52,7 +52,7 @@ namespace is distinct from the official provider's bare `muse-spark-1.2` and
 
 ## Persisting configuration
 
-Add OpenRouter to your workspace `vtcode.toml` (MiMo V2.5 Pro is the default):
+Add OpenRouter to your workspace `config.toml` (MiMo V2.5 Pro is the default):
 
 ```toml
 [agent]
@@ -65,13 +65,13 @@ Custom model IDs are accepted. If you reference a model not listed in
 
 ## Runtime behaviour
 
-- **Tool calling:** VT Code maps OpenRouter conversations to the
+- **Tool calling:** Diapason maps OpenRouter conversations to the
   OpenAI-compatible function calling format.
-- **Streaming:** Streaming is fully supported for OpenRouter providers (VT Code
+- **Streaming:** Streaming is fully supported for OpenRouter providers (Diapason
   uses the standard streaming interface).
 - **Prompt refinement:** The prompt refiner automatically reuses your
   OpenRouter key and respects any custom model overrides.
-- **Routing:** When the LLM router is enabled, VT Code honours the configured
+- **Routing:** When the LLM router is enabled, Diapason honours the configured
   provider and model combination for routing tasks.
 
 ## Troubleshooting

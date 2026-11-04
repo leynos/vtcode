@@ -38,7 +38,7 @@ pub use error_handling::{
     ErrorCode, ErrorSeverity, ExtensionError, ExtensionResult, RecoveryStrategy,
 };
 pub use executor::{
-    check_vtcode_available, execute_command, execute_command_with_timeout, get_vtcode_version,
+    check_diapason_available, execute_command, execute_command_with_timeout, get_diapason_version,
 };
 pub use file_search_service::{FileMatch, FileSearchService, FileSearchServiceConfig};
 pub use metrics::{CommandTimer, MetricStats, MetricsCollector};
@@ -49,27 +49,27 @@ pub use workspace::{
     WorkspaceContext, WorkspaceFile,
 };
 
-/// VT Code extension for Zed editor
-/// Provides integration with the VT Code AI coding assistant
-pub struct VTCodeExtension {
+/// Diapason extension for Zed editor
+/// Provides integration with the Diapason AI coding assistant
+pub struct DiapasonExtension {
     config: Option<Config>,
-    vtcode_available: bool,
+    diapason_available: bool,
     output_channel: Arc<OutputChannel>,
     editor_state: Arc<EditorState>,
 }
 
-impl zed::Extension for VTCodeExtension {
+impl zed::Extension for DiapasonExtension {
     fn new() -> Self {
-        let vtcode_available = check_vtcode_available();
+        let diapason_available = check_diapason_available();
         let extension = Self {
             config: None,
-            vtcode_available,
+            diapason_available,
             output_channel: Arc::new(OutputChannel::new()),
             editor_state: Arc::new(EditorState::new()),
         };
 
         // Update status based on CLI availability
-        if vtcode_available {
+        if diapason_available {
             let _ = extension.editor_state.set_status(StatusIndicator::Ready);
         }
 
@@ -77,7 +77,7 @@ impl zed::Extension for VTCodeExtension {
     }
 }
 
-impl VTCodeExtension {
+impl DiapasonExtension {
     /// Initialize the extension with workspace configuration
     pub fn initialize(&mut self, workspace_root: &str) -> Result<(), String> {
         // Try to load configuration from workspace
@@ -86,9 +86,9 @@ impl VTCodeExtension {
             self.config = Some(config);
         }
 
-        // Verify VT Code CLI is available
-        if !self.vtcode_available {
-            return Err("VT Code CLI not found in PATH".to_string());
+        // Verify Diapason CLI is available
+        if !self.diapason_available {
+            return Err("Diapason CLI not found in PATH".to_string());
         }
 
         Ok(())
@@ -99,9 +99,9 @@ impl VTCodeExtension {
         self.config.as_ref()
     }
 
-    /// Check if VT Code CLI is available
-    pub fn is_vtcode_available(&self) -> bool {
-        self.vtcode_available
+    /// Check if Diapason CLI is available
+    pub fn is_diapason_available(&self) -> bool {
+        self.diapason_available
     }
 
     /// Execute "Ask the Agent" command
@@ -273,7 +273,7 @@ impl VTCodeExtension {
     }
 }
 
-zed::register_extension!(VTCodeExtension);
+zed::register_extension!(DiapasonExtension);
 
 #[cfg(test)]
 mod tests {
@@ -282,21 +282,21 @@ mod tests {
 
     #[test]
     fn test_extension_creation() {
-        let ext = VTCodeExtension::new();
+        let ext = DiapasonExtension::new();
         assert!(ext.config.is_none());
-        // vtcode_available depends on system, don't assert
+        // diapason_available depends on system, don't assert
     }
 
     #[test]
     fn test_config_getter() {
-        let ext = VTCodeExtension::new();
+        let ext = DiapasonExtension::new();
         assert!(ext.config().is_none());
     }
 
     #[test]
-    fn test_vtcode_availability_check() {
-        let ext = VTCodeExtension::new();
+    fn test_diapason_availability_check() {
+        let ext = DiapasonExtension::new();
         // Just verify the method exists and returns a bool
-        let _ = ext.is_vtcode_available();
+        let _ = ext.is_diapason_available();
     }
 }

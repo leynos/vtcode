@@ -3,7 +3,7 @@ language: Rust
 severity: error
 message: Prefer `for` loops over `.for_each` and `.try_for_each`
 note: |
-  VT Code keeps side-effectful iteration explicit. Use a `for` loop so
+  Diapason keeps side-effectful iteration explicit. Use a `for` loop so
   control flow stays obvious and aligned with the workspace Rust style guide.
 rule:
   any:
@@ -14,8 +14,8 @@ files:
   - tests/**/*.rs
   - benches/**/*.rs
   - fuzz/**/*.rs
-  - crates/codegen/vtcode-*/src/**/*.rs
-  - crates/codegen/vtcode-*/tests/**/*.rs
-  - crates/codegen/vtcode-*/benches/**/*.rs
+  - crates/codegen/diapason-*/src/**/*.rs
+  - crates/codegen/diapason-*/tests/**/*.rs
+  - crates/codegen/diapason-*/benches/**/*.rs
   - build.rs
-  - crates/codegen/vtcode-*/build.rs
+  - crates/codegen/diapason-*/build.rs

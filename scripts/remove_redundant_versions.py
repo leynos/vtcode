@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""Remove redundant version keys from workspace-internal vtcode-* dependencies."""
+"""Remove redundant version keys from workspace-internal diapason-* dependencies."""
 
 import os
 import re
 
-# Pattern to match vtcode-* dependencies with version keys
-# Matches: vtcode-foo = { workspace = true,  version = "..." }
-# Or: vtcode-foo = { version = "...", workspace = true }
+# Pattern to match diapason-* dependencies with version keys
+# Matches: diapason-foo = { workspace = true,  version = "..." }
+# Or: diapason-foo = { version = "...", workspace = true }
 VERSION_PATTERN = re.compile(
-    r'(vtcode-[a-zA-Z0-9_-]+)\s*=\s*\{([^}]*?)\s*version\s*=\s*"[^"]*"\s*,?\s*([^}]*?)\}'
+    r'(diapason-[a-zA-Z0-9_-]+)\s*=\s*\{([^}]*?)\s*version\s*=\s*"[^"]*"\s*,?\s*([^}]*?)\}'
 )
 
-# Simpler approach: remove `version = "..."` from vtcode-* dep lines
-# Matches the version line inside a vtcode-* dependency block
+# Simpler approach: remove `version = "..."` from diapason-* dep lines
+# Matches the version line inside a diapason-* dependency block
 DEP_PATTERN = re.compile(
-    r"((?:vtcode-[a-zA-Z0-9_-]+)\s*=\s*\{)([^}]+)(\})", re.MULTILINE | re.DOTALL
+    r"((?:diapason-[a-zA-Z0-9_-]+)\s*=\s*\{)([^}]+)(\})", re.MULTILINE | re.DOTALL
 )
 
 
 def fix_cargo_toml(filepath: str) -> int:
-    """Remove version keys from vtcode-* workspace deps. Returns replacements count."""
+    """Remove version keys from diapason-* workspace deps. Returns replacements count."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
@@ -33,8 +33,8 @@ def fix_cargo_toml(filepath: str) -> int:
         body = match.group(2)
         closing = match.group(3)
 
-        # Only process vtcode-* deps
-        if not dep_line.strip().startswith("vtcode-"):
+        # Only process diapason-* deps
+        if not dep_line.strip().startswith("diapason-"):
             return match.group(0)
 
         # Remove version = "..." entries (with optional trailing comma)

@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
+use diapason_commons::DiapasonPaths;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use vtcode_commons::VtCodePaths;
 
 #[cfg(test)]
 thread_local! {
@@ -96,7 +96,7 @@ fn read_snapshot_file(path: &Path) -> Result<Option<(UpdateCacheSnapshot, bool)>
     };
     let modified = metadata.modified().ok();
 
-    let content = String::from_utf8(VtCodePaths::read_file_no_follow(path)?)
+    let content = String::from_utf8(DiapasonPaths::read_file_no_follow(path)?)
         .with_context(|| format!("Failed to read update cache metadata {}", path.display()))?;
 
     let trimmed = content.trim();
@@ -214,7 +214,7 @@ where
 {
     let cache_file = cache_file_path()?;
     let legacy_paths = legacy_cache_file_paths()?;
-    VtCodePaths::with_private_file_lock(&cache_file, || {
+    DiapasonPaths::with_private_file_lock(&cache_file, || {
         let mut snapshot = read_snapshot_from_paths(&cache_file, &legacy_paths)?;
         update(&mut snapshot)?;
         write_snapshot_at(&cache_file, &snapshot)
@@ -234,21 +234,21 @@ fn snapshot_write_payload(cache_file: &Path, snapshot: &UpdateCacheSnapshot) -> 
     };
     let serialized = serde_json::to_vec(&payload).context("Failed to serialize update cache payload")?;
     if let Some(parent) = cache_file.parent() {
-        VtCodePaths::ensure_user_dir(parent).context("Failed to create update cache directory")?;
+        DiapasonPaths::ensure_user_dir(parent).context("Failed to create update cache directory")?;
     }
     Ok(serialized)
 }
 
 fn write_snapshot_at(cache_file: &Path, snapshot: &UpdateCacheSnapshot) -> Result<()> {
     let serialized = snapshot_write_payload(cache_file, snapshot)?;
-    VtCodePaths::write_private_file_atomic(cache_file, &serialized)
+    DiapasonPaths::write_private_file_atomic(cache_file, &serialized)
         .with_context(|| format!("Failed to write update cache {}", cache_file.display()))?;
     Ok(())
 }
 
 fn write_snapshot_at_if_absent(cache_file: &Path, snapshot: &UpdateCacheSnapshot) -> Result<bool> {
     let serialized = snapshot_write_payload(cache_file, snapshot)?;
-    VtCodePaths::write_private_file_atomic_if_absent(cache_file, &serialized)
+    DiapasonPaths::write_private_file_atomic_if_absent(cache_file, &serialized)
         .with_context(|| format!("Failed to write update cache {}", cache_file.display()))
 }
 
@@ -258,11 +258,11 @@ fn legacy_cache_file_paths() -> Result<Vec<PathBuf>> {
         return Ok(Vec::new());
     }
 
-    let paths = VtCodePaths::resolve()?;
-    let mut candidates = vec![paths.legacy_dir().join("cache/last_update_check")];
+    let paths = DiapasonPaths::resolve()?;
+    let mut candidates = Vec::new();
 
-    // Before the XDG/native path migration, the updater used ~/.cache/vtcode
-    // (or XDG_CACHE_HOME/vtcode) independently of the rest of VT Code's
+    // Before the XDG/native path migration, the updater used ~/.cache/diapason
+    // (or XDG_CACHE_HOME/diapason) independently of the rest of Diapason's
     // storage. Keep that location readable for installations that have not
     // been migrated yet or whose migration marker predates the cache file.
     let old_cache_dir = std::env::var_os("XDG_CACHE_HOME")
@@ -270,7 +270,7 @@ fn legacy_cache_file_paths() -> Result<Vec<PathBuf>> {
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
         .or_else(|| dirs::home_dir().map(|home| home.join(".cache")))
-        .map(|path| path.join("vtcode/last_update_check"));
+        .map(|path| path.join("diapason/last_update_check"));
     if let Some(path) = old_cache_dir {
         candidates.push(path);
     }
@@ -285,10 +285,10 @@ fn legacy_cache_file_paths() -> Result<Vec<PathBuf>> {
 fn get_cache_dir() -> Result<PathBuf> {
     #[cfg(test)]
     if let Some(path) = TEST_CACHE_DIR.with(|path| path.borrow().clone()) {
-        return VtCodePaths::ensure_user_dir(&path).map(|_| path);
+        return DiapasonPaths::ensure_user_dir(&path).map(|_| path);
     }
 
-    Ok(VtCodePaths::resolve()?.ensure_cache_dir()?.to_path_buf())
+    Ok(DiapasonPaths::resolve()?.ensure_cache_dir()?.to_path_buf())
 }
 
 #[cfg(test)]

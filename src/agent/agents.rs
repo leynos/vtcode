@@ -1,16 +1,16 @@
 use anyhow::Result;
-use std::path::PathBuf;
-use vtcode_core::config::ReasoningEffortLevel;
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig};
-use vtcode_core::config::types::{AgentConfig as CoreAgentConfig, ModelSelectionSource};
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
-use vtcode_core::core::interfaces::{SessionRuntime, SessionRuntimeParams};
-use vtcode_core::core::threads::{
+use diapason_core::config::ReasoningEffortLevel;
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig};
+use diapason_core::config::types::{AgentConfig as CoreAgentConfig, ModelSelectionSource};
+use diapason_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::core::interfaces::{SessionRuntime, SessionRuntimeParams};
+use diapason_core::core::threads::{
     ArchivedSessionIntent, ThreadBootstrap, loaded_skills_from_session_listing, messages_from_session_listing,
 };
-use vtcode_core::llm::provider::Message as ProviderMessage;
-use vtcode_core::utils::session_archive::SessionArchiveMetadata;
-use vtcode_core::utils::session_archive::{SessionContinuationMetadata, SessionListing, SessionSnapshot};
+use diapason_core::llm::provider::Message as ProviderMessage;
+use diapason_core::utils::session_archive::SessionArchiveMetadata;
+use diapason_core::utils::session_archive::{SessionContinuationMetadata, SessionListing, SessionSnapshot};
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SessionContinuation {
@@ -21,7 +21,7 @@ pub(crate) struct SessionContinuation {
     intent: ArchivedSessionIntent,
     thread_label: String,
     root_thread: bool,
-    vt_cfg_override: Option<VTCodeConfig>,
+    vt_cfg_override: Option<DiapasonConfig>,
 }
 
 impl SessionContinuation {
@@ -87,7 +87,7 @@ impl SessionContinuation {
         self.root_thread
     }
 
-    pub(crate) fn vt_cfg_override(&self) -> Option<&VTCodeConfig> {
+    pub(crate) fn vt_cfg_override(&self) -> Option<&DiapasonConfig> {
         self.vt_cfg_override.as_ref()
     }
 
@@ -115,7 +115,7 @@ pub(crate) async fn load_resume_session(
     identifier: &str,
     intent: ArchivedSessionIntent,
 ) -> Result<Option<SessionContinuation>> {
-    let Some(listing) = vtcode_core::utils::session_archive::find_session_by_identifier(identifier).await? else {
+    let Some(listing) = diapason_core::utils::session_archive::find_session_by_identifier(identifier).await? else {
         return Ok(None);
     };
     Ok(Some(SessionContinuation::from_listing(&listing, intent)))
@@ -124,7 +124,7 @@ pub(crate) async fn load_resume_session(
 #[cfg_attr(feature = "profiling", hotpath::measure)]
 pub(crate) async fn run_single_agent_loop(
     config: &CoreAgentConfig,
-    initial_vt_cfg: Option<VTCodeConfig>,
+    initial_vt_cfg: Option<DiapasonConfig>,
     skip_confirmations: bool,
     full_auto: bool,
     primary_agent_explicitly_configured: bool,
@@ -181,10 +181,10 @@ impl EitherRuntime {
 }
 
 fn prepare_session_vt_config(
-    initial_vt_cfg: Option<VTCodeConfig>,
+    initial_vt_cfg: Option<DiapasonConfig>,
     runtime_cfg: &CoreAgentConfig,
     resume: Option<&SessionContinuation>,
-) -> Option<VTCodeConfig> {
+) -> Option<DiapasonConfig> {
     let mut vt_cfg = resume
         .and_then(|session| session.vt_cfg_override().cloned())
         .or(initial_vt_cfg)
@@ -202,7 +202,7 @@ fn apply_resume_runtime_overrides(runtime_cfg: &mut CoreAgentConfig, resume: &Se
     apply_persisted_resume_metadata(runtime_cfg, Some(&resume.snapshot().metadata));
 }
 
-pub(crate) fn apply_runtime_overrides(vt_cfg: Option<&mut VTCodeConfig>, runtime_cfg: &CoreAgentConfig) {
+pub(crate) fn apply_runtime_overrides(vt_cfg: Option<&mut DiapasonConfig>, runtime_cfg: &CoreAgentConfig) {
     if let Some(cfg) = vt_cfg {
         cfg.agent.provider = runtime_cfg.provider.clone();
         cfg.agent.reasoning_effort = runtime_cfg.reasoning_effort;
@@ -218,7 +218,7 @@ pub(crate) fn apply_runtime_overrides(vt_cfg: Option<&mut VTCodeConfig>, runtime
 /// session is alive. User-editable appearance, reasoning, and other safe
 /// settings remain sourced from the freshly loaded configuration so they can
 /// take effect without restarting the process.
-pub(crate) fn apply_live_reload_overrides(vt_cfg: Option<&mut VTCodeConfig>, runtime_cfg: &CoreAgentConfig) {
+pub(crate) fn apply_live_reload_overrides(vt_cfg: Option<&mut DiapasonConfig>, runtime_cfg: &CoreAgentConfig) {
     if let Some(cfg) = vt_cfg {
         cfg.agent.provider = runtime_cfg.provider.clone();
         if matches!(runtime_cfg.model_source, ModelSelectionSource::CliOverride) {
@@ -257,19 +257,19 @@ pub(crate) fn apply_persisted_resume_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
-    use vtcode_core::config::core::PromptCachingConfig;
-    use vtcode_core::config::models::Provider;
-    use vtcode_core::config::types::{ReasoningEffortLevel, UiSurfacePreference};
-    use vtcode_core::core::agent::snapshots::{
+    use diapason_core::config::core::PromptCachingConfig;
+    use diapason_core::config::models::Provider;
+    use diapason_core::config::types::{ReasoningEffortLevel, UiSurfacePreference};
+    use diapason_core::core::agent::snapshots::{
         DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS,
     };
+    use std::collections::BTreeMap;
 
     #[test]
     fn cli_model_override_updates_default_model() {
         const OVERRIDE_MODEL: &str = "override-model";
 
-        let mut vt_cfg = VTCodeConfig::default();
+        let mut vt_cfg = DiapasonConfig::default();
         vt_cfg.agent.default_model = "config-model".to_string();
 
         // Cache the current directory to avoid repeated calls
@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn live_reload_preserves_session_identity_but_keeps_safe_settings() {
-        let mut vt_cfg = VTCodeConfig::default();
+        let mut vt_cfg = DiapasonConfig::default();
         vt_cfg.agent.provider = "file-provider".to_string();
         vt_cfg.agent.default_model = "file-model".to_string();
         vt_cfg.agent.theme = "file-theme".to_string();
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn workspace_config_preserves_default_model() {
-        let mut vt_cfg = VTCodeConfig::default();
+        let mut vt_cfg = DiapasonConfig::default();
         vt_cfg.agent.default_model = "config-model".to_string();
 
         // Cache the current directory to avoid repeated calls
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn initial_session_config_is_preserved() {
-        let mut initial_vt_cfg = VTCodeConfig::default();
+        let mut initial_vt_cfg = DiapasonConfig::default();
         initial_vt_cfg.agent.default_model = "startup-model".to_string();
         initial_vt_cfg.agent.provider = "startup-provider".to_string();
 

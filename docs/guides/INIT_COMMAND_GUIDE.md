@@ -2,10 +2,10 @@
 
 ## Overview
 
-The `/init` command prepares a repository for VT Code guidance and memory. It
+The `/init` command prepares a repository for Diapason guidance and memory. It
 generates a root `AGENTS.md` that complies with the open specification
 published at [agents.md](https://agents.md/), scaffolds the repository rule and
-persistent-memory layout that VT Code uses at runtime, and now runs a guided
+persistent-memory layout that Diapason uses at runtime, and now runs a guided
 AGENTS setup when key guidance is ambiguous.
 
 ## Key Features
@@ -20,8 +20,8 @@ AGENTS setup when key guidance is ambiguous.
   obvious from the codebase.
 - **Focused guidance** – surfaces the most relevant commands and conventions
   within the recommended 200–400 word budget.
-- **Workspace scaffolding** – creates `.vtcode/README.md` and initializes the
-  per-repository memory directory layout used by VT Code.
+- **Workspace scaffolding** – creates `.diapason/README.md` and initializes the
+  per-repository memory directory layout used by Diapason.
 - **Portable output** – works for any project layout; update the file as
   conventions evolve and regenerate when new components are added.
 
@@ -33,7 +33,7 @@ AGENTS setup when key guidance is ambiguous.
    cd /path/to/project
    ```
 
-2. Launch vtcode:
+2. Launch diapason:
 
    ```bash
    ./run.sh
@@ -48,15 +48,15 @@ AGENTS setup when key guidance is ambiguous.
 The assistant will analyze the repository, synthesize the relevant guidance,
 ask targeted questions when needed, and scaffold the workspace instruction
 layout. By default that includes `AGENTS.md` at the workspace root,
-`.vtcode/README.md`, and the repository memory directory layout.
+`.diapason/README.md`, and the repository memory directory layout.
 
 You can run the same flow from the CLI with:
 
 ```bash
-vtcode init
+diapason init
 ```
 
-Use `vtcode init --force` or `/init --force` to overwrite an existing
+Use `diapason init --force` or `/init --force` to overwrite an existing
 `AGENTS.md` without an overwrite confirmation.
 
 ## Generated Content Structure
@@ -64,7 +64,7 @@ Use `vtcode init --force` or `/init --force` to overwrite an existing
 The resulting workspace scaffold includes:
 
 - `AGENTS.md` – root project guidance file generated from repository analysis.
-- `.vtcode/README.md` – starter documentation for workspace prompt files and
+- `.diapason/README.md` – starter documentation for workspace prompt files and
   rule placement.
 - Persistent memory files under the repository memory directory:
   - `memory_summary.md`
@@ -94,17 +94,17 @@ where to add project-specific details.
 
 ## Relationship to Rules and Memory
 
-`/init` sets up the three main VT Code guidance surfaces:
+`/init` sets up the three main Diapason guidance surfaces:
 
 - `AGENTS.md` for shared, human-authored project instructions
-- `.vtcode/rules/` for modular always-on or path-scoped rules
+- `.diapason/rules/` for modular always-on or path-scoped rules
 - the per-repository memory directory for learned persistent memory
 
 After initialization:
 
 - use `AGENTS.md` for project-wide guidance
-- add focused rule files under `.vtcode/rules/` when only some paths need extra
-  instructions
+- add focused rule files under `.diapason/rules/` when only some paths need
+  extra instructions
 - use `/memory` or `/config memory` to inspect and tune persistent-memory
   behavior
 
@@ -155,4 +155,4 @@ For a Rust service with Docker support and conventional commits:
 Regenerate the root guidance whenever the build, testing, or review process
 changes so future contributors and agents stay aligned. For more on runtime
 guidance loading and persistent-memory behavior, see
-[Guidance and Persistent Memory for VT Code](./memory-management.md).
+[Guidance and Persistent Memory for Diapason](./memory-management.md).

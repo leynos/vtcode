@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import { CommandRegistry } from "../../commandRegistry";
 import { AnalyseCommand, AskCommand, OpenConfigCommand } from "../../commands";
-import * as vtcodeRunner from "../../utils/vtcodeRunner";
+import * as diapasonRunner from "../../utils/diapasonRunner";
 
-// Mock the vtcodeRunner module
-jest.mock("../../utils/vtcodeRunner");
+// Mock the diapasonRunner module
+jest.mock("../../utils/diapasonRunner");
 
 describe("Command Integration Tests", () => {
     let registry: CommandRegistry;
@@ -44,11 +44,11 @@ describe("Command Integration Tests", () => {
             ]);
 
             // Mock command execution
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockResolvedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockResolvedValue(
                 undefined
             );
             (
-                vtcodeRunner.ensureCliAvailableForCommand as jest.Mock
+                diapasonRunner.ensureCliAvailableForCommand as jest.Mock
             ).mockResolvedValue(true);
             jest.spyOn(vscode.window, "showInputBox").mockResolvedValue(
                 "Test question"
@@ -61,29 +61,29 @@ describe("Command Integration Tests", () => {
             // Act & Assert
             // Execute ask command
             const askResult = await registry.executeCommand(
-                "vtcode.askAgent",
+                "diapason.askAgent",
                 mockContext
             );
             expect(askResult).toBeUndefined();
-            expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
+            expect(diapasonRunner.runDiapasonCommand).toHaveBeenCalledWith(
                 ["ask", "Test question"],
                 expect.any(Object)
             );
 
             // Execute analyse command
             const analyzeResult = await registry.executeCommand(
-                "vtcode.runAnalyze",
+                "diapason.runAnalyze",
                 mockContext
             );
             expect(analyzeResult).toBeUndefined();
-            expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
+            expect(diapasonRunner.runDiapasonCommand).toHaveBeenCalledWith(
                 ["analyse"],
                 expect.any(Object)
             );
 
             // Execute open config command
             const openConfigResult = await registry.executeCommand(
-                "vtcode.openConfig",
+                "diapason.openConfig",
                 mockContext
             );
             expect(openConfigResult).toBeUndefined();
@@ -95,7 +95,7 @@ describe("Command Integration Tests", () => {
             registry.register(askCommand);
 
             const mockError = new Error("Command execution failed");
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockRejectedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockRejectedValue(
                 mockError
             );
             jest.spyOn(vscode.window, "showInputBox").mockResolvedValue(
@@ -107,14 +107,14 @@ describe("Command Integration Tests", () => {
 
             // Act
             const result = await registry.executeCommand(
-                "vtcode.askAgent",
+                "diapason.askAgent",
                 mockContext
             );
 
             // Assert
             expect(result).toBeUndefined();
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-                "Failed to ask with VT Code: Command execution failed"
+                "Failed to ask with Diapason: Command execution failed"
             );
         });
 
@@ -125,14 +125,14 @@ describe("Command Integration Tests", () => {
 
             // Act
             const result = await registry.executeCommand(
-                "vtcode.nonExistentCommand",
+                "diapason.nonExistentCommand",
                 mockContext
             );
 
             // Assert
             expect(result).toBeUndefined();
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-                'Command "vtcode.nonExistentCommand" not found'
+                'Command "diapason.nonExistentCommand" not found'
             );
         });
 
@@ -142,18 +142,18 @@ describe("Command Integration Tests", () => {
             registry.register(analyseCommand);
 
             (
-                vtcodeRunner.ensureCliAvailableForCommand as jest.Mock
+                diapasonRunner.ensureCliAvailableForCommand as jest.Mock
             ).mockResolvedValue(false);
 
             // Act
             const result = await registry.executeCommand(
-                "vtcode.runAnalyze",
+                "diapason.runAnalyze",
                 mockContext
             );
 
             // Assert
             expect(result).toBe(false);
-            expect(vtcodeRunner.runVtcodeCommand).not.toHaveBeenCalled();
+            expect(diapasonRunner.runDiapasonCommand).not.toHaveBeenCalled();
         });
     });
 
@@ -169,13 +169,13 @@ describe("Command Integration Tests", () => {
 
             // Assert
             expect(registry.getAll()).toHaveLength(2);
-            expect(registry.get("vtcode.askAgent")).toBe(askCommand);
-            expect(registry.get("vtcode.runAnalyze")).toBe(analyseCommand);
+            expect(registry.get("diapason.askAgent")).toBe(askCommand);
+            expect(registry.get("diapason.runAnalyze")).toBe(analyseCommand);
 
             // Unregister
-            registry.unregister("vtcode.askAgent");
+            registry.unregister("diapason.askAgent");
             expect(registry.getAll()).toHaveLength(1);
-            expect(registry.get("vtcode.askAgent")).toBeUndefined();
+            expect(registry.get("diapason.askAgent")).toBeUndefined();
         });
 
         it("should clear all registered commands", () => {
@@ -202,7 +202,7 @@ describe("Command Integration Tests", () => {
 
             // Assert
             expect(registry.getAll()).toHaveLength(1);
-            expect(registry.get("vtcode.askAgent")).toBe(askCommand2);
+            expect(registry.get("diapason.askAgent")).toBe(askCommand2);
         });
     });
 
@@ -221,7 +221,7 @@ describe("Command Integration Tests", () => {
                 } as vscode.WorkspaceFolder,
             };
 
-            (vtcodeRunner.runVtcodeCommand as jest.Mock).mockResolvedValue(
+            (diapasonRunner.runDiapasonCommand as jest.Mock).mockResolvedValue(
                 undefined
             );
             jest.spyOn(vscode.window, "showInputBox").mockResolvedValue(
@@ -233,10 +233,10 @@ describe("Command Integration Tests", () => {
             ).mockResolvedValue(undefined as any);
 
             // Act
-            await registry.executeCommand("vtcode.askAgent", customContext);
+            await registry.executeCommand("diapason.askAgent", customContext);
 
             // Assert
-            expect(vtcodeRunner.runVtcodeCommand).toHaveBeenCalledWith(
+            expect(diapasonRunner.runDiapasonCommand).toHaveBeenCalledWith(
                 ["ask", "Test question"],
                 expect.objectContaining({
                     output: customContext.output,

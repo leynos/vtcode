@@ -1,22 +1,22 @@
 import * as vscode from "vscode";
 import { BaseCommand, type CommandContext } from "../types/command";
-import { runVtcodeCommand } from "../utils/vtcodeRunner";
+import { runDiapasonCommand } from "../utils/diapasonRunner";
 
 /**
- * Command to ask VT Code about the currently selected code
+ * Command to ask Diapason about the currently selected code
  */
 export class AskSelectionCommand extends BaseCommand {
-    public readonly id = "vtcode.askSelection";
+    public readonly id = "diapason.askSelection";
     public readonly title = "Ask About Selection";
     public readonly description =
-        "Ask VT Code to explain or analyse the selected code";
+        "Ask Diapason to explain or analyse the selected code";
     public readonly icon = "comment";
 
     async execute(context: CommandContext): Promise<void> {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
             void vscode.window.showWarningMessage(
-                "Open a text editor to ask VT Code about the current selection."
+                "Open a text editor to ask Diapason about the current selection."
             );
             return;
         }
@@ -24,7 +24,7 @@ export class AskSelectionCommand extends BaseCommand {
         const selection = editor.selection;
         if (selection.isEmpty) {
             void vscode.window.showWarningMessage(
-                "Highlight text first, then run 'Ask About Selection with VT Code'."
+                "Highlight text first, then run 'Ask About Selection with Diapason'."
             );
             return;
         }
@@ -32,7 +32,7 @@ export class AskSelectionCommand extends BaseCommand {
         const selectedText = editor.document.getText(selection);
         if (!selectedText.trim()) {
             void vscode.window.showWarningMessage(
-                "The selected text is empty. Select code or text for VT Code to inspect."
+                "The selected text is empty. Select code or text for Diapason to inspect."
             );
             return;
         }
@@ -43,7 +43,7 @@ export class AskSelectionCommand extends BaseCommand {
 
         const defaultQuestion = "Explain the highlighted selection.";
         const question = await vscode.window.showInputBox({
-            prompt: "How should VT Code help with the highlighted selection?",
+            prompt: "How should Diapason help with the highlighted selection?",
             value: defaultQuestion,
             valueSelection: [0, defaultQuestion.length],
             ignoreFocusOut: true,
@@ -68,12 +68,12 @@ export class AskSelectionCommand extends BaseCommand {
         const prompt = `${trimmedQuestion}\n\nFile: ${relativePath}\nLines: ${rangeLabel}\n\n\`\`\`${languageId}\n${normalizedSelection}\n\`\`\``;
 
         try {
-            await runVtcodeCommand(["ask", prompt], {
-                title: "Asking VT Code about the selection…",
+            await runDiapasonCommand(["ask", prompt], {
+                title: "Asking Diapason about the selection…",
                 output: context.output,
             });
             void vscode.window.showInformationMessage(
-                "VT Code processed the highlighted selection. Review the output channel for the response."
+                "Diapason processed the highlighted selection. Review the output channel for the response."
             );
         } catch (error) {
             this.handleCommandError("ask about the selection", error);
@@ -83,7 +83,7 @@ export class AskSelectionCommand extends BaseCommand {
     private handleCommandError(context: string, error: unknown): void {
         const message = error instanceof Error ? error.message : String(error);
         void vscode.window.showErrorMessage(
-            `Failed to ${context} with VT Code: ${message}`
+            `Failed to ${context} with Diapason: ${message}`
         );
     }
 }

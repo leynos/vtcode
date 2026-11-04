@@ -4,8 +4,8 @@
 )]
 //! Integration tests for universal LLM provider system
 
-use vtcode_core::config::constants::models;
-use vtcode_core::llm::{
+use diapason_core::config::constants::models;
+use diapason_core::llm::{
     factory::{LLMFactory, create_provider_for_model},
     provider::{LLMProvider, Message},
     providers::{AnthropicProvider, GeminiProvider, OpenAIProvider},
@@ -94,8 +94,8 @@ fn test_provider_supported_models() {
 
 #[test]
 fn test_backward_compatibility() {
-    use vtcode_core::llm::make_client;
-    use vtcode_core::models::ModelId;
+    use diapason_core::llm::make_client;
+    use diapason_core::models::ModelId;
 
     // Test that the old make_client function still works
     use std::str::FromStr;

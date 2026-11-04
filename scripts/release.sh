@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
-# VT Code Release Script
+# Diapason Release Script
 #
-# This script handles local releases for VT Code:
+# This script handles local releases for Diapason:
 # 1. Builds binaries locally (Sanity Check)
 # 2. Runs cargo-release to version, tag, and push
 # 3. Hands off crates.io publishing to the staged release script
 # 4. Uploads pre-built binaries to GitHub Releases
-# 5. Updates and publishes Homebrew formula
+# 5. Reports the source-build-only Homebrew formula
 #
 # Usage: ./scripts/release.sh [version|level] [options]
 
@@ -56,7 +56,7 @@ get_github_username() {
 	# Common email-to-username mappings
 	case "$email" in
 	vinhnguyen*) echo "vinhnx" ;;
-	noreply@vtcode.com) echo "vtcode-release-bot" ;;
+	noreply@diapason.com) echo "diapason-release-bot" ;;
 	*@users.noreply.github.com)
 		local username="${email%%@*}"
 		# Handle GitHub ID format: 123456+username
@@ -151,7 +151,7 @@ Options:
                       until `gh release edit <tag> --draft=false` is run).
                       Used to stage assets for smoke checks before publishing.
   --skip-crates       Skip the crates.io publish handoff
-  --skip-binaries     Skip building and uploading binaries (and Homebrew update)
+  --skip-binaries     Skip building and uploading release binaries
   --skip-docs         Skip docs.rs rebuild trigger
   --full-ci           Use GitHub Actions for ALL platforms (including macOS)
                       Default: builds macOS locally, CI for Linux/Windows
@@ -246,7 +246,7 @@ generate_contributors_section() {
 		[[ -z "$author_email" ]] && continue
 		local username
 		username=$(get_github_username "$author_email")
-		[[ -z "$username" || "$username" == "vtcode-release-bot" ]] && continue
+		[[ -z "$username" || "$username" == "diapason-release-bot" ]] && continue
 
 		# Deduplicate (bash 3.2 compatible)
 		if [[ "$seen_usernames" != *"|${username}|"* ]]; then
@@ -311,7 +311,7 @@ generate_structured_changelog() {
 
 		# Build entry
 		local entry="- $clean_msg ($hash)"
-		if [[ -n "$username" && "$username" != "vtcode-release-bot" ]]; then
+		if [[ -n "$username" && "$username" != "diapason-release-bot" ]]; then
 			entry="$entry (@$username)"
 		fi
 
@@ -475,9 +475,9 @@ update_changelog_from_commits() {
 			# Build Full Changelog URL
 			local full_changelog_url
 			if [[ -n "$previous_version" ]]; then
-				full_changelog_url="https://github.com/vinhnx/vtcode/compare/${previous_version}...${version}"
+				full_changelog_url="https://github.com/leynos/vtcode/compare/${previous_version}...${version}"
 			else
-				full_changelog_url="https://github.com/vinhnx/vtcode/releases/tag/${version}"
+				full_changelog_url="https://github.com/leynos/vtcode/releases/tag/${version}"
 			fi
 
 			# Save to global variable for release notes use (GitHub Release body)
@@ -535,10 +535,10 @@ update_changelog_from_commits() {
 	format_generated_markdown CHANGELOG.md
 	git add CHANGELOG.md
 	if ! git diff --cached --quiet; then
-		GIT_AUTHOR_NAME="vtcode-release-bot" \
-			GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-			GIT_COMMITTER_NAME="vtcode-release-bot" \
-			GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
+		GIT_AUTHOR_NAME="diapason-release-bot" \
+			GIT_AUTHOR_EMAIL="noreply@diapason.com" \
+			GIT_COMMITTER_NAME="diapason-release-bot" \
+			GIT_COMMITTER_EMAIL="noreply@diapason.com" \
 			git commit -m "docs: update changelog for $version [skip ci]"
 		print_success "Changelog updated and committed for version $version"
 	else
@@ -581,9 +581,9 @@ update_changelog_builtin() {
 		echo "$structured_changelog"
 		echo ""
 		if [[ -n "$previous_tag" ]]; then
-			echo "**Full Changelog**: https://github.com/vinhnx/vtcode/compare/${previous_tag}...${version}"
+			echo "**Full Changelog**: https://github.com/leynos/vtcode/compare/${previous_tag}...${version}"
 		else
-			echo "**Full Changelog**: https://github.com/vinhnx/vtcode/releases/tag/${version}"
+			echo "**Full Changelog**: https://github.com/leynos/vtcode/releases/tag/${version}"
 		fi
 	} >"$RELEASE_NOTES_FILE"
 
@@ -617,9 +617,9 @@ update_changelog_builtin() {
 		fi
 	else
 		{
-			printf '%s\n' "# Changelog - vtcode"
+			printf '%s\n' "# Changelog - diapason"
 			printf '%s\n' ""
-			printf '%s\n' "All notable changes to vtcode will be documented in this file."
+			printf '%s\n' "All notable changes to diapason will be documented in this file."
 			printf '%s\n' ""
 			printf '%b\n' "$changelog_entry"
 		} >CHANGELOG.md
@@ -628,10 +628,10 @@ update_changelog_builtin() {
 	format_generated_markdown CHANGELOG.md
 	git add CHANGELOG.md
 	if ! git diff --cached --quiet; then
-		GIT_AUTHOR_NAME="vtcode-release-bot" \
-			GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-			GIT_COMMITTER_NAME="vtcode-release-bot" \
-			GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
+		GIT_AUTHOR_NAME="diapason-release-bot" \
+			GIT_AUTHOR_EMAIL="noreply@diapason.com" \
+			GIT_COMMITTER_NAME="diapason-release-bot" \
+			GIT_COMMITTER_EMAIL="noreply@diapason.com" \
 			git commit -m "docs: update changelog for $version [skip ci]"
 		print_success "Changelog updated and committed for version $version"
 	else
@@ -675,178 +675,14 @@ trigger_docs_rs_rebuild() {
 
 	print_distribution "Triggering docs.rs rebuild for version $version..."
 	local crates=(
-		vtcode-commons vtcode-auth vtcode-exec-events vtcode-webmcp vtcode-memory vtcode-macros
-		vtcode-config vtcode-indexer vtcode-bash-runner vtcode-utility-tool-specs vtcode-eval
-		vtcode-safety vtcode-a2a vtcode-llm vtcode-skills vtcode-agent-plugins vtcode-ui vtcode-mcp
-		vtcode-core vtcode-acp vtcode
+		diapason-commons diapason-auth diapason-exec-events diapason-webmcp diapason-memory diapason-macros
+		diapason-config diapason-indexer diapason-bash-runner diapason-utility-tool-specs diapason-eval
+		diapason-safety diapason-a2a diapason-llm diapason-skills diapason-agent-plugins diapason-ui diapason-mcp
+		diapason-core diapason-acp diapason
 	)
 	for crate in "${crates[@]}"; do
 		curl -s -o /dev/null "https://docs.rs/${crate}/${version}" || true
 	done
-}
-
-update_homebrew_formula_file() {
-	local formula_path=$1
-	local version=$2
-	local x86_64_macos_sha=$3
-	local aarch64_macos_sha=$4
-	local aarch64_linux_sha=${5:-}
-
-	FORMULA_PATH="$formula_path" \
-		FORMULA_VERSION="$version" \
-		FORMULA_X86_64_MACOS_SHA="$x86_64_macos_sha" \
-		FORMULA_AARCH64_MACOS_SHA="$aarch64_macos_sha" \
-		FORMULA_AARCH64_LINUX_SHA="$aarch64_linux_sha" \
-		python3 <<'PYTHON_SCRIPT'
-import os
-import re
-from pathlib import Path
-
-formula_path = Path(os.environ["FORMULA_PATH"])
-version = os.environ["FORMULA_VERSION"]
-x86_64_macos_sha = os.environ["FORMULA_X86_64_MACOS_SHA"]
-aarch64_macos_sha = os.environ["FORMULA_AARCH64_MACOS_SHA"]
-aarch64_linux_sha = os.environ.get("FORMULA_AARCH64_LINUX_SHA", "")
-
-content = formula_path.read_text()
-content = re.sub(r'version\s+"[^"]*"', f'version "{version}"', content)
-content = re.sub(
-    r'(aarch64-apple-darwin\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-    lambda match: f'{match.group(1)}{aarch64_macos_sha}{match.group(3)}',
-    content,
-)
-content = re.sub(
-    r'(x86_64-apple-darwin\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-    lambda match: f'{match.group(1)}{x86_64_macos_sha}{match.group(3)}',
-    content,
-)
-if aarch64_linux_sha:
-    content = re.sub(
-        r'(aarch64-unknown-linux-gnu\.tar\.gz"\s+sha256\s+")([^"]*)(")',
-        lambda match: f'{match.group(1)}{aarch64_linux_sha}{match.group(3)}',
-        content,
-    )
-
-formula_path.write_text(content)
-PYTHON_SCRIPT
-}
-
-publish_homebrew_tap() {
-	local version=$1
-	local x86_64_macos_sha=${2:-}
-	local aarch64_macos_sha=${3:-}
-	local aarch64_linux_sha=${4:-}
-	local formula_path="homebrew/vtcode.rb"
-
-	# If checksums were not passed as arguments, try dist/ then GitHub release
-	if [[ -z "$x86_64_macos_sha" ]]; then
-		x86_64_macos_sha=$(cat "dist/vtcode-$version-x86_64-apple-darwin.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-	fi
-	if [[ -z "$aarch64_macos_sha" ]]; then
-		aarch64_macos_sha=$(cat "dist/vtcode-$version-aarch64-apple-darwin.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-	fi
-	if [[ -z "$aarch64_linux_sha" ]]; then
-		aarch64_linux_sha=$(cat "dist/vtcode-$version-aarch64-unknown-linux-gnu.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-	fi
-
-	# Last resort: download .sha256 files from the GitHub release
-	if [[ -z "$x86_64_macos_sha" || -z "$aarch64_macos_sha" ]]; then
-		print_info "Fetching checksums from GitHub release $version..."
-		local sha_tmp
-		sha_tmp=$(mktemp -d)
-		if gh release download "$version" --dir "$sha_tmp" --pattern "*.sha256" 2>/dev/null; then
-			if [[ -z "$x86_64_macos_sha" ]]; then
-				x86_64_macos_sha=$(cat "$sha_tmp/vtcode-$version-x86_64-apple-darwin.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-			fi
-			if [[ -z "$aarch64_macos_sha" ]]; then
-				aarch64_macos_sha=$(cat "$sha_tmp/vtcode-$version-aarch64-apple-darwin.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-			fi
-			if [[ -z "$aarch64_linux_sha" ]]; then
-				aarch64_linux_sha=$(cat "$sha_tmp/vtcode-$version-aarch64-unknown-linux-gnu.sha256" 2>/dev/null | awk '{print $1}' || echo "")
-			fi
-		fi
-		rm -rf "$sha_tmp"
-	fi
-
-	if [[ -z "$x86_64_macos_sha" || -z "$aarch64_macos_sha" ]]; then
-		print_error "Missing macOS checksums, cannot publish Homebrew tap"
-		return 1
-	fi
-
-	print_info "Updating local Homebrew formula at $formula_path..."
-	if ! update_homebrew_formula_file "$formula_path" "$version" "$x86_64_macos_sha" "$aarch64_macos_sha" "$aarch64_linux_sha"; then
-		print_error "Failed to update local Homebrew formula"
-		return 1
-	fi
-
-	if git diff --quiet -- "$formula_path"; then
-		print_info "Local Homebrew formula is already up to date"
-	else
-		git add "$formula_path"
-		if GIT_AUTHOR_NAME="vtcode-release-bot" \
-			GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-			GIT_COMMITTER_NAME="vtcode-release-bot" \
-			GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
-			git commit -m "chore: update homebrew formula to $version [skip ci]"; then
-			print_success "Local Homebrew formula updated and committed"
-			if git push origin main --no-verify; then
-				print_success "Homebrew formula commit pushed to origin"
-			else
-				print_warning "Failed to push Homebrew formula commit to origin"
-			fi
-		else
-			print_warning "Failed to commit local Homebrew formula update"
-		fi
-	fi
-
-	print_info "Publishing Homebrew formula to vinhnx/homebrew-tap..."
-
-	local temp_dir
-	temp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'vtcode-homebrew')
-
-	if ! (
-		trap 'rm -rf "$temp_dir"' EXIT
-
-		local tap_token="${HOMEBREW_TAP_TOKEN:-${GITHUB_TOKEN:-}}"
-		if [[ -z "$tap_token" ]]; then
-			print_error "No token available for homebrew-tap. Set HOMEBREW_TAP_TOKEN or GITHUB_TOKEN."
-			exit 1
-		fi
-
-		local tap_repo_url="https://x-access-token:${tap_token}@github.com/vinhnx/homebrew-tap.git"
-
-		if ! git clone "$tap_repo_url" "$temp_dir" >/dev/null 2>&1; then
-			print_error "Failed to clone vinhnx/homebrew-tap"
-			exit 1
-		fi
-
-		cp "$formula_path" "$temp_dir/vtcode.rb"
-
-		if git -C "$temp_dir" diff --quiet -- vtcode.rb; then
-			print_info "Homebrew tap formula is already up to date"
-			exit 0
-		fi
-
-		git -C "$temp_dir" add vtcode.rb
-
-		if ! GIT_AUTHOR_NAME="vtcode-release-bot" \
-			GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-			GIT_COMMITTER_NAME="vtcode-release-bot" \
-			GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
-			git -C "$temp_dir" commit -m "Update vtcode formula to v$version"; then
-			print_error "Failed to commit Homebrew tap update"
-			exit 1
-		fi
-
-		if ! git -C "$temp_dir" push "$tap_repo_url" HEAD:main; then
-			print_error "Failed to push Homebrew tap update"
-			exit 1
-		fi
-
-		print_success "Published vtcode formula to vinhnx/homebrew-tap"
-	); then
-		return 1
-	fi
 }
 
 main() {
@@ -939,13 +775,13 @@ main() {
 		print_info "Checking GitHub CLI authentication..."
 
 		if gh auth status >/dev/null 2>&1; then
-			print_info "Switching to GitHub account vinhnx..."
-			if unset GITHUB_TOKEN && gh auth switch -u vinhnx >/dev/null 2>&1; then
-				print_success "Switched to GitHub account vinhnx"
+			print_info "Switching to GitHub account leynos..."
+			if unset GITHUB_TOKEN && gh auth switch -u leynos >/dev/null 2>&1; then
+				print_success "Switched to GitHub account leynos"
 			elif [[ "$dry_run" == 'true' ]]; then
 				print_info "Dry run - continuing without switching GitHub account"
 			else
-				print_error "Could not switch to GitHub account vinhnx. Run \`gh auth switch -u vinhnx\` or re-authenticate before releasing."
+				print_error "Could not switch to GitHub account leynos. Run \`gh auth switch -u leynos\` or re-authenticate before releasing."
 				exit 1
 			fi
 		elif [[ "$dry_run" == 'true' ]]; then
@@ -1016,7 +852,7 @@ main() {
 			# Trigger full CI release workflow
 			if gh workflow run release.yml --field tag="$next_version"; then
 				print_success "Full CI workflow triggered for $next_version"
-				print_info "Monitor progress: https://github.com/vinhnx/vtcode/actions/workflows/release.yml"
+				print_info "Monitor progress: https://github.com/leynos/vtcode/actions/workflows/release.yml"
 				print_info ""
 				print_info "The CI will:"
 				print_info "  1. Build all platforms (macOS, Linux, Windows)"
@@ -1045,7 +881,7 @@ main() {
 			# Trigger CI for Linux/Windows only
 			if gh workflow run build-linux-windows.yml --field tag="$next_version"; then
 				print_success "CI workflow triggered for $next_version"
-				print_info "Monitor progress: https://github.com/vinhnx/vtcode/actions/workflows/build-linux-windows.yml"
+				print_info "Monitor progress: https://github.com/leynos/vtcode/actions/workflows/build-linux-windows.yml"
 			else
 				print_warning "Failed to trigger CI workflow"
 			fi
@@ -1062,13 +898,13 @@ main() {
 	else
 		python3 scripts/generate_docs_map.py
 		python3 scripts/sync_embedded_assets.py
-		format_generated_markdown docs/modules/vtcode_docs_map.md
-		git add docs/modules/vtcode_docs_map.md
+		format_generated_markdown docs/modules/diapason_docs_map.md
+		git add docs/modules/diapason_docs_map.md
 		if ! git diff --cached --quiet; then
-			GIT_AUTHOR_NAME="vtcode-release-bot" \
-				GIT_AUTHOR_EMAIL="noreply@vtcode.com" \
-				GIT_COMMITTER_NAME="vtcode-release-bot" \
-				GIT_COMMITTER_EMAIL="noreply@vtcode.com" \
+			GIT_AUTHOR_NAME="diapason-release-bot" \
+				GIT_AUTHOR_EMAIL="noreply@diapason.com" \
+				GIT_COMMITTER_NAME="diapason-release-bot" \
+				GIT_COMMITTER_EMAIL="noreply@diapason.com" \
 				git commit -m "docs: update documentation map [skip ci]"
 			print_success "Documentation map updated and committed"
 		else
@@ -1084,7 +920,7 @@ main() {
 			print_info "Step 1: Local binary build (macOS: both architectures, Linux: current platform)..."
 
 			local build_args=(-v "$next_version" --only-build-local)
-			env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= ./scripts/build-and-upload-binaries.sh "${build_args[@]}"
+			env ./scripts/build-and-upload-binaries.sh "${build_args[@]}"
 		fi
 	fi
 
@@ -1100,7 +936,7 @@ main() {
 	if [[ "$dry_run" == 'true' ]]; then
 		print_info "Dry run - would run: ${command[*]}"
 	else
-		env CARGO_BUILD_RUSTC_WRAPPER= RUSTC_WRAPPER= "${command[@]}"
+		env "${command[@]}"
 	fi
 
 	if [[ "$dry_run" == 'true' ]]; then
@@ -1255,7 +1091,7 @@ main() {
 	if [[ "$skip_binaries" == 'false' ]]; then
 		print_info "Step 4: Collecting binaries for all platforms..."
 
-		local binaries_dir="/tmp/vtcode-release-$released_version"
+		local binaries_dir="/tmp/diapason-release-$released_version"
 		mkdir -p "$binaries_dir"
 
 		# Build macOS binaries in parallel
@@ -1281,10 +1117,10 @@ main() {
 		if wait "$pid_x86"; then
 			package_release_archive \
 				"x86_64-apple-darwin" \
-				"vtcode" \
-				"$binaries_dir/vtcode-$released_version-x86_64-apple-darwin.tar.gz"
-			shasum -a 256 "$binaries_dir/vtcode-$released_version-x86_64-apple-darwin.tar.gz" >"$binaries_dir/vtcode-$released_version-x86_64-apple-darwin.sha256"
-			local x86_bin="target/x86_64-apple-darwin/release/vtcode"
+				"diapason" \
+				"$binaries_dir/diapason-$released_version-x86_64-apple-darwin.tar.gz"
+			shasum -a 256 "$binaries_dir/diapason-$released_version-x86_64-apple-darwin.tar.gz" >"$binaries_dir/diapason-$released_version-x86_64-apple-darwin.sha256"
+			local x86_bin="target/x86_64-apple-darwin/release/diapason"
 			local x86_size_h
 			x86_size_h=$(du -h "$x86_bin" 2>/dev/null | awk '{print $1}')
 			print_success "Built macOS x86_64 (binary: ${x86_size_h:-unknown})"
@@ -1296,10 +1132,10 @@ main() {
 		if wait "$pid_arm"; then
 			package_release_archive \
 				"aarch64-apple-darwin" \
-				"vtcode" \
-				"$binaries_dir/vtcode-$released_version-aarch64-apple-darwin.tar.gz"
-			shasum -a 256 "$binaries_dir/vtcode-$released_version-aarch64-apple-darwin.tar.gz" >"$binaries_dir/vtcode-$released_version-aarch64-apple-darwin.sha256"
-			local arm_bin="target/aarch64-apple-darwin/release/vtcode"
+				"diapason" \
+				"$binaries_dir/diapason-$released_version-aarch64-apple-darwin.tar.gz"
+			shasum -a 256 "$binaries_dir/diapason-$released_version-aarch64-apple-darwin.tar.gz" >"$binaries_dir/diapason-$released_version-aarch64-apple-darwin.sha256"
+			local arm_bin="target/aarch64-apple-darwin/release/diapason"
 			local arm_size_h
 			arm_size_h=$(du -h "$arm_bin" 2>/dev/null | awk '{print $1}')
 			print_success "Built macOS aarch64 (Apple Silicon) (binary: ${arm_size_h:-unknown})"
@@ -1308,7 +1144,7 @@ main() {
 			# A fresh /tmp copy forces a cold dyld load (new inode → page faults).
 			# This catches regressions in binary size or startup-path work that
 			# would otherwise ship unnoticed.
-			local cold_bin="/tmp/vtcode-cold-check-$$"
+			local cold_bin="/tmp/diapason-cold-check-$$"
 			cp "$arm_bin" "$cold_bin" 2>/dev/null
 			if [[ -x "$cold_bin" ]]; then
 				local cold_ms
@@ -1348,12 +1184,12 @@ main() {
 
 		if [[ -n "$run_id" ]]; then
 			# Download all artefacts from the CI run
-			local ci_artefacts_dir="/tmp/vtcode-ci-artifacts-$released_version"
+			local ci_artefacts_dir="/tmp/diapason-ci-artifacts-$released_version"
 			mkdir -p "$ci_artefacts_dir"
 
 			# Download Linux x86_64 artefact
 			print_info "Downloading Linux x86_64 artefact..."
-			if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-unknown-linux-gnu" --dir "$ci_artefacts_dir" 2>/dev/null; then
+			if gh run download "$run_id" --name "diapason-${released_version}-x86_64-unknown-linux-gnu" --dir "$ci_artefacts_dir" 2>/dev/null; then
 				mv "$ci_artefacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
 				mv "$ci_artefacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
 				print_success "Downloaded: Linux x86_64 gnu"
@@ -1363,7 +1199,7 @@ main() {
 
 			# Download Linux x86_64 musl artefact
 			print_info "Downloading Linux x86_64 musl artefact..."
-			if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-unknown-linux-musl" --dir "$ci_artefacts_dir" 2>/dev/null; then
+			if gh run download "$run_id" --name "diapason-${released_version}-x86_64-unknown-linux-musl" --dir "$ci_artefacts_dir" 2>/dev/null; then
 				mv "$ci_artefacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
 				mv "$ci_artefacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
 				print_success "Downloaded: Linux x86_64 musl"
@@ -1373,7 +1209,7 @@ main() {
 
 			# Download Linux aarch64 artefact
 			print_info "Downloading Linux aarch64 artefact..."
-			if gh run download "$run_id" --name "vtcode-${released_version}-aarch64-unknown-linux-gnu" --dir "$ci_artefacts_dir" 2>/dev/null; then
+			if gh run download "$run_id" --name "diapason-${released_version}-aarch64-unknown-linux-gnu" --dir "$ci_artefacts_dir" 2>/dev/null; then
 				mv "$ci_artefacts_dir"/*.tar.gz "$binaries_dir/" 2>/dev/null || true
 				mv "$ci_artefacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
 				print_success "Downloaded: Linux aarch64"
@@ -1385,7 +1221,7 @@ main() {
 			# required-target coverage check below fails the release if missing.
 			if [[ "$require_windows" == "true" ]]; then
 				print_info "Downloading Windows x86_64 artefact..."
-				if gh run download "$run_id" --name "vtcode-${released_version}-x86_64-pc-windows-msvc" --dir "$ci_artefacts_dir" 2>/dev/null; then
+				if gh run download "$run_id" --name "diapason-${released_version}-x86_64-pc-windows-msvc" --dir "$ci_artefacts_dir" 2>/dev/null; then
 					mv "$ci_artefacts_dir"/*.zip "$binaries_dir/" 2>/dev/null || true
 					mv "$ci_artefacts_dir"/*.sha256 "$binaries_dir/" 2>/dev/null || true
 					print_success "Downloaded: Windows x86_64"
@@ -1403,7 +1239,7 @@ main() {
 
 		# Required target coverage for the legacy updater bridge. Every listed
 		# target must publish a normal archive so a raw compatibility executable
-		# (compat-vtcode-<v>-<target>.tar.gz.compat) can be derived for the broken
+		# (compat-diapason-<v>-<target>.tar.gz.compat) can be derived for the broken
 		# v0.141.0-v0.141.4 updaters. Windows is required by default; opt out
 		# with RELEASE_REQUIRE_WINDOWS=false for an emergency rescue (see above).
 		local -a required_targets=(
@@ -1420,8 +1256,8 @@ main() {
 		for item in "${required_targets[@]}"; do
 			local rtarget="${item%%:*}"
 			local rext="${item##*:}"
-			if [[ ! -f "$binaries_dir/vtcode-${released_version}-${rtarget}.${rext}" ]]; then
-				print_error "Missing required release archive: vtcode-${released_version}-${rtarget}.${rext}"
+			if [[ ! -f "$binaries_dir/diapason-${released_version}-${rtarget}.${rext}" ]]; then
+				print_error "Missing required release archive: diapason-${released_version}-${rtarget}.${rext}"
 				missing_required=1
 			fi
 		done
@@ -1435,7 +1271,7 @@ main() {
 		# legacy self_update matcher returns the FIRST asset (GitHub sorts the
 		# assets array alphabetically by name) whose name contains both the
 		# target triple and the `{target}.tar.gz` identifier. `compat-` sorts
-		# before `vtcode-`, so the `compat-vtcode-<v>-<target>.tar.gz.compat`
+		# before `diapason-`, so the `compat-diapason-<v>-<target>.tar.gz.compat`
 		# asset is selected; its `.compat` final extension is treated as a plain
 		# uncompressed binary, sidestepping the missing `compression-tar-gz`
 		# feature. See scripts/release-assets.sh for the full rationale.
@@ -1444,7 +1280,7 @@ main() {
 		for item in "${required_targets[@]}"; do
 			local ctarget="${item%%:*}"
 			local cext="${item##*:}"
-			local normal_archive="$binaries_dir/vtcode-${released_version}-${ctarget}.${cext}"
+			local normal_archive="$binaries_dir/diapason-${released_version}-${ctarget}.${cext}"
 			local compat_path
 			if ! compat_path=$(compatibility_asset_path "$normal_archive" "$binaries_dir"); then
 				print_error "Failed to derive compatibility asset path for $normal_archive"
@@ -1501,15 +1337,15 @@ main() {
 		if [[ "$upload_failed" -eq 0 ]]; then
 			shopt -s nullglob
 			local -a normal_release_files=(
-				"$binaries_dir"/vtcode-*.tar.gz
-				"$binaries_dir"/vtcode-*.zip
-				"$binaries_dir"/vtcode-*.sha256
+				"$binaries_dir"/diapason-*.tar.gz
+				"$binaries_dir"/diapason-*.zip
+				"$binaries_dir"/diapason-*.sha256
 				"$SCRIPT_DIR/install.sh"
 				"$SCRIPT_DIR/install.ps1"
 			)
 			shopt -u nullglob
 			# Exclude compatibility assets from the normal upload glob; they
-			# start with `compat-` so `vtcode-*.tar.gz`/`vtcode-*.zip` already
+			# start with `compat-` so `diapason-*.tar.gz`/`diapason-*.zip` already
 			# skip them, but this guard defends against re-runs/renames.
 			local -a filtered_normal_files=()
 			local nf
@@ -1541,25 +1377,23 @@ main() {
 		local release_x86_sha=""
 		local release_arm_sha=""
 		local release_arm_linux_sha=""
-		if [[ -f "$binaries_dir/vtcode-$released_version-x86_64-apple-darwin.sha256" ]]; then
-			release_x86_sha=$(awk '{print $1}' "$binaries_dir/vtcode-$released_version-x86_64-apple-darwin.sha256")
+		if [[ -f "$binaries_dir/diapason-$released_version-x86_64-apple-darwin.sha256" ]]; then
+			release_x86_sha=$(awk '{print $1}' "$binaries_dir/diapason-$released_version-x86_64-apple-darwin.sha256")
 		fi
-		if [[ -f "$binaries_dir/vtcode-$released_version-aarch64-apple-darwin.sha256" ]]; then
-			release_arm_sha=$(awk '{print $1}' "$binaries_dir/vtcode-$released_version-aarch64-apple-darwin.sha256")
+		if [[ -f "$binaries_dir/diapason-$released_version-aarch64-apple-darwin.sha256" ]]; then
+			release_arm_sha=$(awk '{print $1}' "$binaries_dir/diapason-$released_version-aarch64-apple-darwin.sha256")
 		fi
-		if [[ -f "$binaries_dir/vtcode-$released_version-aarch64-unknown-linux-gnu.sha256" ]]; then
-			release_arm_linux_sha=$(awk '{print $1}' "$binaries_dir/vtcode-$released_version-aarch64-unknown-linux-gnu.sha256")
+		if [[ -f "$binaries_dir/diapason-$released_version-aarch64-unknown-linux-gnu.sha256" ]]; then
+			release_arm_linux_sha=$(awk '{print $1}' "$binaries_dir/diapason-$released_version-aarch64-unknown-linux-gnu.sha256")
 		fi
 
 		# Cleanup
 		rm -rf "$binaries_dir"
 	fi
 
-	# 5. Publish Homebrew tap
-	if [[ "$skip_binaries" == 'false' ]]; then
-		print_info "Step 5: Publishing Homebrew formula to vinhnx/homebrew-tap..."
-		publish_homebrew_tap "$released_version" "${release_x86_sha:-}" "${release_arm_sha:-}" "${release_arm_linux_sha:-}"
-	fi
+	# The Homebrew formula in the repository builds from source and has no
+	# published binary assets or external tap.
+	print_info "Homebrew formula remains source-build-only."
 
 	# 6. Handle docs.rs rebuild
 	if [[ "$skip_crates" == 'false' && "$skip_docs" == 'false' ]]; then
@@ -1570,7 +1404,7 @@ main() {
 	print_info "Distribution:"
 	print_info "  ✓ Cargo (crates.io)"
 	print_info "  ✓ GitHub Releases (all platforms: macOS local + Linux/Windows CI)"
-	print_info "  ✓ Homebrew (vinhnx/homebrew-tap/vtcode)"
+	print_info "  ✓ Homebrew source formula (no published binary assets)"
 	print_info ""
 	print_info "Cost optimization:"
 	print_info "  • macOS binaries: built locally (no CI cost)"

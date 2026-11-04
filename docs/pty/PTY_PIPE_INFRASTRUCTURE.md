@@ -1,11 +1,11 @@
 # PTY and Pipe Infrastructure
 
-This document describes the process spawning infrastructure in VT Code,
+This document describes the process spawning infrastructure in Diapason,
 inspired by the [codex-rs](https://github.com/openai/codex) PTY utilities.
 
 ## Overview
 
-VT Code provides two main process spawning backends:
+Diapason provides two main process spawning backends:
 
 1. **PTY (Pseudo Terminal)** - For interactive processes that need TTY features
 2. **Pipe** - For non-interactive processes using standard pipes
@@ -16,7 +16,7 @@ interaction.
 ## Module Structure
 
 ```
-vtcode-bash-runner/
+diapason-bash-runner/
 ├── pipe.rs              # Async pipe-based process spawning
 ├── process.rs           # ProcessHandle and SpawnedProcess types
 ├── process_group.rs     # Process group management utilities
@@ -28,7 +28,7 @@ vtcode-bash-runner/
 ### Spawning a Pipe Process
 
 ```rust
-use vtcode_bash_runner::{spawn_pipe_process, collect_output_until_exit};
+use diapason_bash_runner::{spawn_pipe_process, collect_output_until_exit};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -61,7 +61,7 @@ async fn run_command() -> anyhow::Result<()> {
 ### Spawning with Options
 
 ```rust
-use vtcode_bash_runner::{PipeSpawnOptions, PipeStdinMode, spawn_pipe_process_with_options};
+use diapason_bash_runner::{PipeSpawnOptions, PipeStdinMode, spawn_pipe_process_with_options};
 
 async fn run_with_options() -> anyhow::Result<()> {
     let opts = PipeSpawnOptions::new("cat", "/tmp")
@@ -108,7 +108,7 @@ The `process_group` module provides utilities for reliable process cleanup:
 The `KillSignal` enum provides control over termination behavior:
 
 ```rust
-use vtcode_bash_runner::KillSignal;
+use diapason_bash_runner::KillSignal;
 
 // Interrupt signal (SIGINT / Ctrl+C) - for interactive processes
 KillSignal::Int
@@ -125,7 +125,7 @@ KillSignal::Kill
 The `GracefulTerminationResult` enum indicates how termination completed:
 
 ```rust
-use vtcode_bash_runner::GracefulTerminationResult;
+use diapason_bash_runner::GracefulTerminationResult;
 
 match result {
     GracefulTerminationResult::GracefulExit => {
@@ -163,7 +163,7 @@ match result {
 ### Pre-exec Pattern (Unix)
 
 ```rust
-use vtcode_bash_runner::process_group;
+use diapason_bash_runner::process_group;
 
 #[cfg(unix)]
 unsafe {
@@ -182,7 +182,7 @@ The recommended approach uses the unified `graceful_kill_process_group`
 function:
 
 ```rust
-use vtcode_bash_runner::{
+use diapason_bash_runner::{
     graceful_kill_process_group, graceful_kill_process_group_default,
     GracefulTerminationResult, KillSignal, DEFAULT_GRACEFUL_TIMEOUT_MS,
 };
@@ -224,7 +224,7 @@ match result {
 ### Environment Filtering
 
 When using sandboxed execution (via
-`crates/codegen/vtcode-core/src/sandboxing/child_spawn.rs`), sensitive
+`crates/codegen/diapason-core/src/sandboxing/child_spawn.rs`), sensitive
 environment variables are filtered:
 
 - API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
@@ -238,7 +238,7 @@ prevent escapes.
 
 ## Comparison with codex-rs
 
-| Feature               | codex-rs           | VT Code                      |
+| Feature               | codex-rs           | Diapason                     |
 | --------------------- | ------------------ | ---------------------------- |
 | PTY backend           | `portable-pty`     | `portable-pty`               |
 | Pipe spawning         | Custom async       | Custom async (adapted)       |
@@ -249,7 +249,7 @@ prevent escapes.
 
 ## PTY Session Integration
 
-The PTY system in `crates/codegen/vtcode-core/src/tools/pty/` integrates with
+The PTY system in `crates/codegen/diapason-core/src/tools/pty/` integrates with
 the process group utilities for robust process cleanup:
 
 ### Graceful Termination
@@ -264,7 +264,7 @@ PTY sessions now use a unified graceful termination pattern via
 
 ```rust
 // PtySessionHandle::graceful_terminate() uses the unified helper:
-use vtcode_bash_runner::{graceful_kill_process_group, GracefulTerminationResult, KillSignal};
+use diapason_bash_runner::{graceful_kill_process_group, GracefulTerminationResult, KillSignal};
 
 let result = graceful_kill_process_group(
     pid,
@@ -314,15 +314,15 @@ This ensures that:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                   VT Code                        │
+│                   Diapason                        │
 ├─────────────────────────────────────────────────┤
-│  crates/codegen/vtcode-core/src/tools/pty/                     │
+│  crates/codegen/diapason-core/src/tools/pty/                     │
 │  ├── manager.rs       (PtyManager)              │
 │  ├── session.rs       (PtySessionHandle)        │
 │  │   └── Uses process_group for cleanup         │
 │  └── scrollback.rs    (Terminal state)          │
 ├─────────────────────────────────────────────────┤
-│  vtcode-bash-runner/                            │
+│  diapason-bash-runner/                            │
 │  ├── pipe.rs          (spawn_pipe_process)      │
 │  ├── process.rs       (ProcessHandle)           │
 │  ├── process_group.rs (cleanup utilities)       │
@@ -341,13 +341,13 @@ This ensures that:
 Run the test suite:
 
 ```bash
-cargo test --package vtcode-bash-runner
+cargo test --package diapason-bash-runner
 
 # With output
-cargo test --package vtcode-bash-runner -- --nocapture
+cargo test --package diapason-bash-runner -- --nocapture
 ```
 
-Integration tests in `vtcode-bash-runner/tests/pipe_tests.rs` verify:
+Integration tests in `diapason-bash-runner/tests/pipe_tests.rs` verify:
 
 - Basic echo commands
 - Stdin round-trip

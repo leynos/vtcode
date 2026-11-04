@@ -1,10 +1,10 @@
 use anyhow::Error;
 use anyhow::Result;
-use vtcode_commons::formatting::compact_reasoning_text;
-use vtcode_core::llm::error_display;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::llm::providers::clean_reasoning_text;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_commons::formatting::compact_reasoning_text;
+use diapason_core::llm::error_display;
+use diapason_core::llm::provider as uni;
+use diapason_core::llm::providers::clean_reasoning_text;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 #[cold]
 pub(super) fn map_render_error(provider_name: &str, err: Error) -> uni::LLMError {

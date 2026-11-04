@@ -3,7 +3,7 @@ const MAX_PLAN_SEED_BYTES: usize = 16_000;
 use crate::agent::runloop::unified::planning_workflow::tracker_file_for_plan_file;
 
 pub(super) async fn load_active_plan_seed(
-    tool_registry: &vtcode_core::tools::registry::ToolRegistry,
+    tool_registry: &diapason_core::tools::registry::ToolRegistry,
 ) -> Option<String> {
     let plan_state = tool_registry.planning_workflow_state();
     let plan_file = plan_state.get_plan_file().await?;

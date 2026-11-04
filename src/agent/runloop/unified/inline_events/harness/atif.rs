@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
 
+use diapason_core::exec::events::atif::{AtifAgent, AtifTrajectoryBuilder};
 use tokio::task::spawn_blocking;
-use vtcode_core::exec::events::atif::{AtifAgent, AtifTrajectoryBuilder};
 
 /// Optional ATIF trajectory exporter.
 pub(crate) struct AtifExporter {
@@ -13,14 +13,14 @@ pub(crate) struct AtifExporter {
 
 impl AtifExporter {
     pub(crate) fn new(model: &str, output_path: PathBuf) -> Self {
-        let agent = AtifAgent::vtcode().with_model(model);
+        let agent = AtifAgent::diapason().with_model(model);
         Self {
             builder: AtifTrajectoryBuilder::new(agent),
             output_path,
         }
     }
 
-    pub(crate) fn process_event(&mut self, event: &vtcode_core::exec::events::ThreadEvent) {
+    pub(crate) fn process_event(&mut self, event: &diapason_core::exec::events::ThreadEvent) {
         self.builder.process_event(event);
     }
 

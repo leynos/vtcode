@@ -1,9 +1,9 @@
 use anyhow::{Context, bail};
+use diapason_commons::paths::ensure_path_within_workspace_resolved;
+use diapason_core::config::constants::tools;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_ui::tui::app::{InlineHandle, InlineMessageKind, PlanContent};
 use std::collections::HashMap;
-use vtcode_commons::paths::ensure_path_within_workspace_resolved;
-use vtcode_core::config::constants::tools;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_ui::tui::app::{InlineHandle, InlineMessageKind, PlanContent};
 
 use super::tracker_response::resolve_tracker_file_response;
 use super::validate_plan_content;
@@ -300,20 +300,20 @@ mod tests {
 
     #[test]
     fn tracker_response_resolves_workspace_relative_path() {
-        let result = json!({"tracker_file": ".vtcode/plans/task.tasks.md"});
+        let result = json!({"tracker_file": ".diapason/plans/task.tasks.md"});
         let workspace = Path::new("/workspace");
-        let fallback = Path::new("/workspace/.vtcode/plans/fallback.tasks.md");
+        let fallback = Path::new("/workspace/.diapason/plans/fallback.tasks.md");
 
         let resolved = resolve_tracker_file_response(&result, Some(workspace), fallback).unwrap();
 
-        assert_eq!(resolved, PathBuf::from("/workspace/.vtcode/plans/task.tasks.md"));
+        assert_eq!(resolved, PathBuf::from("/workspace/.diapason/plans/task.tasks.md"));
     }
 
     #[test]
     fn tracker_response_rejects_workspace_escape() {
         let result = json!({"tracker_file": "../outside.tasks.md"});
         let workspace = Path::new("/workspace");
-        let fallback = Path::new("/workspace/.vtcode/plans/fallback.tasks.md");
+        let fallback = Path::new("/workspace/.diapason/plans/fallback.tasks.md");
 
         let error = resolve_tracker_file_response(&result, Some(workspace), fallback).unwrap_err();
 
@@ -358,13 +358,13 @@ mod tests {
     fn tracker_only_contains_implementation_steps() {
         let plan = PlanContent::from_markdown(
             "Launch plan".to_string(),
-            "## Summary\nImprove startup behaviour.\n\n## Implementation Steps\n1. Update src/startup.rs -> verify: cargo nextest run -p vtcode\n\n## Test Cases and Validation\n1. Run cargo nextest run -p vtcode\n\n## Assumptions and Defaults\n1. Existing startup policy remains unchanged.",
+            "## Summary\nImprove startup behaviour.\n\n## Implementation Steps\n1. Update src/startup.rs -> verify: cargo nextest run -p diapason\n\n## Test Cases and Validation\n1. Run cargo nextest run -p diapason\n\n## Assumptions and Defaults\n1. Existing startup policy remains unchanged.",
             None,
         );
 
         let items = task_items_from_plan(&plan);
 
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0]["description"], "Update src/startup.rs -> verify: cargo nextest run -p vtcode");
+        assert_eq!(items[0]["description"], "Update src/startup.rs -> verify: cargo nextest run -p diapason");
     }
 }

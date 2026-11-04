@@ -1,5 +1,5 @@
 use anyhow::Context;
-use vtcode_agent_plugins::{FileSystemPluginInstaller, PluginInstaller};
+use diapason_agent_plugins::{FileSystemPluginInstaller, PluginInstaller};
 
 pub(super) async fn handle_remove(name: &str) -> anyhow::Result<()> {
     let name = name.to_string();

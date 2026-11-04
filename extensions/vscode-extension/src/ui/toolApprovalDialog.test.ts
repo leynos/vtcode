@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { VtcodeToolCall } from "../vtcodeBackend";
+import { DiapasonToolCall } from "../diapasonBackend";
 import { ToolApprovalDialog } from "./toolApprovalDialog";
 
 // Mock VS Code API
@@ -12,7 +12,7 @@ jest.mock("vscode", () => ({
 
 describe("ToolApprovalDialog", () => {
     let dialog: ToolApprovalDialog;
-    let mockToolCall: VtcodeToolCall;
+    let mockToolCall: DiapasonToolCall;
 
     beforeEach(() => {
         dialog = new ToolApprovalDialog();
@@ -83,7 +83,7 @@ describe("ToolApprovalDialog", () => {
             await dialog.requestApproval(mockToolCall);
 
             expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-                "VT Code wants to run: run_pty_cmd",
+                "Diapason wants to run: run_pty_cmd",
                 expect.objectContaining({
                     modal: true,
                     detail: expect.stringContaining(
@@ -97,7 +97,7 @@ describe("ToolApprovalDialog", () => {
         });
 
         it("should handle high-risk tools appropriately", async () => {
-            const dangerousTool: VtcodeToolCall = {
+            const dangerousTool: DiapasonToolCall = {
                 id: "dangerous-123",
                 name: "delete_file",
                 args: {
@@ -113,7 +113,7 @@ describe("ToolApprovalDialog", () => {
 
             expect(result.approved).toBe(false);
             expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-                "VT Code wants to run: delete_file",
+                "Diapason wants to run: delete_file",
                 expect.objectContaining({
                     detail: expect.stringContaining("[!]"),
                 }),
@@ -172,7 +172,7 @@ describe("ToolApprovalDialog", () => {
 
     describe("risk assessment", () => {
         it("should identify high-risk tools", async () => {
-            const deleteTool: VtcodeToolCall = {
+            const deleteTool: DiapasonToolCall = {
                 id: "test-123",
                 name: "delete_file",
                 args: { path: "/test.txt" },
@@ -194,7 +194,7 @@ describe("ToolApprovalDialog", () => {
         });
 
         it("should identify medium-risk tools", async () => {
-            const editTool: VtcodeToolCall = {
+            const editTool: DiapasonToolCall = {
                 id: "test-123",
                 name: "apply_diff",
                 args: { path: "/test.txt", diff: "some changes" },
@@ -216,7 +216,7 @@ describe("ToolApprovalDialog", () => {
         });
 
         it("should identify low-risk tools", async () => {
-            const safeTool: VtcodeToolCall = {
+            const safeTool: DiapasonToolCall = {
                 id: "test-123",
                 name: "list_files",
                 args: { path: "/test" },
@@ -240,7 +240,7 @@ describe("ToolApprovalDialog", () => {
 
     describe("preview generation", () => {
         it("should generate preview for shell commands", async () => {
-            const shellTool: VtcodeToolCall = {
+            const shellTool: DiapasonToolCall = {
                 id: "test-123",
                 name: "run_pty_cmd",
                 args: {
@@ -265,7 +265,7 @@ describe("ToolApprovalDialog", () => {
         });
 
         it("should generate preview for file edits", async () => {
-            const editTool: VtcodeToolCall = {
+            const editTool: DiapasonToolCall = {
                 id: "test-123",
                 name: "apply_diff",
                 args: {
@@ -290,7 +290,7 @@ describe("ToolApprovalDialog", () => {
         });
 
         it("should generate preview for file creation", async () => {
-            const createTool: VtcodeToolCall = {
+            const createTool: DiapasonToolCall = {
                 id: "test-123",
                 name: "create_file",
                 args: {
@@ -315,7 +315,7 @@ describe("ToolApprovalDialog", () => {
         });
 
         it("should generate warning for file deletion", async () => {
-            const deleteTool: VtcodeToolCall = {
+            const deleteTool: DiapasonToolCall = {
                 id: "test-123",
                 name: "delete_file",
                 args: {

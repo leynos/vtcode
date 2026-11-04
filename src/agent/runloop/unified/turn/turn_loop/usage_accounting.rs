@@ -1,8 +1,8 @@
 //! Turn-loop usage accounting and cost estimation helpers.
 
-use vtcode_core::exec::events::Usage as HarnessUsage;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::llm::usage_cost;
+use diapason_core::exec::events::Usage as HarnessUsage;
+use diapason_core::llm::provider as uni;
+use diapason_core::llm::usage_cost;
 
 pub(super) fn accumulate_turn_usage(provider: &str, total: &mut HarnessUsage, usage: &Option<uni::Usage>) {
     let Some(usage) = usage else {

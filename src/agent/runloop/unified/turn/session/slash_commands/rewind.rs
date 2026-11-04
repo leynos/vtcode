@@ -1,10 +1,10 @@
 use crate::agent::runloop::unified::reasoning::model_supports_reasoning;
 use crate::agent::runloop::unified::turn::session::slash_commands::{SlashCommandContext, SlashCommandControl};
 use anyhow::Result;
-use vtcode_core::core::agent::snapshots::{CheckpointRestore, RevertScope, SnapshotManager, SnapshotMetadata};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_core::core::agent::snapshots::{CheckpointRestore, RevertScope, SnapshotManager, SnapshotMetadata};
+use diapason_core::llm::provider as uni;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::InlineHandle;
 
 #[cfg(test)]
 fn resolve_prompt_boundary_in_history(metadata: &SnapshotMetadata, history: &[uni::Message]) -> Option<usize> {
@@ -37,7 +37,7 @@ fn resolve_prompt_boundary_in_history(metadata: &SnapshotMetadata, history: &[un
 fn restore_prompt_input(
     handle: &InlineHandle,
     metadata: &SnapshotMetadata,
-    conversation: &[vtcode_core::utils::session_archive::SessionMessage],
+    conversation: &[diapason_core::utils::session_archive::SessionMessage],
 ) -> bool {
     let Some(prompt) = metadata.resolved_prompt_text(conversation) else {
         return false;
@@ -51,7 +51,7 @@ fn restore_prompt_input_and_report(
     renderer: &mut AnsiRenderer,
     handle: &InlineHandle,
     metadata: &SnapshotMetadata,
-    conversation: &[vtcode_core::utils::session_archive::SessionMessage],
+    conversation: &[diapason_core::utils::session_archive::SessionMessage],
 ) -> Result<()> {
     if restore_prompt_input(handle, metadata, conversation) {
         renderer.line(MessageStyle::Info, "Restored the selected prompt into the input field.")?;
@@ -107,7 +107,7 @@ pub(crate) async fn handle_rewind_to_turn(
         if result.is_ok() {
             if let Some(emitter) = ctx.harness_emitter {
                 let _ = emitter.emit(crate::agent::runloop::unified::inline_events::harness::harness_event(
-                    vtcode_core::exec::events::HarnessEventKind::SnapshotRestored,
+                    diapason_core::exec::events::HarnessEventKind::SnapshotRestored,
                     Some(format!("Rewound to turn {turn}")),
                     None,
                     None,
@@ -185,7 +185,7 @@ fn render_rewind_cli_guidance(renderer: &mut AnsiRenderer, turn: usize, scope: R
     renderer.line(MessageStyle::Info, &format!("Rewinding to turn {turn} with scope {scope:?}..."))?;
     renderer.line(
         MessageStyle::Info,
-        &format!("Use: `vtcode revert --turn {} --partial {}` from command line", turn, rewind_partial_arg(scope)),
+        &format!("Use: `diapason revert --turn {} --partial {}` from command line", turn, rewind_partial_arg(scope)),
     )?;
     renderer.line(MessageStyle::Info, "Note: In-chat rewind requires access to the checkpoint manager.")?;
     Ok(())
@@ -202,7 +202,7 @@ fn rewind_partial_arg(scope: RevertScope) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{resolve_prompt_boundary_in_history, rewind_partial_arg};
-    use vtcode_core::core::agent::snapshots::{RevertScope, SnapshotMetadata};
+    use diapason_core::core::agent::snapshots::{RevertScope, SnapshotMetadata};
 
     #[test]
     fn rewind_partial_arg_matches_cli_scope_values() {
@@ -214,9 +214,9 @@ mod tests {
     #[test]
     fn resolve_prompt_boundary_prefers_metadata_index_when_it_matches() {
         let history = vec![
-            vtcode_core::llm::provider::Message::user("first".to_string()),
-            vtcode_core::llm::provider::Message::assistant("reply".to_string()),
-            vtcode_core::llm::provider::Message::user("target".to_string()),
+            diapason_core::llm::provider::Message::user("first".to_string()),
+            diapason_core::llm::provider::Message::assistant("reply".to_string()),
+            diapason_core::llm::provider::Message::user("target".to_string()),
         ];
         let metadata = SnapshotMetadata {
             id: "turn_2".to_string(),
@@ -239,9 +239,9 @@ mod tests {
     #[test]
     fn resolve_prompt_boundary_falls_back_to_nearest_prompt_match() {
         let history = vec![
-            vtcode_core::llm::provider::Message::user("target".to_string()),
-            vtcode_core::llm::provider::Message::assistant("reply".to_string()),
-            vtcode_core::llm::provider::Message::user("target".to_string()),
+            diapason_core::llm::provider::Message::user("target".to_string()),
+            diapason_core::llm::provider::Message::assistant("reply".to_string()),
+            diapason_core::llm::provider::Message::user("target".to_string()),
         ];
         let metadata = SnapshotMetadata {
             id: "turn_2".to_string(),

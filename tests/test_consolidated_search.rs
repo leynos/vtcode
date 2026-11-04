@@ -5,10 +5,10 @@
 )]
 //! Test script for the consolidated search functionality
 
+use diapason_core::config::constants::tools;
+use diapason_core::tools::ToolRegistry;
 use serde_json::json;
 use std::path::PathBuf;
-use vtcode_core::config::constants::tools;
-use vtcode_core::tools::ToolRegistry;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

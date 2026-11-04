@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use vtcode_core::core::interfaces::session::{SessionRuntime, SessionRuntimeParams};
+use diapason_core::core::interfaces::session::{SessionRuntime, SessionRuntimeParams};
 
 use crate::agent::runloop::ResumeSession;
 

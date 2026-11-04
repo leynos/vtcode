@@ -1,6 +1,6 @@
 # Security Policy
 
-We take the security of VT Code seriously. If you discover a security
+We take the security of Diapason seriously. If you discover a security
 vulnerability, we appreciate your responsible disclosure and will work to
 address it promptly.
 
@@ -11,8 +11,8 @@ address it promptly.
 Instead, please report security vulnerabilities via one of the following
 channels:
 
-- Email: **<security@vtcode.org>** (replace with actual email if available)
-- [GitHub Private Vulnerability Reporting](https://github.com/vinhnx/vtcode/security/advisories/new)
+- Email: **<security@diapason.org>** (replace with actual email if available)
+- [GitHub Private Vulnerability Reporting](https://github.com/leynos/vtcode/security/advisories/new)
   - This is the preferred method for reporting vulnerabilities, as it allows
   for secure, private communication.
 
@@ -48,7 +48,7 @@ information:
 
 ### Configuration Security
 
-- Keep your `vtcode.toml` configuration file secure and avoid sharing sensitive
+- Keep your `config.toml` configuration file secure and avoid sharing sensitive
   values
 - Regularly review your tool policies to ensure only necessary operations are
   allowed
@@ -56,9 +56,9 @@ information:
 
 ### System Security
 
-- Only run VT Code in trusted environments
+- Only run Diapason in trusted environments
 - Be cautious when executing code or commands suggested by the AI agent
-- Regularly update VT Code to the latest version to ensure you have the latest
+- Regularly update Diapason to the latest version to ensure you have the latest
   security patches
 
 ## Supported Versions
@@ -71,7 +71,7 @@ information:
 
 ## Security Features
 
-VT Code includes several built-in security features:
+Diapason includes several built-in security features:
 
 - **Path Validation**: Prevents file system access outside the designated
   workspace
@@ -81,7 +81,7 @@ VT Code includes several built-in security features:
   preflight reject dynamic shell syntax in `find` commands, so expansion cannot
   turn a reviewed shape into `-exec` or another destructive option
 - **Workspace lifecycle hook approval**: Shell commands defined in
-  workspace-controlled configuration (`vtcode.toml` / `.vtcode` in the
+  workspace-controlled configuration (`config.toml` / `.diapason` in the
   repository) never run at session start or during lifecycle events until you
   explicitly approve the exact command set for that workspace; any change to
   those commands invalidates the approval and is skipped until reviewed
@@ -90,7 +90,7 @@ VT Code includes several built-in security features:
 
 ## CI/CD Security Controls
 
-VT Code enforces the following CI/CD security controls for GitHub Actions:
+Diapason enforces the following CI/CD security controls for GitHub Actions:
 
 - **Forbidden trigger policy**: `pull_request_target` and `workflow_run` are
   blocked by policy checks.
@@ -110,7 +110,7 @@ VT Code enforces the following CI/CD security controls for GitHub Actions:
 
 ## Security Architecture
 
-For information about VT Code's security architecture, please see our
+For information about Diapason's security architecture, please see our
 documentation on:
 
 - [Security Posture](README.md#security-posture)
@@ -141,4 +141,4 @@ cargo audit
 For general security questions or concerns, please contact us via the channels
 mentioned above.
 
-Thank you for helping keep VT Code and its users safe!
+Thank you for helping keep Diapason and its users safe!

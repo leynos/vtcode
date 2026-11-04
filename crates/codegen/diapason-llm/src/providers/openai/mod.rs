@@ -1,0 +1,44 @@
+//! OpenAI Provider Implementation
+//!
+//! This module provides the OpenAI API integration, supporting:
+//! - Chat Completions API (GPT-5, GPT-5-mini, etc.)
+//! - Responses API (GPT-5, GPT-5.1 Codex, etc.)
+//! - Harmony encoding for GPT-OSS models
+//! - Streaming and non-streaming responses
+//! - Tool/function calling
+//! - Reasoning models with effort configuration
+//!
+//! ## Module Structure
+//!
+//! The OpenAI provider is split into focused submodules:
+//! - `types` - Shared types and constants
+//! - `errors` - Error handling and formatting
+//! - `streaming` - Stream processing and telemetry
+//! - `responses_api` - Responses API payload handling
+//! - `provider` - Main `OpenAIProvider` implementation
+//!
+//! ## Example
+//!
+//! ```rust,ignore
+//! use diapason_core::llm::providers::OpenAIProvider;
+//!
+//! let provider = OpenAIProvider::new("sk-...".to_string());
+//! ```
+
+pub(crate) mod backend_setup;
+mod custom_provider_auth;
+pub(crate) mod errors;
+mod harmony;
+pub(crate) mod headers;
+pub(crate) mod request_builder;
+pub(crate) mod response_parser;
+pub(crate) mod responses_api;
+pub(crate) mod stream_decoder;
+pub mod streaming;
+pub(crate) mod tool_serialization;
+pub mod types;
+
+// Main provider implementation
+mod provider;
+pub use custom_provider_auth::CustomProviderAuthHandle;
+pub use provider::OpenAIProvider;

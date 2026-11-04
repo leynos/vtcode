@@ -1,7 +1,7 @@
 use anyhow::Result;
+use diapason_core::utils::ansi::MessageStyle;
 use std::sync::Arc;
 use tracing::warn;
-use vtcode_core::utils::ansi::MessageStyle;
 
 use crate::agent::runloop::unified::async_mcp_manager::McpInitStatus;
 use crate::agent::runloop::unified::session_setup::{active_deferred_tool_policy, refresh_tool_snapshot};
@@ -13,7 +13,7 @@ pub(super) async fn ensure_skills_context_activated(ctx: &SlashCommandContext<'_
         return Ok(());
     };
 
-    vtcode_core::context::ensure_skills_dynamic_context(&ctx.config.workspace, &vt_cfg.context.dynamic).await
+    diapason_core::context::ensure_skills_dynamic_context(&ctx.config.workspace, &vt_cfg.context.dynamic).await
 }
 
 pub(super) async fn ensure_mcp_activated(ctx: &mut SlashCommandContext<'_>) -> Result<()> {
@@ -80,7 +80,7 @@ pub(super) async fn try_attach_ready_mcp(ctx: &mut SlashCommandContext<'_>) -> R
 
 pub(super) async fn sync_mcp_context_files(
     ctx: &SlashCommandContext<'_>,
-    client: &Arc<vtcode_core::mcp::McpClient>,
+    client: &Arc<diapason_core::mcp::McpClient>,
 ) -> Result<()> {
     let Some(vt_cfg) = ctx.vt_cfg.as_ref() else {
         return Ok(());
@@ -91,7 +91,7 @@ pub(super) async fn sync_mcp_context_files(
         return Ok(());
     }
 
-    vtcode_core::context::ensure_mcp_dynamic_context(&ctx.config.workspace, dynamic_cfg).await?;
+    diapason_core::context::ensure_mcp_dynamic_context(&ctx.config.workspace, dynamic_cfg).await?;
     if let Err(err) = client.sync_tools_to_files(&ctx.config.workspace).await {
         warn!("Failed to sync MCP tools to dynamic context files: {}", err);
     }

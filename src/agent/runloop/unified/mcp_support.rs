@@ -5,10 +5,10 @@ use tokio::{
     time::{Duration, sleep},
 };
 
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig};
-use vtcode_core::mcp::validate_mcp_config;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig};
+use diapason_core::mcp::validate_mcp_config;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use super::async_mcp_manager::{AsyncMcpManager, McpInitStatus};
 use crate::agent::runloop::mcp_events;
@@ -21,7 +21,7 @@ pub(crate) use mcp_support_overview::{
 
 pub(crate) async fn display_mcp_config_summary(
     renderer: &mut AnsiRenderer,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     session_bootstrap: &SessionBootstrap,
     async_mcp_manager: Option<&AsyncMcpManager>,
 ) -> Result<()> {
@@ -84,10 +84,10 @@ pub(crate) async fn display_mcp_config_summary(
     } else {
         match session_bootstrap.mcp_enabled {
             Some(true) => {
-                renderer.line(MessageStyle::Info, "  MCP enabled via runtime defaults (vtcode.toml not loaded)")?
+                renderer.line(MessageStyle::Info, "  MCP enabled via runtime defaults (config.toml not loaded)")?
             }
             Some(false) => renderer.line(MessageStyle::Info, "  MCP disabled via runtime defaults")?,
-            None => renderer.line(MessageStyle::Info, "  No vtcode.toml found; using default MCP settings")?,
+            None => renderer.line(MessageStyle::Info, "  No config.toml found; using default MCP settings")?,
         }
     }
 
@@ -109,7 +109,7 @@ pub(crate) async fn render_mcp_config_edit_guidance(renderer: &mut AnsiRenderer,
     })
     .await??;
 
-    let target_path = config_path.unwrap_or_else(|| workspace_path.join("vtcode.toml"));
+    let target_path = config_path.unwrap_or_else(|| workspace_path.join("config.toml"));
     let exists = fs::try_exists(&target_path).await.unwrap_or(false);
 
     renderer.line(MessageStyle::Info, &format!("  File: {}", target_path.display()))?;
@@ -117,7 +117,8 @@ pub(crate) async fn render_mcp_config_edit_guidance(renderer: &mut AnsiRenderer,
     if exists {
         renderer.line(MessageStyle::Info, "  Open this file in your editor and update the [mcp] section.")?;
     } else {
-        renderer.line(MessageStyle::Info, "  File not found. Run `vtcode config bootstrap` or create it manually.")?;
+        renderer
+            .line(MessageStyle::Info, "  File not found. Run `diapason config bootstrap` or create it manually.")?;
     }
 
     renderer.line(MessageStyle::Info, "  Reload providers with /mcp refresh after saving changes.")?;
@@ -129,7 +130,7 @@ pub(crate) async fn repair_mcp_runtime(
     renderer: &mut AnsiRenderer,
     async_mcp_manager: Option<&AsyncMcpManager>,
     tool_registry: &mut ToolRegistry,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
 ) -> Result<bool> {
     renderer.line(MessageStyle::Status, "Repairing MCP runtime:")?;
 
@@ -138,22 +139,22 @@ pub(crate) async fn repair_mcp_runtime(
             Ok(_) => renderer.line(MessageStyle::Info, "  Configuration validation: ok")?,
             Err(err) => {
                 renderer.line(MessageStyle::Error, &format!("  Configuration validation failed: {err}"))?;
-                renderer.line(MessageStyle::Info, "  Update vtcode.toml and rerun /mcp repair.")?;
+                renderer.line(MessageStyle::Info, "  Update config.toml and rerun /mcp repair.")?;
                 return Ok(false);
             }
         }
     } else {
-        renderer.line(MessageStyle::Info, "  vtcode.toml not detected; using default MCP settings.")?;
+        renderer.line(MessageStyle::Info, "  config.toml not detected; using default MCP settings.")?;
     }
 
     let Some(manager) = async_mcp_manager else {
         renderer.line(MessageStyle::Info, "  MCP runtime is not active in this session.")?;
-        renderer.line(MessageStyle::Info, "  Enable MCP in vtcode.toml and restart the agent.")?;
+        renderer.line(MessageStyle::Info, "  Enable MCP in config.toml and restart the agent.")?;
         return Ok(false);
     };
 
     if let McpInitStatus::Disabled = manager.get_status().await {
-        renderer.line(MessageStyle::Info, "  MCP is disabled; update vtcode.toml to enable it.")?;
+        renderer.line(MessageStyle::Info, "  MCP is disabled; update config.toml to enable it.")?;
         return Ok(false);
     }
 
@@ -180,7 +181,7 @@ pub(crate) async fn repair_mcp_runtime(
                 return Ok(false);
             }
             McpInitStatus::Disabled => {
-                renderer.line(MessageStyle::Info, "  MCP disabled during restart; check vtcode.toml settings.")?;
+                renderer.line(MessageStyle::Info, "  MCP disabled during restart; check config.toml settings.")?;
                 return Ok(false);
             }
             _ => {
@@ -205,7 +206,7 @@ pub(crate) async fn repair_mcp_runtime(
 
 pub(crate) async fn diagnose_mcp(
     renderer: &mut AnsiRenderer,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     session_bootstrap: &SessionBootstrap,
     async_mcp_manager: Option<&AsyncMcpManager>,
     tool_registry: &mut ToolRegistry,
@@ -219,7 +220,7 @@ pub(crate) async fn diagnose_mcp(
             Err(err) => renderer.line(MessageStyle::Error, &format!("  Configuration validation failed: {err}"))?,
         }
     } else {
-        renderer.line(MessageStyle::Info, "  vtcode.toml not detected; using default MCP settings.")?;
+        renderer.line(MessageStyle::Info, "  config.toml not detected; using default MCP settings.")?;
     }
 
     display_mcp_status(renderer, session_bootstrap, tool_registry, async_mcp_manager, mcp_panel_state).await?;
@@ -241,8 +242,8 @@ pub(crate) fn render_mcp_login_guidance(renderer: &mut AnsiRenderer, provider: S
 
     let action = if is_login { "login" } else { "logout" };
     renderer.line(MessageStyle::Status, &format!("OAuth {action} flow requested for provider '{trimmed}'."))?;
-    renderer.line(MessageStyle::Info, "VT Code delegates OAuth to the CLI today.")?;
-    renderer.line(MessageStyle::Info, &format!("Run: vtcode mcp {action} {trimmed}"))?;
+    renderer.line(MessageStyle::Info, "Diapason delegates OAuth to the CLI today.")?;
+    renderer.line(MessageStyle::Info, &format!("Run: diapason mcp {action} {trimmed}"))?;
     renderer.line(MessageStyle::Info, "This command will walk you through the authentication flow in your shell.")?;
     Ok(())
 }

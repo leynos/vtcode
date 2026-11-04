@@ -8,12 +8,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use tokio::sync::Notify;
-use vtcode_core::exec::events::PlanApprovalDecision;
-use vtcode_ui::tui::app::{
+use diapason_core::exec::events::PlanApprovalDecision;
+use diapason_ui::tui::app::{
     InlineHandle, InlineListItem, InlineListSelection, InlineMessageKind, InlineSession, ListOverlayRequest,
     PlanContent, TransientHotkey, TransientHotkeyAction, TransientHotkeyKey, TransientRequest, TransientSubmission,
 };
+use tokio::sync::Notify;
 
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
 use crate::agent::runloop::unified::overlay_prompt::{OverlayWaitOutcome, show_overlay_and_wait};
@@ -91,7 +91,7 @@ fn append_message(handle: &InlineHandle, kind: InlineMessageKind, text: impl Int
 
 fn render_confirmation_prompt(handle: &InlineHandle, plan: &PlanContent) {
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         plan_title = %plan.title,
         "render_confirmation_prompt: adding confirmation messages"
     );
@@ -274,7 +274,7 @@ pub(crate) fn build_plan_confirmation_request_with_context(
     context_usage_percent: u8,
 ) -> TransientRequest {
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         draft_incomplete,
         "build_plan_confirmation_request: building overlay request"
     );
@@ -403,7 +403,7 @@ pub(crate) async fn execute_plan_confirmation_with_context(
     ctrl_c_notify: &Arc<Notify>,
 ) -> Result<PlanConfirmationOutcome> {
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         "execute_plan_confirmation: rendering confirmation prompt and showing overlay"
     );
     render_confirmation_prompt(handle, &plan_content);
@@ -423,7 +423,7 @@ pub(crate) async fn execute_plan_confirmation_with_context(
     .await?;
 
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         overlay_wait_outcome = "done",
         "execute_plan_confirmation: overlay wait completed"
     );
@@ -463,8 +463,8 @@ pub(crate) async fn load_plan_text_for_approval(
 
 use crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState;
 use crate::agent::runloop::unified::turn::context::{TurnHandlerOutcome, TurnLoopResult};
-use vtcode_config::{builtin_primary_auto_agent, builtin_primary_build_agent};
-use vtcode_core::tools::registry::ToolRegistry;
+use diapason_config::{builtin_primary_auto_agent, builtin_primary_build_agent};
+use diapason_core::tools::registry::ToolRegistry;
 
 /// Execute the plan-approval overlay and return the corresponding turn outcome.
 ///
@@ -485,7 +485,7 @@ pub(crate) async fn execute_plan_approval(
     telemetry: PlanApprovalTelemetryContext<'_>,
 ) -> Result<TurnHandlerOutcome> {
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         "execute_plan_approval: showing confirmation dialog"
     );
 
@@ -506,7 +506,7 @@ pub(crate) async fn execute_plan_approval(
     .await;
 
     tracing::info!(
-        target: "vtcode.planning_workflow",
+        target: "diapason.planning_workflow",
         overlay_outcome = ?outcome.as_ref().ok(),
         "execute_plan_approval: dialog closed"
     );
@@ -522,7 +522,7 @@ pub(crate) async fn execute_plan_approval(
                 false,
             );
             tracing::info!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 "User chose to revise the plan via inline overlay; remaining in Planning workflow"
             );
             Ok(TurnHandlerOutcome::Break(TurnLoopResult::Completed { plan_approved_execution_pending: false }))
@@ -537,7 +537,7 @@ pub(crate) async fn execute_plan_approval(
                 false,
             );
             tracing::info!(
-                target: "vtcode.planning_workflow",
+                target: "diapason.planning_workflow",
                 "User dismissed the plan via inline overlay; remaining in Planning workflow"
             );
             Ok(TurnHandlerOutcome::Break(TurnLoopResult::Completed { plan_approved_execution_pending: false }))
@@ -560,7 +560,7 @@ pub(crate) async fn execute_plan_approval(
                     (PlanApprovalDecision::SwitchAuto, true, PlanExecutionContext::Current)
                 }
                 PlanConfirmationOutcome::EditPlan | PlanConfirmationOutcome::Cancel => {
-                    tracing::debug!(target: "vtcode.planning_workflow", "approval outcome was already handled");
+                    tracing::debug!(target: "diapason.planning_workflow", "approval outcome was already handled");
                     return Ok(TurnHandlerOutcome::Break(TurnLoopResult::Completed {
                         plan_approved_execution_pending: false,
                     }));
@@ -587,7 +587,7 @@ pub(crate) async fn execute_plan_approval(
                         PlanApprovalDecision::Cancel,
                         false,
                     );
-                    tracing::warn!(target: "vtcode.planning_workflow", error = %err, "approved-plan handoff blocked");
+                    tracing::warn!(target: "diapason.planning_workflow", error = %err, "approved-plan handoff blocked");
                     append_message(handle, InlineMessageKind::Error, format!("Plan execution is blocked: {err}"));
                     return Ok(TurnHandlerOutcome::Break(TurnLoopResult::Completed {
                         plan_approved_execution_pending: false,
@@ -635,12 +635,12 @@ mod tests {
         plan_confirmation_submission_to_outcome, render_plan_summary, render_structured_plan,
     };
     use crate::agent::runloop::unified::state::CtrlCState;
-    use vtcode_core::tools::registry::ToolRegistry;
-    use vtcode_ui::tui::app::{
+    use diapason_core::tools::registry::ToolRegistry;
+    use diapason_ui::tui::app::{
         InlineCommand, InlineEvent, InlineHandle, InlineListSelection, InlineMessageKind, InlineSession,
         ListOverlayRequest, TransientEvent, TransientHotkeyAction, TransientRequest, TransientSubmission,
     };
-    use vtcode_ui::tui::app::{PlanContent, PlanPhase, PlanStep};
+    use diapason_ui::tui::app::{PlanContent, PlanPhase, PlanStep};
 
     fn sample_plan() -> PlanContent {
         PlanContent {
@@ -728,7 +728,7 @@ mod tests {
         let plan = PlanContent::from_markdown(
             "Implementation Plan".to_string(),
             "Summary\nFocus the launch-time improvement on startup latency.\n\n1. Instrument startup timing -> src/startup.rs -> verify: add logs.\n2. Move refresh off the critical path -> src/update.rs -> verify: UI renders first.\n3. Prefer the cached notice -> src/update.rs -> verify: stale refresh is deferred.\n4. Add a bounded fallback -> src/startup.rs -> verify: startup never waits.\n5. Validate with focused tests -> src/startup.rs -> verify: nextest passes.\n\nValidation\n- cargo check --locked",
-            Some(".vtcode/plans/startup.md".to_string()),
+            Some(".diapason/plans/startup.md".to_string()),
         );
 
         let lines = render_plan_summary(&plan);

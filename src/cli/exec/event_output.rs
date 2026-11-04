@@ -4,14 +4,14 @@
 )]
 
 use anyhow::{Context, Result};
+use diapason_core::core::agent::task::TaskResults;
+use diapason_core::exec::events::{CommandExecutionStatus, ThreadEvent, ThreadItem, ThreadItemDetails, ToolCallStatus};
+use diapason_core::utils::colors::style;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
-use vtcode_core::core::agent::task::TaskResults;
-use vtcode_core::exec::events::{CommandExecutionStatus, ThreadEvent, ThreadItem, ThreadItemDetails, ToolCallStatus};
-use vtcode_core::utils::colors::style;
 
 pub(super) struct ExecEventProcessor<WStdout, WEvents, WStderr> {
     json: bool,
@@ -260,51 +260,61 @@ pub(super) fn human_event_line(event: &ThreadEvent) -> Option<String> {
             }
             ThreadItemDetails::Harness(item) => {
                 let label = match item.event {
-                    vtcode_core::exec::events::HarnessEventKind::PlanningStarted => style("[PLAN]").cyan().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::PlanningCompleted => style("[PLAN]").green().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::ContinuationStarted => {
+                    diapason_core::exec::events::HarnessEventKind::PlanningStarted => style("[PLAN]").cyan().bold(),
+                    diapason_core::exec::events::HarnessEventKind::PlanningCompleted => style("[PLAN]").green().bold(),
+                    diapason_core::exec::events::HarnessEventKind::ContinuationStarted => {
                         style("[HARNESS]").cyan().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::ContinuationSkipped => {
+                    diapason_core::exec::events::HarnessEventKind::ContinuationSkipped => {
                         style("[HARNESS]").cyan().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::BlockedHandoffWritten => {
+                    diapason_core::exec::events::HarnessEventKind::BlockedHandoffWritten => {
                         style("[HANDOFF]").cyan().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::BlockedHandoffResolved => {
+                    diapason_core::exec::events::HarnessEventKind::BlockedHandoffResolved => {
                         style("[HANDOFF]").green().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::EvaluationStarted => style("[EVAL]").cyan().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::EvaluationPassed => style("[EVAL]").green().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::EvaluationFailed => {
+                    diapason_core::exec::events::HarnessEventKind::EvaluationStarted => style("[EVAL]").cyan().bold(),
+                    diapason_core::exec::events::HarnessEventKind::EvaluationPassed => style("[EVAL]").green().bold(),
+                    diapason_core::exec::events::HarnessEventKind::EvaluationFailed => {
                         style("[EVAL FAILED]").red().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::RevisionStarted => style("[REVISION]").cyan().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::VerificationStarted => style("[VERIFY]").cyan().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::VerificationPassed => style("[VERIFY]").green().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::VerificationFailed => {
+                    diapason_core::exec::events::HarnessEventKind::RevisionStarted => style("[REVISION]").cyan().bold(),
+                    diapason_core::exec::events::HarnessEventKind::VerificationStarted => {
+                        style("[VERIFY]").cyan().bold()
+                    }
+                    diapason_core::exec::events::HarnessEventKind::VerificationPassed => {
+                        style("[VERIFY]").green().bold()
+                    }
+                    diapason_core::exec::events::HarnessEventKind::VerificationFailed => {
                         style("[VERIFY FAILED]").red().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::EscalationTriggered => {
+                    diapason_core::exec::events::HarnessEventKind::EscalationTriggered => {
                         style("[ESCALATED]").red().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::EscalationBypassed => {
+                    diapason_core::exec::events::HarnessEventKind::EscalationBypassed => {
                         style("[ESCALATED]").green().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::TurnBlocked => style("[BLOCKED]").red().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::BlockedRecoveryStarted => {
+                    diapason_core::exec::events::HarnessEventKind::TurnBlocked => style("[BLOCKED]").red().bold(),
+                    diapason_core::exec::events::HarnessEventKind::BlockedRecoveryStarted => {
                         style("[RECOVERY]").yellow().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::BlockedRecoveryFinished => {
+                    diapason_core::exec::events::HarnessEventKind::BlockedRecoveryFinished => {
                         style("[RECOVERY]").green().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::ErrorRecovered => style("[RECOVERED]").green().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::ToolRetryAttempted => style("[RETRY]").yellow().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::ToolLatencyRecorded => {
+                    diapason_core::exec::events::HarnessEventKind::ErrorRecovered => {
+                        style("[RECOVERED]").green().bold()
+                    }
+                    diapason_core::exec::events::HarnessEventKind::ToolRetryAttempted => {
+                        style("[RETRY]").yellow().bold()
+                    }
+                    diapason_core::exec::events::HarnessEventKind::ToolLatencyRecorded => {
                         style("[LATENCY]").magenta().bold()
                     }
-                    vtcode_core::exec::events::HarnessEventKind::SnapshotCreated => style("[SNAPSHOT]").cyan().bold(),
-                    vtcode_core::exec::events::HarnessEventKind::SnapshotRestored => style("[REWIND]").yellow().bold(),
+                    diapason_core::exec::events::HarnessEventKind::SnapshotCreated => style("[SNAPSHOT]").cyan().bold(),
+                    diapason_core::exec::events::HarnessEventKind::SnapshotRestored => {
+                        style("[REWIND]").yellow().bold()
+                    }
                 };
                 let detail = match (item.message.as_deref(), item.path.as_deref()) {
                     (Some(message), Some(path)) => format!("{message}: {path}"),
@@ -319,7 +329,7 @@ pub(super) fn human_event_line(event: &ThreadEvent) -> Option<String> {
         },
         ThreadEvent::TurnFailed(failed) => Some(format!("{} {}", style("[ERROR]").red().bold(), failed.message)),
         ThreadEvent::TurnBlocked(blocked) => Some(format!(
-            "{} {} (streak {}, total {}) — Type 'continue' with new guidance or run `vtcode --resume <session>`; details: .vtcode/tasks/current_blocked.md",
+            "{} {} (streak {}, total {}) — Type 'continue' with new guidance or run `diapason --resume <session>`; details: .diapason/tasks/current_blocked.md",
             style("[BLOCKED]").red().bold(),
             blocked.message,
             blocked.blocked_streak,
@@ -401,7 +411,7 @@ pub(super) fn lock_or_recover<T>(mutex: &Arc<Mutex<T>>) -> MutexGuard<'_, T> {
     }
 }
 
-pub(super) fn exec_archive_transcript(messages: &[vtcode_core::llm::provider::Message]) -> Vec<String> {
+pub(super) fn exec_archive_transcript(messages: &[diapason_core::llm::provider::Message]) -> Vec<String> {
     messages
         .iter()
         .filter_map(|message| {

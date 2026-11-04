@@ -2,23 +2,23 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Error;
+use diapason_core::retry::RetryPolicy;
+#[cfg(test)]
+use diapason_core::retry::RetryPolicyCoreExt;
+use diapason_core::tools::registry::ToolTimeoutCategory;
+use diapason_core::tools::registry::{
+    ExecSettlementMode, ExecutionPolicySnapshot, ToolExecutionError, ToolExecutionRequest, ToolRegistry,
+};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
-use vtcode_core::retry::RetryPolicy;
-#[cfg(test)]
-use vtcode_core::retry::RetryPolicyCoreExt;
-use vtcode_core::tools::registry::ToolTimeoutCategory;
-use vtcode_core::tools::registry::{
-    ExecSettlementMode, ExecutionPolicySnapshot, ToolExecutionError, ToolExecutionRequest, ToolRegistry,
-};
 
 use crate::agent::runloop::unified::progress::ProgressReporter;
 use crate::agent::runloop::unified::state::CtrlCState;
 use crate::agent::runloop::unified::wait_feedback::{
     WAIT_KEEPALIVE_INITIAL, WAIT_KEEPALIVE_INTERVAL, wait_keepalive_message,
 };
-use vtcode_core::exec::cancellation;
+use diapason_core::exec::cancellation;
 
 use super::CancellationTokens;
 use super::execution_helpers::process_llm_tool_output;
@@ -151,7 +151,7 @@ async fn execute_tool_with_timeout_ref_mode(
 
     if !retry_allowed && max_tool_retries > 0 {
         debug!(
-            target: "vtcode.tool.exec",
+            target: "diapason.tool.exec",
             tool = name,
             "tool classified as non-idempotent; retries disabled"
         );
@@ -278,7 +278,7 @@ async fn run_attempt_with_logging(
     .await;
 
     debug!(
-        target: "vtcode.tool.exec",
+        target: "diapason.tool.exec",
         tool = name,
         attempt = attempt + 1,
         status = status_label(&status),
@@ -472,7 +472,7 @@ async fn run_single_tool_attempt(
 async fn terminate_active_exec_sessions(registry: &ToolRegistry, tool_name: &str, reason: &str) {
     if let Err(err) = registry.terminate_all_exec_sessions_async().await {
         debug!(
-            target: "vtcode.tool.exec",
+            target: "diapason.tool.exec",
             tool = tool_name,
             cancel_reason = reason,
             error = %err,
@@ -529,7 +529,7 @@ fn emit_tool_retry_outcome_metric(
     let attempts_made = retries_used.saturating_add(1);
     let exhausted_retry_budget = !success && retry_allowed && retries_used >= max_tool_retries && max_tool_retries > 0;
     tracing::info!(
-        target: "vtcode.tool.metrics",
+        target: "diapason.tool.metrics",
         metric = "tool_retry_outcome",
         tool = tool_name,
         attempts_made,
@@ -546,10 +546,10 @@ fn emit_tool_retry_outcome_metric(
 #[cfg(test)]
 mod tests {
     use anyhow::anyhow;
+    use diapason_core::tools::{SafetyContext, ToolInvocationId};
     use serde_json::json;
     use tempfile::TempDir;
     use tokio::sync::Notify;
-    use vtcode_core::tools::{SafetyContext, ToolInvocationId};
 
     use super::*;
     use crate::agent::runloop::unified::state::CtrlCState;
@@ -646,12 +646,12 @@ mod tests {
 
         assert!(is_retry_safe_tool(
             &registry,
-            vtcode_core::config::constants::tools::READ_FILE,
+            diapason_core::config::constants::tools::READ_FILE,
             &json!({"path": "Cargo.toml"})
         ));
         assert!(!is_retry_safe_tool(
             &registry,
-            vtcode_core::config::constants::tools::WRITE_FILE,
+            diapason_core::config::constants::tools::WRITE_FILE,
             &json!({"path": "scratch.txt", "content": "x"})
         ));
     }
@@ -662,7 +662,7 @@ mod tests {
         // Canonicalize so the workspace root and file path share one prefix;
         // on macOS TempDir returns a /var/folders alias of /private/var/folders
         // and mixed prefixes trip the workspace containment check.
-        let workspace = vtcode_commons::canonicalize(temp_dir.path()).expect("canonicalize temp dir");
+        let workspace = diapason_commons::canonicalize(temp_dir.path()).expect("canonicalize temp dir");
         let registry = ToolRegistry::new(workspace.clone()).await;
         let read_path = workspace.join("README.md");
         tokio::fs::write(&read_path, "hello").await.expect("write file");
@@ -674,21 +674,21 @@ mod tests {
         let safety_result = gateway
             .check_and_record_with_id(
                 &SafetyContext::new("test-session"),
-                vtcode_core::config::constants::tools::READ_FILE,
+                diapason_core::config::constants::tools::READ_FILE,
                 &json!({ "path": read_path }),
                 Some(ToolInvocationId::new()),
             )
             .await;
         assert!(matches!(
             safety_result.decision,
-            vtcode_core::tools::SafetyDecision::Allow | vtcode_core::tools::SafetyDecision::NeedsApproval(_)
+            diapason_core::tools::SafetyDecision::Allow | diapason_core::tools::SafetyDecision::NeedsApproval(_)
         ));
 
         let ctrl_c_state = Arc::new(CtrlCState::new());
         let ctrl_c_notify = Arc::new(Notify::new());
         let status = execute_tool_with_timeout_ref_prevalidated(
             &registry,
-            vtcode_core::config::constants::tools::READ_FILE,
+            diapason_core::config::constants::tools::READ_FILE,
             &json!({ "path": read_path }),
             &ctrl_c_state,
             &ctrl_c_notify,

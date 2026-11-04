@@ -1,6 +1,6 @@
 # Skill Tool Usage
 
-VT Code exposes skills through the skills subsystem and related tooling.
+Diapason exposes skills through the skills subsystem and related tooling.
 
 ## Discovery Queries
 
@@ -13,7 +13,7 @@ Legacy routing fields are not part of filtering.
 
 ## Prompt Integration
 
-When VT Code surfaces skills to the model, it includes only:
+When Diapason surfaces skills to the model, it includes only:
 
 - name
 - description

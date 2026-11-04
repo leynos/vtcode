@@ -1,4 +1,4 @@
-use vtcode_core::llm::provider as uni;
+use diapason_core::llm::provider as uni;
 
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 

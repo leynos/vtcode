@@ -30,7 +30,7 @@ export interface ParticipantContext {
 }
 
 /**
- * Base interface for all VT Code chat participants
+ * Base interface for all Diapason chat participants
  */
 export interface ChatParticipant {
     /** Unique participant identifier (e.g., '@workspace') */
@@ -62,7 +62,7 @@ export interface ChatParticipant {
 }
 
 /**
- * Base class for VT Code participants providing common functionality
+ * Base class for Diapason participants providing common functionality
  */
 export abstract class BaseParticipant implements ChatParticipant {
     public abstract readonly id: string;

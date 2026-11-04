@@ -6,27 +6,27 @@
 //! other.
 
 use anyhow::{Context, Result};
+use diapason_config::{SubagentSpec, builtin_subagents};
+use diapason_core::config::types::AgentConfig;
+use diapason_core::hooks::{LifecycleHookEngine, SessionStartTrigger};
+use diapason_core::llm::provider as uni;
+use diapason_core::notifications::set_global_notification_hook_engine;
+use diapason_core::primary_agent::{
+    ActivePrimaryAgent, build_primary_agent_hook_config, build_primary_agent_runtime_config,
+};
+use diapason_core::tools::registry::ToolRegistry;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use vtcode_config::{SubagentSpec, builtin_subagents};
-use vtcode_core::config::types::AgentConfig;
-use vtcode_core::hooks::{LifecycleHookEngine, SessionStartTrigger};
-use vtcode_core::llm::provider as uni;
-use vtcode_core::notifications::set_global_notification_hook_engine;
-use vtcode_core::primary_agent::{
-    ActivePrimaryAgent, build_primary_agent_hook_config, build_primary_agent_runtime_config,
-};
-use vtcode_core::tools::registry::ToolRegistry;
 
 use crate::agent::runloop::unified::async_mcp_manager::AsyncMcpManager;
 use crate::agent::runloop::unified::session_setup::{active_deferred_tool_policy, refresh_tool_snapshot};
 use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
-use vtcode_core::config::loader::VTCodeConfig;
+use diapason_core::config::loader::DiapasonConfig;
 
 pub(crate) struct PrimaryAgentRuntimeSyncContext<'a> {
     pub(crate) config: &'a AgentConfig,
-    pub(crate) vt_cfg: Option<&'a VTCodeConfig>,
+    pub(crate) vt_cfg: Option<&'a DiapasonConfig>,
     pub(crate) thread_id: &'a str,
     pub(crate) active_primary_agent: &'a ActivePrimaryAgent,
     pub(crate) lifecycle_hooks: &'a mut Option<LifecycleHookEngine>,
@@ -44,7 +44,7 @@ pub(crate) struct PrimaryAgentRuntimeSyncContext<'a> {
 /// plan-to-build handoff must replace permissions inherited from the planning
 /// agent or a prior full-auto runtime.
 pub(crate) fn sync_primary_agent_permissions(
-    vt_cfg: &mut Option<VTCodeConfig>,
+    vt_cfg: &mut Option<DiapasonConfig>,
     active_primary_agent: &ActivePrimaryAgent,
 ) {
     if let Some(cfg) = vt_cfg {
@@ -81,7 +81,7 @@ pub(crate) async fn sync_primary_agent_runtime(ctx: &mut PrimaryAgentRuntimeSync
         // in-memory (possibly session-only) approval forward when the command
         // set is unchanged, otherwise restore the persisted record; any
         // mismatch leaves the rebuilt engine fail-closed.
-        vtcode_core::hooks::carry_or_restore_workspace_hook_approval(
+        diapason_core::hooks::carry_or_restore_workspace_hook_approval(
             ctx.lifecycle_hooks.as_ref(),
             hooks,
             &ctx.config.workspace,
@@ -136,7 +136,7 @@ pub(crate) async fn load_primary_agent_specs(
     }
 
     let discovered =
-        vtcode_config::discover_subagents(&vtcode_config::SubagentDiscoveryInput::new(workspace.to_path_buf()))
+        diapason_config::discover_subagents(&diapason_config::SubagentDiscoveryInput::new(workspace.to_path_buf()))
             .with_context(|| format!("Failed to discover primary agents in {}", workspace.display()))?;
     Ok(discovered.effective.into_iter().filter(SubagentSpec::is_primary).collect())
 }
@@ -185,10 +185,10 @@ pub(crate) fn resolve_approved_plan_execution_agent(
 #[cfg(test)]
 mod tests {
     use super::{resolve_approved_plan_execution_agent, sync_primary_agent_permissions};
-    use vtcode_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
-    use vtcode_config::{builtin_primary_auto_agent, builtin_primary_build_agent, builtin_primary_duck_agent};
-    use vtcode_core::config::loader::VTCodeConfig;
-    use vtcode_core::primary_agent::ActivePrimaryAgent;
+    use diapason_config::core::permissions::{AgentPermissionsConfig, PermissionDefault};
+    use diapason_config::{builtin_primary_auto_agent, builtin_primary_build_agent, builtin_primary_duck_agent};
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::primary_agent::ActivePrimaryAgent;
 
     #[test]
     fn read_only_requested_agent_falls_back_to_build() {
@@ -224,21 +224,21 @@ mod tests {
         // it re-enters the planning workflow, so it must never receive an
         // approved-plan implementation directive, even when it is the
         // requested agent or the only apparent fallback.
-        let specs = vec![vtcode_config::builtin_plan_agent(), builtin_primary_build_agent()];
+        let specs = vec![diapason_config::builtin_plan_agent(), builtin_primary_build_agent()];
         assert_eq!(
             resolve_approved_plan_execution_agent(Some("plan"), Some("plan"), &specs),
             Some("build".to_string())
         );
 
-        let plan_only = vec![vtcode_config::builtin_plan_agent()];
+        let plan_only = vec![diapason_config::builtin_plan_agent()];
         assert_eq!(resolve_approved_plan_execution_agent(Some("plan"), None, &plan_only), None);
     }
 
     #[test]
     fn plan_handoff_replaces_stale_runtime_permissions() {
-        let mut vt_cfg = Some(VTCodeConfig {
+        let mut vt_cfg = Some(DiapasonConfig {
             runtime_agent_permissions: Some(AgentPermissionsConfig::new(PermissionDefault::Deny)),
-            ..VTCodeConfig::default()
+            ..DiapasonConfig::default()
         });
         let build = ActivePrimaryAgent::from_spec(&builtin_primary_build_agent());
 

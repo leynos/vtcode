@@ -38,9 +38,9 @@ class LLMGrader(Metric):
         For binary, use 'correct' or 'incorrect'.
         For scales like 1-5, use the number. Only output the XML tags."""
 
-        # Use vtcode to grade
+        # Use diapason to grade
         args = [
-            "./target/release/vtcode",
+            "./target/release/diapason",
             "--provider", "gemini", # Use a cheap provider for grading
             "--model", "gemini-3-flash-preview",
             "ask", prompt
@@ -49,7 +49,7 @@ class LLMGrader(Metric):
         try:
             result = subprocess.run(args, capture_output=True, text=True, timeout=60)
             if result.returncode != 0:
-                return {"result": "error", "reasoning": f"vtcode error: {result.stderr}"}
+                return {"result": "error", "reasoning": f"diapason error: {result.stderr}"}
 
             text = result.stdout
             thinking = re.search(r'<thinking>(.*?)</thinking>', text, re.S)

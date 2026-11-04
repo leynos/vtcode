@@ -1,14 +1,14 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow, bail};
-use vtcode_core::config::VTCodeConfig;
-use vtcode_core::config::models::ModelId;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::runner::{AgentRunner, RunnerSettings};
-use vtcode_core::core::agent::task::{ContextItem, Task};
-use vtcode_core::core::agent::types::AgentType;
-use vtcode_core::core::threads::ThreadBootstrap;
-use vtcode_core::utils::colors::style;
+use diapason_core::config::DiapasonConfig;
+use diapason_core::config::models::ModelId;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::runner::{AgentRunner, RunnerSettings};
+use diapason_core::core::agent::task::{ContextItem, Task};
+use diapason_core::core::agent::types::AgentType;
+use diapason_core::core::threads::ThreadBootstrap;
+use diapason_core::utils::colors::style;
 
 use crate::startup::require_full_auto_workspace_trust;
 
@@ -18,7 +18,7 @@ const AUTO_TASK_TITLE: &str = "Autonomous Task";
 
 pub async fn handle_auto_task_command(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     prompt: &str,
     primary_agent_explicitly_configured: bool,
 ) -> Result<()> {
@@ -77,7 +77,7 @@ pub async fn handle_auto_task_command(
     )
     .with_context(|| {
         format!(
-            "Model '{}' is not recognized for autonomous execution. Update vtcode.toml to a \
+            "Model '{}' is not recognized for autonomous execution. Update config.toml to a \
                      supported identifier.",
             run_config.model
         )
@@ -145,6 +145,6 @@ pub async fn handle_auto_task_command(
     Ok(())
 }
 
-fn primary_agent_turn_instructions(active_primary_agent: &vtcode_core::ActivePrimaryAgent) -> Option<String> {
+fn primary_agent_turn_instructions(active_primary_agent: &diapason_core::ActivePrimaryAgent) -> Option<String> {
     Some(active_primary_agent.instructions.trim().to_string()).filter(|instructions| !instructions.is_empty())
 }

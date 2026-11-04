@@ -1,6 +1,6 @@
 # Meta AI Integration Guide
 
-VT Code has a first-class Meta AI provider for Meta's Muse models. Prefer this
+Diapason has a first-class Meta AI provider for Meta's Muse models. Prefer this
 provider when you want to call Meta directly; use the
 [OpenRouter guide](./openrouter.md#meta-muse-models) when you specifically want
 OpenRouter billing, routing, or fallback options.
@@ -9,7 +9,7 @@ OpenRouter billing, routing, or fallback options.
 
 Create a Meta AI API key using the
 [Meta AI developer documentation](https://dev.meta.ai/docs/llms.txt). Meta's
-documentation uses `MODEL_API_KEY`; VT Code accepts that variable and also
+documentation uses `MODEL_API_KEY`; Diapason accepts that variable and also
 supports the provider-specific `META_API_KEY` variable.
 
 ```bash
@@ -22,7 +22,7 @@ export MODEL_API_KEY="your-meta-api-key"
 Use the official provider and its default Muse model:
 
 ```bash
-vtcode --provider meta --model muse-spark-1.2 chat
+diapason --provider meta --model muse-spark-1.2 chat
 ```
 
 The equivalent persistent configuration is:

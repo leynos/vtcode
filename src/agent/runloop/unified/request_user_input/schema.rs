@@ -1,9 +1,9 @@
 use anyhow::{Result, bail};
+use diapason_ui::tui::app::WizardModalMode;
 use hashbrown::HashMap;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use vtcode_ui::tui::app::WizardModalMode;
 
 #[derive(Debug, Deserialize)]
 pub(super) struct RequestUserInputArgs {

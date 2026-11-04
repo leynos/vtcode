@@ -3,18 +3,18 @@ use chrono::{DateTime, Local};
 use hashbrown::HashSet;
 use std::fmt::Write;
 
-use vtcode_core::config::mcp::McpTransportConfig;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::config::mcp::McpTransportConfig;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
 
 use crate::agent::runloop::mcp_events;
 use crate::agent::runloop::unified::async_mcp_manager::{AsyncMcpManager, McpInitStatus};
 use crate::agent::runloop::welcome::SessionBootstrap;
 
 fn group_mcp_tools_by_provider_preserving_order(
-    tools: impl IntoIterator<Item = vtcode_core::mcp::McpToolInfo>,
-) -> Vec<(String, Vec<vtcode_core::mcp::McpToolInfo>)> {
-    let mut grouped: Vec<(String, Vec<vtcode_core::mcp::McpToolInfo>)> = Vec::new();
+    tools: impl IntoIterator<Item = diapason_core::mcp::McpToolInfo>,
+) -> Vec<(String, Vec<diapason_core::mcp::McpToolInfo>)> {
+    let mut grouped: Vec<(String, Vec<diapason_core::mcp::McpToolInfo>)> = Vec::new();
 
     for tool in tools {
         let provider = tool.provider.clone();
@@ -40,8 +40,8 @@ pub(crate) async fn display_mcp_status(
     renderer.line(MessageStyle::Status, "MCP status overview:")?;
 
     match session_bootstrap.mcp_enabled {
-        Some(true) => renderer.line(MessageStyle::Status, "  • Enabled in vtcode.toml")?,
-        Some(false) => renderer.line(MessageStyle::Status, "  • Disabled in vtcode.toml")?,
+        Some(true) => renderer.line(MessageStyle::Status, "  • Enabled in config.toml")?,
+        Some(false) => renderer.line(MessageStyle::Status, "  • Disabled in config.toml")?,
         None => renderer.line(MessageStyle::Status, "  • No MCP configuration detected")?,
     }
 
@@ -155,7 +155,7 @@ pub(crate) async fn display_mcp_status(
         }
     }
 
-    renderer.line(MessageStyle::Info, "Use `vtcode mcp list` to review and manage providers.")?;
+    renderer.line(MessageStyle::Info, "Use `diapason mcp list` to review and manage providers.")?;
     Ok(())
 }
 
@@ -164,17 +164,17 @@ pub(crate) async fn display_mcp_providers(
     session_bootstrap: &SessionBootstrap,
     async_mcp_manager: Option<&AsyncMcpManager>,
 ) -> Result<()> {
-    renderer.line(MessageStyle::Status, "MCP providers configured in vtcode.toml:")?;
+    renderer.line(MessageStyle::Status, "MCP providers configured in config.toml:")?;
 
     let Some(configured) = &session_bootstrap.mcp_providers else {
-        renderer.line(MessageStyle::Info, "No vtcode.toml configuration detected for MCP providers.")?;
-        renderer.line(MessageStyle::Info, "Use `vtcode mcp add <name> --command <...>` to register providers.")?;
+        renderer.line(MessageStyle::Info, "No config.toml configuration detected for MCP providers.")?;
+        renderer.line(MessageStyle::Info, "Use `diapason mcp add <name> --command <...>` to register providers.")?;
         return Ok(());
     };
 
     if configured.is_empty() {
-        renderer.line(MessageStyle::Info, "No providers defined in vtcode.toml.")?;
-        renderer.line(MessageStyle::Info, "Run `vtcode mcp add` to connect VT Code to external tools.")?;
+        renderer.line(MessageStyle::Info, "No providers defined in config.toml.")?;
+        renderer.line(MessageStyle::Info, "Run `diapason mcp add` to connect Diapason to external tools.")?;
         return Ok(());
     }
 
@@ -249,7 +249,7 @@ pub(crate) async fn display_mcp_providers(
 
     renderer.line(
         MessageStyle::Info,
-        "Use `vtcode mcp get <name>` for full JSON output or `vtcode mcp remove <name>` to delete.",
+        "Use `diapason mcp get <name>` for full JSON output or `diapason mcp remove <name>` to delete.",
     )?;
     Ok(())
 }
@@ -305,8 +305,8 @@ pub(crate) async fn refresh_mcp_tools(renderer: &mut AnsiRenderer, tool_registry
 #[cfg(test)]
 mod tests {
     use super::group_mcp_tools_by_provider_preserving_order;
+    use diapason_core::mcp::McpToolInfo;
     use serde_json::json;
-    use vtcode_core::mcp::McpToolInfo;
 
     fn mock_tool(provider: &str, name: &str) -> McpToolInfo {
         McpToolInfo {

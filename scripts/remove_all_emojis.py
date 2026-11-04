@@ -31,7 +31,7 @@ def remove_emojis_from_file(file_path):
 
 def find_python_and_md_files():
     """Find all Python and MD files."""
-    base_path = Path("/Users/vinhnguyenxuan/Developer/learn-by-doing/vtcode")
+    base_path = Path("/Users/vinhnguyenxuan/Developer/learn-by-doing/diapason")
     
     # Find all .py and .md files recursively
     py_files = list(base_path.rglob("*.py"))

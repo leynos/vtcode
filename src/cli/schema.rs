@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
+use diapason_core::cli::args::{SchemaCommands, SchemaMode, SchemaOutputFormat};
+use diapason_core::config::types::CapabilityLevel;
+use diapason_core::config::{DiapasonConfig, ToolDocumentationMode};
+use diapason_core::tools::ToolRegistry;
+use diapason_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
-use vtcode_core::cli::args::{SchemaCommands, SchemaMode, SchemaOutputFormat};
-use vtcode_core::config::types::CapabilityLevel;
-use vtcode_core::config::{ToolDocumentationMode, VTCodeConfig};
-use vtcode_core::tools::ToolRegistry;
-use vtcode_core::tools::handlers::{SessionSurface, SessionToolsConfig, ToolModelCapabilities};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 struct ToolSchemaEntry {
@@ -24,7 +24,7 @@ struct ToolsSchemaDocument {
     tools: Vec<ToolSchemaEntry>,
 }
 
-pub async fn handle_schema_command(command: SchemaCommands, config: &VTCodeConfig) -> Result<String> {
+pub async fn handle_schema_command(command: SchemaCommands, config: &DiapasonConfig) -> Result<String> {
     match command {
         SchemaCommands::Tools { mode, format, names } => render_tools_schema(mode, format, &names, config).await,
     }
@@ -34,7 +34,7 @@ async fn render_tools_schema(
     mode: SchemaMode,
     format: SchemaOutputFormat,
     names: &[String],
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
 ) -> Result<String> {
     let tools = collect_tools_schema(mode, names, config).await?;
 
@@ -68,7 +68,7 @@ async fn render_tools_schema(
 async fn collect_tools_schema(
     mode: SchemaMode,
     names: &[String],
-    config: &VTCodeConfig,
+    config: &DiapasonConfig,
 ) -> Result<Vec<ToolSchemaEntry>> {
     let workspace = env::current_dir().context("failed to resolve current working directory")?;
     let registry = ToolRegistry::new_for_schema(workspace).await;
@@ -123,17 +123,17 @@ fn schema_mode_label(mode: SchemaMode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{ToolSchemaEntry, collect_tools_schema, filter_tools_by_name, to_tool_documentation_mode};
-    use vtcode_core::cli::args::SchemaMode;
-    use vtcode_core::config::{ToolDocumentationMode, ToolProfile, VTCodeConfig};
+    use diapason_core::cli::args::SchemaMode;
+    use diapason_core::config::{DiapasonConfig, ToolDocumentationMode, ToolProfile};
 
     #[tokio::test]
     async fn tools_schema_uses_effective_tool_profile() {
-        let names = vec![vtcode_core::config::constants::tools::CODE_SEARCH.to_string()];
-        let baseline = collect_tools_schema(SchemaMode::Minimal, &names, &VTCodeConfig::default())
+        let names = vec![diapason_core::config::constants::tools::CODE_SEARCH.to_string()];
+        let baseline = collect_tools_schema(SchemaMode::Minimal, &names, &DiapasonConfig::default())
             .await
             .expect("baseline schema");
-        let mut advanced_config = VTCodeConfig::default();
-        advanced_config.tools.profile = ToolProfile::AdvancedVtCode;
+        let mut advanced_config = DiapasonConfig::default();
+        advanced_config.tools.profile = ToolProfile::AdvancedDiapason;
         let advanced = collect_tools_schema(SchemaMode::Minimal, &names, &advanced_config)
             .await
             .expect("advanced schema");
@@ -147,10 +147,10 @@ mod tests {
     async fn task_tracker_schema_defaults_to_standard_index_contract() {
         let entries = collect_tools_schema(
             SchemaMode::Full,
-            &[vtcode_core::config::constants::tools::TASK_TRACKER.to_string()],
+            &[diapason_core::config::constants::tools::TASK_TRACKER.to_string()],
             &{
-                let mut config = VTCodeConfig::default();
-                config.tools.profile = ToolProfile::AdvancedVtCode;
+                let mut config = DiapasonConfig::default();
+                config.tools.profile = ToolProfile::AdvancedDiapason;
                 config
             },
         )

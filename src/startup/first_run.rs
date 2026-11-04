@@ -1,19 +1,19 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use vtcode_config::api_keys::{
+use diapason_config::api_keys::{
     CredentialSource, DiscoveredProvider, discover_available_providers_with_mode, provider_credential_detail_with_mode,
 };
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_core::cli::args::{Cli, Commands};
-use vtcode_core::config::constants::{defaults, llm_generation, tool_limits};
-use vtcode_core::config::loader::{ConfigManager, VTCodeConfig};
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_core::utils::dot_config::{WorkspaceTrustLevel, update_workspace_trust};
-use vtcode_core::utils::file_utils::ensure_dir_exists_sync;
-use vtcode_core::{initialize_dot_folder, update_model_preference};
+use diapason_config::auth::AuthCredentialsStoreMode;
+use diapason_core::cli::args::{Cli, Commands};
+use diapason_core::config::constants::{defaults, llm_generation, tool_limits};
+use diapason_core::config::loader::{ConfigManager, DiapasonConfig};
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_core::utils::dot_config::{WorkspaceTrustLevel, update_workspace_trust};
+use diapason_core::utils::file_utils::ensure_dir_exists_sync;
+use diapason_core::{initialize_dot_folder, update_model_preference};
 
 use super::dependency_advisories::render_optional_search_tools_notice;
 use super::first_run_prompts::{
@@ -22,8 +22,12 @@ use super::first_run_prompts::{
     resolve_initial_persistent_memory_enabled, resolve_initial_provider,
 };
 
-/// Drive the first-run interactive setup wizard when a workspace lacks VT Code artifacts.
-pub(crate) async fn maybe_run_first_run_setup(args: &Cli, workspace: &Path, config: &mut VTCodeConfig) -> Result<bool> {
+/// Drive the first-run interactive setup wizard when a workspace lacks Diapason artifacts.
+pub(crate) async fn maybe_run_first_run_setup(
+    args: &Cli,
+    workspace: &Path,
+    config: &mut DiapasonConfig,
+) -> Result<bool> {
     if !is_fresh_workspace(workspace) {
         return Ok(false);
     }
@@ -33,7 +37,7 @@ pub(crate) async fn maybe_run_first_run_setup(args: &Cli, workspace: &Path, conf
     }
 
     // If the effective config already has a provider/model, do not run first-run
-    // setup even if the workspace lacks vtcode.toml.
+    // setup even if the workspace lacks config.toml.
     if !config.agent.provider.is_empty() || !config.agent.default_model.is_empty() {
         return Ok(false);
     }
@@ -63,32 +67,33 @@ enum SetupMode {
 }
 
 fn is_fresh_workspace(workspace: &Path) -> bool {
-    let explicit_override = vtcode_config::loader::explicit_config_path();
+    let explicit_override = diapason_config::loader::explicit_config_path();
     if let Some(path) = explicit_override {
         // A session-explicit config file is the workspace's config source:
         // when it exists the workspace is not fresh, regardless of whether
-        // the default `vtcode.toml` paths exist.
+        // the default `config.toml` paths exist.
         return !path.exists();
     }
-    let config_path = workspace.join("vtcode.toml");
-    let dot_dir = workspace.join(".vtcode");
+    let config_path = workspace.join("config.toml");
+    let dot_dir = workspace.join(diapason_commons::workspace_dir_name());
     !config_path.exists() && !dot_dir.exists()
 }
 
-async fn run_first_run_setup(workspace: &Path, config: &mut VTCodeConfig, mode: SetupMode) -> Result<()> {
+async fn run_first_run_setup(workspace: &Path, config: &mut DiapasonConfig, mode: SetupMode) -> Result<()> {
     initialize_dot_folder().await.ok();
 
     if !workspace.exists() {
         return Err(anyhow!("Workspace '{}' does not exist for setup", workspace.display()));
     }
 
-    let workspace_dot_dir = workspace.join(".vtcode");
-    ensure_dir_exists_sync(&workspace_dot_dir)
-        .with_context(|| format!("Failed to create workspace .vtcode directory at {}", workspace_dot_dir.display()))?;
+    let workspace_dot_dir = workspace.join(diapason_commons::workspace_dir_name());
+    ensure_dir_exists_sync(&workspace_dot_dir).with_context(|| {
+        format!("Failed to create workspace .diapason directory at {}", workspace_dot_dir.display())
+    })?;
 
     let mut renderer = AnsiRenderer::stdout();
     renderer.line(MessageStyle::Info, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")?;
-    renderer.line(MessageStyle::Info, "  VT Code - First-time setup wizard")?;
+    renderer.line(MessageStyle::Info, "  Diapason - First-time setup wizard")?;
     renderer.line(MessageStyle::Info, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")?;
 
     // Discover providers that already have a usable credential (shell-exported
@@ -172,9 +177,9 @@ async fn run_first_run_setup(workspace: &Path, config: &mut VTCodeConfig, mode: 
         }
     };
 
-    let selected_config_path = vtcode_config::loader::explicit_config_path();
+    let selected_config_path = diapason_config::loader::explicit_config_path();
     let is_explicit_config = selected_config_path.is_some();
-    let config_path = selected_config_path.unwrap_or_else(|| workspace.join("vtcode.toml"));
+    let config_path = selected_config_path.unwrap_or_else(|| workspace.join("config.toml"));
     renderer.line(MessageStyle::Status, &format!("Saving your configuration to {} ...", config_path.display()))?;
 
     // Compute provider key once to avoid repeated allocations from `to_string()`.
@@ -218,7 +223,7 @@ async fn run_first_run_setup(workspace: &Path, config: &mut VTCodeConfig, mode: 
 }
 
 fn apply_selection(
-    config: &mut VTCodeConfig,
+    config: &mut DiapasonConfig,
     provider_key: &str,
     model: &str,
     lightweight_model: &str,
@@ -306,13 +311,13 @@ fn capability_highlight_lines(persistent_memory_enabled: bool) -> Vec<String> {
         "- Use `/plan` for read-only planning, then finish planning before implementation.".to_string(),
         "- Auto permission review uses classifier-backed checks inside the normal session. `--full-auto` is separate and uses the explicit `[automation.full_auto]` allow-list.".to_string(),
         format!(
-            "- Persistent repository memory is {} for this workspace. Change `[features].memories` or `agent.persistent_memory.enabled` later in `vtcode.toml` if you want a different default.",
+            "- Persistent repository memory is {} for this workspace. Change `[features].memories` or `agent.persistent_memory.enabled` later in `config.toml` if you want a different default.",
             persistent_memory_label(persistent_memory_enabled).to_ascii_lowercase()
         ),
         "- Subagents let you delegate bounded work; use `/agent`, `/agents`, or the Local Agents drawer.".to_string(),
         "- Skills add reusable capabilities; browse them with `/skills` or the CLI skills commands.".to_string(),
         "- Prompt suggestions and the lightweight model route help with faster suggestions, memory triage, and smaller delegated tasks.".to_string(),
-        "- Granular permissions are configured with `[permissions]` defaults and allow/ask/auto/deny lists in `vtcode.toml`.".to_string(),
+        "- Granular permissions are configured with `[permissions]` defaults and allow/ask/auto/deny lists in `config.toml`.".to_string(),
     ]
 }
 
@@ -335,7 +340,7 @@ fn api_key_hint(provider: Provider, storage_mode: AuthCredentialsStoreMode) -> S
         return "No API key required for local provider.".to_string();
     }
     if provider.uses_managed_auth() {
-        return format!("Run `vtcode login {}` to authenticate.", provider);
+        return format!("Run `diapason login {}` to authenticate.", provider);
     }
     match provider_credential_detail_with_mode(provider, storage_mode) {
         Some(detail) => match detail.source {
@@ -402,7 +407,7 @@ fn render_discovery_summary(renderer: &mut AnsiRenderer, discovered: &[Discovere
         )?;
     } else {
         // Surface the specific env var that was found so the user knows
-        // exactly what vtcode read (e.g. GOOGLE_API_KEY vs GEMINI_API_KEY).
+        // exactly what diapason read (e.g. GOOGLE_API_KEY vs GEMINI_API_KEY).
         let labels: Vec<String> = ready
             .iter()
             .map(|d| match d.env_var {
@@ -429,10 +434,10 @@ fn trust_label(level: WorkspaceTrustLevel) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_core::config::loader::VTCodeConfig;
+    use diapason_core::config::loader::DiapasonConfig;
 
-    fn base_config() -> VTCodeConfig {
-        VTCodeConfig::default()
+    fn base_config() -> DiapasonConfig {
+        DiapasonConfig::default()
     }
 
     #[test]

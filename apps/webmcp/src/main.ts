@@ -1,4 +1,4 @@
-import { InMemoryBackend, VtCodeBackend, buildTurnPrompt, connectVtCode, createBackend, createUnifiedDiff, digest, MAX_FILE_BYTES } from "./backend.ts";
+import { InMemoryBackend, DiapasonBackend, buildTurnPrompt, connectDiapason, createBackend, createUnifiedDiff, digest, MAX_FILE_BYTES } from "./backend.ts";
 import { CodeEditor } from "./editor.ts";
 import { browserOrigin, webmcpDeploymentForOrigin } from "./deployments.ts";
 import { loadBrowserSettings, loadBrowserState, saveBrowserSettings, saveBrowserState, type StorageLike } from "./persistence.ts";
@@ -66,7 +66,7 @@ function $(id: string): HTMLElement {
   return element;
 }
 
-type Backend = InMemoryBackend | VtCodeBackend;
+type Backend = InMemoryBackend | DiapasonBackend;
 
 interface LastChangeView {
   readonly change_id: string;
@@ -98,7 +98,7 @@ const MAX_SEARCH_FILES = 128;
 const MAX_SEARCH_BYTES = 8 * 1024 * 1024;
 const MAX_WEBMCP_RESULT_BYTES = 128 * 1024;
 const PERSIST_DEBOUNCE_MS = 250;
-const APP_INSTANCE = typeof __VTCODE_APP_INSTANCE__ === "string" ? __VTCODE_APP_INSTANCE__ : "development";
+const APP_INSTANCE = typeof __DIAPASON_APP_INSTANCE__ === "string" ? __DIAPASON_APP_INSTANCE__ : "development";
 
 function browserStorage(): StorageLike | null {
   try { return globalThis.localStorage; } catch { return null; }
@@ -349,7 +349,7 @@ function renderSettings(): void {
   const paired = backend.kind === "websocket" && backend.connected;
   const runtimeLabel = backend.kind === "fallback"
     ? "Fallback"
-    : runtime?.turns_available === true ? "Active VT Code TUI" : "Headless workspace bridge";
+    : runtime?.turns_available === true ? "Active Diapason TUI" : "Headless workspace bridge";
   const workspace = runtime?.workspace_root || (backend.kind === "fallback" ? "Browser memory" : "Not reported");
   const connection = backend.kind === "fallback"
     ? "In-memory fallback"
@@ -375,12 +375,12 @@ function renderSettings(): void {
   $("settingsListener").textContent = listener;
 
   const syncState = $("settingsSyncState");
-  syncState.textContent = backend.kind === "fallback" ? "Fallback defaults" : paired ? "Synced from VT Code" : "Pairing required";
+  syncState.textContent = backend.kind === "fallback" ? "Fallback defaults" : paired ? "Synced from Diapason" : "Pairing required";
   syncState.className = `settings-sync-state${paired ? " connected" : backend.kind === "websocket" ? " warning" : ""}`;
   $("settingsSyncNote").textContent = backend.kind === "fallback"
     ? `${pageLabel}. No bridge is paired. Browser edits stay in memory and never touch the filesystem.`
     : paired
-      ? `${pageLabel}. These values are read from the paired VT Code bridge. The terminal owns workspace roots, policy, pairing, and writes.`
+      ? `${pageLabel}. These values are read from the paired Diapason bridge. The terminal owns workspace roots, policy, pairing, and writes.`
       : `${pageLabel}. The previous bridge is not connected. Enter a fresh one-time code; bridge settings will appear after pairing.`;
 }
 
@@ -397,8 +397,8 @@ function renderWorkspaceSetup(): void {
   $("pairingCommand").textContent = `/webmcp pair ${origin}`;
   const path = shellQuote(workspacePathValue());
   $("browserOrigin").textContent = origin;
-  $("activeSetupCommand").textContent = `vtcode --workspace ${path} chat\n\nThen in the TUI:\n/webmcp pair ${origin}`;
-  $("headlessSetupCommand").textContent = `vtcode webmcp serve \\\n  --origin ${origin} \\\n  --allowed-root ${path}`;
+  $("activeSetupCommand").textContent = `diapason --workspace ${path} chat\n\nThen in the TUI:\n/webmcp pair ${origin}`;
+  $("headlessSetupCommand").textContent = `diapason webmcp serve \\\n  --origin ${origin} \\\n  --allowed-root ${path}`;
 }
 
 function openSettings(section: "connection" | "workspace" | null = null): void {
@@ -469,41 +469,41 @@ function updateTurnControl(): void {
   const button = $("requestTurn");
   const label = $("requestTurnLabel");
   if (backend.kind === "websocket" && !backend.connected) {
-    detail.textContent = `The bridge is disconnected. Active sessions rerun \`/webmcp pair ${browserOrigin()}\`; standalone bridges restart \`vtcode webmcp serve\`, then pair with the newest URL and code.`;
+    detail.textContent = `The bridge is disconnected. Active sessions rerun \`/webmcp pair ${browserOrigin()}\`; standalone bridges restart \`diapason webmcp serve\`, then pair with the newest URL and code.`;
     button.disabled = true;
-    label.textContent = "Pair with VT Code first";
+    label.textContent = "Pair with Diapason first";
     button.title = "Open the WebMCP pairing instructions";
     return;
   }
   const headless = backend.kind === "websocket" && runtimeStatus()?.turns_available === false;
   button.disabled = headless;
   if (backend.kind === "fallback") {
-    detail.textContent = `For a real turn, run \`/webmcp pair ${browserOrigin()}\` in the same VT Code TUI, then paste its values above.`;
+    detail.textContent = `For a real turn, run \`/webmcp pair ${browserOrigin()}\` in the same Diapason TUI, then paste its values above.`;
     label.textContent = "Open pairing instructions";
-    button.title = "Show the two-step VT Code pairing instructions";
+    button.title = "Show the two-step Diapason pairing instructions";
   } else if (headless) {
-    detail.textContent = "This standalone bridge exposes workspace operations only. Start `vtcode chat`, run `/webmcp pair <origin>` in that same session, then pair its new URL and code.";
-    label.textContent = "Active VT Code session required";
-    button.title = "Pair the bridge created by /webmcp pair in an active VT Code session";
+    detail.textContent = "This standalone bridge exposes workspace operations only. Start `diapason chat`, run `/webmcp pair <origin>` in that same session, then pair its new URL and code.";
+    label.textContent = "Active Diapason session required";
+    button.title = "Pair the bridge created by /webmcp pair in an active Diapason session";
   } else {
-    detail.textContent = "The reviewed draft diff is attached; VT Code remains the execution and policy authority.";
-    label.textContent = "Request VT Code turn";
-    button.title = "Send the prompt and reviewed draft diff to VT Code (Cmd/Ctrl+Enter)";
+    detail.textContent = "The reviewed draft diff is attached; Diapason remains the execution and policy authority.";
+    label.textContent = "Request Diapason turn";
+    button.title = "Send the prompt and reviewed draft diff to Diapason (Cmd/Ctrl+Enter)";
   }
 }
 
 function handleBackendConnection(event: BackendConnectionEvent): void {
   if (backend.kind !== "websocket") return;
   if (event.state === "connected") {
-    $("supportStatus").textContent = "VT Code connected";
+    $("supportStatus").textContent = "Diapason connected";
     $("supportStatus").classList.add("available");
-    status("Connected to VT Code", runtimeStatus()?.turns_available === false
+    status("Connected to Diapason", runtimeStatus()?.turns_available === false
       ? "Workspace bridge connected, but this standalone headless adapter cannot run agent turns."
-      : "Active VT Code session connected; prompts and policy remain in the terminal.");
+      : "Active Diapason session connected; prompts and policy remain in the terminal.");
   } else if (event.state === "reconnecting") {
     $("supportStatus").textContent = "Reconnecting…";
     $("supportStatus").classList.add("available");
-    status("Reconnecting to VT Code", "The bridge connection dropped; the browser is retrying with the in-memory session token.");
+    status("Reconnecting to Diapason", "The bridge connection dropped; the browser is retrying with the in-memory session token.");
   } else if (event.state === "reauthorize") {
     $("supportStatus").textContent = "Pair again";
     $("supportStatus").classList.remove("available");
@@ -511,12 +511,12 @@ function handleBackendConnection(event: BackendConnectionEvent): void {
     $("connectionSummary").textContent = "New pairing required";
     $("pairingCode").value = "";
     updateTurnControl();
-    status("VT Code pairing expired", `For an active session rerun \`/webmcp pair ${browserOrigin()}\`; for a standalone bridge restart \`vtcode webmcp serve\`. Then enter the new URL and one-time code.`);
+    status("Diapason pairing expired", `For an active session rerun \`/webmcp pair ${browserOrigin()}\`; for a standalone bridge restart \`diapason webmcp serve\`. Then enter the new URL and one-time code.`);
   } else if (event.state === "disconnected") {
     $("supportStatus").textContent = "Bridge disconnected";
     $("supportStatus").classList.remove("available");
     updateTurnControl();
-    status("VT Code bridge disconnected", "Keep the current bridge running; the browser will reconnect automatically. If it was restarted, pair again with its newest URL and code.");
+    status("Diapason bridge disconnected", "Keep the current bridge running; the browser will reconnect automatically. If it was restarted, pair again with its newest URL and code.");
   }
   renderSettings();
   renderProposal();
@@ -756,7 +756,11 @@ function renderProposal(): void {
   if (!proposal) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.innerHTML = "<strong>No changes staged</strong><small>Edit a buffer, then review the draft.</small>";
+    const title = document.createElement("strong");
+    title.textContent = "No changes staged";
+    const hint = document.createElement("small");
+    hint.textContent = "Edit a buffer, then review the draft.";
+    empty.append(title, hint);
     view.append(empty);
     $("proposalState").textContent = "No proposal";
     $("proposalState").className = "state-badge";
@@ -773,7 +777,7 @@ function renderProposal(): void {
       : state.approved
         ? "Approved · ready"
         : state.serverProposal
-          ? isActiveRuntime() ? "Ready for VT Code turn" : "Proposal sent"
+          ? isActiveRuntime() ? "Ready for Diapason turn" : "Proposal sent"
           : "Review ready";
     $("proposalState").textContent = stateLabel;
     $("proposalState").className = `state-badge ${state.approved ? "approved" : state.pendingTerminalApproval ? "pending" : "ready"}`;
@@ -785,15 +789,15 @@ function renderProposal(): void {
   $("applyPatch").disabled = bridgeUnavailable || !state.serverProposal || (backend.kind === "fallback" && !state.approved) || requiresAgentTurn;
   $("revertPatch").disabled = bridgeUnavailable || !state.lastChange;
   $("approvePatch").textContent = isActiveRuntime()
-    ? "Stage for VT Code turn"
-    : backend.kind === "websocket" ? "Request VT Code approval" : "Approve patch";
+    ? "Stage for Diapason turn"
+    : backend.kind === "websocket" ? "Request Diapason approval" : "Approve patch";
   $("applyPatch").textContent = requiresAgentTurn
-    ? "Apply via VT Code turn"
+    ? "Apply via Diapason turn"
     : backend.kind === "websocket" ? "Apply after terminal approval" : "Apply approved patch";
   const directChecksUnavailable = isHeadlessBridge() || isActiveRuntime();
   $("runChecks").disabled = bridgeUnavailable || directChecksUnavailable;
   $("runChecks").title = directChecksUnavailable
-    ? "Ask VT Code to run checks through the terminal"
+    ? "Ask Diapason to run checks through the terminal"
     : "Run the selected backend checks";
   if (isHeadlessBridge()) {
     $("approvePatch").textContent = "Stage proposal";
@@ -860,8 +864,8 @@ async function recoverStaleProposal(proposal: ClientProposal | PatchProposal | n
   persistBrowserWorkspace();
   log(`Cleared stale proposal for ${affectedPaths.length} file${affectedPaths.length === 1 ? "" : "s"}`);
   const detail = refreshed === affectedPaths.length
-    ? "The latest snapshots are loaded and your draft is preserved. Review changes again before requesting the VT Code turn."
-    : "Some files could not be refreshed. Reconnect or reload them, then review changes again before requesting the VT Code turn.";
+    ? "The latest snapshots are loaded and your draft is preserved. Review changes again before requesting the Diapason turn."
+    : "Some files could not be refreshed. Reconnect or reload them, then review changes again before requesting the Diapason turn.";
   status("Proposal became stale", detail);
   return detail;
 }
@@ -886,11 +890,11 @@ async function requestApproval(): Promise<void> {
     log("Proposal staged; headless bridge cannot authorize a filesystem apply");
     status("Proposal staged", "This standalone bridge has no terminal runtime for approval. Use explicit full-auto only for a disposable workspace.");
   } else if (isActiveRuntime()) {
-    log("Proposal staged for the active VT Code session");
-    status("Proposal staged", "Use Request VT Code turn; any write is performed through the terminal permission flow.");
+    log("Proposal staged for the active Diapason session");
+    status("Proposal staged", "Use Request Diapason turn; any write is performed through the terminal permission flow.");
   } else {
     state.pendingTerminalApproval = true;
-    log("Requested terminal approval from VT Code");
+    log("Requested terminal approval from Diapason");
     status("Awaiting terminal approval", "The browser cannot authorize a real filesystem write.");
   }
   renderProposal();
@@ -902,7 +906,7 @@ async function applyProposal(): Promise<void> {
   if (!serverProposal) throw new Error("Send a proposal before applying it");
   if (backend.kind === "fallback" && !state.approved) throw new Error("Explicit approval is required");
   if (isActiveRuntime() && runtimeStatus()?.mutations_allowed === false) {
-    throw new Error("Ask the active VT Code session to apply this proposal through a turn");
+    throw new Error("Ask the active Diapason session to apply this proposal through a turn");
   }
   selectTerminal("changes");
   const before = serverProposal.changes.flatMap((change) => {
@@ -919,14 +923,14 @@ async function applyProposal(): Promise<void> {
     state.pendingTerminalApproval = false;
     persistBrowserWorkspace();
     renderProposal();
-    log(`Applied approved patch (${backend.kind === "fallback" ? "in memory" : "VT Code"})`);
-    status("Change applied", backend.kind === "fallback" ? "Only the deterministic in-memory project changed." : "VT Code completed the authorized workspace change.");
+    log(`Applied approved patch (${backend.kind === "fallback" ? "in memory" : "Diapason"})`);
+    status("Change applied", backend.kind === "fallback" ? "Only the deterministic in-memory project changed." : "Diapason completed the authorized workspace change.");
     toast("Patch applied");
   } catch (error: unknown) {
     if (errorCode(error) === "approval_required") {
       state.pendingTerminalApproval = true;
       renderProposal();
-      status("Still awaiting terminal approval", "VT Code rejected browser-only authorization; no file was changed.");
+      status("Still awaiting terminal approval", "Diapason rejected browser-only authorization; no file was changed.");
     }
     throw error;
   }
@@ -953,7 +957,7 @@ async function runChecks(): Promise<void> {
   selectTerminal("activity");
   $("checkOutput").textContent = [result.stdout, result.stderr].filter(Boolean).join("\n") || JSON.stringify(result, null, 2);
   log(result.exit_code === 0 ? "Checks passed" : "Checks found an issue");
-  status(result.exit_code === 0 ? "Checks passed" : "Checks need attention", backend.kind === "fallback" ? "Deterministic browser checks · no filesystem" : "Command executed by VT Code policy");
+  status(result.exit_code === 0 ? "Checks passed" : "Checks need attention", backend.kind === "fallback" ? "Deterministic browser checks · no filesystem" : "Command executed by Diapason policy");
   toast(result.exit_code === 0 ? "Checks passed" : "A check failed");
 }
 
@@ -979,16 +983,16 @@ async function requestTurn(): Promise<void> {
   if (!result.accepted) {
     const reason = result.reason || "The selected backend did not accept the agent turn.";
     $("turnOutput").textContent = reason;
-    log(`VT Code turn unavailable: ${reason}`);
-    status("VT Code turn unavailable", reason);
-    toast("VT Code turn unavailable");
+    log(`Diapason turn unavailable: ${reason}`);
+    status("Diapason turn unavailable", reason);
+    toast("Diapason turn unavailable");
     return;
   }
   const turnId = result.turn_id || "accepted";
   log(`Requested agent turn (${turnId})`);
-  $("turnOutput").textContent = result.output || "VT Code accepted the bounded request; waiting for runtime events.";
-  status("Turn requested", "VT Code received the prompt and reviewed draft diff; runtime events will appear in the activity panel.");
-  toast("VT Code turn requested");
+  $("turnOutput").textContent = result.output || "Diapason accepted the bounded request; waiting for runtime events.";
+  status("Turn requested", "Diapason received the prompt and reviewed draft diff; runtime events will appear in the activity panel.");
+  toast("Diapason turn requested");
 }
 
 async function refreshFile(path: string, force = false, render = true): Promise<void> {
@@ -1067,7 +1071,7 @@ async function connect(): Promise<void> {
   if (!url || !code) throw new Error("Enter the WebMCP WebSocket URL and the terminal pairing code");
   flushBrowserPersistence({ silent: true });
   persistBrowserSettings();
-  const nextBackend = await connectVtCode(url, code);
+  const nextBackend = await connectDiapason(url, code);
   try {
     await loadWorkspace(nextBackend);
   } catch (error) {
@@ -1079,11 +1083,11 @@ async function connect(): Promise<void> {
   $("connectionPanel").open = false;
   $("pairingCode").value = "";
   $("connectionSummary").textContent = isActiveRuntime() ? "Active TUI connected" : "Workspace bridge connected";
-  log("Connected to authenticated VT Code WebMCP");
-  status("Connected to VT Code", runtimeStatus()?.turns_available === false
+  log("Connected to authenticated Diapason WebMCP");
+  status("Connected to Diapason", runtimeStatus()?.turns_available === false
     ? "Workspace bridge connected, but this standalone headless adapter cannot run agent turns."
-    : "Active VT Code session connected; prompts and policy remain in the terminal.");
-  toast("Connected to VT Code");
+    : "Active Diapason session connected; prompts and policy remain in the terminal.");
+  toast("Connected to Diapason");
   editor.focus();
 }
 
@@ -1132,7 +1136,7 @@ async function loadWorkspace(nextBackend: Backend, restoreState: PersistedBrowse
   state.pendingTerminalApproval = false;
   state.lastChange = null;
   state.conflicts.clear();
-  $("turnOutput").textContent = "No VT Code turn requested.";
+  $("turnOutput").textContent = "No Diapason turn requested.";
   const restoreFallback = nextBackend.kind === "fallback" && restoreState?.app_instance === APP_INSTANCE;
   if (restoreFallback) {
     const available = (items: readonly string[]): string[] => items.filter((path) => nextFiles.has(path));
@@ -1175,7 +1179,7 @@ async function loadWorkspace(nextBackend: Backend, restoreState: PersistedBrowse
   const workspaceRoot = runtime?.workspace_root;
   if (backend.kind === "fallback") {
     $("connectionPanel").open = true;
-    $("connectionSummary").textContent = "Pair to connect VT Code";
+    $("connectionSummary").textContent = "Pair to connect Diapason";
   }
   renderSettings();
   $("modeTitle").textContent = workspaceRoot
@@ -1185,7 +1189,7 @@ async function loadWorkspace(nextBackend: Backend, restoreState: PersistedBrowse
     ? "In-memory fallback · no filesystem; state survives refreshes until Vite restarts."
     : runtime?.turns_available === false
       ? "Authenticated workspace bridge · no active agent runtime."
-      : "Active VT Code session · real workspace and agent turns.";
+      : "Active Diapason session · real workspace and agent turns.";
   $("boundaryDetail").textContent = backend.kind === "fallback"
     ? "In-memory · no filesystem"
     : isHeadlessBridge()
@@ -1193,7 +1197,7 @@ async function loadWorkspace(nextBackend: Backend, restoreState: PersistedBrowse
       : "Terminal policy · explicit origin";
   $("supportStatus").textContent = backend.kind === "fallback"
     ? "Fallback mode"
-    : runtime?.turns_available === false ? "Workspace bridge only" : "VT Code connected";
+    : runtime?.turns_available === false ? "Workspace bridge only" : "Diapason connected";
   $("supportStatus").classList.toggle("available", backend.kind !== "fallback");
   updateTurnControl();
   renderTree();
@@ -1334,7 +1338,7 @@ async function stageTextEditForWebMcp(
   updateEditorFooter();
   selectTerminal("changes");
   log(`Staged browser draft edit for ${path}`);
-  status("Agent draft staged", "Review the unified diff before requesting VT Code approval.");
+  status("Agent draft staged", "Review the unified diff before requesting Diapason approval.");
   toast("Agent draft ready for review");
   return {
     staged: true,
@@ -1482,13 +1486,13 @@ async function run(action: () => void | Promise<void>): Promise<void> {
       openConnectionPanel();
       $("connectionSummary").textContent = "New pairing required";
       $("pairingCode").value = "";
-      status("VT Code pairing expired", `For an active session rerun \`/webmcp pair ${browserOrigin()}\`; for a standalone bridge restart \`vtcode webmcp serve\`. Then enter the new URL and one-time code.`);
+      status("Diapason pairing expired", `For an active session rerun \`/webmcp pair ${browserOrigin()}\`; for a standalone bridge restart \`diapason webmcp serve\`. Then enter the new URL and one-time code.`);
     } else if (code === "connection_closed") {
-      status("VT Code bridge disconnected", "Keep the current bridge running; the browser will reconnect automatically. If it was restarted, pair again with its newest URL and code.");
+      status("Diapason bridge disconnected", "Keep the current bridge running; the browser will reconnect automatically. If it was restarted, pair again with its newest URL and code.");
     } else if (error instanceof BackendError && error.proposalRecovery) {
       status("Proposal became stale", error.proposalRecovery);
     } else {
-      status(code === "unsupported" ? "VT Code turn unavailable" : "Action could not complete", detail);
+      status(code === "unsupported" ? "Diapason turn unavailable" : "Action could not complete", detail);
     }
     toast(detail);
   }
@@ -1554,7 +1558,7 @@ const QUICK_ACTIONS: readonly QuickAction[] = [
   {
     id: "settings",
     label: "Open settings",
-    description: "Manage workspace setup and VT Code pairing.",
+    description: "Manage workspace setup and Diapason pairing.",
     shortcut: "⌘/Ctrl ,",
     execute: openSettingsDialog,
   },
@@ -1566,14 +1570,14 @@ const QUICK_ACTIONS: readonly QuickAction[] = [
   },
   {
     id: "turn",
-    label: "Open VT Code panel",
-    description: "Compose an agent turn for an active VT Code session.",
+    label: "Open Diapason panel",
+    description: "Compose an agent turn for an active Diapason session.",
     execute: () => selectTerminal("turn"),
   },
   {
     id: "pair",
     label: "Open pairing settings",
-    description: "Connect this editor to a local VT Code bridge.",
+    description: "Connect this editor to a local Diapason bridge.",
     execute: openConnectionPanel,
   },
   {

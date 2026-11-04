@@ -1,5 +1,5 @@
+use diapason_core::command_safety::shell_parser::parse_shell_commands_tree_sitter;
 use shell_words::split as shell_split;
-use vtcode_core::command_safety::shell_parser::parse_shell_commands_tree_sitter;
 
 pub(super) fn looks_like_natural_language_request(command_part: &str) -> bool {
     let natural_language_indicators = ["the ", "all ", "some ", "this ", "that ", "my ", "our ", "a ", "an "];

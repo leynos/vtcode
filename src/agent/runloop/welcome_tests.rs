@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 use std::fs;
 
+use diapason_core::config::core::PromptCachingConfig;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::config::types::{ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
+use diapason_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
 use tempfile::tempdir;
-use vtcode_core::config::core::PromptCachingConfig;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::config::types::{ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
-use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
 
 use super::welcome::prepare_session_bootstrap;
 
@@ -28,7 +28,7 @@ async fn test_prepare_session_bootstrap_builds_sections() {
     .expect("Failed to write AGENTS.md");
     fs::write(tmp.path().join("README.md"), "Demo workspace\n").expect("Failed to write README.md");
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.onboarding.include_language_summary = false;
     vt_cfg.agent.onboarding.guideline_highlight_limit = 2;
     vt_cfg.agent.onboarding.include_usage_tips_in_welcome = true;
@@ -38,13 +38,13 @@ async fn test_prepare_session_bootstrap_builds_sections() {
     vt_cfg.agent.onboarding.chat_placeholder = Some("Type your plan".into());
 
     let runtime_cfg = CoreAgentConfig {
-        model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+        model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
         api_key: "test".to_string(),
         provider: "gemini".to_string(),
         api_key_env: Provider::Gemini.default_api_key_env().to_string(),
         workspace: tmp.path().to_path_buf(),
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -101,13 +101,13 @@ async fn test_welcome_hides_optional_sections_by_default() {
     fs::write(tmp.path().join("README.md"), "Demo workspace\n").expect("Failed to write README.md");
 
     let runtime_cfg = CoreAgentConfig {
-        model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+        model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
         api_key: "test".to_string(),
         provider: "gemini".to_string(),
         api_key_env: Provider::Gemini.default_api_key_env().to_string(),
         workspace: tmp.path().to_path_buf(),
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -123,7 +123,7 @@ async fn test_welcome_hides_optional_sections_by_default() {
         openai_chatgpt_auth: None,
     };
 
-    let vt_cfg = VTCodeConfig::default();
+    let vt_cfg = DiapasonConfig::default();
     let bootstrap = prepare_session_bootstrap(&runtime_cfg, Some(&vt_cfg), None).await;
 
     assert_eq!(bootstrap.header_highlights.len(), 2);
@@ -145,18 +145,18 @@ async fn test_prepare_session_bootstrap_hides_placeholder_when_planning_disabled
     fs::create_dir_all(tmp.path().join("src")).expect("Failed to create src directory");
     fs::write(tmp.path().join("src/lib.rs"), "pub fn demo() {}\n").expect("Failed to write lib.rs");
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.todo_planning_mode = false;
     vt_cfg.agent.onboarding.chat_placeholder = Some("Type your plan".into());
 
     let runtime_cfg = CoreAgentConfig {
-        model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+        model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
         api_key: "test".to_string(),
         provider: "gemini".to_string(),
         api_key_env: Provider::Gemini.default_api_key_env().to_string(),
         workspace: tmp.path().to_path_buf(),
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -191,13 +191,13 @@ async fn test_prepare_session_bootstrap_does_not_surface_acp_trust_in_terminal_s
     .expect("Failed to write Cargo.toml");
 
     let runtime_cfg = CoreAgentConfig {
-        model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+        model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
         api_key: "test".to_string(),
         provider: "gemini".to_string(),
         api_key_env: Provider::Gemini.default_api_key_env().to_string(),
         workspace: tmp.path().to_path_buf(),
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -213,10 +213,10 @@ async fn test_prepare_session_bootstrap_does_not_surface_acp_trust_in_terminal_s
         openai_chatgpt_auth: None,
     };
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.acp.enabled = true;
     vt_cfg.acp.zed.enabled = true;
-    vt_cfg.acp.zed.workspace_trust = vtcode_core::config::AgentClientProtocolZedWorkspaceTrustMode::FullAuto;
+    vt_cfg.acp.zed.workspace_trust = diapason_core::config::AgentClientProtocolZedWorkspaceTrustMode::FullAuto;
 
     let bootstrap = prepare_session_bootstrap(&runtime_cfg, Some(&vt_cfg), None).await;
 

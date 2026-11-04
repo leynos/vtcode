@@ -1,19 +1,19 @@
 use super::*;
 use crate::agent::runloop::unified::state::CtrlCState;
 use anyhow::Result;
+use diapason_config::OpenAIServiceTier;
+use diapason_config::auth::AuthCredentialsStoreMode;
+use diapason_config::core::ProviderOverrideConfig;
+use diapason_config::core::{CustomProviderApiFormat, CustomProviderConfig, CustomProviderProfileConfig};
+use diapason_config::loader::DiapasonConfig;
+use diapason_core::config::models::ModelId;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use std::collections::BTreeMap;
 use std::fs;
 use std::sync::Arc;
 use tempfile::tempdir;
 use tokio::sync::{Notify, mpsc};
-use vtcode_config::OpenAIServiceTier;
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_config::core::ProviderOverrideConfig;
-use vtcode_config::core::{CustomProviderApiFormat, CustomProviderConfig, CustomProviderProfileConfig};
-use vtcode_config::loader::VTCodeConfig;
-use vtcode_core::config::models::ModelId;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use self::options::{MODEL_OPTIONS, build_filtered_options, find_option_index, option_indexes_for_provider};
 
@@ -161,7 +161,7 @@ fn model_search_value_includes_provider_model_aliases() {
 
 #[test]
 fn parse_model_selection_uses_custom_provider_display_and_env_key() {
-    let mut cfg = VTCodeConfig::default();
+    let mut cfg = DiapasonConfig::default();
     cfg.custom_providers.push(CustomProviderConfig {
         name: "mycorp".to_string(),
         display_name: "MyCorporateName".to_string(),
@@ -185,7 +185,7 @@ fn parse_model_selection_uses_custom_provider_display_and_env_key() {
 
 #[test]
 fn custom_provider_picker_uses_exact_profile_metadata() {
-    let mut cfg = VTCodeConfig::default();
+    let mut cfg = DiapasonConfig::default();
     let mut profiles = BTreeMap::new();
     profiles.insert(
         "gpt-5-mini".to_string(),
@@ -251,14 +251,14 @@ fn custom_provider_picker_keeps_single_model_field() {
 
 #[test]
 fn parse_model_selection_marks_command_auth_custom_provider_as_keyless() {
-    let mut cfg = VTCodeConfig::default();
+    let mut cfg = DiapasonConfig::default();
     cfg.custom_providers.push(CustomProviderConfig {
         name: "mycorp".to_string(),
         display_name: "MyCorporateName".to_string(),
         base_url: "https://llm.corp.example/v1".to_string(),
         context_window: None,
         api_key_env: String::new(),
-        auth: Some(vtcode_config::core::CustomProviderCommandAuthConfig {
+        auth: Some(diapason_config::core::CustomProviderCommandAuthConfig {
             command: "print-token".to_string(),
             args: Vec::new(),
             cwd: None,
@@ -302,7 +302,7 @@ fn provider_override_key_name_reaches_picker_selection() {
 
 #[test]
 fn picker_reuses_persisted_key_name_for_active_provider() {
-    let mut cfg = VTCodeConfig::default();
+    let mut cfg = DiapasonConfig::default();
     cfg.agent.provider = "openai".to_string();
     cfg.agent.api_key_env = "CORPORATE_OPENAI_KEY".to_string();
 

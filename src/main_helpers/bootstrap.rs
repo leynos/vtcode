@@ -3,9 +3,9 @@ use anyhow::{Context, Result};
 use clap::builder::Styles;
 use clap::builder::styling::{AnsiColor as ClapAnsiColor, Effects as ClapEffects};
 use clap::{ColorChoice as CliColorChoice, CommandFactory};
+use diapason_commons::color_policy::{self, ColorOutputPolicy, ColorOutputPolicySource};
+use diapason_core::cli::args::Cli;
 use std::time::Instant;
-use vtcode_commons::color_policy::{self, ColorOutputPolicy, ColorOutputPolicySource};
-use vtcode_core::cli::args::Cli;
 
 use crate::startup::StartupContext;
 
@@ -61,11 +61,11 @@ pub(crate) fn build_augmented_cli_command() -> clap::Command {
     cmd = cmd.styles(clap_help_styles());
     cmd = cmd.before_help(QUICK_START_HELP);
 
-    let version_info = vtcode_core::cli::args::long_version();
+    let version_info = diapason_core::cli::args::long_version();
     let version_leak: &'static str = Box::leak(version_info.into_boxed_str());
     cmd = cmd.long_version(version_leak);
 
-    let after_help = "\nSlash commands (type / in chat):\n  /init     - Guided AGENTS.md + workspace setup\n  /config   - Browse settings sections\n  /status   - Show current configuration\n  /checkup  - Diagnose setup & clean the workspace (alias: /doctor)\n  /update   - Check for VT Code updates, or run `vtcode update` from the CLI (use --list, --pin, --channel)\n  /plan     - Start or finish the Planning workflow\n  /theme    - Switch UI theme\n  /title    - Configure terminal title items\n  /history  - Open command history picker\n  /help     - Show all slash commands\n\nTips:\n  Mistyped commands show suggestions (e.g., vtcode ch -> chat).\n  Use --continue to resume the most recent session.\n  Use --resume to pick a session interactively.";
+    let after_help = "\nSlash commands (type / in chat):\n  /init     - Guided AGENTS.md + workspace setup\n  /config   - Browse settings sections\n  /status   - Show current configuration\n  /checkup  - Diagnose setup & clean the workspace (alias: /doctor)\n  /update   - Check for Diapason updates, or run `diapason update` from the CLI (use --list, --pin, --channel)\n  /plan     - Start or finish the Planning workflow\n  /theme    - Switch UI theme\n  /title    - Configure terminal title items\n  /history  - Open command history picker\n  /help     - Show all slash commands\n\nTips:\n  Mistyped commands show suggestions (e.g., diapason ch -> chat).\n  Use --continue to resume the most recent session.\n  Use --resume to pick a session interactively.";
     cmd.after_help(after_help)
 }
 
@@ -108,9 +108,9 @@ fn requested_help_color_choice() -> Option<CliColorChoice> {
 const QUICK_START_HELP: &str = "\
 Quick start:\n\
   1. Set a provider API key (for example OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY)\n\
-  2. Start interactive chat: vtcode chat --provider openai --model gpt-5\n\
-  3. Run one prompt directly: vtcode --print=\"summarize this repository\"\n\n\
-Use `vtcode <command> --help` for command-specific details.";
+  2. Start interactive chat: diapason chat --provider openai --model gpt-5\n\
+  3. Run one prompt directly: diapason --print=\"summarize this repository\"\n\n\
+Use `diapason <command> --help` for command-specific details.";
 fn parse_help_color_choice(value: &str) -> Option<CliColorChoice> {
     match value.trim().to_ascii_lowercase().as_str() {
         "always" => Some(CliColorChoice::Always),
@@ -122,13 +122,13 @@ fn parse_help_color_choice(value: &str) -> Option<CliColorChoice> {
 
 pub(crate) async fn resolve_startup_context(args: &Cli) -> Result<StartupContext> {
     let startup_start = Instant::now();
-    let startup_phase = vtcode_commons::startup_trace::phase_started();
+    let startup_phase = diapason_commons::startup_trace::phase_started();
     let startup = StartupContext::from_cli_args(args)
         .await
-        .context("failed to initialize VT Code startup context")?;
+        .context("failed to initialize Diapason startup context")?;
     let startup_ms = startup_start.elapsed().as_millis() as u64;
-    tracing::debug!(target = "vtcode.startup", startup_ms, "startup context resolved");
-    vtcode_commons::startup_trace::record_phase("startup_context_resolution", startup_phase);
+    tracing::debug!(target = "diapason.startup", startup_ms, "startup context resolved");
+    diapason_commons::startup_trace::record_phase("startup_context_resolution", startup_phase);
     Ok(startup)
 }
 
@@ -327,7 +327,7 @@ pub(crate) fn try_enhance_clap_error(err_text: &str) -> Option<String> {
         "{err_text}\n\n\
          {} `{}` is not a workspace path. Did you mean one of these?\n\
          {suggestion_lines}\n\n\
-         For more information, try `vtcode --help`.",
+         For more information, try `diapason --help`.",
         style_header("help"),
         style_placeholder(&value),
     ))
@@ -353,13 +353,13 @@ mod tests {
         suggest_similar_commands, try_enhance_clap_error,
     };
     use clap::Parser;
-    use vtcode_core::cli::args::Cli;
+    use diapason_core::cli::args::Cli;
 
     #[test]
     fn help_uses_static_quick_start_text() {
         let mut command = build_augmented_cli_command();
         let error = command
-            .try_get_matches_from_mut(["vtcode", "--help"])
+            .try_get_matches_from_mut(["diapason", "--help"])
             .expect_err("help should exit through clap");
         let help = error.to_string();
         assert!(help.contains("Set a provider API key"));
@@ -370,7 +370,7 @@ mod tests {
     fn invalid_positional_workspace_fails_during_cli_parse() {
         let mut command = build_augmented_cli_command();
         let err = command
-            .try_get_matches_from_mut(["vtcode", "hellp"])
+            .try_get_matches_from_mut(["diapason", "hellp"])
             .expect_err("invalid positional workspace should fail at clap parsing");
         let err_text = err.to_string();
         assert!(
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn invalid_positional_workspace_fails_with_derive_parser_too() {
-        let err = Cli::try_parse_from(["vtcode", "hellp"])
+        let err = Cli::try_parse_from(["diapason", "hellp"])
             .expect_err("invalid positional workspace should fail at derive parser");
         let err_text = err.to_string();
         assert!(

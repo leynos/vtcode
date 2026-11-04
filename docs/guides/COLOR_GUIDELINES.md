@@ -1,13 +1,13 @@
 # Terminal Color Guidelines
 
-VT Code implements terminal color standards for accessibility, portability, and
-user preference compliance.
+Diapason implements terminal color standards for accessibility, portability,
+and user preference compliance.
 
 ## Standards Implemented
 
 ### NO_COLOR Standard
 
-VT Code respects the [NO_COLOR standard](https://no-color.org/):
+Diapason respects the [NO_COLOR standard](https://no-color.org/):
 
 - When `NO_COLOR` environment variable is set (and not empty), ANSI color
   output is suppressed
@@ -16,17 +16,17 @@ VT Code respects the [NO_COLOR standard](https://no-color.org/):
 
 ```bash
 # Disable colors via environment
-NO_COLOR=1 vtcode
+NO_COLOR=1 diapason
 
 # Disable colors via CLI flag
-vtcode --no-color
+diapason --no-color
 ```
 
 ### Minimum Contrast (Ghostty-inspired)
 
 Inspired by
 [Ghostty's minimum-contrast feature](https://ghostty.org/docs/config/reference#minimum-contrast),
-VT Code enforces WCAG contrast ratios:
+Diapason enforces WCAG contrast ratios:
 
 | Level      | Ratio | Use Case                                   |
 | ---------- | ----- | ------------------------------------------ |
@@ -35,7 +35,7 @@ VT Code enforces WCAG contrast ratios:
 | Large Text | 3.0:1 | Minimum for 18pt+ or 14pt bold text        |
 | Disabled   | 1.0:1 | No contrast enforcement                    |
 
-Configure in `vtcode.toml`:
+Configure in `config.toml`:
 
 ```toml
 [ui]
@@ -72,7 +72,7 @@ Tango, Solarized).
 | brblue (12)   | Low contrast in Basic Dark                            |
 | brwhite (15)  | Low contrast on light backgrounds                     |
 
-Enable safe-only mode in `vtcode.toml`:
+Enable safe-only mode in `config.toml`:
 
 ```toml
 [ui]
@@ -100,7 +100,7 @@ color_scheme_mode = "auto"
 
 ## Light/Dark Mode Detection
 
-VT Code can auto-detect terminal color scheme via:
+Diapason can auto-detect terminal color scheme via:
 
 1. **COLORFGBG** environment variable (rxvt, xterm, many others)
 2. **TERM_PROGRAM** heuristics (iTerm2, Ghostty, Apple Terminal)
@@ -136,7 +136,7 @@ bold_is_bright = true
 
 ## Available Themes
 
-VT Code includes light and dark themes:
+Diapason includes light and dark themes:
 
 | Theme                | Mode  | Description                  |
 | -------------------- | ----- | ---------------------------- |
@@ -156,15 +156,15 @@ VT Code includes light and dark themes:
 
 ## Theme Validation
 
-VT Code validates theme contrast at startup and logs warnings for colors that
+Diapason validates theme contrast at startup and logs warnings for colors that
 don't meet the configured minimum contrast ratio.
 
 ## API Reference
 
-For developers extending VT Code:
+For developers extending Diapason:
 
 ```rust
-use vtcode_core::ui::theme::{
+use diapason_core::ui::theme::{
     ColorAccessibilityConfig,
     set_color_accessibility_config,
     get_minimum_contrast,
@@ -175,7 +175,7 @@ use vtcode_core::ui::theme::{
     suggest_theme_for_terminal,
 };
 
-use vtcode_core::utils::ansi_capabilities::{
+use diapason_core::utils::ansi_capabilities::{
     detect_color_scheme,
     ColorScheme,
     is_no_color,

@@ -1,11 +1,11 @@
 use crate::agent::runloop::unified::state::SessionStats;
 use anyhow::Result;
-use vtcode_commons::ui_protocol::ActivityState;
-use vtcode_config::builtin_primary_build_agent;
-use vtcode_core::core::interfaces::session::PlanningEntrySource;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_commons::ui_protocol::ActivityState;
+use diapason_config::builtin_primary_build_agent;
+use diapason_core::core::interfaces::session::PlanningEntrySource;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::InlineHandle;
 
 #[derive(Default)]
 pub(crate) struct PlanningWorkflowSessionState {
@@ -381,7 +381,7 @@ mod tests {
     use super::{
         MAX_PLAN_PSEUDO_TOOL_CALL_REPROMPTS, MAX_PLAN_VALIDATION_REPAIR_REPROMPTS, PlanningWorkflowSessionState,
     };
-    use vtcode_core::core::interfaces::session::PlanningEntrySource;
+    use diapason_core::core::interfaces::session::PlanningEntrySource;
 
     #[test]
     fn interview_result_updates_cycle_metrics() {

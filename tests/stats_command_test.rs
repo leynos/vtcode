@@ -4,9 +4,7 @@
 )]
 use anyhow::Result;
 use assert_fs::TempDir;
-use std::collections::BTreeMap;
-use tokio::time::{Duration, sleep};
-use vtcode_core::{
+use diapason_core::{
     Agent,
     config::ReasoningEffortLevel,
     config::constants::models::google::GEMINI_3_FLASH_PREVIEW,
@@ -16,6 +14,8 @@ use vtcode_core::{
     handle_stats_command,
     ui::theme::DEFAULT_THEME_ID,
 };
+use std::collections::BTreeMap;
+use tokio::time::{Duration, sleep};
 
 #[tokio::test]
 #[expect(clippy::panic_in_result_fn, reason = "test function, assertions are expected")]

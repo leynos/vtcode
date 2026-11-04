@@ -8,19 +8,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
+use diapason_config::DiapasonConfig;
+use diapason_config::auth::AuthCredentialsStoreMode;
+use diapason_core::config::constants::defaults;
+use diapason_core::config::models::Provider;
+use diapason_core::copilot::{CopilotAuthStatus, CopilotAuthStatusKind, list_available_models, probe_auth_status};
+use diapason_core::llm::providers::llamacpp::fetch_llamacpp_models;
+use diapason_core::llm::providers::lmstudio::fetch_lmstudio_models;
+use diapason_core::llm::providers::ollama::fetch_ollama_models;
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tracing::warn;
-use vtcode_config::VTCodeConfig;
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_core::config::constants::defaults;
-use vtcode_core::config::models::Provider;
-use vtcode_core::copilot::{CopilotAuthStatus, CopilotAuthStatusKind, list_available_models, probe_auth_status};
-use vtcode_core::llm::providers::llamacpp::fetch_llamacpp_models;
-use vtcode_core::llm::providers::lmstudio::fetch_lmstudio_models;
-use vtcode_core::llm::providers::ollama::fetch_ollama_models;
 
 use self::cache::CachedDynamicModelStore;
 use self::endpoints::ProviderEndpointConfig;
@@ -32,7 +32,7 @@ type StaticModelIndex = HashMap<Provider, HashSet<String>>;
 
 const MODEL_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 static HTTP_CLIENT: Lazy<Client> =
-    Lazy::new(|| vtcode_commons::http::create_client_with_timeout(MODEL_DISCOVERY_TIMEOUT));
+    Lazy::new(|| diapason_commons::http::create_client_with_timeout(MODEL_DISCOVERY_TIMEOUT));
 
 #[derive(Clone, Default)]
 pub(crate) struct DynamicModelRegistry {
@@ -44,7 +44,11 @@ pub(crate) struct DynamicModelRegistry {
 }
 
 impl DynamicModelRegistry {
-    pub(super) async fn load(options: &[ModelOption], workspace: Option<&Path>, vt_cfg: Option<&VTCodeConfig>) -> Self {
+    pub(super) async fn load(
+        options: &[ModelOption],
+        workspace: Option<&Path>,
+        vt_cfg: Option<&DiapasonConfig>,
+    ) -> Self {
         let static_index = build_static_model_index(options);
         let mut registry = Self {
             seen_model_ids: static_index.values().flatten().cloned().collect(),
@@ -173,7 +177,7 @@ impl DynamicModelRegistry {
             match copilot_status.kind {
                 CopilotAuthStatusKind::Unauthenticated => registry.record_warning(
                     Provider::Copilot,
-                    "Run `vtcode login copilot` to load the live GitHub Copilot model list. `copilot-auto` remains available.".to_string(),
+                    "Run `diapason login copilot` to load the live GitHub Copilot model list. `copilot-auto` remains available.".to_string(),
                 ),
                 CopilotAuthStatusKind::ServerUnavailable => registry.record_error(
                     Provider::Copilot,
@@ -326,7 +330,7 @@ async fn fetch_openai_with_cache(
 
 async fn fetch_copilot_with_cache(
     mut cache_store: CachedDynamicModelStore,
-    copilot_auth_cfg: Arc<vtcode_config::auth::CopilotAuthConfig>,
+    copilot_auth_cfg: Arc<diapason_config::auth::CopilotAuthConfig>,
     workspace_root: Arc<PathBuf>,
 ) -> (CachedDynamicModelStore, CopilotAuthStatus, Option<(Result<Vec<String>>, Option<String>)>) {
     let cache_base = copilot_cache_base(&copilot_auth_cfg);
@@ -385,7 +389,7 @@ fn build_static_model_index(options: &[ModelOption]) -> StaticModelIndex {
 }
 
 fn resolve_openai_dynamic_auth(
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     workspace: Option<&Path>,
     api_key_env: Option<&str>,
 ) -> Option<String> {
@@ -394,11 +398,15 @@ fn resolve_openai_dynamic_auth(
     let default_api_key_env = Provider::OpenAI.default_api_key_env();
     let requested_api_key_env = api_key_env.unwrap_or(default_api_key_env);
     let is_default_key = requested_api_key_env.eq_ignore_ascii_case(default_api_key_env);
-    let api_key =
-        vtcode_config::api_keys::resolve_credential_with_mode("openai", requested_api_key_env, workspace, storage_mode)
-            .ok()
-            .flatten()
-            .and_then(|resolved| resolved.secret);
+    let api_key = diapason_config::api_keys::resolve_credential_with_mode(
+        "openai",
+        requested_api_key_env,
+        workspace,
+        storage_mode,
+    )
+    .ok()
+    .flatten()
+    .and_then(|resolved| resolved.secret);
 
     if !is_default_key && api_key.is_none() {
         return None;
@@ -408,15 +416,15 @@ fn resolve_openai_dynamic_auth(
         auth_config
     } else {
         let mut api_key_auth_config = auth_config;
-        api_key_auth_config.preferred_method = vtcode_config::OpenAIPreferredMethod::ApiKey;
+        api_key_auth_config.preferred_method = diapason_config::OpenAIPreferredMethod::ApiKey;
         api_key_auth_config
     };
-    vtcode_config::resolve_openai_auth(&auth_config, storage_mode, api_key)
+    diapason_config::resolve_openai_auth(&auth_config, storage_mode, api_key)
         .ok()
         .map(|resolved| resolved.api_key().to_string())
 }
 
-fn configured_openai_api_key_env(vt_cfg: Option<&VTCodeConfig>) -> Option<String> {
+fn configured_openai_api_key_env(vt_cfg: Option<&DiapasonConfig>) -> Option<String> {
     let cfg = vt_cfg?;
     cfg.configured_api_key_env(Provider::OpenAI.as_ref()).or_else(|| {
         if !cfg.agent.provider.eq_ignore_ascii_case(Provider::OpenAI.as_ref()) {
@@ -434,7 +442,7 @@ fn configured_openai_api_key_env(vt_cfg: Option<&VTCodeConfig>) -> Option<String
     })
 }
 
-fn copilot_cache_base(config: &vtcode_config::auth::CopilotAuthConfig) -> String {
+fn copilot_cache_base(config: &diapason_config::auth::CopilotAuthConfig) -> String {
     config
         .host
         .as_deref()
@@ -575,7 +583,10 @@ mod tests {
 
     #[test]
     fn copilot_cache_base_defaults_to_github_com() {
-        assert_eq!(copilot_cache_base(&vtcode_config::auth::CopilotAuthConfig::default()), "copilot-cli://github.com");
+        assert_eq!(
+            copilot_cache_base(&diapason_config::auth::CopilotAuthConfig::default()),
+            "copilot-cli://github.com"
+        );
     }
 
     #[test]

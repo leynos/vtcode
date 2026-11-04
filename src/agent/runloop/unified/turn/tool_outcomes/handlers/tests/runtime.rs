@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 use super::*;
 use crate::agent::runloop::unified::tool_pipeline::{ToolExecutionStatus, ToolPipelineOutcome};
 use crate::agent::runloop::unified::turn::tool_outcomes::execution_result::handle_tool_execution_result;
-use vtcode_core::config::ToolDisplayMode;
-use vtcode_core::tools::registry::ToolExecutionError;
+use diapason_core::config::ToolDisplayMode;
+use diapason_core::tools::registry::ToolExecutionError;
 
 #[tokio::test]
 async fn blocked_tool_call_guard_emits_tool_and_system_messages() {
@@ -795,7 +795,7 @@ async fn repeated_shell_guard_activates_recovery_without_breaking_turn() {
         .vt_cfg
         .map(|cfg| cfg.tools.max_repeated_tool_calls)
         .filter(|value| *value > 0)
-        .unwrap_or(vtcode_core::config::constants::defaults::DEFAULT_MAX_REPEATED_TOOL_CALLS);
+        .unwrap_or(diapason_core::config::constants::defaults::DEFAULT_MAX_REPEATED_TOOL_CALLS);
     let args = json!({"action":"run","command":"cargo check"});
 
     let mut outcome = None;

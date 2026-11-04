@@ -22,27 +22,27 @@ use std::time::Instant;
 use anyhow::Result;
 use tokio::sync::{Notify, RwLock};
 
-use serde_json::Value;
-use vtcode_core::acp::{PermissionGrant, ToolPermissionCache};
-use vtcode_core::command_safety::parse_bash_lc_commands;
-use vtcode_core::config::PermissionsConfig;
-use vtcode_core::config::constants::tools;
-use vtcode_core::config::loader::ConfigManager;
-use vtcode_core::core::interfaces::ui::UiSession;
-use vtcode_core::exec::events::PermissionDecision;
-use vtcode_core::exec_policy::AskForApproval;
-use vtcode_core::hooks::{
+use diapason_core::acp::{PermissionGrant, ToolPermissionCache};
+use diapason_core::command_safety::parse_bash_lc_commands;
+use diapason_core::config::PermissionsConfig;
+use diapason_core::config::constants::tools;
+use diapason_core::config::loader::ConfigManager;
+use diapason_core::core::interfaces::ui::UiSession;
+use diapason_core::exec::events::PermissionDecision;
+use diapason_core::exec_policy::AskForApproval;
+use diapason_core::hooks::{
     LifecycleHookEngine, PermissionDecisionBehaviour, PermissionDecisionScope, PreToolHookDecision,
 };
-use vtcode_core::permissions::{
+use diapason_core::permissions::{
     PermissionRequest, PermissionRequestKind, ResolvedPermissionDecision, build_permission_request,
     evaluate_effective_permissions, evaluate_permissions,
 };
-use vtcode_core::tool_policy::ToolPolicy;
-use vtcode_core::tools::registry::{ToolPermissionDecision, ToolRegistry};
-use vtcode_core::tools::{JustificationExtractor, ToolRiskScorer};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::InlineHandle;
+use diapason_core::tool_policy::ToolPolicy;
+use diapason_core::tools::registry::{ToolPermissionDecision, ToolRegistry};
+use diapason_core::tools::{JustificationExtractor, ToolRiskScorer};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::InlineHandle;
+use serde_json::Value;
 
 use crate::agent::runloop::unified::auto_permission::{AutoPermissionReviewDecision, review_tool_call};
 use crate::agent::runloop::unified::inline_events::harness::HarnessEventEmitter;
@@ -100,14 +100,14 @@ enum AutoPermissionPermissionOutcome {
 }
 
 fn bounded_permission_updates<'a>(
-    updates: &'a [vtcode_core::hooks::PermissionUpdateRequest],
-    messages: &mut Vec<vtcode_core::hooks::HookMessage>,
-) -> &'a [vtcode_core::hooks::PermissionUpdateRequest] {
+    updates: &'a [diapason_core::hooks::PermissionUpdateRequest],
+    messages: &mut Vec<diapason_core::hooks::HookMessage>,
+) -> &'a [diapason_core::hooks::PermissionUpdateRequest] {
     if updates.len() <= MAX_PERMISSION_HOOK_UPDATES {
         return updates;
     }
 
-    messages.push(vtcode_core::hooks::HookMessage::warning(format!(
+    messages.push(diapason_core::hooks::HookMessage::warning(format!(
         "PermissionRequest hook returned {} updates; only the first {} were applied.",
         updates.len(),
         MAX_PERMISSION_HOOK_UPDATES
@@ -118,13 +118,13 @@ fn bounded_permission_updates<'a>(
 fn bounded_permission_rules<'a, T>(
     field: &str,
     rules: &'a [T],
-    messages: &mut Vec<vtcode_core::hooks::HookMessage>,
+    messages: &mut Vec<diapason_core::hooks::HookMessage>,
 ) -> &'a [T] {
     if rules.len() <= MAX_PERMISSION_UPDATE_RULES {
         return rules;
     }
 
-    messages.push(vtcode_core::hooks::HookMessage::warning(format!(
+    messages.push(diapason_core::hooks::HookMessage::warning(format!(
         "PermissionRequest hook returned {} rules for `{field}`; only the first {} were applied.",
         rules.len(),
         MAX_PERMISSION_UPDATE_RULES
@@ -200,12 +200,12 @@ pub(crate) struct ToolPermissionsContext<'a, S: UiSession + ?Sized> {
     pub ctrl_c_state: &'a Arc<CtrlCState>,
     pub ctrl_c_notify: &'a Arc<Notify>,
     pub hooks: Option<&'a LifecycleHookEngine>,
-    pub justification: Option<&'a vtcode_core::tools::ToolJustification>,
-    pub approval_recorder: Option<&'a vtcode_core::tools::ApprovalRecorder>,
-    pub decision_ledger: Option<&'a Arc<RwLock<vtcode_core::core::decision_tracker::DecisionTracker>>>,
+    pub justification: Option<&'a diapason_core::tools::ToolJustification>,
+    pub approval_recorder: Option<&'a diapason_core::tools::ApprovalRecorder>,
+    pub decision_ledger: Option<&'a Arc<RwLock<diapason_core::core::decision_tracker::DecisionTracker>>>,
     pub tool_permission_cache: Option<&'a Arc<RwLock<ToolPermissionCache>>>,
     pub permissions_state: Option<&'a Arc<RwLock<PermissionsConfig>>>,
-    pub active_agent_permissions: Option<&'a vtcode_config::core::permissions::AgentPermissionsConfig>,
+    pub active_agent_permissions: Option<&'a diapason_config::core::permissions::AgentPermissionsConfig>,
     pub hitl_notification_bell: bool,
     pub approval_policy: AskForApproval,
     pub skip_confirmations: bool,
@@ -223,7 +223,7 @@ pub(crate) struct ToolPermissionsContext<'a, S: UiSession + ?Sized> {
 
 fn resolve_permission_decision(
     permissions: &PermissionsConfig,
-    active_agent_permissions: Option<&vtcode_config::core::permissions::AgentPermissionsConfig>,
+    active_agent_permissions: Option<&diapason_config::core::permissions::AgentPermissionsConfig>,
     workspace_root: &std::path::Path,
     current_dir: &std::path::Path,
     request: &PermissionRequest,
@@ -293,10 +293,10 @@ async fn apply_permission_hook_updates(
     tool_registry: &ToolRegistry,
     permissions_state: &Arc<RwLock<PermissionsConfig>>,
     behaviour: PermissionDecisionBehaviour,
-    updates: &[vtcode_core::hooks::PermissionUpdateRequest],
-) -> Vec<vtcode_core::hooks::HookMessage> {
+    updates: &[diapason_core::hooks::PermissionUpdateRequest],
+) -> Vec<diapason_core::hooks::HookMessage> {
+    use diapason_core::hooks::{HookMessage, PermissionUpdateDestination, PermissionUpdateKind};
     use std::collections::BTreeSet;
-    use vtcode_core::hooks::{HookMessage, PermissionUpdateDestination, PermissionUpdateKind};
 
     let mut messages = Vec::new();
     if updates.is_empty() {
@@ -464,7 +464,7 @@ fn full_auto_unavailable_reason(tool_name: &str) -> String {
 /// Network-bearing actions are evaluated under action-qualified names so the
 /// policy and risk scorer make the same decision.
 fn policy_evaluation_name<'a>(tool_name: &'a str, tool_args: Option<&Value>) -> Cow<'a, str> {
-    use vtcode_core::tools::tool_intent::action_qualified_policy_name;
+    use diapason_core::tools::tool_intent::action_qualified_policy_name;
 
     if let Some(qualified) = action_qualified_policy_name(tool_name, tool_args) {
         return Cow::Borrowed(qualified);
@@ -548,7 +548,7 @@ async fn finalize_permission_decision(
     tool_args: Option<&Value>,
     cache_key: &str,
     tool_permission_cache: Option<&Arc<RwLock<ToolPermissionCache>>>,
-    approval_recorder: Option<&vtcode_core::tools::ApprovalRecorder>,
+    approval_recorder: Option<&diapason_core::tools::ApprovalRecorder>,
     approval_learning_target: &shell_approval::ApprovalLearningTarget,
     exact_shell_approval_target: Option<&shell_approval::ApprovalLearningTarget>,
     persistent_approval_target: &shell_approval::PersistentApprovalTarget,
@@ -846,7 +846,7 @@ fn segmented_shell_approval_keys(normalized_tool_name: &str, tool_args: Option<&
     let segments = parse_bash_lc_commands(&command_words)
         .or_else(|| split_command_words_on_operators(&command_words))
         .or_else(|| {
-            vtcode_core::command_safety::shell_parser::parse_shell_commands(&shell_words::join(
+            diapason_core::command_safety::shell_parser::parse_shell_commands(&shell_words::join(
                 command_words.iter().map(String::as_str),
             ))
             .ok()
@@ -1359,7 +1359,7 @@ pub(crate) async fn ensure_tool_permission_with_call_id<S: UiSession + ?Sized>(
                         )
                         .await
                     } else if !decision.permission_updates.is_empty() {
-                        vec![vtcode_core::hooks::HookMessage::warning(
+                        vec![diapason_core::hooks::HookMessage::warning(
                             "PermissionRequest hook returned permission updates without runtime permission state; ignoring updates.",
                         )]
                     } else {
@@ -1481,7 +1481,7 @@ pub(crate) async fn prompt_external_tool_permission<S: UiSession + ?Sized>(
     approval_learning_key: &str,
     approval_learning_label: &str,
     approval_reason: Option<&str>,
-    approval_recorder: Option<&vtcode_core::tools::ApprovalRecorder>,
+    approval_recorder: Option<&diapason_core::tools::ApprovalRecorder>,
     hitl_notification_bell: bool,
     active_thread_label: Option<&str>,
 ) -> Result<HitlDecision> {

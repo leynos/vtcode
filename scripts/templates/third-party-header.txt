@@ -11,18 +11,18 @@ OpenAI Codex
   License: Apache License, Version 2.0
 
   Components used as architectural reference or adapted patterns:
-  - OAuth / login flow (vtcode-auth/src/openai_chatgpt_oauth.rs)
-  - PTY process handling (vtcode-bash-runner/src/process.rs)
-  - MCP client building blocks (vtcode-mcp/src/lib.rs)
-  - Ollama provider integration (vtcode-llm/src/providers/ollama/)
-  - LM Studio provider integration (vtcode-llm/src/providers/lmstudio/)
-  - Tool handler patterns (vtcode-core/src/tools/handlers/)
+  - OAuth / login flow (diapason-auth/src/openai_chatgpt_oauth.rs)
+  - PTY process handling (diapason-bash-runner/src/process.rs)
+  - MCP client building blocks (diapason-mcp/src/lib.rs)
+  - Ollama provider integration (diapason-llm/src/providers/ollama/)
+  - LM Studio provider integration (diapason-llm/src/providers/lmstudio/)
+  - Tool handler patterns (diapason-core/src/tools/handlers/)
 
-  vtcode's implementations are original works that follow Codex
+  diapason's implementations are original works that follow Codex
   architectural patterns; they are not direct copies of Codex source.
 
 Kepano (MIT-licensed network allowlist)
   Source: https://github.com/kepano
   License: MIT
-  Component: vtcode-config/data/network_allowlist.toml
+  Component: diapason-config/data/network_allowlist.toml
 

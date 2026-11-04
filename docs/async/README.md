@@ -1,4 +1,4 @@
-# VT Code Async Architecture Documentation
+# Diapason Async Architecture Documentation
 
 ## Quick Links
 
@@ -7,7 +7,7 @@
 
 ## TL;DR
 
-The VT Code system has **100% async I/O operations**. All file operations use
+The Diapason system has **100% async I/O operations**. All file operations use
 `tokio::fs`, PTY operations use `tokio::task::spawn_blocking`, and HTTP
 requests use `reqwest` async.
 

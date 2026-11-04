@@ -3,17 +3,17 @@ use super::timeout::create_timeout_error;
 use super::*;
 use crate::agent::runloop::unified::state::CtrlCState;
 
+use diapason_core::config::PermissionsConfig;
+use diapason_core::config::constants::tools;
+use diapason_core::tools::registry::ToolRegistry;
+use diapason_core::tools::registry::ToolTimeoutCategory;
+use diapason_core::ui::inline_theme_from_core_styles;
+use diapason_core::ui::theme;
+use diapason_core::utils::ansi::AnsiRenderer;
+use diapason_ui::tui::app::{InlineHandle, InlineSession, SessionOptions, spawn_session_with_options};
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Notify;
-use vtcode_core::config::PermissionsConfig;
-use vtcode_core::config::constants::tools;
-use vtcode_core::tools::registry::ToolRegistry;
-use vtcode_core::tools::registry::ToolTimeoutCategory;
-use vtcode_core::ui::inline_theme_from_core_styles;
-use vtcode_core::ui::theme;
-use vtcode_core::utils::ansi::AnsiRenderer;
-use vtcode_ui::tui::app::{InlineHandle, InlineSession, SessionOptions, spawn_session_with_options};
 
 /// Helper function to create test registry with common setup
 async fn create_test_registry(workspace: &std::path::Path) -> ToolRegistry {
@@ -57,9 +57,11 @@ struct TestContext {
     renderer: AnsiRenderer,
     session: InlineSession,
     handle: InlineHandle,
-    approval_recorder: vtcode_core::tools::ApprovalRecorder,
+    approval_recorder: diapason_core::tools::ApprovalRecorder,
     permissions_state: Arc<tokio::sync::RwLock<PermissionsConfig>>,
     workspace: std::path::PathBuf,
+    // Keep the directory alive until the remaining fixture fields have dropped.
+    _workspace_tempdir: tempfile::TempDir,
 }
 
 impl TestContext {
@@ -68,7 +70,7 @@ impl TestContext {
         // Canonicalize so the workspace, registry, and file fixtures share one
         // prefix; on macOS TempDir returns a /var/folders alias of
         // /private/var/folders and mixed prefixes trip workspace containment.
-        let workspace = vtcode_commons::canonicalize(tmp.path()).unwrap();
+        let workspace = diapason_commons::canonicalize(tmp.path()).unwrap();
 
         let registry = create_test_registry(&workspace).await;
         let active_styles = theme::active_styles();
@@ -89,7 +91,7 @@ impl TestContext {
         session.set_skip_confirmations(true);
         let handle = session.clone_inline_handle();
         let renderer = create_test_renderer(&handle);
-        let approval_recorder = vtcode_core::tools::ApprovalRecorder::new(workspace.clone());
+        let approval_recorder = diapason_core::tools::ApprovalRecorder::new(workspace.clone());
         let permissions_state = Arc::new(tokio::sync::RwLock::new(PermissionsConfig::default()));
 
         Self {
@@ -100,6 +102,7 @@ impl TestContext {
             approval_recorder,
             permissions_state,
             workspace,
+            _workspace_tempdir: tmp,
         }
     }
 }

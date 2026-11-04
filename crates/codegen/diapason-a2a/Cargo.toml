@@ -1,0 +1,52 @@
+[package]
+name = "diapason-a2a"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93.0"
+authors = ["Vinh Nguyen <vinhnguyen2308@gmail.com>", "df12 Productions"]
+description = "Agent2Agent (A2A) Protocol support for Diapason"
+license.workspace = true
+readme = "README.md"
+homepage = "https://github.com/leynos/vtcode"
+repository = "https://github.com/leynos/vtcode"
+documentation = "https://docs.rs/diapason-a2a"
+categories = ["development-tools"]
+keywords = ["vt", "a2a", "agent", "protocol"]
+
+[features]
+default = []
+a2a-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:tokio-stream"]
+
+[dependencies]
+anyhow = { workspace = true }
+async-stream = "0.3"
+axum = { version = "0.8", features = ["json", "macros"], optional = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+futures = { workspace = true }
+hashbrown = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "rt-multi-thread", "sync"] }
+tokio-stream = { version = "0.1", optional = true }
+tower = { version = "0.5", optional = true }
+tower-http = { version = "0.7", features = ["cors", "trace"], optional = true }
+tracing = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-unknown-linux-gnu"
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.cargo-machete]
+# Optional deps enabled by the `a2a-server` feature; cargo-machete cannot
+# resolve feature-gated usage and would otherwise false-positive these.
+ignored = ["tokio-stream", "tower"]
+
+[lints]
+workspace = true

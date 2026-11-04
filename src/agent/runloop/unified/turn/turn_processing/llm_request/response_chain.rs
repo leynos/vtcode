@@ -7,13 +7,13 @@
 //! it, and records the chain after a successful response. Invariant: chain
 //! state is only ever recorded/consulted for providers where
 //! `records_responses_continuation_state`/`prepare_responses_continuation_request`
-//! (from `vtcode_core::llm::provider`) report support -- other providers
+//! (from `diapason_core::llm::provider`) report support -- other providers
 //! always see their full, untrimmed history.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use vtcode_core::llm::provider::{
+use diapason_core::llm::provider::{
     self as uni, prepare_responses_continuation_request, records_responses_continuation_state,
 };
 
@@ -68,7 +68,7 @@ pub(super) fn prepend_request_context_message(
 mod tests {
     use std::sync::Arc;
 
-    use vtcode_core::llm::provider as uni;
+    use diapason_core::llm::provider as uni;
 
     use super::update_previous_response_chain_after_success_shared;
 

@@ -1,77 +1,28 @@
 # Installation Guide
 
-VT Code supports multiple installation methods. Choose the one that works best
-for you.
+Diapason is currently installed from source. Packaged releases and third-party
+package listings from the VTCode upstream are not Diapason distributions. The
+native installer documents describe the upstream VTCode installer and are
+retained for provenance; they do not install Diapason.
 
-## Quick Install
-
-The default macOS/Linux native installer also attempts the recommended
-`ripgrep` + `ast-grep` bundle.
-
-### macOS & Linux
+## Install from source
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash
-
-# Skip ripgrep + ast-grep if you only want VT Code
-curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash -s -- --without-search-tools
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
+cargo install --path .
 ```
 
-### Windows (PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.ps1 | iex
-```
-
-Windows release builds are currently best-effort and may lag behind
-macOS/Linux. The release pipeline still depends on `cross`, Docker, and GitHub
-Actions capacity for Windows packaging, and those build minutes can be costly,
-so Windows artifacts may not appear in every release.
-
-### Homebrew (macOS & Linux)
-
-```bash
-brew trust vinhnx/tap
-brew install vinhnx/tap/vtcode
-
-# Optional after brew install
-vtcode dependencies install search-tools
-```
-
-### Cargo (Rust)
-
-```bash
-cargo install vtcode
-
-# Optional after any install method
-vtcode dependencies install search-tools
-```
-
-### npm (Node.js)
-
-```bash
-npm install -g @vinhnx/vtcode --registry=https://npm.pkg.github.com
-```
-
-## Installation Methods
-
-| Method               | Platforms         | Command                                                               | Notes                                 |
-| -------------------- | ----------------- | --------------------------------------------------------------------- | ------------------------------------- |
-| **Native Installer** | macOS, Linux, WSL | See Quick Install above                                               | Recommended, auto-detects platform    |
-| **Homebrew**         | macOS, Linux      | `brew trust vinhnx/tap && brew install vinhnx/tap/vtcode`             | Package manager, easy updates         |
-| **Cargo**            | All               | `cargo install vtcode`                                                | Build from source, latest dev version |
-| **npm**              | All               | `npm install -g @vinhnx/vtcode --registry=https://npm.pkg.github.com` | JavaScript package manager            |
-| **npx**              | All               | `npx @vinhnx/vtcode`                                                  | No installation, run directly         |
-
-Windows release artifacts may lag behind macOS/Linux while the build pipeline
-is being finalized.
+The checkout includes its Cargo dependencies and build configuration. The
+`cargo install --path .` command builds the binary locally; shell-specific
+dependency setup is not performed by this command.
 
 ## After Installation
 
 ### 1. Verify it works
 
 ```bash
-vtcode --version
+diapason --version
 ```
 
 ### 2. Set your API key
@@ -84,13 +35,13 @@ export OPENAI_API_KEY="sk-..."
 
 ```bash
 cd your-project
-vtcode init    # scaffolds vtcode.toml, .vtcode/, and AGENTS.md
+diapason init    # scaffolds config.toml, .diapason/, and AGENTS.md
 ```
 
-### 4. Launch VT Code
+### 4. Launch Diapason
 
 ```bash
-vtcode
+diapason
 ```
 
 ## Supported AI Providers
@@ -129,25 +80,18 @@ source ~/.zshrc     # zsh
 
 **Windows:** Restart PowerShell or Command Prompt.
 
-### Installation fails with "No such file or directory"
+### Source build fails
 
-This typically indicates a network or CDN caching issue. Try one of:
-
-```bash
-# Force fresh download
-curl -fsSL https://raw.githubusercontent.com/vinhnx/vtcode/main/scripts/install.sh | bash
-
-# Or use GitHub API (always fresh)
-curl -fsSL "https://api.github.com/repos/vinhnx/vtcode/contents/scripts/install.sh?ref=main" \
-  | jq -r '.content' | base64 -d | bash
-```
+Check the Rust toolchain and build prerequisites in
+[Development setup](../development/DEVELOPMENT_SETUP.md), then retry the local
+build from the repository checkout.
 
 ### Permission denied
 
 **macOS/Linux:**
 
 ```bash
-chmod +x /usr/local/bin/vtcode
+chmod +x /usr/local/bin/diapason
 ```
 
 **Windows:** Run PowerShell as Administrator.
@@ -161,8 +105,8 @@ chmod +x /usr/local/bin/vtcode
 
 ### Still stuck?
 
-- Open an issue: <https://github.com/vinhnx/vtcode/issues>
-- Check docs: <https://github.com/vinhnx/vtcode/docs>
+- Open an issue: <https://github.com/leynos/vtcode/issues>
+- Check docs: <https://github.com/leynos/vtcode/tree/main/docs>
 - See [detailed guide](./NATIVE_INSTALLERS.md)
 
 ## Uninstall
@@ -170,49 +114,37 @@ chmod +x /usr/local/bin/vtcode
 ### Native Installer (Shell)
 
 ```bash
-rm /usr/local/bin/vtcode
+rm /usr/local/bin/diapason
 # or
-rm ~/.local/bin/vtcode
-```
-
-### Homebrew
-
-```bash
-brew uninstall vinhnx/tap/vtcode
+rm ~/.local/bin/diapason
 ```
 
 ### Cargo
 
 ```bash
-cargo uninstall vtcode
-```
-
-### npm
-
-```bash
-npm uninstall -g @vinhnx/vtcode
+cargo uninstall diapason
 ```
 
 ### Windows (Uninstall)
 
 ```powershell
-Remove-Item "$env:LOCALAPPDATA\VT Code\vtcode.exe"
+Remove-Item "$env:LOCALAPPDATA\Diapason\diapason.exe"
 # or (if in Program Files)
-Remove-Item "C:\Program Files\VT Code\vtcode.exe"
+Remove-Item "C:\Program Files\Diapason\diapason.exe"
 ```
 
 ## Installation Paths
 
 ### macOS & Linux Paths
 
-- `/usr/local/bin/vtcode` (standard)
-- `/opt/local/bin/vtcode` (Homebrew ARM64)
-- `~/.local/bin/vtcode` (user fallback)
+- `/usr/local/bin/diapason` (standard)
+- `/opt/local/bin/diapason` (Homebrew ARM64)
+- `~/.local/bin/diapason` (user fallback)
 
 ### Windows Paths
 
-- `C:\Program Files\VT Code\vtcode.exe` (system-wide, requires admin)
-- `%LOCALAPPDATA%\VT Code\vtcode.exe` (user-scoped)
+- `C:\Program Files\Diapason\diapason.exe` (system-wide, requires admin)
+- `%LOCALAPPDATA%\Diapason\diapason.exe` (user-scoped)
 
 The native installers automatically select the best location and add it to PATH.
 
@@ -221,7 +153,7 @@ The native installers automatically select the best location and add it to PATH.
 - **[Detailed Native Installers Guide](./NATIVE_INSTALLERS.md)** - Technical
     details and advanced options
 - **[Quick Reference](./QUICK_REFERENCE.md)** - One-liner commands
-- **[GitHub Releases](https://github.com/vinhnx/vtcode/releases)** - Download
-    binaries manually
-- **[Documentation](https://github.com/vinhnx/vtcode/docs)** - Full
+- **[Diapason repository](https://github.com/leynos/vtcode)** - Source and
+    published project documentation
+- **[Documentation](https://github.com/leynos/vtcode/tree/main/docs)** - Full
     documentation

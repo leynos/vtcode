@@ -1,35 +1,35 @@
-//! Eval suite runner for `vtcode exec eval`.
+//! Eval suite runner for `diapason exec eval`.
 //!
-//! The orchestration core lives in `vtcode_eval::run_suite`, which depends
-//! only on the [`vtcode_eval::EvalExecutor`] trait. This file wires the
+//! The orchestration core lives in `diapason_eval::run_suite`, which depends
+//! only on the [`diapason_eval::EvalExecutor`] trait. This file wires the
 //! production executor ([`AgentRunnerExecutor`]) to that trait, applies the
 //! trust/automation guardrails, and handles I/O.
 
 use crate::startup::require_full_auto_workspace_trust;
 use anyhow::{Context, Result, bail};
-use std::path::Path;
-use std::time::Instant;
-use vtcode_core::cli::input_hardening::validate_agent_safe_text;
-use vtcode_core::config::VTCodeConfig;
-use vtcode_core::config::models::ModelId;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::runner::{AgentRunner, RunnerSettings};
-use vtcode_core::core::agent::task::{ContextItem, Task, TaskOutcome};
-use vtcode_core::core::agent::types::AgentType;
-use vtcode_core::core::threads::ThreadBootstrap;
-use vtcode_eval::{
+use diapason_core::cli::input_hardening::validate_agent_safe_text;
+use diapason_core::config::DiapasonConfig;
+use diapason_core::config::models::ModelId;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::runner::{AgentRunner, RunnerSettings};
+use diapason_core::core::agent::task::{ContextItem, Task, TaskOutcome};
+use diapason_core::core::agent::types::AgentType;
+use diapason_core::core::threads::ThreadBootstrap;
+use diapason_eval::{
     EvalRunResult, EvalSuite, EvalTask, RunOutcome,
     environment::{CommandProbe, EnvironmentProbe},
     run_suite,
 };
+use std::path::Path;
+use std::time::Instant;
 
 use super::ExecCommandKind;
 use super::run::task_spec;
 
-/// Handle the `vtcode exec eval --suite <path>` command.
+/// Handle the `diapason exec eval --suite <path>` command.
 pub(crate) async fn handle_eval_command(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     suite_path: &Path,
     output_path: Option<&Path>,
 ) -> Result<()> {
@@ -74,12 +74,12 @@ pub(crate) async fn handle_eval_command(
 /// environment probes to verify the claimed outcome.
 struct AgentRunnerExecutor {
     config: CoreAgentConfig,
-    vt_cfg: VTCodeConfig,
+    vt_cfg: DiapasonConfig,
     allowed_tools: Vec<String>,
 }
 
 impl AgentRunnerExecutor {
-    fn new(config: &CoreAgentConfig, vt_cfg: &VTCodeConfig, allowed_tools: &[String]) -> Self {
+    fn new(config: &CoreAgentConfig, vt_cfg: &DiapasonConfig, allowed_tools: &[String]) -> Self {
         Self {
             config: config.clone(),
             vt_cfg: vt_cfg.clone(),
@@ -89,7 +89,7 @@ impl AgentRunnerExecutor {
 }
 
 #[async_trait::async_trait]
-impl vtcode_eval::EvalExecutor for AgentRunnerExecutor {
+impl diapason_eval::EvalExecutor for AgentRunnerExecutor {
     async fn execute_task(&self, eval_task: &EvalTask) -> Result<EvalRunResult> {
         Ok(run_eval_task(&self.config, &self.vt_cfg, eval_task, &self.allowed_tools).await)
     }
@@ -98,7 +98,7 @@ impl vtcode_eval::EvalExecutor for AgentRunnerExecutor {
 /// Run a single eval task attempt through the agent runner + probes.
 async fn run_eval_task(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     eval_task: &EvalTask,
     allowed_tools: &[String],
 ) -> EvalRunResult {
@@ -229,14 +229,14 @@ fn build_probes(eval_task: &EvalTask) -> Vec<Box<dyn EnvironmentProbe>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vtcode_eval::EvalTask;
+    use diapason_eval::EvalTask;
 
     #[test]
     fn build_probes_parses_command_and_args() {
         let task = EvalTask {
             id: "t".into(),
             name: "t".into(),
-            category: vtcode_eval::EvalCategory::Capability,
+            category: diapason_eval::EvalCategory::Capability,
             prompt: "p".into(),
             verify_commands: vec!["cargo test --all".into(), "".into(), "git status".into()],
             timeout_secs: None,
@@ -251,7 +251,7 @@ mod tests {
         let task = EvalTask {
             id: "t".into(),
             name: "t".into(),
-            category: vtcode_eval::EvalCategory::Capability,
+            category: diapason_eval::EvalCategory::Capability,
             prompt: "p".into(),
             verify_commands: vec![],
             timeout_secs: None,

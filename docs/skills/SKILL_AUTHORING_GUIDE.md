@@ -1,11 +1,11 @@
 # Skill Authoring Guide
 
-VT Code authoring targets the strict Agent Skills `SKILL.md` format.
+Diapason authoring targets the strict Agent Skills `SKILL.md` format.
 
 ## Create a Skill
 
 ```bash
-vtcode skills create my-skill
+diapason skills create my-skill
 ```
 
 By default this creates:
@@ -20,7 +20,7 @@ By default this creates:
 
 ## Write `SKILL.md`
 
-Use the core Agent Skills frontmatter fields. VT Code also accepts the
+Use the core Agent Skills frontmatter fields. Diapason also accepts the
 client-side `disable-model-invocation` flag when a skill should stay callable
 through explicit harness paths but should not be advertised in the model-facing
 startup catalog.
@@ -65,7 +65,7 @@ Summarize the workflow and outcome.
 ## Validation
 
 ```bash
-vtcode skills validate ./.agents/skills/my-skill
+diapason skills validate ./.agents/skills/my-skill
 ```
 
 Validation fails if `SKILL.md` contains unsupported fields such as `version`,
@@ -95,5 +95,5 @@ description: Helps with documents.
 ## Non-Support
 
 - No `agents/openai.yaml`
-- No legacy VT Code skill frontmatter
+- No legacy Diapason skill frontmatter
 - No deprecated project or user skill locations

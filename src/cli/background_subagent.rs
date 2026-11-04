@@ -2,12 +2,12 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use diapason_core::cli::args::BackgroundSubagentArgs;
+use diapason_core::subagents::{SpawnAgentRequest, SubagentController, SubagentControllerConfig};
+use diapason_core::tools::exec_session::ExecSessionManager;
+use diapason_core::tools::registry::PtySessionManager;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use vtcode_core::cli::args::BackgroundSubagentArgs;
-use vtcode_core::subagents::{SpawnAgentRequest, SubagentController, SubagentControllerConfig};
-use vtcode_core::tools::exec_session::ExecSessionManager;
-use vtcode_core::tools::registry::PtySessionManager;
 
 use crate::cli::messages;
 use crate::startup::StartupContext;
@@ -78,7 +78,8 @@ pub(crate) async fn handle_background_subagent_command(
         if let Some(error) = status.error.as_deref() {
             eprintln!("background-subagent-error: {}", error.trim());
         }
-        if !status.status.is_terminal() || matches!(status.status, vtcode_core::subagents::SubagentStatus::Completed) {
+        if !status.status.is_terminal() || matches!(status.status, diapason_core::subagents::SubagentStatus::Completed)
+        {
             println!("background-subagent-ready: {} {}", status.agent_name, status.session_id);
         } else {
             bail!("background subagent '{}' exited with status {}", status.agent_name, status.status.as_str());

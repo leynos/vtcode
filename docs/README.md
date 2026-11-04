@@ -1,44 +1,25 @@
-# VT Code Documentation Hub
+# Diapason Documentation Hub
 
-Welcome to the comprehensive documentation for **VT Code**, a Rust-based
+Welcome to the comprehensive documentation for **Diapason**, a Rust-based
 terminal coding agent with modular architecture supporting multiple LLM
 providers and advanced code analysis capabilities.
 
-## Quick Installation
+## Install from source
 
-[![Crates.io](https://img.shields.io/crates/v/vtcode.svg)](
-https://crates.io/crates/vtcode) [![Homebrew][homebrew-badge]][homebrew]
-[![GitHub release](https://img.shields.io/github/release/vinhnx/vtcode.svg)](
-https://github.com/vinhnx/vtcode/releases)
-
-### Choose Your Installation Method
-
-#### Cargo (Recommended)
+Diapason is currently installed from source. Packaged releases and third-party
+package listings from the VTCode upstream are not Diapason distributions.
 
 ```bash
-cargo install vtcode
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
+cargo install --path .
 ```
 
-[API Documentation](https://docs.rs/vtcode) |
-[Crates.io](https://crates.io/crates/vtcode)
+See the [installation guide](./installation/README.md) for details.
 
-#### Homebrew (macOS)
+## What Makes Diapason Special
 
-```bash
-brew trust vinhnx/tap
-brew install vinhnx/tap/vtcode
-```
-
-[Homebrew Formula](https://formulae.brew.sh/formula/vtcode)
-
-#### Pre-built Binaries
-
-Download from [GitHub Releases](https://github.com/vinhnx/vtcode/releases) for
-Linux, macOS, or Windows.
-
-## What Makes VT Code Special
-
-VT Code represents a modern approach to AI-powered software development,
+Diapason represents a modern approach to AI-powered software development,
 featuring:
 
 - **Single-Agent Reliability (default)** - Streamlined, linear agent with
@@ -81,16 +62,16 @@ cases:
 
 ### Recent Major Enhancements
 
-VT Code has undergone significant improvements:
+Diapason has undergone significant improvements:
 
 - **Loop Engineering** - Worktree isolation for parallel agents, propose/verify
-  sub-agent separation, durable loop state persistence (`.vtcode/state/`), and
-  token-cost guardrails. See [Loop Engineering](./loop-engineering.md).
+  sub-agent separation, durable loop state persistence (`.diapason/state/`),
+  and token-cost guardrails. See [Loop Engineering](./loop-engineering.md).
 
 - **Agent Plugins** - Support for the
   [Agent Plugins](https://agent-plugins.org/specification) portable package
   format: install plugins that bundle Agent Skills and MCP servers under a root
-  `plugin.json` manifest with `vtcode plugins list/info/validate/add/remove`.
+  `plugin.json` manifest with `diapason plugins list/info/validate/add/remove`.
   Plugin skills and MCP servers are discovered automatically at session
   startup. See [Agent Plugins Guide](./guides/agent-plugins.md) and
   [Agent Plugins User Guide](./user-guide/agent-plugins.md).
@@ -102,7 +83,7 @@ VT Code has undergone significant improvements:
   structured review gate and hand off to `build`/`auto`. See
   [Planning Workflow](./guides/planning-workflow.md).
 - **WebMCP Browser Bridge** - Connect a supported browser editor to an active
-  VT Code session or a bounded standalone workspace bridge through
+  Diapason session or a bounded standalone workspace bridge through
   authenticated pairing, origin validation, and terminal-owned approval. See
   [WebMCP Browser Bridge](./user-guide/webmcp.md).
 - **Primary Agent Switching & Mode Guard** - Switch main-session agents (`plan`/
@@ -137,7 +118,8 @@ VT Code has undergone significant improvements:
 - **Error Recovery & Resilience** - Intelligent error handling with pattern
   detection and multiple recovery strategies
 - **Advanced Code Search** - Bounded definitions, syntactic usages, literal
-  text, and matching paths through `code_search` in the advanced VT Code profile
+  text, and matching paths through `code_search` in the advanced Diapason
+  profile
 - **Web Search & Fetch** — `web_search` and `defuddle_fetch` tools with
   TOML-driven network allowlist and domain-scoped approval caching
 - **Post-Tool Recovery Cycles** — Automatic detection and cap enforcement for
@@ -153,7 +135,7 @@ See [CHANGELOG](../CHANGELOG.md) for complete details on these improvements.
 
 ### For Users
 
-New to VT Code? Start with installation and basic usage:
+New to Diapason? Start with installation and basic usage:
 
 - [User Guide](./users-guide.md) - Quick links to canonical setup, ACP,
   configuration, permissions, MCP, and storage guides.
@@ -161,16 +143,16 @@ New to VT Code? Start with installation and basic usage:
 - **[Getting Started](./user-guide/getting-started.md)** - Installation,
   configuration, and first steps
 - **[Subagents](./user-guide/subagents.md)** - Create, configure, invoke, and
-  switch between delegated child agents with VT Code-native tool metadata
+  switch between delegated child agents with Diapason-native tool metadata
 - **[Agent Plugins](./user-guide/agent-plugins.md)** - Install portable plugins
   that bundle Agent Skills and MCP servers under a `plugin.json` manifest
 - **[Interactive Mode Reference](./user-guide/interactive-mode.md)** - Keyboard
   shortcuts and terminal workflows
 - **[WebMCP Browser Bridge User Guide](./user-guide/webmcp.md)** - Connect a
-  browser editor to an active VT Code session or a bounded standalone workspace
-  bridge
+  browser editor to an active Diapason session or a bounded standalone
+  workspace bridge
 - **[Scheduled Tasks](./user-guide/scheduled-tasks.md)** - Reminders and durable
-  `vtcode schedule` automations
+  `diapason schedule` automations
 - [Decision Ledger](./context/context_engineering.md#4-decision-ledger-structured-note-taking)
   - How decisions are tracked and injected
 - **[Configuration Guide](./config/config.md)** - Comprehensive configuration
@@ -188,7 +170,7 @@ New to VT Code? Start with installation and basic usage:
 
 ### For Developers
 
-Contributing to VT Code? Understand the architecture and development processes:
+Contributing to Diapason? Understand the architecture and development processes:
 
 - [Developer Guide](./developers-guide.md) - Quick links to architecture,
   development workflows, ACP runtime, provider policy, and testing.
@@ -208,11 +190,11 @@ Contributing to VT Code? Understand the architecture and development processes:
 - **[Code Standards](../.github/copilot-instructions.md)** - Coding guidelines
   and best practices
 - **[Memory Management](./guides/memory-management.md)** - Configure authored
-  guidance, `.vtcode/rules/`, and per-repository persistent memory
+  guidance, `.diapason/rules/`, and per-repository persistent memory
 
 ### For Organizations
 
-Deploying VT Code in production? Focus on enterprise features:
+Deploying Diapason in production? Focus on enterprise features:
 
 - **[Security Model](./security/SECURITY_MODEL.md)** - Multi-layered security
   architecture
@@ -275,8 +257,8 @@ Deploying VT Code in production? Focus on enterprise features:
 
 ### Safety & Security
 
-VT Code implements a **multi-layered security model** to protect against prompt
-injection and argument injection attacks:
+Diapason implements a **multi-layered security model** to protect against
+prompt injection and argument injection attacks:
 
 - **Execution Policy** - Command allowlist with per-command argument validation
   (only 9 safe commands allowed)
@@ -300,14 +282,15 @@ injection and argument injection attacks:
 - Complete security architecture **
 [Security Web Fetch](./security/SECURITY_WEB_FETCH.md)** - Web fetch security
 model and controls **[Security Guide](./guides/security.md)** - Best practices
-and configuration **[Tool Policies](./modules/vtcode_tools_policy.md)** -
+and configuration **[Tool Policies](./modules/diapason_tools_policy.md)** -
 Command execution policies
 
 ## Quick Start Guide
 
 ### Quick Start for New Users
 
-1. **[Installation](./installation/README.md)** - Get VT Code running in minutes
+1. **[Installation](./installation/README.md)** - Get Diapason running in
+   minutes
 2. **[Basic Configuration](./config/config.md)** - Set up your environment
 3. **[First Chat Session](../README.md#quick-start)** - Try interactive coding
    assistance
@@ -333,7 +316,8 @@ Command execution policies
 
 ### Usage Notes
 
-**Trajectory Logs:** Logs for trajectory: check `.vtcode/logs/trajectory.jsonl`.
+**Trajectory Logs:** Logs for trajectory: check
+`$XDG_STATE_HOME/diapason/logs/trajectory.jsonl`.
 
 ### Workspace-First Operations
 
@@ -345,7 +329,7 @@ Command execution policies
   explicitly requires external paths.
 - Ask for confirmation before operating outside `WORKSPACE_DIR` or when
   interacting with untrusted downloads.
-- Launch sessions against another repository with `vtcode /abs/path`; you can
+- Launch sessions against another repository with `diapason /abs/path`; you can
   also pass `--workspace-dir` (alias: `--workspace`) to other commands when
   needed.
 
@@ -379,13 +363,13 @@ Command execution policies
 ```
 
 **Smart Configuration Generation**: The `config` command implements two-way
-synchronization that reads your existing `vtcode.toml` and generates a complete
+synchronization that reads your existing `config.toml` and generates a complete
 template while preserving all your customizations.
 
 ## Benchmarks & Performance
 
-VT Code is evaluated on industry-standard benchmarks to measure code generation
-quality and performance:
+Diapason is evaluated on industry-standard benchmarks to measure code
+generation quality and performance:
 
 ### HumanEval Results
 
@@ -418,7 +402,7 @@ python3 scripts/generate_benchmark_chart.py reports/HE_*.json --png
 
 ## Testing & Quality Assurance
 
-VT Code includes comprehensive testing infrastructure:
+Diapason includes comprehensive testing infrastructure:
 
 ### Test Categories
 
@@ -466,20 +450,20 @@ cargo clippy && cargo fmt
 
 - **GitHub Issues** - Report bugs and request features
 - **GitHub Discussions** - Community discussions and support
-- **Community Wiki** - [VT Code Wiki](https://github.com/vinhnx/VTCode/wiki) -
+- **Community Wiki** - [Diapason Wiki](https://github.com/leynos/vtcode/wiki) -
   getting started, configuration, providers, local models, skills, MCP,
   automation, security, and FAQ
 - **Documentation** - Comprehensive guides and tutorials
 
 ### Community Resources
 
-- **[Community Wiki](https://github.com/vinhnx/VTCode/wiki)** - getting
+- **[Community Wiki](https://github.com/leynos/vtcode/wiki)** - getting
   started, configuration, providers, local models, skills, MCP, automation,
   security, and FAQ
 - **[Main README](../README.md)** - Project overview and quick reference
-- **[GitHub Repository](https://github.com/vinhnx/vtcode)** - Source code and
+- **[GitHub Repository](https://github.com/leynos/vtcode)** - Source code and
   collaboration
-- **[Discussions](https://github.com/vinhnx/vtcode/discussions)** - Community
+- **[Discussions](https://github.com/leynos/vtcode/discussions)** - Community
   support
 
 ### Enterprise Support
@@ -492,12 +476,12 @@ cargo clippy && cargo fmt
 
 ## License & Attribution
 
-This documentation is part of the VT Code project, licensed under **MIT OR
+This documentation is part of the Diapason project, licensed under **MIT OR
 Apache-2.0**. See the main [README](../README.md) for details.
 
 ### Third-Party Attribution
 
-VT Code builds upon key developments in AI agent technology:
+Diapason builds upon key developments in AI agent technology:
 
 - **OpenAI Codex** (Apache-2.0) — OAuth flow, PTY process handling, MCP client
   architecture, Ollama and LM Studio provider integrations, tool handler
@@ -512,14 +496,14 @@ VT Code builds upon key developments in AI agent technology:
 
 ______________________________________________________________________
 
-**Documentation Version:** 3.1.0 **Last Updated:** June 28, 2026 **VT Code
+**Documentation Version:** 3.1.0 **Last Updated:** June 28, 2026 **Diapason
 Version:** 0.133.21
 
 **Ready to get started?** **[Installation Guide](../README.md#quick-start)**
 
 ## Documentation Version
 
-This documentation reflects version 0.133.21 of VT Code, which includes
+This documentation reflects version 0.133.21 of Diapason, which includes
 significant enhancements including:
 
 - GLM-5.3, GLM-5.2, Kimi K2.7, and GPT-5-Codex model support
@@ -533,13 +517,10 @@ significant enhancements including:
   selection
 - `web_search` and `defuddle_fetch` tools with TOML-driven network allowlist
 - query-led `code_search` for definitions, syntactic usages, literal text, and
-  matching paths in the advanced VT Code profile
+  matching paths in the advanced Diapason profile
 - Post-tool recovery cycle tracking with cap checks and temporary file cleanup
 - CLI `did you mean?` suggestions for unrecognized commands
 - `/continue` command to resume the most recent session
 - Loop detection improvements with blocked-streak fuse and read-extent awareness
 - Colorized CLI suggestions and case-insensitive `StatusLineMode`
   deserialization
-
-[homebrew-badge]: https://img.shields.io/badge/dynamic/json?url=https://formulae.brew.sh/api/formula/vtcode.json&query=$.versions.stable&label=homebrew
-[homebrew]: https://formulae.brew.sh/formula/vtcode

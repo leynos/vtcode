@@ -13,7 +13,7 @@ pub(crate) enum ValidationResult {
 }
 
 /// Canonicalized validation data reused across the execution path.
-pub(crate) type PreparedToolCall = vtcode_core::core::agent::harness_kernel::PreparedToolCall;
+pub(crate) type PreparedToolCall = diapason_core::core::agent::harness_kernel::PreparedToolCall;
 
 /// Consolidated state for tool outcomes to reduce signature bloat and keep handlers DRY.
 pub(crate) struct ToolOutcomeContext<'a, 'b> {

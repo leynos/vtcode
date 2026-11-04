@@ -4,19 +4,19 @@
 )]
 //! Open Responses Specification Compliance Tests.
 //!
-//! This test suite validates that VT Code's Open Responses implementation
+//! This test suite validates that Diapason's Open Responses implementation
 //! conforms to the requirements defined in the specification.
 
-use serde_json::json;
-use vtcode_core::open_responses::{
+use diapason_core::open_responses::{
     IncompleteReason, ItemStatus, MessageRole, OpenResponseError, OpenResponseErrorCode, OutputItem, Request, Response,
     ResponseBuilder, ResponseStatus, VecStreamEmitter, is_valid_extension_type,
 };
-use vtcode_core::{
+use diapason_core::{
     AgentMessageItem, ItemCompletedEvent, ItemStartedEvent, ItemUpdatedEvent, McpToolCallItem, McpToolCallStatus,
     ReasoningItem as ExecReasoningItem, ThreadEvent, ThreadItem, ThreadItemDetails, ThreadStartedEvent,
     TurnCompletedEvent, Usage,
 };
+use serde_json::json;
 
 #[test]
 fn test_response_object_compliance() {
@@ -145,7 +145,7 @@ fn test_incomplete_response_compliance() {
 #[test]
 fn test_custom_extension_compliance() {
     // Extensions MUST be prefixed with "slug:"
-    assert!(is_valid_extension_type("vtcode:file_change"));
+    assert!(is_valid_extension_type("diapason:file_change"));
     assert!(is_valid_extension_type("acme:search"));
     assert!(!is_valid_extension_type("invalid_type")); // No prefix
 }

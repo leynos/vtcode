@@ -1,16 +1,16 @@
-# VT Code Async Architecture Guide
+# Diapason Async Architecture Guide
 
-This guide explains VT Code's use of async/await and tokio, based on Ratatui
+This guide explains Diapason's use of async/await and tokio, based on Ratatui
 and terminal UI best practices.
 
-## When Should VT Code Use Async?
+## When Should Diapason Use Async?
 
 Based on the **Ratatui FAQ: "When should I use tokio and async/await?"**, VT
 Code uses async for three key reasons:
 
 ### 1. Non-Blocking Event Handling
 
-VT Code's main loop must handle three independent timers and one blocking I/O
+Diapason's main loop must handle three independent timers and one blocking I/O
 read without blocking:
 
 ```
@@ -23,9 +23,9 @@ read without blocking:
 ```
 
 Without async, polling each source would require sleeping, causing latency. With
-`tokio::select!`, VT Code reacts to whichever is ready first.
+`tokio::select!`, Diapason reacts to whichever is ready first.
 
-**File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+**File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 
 ```rust
 tokio::select! {
@@ -48,7 +48,7 @@ tokio::select! {
 
 ### 2. Concurrent Tool Execution
 
-VT Code spawns multiple async tasks for MCP tools, PTY commands, and LLM
+Diapason spawns multiple async tasks for MCP tools, PTY commands, and LLM
 requests:
 
 ```rust
@@ -60,7 +60,7 @@ let results = tokio::join!(
 );
 ```
 
-**Without async:** VT Code would block on the first tool, then the second.
+**Without async:** Diapason would block on the first tool, then the second.
 Response time = Tool1 + Tool2 + LLM.
 
 **With async:** Tools execute in parallel. Response time ≈ max(Tool1, Tool2,
@@ -68,7 +68,7 @@ LLM).
 
 ### 3. Streaming API Responses
 
-VT Code streams LLM responses token-by-token without blocking:
+Diapason streams LLM responses token-by-token without blocking:
 
 ```rust
 let mut stream = llm.stream(&prompt).await?;
@@ -80,7 +80,7 @@ while let Some(token) = stream.next().await {
 
 ## Architecture: Async vs. Synchronous Paths
 
-VT Code's event loop uses two modes:
+Diapason's event loop uses two modes:
 
 ### Mode 1: Single-Threaded Async (Recommended)
 
@@ -114,15 +114,15 @@ Synchronous main
 
 **Used for:**
 
-- One-shot CLI commands (`vtcode ask "prompt"`)
+- One-shot CLI commands (`diapason ask "prompt"`)
 - Automation runs (`-a` flag)
 - Tool policy testing
 
-## Key Async Patterns in VT Code
+## Key Async Patterns in Diapason
 
 ### Pattern 1: Spawned Event Handler
 
-**File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+**File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 
 ```rust
 fn start(&mut self) {
@@ -145,7 +145,7 @@ fn start(&mut self) {
 
 ### Pattern 2: Blocking I/O in Async Context
 
-**File:** `crates/codegen/vtcode-ui/src/tui/core_tui/runner/`
+**File:** `crates/codegen/diapason-ui/src/tui/core_tui/runner/`
 
 ```rust
 let event_fut = tokio::task::spawn_blocking(|| {
@@ -185,7 +185,7 @@ let results = tokio::join_all(tool_tasks).await;
 
 ### Pattern 4: Graceful Shutdown with CancellationToken
 
-**File:** `crates/codegen/vtcode-ui/src/tui/`
+**File:** `crates/codegen/diapason-ui/src/tui/`
 
 ```rust
 pub fn cancel(&self) {
@@ -340,10 +340,10 @@ async fn actor_loop(mut rx: mpsc::Receiver<ActorMessage>) {
 The
 [stdio MCP/LSP analysis](https://developerlife.com/2026/08/22/to-async-or-not-to-async-rust-mcp-server/)
 is right that a standalone 1:1 local pipe does not become better merely by
-adding an async runtime. VT Code still keeps Tokio at this boundary because the
-transport is embedded in a mixed async application that also multiplexes the
-TUI, provider streams, concurrent tools, and network MCP connections. We apply
-the article's reliability rules inside the async transport instead:
+adding an async runtime. Diapason still keeps Tokio at this boundary because
+the transport is embedded in a mixed async application that also multiplexes
+the TUI, provider streams, concurrent tools, and network MCP connections. We
+apply the article's reliability rules inside the async transport instead:
 
 - ACP and Copilot each have one bounded writer channel and one task that owns
   serialized stdin writes.
@@ -361,14 +361,14 @@ bridge when it reduces complexity. Do not introduce a synchronous island into
 these transports without preserving the same bounded buffering, serialized
 writes, response demultiplexing, and deterministic teardown guarantees.
 
-**Real examples in vtcode:**
+**Real examples in diapason:**
 
-| Component         | File                                                                                                  | Pattern                                                                                                                                                                 |
-| ----------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `StdioTransport`  | `crates/codegen/vtcode-acp/src/transport.rs` and `crates/codegen/vtcode-llm/src/copilot/transport.rs` | Handle sends JSON-RPC via bounded `mpsc`; background tasks handle stdin write, stdout read, and bounded/sanitized stderr diagnostics. Uses `oneshot` for RPC responses. |
-| `AsyncLineWriter` | `crates/codegen/vtcode-core/src/utils/async_line_writer.rs`                                           | Cloneable handle sends `LogMessage` via bounded `mpsc`; the actor bounds queued bytes/lines and periodically flushes through `spawn_blocking`.                          |
-| `TimeoutDetector` | `crates/codegen/vtcode-core/src/core/timeout_detector.rs`                                             | Global detector with `mpsc::UnboundedSender<String>` cleanup channel; background task processes end-operation requests from dropped `TimeoutHandle`s.                   |
-| `ProcessHandle`   | `crates/codegen/vtcode-bash-runner/src/pipe.rs`                                                       | Handle wraps channels for stdin, output broadcast, and exit status; separate writer, reader, and wait tasks.                                                            |
+| Component         | File                                                                                                      | Pattern                                                                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `StdioTransport`  | `crates/codegen/diapason-acp/src/transport.rs` and `crates/codegen/diapason-llm/src/copilot/transport.rs` | Handle sends JSON-RPC via bounded `mpsc`; background tasks handle stdin write, stdout read, and bounded/sanitized stderr diagnostics. Uses `oneshot` for RPC responses. |
+| `AsyncLineWriter` | `crates/codegen/diapason-core/src/utils/async_line_writer.rs`                                             | Cloneable handle sends `LogMessage` via bounded `mpsc`; the actor bounds queued bytes/lines and periodically flushes through `spawn_blocking`.                          |
+| `TimeoutDetector` | `crates/codegen/diapason-core/src/core/timeout_detector.rs`                                               | Global detector with `mpsc::UnboundedSender<String>` cleanup channel; background task processes end-operation requests from dropped `TimeoutHandle`s.                   |
+| `ProcessHandle`   | `crates/codegen/diapason-bash-runner/src/pipe.rs`                                                         | Handle wraps channels for stdin, output broadcast, and exit status; separate writer, reader, and wait tasks.                                                            |
 
 **When to use the actor pattern vs. simpler alternatives:**
 
@@ -389,11 +389,11 @@ benchmark the real workload first.
 
 The channel policy follows the data's correctness contract:
 
-| Data path                                       | Backpressure policy                                                                                                                                                                                                                                                                                                                                     | Shutdown policy                                                                                                                                                                                                                                                        |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Authoritative session `ThreadEvent` persistence | One bounded non-blocking handoff (`try_send`) keeps Tokio workers responsive. The queue has event-count and estimated-byte limits; saturation fails closed and reports the persistence failure, while accepted events remain ordered and are not silently dropped. Canonical files live under `<workspace>/.vtcode/sessions/<session_id>/events.jsonl`. | The runner closes and awaits the sink after terminal events; accepted queued events drain, and queue/append/flush failures make the task fail rather than being reported as success. Optional legacy exporters are separate and do not create global files by default. |
-| Diagnostic trajectory JSONL                     | Bounded by channel/line count and bytes. Saturation may drop records and increments diagnostics.                                                                                                                                                                                                                                                        | `flush()` remains best-effort for compatibility; the internal result path reports actor or file failures, and actor shutdown performs a final flush.                                                                                                                   |
-| Tool/read results                               | Explicit non-zero concurrency, bounded in-flight work, deterministic input-order assembly.                                                                                                                                                                                                                                                              | Caller cancellation drops the in-flight futures; no extra worker pool is introduced without measured benefit.                                                                                                                                                          |
+| Data path                                       | Backpressure policy                                                                                                                                                                                                                                                                                                                                                     | Shutdown policy                                                                                                                                                                                                                                                        |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Authoritative session `ThreadEvent` persistence | One bounded non-blocking handoff (`try_send`) keeps Tokio workers responsive. The queue has event-count and estimated-byte limits; saturation fails closed and reports the persistence failure, while accepted events remain ordered and are not silently dropped. Canonical files live under `<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`. | The runner closes and awaits the sink after terminal events; accepted queued events drain, and queue/append/flush failures make the task fail rather than being reported as success. Optional legacy exporters are separate and do not create global files by default. |
+| Diagnostic trajectory JSONL                     | Bounded by channel/line count and bytes. Saturation may drop records and increments diagnostics.                                                                                                                                                                                                                                                                        | `flush()` remains best-effort for compatibility; the internal result path reports actor or file failures, and actor shutdown performs a final flush.                                                                                                                   |
+| Tool/read results                               | Explicit non-zero concurrency, bounded in-flight work, deterministic input-order assembly.                                                                                                                                                                                                                                                                              | Caller cancellation drops the in-flight futures; no extra worker pool is introduced without measured benefit.                                                                                                                                                          |
 
 Every spawned stage must have an observable failure path and a clear owner for
 shutdown. Blocking filesystem work belongs in `spawn_blocking`; periodic
@@ -537,7 +537,7 @@ cancel_clone.cancel();  // Gracefully stop the task
 
 ### The Main Event Loop (Async)
 
-VT Code's main loop (in chat mode) typically looks like:
+Diapason's main loop (in chat mode) typically looks like:
 
 ```rust
 #[tokio::main]
@@ -584,9 +584,9 @@ Event::Key(key) if key.code == KeyCode::Enter => {
 
 ## Testing Async Code
 
-VT Code uses `#[tokio::test]` for async tests:
+Diapason uses `#[tokio::test]` for async tests:
 
-**File:** `crates/codegen/vtcode-core/src/hooks/lifecycle/tests.rs`
+**File:** `crates/codegen/diapason-core/src/hooks/lifecycle/tests.rs`
 
 ```rust
 #[tokio::test]
@@ -607,7 +607,7 @@ cargo test --lib  # Runs all #[tokio::test] tests
 
 ### Tokio Runtime
 
-VT Code uses the default tokio runtime (work-stealing scheduler, multiple OS
+Diapason uses the default tokio runtime (work-stealing scheduler, multiple OS
 threads):
 
 ```rust
@@ -629,7 +629,7 @@ async fn main() {
 
 ### Timeouts
 
-VT Code uses `tokio::time::timeout` for long operations:
+Diapason uses `tokio::time::timeout` for long operations:
 
 **File:** `src/agent/runloop/unified/async_mcp_manager.rs:5`
 
@@ -652,7 +652,7 @@ match result {
 
 ### Memory: Task Overhead
 
-Each spawned task allocates ~64 bytes. VT Code typically spawns:
+Each spawned task allocates ~64 bytes. Diapason typically spawns:
 
 - 1 event handler task
 - N tool execution tasks (concurrent)
@@ -662,14 +662,14 @@ For typical usage (5-10 concurrent operations), memory overhead is negligible.
 
 ### CPU: Context Switching
 
-Tokio's work-stealing scheduler minimizes context switches. Most of VT Code's
+Tokio's work-stealing scheduler minimizes context switches. Most of Diapason's
 async operations are I/O-bound (waiting for network, terminal, file system), so
 context switching is cheap.
 
 ### Latency: select! Fairness
 
 `tokio::select!` picks the first ready future. If multiple futures are ready,
-it picks in definition order. VT Code prioritizes shutdown > ticks > renders >
+it picks in definition order. Diapason prioritizes shutdown > ticks > renders >
 events to ensure responsiveness.
 
 ## See Also
@@ -678,5 +678,5 @@ events to ensure responsiveness.
 - [Tokio Tutorial](https://tokio.rs/tokio/tutorial)
 - [Tokio Select Documentation](https://tokio.rs/tokio/tutorial/select)
 - [Rust Async Book](https://rust-lang.github.io/async-book/)
-- `crates/codegen/vtcode-ui/src/tui/` - Event loop implementation
+- `crates/codegen/diapason-ui/src/tui/` - Event loop implementation
 - `src/agent/runloop/unified/tool_pipeline.rs` - Concurrent tool execution

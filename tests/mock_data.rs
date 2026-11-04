@@ -2,8 +2,8 @@
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."
 )]
+use diapason_core::config::constants::tools;
 use serde_json::{Value, json};
-use vtcode_core::config::constants::tools;
 
 /// Mock Gemini API responses for testing
 pub struct MockGeminiResponses;
@@ -281,9 +281,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
     pub fn json_config_file() -> &'static str {
         r#"{
   "project": {
-    "name": "vtcode-test",
+    "name": "diapason-test",
     "version": "0.1.0",
-    "description": "Test configuration for vtcode"
+    "description": "Test configuration for diapason"
   },
   "settings": {
     "debug": true,
@@ -305,7 +305,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
     "format": "json",
     "outputs": ["console", "file"],
     "file": {
-      "path": "/var/log/vtcode.log",
+      "path": "/var/log/diapason.log",
       "max_size": "10MB",
       "retention": "30d"
     }
@@ -319,19 +319,19 @@ pub struct MockCliArgs;
 
 impl MockCliArgs {
     pub fn ask_command(query: &str) -> Vec<String> {
-        vec!["vtcode".to_string(), "ask".to_string(), query.to_string()]
+        vec!["diapason".to_string(), "ask".to_string(), query.to_string()]
     }
 
     pub fn analyze_command(path: &str) -> Vec<String> {
-        vec!["vtcode".to_string(), "analyze".to_string(), path.to_string()]
+        vec!["diapason".to_string(), "analyze".to_string(), path.to_string()]
     }
 
     pub fn validate_command() -> Vec<String> {
-        vec!["vtcode".to_string(), "validate".to_string()]
+        vec!["diapason".to_string(), "validate".to_string()]
     }
 
     pub fn chat_command() -> Vec<String> {
-        vec!["vtcode".to_string(), "chat".to_string()]
+        vec!["diapason".to_string(), "chat".to_string()]
     }
 }
 

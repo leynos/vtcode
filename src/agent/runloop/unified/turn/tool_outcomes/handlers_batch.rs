@@ -1,6 +1,6 @@
 use anyhow::Result;
+use diapason_core::core::agent::harness_kernel::{PreparedToolBatch, PreparedToolBatchKind};
 use futures::stream::{FuturesUnordered, StreamExt};
-use vtcode_core::core::agent::harness_kernel::{PreparedToolBatch, PreparedToolBatchKind};
 
 use super::{
     PreparedToolCall, ToolOutcomeContext, ValidationTransition, block_mutation_until_verification,
@@ -26,9 +26,9 @@ struct ValidatedToolCall<'a> {
 }
 
 fn snapshot_circuit_diagnostics(
-    registry: &vtcode_core::tools::registry::ToolRegistry,
+    registry: &diapason_core::tools::registry::ToolRegistry,
     tool_name: &str,
-) -> Option<vtcode_core::tools::circuit_breaker::ToolCircuitDiagnostics> {
+) -> Option<diapason_core::tools::circuit_breaker::ToolCircuitDiagnostics> {
     registry
         .shared_circuit_breaker()
         .map(|breaker| breaker.get_diagnostics(tool_name))
@@ -37,7 +37,7 @@ fn snapshot_circuit_diagnostics(
 async fn record_circuit_transition(
     ctx: &TurnProcessingContext<'_>,
     tool_name: &str,
-    before: Option<vtcode_core::tools::circuit_breaker::ToolCircuitDiagnostics>,
+    before: Option<diapason_core::tools::circuit_breaker::ToolCircuitDiagnostics>,
 ) {
     let Some(before) = before else {
         return;
@@ -96,13 +96,13 @@ fn execution_group_stats_from_layout(layout: &[(PreparedToolBatchKind, usize)]) 
 }
 
 fn exec_session_tool_active(tool_name: &str) -> bool {
-    use vtcode_core::config::constants::tools as tool_names;
+    use diapason_core::config::constants::tools as tool_names;
 
     matches!(tool_name, tool_names::RUN_PTY_CMD | tool_names::UNIFIED_EXEC | tool_names::SEND_PTY_INPUT)
 }
 
 async fn terminate_group_exec_sessions_if_needed(
-    registry: &vtcode_core::tools::registry::ToolRegistry,
+    registry: &diapason_core::tools::registry::ToolRegistry,
     group_has_exec_sessions: bool,
     log_message: &str,
 ) {
@@ -112,7 +112,7 @@ async fn terminate_group_exec_sessions_if_needed(
 }
 
 async fn interrupt_parallel_group<F>(
-    registry: &vtcode_core::tools::registry::ToolRegistry,
+    registry: &diapason_core::tools::registry::ToolRegistry,
     execution_futures: &mut FuturesUnordered<F>,
     group_has_exec_sessions: bool,
     turn_result: crate::agent::runloop::unified::turn::context::TurnLoopResult,
@@ -367,7 +367,7 @@ pub(crate) async fn handle_tool_call_batch_prepared<'a, 'b>(
     let planned_layout = planned_execution_layout(&validated_calls, t_ctx.ctx.full_auto, max_parallel_tool_calls);
     let (groups, parallel_groups, max_group_size) = execution_group_stats_from_layout(&planned_layout);
     tracing::debug!(
-        target: "vtcode.turn.metrics",
+        target: "diapason.turn.metrics",
         metric = "tool_dispatch_groups",
         groups,
         parallel_groups,
@@ -436,7 +436,7 @@ pub(crate) async fn handle_tool_call_batch_prepared<'a, 'b>(
     if batch_tracker.entries.len() > 1 {
         let stats = batch_tracker.stats();
         tracing::info!(
-            target: "vtcode.tool.batch",
+            target: "diapason.tool.batch",
             total = stats.total,
             succeeded = stats.succeeded,
             failed = stats.failed,
@@ -557,10 +557,10 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use diapason_core::config::constants::tools;
+    use diapason_core::tools::registry::ToolRegistry;
     use futures::stream::FuturesUnordered;
     use tempfile::TempDir;
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::tools::registry::ToolRegistry;
 
     use super::{PreparedToolCall, ValidatedToolCall, interrupt_parallel_group, planned_execution_group_stats};
     use crate::agent::runloop::unified::turn::context::{
@@ -574,7 +574,7 @@ mod tests {
         parallel_safe_after_preflight: bool,
         effective_args: serde_json::Value,
     ) -> ValidatedToolCall<'a> {
-        let raw_tool_call = vtcode_core::llm::provider::ToolCall::function(
+        let raw_tool_call = diapason_core::llm::provider::ToolCall::function(
             call_id.to_string(),
             tool_name.to_string(),
             serde_json::to_string(&effective_args).expect("serialize args"),
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn build_execution_groups_respects_post_preflight_parallel_safety() {
-        let raw_tool_call = vtcode_core::llm::provider::ToolCall::function(
+        let raw_tool_call = diapason_core::llm::provider::ToolCall::function(
             "call_remapped".to_string(),
             tools::UNIFIED_FILE.to_string(),
             serde_json::json!({"path":"src/main.rs"}).to_string(),

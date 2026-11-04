@@ -1,11 +1,11 @@
 use anyhow::{Context, Result, anyhow, bail};
-use vtcode_core::config::VTCodeConfig;
-use vtcode_core::config::models::ModelId;
-use vtcode_core::config::types::AgentConfig as CoreAgentConfig;
-use vtcode_core::core::agent::runner::{AgentRunner, RunnerSettings};
-use vtcode_core::core::agent::types::AgentType;
-use vtcode_core::core::threads::ThreadBootstrap;
-use vtcode_core::utils::file_utils::write_file_with_context_sync;
+use diapason_core::config::DiapasonConfig;
+use diapason_core::config::models::ModelId;
+use diapason_core::config::types::AgentConfig as CoreAgentConfig;
+use diapason_core::core::agent::runner::{AgentRunner, RunnerSettings};
+use diapason_core::core::agent::types::AgentType;
+use diapason_core::core::threads::ThreadBootstrap;
+use diapason_core::utils::file_utils::write_file_with_context_sync;
 
 use crate::startup::ensure_full_auto_workspace_trust;
 
@@ -18,7 +18,7 @@ const ERROR_SPEC_EMPTY: &str = "Benchmark specification is empty.";
 
 pub async fn handle_benchmark_command(
     config: &CoreAgentConfig,
-    vt_cfg: &VTCodeConfig,
+    vt_cfg: &DiapasonConfig,
     options: BenchmarkCommandOptions,
     full_auto_requested: bool,
 ) -> Result<()> {
@@ -57,7 +57,7 @@ pub async fn handle_benchmark_command(
     )
     .with_context(|| {
         format!(
-            "Model '{}' is not recognized for benchmark execution. Update vtcode.toml to a supported identifier.",
+            "Model '{}' is not recognized for benchmark execution. Update config.toml to a supported identifier.",
             config.model
         )
     })?;

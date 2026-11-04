@@ -1,4 +1,4 @@
-//! `vtcode bench-allocator` — measure allocator RSS behaviour under a bursty,
+//! `diapason bench-allocator` — measure allocator RSS behaviour under a bursty,
 //! sparse Tokio workload.
 //!
 //! Reproduces the pattern from the mimalloc-vs-jemalloc analysis: bursts of many
@@ -12,11 +12,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use diapason_commons::memory::{sample_peak_rss_mb, sample_rss_mb};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
-use vtcode_commons::memory::{sample_peak_rss_mb, sample_rss_mb};
 
-use vtcode_core::cli::args::BenchAllocatorArgs;
+use diapason_core::cli::args::BenchAllocatorArgs;
 
 /// A single short-lived leaf task: a tiny clone plus an I/O wait. The bulk
 /// allocations (payload + token vector) live in the parent event, mirroring the

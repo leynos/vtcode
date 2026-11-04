@@ -1,6 +1,6 @@
-# Contributing to VT Code
+# Contributing to Diapason
 
-Welcome to VT Code! We're excited that you're interested in contributing to
+Welcome to Diapason! We're excited that you're interested in contributing to
 this Rust-based terminal coding agent. This document outlines the guidelines
 and best practices for contributing to the project.
 
@@ -18,7 +18,7 @@ and best practices for contributing to the project.
 
 ## Getting Started
 
-VT Code is a Rust-based terminal coding agent with LLM-native code
+Diapason is a Rust-based terminal coding agent with LLM-native code
 understanding and robust shell safety. It supports multiple LLM providers with
 automatic failover, prompt caching, and token-efficient context management.
 
@@ -47,8 +47,8 @@ Before contributing, please familiarize yourself with:
 
 ```bash
 # 1. Fork and clone the repository
-git clone https://github.com/your-username/vtcode.git
-cd vtcode
+git clone https://github.com/leynos/vtcode.git diapason
+cd diapason
 
 # 2. Build the project
 cargo build
@@ -60,7 +60,7 @@ cargo test
 cargo clippy
 cargo fmt --check
 
-# 5. Try running VT Code
+# 5. Try running Diapason
 cargo run -- ask "Hello world"
 ```
 
@@ -78,30 +78,31 @@ export OPENAI_API_KEY="sk-..."  # Replace with your actual API key
 Cargo workspace with ~30 crates. Rust stable, MSRV 1.88, edition 2024.
 
 - **`src/`** (root): Binary crate — CLI, session bootstrap
-- **`vtcode-core/`**: Agent loop, tools, prompts, LLM orchestration, UI
-- **`vtcode-ui/`**: Unified UI — design system, theme registry, TUI framework
-- **`vtcode-config/`**: Config loading and schema
-- **`vtcode-bash-runner/`**: Shell execution sandbox
-- **`vtcode-acp/`**: Agent Client Protocol (Zed)
-- **`vtcode-auth/`**: OAuth and credential storage
-- **`vtcode-indexer/`**: Code indexing and search
-- **`vtcode-exec-events/`**: `ThreadEvent` contract and ATIF export
-- **`vtcode-commons/`**: Shared utilities
-- **`vtcode-macros/`**: Procedural macros
-- **`vtcode-llm/`**: LLM provider abstraction and streaming
-- **`vtcode-skills/`**: Skill discovery, loading, and validation
-- **`vtcode-safety/`**: Command safety detection and sandboxing
-- **`vtcode-a2a/`**: Agent2Agent protocol client and server
-- **`vtcode-mcp/`**: Model Context Protocol client and tool discovery
+- **`diapason-core/`**: Agent loop, tools, prompts, LLM orchestration, UI
+- **`diapason-ui/`**: Unified UI — design system, theme registry, TUI framework
+- **`diapason-config/`**: Config loading and schema
+- **`diapason-bash-runner/`**: Shell execution sandbox
+- **`diapason-acp/`**: Agent Client Protocol (Zed)
+- **`diapason-auth/`**: OAuth and credential storage
+- **`diapason-indexer/`**: Code indexing and search
+- **`diapason-exec-events/`**: `ThreadEvent` contract and ATIF export
+- **`diapason-commons/`**: Shared utilities
+- **`diapason-macros/`**: Procedural macros
+- **`diapason-llm/`**: LLM provider abstraction and streaming
+- **`diapason-skills/`**: Skill discovery, loading, and validation
+- **`diapason-safety/`**: Command safety detection and sandboxing
+- **`diapason-a2a/`**: Agent2Agent protocol client and server
+- **`diapason-mcp/`**: Model Context Protocol client and tool discovery
 - **`crates/codegen/xtask/`**: Release packaging automation
 
 ### Key Directories
 
 - **`docs/`**: Documentation files
 - **`tests/`**: Integration and end-to-end tests
-- **`vtcode.toml`**: Configuration file (never hardcode values, always read
+- **`config.toml`**: Configuration file (never hardcode values, always read
   from config)
-- **`crates/codegen/vtcode-core/src/config/constants.rs`**: Constants definition
+- **`crates/codegen/diapason-core/src/config/constants.rs`**: Constants
+  definition
 - **`docs/models.json`**: Model IDs for providers
 
 ## Code Style
@@ -114,8 +115,8 @@ Cargo workspace with ~30 crates. Rust stable, MSRV 1.88, edition 2024.
   fallible functions
 - **Early Returns**: Prefer early returns over nested if statements
 - **Variable Names**: Use descriptive variable names
-- **No hardcoded values**: Always read from `vtcode.toml` or
-  `crates/codegen/vtcode-core/src/config/constants.rs`
+- **No hardcoded values**: Always read from `config.toml` or
+  `crates/codegen/diapason-core/src/config/constants.rs`
 - **No emojis in code**: Maintain professional code style
 
 ### Documentation
@@ -160,7 +161,7 @@ cargo nextest run
 cargo nextest run test_name
 
 # Run single crate
-cargo nextest run -p vtcode-core
+cargo nextest run -p diapason-core
 
 # Fallback if nextest is not installed
 cargo test --workspace
@@ -170,7 +171,7 @@ cargo test --workspace
 
 - Unit tests: Inline with the code they test, in `#[cfg(test)]` modules
 - Integration tests: In the `tests/` directory at workspace root
-- Harness regressions: `cargo test -p vtcode-core --test pty_tests`
+- Harness regressions: `cargo test -p diapason-core --test pty_tests`
 - Follow the Arrange-Act-Assert pattern
 - Use descriptive test names that explain what is being tested
 
@@ -244,9 +245,10 @@ pub async fn example_function(path: &str) -> Result<()> {
 
 ### Configuration
 
-- Never hardcode values - always read from `vtcode.toml`
+- Never hardcode values - always read from `config.toml`
 - Validate configuration values at runtime
-- Use constants defined in `crates/codegen/vtcode-core/src/config/constants.rs`
+- Use constants defined in
+  `crates/codegen/diapason-core/src/config/constants.rs`
 
 ### Security Practices
 
@@ -266,7 +268,7 @@ pub async fn example_function(path: &str) -> Result<()> {
   MCP/manifests preferred for external extensions
 - **Extension Boundaries**: Prefer config, manifests, plugins, and MCP over new
   public Rust traits for third-party integrations
-- **Configuration Engine**: Deserializes `vtcode.toml` into validated structs
+- **Configuration Engine**: Deserializes `config.toml` into validated structs
 - **Context Engineering System**: Implements iterative, per-turn curation with
   token budgeting
 - **Security & Safety**: Tree-sitter-bash for critical shell command validation
@@ -284,9 +286,9 @@ pub async fn example_function(path: &str) -> Result<()> {
 ### Need Help?
 
 - **GitHub Issues**: Report bugs and request features at
-  [GitHub Issues](https://github.com/vinhnx/vtcode/issues)
+  [GitHub Issues](https://github.com/leynos/vtcode/issues)
 - **Discussions**: Ask questions and discuss development in
-  [GitHub Discussions](https://github.com/vinhnx/vtcode/discussions)
+  [GitHub Discussions](https://github.com/leynos/vtcode/discussions)
 
 ### Questions?
 
@@ -296,5 +298,5 @@ channel. We're committed to helping new contributors get up to speed.
 
 ______________________________________________________________________
 
-Thank you for contributing to VT Code and helping make it a better tool for
+Thank you for contributing to Diapason and helping make it a better tool for
 developers!

@@ -3,16 +3,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use vtcode_core::compaction::PrefireState;
-use vtcode_core::config::WorkspaceTrustLevel;
-use vtcode_core::core::agent::harness_kernel::hash_value;
-use vtcode_core::core::agent::request_envelope::{SegmentBoundaryReason, SessionRequestEnvelope};
-use vtcode_core::exec::events::Usage as HarnessUsage;
-use vtcode_core::llm::provider::{
+use diapason_core::compaction::PrefireState;
+use diapason_core::config::WorkspaceTrustLevel;
+use diapason_core::core::agent::harness_kernel::hash_value;
+use diapason_core::core::agent::request_envelope::{SegmentBoundaryReason, SessionRequestEnvelope};
+use diapason_core::exec::events::Usage as HarnessUsage;
+use diapason_core::llm::provider::{
     Message, PromptCacheProfile, ResponsesContinuationState, ToolDefinition, responses_continuation_key,
 };
-use vtcode_core::llm::request_gap::RequestGapTracker;
-use vtcode_core::llm::usage_cost;
+use diapason_core::llm::request_gap::RequestGapTracker;
+use diapason_core::llm::usage_cost;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AutoPermissionDenial {
@@ -64,10 +64,10 @@ pub(crate) struct SessionStats {
     /// Whether Vim-style prompt editing is enabled for this session.
     pub vim_mode_enabled: bool,
     // Phase 4 Integration: Resilient execution components
-    pub circuit_breaker: Arc<vtcode_core::tools::circuit_breaker::CircuitBreaker>,
-    pub tool_health_tracker: Arc<vtcode_core::tools::health::ToolHealthTracker>,
-    pub rate_limiter: Arc<vtcode_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
-    pub validation_cache: Arc<vtcode_core::tools::validation_cache::ValidationCache>,
+    pub circuit_breaker: Arc<diapason_core::tools::circuit_breaker::CircuitBreaker>,
+    pub tool_health_tracker: Arc<diapason_core::tools::health::ToolHealthTracker>,
+    pub rate_limiter: Arc<diapason_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
+    pub validation_cache: Arc<diapason_core::tools::validation_cache::ValidationCache>,
 
     /// Count of consecutive minimal follow-up prompts (e.g. "continue", "retry")
     follow_up_prompt_streak: usize,
@@ -303,7 +303,7 @@ impl SessionStats {
 
     pub(crate) fn record_tool(&mut self, name: &str) {
         let normalized_name =
-            vtcode_core::tools::tool_intent::canonical_command_session_tool_name(name).unwrap_or(name);
+            diapason_core::tools::tool_intent::canonical_command_session_tool_name(name).unwrap_or(name);
         self.tools.insert(normalized_name.to_string());
     }
 
@@ -315,7 +315,7 @@ impl SessionStats {
         self.tools.iter().cloned().collect()
     }
 
-    pub(crate) fn record_usage(&mut self, provider: &str, usage: &Option<vtcode_core::llm::provider::Usage>) {
+    pub(crate) fn record_usage(&mut self, provider: &str, usage: &Option<diapason_core::llm::provider::Usage>) {
         let Some(usage) = usage else {
             return;
         };
@@ -441,7 +441,7 @@ impl SessionStats {
         self.stop_reason = None;
         self.request_gap = RequestGapTracker::default();
         self.prefire = PrefireState::default();
-        self.auto_compact_suppressed = vtcode_core::compaction::SUPPRESS_NONE;
+        self.auto_compact_suppressed = diapason_core::compaction::SUPPRESS_NONE;
     }
 
     pub(crate) fn register_follow_up_prompt(&mut self, input: &str) -> FollowUpPromptAction {
@@ -965,10 +965,10 @@ mod tests {
         AutoPermissionDenial, CtrlCSignal, CtrlCState, FollowUpPromptAction, PromptCacheDiagnostics, SessionStats,
         is_follow_up_prompt_like, should_enforce_safe_mode_prompts,
     };
-    use vtcode_core::config::WorkspaceTrustLevel;
-    use vtcode_core::config::constants::tools;
-    use vtcode_core::core::agent::request_envelope::SegmentBoundaryReason;
-    use vtcode_core::llm::provider::ToolDefinition;
+    use diapason_core::config::WorkspaceTrustLevel;
+    use diapason_core::config::constants::tools;
+    use diapason_core::core::agent::request_envelope::SegmentBoundaryReason;
+    use diapason_core::llm::provider::ToolDefinition;
 
     fn function_tool(name: &str) -> ToolDefinition {
         ToolDefinition::function(name.to_string(), name.to_string(), serde_json::json!({"type": "object"}))
@@ -1110,7 +1110,7 @@ mod tests {
     /// `RequestGapTracker` correctly. Exhaustive edge-case coverage
     /// (no-prior-request, below-threshold, above-threshold) lives on
     /// `RequestGapTracker`'s own unit tests in
-    /// `vtcode_core::llm::request_gap`.
+    /// `diapason_core::llm::request_gap`.
     #[test]
     fn cache_gap_exceeds_delegates_to_request_gap_tracker() {
         let mut stats = SessionStats::default();
@@ -1307,8 +1307,8 @@ mod tests {
     #[test]
     fn previous_response_chain_clears_only_matching_scope() {
         let mut stats = SessionStats::default();
-        let openai_messages = vec![vtcode_core::llm::provider::Message::user("hello".to_string())];
-        let gemini_messages = vec![vtcode_core::llm::provider::Message::user("hi".to_string())];
+        let openai_messages = vec![diapason_core::llm::provider::Message::user("hello".to_string())];
+        let gemini_messages = vec![diapason_core::llm::provider::Message::user("hi".to_string())];
         stats.set_previous_response_chain("openai", "gpt-5.6-sol", Some("resp_openai"), &openai_messages);
         stats.set_previous_response_chain("gemini", "gemini-2.5-pro", Some("resp_gemini"), &gemini_messages);
 
@@ -1328,7 +1328,7 @@ mod tests {
     #[test]
     fn shared_previous_response_chain_setter_preserves_message_arc() {
         let mut stats = SessionStats::default();
-        let messages = Arc::new(vec![vtcode_core::llm::provider::Message::user("hello".to_string())]);
+        let messages = Arc::new(vec![diapason_core::llm::provider::Message::user("hello".to_string())]);
 
         stats.set_previous_response_chain_shared(
             "gemini",

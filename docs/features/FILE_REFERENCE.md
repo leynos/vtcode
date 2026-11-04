@@ -3,7 +3,7 @@
 ## Overview
 
 The file reference feature allows users to target specific files in their
-codebase using the "@" symbol in the VT Code TUI. This provides context-aware
+codebase using the "@" symbol in the Diapason TUI. This provides context-aware
 operations by explicitly specifying which files are relevant to the current
 query.
 
@@ -33,10 +33,10 @@ query.
 References the main.rs file in the src directory.
 
 ```
-@vtcode.toml
+@config.toml
 ```
 
-References the vtcode.toml configuration file.
+References the config.toml configuration file.
 
 ```
 @ 
@@ -67,17 +67,18 @@ The file browser appears as a centered modal overlay that:
 ### Components
 
 1. **File Palette Module**
-   (`crates/codegen/vtcode-core/src/ui/tui/file_palette.rs`)
+   (`crates/codegen/diapason-core/src/ui/tui/file_palette.rs`)
    - Manages file list state
    - Handles filtering and pagination
-   - Integrates with vtcode-indexer
+   - Integrates with diapason-indexer
 
-2. **Session Integration** (`crates/codegen/vtcode-core/src/ui/tui/session.rs`)
+2. **Session Integration**
+   (`crates/codegen/diapason-core/src/ui/tui/session.rs`)
    - Detects "@" symbol in input
    - Triggers file palette display
    - Handles file selection events
 
-3. **Indexer Integration** (`vtcode-indexer`)
+3. **Indexer Integration** (`diapason-indexer`)
    - Provides file list from workspace
    - Respects .gitignore patterns
    - Filters binary files

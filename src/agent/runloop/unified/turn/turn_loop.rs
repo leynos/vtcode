@@ -4,7 +4,7 @@
 //!   - Main loop policy and break/continue rules stay in this root.
 //!   - Post-tool recovery, usage accounting, and completion notification helpers live in `turn_loop/` support modules.
 //! - Constraints: Preserve turn-phase transitions and recovery semantics when moving helpers out of the root.
-//! - Verify: `cargo check -p vtcode && cargo test -p vtcode --bin vtcode turn_loop`
+//! - Verify: `cargo check -p diapason && cargo test -p diapason --bin diapason turn_loop`
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -12,18 +12,18 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use diapason_core::acp::ToolPermissionCache;
+use diapason_core::config::loader::DiapasonConfig;
+use diapason_core::core::agent::runtime::RuntimeSteering;
+use diapason_core::core::decision_tracker::DecisionTracker;
+use diapason_core::core::trajectory::TrajectoryLogger;
+use diapason_core::exec::events::Usage as HarnessUsage;
+use diapason_core::hooks::LifecycleHookEngine;
+use diapason_core::llm::provider as uni;
+use diapason_core::tools::{ApprovalRecorder, ToolRegistry, ToolResultCache};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::{InlineHandle, InlineSession};
 use tokio::sync::RwLock;
-use vtcode_core::acp::ToolPermissionCache;
-use vtcode_core::config::loader::VTCodeConfig;
-use vtcode_core::core::agent::runtime::RuntimeSteering;
-use vtcode_core::core::decision_tracker::DecisionTracker;
-use vtcode_core::core::trajectory::TrajectoryLogger;
-use vtcode_core::exec::events::Usage as HarnessUsage;
-use vtcode_core::hooks::LifecycleHookEngine;
-use vtcode_core::llm::provider as uni;
-use vtcode_core::tools::{ApprovalRecorder, ToolRegistry, ToolResultCache};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::{InlineHandle, InlineSession};
 
 use crate::agent::runloop::unified::inline_events::harness::{
     HarnessEventEmitter, harness_event, turn_blocked_event, turn_completed_event, turn_failed_event, turn_started_event,
@@ -50,6 +50,9 @@ mod usage_accounting;
 
 // Using `tool_output_handler::handle_pipeline_output_from_turn_ctx` adapter where needed
 
+use diapason_core::config::types::AgentConfig;
+use diapason_core::core::agent::error_recovery::ErrorType;
+use diapason_core::primary_agent::ActivePrimaryAgentState;
 use notifications::emit_turn_outcome_notification;
 #[cfg(test)]
 use post_tool_recovery::PostToolFailureRecovery;
@@ -66,9 +69,6 @@ use post_tool_recovery::{
 use recovery_compaction::current_turn_preserve_index;
 use recovery_compaction::{RecoveryCompactionRequest, compact_before_tool_enabled_retry};
 use usage_accounting::{accumulate_turn_usage, estimate_session_costs, has_turn_usage, stop_reason_from_finish_reason};
-use vtcode_core::config::types::AgentConfig;
-use vtcode_core::core::agent::error_recovery::ErrorType;
-use vtcode_core::primary_agent::ActivePrimaryAgentState;
 
 use crate::agent::runloop::mcp_events;
 use crate::agent::runloop::unified::turn::tool_outcomes::helpers::{
@@ -102,7 +102,7 @@ const MAX_RECOVERY_RETRIES: u8 = 3;
 /// safeguards still bound those failure paths.
 ///
 /// Observed in checkpoint turn_594: a simple "what functions/structs are
-/// defined in crates/codegen/vtcode-core/src/tools/registry?" task produced 4 identical
+/// defined in crates/codegen/diapason-core/src/tools/registry?" task produced 4 identical
 /// 6500-token outline responses and burned ~90 seconds.  Capping at 2
 /// consecutive responses terminate the runaway loop while still allowing one
 /// retry for genuine recovery scenarios.
@@ -182,7 +182,7 @@ const PLANNING_INTERVIEW_DENIED_NO_DRAFT_NOTICE: &str = "Planning synthesis did 
 /// User-facing final answer for the budget-exhausted plan-mode dead end. The
 /// the planning session stays alive so `implement` / `keep planning` still
 /// work. Use this variant when an approval-ready draft was persisted.
-const PLANNING_BUDGET_EXHAUSTED_USER_NOTICE: &str = "Planning research reached its safe budget before synthesis completed. The evidence and current plan draft are preserved in the session plan file (.vtcode/plans/); retry approval or revision from the preserved plan.";
+const PLANNING_BUDGET_EXHAUSTED_USER_NOTICE: &str = "Planning research reached its safe budget before synthesis completed. The evidence and current plan draft are preserved in the session plan file (.diapason/plans/); retry approval or revision from the preserved plan.";
 /// No-draft variant of [`PLANNING_BUDGET_EXHAUSTED_USER_NOTICE`]. Used when
 /// budget was exhausted but no approval-ready plan was produced. Does NOT
 /// mention a plan draft or plan file, consistent with the appended
@@ -191,7 +191,7 @@ const PLANNING_BUDGET_EXHAUSTED_NO_DRAFT_NOTICE: &str = "Planning research reach
 /// User-facing final answer for the recovery-exhausted plan-mode dead end.
 /// See [`PLANNING_BUDGET_EXHAUSTED_USER_NOTICE`]. Use this variant when an
 /// approval-ready draft was persisted.
-const PLANNING_RECOVERY_EXHAUSTED_USER_NOTICE: &str = "Plan synthesis failed after repeated recovery attempts (provider errors or saturated context). The research gathered and the current plan draft are preserved in the session plan file (.vtcode/plans/).";
+const PLANNING_RECOVERY_EXHAUSTED_USER_NOTICE: &str = "Plan synthesis failed after repeated recovery attempts (provider errors or saturated context). The research gathered and the current plan draft are preserved in the session plan file (.diapason/plans/).";
 /// No-draft variant of [`PLANNING_RECOVERY_EXHAUSTED_USER_NOTICE`]. Used when
 /// recovery is exhausted but no approval-ready plan was produced.
 const PLANNING_RECOVERY_EXHAUSTED_NO_DRAFT_NOTICE: &str = "Plan synthesis failed after repeated recovery attempts (provider errors or saturated context). The research gathered this turn is preserved in this conversation. Re-state what you'd like to plan; the next turn will reuse the evidence already gathered instead of re-exploring.";
@@ -391,7 +391,7 @@ fn completed_turn_requires_final_response(result: &TurnLoopResult) -> bool {
 pub(crate) struct TurnLoopOutcome {
     pub result: TurnLoopResult,
     pub turn_modified_files: BTreeSet<PathBuf>,
-    pub turn_diagnostics: vtcode_core::core::agent::snapshots::SnapshotTurnDiagnostics,
+    pub turn_diagnostics: diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics,
     /// When set, the interaction loop should switch the active primary agent
     /// to this name after the turn completes.
     pub pending_primary_agent: Option<String>,
@@ -432,18 +432,18 @@ pub(crate) struct TurnLoopContext<'a> {
     pub lifecycle_hooks: Option<&'a LifecycleHookEngine>,
     pub default_placeholder: &'a Option<String>,
     pub tool_permission_cache: &'a Arc<RwLock<ToolPermissionCache>>,
-    pub permissions_state: &'a Arc<RwLock<vtcode_core::config::PermissionsConfig>>,
+    pub permissions_state: &'a Arc<RwLock<diapason_core::config::PermissionsConfig>>,
     pub safety_validator: &'a Arc<ToolCallSafetyValidator>,
-    pub circuit_breaker: &'a Arc<vtcode_core::tools::circuit_breaker::CircuitBreaker>,
-    pub tool_health_tracker: &'a Arc<vtcode_core::tools::health::ToolHealthTracker>,
-    pub rate_limiter: &'a Arc<vtcode_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
-    pub telemetry: &'a Arc<vtcode_core::core::telemetry::TelemetryManager>,
-    pub autonomous_executor: &'a Arc<vtcode_core::tools::autonomous_executor::AutonomousExecutor>,
-    pub error_recovery: &'a Arc<RwLock<vtcode_core::core::agent::error_recovery::ErrorRecoveryState>>,
+    pub circuit_breaker: &'a Arc<diapason_core::tools::circuit_breaker::CircuitBreaker>,
+    pub tool_health_tracker: &'a Arc<diapason_core::tools::health::ToolHealthTracker>,
+    pub rate_limiter: &'a Arc<diapason_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
+    pub telemetry: &'a Arc<diapason_core::core::telemetry::TelemetryManager>,
+    pub autonomous_executor: &'a Arc<diapason_core::tools::autonomous_executor::AutonomousExecutor>,
+    pub error_recovery: &'a Arc<RwLock<diapason_core::core::agent::error_recovery::ErrorRecoveryState>>,
     pub harness_state: &'a mut HarnessTurnState,
     pub harness_emitter: Option<&'a HarnessEventEmitter>,
     pub config: &'a mut AgentConfig,
-    pub vt_cfg: Option<&'a VTCodeConfig>,
+    pub vt_cfg: Option<&'a DiapasonConfig>,
     pub turn_metadata_cache: &'a mut Option<Option<serde_json::Value>>,
     pub provider_client: &'a mut Box<dyn uni::LLMProvider>,
     pub traj: &'a TrajectoryLogger,
@@ -480,18 +480,18 @@ impl<'a> TurnLoopContext<'a> {
         lifecycle_hooks: Option<&'a LifecycleHookEngine>,
         default_placeholder: &'a Option<String>,
         tool_permission_cache: &'a Arc<RwLock<ToolPermissionCache>>,
-        permissions_state: &'a Arc<RwLock<vtcode_core::config::PermissionsConfig>>,
+        permissions_state: &'a Arc<RwLock<diapason_core::config::PermissionsConfig>>,
         safety_validator: &'a Arc<ToolCallSafetyValidator>,
-        circuit_breaker: &'a Arc<vtcode_core::tools::circuit_breaker::CircuitBreaker>,
-        tool_health_tracker: &'a Arc<vtcode_core::tools::health::ToolHealthTracker>,
-        rate_limiter: &'a Arc<vtcode_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
-        telemetry: &'a Arc<vtcode_core::core::telemetry::TelemetryManager>,
-        autonomous_executor: &'a Arc<vtcode_core::tools::autonomous_executor::AutonomousExecutor>,
-        error_recovery: &'a Arc<RwLock<vtcode_core::core::agent::error_recovery::ErrorRecoveryState>>,
+        circuit_breaker: &'a Arc<diapason_core::tools::circuit_breaker::CircuitBreaker>,
+        tool_health_tracker: &'a Arc<diapason_core::tools::health::ToolHealthTracker>,
+        rate_limiter: &'a Arc<diapason_core::tools::adaptive_rate_limiter::AdaptiveRateLimiter>,
+        telemetry: &'a Arc<diapason_core::core::telemetry::TelemetryManager>,
+        autonomous_executor: &'a Arc<diapason_core::tools::autonomous_executor::AutonomousExecutor>,
+        error_recovery: &'a Arc<RwLock<diapason_core::core::agent::error_recovery::ErrorRecoveryState>>,
         harness_state: &'a mut HarnessTurnState,
         harness_emitter: Option<&'a HarnessEventEmitter>,
         config: &'a mut AgentConfig,
-        vt_cfg: Option<&'a VTCodeConfig>,
+        vt_cfg: Option<&'a DiapasonConfig>,
         turn_metadata_cache: &'a mut Option<Option<serde_json::Value>>,
         provider_client: &'a mut Box<dyn uni::LLMProvider>,
         traj: &'a TrajectoryLogger,
@@ -794,7 +794,7 @@ pub(crate) async fn run_turn_loop(
                 skip_confirmations: ctx.skip_confirmations,
                 full_auto: ctx.full_auto,
                 context_usage_percent: ctx.context_manager.context_usage_percent(
-                    vtcode_core::compaction::effective_context_budget(
+                    diapason_core::compaction::effective_context_budget(
                         ctx.vt_cfg,
                         ctx.provider_client.as_ref(),
                         &resolve_effective_request_model(&ctx.config.model, ctx.active_primary_agent.active()),
@@ -828,7 +828,7 @@ pub(crate) async fn run_turn_loop(
 
         let active_model = resolve_effective_request_model(&ctx.config.model, ctx.active_primary_agent.active());
         let harness_snapshot = ctx.tool_registry.harness_context_snapshot();
-        let steering_update = vtcode_core::compaction::memory_envelope::SessionMemoryEnvelopeUpdate {
+        let steering_update = diapason_core::compaction::memory_envelope::SessionMemoryEnvelopeUpdate {
             pending_intents: Some(ctx.runtime_steering.pending_follow_up_intents_snapshot()),
             applied_intent_ids: ctx.runtime_steering.applied_follow_up_intent_ids().iter().cloned().collect(),
             ..Default::default()
@@ -934,7 +934,7 @@ pub(crate) async fn run_turn_loop(
         // the observed failure mode (checkpoint turn_594: 4 identical
         // 6500-token outline responses, ~90s of wasted context).
         // Harness state is authoritative. History cannot represent Copilot's
-        // inline VTCode tool calls, while compaction does not discard this
+        // inline Diapason tool calls, while compaction does not discard this
         // turn-scoped counter.
         let text_response_streak = ctx.harness_state.consecutive_assistant_text_responses;
         // A pending validation repair is a deliberate extra candidate, so
@@ -1005,7 +1005,7 @@ pub(crate) async fn run_turn_loop(
                     MessageStyle::Info,
                     &format!(
                         "~{} since the last request; the provider prompt cache has likely expired, so this request may re-pay full input cost.",
-                        vtcode_core::llm::request_gap::format_gap(elapsed)
+                        diapason_core::llm::request_gap::format_gap(elapsed)
                     ),
                 );
             }
@@ -1017,7 +1017,7 @@ pub(crate) async fn run_turn_loop(
             || turn_processing_ctx
                 .config
                 .provider
-                .eq_ignore_ascii_case(vtcode_core::copilot::COPILOT_PROVIDER_KEY)
+                .eq_ignore_ascii_case(diapason_core::copilot::COPILOT_PROVIDER_KEY)
         {
             turn_processing_ctx
                 .execute_llm_request_with_options(
@@ -1081,23 +1081,25 @@ pub(crate) async fn run_turn_loop(
                 display_error(turn_processing_ctx.renderer, "LLM request failed", &err)?;
                 // Show recovery hints derived from the canonical error category
                 {
-                    let err_cat = vtcode_commons::classify_anyhow_error(&err);
-                    if matches!(err_cat, vtcode_commons::ErrorCategory::Authentication) {
+                    let err_cat = diapason_commons::classify_anyhow_error(&err);
+                    if matches!(err_cat, diapason_commons::ErrorCategory::Authentication) {
                         // For auth errors, show actionable provider-specific guidance
                         // that distinguishes "no key stored" from "stored key rejected".
                         let (provider_label, provider_key, is_managed_auth, has_stored_credential) =
                             turn_processing_ctx
                                 .config
                                 .provider
-                                .parse::<vtcode_core::config::models::Provider>()
+                                .parse::<diapason_core::config::models::Provider>()
                                 .map(|p| {
                                     let storage_mode = turn_processing_ctx
                                         .vt_cfg
                                         .map(|cfg| cfg.agent.credential_storage_mode)
                                         .unwrap_or_default();
-                                    let has =
-                                        vtcode_config::api_keys::provider_credential_detail_with_mode(p, storage_mode)
-                                            .is_some();
+                                    let has = diapason_config::api_keys::provider_credential_detail_with_mode(
+                                        p,
+                                        storage_mode,
+                                    )
+                                    .is_some();
                                     (p.label().to_string(), p.as_ref().to_string(), p.uses_managed_auth(), has)
                                 })
                                 .unwrap_or_else(|_| {
@@ -1154,10 +1156,13 @@ pub(crate) async fn run_turn_loop(
                 let threshold = turn_processing_ctx
                     .vt_cfg
                     .map(|cfg| cfg.agent.harness.budget_warning_threshold)
-                    .unwrap_or(vtcode_core::llm::usage_cost::DEFAULT_BUDGET_WARNING_RATIO);
-                match vtcode_core::llm::usage_cost::BudgetStatus::classify(estimate.raw_usd, max_budget_usd, threshold)
-                {
-                    vtcode_core::llm::usage_cost::BudgetStatus::Exceeded { max, .. } => {
+                    .unwrap_or(diapason_core::llm::usage_cost::DEFAULT_BUDGET_WARNING_RATIO);
+                match diapason_core::llm::usage_cost::BudgetStatus::classify(
+                    estimate.raw_usd,
+                    max_budget_usd,
+                    threshold,
+                ) {
+                    diapason_core::llm::usage_cost::BudgetStatus::Exceeded { max, .. } => {
                         turn_processing_ctx
                             .session_stats
                             .mark_budget_limit_reached(max, estimate.raw_usd);
@@ -1202,7 +1207,7 @@ pub(crate) async fn run_turn_loop(
                         }
                         break;
                     }
-                    vtcode_core::llm::usage_cost::BudgetStatus::Warning { max, .. }
+                    diapason_core::llm::usage_cost::BudgetStatus::Warning { max, .. }
                         if !turn_processing_ctx.session_stats.budget_warning_emitted() =>
                     {
                         turn_processing_ctx.session_stats.mark_budget_warning_emitted();
@@ -1290,7 +1295,7 @@ pub(crate) async fn run_turn_loop(
         let mut processing_result = match processing_result_outcome {
             Ok(result) => result,
             Err(err) => {
-                let err_cat = vtcode_commons::classify_anyhow_error(&err);
+                let err_cat = diapason_commons::classify_anyhow_error(&err);
                 if err_cat.is_retryable() {
                     tracing::warn!(
                         error = %err,
@@ -1681,7 +1686,7 @@ async fn finalize_turn(
         }
         if let TurnLoopResult::Blocked { reason } = result {
             let message = reason.clone().unwrap_or_else(|| "turn blocked".to_string());
-            let blocked_event = vtcode_core::exec::events::TurnBlockedEvent {
+            let blocked_event = diapason_core::exec::events::TurnBlockedEvent {
                 message: message.clone(),
                 last_tool: None,
                 blocked_streak: ctx.harness_state.consecutive_blocked_tool_calls,
@@ -1695,7 +1700,7 @@ async fn finalize_turn(
                 tracing::debug!(error = %e, "harness turn.blocked event emission failed");
             }
             if let Err(e) = emitter.emit(harness_event(
-                vtcode_core::exec::events::HarnessEventKind::TurnBlocked,
+                diapason_core::exec::events::HarnessEventKind::TurnBlocked,
                 Some(message),
                 None,
                 None,

@@ -1,24 +1,24 @@
 use super::*;
+use diapason_commons::env_lock;
+use diapason_core::config::core::PromptCachingConfig;
+use diapason_core::config::models::Provider;
+use diapason_core::config::types::{ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
+use diapason_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
 use std::collections::BTreeMap;
-use vtcode_commons::env_lock;
-use vtcode_core::config::core::PromptCachingConfig;
-use vtcode_core::config::models::Provider;
-use vtcode_core::config::types::{ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
-use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
 
 #[tokio::test]
 async fn test_prompt_refinement_applies_to_gemini_when_flag_disabled() {
     let env_guard = env_lock::lock();
-    env_guard.set_var("VTCODE_PROMPT_REFINER_STUB", "1");
+    env_guard.set_var("DIAPASON_PROMPT_REFINER_STUB", "1");
 
     let cfg = CoreAgentConfig {
-        model: vtcode_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
+        model: diapason_core::config::constants::models::google::GEMINI_3_FLASH_PREVIEW.to_string(),
         api_key: "test".to_string(),
         provider: "gemini".to_string(),
         api_key_env: Provider::Gemini.default_api_key_env().to_string(),
         workspace: std::env::current_dir().unwrap(),
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -34,7 +34,7 @@ async fn test_prompt_refinement_applies_to_gemini_when_flag_disabled() {
         openai_chatgpt_auth: None,
     };
 
-    let mut vt = VTCodeConfig::default();
+    let mut vt = DiapasonConfig::default();
     vt.agent.refine_prompts_enabled = true;
 
     let raw = "make me a list of files";
@@ -42,7 +42,7 @@ async fn test_prompt_refinement_applies_to_gemini_when_flag_disabled() {
 
     assert!(out.starts_with("[REFINED] "));
 
-    env_guard.remove_var("VTCODE_PROMPT_REFINER_STUB");
+    env_guard.remove_var("DIAPASON_PROMPT_REFINER_STUB");
 }
 
 #[test]
@@ -58,8 +58,8 @@ fn test_should_accept_refinement_rejects_role_play() {
     let refined = "Hello! How can I help you today?";
     assert!(!should_accept_refinement(raw, refined));
 
-    let technical_raw = "describe vtcode streaming parser";
-    let technical_refined = "Provide a detailed description of the vtcode streaming parser implementation.";
+    let technical_raw = "describe diapason streaming parser";
+    let technical_refined = "Provide a detailed description of the diapason streaming parser implementation.";
     assert!(should_accept_refinement(technical_raw, technical_refined));
 }
 
@@ -132,7 +132,7 @@ fn test_enriched_prompt_to_llm_prompt() {
 
 #[test]
 fn test_should_enrich_prompt_disabled() {
-    let vt_cfg = VTCodeConfig::default();
+    let vt_cfg = DiapasonConfig::default();
     // Default has vibe_coding.enabled = false
 
     let prompt = "make it blue";
@@ -141,7 +141,7 @@ fn test_should_enrich_prompt_disabled() {
 
 #[test]
 fn test_should_enrich_prompt_enabled() {
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
 
     // Has vague reference "it"
@@ -155,7 +155,7 @@ fn test_should_enrich_prompt_enabled() {
 
 #[test]
 fn test_should_enrich_prompt_too_short() {
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
     vt_cfg.agent.vibe_coding.min_prompt_length = 10;
     vt_cfg.agent.vibe_coding.min_prompt_words = 3;
@@ -172,7 +172,7 @@ fn test_should_enrich_prompt_too_short() {
 #[tokio::test]
 async fn test_prompt_enricher_new() {
     let workspace_root = std::env::current_dir().unwrap();
-    let vt_cfg = VTCodeConfig::default();
+    let vt_cfg = DiapasonConfig::default();
 
     let enricher = PromptEnricher::new(workspace_root, vt_cfg);
 
@@ -185,7 +185,7 @@ async fn test_prompt_enricher_new() {
 #[tokio::test]
 async fn test_prompt_enricher_enrich_no_vague_refs() {
     let workspace_root = std::env::current_dir().unwrap();
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
 
     let enricher = PromptEnricher::new(workspace_root, vt_cfg);
@@ -201,7 +201,7 @@ async fn test_prompt_enricher_enrich_no_vague_refs() {
 #[tokio::test]
 async fn test_prompt_enricher_enrich_with_vague_refs() {
     let workspace_root = std::env::current_dir().unwrap();
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
     vt_cfg.agent.vibe_coding.enable_entity_resolution = true;
     vt_cfg.agent.vibe_coding.track_workspace_state = true;
@@ -213,7 +213,7 @@ async fn test_prompt_enricher_enrich_with_vague_refs() {
         let mut state = enricher.workspace_state.write().await;
         state.record_file_access(
             &PathBuf::from("src/test.rs"),
-            vtcode_core::context::workspace_state::ActivityType::Edit,
+            diapason_core::context::workspace_state::ActivityType::Edit,
         );
     }
 
@@ -230,7 +230,7 @@ async fn test_prompt_enricher_enrich_with_vague_refs() {
 #[tokio::test]
 async fn test_prompt_enricher_to_llm_prompt_format() {
     let workspace_root = std::env::current_dir().unwrap();
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
     vt_cfg.agent.vibe_coding.track_workspace_state = true;
 
@@ -241,7 +241,7 @@ async fn test_prompt_enricher_to_llm_prompt_format() {
         let mut state = enricher.workspace_state.write().await;
         state.record_file_access(
             &PathBuf::from("src/components/Sidebar.tsx"),
-            vtcode_core::context::workspace_state::ActivityType::Edit,
+            diapason_core::context::workspace_state::ActivityType::Edit,
         );
     }
 
@@ -267,7 +267,7 @@ async fn test_refine_and_enrich_prompt_disabled() {
         api_key_env: "TEST_API_KEY".to_string(),
         workspace: workspace_root,
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -283,7 +283,7 @@ async fn test_refine_and_enrich_prompt_disabled() {
         openai_chatgpt_auth: None,
     };
 
-    let vt_cfg = VTCodeConfig::default(); // vibe_coding disabled by default
+    let vt_cfg = DiapasonConfig::default(); // vibe_coding disabled by default
 
     let prompt = "make it blue";
     let result = refine_and_enrich_prompt(prompt, &cfg, Some(&vt_cfg)).await;
@@ -302,7 +302,7 @@ async fn test_refine_and_enrich_prompt_enabled() {
         api_key_env: "TEST_API_KEY".to_string(),
         workspace: workspace_root,
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -318,7 +318,7 @@ async fn test_refine_and_enrich_prompt_enabled() {
         openai_chatgpt_auth: None,
     };
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
 
     let prompt = "make it blue";
@@ -339,7 +339,7 @@ async fn test_refine_and_enrich_prompt_no_vague_refs() {
         api_key_env: "TEST_API_KEY".to_string(),
         workspace: workspace_root,
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -355,7 +355,7 @@ async fn test_refine_and_enrich_prompt_no_vague_refs() {
         openai_chatgpt_auth: None,
     };
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
 
     // Prompt with no vague references
@@ -379,7 +379,7 @@ async fn test_value_inference_decrease_by_half_milestone() {
         api_key_env: "TEST_API_KEY".to_string(),
         workspace: workspace_root.clone(),
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -395,7 +395,7 @@ async fn test_value_inference_decrease_by_half_milestone() {
         openai_chatgpt_auth: None,
     };
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
     vt_cfg.agent.vibe_coding.enable_relative_value_inference = true;
     vt_cfg.agent.vibe_coding.track_workspace_state = true;
@@ -437,7 +437,7 @@ async fn test_value_inference_multiple_patterns() {
         api_key_env: "TEST_API_KEY".to_string(),
         workspace: workspace_root.clone(),
         verbose: false,
-        theme: vtcode_core::ui::theme::DEFAULT_THEME_ID.to_string(),
+        theme: diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         reasoning_effort: ReasoningEffortLevel::default(),
         ui_surface: UiSurfacePreference::default(),
         prompt_cache: PromptCachingConfig::default(),
@@ -453,7 +453,7 @@ async fn test_value_inference_multiple_patterns() {
         openai_chatgpt_auth: None,
     };
 
-    let mut vt_cfg = VTCodeConfig::default();
+    let mut vt_cfg = DiapasonConfig::default();
     vt_cfg.agent.vibe_coding.enabled = true;
     vt_cfg.agent.vibe_coding.enable_relative_value_inference = true;
 

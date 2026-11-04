@@ -1,26 +1,22 @@
 # WebMCP bridge development guide
 
-VT Code's first-class WebMCP bridge lets a browser editor inspect a workspace
+Diapason's first-class WebMCP bridge lets a browser editor inspect a workspace
 and submit structured change proposals without giving the browser direct
-filesystem access. The bridge ships in the main `vtcode` binary and the
-`vtcode-webmcp` crate, is opt-in at runtime, and keeps the terminal as the
+filesystem access. The bridge ships in the main `diapason` binary and the
+`diapason-webmcp` crate, is opt-in at runtime, and keeps the terminal as the
 authority for origins, roots, pairing, and writes. The repository's
 `apps/webmcp` project is the maintained WebMCP browser app.
 
-## Published deployments and exact origins
+## Self-hosting and exact origins
 
-The maintained app is published at two URLs:
+Diapason does not currently publish a hosted WebMCP browser app. Run the Vite
+client locally or host a build yourself. The client derives its pairing origin
+from `window.location.origin`; configure that exact origin in the bridge. URL
+paths are not part of origins, and the bridge does not accept wildcard origins.
 
-| Deployment   | URL                                   | Exact origin                         | Purpose                              |
-| ------------ | ------------------------------------- | ------------------------------------ | ------------------------------------ |
-| ChatGPT Site | <https://vtcode.vinhnx.chatgpt.site/> | `https://vtcode.vinhnx.chatgpt.site` | Hosted WebMCP demonstration          |
-| GitHub Pages | <https://vinhnx.github.io/VTCode/>    | `https://vinhnx.github.io`           | Static fallback and reference client |
-
-The browser app derives the pairing origin from `window.location.origin`. The
-GitHub Pages `/VTCode/` path is not part of the origin. The bridge must still
-receive explicit, exact origins; it never uses a wildcard or treats these two
-hosts as interchangeable. Configure both origins when one active or headless
-listener should accept both published pages.
+For local development, pair `http://localhost:5173`. For a public deployment,
+serve the client and bridge through a TLS-terminating proxy and configure the
+exact HTTPS origin.
 
 ## Boundaries
 
@@ -59,7 +55,7 @@ hands the existing runtime a bounded prompt containing the server-generated
 authoritative diff. A stale proposal is rejected before it can enter the TUI,
 and the proposal is never applied automatically by the handoff.
 
-## WebMCP API versus the VT Code bridge
+## WebMCP API versus the Diapason bridge
 
 The WebMCP browser app implements two related but separate directions:
 
@@ -71,16 +67,16 @@ The WebMCP browser app implements two related but separate directions:
    `AbortSignal` to unregister tools and observes `toolchange` notifications.
    Browser or in-page agents discover and invoke these tools through the WebMCP
    API.
-2. The VT Code editor connection uses the authenticated `/webmcp` WebSocket.
-   It is a VT Code-specific adapter, not a WebMCP wire protocol: browser
-   requests go to VT Code and VT Code returns responses and canonical
-   `VersionedThreadEvent` notifications. This is the path used by **VT CODE
+2. The Diapason editor connection uses the authenticated `/webmcp` WebSocket.
+   It is a Diapason-specific adapter, not a WebMCP wire protocol: browser
+   requests go to Diapason and Diapason returns responses and canonical
+   `VersionedThreadEvent` notifications. This is the path used by **DIAPASON
    TURN**, terminal approval, workspace proposals, and runtime event updates.
 
 The WebMCP specification defines the page `ModelContext` API and browser-agent
 observation/invocation. It does not define a server-to-page WebSocket or a way
 for a Rust terminal agent to call `document.modelContext.executeTool()`
-directly. A future VT Code-to-page tool-call relay would therefore need an
+directly. A future Diapason-to-page tool-call relay would therefore need an
 explicit, separately documented bridge extension and must retain terminal
 approval; it must not be presented as native WebMCP.
 
@@ -138,13 +134,9 @@ The WebMCP app also supports
 without making a token part of source control. Set the singular
 `VITE_WEBMCP_ORIGIN_TRIAL_TOKEN` for a one-origin build, or set the comma- or
 whitespace-separated `VITE_WEBMCP_ORIGIN_TRIAL_TOKENS` value for one token per
-published origin. The Pages workflow maps the corresponding repository Actions
-variables `WEBMCP_ORIGIN_TRIAL_TOKEN` and `WEBMCP_ORIGIN_TRIAL_TOKENS` to those
-build variables. Each token must be registered for the exact page origin; when
-tokens are absent, feature detection, the Chrome testing flag, and the
-in-memory fallback remain the supported paths. The Pages workflow deploys only
-GitHub Pages; a separately published ChatGPT Site artifact must receive the
-same build variables from its own publisher if origin-trial access is needed.
+served origin. Each token must be registered for the exact page origin. When
+tokens are absent, feature detection, the Chrome testing flag and the in-memory
+fallback remain the supported paths.
 
 ## Transport and pairing
 
@@ -181,7 +173,7 @@ settings or persisted by the browser.
 
 ## Remote MCP transport
 
-`vtcode webmcp serve` can also expose an explicit, read-only remote MCP
+`diapason webmcp serve` can also expose an explicit, read-only remote MCP
 surface. It is disabled by default and shares only the
 `RuntimeAdapter::list_files` and `RuntimeAdapter::read_file` boundary with the
 browser bridge. It does not add a public file-serving route or expose browser
@@ -208,16 +200,16 @@ files returned, 256 files scanned, and 16 MiB of UTF-8 content scanned by
 default. Search sorts workspace-relative IDs before doing a case-insensitive
 substring match. File IDs are passed back through the adapter's visibility,
 canonicalization, sensitive-path, symlink, and size checks. Citation URLs are
-empty unless `citation_url_prefix` is configured; VT Code never serves the file
-through that URL.
+empty unless `citation_url_prefix` is configured; Diapason never serves the
+file through that URL.
 
 The external TLS proxy or identity provider owns OAuth validation. It must
 validate the public bearer token, remove it, and inject
 `Authorization: Bearer <value of proxy_token_env>` when forwarding to the
-loopback listener. VT Code validates that internal token and returns a `401`
+loopback listener. Diapason validates that internal token and returns a `401`
 `WWW-Authenticate` challenge when it is missing or incorrect. The
 protected-resource metadata endpoint is unauthenticated and advertises the
-configured external authorization server; VT Code does not implement an
+configured external authorization server; Diapason does not implement an
 authorization, token, or JWKS server. The separate MCP `Origin` allowlist is
 optional: missing `Origin` is accepted for non-browser clients, while any
 supplied value must match exactly.
@@ -229,7 +221,7 @@ Example configuration:
 enabled = true
 public_url = "https://mcp.example.com/sse/"
 authorization_server = "https://login.example.com"
-proxy_token_env = "VTCODE_WEBMCP_MCP_PROXY_TOKEN"
+proxy_token_env = "DIAPASON_WEBMCP_MCP_PROXY_TOKEN"
 allowed_origins = []
 citation_url_prefix = "https://mcp.example.com/citations/"
 max_results = 20
@@ -244,11 +236,11 @@ logs, URLs, and persisted state. For a server with no browser origins, start
 the MCP-only surface with:
 
 ```sh
-export VTCODE_WEBMCP_MCP_PROXY_TOKEN='proxy-injected-internal-token'
-vtcode webmcp serve --mcp \
+export DIAPASON_WEBMCP_MCP_PROXY_TOKEN='proxy-injected-internal-token'
+diapason webmcp serve --mcp \
   --mcp-public-url https://mcp.example.com/sse/ \
   --mcp-authorization-server https://login.example.com \
-  --mcp-proxy-token-env VTCODE_WEBMCP_MCP_PROXY_TOKEN \
+  --mcp-proxy-token-env DIAPASON_WEBMCP_MCP_PROXY_TOKEN \
   --allowed-root /absolute/path/to/workspace
 ```
 
@@ -262,8 +254,8 @@ When those prerequisites are available, run the ignored smoke test with:
 
 ```sh
 OPENAI_API_KEY='...' \
-VTCODE_WEBMCP_LIVE_SSE_URL='https://mcp.example.com/sse/' \
-cargo nextest run -p vtcode-webmcp --locked --run-ignored all \
+DIAPASON_WEBMCP_LIVE_SSE_URL='https://mcp.example.com/sse/' \
+cargo nextest run -p diapason-webmcp --locked --run-ignored all \
   -E 'test(live_openai_responses_api_smoke)'
 ```
 
@@ -276,16 +268,15 @@ Start it only when a browser connection is intended, with an exact origin
 allowlist:
 
 ```sh
-vtcode webmcp serve --origin http://localhost:5173
+diapason webmcp serve --origin http://localhost:5173
 ```
 
-For both published deployments, repeat `--origin` and keep the URL path out of
-the allowlist:
+For each self-hosted browser origin, pass an exact `--origin` value (without a
+URL path):
 
 ```sh
-vtcode webmcp serve \
-  --origin https://vtcode.vinhnx.chatgpt.site \
-  --origin https://vinhnx.github.io
+diapason webmcp serve \
+  --origin http://localhost:5173
 ```
 
 The default bind is loopback with an OS-selected port. `--allowed-root`
@@ -295,19 +286,20 @@ allowlist; checks separately require `exec_command` (or the wildcard entry). If
 either capability would be enabled, the selected workspace must also pass the
 existing full-auto workspace-trust gate. Checks resolve an allowlisted
 executable from trusted installation locations, clear the inherited
-environment, and run through the canonical `vtcode-safety` workspace sandbox
+environment, and run through the canonical `diapason-safety` workspace sandbox
 with a bounded timeout and output cap. The bridge does not terminate TLS or
 bind a remote interface: `--allow-remote --public-url wss://...` is accepted
 only for a TLS-terminating reverse proxy that forwards to the loopback
 listener. Direct non-loopback binding is rejected.
 
 On Linux, each `checks.run` operation exposed through
-`RuntimeAdapter::run_checks` reads `VTCODE_LINUX_SANDBOX_EXECUTABLE` before the
-request runs. Export the sandbox helper path before starting the bridge because
-a later change in the parent shell does not update the running bridge process:
+`RuntimeAdapter::run_checks` reads `DIAPASON_LINUX_SANDBOX_EXECUTABLE` before
+the request runs. Export the sandbox helper path before starting the bridge
+because a later change in the parent shell does not update the running bridge
+process:
 
 ```sh
-export VTCODE_LINUX_SANDBOX_EXECUTABLE=/absolute/path/to/sandbox-helper
+export DIAPASON_LINUX_SANDBOX_EXECUTABLE=/absolute/path/to/sandbox-helper
 ```
 
 If the variable is unset, an otherwise permitted check request fails closed
@@ -319,8 +311,8 @@ inside an active session. `/webmcp pair <origin>` starts an authenticated
 bridge owned by that interactive TUI session, prints its WebSocket URL,
 one-time pairing code, and browser next-step instruction, then routes
 `turn.request` prompts into the existing interaction loop. The browser pastes
-the URL and code into **Settings → Connect or re-pair a VT Code bridge**. The
-browser still cannot authorize writes; normal VT Code terminal permissions and
+the URL and code into **Settings → Connect or re-pair a Diapason bridge**. The
+browser still cannot authorize writes; normal Diapason terminal permissions and
 tool policy remain authoritative. If the bridge is already running, the pair
 command prints its current endpoint, one-time code, and expiry for the active
 pairing origin. Pairing another configured origin issues a new one-time code
@@ -332,7 +324,7 @@ before it stops the bridge and revokes its in-memory sessions.
 `/webmcp` and `/webmcp help` also print the supported command arguments and the
 active-session pairing boundary directly in the TUI.
 
-The standalone `vtcode webmcp serve` adapter is intentionally headless. It
+The standalone `diapason webmcp serve` adapter is intentionally headless. It
 serves one root per process, reports `turns_available: false`, and rejects
 `turn.request` because it has no active agent runtime. Multiple configured
 roots are rejected until an explicit root-selection flow is wired through
@@ -367,8 +359,7 @@ enabled = false
 host = "127.0.0.1"
 port = 0
 allowed_origins = ["http://localhost:5173"]
-# To serve both published pages from one listener, use:
-# allowed_origins = ["https://vtcode.vinhnx.chatgpt.site", "https://vinhnx.github.io"]
+# Configure the exact browser origin you host.
 allowed_roots = []
 pairing_ttl_secs = 300
 max_frame_bytes = 1048576
@@ -378,7 +369,7 @@ max_in_flight_requests = 8
 enabled = false
 public_url = "https://mcp.example.com/sse/"
 authorization_server = "https://login.example.com"
-proxy_token_env = "VTCODE_WEBMCP_MCP_PROXY_TOKEN"
+proxy_token_env = "DIAPASON_WEBMCP_MCP_PROXY_TOKEN"
 allowed_origins = []
 max_results = 20
 max_scan_files = 256
@@ -389,9 +380,9 @@ session_ttl_secs = 300
 Run the focused checks with:
 
 ```sh
-RUSTFLAGS='-D warnings' cargo check --locked -p vtcode-webmcp -p vtcode
-cargo nextest run -p vtcode-webmcp -p vtcode-config -p vtcode-core -p vtcode
-cargo clippy --locked -p vtcode-webmcp -p vtcode-config -p vtcode --all-targets -- -D warnings
+RUSTFLAGS='-D warnings' cargo check --locked -p diapason-webmcp -p diapason
+cargo nextest run -p diapason-webmcp -p diapason-config -p diapason-core -p diapason
+cargo clippy --locked -p diapason-webmcp -p diapason-config -p diapason --all-targets -- -D warnings
 cd apps/webmcp
 bun install --frozen-lockfile
 bun run typecheck

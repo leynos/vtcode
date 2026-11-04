@@ -1,7 +1,7 @@
 use anyhow::Result;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::ui::interactive_list::SelectionEntry;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::ui::interactive_list::SelectionEntry;
 
 use super::common::{prompt_with_placeholder, run_selection};
 

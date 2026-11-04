@@ -9,12 +9,12 @@ use tokio::sync::Notify;
 use tokio::task;
 
 use anyhow::{Result, anyhow};
-use vtcode_config::VTCodeConfig;
-use vtcode_core::config::models::ModelId;
-use vtcode_core::config::types::ReasoningEffortLevel;
-use vtcode_core::ui::{InlineListSearchConfig, InlineListSelection};
-use vtcode_core::utils::ansi::{AnsiRenderer, MessageStyle};
-use vtcode_ui::tui::app::{
+use diapason_config::DiapasonConfig;
+use diapason_core::config::models::ModelId;
+use diapason_core::config::types::ReasoningEffortLevel;
+use diapason_core::ui::{InlineListSearchConfig, InlineListSelection};
+use diapason_core::utils::ansi::{AnsiRenderer, MessageStyle};
+use diapason_ui::tui::app::{
     InlineHandle, InlineListItem, InlineSession, TransientSubmission, WizardModalMode, WizardStep,
 };
 
@@ -36,7 +36,7 @@ const SUBAGENT_REASONING_ACTION_PREFIX: &str = "subagent-reasoning:";
 const SUBAGENT_MODEL_PROMPT_ID: &str = "subagent-model-id";
 const SUBAGENT_SHORTCUTS: [(&str, &str); 5] = [
     ("inherit", "Use the parent session model and configuration."),
-    ("small", "Use VT Code's lightweight delegated-model shortcut."),
+    ("small", "Use Diapason's lightweight delegated-model shortcut."),
     ("haiku", "Use the Anthropic Haiku shortcut alias for delegated work."),
     ("sonnet", "Use the Anthropic Sonnet shortcut alias for delegated work."),
     ("opus", "Use the Anthropic Opus shortcut alias for delegated work."),
@@ -74,7 +74,7 @@ pub(crate) async fn pick_subagent_model(
     session: &mut InlineSession,
     ctrl_c_state: &Arc<CtrlCState>,
     ctrl_c_notify: &Arc<Notify>,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     workspace: Option<&Path>,
     current_model: &str,
     current_reasoning_effort: Option<&str>,
@@ -225,7 +225,7 @@ async fn select_subagent_model_target(
     });
     items.push(InlineListItem {
         title: "Enter exact model id".to_string(),
-        subtitle: Some("Provide a concrete VT Code model id such as `gpt-5.4` or `claude-sonnet-4-6`.".to_string()),
+        subtitle: Some("Provide a concrete Diapason model id such as `gpt-5.4` or `claude-sonnet-4-6`.".to_string()),
         badge: Some("Manual".to_string()),
         indent: 0,
         selection: Some(InlineListSelection::CustomModel),
@@ -385,7 +385,7 @@ async fn prompt_subagent_model_id(
             "Subagent model id".to_string(),
             vec![WizardStep {
                 title: "Model id".to_string(),
-                question: "Enter a concrete VT Code model id. Shortcut aliases such as `inherit` and `small` are available in the list view.".to_string(),
+                question: "Enter a concrete Diapason model id. Shortcut aliases such as `inherit` and `small` are available in the list view.".to_string(),
                 items: vec![InlineListItem {
                     title: "Enter a model id".to_string(),
                     subtitle: Some(
@@ -435,7 +435,7 @@ async fn prompt_subagent_model_id(
         let model_id = match trimmed.parse::<ModelId>() {
             Ok(model_id) => model_id,
             Err(_) => {
-                renderer.line(MessageStyle::Error, &format!("`{trimmed}` is not a recognized VT Code model id."))?;
+                renderer.line(MessageStyle::Error, &format!("`{trimmed}` is not a recognized Diapason model id."))?;
                 continue;
             }
         };

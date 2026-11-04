@@ -18,7 +18,7 @@ policies and public behavior.
 
 ### 1. Shared preview helpers
 
-Owner: `crates/common/vtcode-commons/src/preview.rs`
+Owner: `crates/common/diapason-commons/src/preview.rs`
 
 Added:
 
@@ -35,8 +35,8 @@ Replaced local preview logic in:
 - `src/agent/runloop/tool_output/large_output.rs`
 - `src/agent/runloop/tool_output/streams.rs`
 - `src/agent/runloop/unified/tool_pipeline/pty_stream/state.rs`
-- `crates/codegen/vtcode-core/src/tools/output_spooler.rs`
-- `crates/codegen/vtcode-core/src/tools/registry/executors/`
+- `crates/codegen/diapason-core/src/tools/output_spooler.rs`
+- `crates/codegen/diapason-core/src/tools/registry/executors/`
 
 Benefits:
 
@@ -49,7 +49,7 @@ logic moved.
 
 ### 2. Shared diff display model
 
-Owner: `crates/common/vtcode-commons/src/diff_preview.rs`
+Owner: `crates/common/diapason-commons/src/diff_preview.rs`
 
 Added:
 
@@ -65,7 +65,7 @@ shared model.
 Replaced duplicate diff semantics in:
 
 - `src/agent/runloop/tool_output/streams.rs`
-- `crates/codegen/vtcode-ui/src/tui/core_tui/app/session/diff_preview.rs`
+- `crates/codegen/diapason-ui/src/tui/core_tui/app/session/diff_preview.rs`
 
 Benefits:
 
@@ -80,18 +80,18 @@ parsing/numbering now comes from one source.
 
 Removed duplicate files:
 
-- `crates/codegen/vtcode-config/src/constants/instructions.rs`
-- `crates/codegen/vtcode-config/src/constants/project_doc.rs`
+- `crates/codegen/diapason-config/src/constants/instructions.rs`
+- `crates/codegen/diapason-config/src/constants/project_doc.rs`
 
 Added canonical owner:
 
-- `crates/codegen/vtcode-config/src/constants/prompt_budget.rs`
+- `crates/codegen/diapason-config/src/constants/prompt_budget.rs`
 
 Updated callers in:
 
 - `src/agent/runloop/welcome.rs`
-- `crates/codegen/vtcode-core/src/prompts/system.rs`
-- `crates/codegen/vtcode-config/src/core/agent.rs`
+- `crates/codegen/diapason-core/src/prompts/system.rs`
+- `crates/codegen/diapason-config/src/core/agent.rs`
 
 Benefits:
 
@@ -104,15 +104,15 @@ Risk level: low.
 
 Removed duplicate implementation:
 
-- deleted `crates/codegen/vtcode-core/src/ui/file_colorizer.rs`
+- deleted `crates/codegen/diapason-core/src/ui/file_colorizer.rs`
 
 Canonical owner remains:
 
-- `crates/codegen/vtcode-ui/src/tui/ui/file_colorizer.rs`
+- `crates/codegen/diapason-ui/src/tui/ui/file_colorizer.rs`
 
 Compatibility preserved via re-export from:
 
-- `crates/codegen/vtcode-core/src/ui/mod.rs`
+- `crates/codegen/diapason-core/src/ui/mod.rs`
 
 Benefits:
 
@@ -125,24 +125,24 @@ Risk level: low.
 
 Added canonical image helper:
 
-- `crates/common/vtcode-commons/src/fs.rs::is_image_path`
+- `crates/common/diapason-commons/src/fs.rs::is_image_path`
 
 Removed duplicate logic from:
 
-- `crates/codegen/vtcode-core/src/tools/file_ops/mod.rs` now re-exports
-  `vtcode_commons::fs::is_image_path`
-- deleted `crates/codegen/vtcode-ui/src/tui/utils/file_utils.rs`
+- `crates/codegen/diapason-core/src/tools/file_ops/mod.rs` now re-exports
+  `diapason_commons::fs::is_image_path`
+- deleted `crates/codegen/diapason-ui/src/tui/utils/file_utils.rs`
 
-Updated TUI call sites to use `vtcode-commons::fs` directly:
+Updated TUI call sites to use `diapason-commons::fs` directly:
 
-- `crates/codegen/vtcode-ui/src/tui/core_tui/session/config.rs`
-- `crates/codegen/vtcode-ui/src/tui/core_tui/session/input.rs`
-- `crates/codegen/vtcode-ui/src/tui/utils/mod.rs`
+- `crates/codegen/diapason-ui/src/tui/core_tui/session/config.rs`
+- `crates/codegen/diapason-ui/src/tui/core_tui/session/input.rs`
+- `crates/codegen/diapason-ui/src/tui/utils/mod.rs`
 
 Benefits:
 
 - one owner for sync file helpers and image-path classification
-- less wrapper churn inside `vtcode-ui`
+- less wrapper churn inside `diapason-ui`
 
 Risk level: low.
 
@@ -150,9 +150,9 @@ Risk level: low.
 
 Canonical owner for shared UI text/defaults remains:
 
-- `crates/codegen/vtcode-config/src/constants/ui.rs`
+- `crates/codegen/diapason-config/src/constants/ui.rs`
 
-`crates/codegen/vtcode-ui/src/tui/config/constants/ui.rs` now aliases a small
+`crates/codegen/diapason-ui/src/tui/config/constants/ui.rs` now aliases a small
 shared subset instead of redefining it:
 
 - tool output mode strings
@@ -174,14 +174,14 @@ Risk level: low.
 
 Switched local timestamp helpers to the shared owner:
 
-- `crates/codegen/vtcode-core/src/context/conversation_memory.rs`
-- `crates/codegen/vtcode-core/src/context/entity_resolver.rs`
-- `crates/codegen/vtcode-core/src/core/prompt_caching.rs`
-- `crates/codegen/vtcode-core/src/memory/mod.rs`
+- `crates/codegen/diapason-core/src/context/conversation_memory.rs`
+- `crates/codegen/diapason-core/src/context/entity_resolver.rs`
+- `crates/codegen/diapason-core/src/core/prompt_caching.rs`
+- `crates/codegen/diapason-core/src/memory/mod.rs`
 
 Canonical owner:
 
-- `crates/common/vtcode-commons/src/utils.rs::current_timestamp`
+- `crates/common/diapason-commons/src/utils.rs::current_timestamp`
 
 Benefits:
 
@@ -192,10 +192,10 @@ Risk level: low.
 
 ## Duplication Intentionally Left Alone
 
-### `crates/codegen/vtcode-core/src/utils` wrapper sprawl
+### `crates/codegen/diapason-core/src/utils` wrapper sprawl
 
-This workspace still contains many thin `vtcode-core::utils::*` compatibility
-wrappers over `vtcode-commons`.
+This workspace still contains many thin `diapason-core::utils::*` compatibility
+wrappers over `diapason-commons`.
 
 Reason not removed in this pass:
 
@@ -203,12 +203,12 @@ Reason not removed in this pass:
 - deleting them all at once would create high-churn edits with low immediate
   payoff
 - the narrow wrapper removal in
-  `crates/codegen/vtcode-ui/src/tui/utils/file_utils.rs` delivered a safer
+  `crates/codegen/diapason-ui/src/tui/utils/file_utils.rs` delivered a safer
   first reduction
 
 Recommended follow-up:
 
-1. rewrite imports module-by-module toward `vtcode-commons`
+1. rewrite imports module-by-module toward `diapason-commons`
 2. keep only wrappers that are intentional compatibility surface
 3. delete dead wrappers after each compile-verified batch
 
@@ -216,7 +216,7 @@ Recommended follow-up:
 
 The storage-location policy split was preserved:
 
-- `crates/codegen/vtcode-core/src/tools/output_spooler.rs` keeps
+- `crates/codegen/diapason-core/src/tools/output_spooler.rs` keeps
   workspace-relative spool behavior
 - `src/agent/runloop/tool_output/large_output.rs` keeps temp-file UI spool
   behavior
@@ -231,7 +231,7 @@ Only shared condensation/excerpt logic was deduplicated.
 - fewer independent utility copies to maintain
 - lower drift risk for shared UI copy/defaults
 - simpler future bug fixes because the shared helpers now live in
-  `vtcode-commons`
+  `diapason-commons`
 
 ## Verification
 

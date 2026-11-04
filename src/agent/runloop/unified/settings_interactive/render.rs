@@ -1,10 +1,10 @@
+use diapason_ui::tui::app::{InlineListItem, InlineListSelection};
 use toml::Value as TomlValue;
-use vtcode_ui::tui::app::{InlineListItem, InlineListSelection};
 
 use crate::agent::runloop::unified::config_section_headings::{heading_for_path, humanize_identifier};
 
 use super::docs::FieldDoc;
-use vtcode_commons::formatting::truncate_middle;
+use diapason_commons::formatting::truncate_middle;
 pub(super) fn display_title(label: &str, path: &str, value: &TomlValue) -> String {
     if label.starts_with('[') {
         return format!("Item {label}");

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Add a new model to VT Code
+# Add a new model to Diapason
 # Usage: ./scripts/add_model.sh
 
 set -e
@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== VT Code Model Addition Script ===${NC}\n"
+echo -e "${BLUE}=== Diapason Model Addition Script ===${NC}\n"
 
 # Prompt for model details
 read -p "Model ID (e.g., gpt-5.4-nano): " MODEL_ID
@@ -50,7 +50,7 @@ fi
 
 # 1. Add to constants
 if [ "$PROVIDER" = "openai" ]; then
-    CONST_FILE="crates/codegen/vtcode-config/src/constants/models/openai.rs"
+    CONST_FILE="crates/codegen/diapason-config/src/constants/models/openai.rs"
     echo -e "\n${BLUE}1. Add to $CONST_FILE${NC}"
     echo "   - Add \"$MODEL_ID\" to SUPPORTED_MODELS array"
     echo "   - Add: pub const ${PROVIDER^^}_$CONST_NAME: &str = \"$MODEL_ID\";"
@@ -78,7 +78,7 @@ EOF
 echo "$JSON_TEMPLATE"
 
 # 3. Model ID enum
-echo -e "\n${BLUE}3. Add to crates/codegen/vtcode-config/src/models/model_id.rs${NC}"
+echo -e "\n${BLUE}3. Add to crates/codegen/diapason-config/src/models/model_id.rs${NC}"
 echo "   /// $DESCRIPTION"
 echo "   $ENUM_NAME,"
 
@@ -107,7 +107,7 @@ echo "   Add ModelId::$ENUM_NAME to ${PROVIDER^^} provider match"
 # Verify
 echo -e "\n${YELLOW}Next Steps:${NC}"
 echo "1. Manually apply all changes above to each file"
-echo "2. Run: cargo check --package vtcode-config"
+echo "2. Run: cargo check --package diapason-config"
 echo "3. Run: cargo check --all-targets"
 echo "4. Test: cargo run -- /model --help | grep -i '${DISPLAY_NAME}'"
 echo ""

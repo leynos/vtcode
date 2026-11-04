@@ -1,5 +1,5 @@
 //! Binary-specific memory envelope refresh. The pure envelope build/persist
-//! logic lives in `vtcode_core::compaction::memory_envelope`; this module only
+//! logic lives in `diapason_core::compaction::memory_envelope`; this module only
 //! adds the binary runloop's `SessionStats`-backed refresh path.
 
 use super::*;
@@ -8,7 +8,7 @@ use crate::agent::runloop::unified::state::SessionStats;
 pub(crate) fn refresh_session_memory_envelope(
     workspace_root: &Path,
     session_id: &str,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     history: &[Message],
     session_stats: &SessionStats,
     envelope_update: Option<&SessionMemoryEnvelopeUpdate>,
@@ -41,8 +41,10 @@ pub(crate) fn refresh_session_memory_envelope(
         return Ok(None);
     }
 
-    let path = latest_memory_envelope_path_for_session(workspace_root, session_id)
-        .unwrap_or_else(|| default_memory_envelope_path_for_session(workspace_root, session_id));
+    let path = match latest_memory_envelope_path_for_session(workspace_root, session_id) {
+        Some(path) => path,
+        None => default_memory_envelope_path_for_session(workspace_root, session_id)?,
+    };
     write_memory_envelope_to_path(&path, &envelope)?;
     Ok(Some(envelope))
 }
@@ -52,7 +54,7 @@ pub(crate) fn refresh_session_memory_envelope(
 pub(crate) async fn refresh_session_memory_envelope_async(
     workspace_root: &Path,
     session_id: &str,
-    vt_cfg: Option<&VTCodeConfig>,
+    vt_cfg: Option<&DiapasonConfig>,
     history: &[Message],
     session_stats: &SessionStats,
     envelope_update: Option<&SessionMemoryEnvelopeUpdate>,
@@ -83,9 +85,10 @@ pub(crate) async fn refresh_session_memory_envelope_async(
         return Ok(None);
     }
 
-    let path = latest_memory_envelope_path_for_session_async(workspace_root, session_id)
-        .await
-        .unwrap_or_else(|| default_memory_envelope_path_for_session(workspace_root, session_id));
+    let path = match latest_memory_envelope_path_for_session_async(workspace_root, session_id).await {
+        Some(path) => path,
+        None => default_memory_envelope_path_for_session(workspace_root, session_id)?,
+    };
     write_memory_envelope_to_path_async(&path, &envelope).await?;
     Ok(Some(envelope))
 }
