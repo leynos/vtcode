@@ -144,7 +144,7 @@ in task 2.1.3. See design §§6 and 10; RFC 0001 §§4–5.
 - [ ] 2.2.1. Implement the fixed finding reducer and bounded constraint join.
   - See [design §6][design-6].
   - Requires 2.1.1 and 1.2.3.
-  - Preserve deny, review, grant, constrain, and advice distinctions.
+  - Preserve `deny`, `review`, `grant`, `constrain`, and `advise` distinctions.
   - Cover conflicts, empty constraints, no-grant cases, and evaluator faults
     alongside the reducer.
   - Success: adding a restriction cannot produce a broader result; conflicts

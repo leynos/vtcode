@@ -180,12 +180,12 @@ request separately from normalized facts for legacy matching and explanation.
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `request`       | Stable request ID; kind; original source/argv; canonical tool/action/provider identity; argument digest                                                                         |
 | `context`       | Principal and delegated-agent ancestry, workspace/trust identity, mode, platform, clock snapshot, budget counters, approval references, and versioned risk/classification facts |
-| `shell`         | State identity, dialect, completeness and dependency digest; absent with an explicit non-shell request kind                                                                     |
-| `graph.nodes`   | ID-keyed typed actions with source spans, invocation stack, reachability, effects, completeness and reason codes                                                                |
+| `shell`         | State identity, dialect, completeness, and dependency digest; absent with an explicit non-shell request kind                                                                    |
+| `graph.nodes`   | ID-keyed typed actions with source spans, invocation stack, reachability, effects, completeness, and reason codes                                                               |
 | `graph.edges`   | Named records with source/target IDs and control, call, data-flow, or dependency kind                                                                                           |
-| `graph.values`  | ID-keyed abstract values, origins, integrity/confidentiality labels and sink-validation facts                                                                                   |
-| `analysis`      | Analyser/model versions, coverage profile, bounds consumed, unresolved reasons and consulted dependencies                                                                       |
-| `compatibility` | Source-tagged legacy matcher facts, ordered rule identities, defaults and importer version                                                                                      |
+| `graph.values`  | ID-keyed abstract values, origins, integrity/confidentiality labels, and sink-validation facts                                                                                  |
+| `analysis`      | Analyser/model versions, coverage profile, bounds consumed, unresolved reasons, and consulted dependencies                                                                     |
+| `compatibility` | Source-tagged legacy matcher facts, ordered rule identities, defaults, and importer version                                                                                     |
 | `enforcement`   | Available confinement capabilities, effective profile identity, remote-service limitations and reservation facts                                                                |
 
 _Table 4: Proposed policy input; all authority-sensitive fields are host-owned._
@@ -685,19 +685,20 @@ approval storage, counters, and audit/event infrastructure.
 ## 10. Verification and release evidence
 
 The implementation must demonstrate the following invariants. These are
-design-level proof obligations, not a promise that tests prove all Bash safe.
+design-level proof obligations, not a promise that tests prove that all Bash
+programs are safe.
 
 | Property                            | Evidence strategy                                                                                                                  | Limit                                                        |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Restriction monotonicity            | Exhaustively enumerate small finding/authority sets; property-test permutations and added restrictions                             | Excludes authorized grants/replacement                       |
-| Reducer determinism                 | Permutation, duplication and serialization tests; model constraint intersections and empty intersections                           | Depends on typed constraint semantics                        |
+| Reducer determinism                 | Permutation, duplication, and serialization tests; model constraint intersections and empty intersections                         | Depends on typed constraint semantics                        |
 | No effect during analysis           | Instrument deny-all process/write/network capabilities; adversarial expansions and redirections in isolated workers                | Broker/sandbox correctness remains trusted                   |
 | Supported-subset over-approximation | Compare generated bounded programs against GNU Bash traces in disposable, confined fixtures; observed effects must be included     | Differential agreement is not full-language soundness        |
 | Unknown monotonicity                | Replace concrete facts with unknown, exhaust budgets, widen loops; automatic coverage must not increase                            | Command-model correctness still needs review                 |
 | Authority preservation              | Model activation graph and delegation chains; namespace collision, forged provenance, stale target and competing replacement cases | Host trust-store compromise excluded                         |
-| Binding and revocation              | Race tests mutate PATH, aliases, files, policy and approvals; tokens replayed or used by another principal fail                    | Arbitrary shell syscalls still rely on confinement           |
+| Binding and revocation              | Race tests mutate PATH, aliases, files, policy, and approvals; tokens replayed or used by another principal fail                   | Arbitrary shell syscalls still rely on confinement           |
 | Complete mediation                  | End-to-end route matrix with denied operations at actual dispatch                                                                  | Remote service internal behaviour is opaque                  |
-| Secret non-disclosure               | Canary secrets through pipes, substitutions, errors and policy reasons; scan logs/events/UI and persisted artefacts                | Explicit privileged diagnostic export needs separate consent |
+| Secret non-disclosure               | Canary secrets through pipes, substitutions, errors, and policy reasons; scan logs/events/UI and persisted artefacts              | Explicit privileged diagnostic export needs separate consent |
 
 _Table 8: Verification obligations and the boundaries of their evidence._
 
@@ -712,7 +713,7 @@ interactive/full-auto/approval-disabled mode, source authority, generation
 reload, approval freshness, analysis completeness, and platform enforcement.
 Exhaustively cover deny/bypass-sensitive pairs and all authority/replacement
 triples; use pairwise coverage for the remaining dimensions and retain
-hand-written high-risk scenarios. Record uncovered combinations explicitly.
+  handwritten high-risk scenarios. Record uncovered combinations explicitly.
 Minimize and retain any differential counterexample as a regression fixture.
 
 Release evidence must include zero unexplained permissive divergences, a
@@ -743,8 +744,8 @@ Extend `ThreadEvent` with versioned policy-decision/activation information as
 needed, and use the existing memory projections. Audit includes request and
 generation identifiers, rule/node IDs, uncertainty categories, approval and
 reservation references, and actual execution outcome. Default records omit raw
-environments, secret values, and command output. An evaluation allow event is
-not an execution-success event.
+environments, secret values, and command output. An evaluation event with an
+`allow` result is not an execution-success event.
 
 Operationally distinguish invalid policy, exhausted analysis, denied request,
 missing approval, and unavailable enforcement. Emit actionable diagnostics
