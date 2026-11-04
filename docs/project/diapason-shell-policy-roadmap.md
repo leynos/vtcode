@@ -343,10 +343,12 @@ design §§5 and 10; RFC 0001 §§5 and 8.
   - See [design §4][design-4].
   - Requires tasks 4.1.3–4.1.4.
   - Cover environment, pipes, redirections, substitutions, unknown file
-    contents, and in-memory policy explanations.
+    contents, in-memory policy explanations, prompts, terminal output, and
+    model context.
   - Success: secret canaries retain confidentiality labels across these paths
-    and are redacted from policy explanations. Cache and event persistence
-    redaction is verified in tasks 5.1.4–5.1.5.
+    and are redacted from policy explanations, prompts, terminal output, and
+    model context. Cache and event persistence redaction is verified in tasks
+    5.1.4–5.1.5.
 - [ ] 4.2.4. Publish and measure the supported analysis profile.
   - See [design §10][design-10].
   - Requires tasks 4.2.1–4.2.3.
@@ -405,16 +407,18 @@ cutover. See design §§3, 6, and 8; RFC 0001 §§4–6.
   - Success: mutating any consumed dependency invalidates the relevant cache,
     and no raw secret value is persisted in a cache entry.
 - [ ] 5.1.5. Record redacted policy lifecycle and execution events.
-  - See [design §11][design-11].
+  - See [design §3][design-3] and [design §11][design-11].
   - Requires 3.1.3 and 5.1.2.
   - Extend `ThreadEvent` for policy activation, decision, approval/reservation
     reference, and execution outcome; record generation and rule/node IDs.
   - Omit raw environments, secret values, and command output from routine
     events and projections.
-  - Failure case: failure to persist a required pre-dispatch audit record blocks
-    dispatch.
+  - Persist the required redacted decision and authorization references before
+    bind and dispatch; failure to persist this pre-dispatch audit record blocks
+    dispatch. Record the execution outcome separately after dispatch.
   - Success: an event trace distinguishes decision from execution outcome and
-    secret canaries are absent from stored event payloads.
+    secret canaries are absent from stored event payloads, logs, and policy
+    test reports.
 
 ### 5.2. Move all routes to the shared boundary
 
@@ -522,6 +526,7 @@ initial replacement. They need their own feasibility and authority decisions.
   - See design §§5.3 and 12.
 
 [design-4]: ../design/diapason-shell-policy-design.md#4-shell-state-and-effect-graph-contract
+[design-3]: ../design/diapason-shell-policy-design.md#3-architecture-and-ownership
 [design-5]: ../design/diapason-shell-policy-design.md#5-brush-backed-bounded-analysis
 [design-6]: ../design/diapason-shell-policy-design.md#6-regorus-contract-and-decision-algebra
 [design-7]: ../design/diapason-shell-policy-design.md#7-drop-in-authoring-authority-and-activation

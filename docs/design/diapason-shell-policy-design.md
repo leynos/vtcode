@@ -101,16 +101,17 @@ The pipeline below identifies the data handed across each boundary. Every
 execution route must terminate at the same authorization service, even when its
 evidence producer differs.
 
-| Stage               | Owner and output                                                                                                     | Failure behaviour                                            |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Normalize request   | Runtime adapters produce canonical tool/provider identity, original bytes, structured arguments, principal, and mode | Ambiguous identity blocks dispatch                           |
-| Capture state       | Snapshot adapter produces a versioned execution-state descriptor and dependency view                                 | Missing facts remain unknown                                 |
-| Analyse             | Proposed `vtcode-shell-analysis` produces graph, taints, coverage, and diagnostics                                   | Parse failure or bounds produce explicit incomplete evidence |
-| Evaluate            | Proposed `vtcode-policy` evaluates each active unit with Regorus                                                     | Fault, undefined envelope, or invalid result blocks          |
-| Reduce              | Policy service joins findings and required capabilities                                                              | Conflicting constraints block                                |
-| Approve and reserve | Existing user interface, approval store, and budget enforcer satisfy obligations                                     | Refusal, expiry, or reservation failure blocks               |
-| Bind and dispatch   | Existing executors revalidate state and policy, apply confinement, and consume a one-use authorization               | Drift triggers re-evaluation; unavailable containment blocks |
-| Record              | Existing event/memory path records redacted decision and execution outcome                                           | Required audit failure blocks before dispatch                |
+| Stage                 | Owner and output                                                                                                     | Failure behaviour                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Normalize request     | Runtime adapters produce canonical tool/provider identity, original bytes, structured arguments, principal, and mode | Ambiguous identity blocks dispatch                                  |
+| Capture state         | Snapshot adapter produces a versioned execution-state descriptor and dependency view                                 | Missing facts remain unknown                                        |
+| Analyse               | Proposed `vtcode-shell-analysis` produces graph, taints, coverage, and diagnostics                                   | Parse failure or bounds produce explicit incomplete evidence        |
+| Evaluate              | Proposed `vtcode-policy` evaluates each active unit with Regorus                                                     | Fault, undefined envelope, or invalid result blocks                 |
+| Reduce                | Policy service joins findings and required capabilities                                                              | Conflicting constraints block                                       |
+| Approve and reserve   | Existing user interface, approval store, and budget enforcer satisfy obligations                                     | Refusal, expiry, or reservation failure blocks                      |
+| Pre-dispatch audit    | Existing event/memory path records the redacted decision and required authorization references                       | Required audit failure blocks dispatch                              |
+| Bind and dispatch     | Existing executors revalidate state and policy, apply confinement, and consume a one-use authorization               | Drift triggers re-evaluation; unavailable containment blocks        |
+| Post-execution record | Existing event/memory path records the redacted execution outcome                                                    | Persistence failure is reported; it cannot undo a dispatched action |
 
 _Table 3: Request-to-execution pipeline and failure ownership._
 
