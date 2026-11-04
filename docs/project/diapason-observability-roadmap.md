@@ -266,9 +266,11 @@ outcome informs the compatibility projection. See
 
 - [ ] 5.1.1. Carry authenticated objective, run, task and attempt identities.
   - Validate ingress and bind IDs to events, spans and logs; keep all IDs out
-    of metric labels.
-  - Success: missing IDs remain absent and malformed/oversized IDs are
-    rejected with a bounded diagnostic.
+    of metric labels. Preserve distinct workflow task attempt, agent invocation,
+    launcher process ID and positive one-based CLI attempt ordinal identities.
+  - Success: missing IDs remain absent; malformed/oversized IDs and non-positive
+    CLI attempt ordinals are rejected with a bounded diagnostic; retry fixtures
+    retain invocation/task-attempt IDs while changing process ID and ordinal.
   - Requires 1.2.1 and 4.1.3.
   - See
     [design §4](../design/diapason-observability-design.md#4-identity-correlation-and-evidence).

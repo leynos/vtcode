@@ -168,16 +168,36 @@ one user or scheduler request, potentially containing multiple model/tool
 turns. A logical operation may have several physical attempts. A provider
 response ID, a local operation ID, and a tool call ID are different identities.
 
-| Identity group    | Proposed attributes                                                                                                                   | Rules                                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Resource          | `service.name`, `service.version`, `service.instance.id`, `deployment.environment.name`                                               | Default service name `vtcode`; explicit `diapason` deployment override permitted; instance is random per process |
-| Local execution   | `diapason.session.id`, `diapason.interaction.id`, `diapason.turn.id`, `diapason.operation.id`, `diapason.attempt.id`                  | Generated once by the owning runtime; never reconstructed from content                                           |
-| External work     | `diapason.correlation.id`, `diapason.workflow.run.id`, `diapason.task.id`, `diapason.task.attempt.id`, `diapason.agent.invocation.id` | Supplied by authenticated launcher/control protocol; absent when unknown                                         |
-| Work and evidence | `diapason.workspace.id`, `diapason.candidate.id`, `diapason.gate.id`, `diapason.artifact.id`                                          | Opaque references; paths, Git remotes and signed URLs excluded by default                                        |
-| Lineage           | `diapason.parent.invocation.id`, `diapason.retry.of`, `diapason.resume.of`                                                            | Relationships plus span links when remote context exists; no invented parent                                     |
-| Provenance        | `diapason.evidence.source`, `diapason.correlation.method`, `diapason.evidence.authority`                                              | Sources `runtime`, `provider`, `launcher`, `import`; method `local`, `propagated`, `inferred`, `unknown`         |
+| Identity group    | Proposed attributes                                                                                                                                                                        | Rules                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Resource          | `service.name`, `service.version`, `service.instance.id`, `deployment.environment.name`                                                                                                    | Default service name `vtcode`; explicit `diapason` deployment override permitted; instance is random per process       |
+| Local execution   | `diapason.session.id`, `diapason.interaction.id`, `diapason.turn.id`, `diapason.operation.id`, `diapason.attempt.id`                                                                       | Generated once by the owning runtime; never reconstructed from content                                                 |
+| External work     | `diapason.correlation.id`, `diapason.workflow.run.id`, `diapason.task.id`, `diapason.task.attempt.id`, `diapason.agent.invocation.id`, `diapason.agent.process.id`, `diapason.cli.attempt` | Supplied by authenticated launcher/control protocol; absent when unknown; CLI attempt is a positive, one-based ordinal |
+| Work and evidence | `diapason.workspace.id`, `diapason.candidate.id`, `diapason.gate.id`, `diapason.artifact.id`                                                                                               | Opaque references; paths, Git remotes and signed URLs excluded by default                                              |
+| Lineage           | `diapason.parent.invocation.id`, `diapason.retry.of`, `diapason.resume.of`                                                                                                                 | Relationships plus span links when remote context exists; no invented parent                                           |
+| Provenance        | `diapason.evidence.source`, `diapason.correlation.method`, `diapason.evidence.authority`                                                                                                   | Sources `runtime`, `provider`, `launcher`, `import`; method `local`, `propagated`, `inferred`, `unknown`               |
 
 _Table 3: Identity dimensions belong on spans/logs, not metric labels._
+
+`diapason.agent.process.id` identifies the launcher-created agent process;
+`diapason.cli.attempt` is the launcher's one-based ordinal for that CLI process
+within an invocation. The ordinal is an integer, not an opaque identifier. Both
+are distinct from `service.instance.id` (the telemetry-producing process),
+`diapason.attempt.id` (a runtime operation attempt), and
+`diapason.task.attempt.id` (the orchestration task attempt). Accept these
+external values only from authenticated launcher context; ignore payload claims
+of trust and leave them absent when trusted context does not supply them. Never
+add them to metric labels.
+
+For a CLI retry, the invocation and orchestration task attempt stay the same
+while each launched process receives its own process ID and ordinal:
+
+| Event        | `diapason.agent.invocation.id` | `diapason.task.attempt.id` | `diapason.agent.process.id` | `diapason.cli.attempt` |
+| ------------ | ------------------------------ | -------------------------- | --------------------------- | ---------------------- |
+| First launch | `agent-invocation-02`          | `task-attempt-03`          | `agent-process-01`          | `1`                    |
+| Retry        | `agent-invocation-02`          | `task-attempt-03`          | `agent-process-02`          | `2`                    |
+
+The correlation JSON example below represents the retry row.
 
 The `diapason.*` namespace identifies this proposed telemetry contract and does
 not imply a package or configuration-directory rename. IDs use opaque bounded

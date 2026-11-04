@@ -20,7 +20,9 @@
     "task_id": "task-12",
     "task_attempt_id": "task-attempt-03",
     "agent_invocation_id": "agent-invocation-02",
-    "workspace_id": "workspace-07"
+    "workspace_id": "workspace-07",
+    "agent_process_id": "agent-process-02",
+    "cli_attempt": 2
   },
   "provenance": {
     "source": "runtime",
@@ -30,5 +32,7 @@
   "operation_kind": "tool",
   "outcome": "succeeded",
   "duration_seconds": 0.25,
-  "artifact_ids": ["artifact-02"]
+  "artifact_ids": [
+    "artifact-02"
+  ]
 }
