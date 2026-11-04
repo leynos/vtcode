@@ -8,6 +8,7 @@ use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
+/// Prove the router omits an optional format and preserves raw tool history.
 async fn custom_responses_router_omits_optional_format_and_preserves_raw_tool_history() {
     let server = MockServer::start().await;
     let input = "*** Begin Patch\n*** Update File: café.txt\n@@\n-old\n+quote: \"\\\"\n*** End Patch\n";
@@ -56,23 +57,31 @@ async fn custom_responses_router_omits_optional_format_and_preserves_raw_tool_hi
         ),
         ..Default::default()
     };
-    let response = provider.generate(request.clone()).await.unwrap();
-    let calls = response.tool_calls.unwrap();
+    let response = provider
+        .generate(request.clone())
+        .await
+        .expect("fixture responses request succeeds");
+    let calls = response.tool_calls.expect("fixture response carries tool calls");
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].raw_input(), Some(input));
-    assert_eq!(response.usage.unwrap().total_tokens, 0);
+    assert_eq!(response.usage.expect("fixture response carries usage").total_tokens, 0);
     request.messages = vec![
         Message::assistant_with_tools(String::new(), calls),
         Message::tool_response("call_fixture".into(), "fixture-only acknowledgement".into()),
         Message::user("Continue".into()),
     ]
     .into();
-    let _response = provider.generate(request).await.unwrap();
-    let requests = server.received_requests().await.unwrap();
-    let first: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let _response = provider
+        .generate(request)
+        .await
+        .expect("second fixture responses request succeeds");
+    let requests = server.received_requests().await.expect("fixture server records requests");
+    let first: serde_json::Value =
+        serde_json::from_slice(&requests[0].body).expect("first fixture request is valid JSON");
     assert_eq!(first["tools"][0]["type"], "custom");
     assert!(first["tools"][0].get("format").is_none());
-    let second: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
+    let second: serde_json::Value =
+        serde_json::from_slice(&requests[1].body).expect("second fixture request is valid JSON");
     assert_eq!(second["input"][0]["type"], "custom_tool_call");
     assert_eq!(second["input"][0]["input"], input);
     assert_eq!(second["input"][1]["type"], "custom_tool_call_output");

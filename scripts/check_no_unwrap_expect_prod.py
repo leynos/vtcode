@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import re
 import subprocess
 import sys
@@ -14,6 +15,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 UNWRAP_EXPECT_RE = re.compile(r"\.(unwrap|expect)\s*\(")
+CFG_TEST_RE = re.compile(r"#\s*\[\s*cfg\s*\((?!not\s*\()[^]]*test")
+PATH_ATTRIBUTE_RE = re.compile(r'#\s*\[\s*path\s*=\s*"([^"]+)"\s*\]')
+OUT_OF_LINE_MODULE_RE = re.compile(r"(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+\w+\s*;")
 TEST_ROOT_DIRECTORIES = ("fuzz", "target", "tests")
 NESTED_TEST_DIRECTORIES = ("tests", "benches", "examples")
 TEST_SOURCE_SUFFIXES = ("_test.rs", "_tests.rs")
@@ -61,6 +65,45 @@ def list_tracked_rust_files() -> list[Path]:
     return [REPO_ROOT / Path(rel) for rel in raw.split("\0") if rel]
 
 
+@functools.lru_cache(maxsize=1)
+def cfg_test_path_modules() -> frozenset[Path]:
+    """Return files declared by an out-of-line `#[cfg(test)]` path module.
+
+    A module such as `#[cfg(test)] #[path = "support.rs"] mod support;` is
+    test-only code even though its file name carries no test suffix. Locating
+    those declarations lets the scanner skip them without allowlisting each
+    helper individually.
+    """
+    declared: set[Path] = set()
+    for path in list_tracked_rust_files():
+        try:
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+
+        cfg_test_pending = False
+        declared_path: str | None = None
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line or line.startswith("//") or line.startswith("/*"):
+                continue
+            if CFG_TEST_RE.search(line):
+                cfg_test_pending = True
+                continue
+            path_match = PATH_ATTRIBUTE_RE.search(line)
+            if path_match:
+                declared_path = path_match.group(1)
+                continue
+            if line.startswith("#"):
+                continue
+            if cfg_test_pending and declared_path and OUT_OF_LINE_MODULE_RE.search(line):
+                declared.add((path.parent / declared_path).resolve())
+            cfg_test_pending = False
+            declared_path = None
+
+    return frozenset(declared)
+
+
 def is_test_path(path: Path) -> bool:
     rel = path.relative_to(REPO_ROOT).as_posix()
     path_parts = rel.split("/")
@@ -68,6 +111,7 @@ def is_test_path(path: Path) -> bool:
         _is_test_tree_path(path_parts)
         or _is_test_module_path(path_parts)
         or _is_test_source_path(path_parts[-1])
+        or path.resolve() in cfg_test_path_modules()
     )
 
 

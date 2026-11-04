@@ -2,12 +2,25 @@
 
 use super::{StreamAssemblyError, extract_data_payload, find_sse_boundary_bytes};
 
+/// Upper bound on an unterminated SSE frame retained between `push` calls.
+///
+/// A peer that never sends a frame delimiter would otherwise grow the buffer
+/// without limit. The cap is far above any legitimate Responses event and is
+/// checked only after every complete frame has been drained.
+pub(crate) const MAX_PENDING_FRAME_BYTES: usize = 8 * 1024 * 1024;
+
+/// Reassembles Responses server-sent events from arbitrarily split byte chunks.
 #[derive(Debug, Default)]
 pub(crate) struct ResponsesSseDecoder {
     buffer: Vec<u8>,
 }
 
 impl ResponsesSseDecoder {
+    /// Append bytes and return every data payload completed by them.
+    ///
+    /// Each result corresponds to one `\n\n`-delimited frame. A frame that is
+    /// not valid UTF-8, or one that exceeds [`MAX_PENDING_FRAME_BYTES`] without
+    /// a delimiter, yields an error while later input continues to be framed.
     pub(crate) fn push(&mut self, bytes: &[u8]) -> Vec<Result<String, StreamAssemblyError>> {
         self.buffer.extend_from_slice(bytes);
         let mut payloads = Vec::new();
@@ -30,9 +43,20 @@ impl ResponsesSseDecoder {
         if offset > 0 {
             self.buffer.drain(..offset);
         }
+
+        if self.buffer.len() > MAX_PENDING_FRAME_BYTES {
+            self.buffer.clear();
+            payloads.push(Err(StreamAssemblyError::InvalidPayload(format!(
+                "Responses SSE frame exceeded the maximum buffered size of {MAX_PENDING_FRAME_BYTES} bytes"
+            ))));
+        }
         payloads
     }
 
+    /// Reject a buffer that still holds an undelimited, non-whitespace frame.
+    ///
+    /// A clean end of stream is one where only whitespace remains, because the
+    /// final delimiter of the last event has already been consumed.
     pub(crate) fn finish(&self) -> Result<(), StreamAssemblyError> {
         if self.buffer.iter().all(u8::is_ascii_whitespace) {
             Ok(())
@@ -44,14 +68,15 @@ impl ResponsesSseDecoder {
 
 #[cfg(test)]
 mod tests {
-    use super::ResponsesSseDecoder;
+    use super::{MAX_PENDING_FRAME_BYTES, ResponsesSseDecoder, StreamAssemblyError};
     use crate::providers::shared::responses_adapter::{ResponsesStreamAdapter, ResponsesStreamEvent};
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
     use serde_json::json;
 
+    /// Consume property frames until the completed terminal, ignoring later frames.
     fn consume_until_completed(
-        frames: Vec<Result<String, super::StreamAssemblyError>>,
+        frames: Vec<Result<String, StreamAssemblyError>>,
         visible: &mut Vec<String>,
         completed_terminal: &mut bool,
     ) -> TestCaseResult {
@@ -71,6 +96,7 @@ mod tests {
         Ok(())
     }
 
+    /// Prove incomplete and invalid wire events are rejected.
     #[test]
     fn incomplete_and_invalid_wire_events_are_rejected() {
         let mut incomplete = ResponsesSseDecoder::default();
@@ -81,6 +107,22 @@ mod tests {
         assert!(matches!(invalid.push(b"data: \xff\n\n").as_slice(), [Err(_)]));
     }
 
+    /// Prove an unterminated frame beyond the cap is rejected and discarded.
+    #[test]
+    fn unterminated_frame_beyond_the_cap_is_rejected_and_discarded() {
+        let mut decoder = ResponsesSseDecoder::default();
+        let oversized = vec![b'a'; MAX_PENDING_FRAME_BYTES + 1];
+
+        let frames = decoder.push(&oversized);
+
+        assert!(matches!(
+            frames.as_slice(),
+            [Err(StreamAssemblyError::InvalidPayload(message))] if message.contains("maximum buffered size")
+        ));
+        assert!(decoder.finish().is_ok());
+    }
+
+    /// Prove a valid prefix is delivered before an invalid suffix in one chunk.
     #[test]
     fn valid_prefix_is_delivered_before_invalid_suffix_in_one_chunk() {
         let mut decoder = ResponsesSseDecoder::default();
@@ -92,6 +134,7 @@ mod tests {
     }
 
     proptest! {
+        /// Prove arbitrary byte partitions preserve UTF-8, CRLF, and JSON escapes.
         #[test]
         fn arbitrary_network_byte_partitions_preserve_utf8_crlf_and_json_escapes(
             deltas in prop::collection::vec(prop::collection::vec(any::<char>(), 0..16), 0..12),
@@ -151,6 +194,7 @@ mod tests {
             prop_assert_eq!(actual, expected);
         }
 
+        /// Prove an invalid suffix after completion never erases the prefix or terminal.
         #[test]
         fn invalid_suffix_after_completed_never_erases_prefix_or_terminal(
             characters in prop::collection::vec(any::<char>(), 0..32),

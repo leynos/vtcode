@@ -4,6 +4,7 @@ use crate::error_display;
 use crate::provider::LLMError;
 use serde_json::Value;
 
+/// Reject an explicit non-completed provider status, preserving its reason.
 pub(crate) fn validate_completed_response(response: &Value) -> Result<(), LLMError> {
     match response.get("status") {
         None => Ok(()),
@@ -30,6 +31,7 @@ mod tests {
     use super::validate_completed_response;
     use serde_json::json;
 
+    /// Prove an explicit incomplete status is never accepted as completion.
     #[test]
     fn explicit_incomplete_status_is_not_a_completion() {
         for status in [

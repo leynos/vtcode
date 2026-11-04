@@ -17,6 +17,7 @@ use crate::providers::shared::responses_reconciler::{
     FinalInputPreference, ReasoningChannel, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
     reconcile_final_input,
 };
+use crate::providers::shared::responses_tool_calls::correlated_response_call;
 use crate::providers::shared::responses_usage;
 use crate::providers::shared::responses_validation;
 use crate::providers::shared::responses_wire::ResponsesSseDecoder;
@@ -26,7 +27,7 @@ use crate::providers::shared::{
 };
 use async_stream::try_stream;
 use futures::StreamExt;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use serde_json::{Value, json};
 use std::borrow::Cow;
 
@@ -227,6 +228,19 @@ impl ResponsesToolCallState {
                 .get_or_insert_with(crate::providers::shared::generate_tool_call_id)
                 .clone(),
         }
+    }
+
+    /// Ids this decoder invented because the stream omitted them.
+    ///
+    /// A fabricated id never appears in the completed response, so
+    /// reconciliation must correlate those calls by output position instead of
+    /// by identity.
+    fn fabricated_tool_call_ids(&self) -> HashSet<String> {
+        self.fabricated_ids
+            .values()
+            .cloned()
+            .chain(self.fabricated_fallback_id.iter().cloned())
+            .collect()
     }
 
     fn resolve_tool_call_index(&mut self, call_id: &str, output_index: Option<usize>) -> usize {
@@ -655,6 +669,7 @@ pub(crate) fn create_responses_stream(
             }
         };
 
+        let fabricated_tool_call_ids = tool_call_state.fabricated_tool_call_ids();
         let mut final_aggregator_response = aggregator.finalize();
         merge_reconciled_custom_calls(&mut final_aggregator_response, &reconciler)?;
         let mut response = match parse_responses_payload(response_value.clone(), model.clone(), include_metrics) {
@@ -680,7 +695,11 @@ pub(crate) fn create_responses_stream(
             response.reasoning = final_aggregator_response.reasoning;
         }
 
-        reconcile_streamed_tool_calls(&mut response, final_aggregator_response.tool_calls.as_deref())?;
+        reconcile_streamed_tool_calls(
+            &mut response,
+            final_aggregator_response.tool_calls.as_deref(),
+            &fabricated_tool_call_ids,
+        )?;
 
         let response = strip_reasoning(retain_reasoning, response);
         yield provider::LLMStreamEvent::Completed { response: Box::new(response) };
@@ -689,6 +708,7 @@ pub(crate) fn create_responses_stream(
     Box::pin(stream)
 }
 
+/// Classify an event as reasoning-summary or raw-reasoning output.
 fn reasoning_channel_for_event(event_type: &str) -> ReasoningChannel {
     match event_type {
         "response.reasoning_summary_text.delta" | "response.reasoning_summary_text.done" => ReasoningChannel::Summary,
@@ -696,6 +716,7 @@ fn reasoning_channel_for_event(event_type: &str) -> ReasoningChannel {
     }
 }
 
+/// Build the item identity carried by a Responses stream payload.
 fn responses_item_identity(payload: &Value) -> ResponsesItemIdentity {
     ResponsesItemIdentity::new(
         payload.get("item_id").and_then(Value::as_str).map(ToOwned::to_owned),
@@ -714,10 +735,12 @@ fn responses_item_identity(payload: &Value) -> ResponsesItemIdentity {
     )
 }
 
+/// Build the reasoning identity, including the event's reasoning channel.
 fn reasoning_item_identity(payload: &Value, event_type: &str) -> ResponsesItemIdentity {
     responses_item_identity(payload).with_reasoning_channel(reasoning_channel_for_event(event_type))
 }
 
+/// Reconcile one reasoning delta, rejecting correlation conflicts.
 fn reconcile_reasoning_delta(
     reconciler: &mut ResponsesStreamReconciler,
     payload: &Value,
@@ -729,6 +752,7 @@ fn reconcile_reasoning_delta(
         .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))
 }
 
+/// Reconcile a reasoning `*.done` snapshot with already emitted deltas.
 fn reconcile_reasoning_done(
     reconciler: &mut ResponsesStreamReconciler,
     payload: &Value,
@@ -740,6 +764,7 @@ fn reconcile_reasoning_done(
         .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))
 }
 
+/// Merge reconciled custom-tool calls into the completed response.
 fn merge_reconciled_custom_calls(
     response: &mut provider::LLMResponse,
     reconciler: &ResponsesStreamReconciler,
@@ -761,9 +786,11 @@ fn merge_reconciled_custom_calls(
     Ok(())
 }
 
+/// Pair streamed tool calls with completed counterparts and reconcile them.
 fn reconcile_streamed_tool_calls(
     response: &mut provider::LLMResponse,
     streamed_calls: Option<&[provider::ToolCall]>,
+    fabricated_tool_call_ids: &HashSet<String>,
 ) -> Result<(), provider::LLMError> {
     let Some(streamed_calls) = streamed_calls.filter(|calls| !calls.is_empty()) else {
         return Ok(());
@@ -773,19 +800,20 @@ fn reconcile_streamed_tool_calls(
         return Ok(());
     };
 
+    let mut claimed = vec![false; response_calls.len()];
     for streamed_call in streamed_calls {
-        let existing = response_calls
-            .iter_mut()
-            .find(|call| call.id == streamed_call.id)
+        let position = correlated_response_call(response_calls, &claimed, streamed_call, fabricated_tool_call_ids)
             .ok_or_else(|| {
                 StreamAssemblyError::InvalidPayload("completed response omitted a streamed tool call".to_string())
                     .into_llm_error("OpenAI")
             })?;
-        reconcile_tool_call(existing, streamed_call)?;
+        claimed[position] = true;
+        reconcile_tool_call(&mut response_calls[position], streamed_call)?;
     }
     Ok(())
 }
 
+/// Reconcile one streamed tool call with its completed counterpart.
 fn reconcile_tool_call(
     final_call: &mut provider::ToolCall,
     streamed_call: &provider::ToolCall,
@@ -808,6 +836,7 @@ fn reconcile_tool_call(
     Ok(())
 }
 
+/// Build an item identity from a payload and its nested output item.
 fn responses_item_identity_from_item(payload: &Value, item: &Value) -> ResponsesItemIdentity {
     ResponsesItemIdentity::new(
         payload
@@ -827,6 +856,7 @@ fn responses_item_identity_from_item(payload: &Value, item: &Value) -> Responses
     )
 }
 
+/// Read a required string field, reporting its absence as an invalid payload.
 fn required_string_field<'a>(payload: &'a Value, field: &'static str) -> Result<&'a str, provider::LLMError> {
     payload
         .get(field)

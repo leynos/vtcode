@@ -11,6 +11,8 @@ pub(crate) mod responses_reconciler;
 
 mod responses_stream;
 
+pub(crate) mod responses_tool_calls;
+
 pub(crate) mod responses_usage;
 
 pub(crate) mod responses_validation;

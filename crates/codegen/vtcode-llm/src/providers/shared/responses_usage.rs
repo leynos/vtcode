@@ -3,6 +3,7 @@
 use crate::provider::{LLMError, Usage};
 use serde_json::Value;
 
+/// Build the provider error reported for a malformed or unrepresentable usage count.
 fn invalid_usage(field: &str) -> LLMError {
     LLMError::Provider {
         message: format!("Responses usage field `{field}` must be an unsigned 32-bit token count"),
@@ -10,6 +11,7 @@ fn invalid_usage(field: &str) -> LLMError {
     }
 }
 
+/// Decode one optional unsigned 32-bit usage counter, rejecting lossy values.
 fn counter(value: Option<&Value>, field: &str) -> Result<Option<u32>, LLMError> {
     match value {
         None | Some(Value::Null) => Ok(None),
@@ -21,6 +23,7 @@ fn counter(value: Option<&Value>, field: &str) -> Result<Option<u32>, LLMError> 
     }
 }
 
+/// Return the first present, non-null value among JSON pointer paths.
 fn first_present<'a>(value: &'a Value, paths: &[&str]) -> Option<&'a Value> {
     paths
         .iter()
@@ -105,20 +108,22 @@ mod tests {
     use proptest::prelude::*;
     use serde_json::json;
 
+    /// Prove missing and null usage stay absent rather than becoming zero.
     #[test]
     fn missing_and_null_usage_are_not_zero_usage() {
-        assert!(parse_usage(&json!({}), true).unwrap().is_none());
-        assert!(parse_usage(&json!({"usage":null}), true).unwrap().is_none());
+        assert!(parse_usage(&json!({}), true).expect("missing usage parses").is_none());
+        assert!(parse_usage(&json!({"usage":null}), true).expect("null usage parses").is_none());
         assert!(parse_usage(&json!({"usage":{}}), true).is_err());
         let zero = parse_usage(&json!({"usage":{"input_tokens":0,"output_tokens":0}}), true)
-            .unwrap()
-            .unwrap();
+            .expect("zero-token usage parses")
+            .expect("zero-token usage is present");
         assert_eq!(zero.total_tokens, 0);
         assert_eq!(zero.reasoning_output_tokens, None);
         assert_eq!(zero.cached_prompt_tokens, None);
         assert_eq!(zero.cache_creation_tokens, None);
     }
 
+    /// Prove cache-write counters accept both wire shapes and honour the metrics gate.
     #[test]
     fn cache_write_tokens_support_responses_and_chat_shapes_and_metrics_gate() {
         for details_field in ["input_tokens_details", "prompt_tokens_details"] {
@@ -127,11 +132,24 @@ mod tests {
                 "output_tokens":2
             }});
             response["usage"][details_field] = json!({"cache_write_tokens":58});
-            assert_eq!(parse_usage(&response, true).unwrap().unwrap().cache_creation_tokens, Some(58));
-            assert_eq!(parse_usage(&response, false).unwrap().unwrap().cache_creation_tokens, None);
+            assert_eq!(
+                parse_usage(&response, true)
+                    .expect("cache write usage parses")
+                    .expect("cache write usage is present")
+                    .cache_creation_tokens,
+                Some(58)
+            );
+            assert_eq!(
+                parse_usage(&response, false)
+                    .expect("cache write usage parses")
+                    .expect("cache write usage is present")
+                    .cache_creation_tokens,
+                None
+            );
         }
     }
 
+    /// Prove overflowing and malformed counts are errors rather than zero.
     #[test]
     fn overflowing_and_malformed_counts_are_errors_not_zero() {
         for value in [
@@ -151,6 +169,7 @@ mod tests {
     }
 
     proptest! {
+        /// Prove representable usage is decoded exactly.
         #[test]
         fn representable_usage_is_exact(
             input in any::<u32>(),
@@ -166,7 +185,9 @@ mod tests {
             }}), true);
             match input.checked_add(output) {
                 Some(total) => {
-                    let usage = result.unwrap().unwrap();
+                    let usage = result
+                        .expect("representable usage parses")
+                        .expect("representable usage is present");
                     prop_assert_eq!(usage.prompt_tokens, input);
                     prop_assert_eq!(usage.completion_tokens, output);
                     prop_assert_eq!(usage.total_tokens, total);
@@ -178,6 +199,7 @@ mod tests {
             }
         }
 
+        /// Prove unrepresentable usage never becomes zero.
         #[test]
         fn unrepresentable_usage_never_becomes_zero(count in (u64::from(u32::MAX) + 1)..=u64::MAX) {
             let result = parse_usage(&json!({"usage":{"input_tokens":count,"output_tokens":0}}), true);

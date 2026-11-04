@@ -22,6 +22,14 @@ class TestPathClassification(unittest.TestCase):
 
         self.assertTrue(scanner.is_test_path(support_path))
 
+    def test_cfg_test_path_module_is_excluded(self) -> None:
+        support_path = (
+            scanner.REPO_ROOT
+            / "crates/codegen/vtcode-acp/src/zed/agent/rate_limit_test_support.rs"
+        )
+
+        self.assertTrue(scanner.is_test_path(support_path))
+
     def test_production_rust_module_remains_scanned(self) -> None:
         production_path = (
             scanner.REPO_ROOT

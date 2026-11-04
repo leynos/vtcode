@@ -534,18 +534,25 @@ mod tests {
     use serde_json::json;
     use vtcode_config::constants::tools;
 
+    /// Prove a raw custom tool omits an absent or null format.
     #[test]
     fn raw_custom_tool_omits_absent_and_null_format() {
         let mut tool = ToolDefinition::custom("patch".into(), "Edit a fixture".into());
         for parameters in [json!({}), json!({"format": null})] {
-            tool.function.as_mut().unwrap().parameters = parameters;
-            let definitions = serialize_tools_for_responses(&[tool.clone()], None).unwrap();
+            tool.function
+                .as_mut()
+                .expect("custom tool definition carries a function")
+                .parameters = parameters;
+            let definitions = serialize_tools_for_responses(&[tool.clone()], None).expect("tool list serializes");
             assert_eq!(definitions[0]["type"], "custom");
             assert!(definitions[0].get("format").is_none());
         }
         let format = json!({"type":"text"});
-        tool.function.as_mut().unwrap().parameters = json!({"format":format});
-        assert_eq!(serialize_tools_for_responses(&[tool], None).unwrap()[0]["format"], format);
+        tool.function
+            .as_mut()
+            .expect("custom tool definition carries a function")
+            .parameters = json!({"format":format});
+        assert_eq!(serialize_tools_for_responses(&[tool], None).expect("tool list serializes")[0]["format"], format);
     }
 
     #[test]

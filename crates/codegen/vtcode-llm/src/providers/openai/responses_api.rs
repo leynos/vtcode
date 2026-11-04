@@ -597,6 +597,7 @@ mod tests {
     use serde_json::{Value, json};
 
     proptest! {
+        /// Prove tool-history round trips preserve custom and function payloads.
         #[test]
         fn responses_tool_history_round_trip_preserves_payload(
             raw in any::<bool>(),
@@ -606,15 +607,20 @@ mod tests {
             let wire_input = if raw { input } else { json!({"payload":input}).to_string() };
             let mut item = json!({"type":if raw {"custom_tool_call"} else {"function_call"},"call_id":"call_fixture","name":"fixture_tool"});
             item[if raw { "input" } else { "arguments" }] = json!(wire_input);
-            let parsed = parse_responses_payload(json!({"output":[item]}), "fixture-model".into(), false).unwrap();
+            let parsed = parse_responses_payload(json!({"output":[item]}), "fixture-model".into(), false)
+                .expect("fixture payload parses");
             let request = LLMRequest {
                 messages: vec![
-                    Message::assistant_with_tools(String::new(), parsed.tool_calls.unwrap()),
+                    Message::assistant_with_tools(
+                        String::new(),
+                        parsed.tool_calls.expect("fixture payload carries tool calls"),
+                    ),
                     Message::tool_response("call_fixture".into(), output.clone()),
                 ].into(),
                 ..Default::default()
             };
-            let payload = build_standard_responses_payload(&request, true).unwrap();
+            let payload =
+                build_standard_responses_payload(&request, true).expect("request payload serializes");
             prop_assert_eq!(payload.input.len(), 2);
             prop_assert_eq!(&payload.input[0][if raw {"input"} else {"arguments"}], &json!(wire_input));
             prop_assert_eq!(&payload.input[0]["call_id"], &json!("call_fixture"));

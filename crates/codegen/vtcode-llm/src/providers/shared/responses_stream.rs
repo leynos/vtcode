@@ -16,6 +16,7 @@ use futures::StreamExt;
 use hashbrown::{HashMap, HashSet};
 use serde_json::{Value, json};
 
+use super::responses_tool_calls::correlated_response_call;
 use super::{StreamAggregator, generate_tool_call_id};
 
 // Retained shared Responses stream processor.
@@ -167,6 +168,19 @@ where
             Some(index) => self.fabricated_ids.entry(index).or_insert_with(generate_tool_call_id).clone(),
             None => self.fabricated_fallback_id.get_or_insert_with(generate_tool_call_id).clone(),
         }
+    }
+
+    /// Ids this decoder invented because the stream omitted them.
+    ///
+    /// A fabricated id never appears in the completed response, so
+    /// reconciliation must correlate those calls by output position instead of
+    /// by identity.
+    fn fabricated_tool_call_ids(&self) -> HashSet<String> {
+        self.fabricated_ids
+            .values()
+            .cloned()
+            .chain(self.fabricated_fallback_id.iter().cloned())
+            .collect()
     }
 
     fn is_done(&self) -> bool {
@@ -340,6 +354,7 @@ where
         Ok(events)
     }
 
+    /// Reconcile one reasoning delta and emit it when reasoning output is enabled.
     fn handle_reasoning_delta(
         &mut self,
         events: &mut Vec<NormalizedStreamEvent>,
@@ -353,6 +368,7 @@ where
         Ok(())
     }
 
+    /// Reconcile a reasoning `*.done` snapshot and emit only its unreplayed suffix.
     fn handle_reasoning_done(
         &mut self,
         events: &mut Vec<NormalizedStreamEvent>,
@@ -368,6 +384,7 @@ where
         Ok(())
     }
 
+    /// Append an emitted reasoning delta to the aggregate and record it as an event.
     fn emit_reasoning_delta(&mut self, events: &mut Vec<NormalizedStreamEvent>, delta: String) {
         if self.options.emit_reasoning && !delta.is_empty() {
             self.aggregator.reasoning.push_str(&delta);
@@ -391,25 +408,36 @@ where
     }
 
     fn finish(self) -> Result<Vec<NormalizedStreamEvent>, LLMError> {
-        self.reconciler
-            .require_completed()
-            .map_err(|message| provider_error(self.options.provider_name, message))?;
-        let final_response = self.final_response.ok_or_else(|| {
-            provider_error(self.options.provider_name, "response.completed event did not contain a response")
-        })?;
-
+        let provider_name = self.options.provider_name;
+        if let Err(message) = self.reconciler.require_completed() {
+            log_stream_outcome(provider_name, "rejected", "responses_stream_incomplete");
+            return Err(provider_error(provider_name, message));
+        }
+        let fabricated_tool_call_ids = self.fabricated_tool_call_ids();
+        let Some(final_response) = self.final_response else {
+            log_stream_outcome(provider_name, "rejected", "responses_stream_missing_final_response");
+            return Err(provider_error(provider_name, "response.completed event did not contain a response"));
+        };
         let mut streamed = self.aggregator.finalize();
-        merge_reconciled_custom_calls(&mut streamed, &self.reconciler, self.options.provider_name)?;
+        merge_reconciled_custom_calls(&mut streamed, &self.reconciler, provider_name)
+            .inspect_err(|_| log_stream_outcome(provider_name, "rejected", "responses_reconciliation_failed"))?;
         let mut response = match (self.parse_final_response)(final_response.clone()) {
             Ok(response) => response,
             Err(_) if final_response_output_is_empty(&final_response) && streamed_response_is_usable(&streamed) => {
                 streamed.clone()
             }
-            Err(err) => return Err(err),
+            Err(err) => {
+                log_stream_outcome(provider_name, "rejected", "responses_final_response_invalid");
+                return Err(err);
+            }
         };
-        merge_final_response_metadata(&mut response, &final_response, self.options.include_cached_prompt_metrics)?;
+        merge_final_response_metadata(&mut response, &final_response, self.options.include_cached_prompt_metrics)
+            .inspect_err(|_| log_stream_outcome(provider_name, "rejected", "responses_metadata_invalid"))?;
 
-        merge_streamed_response(&mut response, streamed, self.options.provider_name)?;
+        merge_streamed_response(&mut response, streamed, &fabricated_tool_call_ids, provider_name).inspect_err(
+            |_| log_stream_outcome(provider_name, "rejected", "responses_tool_call_reconciliation_failed"),
+        )?;
+        log_stream_outcome(provider_name, "completed", "responses_stream_completed");
 
         let mut events = Vec::new();
         if let Some(usage) = response.usage.clone() {
@@ -461,6 +489,7 @@ where
     }
 }
 
+/// Build the identity that correlates a reasoning part across lifecycle events.
 fn reasoning_identity(
     item_id: Option<String>,
     output_index: Option<usize>,
@@ -540,9 +569,11 @@ fn final_response_output_is_empty(final_response: &Value) -> bool {
         .is_some_and(Vec::is_empty)
 }
 
+/// Fill an incomplete completed response from the streamed aggregate.
 fn merge_streamed_response(
     response: &mut LLMResponse,
     streamed: LLMResponse,
+    fabricated_tool_call_ids: &HashSet<String>,
     provider_name: &str,
 ) -> Result<(), LLMError> {
     if response.content.as_deref().unwrap_or_default().is_empty() {
@@ -554,7 +585,7 @@ fn merge_streamed_response(
         content.push_str(&streamed_content);
     }
 
-    reconcile_streamed_tool_calls(response, streamed.tool_calls.as_deref(), provider_name)?;
+    reconcile_streamed_tool_calls(response, streamed.tool_calls.as_deref(), fabricated_tool_call_ids, provider_name)?;
 
     if response.usage.is_none() {
         response.usage = streamed.usage;
@@ -582,6 +613,7 @@ fn merge_streamed_response(
     Ok(())
 }
 
+/// Merge reconciled custom-tool calls into the completed response.
 fn merge_reconciled_custom_calls(
     response: &mut LLMResponse,
     reconciler: &ResponsesStreamReconciler,
@@ -604,9 +636,11 @@ fn merge_reconciled_custom_calls(
     Ok(())
 }
 
+/// Pair each streamed tool call with its completed counterpart and reconcile it.
 fn reconcile_streamed_tool_calls(
     response: &mut LLMResponse,
     streamed_calls: Option<&[ToolCall]>,
+    fabricated_tool_call_ids: &HashSet<String>,
     provider_name: &str,
 ) -> Result<(), LLMError> {
     let Some(streamed_calls) = streamed_calls.filter(|calls| !calls.is_empty()) else {
@@ -617,16 +651,17 @@ fn reconcile_streamed_tool_calls(
         return Ok(());
     };
 
+    let mut claimed = vec![false; response_calls.len()];
     for streamed_call in streamed_calls {
-        let existing = response_calls
-            .iter_mut()
-            .find(|call| call.id == streamed_call.id)
+        let position = correlated_response_call(response_calls, &claimed, streamed_call, fabricated_tool_call_ids)
             .ok_or_else(|| provider_error(provider_name, "completed response omitted a streamed tool call"))?;
-        reconcile_tool_call(existing, streamed_call, provider_name)?;
+        claimed[position] = true;
+        reconcile_tool_call(&mut response_calls[position], streamed_call, provider_name)?;
     }
     Ok(())
 }
 
+/// Reconcile one streamed tool call with its completed counterpart.
 fn reconcile_tool_call(
     final_call: &mut ToolCall,
     streamed_call: &ToolCall,
@@ -670,6 +705,21 @@ fn provider_error(provider_name: &str, message: impl Into<String>) -> LLMError {
     LLMError::Provider { message, metadata: None }
 }
 
+/// Emit one stable stream-outcome record.
+///
+/// The record carries the provider name, a coarse outcome, and a fixed error
+/// category. Response text, tool input, and provider payloads never appear in
+/// it, so a rejected stream is diagnosable without leaking conversation data.
+fn log_stream_outcome(provider_name: &str, outcome: &'static str, error_category: &'static str) {
+    tracing::debug!(
+        target = "vtcode::llm::responses::stream",
+        provider = provider_name,
+        outcome,
+        error_category,
+        "Responses stream terminal outcome"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -677,8 +727,10 @@ mod tests {
         merge_streamed_response, provider_error, response_stream_event_policy,
     };
     use crate::provider::{FinishReason, LLMResponse, NormalizedStreamEvent, ToolCall};
+    use hashbrown::HashSet;
     use serde_json::{Value, json};
 
+    /// Prove reasoning-part events carry text and reconciliation metadata.
     #[test]
     fn reasoning_part_events_are_meaningful_conversions() {
         for event_type in ["response.reasoning_part.added", "response.reasoning_part.done"] {
@@ -739,6 +791,7 @@ mod tests {
         response_fixture("completed", output, Value::Null)
     }
 
+    /// Build the completed-response event used by stream tests.
     fn completion_event(sequence_number: u64, output: Value) -> Value {
         json!({
             "type": "response.completed",
@@ -1011,6 +1064,97 @@ mod tests {
         assert_ne!(make_id(), make_id(), "fabricated ids must differ across responses");
     }
 
+    /// Prove a fabricated call ID pairs with the completed call at the same position.
+    #[test]
+    fn fabricated_tool_call_reconciles_with_completed_call_by_position() {
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options(), |value| {
+            let tool_calls: Vec<ToolCall> = value
+                .get("output")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|item| item.get("type").and_then(Value::as_str) == Some("function_call"))
+                .filter_map(|item| {
+                    Some(ToolCall::function(
+                        item.get("call_id").and_then(Value::as_str)?.to_string(),
+                        item.get("name").and_then(Value::as_str)?.to_string(),
+                        item.get("arguments").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    ))
+                })
+                .collect();
+
+            Ok(LLMResponse {
+                model: "gpt-5".to_string(),
+                tool_calls: (!tool_calls.is_empty()).then_some(tool_calls),
+                ..Default::default()
+            })
+        });
+
+        processor
+            .handle_payload(json!({
+                "type": "response.output_item.added",
+                "item_id": "fc_1",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_1",
+                    "call_id": "",
+                    "name": "search_workspace",
+                    "arguments": "",
+                    "status": "in_progress"
+                }
+            }))
+            .expect("output item metadata should parse");
+
+        let fabricated = processor
+            .handle_payload(json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 2,
+                "delta": "{\"query\":\"vtcode\"}"
+            }))
+            .expect("id-less argument delta should parse");
+        let fabricated_id = match fabricated.as_slice() {
+            [
+                NormalizedStreamEvent::ToolCallStart { call_id, .. },
+                NormalizedStreamEvent::ToolCallDelta { call_id: delta_id, .. },
+            ] => {
+                assert_eq!(call_id, delta_id);
+                call_id.clone()
+            }
+            other => panic!("unexpected events: {other:?}"),
+        };
+
+        processor
+            .handle_payload(completion_event(
+                3,
+                json!([{
+                    "type": "function_call",
+                    "id": "fc_final",
+                    "call_id": "call_final",
+                    "name": "search_workspace",
+                    "arguments": "{\"query\":\"vtcode\"}",
+                    "status": "completed"
+                }]),
+            ))
+            .expect("completion should parse");
+
+        let finished = processor
+            .finish()
+            .expect("fabricated call should reconcile with the completed call");
+        let response = match finished.as_slice() {
+            [NormalizedStreamEvent::Done { response }] => response,
+            other => panic!("unexpected events: {other:?}"),
+        };
+        let tool_calls = response.tool_calls.as_ref().expect("tool call should be present");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "call_final");
+        assert_ne!(tool_calls[0].id, fabricated_id);
+        assert_eq!(tool_calls[0].raw_input(), Some("{\"query\":\"vtcode\"}"));
+    }
+
     #[test]
     fn tool_call_deltas_use_provider_call_id_when_item_id_differs() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), |_| {
@@ -1252,6 +1396,7 @@ mod tests {
         }
     }
 
+    /// Prove a completed event whose status contradicts the payload is rejected.
     #[test]
     fn completed_event_rejects_contradictory_response_status() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
@@ -1311,6 +1456,7 @@ mod tests {
         assert!(error.to_string().contains("invalid stream payload"));
     }
 
+    /// Prove EOF without a completed terminal fails even after valid deltas.
     #[test]
     fn eof_without_completed_terminal_is_an_error_even_after_valid_deltas() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
@@ -1322,6 +1468,7 @@ mod tests {
         assert!(error.to_string().contains("response.completed"));
     }
 
+    /// Prove the completed terminal absorbs every later frame.
     #[test]
     fn terminal_completion_absorbs_later_frames() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
@@ -1354,6 +1501,7 @@ mod tests {
         ));
     }
 
+    /// Prove a done snapshot extends equal real deltas without dropping them.
     #[test]
     fn reasoning_done_reconciles_snapshot_without_dropping_equal_real_deltas() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
@@ -1394,6 +1542,7 @@ mod tests {
         ));
     }
 
+    /// Prove part snapshots keep an emitted prefix without replaying done text.
     #[test]
     fn reasoning_part_snapshots_preserve_prefix_without_replaying_done_text() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
@@ -1418,6 +1567,7 @@ mod tests {
             if response.reasoning.as_deref() == Some("something")));
     }
 
+    /// Prove interleaved summary parts reconcile by summary index.
     #[test]
     fn interleaved_reasoning_summary_parts_reconcile_by_summary_index() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
@@ -1465,6 +1615,7 @@ mod tests {
         ));
     }
 
+    /// Prove raw and summary reasoning tracks reconcile independently at index zero.
     #[test]
     fn raw_and_summary_reasoning_tracks_reconcile_independently_at_zero_indexes() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
@@ -1530,6 +1681,7 @@ mod tests {
         ));
     }
 
+    /// Prove streamed custom input recovers an empty completed output without early dispatch.
     #[test]
     fn streamed_custom_input_recovers_empty_completed_output_without_early_dispatch() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), |value| {
@@ -1600,6 +1752,7 @@ mod tests {
         assert_eq!(calls[0].raw_input(), Some("*** Begin Patch\n*** End Patch\n"));
     }
 
+    /// Prove contradictory custom-call aliases fail before completion.
     #[test]
     fn contradictory_custom_call_aliases_fail_before_completion() {
         let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
@@ -1633,6 +1786,7 @@ mod tests {
         assert!(error.to_string().contains("correlation aliases conflict"));
     }
 
+    /// Prove completed function and custom inputs cannot diverge from streamed prefixes.
     #[test]
     fn completed_function_and_custom_inputs_cannot_diverge_from_streamed_prefixes() {
         for (final_call, streamed_call) in [
@@ -1653,7 +1807,7 @@ mod tests {
                 tool_calls: Some(vec![streamed_call]),
                 ..Default::default()
             };
-            let error = merge_streamed_response(&mut response, streamed, "TestProvider")
+            let error = merge_streamed_response(&mut response, streamed, &HashSet::new(), "TestProvider")
                 .expect_err("divergent completed input must fail");
             assert!(error.to_string().contains("diverges from streamed prefix"));
             assert_eq!(response.tool_calls.as_mut().and_then(|calls| calls.pop()), Some(final_call));

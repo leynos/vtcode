@@ -117,6 +117,7 @@ struct ReasoningEventIdentity {
 }
 
 impl ReasoningEventIdentity {
+    /// Build the identity used to correlate one reasoning part across events.
     fn new(
         item_id: Option<String>,
         output_index: Option<usize>,
@@ -133,6 +134,7 @@ impl ReasoningEventIdentity {
 }
 
 impl ResponsesStreamEvent {
+    /// Return the wire sequence number carried by an event, when it has one.
     pub(crate) fn sequence_number(&self) -> Option<u64> {
         match self {
             Self::Lifecycle { sequence_number, .. }
@@ -424,6 +426,7 @@ fn adapt_policy_payload(provider_name: &str, payload: Value) -> Result<Responses
     }
 }
 
+/// Adapt a value-bearing event that the rig overlay does not model.
 fn adapt_value_bearing_rig_gap(provider_name: &str, payload: Value) -> Result<ResponsesStreamEvent, LLMError> {
     let event_type = payload.get("type").and_then(Value::as_str).unwrap_or_default();
 
@@ -553,10 +556,12 @@ fn adapt_rig_gap_output_item_envelope(payload: &Value) -> Option<ResponsesStream
     })
 }
 
+/// Read an optional string field as an owned value.
 fn optional_owned_string(payload: &Value, field: &str) -> Option<String> {
     payload.get(field).and_then(Value::as_str).map(ToOwned::to_owned)
 }
 
+/// Read `output_index` as a `usize`, ignoring unusable values.
 fn optional_output_index(payload: &Value) -> Option<usize> {
     payload
         .get("output_index")
@@ -564,6 +569,7 @@ fn optional_output_index(payload: &Value) -> Option<usize> {
         .and_then(|value| usize::try_from(value).ok())
 }
 
+/// Read the reasoning part index from `content_index` or `summary_index`.
 fn optional_sub_index(payload: &Value) -> Option<usize> {
     payload
         .get("content_index")
@@ -584,6 +590,7 @@ fn is_rig_modelled_output_item_type(item_type: &str) -> bool {
     matches!(item_type, "message" | "function_call" | "reasoning")
 }
 
+/// Extract the validated text of a `reasoning_text` part.
 pub(crate) fn reasoning_part_text<'a>(provider_name: &str, payload: &'a Value) -> Result<&'a str, LLMError> {
     let part = payload.get("part").and_then(Value::as_object).ok_or_else(|| {
         StreamAssemblyError::InvalidPayload("Responses reasoning part event must contain an object `part`".to_string())
@@ -655,6 +662,7 @@ fn adapt_overlay_conversion(provider_name: &str, payload: &Value) -> Result<Resp
     }
 }
 
+/// Build a reasoning delta event from a reconciled fragment.
 fn reasoning_delta_event(
     delta: String,
     identity: ReasoningEventIdentity,
@@ -670,6 +678,7 @@ fn reasoning_delta_event(
     }
 }
 
+/// Build a reasoning done event from a reconciled snapshot fragment.
 fn reasoning_done_event(
     text: String,
     identity: ReasoningEventIdentity,
@@ -685,6 +694,7 @@ fn reasoning_done_event(
     }
 }
 
+/// Build a reasoning event identity from the wire correlation fields.
 fn reasoning_identity(
     item_id: Option<String>,
     output_index: Option<usize>,
@@ -1383,6 +1393,7 @@ mod tests {
         assert_eq!(payload["annotation"]["text"], "see docs");
     }
 
+    /// Prove custom-tool input events expose typed reconciliation fields.
     #[test]
     fn custom_tool_input_events_have_typed_reconciliation_fields() {
         let delta = event_fixture(json!({
@@ -1489,6 +1500,7 @@ mod tests {
         );
     }
 
+    /// Prove reasoning part events preserve text and reconciliation metadata.
     #[test]
     fn reasoning_part_added_and_done_preserve_text_and_reconciliation_metadata() {
         assert_eq!(
@@ -1553,6 +1565,7 @@ mod tests {
         }
     }
 
+    /// Prove malformed reasoning part events are rejected.
     #[test]
     fn malformed_reasoning_part_events_are_rejected() {
         for payload in [
@@ -1598,6 +1611,7 @@ mod tests {
         );
     }
 
+    /// Build the completed-response event fixture used by adapter tests.
     fn completed_response_event_fixture() -> ResponsesStreamEvent {
         event_fixture(json!({
             "type": "response.completed",

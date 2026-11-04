@@ -10,10 +10,15 @@ use vtcode_core::llm::provider::{LLMError, LLMErrorMetadata};
 use crate::zed::provider_runtime::ProviderClass;
 
 const PROVIDER_ATTEMPT_TOTAL: &str = "vtcode.acp.provider_attempt_total";
+
 const PROVIDER_RETRY_TOTAL: &str = "vtcode.acp.provider_retry_total";
+
 const PROVIDER_RETRY_DELAY_MS: &str = "vtcode.acp.provider_retry_delay_ms";
+
 const PROVIDER_GENERATION_MS: &str = "vtcode.acp.provider_generation_ms";
+
 const PROVIDER_RATE_LIMITED_TOTAL: &str = "vtcode.acp.provider_rate_limited_total";
+
 const RATE_LIMIT_NOTIFICATION_FAILURE_TOTAL: &str = "vtcode.acp.rate_limit_notification_failure_total";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -236,10 +241,9 @@ impl ProviderMetricSink {
             Self::Process => vtcode_core::telemetry::perf::record_value(name, value, tags),
             #[cfg(test)]
             Self::Test(recorder) => {
-                recorder
-                    .record_value(name, value, tags)
-                    .await
-                    .expect("record test provider metric");
+                if let Err(error) = recorder.record_value(name, value, tags).await {
+                    tracing::debug!(%error, "test perf recorder rejected a provider metric");
+                }
             }
         }
     }

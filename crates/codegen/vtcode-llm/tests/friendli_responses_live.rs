@@ -14,6 +14,7 @@ const MODEL: &str = "zai-org/GLM-5.3-Flash";
 const OUTPUT_CAP: u32 = 2048;
 const PROBE_COUNT: u32 = 4;
 
+/// Build the opt-in Friendli Responses provider from the required environment.
 fn live_provider() -> Result<CustomProviderBackendRouter> {
     ensure!(std::env::var("VTCODE_FRIENDLI_LIVE").as_deref() == Ok("1"), "explicit live opt-in is required");
     let key_path = PathBuf::from(std::env::var_os("VTCODE_FRIENDLI_LIVE_KEY_FILE").context("set key-file path")?);
@@ -46,6 +47,7 @@ fn live_provider() -> Result<CustomProviderBackendRouter> {
     ))
 }
 
+/// Consume a streamed probe response, reporting its first output latency.
 async fn streamed_response(provider: &CustomProviderBackendRouter, request: LLMRequest) -> Result<LLMResponse> {
     let started = Instant::now();
     let mut first_output_ms = None;
@@ -69,6 +71,7 @@ async fn streamed_response(provider: &CustomProviderBackendRouter, request: LLMR
 
 #[tokio::test]
 #[ignore = "paid Friendli API; explicit opt-in/key-file required; at most 8192 requested output tokens"]
+/// Run the opt-in bounded Friendli Responses compatibility probe.
 async fn friendli_responses_bounded_compatibility() -> Result<()> {
     ensure!(OUTPUT_CAP * PROBE_COUNT <= 10_000, "live probe output budget exceeded");
     let provider = live_provider()?;

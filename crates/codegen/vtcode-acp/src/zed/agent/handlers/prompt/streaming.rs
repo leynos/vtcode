@@ -7,7 +7,7 @@ mod tool_input_previews;
 use super::buffered::refresh_resolved_tool_state;
 use super::*;
 use event_collection::classify_stream_failure;
-use tool_input_previews::StreamedToolInputPreviews;
+use tool_input_previews::{StreamedToolInputPreviews, publish_preview_updates};
 
 enum StreamAttemptOutcome {
     Completed(Box<LLMResponse>),

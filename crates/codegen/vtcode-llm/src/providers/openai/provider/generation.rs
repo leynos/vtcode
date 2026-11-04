@@ -308,7 +308,14 @@ impl OpenAIProvider {
                 match self.generate_via_responses_websocket(&request).await {
                     Ok(response) => return Ok(response),
                     Err(error) if super::websocket::websocket_error_prohibits_replay(&error) => return Err(error),
-                    Err(_) => {}
+                    Err(error) => {
+                        tracing::debug!(
+                            model = %model,
+                            error = %error,
+                            outcome = "responses_websocket_http_fallback",
+                            "Responses WebSocket exchange failed; falling back to HTTP"
+                        );
+                    }
                 }
             }
 

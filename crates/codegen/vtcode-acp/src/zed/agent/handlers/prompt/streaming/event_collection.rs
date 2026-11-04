@@ -13,15 +13,16 @@ pub(super) async fn collect_stream_events(
     loop {
         match poll_next_stream_event(stream, &request).await {
             StreamPollOutcome::Cancelled => {
-                request
+                publish_preview_updates(
+                    request.turn.agent.as_ref(),
+                    &request.turn.args.session_id,
+                    "cancelled",
+                    updates,
+                )
+                .await;
+                let updates = request
                     .previews
-                    .finish(
-                        request.turn.agent.as_ref(),
-                        &request.turn.args.session_id,
-                        acp::ToolCallStatus::Failed,
-                        "Input streaming was cancelled; it was not executed.",
-                    )
-                    .await;
+                    .finish(acp::ToolCallStatus::Failed, "Input streaming was cancelled; it was not executed.");
                 record_stream_attempt(request.span, request.started_at, "cancelled", None);
                 return StreamAttemptOutcome::Cancelled;
             }
@@ -72,15 +73,10 @@ async fn classify_stream_poll_failure(
     error: LLMError,
 ) -> StreamAttemptOutcome {
     record_stream_failure(request.span, request.started_at, &error);
-    request
+    publish_preview_updates(request.turn.agent.as_ref(), &request.turn.args.session_id, "failed", updates).await;
+    let updates = request
         .previews
-        .finish(
-            request.turn.agent.as_ref(),
-            &request.turn.args.session_id,
-            acp::ToolCallStatus::Failed,
-            "Provider input streaming failed; it was not executed.",
-        )
-        .await;
+        .finish(acp::ToolCallStatus::Failed, "Provider input streaming failed; it was not executed.");
     classify_stream_failure(StreamFailureRequest {
         turn: request.turn,
         telemetry: &mut *request.telemetry,
@@ -134,10 +130,8 @@ async fn process_stream_event(
                 name.as_deref().unwrap_or(&call_id),
                 request.attempt_index,
             );
-            request
-                .previews
-                .start(request.turn.agent.as_ref(), &request.turn.args.session_id, call_id, name)
-                .await;
+            let updates = request.previews.start(call_id, name);
+            publish_preview_updates(request.turn.agent.as_ref(), &request.turn.args.session_id, "start", updates).await;
             None
         }
         LLMStreamEvent::ToolCallDelta { call_id, delta } => {
@@ -147,9 +141,8 @@ async fn process_stream_event(
                 request
                     .telemetry
                     .observe_output(&request.turn.provider_runtime, &delta, request.attempt_index);
-                request
-                    .previews
-                    .push_delta(request.turn.agent.as_ref(), &request.turn.args.session_id, call_id, &delta)
+                let updates = request.previews.push_delta(call_id, &delta);
+                publish_preview_updates(request.turn.agent.as_ref(), &request.turn.args.session_id, "delta", updates)
                     .await;
             }
             None
@@ -171,15 +164,11 @@ async fn complete_stream_response(
         .telemetry
         .complete(&request.turn.provider_runtime, &response, request.attempt_index, false)
         .await;
-    request
-        .previews
-        .finish(
-            request.turn.agent.as_ref(),
-            &request.turn.args.session_id,
-            acp::ToolCallStatus::Completed,
-            "Provider input streaming completed; execution is handled separately.",
-        )
-        .await;
+    let updates = request.previews.finish(
+        acp::ToolCallStatus::Completed,
+        "Provider input streaming completed; execution is handled separately.",
+    );
+    publish_preview_updates(request.turn.agent.as_ref(), &request.turn.args.session_id, "completed", updates).await;
     request.turn.agent.publish_lody_usage(
         &request.turn.args.session_id,
         request.turn.provider_runtime.provider_name(),

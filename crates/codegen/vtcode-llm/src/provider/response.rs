@@ -134,6 +134,38 @@ mod tests {
         ));
     }
 
+    /// Prove normalization preserves a tool-call start event unchanged.
+    #[test]
+    fn tool_call_start_is_preserved_by_normalization() {
+        let events = LLMStreamEvent::ToolCallStart {
+            call_id: "call_1".to_string(),
+            name: Some("read_file".to_string()),
+        }
+        .into_normalized();
+
+        assert!(matches!(
+            events.as_slice(),
+            [NormalizedStreamEvent::ToolCallStart { call_id, name }]
+                if call_id == "call_1" && name.as_deref() == Some("read_file")
+        ));
+    }
+
+    /// Prove normalization preserves a tool-call input delta unchanged.
+    #[test]
+    fn tool_call_delta_is_preserved_by_normalization() {
+        let events = LLMStreamEvent::ToolCallDelta {
+            call_id: "call_1".to_string(),
+            delta: "{\"path\"".to_string(),
+        }
+        .into_normalized();
+
+        assert!(matches!(
+            events.as_slice(),
+            [NormalizedStreamEvent::ToolCallDelta { call_id, delta }]
+                if call_id == "call_1" && delta == "{\"path\""
+        ));
+    }
+
     #[test]
     fn reasoning_stage_is_preserved_by_normalization() {
         let events = LLMStreamEvent::ReasoningStage { stage: "analysis".to_string() }.into_normalized();

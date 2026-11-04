@@ -18,12 +18,20 @@ const PREVIOUS_RESPONSE_NOT_FOUND_CODE: &str = "previous_response_not_found";
 const WEBSOCKET_AUTH_RETRY_STATUSES: [&str; 2] = ["401", "403"];
 const OUTPUT_STARTED_ERROR_CODE: &str = "responses_output_started";
 
+/// Return whether the error proves that output already began, prohibiting replay.
 pub(super) fn websocket_error_prohibits_replay(error: &LLMError) -> bool {
     matches!(error, LLMError::Provider { metadata: Some(metadata), .. }
         if metadata.code.as_deref() == Some(OUTPUT_STARTED_ERROR_CODE))
 }
 
+/// Convert a post-output failure into a non-replayable provider error.
 fn prohibit_websocket_replay(error: LLMError) -> LLMError {
+    tracing::warn!(
+        target = "vtcode::llm::responses::websocket",
+        outcome = "replay_prohibited",
+        error_category = "responses_websocket_output_started",
+        "Responses WebSocket failed after output began; automatic replay is disabled"
+    );
     LLMError::Provider {
         message: format!("Responses WebSocket failed after output began; automatic replay is disabled: {error}"),
         metadata: Some(LLMErrorMetadata::new(
@@ -183,6 +191,7 @@ struct ContinuationLease<'a> {
 }
 
 impl Drop for ContinuationLease<'_> {
+    // Invalidate continuation unless the exchange completed.
     fn drop(&mut self) {
         if !self.completed {
             self.provider.clear_websocket_continuation();
@@ -658,6 +667,7 @@ mod tests {
     }
 
     proptest! {
+        /// Prove continuation never crosses a changed model, tool, or history context.
         #[test]
         fn websocket_continuation_never_crosses_changed_context(
             model in "[a-z]{1,16}", instructions in ".{0,32}", tool_name in "[a-z]{1,16}",
@@ -678,7 +688,8 @@ mod tests {
                 _ => payload["input"][0]["content"] = json!("different conversation"),
             }
             prop_assert!(!cache.can_continue_from(&payload));
-            let prepared = prepare_websocket_event(&payload, Some(&cache), false).unwrap();
+            let prepared = prepare_websocket_event(&payload, Some(&cache), false)
+                .expect("websocket event prepares");
             prop_assert!(!prepared.used_previous_response_id);
             prop_assert!(prepared.event.get("previous_response_id").is_none());
             prop_assert_eq!(prepared.event.get("input"), payload.get("input"));
@@ -925,6 +936,7 @@ mod tests {
         }
     }
 
+    /// Prove a post-output failure never reconnects or falls back to HTTP.
     #[tokio::test]
     async fn websocket_partial_output_failure_never_reconnects_or_falls_back_to_http() {
         let (base_url, recorded, server) = spawn_scripted_websocket_server(vec![vec![
@@ -942,34 +954,45 @@ mod tests {
         .expect("must not start HTTP fallback")
         .expect_err("partial stream is incomplete");
         assert!(super::websocket_error_prohibits_replay(&error));
-        assert_eq!(recorded.lock().unwrap().len(), 2);
+        assert_eq!(recorded.lock().expect("recorded requests lock is not poisoned").len(), 2);
         assert!(provider.websocket_session.lock().await.is_none());
         assert!(provider.websocket_continuation_snapshot().is_none());
-        server.await.unwrap();
+        server.await.expect("fixture server completes");
     }
 
+    /// Prove cancelling a pending read discards the socket and continuation.
     #[tokio::test]
     async fn websocket_cancelled_pending_read_discards_socket_and_continuation() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base_url = format!("http://127.0.0.1:{}/v1", listener.local_addr().unwrap().port());
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener binds");
+        let base_url =
+            format!("http://127.0.0.1:{}/v1", listener.local_addr().expect("fixture listener has an address").port());
         let (observed_tx, observed_rx) = oneshot::channel();
         let server = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut socket = accept_async(stream).await.unwrap();
-            let _request = socket.next().await.unwrap().unwrap();
-            observed_tx.send(()).unwrap();
+            let (stream, _) = listener.accept().await.expect("fixture server accepts a connection");
+            let mut socket = accept_async(stream).await.expect("fixture handshake completes");
+            let _request = socket
+                .next()
+                .await
+                .expect("fixture client sends a frame")
+                .expect("frame is not an error");
+            observed_tx.send(()).expect("observer receives the first frame");
             // Cancellation closes this socket; no late response can reach the next turn.
             let closed = socket.next().await;
             assert!(closed.is_none() || matches!(closed, Some(Err(_)) | Some(Ok(Message::Close(_)))));
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut socket = accept_async(stream).await.unwrap();
+            let (stream, _) = listener.accept().await.expect("fixture server accepts a connection");
+            let mut socket = accept_async(stream).await.expect("fixture handshake completes");
             for (id, text) in [("new_warmup", ""), ("new_final", "fresh response")] {
-                let Message::Text(request) = socket.next().await.unwrap().unwrap() else {
+                let Message::Text(request) = socket
+                    .next()
+                    .await
+                    .expect("fixture client sends a frame")
+                    .expect("frame is not an error")
+                else {
                     panic!("text request")
                 };
-                let request: Value = serde_json::from_str(&request).unwrap();
+                let request: Value = serde_json::from_str(&request).expect("fixture request is valid JSON");
                 assert_ne!(request.get("previous_response_id"), Some(&json!("abandoned")));
-                socket.send(Message::Text(json!({"type":"response.completed","response":{"id":id,"output":[{"type":"message","content":[{"type":"output_text","text":text}]}]}}).to_string().into())).await.unwrap();
+                socket.send(Message::Text(json!({"type":"response.completed","response":{"id":id,"output":[{"type":"message","content":[{"type":"output_text","text":text}]}]}}).to_string().into())).await.expect("fixture server sends the completion");
             }
         });
         let provider = websocket_test_custom_provider(base_url);
@@ -980,7 +1003,7 @@ mod tests {
             tokio::pin!(pending);
             tokio::select! {
                 result = &mut pending => panic!("pending read unexpectedly completed: {result:?}"),
-                result = observed_rx => result.unwrap(),
+                result = observed_rx => result.expect("observer receives the first frame"),
             }
         }
         assert!(provider.websocket_session.lock().await.is_none());
@@ -990,10 +1013,10 @@ mod tests {
             provider.generate_via_responses_websocket(&request),
         )
         .await
-        .unwrap()
-        .unwrap();
+        .expect("reconnect completes within the deadline")
+        .expect("reconnect returns a response");
         assert_eq!(response.content.as_deref(), Some("fresh response"));
-        server.await.unwrap();
+        server.await.expect("fixture server completes");
     }
 
     fn seed_continuation_cache(provider: &OpenAIProvider, request: &LLMRequest, response_id: &str, store: bool) {
