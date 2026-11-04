@@ -562,6 +562,67 @@ execution rather than indefinitely using stale policy. Record the failure and
 retain the last valid generation for diagnosis. Rollback is an authorized
 activation, subject to current mandatory controls and revocations.
 
+```mermaid
+stateDiagram-v2
+    accTitle: Policy generation lifecycle
+    accDescr {
+        A candidate moves from staging through validation and compilation to an
+        active generation. Validation, authority, schema, or compilation
+        failures reject it. An authorized replacement supersedes an active
+        generation. Revoked or invalid required sources freeze it. Superseded
+        and frozen generations are archived; rejected and archived generations
+        leave the lifecycle.
+    }
+
+    [*] --> Staged
+    Staged --> Validated: validate manifest and authority
+    Validated --> Compiled: compile isolated policy units
+    Compiled --> Active: atomic generation swap
+    Staged --> Rejected: validation failure
+    Validated --> Rejected: authority or schema failure
+    Compiled --> Rejected: compilation failure
+    Active --> Superseded: authorized replacement
+    Active --> Frozen: required source revoked or invalid
+    Superseded --> Archived
+    Frozen --> Archived
+    Rejected --> [*]
+    Archived --> [*]
+```
+
+_Figure 1: Policy generation lifecycle. The diagram shows candidate validation,
+compilation, activation, rejection, supersession, freezing, and archival._
+
+```mermaid
+flowchart TD
+    accTitle: Policy drop-in activation and dispatch flow
+    accDescr {
+        A policy drop-in enters private staging and is validated for its
+        manifest, paths, digests, and delegation. Additive units activate
+        directly; replacement units require authorization for the exact
+        target. A validated candidate forms an immutable generation that is
+        published atomically. Requests pin that generation, revalidate before
+        dispatch, then consume one-use authorization and dispatch. Invalid
+        candidates are rejected.
+    }
+
+    Source["Policy drop-in"] --> Stage["Private staging"]
+    Stage --> Validate["Validate manifest, paths, digests, and delegation"]
+    Validate --> Target{"Exact replacement target?"}
+    Target -->|No| Add["Activate as additive unit"]
+    Target -->|Yes| Replace["Authorize replacement of target digest"]
+    Replace --> Active["Build immutable active generation"]
+    Add --> Active
+    Validate -->|Invalid| Reject["Reject candidate"]
+    Active --> Publish["Atomic generation publish"]
+    Publish --> Pin["Requests pin generation"]
+    Pin --> Recheck["Revalidate before dispatch"]
+    Recheck --> Dispatch["Consume one-use authorization and dispatch"]
+```
+
+_Figure 2: Policy drop-in activation and dispatch. The diagram shows additive
+and exact-target replacement paths converging on immutable publication, then
+request pinning and pre-dispatch revalidation._
+
 V1 uses local source bundles. Open Policy Agent (OPA) module/data/bundle
 conventions inform the layout, but Regorus embedding does not automatically
 supply OPA's bundle download, signature, or activation services.[^3] Remote
