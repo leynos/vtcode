@@ -46,6 +46,12 @@ pub(super) struct CompactThenAnswerProvider {
     pub(super) requests: Arc<Mutex<Vec<LLMRequest>>>,
     pub(super) context_size: usize,
     pub(super) summary: String,
+    /// Deterministic stall before the compaction response.
+    ///
+    /// Elapsed-time metrics need a controlled positive interval: a zero-delay
+    /// provider can finish inside the first millisecond and let an assertion
+    /// pass even when duration recording is broken.
+    pub(super) delay: Duration,
 }
 
 pub(super) struct PendingCompactionProvider {
@@ -187,8 +193,13 @@ impl LLMProvider for CompactThenAnswerProvider {
     }
 
     /// Return the configured compaction summary and record the request.
+    ///
+    /// A configured delay keeps elapsed-time assertions deterministic.
     async fn generate(&self, request: LLMRequest) -> Result<LLMResponse, LLMError> {
         self.requests.lock().expect("compaction provider requests").push(request);
+        if !self.delay.is_zero() {
+            tokio::time::sleep(self.delay).await;
+        }
         Ok(LLMResponse::new("wire-model", self.summary.clone()))
     }
 }

@@ -1698,3 +1698,63 @@ Conflict decisions:
 `git diff --check 7ca0e6efd..HEAD` is clean, the replay has no file deletions,
 and the diffstat is 87 files changed, 5776 insertions, 1191 deletions. A fresh
 four-gate run follows on the replayed head.
+
+### Revision note (2026-11-04, r23 fixed-category diagnostics)
+
+Two pre-merge rows were still failing on head `e26daba08`:
+
+- **Testing (Overall)** — the end-to-end compaction test used `>=` for the
+  duration counters, so it passed even if duration recording were removed.
+- **Observability** — `CompactionFailure` retained the full provider/hook error
+  chain as an error source, `log_suppressed_error` rendered it through
+  `redact_detail`, and the DEBUG test *required* the provider text. Masking
+  paths and secret shapes cannot remove provider payloads, hook output, or
+  personal data, and `bounded_label` does not bound provider/model domains.
+
+Decisions:
+
+- No error rendering is written to a log at any level. `redact_detail`,
+  `redact_path_like_tokens` and `bounded_label` are deleted.
+  `log_suppressed_error`, `log_compaction_update_failure`,
+  `log_notice_publish_failure` and `record_usage_failure` emit only fixed
+  fields: `operation`, `stage`, `error_category`, `elapsed_ms`, `error_bytes`,
+  and `detail_correlation` (a 12-hex SHA-256 prefix).
+- `CompactionFailure` no longer retains untrusted detail at all; there is no
+  error source to render. `provider`/`pre_compact_hook` reduce their argument
+  to a category, and admission `Closed`/`QueueTimeout` map to a new
+  `provider_admission()` message.
+- Provider and model are logged as `provider_correlation`/`model_correlation`
+  digests with `provider_bytes`/`model_bytes`, because provider names arrive
+  through the provider trait and model ids come from configuration or a
+  provider response; both have unbounded content.
+- The disconnected-client test drives a 20 ms provider stall and asserts
+  positive `started`, `compacted`, `elapsed_ms_total` and `elapsed_ms_max`
+  deltas, so removing duration recording fails it.
+
+Focused validation:
+`cargo nextest run --locked -p vtcode-acp -E '<redaction,
+compaction, acp_logging_tests and task_lifecycle filters>'`
+ran 51 tests, 51 passed (log `/tmp/test-acp-focused-pr17.out`). The four
+repository gates follow on the same candidate.
+
+### Revision note (2026-11-04, r24 structure and coverage review)
+
+The r23 candidate left five inline findings open. Repairs on top of `e26daba08`:
+
+- **File size (4464712508).** `compaction.rs` was 534 lines. The attempt
+  result, the adopted-history record, the terminal report, and their two
+  bookkeeping methods now live in `compaction/report.rs`, declared alongside
+  `failure` and `plan`. `compaction.rs` is 397 lines.
+- **Test placement (4464712534).** The disconnected-client test moved to
+  `handlers/tests/prompt/compaction_failure.rs`, beside the other terminal
+  activity coverage; `handlers/tests/prompt/compaction.rs` is 361 lines.
+- **Duplicated coverage (4464712557).** The two usage-profile tests became one
+  `#[rstest]` over `(session model, context window, input price, output price)`
+  cases, so a profiled model and a provider-default model are compared through
+  the same assertions.
+- **Environment restoration (4464712594).** The workspace-hook test now uses a
+  local `VtcodeConfigGuard` whose `Drop` restores `VTCODE_CONFIG`, so a panic
+  no longer leaves the process environment pointing at a deleted temporary
+  directory.
+- **Documentation (4464712613).** The ACP runtime guide now says the usage
+  notification is published for each provider response *that includes usage*.

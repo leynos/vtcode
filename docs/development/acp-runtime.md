@@ -178,16 +178,17 @@ include the provider error text so the caller can see what failed, and the
 notice strips ANSI escape codes as presentation hygiene rather than privacy
 redaction.
 
-At the repaired boundaries the originating error never reaches the
-operator-visible record. `log_suppressed_error` emits the fixed `operation` and
-`error_category`, the outer message size as `error_bytes`, and a `detail`
-rendering of the source chain produced by `redaction::redact_detail`, which
-collapses path-like tokens to `<path>`, masks recognized secret shapes, and
-truncates to 512 bytes. The chain therefore stays available at `debug`, where
-trusted diagnostics are enabled deliberately, without carrying workspace paths,
-transport URLs, or provider secrets. The `warn`/`info` records beside it carry
-fixed fields only. Severity suppression alone is not redaction, so untrusted
-detail is also removed from the values those records render.
+At every ACP failure boundary the originating error never reaches the
+operator-visible record at any level. `log_suppressed_error` emits the fixed
+`operation` and `error_category`, the outer message size as `error_bytes`, and
+`detail_correlation`, a deterministic, truncated SHA-256 digest of the source
+chain. No part of the error's rendering is written to a log, because no
+redaction of free text can be shown to remove provider payloads, hook output,
+workspace paths, transport URLs, secrets, or personal data. Operators keep the
+closed-set category, the byte count, and a stable key that groups repeated
+identical failures across sessions and restarts. Severity suppression is not
+redaction, so untrusted detail is absent from the values each record renders at
+every level, not merely from the `warn`/`info` line.
 
 ## Property-model limits
 
@@ -290,15 +291,15 @@ client projection of that runtime outcome, not a parallel event type: keep new
 compaction facts in the core event contract and translate them at the adapter.
 
 `compaction::failure::CompactionFailure` keeps the closed-set category separate
-from any untrusted provider or hook detail. Its `Display` renders only a fixed,
-client-safe message, so `failureReason` cannot leak a provider payload,
-workspace path, or archive name. The retained detail is exposed through the
-error source chain for callers, and `log_suppressed_error` records it at
-`debug` only after `redaction::redact_detail` has bounded it and collapsed
-path-like tokens; the operator-visible record keeps the fixed fields and the
-message size. Provider and model log fields go through
-`redaction::bounded_label`, which strips control characters and truncates to 96
-bytes, so configuration cannot flood or forge a log line.
+from any untrusted provider or hook detail, and deliberately does not retain
+that detail at all: provider, hook, and admission errors are reduced to their
+category before they reach a client or a log. Its `Display` and its error chain
+both render only a fixed, client-safe message, so neither `failureReason` nor
+`log_suppressed_error` can leak a provider payload, workspace path, hook
+script, or archive name. Provider and model span and log fields are recorded as
+`provider_correlation`/`model_correlation` digests with their byte lengths,
+because those identifiers come from provider implementations and configuration
+and their content is not bounded or trusted.
 
 Bounded, process-local counters accumulate across compaction attempts:
 `started`, `compacted`, `no_change`, `failed`, `cancelled`, `elapsed_ms_total`,
@@ -325,15 +326,15 @@ identifier stay out of the log. It is a presentation adapter, not the JSON-RPC
 transport: it neither retries the request nor changes retry policy.
 
 `publish_lody_usage` emits the `_lody/session/usage_update` extension
-notification for each provider response. It resolves the effective model first:
-the model named by the response wins, and the session model is the fallback.
-That single model then selects the usage profile: for a configured custom
-provider, `resolved_profile` layers the exact model profile over the provider
-defaults for context window, pricing, and API format; otherwise the built-in
-model catalogue supplies what it knows. Reasoning tokens are reported in
-`reasoningOutputTokens` and subtracted from `outputTokens`, so the two fields
-describe disjoint token sets. Cost is omitted when the profile supplies no
-pricing. For the user-facing contract, see
+notification for each provider response that includes usage. It resolves the
+effective model first: the model named by the response wins, and the session
+model is the fallback. That single model then selects the usage profile: for a
+configured custom provider, `resolved_profile` layers the exact model profile
+over the provider defaults for context window, pricing, and API format;
+otherwise the built-in model catalogue supplies what it knows. Reasoning tokens
+are reported in `reasoningOutputTokens` and subtracted from `outputTokens`, so
+the two fields describe disjoint token sets. Cost is omitted when the profile
+supplies no pricing. For the user-facing contract, see
 [ACP usage, compaction, and subagents](../users-guide.md#acp-usage-compaction-and-subagents);
 the wire shape is in the [ACP integration guide](../acp/ACP_INTEGRATION.md).
 

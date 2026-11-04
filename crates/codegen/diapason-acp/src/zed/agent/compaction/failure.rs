@@ -2,9 +2,10 @@
 //!
 //! Compaction failures reach two audiences. ACP clients receive a
 //! `failureReason` field, and operators read warning events. Neither may see
-//! provider detail, workspace paths, or archive contents, so both get a
-//! category from a closed set. The originating error is retained for the
-//! redacted debug helper in [`super::super::log_suppressed_error`].
+//! provider detail, workspace paths, archive contents, hook text, or personal
+//! data, so both get a category from a closed set. The originating error is
+//! deliberately not retained: it may embed untrusted text, and nothing in this
+//! type may expose it to a log or a client.
 
 use anyhow::Error;
 use std::borrow::Cow;
@@ -50,72 +51,55 @@ pub(super) struct CompactionFailure {
     /// Explanation safe to return to callers: built only from values this
     /// module controls, never from a provider or filesystem error.
     message: Cow<'static, str>,
-    /// Untrusted detail, emitted only through the redacted debug helper.
-    detail: Option<CompactionDetail>,
 }
-
-/// Untrusted operator-facing detail carried as an error source.
-///
-/// [`CompactionFailure`] deliberately keeps this out of its client-safe
-/// `Display`, but exposing it through [`std::error::Error::source`] lets the
-/// redacted debug helper render it with `{:#}`.
-#[derive(Debug)]
-struct CompactionDetail(String);
-
-impl fmt::Display for CompactionDetail {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for CompactionDetail {}
 
 impl CompactionFailure {
-    /// Assemble a failure from its category, client-safe message and detail.
-    fn new(kind: CompactionFailureKind, message: impl Into<Cow<'static, str>>, detail: Option<String>) -> Self {
-        Self {
-            kind,
-            message: message.into(),
-            detail: detail.map(CompactionDetail),
-        }
+    /// Assemble a failure from its category and client-safe message.
+    const fn new(kind: CompactionFailureKind, message: Cow<'static, str>) -> Self {
+        Self { kind, message }
     }
 
     /// Create a failure for a session cancelled during compaction.
-    pub(super) fn cancelled() -> Self {
-        Self::new(CompactionFailureKind::Cancelled, "ACP compaction cancelled", None)
+    pub(super) const fn cancelled() -> Self {
+        Self::new(CompactionFailureKind::Cancelled, Cow::Borrowed("ACP compaction cancelled"))
     }
 
     /// Create a failure for an expired provider total-generation deadline.
-    pub(super) fn timeout() -> Self {
+    pub(super) const fn timeout() -> Self {
         Self::new(
             CompactionFailureKind::Timeout,
-            "ACP compaction exceeded the provider total-generation timeout",
-            None,
+            Cow::Borrowed("ACP compaction exceeded the provider total-generation timeout"),
         )
     }
 
     /// Create a failure for a prompt that still exceeds the admission budget.
     pub(super) fn admission_budget(message: impl Into<Cow<'static, str>>) -> Self {
-        Self::new(CompactionFailureKind::AdmissionBudget, message, None)
+        Self::new(CompactionFailureKind::AdmissionBudget, message.into())
     }
 
     /// Create a failure for a failed `PreCompact` lifecycle hook.
-    pub(super) fn pre_compact_hook(error: &Error) -> Self {
-        Self::new(CompactionFailureKind::PreCompactHook, "ACP PreCompact hooks failed", Some(format!("{error:#}")))
+    ///
+    /// `_error` is accepted so call sites read the same as the provider
+    /// boundary, but it is deliberately not retained: hook output may embed
+    /// script paths, environment values, or workspace content.
+    pub(super) const fn pre_compact_hook(_error: &Error) -> Self {
+        Self::new(CompactionFailureKind::PreCompactHook, Cow::Borrowed("ACP PreCompact hooks failed"))
     }
 
     /// Create a failure for an unattributed provider or pipeline error.
-    pub(super) fn provider(error: &Error) -> Self {
-        Self::new(
-            CompactionFailureKind::Provider,
-            "ACP automatic context compaction failed",
-            Some(format!("{error:#}")),
-        )
+    ///
+    /// `_error` is deliberately not retained: provider payloads, transport
+    /// URLs, and model output may contain personal data or secrets.
+    pub(super) const fn provider(_error: &Error) -> Self {
+        Self::new(CompactionFailureKind::Provider, Cow::Borrowed("ACP automatic context compaction failed"))
     }
 
-    /// Create a provider-category failure from caller-supplied untrusted detail.
-    pub(super) fn provider_detail(detail: impl Into<String>) -> Self {
-        Self::new(CompactionFailureKind::Provider, "ACP automatic context compaction failed", Some(detail.into()))
+    /// Create a failure for provider admission that closed or timed out.
+    pub(super) const fn provider_admission() -> Self {
+        Self::new(
+            CompactionFailureKind::Provider,
+            Cow::Borrowed("ACP compaction could not start: provider admission unavailable"),
+        )
     }
 
     /// Return this failure's category without consuming it.
@@ -136,19 +120,13 @@ impl fmt::Display for CompactionFailure {
     }
 }
 
-impl std::error::Error for CompactionFailure {
-    /// Surface untrusted detail to the `{:#}` chain without widening the
-    /// client-facing `Display`.
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.detail.as_ref().map(|detail| detail as &(dyn std::error::Error + 'static))
-    }
-}
+impl std::error::Error for CompactionFailure {}
 
 /// Classify a compaction pipeline error into its closed-set category.
 ///
 /// Errors raised outside this module (a poisoned lock, an unreadable session
-/// archive) fall back to [`CompactionFailureKind::Provider`]; their detail is
-/// still recorded by the redacted debug helper.
+/// archive) fall back to [`CompactionFailureKind::Provider`]; their text is
+/// reduced to that category before it reaches a log or a client.
 pub(super) fn classify(error: &Error) -> CompactionFailureKind {
     error
         .downcast_ref::<CompactionFailure>()
@@ -169,7 +147,7 @@ mod tests {
                 CompactionFailure::admission_budget("prompt still over budget"),
                 CompactionFailureKind::AdmissionBudget,
             ),
-            (CompactionFailure::provider_detail("provider exploded"), CompactionFailureKind::Provider),
+            (CompactionFailure::provider_admission(), CompactionFailureKind::Provider),
         ];
 
         for (failure, expected) in cases {
@@ -195,29 +173,41 @@ mod tests {
         assert_eq!(classify(&error), CompactionFailureKind::Provider);
     }
 
-    /// Assert client-facing messages exclude untrusted provider detail.
+    /// Assert neither the display nor the error chain carries provider detail.
     #[test]
-    fn client_facing_messages_never_include_untrusted_detail() {
-        let failure = CompactionFailure::provider_detail("/secret/workspace/archive.json failed");
-        let message = failure.to_string();
-
-        assert_eq!(message, "ACP automatic context compaction failed");
-        assert!(!message.contains("/secret"), "detail must stay out of the client message");
-        assert_eq!(failure.kind().category(), "provider");
-    }
-
-    /// Assert the detail reaches the `{:#}` error chain the redacted debug
-    /// helper renders, while `Display` stays client-safe.
-    #[test]
-    fn error_chain_exposes_untrusted_detail_to_operators() {
-        let failure = CompactionFailure::provider_detail("/secret/workspace/archive.json failed");
+    fn provider_detail_never_reaches_the_display_or_the_error_chain() {
+        let source = anyhow::anyhow!(
+            "provider payload POST https://api.example.invalid/v1/chat failed for \
+             /secret/workspace/archive.json with alice@example.com"
+        );
+        let failure = CompactionFailure::provider(&source);
         let client_message = failure.to_string();
+        let category = failure.kind().category();
         let operator_chain = format!("{:#}", failure.into_error());
 
         assert_eq!(client_message, "ACP automatic context compaction failed");
-        assert!(
-            operator_chain.contains("/secret/workspace/archive.json"),
-            "operator chain must carry the detail, got {operator_chain}"
-        );
+        assert_eq!(operator_chain, "ACP automatic context compaction failed");
+        assert_eq!(category, "provider");
+        for leaked in [
+            "api.example.invalid",
+            "/secret/workspace",
+            "alice@example.com",
+            "provider payload",
+        ] {
+            assert!(!operator_chain.contains(leaked), "{leaked} must stay out of the chain, got {operator_chain}");
+        }
+    }
+
+    /// Assert hook detail is reduced to the closed-set category.
+    #[test]
+    fn hook_detail_never_reaches_the_display_or_the_error_chain() {
+        let source = anyhow::anyhow!("hook script /home/private/hooks/pre.sh exited 3");
+        let failure = CompactionFailure::pre_compact_hook(&source);
+        let client_message = failure.to_string();
+        let operator_chain = format!("{:#}", failure.into_error());
+
+        assert_eq!(client_message, "ACP PreCompact hooks failed");
+        assert_eq!(operator_chain, "ACP PreCompact hooks failed");
+        assert!(!operator_chain.contains("pre.sh"), "hook text must stay out, got {operator_chain}");
     }
 }
