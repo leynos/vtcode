@@ -8,54 +8,54 @@ The complete PR train is not yet delivered.
 - Worktree: `/home/leynos/Projects/VTCode.worktrees/vtcode-df12-onboarding`.
 - The unchanged starting commit
   `07e22369438205d9d712c78892168eff867c053f` matched `upstream/main` when
-  fetched at setup. It is published as `origin/vtcode-df12-onboarding`.
-  The fork's older `origin/main` is not the train's base.
+  fetched at setup. It is published as `origin/vtcode-df12-onboarding`. The
+  fork's older `origin/main` is not the train's base.
 - [Ready PR #20](https://github.com/leynos/vtcode/pull/20) publishes
   `test-quality-sweep` against that base at
   `e939836042efa32a61ae961aebd68ab4cc9afd57`.
 - [Draft PR #22](https://github.com/leynos/vtcode/pull/22) publishes
-  `harden-lint-spelling` at `b82c2d07a64f14696b68cfe9c8df7fe81938883f`, based
-  on `test-quality-sweep`. It isolates native `analyse` API and command names,
+  `harden-lint-spelling` at `b82c2d07a64f14696b68cfe9c8df7fe81938883f`, based on
+  `test-quality-sweep`. It isolates native `analyse` API and command names,
   corresponding callers, module paths, and compatibility assertions. Existing
   `analyze` command invocations and fixed serialized names remain supported.
 - [Draft PR #23](https://github.com/leynos/vtcode/pull/23) publishes
   `harden-lint-spelling-artefact` at
-  `ae7936fe4f28ef6096791e3d0244f2cfb089ddf0`, based on #22.
-  It renames native artefact APIs and modules, pins existing serialized names,
-  and keeps the dependent prompt golden text with its source wording change.
-  Formatting, lint, build, typecheck and the full suite passed (10,082 tests,
-  17 skipped), as did all 67 harness tests and the advisory checks.
+  `ae7936fe4f28ef6096791e3d0244f2cfb089ddf0`, based on #22. It renames native
+  artefact APIs and modules, pins existing serialized names, and keeps the
+  dependent prompt golden text with its source wording change. Formatting,
+  lint, build, typecheck and the full suite passed (10,082 tests, 17 skipped),
+  as did all 67 harness tests and the advisory checks.
 - [Draft PR #24](https://github.com/leynos/vtcode/pull/24) publishes
   `harden-lint-spelling-behaviour-apis` at
-  `bb3ac5e61dcac47a6b05224f346a1c5e8f47c737`, based on #23.
-  It carries model-behaviour configuration, tool-behaviour registration, and
+  `bb3ac5e61dcac47a6b05224f346a1c5e8f47c737`, based on #23. It carries
+  model-behaviour configuration, tool-behaviour registration, and
   permission-decision types with all callers. Existing wire keys remain fixed.
   Its restacked formatting, lint, build, typecheck and full tests passed
   (10,082 passed, 17 skipped), along with all 67 harness tests.
 - [Draft PR #25](https://github.com/leynos/vtcode/pull/25) publishes
   `harden-lint-spelling-behaviour` at
-  `2874c2d106825d7b081c6c565dff7a44af58f06f`, based on #24.
-  It covers the remaining native behaviour names and nearby prose, preserving
-  the existing configuration wire property. The first full run passed formatting,
-  lint, and build but exposed two dependent text mismatches. The prompt golden
-  now follows the two changed source sentences; placeholder validation accepts
-  both native and legacy spellings as unfinished template text. Full gates
-  passed on the original retry: 10,079 tests, 17 skipped and 67 harness tests.
-  Formatting, lint, build, advisory checks, VS Code bundling, and changed Python/shell
-  syntax checks passed. Optional ast-grep remained unavailable.
+  `2874c2d106825d7b081c6c565dff7a44af58f06f`, based on #24. It covers the
+  remaining native behaviour names and nearby prose, preserving the existing
+  configuration wire property. The first full run passed formatting, lint, and
+  build but exposed two dependent text mismatches. The prompt golden now
+  follows the two changed source sentences; placeholder validation accepts both
+  native and legacy spellings as unfinished template text. Full gates passed on
+  the original retry: 10,079 tests, 17 skipped and 67 harness tests.
+  Formatting, lint, build, advisory checks, VS Code bundling, and changed
+  Python/shell syntax checks passed. Optional ast-grep remained unavailable.
 - [Draft PR #26](https://github.com/leynos/vtcode/pull/26) publishes
   `harden-lint-spelling-colour-apis` at
-  `33423a011ae5ae4768da06717b71b27ed829463a`, based on #25.
-  It carries the reviewed native colour APIs with declarations and all
-  consumers together, including CLI aliases, schema pins, and snapshot text.
-  The layer slightly exceeds the soft 150-file target; a directory-based split
-  was rejected because it separated APIs from their application callers.
-  The first lint run exposed a missed native `flavour()` caller in the theme
-  registry. It is repaired and the original full retry passed: 10,080 tests,
-  17 skipped, and 67 harness tests. Formatting, lint, build, advisory, WebMCP
-  typecheck, all 41 WebMCP tests, and production build passed. A dedicated CLI
-  regression covers canonical and legacy flag parsing. Optional ast-grep was
-  unavailable; the four inherited rustdoc warnings remain.
+  `33423a011ae5ae4768da06717b71b27ed829463a`, based on #25. It carries the
+  reviewed native colour APIs with declarations and all consumers together,
+  including CLI aliases, schema pins, and snapshot text. The layer slightly
+  exceeds the soft 150-file target; a directory-based split was rejected
+  because it separated APIs from their application callers. The first lint run
+  exposed a missed native `flavour()` caller in the theme registry. It is
+  repaired and the original full retry passed: 10,080 tests, 17 skipped, and 67
+  harness tests. Formatting, lint, build, advisory, WebMCP typecheck, all 41
+  WebMCP tests, and production build passed. A dedicated CLI regression covers
+  canonical and legacy flag parsing. Optional ast-grep was unavailable; the
+  four inherited rustdoc warnings remain.
 - `harden-lint-spelling-colour` is the active branch, based on #26.
   It covers remaining native colour methods, table alignment, local bindings,
   terminal prose, and module guidance. External schemas and flags remain fixed.
@@ -73,97 +73,98 @@ The complete PR train is not yet delivered.
 - The local ACP/provider capability-hardening train remains separate and
   untouched. It will eventually rebase onto the lint train.
 - The user waived all Lody-session requirements. Upper PRs remain draft and
-  stacked, with predecessor/successor links, reviewer entrypoints and gate evidence.
+  stacked, with predecessor/successor links, reviewer entrypoints and gate
+  evidence.
 
 ## Validation evidence
 
 The published test-quality layer passed formatting, lint, build, full tests,
-harness checks, advisory checks, and changed-document checks. Its full test
-run passed 10,075 tests, with 17 skipped. The separate harness gates passed
-67 tests across three suites. Logs use
-`/tmp/ACTION-vtcode-df12-onboarding-test-quality-sweep.out`.
-Four pre-existing rustdoc warnings remained under the old configuration.
-Optional ast-grep was unavailable and was skipped by the existing gate policy.
+harness checks, advisory checks, and changed-document checks. Its full test run
+passed 10,075 tests, with 17 skipped. The separate harness gates passed 67
+tests across three suites. Logs use
+`/tmp/ACTION-vtcode-df12-onboarding-test-quality-sweep.out`. Four pre-existing
+rustdoc warnings remained under the old configuration. Optional ast-grep was
+unavailable and was skipped by the existing gate policy.
 
 Before partitioning, the combined spelling candidate passed workspace Clippy
 under the old configuration:
-`/tmp/lint-clippy-4-vtcode-df12-onboarding-harden-lint-spelling.out`.
-This does not establish that each intermediate layer passes. Every layer must
-run its own full gates before it is committed and published.
+`/tmp/lint-clippy-4-vtcode-df12-onboarding-harden-lint-spelling.out`. This does
+not establish that each intermediate layer passes. Every layer must run its own
+full gates before it is committed and published.
 
-Additional combined-candidate checks passed: WebMCP type checking, all 41 tests,
-and its production build; VS Code bundling; and changed Python/shell syntax.
-VS Code's standalone TypeScript check reports 578 inherited diagnostics, all
-also present in an archived parent checkout after path/name normalization.
-No diagnostics were added. That supplementary check remains red; it is not a
-passing gate. Comparison logs are
+Additional combined-candidate checks passed: WebMCP type checking, all 41
+tests, and its production build; VS Code bundling; and changed Python/shell
+syntax. VS Code's standalone TypeScript check reports 578 inherited
+diagnostics, all also present in an archived parent checkout after path/name
+normalization. No diagnostics were added. That supplementary check remains red;
+it is not a passing gate. Comparison logs are
 `/tmp/baseline-vscode-tsc-vtcode-df12-onboarding-harden-lint-spelling.out` and
 `/tmp/typecheck-vscode-vtcode-df12-onboarding-harden-lint-spelling.out`.
 
 The isolated `analyse` layer passed its old-profile formatting, lint, build,
-full nextest suite (10,078 passed, 17 skipped), and three harness suites
-(67 passed). Advisory checks, VS Code bundling, and changed Python/shell syntax
+full nextest suite (10,078 passed, 17 skipped), and three harness suites (67
+passed). Advisory checks, VS Code bundling, and changed Python/shell syntax
 also passed. Optional ast-grep was skipped as unavailable, and the four
 inherited rustdoc warnings remain under the old policy. Evidence uses
 `/tmp/analyse-layer-2-ACTION-vtcode-df12-onboarding-harden-lint-spelling.out`.
 The isolated layer's TypeScript check has the same 578 diagnostics as the
-archived parent, with none added or removed after file-name normalization.
-The handoff's Markdownlint, both changed documents' Nixie validation, and the
+archived parent, with none added or removed after file-name normalization. The
+handoff's Markdownlint, both changed documents' Nixie validation, and the
 staged diff check passed. The embedded ast-grep skill retains 417 inherited
-Markdownlint diagnostics, matching the parent with none added or removed.
-No new suppression or exclusion was introduced.
+Markdownlint diagnostics, matching the parent with none added or removed. No
+new suppression or exclusion was introduced.
 
 The behaviour-API layer's first Clippy run found four tool-registration
 accessor calls that belonged with the renamed API rather than the next
-behaviour layer. The calls and adjacent bindings were moved into this layer;
-a residual accessor scan was clean, and lint, build, and full tests passed.
-Logs use
+behaviour layer. The calls and adjacent bindings were moved into this layer; a
+residual accessor scan was clean, and lint, build, and full tests passed. Logs
+use
 `/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-behaviour-apis.out`.
 
 The artefact layer's first Clippy run found one omitted guard access to
 `task.artifacts` in the A2A CLI. It was corrected to `task.artefacts`; a
-native-identifier audit found no further omitted callers. The subsequent
-lint, build, and full tests passed. Logs use
+native-identifier audit found no further omitted callers. The subsequent lint,
+build, and full tests passed. Logs use
 `/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-artefact.out`.
 
-The first test run exposed a spelling-layer boundary: the skill-discovery
-query used `analyse`, but its bundled metadata advertised only `analyze`.
-This layer now carries both keywords and tests both query spellings. The
-complete reviewed patch including that repair is
+The first test run exposed a spelling-layer boundary: the skill-discovery query
+used `analyse`, but its bundled metadata advertised only `analyze`. This layer
+now carries both keywords and tests both query spellings. The complete reviewed
+patch including that repair is
 `/home/leynos/Projects/vtcode-analyse-review-hbssv_tp/analyse-reviewed-with-discovery.patch`.
 
 ## Preserved remaining work
 
 The combined candidate is preserved in Git stash
 `eeeb89cf05c50814e5ba879daeca6f6490a68188` and a verified external backup:
-`/home/leynos/Projects/vtcode-spelling-full-wd8e3zpr`.
-The backup includes a tar archive, path/content/mode manifest, original index,
-and staged/unstaged patches. Do not drop the stash or overwrite the backup
-until all remaining changes have been accounted for in the train.
+`/home/leynos/Projects/vtcode-spelling-full-wd8e3zpr`. The backup includes a
+tar archive, path/content/mode manifest, original index, and staged/unstaged
+patches. Do not drop the stash or overwrite the backup until all remaining
+changes have been accounted for in the train.
 
 The reviewed first-layer patch is
 `/home/leynos/Projects/vtcode-analyse-review-hbssv_tp/analyse-reviewed.patch`.
 The temporary classifier in `/tmp/vtcode-spelling-partition.py` is advisory.
-Its raw later patches require review: exact final reconstruction does not
-prove that intermediate API declarations, callers, or test bodies are intact.
-A manual audit removed unrelated provider edits and kept command-skill and
+Its raw later patches require review: exact final reconstruction does not prove
+that intermediate API declarations, callers, or test bodies are intact. A
+manual audit removed unrelated provider edits and kept command-skill and
 alias-test changes atomic before applying the first layer. Subsequent reviewed
 patches are prepared outside the worktree: artefact v2 at
 `/home/leynos/Projects/vtcode-artefact-reviewed-vgEh5E/artefact-reviewed-v2.patch`
 and behaviour APIs at
 `/home/leynos/Projects/vtcode-behaviour-review-eByK3M/behaviour-reviewed.patch`.
-They include dependent callers and fixture text omitted by the classifier;
-the artefact patch also preserves field-purpose docs before wire-name notes.
-The artefact and behaviour-API layers have now passed their own full gates.
-The next remaining-behaviour patch was regenerated against the published API
-commit to omit the caller updates that moved earlier. Its reviewed path is
+They include dependent callers and fixture text omitted by the classifier; the
+artefact patch also preserves field-purpose docs before wire-name notes. The
+artefact and behaviour-API layers have now passed their own full gates. The
+next remaining-behaviour patch was regenerated against the published API commit
+to omit the caller updates that moved earlier. Its reviewed path is
 `/home/leynos/Projects/vtcode-behaviour-remaining-v2-44i079/behaviour-remaining-reviewed-v2.patch`.
 It passed isolated apply and byte/mode reconstruction. The full suite then
-exposed two text dependencies, repaired in the live layer before the green
-gate retry. Logs use
+exposed two text dependencies, repaired in the live layer before the green gate
+retry. Logs use
 `/tmp/ACTION-2-vtcode-df12-onboarding-harden-lint-spelling-behaviour.out`.
-Apply them only to their intended parent in
-order, preserving the latest handoff and discovery compatibility repair.
+Apply them only to their intended parent in order, preserving the latest
+handoff and discovery compatibility repair.
 
 The corrected full colour patch is
 `/home/leynos/Projects/vtcode-colour-api-review-api-parent-h2R1q4/colour-api-reviewed.patch`
@@ -228,14 +229,14 @@ in native GitHub stack #37. Original branch heads are preserved locally in
 `refs/backup/rust-baseline-pre-review-20260905/` before any rebases.
 
 The cancelled `tool-eval` job exceeded its 15-minute ceiling after a 10m43s
-cold workspace build. The workflow now permits 30 minutes for the build and
-PTY test compilation. Shared environment guards cover the complete temporary
-environment scopes in steering and startup tests. The six command-session
-tests use a fallible async rstest fixture that owns the registry, configuration
+cold workspace build. The workflow now permits 30 minutes for the build and PTY
+test compilation. Shared environment guards cover the complete temporary
+environment scopes in steering and startup tests. The six command-session tests
+use a fallible async rstest fixture that owns the registry, configuration
 guard, and workspace. TTY tests independently cover all required capabilities.
 Only rstest 0.26.1 and its two new transitive packages were added to the lock.
-All seven review-fix gates passed. The workspace suite passed 10,075 tests
-with 17 skipped; the three harness suites passed 67 tests. Evidence is in
+All seven review-fix gates passed. The workspace suite passed 10,075 tests with
+17 skipped; the three harness suites passed 67 tests. Evidence is in
 `/tmp/*-review-1-vtcode-df12-onboarding-test-quality-sweep.out`. Handoff
 Markdownlint and Nixie also passed; optional ast-grep remained unavailable.
 
@@ -243,9 +244,9 @@ Every CodeRabbit reply includes `@coderabbitai`. The two requested spelling
 corrections are already in PR #34; the validation-module split is assigned to
 the later structural layer and tracked in
 [issue #52](https://github.com/leynos/vtcode/issues/52). Reconcile pre-merge
-checks after inline findings
-are settled, raise valid out-of-scope findings as issues, and preserve each
-layer's full gates when rebasing before a push with `--force-with-lease`.
+checks after inline findings are settled, raise valid out-of-scope findings as
+issues, and preserve each layer's full gates when rebasing before a push with
+`--force-with-lease`.
 
 The first review repair is committed and pushed as `24758f226`. CodeRabbit
 confirmed the four inline fixes; all six inline threads are resolved. The next
@@ -267,31 +268,31 @@ is queued through comenq as `2d40c0d5`.
 The PR #23 restack gate exposed a scheduling-sensitive hook fixture inherited
 from the initial base. A deterministic experiment reproduced its lost rewrite
 when the first child exited before the parent wrote stdin. Draining stdin
-before emitting the same JSON preserved the exact chain assertion. The test
-now follows the existing hook guide and prints hook messages on assertion
-failure. Production handling is unchanged and tracked in
+before emitting the same JSON preserved the exact chain assertion. The test now
+follows the existing hook guide and prints hook messages on assertion failure.
+Production handling is unchanged and tracked in
 [issue #54](https://github.com/leynos/vtcode/issues/54).
 
 The experiment and its corrected process-ordering method are recorded in
-[the debugging plan](debugging/debugging-plan-20260905-hook-stdin.md).
-All seven PR #20 gates passed: 10,079 workspace tests, 17 skips and 67 harness
+[the debugging plan](debugging/debugging-plan-20260905-hook-stdin.md). All
+seven PR #20 gates passed: 10,079 workspace tests, 17 skips and 67 harness
 tests. Logs use the `hook-repair-1` action suffix. The optional ast-grep scan
 remains unavailable. The first documentation check found one code-span spacing
-error in the new debugging plan; it was corrected before final validation.
-PR #23 remains unpublished at its restacked candidate. After this repair is
+error in the new debugging plan; it was corrected before final validation. PR
+#23 remains unpublished at its restacked candidate. After this repair is
 pushed, each upper layer must rebase onto its actual previous parent and pass
 its own full gates before publication.
 
 ## PR 22 review restack
 
 The analyse spelling layer is rebased onto PR #20 repair `e084280e2`. A plain
-three-way merge preserved the upper-layer delivery record and appended the
-PR #20 review evidence after it. The code patch matches the original PR #22
-patch; the range-diff changes only the handoff context. All eight sequential
-restack gates passed, including typecheck, 10,082 workspace tests, 17 skips,
-and 67 harness tests. Logs use `restack-1` on `harden-lint-spelling`. Handoff
-Markdownlint and Nixie also passed. The push uses `--force-with-lease`.
-PR #20 review is queued through comenq; later PR reviews remain in train order.
+three-way merge preserved the upper-layer delivery record and appended the PR
+#20 review evidence after it. The code patch matches the original PR #22 patch;
+the range-diff changes only the handoff context. All eight sequential restack
+gates passed, including typecheck, 10,082 workspace tests, 17 skips, and 67
+harness tests. Logs use `restack-1` on `harden-lint-spelling`. Handoff
+Markdownlint and Nixie also passed. The push uses `--force-with-lease`. PR #20
+review is queued through comenq; later PR reviews remain in train order.
 
 The second restack carries PR #20 hook-fixture repair `e93983604`. Only this
 handoff conflicted; the non-handoff patch identity is unchanged. The prior
@@ -303,50 +304,51 @@ checks use `handoff-restack-3`. Both hosted checks passed on PR #20's
 
 ## PR 23 review restack
 
-The artefact spelling layer is rebased onto PR #22 repair `b82c2d07a`.
-The replay completed without conflicts and exactly matches the preceding
+The artefact spelling layer is rebased onto PR #22 repair `b82c2d07a`. The
+replay completed without conflicts and exactly matches the preceding
 candidate's patch. The original candidate's full gate exposed the hook-fixture
 race documented above; that repair now arrives through PR #20. Schema names,
-compatibility aliases and both lower-layer review records remain intact.
-All eight sequential gates passed, including typecheck, 10,082 workspace
-tests, 17 skips and 67 harness tests. The hook-chain regression passed within
-the full suite. Logs use `restack-2` on `harden-lint-spelling-artefact`;
-final handoff checks use `handoff-restack-1`. The push uses an explicit lease
-against the original published PR #23 head.
+compatibility aliases and both lower-layer review records remain intact. All
+eight sequential gates passed, including typecheck, 10,082 workspace tests, 17
+skips and 67 harness tests. The hook-chain regression passed within the full
+suite. Logs use `restack-2` on `harden-lint-spelling-artefact`; final handoff
+checks use `handoff-restack-1`. The push uses an explicit lease against the
+original published PR #23 head.
 
 ## PR 24 review restack
 
-The behaviour API layer is rebased onto final PR #23 head `ae7936fe4`.
-The replay completed without conflicts and its patch is unchanged. All four
-accessor repairs and the permission-hook JSON key `behavior` remain intact.
-All eight sequential gates passed, including typecheck, 10,082 workspace
-tests, 17 skips and 67 harness tests. Logs use `restack-1` on
+The behaviour API layer is rebased onto final PR #23 head `ae7936fe4`. The
+replay completed without conflicts and its patch is unchanged. All four
+accessor repairs and the permission-hook JSON key `behavior` remain intact. All
+eight sequential gates passed, including typecheck, 10,082 workspace tests, 17
+skips and 67 harness tests. Logs use `restack-1` on
 `harden-lint-spelling-behaviour-apis`; final handoff checks use
 `handoff-restack-1`. The push uses an explicit lease against the original
 published PR #24 head.
 
 ## PR 25 review restack
 
-The remaining behaviour spelling layer is rebased onto PR #24 `bb3ac5e61`.
-Only this handoff conflicted. The registry test rename auto-merged while
-preserving its body and the lower layer's fallible rstest fixture. The fixed
-UI wire key, paired prompt goldens and both placeholder spellings remain
-intact. All eight sequential gates passed, including typecheck, 10,083
-workspace tests, 17 skips and 67 harness tests. Logs use `restack-1` on
-`harden-lint-spelling-behaviour`; final handoff checks use `handoff-restack-1`.
-The push uses an explicit lease against the original published PR #25 head.
+The remaining behaviour spelling layer is rebased onto PR #24 `bb3ac5e61`. Only
+this handoff conflicted. The registry test rename auto-merged while preserving
+its body and the lower layer's fallible rstest fixture. The fixed UI wire key,
+paired prompt goldens and both placeholder spellings remain intact. All eight
+sequential gates passed, including typecheck, 10,083 workspace tests, 17 skips
+and 67 harness tests. Logs use `restack-1` on `harden-lint-spelling-behaviour`;
+final handoff checks use `handoff-restack-1`. The push uses an explicit lease
+against the original published PR #25 head.
 
 
 ## PR 26 review restack
 
 The colour API layer is rebased onto PR #25 `2874c2d10`. The TTY module and
-this handoff conflicted. Resolution preserves every lower-layer capability
-case and assertion while applying the native colour names. Canonical and
-legacy CLI flags, serde wire keys and aliases, and native flavour naming
-remain intact. All eight sequential gates passed, including typecheck, 10,084
-workspace tests, 17 skips and 67 harness tests. Logs use `restack-1` on
-`harden-lint-spelling-colour-apis`; final handoff checks use `handoff-restack-1`.
-The push uses an explicit lease against the original published PR #26 head.
+this handoff conflicted. Resolution preserves every lower-layer capability case
+and assertion while applying the native colour names. Canonical and legacy CLI
+flags, serde wire keys and aliases, and native flavour naming remain intact.
+All eight sequential gates passed, including typecheck, 10,084 workspace tests,
+17 skips and 67 harness tests. Logs use `restack-1` on
+`harden-lint-spelling-colour-apis`; final handoff checks use
+`handoff-restack-1`. The push uses an explicit lease against the original
+published PR #26 head.
 
 ## PR 27 review restack
 
@@ -378,8 +380,8 @@ original published PR #27 head.
 
 CodeRabbit's full review at `feb027e70` raised one finding. An explicit `None`
 instruction home disables user-scope discovery but not workspace-scope
-discovery, which walks from the working directory to the resolved project
-root. Without a `.git` marker that root falls back to the filesystem root, so a
+discovery, which walks from the working directory to the resolved project root.
+Without a `.git` marker that root falls back to the filesystem root, so a
 temporary fixture below the home directory could still read `AGENTS.md` or
 `CLAUDE.md` from an ancestor directory.
 
@@ -393,15 +395,16 @@ tests and 17 skips. Logs use `restack-2`; final handoff checks use
 ## PR 27 pre-merge reconciliation
 
 CodeRabbit's pre-merge table (comment `5549941202`, regenerated at the
-`2026-11-01T17:19Z` review) still carried two errors and four warnings. The four
-warnings were withdrawn by CodeRabbit on 2026-09-07 (comment `5563239627`) in
-response to the audit at comment `5563236472`; the regenerated table does not
-reflect that disposition, so those rows are stale rather than open.
+`2026-11-01T17:19Z` review) still carried two errors and four warnings. The
+four warnings were withdrawn by CodeRabbit on 2026-09-07 (comment `5563239627`)
+in response to the audit at comment `5563236472`; the regenerated table does
+not reflect that disposition, so those rows are stale rather than open.
 
 - **Testing (Overall):** valid. The explicit-home entry points were only
   exercised with `None`. New tests cover an explicit home through
-  `read_project_doc_with_home`, `build_instruction_appendix_with_context_and_home`
-  and `IncrementalSystemPrompt::with_instruction_home`.
+  `read_project_doc_with_home`,
+  `build_instruction_appendix_with_context_and_home` and
+  `IncrementalSystemPrompt::with_instruction_home`.
 - **Module-Level Documentation:** valid. Twelve edited modules began with
   imports. Each now opens with a `//!` summary and, where non-obvious, its
   relationship to the parent module.
