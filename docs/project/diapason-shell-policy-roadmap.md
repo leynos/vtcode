@@ -411,6 +411,8 @@ cutover. See design §§3, 6, and 8; RFC 0001 §§4–6.
     reference, and execution outcome; record generation and rule/node IDs.
   - Omit raw environments, secret values, and command output from routine
     events and projections.
+  - Failure case: failure to persist a required pre-dispatch audit record blocks
+    dispatch.
   - Success: an event trace distinguishes decision from execution outcome and
     secret canaries are absent from stored event payloads.
 

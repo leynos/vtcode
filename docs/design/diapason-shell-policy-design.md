@@ -744,8 +744,8 @@ Extend `ThreadEvent` with versioned policy-decision/activation information as
 needed, and use the existing memory projections. Audit includes request and
 generation identifiers, rule/node IDs, uncertainty categories, approval and
 reservation references, and actual execution outcome. Default records omit raw
-environments, secret values, and command output. An evaluation event with an
-`allow` result is not an execution-success event.
+environments, secret values, and command output. An `allow` policy decision
+does not prove that execution succeeded.
 
 Operationally distinguish invalid policy, exhausted analysis, denied request,
 missing approval, and unavailable enforcement. Emit actionable diagnostics
