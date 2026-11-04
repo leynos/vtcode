@@ -1055,7 +1055,8 @@ mod tests {
 
     #[test]
     fn no_colour_flag_accepts_canonical_and_legacy_spellings() {
-        let canonical = Cli::try_parse_from(["diapason", "--no-colour"]).expect("the canonical colour flag should parse");
+        let canonical =
+            Cli::try_parse_from(["diapason", "--no-colour"]).expect("the canonical colour flag should parse");
         let legacy =
             Cli::try_parse_from(["diapason", "--no-color"]).expect("the legacy colour flag should remain supported");
         let mut command = Cli::command();

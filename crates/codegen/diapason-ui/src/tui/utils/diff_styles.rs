@@ -11,8 +11,8 @@ pub use diapason_commons::diff_theme::{
 pub use diapason_commons::styling::DiffColourPalette;
 
 use crate::tui::ui::syntax_highlight::{DiffScopeBackgroundRgbs, diff_scope_background_rgbs};
-use ratatui::style::{Color as RatatuiColour, Modifier, Style as RatatuiStyle};
 use diapason_commons::colour256_theme::rgb_to_ansi256_for_theme;
+use ratatui::style::{Color as RatatuiColour, Modifier, Style as RatatuiStyle};
 
 // ── WCAG AA accessible colours ─────────────────────────────────────────────
 //

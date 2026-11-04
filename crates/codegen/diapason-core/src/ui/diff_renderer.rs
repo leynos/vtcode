@@ -7,9 +7,9 @@ use crate::config::constants::diff as diff_constants;
 use crate::ui::git_config::GitColourConfig;
 use crate::utils::style_helpers::style_from_colour_name;
 use anstyle::{Reset, Style};
+use diapason_commons::styling::DiffColourPalette;
 use std::fmt::Write as _;
 use std::path::Path;
-use diapason_commons::styling::DiffColourPalette;
 
 struct GitDiffPalette {
     bullet: Style,

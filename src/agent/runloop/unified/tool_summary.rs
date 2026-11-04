@@ -972,10 +972,12 @@ mod tests {
         // reads NO_COLOR from the env; we must trigger it first, then override.
         // (nextest runs each test in its own process, so this is safe.)
         let _ = diapason_commons::colour_policy::current_colour_output_policy();
-        diapason_commons::colour_policy::set_colour_output_policy(diapason_commons::colour_policy::ColourOutputPolicy {
-            enabled: true,
-            source: diapason_commons::colour_policy::ColourOutputPolicySource::CliColourAlways,
-        });
+        diapason_commons::colour_policy::set_colour_output_policy(
+            diapason_commons::colour_policy::ColourOutputPolicy {
+                enabled: true,
+                source: diapason_commons::colour_policy::ColourOutputPolicySource::CliColourAlways,
+            },
+        );
 
         let result = super::render_command_segment(
             "cargo check --locked -p diapason",
@@ -992,10 +994,12 @@ mod tests {
     #[test]
     fn inline_tool_summary_keeps_command_tokens_independently_styled() {
         let _ = diapason_commons::colour_policy::current_colour_output_policy();
-        diapason_commons::colour_policy::set_colour_output_policy(diapason_commons::colour_policy::ColourOutputPolicy {
-            enabled: true,
-            source: diapason_commons::colour_policy::ColourOutputPolicySource::CliColourAlways,
-        });
+        diapason_commons::colour_policy::set_colour_output_policy(
+            diapason_commons::colour_policy::ColourOutputPolicy {
+                enabled: true,
+                source: diapason_commons::colour_policy::ColourOutputPolicySource::CliColourAlways,
+            },
+        );
 
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         let handle = InlineHandle::new_for_tests(sender);
