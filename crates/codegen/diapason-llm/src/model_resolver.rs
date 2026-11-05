@@ -14,26 +14,6 @@ use diapason_config::models::{
     model_catalogue_entry,
 };
 
-use vtcode_config::api_keys::api_key_env_var;
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_config::models::{
-    ModelCatalogEntry, ModelId, ModelPricing, Provider, ProviderModelSupport, catalog_provider_keys,
-    model_catalog_entry,
-};
-
-<<<<<<< ours
-//! Resolution of configured and dynamic models into provider-ready selections.
-//!
-//! Reports credential availability, merges catalogue and dynamic metadata, and
-//! exposes the pricing and context-window facts used by model pickers.
-||||||| original
-=======
-};
-};
-//! Resolves configured model identifiers into provider, pricing, and availability metadata.
->>>>>>> theirs
-};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelAvailability {
     Available,
@@ -244,6 +224,18 @@ impl ModelResolver {
 
         let provider = heuristic_provider_from_model(model)?;
         Some(Self::resolve_for_provider(provider, model, dynamic_models, dynamic_meta, api_key_env, storage_mode))
+    }
+
+    /// Look up a provider's compiled catalogue entry without resolving credentials.
+    ///
+    /// [`Self::resolve`] also reports availability, which reads environment
+    /// variables, the OAuth credential store, and secure storage. A caller that
+    /// only needs static metadata - a context window or pricing - uses this
+    /// instead, so its answer cannot depend on whether a credential happens to
+    /// be present, and it performs no I/O.
+    pub fn catalogue_entry(provider: &str, model: &str) -> Option<ModelCatalogueEntry> {
+        let provider = parse_provider_override(provider)?;
+        model_catalogue_entry(provider.as_ref(), model)
     }
 
     pub fn resolve_provider(
@@ -644,6 +636,27 @@ mod tests {
         assert_eq!(resolved.provider, Provider::Ollama);
         assert!(!resolved.known_model());
         assert_eq!(resolved.context_window(), Some(32_000));
+    }
+
+    /// The catalogue lookup must agree with resolution's static metadata.
+    ///
+    /// Availability is the only thing resolution adds, and attribution that
+    /// uses this entry must therefore not depend on credential state.
+    #[test]
+    fn catalogue_entry_matches_resolved_static_metadata() {
+        let resolved = ModelResolver::resolve(Some("anthropic"), "claude-fable-5", &[], None).expect("model");
+        let entry = ModelResolver::catalogue_entry("anthropic", "claude-fable-5").expect("catalogue entry");
+
+        assert_eq!(Some(entry.context_window), resolved.context_window());
+        assert_eq!(Some(entry.pricing), resolved.pricing());
+        assert_eq!(entry.display_name, resolved.display_name().as_ref());
+    }
+
+    /// A provider or model the catalogue does not carry yields no entry.
+    #[test]
+    fn catalogue_entry_reports_nothing_for_an_unknown_model() {
+        assert!(ModelResolver::catalogue_entry("anthropic", "not-a-shipped-model").is_none());
+        assert!(ModelResolver::catalogue_entry("not-a-provider", "claude-fable-5").is_none());
     }
 
     #[test]
