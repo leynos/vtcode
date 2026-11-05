@@ -403,7 +403,9 @@ pub struct UiConfig {
     /// Problematic colours avoided: brblack (invisible in Solarized Dark), bryellow (light themes),
     /// white/brwhite (light themes), brblue (Basic Dark).
     /// See: <https://blog.xoria.org/terminal-colors/>
-    /// The wire name `safe_colors_only` is fixed by the schema.
+    /// The wire name `safe_colors_only` is fixed by the schema. The British
+    /// spelling `safe_colours_only` is accepted as an alias; specifying both
+    /// spellings in one table is a duplicate-field error.
     #[serde(
         rename = "safe_colors_only",
         alias = "safe_colours_only",
@@ -411,12 +413,14 @@ pub struct UiConfig {
     )]
     pub safe_colours_only: bool,
 
-    /// Color scheme mode for automatic light/dark theme switching.
+    /// Colour scheme mode for automatic light/dark theme switching.
     /// - "auto": Detect from terminal (via OSC 11 or COLORFGBG env var)
     /// - "light": Force light mode theme selection
     /// - "dark": Force dark mode theme selection
     ///
-    /// The wire name `color_scheme_mode` is fixed by the schema.
+    /// The wire name `color_scheme_mode` is fixed by the schema. The British
+    /// spelling `colour_scheme_mode` is accepted as an alias; specifying both
+    /// spellings in one table is a duplicate-field error.
     #[serde(
         rename = "color_scheme_mode",
         alias = "colour_scheme_mode",

@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthStr;
 pub enum Alignment {
     /// Left-aligned content with right padding
     Left,
-    /// Center-aligned content with equal padding on both sides
+    /// Centre-aligned content with equal padding on both sides
     Centre,
     /// Right-aligned content with left padding
     Right,

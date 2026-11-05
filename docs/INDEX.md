@@ -32,6 +32,8 @@ Last reviewed: 2026-11-03
   session behaviour.
 - [ACP Runtime Developer Guide](development/acp-runtime.md) - Runtime
   boundaries, persistence, provider policy, tools, and protocol updates.
+- [Instruction Discovery Boundary](development/instruction-discovery.md) -
+  Home-directory injection, test isolation, and include/exclude error contracts.
 - [Config Field Reference](config/CONFIG_FIELD_REFERENCE.md) - Field-level
   schema reference.
 - [Tool Specifications](tools/TOOL_SPECS.md) - Canonical tool surface reference.

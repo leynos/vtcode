@@ -557,9 +557,13 @@ instruction_import_max_depth = 5
 ```
 
 - `instruction_files` adds explicit files or globs to the authored-guidance
-  bundle.
+  bundle. A pattern that cannot be resolved or compiled is reported as a
+  warning and skipped, so one bad include does not hide the rest of the
+  workspace guidance.
 - `instruction_excludes` removes matching `AGENTS.md` or `.diapason/rules/`
-  files from discovery.
+  files from discovery. Excludes are fail-closed: an invalid exclude pattern
+  stops discovery with an error rather than silently loading files that should
+  have been excluded.
 - `instruction_import_max_depth` limits recursive `@path` imports inside
   guidance files.
 

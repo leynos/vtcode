@@ -15,6 +15,7 @@ Diapason respects the [NO_COLOR standard](https://no-color.org/):
   disables colour output
 - User configuration can override `NO_COLOR` per the standard
 
+<!-- tested-example: terminal-colour-disable -->
 ```bash
 # Disable colours via environment
 NO_COLOR=1 diapason

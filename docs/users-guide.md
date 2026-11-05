@@ -7,6 +7,8 @@
 - [Permissions](./guides/permissions.md)
 - [MCP integration](./mcp/MCP_INTEGRATION_GUIDE.md)
 - [User data directories](./guides/user-data-directories.md)
+- [0.157.0 release notes](./releases/0.157.0.md) - Breaking API renames, the
+  `--no-colour` flag, and configuration spelling aliases.
 
 ## Patch safety in brief
 
