@@ -5,12 +5,13 @@
 //! ACP activity update. Keeping that reporting beside the attempt result keeps
 //! the compaction pipeline itself a linear sequence of explicit steps.
 
-use super::super::redaction::{identifier_correlation, log_compaction_update_failure};
+use super::super::redaction::{elapsed_millis, identifier_correlation, log_compaction_update_failure};
 use super::super::{ZedAgent, log_suppressed_error};
-use super::failure::{CompactionFailureKind, classify};
-use crate::metrics::{CompactionOutcome, record_compaction_finished};
+use super::failure::{CompactionFailureKind, FailureDetail, classify, detail_of};
+use crate::metrics::{CompactionOutcome, record_compaction_finished, record_compaction_update_publish};
 use anyhow::Result;
-use tracing::{info, warn};
+use std::time::Instant;
+use tracing::{Instrument, field, info, info_span, warn};
 
 /// What one automatic compaction attempt achieved.
 pub(super) struct CompactionAttemptResult {
@@ -101,18 +102,7 @@ impl ZedAgent {
         if let (Some(error), Some(category)) = (attempt.failure.as_ref(), failure_category) {
             let _ = span.record("error_category", category);
             log_suppressed_error(error, "context_compaction", category);
-            warn!(
-                provider_correlation = %identifier_correlation(report.provider),
-                provider_bytes = report.provider.len(),
-                model_correlation = %identifier_correlation(report.model),
-                model_bytes = report.model.len(),
-                prompt_tokens = report.prompt_tokens,
-                elapsed_ms = report.elapsed_ms,
-                session_correlation = %report.session_key,
-                outcome = outcome.as_str(),
-                error_category = category,
-                "ACP automatic context compaction failed"
-            );
+            Self::warn_compaction_failure(detail_of(error), &report, outcome.as_str(), category);
         } else {
             info!(
                 provider_correlation = %identifier_correlation(report.provider),
@@ -130,10 +120,53 @@ impl ZedAgent {
         failure_category
     }
 
+    /// Warn about a failed attempt, adding the bounded source detail when known.
+    ///
+    /// A failure raised as a bare category has no source error, so its record
+    /// carries the closed-set fields alone rather than an invented digest.
+    fn warn_compaction_failure(
+        detail: Option<&FailureDetail>,
+        report: &CompactionReport<'_>,
+        outcome: &str,
+        category: &'static str,
+    ) {
+        match detail {
+            Some(detail) => warn!(
+                provider_correlation = %identifier_correlation(report.provider),
+                provider_bytes = report.provider.len(),
+                model_correlation = %identifier_correlation(report.model),
+                model_bytes = report.model.len(),
+                prompt_tokens = report.prompt_tokens,
+                elapsed_ms = report.elapsed_ms,
+                session_correlation = %report.session_key,
+                outcome,
+                error_category = category,
+                error_bytes = detail.bytes,
+                detail_correlation = %detail.correlation,
+                "ACP automatic context compaction failed"
+            ),
+            None => warn!(
+                provider_correlation = %identifier_correlation(report.provider),
+                provider_bytes = report.provider.len(),
+                model_correlation = %identifier_correlation(report.model),
+                model_bytes = report.model.len(),
+                prompt_tokens = report.prompt_tokens,
+                elapsed_ms = report.elapsed_ms,
+                session_correlation = %report.session_key,
+                outcome,
+                error_category = category,
+                "ACP automatic context compaction failed"
+            ),
+        }
+    }
+
     /// Publish one compaction activity update, logging fixed fields on failure.
     ///
     /// A serialization failure and a transport failure keep distinct stage
-    /// labels so an operator can tell which half of the publish failed.
+    /// labels so an operator can tell which half of the publish failed. The
+    /// send is observed by a span and by the publication counters, so a
+    /// client that stops accepting activity updates is measurable rather than
+    /// merely logged.
     pub(super) async fn publish_compaction_update(
         &self,
         session_id: &crate::acp::SessionId,
@@ -142,13 +175,36 @@ impl ZedAgent {
         publish_stage: &'static str,
         serialize_stage: &'static str,
     ) {
-        match update {
-            Ok(update) => {
-                if let Err(error) = self.send_update(session_id, update).await {
-                    log_compaction_update_failure(&error, session_key, publish_stage);
-                }
+        let update = match update {
+            Ok(update) => update,
+            // Serialization never reaches the transport, so it is not a send
+            // and moves neither the span's outcome nor the counters.
+            Err(error) => {
+                log_compaction_update_failure(&error, session_key, serialize_stage);
+                return;
             }
-            Err(error) => log_compaction_update_failure(&error, session_key, serialize_stage),
+        };
+        let span = info_span!(
+            "acp_compaction_update_publish",
+            operation = "context_compaction_update",
+            stage = publish_stage,
+            session_correlation = %session_key,
+            outcome = field::Empty,
+            elapsed_ms = field::Empty,
+        );
+        let started_at = Instant::now();
+        async {
+            let result = self.send_update(session_id, update).await;
+            let span = tracing::Span::current();
+            let sent = result.is_ok();
+            let _outcome_recorded = span.record("outcome", if sent { "sent" } else { "failed" });
+            let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at));
+            record_compaction_update_publish(sent);
+            if let Err(error) = &result {
+                log_compaction_update_failure(error, session_key, publish_stage);
+            }
         }
+        .instrument(span)
+        .await;
     }
 }

@@ -3,10 +3,13 @@
 //! Compaction failures reach two audiences. ACP clients receive a
 //! `failureReason` field, and operators read warning events. Neither may see
 //! provider detail, workspace paths, archive contents, hook text, or personal
-//! data, so both get a category from a closed set. The originating error is
-//! deliberately not retained: it may embed untrusted text, and nothing in this
-//! type may expose it to a log or a client.
+//! data, so both get a category from a closed set. The originating error's
+//! text is deliberately not retained: it may embed untrusted text, and nothing
+//! in this type may expose it to a log or a client. Only its byte length and a
+//! bounded digest survive, so repeated identical failures stay correlatable
+//! without their content being recoverable.
 
+use super::super::redaction::detail_correlation;
 use anyhow::Error;
 use std::borrow::Cow;
 use std::fmt;
@@ -39,6 +42,29 @@ impl CompactionFailureKind {
     }
 }
 
+/// Bounded, non-identifying description of a discarded source error.
+///
+/// The rendering itself is never retained. The byte length and the digest let
+/// an operator tell two failures apart and group repeats, and neither can carry
+/// provider payload, hook output, a path, or personal data into a record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct FailureDetail {
+    /// Byte length of the source error's outer message.
+    pub(super) bytes: usize,
+    /// Truncated SHA-256 digest of the source error's full chain.
+    pub(super) correlation: String,
+}
+
+impl FailureDetail {
+    /// Reduce `error` to its bounded description.
+    fn of(error: &Error) -> Self {
+        Self {
+            bytes: error.to_string().len(),
+            correlation: detail_correlation(&format!("{error:#}")),
+        }
+    }
+}
+
 /// A typed compaction failure that survives `.context()` wrapping.
 ///
 /// `anyhow` keeps context as a wrapper around the original error rather than
@@ -51,12 +77,23 @@ pub(super) struct CompactionFailure {
     /// Explanation safe to return to callers: built only from values this
     /// module controls, never from a provider or filesystem error.
     message: Cow<'static, str>,
+    /// Bounded description of the discarded source error, when there was one.
+    detail: Option<FailureDetail>,
 }
 
 impl CompactionFailure {
     /// Assemble a failure from its category and client-safe message.
     const fn new(kind: CompactionFailureKind, message: Cow<'static, str>) -> Self {
-        Self { kind, message }
+        Self { kind, message, detail: None }
+    }
+
+    /// Assemble a failure that also keeps a bounded description of `error`.
+    fn with_detail(kind: CompactionFailureKind, message: Cow<'static, str>, error: &Error) -> Self {
+        Self {
+            kind,
+            message,
+            detail: Some(FailureDetail::of(error)),
+        }
     }
 
     /// Create a failure for a session cancelled during compaction.
@@ -79,19 +116,24 @@ impl CompactionFailure {
 
     /// Create a failure for a failed `PreCompact` lifecycle hook.
     ///
-    /// `_error` is accepted so call sites read the same as the provider
-    /// boundary, but it is deliberately not retained: hook output may embed
-    /// script paths, environment values, or workspace content.
-    pub(super) const fn pre_compact_hook(_error: &Error) -> Self {
-        Self::new(CompactionFailureKind::PreCompactHook, Cow::Borrowed("ACP PreCompact hooks failed"))
+    /// The error's text is deliberately not retained: hook output may embed
+    /// script paths, environment values, or workspace content. Only its byte
+    /// length and a bounded digest survive.
+    pub(super) fn pre_compact_hook(error: &Error) -> Self {
+        Self::with_detail(CompactionFailureKind::PreCompactHook, Cow::Borrowed("ACP PreCompact hooks failed"), error)
     }
 
     /// Create a failure for an unattributed provider or pipeline error.
     ///
-    /// `_error` is deliberately not retained: provider payloads, transport
-    /// URLs, and model output may contain personal data or secrets.
-    pub(super) const fn provider(_error: &Error) -> Self {
-        Self::new(CompactionFailureKind::Provider, Cow::Borrowed("ACP automatic context compaction failed"))
+    /// The error's text is deliberately not retained: provider payloads,
+    /// transport URLs, and model output may contain personal data or secrets.
+    /// Only its byte length and a bounded digest survive.
+    pub(super) fn provider(error: &Error) -> Self {
+        Self::with_detail(
+            CompactionFailureKind::Provider,
+            Cow::Borrowed("ACP automatic context compaction failed"),
+            error,
+        )
     }
 
     /// Create a failure for provider admission that closed or timed out.
@@ -105,6 +147,11 @@ impl CompactionFailure {
     /// Return this failure's category without consuming it.
     pub(super) const fn kind(&self) -> CompactionFailureKind {
         self.kind
+    }
+
+    /// Return the bounded description of the discarded source error, if any.
+    pub(super) fn detail(&self) -> Option<&FailureDetail> {
+        self.detail.as_ref()
     }
 
     /// Wrap this failure into the `anyhow` error the compaction pipeline uses.
@@ -133,8 +180,17 @@ pub(super) fn classify(error: &Error) -> CompactionFailureKind {
         .map_or(CompactionFailureKind::Provider, CompactionFailure::kind)
 }
 
+/// Return the bounded detail attached to a classified compaction failure.
+///
+/// Untyped errors carry none: their text never passed through this module, so
+/// there is no description that can be shown to be safe.
+pub(super) fn detail_of(error: &Error) -> Option<&FailureDetail> {
+    error.downcast_ref::<CompactionFailure>().and_then(CompactionFailure::detail)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::super::super::redaction::CORRELATION_HEX_LENGTH;
     use super::*;
 
     /// Assert each typed failure classifies as its own category.
@@ -195,6 +251,44 @@ mod tests {
             "provider payload",
         ] {
             assert!(!operator_chain.contains(leaked), "{leaked} must stay out of the chain, got {operator_chain}");
+        }
+    }
+
+    /// Assert distinct source errors stay distinguishable by their digest.
+    ///
+    /// The client-facing message is fixed, so the digest is the only thing that
+    /// tells two provider failures apart. It must therefore differ, and it must
+    /// stay bounded and free of the source text.
+    #[test]
+    fn distinct_source_errors_keep_distinct_bounded_digests() {
+        let first = CompactionFailure::provider(&anyhow::anyhow!("provider payload one"));
+        let second = CompactionFailure::provider(&anyhow::anyhow!("provider payload two"));
+        let first_detail = first.detail().expect("a provider failure keeps a bounded detail");
+        let second_detail = second.detail().expect("a provider failure keeps a bounded detail");
+
+        assert_ne!(
+            first_detail.correlation, second_detail.correlation,
+            "different source errors must not share a digest"
+        );
+        assert_eq!(first.to_string(), second.to_string(), "the client-facing message must stay fixed");
+        assert_eq!(first_detail.correlation.len(), CORRELATION_HEX_LENGTH, "the digest must stay bounded");
+        assert!(
+            !first_detail.correlation.contains("provider"),
+            "the digest must not carry the source text: {}",
+            first_detail.correlation
+        );
+        assert_eq!(first_detail.bytes, "provider payload one".len());
+    }
+
+    /// Assert failures without a source error carry no detail.
+    #[test]
+    fn category_only_failures_carry_no_detail() {
+        for failure in [
+            CompactionFailure::cancelled(),
+            CompactionFailure::timeout(),
+            CompactionFailure::provider_admission(),
+        ] {
+            assert!(failure.detail().is_none(), "{} must not invent a detail", failure.kind().category());
         }
     }
 

@@ -47,6 +47,14 @@ pub(super) fn identifier_correlation(identifier: &str) -> String {
     bounded_digest(identifier)
 }
 
+/// Convert a measurement start into whole elapsed milliseconds.
+///
+/// Span fields and metrics report whole milliseconds, and a duration beyond
+/// `u64::MAX` milliseconds saturates rather than wrapping.
+pub(super) fn elapsed_millis(started_at: std::time::Instant) -> u64 {
+    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 fn bounded_digest(value: &str) -> String {
     diapason_commons::utils::calculate_sha256(value.as_bytes())
         .chars()

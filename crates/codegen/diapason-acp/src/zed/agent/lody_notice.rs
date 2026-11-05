@@ -4,10 +4,11 @@
 
 use crate::acp;
 use serde_json::{Map, Value};
-use std::time::Duration;
 use diapason_core::llm::provider::{LLMError, LLMErrorMetadata};
+use std::time::{Duration, Instant};
+use tracing::{Instrument, field, info_span};
 
-use super::redaction::{log_notice_publish_failure, session_correlation};
+use super::redaction::{elapsed_millis, log_notice_publish_failure, session_correlation};
 use super::ZedAgent;
 
 impl ZedAgent {
@@ -23,15 +24,37 @@ impl ZedAgent {
         error: &LLMError,
         retry_delay: Option<Duration>,
     ) {
+        // An error that reports no rate limit publishes nothing, so it is not
+        // an attempt and must not move the failure ratio.
         let Some(update) = rate_limit_notice_update(provider, error, retry_delay) else {
             return;
         };
-        if let Err(error) = self.send_update(session_id, update).await {
-            // The transport error and the raw session id are both
-            // operator-sensitive, so only fixed fields and a bounded
-            // correlation digest reach the log.
-            log_notice_publish_failure(&error, &session_correlation(&session_id.to_string()));
+        let session_correlation = session_correlation(&session_id.to_string());
+        let span = info_span!(
+            "acp_notice_publish",
+            operation = "provider_rate_limit_notice",
+            stage = "publish_rate_limit_notice",
+            session_correlation = %session_correlation,
+            outcome = field::Empty,
+            elapsed_ms = field::Empty,
+        );
+        let started_at = Instant::now();
+        async {
+            let result = self.send_update(session_id, update).await;
+            let span = tracing::Span::current();
+            let sent = result.is_ok();
+            let _outcome_recorded = span.record("outcome", if sent { "sent" } else { "failed" });
+            let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at));
+            crate::metrics::record_notice_publish(sent);
+            if let Err(error) = &result {
+                // The transport error and the raw session id are both
+                // operator-sensitive, so only fixed fields and a bounded
+                // correlation digest reach the log.
+                log_notice_publish_failure(error, &session_correlation);
+            }
         }
+        .instrument(span)
+        .await;
     }
 }
 

@@ -5,14 +5,58 @@ use tracing::{info, warn};
 
 use super::{GenerationTelemetry, LLMError, LLMResponse, ProviderRequestRuntime, RetryDecision};
 
+/// Provider error codes this bridge is willing to log.
+///
+/// `LLMErrorMetadata` is deserialisable and its `code` is free-form, so the
+/// value is not bounded or trusted. Only a code named here reaches a log;
+/// every other value is reported as [`UNKNOWN_ERROR_CODE`], which keeps the
+/// field's cardinality fixed and arbitrary text out of the record.
+pub(in crate::zed::agent::handlers) const KNOWN_ERROR_CODES: &[&str] = &[
+    "acp_timeout_first_token",
+    "acp_timeout_inter_token_idle",
+    "acp_timeout_total_generation",
+    "authentication_error",
+    "capacity_exhausted",
+    "custom_provider_admission_closed",
+    "custom_provider_admission_timeout",
+    "insufficient_balance",
+    "insufficient_quota",
+    "invalid_parameters",
+    "invalid_request",
+    "local_server_down",
+    "quota_exceeded",
+    "rate_limit",
+    "rate_limit_error",
+    "reqwest_body_error",
+    "reqwest_connect_error",
+    "reqwest_decode_error",
+    "reqwest_redirect_error",
+    "reqwest_request_error",
+    "reqwest_status_error",
+    "reqwest_timeout_error",
+    "reqwest_unknown_error",
+];
+
+/// The bounded stand-in for a code outside [`KNOWN_ERROR_CODES`].
+const UNKNOWN_ERROR_CODE: &str = "other";
+
+/// Map a metadata code onto the bounded set an operator may see.
+fn bounded_error_code(code: &str) -> &'static str {
+    KNOWN_ERROR_CODES
+        .iter()
+        .copied()
+        .find(|known| *known == code)
+        .unwrap_or(UNKNOWN_ERROR_CODE)
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(in crate::zed::agent::handlers) struct ProviderErrorTelemetry<'a> {
-    pub(in crate::zed::agent::handlers) code: Option<&'a str>,
+pub(in crate::zed::agent::handlers) struct ProviderErrorTelemetry {
+    pub(in crate::zed::agent::handlers) code: Option<&'static str>,
     pub(in crate::zed::agent::handlers) status: Option<u16>,
     pub(in crate::zed::agent::handlers) timeout_phase: Option<&'static str>,
 }
 
-pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry<'_> {
+pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError) -> ProviderErrorTelemetry {
     let metadata = match error {
         LLMError::Authentication { metadata, .. }
         | LLMError::RateLimit { metadata }
@@ -31,7 +75,11 @@ pub(in crate::zed::agent::handlers) fn provider_error_telemetry(error: &LLMError
         _ => None,
     };
     ProviderErrorTelemetry {
-        code: if timeout_phase.is_some() { None } else { code },
+        code: if timeout_phase.is_some() {
+            None
+        } else {
+            code.map(bounded_error_code)
+        },
         status: metadata.status,
         timeout_phase,
     }

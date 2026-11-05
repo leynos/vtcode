@@ -1,8 +1,9 @@
 //! Bounded, process-local metrics for the ACP bridge.
 //!
 //! Counters are cumulative and never reset. Their cardinality is fixed by
-//! construction: outcomes come from [`CompactionOutcome`], and no session,
-//! provider, model, path, or payload value is ever recorded as a label.
+//! construction: compaction outcomes come from [`CompactionOutcome`],
+//! publication outcomes are the two states of a send, and no session, provider,
+//! model, path, or payload value is ever recorded as a label.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -144,6 +145,71 @@ pub(crate) fn record_compaction_finished(outcome: CompactionOutcome, cancelled: 
     COMPACTION_COUNTERS.record_finished(outcome, cancelled, elapsed_ms);
 }
 
+/// Snapshot of the cumulative publication counters for one ACP send boundary.
+///
+/// `failures` is a subset of `attempts`: it counts the sends that returned an
+/// error. A notice that was never built and a serialization failure that never
+/// reached the transport are not attempts, so they move neither counter.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PublicationMetrics {
+    /// Sends attempted at this boundary.
+    pub attempts: u64,
+    /// Attempts whose send returned an error.
+    pub failures: u64,
+}
+
+/// Cumulative counters behind one publication boundary.
+struct PublicationCounters {
+    attempts: AtomicU64,
+    failures: AtomicU64,
+}
+
+impl PublicationCounters {
+    const fn new() -> Self {
+        Self {
+            attempts: AtomicU64::new(0),
+            failures: AtomicU64::new(0),
+        }
+    }
+
+    fn record(&self, sent: bool) {
+        saturating_add(&self.attempts, 1);
+        if !sent {
+            saturating_add(&self.failures, 1);
+        }
+    }
+
+    fn snapshot(&self) -> PublicationMetrics {
+        PublicationMetrics {
+            attempts: self.attempts.load(Ordering::Relaxed),
+            failures: self.failures.load(Ordering::Relaxed),
+        }
+    }
+}
+
+static NOTICE_COUNTERS: PublicationCounters = PublicationCounters::new();
+static COMPACTION_UPDATE_COUNTERS: PublicationCounters = PublicationCounters::new();
+
+/// Return the cumulative provider rate-limit notice publication counters.
+pub fn notice_metrics() -> PublicationMetrics {
+    NOTICE_COUNTERS.snapshot()
+}
+
+/// Return the cumulative compaction activity-update publication counters.
+pub fn compaction_update_metrics() -> PublicationMetrics {
+    COMPACTION_UPDATE_COUNTERS.snapshot()
+}
+
+/// Record one attempt to publish a provider rate-limit notice.
+pub(crate) fn record_notice_publish(sent: bool) {
+    NOTICE_COUNTERS.record(sent);
+}
+
+/// Record one attempt to publish a compaction activity update.
+pub(crate) fn record_compaction_update_publish(sent: bool) {
+    COMPACTION_UPDATE_COUNTERS.record(sent);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +263,25 @@ mod tests {
     #[test]
     fn fresh_counters_report_zero() {
         assert_eq!(CompactionCounters::new().snapshot(), CompactionMetrics::default());
+    }
+
+    /// Assert publication counters separate attempts from failures.
+    #[test]
+    fn publication_counters_track_attempts_and_failures() {
+        let counters = PublicationCounters::new();
+        counters.record(true);
+        counters.record(false);
+        counters.record(false);
+
+        let snapshot = counters.snapshot();
+        assert_eq!(snapshot.attempts, 3);
+        assert_eq!(snapshot.failures, 2, "failures are a subset of attempts");
+    }
+
+    /// Assert a fresh publication counter set reports zeros.
+    #[test]
+    fn fresh_publication_counters_report_zero() {
+        assert_eq!(PublicationCounters::new().snapshot(), PublicationMetrics::default());
     }
 
     /// Assert counter increments saturate rather than wrapping.
