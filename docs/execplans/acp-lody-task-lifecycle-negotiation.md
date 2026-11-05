@@ -1758,3 +1758,59 @@ The r23 candidate left five inline findings open. Repairs on top of `e26daba08`:
   directory.
 - **Documentation (4464712613).** The ACP runtime guide now says the usage
   notification is published for each provider response *that includes usage*.
+
+### Revision note (2026-11-04, r25 pre-merge reassessment)
+
+The pre-merge reconciliation on `f0efe2c04` asked whether the two remaining
+rows had been resolved. CodeRabbit answered on head `f0efe2c04` (reply
+6640576136, 19:53Z): `Testing (Overall)` is addressed in source, and the
+`Observability` *implementation* is addressed, but one documentation correction
+remained. The rate-limit delivery paragraph in
+`docs/development/acp-runtime.md` still promised "a redacted, bounded detail",
+while `log_notice_publish_failure` emits the fixed `operation`, `stage`, and
+`error_category`, the session correlation key, `error_bytes`, and
+`detail_correlation`. CodeRabbit marked the correction as required work in this
+PR rather than a deferrable issue.
+
+`a9631ca41` makes that correction and also removes a second stale claim found
+while checking the same boundary. `docs/guides/zed-acp.md` (Failure
+diagnostics) still said "at the repaired boundaries the full error chain is
+kept at `debug`"; that contract was removed in r23 and the three rewritten
+DEBUG tests assert its absence. Both paragraphs now describe the fixed-field
+contract, and the runtime guide records that the digest is a correlation aid
+rather than a secrecy boundary.
+
+The change is documentation only: 2 files, 13 insertions, 8 deletions.
+
+Validation on `a9631ca41`:
+
+- `make check-fmt` — exit 0; `cargo fmt --all -- --check` clean and
+  mdtablefix left 365 files unchanged.
+- `markdownlint-cli2 docs/development/acp-runtime.md docs/guides/zed-acp.md` —
+  0 issues.
+- `make lint-policies` — exit 0; workflow security, compiler-cache wiring, and
+  the structured-logging scan (`findings=0`, `mode=enforce`).
+- `git diff --check` — clean.
+- Full sequential gate set (`check-fmt`, `typecheck`, `lint`, `test`) — green.
+  `check-fmt` exit 0 (21s), `typecheck` exit 0 (65m20s), `lint` exit 0
+  (14m09s), and `test` exit 0 with
+  `10635 tests run: 10635 passed (1 slow), 23 skipped`. Logs:
+  `/tmp/gate-check-fmt-*.out`, `/tmp/gate-typecheck-*-4.out`,
+  `/tmp/gate-lint-*-3.out`, `/tmp/gate-test-*.out`.
+
+CodeRabbit re-read the revision (reply 6643453994, 22:12Z) and marked both rows
+addressed in source, while explicitly keeping the hosted validation boundary
+and asking for the full gate run before merge. `reviewDecision` therefore stays
+`CHANGES_REQUESTED` until CodeRabbit submits a review for the new head;
+resolved threads and an addressed table are not an approval.
+
+Hosted checks on `a9631ca41`: `Gecko Security Review` succeeded and
+`CodeRabbit` skipped with `Review paused`. `eval` is absent because `tool-eval`
+is path-filtered to `**.rs`, `Cargo.*`, `scripts/**`, and workflow files, and
+this delta is documentation only; the last `eval` run, on `f0efe2c04`, passed.
+
+A `@coderabbitai resume` request is queued as `7883eea0` for this PR. The
+resume is what lifts the paused state; the queued request is not a completed
+review, and its ETA is reported by `comenq list`. `mergeable` and
+`mergeStateStatus` remain `UNKNOWN` for the stale-merge-ref reason recorded in
+the r22 section; a push does not clear it.
