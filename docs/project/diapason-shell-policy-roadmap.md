@@ -414,14 +414,18 @@ cutover. See design §§3, 6, and 8; RFC 0001 §§4–6.
     reference, and execution outcome; record generation and rule/node IDs.
   - Omit raw environments, secret values, and command output from routine
     events and projections.
-  - Persist the required decision in redacted form and the authorization
+  - Persist the candidate decision in redacted form and the authorization
     references before bind and dispatch; failure to persist this pre-dispatch
-    audit record blocks dispatch. Record the execution outcome separately
-    after dispatch; report persistence failures without attempting to undo the
-    dispatched action.
-  - Success: an event trace distinguishes decision from execution outcome and
-    secret canaries are absent from stored event payloads, logs, and policy
-    test reports.
+    audit record blocks dispatch. After final revalidation under the generation
+    barrier, persist the final decision or a bounded `blocked`/`not_dispatched`
+    outcome before dispatch, superseding the candidate decision. Record the
+    execution outcome separately after dispatch; report persistence failures
+    without attempting to undo the dispatched action.
+  - Success: an event trace distinguishes candidate decision, final
+    decision/`not_dispatched`, and execution outcome, so a re-evaluated block
+    never leaves an earlier `allow` as the last recorded decision; secret
+    canaries are absent from stored event payloads, logs, and policy test
+    reports.
 
 ### 5.2. Move all routes to the shared boundary
 
