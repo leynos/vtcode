@@ -1814,3 +1814,47 @@ resume is what lifts the paused state; the queued request is not a completed
 review, and its ETA is reported by `comenq list`. `mergeable` and
 `mergeStateStatus` remain `UNKNOWN` for the stale-merge-ref reason recorded in
 the r22 section; a push does not clear it.
+
+### Revision note (2026-11-05, r26 observability implementation)
+
+The r25 section left the `Observability` row addressed only in its
+*implementation* claim. This revision completes the fixed-field observability
+work the row asked for, so the row no longer rests on the earlier documentation
+correction alone.
+
+Two ACP send boundaries now own fixed-cardinality counters.
+`metrics::notice_metrics()` counts rate-limit notice publication attempts and
+failures, and `metrics::compaction_update_metrics()` does the same for
+compaction activity updates. Both report a
+`PublicationMetrics { attempts, failures }` snapshot in which `failures` is a
+subset of `attempts`. A notice that was never built, and a serialization
+failure that never reached the transport, are not attempts and move neither
+counter.
+
+Each send is wrapped in a span with a fixed `operation` and `stage`, a bounded
+`session_correlation` digest, an `outcome` of `sent` or `failed`, and
+`elapsed_ms`. The counters and the span are written at the same place, because
+only the send boundary can tell a delivered update from a rejected one. Raw
+errors stay out of every field, and the failure path still logs through the
+existing fixed fields.
+
+`provider_error_code` is now bounded. `KNOWN_ERROR_CODES` lists the codes this
+bridge is willing to log, `bounded_error_code` maps anything else to `other`,
+and the three ACP timeout codes are reported through `provider_timeout_phase`
+instead of the code field. `LLMErrorMetadata` is deserialisable and its `code`
+is free-form, so an adversarial or newly added provider value can no longer
+reach a record verbatim or widen the field's cardinality.
+
+Captured-log and counter tests cover the new surface. An adversarial provider
+code (`token=... POST https://... alice@example.com`) reduces to `other` and
+leaks nothing into the rendered telemetry; every allowlisted code survives
+unchanged; a disconnected client fails both notice and compaction sends and is
+observed by the matching span; and the controlled-duration compaction test is
+unchanged.
+
+Validation on this candidate:
+
+- Focused selection (11 tests) — all pass, including the two
+  pre-existing fixed-field compaction tests.
+- `cargo check -p vtcode-acp --all-targets --all-features` — exit 0.
+- Full sequential gate set — results recorded below once run.

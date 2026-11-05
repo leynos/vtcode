@@ -132,3 +132,65 @@ async fn retryable_stream_rate_limit_publishes_a_notice_announcing_the_retry() {
     });
     assert!(retried_answer, "the scheduled retry must deliver the follow-up answer: {updates:?}");
 }
+
+/// Assert a failed notice send is counted and observed by a bounded span.
+///
+/// With no client attached the transport rejects the send. The attempt must
+/// still be counted, and the span must carry the fixed operation and stage
+/// plus a bounded session correlation rather than the raw session identifier.
+#[test]
+fn disconnected_client_counts_a_failed_notice_publication() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("test runtime should build");
+    runtime.block_on(async {
+        let _history_test_guard = lock_history_test_guard().await;
+        let workspace = TempDir::new().expect("wire test workspace");
+        let agent = build_wire_test_agent_with_options(workspace.path(), None, None).await;
+        let session_id = acp::SessionId::new(Arc::from("notice-span-session"));
+        let error = LLMError::RateLimit {
+            metadata: Some(LLMErrorMetadata::new(
+                "baseten",
+                Some(429),
+                Some("rate_limit_error".to_string()),
+                None,
+                None,
+                None,
+                None,
+            )),
+        };
+        let trace = TraceCapture::default();
+        let before = crate::metrics::notice_metrics();
+
+        {
+            let _guard = tracing::subscriber::set_default(Registry::default().with(trace.clone()));
+            agent.publish_rate_limit_notice(&session_id, "baseten", &error, None).await;
+        }
+
+        let after = crate::metrics::notice_metrics();
+        assert_eq!(
+            after.attempts,
+            before.attempts + 1,
+            "a send that reached the transport is an attempt: {before:?} -> {after:?}"
+        );
+        assert_eq!(
+            after.failures,
+            before.failures + 1,
+            "a disconnected client must fail the send: {before:?} -> {after:?}"
+        );
+
+        let captured = trace.0.lock().expect("trace capture lock").join("\n");
+        for expected in [
+            "span=acp_notice_publish",
+            "operation=\"provider_rate_limit_notice\"",
+            "stage=\"publish_rate_limit_notice\"",
+            "outcome=\"failed\"",
+            "elapsed_ms=",
+        ] {
+            assert!(captured.contains(expected), "missing {expected} in: {captured}");
+        }
+        assert!(captured.contains("session_correlation="), "the span must correlate the send: {captured}");
+        assert!(!captured.contains("notice-span-session"), "the raw session id must not reach a span: {captured}");
+    });
+}

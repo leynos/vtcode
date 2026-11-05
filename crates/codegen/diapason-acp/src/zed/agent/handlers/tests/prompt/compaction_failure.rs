@@ -3,6 +3,9 @@ use super::compaction::{CaptureWriter, capture_subscriber};
 use super::*;
 use agent_client_protocol::schema::v1::InitializeRequest;
 
+/// Provider stall the duration assertions are bounded by, in milliseconds.
+const PROVIDER_DELAY_MS: u64 = 20;
+
 /// Assert the started/terminal activity pair a failed compaction publishes.
 fn assert_failed_terminal_activity(updates: &[serde_json::Value], expected_category: &str) {
     assert_eq!(updates.len(), 2, "a failed compaction must publish exactly one started and one terminal activity");
@@ -212,6 +215,10 @@ async fn failed_acp_compaction_publishes_a_provider_terminal_update() {
         !warning.contains("compaction summary request failed"),
         "provider payload text must stay out of the operator warning: {warning}"
     );
+    assert!(
+        warning.contains("error_bytes=") && warning.contains("detail_correlation="),
+        "the operator warning must keep the bounded source detail: {warning}"
+    );
 
     let suppressed = output
         .lines()
@@ -225,6 +232,85 @@ async fn failed_acp_compaction_publishes_a_provider_terminal_update() {
         !suppressed.contains("compaction summary request failed"),
         "provider payload text must stay out of every log level: {suppressed}"
     );
+}
+
+/// Assert a failed activity-update send is counted and observed by a span.
+///
+/// The send boundary is the only place that can tell a delivered update from
+/// a rejected one, so it owns both the counters and the span. A client that
+/// disconnects must therefore show up as a failure, and the span must carry
+/// the fixed operation and stage rather than any session or transport detail.
+#[tokio::test]
+async fn failed_compaction_update_publication_is_observed_by_a_bounded_span() {
+    let _history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    use assert_fs::TempDir;
+
+    let workspace = TempDir::new().expect("temporary compaction workspace");
+    let config = compaction_config(true);
+    let agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+    let session = large_compaction_session(&agent, workspace.path()).await;
+    let raw_session_id = session.data.lock().expect("ACP session data").session_id.to_string();
+    let provider = CompactThenAnswerProvider {
+        requests: Arc::new(Mutex::new(Vec::new())),
+        context_size: 0,
+        summary: "span compaction summary".to_string(),
+        delay: Duration::ZERO,
+    };
+    let runtime = agent.provider_runtime.for_provider("wire-test");
+    let trace = TraceCapture::default();
+    let before = crate::metrics::compaction_update_metrics();
+
+    {
+        let _guard = tracing::subscriber::set_default(Registry::default().with(trace.clone()));
+        let compacted = agent
+            .maybe_compact_session(CompactionRequest {
+                session: &session,
+                provider: &provider,
+                runtime: &runtime,
+                model: "wire-model",
+                tools: None,
+            })
+            .await
+            .expect("an update delivery failure must not replace the compaction result");
+        assert!(compacted, "the compacted history must still be adopted");
+    }
+
+    let after = crate::metrics::compaction_update_metrics();
+    assert_eq!(
+        after.attempts,
+        before.attempts + 2,
+        "both activity updates are send attempts: {before:?} -> {after:?}"
+    );
+    assert_eq!(
+        after.failures,
+        before.failures + 2,
+        "a disconnected client must fail both sends: {before:?} -> {after:?}"
+    );
+
+    let captured = trace.0.lock().expect("trace capture lock").join("\n");
+    for expected in [
+        "span=acp_compaction_update_publish",
+        "operation=\"context_compaction_update\"",
+        "stage=\"publish_started\"",
+        "stage=\"publish_finished\"",
+        "outcome=\"failed\"",
+        "elapsed_ms=",
+    ] {
+        assert!(captured.contains(expected), "missing {expected} in: {captured}");
+    }
+    assert!(captured.contains("session_correlation="), "each send must be correlated: {captured}");
+    // Unrelated core logs may name the archive, so the privacy claim is scoped
+    // to the ACP publication spans this test drives.
+    let publish_lines = captured
+        .lines()
+        .filter(|line| line.contains("acp_compaction_update_publish"))
+        .collect::<Vec<_>>();
+    assert!(!publish_lines.is_empty(), "the publication spans must be captured: {captured}");
+    for line in publish_lines {
+        assert!(!line.contains(&raw_session_id), "the raw session id must not reach a span: {line}");
+    }
 }
 
 /// A disconnected client must not replace the compaction result.
@@ -253,7 +339,7 @@ async fn disconnected_client_keeps_the_compaction_result_and_logs_fixed_fields()
         requests: Arc::new(Mutex::new(Vec::new())),
         context_size: 0,
         summary: "disconnected compaction summary".to_string(),
-        delay: Duration::from_millis(20),
+        delay: Duration::from_millis(PROVIDER_DELAY_MS),
     };
     let runtime = agent.provider_runtime.for_provider("wire-test");
 
@@ -276,14 +362,18 @@ async fn disconnected_client_keeps_the_compaction_result_and_logs_fixed_fields()
     assert!(after.started > before.started, "the attempt must record a start: {before:?} -> {after:?}");
     assert!(after.compacted > before.compacted, "the terminal outcome must be recorded: {before:?} -> {after:?}");
     // The provider stalls for a controlled interval, so elapsed recording must
-    // move both duration counters by a strictly positive amount. Nextest runs
-    // each test in its own process, so the deltas below cover this attempt
-    // alone.
+    // reach at least that interval in both the running total and the recorded
+    // maximum. Bounding by the known delay keeps the assertion meaningful
+    // without requiring the process-wide maximum to grow: another attempt in
+    // this process may already have recorded a longer one.
     let elapsed_ms_delta = after.elapsed_ms_total - before.elapsed_ms_total;
-    assert!(elapsed_ms_delta > 0, "the attempt duration must be recorded: {before:?} -> {after:?}");
     assert!(
-        after.elapsed_ms_max > before.elapsed_ms_max,
-        "the longest attempt duration must be recorded: {before:?} -> {after:?}"
+        elapsed_ms_delta >= PROVIDER_DELAY_MS,
+        "the attempt duration must cover the provider delay: {before:?} -> {after:?}"
+    );
+    assert!(
+        after.elapsed_ms_max >= PROVIDER_DELAY_MS,
+        "the longest attempt duration must cover the provider delay: {before:?} -> {after:?}"
     );
 
     let output = String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
