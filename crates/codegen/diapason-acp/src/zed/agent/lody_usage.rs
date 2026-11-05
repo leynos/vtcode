@@ -227,6 +227,12 @@ fn record_usage_failure(
 /// declared, and its `api_format` names the backend that produced the usage.
 /// Otherwise the built-in model catalogue supplies what it knows, and the
 /// provider name alone decides the input-token semantics.
+///
+/// Both branches are pure functions of already-loaded configuration. The
+/// catalogue lookup deliberately does not resolve credentials: reading
+/// environment variables, the OAuth store, or secure storage here would make a
+/// reported cost depend on whether a key happened to be installed, and would
+/// run that I/O once per turn for metadata it never uses.
 fn usage_profile(custom_providers: &[CustomProviderConfig], provider: &str, model: &str) -> UsageProfile {
     if let Some(custom_provider) = custom_providers
         .iter()
@@ -240,17 +246,29 @@ fn usage_profile(custom_providers: &[CustomProviderConfig], provider: &str, mode
         };
     }
 
-    ModelResolver::resolve(Some(provider), model, &[], None).map_or_else(
+    ModelResolver::catalog_entry(provider, model).map_or_else(
         || UsageProfile {
             exclusive_input: exclusive_input_semantics(None, provider),
             ..UsageProfile::default()
         },
-        |resolved| UsageProfile {
-            context_window: resolved.context_window(),
-            pricing: resolved.pricing(),
+        |entry| UsageProfile {
+            context_window: Some(entry.context_window).filter(|window| *window > 0),
+            pricing: model_pricing(entry.pricing),
             exclusive_input: exclusive_input_semantics(None, provider),
         },
     )
+}
+
+/// Return the pricing the catalogue entry actually declares.
+///
+/// An entry that states no price reports none, so usage attribution never
+/// invents a cost for a model the catalogue does not price.
+fn model_pricing(pricing: ModelPricing) -> Option<ModelPricing> {
+    let declared = pricing.input.is_some()
+        || pricing.output.is_some()
+        || pricing.cache_read.is_some()
+        || pricing.cache_write.is_some();
+    declared.then_some(pricing)
 }
 
 impl ZedAgent {

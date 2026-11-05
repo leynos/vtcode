@@ -231,6 +231,18 @@ impl ModelResolver {
         Some(Self::resolve_for_provider(provider, model, dynamic_models, dynamic_meta, api_key_env, storage_mode))
     }
 
+    /// Look up a provider's compiled catalogue entry without resolving credentials.
+    ///
+    /// [`Self::resolve`] also reports availability, which reads environment
+    /// variables, the OAuth credential store, and secure storage. A caller that
+    /// only needs static metadata - a context window or pricing - uses this
+    /// instead, so its answer cannot depend on whether a credential happens to
+    /// be present, and it performs no I/O.
+    pub fn catalog_entry(provider: &str, model: &str) -> Option<ModelCatalogEntry> {
+        let provider = parse_provider_override(provider)?;
+        model_catalog_entry(provider.as_ref(), model)
+    }
+
     pub fn resolve_provider(
         provider_override: Option<&str>,
         model: &str,
@@ -626,6 +638,27 @@ mod tests {
         assert_eq!(resolved.provider, Provider::Ollama);
         assert!(!resolved.known_model());
         assert_eq!(resolved.context_window(), Some(32_000));
+    }
+
+    /// The catalogue lookup must agree with resolution's static metadata.
+    ///
+    /// Availability is the only thing resolution adds, and attribution that
+    /// uses this entry must therefore not depend on credential state.
+    #[test]
+    fn catalog_entry_matches_resolved_static_metadata() {
+        let resolved = ModelResolver::resolve(Some("anthropic"), "claude-fable-5", &[], None).expect("model");
+        let entry = ModelResolver::catalog_entry("anthropic", "claude-fable-5").expect("catalogue entry");
+
+        assert_eq!(Some(entry.context_window), resolved.context_window());
+        assert_eq!(Some(entry.pricing), resolved.pricing());
+        assert_eq!(entry.display_name, resolved.display_name().as_ref());
+    }
+
+    /// A provider or model the catalogue does not carry yields no entry.
+    #[test]
+    fn catalog_entry_reports_nothing_for_an_unknown_model() {
+        assert!(ModelResolver::catalog_entry("anthropic", "not-a-shipped-model").is_none());
+        assert!(ModelResolver::catalog_entry("not-a-provider", "claude-fable-5").is_none());
     }
 
     #[test]
