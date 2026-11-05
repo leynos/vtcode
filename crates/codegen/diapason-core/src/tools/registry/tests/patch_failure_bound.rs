@@ -40,6 +40,10 @@ async fn repeated_identical_precondition_failures_are_blocked() -> Result<()> {
         "the refusal must not echo patch text or paths: {blocked:?}"
     );
     assert_eq!(fs::read_to_string(&path)?, "current\n", "a refused patch must not mutate the file");
+
+    let safety = registry.metrics_collector().get_patch_safety_metrics();
+    assert_eq!(safety.failure_guard_attempt_failed, 2, "both permitted failures must be counted, got {safety:?}");
+    assert_eq!(safety.failure_guard_blocked, 1, "the pre-execution refusal must be counted, got {safety:?}");
     Ok(())
 }
 

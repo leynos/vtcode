@@ -94,6 +94,29 @@ impl PatchNoOpOutcome {
     }
 }
 
+/// The outcome of one observation by the repeated-failure guard.
+///
+/// The guard bounds identical failing `apply_patch` requests, which never
+/// reach the no-op ladder because they are rejected earlier. These two
+/// outcomes are the only ones it can report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchFailureGuardOutcome {
+    /// A completed attempt failed.
+    AttemptFailed,
+    /// An identical request was refused before it touched the workspace.
+    Blocked,
+}
+
+impl PatchFailureGuardOutcome {
+    /// Stable Prometheus label and log field for this outcome.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AttemptFailed => "attempt_failed",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
 /// Bounded `apply_patch` safety counters.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -136,6 +159,10 @@ pub struct PatchSafetyMetrics {
     pub no_op_repeated: u64,
     /// Third identical no-op in a row, refused.
     pub no_op_blocked: u64,
+    /// Completed `apply_patch` attempts that failed.
+    pub failure_guard_attempt_failed: u64,
+    /// Identical failing requests refused before touching the workspace.
+    pub failure_guard_blocked: u64,
     /// Number of evaluated `apply_patch` requests.
     pub evaluations: u64,
     /// Total evaluation time in milliseconds.
@@ -191,6 +218,19 @@ impl PatchSafetyMetrics {
         *counter = counter.saturating_add(1);
     }
 
+    /// Count one repeated-failure-guard outcome.
+    ///
+    /// `AttemptFailed` counts a completed attempt that failed, whether or not
+    /// the guard will block a repeat of it. `Blocked` counts the refusal
+    /// itself, which happens before the workspace is touched.
+    pub fn record_failure_guard(&mut self, outcome: PatchFailureGuardOutcome) {
+        let counter = match outcome {
+            PatchFailureGuardOutcome::AttemptFailed => &mut self.failure_guard_attempt_failed,
+            PatchFailureGuardOutcome::Blocked => &mut self.failure_guard_blocked,
+        };
+        *counter = counter.saturating_add(1);
+    }
+
     /// Count one completed evaluation and add its duration.
     pub fn record_evaluation(&mut self, duration_ms: u64) {
         self.evaluations = self.evaluations.saturating_add(1);
@@ -212,7 +252,7 @@ mod tests {
     //! or hashes. They live beside the struct that produces those exports so a new
     //! counter and its disclosure rules are reviewed together.
 
-    use super::{PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics};
+    use super::{PatchFailureGuardOutcome, PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics};
     use crate::metrics::MetricsCollector;
 
     #[test]
@@ -221,17 +261,23 @@ mod tests {
         collector.record_patch_precondition(PatchPreconditionOutcome::ContentHashMismatch);
         collector.record_patch_precondition(PatchPreconditionOutcome::Matched);
         collector.record_patch_no_op(PatchNoOpOutcome::NoOpRepeated);
+        collector.record_patch_failure_guard(PatchFailureGuardOutcome::AttemptFailed);
+        collector.record_patch_failure_guard(PatchFailureGuardOutcome::Blocked);
         collector.record_patch_evaluation(40);
 
         let summary = collector.get_summary();
         assert_eq!(summary.patch_safety.precondition_matched, 1);
         assert_eq!(summary.patch_safety.precondition_content_hash_mismatch, 1);
         assert_eq!(summary.patch_safety.no_op_repeated, 1);
+        assert_eq!(summary.patch_safety.failure_guard_attempt_failed, 1);
+        assert_eq!(summary.patch_safety.failure_guard_blocked, 1);
         assert_eq!(summary.patch_safety.evaluations, 1);
         assert_eq!(summary.patch_safety.avg_duration_ms(), 40);
 
         let json = collector.export_json().expect("metrics JSON should serialize");
         assert_eq!(json["patch_safety"]["no_op_repeated"], 1);
+        assert_eq!(json["patch_safety"]["failure_guard_attempt_failed"], 1);
+        assert_eq!(json["patch_safety"]["failure_guard_blocked"], 1);
         // Labels are fixed variants, so no payload text can reach the export.
         let rendered = json.to_string();
         assert!(!rendered.contains("*** Begin Patch"));
@@ -240,6 +286,8 @@ mod tests {
         let prometheus = collector.export_prometheus();
         assert!(prometheus.contains(r#"diapason_apply_patch_precondition_total{outcome="content_hash_mismatch"} 1"#));
         assert!(prometheus.contains(r#"diapason_apply_patch_no_op_total{decision="no_op_repeated"} 1"#));
+        assert!(prometheus.contains(r#"diapason_apply_patch_failure_guard_total{outcome="attempt_failed"} 1"#));
+        assert!(prometheus.contains(r#"diapason_apply_patch_failure_guard_total{outcome="blocked"} 1"#));
         assert!(prometheus.contains("diapason_apply_patch_avg_duration_ms 40"));
     }
 

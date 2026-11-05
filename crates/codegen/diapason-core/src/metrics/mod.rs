@@ -30,7 +30,7 @@ pub use discovery_metrics::DiscoveryMetrics;
 pub use execution_metrics::ExecutionMetrics;
 pub use filtering_metrics::FilteringMetrics;
 pub use patch_safety_metrics::{
-    PatchCertificationOutcome, PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics,
+    PatchCertificationOutcome, PatchFailureGuardOutcome, PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics,
 };
 pub use planning_metrics::{PlanValidationRejectionReason, PlanningValidationMetrics};
 pub use sdk_metrics::SdkMetrics;
@@ -543,6 +543,11 @@ impl MetricsCollector {
         self.patch_safety.lock().record_no_op(decision);
     }
 
+    /// Record one repeated-failure-guard outcome.
+    pub fn record_patch_failure_guard(&self, outcome: PatchFailureGuardOutcome) {
+        self.patch_safety.lock().record_failure_guard(outcome);
+    }
+
     /// Record one completed `apply_patch` evaluation and its duration.
     pub fn record_patch_evaluation(&self, duration_ms: u64) {
         self.patch_safety.lock().record_evaluation(duration_ms);
@@ -885,6 +890,15 @@ impl PrometheusMetricsSnapshot {
             self.patch_safety.certification_window_not_utf8,
             self.patch_safety.certification_read_content_mismatch,
             self.patch_safety.certification_read_version_capture_failed
+        );
+
+        let _ = write!(
+            output,
+            "# HELP diapason_apply_patch_failure_guard_total Total apply_patch repeated-failure-guard outcomes\n\
+             # TYPE diapason_apply_patch_failure_guard_total counter\n\
+             diapason_apply_patch_failure_guard_total{{outcome=\"attempt_failed\"}} {}\n\
+             diapason_apply_patch_failure_guard_total{{outcome=\"blocked\"}} {}\n\n",
+            self.patch_safety.failure_guard_attempt_failed, self.patch_safety.failure_guard_blocked
         );
 
         let _ = write!(

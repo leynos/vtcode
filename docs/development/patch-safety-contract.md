@@ -15,7 +15,7 @@ the model tends to retry the same patch. Two independent guards break that loop.
 
 1. A **content version** travels with every read and can be supplied back to
    `apply_patch` as a precondition.
-2. A **no-op ladder** notices that a patch's *final state* equals the current
+2. A **no-op ladder** notices that a patch's _final state_ equals the current
    state and refuses to accept the third identical attempt.
 
 ## Layer boundaries
@@ -29,6 +29,8 @@ The guards are deliberately split so each layer owns one decision:
 | `tools::registry::executors::patch_preconditions` | Building the structured rejection payloads.               |
 | `tools::registry::patch_guard`                    | The no-op decision state machine and signature.           |
 | `tools::handlers::apply_patch_handler`            | The Codex-style handler surface.                          |
+
+_Table 1: The layer that owns each apply-patch safety decision._
 
 `patch_guard` is pure: it takes parsed operations and before/after states and
 returns a decision. It performs no I/O, which is what makes the signature
@@ -115,7 +117,7 @@ same reread-and-regenerate envelope instead of reporting the call as rejected
 by approval policy. The two are not interchangeable: the adapter renders
 `Rejected` with `"rejected": true`.
 
-The no-op ladder and mutation leases are *not* available on the handler
+The no-op ladder and mutation leases are _not_ available on the handler
 surface: they are registry session state, and the handler has no registry
 handle. The handler module documents this, and closing the gap is deferred
 architecture work (#168) rather than an assumed guarantee.
@@ -140,7 +142,7 @@ an anchor with two exact occurrences reports ambiguity instead of taking the
 first.
 
 Without that split the assessment would report `can_safely_rebase: true` for a
-patch the apply path merely resolved *somehow*, which is the worst answer: the
+patch the apply path merely resolved _somehow_, which is the worst answer: the
 model would keep a patch whose anchor never matched the file it was written
 against. `false` never means "resend the same patch"; `next_action` still tells
 the model to reread and regenerate.
@@ -159,7 +161,7 @@ is a rejection the model can act on, not a masked I/O error.
 
 ## Invariant 3: planning follows the applicator's order
 
-`planned_patch_writes` plans each operation against the *result* of the
+`planned_patch_writes` plans each operation against the _result_ of the
 preceding one, mirroring `Patch::apply`'s replay. If planning instead started
 from the pre-patch snapshot, a patch that updates the same file twice would
 compare its final state against the original and conclude it was a no-op, and
@@ -185,7 +187,7 @@ consequences follow, and all are covered by proptests:
 - Transport and path aliases collapse to one signature: CRLF versus LF, and
   `./x.txt` versus `x.txt`, describe the same request.
 - Path order in the state list does not affect the signature.
-- Operation order does not affect the signature for *independent* operations.
+- Operation order does not affect the signature for _independent_ operations.
   `canonical_operation_order` orders operations by a deterministic topological
   walk: an edge runs from an earlier operation to a later one only when their
   touched path sets — source plus optional destination — intersect, and ties
@@ -207,7 +209,7 @@ the signature is even computed.
 
 ## Observability
 
-Both guards report through `metrics::patch_safety_metrics`, which keeps five
+Both guards report through `metrics::patch_safety_metrics`, which keeps six
 bounded counter sets and one timer:
 
 - precondition outcomes: `matched`, `content_hash_mismatch`, `invalid_scope`,
@@ -217,6 +219,7 @@ bounded counter sets and one timer:
   `window_read_failed`, `window_not_utf8`, `read_content_mismatch`,
   `read_version_capture_failed`;
 - no-op decisions: `execute`, `no_op_first`, `no_op_repeated`, `no_op_blocked`;
+- repeated-failure-guard outcomes: `attempt_failed`, `blocked`;
 - `evaluations` plus `total_duration_ms`, from which `avg_duration_ms` is
   derived.
 
@@ -225,6 +228,7 @@ The snapshot appears as `patch_safety` in the metrics summary JSON and as
 `diapason_apply_patch_runtime_revalidation_total{outcome=...}`,
 `diapason_apply_patch_certification_total{outcome=...}`,
 `diapason_apply_patch_no_op_total{decision=...}`,
+`diapason_apply_patch_failure_guard_total{outcome=...}`,
 `diapason_apply_patch_evaluations_total`, and
 `diapason_apply_patch_avg_duration_ms` in the Prometheus export.
 
@@ -267,6 +271,13 @@ Each outcome is counted once, at the stage that decided it:
   it does not increment these counters. The sum of the certification counters
   is therefore the withheld-version count excluding truncation, not every
   absent version.
+- **Repeated-failure guard** — one `failure_guard_attempt_failed` per
+  `apply_patch` attempt that completed and failed, counted whether or not the
+  guard will later block a repeat, and one `failure_guard_blocked` per
+  identical request refused before it touched the workspace. The two counters
+  describe different moments in the ladder: the first counts work that ran, the
+  second counts work prevented. A request blocked by the guard is not also an
+  attempt, so the pair cannot double-count one request.
 
 Duration is the wall-clock time from the start of the measured entry point to
 the guard's drop, so every early return is counted. The handler's timer spans
@@ -324,9 +335,13 @@ When changing any of the above, the following are the minimum checks:
   a removed file must count `window_read_failed` for a windowed read and
   `read_version_capture_failed` for a whole-file read, a dirty whole-file
   buffer must count `read_content_mismatch`, and a certified read must leave
-  every certification counter at zero. Each failure path must also emit one
-  bounded warning carrying only `operation` and `outcome`, with no path, hash,
-  patch text, or error string.
+  every certification counter at zero. A whole-file ACP read with no `line` or
+  `limit` must certify the on-disk SHA-256 and that hash must be accepted by
+  `apply_patch`, while a response truncated at the output limit must report
+  `truncated: true`, withhold `content_hash`, and leave every certification
+  counter at zero. Each failure path must also emit one bounded warning
+  carrying only `operation` and `outcome`, with no path, hash, patch text, or
+  error string.
 - **Observability** — the `patch_safety` metrics tests must keep asserting the
   summary fields, the Prometheus series, and that neither export can contain
   patch text, a hash, a path, a signature, or an error string. Handler tests
@@ -335,7 +350,10 @@ When changing any of the above, the following are the minimum checks:
   stale hash counts one preflight mismatch and no revalidation; a removed
   source file counts `missing_file` rather than `content_hash_mismatch`; and a
   directly driven runtime counts its own evaluation and revalidation with no
-  preflight counter moving, including when its revalidation fails.
+  preflight counter moving, including when its revalidation fails. The
+  repeated-failure guard must count each permitted failure as `attempt_failed`
+  and the subsequent refusal as `blocked`, and both series must stay out of the
+  content-bearing assertions above.
 
 Assert on the observable contract (file unchanged, `reason` present, occurrence
 counted) rather than on internal state, so refactors inside the guard do not

@@ -25,6 +25,7 @@ use serde_json::{Value, json};
 
 use super::{ExecSettlementMode, ToolRegistry, patch_failure_guard};
 use crate::config::constants::tools;
+use crate::metrics::PatchFailureGuardOutcome;
 use crate::tools::file_tracker::FileTracker;
 use crate::tools::registry::unified_actions::CommandSessionAction;
 use crate::tools::{native_memory, tool_intent};
@@ -513,6 +514,8 @@ impl ToolRegistry {
         let signature = patch_failure_guard::request_signature(&args);
         let blocked = self.patch_failure_guard.lock().blocked_occurrence(&signature);
         if let Some(occurrence) = blocked {
+            self.metrics_collector()
+                .record_patch_failure_guard(PatchFailureGuardOutcome::Blocked);
             let context = self.harness_context_snapshot();
             tracing::info!(
                 operation = tools::APPLY_PATCH,
@@ -526,9 +529,12 @@ impl ToolRegistry {
         }
 
         let outcome = self.execute_apply_patch_attempt(args).await;
-        self.patch_failure_guard
-            .lock()
-            .record(&signature, patch_failure_guard::attempt_failed(&outcome));
+        let failed = patch_failure_guard::attempt_failed(&outcome);
+        self.patch_failure_guard.lock().record(&signature, failed);
+        if failed {
+            self.metrics_collector()
+                .record_patch_failure_guard(PatchFailureGuardOutcome::AttemptFailed);
+        }
         outcome
     }
 

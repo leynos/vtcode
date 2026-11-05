@@ -38,12 +38,16 @@ but without a `content_hash`, so they cannot be used as a precondition.
 ## Versioned patches
 
 Pass the hash back as `expected_content_hash` so the patch applies only while
-the file still matches:
+the file still matches. The example below is exercised by the test suite
+against a fixture file, so its hash is the real SHA-256 of that fixture's
+content:
+
+<!-- tested-example: patch-safety-versioned-patch -->
 
 ```json
 {
   "input": "*** Begin Patch\n*** Update File: src/app.rs\n@@ fn main() {\n-old\n+new\n*** End Patch\n",
-  "expected_content_hash": "sha256:…"
+  "expected_content_hash": "sha256:1aa08823ff9e8dee7c6cc98cc3c95d27f1f031b554a2e93475f6cfd0467b3657"
 }
 ```
 
@@ -131,6 +135,8 @@ never blocked.
 | `repeated_identical_failure`              | The same failing patch was offered three times.                       | Fix the reported cause and submit a materially different patch. |
 | `content_hash_mismatch`                   | The file changed after it was read.                                   | Reread the file and regenerate the patch from the new content.  |
 | `invalid_precondition_scope`              | `expected_content_hash` was sent for an add-only or multi-file patch. | Split the patch so each one has a single source file.           |
+
+_Table 1: `apply_patch` responses from the version and no-op guards._
 
 The no-op ladder and the edited-file monitor's tracked-read state are per
 session and held in memory. They are a guard rail against a looping turn, not a

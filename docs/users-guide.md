@@ -10,9 +10,12 @@
 
 ## Patch safety in brief
 
-`read_file` returns a whole-file `content_hash` alongside the text. Passing
-that hash back to `apply_patch` as `expected_content_hash` makes the edit
-conditional on the file still being the version the model read.
+`read_file` returns a whole-file `content_hash` alongside the text, whenever
+the content can be certified against the bytes on disk. Truncated responses,
+unsaved buffer content that diverges from disk, and append-only output that
+grows mid-read return no hash rather than one the model could not rely on.
+Passing a returned hash back to `apply_patch` as `expected_content_hash` makes
+the edit conditional on the file still being the version the model read.
 
 - If the hash matches, the patch applies normally.
 - If the file changed, the patch is rejected before any write. The rejection

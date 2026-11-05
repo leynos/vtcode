@@ -206,6 +206,75 @@ async fn windowed_read_certifies_the_whole_file_and_patches_with_its_hash() {
     assert_eq!(certification.certification_read_version_capture_failed, 0);
 }
 
+/// A whole-file read with no `line` or `limit` certifies the on-disk bytes.
+///
+/// The whole-file branch is the one path that hashes the returned text itself
+/// rather than projecting an on-disk window, so it is asserted end to end: the
+/// returned `content_hash` equals the on-disk SHA-256, `apply_patch` accepts it
+/// as its precondition, and no certification-failure counter moves.
+#[tokio::test]
+async fn whole_file_read_certifies_the_disk_hash_and_patches_with_it() {
+    let disk = "alpha\nbeta\ngamma\n";
+    let disk_hash = format!("sha256:{}", diapason_commons::utils::calculate_sha256(disk.as_bytes()));
+    let read = serde_json::json!({"path": "whole.txt"}).to_string();
+    let patch = "*** Begin Patch\n*** Update File: whole.txt\n@@\n-beta\n+beta2\n*** End Patch\n";
+    let tool_calls = vec![
+        ("read_file".to_string(), read),
+        (
+            "apply_patch".to_string(),
+            serde_json::json!({"input": patch, "expected_content_hash": disk_hash.clone()}).to_string(),
+        ),
+    ];
+
+    let flow = run_windowed_read_flow("whole.txt", disk, None, tool_calls, None, ClientWindowMode::Honours).await;
+
+    assert_eq!(flow.calls, 3, "one result per tool call plus the final turn");
+    let requests = flow.requests.lock().expect("stream requests");
+    let read_payload = tool_result_payload(&requests, 1);
+    assert_eq!(read_payload["content_hash"], disk_hash, "a whole-file read must certify the on-disk SHA-256");
+    assert_eq!(read_payload["truncated"], false, "the fixture is well under the response cap");
+    assert_eq!(tool_result_payload(&requests, 2)["result"]["success"], true);
+    assert_eq!(std::fs::read_to_string(&flow.path).expect("read final fixture"), "alpha\nbeta2\ngamma\n");
+
+    let certification = flow.certification();
+    assert_eq!(certification.certification_window_projection_mismatch, 0);
+    assert_eq!(certification.certification_window_read_failed, 0);
+    assert_eq!(certification.certification_window_not_utf8, 0);
+    assert_eq!(certification.certification_read_content_mismatch, 0);
+    assert_eq!(certification.certification_read_version_capture_failed, 0);
+}
+
+/// A response the agent had to truncate never certifies a version.
+///
+/// `expected_read_hash` returns early for a truncated response because the
+/// returned text is neither the whole file nor the on-disk window. The
+/// truncation is not a certification failure, so no counter moves; the guard
+/// is that `content_hash` is withheld from a response whose tail the model
+/// never saw.
+#[tokio::test]
+async fn truncated_whole_file_read_returns_no_version() {
+    let disk = "line of content\n".repeat(4_000);
+    assert!(disk.chars().count() > 32_768, "the fixture must exceed the response cap");
+    let read = serde_json::json!({"path": "large.txt"}).to_string();
+    let tool_calls = vec![("read_file".to_string(), read)];
+
+    let flow = run_windowed_read_flow("large.txt", &disk, None, tool_calls, None, ClientWindowMode::Honours).await;
+
+    assert_eq!(flow.calls, 2, "one result per tool call plus the final turn");
+    let requests = flow.requests.lock().expect("stream requests");
+    let payload = tool_result_payload(&requests, 1);
+    assert_eq!(payload["truncated"], true, "a capped response must be flagged as truncated");
+    assert!(payload["content_hash"].is_null(), "a truncated response must not certify bytes the model never saw");
+    assert_eq!(std::fs::read_to_string(&flow.path).expect("read final fixture"), disk);
+
+    let certification = flow.certification();
+    assert_eq!(certification.certification_window_projection_mismatch, 0);
+    assert_eq!(certification.certification_window_read_failed, 0);
+    assert_eq!(certification.certification_window_not_utf8, 0);
+    assert_eq!(certification.certification_read_content_mismatch, 0);
+    assert_eq!(certification.certification_read_version_capture_failed, 0);
+}
+
 /// A dirty buffer window never certifies the on-disk file, and its stale hash
 /// is rejected before any write.
 #[tokio::test]

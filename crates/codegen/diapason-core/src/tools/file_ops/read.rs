@@ -4,10 +4,11 @@
 //! window and producing continuation metadata, this module samples a content
 //! version around the read itself and returns it as `content_hash`, so a later
 //! `apply_patch` can prove the patch was generated from the content the model
-//! actually saw. The sampling lives in `capture_read_content_hash` and
-//! `capture_read_content_hash_consistent`; the surrounding staleness policy is
-//! owned by `crate::tools::edited_file_monitor` and enforced by the registry
-//! patch pipeline.
+//! actually saw. The sampling lives in `record_read_content_hash_if_matches` and
+//! `capture_read_content_hash_consistent`; both record a version only after
+//! confirming it describes the bytes the caller will receive. The surrounding
+//! staleness policy is owned by `crate::tools::edited_file_monitor` and
+//! enforced by the registry patch pipeline.
 
 use super::FileOpsTool;
 use super::is_image_path;
@@ -344,12 +345,6 @@ fn content_hash_from_snapshot(
 }
 
 impl FileOpsTool {
-    /// Capture and record the current full-file version for a successful read.
-    pub async fn capture_read_content_hash(&self, path: &Path) -> Result<String> {
-        let snapshot = self.edited_file_monitor.capture_read_snapshot(path).await?;
-        content_hash_from_snapshot(&snapshot, path)
-    }
-
     /// Record a read version only when the on-disk bytes still match `expected_hash`.
     ///
     /// ACP clients can return unsaved buffer content that never reached the disk, so
@@ -491,8 +486,19 @@ impl FileOpsTool {
             if let Some(key) = cache_key.as_ref()
                 && let Some(cached) = FILE_CACHE.get_file(key).await
             {
-                let current_hash = self.capture_read_content_hash(&canonical).await?;
-                if cached.get("content_hash").and_then(Value::as_str) == Some(current_hash.as_str()) {
+                // Record the version only once the cached entry is confirmed to
+                // describe the on-disk bytes. Recording first would advance the
+                // edited-file baseline to content this response may never
+                // return, so a stale entry plus a failed fresh read would leave
+                // the monitor claiming a revision the model never saw.
+                let cache_hit = match cached.get("content_hash").and_then(Value::as_str) {
+                    Some(cached_hash) => self
+                        .record_read_content_hash_if_matches(&canonical, cached_hash)
+                        .await?
+                        .is_some(),
+                    None => false,
+                };
+                if cache_hit {
                     perf.tag("cache", "hit");
                     return Ok(cached);
                 }
