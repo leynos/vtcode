@@ -278,21 +278,21 @@ The experiment and its corrected process-ordering method are recorded in
 seven PR #20 gates passed: 10,079 workspace tests, 17 skips and 67 harness
 tests. Logs use the `hook-repair-1` action suffix. The optional ast-grep scan
 remains unavailable. The first documentation check found one code-span spacing
-error in the new debugging plan; it was corrected before final validation. PR
-#23 remains unpublished at its restacked candidate. After this repair is
-pushed, each upper layer must rebase onto its actual previous parent and pass
-its own full gates before publication.
+error in the new debugging plan; it was corrected before validation. PR #23
+remains unpublished at its restacked candidate. After this repair is pushed,
+each upper layer must rebase onto its actual previous parent and pass its own
+full gates before publication.
 
 ## PR 22 review restack
 
 The analyse spelling layer is rebased onto PR #20 repair `e084280e2`. A plain
-three-way merge preserved the upper-layer delivery record and appended the PR
-#20 review evidence after it. The code patch matches the original PR #22 patch;
-the range-diff changes only the handoff context. All eight sequential restack
-gates passed, including typecheck, 10,082 workspace tests, 17 skips, and 67
-harness tests. Logs use `restack-1` on `harden-lint-spelling`. Handoff
-Markdownlint and Nixie also passed. The push uses `--force-with-lease`. PR #20
-review is queued through comenq; later PR reviews remain in train order.
+three-way merge preserved the upper-layer delivery record and appended PR #20
+review evidence after it. The code patch matches the original PR #22 patch; the
+range-diff changes only the handoff context. All eight sequential restack gates
+passed, including typecheck, 10,082 workspace tests, 17 skips, and 67 harness
+tests. Logs use `restack-1` on `harden-lint-spelling`. Handoff Markdownlint and
+Nixie also passed. The push uses `--force-with-lease`. PR #20 review is queued
+through comenq; later PR reviews remain in train order.
 
 The second restack carries PR #20 hook-fixture repair `e93983604`. Only this
 handoff conflicted; the non-handoff patch identity is unchanged. The prior
@@ -336,7 +336,6 @@ sequential gates passed, including typecheck, 10,083 workspace tests, 17 skips
 and 67 harness tests. Logs use `restack-1` on `harden-lint-spelling-behaviour`;
 final handoff checks use `handoff-restack-1`. The push uses an explicit lease
 against the original published PR #25 head.
-
 
 ## PR 26 review restack
 
