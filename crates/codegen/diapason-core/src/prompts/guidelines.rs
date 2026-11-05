@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 
 use crate::config::constants::tools;
 use crate::config::types::{CapabilityLevel, ResolvedShellPromptProfile, ShellPromptProfile};
-use crate::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use crate::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 use crate::llm::provider::ToolDefinition;
 use crate::prompts::sections::SectionBoundaryMode;
 use crate::tools::registry::tool_groups;
@@ -89,25 +89,25 @@ pub fn generate_tool_guidelines_for_profile(
 
 pub fn append_runtime_tool_prompt_sections(
     prompt: &mut String,
-    tool_snapshot: &SessionToolCatalogSnapshot,
-    include_catalog_metadata: bool,
+    tool_snapshot: &SessionToolCatalogueSnapshot,
+    include_catalogue_metadata: bool,
 ) {
     append_runtime_tool_prompt_sections_for_profile(
         prompt,
         tool_snapshot,
-        include_catalog_metadata,
+        include_catalogue_metadata,
         ShellPromptProfile::Auto.resolve_for_current_platform(),
     );
 }
 
 pub fn append_runtime_tool_prompt_sections_for_profile(
     prompt: &mut String,
-    tool_snapshot: &SessionToolCatalogSnapshot,
-    include_catalog_metadata: bool,
+    tool_snapshot: &SessionToolCatalogueSnapshot,
+    include_catalogue_metadata: bool,
     shell_profile: ResolvedShellPromptProfile,
 ) {
     remove_prompt_section(prompt, "## Active Tools");
-    remove_prompt_section(prompt, "[Runtime Tool Catalog]");
+    remove_prompt_section(prompt, "[Runtime Tool Catalogue]");
     while prompt.ends_with('\n') {
         prompt.pop();
     }
@@ -119,22 +119,22 @@ pub fn append_runtime_tool_prompt_sections_for_profile(
         append_prompt_block(prompt, guidelines.trim_start_matches('\n'));
     }
 
-    if include_catalog_metadata && tool_snapshot.snapshot.is_some() {
+    if include_catalogue_metadata && tool_snapshot.snapshot.is_some() {
         let active_tools = if tool_snapshot.active_tool_names.is_empty() {
             "none".to_string()
         } else {
             tool_snapshot.active_tool_names.join(", ")
         };
-        let catalog_metadata = format!(
-            "[Runtime Tool Catalog]\n- version: {}\n- epoch: {}\n- catalog_tools: {}\n- available_tools: {}\n- currently_available_tools: {}\n- request_user_input_enabled: {}",
+        let catalogue_metadata = format!(
+            "[Runtime Tool Catalogue]\n- version: {}\n- epoch: {}\n- catalogue_tools: {}\n- available_tools: {}\n- currently_available_tools: {}\n- request_user_input_enabled: {}",
             tool_snapshot.version,
             tool_snapshot.epoch,
-            tool_snapshot.catalog_tools(),
+            tool_snapshot.catalogue_tools(),
             tool_snapshot.available_tools(),
             active_tools,
             tool_snapshot.request_user_input_enabled,
         );
-        append_prompt_block(prompt, &catalog_metadata);
+        append_prompt_block(prompt, &catalogue_metadata);
     }
 }
 
@@ -243,7 +243,7 @@ fn generate_runtime_tool_guidelines_for_profile(
     format!("\n\n## Active Tools\n{}", lines.join("\n"))
 }
 
-fn snapshot_tool_names(tool_snapshot: &SessionToolCatalogSnapshot) -> Vec<String> {
+fn snapshot_tool_names(tool_snapshot: &SessionToolCatalogueSnapshot) -> Vec<String> {
     tool_snapshot
         .active_tool_names
         .iter()
@@ -712,7 +712,7 @@ mod tests {
     fn runtime_tool_prompt_sections_use_explicit_profile_for_active_tools() {
         let mut powershell_prompt = "Base prompt".to_string();
         let mut unix_prompt = "Base prompt".to_string();
-        let snapshot = SessionToolCatalogSnapshot::new(
+        let snapshot = SessionToolCatalogueSnapshot::new(
             7,
             9,
             false,
@@ -761,9 +761,9 @@ mod tests {
     }
 
     #[test]
-    fn runtime_tool_prompt_sections_include_catalog_metadata() {
+    fn runtime_tool_prompt_sections_include_catalogue_metadata() {
         let mut prompt = "Base prompt".to_string();
-        let snapshot = SessionToolCatalogSnapshot::new(
+        let snapshot = SessionToolCatalogueSnapshot::new(
             7,
             9,
             true,
@@ -786,8 +786,8 @@ mod tests {
         append_runtime_tool_prompt_sections(&mut prompt, &snapshot, true);
 
         assert!(prompt.contains("## Active Tools"));
-        assert!(prompt.contains("[Runtime Tool Catalog]"));
-        assert!(prompt.contains("catalog_tools: 2"));
+        assert!(prompt.contains("[Runtime Tool Catalogue]"));
+        assert!(prompt.contains("catalogue_tools: 2"));
         assert!(prompt.contains("currently_available_tools: exec_command, apply_patch"));
         assert!(prompt.contains("request_user_input_enabled: false"));
     }
@@ -795,7 +795,7 @@ mod tests {
     #[test]
     fn runtime_tool_prompt_sections_replace_existing_runtime_sections() {
         let mut prompt = "Base prompt".to_string();
-        let first = SessionToolCatalogSnapshot::new(
+        let first = SessionToolCatalogueSnapshot::new(
             1,
             2,
             false,
@@ -807,7 +807,7 @@ mod tests {
             )])),
             false,
         );
-        let second = SessionToolCatalogSnapshot::new(
+        let second = SessionToolCatalogueSnapshot::new(
             7,
             9,
             true,
@@ -824,7 +824,7 @@ mod tests {
         append_runtime_tool_prompt_sections(&mut prompt, &second, true);
 
         assert_eq!(prompt.matches("## Active Tools").count(), 1);
-        assert_eq!(prompt.matches("[Runtime Tool Catalog]").count(), 1);
+        assert_eq!(prompt.matches("[Runtime Tool Catalogue]").count(), 1);
         assert!(prompt.contains("version: 7"));
         assert!(!prompt.contains("version: 1"));
         assert!(prompt.contains("request_user_input_enabled: true"));

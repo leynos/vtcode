@@ -22,11 +22,11 @@ impl ToolRegistry {
         let detail_level = args.get("detail_level").and_then(Value::as_str).unwrap_or("name_description");
         let session_tools = self
             .session_model_tools()
-            .ok_or_else(|| anyhow!("session tool catalog is not available"))?;
-        let catalog_state = self.tool_catalog_state();
-        let results = catalog_state.search_tools(&session_tools, query, limit).await;
+            .ok_or_else(|| anyhow!("session tool catalogue is not available"))?;
+        let catalogue_state = self.tool_catalogue_state();
+        let results = catalogue_state.search_tools(&session_tools, query, limit).await;
         let references = results.iter().map(|result| result.name.clone()).collect::<Vec<_>>();
-        let next_epoch = catalog_state.note_tool_references(&session_tools, &references).await;
+        let next_epoch = catalogue_state.note_tool_references(&session_tools, &references).await;
         let definitions = session_tools.read().await;
         let tools = results
             .into_iter()
@@ -127,7 +127,7 @@ impl ToolRegistry {
                 .iter()
                 .map(|result| model_visible_mcp_tool_name(&result.provider, &result.name))
                 .collect::<Vec<_>>();
-            self.tool_catalog_state()
+            self.tool_catalogue_state()
                 .note_tool_references(&session_tools, &references)
                 .await;
         }

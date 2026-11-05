@@ -29,8 +29,8 @@ impl ToolRegistry {
         // Invalidate cache
         *self.cached_available_tools.write() = None;
         self.rebuild_tool_assembly().await;
-        self.tool_catalog_state.note_explicit_refresh("tool_registration");
-        self.sync_policy_catalog().await;
+        self.tool_catalogue_state.note_explicit_refresh("tool_registration");
+        self.sync_policy_catalogue().await;
         Ok(())
     }
 
@@ -40,8 +40,8 @@ impl ToolRegistry {
         if removed {
             *self.cached_available_tools.write() = None;
             self.rebuild_tool_assembly().await;
-            self.tool_catalog_state.note_explicit_refresh("tool_unregistration");
-            self.sync_policy_catalog().await;
+            self.tool_catalogue_state.note_explicit_refresh("tool_unregistration");
+            self.sync_policy_catalogue().await;
         }
         Ok(removed)
     }

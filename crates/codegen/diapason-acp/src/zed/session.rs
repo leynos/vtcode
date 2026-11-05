@@ -27,7 +27,7 @@ use super::AcpWorkspacePolicy;
 use super::constants::{
     WORKSPACE_TRUST_ALREADY_SATISFIED_LOG, WORKSPACE_TRUST_DOWNGRADE_SKIPPED_LOG, WORKSPACE_TRUST_UPGRADE_LOG,
 };
-use super::helpers::PrimaryAgentCatalog;
+use super::helpers::PrimaryAgentCatalogue;
 
 /// Canonical, existing workspace selected by an ACP session client.
 ///
@@ -155,7 +155,7 @@ pub(super) struct AcpAgentStartup {
     skip_confirmations: bool,
     pub(super) audit_logger: Option<Arc<AcpAuditLogger>>,
     system_prompt: String,
-    primary_agents: PrimaryAgentCatalog,
+    primary_agents: PrimaryAgentCatalogue,
 }
 
 /// Runs the ACP agent over stdio using the supplied core and Diapason config.
@@ -204,7 +204,7 @@ pub(super) async fn prepare_acp_agent_startup(
     let discovered = discover_subagents(&SubagentDiscoveryInput::new(config.workspace.clone()))
         .context("Failed to discover primary agents for ACP bridge")?;
     let primary_agents =
-        PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, &vt_cfg.default_primary_agent);
+        PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, &vt_cfg.default_primary_agent);
 
     Ok(AcpAgentStartup {
         config: config.clone(),

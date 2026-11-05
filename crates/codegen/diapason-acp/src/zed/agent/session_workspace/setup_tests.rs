@@ -17,7 +17,7 @@ impl WorkspaceAgentDiscovery for FailingAgentDiscovery {
         &self,
         _input: &SubagentDiscoveryInput,
         _default_primary_agent: &str,
-    ) -> anyhow::Result<PrimaryAgentCatalog> {
+    ) -> anyhow::Result<PrimaryAgentCatalogue> {
         anyhow::bail!("agent discovery failure")
     }
 }
@@ -164,7 +164,7 @@ fn prepared_workspace<'a>(
         runtime_config,
         vt_config: None,
         system_prompt: "test prompt".to_string(),
-        primary_agents: PrimaryAgentCatalog::from_specs_with_default(&[], "duck"),
+        primary_agents: PrimaryAgentCatalogue::from_specs_with_default(&[], "duck"),
         workspace_hooks_gated: false,
         file_ops_tool: None,
     }

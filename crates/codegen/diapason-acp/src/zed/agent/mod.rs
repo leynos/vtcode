@@ -22,7 +22,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::helpers::PrimaryAgentCatalog;
+use super::helpers::PrimaryAgentCatalogue;
 use super::types::SessionHandle;
 use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 
@@ -290,7 +290,7 @@ pub(crate) struct ZedAgent {
     client_capabilities: Arc<Mutex<Option<acp::ClientCapabilities>>>,
     client: Arc<Mutex<Option<Arc<ConnectionHandle>>>>,
     title: Option<String>,
-    primary_agents: PrimaryAgentCatalog,
+    primary_agents: PrimaryAgentCatalogue,
     tool_loop_limit: usize,
     tool_call_delay: Option<Duration>,
     provider_runtime: ProviderRuntimeRegistry,
@@ -315,7 +315,7 @@ pub(crate) struct ZedAgentSetup<'a> {
     pub(crate) provider_timeouts: TimeoutsConfig,
     pub(crate) system_prompt: String,
     pub(crate) title: Option<String>,
-    pub(crate) primary_agents: PrimaryAgentCatalog,
+    pub(crate) primary_agents: PrimaryAgentCatalogue,
     pub(crate) skip_confirmations: bool,
     pub(crate) vt_config: Option<&'a DiapasonConfig>,
     pub(crate) audit_logger: Option<Arc<AcpAuditLogger>>,
