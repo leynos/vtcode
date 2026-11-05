@@ -14,25 +14,37 @@ use crate::tools::registry::mcp_helpers::normalize_mcp_tool_identifier;
 use crate::tools::traits::Tool;
 use anyhow::Result;
 use async_trait::async_trait;
+use base64::Engine;
 use diapason_commons::canonicalize;
 use futures::future::BoxFuture;
 use rstest::{fixture, rstest};
 use serde_json::Value;
 use serde_json::json;
 use std::fs;
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
+
 #[cfg(unix)]
 mod pipe_session;
 
+mod no_op_ladder;
+mod patch_failure_bound;
+mod patch_safety;
+
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";
+
 const SLOW_TIMEOUT_TOOL_NAME: &str = "slow_timeout_test_tool";
+
 const REENTRANT_TOOL_NAME: &str = "reentrant_guard_test_tool";
+
 const MUTUAL_REENTRANT_TOOL_A: &str = "mutual_reentrant_tool_a";
+
 const MUTUAL_REENTRANT_TOOL_B: &str = "mutual_reentrant_tool_b";
+
 const REPLACE_DISPATCH_TOOL_NAME: &str = "replace_dispatch_test_tool";
 
 fn command_session_fixture_commands_config() -> CommandsConfig {
@@ -72,6 +84,7 @@ async fn command_session_fixture() -> Result<CommandSessionFixture> {
 }
 
 struct CustomEchoTool;
+
 struct SlowTimeoutTool;
 
 #[async_trait]
@@ -649,12 +662,26 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
     .await
     .expect("terminal session should complete before deadline")?;
     assert_eq!(exit_code, 0);
-    let retained_output = registry
-        .read_harness_exec_session_output(&session_id, false)
-        .await?
-        .unwrap_or_default();
     let initial_output = response["output"].as_str().unwrap_or_default();
-    let complete_output = format!("{initial_output}{retained_output}");
+    // The child can exit before the PTY reader thread publishes its final
+    // bytes, so completion alone does not prove the output has been flushed.
+    // Poll the retained buffer until the flush is observable, and fail the
+    // retention assertion only when it never arrives.
+    let complete_output = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let retained_output = registry
+                .read_harness_exec_session_output(&session_id, false)
+                .await?
+                .unwrap_or_default();
+            let complete_output = format!("{initial_output}{retained_output}");
+            if complete_output.contains("diapason-terminal") {
+                return Ok::<_, anyhow::Error>(complete_output);
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("terminal output must remain observable until close")?;
     assert!(complete_output.contains("diapason-terminal"), "terminal output must remain observable until close");
     assert_eq!(registry.harness_exec_session_completed(&session_id).await?, Some(0));
 

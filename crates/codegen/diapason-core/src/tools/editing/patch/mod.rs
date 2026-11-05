@@ -1,3 +1,13 @@
+//! The apply-patch facade: parsing and applying agent-supplied patch text.
+//!
+//! [`Patch::apply`] is the mutation entry point used by the patch pipeline and
+//! the Codex-style handler. The submodules split the work: `parser` turns text
+//! into operations, `applicator` owns the journaled mutation engine, `matcher`
+//! decides where a hunk's anchors land, `semantic` bridges to the ast-grep
+//! binary, and `error` carries [`PatchError`]. Rebase assessment renders
+//! through the applicator's text helpers so it matches the apply path instead
+//! of approximating it.
+
 use std::path::Path;
 
 use anyhow::anyhow;
@@ -157,6 +167,20 @@ pub async fn render_patch_update_content(
     applicator::render_updated_content(source_path, content, chunks, path)
         .await
         .map_err(|err| anyhow!(err))
+}
+
+/// Render a patch update under strict, uniqueness-checking anchors.
+///
+/// Rebase assessment uses this entry point: it accepts only byte-exact anchors
+/// that occur exactly once in the search window, so an ambiguous or merely
+/// similar match is reported as unsafe rather than silently applied.
+pub async fn render_patch_update_content_strict(
+    source_path: &Path,
+    content: &str,
+    chunks: &[PatchChunk],
+    path: &str,
+) -> Result<String, PatchError> {
+    applicator::render_updated_content_strict(source_path, content, chunks, path).await
 }
 
 // ---------------------------------------------------------------------------

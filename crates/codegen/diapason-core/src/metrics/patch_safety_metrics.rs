@@ -1,0 +1,298 @@
+//! Bounded counters for `apply_patch` version and no-op decisions.
+//!
+//! Every dimension below is a fixed enum variant. Paths, patch signatures,
+//! payloads, and error strings never become a label, so a session that edits
+//! private files can export this snapshot without leaking their content.
+
+use serde::{Deserialize, Serialize};
+
+/// The outcome of one `apply_patch` version precondition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchPreconditionOutcome {
+    /// The supplied `expected_content_hash` matched the current file.
+    Matched,
+    /// The file changed after it was read, so the patch was rejected.
+    ContentHashMismatch,
+    /// `expected_content_hash` was supplied for an add-only or multi-file patch.
+    InvalidScope,
+    /// `expected_content_hash` was not a canonical `sha256:<hex>` value.
+    MalformedHash,
+    /// The source file disappeared after its version was captured.
+    MissingFile,
+    /// The precondition could not be evaluated because the read or the
+    /// workspace containment check failed.
+    ValidationFailed,
+}
+
+impl PatchPreconditionOutcome {
+    /// Stable Prometheus label and log field for this outcome.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Matched => "matched",
+            Self::ContentHashMismatch => "content_hash_mismatch",
+            Self::InvalidScope => "invalid_scope",
+            Self::MalformedHash => "malformed_hash",
+            Self::MissingFile => "missing_file",
+            Self::ValidationFailed => "validation_failed",
+        }
+    }
+}
+
+/// The outcome of one ACP read-version certification attempt.
+///
+/// These categories only describe why a minted `content_hash` was withheld.
+/// They never carry the path, the bytes, or the verification error chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchCertificationOutcome {
+    /// The returned window was not the projection of the on-disk bytes.
+    WindowProjectionMismatch,
+    /// The on-disk file could not be read back for comparison.
+    WindowReadFailed,
+    /// The on-disk bytes were not UTF-8, so no projection was possible.
+    WindowNotUtf8,
+    /// The registry refused to record the verified content hash.
+    ReadContentMismatch,
+    /// The registry failed while recording the verified content hash.
+    ReadVersionCaptureFailed,
+}
+
+impl PatchCertificationOutcome {
+    /// Stable Prometheus label and log field for this outcome.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::WindowProjectionMismatch => "window_projection_mismatch",
+            Self::WindowReadFailed => "window_read_failed",
+            Self::WindowNotUtf8 => "window_not_utf8",
+            Self::ReadContentMismatch => "read_content_mismatch",
+            Self::ReadVersionCaptureFailed => "read_version_capture_failed",
+        }
+    }
+}
+
+/// The outcome of one evaluation of the repeated no-op ladder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchNoOpOutcome {
+    /// The patch changes at least one file.
+    Execute,
+    /// The first identical no-op in a row, reported as success.
+    NoOpFirst,
+    /// The second identical no-op in a row, reported with a warning.
+    NoOpRepeated,
+    /// The third identical no-op in a row, refused.
+    NoOpBlocked,
+}
+
+impl PatchNoOpOutcome {
+    /// Stable Prometheus label and log field for this decision.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Execute => "execute",
+            Self::NoOpFirst => "no_op_first",
+            Self::NoOpRepeated => "no_op_repeated",
+            Self::NoOpBlocked => "no_op_blocked",
+        }
+    }
+}
+
+/// The outcome of one observation by the repeated-failure guard.
+///
+/// The guard bounds identical failing `apply_patch` requests, which never
+/// reach the no-op ladder because they are rejected earlier. These two
+/// outcomes are the only ones it can report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchFailureGuardOutcome {
+    /// A completed attempt failed.
+    AttemptFailed,
+    /// An identical request was refused before it touched the workspace.
+    Blocked,
+}
+
+impl PatchFailureGuardOutcome {
+    /// Stable Prometheus label and log field for this outcome.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AttemptFailed => "attempt_failed",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
+/// Bounded `apply_patch` safety counters.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PatchSafetyMetrics {
+    /// Version preconditions that matched the current file.
+    pub precondition_matched: u64,
+    /// Version preconditions rejected because the file had changed.
+    pub precondition_content_hash_mismatch: u64,
+    /// Preconditions rejected because the patch had no single source file.
+    pub precondition_invalid_scope: u64,
+    /// Preconditions rejected because the supplied hash was malformed.
+    pub precondition_malformed_hash: u64,
+    /// Preconditions rejected because the source file no longer existed.
+    pub precondition_missing_file: u64,
+    /// Preconditions that could not be evaluated because a read or containment
+    /// check failed.
+    pub precondition_validation_failed: u64,
+    /// Runtime rechecks that matched the current file version.
+    pub runtime_revalidation_matched: u64,
+    /// Runtime rechecks that rejected a changed, missing, or unreadable file.
+    pub runtime_revalidation_mismatch: u64,
+    /// ACP certification attempts withheld because the returned window did not
+    /// match the on-disk projection.
+    pub certification_window_projection_mismatch: u64,
+    /// ACP certification attempts withheld because the on-disk read failed.
+    pub certification_window_read_failed: u64,
+    /// ACP certification attempts withheld because the on-disk bytes were not
+    /// UTF-8.
+    pub certification_window_not_utf8: u64,
+    /// ACP certification attempts whose verified hash the registry refused.
+    pub certification_read_content_mismatch: u64,
+    /// ACP certification attempts that failed while recording the verified
+    /// hash.
+    pub certification_read_version_capture_failed: u64,
+    /// Patches that changed at least one file.
+    pub no_op_execute: u64,
+    /// First identical no-op in a row.
+    pub no_op_first: u64,
+    /// Second identical no-op in a row.
+    pub no_op_repeated: u64,
+    /// Third identical no-op in a row, refused.
+    pub no_op_blocked: u64,
+    /// Completed `apply_patch` attempts that failed.
+    pub failure_guard_attempt_failed: u64,
+    /// Identical failing requests refused before touching the workspace.
+    pub failure_guard_blocked: u64,
+    /// Number of evaluated `apply_patch` requests.
+    pub evaluations: u64,
+    /// Total evaluation time in milliseconds.
+    pub total_duration_ms: u64,
+}
+
+impl PatchSafetyMetrics {
+    /// Count one version-precondition outcome.
+    pub fn record_precondition(&mut self, outcome: PatchPreconditionOutcome) {
+        let counter = match outcome {
+            PatchPreconditionOutcome::Matched => &mut self.precondition_matched,
+            PatchPreconditionOutcome::ContentHashMismatch => &mut self.precondition_content_hash_mismatch,
+            PatchPreconditionOutcome::InvalidScope => &mut self.precondition_invalid_scope,
+            PatchPreconditionOutcome::MalformedHash => &mut self.precondition_malformed_hash,
+            PatchPreconditionOutcome::MissingFile => &mut self.precondition_missing_file,
+            PatchPreconditionOutcome::ValidationFailed => &mut self.precondition_validation_failed,
+        };
+        *counter = counter.saturating_add(1);
+    }
+
+    /// Count one runtime recheck, which is a distinct stage from the handler
+    /// preflight and therefore has its own counter rather than reusing the
+    /// preflight series.
+    pub fn record_runtime_revalidation(&mut self, matched: bool) {
+        let counter = if matched {
+            &mut self.runtime_revalidation_matched
+        } else {
+            &mut self.runtime_revalidation_mismatch
+        };
+        *counter = counter.saturating_add(1);
+    }
+
+    /// Count one ACP read-version certification outcome.
+    pub fn record_certification(&mut self, outcome: PatchCertificationOutcome) {
+        let counter = match outcome {
+            PatchCertificationOutcome::WindowProjectionMismatch => &mut self.certification_window_projection_mismatch,
+            PatchCertificationOutcome::WindowReadFailed => &mut self.certification_window_read_failed,
+            PatchCertificationOutcome::WindowNotUtf8 => &mut self.certification_window_not_utf8,
+            PatchCertificationOutcome::ReadContentMismatch => &mut self.certification_read_content_mismatch,
+            PatchCertificationOutcome::ReadVersionCaptureFailed => &mut self.certification_read_version_capture_failed,
+        };
+        *counter = counter.saturating_add(1);
+    }
+
+    /// Count one no-op ladder decision.
+    pub fn record_no_op(&mut self, decision: PatchNoOpOutcome) {
+        let counter = match decision {
+            PatchNoOpOutcome::Execute => &mut self.no_op_execute,
+            PatchNoOpOutcome::NoOpFirst => &mut self.no_op_first,
+            PatchNoOpOutcome::NoOpRepeated => &mut self.no_op_repeated,
+            PatchNoOpOutcome::NoOpBlocked => &mut self.no_op_blocked,
+        };
+        *counter = counter.saturating_add(1);
+    }
+
+    /// Count one repeated-failure-guard outcome.
+    ///
+    /// `AttemptFailed` counts a completed attempt that failed, whether or not
+    /// the guard will block a repeat of it. `Blocked` counts the refusal
+    /// itself, which happens before the workspace is touched.
+    pub fn record_failure_guard(&mut self, outcome: PatchFailureGuardOutcome) {
+        let counter = match outcome {
+            PatchFailureGuardOutcome::AttemptFailed => &mut self.failure_guard_attempt_failed,
+            PatchFailureGuardOutcome::Blocked => &mut self.failure_guard_blocked,
+        };
+        *counter = counter.saturating_add(1);
+    }
+
+    /// Count one completed evaluation and add its duration.
+    pub fn record_evaluation(&mut self, duration_ms: u64) {
+        self.evaluations = self.evaluations.saturating_add(1);
+        self.total_duration_ms = self.total_duration_ms.saturating_add(duration_ms);
+    }
+
+    /// Average evaluation time, or zero before the first evaluation.
+    pub fn avg_duration_ms(&self) -> u64 {
+        self.total_duration_ms.checked_div(self.evaluations).unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Bounded patch-safety counters and their export surfaces.
+    //!
+    //! The tests drive `MetricsCollector` and assert that both summary JSON and
+    //! Prometheus output carry only fixed outcome labels, never patch text, paths,
+    //! or hashes. They live beside the struct that produces those exports so a new
+    //! counter and its disclosure rules are reviewed together.
+
+    use super::{PatchFailureGuardOutcome, PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics};
+    use crate::metrics::MetricsCollector;
+
+    #[test]
+    fn patch_safety_decisions_are_bounded_in_summary_json_and_prometheus() {
+        let collector = MetricsCollector::new();
+        collector.record_patch_precondition(PatchPreconditionOutcome::ContentHashMismatch);
+        collector.record_patch_precondition(PatchPreconditionOutcome::Matched);
+        collector.record_patch_no_op(PatchNoOpOutcome::NoOpRepeated);
+        collector.record_patch_failure_guard(PatchFailureGuardOutcome::AttemptFailed);
+        collector.record_patch_failure_guard(PatchFailureGuardOutcome::Blocked);
+        collector.record_patch_evaluation(40);
+
+        let summary = collector.get_summary();
+        assert_eq!(summary.patch_safety.precondition_matched, 1);
+        assert_eq!(summary.patch_safety.precondition_content_hash_mismatch, 1);
+        assert_eq!(summary.patch_safety.no_op_repeated, 1);
+        assert_eq!(summary.patch_safety.failure_guard_attempt_failed, 1);
+        assert_eq!(summary.patch_safety.failure_guard_blocked, 1);
+        assert_eq!(summary.patch_safety.evaluations, 1);
+        assert_eq!(summary.patch_safety.avg_duration_ms(), 40);
+
+        let json = collector.export_json().expect("metrics JSON should serialize");
+        assert_eq!(json["patch_safety"]["no_op_repeated"], 1);
+        assert_eq!(json["patch_safety"]["failure_guard_attempt_failed"], 1);
+        assert_eq!(json["patch_safety"]["failure_guard_blocked"], 1);
+        // Labels are fixed variants, so no payload text can reach the export.
+        let rendered = json.to_string();
+        assert!(!rendered.contains("*** Begin Patch"));
+        assert!(!rendered.contains("sha256:"));
+
+        let prometheus = collector.export_prometheus();
+        assert!(prometheus.contains(r#"diapason_apply_patch_precondition_total{outcome="content_hash_mismatch"} 1"#));
+        assert!(prometheus.contains(r#"diapason_apply_patch_no_op_total{decision="no_op_repeated"} 1"#));
+        assert!(prometheus.contains(r#"diapason_apply_patch_failure_guard_total{outcome="attempt_failed"} 1"#));
+        assert!(prometheus.contains(r#"diapason_apply_patch_failure_guard_total{outcome="blocked"} 1"#));
+        assert!(prometheus.contains("diapason_apply_patch_avg_duration_ms 40"));
+    }
+
+    #[test]
+    fn average_duration_is_zero_before_any_evaluation() {
+        assert_eq!(PatchSafetyMetrics::default().avg_duration_ms(), 0);
+    }
+}

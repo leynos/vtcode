@@ -1,3 +1,12 @@
+//! The patch mutation engine.
+//!
+//! [`apply`] first proves every operation target stays inside the workspace,
+//! then plans the operations against the original snapshot and replays them in
+//! order through a journal so a failure part-way can restore earlier writes.
+//! `operations` holds one module per operation kind, `text` handles rendering
+//! and atomic writes, and `planner`/`runner` separate deciding what to write
+//! from performing it.
+
 use std::future::Future;
 use std::path::Path;
 
@@ -62,4 +71,15 @@ pub(crate) fn render_updated_content<'a>(
     path: &'a str,
 ) -> impl Future<Output = Result<String, PatchError>> + 'a {
     text::render_patched_text_from_content(source_path, content, chunks, path)
+}
+
+/// Render under strict, uniqueness-checking anchors. Rebase assessment uses
+/// this so a fuzzy or ambiguous match is reported as unsafe.
+pub(crate) fn render_updated_content_strict<'a>(
+    source_path: &'a Path,
+    content: &'a str,
+    chunks: &'a [PatchChunk],
+    path: &'a str,
+) -> impl Future<Output = Result<String, PatchError>> + 'a {
+    text::render_patched_text_from_content_strict(source_path, content, chunks, path)
 }

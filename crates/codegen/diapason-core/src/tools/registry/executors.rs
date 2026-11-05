@@ -1,3 +1,11 @@
+//! Tool executor bodies for the command, session, and harness surfaces.
+//!
+//! Holds the `ToolRegistry` methods that actually run tools after dispatch has
+//! decided *whether* they may run: command and PTY session execution, harness
+//! terminal runs, and their approval-reason plumbing. Sandbox setup, exec
+//! sessions, and cargo failure diagnostics live in the child modules of this
+//! directory; patch execution lives in `patch_pipeline`.
+
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -15,11 +23,13 @@ use sandbox_runtime::*;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use super::{ExecSettlementMode, ToolRegistry};
+use super::{ExecSettlementMode, ToolRegistry, patch_failure_guard};
 use crate::config::constants::tools;
+use crate::metrics::PatchFailureGuardOutcome;
 use crate::tools::file_tracker::FileTracker;
 use crate::tools::registry::unified_actions::CommandSessionAction;
 use crate::tools::{native_memory, tool_intent};
+use patch_preconditions::repeated_patch_failure_error;
 
 mod cargo_failure_diagnostics;
 mod exec_command;
@@ -27,6 +37,7 @@ mod exec_output;
 mod exec_sessions;
 mod exec_support;
 mod patch_pipeline;
+pub(crate) mod patch_preconditions;
 mod sandbox_runtime;
 mod search_introspection;
 mod subagents;
@@ -490,7 +501,48 @@ impl ToolRegistry {
         Ok(response)
     }
 
+    /// Apply one patch, bounding consecutive identical failures.
+    ///
+    /// The generic identical-call detector is bypassed for `apply_patch` because
+    /// it counts only successful records and would refuse the no-op ladder's
+    /// third diagnostic occurrence. The no-op ladder then only observes calls
+    /// that reach planning, so decode, parse, version, missing-file, and
+    /// conflict rejections would have no repeat bound at all. This wrapper
+    /// supplies one: two identical failures are allowed for diagnosis and the
+    /// third identical call is refused before it touches the workspace.
     async fn execute_apply_patch(&self, args: Value) -> Result<Value> {
+        let signature = patch_failure_guard::request_signature(&args);
+        let blocked = self.patch_failure_guard.lock().blocked_occurrence(&signature);
+        if let Some(occurrence) = blocked {
+            self.metrics_collector()
+                .record_patch_failure_guard(PatchFailureGuardOutcome::Blocked);
+            let context = self.harness_context_snapshot();
+            tracing::info!(
+                operation = tools::APPLY_PATCH,
+                decision = "repeated_failure_blocked",
+                occurrence,
+                session_id = %context.session_id,
+                task_id = %context.task_id.as_deref().unwrap_or(""),
+                "apply_patch failure repetition decision"
+            );
+            return Ok(repeated_patch_failure_error(signature, occurrence));
+        }
+
+        let outcome = self.execute_apply_patch_attempt(args).await;
+        let failed = patch_failure_guard::attempt_failed(&outcome);
+        self.patch_failure_guard.lock().record(&signature, failed);
+        if failed {
+            self.metrics_collector()
+                .record_patch_failure_guard(PatchFailureGuardOutcome::AttemptFailed);
+        }
+        outcome
+    }
+
+    /// Prepare, decode, and apply one patch attempt.
+    ///
+    /// Split from [`Self::execute_apply_patch`] so decode failures inside
+    /// `prepare_apply_patch_args` are observed by the repeat bound too.
+    async fn execute_apply_patch_attempt(&self, args: Value) -> Result<Value> {
         let (patch_args, patch_input_bytes, patch_base64) = self.prepare_apply_patch_args(args)?;
         let context = self.harness_context_snapshot();
         tracing::debug!(

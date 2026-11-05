@@ -213,6 +213,15 @@ pub trait ToolSession: Send + Sync {
 
     /// Send an event
     async fn send_event(&self, event: ToolEvent);
+
+    /// The metrics collector owned by this session, when telemetry is wired.
+    ///
+    /// Handlers that run outside the registry pipeline read their bounded
+    /// counters from here rather than reaching for a process-global collector,
+    /// so a session's telemetry stays with the session that produced it.
+    fn metrics_collector(&self) -> Option<Arc<crate::metrics::MetricsCollector>> {
+        None
+    }
 }
 
 /// Turn context for tool execution
@@ -368,6 +377,7 @@ impl From<super::sandboxing::ToolError> for ToolCallError {
     fn from(err: super::sandboxing::ToolError) -> Self {
         match err {
             super::sandboxing::ToolError::Rejected(msg) => ToolCallError::Rejected(msg),
+            super::sandboxing::ToolError::RespondToModel(msg) => ToolCallError::RespondToModel(msg),
             super::sandboxing::ToolError::Codex(e) => ToolCallError::Internal(e),
             super::sandboxing::ToolError::SandboxDenied(msg) => {
                 ToolCallError::Rejected(format!("Sandbox denied: {msg}"))

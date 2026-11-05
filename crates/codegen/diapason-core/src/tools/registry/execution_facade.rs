@@ -39,6 +39,7 @@ use super::{
 use diapason_config::constants::execution::{LOOP_THROTTLE_MAX_MS, LOOP_THROTTLE_REGISTRY_BASE_MS};
 
 const REENTRANCY_STACK_DEPTH_LIMIT: usize = 64;
+
 /// When a read-only tool call has been repeated this many times, stop returning
 /// cached results and return a hard error instead.  Must be greater than
 /// MIN_READONLY_IDENTICAL_LIMIT (currently 2).
@@ -70,7 +71,11 @@ fn is_pathless_mutating_command(tool_name: &str) -> bool {
     matches!(tool_name, tools::UNIFIED_EXEC | tools::EXEC_COMMAND | tools::EXEC_PTY_CMD | tools::WRITE_STDIN)
 }
 
-fn structured_tool_output_error(value: &Value) -> Option<String> {
+/// Describe a structured rejection envelope, if the value is one.
+///
+/// Shared with `patch_failure_guard` so the repeat bound and the execution
+/// history classify a failure the same way.
+pub(super) fn structured_tool_output_error(value: &Value) -> Option<String> {
     let obj = value.as_object()?;
     if obj.get("success").and_then(Value::as_bool) == Some(false) {
         return obj
@@ -82,9 +87,13 @@ fn structured_tool_output_error(value: &Value) -> Option<String> {
     obj.get("error").map(tool_error_value_to_string)
 }
 
+/// Prefer a string or non-null details value, falling back to the message.
 fn tool_error_value_to_string(value: &Value) -> String {
     if let Some(message) = value.as_str() {
         return message.to_string();
+    }
+    if value.get("details").is_some_and(|details| !details.is_null()) {
+        return value.to_string();
     }
     if let Some(message) = value.get("message").and_then(Value::as_str) {
         return message.to_string();
@@ -105,6 +114,7 @@ enum ReentrancyStackKey {
 
 static TOOL_REENTRANCY_STACKS: Lazy<Mutex<HashMap<ReentrancyStackKey, Vec<String>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
 static NEXT_REENTRANCY_SCOPE_ID: AtomicU64 = AtomicU64::new(1);
 tokio::task_local! {
     static REENTRANCY_SCOPE_ID: u64;
@@ -683,6 +693,7 @@ impl ToolRegistry {
         .await
     }
 
+    /// Resolve the tool name and arguments, then execute through the registry.
     async fn execute_tool_ref_internal(
         &self,
         name: &str,
@@ -999,11 +1010,18 @@ impl ToolRegistry {
             }
         }
 
-        let skip_loop_detection = self.should_skip_loop_detection_for_exec_continuation(&tool_name, args).await;
+        // `apply_patch` owns a content-aware no-op ladder keyed by canonical
+        // paths, patch structure, and file versions, plus a failure ladder that
+        // bounds repeats of a rejection the no-op ladder never observes. The
+        // generic args-only detector would otherwise block the third
+        // diagnostic occurrence, and it counts only successful records, so it
+        // cannot replace either dedicated guard.
+        let skip_loop_detection = tool_name == tools::APPLY_PATCH
+            || self.should_skip_loop_detection_for_exec_continuation(&tool_name, args).await;
         if skip_loop_detection {
             trace!(
                 tool = %tool_name,
-                "Skipping identical-call loop detection for stateful exec continuation"
+                "Skipping generic identical-call loop detection for a tool with dedicated state tracking"
             );
         }
 
@@ -1897,5 +1915,35 @@ impl ToolRegistry {
                 Ok(payload)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tool-error rendering for the execution facade.
+    //!
+    //! These cover `tool_error_value_to_string`'s fallback when a serialized
+    //! `ToolExecutionError` omits its details field. The module lives beside the
+    //! facade conversion it exercises so the rendered shape and its tests stay
+    //! together.
+
+    use super::tool_error_value_to_string;
+    use serde_json::json;
+
+    /// Check a null details field falls back to the message.
+    #[test]
+    fn null_details_falls_back_to_message() {
+        // `ToolExecutionError::to_json_value` always emits a `details` key, using
+        // null when there are none. A message without details must not be
+        // replaced by the whole JSON blob.
+        let value = json!({"message": "boom", "details": null});
+        assert_eq!(tool_error_value_to_string(&value), "boom");
+    }
+
+    /// Check populated details are preserved in the flattened error string.
+    #[test]
+    fn present_details_keep_structured_payload() {
+        let value = json!({"message": "boom", "details": {"path": "a.rs"}});
+        assert!(tool_error_value_to_string(&value).contains("a.rs"));
     }
 }

@@ -1,0 +1,366 @@
+# Apply-patch safety contract
+
+This page documents the invariants the `apply_patch` preconditions rely on, for
+anyone changing the read surface, the patch pipeline, or the edited-file
+monitor. The user-facing behaviour is described in the
+[patch safety guide](../guides/patch-safety.md).
+
+## The problem being solved
+
+An agent reads a file, reasons about it, and then emits a patch. Between the
+read and the write the file may have changed, and the model has no way to
+notice: its context still holds the version it read. Without a version, "the
+patch no longer applies" is indistinguishable from "you read a stale file", so
+the model tends to retry the same patch. Two independent guards break that loop.
+
+1. A **content version** travels with every read and can be supplied back to
+   `apply_patch` as a precondition.
+2. A **no-op ladder** notices that a patch's _final state_ equals the current
+   state and refuses to accept the third identical attempt.
+
+## Layer boundaries
+
+The guards are deliberately split so each layer owns one decision:
+
+| Layer                                             | Owns                                                      |
+| ------------------------------------------------- | --------------------------------------------------------- |
+| `tools::file_ops::read`                           | Sampling the version around the read window.              |
+| `tools::registry::executors::patch_pipeline`      | Ordering: leases, snapshots, planning, guard observation. |
+| `tools::registry::executors::patch_preconditions` | Building the structured rejection payloads.               |
+| `tools::registry::patch_guard`                    | The no-op decision state machine and signature.           |
+| `tools::handlers::apply_patch_handler`            | The Codex-style handler surface.                          |
+
+_Table 1: The layer that owns each apply-patch safety decision._
+
+`patch_guard` is pure: it takes parsed operations and before/after states and
+returns a decision. It performs no I/O, which is what makes the signature
+properties testable with proptests rather than fixtures.
+
+## Invariant 1: the version describes what the model saw
+
+`capture_read_content_hash_consistent` takes a `before` snapshot captured ahead
+of the read and compares it with an `after` snapshot. The ordering matters for
+files that change during the read: a hash taken afterwards can describe bytes
+the model never received, which turns a valid patch into a spurious
+`content_hash_mismatch` and invites a pointless regeneration.
+
+When the two samples disagree the read fails, because the response text and the
+version describe different revisions. An unversioned file cannot participate in
+`expected_content_hash` checking, which is the correct outcome: refusing to
+certify is safe, certifying the wrong content is not. Append-only tool output
+is the deliberate exception — `allow_concurrent_growth` returns `Ok(None)`
+there instead of failing, so a chunked read of live output keeps working while
+remaining unversioned.
+
+`record_read_content_hash_if_matches` covers the adjacent case where an ACP
+client returns unsaved buffer content: the version is recorded only when the
+on-disk bytes still match, so the edited-file baseline never claims a revision
+that was never on disk.
+
+A windowed ACP read is certified through
+`tool_execution_local::windowed_disk_hash` instead of the returned-text hash.
+It projects the same window from the on-disk bytes with
+`diapason_core::line_window` and certifies the whole-file hash only when that
+projection equals the returned text, tolerating only a client that drops the
+terminator of the final line. That difference is asymmetric: the returned text
+may be one terminator shorter than the projection, never longer, and a returned
+text that is itself newline-terminated must match exactly because it is a
+complete set of lines. Trimming every trailing newline would accept extra blank
+lines and certify a buffer that was never on disk, so no wider difference is
+tolerated. The certified version therefore means "this window came from the
+current on-disk bytes"; it does not claim the model saw the whole file, and it
+does not detect unsaved edits outside the returned window. A non-UTF-8 file, or
+a response that differs from the projected window, leaves the version absent,
+and `apply_patch` treats absence as an omitted precondition.
+
+### What a version is not
+
+It is not a lock and not a lease. A version is read-then-checked immediately
+before the write inside the patch pipeline's captured snapshot. Mutation
+ordering is provided by the edited-file monitor's leases, which are acquired
+before snapshots are captured. Conflating the two would create a false sense
+that a versioned patch is serialized against other writers.
+
+## Invariant 2: preconditions are checked before any mutation
+
+`execute_apply_patch_internal` performs, in order:
+
+1. decode and parse the patch,
+2. resolve mutation paths, acquire leases,
+3. capture each path's snapshot,
+4. validate `expected_content_hash` against the captured snapshot,
+5. detect per-operation conflicts,
+6. plan writes, compute before/after states, observe the no-op guard,
+7. apply.
+
+Steps 4 and 6 both return tool outputs, not Rust errors, for rejected patches.
+That is intentional: a rejected precondition is a normal tool result carrying a
+`reason` and a `next_action`, and treating it as an `Err` would collapse the
+model-visible detail into a generic failure.
+
+The `apply_patch_handler.rs` path enforces the same hash precondition
+independently via `validate_request_content_hash`, and it does so before the
+orchestrator emits a mutation event, so a rejected patch never looks started.
+Scope and mismatch rejections use the registry's shared builders
+(`patch_precondition_scope_error`, `precondition_scope_details`,
+`content_hash_mismatch_details`, `invalid_patch_precondition`), which is why
+the add-only/multi-source distinction, the `source_file_count`, and a non-UTF-8
+mismatch reported as `can_safely_rebase: false` with no anchor failures are
+identical on both surfaces.
+
+The runtime recheck that runs immediately before the write
+(`ApplyPatchRuntime::run`) keeps the same split: a structured precondition
+failure becomes `ToolError::RespondToModel`, which `ToolEmitter::finish` maps to
+`ToolCallError::RespondToModel`, while containment and read failures stay
+`ToolError::Rejected`. A race-lost version check therefore hands the model the
+same reread-and-regenerate envelope instead of reporting the call as rejected
+by approval policy. The two are not interchangeable: the adapter renders
+`Rejected` with `"rejected": true`.
+
+The no-op ladder and mutation leases are _not_ available on the handler
+surface: they are registry session state, and the handler has no registry
+handle. The handler module documents this, and closing the gap is deferred
+architecture work (#168) rather than an assumed guarantee.
+
+### Read failures stay distinct from rebase verdicts
+
+The rebase assessment is a pure function of content the caller has already read:
+`assess_patch_rebase_with_content` takes the current text and returns
+`(can_safely_rebase, anchor_failures)`. Reading is the caller's responsibility,
+so a read failure must stay a Rust error rather than be reported as "cannot
+rebase" — that would tell the model its anchors are wrong when the patch was
+never assessed.
+
+### Rebase assessment is strict and unique
+
+The assessment renders through `render_patch_update_content_strict`
+(`MatchPolicy::StrictUnique`), not the apply path's renderer. It accepts only a
+byte-exact anchor that occurs exactly once in the same search window the
+sequenced path uses. It deliberately does not try trailing-whitespace matching,
+Unicode normalization, the trailing-empty-line retry, or semantic fallback, and
+an anchor with two exact occurrences reports ambiguity instead of taking the
+first.
+
+Without that split the assessment would report `can_safely_rebase: true` for a
+patch the apply path merely resolved _somehow_, which is the worst answer: the
+model would keep a patch whose anchor never matched the file it was written
+against. `false` never means "resend the same patch"; `next_action` still tells
+the model to reread and regenerate.
+
+Each reported failure carries a bounded `reason` — `ambiguous_anchor`,
+`inexact_anchor`, `semantic_only_anchor`, or `missing_anchor` — alongside the
+bounded `anchor`, `expected_excerpt`, and `current_excerpt`.
+
+`apply_patch_handler::validate_request_content_hash` reads the file once,
+hashes those bytes, and reuses the same buffer for the assessment. Reading a
+second time would let a concurrent writer retarget a workspace symlink after
+the containment check and quote an out-of-workspace file back through the
+anchor failures. Where the registry supplies a snapshot that is not text there
+is no content to assess, so `patch_preconditions` reports `(false, [])`; that
+is a rejection the model can act on, not a masked I/O error.
+
+## Invariant 3: planning follows the applicator's order
+
+`planned_patch_writes` plans each operation against the _result_ of the
+preceding one, mirroring `Patch::apply`'s replay. If planning instead started
+from the pre-patch snapshot, a patch that updates the same file twice would
+compare its final state against the original and conclude it was a no-op, and
+the guard would fire on productive work.
+
+Any change to application order must be mirrored here. The two orderings
+diverging is the most likely way to reintroduce false no-ops.
+
+## Invariant 4: no-op identity is canonical
+
+A no-op is only a no-op if `before == after` for every touched path. When that
+holds, a signature is computed over:
+
+- the operation count and each operation's kind,
+- canonicalized source and destination paths,
+- for updates, each hunk's change context, end-of-file flag, and lines tagged by
+  kind,
+- the before and after state of every touched path, sorted by path.
+
+Length-prefixed field encoding prevents ambiguous concatenations. Three
+consequences follow, and all are covered by proptests:
+
+- Transport and path aliases collapse to one signature: CRLF versus LF, and
+  `./x.txt` versus `x.txt`, describe the same request.
+- Path order in the state list does not affect the signature.
+- Operation order does not affect the signature for _independent_ operations.
+  `canonical_operation_order` orders operations by a deterministic topological
+  walk: an edge runs from an earlier operation to a later one only when their
+  touched path sets — source plus optional destination — intersect, and ties
+  are broken by canonical source-path bytes then original index.
+
+The dependence rule matters as much as the canonicalization. Two updates to the
+same file replay in the supplied order, because the applicator applies them in
+sequence and each sees the previous result. Sorting them would describe a patch
+that was never executed. Only operations whose path sets are disjoint are free
+to be reordered, which is exactly the set for which order carries no meaning.
+Without this, two independent one-file no-ops hashed differently when the model
+relisted them in the other order, so alternating representations restarted the
+counter at occurrence 1 and the third-strike refusal was unreachable.
+
+The ladder is `1` → `2` (warn, `retry_prohibited`) → `3` (block). The counter
+increments only while the signature is unchanged; a different signature
+restarts it at `1`, and a patch that actually changes a file resets it before
+the signature is even computed.
+
+## Observability
+
+Both guards report through `metrics::patch_safety_metrics`, which keeps six
+bounded counter sets and one timer:
+
+- precondition outcomes: `matched`, `content_hash_mismatch`, `invalid_scope`,
+  `malformed_hash`, `missing_file`, `validation_failed`;
+- runtime revalidation outcomes: `matched`, `mismatch`;
+- ACP certification outcomes: `window_projection_mismatch`,
+  `window_read_failed`, `window_not_utf8`, `read_content_mismatch`,
+  `read_version_capture_failed`;
+- no-op decisions: `execute`, `no_op_first`, `no_op_repeated`, `no_op_blocked`;
+- repeated-failure-guard outcomes: `attempt_failed`, `blocked`;
+- `evaluations` plus `total_duration_ms`, from which `avg_duration_ms` is
+  derived.
+
+The snapshot appears as `patch_safety` in the metrics summary JSON and as
+`diapason_apply_patch_precondition_total{outcome=...}`,
+`diapason_apply_patch_runtime_revalidation_total{outcome=...}`,
+`diapason_apply_patch_certification_total{outcome=...}`,
+`diapason_apply_patch_no_op_total{decision=...}`,
+`diapason_apply_patch_failure_guard_total{outcome=...}`,
+`diapason_apply_patch_evaluations_total`, and
+`diapason_apply_patch_avg_duration_ms` in the Prometheus export.
+
+### Where the counters come from
+
+`PatchSafetyMetrics` lives on the `ToolRegistry`, and the two apply-patch
+surfaces reach it differently:
+
+- The registry pipeline records through its own `ToolRegistry` collector.
+- `ApplyPatchHandler` runs outside that pipeline, so it reads the collector
+  from its `ToolSession` via `ToolSession::metrics_collector()`. The default
+  implementation returns `None`; `DefaultToolSession` carries an optional
+  collector and returns it. A session without telemetry therefore pays no cost
+  and silently skips the counters.
+- ACP read certification uses the session's workspace registry when the session
+  has one and falls back to the agent's launch registry, matching the fallback
+  the lifecycle observer already uses.
+
+### Counting semantics
+
+Each outcome is counted once, at the stage that decided it:
+
+- **Preflight** — one `precondition_*` outcome per handler or pipeline request
+  that carries an `expected_content_hash`. A request that omits the hash
+  records nothing. A malformed hash is counted before decoding and still counts
+  the evaluation.
+- **Runtime revalidation** — one `runtime_revalidation_*` outcome per runtime
+  recheck that carries a hash. It is a distinct stage from the preflight, not a
+  second count of the same decision; a request rejected by the preflight never
+  reaches it.
+- **Evaluation** — one `evaluations` count per logical request. The handler
+  owns it, so the runtime it drives must not count a second. A runtime
+  constructed directly by the registry records its own, keeping the counter
+  honest when there is no handler above it.
+- **Certification** — one `certification_*` outcome per ACP read that withheld
+  a version for a certification reason. A read that certifies records nothing,
+  so the counters explain why a version was withheld. A read truncated by the
+  output limit also returns no version, but truncation is reported separately
+  in the tool payload's `truncated` field and is not a certification outcome;
+  it does not increment these counters. The sum of the certification counters
+  is therefore the withheld-version count excluding truncation, not every
+  absent version.
+- **Repeated-failure guard** — one `failure_guard_attempt_failed` per
+  `apply_patch` attempt that completed and failed, counted whether or not the
+  guard will later block a repeat, and one `failure_guard_blocked` per
+  identical request refused before it touched the workspace. The two counters
+  describe different moments in the ladder: the first counts work that ran, the
+  second counts work prevented. A request blocked by the guard is not also an
+  attempt, so the pair cannot double-count one request.
+
+Duration is the wall-clock time from the start of the measured entry point to
+the guard's drop, so every early return is counted. The handler's timer spans
+payload decoding, the preflight, `orchestrator.run(...)` (including the
+runtime's write), and `emitter.finish(...)`. A directly driven runtime's timer
+spans its own `run(...)`, including `patch.apply(...)`. Exactly one timer
+counts per logical request: the runtime the handler constructs suppresses its
+own.
+
+Every label is a fixed enum variant. Paths, patch signatures, patch text, and
+error strings never become a label or a log value, so a session editing private
+files can export this snapshot without leaking their content. Adding a
+dimension means adding an enum variant and its `as_str` arm; a free-form string
+label is not acceptable.
+
+Each rejected precondition and each no-op decision also emits one
+`tracing::info!` record carrying `operation`, `outcome` or `decision`,
+`occurrence` where it applies, `session_id`, and `task_id`. Logs may carry the
+bounded outcome, but not the rejection payload.
+
+`PatchError`'s `Display` embeds the failing context or snippet, so an error
+from the patch path must never be formatted into a log record. Use
+`PatchError::reason_code()` — a fixed label such as `segment_not_found` — and,
+when the size matters, `embedded_text_bytes()` for a numeric companion. The
+conflict-preview failure in `patch_pipeline` follows this rule: it downcasts the
+`anyhow` chain to recover the `PatchError` and logs `reason` plus
+`text_bytes`, and a capture test asserts that a unique marker in the patch text
+does not reach the tracing stream.
+
+## Testing expectations
+
+When changing any of the above, the following are the minimum checks:
+
+- **Signature properties** — the proptests in `patch_guard` must still hold for
+  alias collapse, path-order invariance, independent-operation-order
+  invariance, and ladder reset.
+- **Dependent operation order** — two updates to one file keep their supplied
+  order; disjoint operations may be relisted either way.
+- **Pipeline ordering** — a multi-update patch touching one file twice must
+  execute, not be reported as a no-op, and alternating the order of two
+  independent no-op updates must still reach occurrences 1, 2, and 3.
+- **Rebase strictness** — a duplicate anchor, a whitespace-only match, and a
+  Unicode-normalized-only match must all report `can_safely_rebase: false` with
+  the matching `reason`, while an exact unique anchor still reports `true`.
+- **Handler surface** — `apply_patch_handler` tests must cover a stale hash
+  being rejected without mutating the file, a matching hash being allowed
+  through to the write, the scope envelope for add-only and multi-source
+  patches, and a binary mismatch reporting `can_safely_rebase: false` with no
+  anchor failures.
+- **Read certification** — a growing file must yield no version rather than an
+  inconsistent one, and a windowed ACP read must certify the whole-file hash
+  only when its text matches the on-disk projection. A dirty buffer and a
+  response wider or shorter than the requested slice must count
+  `window_projection_mismatch`, a non-UTF-8 file must count `window_not_utf8`,
+  a removed file must count `window_read_failed` for a windowed read and
+  `read_version_capture_failed` for a whole-file read, a dirty whole-file
+  buffer must count `read_content_mismatch`, and a certified read must leave
+  every certification counter at zero. A whole-file ACP read with no `line` or
+  `limit` must certify the on-disk SHA-256 and that hash must be accepted by
+  `apply_patch`, while a response truncated at the output limit must report
+  `truncated: true`, withhold `content_hash`, and leave every certification
+  counter at zero. Each failure path must also emit one bounded warning
+  carrying only `operation` and `outcome`, with no path, hash, patch text, or
+  error string.
+- **Observability** — the `patch_safety` metrics tests must keep asserting the
+  summary fields, the Prometheus series, and that neither export can contain
+  patch text, a hash, a path, a signature, or an error string. Handler tests
+  must also prove the counting semantics above: a matching request counts one
+  preflight match, one runtime revalidation, and exactly one evaluation; a
+  stale hash counts one preflight mismatch and no revalidation; a removed
+  source file counts `missing_file` rather than `content_hash_mismatch`; and a
+  directly driven runtime counts its own evaluation and revalidation with no
+  preflight counter moving, including when its revalidation fails. The
+  repeated-failure guard must count each permitted failure as `attempt_failed`
+  and the subsequent refusal as `blocked`, and both series must stay out of the
+  content-bearing assertions above.
+
+Assert on the observable contract (file unchanged, `reason` present, occurrence
+counted) rather than on internal state, so refactors inside the guard do not
+require rewriting the tests.
+
+## Related documentation
+
+- [Patch safety guide](../guides/patch-safety.md) — user-facing behaviour.
+- [Tool specifications](../tools/TOOL_SPECS.md) — the `apply_patch` surface.
+- [ACP runtime](acp-runtime.md) — how these responses reach an ACP client.

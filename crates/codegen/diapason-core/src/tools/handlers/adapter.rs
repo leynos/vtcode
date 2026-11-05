@@ -222,18 +222,26 @@ pub struct DefaultToolSession {
     cwd: PathBuf,
     workspace_root: PathBuf,
     shell: String,
+    metrics: Option<Arc<crate::metrics::MetricsCollector>>,
 }
 
 impl DefaultToolSession {
     pub fn new(cwd: PathBuf) -> Self {
         let workspace_root = cwd.clone();
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        Self { cwd, workspace_root, shell }
+        Self { cwd, workspace_root, shell, metrics: None }
     }
 
     pub fn with_workspace(cwd: PathBuf, workspace_root: PathBuf) -> Self {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        Self { cwd, workspace_root, shell }
+        Self { cwd, workspace_root, shell, metrics: None }
+    }
+
+    /// Attach the session's metrics collector so handler-run tools can record
+    /// bounded telemetry on it.
+    pub fn with_metrics_collector(mut self, metrics: Arc<crate::metrics::MetricsCollector>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 }
 
@@ -253,6 +261,10 @@ impl ToolSession for DefaultToolSession {
 
     fn user_shell(&self) -> &str {
         &self.shell
+    }
+
+    fn metrics_collector(&self) -> Option<Arc<crate::metrics::MetricsCollector>> {
+        self.metrics.clone()
     }
 
     async fn send_event(&self, event: ToolEvent) {

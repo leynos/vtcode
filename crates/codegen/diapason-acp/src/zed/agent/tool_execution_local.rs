@@ -3,11 +3,12 @@ mod list_files;
 
 use super::super::types::SessionHandle;
 use super::ZedAgent;
+use super::read_certification::{ReadCertification, capture_read_version, certification_metrics, expected_read_hash};
 use super::tool_execution::cancelable_session_request;
 use crate::acp;
 use crate::reports::{
-    TOOL_RESPONSE_KEY_CONTENT, TOOL_RESPONSE_KEY_PATH, TOOL_RESPONSE_KEY_STATUS, TOOL_RESPONSE_KEY_TOOL,
-    TOOL_RESPONSE_KEY_TRUNCATED, TOOL_SUCCESS_LABEL, ToolExecutionReport, create_diff_content,
+    TOOL_RESPONSE_KEY_CONTENT, TOOL_RESPONSE_KEY_CONTENT_HASH, TOOL_RESPONSE_KEY_PATH, TOOL_RESPONSE_KEY_STATUS,
+    TOOL_RESPONSE_KEY_TOOL, TOOL_RESPONSE_KEY_TRUNCATED, TOOL_SUCCESS_LABEL, ToolExecutionReport, create_diff_content,
 };
 use crate::tooling::{TOOL_READ_FILE_LIMIT_ARG, TOOL_READ_FILE_LINE_ARG};
 use crate::zed::connection::ConnectionHandle;
@@ -101,6 +102,7 @@ impl ZedAgent {
         diapason_core::subagents::with_subagent_invocation_context(context, execution).await
     }
 
+    /// Admit and execute one public tool call, mapping the outcome into an ACP report.
     async fn execute_local_tool_with_registry(
         &self,
         registry: &diapason_core::tools::registry::ToolRegistry,
@@ -141,7 +143,7 @@ impl ZedAgent {
                     attempts = outcome.attempts,
                     "Failed to execute local tool"
                 );
-                ToolExecutionReport::failure(invocation.tool_name, &message)
+                ToolExecutionReport::structured_failure(&error)
             }
             (None, None) => {
                 ToolExecutionReport::failure(invocation.tool_name, "Tool execution finished without output or error")
@@ -214,6 +216,7 @@ impl ZedAgent {
         self.truncate_text(&plain)
     }
 
+    /// Read a file through the ACP client and certify the version for stable bytes.
     pub(super) async fn run_read_file(
         &self,
         request: ClientFileReadRequest<'_>,
@@ -245,11 +248,26 @@ impl ZedAgent {
             tool_content.push_str("\n\n[truncated]");
         }
 
+        // A certified version asserts that the returned window came from the
+        // current on-disk bytes; it does not assert that the model saw the whole
+        // file. See `read_certification` for the projection rule and the
+        // outcome categories withheld versions are counted under.
+        let certification = ReadCertification::new(certification_metrics(self, request.session));
+        let expected_hash = expected_read_hash(&path, line, limit, &truncated_content, truncated, &certification).await;
+
+        let content_hash = match expected_hash {
+            None => Value::Null,
+            Some(expected_hash) => {
+                capture_read_version(self, request.session, &path, &expected_hash, &certification).await
+            }
+        };
+
         let payload = json!({
             TOOL_RESPONSE_KEY_STATUS: TOOL_SUCCESS_LABEL,
             TOOL_RESPONSE_KEY_TOOL: tools::READ_FILE,
             TOOL_RESPONSE_KEY_PATH: path.to_string_lossy(),
             TOOL_RESPONSE_KEY_CONTENT: truncated_content,
+            TOOL_RESPONSE_KEY_CONTENT_HASH: content_hash,
             TOOL_RESPONSE_KEY_TRUNCATED: truncated,
         });
 
