@@ -327,3 +327,60 @@ fn provider_error_telemetry_exposes_rate_limit_diagnostics() {
         }
     );
 }
+
+/// Assert an untrusted provider code is reduced to the bounded fallback.
+///
+/// `code` is free-form metadata, so an adversarial or newly added provider
+/// value must not reach the log verbatim or widen the field's cardinality.
+#[test]
+fn provider_error_telemetry_bounds_untrusted_codes() {
+    let detail = "token=sk-live-secret POST https://api.example.invalid/v1 alice@example.com";
+    let error = LLMError::Network {
+        message: "request failed".to_string(),
+        metadata: Some(LLMErrorMetadata::new(
+            "Arli AI",
+            Some(500),
+            Some(detail.to_string()),
+            None,
+            None,
+            None,
+            Some(detail.to_string()),
+        )),
+    };
+
+    let telemetry = provider_error_telemetry(&error);
+    assert_eq!(telemetry.code, Some("other"));
+    assert_eq!(telemetry.status, Some(500));
+
+    let rendered = format!("{telemetry:?}");
+    for leaked in ["sk-live-secret", "api.example.invalid", "alice@example.com"] {
+        assert!(!rendered.contains(leaked), "{leaked} must stay out of the telemetry: {rendered}");
+    }
+}
+
+/// Assert every allowlisted code survives unchanged.
+#[test]
+fn provider_error_telemetry_preserves_allowlisted_codes() {
+    for code in KNOWN_ERROR_CODES {
+        let error = LLMError::Network {
+            message: "request failed".to_string(),
+            metadata: Some(LLMErrorMetadata::new(
+                "Arli AI",
+                Some(503),
+                Some((*code).to_string()),
+                None,
+                None,
+                None,
+                None,
+            )),
+        };
+
+        let telemetry = provider_error_telemetry(&error);
+        if code.starts_with("acp_timeout_") {
+            assert!(telemetry.timeout_phase.is_some(), "{code} must be reported as its timeout phase");
+            assert_eq!(telemetry.code, None, "a timeout code must not also be reported as a code");
+        } else {
+            assert_eq!(telemetry.code, Some(*code), "{code} must be recognised");
+        }
+    }
+}

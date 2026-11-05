@@ -3,7 +3,9 @@ use super::*;
 use crate::zed::types::SessionCancellation;
 
 mod telemetry;
-pub(super) use telemetry::{ProviderErrorTelemetry, duration_millis, provider_error_telemetry, retry_disposition};
+pub(super) use telemetry::{
+    KNOWN_ERROR_CODES, ProviderErrorTelemetry, duration_millis, provider_error_telemetry, retry_disposition,
+};
 
 /// A future returned when announcing a failed provider attempt.
 pub(super) type AttemptFailureFuture<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
