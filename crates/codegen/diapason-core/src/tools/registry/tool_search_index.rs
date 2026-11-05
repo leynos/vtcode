@@ -1,11 +1,11 @@
 //! Client-side tool search engine.
 //!
-//! This module is intentionally isolated from the session catalog and registry
-//! plumbing in `tool_catalog_facade`. It owns exactly one concern: ranking
+//! This module is intentionally isolated from the session catalogue and registry
+//! plumbing in `tool_catalogue_facade`. It owns exactly one concern: ranking
 //! tool definitions against a query string.
 //!
 //! The [`ToolSearchEngine`] trait is the strict interface guardrail. Callers
-//! (the session catalog, executors) depend on the trait, never on the concrete
+//! (the session catalogue, executors) depend on the trait, never on the concrete
 //! scoring implementation, so the current BM25 lexical engine
 //! ([`ToolEmbeddingIndex`]) can be replaced by an embedding-based engine in a
 //! future generation without touching any consumer.
@@ -25,7 +25,7 @@ pub trait ToolSearchEngine {
     /// result set.
     fn search(&self, query: &str, max_results: usize) -> Vec<ToolSearchResult>;
 
-    /// The catalog epoch this engine was built for. Consumers use it to decide
+    /// The catalogue epoch this engine was built for. Consumers use it to decide
     /// whether a cached engine is still valid.
     fn epoch(&self) -> u64;
 }
@@ -57,7 +57,7 @@ pub struct ToolEmbeddingIndex {
     /// Average document length (term count) across all entries, precomputed at
     /// build time so `search` never rescans the corpus per query.
     avg_dl: f64,
-    /// Epoch at which this index was built. Invalidated on catalog refresh.
+    /// Epoch at which this index was built. Invalidated on catalogue refresh.
     epoch: u64,
 }
 

@@ -1,4 +1,4 @@
-//! Hash utilities for tool catalog and system prompt caching.
+//! Hash utilities for tool catalogue and system prompt caching.
 //!
 //! Provides hashing functions for tool definitions, system prompts, and
 //! low-signal attempt deduplication keys.
@@ -34,14 +34,14 @@ pub fn hash_tool_definitions(tools: Option<&[ToolDefinition]>) -> Option<u64> {
 
 /// Compute a stable hash of the system prompt prefix.
 ///
-/// Strips runtime sections (tool catalog, context, active tools) so the hash
+/// Strips runtime sections (tool catalogue, context, active tools) so the hash
 /// remains stable across turns even as runtime context changes.
 pub fn stable_system_prefix_hash(system_prompt: &str) -> u64 {
     let stable_prefix = system_prompt
         .split("\n## Active Tools\n")
         .next()
         .unwrap_or(system_prompt)
-        .split("\n[Runtime Tool Catalog]\n")
+        .split("\n[Runtime Tool Catalogue]\n")
         .next()
         .unwrap_or(system_prompt)
         .split("\n[Runtime Context]\n")

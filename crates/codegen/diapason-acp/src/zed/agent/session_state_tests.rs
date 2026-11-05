@@ -2,7 +2,7 @@
 use super::super::ZedAgentSetup;
 use super::*;
 use crate::zed::AcpWorkspacePolicy;
-use crate::zed::helpers::PrimaryAgentCatalog;
+use crate::zed::helpers::PrimaryAgentCatalogue;
 use chrono::Utc;
 use diapason_config::codex::HistoryPersistence;
 use diapason_config::{SubagentDiscoveryInput, discover_subagents};
@@ -111,7 +111,7 @@ async fn build_agent_with_vt_config(
     let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
     discovery_input.include_user_agents = false;
     let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
-    let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
+    let primary_agents = PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, default_primary_agent);
 
     let mut zed_config = AgentClientProtocolZedConfig::default();
     zed_config.allowed_workspace_roots.push(std::env::temp_dir());

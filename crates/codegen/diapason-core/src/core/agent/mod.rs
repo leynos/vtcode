@@ -34,7 +34,7 @@ pub mod steering;
 pub mod task;
 pub mod task_history;
 pub mod tool_batching;
-pub mod tool_catalog;
+pub mod tool_catalogue;
 pub mod types;
 
 // Re-export main types for convenience

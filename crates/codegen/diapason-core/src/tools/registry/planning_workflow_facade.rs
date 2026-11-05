@@ -36,9 +36,9 @@ impl ToolRegistry {
         self.planning_workflow_state.enable();
         if !was_active {
             *self.cached_available_tools.write() = None;
-            // Invalidate the tool catalog cache so the next snapshot reflects the
+            // Invalidate the tool catalogue cache so the next snapshot reflects the
             // planning-workflow-filtered tool set rather than serving a stale pre-transition entry.
-            self.tool_catalog_state.note_explicit_refresh("planning_workflow_enabled");
+            self.tool_catalogue_state.note_explicit_refresh("planning_workflow_enabled");
         }
     }
 
@@ -48,8 +48,8 @@ impl ToolRegistry {
         self.planning_workflow_state.disable();
         if was_active {
             *self.cached_available_tools.write() = None;
-            // Invalidate the catalog cache so mutating tools reappear immediately.
-            self.tool_catalog_state.note_explicit_refresh("planning_workflow_disabled");
+            // Invalidate the catalogue cache so mutating tools reappear immediately.
+            self.tool_catalogue_state.note_explicit_refresh("planning_workflow_disabled");
         }
     }
 
@@ -120,14 +120,14 @@ mod tests {
     #[tokio::test]
     async fn enable_planning_short_circuits_when_already_active() {
         // The `was_active` short-circuit must not double-invalidate: enabling
-        // planning a second time should leave the catalog epoch unchanged.
+        // planning a second time should leave the catalogue epoch unchanged.
         let temp_dir = TempDir::new().expect("tempdir");
         let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
         registry.enable_planning();
-        let after_first = registry.tool_catalog_state().current_epoch();
+        let after_first = registry.tool_catalogue_state().current_epoch();
 
         registry.enable_planning();
-        let after_second = registry.tool_catalog_state().current_epoch();
+        let after_second = registry.tool_catalogue_state().current_epoch();
 
         assert_eq!(after_first, after_second, "enabling an already-active planning workflow must not bump the epoch");
         assert!(registry.is_planning_active());

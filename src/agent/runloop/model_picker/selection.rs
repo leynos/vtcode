@@ -219,7 +219,7 @@ pub(super) fn selection_from_option_with_mode(
             provider: option.provider,
             model_id: option.id.clone(),
             api_key_env: option.api_key_env.clone(),
-            catalog: None,
+            catalogue: None,
             dynamic: None,
             availability: ModelAvailability::MissingCredential,
         }
@@ -308,7 +308,7 @@ pub(super) fn selection_from_dynamic_with_api_key_env(
             provider,
             model_id: model_id.to_string(),
             api_key_env: env_key.clone(),
-            catalog: None,
+            catalogue: None,
             dynamic: Some(DynamicModelMeta {
                 display_name: display_name.to_string(),
                 description: description.map(ToOwned::to_owned),
