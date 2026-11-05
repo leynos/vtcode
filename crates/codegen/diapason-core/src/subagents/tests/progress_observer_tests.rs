@@ -63,7 +63,7 @@ fn background_record(id: &str, parent_session_id: &str, timestamp: chrono::DateT
         display_label: "Watcher".to_string(),
         description: "Watch the workspace".to_string(),
         source: "workspace".to_string(),
-        color: None,
+        colour: None,
         session_id: "background-session".to_string(),
         parent_session_id: parent_session_id.to_string(),
         exec_session_id: format!("exec-{id}"),

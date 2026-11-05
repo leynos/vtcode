@@ -2004,7 +2004,7 @@ permissions:
 Prompt."#,
         )?;
 
-        let spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode)?;
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectDiapason)?;
 
         assert_eq!(spec.colour.as_deref(), Some("orchid"), "Markdown frontmatter preserves the British `colour` alias");
         Ok(())

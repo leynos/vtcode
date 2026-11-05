@@ -716,6 +716,7 @@ mod tests {
             source: "project".to_string(),
             colour: Some("orchid".to_string()),
             session_id: "session-1".to_string(),
+            parent_session_id: "parent-session".to_string(),
             exec_session_id: "exec-1".to_string(),
             desired_enabled: true,
             status: BackgroundSubprocessStatus::Running,

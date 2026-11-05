@@ -1342,7 +1342,7 @@ Review the target changes."#,
         )
         .expect("the source agent specification should be written");
 
-        let spec = load_subagent_from_file(&path, SubagentSource::ProjectVtcode)
+        let spec = load_subagent_from_file(&path, SubagentSource::ProjectDiapason)
             .expect("the British colour alias should load");
         let content = fs::read_to_string(&path).expect("the source agent specification should be readable");
         let mut draft = NativeAgentDraft::from_spec(temp.path().to_path_buf(), &spec, &content)
@@ -1357,7 +1357,7 @@ Review the target changes."#,
         );
 
         fs::write(&path, rendered).expect("the edited agent should be written");
-        let reloaded = load_subagent_from_file(&path, SubagentSource::ProjectVtcode)
+        let reloaded = load_subagent_from_file(&path, SubagentSource::ProjectDiapason)
             .expect("the canonicalized agent should reload without duplicate fields");
         assert_eq!(
             reloaded.description, "Review native colour handling",
