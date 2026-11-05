@@ -1,3 +1,5 @@
+//! Exposes the session tool-catalogue state alias and change-notifier adapter.
+
 use std::sync::Arc;
 
 pub(crate) type ToolCatalogueState = diapason_core::tools::registry::SessionToolCatalogueState;
