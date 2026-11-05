@@ -172,7 +172,7 @@ def main():
     content = [
         "# Diapason Documentation Map",
         "",
-        "This document serves as an index of all Diapason documentation. When users ask questions about Diapason itself (capabilities, features, configuration, etc.), this file provides the complete catalog of available documentation sources.",
+        "This document serves as an index of all Diapason documentation. When users ask questions about Diapason itself (capabilities, features, configuration, etc.), this file provides the complete catalogue of available documentation sources.",
         "",
         "## Quick Reference",
         "",

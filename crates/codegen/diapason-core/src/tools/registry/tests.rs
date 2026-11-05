@@ -35,7 +35,9 @@ mod stale_exec_session;
 mod pipe_session;
 
 mod no_op_ladder;
+
 mod patch_failure_bound;
+
 mod patch_safety;
 
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";
@@ -513,7 +515,7 @@ async fn allows_registering_custom_tools() -> Result<()> {
 }
 
 #[tokio::test]
-async fn dynamic_tool_registration_keeps_policy_catalog_in_sync() -> Result<()> {
+async fn dynamic_tool_registration_keeps_policy_catalogue_in_sync() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let policy_path = temp_dir.path().join("tool-policy.json");
     let policy_manager = crate::tool_policy::ToolPolicyManager::new_with_config_path(&policy_path).await?;

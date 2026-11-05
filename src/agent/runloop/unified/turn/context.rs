@@ -42,7 +42,7 @@ pub(crate) use self::runtime_context::{
 use crate::agent::runloop::mcp_events;
 use crate::agent::runloop::unified::run_loop_context::{RecoveryMode, RunLoopContext};
 use crate::agent::runloop::unified::state::{CtrlCState, SessionStats};
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 
 #[derive(Clone, Debug)]
 pub(crate) enum TurnLoopResult {

@@ -548,7 +548,7 @@ pub(crate) fn compact_boundary_event(
         new_segment_id: segment_transition.map(|transition| transition.new_segment_id.clone()),
         previous_prefix_hash: segment_transition.and_then(|transition| transition.previous_prefix_hash.clone()),
         new_prefix_hash: None,
-        previous_catalog_hash: segment_transition.and_then(|transition| transition.previous_catalog_hash.clone()),
+        previous_catalog_hash: segment_transition.and_then(|transition| transition.previous_catalogue_hash.clone()),
         new_catalog_hash: None,
     })
 }

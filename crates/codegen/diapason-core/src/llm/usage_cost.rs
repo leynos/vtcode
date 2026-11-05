@@ -116,7 +116,7 @@ pub fn estimate_session_costs_with_pricing(
 
     let raw_usd = input_tokens * input_rate + output_tokens * output_rate;
 
-    // Heuristic fallbacks when a model's catalog entry does not specify
+    // Heuristic fallbacks when a model's catalogue entry does not specify
     // dedicated cache rates: cache reads are assumed to cost roughly 10% of
     // the input rate, and cache writes roughly 125% of the input rate.
     let read_rate = pricing.cache_read.unwrap_or(input_rate * 0.10);

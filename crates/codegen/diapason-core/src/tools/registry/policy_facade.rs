@@ -152,7 +152,7 @@ impl ToolRegistry {
 
     pub async fn set_policy_manager(&self, manager: ToolPolicyManager) {
         self.policy_gateway.set_policy_manager(manager).await;
-        self.sync_policy_catalog().await;
+        self.sync_policy_catalogue().await;
     }
 
     pub async fn set_tool_policy(&self, tool_name: &str, policy: ToolPolicy) -> Result<()> {
@@ -232,7 +232,7 @@ impl ToolRegistry {
             *active_tool_profile = normalized_tools_config.profile;
         }
         *self.cached_available_tools.write() = None;
-        self.sync_policy_catalog().await;
+        self.sync_policy_catalogue().await;
 
         let manager = {
             let guard = self.policy_gateway.clone();

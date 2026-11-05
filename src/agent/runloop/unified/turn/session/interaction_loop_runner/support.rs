@@ -1037,8 +1037,8 @@ async fn sync_primary_agent_runtime(
         async_mcp_manager: ctx.async_mcp_manager.as_ref(),
         tool_registry: ctx.tool_registry,
         tools: ctx.tools,
-        tool_catalog: ctx.tool_catalog,
-        mcp_catalog_initialized: state.mcp_catalog_initialized,
+        tool_catalogue: ctx.tool_catalogue,
+        mcp_catalogue_initialized: state.mcp_catalogue_initialized,
         pending_mcp_refresh: state.pending_mcp_refresh,
         provider_client: &**ctx.provider_client,
     };

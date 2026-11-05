@@ -293,7 +293,7 @@ pub(super) async fn build_wire_test_agent_with_options(
     discovery_input.include_user_agents = false;
     let discovered = diapason_config::discover_subagents(&discovery_input).expect("discover primary agents");
     let primary_agents =
-        crate::zed::helpers::PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
+        crate::zed::helpers::PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, "duck");
 
     let mut zed_config = AgentClientProtocolZedConfig::default();
     zed_config.allowed_workspace_roots.push(std::env::temp_dir());
