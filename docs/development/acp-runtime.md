@@ -157,6 +157,11 @@ admission router records current queue depth, in-flight permits, cumulative
 queue wait time, and timeout count across ACP and child-agent requests, so user
 configured provider names cannot create unbounded metric series.
 
+`provider_error_code` is likewise bounded. `LLMErrorMetadata` is deserialisable
+and its `code` is free-form, so the warning records a code only when it appears
+in the fixed allowlist, and reports `other` for anything else. ACP timeout
+codes are reported through `provider_timeout_phase` instead.
+
 ## MCP, tools and audit
 
 ACP initializes the session's enabled MCP providers before the first prompt, so
@@ -193,7 +198,7 @@ include the provider error text so the caller can see what failed, and the
 notice strips ANSI escape codes as presentation hygiene rather than privacy
 redaction.
 
-At every ACP failure boundary the originating error never reaches the
+At every repaired ACP failure boundary the originating error never reaches the
 operator-visible record at any level. `log_suppressed_error` emits the fixed
 `operation` and `error_category`, the outer message size as `error_bytes`, and
 `detail_correlation`, a deterministic, truncated SHA-256 digest of the source
@@ -404,6 +409,18 @@ never reset, and `cancelled` is a subset of `failed`. Cardinality is fixed by
 construction: no session, provider, model, or path value is recorded. Spans and
 logs correlate attempts with `session_correlation`, a deterministic, truncated
 SHA-256 digest, never the raw session identifier.
+
+The two ACP send boundaries that publish activity to a client are counted the
+same way. `vtcode_acp::metrics::notice_metrics()` reports `attempts` and
+`failures` for provider rate-limit notices, and
+`vtcode_acp::metrics::compaction_update_metrics()` reports them for compaction
+activity updates. `failures` is a subset of `attempts`. A notice that is never
+built, and a serialization failure that never reaches the transport, are not
+attempts and move neither counter. Each send runs inside a span carrying the
+fixed `operation` and `stage`, the bounded `session_correlation`, and the
+`outcome` and `elapsed_ms` recorded when the send returns. The span and the
+counters are written at the send boundary, so a client that stops accepting
+updates is measurable rather than only logged.
 
 ## Retry notices and usage publication
 
