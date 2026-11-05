@@ -90,7 +90,9 @@ async fn test_instruction_appendix_uses_explicit_home() {
     // positive contract: an explicit home contributes its user instructions to
     // the assembled prompt alongside the workspace instructions.
     let home = tempfile::TempDir::new().expect("home");
-    std::fs::write(home.path().join("AGENTS.md"), "user home rule").expect("write user doc");
+    let user_config = home.path().join(".config/diapason");
+    std::fs::create_dir_all(&user_config).expect("create user config");
+    std::fs::write(user_config.join("AGENTS.md"), "user home rule").expect("write user doc");
 
     let prompt_builder = IncrementalSystemPrompt::with_instruction_home(Some(home.path().to_path_buf()));
     let workspace = tempfile::TempDir::new().expect("workspace");
@@ -108,7 +110,7 @@ async fn test_instruction_appendix_uses_explicit_home() {
         .get_system_prompt("Stable base prompt", 1, context.hash(), &context, Some(&config))
         .await;
 
-    assert!(prompt.contains("~/AGENTS.md (user AGENTS)"));
+    assert!(prompt.contains("~/.config/diapason/AGENTS.md (user AGENTS)"));
     assert!(prompt.contains("AGENTS.md (workspace AGENTS)"));
     assert!(prompt.contains("user home rule"));
     assert!(prompt.contains("root rule"));

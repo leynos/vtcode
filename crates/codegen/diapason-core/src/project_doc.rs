@@ -494,7 +494,9 @@ mod tests {
     #[tokio::test]
     async fn discovers_user_scope_instructions_from_explicit_home() {
         let home = tempdir().expect("home");
-        std::fs::write(home.path().join("AGENTS.md"), "user home doc").expect("write user doc");
+        let user_config = home.path().join(".config/diapason");
+        std::fs::create_dir_all(&user_config).expect("create user config");
+        std::fs::write(user_config.join("AGENTS.md"), "user home doc").expect("write user doc");
 
         let repo = tempdir().expect("repo");
         mark_project_root(repo.path()).expect("mark project root");
@@ -515,7 +517,7 @@ mod tests {
         )
         .await
         .expect("instruction appendix");
-        assert!(appendix.contains("~/AGENTS.md (user AGENTS)"));
+        assert!(appendix.contains("~/.config/diapason/AGENTS.md (user AGENTS)"));
         assert!(appendix.contains("AGENTS.md (workspace AGENTS)"));
         assert!(appendix.contains("user home doc"));
         assert!(appendix.contains("workspace doc"));
