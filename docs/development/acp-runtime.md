@@ -439,14 +439,13 @@ carrying `_meta.lody.notice`. The HTTP status and the `Retry-After` value are
 reported only when the provider supplied them. The retry delay is a separate
 fact: it is reported only when `RetryPolicy::decision_for_category` chose to
 schedule another attempt, and the notice says when no further automatic retry
-is scheduled. A delivery failure logs the
-fixed `operation`, `stage`, and `error_category`, the session correlation key,
-the error rendering's byte length as `error_bytes`, and `detail_correlation`, a
-deterministic truncated SHA-256 digest of that rendering. The rendering itself
-and the raw session identifier stay out of the log; the digest correlates
-repeated failures and is not a secrecy boundary. It is a presentation adapter,
-not the JSON-RPC transport: it neither retries the request nor changes retry
-policy.
+is scheduled. A delivery failure logs the fixed `operation`, `stage`, and
+`error_category`, the session correlation key, the error rendering's byte
+length as `error_bytes`, and `detail_correlation`, a deterministic truncated
+SHA-256 digest of that rendering. The rendering itself and the raw session
+identifier stay out of the log; the digest correlates repeated failures and is
+not a secrecy boundary. It is a presentation adapter, not the JSON-RPC
+transport: it neither retries the request nor changes retry policy.
 
 `publish_lody_usage` emits the `_lody/session/usage_update` extension
 notification for each provider response that includes usage. It resolves the

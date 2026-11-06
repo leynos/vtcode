@@ -273,11 +273,7 @@ async fn over_budget_acp_compaction_reports_the_adopted_history_and_failure() {
     assert_eq!(activity["failureReason"], "admission_budget");
 
     let adopted = agent.resolved_messages(&session).expect("adopted history");
-    assert!(
-        adopted.len() < before_len,
-        "compaction must replace the history: {before_len} -> {}",
-        adopted.len()
-    );
+    assert!(adopted.len() < before_len, "compaction must replace the history: {before_len} -> {}", adopted.len());
     let adopted_tokens: usize = adopted.iter().map(|message| message.estimate_tokens()).sum();
     assert_eq!(
         activity["usedTokensAfter"].as_u64(),
