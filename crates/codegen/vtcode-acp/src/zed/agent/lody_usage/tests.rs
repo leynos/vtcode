@@ -1,17 +1,35 @@
 //! Tests for the Lody usage extension notification.
+//!
+//! The domain boundary owns profile resolution and cost normalization; these
+//! tests keep the adapter honest about projecting the resolved turn onto the
+//! Lody wire contract, including the optional fields it must not invent.
 
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use proptest::prelude::*;
 use tokio::sync::{Notify, mpsc};
-use vtcode_config::{CustomProviderPricingConfig, CustomProviderProfileConfig};
+use vtcode_config::models::ModelPricing;
+use vtcode_config::{
+    CustomProviderApiFormat, CustomProviderConfig, CustomProviderPricingConfig, CustomProviderProfileConfig,
+};
 
 #[path = "tests/transport.rs"]
 mod transport;
 
-/// Assert normalized usage maps to the Lody delta contract.
+/// Resolve `usage` for the Lody projection with the given profile.
+fn resolved_notification(usage: &Usage, profile: UsageProfile) -> serde_json::Value {
+    let notification = usage_notification(
+        &acp::SessionId::new(Arc::from("session-1")),
+        "model-a",
+        resolve_turn_usage(usage, profile),
+    )
+    .expect("usage notification");
+    serde_json::from_str(notification.params.get()).expect("usage JSON")
+}
+
+/// Assert resolved usage maps to the Lody delta contract.
 #[test]
-fn maps_normalized_usage_to_the_lody_delta_contract() {
+fn maps_resolved_usage_to_the_lody_delta_contract() {
     let usage = Usage {
         prompt_tokens: 21,
         completion_tokens: 8,
@@ -20,9 +38,7 @@ fn maps_normalized_usage_to_the_lody_delta_contract() {
         cache_creation_tokens: Some(3),
         ..Usage::default()
     };
-    let notification = usage_notification(
-        &acp::SessionId::new(Arc::from("session-1")),
-        "model-a",
+    let value = resolved_notification(
         &usage,
         UsageProfile {
             context_window: Some(1_048_576),
@@ -34,11 +50,8 @@ fn maps_normalized_usage_to_the_lody_delta_contract() {
             }),
             exclusive_input: false,
         },
-    )
-    .expect("usage notification");
-    let value: serde_json::Value = serde_json::from_str(notification.params.get()).expect("usage JSON");
+    );
 
-    assert_eq!(notification.method.as_ref(), LODY_SESSION_USAGE_UPDATE_METHOD);
     assert_eq!(value["sessionId"], "session-1");
     assert_eq!(value["usage"]["inputTokens"], 21);
     assert_eq!(value["usage"]["outputTokens"], 5);
@@ -50,62 +63,21 @@ fn maps_normalized_usage_to_the_lody_delta_contract() {
     assert_eq!(value["modelUsage"]["model-a"], value["usage"]);
 }
 
-/// Assert the backend format decides input semantics over the provider name.
+/// Assert optional fields stay absent when the profile supplies none.
 #[test]
-fn backend_selects_input_semantics_over_the_provider_name() {
-    let cases = [
-        (Some(CustomProviderApiFormat::AnthropicMessages), "baseten", true),
-        (Some(CustomProviderApiFormat::OpenAIChat), "anthropic", false),
-        (Some(CustomProviderApiFormat::OpenAIResponses), "anthropic", false),
-        (Some(CustomProviderApiFormat::Auto), "anthropic", true),
-        (Some(CustomProviderApiFormat::Auto), "baseten", false),
-        (None, "anthropic", true),
-    ];
-
-    for (api_format, provider, expected) in cases {
-        assert_eq!(
-            exclusive_input_semantics(api_format, provider),
-            expected,
-            "api_format {api_format:?} for provider {provider}"
-        );
-    }
-}
-
-/// Assert cost normalization follows the selected backend, not the provider name.
-#[test]
-fn cost_normalization_follows_the_selected_backend_not_the_provider_name() {
-    // `baseten` is a custom name either way; only the backend decides
-    // whether `prompt_tokens` already includes the cached tokens.
+fn absent_profile_fields_are_not_projected_as_zero_or_invented() {
     let usage = Usage {
-        prompt_tokens: 100,
-        completion_tokens: 0,
-        cached_prompt_tokens: Some(50),
+        prompt_tokens: 6,
+        completion_tokens: 2,
         ..Usage::default()
     };
-    let pricing = Some(ModelPricing {
-        input: Some(1.0 / 1_000_000.0),
-        output: Some(0.0),
-        cache_read: Some(0.0),
-        cache_write: Some(0.0),
-    });
-    let cost = |exclusive_input| {
-        let notification = usage_notification(
-            &acp::SessionId::new(Arc::from("session-cost")),
-            "model-a",
-            &usage,
-            UsageProfile {
-                pricing,
-                exclusive_input,
-                ..UsageProfile::default()
-            },
-        )
-        .expect("usage notification");
-        let value: serde_json::Value = serde_json::from_str(notification.params.get()).expect("usage JSON");
-        value["usage"]["costUSD"].as_f64().expect("costUSD")
-    };
 
-    assert!((cost(false) - 50.0 / 1_000_000.0).abs() < f64::EPSILON);
-    assert!((cost(true) - 100.0 / 1_000_000.0).abs() < f64::EPSILON);
+    let value = resolved_notification(&usage, UsageProfile::default());
+
+    assert!(value["usage"].get("costUSD").is_none(), "no declared rates must mean no cost");
+    assert!(value["usage"].get("contextWindow").is_none(), "no declared window must stay absent");
+    assert!(value["usage"].get("cacheCreationInputTokens").is_none());
+    assert!(value["usage"].get("reasoningOutputTokens").is_none());
 }
 
 /// Build a custom provider with the fields usage reporting reads.
@@ -134,61 +106,6 @@ fn per_million(input: f64, output: f64) -> CustomProviderPricingConfig {
         cache_read_per_million_usd: None,
         cache_write_per_million_usd: None,
     }
-}
-
-/// Assert a custom provider supplies its context window and pricing.
-#[test]
-fn custom_provider_supplies_the_context_window_and_cost_pricing() {
-    let providers = vec![custom_provider(
-        "acme",
-        CustomProviderApiFormat::AnthropicMessages,
-        Some(200_000),
-        per_million(3.0, 15.0),
-    )];
-
-    // Provider names are matched case-insensitively, as routing does.
-    let profile = usage_profile(&providers, "AcMe", "acme-large");
-
-    assert_eq!(profile.context_window, Some(200_000));
-    assert!(profile.exclusive_input, "Anthropic Messages excludes cached tokens from prompt_tokens");
-    let pricing = profile.pricing.expect("custom provider pricing should reach cost reporting");
-    assert!((pricing.input.expect("input rate") - 3.0 / 1_000_000.0).abs() < f64::EPSILON);
-    assert!((pricing.output.expect("output rate") - 15.0 / 1_000_000.0).abs() < f64::EPSILON);
-}
-
-/// Assert an exact model profile overrides the provider defaults.
-#[test]
-fn model_profile_overrides_the_provider_default() {
-    let providers = vec![CustomProviderConfig {
-        context_window: Some(200_000),
-        pricing: per_million(3.0, 15.0),
-        profiles: BTreeMap::from([(
-            "acme-small".to_string(),
-            CustomProviderProfileConfig {
-                api_format: CustomProviderApiFormat::OpenAIChat,
-                context_window: Some(32_768),
-                pricing: per_million(0.25, 1.0),
-                ..CustomProviderProfileConfig::default()
-            },
-        )]),
-        ..custom_provider(
-            "acme",
-            CustomProviderApiFormat::AnthropicMessages,
-            None,
-            CustomProviderPricingConfig::default(),
-        )
-    }];
-
-    let profile = usage_profile(&providers, "acme", "acme-small");
-
-    assert_eq!(profile.context_window, Some(32_768));
-    assert!(
-        !profile.exclusive_input,
-        "the model profile's OpenAI Chat backend includes cached tokens in prompt_tokens"
-    );
-    let pricing = profile.pricing.expect("model profile pricing should reach cost reporting");
-    assert!((pricing.input.expect("input rate") - 0.25 / 1_000_000.0).abs() < f64::EPSILON);
-    assert!((pricing.output.expect("output rate") - 1.0 / 1_000_000.0).abs() < f64::EPSILON);
 }
 
 /// Assert the usage profile follows the model the provider actually served.
@@ -237,25 +154,11 @@ fn custom_provider_profile_drives_the_notification_context_window_and_cost() {
         ..Usage::default()
     };
 
-    let notification =
-        usage_notification(&acp::SessionId::new(Arc::from("session-cost")), "acme-large", &usage, profile)
-            .expect("usage notification");
-    let value: serde_json::Value = serde_json::from_str(notification.params.get()).expect("usage JSON");
+    let value = resolved_notification(&usage, profile);
 
     assert_eq!(value["usage"]["contextWindow"], 200_000);
     let cost = value["usage"]["costUSD"].as_f64().expect("costUSD");
     assert!((cost - 18.0).abs() < 1e-9, "1M input at $3/M plus 1M output at $15/M, got {cost}");
-}
-
-/// Assert a built-in provider falls back to the model catalogue.
-#[test]
-fn built_in_provider_falls_back_to_the_model_catalogue() {
-    let profile = usage_profile(&[], "anthropic", "claude-fable-5");
-    let catalog = vtcode_config::models::model_catalog_entry("anthropic", "claude-fable-5")
-        .expect("catalogue entry for a shipped model");
-
-    assert_eq!(profile.context_window, Some(catalog.context_window));
-    assert!(profile.exclusive_input);
 }
 
 /// Assert a response without usage produces no notification.
@@ -332,41 +235,34 @@ fn response_without_a_model_falls_back_to_the_session_model() {
 }
 
 proptest! {
-    /// Assert every normalized u32 usage count survives serialization.
+    /// Assert every resolved u32 usage count survives serialization.
     #[test]
-    fn preserves_all_normalized_u32_usage_counts(
+    fn preserves_all_resolved_u32_usage_counts(
         input in any::<u32>(),
         output in any::<u32>(),
         cache_read in any::<u32>(),
         cache_creation in proptest::option::of(any::<u32>()),
-        raw_reasoning in any::<u32>(),
+        reasoning in proptest::option::of(any::<u32>()),
         model in "[^\\p{C}]{1,48}",
     ) {
-        let usage = Usage {
-            prompt_tokens: input,
-            completion_tokens: output,
-            reasoning_output_tokens: Some(raw_reasoning),
-            cache_read_tokens: Some(cache_read),
-            cache_creation_tokens: cache_creation,
-            ..Usage::default()
+        let resolved = TurnUsage {
+            input_tokens: input,
+            output_tokens: output,
+            cache_read_input_tokens: cache_read,
+            cache_creation_input_tokens: cache_creation,
+            reasoning_output_tokens: reasoning,
+            cost_usd: None,
+            context_window: None,
         };
         let notification = usage_notification(
             &acp::SessionId::new(Arc::from("property-session")),
             &model,
-            &usage,
-            UsageProfile::default(),
+            resolved,
         ).expect("usage notification");
         let value: serde_json::Value = serde_json::from_str(notification.params.get()).expect("usage JSON");
 
         prop_assert_eq!(value["usage"]["inputTokens"].as_u64(), Some(u64::from(input)));
-        prop_assert_eq!(
-            value["usage"]["outputTokens"].as_u64(),
-            Some(u64::from(output.saturating_sub(raw_reasoning.min(output)))),
-        );
-        prop_assert_eq!(
-            value["usage"]["reasoningOutputTokens"].as_u64(),
-            Some(u64::from(raw_reasoning.min(output))),
-        );
+        prop_assert_eq!(value["usage"]["outputTokens"].as_u64(), Some(u64::from(output)));
         prop_assert_eq!(value["usage"]["cacheReadInputTokens"].as_u64(), Some(u64::from(cache_read)));
         match cache_creation {
             Some(count) => prop_assert_eq!(
@@ -375,6 +271,75 @@ proptest! {
             ),
             None => prop_assert!(value["usage"].get("cacheCreationInputTokens").is_none()),
         }
+        match reasoning {
+            Some(count) => prop_assert_eq!(
+                value["usage"]["reasoningOutputTokens"].as_u64(),
+                Some(u64::from(count)),
+            ),
+            None => prop_assert!(value["usage"].get("reasoningOutputTokens").is_none()),
+        }
         prop_assert_eq!(&value["modelUsage"][model.as_str()], &value["usage"]);
+    }
+
+    /// Assert equivalent inclusive and exclusive input representations price
+    /// the same turn identically on the wire.
+    ///
+    /// `prompt_tokens` either already contains the cache-read and
+    /// cache-creation tokens (OpenAI-style) or excludes them
+    /// (Anthropic-style). The notification must report the provider's own
+    /// count but a cost that depends only on the underlying token set and the
+    /// declared rates, including the optional cache rates.
+    #[test]
+    fn equivalent_inclusive_and_exclusive_inputs_report_the_same_cost(
+        uncached in 0u32..1_000_000,
+        cache_read in 0u32..1_000_000,
+        cache_creation in 0u32..1_000_000,
+        output in 0u32..1_000_000,
+        reasoning in proptest::option::of(0u32..1_000_000),
+        input_rate in 0.0f64..100.0,
+        output_rate in 0.0f64..100.0,
+        cache_read_rate in proptest::option::of(0.0f64..100.0),
+        cache_write_rate in proptest::option::of(0.0f64..100.0),
+    ) {
+        let pricing = ModelPricing {
+            input: Some(input_rate / 1_000_000.0),
+            output: Some(output_rate / 1_000_000.0),
+            cache_read: cache_read_rate.map(|rate| rate / 1_000_000.0),
+            cache_write: cache_write_rate.map(|rate| rate / 1_000_000.0),
+        };
+        let profile = |exclusive_input| UsageProfile {
+            pricing: Some(pricing),
+            exclusive_input,
+            ..UsageProfile::default()
+        };
+        let inclusive = Usage {
+            prompt_tokens: uncached + cache_read + cache_creation,
+            completion_tokens: output,
+            reasoning_output_tokens: reasoning,
+            cache_read_tokens: Some(cache_read),
+            cache_creation_tokens: Some(cache_creation),
+            ..Usage::default()
+        };
+        let exclusive = Usage {
+            prompt_tokens: uncached,
+            completion_tokens: output,
+            reasoning_output_tokens: reasoning,
+            cache_read_tokens: Some(cache_read),
+            cache_creation_tokens: Some(cache_creation),
+            ..Usage::default()
+        };
+
+        let inclusive_cost = resolved_notification(&inclusive, profile(false))["usage"]["costUSD"]
+            .as_f64()
+            .expect("inclusive costUSD");
+        let exclusive_cost = resolved_notification(&exclusive, profile(true))["usage"]["costUSD"]
+            .as_f64()
+            .expect("exclusive costUSD");
+
+        let scale = inclusive_cost.abs().max(1.0);
+        prop_assert!(
+            (inclusive_cost - exclusive_cost).abs() <= 1e-9 * scale,
+            "inclusive {inclusive_cost} vs exclusive {exclusive_cost}"
+        );
     }
 }
