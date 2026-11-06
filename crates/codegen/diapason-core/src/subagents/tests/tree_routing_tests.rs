@@ -35,7 +35,7 @@ fn settled_background_record(
         display_label: "Watcher".to_string(),
         description: "Watch the workspace".to_string(),
         source: "workspace".to_string(),
-        color: None,
+        colour: None,
         session_id: format!("session-{id}"),
         parent_session_id: owner_session_id.to_string(),
         exec_session_id: format!("exec-{id}"),
