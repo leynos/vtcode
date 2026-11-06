@@ -1,6 +1,6 @@
 # ACP Quick Reference
 
-The current VT Code ACP integration is a stdio server. The REST `AcpClient`
+The current Diapason ACP integration is a stdio server. The REST `AcpClient`
 snippets below are retained as a legacy client reference and do not describe
 the server handshake or transport.
 
