@@ -45,6 +45,7 @@ fn successful_tool_round_emits_acp_tool_execution_span_and_replaced_counter() {
             "wire-test",
             Arc::new(move || {
                 Box::new(StreamToolThenAnswerProvider {
+                    emit_usage: false,
                     calls: Arc::clone(&factory_calls),
                     requests: Arc::clone(&factory_requests),
                     tool_name: "list_files",
