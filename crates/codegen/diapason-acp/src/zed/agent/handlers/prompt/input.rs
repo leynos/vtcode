@@ -1,7 +1,7 @@
 //! Resolves an incoming ACP prompt and applies user-prompt lifecycle hooks.
 use super::super::super::{warn_hook_block_reason, warn_hook_message};
 use super::*;
-use vtcode_core::metrics::ToolRecoveryEvent;
+use diapason_core::metrics::ToolRecoveryEvent;
 
 /// Resolves the target session and claims its turn for an incoming prompt.
 ///

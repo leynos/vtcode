@@ -36,7 +36,7 @@ from both lower layers.
   followed by exactly one Tool result before later user or assistant messages.
 - Keep the persisted `SessionMessage` JSON shape backwards compatible. Legacy
   archives must load without an offline migration.
-- Use `vtcode-exec-events::ThreadEvent` for runtime events; do not introduce a
+- Use `diapason-exec-events::ThreadEvent` for runtime events; do not introduce a
   parallel event contract.
 - Do not hold a synchronous lock across `.await` and do not create an
   unsupervised background task solely for recovery persistence.
@@ -133,7 +133,7 @@ from both lower layers.
   warnings on that head: documented every diff-touched non-test function, added
   "ACP recovery in brief" to the user guide, added the recovery-contract
   section to the developer guide, and added bounded
-  `ToolRecoveryMetrics`/`vtcode_tool_recovery_total` counters for staged,
+  `ToolRecoveryMetrics`/`diapason_tool_recovery_total` counters for staged,
   replaced, interrupted, relocated, and archive-repaired calls, ambiguous
   histories, concurrent prompt rejections, stale `write_stdin` requests, and
   checkpoint failures. Removed three stray `weave` resolution markers left at
@@ -143,8 +143,8 @@ from both lower layers.
 
 - Observation: `run_prompt` already holds a `TurnGuard`, but it calls
   `replay_persisted_task_plan` before acquiring that guard. Evidence:
-  `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs::run_prompt`. Impact: a
-  concurrent prompt is rejected before history mutation but can still perform
+  `crates/codegen/diapason-acp/src/zed/agent/handlers.rs::run_prompt`. Impact:
+  a concurrent prompt is rejected before history mutation but can still perform
   ancillary tool work. Guard acquisition must move to the first session-scoped
   operation.
 
@@ -175,10 +175,10 @@ from both lower layers.
 - Observation: `with_tool_call_context` marks every command tool as possibly
   mutating, even when a typed pre-execution lookup proves that a `write_stdin`
   session does not exist. Evidence:
-  `crates/codegen/vtcode-core/src/tools/registry/error.rs`. Impact:
+  `crates/codegen/diapason-core/src/tools/registry/error.rs`. Impact:
   stale-session classification must survive this decoration step.
 
-- Observation: the first full `vtcode-acp` run reported one trust-sync load
+- Observation: the first full `diapason-acp` run reported one trust-sync load
   failure in an existing concurrent-workspace test, while all 20 isolated
   repetitions and the complete 187-test rerun passed. Evidence:
   `/tmp/nextest-vtcode-acp-VTCode-fix-acp-unresolved-tool-recovery-2.out`,
@@ -283,7 +283,7 @@ Focused evidence:
 - `/tmp/test-stale-exec-vtcode-fix-acp-unresolved-tool-recovery-3.out`
   passed the typed-cause, structured-error, and three-mode registry tests.
 - `/tmp/fmt-stale-exec-vtcode-fix-acp-unresolved-tool-recovery.out` is clean.
-- Commit gates passed: all-target `vtcode-core` Clippy, 3,330 core tests with
+- Commit gates passed: all-target `diapason-core` Clippy, 3,330 core tests with
   8 configured skips, formatting, and diff checks. Logs are
   `/tmp/clippy-vtcode-core-VTCode-fix-acp-unresolved-tool-recovery.out` and
   `/tmp/nextest-vtcode-core-VTCode-fix-acp-unresolved-tool-recovery.out`.
@@ -296,12 +296,13 @@ Focused evidence:
 
 ## Context and orientation
 
-`crates/codegen/vtcode-acp/src/zed/agent/handlers.rs::run_prompt` owns an ACP
+`crates/codegen/diapason-acp/src/zed/agent/handlers.rs::run_prompt` owns an ACP
 prompt from admission through provider streaming, tool execution, continuation,
 and final checkpointing. `TurnGuard` delegates to
 `ThreadRuntimeHandle::begin_turn` and rejects a second in-flight prompt for the
-same thread. `crates/codegen/vtcode-acp/src/zed/agent/tool_execution.rs` adapts
-model tool calls into ACP ToolCall updates and local or client-side execution.
+same thread. `crates/codegen/diapason-acp/src/zed/agent/tool_execution.rs`
+adapts model tool calls into ACP ToolCall updates and local or client-side
+execution.
 
 A provider tool request is stored as an assistant `Message` whose `tool_calls`
 field contains one or more IDs. Each ID must have a later Tool-role `Message`
@@ -312,15 +313,15 @@ content says execution is incomplete, side effects are uncertain, replay did
 not occur, and the model must verify state and issue a new call if required.
 Normal completion replaces that placeholder with the actual Tool result.
 
-`crates/codegen/vtcode-acp/src/zed/agent/session_state.rs` loads durable
+`crates/codegen/diapason-acp/src/zed/agent/session_state.rs` loads durable
 `SessionListing` values and builds `ThreadBootstrap` state. This is the correct
 compatibility boundary for repairing old archives. The repair will be isolated
 in a small ACP agent module rather than expanding the already large handler.
 
-`crates/codegen/vtcode-core/src/tools/exec_session.rs` owns process-session
-lookup. `crates/codegen/vtcode-core/src/tools/registry/error.rs` converts typed
-and `anyhow` failures into the structured `ToolExecutionError` shown to the
-model. Today a missing session becomes a generic execution error and later
+`crates/codegen/diapason-core/src/tools/exec_session.rs` owns process-session
+lookup. `crates/codegen/diapason-core/src/tools/registry/error.rs` converts
+typed and `anyhow` failures into the structured `ToolExecutionError` shown to
+the model. Today a missing session becomes a generic execution error and later
 command decoration adds `partial_state_possible = true`.
 
 ## Conformance basis
@@ -329,7 +330,7 @@ There is no separate Terms of Reference, technical design, or ADR for this
 repair. The authoritative requirements are the six behaviours in the user
 request dated 2026-08-16, the ACP 1.0.1 message contract supplied by the pinned
 `agent-client-protocol` crate, and the repository rules in `AGENTS.md` plus the
-`vtcode-acp` and `vtcode-core` module guidance.
+`diapason-acp` and `diapason-core` module guidance.
 
 Stable requirement identifiers are:
 
@@ -365,13 +366,13 @@ ACP-REC-6 -> EP-M3 -> typed exec-session and structured-error tests
   hand-written examples, while examples make provider ordering legible. Domain:
   one to eight unique calls, arbitrary subsets of completed results, unrelated
   preceding/following messages, and repeated repair operations. Artefact: a new
-  tool-recovery test module under `crates/codegen/vtcode-acp/src/zed/agent/`.
-  Evidence: focused `cargo nextest run -p vtcode-acp -E 'test(tool_recovery)'`;
-  red must expose at least one unresolved ID before production code exists, and
-  green must pass with 1,000 or more generated cases. Non-vacuity: generators
-  require at least one call and separately force empty, partial, and full
-  result subsets. A negative-control helper that omits repair must fail the
-  closure predicate.
+  tool-recovery test module under `crates/codegen/diapason-acp/src/zed/agent/`.
+  Evidence: focused
+  `cargo nextest run -p diapason-acp -E 'test(tool_recovery)'`; red must expose
+  at least one unresolved ID before production code exists, and green must pass
+  with 1,000 or more generated cases. Non-vacuity: generators require at least
+  one call and separately force empty, partial, and full result subsets. A
+  negative-control helper that omits repair must fail the closure predicate.
 
 - Obligation: INV-REPAIR-IDEMPOTENCE. Applying legacy repair twice produces
   byte-equivalent message history and never replaces an existing real result.
@@ -390,7 +391,7 @@ ACP-REC-6 -> EP-M3 -> typed exec-session and structured-error tests
   controlled barriers prove the ordering without wall-clock sleeps, and the
   duplex harness proves the real handler boundary. Domain: one local
   non-mutating test tool and one mutating-shaped call. Artefact:
-  `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs` tests. Evidence: the
+  `crates/codegen/diapason-acp/src/zed/agent/handlers.rs` tests. Evidence: the
   red test inspects the archive while the tool is blocked; green sees the
   incomplete result at that point, then only the real result after release.
   Non-vacuity: the test asserts the tool has actually started and that its
@@ -450,7 +451,7 @@ idempotence/completeness properties, and deterministic ACP overlap tests before
 production behaviour changes. Each focused test must fail for the named missing
 contract rather than from fixture setup.
 
-EP-M2 introduces a small `tool_recovery` module in `vtcode-acp`. `run_prompt`
+EP-M2 introduces a small `tool_recovery` module in `diapason-acp`. `run_prompt`
 will acquire its turn guard before any session-scoped work, append the
 assistant tool request and write-ahead Tool messages as one in-memory
 transition, persist that transition, execute the calls, replace placeholders
@@ -514,9 +515,9 @@ All commands run from `/home/leynos/Projects/VTCode`. Focused commands use the
 shared Cargo cache and write transcripts under `/tmp`:
 
 ```bash
-cargo nextest run -p vtcode-acp -E 'test(tool_recovery) | test(prompt)' \
+cargo nextest run -p diapason-acp -E 'test(tool_recovery) | test(prompt)' \
   2>&1 | tee /tmp/test-acp-recovery-vtcode-fix-acp-unresolved-tool-recovery.out
-cargo nextest run -p vtcode-core -E 'test(write_stdin) | test(exec_session)' \
+cargo nextest run -p diapason-core -E 'test(write_stdin) | test(exec_session)' \
   2>&1 | tee /tmp/test-stale-exec-vtcode-fix-acp-unresolved-tool-recovery.out
 ```
 

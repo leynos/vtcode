@@ -3,9 +3,9 @@ use super::*;
 use crate::zed::agent::handlers::prompt::{ToolRoundRequest, execute_tool_round};
 use crate::zed::agent::test_support::HistorySettingsGuard;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
-use tokio::sync::oneshot;
 use diapason_config::codex::HistoryPersistence;
 use diapason_core::metrics::ToolRecoveryEvent;
+use tokio::sync::oneshot;
 
 /// Runs `body` with a thread-local trace capture and a current-thread runtime.
 ///
@@ -58,14 +58,17 @@ fn successful_tool_round_emits_acp_tool_execution_span_and_replaced_counter() {
         let session_workspace = workspace.path().to_path_buf();
         let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
         let (agent_channel, client_channel) = Channel::duplex();
-        let agent_connection = install_handlers(Agent.builder().name("diapason-observability-test"), Arc::clone(&agent))
-            .connect_with(agent_channel, {
-                let agent = Arc::clone(&agent);
-                async move |cx: ConnectionTo<Client>| {
-                    agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                    std::future::pending::<agent_client_protocol::Result<()>>().await
-                }
-            });
+        let agent_connection = install_handlers(
+            Agent.builder().name("diapason-observability-test"),
+            Arc::clone(&agent),
+        )
+        .connect_with(agent_channel, {
+            let agent = Arc::clone(&agent);
+            async move |cx: ConnectionTo<Client>| {
+                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                std::future::pending::<agent_client_protocol::Result<()>>().await
+            }
+        });
         let agent_task = tokio::spawn(agent_connection);
 
         let client_connection = Client

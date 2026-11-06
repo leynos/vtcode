@@ -6,11 +6,11 @@
 //! runs over already-repaired history.
 
 use super::*;
+use diapason_core::llm::provider::MessageContent;
+use diapason_safety::audit_log::ToolAuditStatus;
 use proptest::collection::btree_map;
 use proptest::prelude::*;
 use std::collections::BTreeSet;
-use diapason_core::llm::provider::MessageContent;
-use diapason_safety::audit_log::ToolAuditStatus;
 
 /// Builds an `apply_patch` tool call with the given ID.
 fn call(id: &str) -> ToolCall {
@@ -341,12 +341,12 @@ fn incomplete_placeholder_schema_is_stable() {
         serde_json::from_str(&message.content.as_text()).expect("placeholder content must be JSON");
     insta::assert_json_snapshot!(placeholder, @r###"
     {
+      "status": "incomplete",
+      "tool": "apply_patch",
       "message": "Tool execution did not reach a durable terminal result. Its side effects are uncertain.",
-      "next_action": "Verify the current workspace state, then resubmit the tool call only if the requested work is still needed.",
       "replayed": false,
       "state": "uncertain",
-      "status": "incomplete",
-      "tool": "apply_patch"
+      "next_action": "Verify the current workspace state, then resubmit the tool call only if the requested work is still needed."
     }
     "###);
 }

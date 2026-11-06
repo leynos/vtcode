@@ -2,9 +2,9 @@
 use super::*;
 use crate::zed::connection::ConnectionHandle;
 use agent_client_protocol::schema::v1::NewSessionRequest;
-use tokio::sync::oneshot;
 use diapason_core::llm::provider::MessageRole;
 use diapason_core::utils::session_archive::list_recent_sessions;
+use tokio::sync::oneshot;
 
 /// Emits one buffered tool call, then answers if the turn asks again.
 struct BufferedToolCallProvider {

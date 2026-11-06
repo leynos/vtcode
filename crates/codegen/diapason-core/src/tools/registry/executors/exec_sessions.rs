@@ -1,3 +1,14 @@
+//! Command-session operations for the unified exec tools.
+//!
+//! Implements `exec_command` session start, `write_stdin` write/poll/wait, and
+//! the shared settle/prune helpers that keep a session's spool consistent with
+//! its terminal state. Session lookup resolves process-local identifiers
+//! against the registry's execution-session store and returns typed
+//! [`ExecSessionNotFound`] and [`ExecSessionLostAfterInput`] errors so the
+//! registry can classify a stale continuation without parsing messages. This
+//! module performs no ACP-specific work: the adapter consumes the typed errors
+//! and the transport-neutral recovery counters.
+
 use super::exec_support::*;
 use super::{
     ExecRunBackendKind, ExecSettlementMode, ToolRegistry, acquire_executor_rate_limit, annotate_exec_run_response,
@@ -12,19 +23,6 @@ use hashbrown::HashMap;
 use serde_json::{Value, json};
 use std::future::Future;
 use std::time::{Duration, Instant};
-
-
-//! Command-session operations for the unified exec tools.
-//!
-//! Implements `exec_command` session start, `write_stdin` write/poll/wait, and
-//! the shared settle/prune helpers that keep a session's spool consistent with
-//! its terminal state. Session lookup resolves process-local identifiers
-//! against the registry's execution-session store and returns typed
-//! [`ExecSessionNotFound`] and [`ExecSessionLostAfterInput`] errors so the
-//! registry can classify a stale continuation without parsing messages. This
-//! module performs no ACP-specific work: the adapter consumes the typed errors
-//! and the transport-neutral recovery counters.
-};
 
 struct ResolvedExecSession {
     metadata: DiapasonExecSession,

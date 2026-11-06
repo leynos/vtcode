@@ -9,10 +9,10 @@
 //! tool call automatically.
 
 use super::super::types::ToolCallResult;
+use diapason_core::core::threads::ThreadRuntimeHandle;
+use diapason_core::llm::provider::{Message, MessageRole, ToolCall};
 use serde_json::json;
 use std::collections::HashSet;
-use vtcode_core::core::threads::ThreadRuntimeHandle;
-use vtcode_core::llm::provider::{Message, MessageRole, ToolCall};
 
 /// Counts placeholders inserted and results relocated while repairing an
 /// archived tool-call history, plus any front-truncated tool-result prefix.

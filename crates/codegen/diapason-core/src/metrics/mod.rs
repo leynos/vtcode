@@ -39,7 +39,7 @@ pub use discovery_metrics::DiscoveryMetrics;
 pub use execution_metrics::ExecutionMetrics;
 pub use filtering_metrics::FilteringMetrics;
 pub use patch_safety_metrics::{
-    PatchCertificationOutcome, PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics,
+    PatchCertificationOutcome, PatchFailureGuardOutcome, PatchNoOpOutcome, PatchPreconditionOutcome, PatchSafetyMetrics,
 };
 pub use planning_metrics::{PlanValidationRejectionReason, PlanningValidationMetrics};
 pub use sdk_metrics::SdkMetrics;
@@ -957,13 +957,13 @@ impl PrometheusMetricsSnapshot {
         // identifiers can reach the series.
         let _ = writeln!(
             output,
-            "# HELP vtcode_tool_recovery_total Total tool-recovery events recorded by the agent runtime\n\
-             # TYPE vtcode_tool_recovery_total counter"
+            "# HELP diapason_tool_recovery_total Total tool-recovery events recorded by the agent runtime\n\
+             # TYPE diapason_tool_recovery_total counter"
         );
         for event in ToolRecoveryEvent::ALL {
             let _ = writeln!(
                 output,
-                "vtcode_tool_recovery_total{{event=\"{}\"}} {}",
+                "diapason_tool_recovery_total{{event=\"{}\"}} {}",
                 event.as_str(),
                 self.tool_recovery.count(event)
             );
@@ -1456,22 +1456,22 @@ mod tests {
         let series = collector
             .export_prometheus()
             .lines()
-            .skip_while(|line| !line.starts_with("# HELP vtcode_tool_recovery_total"))
+            .skip_while(|line| !line.starts_with("# HELP diapason_tool_recovery_total"))
             .take_while(|line| !line.is_empty())
             .collect::<Vec<_>>()
             .join("\n");
         insta::assert_snapshot!(series, @r###"
-        # HELP vtcode_tool_recovery_total Total tool-recovery events recorded by the agent runtime
-        # TYPE vtcode_tool_recovery_total counter
-        vtcode_tool_recovery_total{event="staged_call"} 1
-        vtcode_tool_recovery_total{event="replaced_call"} 1
-        vtcode_tool_recovery_total{event="interrupted_call"} 1
-        vtcode_tool_recovery_total{event="relocated_result"} 1
-        vtcode_tool_recovery_total{event="repaired_archive"} 1
-        vtcode_tool_recovery_total{event="ambiguous_history"} 1
-        vtcode_tool_recovery_total{event="concurrent_prompt_rejection"} 1
-        vtcode_tool_recovery_total{event="stale_write_stdin_request"} 1
-        vtcode_tool_recovery_total{event="checkpoint_failure"} 1
+        # HELP diapason_tool_recovery_total Total tool-recovery events recorded by the agent runtime
+        # TYPE diapason_tool_recovery_total counter
+        diapason_tool_recovery_total{event="staged_call"} 1
+        diapason_tool_recovery_total{event="replaced_call"} 1
+        diapason_tool_recovery_total{event="interrupted_call"} 1
+        diapason_tool_recovery_total{event="relocated_result"} 1
+        diapason_tool_recovery_total{event="repaired_archive"} 1
+        diapason_tool_recovery_total{event="ambiguous_history"} 1
+        diapason_tool_recovery_total{event="concurrent_prompt_rejection"} 1
+        diapason_tool_recovery_total{event="stale_write_stdin_request"} 1
+        diapason_tool_recovery_total{event="checkpoint_failure"} 1
         "###);
     }
 
@@ -1821,5 +1821,3 @@ mod tests {
         assert!(json.get("discovery").is_some());
     }
 }
-// weave: run 'weave explain crates/codegen/vtcode-core/src/metrics/mod.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-core/src/metrics/mod.rs' for per-hunk detail, 'weave check' to verify your resolution

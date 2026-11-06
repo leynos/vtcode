@@ -913,36 +913,36 @@ mod tests {
         insta::assert_json_snapshot!(payload, @r###"
         {
           "error": {
-            "category": "ResourceNotFound",
-            "circuit_breaker_impact": false,
-            "debug_context": {
-              "attempt": null,
-              "invocation_id": null,
-              "metadata": [],
-              "surface": "tool_registry"
-            },
-            "details": {
-              "next_action": "Start a new exec_command and use the returned session ID.",
-              "reason": "stale_exec_session",
-              "session_id": "run-stale"
-            },
+            "tool_name": "write_stdin",
             "error_type": "ResourceNotFound",
-            "is_recoverable": true,
+            "category": "ResourceNotFound",
             "message": "exec session 'run-stale' not found",
-            "original_error": "exec session 'run-stale' not found",
-            "partial_state_possible": false,
+            "retryable": false,
+            "is_recoverable": true,
             "recovery_suggestions": [
               "Start a new exec_command and use the new active session ID"
             ],
-            "retry_after_ms": null,
             "retry_delay_ms": null,
-            "retryable": false,
+            "retry_after_ms": null,
+            "circuit_breaker_impact": false,
+            "partial_state_possible": false,
             "rollback_performed": false,
-            "stale_exec_session": {
-              "input_delivered": false,
-              "session_id": "run-stale"
+            "debug_context": {
+              "surface": "tool_registry",
+              "attempt": null,
+              "invocation_id": null,
+              "metadata": []
             },
-            "tool_name": "write_stdin"
+            "original_error": "exec session 'run-stale' not found",
+            "details": {
+              "reason": "stale_exec_session",
+              "session_id": "run-stale",
+              "next_action": "Start a new exec_command and use the returned session ID."
+            },
+            "stale_exec_session": {
+              "session_id": "run-stale",
+              "input_delivered": false
+            }
           }
         }
         "###);

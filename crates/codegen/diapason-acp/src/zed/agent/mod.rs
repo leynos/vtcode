@@ -387,7 +387,7 @@ impl ZedAgent {
     ///
     /// Recovery events are agent-scoped rather than workspace-scoped, so a
     /// session that never opened a workspace runtime still reports them.
-    pub(super) fn recovery_metrics(&self) -> Arc<vtcode_core::metrics::MetricsCollector> {
+    pub(super) fn recovery_metrics(&self) -> Arc<diapason_core::metrics::MetricsCollector> {
         self.local_tool_registry.metrics_collector()
     }
 

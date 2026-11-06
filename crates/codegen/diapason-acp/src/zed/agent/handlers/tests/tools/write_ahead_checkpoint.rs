@@ -2,8 +2,8 @@
 use super::*;
 use crate::zed::agent::test_support::{HistorySettingsGuard, lock_history_test_guard};
 use agent_client_protocol::schema::v1::InitializeRequest;
-use std::path::PathBuf;
 use diapason_config::codex::HistoryPersistence;
+use std::path::PathBuf;
 
 /// Makes the configured archive path unusable on the first provider response.
 ///
