@@ -131,9 +131,10 @@ async fn owner_scoped_controller_loads_only_exact_owner_and_cli_remains_unscoped
     assert_eq!(by_id["foreign"]["owner_session_id"], "session-b");
     assert!(by_id["legacy"]["owner_session_id"].is_null());
 
-    let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("unscoped controller");
+    let unscoped =
+        SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
+            .await
+            .expect("unscoped controller");
     let unscoped_ids = unscoped
         .background_status_entries()
         .await
@@ -169,9 +170,10 @@ async fn sibling_owners_keep_distinct_records_for_the_same_agent() {
     )
     .expect("write state");
 
-    let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("unscoped controller");
+    let unscoped =
+        SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
+            .await
+            .expect("unscoped controller");
     let ids = unscoped
         .background_status_entries()
         .await
@@ -249,9 +251,10 @@ async fn unscoped_save_preserves_records_written_by_other_owners_after_load() {
         )],
     );
 
-    let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("unscoped controller");
+    let unscoped =
+        SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
+            .await
+            .expect("unscoped controller");
     assert_eq!(unscoped.background_status_entries().await.len(), 1);
 
     // Another process settles session-a's task and starts one for session-b
@@ -294,9 +297,10 @@ async fn unscoped_save_persists_its_own_newer_state() {
         )],
     );
 
-    let unscoped = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
-        .await
-        .expect("unscoped controller");
+    let unscoped =
+        SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
+            .await
+            .expect("unscoped controller");
     {
         let mut state = unscoped.state.write().await;
         let record = state

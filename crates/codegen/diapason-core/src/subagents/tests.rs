@@ -171,7 +171,7 @@ Run the managed background demo.
 #[tokio::test]
 async fn background_output_tail_reads_without_refreshing_background_state() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".vtcode/state");
+    let state_dir = temp.path().join(".diapason/state");
     std::fs::create_dir_all(&state_dir).expect("state dir");
     let record: PersistedBackgroundRecord = serde_json::from_value(serde_json::json!({
         "id": "background-worker",
@@ -210,7 +210,7 @@ async fn background_output_tail_reads_without_refreshing_background_state() {
     let persisted_before = std::fs::read(&state_path).expect("read persisted state");
 
     let controller = SubagentController::new_with_background_owner(
-        test_controller_config(temp.path().to_path_buf(), VTCodeConfig::default()),
+        test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()),
         Some("session-a"),
     )
     .await

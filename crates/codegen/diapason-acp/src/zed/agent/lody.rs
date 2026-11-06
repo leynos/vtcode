@@ -4,12 +4,12 @@
 use super::task_lifecycle::LifecycleUpdate;
 use crate::acp;
 use chrono::{DateTime, Utc};
-use serde::Serialize;
-use serde_json::{Map, Value};
-use std::collections::HashSet;
 use diapason_core::subagents::{
     BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentStatus, SubagentStatusEntry,
 };
+use serde::Serialize;
+use serde_json::{Map, Value};
+use std::collections::HashSet;
 
 const LODY_EXTENSION_VERSION: u8 = 1;
 pub(super) const LODY_SUBAGENTS_LIST_METHOD: &str = "_lody/subagents/list";

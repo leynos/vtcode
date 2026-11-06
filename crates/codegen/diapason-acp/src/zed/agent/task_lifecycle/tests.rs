@@ -1,12 +1,12 @@
 //! Regression coverage for lifecycle queueing, mapping, and ACP forwarding.
 
 use super::*;
+use diapason_core::metrics::MetricsCollector;
 use std::fmt::Write as FmtWrite;
 use tokio::sync::mpsc;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::{Layer, Registry};
-use diapason_core::metrics::MetricsCollector;
 
 #[derive(Clone, Default)]
 struct LifecycleTraceCapture(Arc<Mutex<Vec<String>>>);

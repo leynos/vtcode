@@ -64,7 +64,7 @@ async fn handle_initialize(
         controller.is_some(),
         controller
             .as_deref()
-            .is_some_and(vtcode_core::subagents::SubagentController::background_subagents_enabled),
+            .is_some_and(diapason_core::subagents::SubagentController::background_subagents_enabled),
     );
     capabilities.prompt_capabilities.embedded_context = true;
     capabilities.prompt_capabilities.image = true;

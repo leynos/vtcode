@@ -5,8 +5,8 @@ use super::lody_support::{
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
-use std::time::Duration;
 use diapason_core::subagents::SpawnAgentRequest;
+use std::time::Duration;
 
 /// A session's management surface must reach grandchildren spawned by its own
 /// children, and must not reach a sibling session's tree.
@@ -48,14 +48,17 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
     agent.vt_config = Some(Box::new(vt_config));
     let agent = Arc::new(agent);
     let (agent_channel, client_channel) = Channel::duplex();
-    let agent_connection = install_handlers(Agent.builder().name("diapason-nested-delegation-test"), Arc::clone(&agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(&agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
+    let agent_connection = install_handlers(
+        Agent.builder().name("diapason-nested-delegation-test"),
+        Arc::clone(&agent),
+    )
+    .connect_with(agent_channel, {
+        let agent = Arc::clone(&agent);
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        }
+    });
     let agent_task = tokio::spawn(agent_connection);
 
     let session_workspace_path = session_workspace.path().to_path_buf();
