@@ -1,3 +1,9 @@
+//! Tool catalogue advertised to Agent Client Protocol (ACP) clients.
+//!
+//! Builds ACP tool definitions from the shared schemas and display titles, and
+//! maps tool names to either a native ACP tool or a locally registered
+//! definition so callers can dispatch lookups uniformly.
+
 use diapason_core::config::constants::tools;
 use diapason_core::llm::provider::ToolDefinition;
 use hashbrown::HashMap;
