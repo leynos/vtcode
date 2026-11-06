@@ -105,6 +105,13 @@ pub(super) fn log_notice_publish_failure(error: &impl std::fmt::Display, session
 
 #[cfg(test)]
 mod tests {
+    //! Covers the fixed-field records that keep operator-sensitive detail out
+    //! of ACP failure logging.
+    //!
+    //! Each test installs its own capture subscriber, so these assertions pin
+    //! the bounded fields a record keeps and the payload text it must never
+    //! carry.
+
     use super::*;
     use std::sync::{Arc, Mutex};
 

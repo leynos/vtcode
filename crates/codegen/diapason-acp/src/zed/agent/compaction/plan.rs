@@ -174,6 +174,13 @@ pub(in crate::zed::agent) struct CompactionCommit<'a> {
 
 #[cfg(test)]
 mod tests {
+    //! Covers compaction trigger selection between the configured threshold
+    //! and the provider admission budget.
+    //!
+    //! Both budgets steer one decision, so these properties pin that the
+    //! tighter applicable budget wins and that a forced admission is reported
+    //! only below the configured threshold.
+
     use super::*;
     use proptest::prelude::*;
 
