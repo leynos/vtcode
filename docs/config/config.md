@@ -559,7 +559,10 @@ instruction_import_max_depth = 5
 - `instruction_files` adds explicit files or globs to the authored-guidance
   bundle. A pattern that cannot be resolved or compiled is reported as a
   warning and skipped, so one bad include does not hide the rest of the
-  workspace guidance.
+  workspace guidance. The warning is captured by the session diagnostics
+  collector even when `debug.enable_tracing` is off and `RUST_LOG` is unset, so
+  a broken include remains available in the session archive when history
+  persistence is enabled.
 - `instruction_excludes` removes matching `AGENTS.md` or `.diapason/rules/`
   files from discovery. Excludes are fail-closed: an invalid exclude pattern
   stops discovery with an error rather than silently loading files that should

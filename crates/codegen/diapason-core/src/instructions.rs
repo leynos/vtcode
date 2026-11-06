@@ -13,6 +13,13 @@ use diapason_commons::walk::build_walker_single_threaded;
 use glob::{Pattern, glob};
 use tracing::warn;
 
+/// Tracing target for instruction-discovery diagnostics.
+///
+/// The default tracing setup captures warning-level events from this target so
+/// a skipped `instruction_files` pattern is recorded even when user-configured
+/// tracing is off.
+pub const INSTRUCTION_DIAGNOSTIC_TARGET: &str = module_path!();
+
 const AGENTS_FILENAME: &str = "AGENTS.md";
 const AGENTS_OVERRIDE_FILENAME: &str = "AGENTS.override.md";
 const CLAUDE_FILENAME: &str = "CLAUDE.md";

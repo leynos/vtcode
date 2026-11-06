@@ -1,7 +1,10 @@
 //! Global error log collector for session diagnostics.
 //!
 //! Captures ERROR-level tracing events into a thread-safe buffer so they can be
-//! appended to the session archive JSON at finalization time.
+//! appended to the session archive JSON at finalization time. Warning-level
+//! events from [`INSTRUCTION_DIAGNOSTIC_TARGET`] are captured too: they report
+//! user-actionable configuration problems that would otherwise be dropped by
+//! the default error-only filter.
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -13,6 +16,17 @@ use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
 use crate::config::constants::output_limits::ERROR_LOG_BUFFER_SIZE_LIMIT_BYTES;
+use crate::instructions::INSTRUCTION_DIAGNOSTIC_TARGET;
+
+/// Decide whether an event belongs in the session archive.
+///
+/// Every ERROR is captured for post-mortem debugging. Warnings from the
+/// instruction loader are captured as well because they describe broken user
+/// configuration rather than internal noise; warnings from other targets stay
+/// out of the archive.
+fn captures_default_diagnostic(level: Level, target: &str) -> bool {
+    level == Level::ERROR || (level == Level::WARN && target == INSTRUCTION_DIAGNOSTIC_TARGET)
+}
 
 /// A single captured error log entry persisted to the session archive.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -109,8 +123,9 @@ where
     S: Subscriber + for<'span> LookupSpan<'span>,
 {
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        let level = *event.metadata().level();
-        if level != Level::ERROR {
+        let metadata = event.metadata();
+        let level = *metadata.level();
+        if !captures_default_diagnostic(level, metadata.target()) {
             return;
         }
 
@@ -141,6 +156,21 @@ mod tests {
             target: "diapason_test".to_string(),
             message: message.to_string(),
         }
+    }
+
+    #[test]
+    fn captures_errors_and_instruction_warnings_only() {
+        assert!(captures_default_diagnostic(Level::ERROR, "diapason_core::anything"));
+        assert!(captures_default_diagnostic(Level::ERROR, INSTRUCTION_DIAGNOSTIC_TARGET));
+        assert!(captures_default_diagnostic(Level::WARN, INSTRUCTION_DIAGNOSTIC_TARGET));
+        assert!(
+            !captures_default_diagnostic(Level::WARN, "diapason_core::somewhere_else"),
+            "unrelated warnings must stay out of the archive"
+        );
+        assert!(
+            !captures_default_diagnostic(Level::INFO, INSTRUCTION_DIAGNOSTIC_TARGET),
+            "the archive records warnings and errors, not informational events"
+        );
     }
 
     #[test]
