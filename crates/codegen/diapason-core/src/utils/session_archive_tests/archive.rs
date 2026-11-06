@@ -263,6 +263,88 @@ async fn resume_from_listing_reuses_existing_archive_path() -> Result<()> {
 
 #[serial_test::serial(session_dir_override)]
 #[tokio::test]
+async fn resume_carries_forward_diagnostics_persisted_before_the_resume() -> Result<()> {
+    use crate::utils::error_log_collector::{ErrorLogCollectorLayer, drain_error_logs};
+    use tracing_subscriber::prelude::*;
+
+    let _settings_lock = lock_history_test_guard().await;
+    let _history_guard = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
+    let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
+
+    // Start from a clean collector so the assertions concern this test's diagnostic only.
+    let _ = drain_error_logs();
+
+    let session_id = reserve_session_archive_identifier("ResumeDiagnostics", None).await?;
+    let metadata = SessionArchiveMetadata::new(
+        "ResumeDiagnostics",
+        "/tmp/resume-diagnostics",
+        "model-a",
+        "provider-a",
+        "light",
+        "medium",
+    );
+    let archive = SessionArchive::new_with_identifier(metadata.clone(), session_id.clone())
+        .await
+        .context("failed to create initial archive")?;
+
+    {
+        let subscriber = tracing_subscriber::registry().with(ErrorLogCollectorLayer);
+        let _dispatch = tracing::subscriber::set_default(subscriber);
+        tracing::error!(target: "diapason_test", "diagnostic captured before resume");
+    }
+
+    let original_path = archive.finalize(
+        vec!["user: first".to_string()],
+        1,
+        Vec::new(),
+        vec![SessionMessage::new(MessageRole::User, "first")],
+    )?;
+
+    let listing = find_session_by_identifier(&session_id)
+        .await?
+        .context("expected archived session listing")?;
+    assert!(
+        listing
+            .snapshot
+            .error_logs
+            .iter()
+            .any(|entry| entry.message.contains("diagnostic captured before resume")),
+        "the first run should persist its diagnostic: {:?}",
+        listing.snapshot.error_logs
+    );
+
+    // The resumed archive overwrites the same path without capturing new
+    // diagnostics, so it must carry the earlier entry forward itself.
+    let resumed = SessionArchive::resume_from_listing(&listing, metadata);
+    let resumed_path = resumed.finalize(
+        vec!["user: second".to_string()],
+        2,
+        Vec::new(),
+        vec![
+            SessionMessage::new(MessageRole::User, "first"),
+            SessionMessage::new(MessageRole::Assistant, "second"),
+        ],
+    )?;
+
+    assert_eq!(resumed_path, original_path);
+    let stored = fs::read_to_string(&resumed_path)
+        .with_context(|| format!("failed to read stored session: {}", resumed_path.display()))?;
+    let snapshot: SessionSnapshot = serde_json::from_str(&stored).context("failed to deserialize stored snapshot")?;
+    assert!(
+        snapshot
+            .error_logs
+            .iter()
+            .any(|entry| entry.message.contains("diagnostic captured before resume")),
+        "resuming must not erase diagnostics persisted by the previous run: {:?}",
+        snapshot.error_logs
+    );
+
+    Ok(())
+}
+
+#[serial_test::serial(session_dir_override)]
+#[tokio::test]
 async fn session_archive_skips_writes_when_history_persistence_is_disabled() -> Result<()> {
     let _settings_lock = lock_history_test_guard().await;
     let _history_guard = HistorySettingsGuard::set(HistoryPersistence::None, None);

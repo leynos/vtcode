@@ -38,6 +38,19 @@ async fn write_private_json_file_async<T: Serialize>(path: &Path, value: &T) -> 
 }
 
 impl SessionArchive {
+    /// Seed the accumulator from diagnostics an earlier run persisted.
+    ///
+    /// Resuming reopens the existing archive path, and the next snapshot
+    /// overwrites it. Seeding keeps diagnostics captured before the resume from
+    /// being erased by that overwrite.
+    pub(super) fn seed_diagnostics(&self, entries: &[ErrorLogEntry]) {
+        let mut accumulator = match self.diagnostics.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        accumulator.merge(entries.iter().cloned());
+    }
+
     /// Drain newly captured diagnostics into this archive's accumulator.
     ///
     /// Every snapshot overwrites the same archive file, so a diagnostic that

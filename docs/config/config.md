@@ -564,7 +564,9 @@ instruction_import_max_depth = 5
   a broken include remains available in the session archive when history
   persistence is enabled. Captured diagnostics accumulate across snapshot
   writes, so the warning is still present in the final archive after later
-  progress snapshots overwrite the file.
+  progress snapshots overwrite the file. Resuming an archived session carries
+  its persisted diagnostics forward, so the first snapshot after a resume does
+  not erase them.
 - `instruction_excludes` removes matching `AGENTS.md` or `.diapason/rules/`
   files from discovery. Excludes are fail-closed: an invalid exclude pattern
   stops discovery with an error rather than silently loading files that should
