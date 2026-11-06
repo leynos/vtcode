@@ -128,6 +128,11 @@ pub(crate) fn parse_chat_response(
 
 #[cfg(test)]
 mod tests {
+    //! Covers the OpenAI-compatible chat response parser.
+    //!
+    //! Providers nest their usage detail differently, so these tests pin the
+    //! fields the parser lifts into the normalized usage contract.
+
     use super::parse_chat_response;
     use serde_json::json;
 
