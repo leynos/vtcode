@@ -559,14 +559,18 @@ instruction_import_max_depth = 5
 - `instruction_files` adds explicit files or globs to the authored-guidance
   bundle. A pattern that cannot be resolved or compiled is reported as a
   warning and skipped, so one bad include does not hide the rest of the
-  workspace guidance. The warning is captured by the session diagnostics
-  collector even when `debug.enable_tracing` is off and `RUST_LOG` is unset, so
-  a broken include remains available in the session archive when history
-  persistence is enabled. Captured diagnostics accumulate across snapshot
-  writes, so the warning is still present in the final archive after later
-  progress snapshots overwrite the file. Resuming an archived session carries
-  its persisted diagnostics forward, so the first snapshot after a resume does
-  not erase them.
+  workspace guidance. With the default filter (no `RUST_LOG`, tracing off) the
+  session diagnostics collector captures that warning, so a broken include
+  remains available in the session archive when history persistence is enabled.
+  Setting `RUST_LOG` replaces the default filter, so an explicit threshold such
+  as `RUST_LOG=error` suppresses the warning before the collector receives it.
+  Captured diagnostics accumulate across snapshot writes, so the warning is
+  still present in the final archive after later progress snapshots overwrite
+  the file. Resuming an archived session carries its persisted diagnostics
+  forward, so the first snapshot after a resume does not erase them. Retention
+  stays bounded by the collector's 10 MiB budget: when it is exceeded the
+  oldest entries are evicted, so an early warning can be missing from a later
+  or resumed snapshot.
 - `instruction_excludes` removes matching `AGENTS.md` or `.diapason/rules/`
   files from discovery. Excludes are fail-closed: an invalid exclude pattern
   stops discovery with an error rather than silently loading files that should

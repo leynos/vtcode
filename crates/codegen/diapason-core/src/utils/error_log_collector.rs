@@ -104,6 +104,11 @@ pub fn drain_error_logs() -> Vec<ErrorLogEntry> {
 /// would exist only in that superseded file and be missing from the final
 /// archive. Accumulating drained entries keeps the whole session's diagnostics
 /// in every snapshot while retaining the collector's byte budget.
+///
+/// Entries stay in capture order and are evicted oldest-first once the byte
+/// budget is exceeded. That budget also applies to entries seeded from a
+/// resumed archive, so new diagnostics can evict persisted ones and the
+/// accumulator remains bounded across resumes.
 #[derive(Debug, Default)]
 pub struct ErrorLogAccumulator {
     buffer: ErrorLogBuffer,
