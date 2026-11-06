@@ -362,10 +362,10 @@ design §§5 and 10; RFC 0001 §§5 and 8.
 Idea: if the same bound decision and enforcement obligations govern every
 execution route, the project can retire competing authorities without creating
 a shell or MCP bypass. The phase is falsified by any dispatch path that
-executes without a current policy generation, valid approval, and available
-required containment. Advance only when every inventoried route passes the
-denial/bypass matrix, policy/state changes invalidate bindings, and no old
-allow path is reachable.
+executes without a current policy generation, a valid approval for any
+applicable review obligation, and available required containment. Advance only
+when every inventoried route passes the denial/bypass matrix, policy/state
+changes invalidate bindings, and no old allow path is reachable.
 
 ### 5.1. Bind decisions to actual execution
 
