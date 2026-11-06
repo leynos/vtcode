@@ -18,12 +18,9 @@ mod transport;
 
 /// Resolve `usage` for the Lody projection with the given profile.
 fn resolved_notification(usage: &Usage, profile: UsageProfile) -> serde_json::Value {
-    let notification = usage_notification(
-        &acp::SessionId::new(Arc::from("session-1")),
-        "model-a",
-        resolve_turn_usage(usage, profile),
-    )
-    .expect("usage notification");
+    let notification =
+        usage_notification(&acp::SessionId::new(Arc::from("session-1")), "model-a", resolve_turn_usage(usage, profile))
+            .expect("usage notification");
     serde_json::from_str(notification.params.get()).expect("usage JSON")
 }
 
