@@ -5,7 +5,7 @@ pull request #13 only. Its required living sections are `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`, `Decision log`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`.
 
-Status: IN PROGRESS (2026-11-03)
+Status: IN PROGRESS (2026-11-05)
 
 ## Purpose / big picture
 
@@ -224,9 +224,39 @@ an archive with ambiguous terminal results is rejected before continuation.
   (exit 0, 40m30s), and `make test` (10,547 passed, 0 failed, 22 skipped, exit
   0). Published over SSH with a force-with-lease pinned to the superseded head
   `66bd7f21d`; `ls-remote` confirmed the new remote head and the tracking ref
-  was refreshed. Because the push creates a new candidate, GitHub regenerates
-  `refs/pull/13/merge` and the duplicate-baseline result from the stale merge
-  tree is superseded rather than carried forward.
+  was refreshed. The push regenerated `refs/pull/13/merge`, but the new merge
+  ref (`3b04355f`) still merges into the same stack base `2396140df`, so the
+  duplicate-baseline result was not superseded; see the corrected diagnosis
+  under Surprises.
+- [x] (2026-11-03) Pushed the plan record as `b83434d1d` after the four gates
+  passed on `dfe463a06`, then investigated the inherited
+  `Check Unmaintained Dependencies` failure on the new merge ref
+  `3b04355f`. The failure reproduces identically on PR #12's own merge base
+  (`2396140df`), so it is parent-owned. The PR #13 branch cannot alter the
+  other parent's contribution to that merge. Watched run `41692498795`
+  (head `b83434d1d`): formatting, Clippy, Markdown, RustSec, MSRV, license,
+  custom invariants, unwrap/expect, workflow security, and Zen governance
+  passed; the unmaintained-dependency job was still running; Windows and
+  Cargo nextest were still running; CodeRabbit remained skipped at
+  `18:18:18Z` ahead of the queued review `9dfbd795`.
+- [x] (2026-11-05) Verified and repaired the four inline findings from the
+  completed review at `b83434d1d`. `exec_sessions.rs` now records
+  `StaleWriteStdinRequest` only when the invoked tool is `write_stdin`, with the
+  tool identity threaded through the wait path; `tool_recovery.rs` extracts
+  `tool_result_group_end` and `completed_tool_call_ids` and recomputes the group
+  after relocation; `handlers/tests/session.rs` is split into
+  `session/concurrent_prompt.rs` (281 lines remain in the parent); and the
+  ExecPlan's registration-order claim is corrected.
+- [x] (2026-11-05) Closed the two pre-merge rows. Added the
+  `execute_tool_round` duplicate-ID integration test in
+  `handlers/tests/prompt.rs` (asserts rejection, unchanged history, unchanged
+  loop counter, and zero staged/replaced/interrupted counters) and three
+  focused `insta` snapshots: the recovery placeholder JSON, the stale-session
+  wire envelope, and the fixed `vtcode_tool_recovery_total` Prometheus series.
+- [x] (2026-11-05) Raised the `unmaintained` job timeout from 20 to 30 minutes
+  with an explanatory comment; scans have taken 14-16 minutes and one job was
+  cancelled at 20m16s. This is an availability fix, not a suppression: the
+  scan still fails on a real baseline violation.
 
 ## Surprises & discoveries
 
@@ -302,16 +332,42 @@ an archive with ambiguous terminal results is rejected before continuation.
   the typed field is therefore lost on that path, so the wire payload must be
   rehydrated before `with_tool_call_context` runs.
 - The `Check Unmaintained Dependencies` failure on `66bd7f21d`
-  (`duplicate baseline finding identity at baseline.entries[33]`) came from a
-  stale synthetic merge tree, not from this branch. GitHub had built
-  `refs/pull/13/merge` against a base tip `2396140df` that merged `0ef2b65de`
-  into `ce140d638`; that merge concatenated both sides' baselines into 35
-  entries with the same `terminfo 0.9.0` finding twice, differing only in the
-  scanner's normalised-away `repo_status.Age`. The live base ref has since
-  returned to `0ef2b65de`, and both a fresh `git merge-tree` and this rebase
-  carry 32 entries with a single `terminfo` entry. The failure is therefore an
-  artefact of the stale merge ref that a new head regenerates, and the branch
-  baseline must not be edited to accommodate a tree that no longer exists.
+  (`duplicate baseline finding identity at baseline.entries[33]`) is a
+  persistent property of the stacked synthetic base, not a stale merge ref that
+  a new head clears. After publishing `b83434d1d`, GitHub rebuilt
+  `refs/pull/13/merge` as `3b04355f`, whose parents are still
+  `2396140df` (the stack base) and the new branch head. `2396140df` merges
+  `0ef2b65de` (parent branch) into `ce140d638` (main). The parent branch's
+  baseline has 32 entries with one `terminfo 0.9.0` at `Age 365`; main's has 34
+  entries with `memmem 0.1.1`, `quick-error 2.0.1`, and `terminfo 0.9.0` at
+  `Age 368`. The textual merge keeps both `terminfo` entries, producing 35
+  entries. The checker normalises `{ "Age": N }` to the identity `"Age"`, so
+  the two entries collide as the same reviewed finding and
+  `_index_baseline_entries` raises the duplicate error at index 33.
+- The failure is therefore inherited from the parent branch's mergeability
+  preview, not introduced by this branch. PR #12 fails its own
+  `Check Unmaintained Dependencies` identically on the same merge base:
+  `error: duplicate baseline finding identity at baseline.entries[33]`, job
+  `125973058233`, run `41652215888`. No edit to this branch's 32-entry baseline
+  can remove an entry contributed by the other parent of the merge; deleting
+  this branch's `terminfo` entry would be wrong-scoped and merge-fragile. The
+  fix belongs to the parent PR: its branch must merge or otherwise reconcile
+  with main `ce140d638` and keep a single reviewed `terminfo 0.9.0` entry
+  (main's `Age 368`), after which the synthetic merge for this PR carries one
+  entry. Owner: the PR #12 lifecycle; next action: update the parent branch
+  from main and reconcile the baseline, then rerun both PRs' checks.
+- The unmaintained-dependency job has a second, independent reliability problem:
+  `.github/workflows/ci.yml:219` sets `timeout-minutes: 20`, while the scan step
+  routinely takes 14-16 minutes. Job `125973058233` (PR #12) took 11m33s;
+  job in run `41664625459` took 15m23s; the successful job in run
+  `41669725353` took 14m12s. On head `b83434d1d`, job `126114928567` started at
+  `18:19:15Z` and was cancelled by the workflow timeout at `18:39:31Z` while
+  still scanning, so the whole CI run is reported `cancelled` even though every
+  other job passed (Cargo nextest at `18:34:07Z`, Windows at `18:28:08Z`).
+  Raising the timeout to 30 minutes is a bounded availability fix, not a
+  suppression: it does not change the scan, its exit code, or the baseline
+  policy. It should be applied after the parent-owned duplicate is reconciled
+  so the check can return a determinate result.
 
 ## Decision log
 
@@ -416,8 +472,9 @@ separates the two.
 
 `crates/codegen/vtcode-acp/src/zed/agent/handlers.rs` stages model tool calls,
 persists a write-ahead session checkpoint, then calls `execute_tool_calls`.
-`session_state.rs` reconstructs archive sessions and currently registers a
-handle before persisting repaired tool-call history. `tool_recovery.rs` stages,
+`session_state.rs` reconstructs archive sessions, repairs their tool-call
+history, checkpoints that repaired history with `CheckpointDurability::Required`,
+and only then registers the resumed session handle. `tool_recovery.rs` stages,
 replaces and repairs tool-call result messages. `ThreadRuntimeHandle` in
 `crates/codegen/vtcode-core/src/core/threads.rs` owns the canonical message
 history lock. A *write-ahead checkpoint* is the durable placeholder recording

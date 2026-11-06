@@ -216,7 +216,9 @@ jobs:
   unmaintained:
     name: Check Unmaintained Dependencies
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The scan step typically takes 14-16 minutes and has hit the previous
+    # 20-minute job limit, reporting a cancelled check instead of a result.
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:

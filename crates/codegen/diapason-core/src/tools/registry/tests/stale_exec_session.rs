@@ -185,3 +185,53 @@ async fn stale_write_stdin_modes_are_resource_not_found_without_partial_state(
 
     Ok(())
 }
+
+/// Keeps unified `exec_command` continuations out of the `write_stdin` counter.
+///
+/// `exec_command` reaches the same session resolver as `write_stdin`, but the
+/// event vocabulary defines [`ToolRecoveryEvent::StaleWriteStdinRequest`] for
+/// the latter only, so the shared resolver must not inflate it.
+#[rstest]
+#[tokio::test]
+async fn stale_unified_exec_continuations_do_not_count_as_write_stdin(
+    #[future] command_session_fixture: Result<CommandSessionFixture>,
+) -> Result<()> {
+    let fixture = command_session_fixture.await?;
+    let registry = &fixture.registry;
+    registry.allow_all_tools().await?;
+    let stale_baseline = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
+    let modes = [
+        json!({"action": "write", "session_id": "run-stale", "chars": "input"}),
+        json!({"action": "poll", "session_id": "run-stale"}),
+        json!({"action": "wait", "session_id": "run-stale", "wait_timeout_seconds": 1}),
+    ];
+
+    for args in modes {
+        let policy = ExecutionPolicySnapshot::default()
+            .with_prevalidated(true)
+            .with_safety_prevalidated(true);
+        let outcome = registry
+            .execute_public_tool_request(ToolExecutionRequest::new(tools::UNIFIED_EXEC, args).with_policy(policy))
+            .await;
+        let error = outcome.error.expect("a stale unified continuation should return a structured error");
+        assert_eq!(error.category, ErrorCategory::ResourceNotFound);
+        assert!(
+            !error.partial_state_possible,
+            "a pre-write stale unified continuation must not claim partial state"
+        );
+    }
+
+    let stale_after = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
+    assert_eq!(
+        stale_after, stale_baseline,
+        "unified exec_command continuations must not increment the write_stdin counter"
+    );
+
+    Ok(())
+}

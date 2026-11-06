@@ -1441,6 +1441,40 @@ mod tests {
         assert_eq!(metrics.breaker_denials, 1);
     }
 
+    /// Fixes the bounded recovery series that dashboards and alerts consume.
+    ///
+    /// Every event is recorded exactly once, so the snapshot pins both the
+    /// fixed label set and its rendering order without introducing a
+    /// nondeterministic value.
+    #[test]
+    fn tool_recovery_prometheus_series_is_stable() {
+        let collector = MetricsCollector::new();
+        for event in ToolRecoveryEvent::ALL {
+            collector.record_tool_recovery(event);
+        }
+
+        let series = collector
+            .export_prometheus()
+            .lines()
+            .skip_while(|line| !line.starts_with("# HELP vtcode_tool_recovery_total"))
+            .take_while(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!(series, @r###"
+        # HELP vtcode_tool_recovery_total Total tool-recovery events recorded by the agent runtime
+        # TYPE vtcode_tool_recovery_total counter
+        vtcode_tool_recovery_total{event="staged_call"} 1
+        vtcode_tool_recovery_total{event="replaced_call"} 1
+        vtcode_tool_recovery_total{event="interrupted_call"} 1
+        vtcode_tool_recovery_total{event="relocated_result"} 1
+        vtcode_tool_recovery_total{event="repaired_archive"} 1
+        vtcode_tool_recovery_total{event="ambiguous_history"} 1
+        vtcode_tool_recovery_total{event="concurrent_prompt_rejection"} 1
+        vtcode_tool_recovery_total{event="stale_write_stdin_request"} 1
+        vtcode_tool_recovery_total{event="checkpoint_failure"} 1
+        "###);
+    }
+
     #[test]
     fn test_prometheus_export() {
         let collector = MetricsCollector::new();

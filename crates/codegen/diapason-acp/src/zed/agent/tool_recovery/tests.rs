@@ -325,3 +325,28 @@ proptest! {
         }
     }
 }
+
+/// Fixes the durable placeholder schema that archives and agents depend on.
+///
+/// The placeholder is a stable structured output: recovery consumers read its
+/// status, state, and next action, so a field rename or reordering is a
+/// contract change rather than an incidental refactor.
+#[test]
+fn incomplete_placeholder_schema_is_stable() {
+    let message = incomplete_tool_result(&call("call-placeholder"));
+
+    assert_eq!(message.role, MessageRole::Tool);
+    assert_eq!(message.tool_call_id.as_deref(), Some("call-placeholder"));
+    let placeholder: serde_json::Value =
+        serde_json::from_str(&message.content.as_text()).expect("placeholder content must be JSON");
+    insta::assert_json_snapshot!(placeholder, @r###"
+    {
+      "message": "Tool execution did not reach a durable terminal result. Its side effects are uncertain.",
+      "next_action": "Verify the current workspace state, then resubmit the tool call only if the requested work is still needed.",
+      "replayed": false,
+      "state": "uncertain",
+      "status": "incomplete",
+      "tool": "apply_patch"
+    }
+    "###);
+}
