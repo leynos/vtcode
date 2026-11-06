@@ -285,6 +285,19 @@ an archive with ambiguous terminal results is rejected before continuation.
   continuations actually use and asserts the typed `ExecSessionNotFound`
   classification plus the unchanged `StaleWriteStdinRequest` counter; the public
   `ResourceNotFound` envelope stays covered by the `write_stdin` mode test.
+- [x] (2026-11-06) Committed the restack repairs and test fixes as `13d7c1a0d`,
+  ran the four gates sequentially on that tree, and published it over SSH with
+  a force-with-lease pinned to the superseded head `b83434d1d`.
+  `make check-fmt`, `make lint`, `make typecheck`, and `make test` all exited 0
+  (10,592 passed, 22 skipped). `ls-remote` confirmed the remote head and the
+  tracking ref was refreshed. Replied to the four inherited inline threads
+  through the comment-token pool with the fixing commit and resolved them;
+  CodeRabbit inspected the source at `13d7c1a0d` and confirmed each disposition
+  as resolved. Posted the pre-merge reconciliation comment at
+  <https://github.com/leynos/vtcode/pull/13#issuecomment-6682622604> for the
+  two stale failed rows. A push-triggered review was paused by CodeRabbit, so
+  queue request `718ceb25` was added for the unconsumed head; no duplicate
+  request was made.
 
 ## Surprises & discoveries
 
