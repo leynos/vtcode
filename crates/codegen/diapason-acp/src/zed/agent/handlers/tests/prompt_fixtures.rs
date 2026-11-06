@@ -5,6 +5,7 @@ use agent_client_protocol::schema::v1::NewSessionRequest;
 mod failure_providers;
 
 pub(super) use failure_providers::FailingCompactionProvider;
+pub(super) use failure_providers::OverBudgetCompactionProvider;
 pub(super) use failure_providers::PartialThenFailProvider;
 pub(super) use failure_providers::PartialThenRateLimitProvider;
 pub(super) use failure_providers::RetryableRateLimitThenAnswerProvider;

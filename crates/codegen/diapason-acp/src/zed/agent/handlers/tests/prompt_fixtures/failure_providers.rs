@@ -15,6 +15,23 @@ impl FailingCompactionProvider {
     }
 }
 
+/// Answers the compaction summary but reports a context window so small that
+/// no adopted history can fit its admission budget.
+///
+/// This is the only fixture that reaches the post-commit over-budget branch:
+/// the history is adopted and then rejected, so the terminal update must
+/// report both the adoption and the failure.
+pub(in crate::zed::agent::handlers) struct OverBudgetCompactionProvider {
+    started: Arc<tokio::sync::Notify>,
+}
+
+impl OverBudgetCompactionProvider {
+    /// Create a provider whose admission budget is a single token.
+    pub(in crate::zed::agent::handlers) fn new(started: Arc<tokio::sync::Notify>) -> Self {
+        Self { started }
+    }
+}
+
 pub(in crate::zed::agent::handlers) struct PartialThenFailProvider;
 
 /// Emits one token and then a provider-supplied 429, so the failure is
@@ -65,6 +82,35 @@ impl LLMProvider for FailingCompactionProvider {
             message: "compaction summary request failed".to_string(),
             metadata: None,
         })
+    }
+}
+
+#[async_trait]
+impl LLMProvider for OverBudgetCompactionProvider {
+    /// Return the provider name used by prompt-routing tests.
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    /// Report the smallest usable context window, so any history exceeds it.
+    fn effective_context_size(&self, _model: &str) -> usize {
+        1
+    }
+
+    /// Return the models this fixture serves.
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    /// Accept every request.
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    /// Answer after signalling that the compaction request started.
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        self.started.notify_one();
+        Ok(LLMResponse::new("wire-model", "over-budget compaction summary"))
     }
 }
 
