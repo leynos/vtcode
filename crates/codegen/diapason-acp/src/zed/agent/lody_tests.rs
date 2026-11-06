@@ -3,10 +3,10 @@
 use std::collections::HashSet;
 
 use chrono::Utc;
-use proptest::prelude::*;
 use diapason_core::subagents::{
     BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentStatus, SubagentStatusEntry,
 };
+use proptest::prelude::*;
 
 use super::lody::{owned_background_ids, owned_child_ids};
 

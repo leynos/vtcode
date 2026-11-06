@@ -9,7 +9,7 @@ the server handshake or transport.
 Launch the server with:
 
 ```bash
-vtcode acp
+diapason acp
 ```
 
 The server negotiates protocol version 1 during `initialize`. Its Lody usage

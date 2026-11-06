@@ -4,12 +4,12 @@
 use crate::acp;
 #[cfg(test)]
 use crate::zed::connection::ConnectionHandle;
+use diapason_core::llm::Usage;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{field, info_span, warn};
-use diapason_core::llm::Usage;
 
 use super::task_lifecycle::bounded_session_correlation;
 

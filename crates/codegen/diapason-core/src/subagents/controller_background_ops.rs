@@ -179,7 +179,7 @@ impl SubagentController {
                 self.config.exec_sessions.snapshot_session(exec_session_id).await.ok()
             };
             let alive = snapshot.as_ref().is_some_and(|snapshot| {
-                matches!(snapshot.lifecycle_state, Some(crate::tools::types::VTCodeSessionLifecycleState::Running))
+                matches!(snapshot.lifecycle_state, Some(crate::tools::types::DiapasonSessionLifecycleState::Running))
             });
             if alive {
                 continue;
