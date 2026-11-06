@@ -4,7 +4,7 @@ use dialoguer::{Select, theme::ColorfulTheme};
 use diapason_core::config::types::AgentConfig as CoreAgentConfig;
 use diapason_core::core::interfaces::session::PlanningEntrySource;
 use diapason_core::core::threads::{ArchivedSessionIntent, SessionQueryScope, list_recent_sessions_in_scope};
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use diapason_core::utils::session_archive::{
     SessionContinuationMetadata, SessionContinuationRecommendedAction, SessionListing, session_workspace_path,
 };

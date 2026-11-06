@@ -1,3 +1,8 @@
+//! Rendering of inline message lines into ratatui spans.
+//!
+//! Converts `MessageLine` segments, prefixes, and tool or PTY content into styled spans
+//! for the session transcript.
+
 use ratatui::{style::Modifier, text::Span};
 
 use super::super::style::{ratatui_pty_style_from_inline, ratatui_style_from_inline};
@@ -46,9 +51,9 @@ pub(crate) fn render_message_spans(
     }
 
     if line.kind == InlineMessageKind::Pty {
-        // Render PTY content with a subdued foreground color instead of the
+        // Render PTY content with a subdued foreground colour instead of the
         // terminal DIM modifier, which can be too faint on many terminals.
-        // Segments that carry their own ANSI color keep it; uncolored segments
+        // Segments that carry their own ANSI colour keep it; uncoloured segments
         // use the configured PTY fallback chain from session styling.
         let pty_fallback = text_fallback_fn(InlineMessageKind::Pty).or(theme.foreground);
         for segment in &line.segments {

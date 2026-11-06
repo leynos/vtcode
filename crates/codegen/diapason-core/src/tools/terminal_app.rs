@@ -1,3 +1,8 @@
+//! Launching external terminal applications and editors.
+//!
+//! Owns terminal setup and teardown, editor command resolution, and the waiting and
+//! non-waiting launch paths used by the `/edit` flow and GUI file opens.
+
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -411,7 +416,7 @@ impl TerminalAppLauncher {
             // after returning from apps like lazygit.
             drain_terminal_events();
 
-            // This prevents ANSI escape codes from external apps' background color requests
+            // This prevents ANSI escape codes from external apps' background colour requests
             // from appearing in the TUI.
             if let Err(error) = io::stdout().execute(Clear(ClearType::All)) {
                 restore_errors.push(format!("failed to clear terminal: {error}"));

@@ -3,7 +3,7 @@
 use super::args::{Cli, ModelCommands};
 use crate::config::models::supported_models_for_provider;
 use crate::llm::factory::{ProviderConfig, create_provider_with_config, get_factory};
-use crate::utils::colors::{bold, cyan, dimmed, green, red, underline, yellow};
+use crate::utils::colours::{bold, cyan, dimmed, green, red, underline, yellow};
 use crate::utils::dot_config::{DotConfig, get_dot_manager, load_user_config};
 use anyhow::{Context, Result, anyhow};
 
@@ -42,12 +42,12 @@ async fn handle_list_models(_cli: &Cli) -> Result<()> {
         let status = if is_current { "✦" } else { "  " };
         let provider_display = format!("{}{}", status, provider_name.to_uppercase());
 
-        let colored_provider = if is_current {
+        let coloured_provider = if is_current {
             green(&bold(&provider_display))
         } else {
             bold(&provider_display)
         };
-        println!("{colored_provider}");
+        println!("{coloured_provider}");
 
         if let Some(models) = supported_models_for_provider(provider_name) {
             let current_model = &config.preferences.default_model;
@@ -55,12 +55,12 @@ async fn handle_list_models(_cli: &Cli) -> Result<()> {
             for model in models.iter().take(3) {
                 let is_current_model = current_model == model;
                 let model_status = if is_current_model { "*" } else { "  " };
-                let colored_model = if is_current_model {
+                let coloured_model = if is_current_model {
                     cyan(&bold(model))
                 } else {
                     cyan(model)
                 };
-                println!("  {model_status}{colored_model}");
+                println!("  {model_status}{coloured_model}");
             }
             if models.len() > 3 {
                 println!("  {} +{} more models", dimmed("..."), models.len() - 3);

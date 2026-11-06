@@ -5,8 +5,8 @@ use super::state::{self, AppMetadata};
 pub fn print_error_report(error: anyhow::Error) {
     let _ = restore_tui();
 
-    if cfg!(debug_assertions) && state::is_color_eyre_enabled() {
-        state::maybe_prepare_color_eyre_hooks();
+    if cfg!(debug_assertions) && state::is_colour_eyre_enabled() {
+        state::maybe_prepare_colour_eyre_hooks();
         let report = color_eyre::eyre::eyre!("{error:#}");
         eprintln!("{report:?}");
         return;

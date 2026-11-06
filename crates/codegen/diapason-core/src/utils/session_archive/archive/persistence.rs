@@ -8,6 +8,7 @@ use super::SessionArchive;
 use crate::config::constants::defaults;
 use crate::core::agent::snapshots::SnapshotTurnDiagnostics;
 use crate::telemetry::perf::PerfSpan;
+use crate::utils::error_log_collector::{ErrorLogEntry, drain_error_logs};
 use crate::utils::session_transcript_norm::normalize_distinct_tools_for_summary;
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -37,9 +38,36 @@ async fn write_private_json_file_async<T: Serialize>(path: &Path, value: &T) -> 
 }
 
 impl SessionArchive {
-    fn build_snapshot(&self, content: SessionSnapshotContent) -> SessionSnapshot {
-        use crate::utils::error_log_collector::drain_error_logs;
+    /// Seed the accumulator from diagnostics an earlier run persisted.
+    ///
+    /// Resuming reopens the existing archive path, and the next snapshot
+    /// overwrites it. Seeding keeps diagnostics captured before the resume from
+    /// being erased by that overwrite.
+    pub(super) fn seed_diagnostics(&self, entries: &[ErrorLogEntry]) {
+        let mut accumulator = match self.diagnostics.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        accumulator.merge(entries.iter().cloned());
+    }
 
+    /// Drain newly captured diagnostics into this archive's accumulator.
+    ///
+    /// Every snapshot overwrites the same archive file, so a diagnostic that
+    /// was drained by an earlier progress write would otherwise disappear from
+    /// the final archive. Accumulating keeps the whole session's diagnostics in
+    /// each snapshot.
+    fn accumulate_diagnostics(&self) -> Vec<ErrorLogEntry> {
+        let drained = drain_error_logs();
+        let mut accumulator = match self.diagnostics.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        accumulator.merge(drained);
+        accumulator.entries()
+    }
+
+    fn build_snapshot(&self, content: SessionSnapshotContent) -> SessionSnapshot {
         SessionSnapshot {
             metadata: self.metadata.clone(),
             started_at: self.started_at,
@@ -49,7 +77,7 @@ impl SessionArchive {
             transcript: content.transcript,
             messages: content.messages,
             progress: content.progress.map(Box::new),
-            error_logs: drain_error_logs(),
+            error_logs: self.accumulate_diagnostics(),
         }
     }
 

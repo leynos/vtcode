@@ -8,7 +8,7 @@ use diapason_core::core::agent::runner::{AgentRunner, RunnerSettings};
 use diapason_core::core::agent::task::{ContextItem, Task};
 use diapason_core::core::agent::types::AgentType;
 use diapason_core::core::threads::ThreadBootstrap;
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 
 use crate::startup::require_full_auto_workspace_trust;
 

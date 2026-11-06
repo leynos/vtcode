@@ -4,7 +4,7 @@
 )]
 use super::super::*;
 use super::helpers::*;
-use crate::tui::core_tui::style::{ratatui_color_from_ansi, ratatui_style_from_inline};
+use crate::tui::core_tui::style::{ratatui_colour_from_ansi, ratatui_style_from_inline};
 
 // ---------------------------------------------------------------------------
 // Common test helpers extracted from repeated patterns
@@ -687,7 +687,7 @@ fn agent_omitted_code_lines_keep_hanging_indent_when_wrapped() {
 }
 
 #[test]
-fn pty_command_header_verb_uses_primary_color_bullet_uses_theme_foreground() {
+fn pty_command_header_verb_uses_primary_colour_bullet_uses_theme_foreground() {
     let mut session = Session::new(InlineTheme::default(), None, VIEW_ROWS);
     session.push_line(
         InlineMessageKind::Pty,
@@ -714,10 +714,10 @@ fn pty_command_header_verb_uses_primary_color_bullet_uses_theme_foreground() {
         bullet_span.style.add_modifier,
     );
 
-    let theme_fg = InlineTheme::default().foreground.map(ratatui_color_from_ansi);
+    let theme_fg = InlineTheme::default().foreground.map(ratatui_colour_from_ansi);
     assert_eq!(bullet_span.style.fg, theme_fg, "bullet fg should be theme foreground");
 
-    // Verb "Ran" → primary/neutral header color + bold
+    // Verb "Ran" → primary/neutral header colour + bold
     let verb_span = spans.iter().find(|s| s.content.as_ref() == "Ran").expect("expected verb span");
     assert!(
         verb_span.style.add_modifier.contains(Modifier::BOLD),
@@ -727,8 +727,8 @@ fn pty_command_header_verb_uses_primary_color_bullet_uses_theme_foreground() {
     let theme_primary = InlineTheme::default()
         .primary
         .or(InlineTheme::default().foreground)
-        .map(ratatui_color_from_ansi);
-    assert_eq!(verb_span.style.fg, theme_primary, "Ran verb should use the header primary color");
+        .map(ratatui_colour_from_ansi);
+    assert_eq!(verb_span.style.fg, theme_primary, "Ran verb should use the header primary colour");
 }
 
 #[test]
@@ -736,7 +736,7 @@ fn pty_command_header_removes_dim_from_all_header_spans() {
     let foreground = AnsiColorEnum::Rgb(RgbColor(0xCC, 0xCC, 0xCC));
     let subdued = AnsiColorEnum::Rgb(RgbColor(0x66, 0x66, 0x66));
     let dimmed = Arc::new(InlineTextStyle {
-        color: Some(subdued),
+        colour: Some(subdued),
         effects: anstyle::Effects::DIMMED,
         ..InlineTextStyle::default()
     });
@@ -811,7 +811,7 @@ fn pty_command_headers_remain_opaque_after_prior_output() {
 }
 
 #[test]
-fn pty_command_header_preserves_status_color_on_bullet() {
+fn pty_command_header_preserves_status_colour_on_bullet() {
     let foreground = AnsiColorEnum::Rgb(RgbColor(0xCC, 0xCC, 0xCC));
     let mut session = Session::new(
         InlineTheme {
@@ -827,7 +827,7 @@ fn pty_command_header_preserves_status_color_on_bullet() {
         vec![InlineSegment {
             text: "• Ran find src/agent -type f".to_string(),
             style: Arc::new(InlineTextStyle {
-                color: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Red)),
+                colour: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Red)),
                 ..InlineTextStyle::default()
             }),
         }],
@@ -866,7 +866,7 @@ fn tool_command_header_does_not_use_accent_tool_body_as_fallback() {
         vec![InlineSegment {
             text: "• Ran find src/agent -type f".to_string(),
             style: Arc::new(InlineTextStyle {
-                color: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Green)),
+                colour: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Green)),
                 ..InlineTextStyle::default()
             }),
         }],
@@ -979,7 +979,7 @@ fn assistant_text_is_brighter_than_pty_output() {
 }
 
 #[test]
-fn pty_ansi_detail_colors_are_attenuated_toward_background() {
+fn pty_ansi_detail_colours_are_attenuated_toward_background() {
     let mut session = Session::new(
         InlineTheme {
             background: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::Black)),
@@ -994,7 +994,7 @@ fn pty_ansi_detail_colors_are_attenuated_toward_background() {
         vec![InlineSegment {
             text: "SUCCESS: Code formatting is correct!".to_string(),
             style: Arc::new(InlineTextStyle {
-                color: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::BrightGreen)),
+                colour: Some(AnsiColorEnum::Ansi(anstyle::AnsiColor::BrightGreen)),
                 ..InlineTextStyle::default()
             }),
         }],
@@ -1005,7 +1005,7 @@ fn pty_ansi_detail_colors_are_attenuated_toward_background() {
         .iter()
         .flat_map(|line| line.line.spans.iter())
         .find(|span| span.content.contains("SUCCESS"))
-        .expect("expected ANSI-colored PTY detail span");
+        .expect("expected ANSI-coloured PTY detail span");
 
     assert_eq!(body_span.style.fg, Some(Color::Rgb(55, 165, 55)));
     assert!(body_span.style.add_modifier.contains(Modifier::DIM));

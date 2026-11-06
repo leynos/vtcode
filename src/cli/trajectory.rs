@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use diapason_core::config::types::AgentConfig as CoreAgentConfig;
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use hashbrown::HashMap;
 use serde::Deserialize;
 use serde_json::Value;

@@ -58,10 +58,21 @@ pub(crate) async fn initialize_tracing() -> Result<bool> {
     Ok(false)
 }
 
+/// Build the default filter used when neither `RUST_LOG` nor
+/// `debug.enable_tracing` enables diagnostics.
+///
+/// Errors from every target reach the session archive. Instruction-loader
+/// warnings are admitted as well, because they report broken user
+/// configuration that would otherwise be dropped silently; unrelated warnings
+/// stay filtered out.
+fn default_diagnostic_filter() -> String {
+    format!("error,{}=warn", diapason_core::instructions::INSTRUCTION_DIAGNOSTIC_TARGET)
+}
+
 pub(crate) fn initialize_default_error_tracing() -> Result<()> {
     use tracing_subscriber::prelude::*;
 
-    let env_filter = tracing_subscriber::EnvFilter::new("error");
+    let env_filter = tracing_subscriber::EnvFilter::new(default_diagnostic_filter());
 
     let init_result = tracing_subscriber::registry()
         .with(env_filter)
@@ -131,13 +142,48 @@ fn trace_filter_directives(targets: &[&str], level: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::trace_filter_directives;
+    use super::{default_diagnostic_filter, trace_filter_directives};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tracing::Subscriber;
+    use tracing_subscriber::layer::{Context, Layer};
 
     #[test]
     fn trace_level_applies_to_every_configured_target() {
         assert_eq!(
             trace_filter_directives(&["diapason", "diapason_core", "diapason_acp"], "debug"),
             "diapason=debug,diapason_core=debug,diapason_acp=debug"
+        );
+    }
+
+    #[test]
+    fn default_diagnostic_filter_captures_instruction_warnings() {
+        static CAPTURED: AtomicUsize = AtomicUsize::new(0);
+        CAPTURED.store(0, Ordering::SeqCst);
+
+        struct CountingLayer;
+        impl<S: Subscriber> Layer<S> for CountingLayer {
+            fn on_event(&self, _event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+                CAPTURED.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        use tracing_subscriber::prelude::*;
+        let filter = tracing_subscriber::EnvFilter::new(default_diagnostic_filter());
+        let subscriber = tracing_subscriber::registry().with(filter).with(CountingLayer);
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::warn!(
+                target: diapason_core::instructions::INSTRUCTION_DIAGNOSTIC_TARGET,
+                "skipped instruction pattern"
+            );
+            tracing::warn!(target: "diapason_core::unrelated", "unrelated warning");
+            tracing::error!(target: "diapason_core::unrelated", "error");
+        });
+
+        assert_eq!(
+            CAPTURED.load(Ordering::SeqCst),
+            2,
+            "the default filter should admit instruction warnings and errors, but not unrelated warnings"
         );
     }
 }

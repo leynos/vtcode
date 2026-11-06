@@ -62,7 +62,7 @@ fn tail_lines(text: &str, limit: usize) -> Vec<&str> {
 
 impl Session {
     pub(crate) fn retint_lines_for_theme_change(&mut self, previous_theme: &super::super::types::InlineTheme) {
-        let previous_colors = [
+        let previous_colours = [
             previous_theme.foreground.as_ref(),
             previous_theme.primary.as_ref(),
             previous_theme.secondary.as_ref(),
@@ -86,10 +86,10 @@ impl Session {
             let mut line_changed = false;
             for segment in &mut line.segments {
                 let mut updated_style = (*segment.style).clone();
-                if let Some(color) = updated_style.color.as_ref()
-                    && previous_colors.iter().flatten().any(|candidate| *candidate == color)
+                if let Some(colour) = updated_style.colour.as_ref()
+                    && previous_colours.iter().flatten().any(|candidate| *candidate == colour)
                 {
-                    updated_style.color = None;
+                    updated_style.colour = None;
                     line_changed = true;
                 }
                 if line_changed {

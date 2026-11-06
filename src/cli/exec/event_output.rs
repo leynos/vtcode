@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use diapason_core::core::agent::task::TaskResults;
 use diapason_core::exec::events::{CommandExecutionStatus, ThreadEvent, ThreadItem, ThreadItemDetails, ToolCallStatus};
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{BufWriter, Write};

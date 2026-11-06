@@ -8,7 +8,7 @@ use crate::tui::core_tui::session::list_panel::{
     ListPanelLayout, SharedListPanelSections, SharedListPanelStyles, SharedSearchField, StaticRowsListPanelModel,
     fixed_section_rows_with_divider, input_styles_from_theme, render_shared_list_panel, rows_to_u16,
 };
-use crate::tui::core_tui::style::{ratatui_color_from_ansi, ratatui_style_from_inline};
+use crate::tui::core_tui::style::{ratatui_colour_from_ansi, ratatui_style_from_inline};
 
 use super::super::types::InlineTextStyle;
 use super::{
@@ -523,7 +523,7 @@ fn trim_redundant_usage_command(description: &str, name: &str) -> String {
 fn slash_highlight_style(session: &Session) -> Style {
     let mut style = Style::default().add_modifier(Modifier::BOLD);
     if let Some(primary) = session.core.theme.primary.or(session.core.theme.secondary) {
-        style = style.fg(ratatui_color_from_ansi(primary));
+        style = style.fg(ratatui_colour_from_ansi(primary));
     }
     style
 }
@@ -531,7 +531,7 @@ fn slash_highlight_style(session: &Session) -> Style {
 fn slash_name_style(session: &Session) -> Style {
     let style = InlineTextStyle::default()
         .bold()
-        .with_color(session.core.theme.primary.or(session.core.theme.foreground));
+        .with_colour(session.core.theme.primary.or(session.core.theme.foreground));
     ratatui_style_from_inline(&style, session.core.theme.foreground)
 }
 

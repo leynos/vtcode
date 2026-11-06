@@ -76,6 +76,40 @@ pub struct ConfigLayerLoadError {
     pub message: String,
 }
 
+/// Configuration keys that accept a British spelling alias, as
+/// `(parent table, alias, canonical wire name)`.
+const CONFIG_KEY_ALIASES: &[(&str, &str, &str)] = &[
+    ("ui", "safe_colours_only", "safe_colors_only"),
+    ("ui", "colour_scheme_mode", "color_scheme_mode"),
+];
+
+/// Rewrite British spelling aliases in one layer to their canonical wire names.
+///
+/// Serde treats each alias as an alternative name for the same field, so two
+/// keys for one field in a single table are a duplicate-field error. Layers are
+/// merged as TOML before deserialization, which means a lower layer using the
+/// canonical name and a higher layer using the alias would otherwise produce
+/// exactly that duplicate and abort the load instead of applying precedence.
+/// Normalising each layer before the merge lets the higher layer override the
+/// lower one under the canonical key. When a single layer sets both spellings,
+/// both keys are kept so deserialization still reports the conflict.
+fn normalise_config_aliases(config: &mut TomlValue) {
+    let TomlValue::Table(root) = config else {
+        return;
+    };
+    for (table, alias, canonical) in CONFIG_KEY_ALIASES {
+        let Some(TomlValue::Table(section)) = root.get_mut(*table) else {
+            continue;
+        };
+        if section.contains_key(*canonical) {
+            continue;
+        }
+        if let Some(value) = section.remove(*alias) {
+            section.insert((*canonical).to_owned(), value);
+        }
+    }
+}
+
 /// A single layer of configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigLayerEntry {
@@ -93,7 +127,8 @@ pub struct ConfigLayerEntry {
 
 impl ConfigLayerEntry {
     /// Create a new configuration layer entry.
-    pub(crate) fn new(source: ConfigLayerSource, config: TomlValue) -> Self {
+    pub(crate) fn new(source: ConfigLayerSource, mut config: TomlValue) -> Self {
+        normalise_config_aliases(&mut config);
         let metadata = ConfigLayerMetadata {
             name: source.label(),
             version: fingerprint_toml_value(&config),
@@ -203,5 +238,79 @@ impl ConfigLayerStack {
     /// Get all layers in the stack.
     pub fn layers(&self) -> &[ConfigLayerEntry] {
         &self.layers
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::loader::DiapasonConfig;
+    use crate::root::ColourSchemeMode;
+
+    fn layer(source: ConfigLayerSource, content: &str) -> ConfigLayerEntry {
+        ConfigLayerEntry::new(source, toml::from_str(content).expect("valid test toml"))
+    }
+
+    fn user_layer(content: &str) -> ConfigLayerEntry {
+        layer(
+            ConfigLayerSource::User {
+                file: PathBuf::from("/home/u/.config/diapason/config.toml"),
+            },
+            content,
+        )
+    }
+
+    fn workspace_layer(content: &str) -> ConfigLayerEntry {
+        layer(ConfigLayerSource::Workspace { file: PathBuf::from("/ws/config.toml") }, content)
+    }
+
+    #[test]
+    fn higher_layer_alias_overrides_lower_layer_canonical_key() {
+        let mut stack = ConfigLayerStack::default();
+        stack.push(user_layer("[ui]\ncolor_scheme_mode = \"dark\"\nsafe_colors_only = false"));
+        stack.push(workspace_layer("[ui]\ncolour_scheme_mode = \"light\"\nsafe_colours_only = true"));
+
+        let (effective, origins) = stack.effective_config_with_origins();
+        let config: DiapasonConfig = effective.try_into().expect("cross-layer aliases should merge");
+        assert_eq!(
+            config.ui.colour_scheme_mode,
+            ColourSchemeMode::Light,
+            "the higher layer's British alias should override the lower layer's canonical key"
+        );
+        assert!(config.ui.safe_colours_only, "the higher layer's British alias should override the lower layer");
+        assert!(
+            origins.contains_key("ui.color_scheme_mode"),
+            "origins should record the canonical colour-scheme path"
+        );
+        assert!(origins.contains_key("ui.safe_colors_only"), "origins should record the canonical safe-colours path");
+        assert!(!origins.contains_key("ui.colour_scheme_mode"), "origins should not record the alias path");
+        assert!(!origins.contains_key("ui.safe_colours_only"), "origins should not record the alias path");
+
+        let without_origins: DiapasonConfig = stack
+            .effective_config_without_origins()
+            .try_into()
+            .expect("cross-layer aliases should merge without origin tracking");
+        assert_eq!(without_origins.ui.colour_scheme_mode, ColourSchemeMode::Light);
+        assert!(without_origins.ui.safe_colours_only);
+    }
+
+    #[test]
+    fn alias_only_layer_is_normalised_to_canonical_key() {
+        let entry = workspace_layer("[ui]\nsafe_colours_only = true\ncolour_scheme_mode = \"dark\"");
+        let ui = entry.config.get("ui").and_then(TomlValue::as_table).expect("ui table");
+        assert!(ui.contains_key("safe_colors_only"), "the alias should be rewritten to the canonical key");
+        assert!(ui.contains_key("color_scheme_mode"), "the alias should be rewritten to the canonical key");
+        assert!(!ui.contains_key("safe_colours_only"), "the alias key should not survive normalisation");
+        assert!(!ui.contains_key("colour_scheme_mode"), "the alias key should not survive normalisation");
+    }
+
+    #[test]
+    fn both_spellings_in_one_layer_remain_a_duplicate_field_error() {
+        let mut stack = ConfigLayerStack::default();
+        stack.push(workspace_layer("[ui]\nsafe_colors_only = true\nsafe_colours_only = false"));
+
+        let (effective, _) = stack.effective_config_with_origins();
+        let result: Result<DiapasonConfig, _> = effective.try_into();
+        assert!(result.is_err(), "both spellings in one layer should still be rejected as duplicate aliases");
     }
 }

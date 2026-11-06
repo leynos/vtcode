@@ -21,7 +21,7 @@ pub struct LocalAgentEntry {
     pub id: String,
     pub display_label: String,
     pub agent_name: String,
-    pub color: Option<String>,
+    pub colour: Option<String>,
     pub kind: LocalAgentKind,
     pub status: String,
     pub summary: Option<String>,

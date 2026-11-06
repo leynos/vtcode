@@ -13,6 +13,13 @@ use diapason_commons::walk::build_walker_single_threaded;
 use glob::{Pattern, glob};
 use tracing::warn;
 
+/// Tracing target for instruction-discovery diagnostics.
+///
+/// The default tracing setup captures warning-level events from this target so
+/// a skipped `instruction_files` pattern is recorded even when user-configured
+/// tracing is off.
+pub const INSTRUCTION_DIAGNOSTIC_TARGET: &str = module_path!();
+
 const AGENTS_FILENAME: &str = "AGENTS.md";
 const AGENTS_OVERRIDE_FILENAME: &str = "AGENTS.override.md";
 const CLAUDE_FILENAME: &str = "CLAUDE.md";
@@ -800,9 +807,26 @@ async fn expand_instruction_patterns(
     let mut seen = HashSet::new();
 
     for pattern in patterns {
-        let resolved = resolve_pattern(pattern, project_root, home_dir).await?;
-        let glob_matches: Vec<PathBuf> = glob(&resolved)
-            .with_context(|| format!("Failed to expand instruction pattern `{pattern}`"))?
+        // Extra include patterns are additive, so one that cannot be resolved
+        // or compiled is reported and skipped. Propagating it would abort the
+        // whole discovery, and the appendix loader turns that error into
+        // `None`, silently dropping otherwise discoverable workspace
+        // instructions. Excludes stay fail-closed in `ExclusionMatcher`.
+        let resolved = match resolve_pattern(pattern, project_root, home_dir).await {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                warn!("Skipping instruction pattern `{pattern}`: {err:#}");
+                continue;
+            }
+        };
+        let glob_paths = match glob(&resolved) {
+            Ok(paths) => paths,
+            Err(err) => {
+                warn!("Skipping instruction pattern `{pattern}`: {err:#}");
+                continue;
+            }
+        };
+        let glob_matches: Vec<PathBuf> = glob_paths
             .filter_map(|entry| match entry {
                 Ok(path) => Some(path),
                 Err(err) => {
@@ -1469,6 +1493,49 @@ mod tests {
 
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].path.file_name().and_then(|value| value.to_str()).unwrap_or_default(), "AGENTS.md");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unresolved_extra_pattern_does_not_suppress_workspace_sources() -> Result<()> {
+        let workspace = tempdir()?;
+        let project_root = workspace.path();
+        write_doc(project_root, "root agents")?;
+        write_rule(&project_root.join("docs"), "extra.md", "# Extra\n- extra rule\n")?;
+
+        // `~/...` cannot be resolved without a home directory. It must be
+        // skipped without aborting discovery and without discarding the other
+        // include pattern or the workspace scan.
+        let extra = vec!["~/missing/agents.md".to_string(), "docs/extra.md".to_string()];
+        let options = InstructionDiscoveryOptions {
+            extra_patterns: &extra,
+            ..default_options(project_root, project_root, None, &[])
+        };
+        let sources = discover_instruction_sources(&options).await?;
+
+        let labels = sources.iter().map(instruction_source_label).collect::<Vec<_>>();
+        assert_eq!(labels, vec!["custom extra instructions", "workspace AGENTS"]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unresolved_exclude_pattern_stays_fail_closed() -> Result<()> {
+        let workspace = tempdir()?;
+        let project_root = workspace.path();
+        write_doc(project_root, "root agents")?;
+
+        let exclude = vec!["~/missing/agents.md".to_string()];
+        let options = InstructionDiscoveryOptions {
+            exclude_patterns: &exclude,
+            ..default_options(project_root, project_root, None, &[])
+        };
+
+        let err = discover_instruction_sources(&options)
+            .await
+            .expect_err("unresolved exclude must fail closed");
+        assert!(format!("{err:#}").contains("without a home directory"), "unexpected error: {err:#}");
 
         Ok(())
     }

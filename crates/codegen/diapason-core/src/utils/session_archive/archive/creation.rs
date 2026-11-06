@@ -72,7 +72,11 @@ impl SessionArchive {
     /// The supplied metadata becomes the metadata for subsequent snapshots;
     /// the original start time is retained from the listing.
     pub fn resume_from_listing(listing: &SessionListing, metadata: SessionArchiveMetadata) -> Self {
-        Self::from_path(listing.path.clone(), metadata, listing.snapshot.started_at)
+        let archive = Self::from_path(listing.path.clone(), metadata, listing.snapshot.started_at);
+        // The resumed archive overwrites the same file, so carry forward the
+        // diagnostics the previous run persisted instead of starting empty.
+        archive.seed_diagnostics(&listing.snapshot.error_logs);
+        archive
     }
 
     /// Create a forked session from an existing session snapshot.

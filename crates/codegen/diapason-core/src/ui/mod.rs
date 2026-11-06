@@ -38,8 +38,8 @@ pub mod tui_mode;
 /// User confirmation dialogs.
 pub mod user_confirmation;
 
-pub use diapason_ui::tui::ui::FileColorizer;
-pub use git_config::GitColorConfig;
+pub use diapason_ui::tui::ui::FileColourizer;
+pub use git_config::GitColourConfig;
 pub use markdown::*;
 pub use search::*;
 pub use slash::*;

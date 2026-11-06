@@ -12,5 +12,8 @@
   [roadmap](./project/diapason-shell-policy-roadmap.md) tracks feasibility and
   delivery.
 - [Testing](./development/testing.md)
+- [Instruction discovery boundary](./development/instruction-discovery.md)
 - [Configuration field reference](./config/CONFIG_FIELD_REFERENCE.md)
 - [Documentation style guide](./documentation-style-guide.md)
+- [0.157.0 release notes](./releases/0.157.0.md) - Breaking API renames and
+  migration actions.

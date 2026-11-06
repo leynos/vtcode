@@ -1,3 +1,8 @@
+//! Tests for incremental system prompt construction and caching.
+//!
+//! Exercises prompt reuse, base-prompt hashing, and instruction-appendix discovery
+//! against temporary workspaces.
+
 use super::*;
 
 fn test_context() -> SystemPromptContext {
@@ -77,6 +82,38 @@ async fn test_instruction_appendix_uses_explicit_directory() {
     assert!(prompt.contains("nested rule"));
     assert!(!prompt.contains("[Runtime Context]"));
     assert!(!prompt.contains("Time (UTC):"));
+}
+
+#[tokio::test]
+async fn test_instruction_appendix_uses_explicit_home() {
+    // The `None` case above disables user-scope discovery. This covers the
+    // positive contract: an explicit home contributes its user instructions to
+    // the assembled prompt alongside the workspace instructions.
+    let home = tempfile::TempDir::new().expect("home");
+    let user_config = home.path().join(".config/diapason");
+    std::fs::create_dir_all(&user_config).expect("create user config");
+    std::fs::write(user_config.join("AGENTS.md"), "user home rule").expect("write user doc");
+
+    let prompt_builder = IncrementalSystemPrompt::with_instruction_home(Some(home.path().to_path_buf()));
+    let workspace = tempfile::TempDir::new().expect("workspace");
+    std::fs::write(workspace.path().join(".git"), "gitdir: /tmp/git").expect("write git");
+    std::fs::write(workspace.path().join("AGENTS.md"), "root rule").expect("write root");
+
+    let config = diapason_config::core::AgentConfig { instruction_max_bytes: 4096, ..Default::default() };
+
+    let context = SystemPromptContext {
+        active_instruction_directory: Some(workspace.path().to_path_buf()),
+        ..test_context()
+    };
+
+    let prompt = prompt_builder
+        .get_system_prompt("Stable base prompt", 1, context.hash(), &context, Some(&config))
+        .await;
+
+    assert!(prompt.contains("~/.config/diapason/AGENTS.md (user AGENTS)"));
+    assert!(prompt.contains("AGENTS.md (workspace AGENTS)"));
+    assert!(prompt.contains("user home rule"));
+    assert!(prompt.contains("root rule"));
 }
 
 #[tokio::test]

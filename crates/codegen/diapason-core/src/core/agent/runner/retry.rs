@@ -2,7 +2,7 @@ use super::AgentRunner;
 use crate::core::agent::task::{ContextItem, Task, TaskResults};
 use crate::error::{DiapasonError, ErrorCode, Result as DiapasonResult};
 use crate::retry::{RetryEvent, RetryPolicy, run_with_retry};
-use crate::utils::colors::style;
+use crate::utils::colours::style;
 use tracing::{info, warn};
 
 /// Per-retry-loop context for the agent runner. Held by `&mut` inside

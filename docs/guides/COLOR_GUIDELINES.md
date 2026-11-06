@@ -1,6 +1,6 @@
-# Terminal Color Guidelines
+# Terminal Colour Guidelines
 
-Diapason implements terminal color standards for accessibility, portability,
+Diapason implements terminal colour standards for accessibility, portability,
 and user preference compliance.
 
 ## Standards Implemented
@@ -9,17 +9,19 @@ and user preference compliance.
 
 Diapason respects the [NO_COLOR standard](https://no-color.org/):
 
-- When `NO_COLOR` environment variable is set (and not empty), ANSI color
+- When `NO_COLOR` environment variable is set (and not empty), ANSI colour
   output is suppressed
-- The `--no-color` CLI flag also disables colors
+- The `--no-colour` CLI flag (with `--no-color` retained as an alias) also
+  disables colour output
 - User configuration can override `NO_COLOR` per the standard
 
+<!-- tested-example: terminal-colour-disable -->
 ```bash
-# Disable colors via environment
+# Disable colours via environment
 NO_COLOR=1 diapason
 
-# Disable colors via CLI flag
-diapason --no-color
+# Disable colours via CLI flag
+diapason --no-colour
 ```
 
 ### Minimum Contrast (Ghostty-inspired)

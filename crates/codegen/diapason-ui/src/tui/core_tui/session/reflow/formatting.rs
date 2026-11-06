@@ -1,3 +1,8 @@
+//! Formatting helpers for reflowed transcript lines.
+//!
+//! Builds dividers and justifies wrapped message lines, applying styling for todo items,
+//! lists, diffs, and fenced code blocks.
+
 use ratatui::prelude::*;
 use unicode_width::UnicodeWidthStr;
 
@@ -146,8 +151,8 @@ impl Session {
             return false;
         }
 
-        let has_bg_color = line.spans.iter().any(|span| span.style.bg.is_some());
-        if !has_bg_color {
+        let has_bg_colour = line.spans.iter().any(|span| span.style.bg.is_some());
+        if !has_bg_colour {
             return false;
         }
 

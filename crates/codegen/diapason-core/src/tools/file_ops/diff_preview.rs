@@ -148,7 +148,7 @@ pub fn build_diff_preview(path: &str, before: Option<&str>, after: &str) -> Valu
         },
     );
     // Tool responses carry a plain unified diff. The terminal/UI renderers
-    // apply colors, gutters, and syntax highlighting after parsing the diff;
+    // apply colours, gutters, and syntax highlighting after parsing the diff;
     // embedding ANSI here would hide hunk markers and line prefixes from that
     // parser and make apply_patch previews fall back to raw text.
     let formatted = strip_ansi(&diff_bundle.formatted);

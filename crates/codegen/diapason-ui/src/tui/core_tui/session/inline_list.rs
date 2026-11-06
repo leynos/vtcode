@@ -1,3 +1,8 @@
+//! Reusable inline list widget for TUI overlays and transcripts.
+//!
+//! Provides row rendering, selection padding, and scroll options shared by the
+//! session's inline list surfaces.
+
 use crate::tui::config::constants::ui;
 use ratatui::{
     prelude::*,
@@ -22,7 +27,7 @@ impl InlineListRow {
             for span in &mut line.spans {
                 // `Style::patch` only adds modifiers, so a pre-existing `DIM`
                 // (used by badge/selectable/detail styles) would survive and
-                // mute the highlight's accent color. Strip it so the selected
+                // mute the highlight's accent colour. Strip it so the selected
                 // row pops with the full accent.
                 span.style = span.style.patch(style).remove_modifier(Modifier::DIM);
             }

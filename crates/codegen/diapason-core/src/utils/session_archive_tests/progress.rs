@@ -271,3 +271,89 @@ async fn durable_checkpoint_rewrites_history_within_the_same_turn() -> Result<()
     assert_eq!(snapshot.messages, completed_messages);
     Ok(())
 }
+
+#[serial_test::serial(session_dir_override)]
+#[tokio::test]
+async fn instruction_warning_survives_progress_and_final_snapshots() -> Result<()> {
+    use crate::instructions::{
+        INSTRUCTION_DIAGNOSTIC_TARGET, InstructionDiscoveryOptions, discover_instruction_sources,
+    };
+    use crate::utils::error_log_collector::{ErrorLogCollectorLayer, drain_error_logs};
+    use tracing_subscriber::filter::Targets;
+    use tracing_subscriber::prelude::*;
+
+    let _settings_lock = lock_history_test_guard().await;
+    let _history_guard = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp_dir = tempfile::tempdir().context("failed to create temp dir")?;
+    let _guard = EnvGuard::set(SESSION_DIR_ENV, temp_dir.path());
+
+    // Start from a clean collector so the assertions concern this test's warning only.
+    let _ = drain_error_logs();
+
+    let metadata =
+        SessionArchiveMetadata::new("Diagnostics", "/tmp/diagnostics", "model", "provider", "dark", "medium");
+    let archive = SessionArchive::new(metadata, None).await?;
+
+    // Mirror the production default filter: errors from everywhere, plus
+    // warnings from the instruction loader. `Targets` expresses the same
+    // directives as the binary's `EnvFilter` without enabling that feature in
+    // this crate.
+    let filter = Targets::new()
+        .with_default(tracing::Level::ERROR)
+        .with_target(INSTRUCTION_DIAGNOSTIC_TARGET, tracing::Level::WARN);
+    let subscriber = tracing_subscriber::registry().with(filter).with(ErrorLogCollectorLayer);
+    let _dispatch = tracing::subscriber::set_default(subscriber);
+
+    let workspace = temp_dir.path().join("workspace");
+    fs::create_dir_all(&workspace)?;
+    let invalid_patterns = vec!["[unterminated".to_string()];
+    discover_instruction_sources(&InstructionDiscoveryOptions {
+        current_dir: &workspace,
+        project_root: &workspace,
+        home_dir: None,
+        extra_patterns: &invalid_patterns,
+        fallback_filenames: &[],
+        exclude_patterns: &[],
+        match_paths: &[],
+        import_max_depth: 5,
+    })
+    .await?;
+
+    let path = archive.persist_progress(SessionProgressArgs {
+        total_messages: 1,
+        distinct_tools: Vec::new(),
+        messages: vec![SessionMessage::new(MessageRole::User, "check diagnostics")],
+        recent_messages: Vec::new(),
+        turn_number: 1,
+        token_usage: None,
+        max_context_tokens: None,
+        loaded_skills: None,
+        turn_diagnostics: None,
+    })?;
+    let progress: SessionSnapshot =
+        serde_json::from_str(&fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?)
+            .context("parse progress snapshot")?;
+    assert!(
+        progress
+            .error_logs
+            .iter()
+            .any(|entry| entry.message.contains("Skipping instruction pattern")),
+        "the progress snapshot should record the skipped instruction pattern: {:?}",
+        progress.error_logs
+    );
+
+    let final_path = archive.finalize(Vec::new(), 1, Vec::new(), Vec::new())?;
+    let finalized: SessionSnapshot = serde_json::from_str(
+        &fs::read_to_string(&final_path).with_context(|| format!("failed to read {}", final_path.display()))?,
+    )
+    .context("parse final snapshot")?;
+    assert!(
+        finalized
+            .error_logs
+            .iter()
+            .any(|entry| entry.message.contains("Skipping instruction pattern")),
+        "the final archive must retain warnings captured before the progress write was superseded: {:?}",
+        finalized.error_logs
+    );
+    Ok(())
+}

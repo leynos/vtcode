@@ -9,7 +9,7 @@ use crate::tui::core_tui::session::{
     inline_list::{InlineListRow, selection_padding},
     list_panel::SharedListWidgetModel,
 };
-use crate::tui::core_tui::style::ratatui_color_from_ansi;
+use crate::tui::core_tui::style::ratatui_colour_from_ansi;
 use crate::tui::core_tui::types::LocalAgentEntry;
 use ratatui::widgets::{Clear, Fill, Paragraph, Wrap};
 use tracing::warn;
@@ -293,19 +293,19 @@ fn local_agents_divider_style(session: &Session, selected_index: Option<usize>, 
     let Some(entry) = selected_index.and_then(|index| entries.get(index)) else {
         return fallback;
     };
-    let Some(color_spec) = entry.color.as_deref().filter(|value| !value.trim().is_empty()) else {
+    let Some(colour_spec) = entry.colour.as_deref().filter(|value| !value.trim().is_empty()) else {
         return fallback;
     };
 
     let parser = ThemeConfigParser::default();
-    let Some(parsed) = parser.parse_flexible(color_spec).ok() else {
+    let Some(parsed) = parser.parse_flexible(colour_spec).ok() else {
         return fallback;
     };
-    let Some(color) = parsed.get_bg_color().or(parsed.get_fg_color()) else {
+    let Some(colour) = parsed.get_bg_color().or(parsed.get_fg_color()) else {
         return fallback;
     };
 
-    fallback.fg(ratatui_color_from_ansi(color))
+    fallback.fg(ratatui_colour_from_ansi(colour))
 }
 
 #[cfg(test)]
@@ -319,7 +319,7 @@ mod tests {
             id: "thread-1".to_string(),
             display_label: "rust-engineer".to_string(),
             agent_name: "rust-engineer".to_string(),
-            color: Some("cyan".to_string()),
+            colour: Some("cyan".to_string()),
             kind: LocalAgentKind::Delegated,
             status: status.to_string(),
             summary: Some("Reviewing the workspace".to_string()),

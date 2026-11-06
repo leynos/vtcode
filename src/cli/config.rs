@@ -1,7 +1,7 @@
 use anyhow::Result;
 use diapason_core::cli::args::{ConfigCommand, ConfigResetArgs};
 use diapason_core::config::{ConfigReadRequest, ConfigResetRequest, ConfigService, ConfigWriteTarget, DiapasonConfig};
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use std::path::Path;
 
 /// Handle the config command

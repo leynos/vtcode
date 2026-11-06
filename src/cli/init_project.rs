@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use diapason_commons::walk::build_walker_single_threaded;
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use diapason_core::utils::file_utils::ensure_dir_exists;
 use diapason_core::{ProjectData, SimpleProjectManager};
 use std::path::Path;

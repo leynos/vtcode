@@ -1,3 +1,8 @@
+//! rio-vt-backed screen state for PTY sessions.
+//!
+//! Wraps the terminal emulator so the PTY manager can feed output chunks, resize the
+//! grid, and capture plain-text screen snapshots.
+
 use diapason_config::constants::defaults::DEFAULT_PTY_SCROLLBACK_LINES;
 use portable_pty::PtySize;
 use rio_vt::ansi::CursorShape;
@@ -83,7 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn backend_handles_ansi_colors() {
+    fn backend_handles_ansi_colours() {
         let size = test_size();
         let mut state = PtyScreenState::new(size, 100);
         state.process(b"\x1B[1;31mcolored\x1B[0m");

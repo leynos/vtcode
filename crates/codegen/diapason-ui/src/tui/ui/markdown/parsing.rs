@@ -1,3 +1,8 @@
+//! Markdown event parsing for terminal rendering.
+//!
+//! Translates `pulldown-cmark` events into styled `MarkdownLine` output, including lists,
+//! links, tables, and file-path detection.
+
 use super::code_blocks::CodeBlockState;
 use super::links::{
     extract_hidden_location_suffix, label_segments_have_location_suffix, should_render_link_destination,
@@ -589,7 +594,7 @@ pub(crate) fn trim_trailing_blank_lines(lines: &mut Vec<MarkdownLine>) {
 pub(crate) fn inline_code_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
     let mut style = base_style.bold();
     if should_apply_markdown_accent(base_style, theme_styles)
-        && let Some(color) = choose_markdown_accent(
+        && let Some(colour) = choose_markdown_accent(
             base_style,
             &[
                 theme_styles.secondary,
@@ -599,7 +604,7 @@ pub(crate) fn inline_code_style(theme_styles: &ThemeStyles, base_style: Style) -
             ],
         )
     {
-        style = style.fg_color(Some(color));
+        style = style.fg_color(Some(colour));
     }
     style
 }
@@ -609,7 +614,7 @@ fn file_link_style(current: Style, theme_styles: &ThemeStyles, base_style: Style
     let base_fg = base_style.get_fg_color();
     let current_fg = style.get_fg_color();
     if (current_fg.is_none() || current_fg == base_fg)
-        && let Some(color) = choose_markdown_accent(
+        && let Some(colour) = choose_markdown_accent(
             base_style,
             &[
                 theme_styles.primary,
@@ -619,7 +624,7 @@ fn file_link_style(current: Style, theme_styles: &ThemeStyles, base_style: Style
             ],
         )
     {
-        style = style.fg_color(Some(color));
+        style = style.fg_color(Some(colour));
     }
     style.underline()
 }
@@ -656,7 +661,7 @@ fn strong_style(current: Style, theme_styles: &ThemeStyles, base_style: Style) -
 
 fn markdown_bold_accent_style(mut style: Style, theme_styles: &ThemeStyles, base_style: Style) -> Style {
     if should_apply_markdown_accent(base_style, theme_styles)
-        && let Some(color) = choose_markdown_accent(
+        && let Some(colour) = choose_markdown_accent(
             base_style,
             &[
                 theme_styles.primary,
@@ -666,7 +671,7 @@ fn markdown_bold_accent_style(mut style: Style, theme_styles: &ThemeStyles, base
             ],
         )
     {
-        style = style.fg_color(Some(color));
+        style = style.fg_color(Some(colour));
     }
     style
 }
@@ -679,7 +684,7 @@ fn choose_markdown_accent(base_style: Style, candidates: &[Style]) -> Option<ans
     let base_fg = base_style.get_fg_color();
     candidates
         .iter()
-        .find_map(|candidate| candidate.get_fg_color().filter(|color| base_fg != Some(*color)))
+        .find_map(|candidate| candidate.get_fg_color().filter(|colour| base_fg != Some(*colour)))
 }
 
 fn rebuild_list_continuation_prefix(list_stack: &[ListState], list_continuation_prefix: &mut String) {

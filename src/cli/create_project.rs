@@ -1,6 +1,6 @@
 use anyhow::Result;
 use diapason_core::config::types::AgentConfig as CoreAgentConfig;
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use diapason_core::utils::file_utils::{ensure_dir_exists, ensure_dir_exists_sync, write_file_with_context_sync};
 use itertools::Itertools;
 use std::path::Path;

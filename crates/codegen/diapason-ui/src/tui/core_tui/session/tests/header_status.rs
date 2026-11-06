@@ -200,10 +200,10 @@ fn header_meta_line_renders_active_primary_agent() {
 fn set_primary_agent_command_updates_header_badge() {
     let mut session = fresh_session();
 
-    session.handle_command(InlineCommand::SetPrimaryAgent { name: Some("reviewer".to_string()), color: None });
+    session.handle_command(InlineCommand::SetPrimaryAgent { name: Some("reviewer".to_string()), colour: None });
     assert_header_contains_badge(&mut session, "Reviewer");
 
-    session.handle_command(InlineCommand::SetPrimaryAgent { name: None, color: None });
+    session.handle_command(InlineCommand::SetPrimaryAgent { name: None, colour: None });
     let text = header_line_text(&mut session);
     assert!(text.contains("Duck"));
     assert!(!text.contains("Reviewer"));
@@ -219,7 +219,7 @@ fn bottom_status_excludes_primary_agent() {
         left: None,
         right: Some("gpt-5.5 | 98% context left".to_string()),
     });
-    session.handle_command(InlineCommand::SetPrimaryAgent { name: Some("reviewer".to_string()), color: None });
+    session.handle_command(InlineCommand::SetPrimaryAgent { name: Some("reviewer".to_string()), colour: None });
 
     assert_eq!(session.status_right_text(), Some("gpt-5.5 | 98% context left"));
 }
@@ -227,7 +227,7 @@ fn bottom_status_excludes_primary_agent() {
 #[test]
 fn header_context_updates_preserve_active_primary_agent() {
     let mut session = fresh_session();
-    session.handle_command(InlineCommand::SetPrimaryAgent { name: Some("planner".to_string()), color: None });
+    session.handle_command(InlineCommand::SetPrimaryAgent { name: Some("planner".to_string()), colour: None });
 
     let mut replacement = session.header_context.clone();
     replacement.primary_agent = None;
@@ -643,14 +643,14 @@ fn header_height_expands_when_wrapping_required() {
 }
 
 #[test]
-fn agent_label_uses_accent_color_without_border() {
+fn agent_label_uses_accent_colour_without_border() {
     let accent = AnsiColorEnum::Rgb(RgbColor(0x12, 0x34, 0x56));
     let theme = InlineTheme { primary: Some(accent), ..Default::default() };
 
     let mut session = Session::new(theme, None, VIEW_ROWS);
     session.labels.agent = Some("Agent".to_string());
     let mut segment = make_segment("Response");
-    segment.style = Arc::new(InlineTextStyle { color: Some(accent), ..InlineTextStyle::default() });
+    segment.style = Arc::new(InlineTextStyle { colour: Some(accent), ..InlineTextStyle::default() });
     session.push_line(InlineMessageKind::Agent, vec![segment]);
 
     let index = session.lines.len().checked_sub(1).expect("agent message should be available");

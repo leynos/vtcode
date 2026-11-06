@@ -1,6 +1,6 @@
 use anstyle::Color;
 use diapason_core::tools::registry::ToolExecutionError;
-use diapason_core::utils::style_helpers::ColorPalette;
+use diapason_core::utils::style_helpers::ColourPalette;
 use serde_json::Value;
 use std::fmt::Write;
 
@@ -22,7 +22,7 @@ impl ToolDisplayStatus {
         }
     }
 
-    pub(crate) fn color(self, palette: ColorPalette) -> Color {
+    pub(crate) fn colour(self, palette: ColourPalette) -> Color {
         match self {
             Self::Success => palette.success,
             Self::Failure => palette.error,

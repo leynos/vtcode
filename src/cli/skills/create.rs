@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use diapason_core::skills::manifest::generate_skill_template;
-use diapason_core::utils::colors::style;
+use diapason_core::utils::colours::style;
 use diapason_core::utils::file_utils::{ensure_dir_exists_sync, write_file_with_context_sync};
 use std::path::Path;
 
