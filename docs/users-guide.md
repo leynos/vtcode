@@ -25,8 +25,8 @@ falls back cleanly when a client ignores them. The
   follows the backend the request was routed to, so an Anthropic Messages
   backend reports cache reads separately even under a custom provider name. An
   update is published only for a response whose provider reported usage;
-  `cache_creation_input_tokens` and `reasoning_output_tokens` appear only when
-  the provider reported them, `contextWindow` only when the resolved profile
+  `cacheCreationInputTokens` and `reasoningOutputTokens` appear only when the
+  provider reported them, `contextWindow` only when the resolved profile
   supplies one, and `costUSD` only when both rates are known.
 - **Automatic compaction.** `_meta.lody.compaction` announces the capability.
   Each compaction is a standard tool call whose terminal update carries

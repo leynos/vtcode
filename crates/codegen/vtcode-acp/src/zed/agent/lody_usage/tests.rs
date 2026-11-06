@@ -279,13 +279,19 @@ proptest! {
     }
 
     /// Assert equivalent inclusive and exclusive input representations price
-    /// the same turn identically on the wire.
+    /// the same turn identically on the wire, and that both match an
+    /// independently computed expected cost.
     ///
     /// `prompt_tokens` either already contains the cache-read and
     /// cache-creation tokens (OpenAI-style) or excludes them
     /// (Anthropic-style). The notification must report the provider's own
     /// count but a cost that depends only on the underlying token set and the
     /// declared rates, including the optional cache rates.
+    ///
+    /// The expected value is derived here from the generated counts and rates
+    /// rather than from the production estimator, so a regression that
+    /// returns zero, ignores the rates, or double-counts reasoning tokens
+    /// fails the property instead of merely agreeing with itself.
     #[test]
     fn equivalent_inclusive_and_exclusive_inputs_report_the_same_cost(
         uncached in 0u32..1_000_000,
@@ -298,11 +304,15 @@ proptest! {
         cache_read_rate in proptest::option::of(0.0f64..100.0),
         cache_write_rate in proptest::option::of(0.0f64..100.0),
     ) {
+        // Rates are declared per million tokens; the estimator works per token.
+        let per_token = |rate: f64| rate / 1_000_000.0;
+        let input_per_token = per_token(input_rate);
+        let output_per_token = per_token(output_rate);
         let pricing = ModelPricing {
-            input: Some(input_rate / 1_000_000.0),
-            output: Some(output_rate / 1_000_000.0),
-            cache_read: cache_read_rate.map(|rate| rate / 1_000_000.0),
-            cache_write: cache_write_rate.map(|rate| rate / 1_000_000.0),
+            input: Some(input_per_token),
+            output: Some(output_per_token),
+            cache_read: cache_read_rate.map(per_token),
+            cache_write: cache_write_rate.map(per_token),
         };
         let profile = |exclusive_input| UsageProfile {
             pricing: Some(pricing),
@@ -326,6 +336,18 @@ proptest! {
             ..Usage::default()
         };
 
+        // Independent expectation: uncached input at the input rate, cache reads
+// at the declared rate or the 10% fallback, cache creations at the
+// declared rate or the 125% fallback, and the full completion count once
+// at the output rate. Reasoning tokens are a subset of the completion
+// count and are not charged again.
+        let read_rate = cache_read_rate.map(per_token).unwrap_or(input_per_token * 0.10);
+        let write_rate = cache_write_rate.map(per_token).unwrap_or(input_per_token * 1.25);
+        let expected_cost = f64::from(uncached) * input_per_token
+            + f64::from(cache_read) * read_rate
+            + f64::from(cache_creation) * write_rate
+            + f64::from(output) * output_per_token;
+
         let inclusive_cost = resolved_notification(&inclusive, profile(false))["usage"]["costUSD"]
             .as_f64()
             .expect("inclusive costUSD");
@@ -333,9 +355,17 @@ proptest! {
             .as_f64()
             .expect("exclusive costUSD");
 
-        let scale = inclusive_cost.abs().max(1.0);
+        let tolerance = 1e-9 * expected_cost.abs().max(1.0);
         prop_assert!(
-            (inclusive_cost - exclusive_cost).abs() <= 1e-9 * scale,
+            (inclusive_cost - expected_cost).abs() <= tolerance,
+            "inclusive {inclusive_cost} vs expected {expected_cost}"
+        );
+        prop_assert!(
+            (exclusive_cost - expected_cost).abs() <= tolerance,
+            "exclusive {exclusive_cost} vs expected {expected_cost}"
+        );
+        prop_assert!(
+            (inclusive_cost - exclusive_cost).abs() <= tolerance,
             "inclusive {inclusive_cost} vs exclusive {exclusive_cost}"
         );
     }
