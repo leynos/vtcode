@@ -743,3 +743,54 @@ so root authorized direct journeyman implementation without interrupting other
 ACP work. The independent shared scrutineer remains the only validation
 authority. Published review dispositions remain deferred until a verified,
 rebased SHA exists and use the `pandalump` token process when authorized.
+
+## Round: review 5807467338 on a159f03b4
+
+CodeRabbit completed review `5807467338` against head `a159f03b4` on
+2026-11-06T21:46:08Z with `CHANGES_REQUESTED`. The walkthrough comment
+`5307347085` reports 4 failed errors and 5 failed warnings. Four inline
+findings accompany it. Every item was verified against the current tree before
+any edit; the dispositions below are the working plan for this round.
+
+### Inline findings
+
+1. `proptest-regressions/zed/agent/tool_recovery.txt` is never loaded. The
+   `proptest!` block lives in `tool_recovery/tests.rs`, so the derived path is
+   `proptest-regressions/zed/agent/tool_recovery/tests.txt`. Valid: move the
+   file and preserve the seed line.
+2. `require_session_checkpoint` interpolates the raw archive error into the
+   client-visible `SdkError` payload. Valid: keep the boundary and the fixed
+   `archive_write_failed` category, drop `: {error}`.
+3. `recovery_metrics()` returns the launch registry's collector, while each
+   session workspace builds its own registry through
+   `WorkspaceToolRegistrySetup::initialize`. Valid: share the agent-wide
+   collector with every workspace registry and add a non-launch-workspace
+   regression test.
+4. `docs/users-guide.md:81` and `docs/guides/zed-acp.md` name the upstream
+   product instead of Diapason. Valid: replace the product name only.
+
+### Pre-merge rows
+
+| Row | Disposition |
+| --- | --- |
+| Testing (Overall) | Valid. Add a test that blocks a tool at the execution boundary, reads the durable archive before release, and asserts the assistant call and incomplete placeholder are present. |
+| Module-Level Documentation | Valid. Add a module docstring to `mod tests` in `tool_recovery_metrics.rs`. |
+| Testing (Unit And Behavioural) | Valid. Add protocol-level load/resume plus prompt tests for an interrupted archive and for ambiguous-archive rejection. |
+| Unit Architecture | Valid. Make the tool-round timing substitutable and test controlled elapsed times for successful and interrupted rounds. |
+| User-Facing Documentation | Valid. Document the required-checkpoint/history-persistence interaction in the user guide and 0.157.0 migration notes, and correct the Zed guide. |
+| Developer Documentation | Valid. Update both ExecPlans to separate historical constraints from the final implementation, including the `insta` dependency, the `stale_exec_session` envelope field, and publication status. |
+| Testing (Property / Proof) | Valid. Extend the property test to multiple batches, late results, reused IDs and varied orderings, asserting idempotence and ambiguity rejection. |
+| Domain Architecture | Valid. Verify the required checkpoint retained the staged batch (reject otherwise) and serialize archive attach/repair per session. |
+| Observability | Valid. Justify the bounded session/thread log fields in the runtime guide and add a bounded duplicate-ID rejection counter with a test. |
+
+### Execution order
+
+Work is split into non-overlapping packets: core stale-session classification;
+ACP recovery-metric sharing; ACP prompt/observability/timing; archive
+durability and attach serialization; property tests and the seed move; and
+documentation. Each packet is implemented by a bounded subagent, then the
+shared scrutineer runs `make check-fmt`, `make lint`, `make typecheck` and
+`make test` sequentially on the exact tree. No packet runs a full repository
+gate. After the gates pass, the head is committed, pushed over SSH with the
+tracking ref refreshed, and every finding and row is answered through the
+pool-token comment route.
