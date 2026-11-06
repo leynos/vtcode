@@ -85,6 +85,32 @@ pub(super) fn replace_thread_tool_results(thread: &ThreadRuntimeHandle, results:
     thread.mutate_messages(|messages| replace_tool_results(messages, results))
 }
 
+/// Returns the end index of the contiguous tool-result group starting at `start`.
+///
+/// Tool results follow their assistant request immediately, so the first
+/// non-Tool message delimits the group. The caller recomputes the end after
+/// relocation because relocating results changes the group's membership.
+fn tool_result_group_end(messages: &[Message], start: usize) -> usize {
+    let mut end = start;
+    while messages.get(end).is_some_and(|message| message.role == MessageRole::Tool) {
+        end += 1;
+    }
+    end
+}
+
+/// Collects the tool-call IDs completed inside the result group `start..end`.
+///
+/// IDs are owned so the caller can mutate the message vector after collecting
+/// them.
+fn completed_tool_call_ids(messages: &[Message], start: usize, end: usize) -> HashSet<String> {
+    messages
+        .get(start..end)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|message| message.tool_call_id.as_deref().map(str::to_string))
+        .collect()
+}
+
 /// Repairs missing terminal results without replaying any archived tool call.
 pub(super) fn repair_unresolved_tool_calls(
     messages: &mut Vec<Message>,
@@ -114,20 +140,11 @@ pub(super) fn repair_unresolved_tool_calls(
             continue;
         }
 
-        let mut group_end = message_index + 1;
-        while messages.get(group_end).is_some_and(|message| message.role == MessageRole::Tool) {
-            group_end += 1;
-        }
+        let group_end = tool_result_group_end(messages, message_index + 1);
 
         relocated_calls += relocate_unique_late_results(messages, message_index, group_end, &calls);
-        group_end = message_index + 1;
-        let mut completed_ids = HashSet::with_capacity(calls.len());
-        while let Some(message) = messages.get(group_end).filter(|message| message.role == MessageRole::Tool) {
-            if let Some(call_id) = message.tool_call_id.as_deref() {
-                let _ = completed_ids.insert(call_id.to_string());
-            }
-            group_end += 1;
-        }
+        let group_end = tool_result_group_end(messages, message_index + 1);
+        let completed_ids = completed_tool_call_ids(messages, message_index + 1, group_end);
 
         let missing = calls
             .iter()

@@ -204,6 +204,7 @@ default-target = "x86_64-unknown-linux-gnu"
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dev-dependencies]
+insta = { version = "1.39", features = ["json"] }
 temp-env = { workspace = true }
 filetime = { workspace = true }
 assert_fs = { workspace = true }

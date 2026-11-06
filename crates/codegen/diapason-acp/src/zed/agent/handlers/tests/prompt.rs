@@ -1,6 +1,10 @@
 //! Verifies ACP prompt streaming, partial-turn recovery, compaction, and reasoning projection.
 use super::*;
+use crate::zed::agent::handlers::prompt::{ToolRoundRequest, execute_tool_round};
+use crate::zed::agent::test_support::HistorySettingsGuard;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
+use vtcode_config::codex::HistoryPersistence;
+use vtcode_core::metrics::ToolRecoveryEvent;
 
 mod compaction;
 
@@ -57,6 +61,67 @@ fn duplicate_tool_call_ids_are_rejected_before_staging() {
     validate_tool_call_ids(&[call("call-1"), call("call-2")]).expect("unique tool-call IDs must be accepted");
 }
 
+/// Rejects a duplicate-ID batch at the production boundary before staging.
+///
+/// The direct validator test above pins the helper. This test drives
+/// `execute_tool_round`, which stages placeholders and executes tools, so it
+/// proves a rejected batch reaches neither.
+#[tokio::test]
+async fn duplicate_tool_call_ids_are_rejected_before_staging_or_execution() {
+    let _history_test_guard = lock_history_test_guard().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+
+    let workspace = TempDir::new().expect("wire test workspace");
+    let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+    let session_id = agent
+        .new_session(NewSessionRequest::new(workspace.path()))
+        .await
+        .expect("create ACP session")
+        .session_id;
+    let session = agent
+        .session_handle(&session_id)
+        .expect("ACP session lookup")
+        .expect("created ACP session");
+    let duplicate = || {
+        vtcode_core::llm::provider::ToolCall::function(
+            "call-duplicate".to_string(),
+            "list_files".to_string(),
+            r#"{"path":""}"#.to_string(),
+        )
+    };
+    let calls = vec![duplicate(), duplicate()];
+    let mut tool_loop_count = 0usize;
+
+    let error = execute_tool_round(ToolRoundRequest {
+        agent: agent.as_ref(),
+        session: &session,
+        session_id: &session_id,
+        tool_calls: &calls,
+        assistant_message: "Inspect the workspace.",
+        assistant_reasoning: "",
+        reasoning_details: None,
+        tool_loop_count: &mut tool_loop_count,
+        streamed: false,
+    })
+    .await
+    .err()
+    .expect("a duplicate-ID batch must be rejected before staging");
+
+    assert!(
+        error.to_string().contains("duplicate tool-call IDs"),
+        "rejection must name the duplicate-ID cause: {error}"
+    );
+    assert_eq!(tool_loop_count, 0, "a rejected round must not advance the tool loop");
+    let messages = session.data.lock().expect("wire session data").thread.messages();
+    assert!(messages.is_empty(), "a rejected round must not stage history: {messages:?}");
+    let metrics = agent.recovery_metrics().get_tool_recovery_metrics();
+    assert_eq!(metrics.count(ToolRecoveryEvent::StagedCall), 0, "no placeholder may be staged");
+    assert_eq!(metrics.count(ToolRecoveryEvent::ReplacedCall), 0, "no result may be replaced");
+    assert_eq!(metrics.count(ToolRecoveryEvent::InterruptedCall), 0, "no tool may be executed");
+}
 
 #[test]
 fn reasoning_remains_visible_when_response_requests_a_tool() {

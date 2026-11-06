@@ -906,6 +906,46 @@ mod tests {
             .expect("the round-tripped classification must render details");
         assert_eq!(details.get("reason").and_then(Value::as_str), Some("stale_exec_session"));
         assert!(details.get("input_delivered").is_none());
+
+        // The envelope is a stable structured output: adapters parse the typed
+        // classification back out, so its field set and values must not drift
+        // silently.
+        insta::assert_json_snapshot!(payload, @r###"
+        {
+          "error": {
+            "category": "ResourceNotFound",
+            "circuit_breaker_impact": false,
+            "debug_context": {
+              "attempt": null,
+              "invocation_id": null,
+              "metadata": [],
+              "surface": "tool_registry"
+            },
+            "details": {
+              "next_action": "Start a new exec_command and use the returned session ID.",
+              "reason": "stale_exec_session",
+              "session_id": "run-stale"
+            },
+            "error_type": "ResourceNotFound",
+            "is_recoverable": true,
+            "message": "exec session 'run-stale' not found",
+            "original_error": "exec session 'run-stale' not found",
+            "partial_state_possible": false,
+            "recovery_suggestions": [
+              "Start a new exec_command and use the new active session ID"
+            ],
+            "retry_after_ms": null,
+            "retry_delay_ms": null,
+            "retryable": false,
+            "rollback_performed": false,
+            "stale_exec_session": {
+              "input_delivered": false,
+              "session_id": "run-stale"
+            },
+            "tool_name": "write_stdin"
+          }
+        }
+        "###);
     }
 
     /// Leaves an `apply_patch` rejection marked as rolled back.
