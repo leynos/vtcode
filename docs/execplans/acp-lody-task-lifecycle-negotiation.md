@@ -1826,10 +1826,12 @@ Two ACP send boundaries now own fixed-cardinality counters.
 `metrics::notice_metrics()` counts rate-limit notice publication attempts and
 failures, and `metrics::compaction_update_metrics()` does the same for
 compaction activity updates. Both report a
-`PublicationMetrics { attempts, failures }` snapshot in which `failures` is a
-subset of `attempts`. A notice that was never built, and a serialization
-failure that never reached the transport, are not attempts and move neither
-counter.
+`PublicationMetrics { attempts, failures }` snapshot. The counters are loaded
+independently, so a snapshot can reflect slightly different instants;
+`snapshot()` clamps `attempts` to at least `failures`, which keeps `failures` a
+subset of `attempts` in every snapshot without packing both values into one
+atomic. A notice that was never built, and a serialization failure that never
+reached the transport, are not attempts and move neither counter.
 
 Each send is wrapped in a span with a fixed `operation` and `stage`, a bounded
 `session_correlation` digest, an `outcome` of `sent` or `failed`, and

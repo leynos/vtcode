@@ -8,7 +8,7 @@
 use super::super::redaction::{elapsed_millis, identifier_correlation, log_compaction_update_failure};
 use super::super::{ZedAgent, log_suppressed_error};
 use super::failure::{CompactionFailureKind, FailureDetail, classify, detail_of};
-use crate::metrics::{CompactionOutcome, record_compaction_finished, record_compaction_update_publish};
+use crate::metrics::{CompactionOutcome, record_compaction_finished};
 use anyhow::Result;
 use std::time::Instant;
 use tracing::{Instrument, field, info, info_span, warn};
@@ -199,7 +199,7 @@ impl ZedAgent {
             let sent = result.is_ok();
             let _outcome_recorded = span.record("outcome", if sent { "sent" } else { "failed" });
             let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at));
-            record_compaction_update_publish(sent);
+            self.compaction_update_recorder.record(sent);
             if let Err(error) = &result {
                 log_compaction_update_failure(error, session_key, publish_stage);
             }

@@ -321,11 +321,16 @@ same way. `vtcode_acp::metrics::notice_metrics()` reports `attempts` and
 `vtcode_acp::metrics::compaction_update_metrics()` reports them for compaction
 activity updates. `failures` is a subset of `attempts`. A notice that is never
 built, and a serialization failure that never reaches the transport, are not
-attempts and move neither counter. Each send runs inside a span carrying the
-fixed `operation` and `stage`, the bounded `session_correlation`, and the
-`outcome` and `elapsed_ms` recorded when the send returns. The span and the
-counters are written at the send boundary, so a client that stops accepting
-updates is measurable rather than only logged.
+attempts and move neither counter. The two counters are loaded independently,
+so a snapshot can reflect slightly different instants; `attempts` is clamped to
+at least `failures` so the subset claim holds in every snapshot. Each send runs
+inside a span carrying the fixed `operation` and `stage`, the bounded
+`session_correlation`, and the `outcome` and `elapsed_ms` recorded when the
+send returns. The span and the counters describe the local send outcome only: a
+rejected send is a failure, while an accepted send is an attempt with no
+confirmation that the client applied the update. A client that stops accepting
+updates is therefore measurable rather than only logged, but delivery is not
+provable end to end from this boundary.
 
 ## Retry notices and usage publication
 
@@ -335,8 +340,11 @@ generation path constructs a `RateLimitNoticeSink`, the ACP adapter that
 implements the port, and passes it into `generate_with_retry`; the streaming
 path calls the same `publish_rate_limit_notice` helper directly. The adapter
 turns a classified retryable or terminal rate limit into a session-info notice
-carrying `_meta.lody.notice`, reporting only the status, `Retry-After` value,
-and scheduled delay the provider actually supplied. A delivery failure logs the
+carrying `_meta.lody.notice`. The HTTP status and the `Retry-After` value are
+reported only when the provider supplied them. The retry delay is a separate
+fact: it is reported only when `RetryPolicy::decision_for_category` chose to
+schedule another attempt, and the notice says when no further automatic retry
+is scheduled. A delivery failure logs the
 fixed `operation`, `stage`, and `error_category`, the session correlation key,
 the error rendering's byte length as `error_bytes`, and `detail_correlation`, a
 deterministic truncated SHA-256 digest of that rendering. The rendering itself

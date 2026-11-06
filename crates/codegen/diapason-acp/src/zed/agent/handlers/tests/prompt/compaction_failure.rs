@@ -249,7 +249,12 @@ async fn failed_compaction_update_publication_is_observed_by_a_bounded_span() {
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
-    let agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+    let mut agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+    // This test asserts exact deltas, so it must not share the process-wide
+    // counters with another test that publishes a compaction update.
+    let update_counts = Arc::new(crate::metrics::IsolatedPublicationRecorder::new());
+    let update_recorder: Arc<dyn crate::metrics::PublicationRecorder> = update_counts.clone();
+    agent.set_publication_recorders(crate::metrics::notice_recorder(), update_recorder);
     let session = large_compaction_session(&agent, workspace.path()).await;
     let raw_session_id = session.data.lock().expect("ACP session data").session_id.to_string();
     let provider = CompactThenAnswerProvider {
@@ -260,7 +265,7 @@ async fn failed_compaction_update_publication_is_observed_by_a_bounded_span() {
     };
     let runtime = agent.provider_runtime.for_provider("wire-test");
     let trace = TraceCapture::default();
-    let before = crate::metrics::compaction_update_metrics();
+    let before = update_counts.metrics();
 
     {
         let _guard = tracing::subscriber::set_default(Registry::default().with(trace.clone()));
@@ -277,7 +282,7 @@ async fn failed_compaction_update_publication_is_observed_by_a_bounded_span() {
         assert!(compacted, "the compacted history must still be adopted");
     }
 
-    let after = crate::metrics::compaction_update_metrics();
+    let after = update_counts.metrics();
     assert_eq!(
         after.attempts,
         before.attempts + 2,

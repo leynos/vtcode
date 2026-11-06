@@ -45,7 +45,7 @@ impl ZedAgent {
             let sent = result.is_ok();
             let _outcome_recorded = span.record("outcome", if sent { "sent" } else { "failed" });
             let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at));
-            crate::metrics::record_notice_publish(sent);
+            self.notice_recorder.record(sent);
             if let Err(error) = &result {
                 // The transport error and the raw session id are both
                 // operator-sensitive, so only fixed fields and a bounded
@@ -123,6 +123,12 @@ fn rate_limit_metadata(error: &LLMError) -> Option<Option<&LLMErrorMetadata>> {
 
 #[cfg(test)]
 mod tests {
+    //! Covers the rate-limit notice body built from a provider error.
+    //!
+    //! A notice may describe only what the provider supplied and what VT Code
+    //! actually scheduled, so these tests pin the status, the `Retry-After`
+    //! echo, the retry claim, and the errors that publish nothing.
+
     use super::*;
     use diapason_core::llm::provider::LLMErrorMetadata;
 
