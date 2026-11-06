@@ -25,10 +25,14 @@ should prefer the higher-level guidance in the Configuration guide.
 - `supports_tools`, `supports_reasoning`, `supports_reasoning_effort`,
   `supports_vision`, `supports_structured_output`,
   `supports_parallel_tool_calls`, `supports_context_caching`,
-  `supports_responses_compaction`, and `supports_context_edits` (optional
-  booleans)
+  `supports_responses_compaction`, `supports_context_edits`, and
+  `supports_stream_usage` (optional booleans)
   - Provider-level conservative defaults applied when per-model metadata is
     unavailable.
+  - `supports_stream_usage` defaults to `false`. Set it to `true` only when a
+    custom OpenAI-chat endpoint accepts `stream_options.include_usage = true`
+    and sends usage in the terminal streamed chunk; native OpenAI requests are
+    unchanged.
 
 ## Per-model profiles (sparse overrides)
 
@@ -42,6 +46,11 @@ Example:
 context_window = 131072 supports_tools = true supports_vision = false
 supports_structured_output = true supports_parallel_tool_calls = true
 
+`supports_stream_usage` only affects OpenAI Chat Completions streams. In a
+Responses profile, it has no effect, so set it on an
+`api_format = "openai-chat"` profile (or provider entry) whose endpoint emits a
+terminal usage chunk instead.
+
 Notes and semantics
 
 - model / models remain the allowlist/defaults used to control the `/model`
@@ -52,6 +61,9 @@ Notes and semantics
   autodetect > conservative fallback.
 - Explicit boolean `false` is honored and may override an implicit `true` from
   a lower-precedence layer.
+- `supports_stream_usage` uses the same profile-over-provider precedence.
+  When enabled, VT Code requests usage for custom OpenAI-chat streams; when
+  omitted or `false`, it leaves `stream_options.include_usage` disabled.
 - Omitting `api_format` preserves legacy behavior. Setting `api_format`
   explicitly instructs Diapason to treat the model with that API shape; it does
   not cause silent fallbacks.

@@ -148,6 +148,13 @@ impl WorkspaceSetupPorts {
         self.registry_setup = Arc::new(DefaultWorkspaceToolRegistrySetup { metrics: Some(metrics) });
         self
     }
+
+    pub(super) async fn attach_session_subagent_controller(
+        &self,
+        setup: AcpSubagentControllerSetup<'_>,
+    ) -> OptionalSetupOutcome {
+        self.subagent_attachment.attach(setup).await
+    }
 }
 
 impl Default for WorkspaceSetupPorts {
@@ -517,6 +524,7 @@ async fn attach_optional_workspace_components(
     let subagent_outcome = ports
         .subagent_attachment
         .attach(AcpSubagentControllerSetup {
+            owner_session_id: None,
             registry: setup.registry,
             agent_config: setup.agent_config,
             custom_providers: setup.custom_providers,

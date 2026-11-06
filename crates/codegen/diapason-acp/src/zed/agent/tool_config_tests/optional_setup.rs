@@ -17,6 +17,7 @@ async fn optional_setup_reports_configuration_disabled_components() {
     vt_cfg.mcp.enabled = false;
 
     let subagent_outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        owner_session_id: None,
         registry: &registry,
         agent_config: &core_config,
         custom_providers: &[],
@@ -42,6 +43,7 @@ async fn optional_setup_reports_successfully_attached_components() {
     let core_config = core_agent_config(temp.path());
 
     let subagent_outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        owner_session_id: None,
         registry: &registry,
         agent_config: &core_config,
         custom_providers: &[],

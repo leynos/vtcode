@@ -1,3 +1,5 @@
+//! Persists and loads background subagent state, and provides the launch
+//! specifications and bounded output-tail helpers the controller uses.
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -156,6 +158,24 @@ pub fn background_record_id(agent_name: &str) -> String {
     format!("background-{}", sanitize_component(agent_name))
 }
 
+/// Returns the record id of a background subagent, scoped to its owner.
+///
+/// Owner-scoped controllers persist their records side by side, so two
+/// sessions in one workspace can each run the same agent. The owner suffix
+/// keeps those records distinct both in the in-memory map and in the shared
+/// ledger; an unscoped controller keeps the workspace-global id.
+pub fn background_record_id_for_owner(agent_name: &str, owner_session_id: Option<&str>) -> String {
+    let base = background_record_id(agent_name);
+    let Some(owner_session_id) = owner_session_id else {
+        return base;
+    };
+    let owner = sanitize_component(owner_session_id);
+    if owner.is_empty() {
+        return base;
+    }
+    format!("{base}@{owner}")
+}
+
 fn sanitize_component(value: &str) -> String {
     value
         .chars()
@@ -180,8 +200,12 @@ pub fn extract_tail_lines(content: &str, max_lines: usize) -> String {
 }
 
 pub async fn load_archive_preview(path: &Path) -> Result<String> {
+    load_archive_output_tail(path, SUBAGENT_PREVIEW_LINES).await
+}
+
+pub(crate) async fn load_archive_output_tail(path: &Path, max_lines: usize) -> Result<String> {
     let listing = load_session_listing(path).await?;
-    Ok(extract_tail_lines(&listing.snapshot.transcript.join("\n"), SUBAGENT_PREVIEW_LINES))
+    Ok(extract_tail_lines(&listing.snapshot.transcript.join("\n"), max_lines))
 }
 
 async fn load_session_listing(path: &Path) -> Result<SessionListing> {

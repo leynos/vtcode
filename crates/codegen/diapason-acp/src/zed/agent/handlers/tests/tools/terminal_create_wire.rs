@@ -27,6 +27,7 @@ async fn run_terminal_create_wire_case() -> TerminalCreateWireResult {
         "wire-test",
         Arc::new(move || {
             Box::new(StreamToolThenAnswerProvider {
+                emit_usage: false,
                 calls: Arc::clone(&factory_calls),
                 requests: Arc::clone(&factory_requests),
                 tool_name: "exec_command",
