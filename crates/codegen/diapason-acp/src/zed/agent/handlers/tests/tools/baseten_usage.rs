@@ -8,8 +8,8 @@
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use serde_json::Value;
-use diapason_config::core::{CustomProviderApiFormat, CustomProviderConfig};
 use diapason_config::CustomProviderPricingConfig;
+use diapason_config::core::{CustomProviderApiFormat, CustomProviderConfig};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
@@ -226,11 +226,10 @@ async fn terminal_only_baseten_usage_reaches_the_acp_client() {
     // fixture declares no cache activity, so cost is the declared rates over
     // the parser's prompt and completion counts.
     let expected_cost = 13.0 * BASETEN_INPUT_PER_MILLION / 1_000_000.0 + 5.0 * BASETEN_OUTPUT_PER_MILLION / 1_000_000.0;
-    let cost = update["usage"]["costUSD"].as_f64().expect("the declared rates must price the turn");
-    assert!(
-        (cost - expected_cost).abs() < 1e-12,
-        "expected {expected_cost} from the declared rates, got {cost}"
-    );
+    let cost = update["usage"]["costUSD"]
+        .as_f64()
+        .expect("the declared rates must price the turn");
+    assert!((cost - expected_cost).abs() < 1e-12, "expected {expected_cost} from the declared rates, got {cost}");
     assert_eq!(update["modelUsage"][BASETEN_MODEL]["inputTokens"], 13);
     assert_eq!(update["modelUsage"][BASETEN_MODEL]["outputTokens"], 2);
     assert_eq!(update["modelUsage"][BASETEN_MODEL]["reasoningOutputTokens"], 3);
@@ -269,4 +268,5 @@ async fn baseten_stream_without_usage_publishes_no_delta() {
         "the prompt must still reach the mock origin"
     );
 }
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/tests/tools/baseten_usage.rs' for per-hunk detail, 'weave check' to verify your resolution
 // weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/tests/tools/baseten_usage.rs' for per-hunk detail, 'weave check' to verify your resolution
