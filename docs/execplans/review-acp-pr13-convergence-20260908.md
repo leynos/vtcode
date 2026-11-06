@@ -307,6 +307,17 @@ an archive with ambiguous terminal results is rejected before continuation.
   `Coverage` and `tool-eval` runs queued for the new head. Queue request
   `718ceb25` remains the single pending review request; its comment is not
   pinned to a commit, so it will inspect the head current when it runs.
+- [x] (2026-11-06) Closed the two CodeRabbit objections from
+  <https://github.com/leynos/vtcode/pull/13#issuecomment-6682670069>. The
+  duplicate-ID regression test now records a control round with unique IDs that
+  appends exactly one ACP audit entry, then asserts the rejected duplicate
+  round leaves the audit count unchanged and the staged, replaced and
+  interrupted counters at their post-control baselines. Because the no-client
+  executor path records an audit entry per attempted call, an unchanged count
+  is direct evidence that `validate_tool_call_ids` rejects the batch before
+  staging and execution. `cargo tree -e features -i serde_json --locked`
+  confirms `preserve_order` resolves, which is the basis for the three
+  insertion-ordered inline snapshots; those tests run in `make test`.
 
 ## Surprises & discoveries
 
