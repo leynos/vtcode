@@ -318,6 +318,17 @@ an archive with ambiguous terminal results is rejected before continuation.
   staging and execution. `cargo tree -e features -i serde_json --locked`
   confirms `preserve_order` resolves, which is the basis for the three
   insertion-ordered inline snapshots; those tests run in `make test`.
+- [x] (2026-11-06) Published `856831315` (the strengthened test plus
+  `f049c9e4`'s plan record) after all four gates passed sequentially on that
+  exact tree: `make check-fmt` exit 0, `make lint` exit 0, `make typecheck`
+  exit 0, and `make test` exit 0 (10,592 passed, 22 skipped). The push used an
+  SSH lease pinned to `f049c9e4`; `ls-remote` matched `git rev-parse HEAD` and
+  the tracking ref was refreshed. Replied to the CodeRabbit assessment at
+  <https://github.com/leynos/vtcode/pull/13#issuecomment-6686311094> through the
+  `pandalump` pool-token route, with the audit-differential evidence and the
+  resolved `serde_json/preserve_order` feature tree. Queue request `718ceb25`
+  remains the only pending review request and is not pinned to a commit, so it
+  will inspect the head current when it runs.
 
 ## Surprises & discoveries
 
