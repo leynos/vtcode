@@ -1857,4 +1857,26 @@ Validation on this candidate:
 - Focused selection (11 tests) — all pass, including the two
   pre-existing fixed-field compaction tests.
 - `cargo check -p vtcode-acp --all-targets --all-features` — exit 0.
-- Full sequential gate set — results recorded below once run.
+- Full sequential gate set on `c8b6c091c` — all four pass: `make check-fmt`
+  (exit 0; `cargo fmt --all -- --check` clean and mdtablefix left 365 files
+  unchanged), `make typecheck` (exit 0), `make lint` (exit 0, including clippy
+  under `-D warnings` and `cargo doc`), and `make test` (exit 0; 10646 passed,
+  23 skipped, 0 failed).
+
+### Revision note (2026-11-06, r27 gate repair)
+
+The first full `make test` on `2e3de69b0` failed one test.
+
+`catalog_entry_matches_resolved_static_metadata` compared `Some(entry.pricing)`
+with `resolved.pricing()`. `ResolvedModel::pricing()` reports `None` when a
+catalogue entry declares no price, and the fixture `claude-fable-5` declares
+none, so the assertion could not hold for it. The test now uses
+`claude-fable-5-1`, which declares every price field, for the strict equality
+against resolution, and keeps the unpriced case as its own test,
+`catalog_entry_without_declared_pricing_resolves_to_no_pricing`, which asserts
+that an undeclared price stays missing rather than becoming a free model. The
+production filtering is unchanged: the test encoded the wrong contract, not the
+code.
+
+The repaired candidate `c8b6c091c` passes all four gates sequentially, with
+`make test` running 10646 tests: 10646 passed, 23 skipped, 0 failed.
