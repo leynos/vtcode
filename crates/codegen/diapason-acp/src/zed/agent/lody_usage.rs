@@ -48,6 +48,34 @@ use diapason_core::llm::usage_cost::{
 #[cfg(test)]
 };
 
+use vtcode_core::llm::Usage;
+use vtcode_core::llm::usage_cost::{TurnUsage, UsageProfile, resolve_turn_usage, usage_profile};
+
+//! Publishes usage deltas and advertises the Lody usage capability, including
+//! the `_lody/session/usage_update` extension notification.
+<<<<<<< ours
+#[cfg(test)]
+};
+//! Publishes usage deltas and advertises the Lody usage capability, including
+//! the `_lody/session/usage_update` extension notification.
+#[cfg(test)]
+};
+};
+//! Publishes usage deltas and advertises the Lody usage capability, including
+//! the `_lody/session/usage_update` extension notification.
+#[cfg(test)]
+};
+//! Publishes usage deltas and advertises the Lody usage capability, including
+//! the `_lody/session/usage_update` extension notification.
+#[cfg(test)]
+};
+||||||| original
+#[cfg(test)]
+};
+=======
+#[cfg(test)]
+>>>>>>> theirs
+
 const LODY_EXTENSION_VERSION: u8 = 1;
 
 pub(super) const LODY_SESSION_USAGE_UPDATE_METHOD: &str = "_lody/session/usage_update";
@@ -68,30 +96,6 @@ struct LodyUsage {
     context_window: Option<usize>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct UsageProfile {
-    context_window: Option<usize>,
-    pricing: Option<ModelPricing>,
-    /// Whether `prompt_tokens` excludes cached prompt tokens, so cost
-    /// normalization must add them back.
-    exclusive_input: bool,
-}
-
-/// Select the input-token semantics of the backend a request was actually
-/// routed to.
-///
-/// A custom provider's name says nothing about its wire format: one named
-/// `baseten` may speak Anthropic Messages, where `input_tokens` excludes cache
-/// reads, while the same name may speak an OpenAI format where it includes
-/// them. `api_format` is the resolved backend, so it wins over the name.
-fn exclusive_input_semantics(api_format: Option<CustomProviderApiFormat>, provider: &str) -> bool {
-    match api_format {
-        Some(CustomProviderApiFormat::AnthropicMessages) => true,
-        Some(CustomProviderApiFormat::OpenAIChat | CustomProviderApiFormat::OpenAIResponses) => false,
-        Some(CustomProviderApiFormat::Auto) | None => provider_reports_exclusive_input(provider),
-    }
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LodySessionUsageUpdate<'a> {
@@ -107,36 +111,25 @@ pub(super) fn add_lody_usage_capability(capabilities: &mut acp::AgentCapabilitie
     }
 }
 
-/// Build the `_lody/session/usage_update` notification for one turn's usage.
+/// Project one turn's resolved usage into the Lody delta contract.
 ///
-/// Reasoning tokens are reported separately and subtracted from the output
-/// count, so the two fields describe disjoint token sets. Cost is omitted when
-/// the provider has no pricing, and reported in the provider's input-token
-/// semantics rather than reinterpreting a shared total.
+/// The domain boundary has already decided input semantics, reasoning/output
+/// split, and cost; this function only names those values on the wire. Every
+/// optional field stays absent when the domain resolved none, so the payload
+/// never claims a window or cost the provider did not supply.
 fn usage_notification(
     session_id: &acp::SessionId,
     model: &str,
-    usage: &Usage,
-    profile: UsageProfile,
+    usage: TurnUsage,
 ) -> anyhow::Result<acp::ExtNotification> {
-    let reasoning_output_tokens = usage
-        .reasoning_output_tokens
-        .map(|reasoning| reasoning.min(usage.completion_tokens));
-    let output_tokens = usage
-        .completion_tokens
-        .saturating_sub(reasoning_output_tokens.unwrap_or_default());
-    let cost_usd = profile.pricing.and_then(|pricing| {
-        let normalized = normalized_turn_usage_with_input_semantics(profile.exclusive_input, usage);
-        estimate_session_costs_with_pricing(pricing, &normalized).map(|estimate| estimate.effective_usd)
-    });
     let delta = LodyUsage {
-        input_tokens: usage.prompt_tokens,
-        output_tokens,
-        cache_read_input_tokens: usage.cache_read_tokens_or_fallback(),
-        cache_creation_input_tokens: usage.cache_creation_tokens,
-        reasoning_output_tokens,
-        cost_usd,
-        context_window: profile.context_window,
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        reasoning_output_tokens: usage.reasoning_output_tokens,
+        cost_usd: usage.cost_usd,
+        context_window: usage.context_window,
     };
     let payload = LodySessionUsageUpdate {
         session_id: session_id.0.as_ref(),
@@ -170,7 +163,7 @@ fn response_usage_notification(
     let Some(usage) = response.usage.as_ref() else {
         return Ok(None);
     };
-    usage_notification(session_id, model, usage, profile).map(Some)
+    usage_notification(session_id, model, resolve_turn_usage(usage, profile)).map(Some)
 }
 
 #[cfg(test)]
@@ -182,7 +175,7 @@ fn send_usage_update(
     profile: UsageProfile,
 ) -> anyhow::Result<()> {
     client
-        .send_ext_notification(usage_notification(session_id, model, usage, profile)?)
+        .send_ext_notification(usage_notification(session_id, model, resolve_turn_usage(usage, profile))?)
         .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
 
@@ -220,66 +213,7 @@ fn record_usage_failure(
     );
 }
 
-/// Resolve the usage profile of the backend that served `provider`.
-///
-/// A configured custom provider wins over the built-in catalogue: its
-/// resolved profile carries the context window and pricing the operator
-/// declared, and its `api_format` names the backend that produced the usage.
-/// Otherwise the built-in model catalogue supplies what it knows, and the
-/// provider name alone decides the input-token semantics.
-///
-/// Both branches are pure functions of already-loaded configuration. The
-/// catalogue lookup deliberately does not resolve credentials: reading
-/// environment variables, the OAuth store, or secure storage here would make a
-/// reported cost depend on whether a key happened to be installed, and would
-/// run that I/O once per turn for metadata it never uses.
-fn usage_profile(custom_providers: &[CustomProviderConfig], provider: &str, model: &str) -> UsageProfile {
-    if let Some(custom_provider) = custom_providers
-        .iter()
-        .find(|candidate| candidate.name.eq_ignore_ascii_case(provider))
-    {
-        let resolved = custom_provider.resolved_profile(model);
-        return UsageProfile {
-            context_window: resolved.context_window.filter(|window| *window > 0),
-            pricing: resolved.pricing.model_pricing(),
-            exclusive_input: exclusive_input_semantics(resolved.api_format, provider),
-        };
-    }
-
-    ModelResolver::catalog_entry(provider, model).map_or_else(
-        || UsageProfile {
-            exclusive_input: exclusive_input_semantics(None, provider),
-            ..UsageProfile::default()
-        },
-        |entry| UsageProfile {
-            context_window: Some(entry.context_window).filter(|window| *window > 0),
-            pricing: model_pricing(entry.pricing),
-            exclusive_input: exclusive_input_semantics(None, provider),
-        },
-    )
-}
-
-/// Return the pricing the catalogue entry actually declares.
-///
-/// An entry that states no price reports none, so usage attribution never
-/// invents a cost for a model the catalogue does not price.
-fn model_pricing(pricing: ModelPricing) -> Option<ModelPricing> {
-    let declared = pricing.input.is_some()
-        || pricing.output.is_some()
-        || pricing.cache_read.is_some()
-        || pricing.cache_write.is_some();
-    declared.then_some(pricing)
-}
-
 impl ZedAgent {
-    /// Look up the pricing and context window configured for this provider.
-    ///
-    /// Custom provider entries supply both; a provider without one reports
-    /// neither, so no cost is invented for it.
-    fn lody_usage_profile(&self, provider: &str, model: &str) -> UsageProfile {
-        usage_profile(&self.workspace_runtime_config.custom_providers, provider, model)
-    }
-
     pub(super) fn publish_lody_usage(
         &self,
         session_id: &acp::SessionId,
@@ -302,7 +236,7 @@ impl ZedAgent {
         let _span_entered = span.enter();
         let started_at = Instant::now();
         let model = effective_model(fallback_model, response);
-        let profile = self.lody_usage_profile(provider, model);
+        let profile = usage_profile(&self.workspace_runtime_config.custom_providers, provider, model);
         let notification = match response_usage_notification(session_id, model, response, profile) {
             Ok(Some(notification)) => notification,
             Ok(None) => {
