@@ -298,6 +298,15 @@ an archive with ambiguous terminal results is rejected before continuation.
   two stale failed rows. A push-triggered review was paused by CodeRabbit, so
   queue request `718ceb25` was added for the unconsumed head; no duplicate
   request was made.
+- [x] (2026-11-06) Published this plan record as `dc83d8bef` after re-running
+  the four gates sequentially on the exact committed tree: `make check-fmt`
+  exit 0, `make lint` exit 0, `make typecheck` exit 0, and `make test` exit 0
+  (10,592 passed, 22 skipped). The push went over SSH with a lease pinned to
+  `13d7c1a0d`; `ls-remote` returned the same head as `git rev-parse HEAD` and
+  the tracking ref plus upstream were refreshed. Fresh `CI Pipeline`,
+  `Coverage` and `tool-eval` runs queued for the new head. Queue request
+  `718ceb25` remains the single pending review request; its comment is not
+  pinned to a commit, so it will inspect the head current when it runs.
 
 ## Surprises & discoveries
 
