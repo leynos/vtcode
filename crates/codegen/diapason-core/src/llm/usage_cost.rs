@@ -10,6 +10,7 @@
 //! estimator used by both the interactive and headless runloops.
 
 use diapason_config::models::ModelPricing;
+use diapason_config::{CustomProviderApiFormat, CustomProviderConfig};
 
 use crate::llm::model_resolver::ModelResolver;
 use crate::llm::provider::ToolDefinition;
@@ -54,7 +55,7 @@ pub fn provider_reports_exclusive_input(provider: &str) -> bool {
 /// the provider-specific normalization documented on
 /// [`provider_reports_exclusive_input`] so `input_tokens` always represents
 /// the total prompt token count across every provider.
-pub fn normalized_turn_usage(provider: &str, usage: &ProviderUsage) -> vtcode_exec_events::Usage {
+pub fn normalized_turn_usage(provider: &str, usage: &ProviderUsage) -> diapason_exec_events::Usage {
     normalized_turn_usage_with_input_semantics(provider_reports_exclusive_input(provider), usage)
 }
 
@@ -69,7 +70,7 @@ pub fn normalized_turn_usage(provider: &str, usage: &ProviderUsage) -> vtcode_ex
 pub fn normalized_turn_usage_with_input_semantics(
     exclusive_input: bool,
     usage: &ProviderUsage,
-) -> vtcode_exec_events::Usage {
+) -> diapason_exec_events::Usage {
     let cached = u64::from(usage.cache_read_tokens_or_fallback());
     let creation = u64::from(usage.cache_creation_tokens_or_zero());
     let mut input = u64::from(usage.prompt_tokens);
@@ -150,10 +151,151 @@ pub fn estimate_session_costs_with_pricing(
     Some(SessionCostEstimate { raw_usd, effective_usd })
 }
 
+/// Reporting profile resolved for one provider/model pair.
+///
+/// Adapters that publish usage metadata need the same three facts for every
+/// wire protocol: whether `prompt_tokens` excludes cached tokens, the context
+/// window to advertise, and the rates to price the turn with. Resolving them
+/// here keeps that policy independent of any one adapter's projection.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct UsageProfile {
+    /// Advertised context window, absent when no profile declares one.
+    pub context_window: Option<usize>,
+    /// Rates used for cost reporting, absent when none are declared.
+    pub pricing: Option<ModelPricing>,
+    /// Whether `prompt_tokens` excludes cached prompt tokens, so cost
+    /// normalization must add them back.
+    pub exclusive_input: bool,
+}
+
+/// One turn's provider usage resolved into the shared reporting vocabulary.
+///
+/// Reasoning tokens are reported separately and subtracted from
+/// `output_tokens`, so the two fields describe disjoint token sets. Every
+/// optional field is present only when the provider or profile supplied it:
+/// none of them is invented to make a payload look complete.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TurnUsage {
+    /// Total prompt tokens (uncached + cached + cache-creation).
+    pub input_tokens: u32,
+    /// Completion tokens excluding reasoning tokens.
+    pub output_tokens: u32,
+    /// Tokens served from the provider's prompt cache.
+    pub cache_read_input_tokens: u32,
+    /// Tokens written to the provider's prompt cache, when reported.
+    pub cache_creation_input_tokens: Option<u32>,
+    /// Reasoning tokens included in the provider's completion count, when
+    /// reported.
+    pub reasoning_output_tokens: Option<u32>,
+    /// Cache-aware cost of the turn in USD, when both rates are known.
+    pub cost_usd: Option<f64>,
+    /// Context window to advertise, when the resolved profile declares one.
+    pub context_window: Option<usize>,
+}
+
+/// Select the input-token semantics of the backend a request was routed to.
+///
+/// A custom provider's name says nothing about its wire format: one named
+/// `baseten` may speak Anthropic Messages, where `input_tokens` excludes cache
+/// reads, while the same name may speak an OpenAI format where it includes
+/// them. `api_format` is the resolved backend, so it wins over the name.
+#[must_use]
+pub fn exclusive_input_semantics(api_format: Option<CustomProviderApiFormat>, provider: &str) -> bool {
+    match api_format {
+        Some(CustomProviderApiFormat::AnthropicMessages) => true,
+        Some(CustomProviderApiFormat::OpenAIChat | CustomProviderApiFormat::OpenAIResponses) => false,
+        Some(CustomProviderApiFormat::Auto) | None => provider_reports_exclusive_input(provider),
+    }
+}
+
+/// Resolve the usage profile of the backend that served `provider`.
+///
+/// A configured custom provider wins over the built-in catalogue: its resolved
+/// profile carries the context window and pricing the operator declared, and
+/// its `api_format` names the backend that produced the usage. Otherwise the
+/// built-in model catalogue supplies what it knows, and the provider name alone
+/// decides the input-token semantics.
+///
+/// Both branches are pure functions of already-loaded configuration. The
+/// catalogue lookup deliberately does not resolve credentials: reading
+/// environment variables, the OAuth store, or secure storage here would make a
+/// reported cost depend on whether a key happened to be installed, and would
+/// run that I/O once per turn for metadata it never uses.
+#[must_use]
+pub fn usage_profile(custom_providers: &[CustomProviderConfig], provider: &str, model: &str) -> UsageProfile {
+    if let Some(custom_provider) = custom_providers
+        .iter()
+        .find(|candidate| candidate.name.eq_ignore_ascii_case(provider))
+    {
+        let resolved = custom_provider.resolved_profile(model);
+        return UsageProfile {
+            context_window: resolved.context_window.filter(|window| *window > 0),
+            pricing: resolved.pricing.model_pricing(),
+            exclusive_input: exclusive_input_semantics(resolved.api_format, provider),
+        };
+    }
+
+    ModelResolver::catalog_entry(provider, model).map_or_else(
+        || UsageProfile {
+            exclusive_input: exclusive_input_semantics(None, provider),
+            ..UsageProfile::default()
+        },
+        |entry| UsageProfile {
+            context_window: Some(entry.context_window).filter(|window| *window > 0),
+            pricing: declared_pricing(entry.pricing),
+            exclusive_input: exclusive_input_semantics(None, provider),
+        },
+    )
+}
+
+/// Return the pricing a catalogue entry actually declares.
+///
+/// An entry that states no price reports none, so usage attribution never
+/// invents a cost for a model the catalogue does not price.
+fn declared_pricing(pricing: ModelPricing) -> Option<ModelPricing> {
+    let declared = pricing.input.is_some()
+        || pricing.output.is_some()
+        || pricing.cache_read.is_some()
+        || pricing.cache_write.is_some();
+    declared.then_some(pricing)
+}
+
+/// Resolve one turn's provider usage against its reporting profile.
+///
+/// Cost is computed in the provider's own input-token semantics rather than
+/// reinterpreting a shared total, so an inclusive and an exclusive
+/// representation of the same tokens price identically.
+#[must_use]
+pub fn resolve_turn_usage(usage: &ProviderUsage, profile: UsageProfile) -> TurnUsage {
+    let reasoning_output_tokens = usage
+        .reasoning_output_tokens
+        .map(|reasoning| reasoning.min(usage.completion_tokens));
+    let output_tokens = usage
+        .completion_tokens
+        .saturating_sub(reasoning_output_tokens.unwrap_or_default());
+    let cost_usd = profile.pricing.and_then(|pricing| {
+        let normalized = normalized_turn_usage_with_input_semantics(profile.exclusive_input, usage);
+        estimate_session_costs_with_pricing(pricing, &normalized).map(|estimate| estimate.effective_usd)
+    });
+
+    TurnUsage {
+        input_tokens: usage.prompt_tokens,
+        output_tokens,
+        cache_read_input_tokens: usage.cache_read_tokens_or_fallback(),
+        cache_creation_input_tokens: usage.cache_creation_tokens,
+        reasoning_output_tokens,
+        cost_usd,
+        context_window: profile.context_window,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
     use serde_json::json;
+    use diapason_config::{CustomProviderPricingConfig, CustomProviderProfileConfig};
 
     fn approx_eq(a: f64, b: f64) {
         assert!((a - b).abs() < 1e-12, "expected {a} to approx-equal {b}");
@@ -241,6 +383,187 @@ mod tests {
         assert_eq!(exclusive.input_tokens, 550);
         let inclusive = normalized_turn_usage_with_input_semantics(false, &usage);
         assert_eq!(inclusive.input_tokens, 100);
+    }
+
+    /// Build a custom provider with the fields usage reporting reads.
+    fn custom_provider(
+        name: &str,
+        api_format: CustomProviderApiFormat,
+        context_window: Option<usize>,
+        pricing: CustomProviderPricingConfig,
+    ) -> CustomProviderConfig {
+        CustomProviderConfig {
+            name: name.to_string(),
+            display_name: name.to_string(),
+            base_url: "https://llm.example/v1".to_string(),
+            api_format,
+            context_window,
+            pricing,
+            ..CustomProviderConfig::default()
+        }
+    }
+
+    /// Declare pricing in the per-million-token units configuration uses.
+    fn per_million(input: f64, output: f64) -> CustomProviderPricingConfig {
+        CustomProviderPricingConfig {
+            input_per_million_usd: Some(input),
+            output_per_million_usd: Some(output),
+            cache_read_per_million_usd: None,
+            cache_write_per_million_usd: None,
+        }
+    }
+
+    #[test]
+    fn backend_selects_input_semantics_over_the_provider_name() {
+        let cases = [
+            (Some(CustomProviderApiFormat::AnthropicMessages), "baseten", true),
+            (Some(CustomProviderApiFormat::OpenAIChat), "anthropic", false),
+            (Some(CustomProviderApiFormat::OpenAIResponses), "anthropic", false),
+            (Some(CustomProviderApiFormat::Auto), "anthropic", true),
+            (Some(CustomProviderApiFormat::Auto), "baseten", false),
+            (None, "anthropic", true),
+        ];
+
+        for (api_format, provider, expected) in cases {
+            assert_eq!(
+                exclusive_input_semantics(api_format, provider),
+                expected,
+                "api_format {api_format:?} for provider {provider}"
+            );
+        }
+    }
+
+    #[test]
+    fn cost_normalization_follows_the_selected_backend_not_the_provider_name() {
+        // `baseten` is a custom name either way; only the backend decides
+        // whether `prompt_tokens` already includes the cached tokens.
+        let usage = ProviderUsage {
+            prompt_tokens: 100,
+            completion_tokens: 0,
+            cached_prompt_tokens: Some(50),
+            ..ProviderUsage::default()
+        };
+        let pricing = Some(ModelPricing {
+            input: Some(1.0 / 1_000_000.0),
+            output: Some(0.0),
+            cache_read: Some(0.0),
+            cache_write: Some(0.0),
+        });
+        let cost = |exclusive_input| {
+            resolve_turn_usage(
+                &usage,
+                UsageProfile {
+                    pricing,
+                    exclusive_input,
+                    ..UsageProfile::default()
+                },
+            )
+            .cost_usd
+            .expect("costUSD")
+        };
+
+        assert!((cost(false) - 50.0 / 1_000_000.0).abs() < f64::EPSILON);
+        assert!((cost(true) - 100.0 / 1_000_000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn custom_provider_supplies_the_context_window_and_cost_pricing() {
+        let providers = vec![custom_provider(
+            "acme",
+            CustomProviderApiFormat::AnthropicMessages,
+            Some(200_000),
+            per_million(3.0, 15.0),
+        )];
+
+        // Provider names are matched case-insensitively, as routing does.
+        let profile = usage_profile(&providers, "AcMe", "acme-large");
+
+        assert_eq!(profile.context_window, Some(200_000));
+        assert!(profile.exclusive_input, "Anthropic Messages excludes cached tokens from prompt_tokens");
+        let pricing = profile.pricing.expect("custom provider pricing should reach cost reporting");
+        assert!((pricing.input.expect("input rate") - 3.0 / 1_000_000.0).abs() < f64::EPSILON);
+        assert!((pricing.output.expect("output rate") - 15.0 / 1_000_000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn model_profile_overrides_the_provider_default() {
+        let providers = vec![CustomProviderConfig {
+            context_window: Some(200_000),
+            pricing: per_million(3.0, 15.0),
+            profiles: BTreeMap::from([(
+                "acme-small".to_string(),
+                CustomProviderProfileConfig {
+                    api_format: CustomProviderApiFormat::OpenAIChat,
+                    context_window: Some(32_768),
+                    pricing: per_million(0.25, 1.0),
+                    ..CustomProviderProfileConfig::default()
+                },
+            )]),
+            ..custom_provider(
+                "acme",
+                CustomProviderApiFormat::AnthropicMessages,
+                None,
+                CustomProviderPricingConfig::default(),
+            )
+        }];
+
+        let profile = usage_profile(&providers, "acme", "acme-small");
+
+        assert_eq!(profile.context_window, Some(32_768));
+        assert!(
+            !profile.exclusive_input,
+            "the model profile's OpenAI Chat backend includes cached tokens in prompt_tokens"
+        );
+        let pricing = profile.pricing.expect("model profile pricing should reach cost reporting");
+        assert!((pricing.input.expect("input rate") - 0.25 / 1_000_000.0).abs() < f64::EPSILON);
+        assert!((pricing.output.expect("output rate") - 1.0 / 1_000_000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn built_in_provider_falls_back_to_the_model_catalogue() {
+        let profile = usage_profile(&[], "anthropic", "claude-fable-5");
+        let catalog = diapason_config::models::model_catalog_entry("anthropic", "claude-fable-5")
+            .expect("catalogue entry for a shipped model");
+
+        assert_eq!(profile.context_window, Some(catalog.context_window));
+        assert!(profile.exclusive_input);
+    }
+
+    #[test]
+    fn resolved_turn_usage_reports_reasoning_separately_from_output() {
+        let usage = ProviderUsage {
+            prompt_tokens: 21,
+            completion_tokens: 8,
+            reasoning_output_tokens: Some(3),
+            cached_prompt_tokens: Some(5),
+            cache_creation_tokens: Some(3),
+            ..ProviderUsage::default()
+        };
+
+        let resolved = resolve_turn_usage(&usage, UsageProfile::default());
+
+        assert_eq!(resolved.input_tokens, 21);
+        assert_eq!(resolved.output_tokens, 5);
+        assert_eq!(resolved.reasoning_output_tokens, Some(3));
+        assert_eq!(resolved.cache_read_input_tokens, 5);
+        assert_eq!(resolved.cache_creation_input_tokens, Some(3));
+        assert_eq!(resolved.cost_usd, None, "no pricing must not invent a cost");
+        assert_eq!(resolved.context_window, None);
+    }
+
+    #[test]
+    fn resolved_turn_usage_clamps_reasoning_to_the_completion_count() {
+        let usage = ProviderUsage {
+            prompt_tokens: 4,
+            completion_tokens: 2,
+            reasoning_output_tokens: Some(9),
+            ..ProviderUsage::default()
+        };
+
+        let resolved = resolve_turn_usage(&usage, UsageProfile::default());
+
+        assert_eq!(resolved.reasoning_output_tokens, Some(2));
+        assert_eq!(resolved.output_tokens, 0, "reasoning must never exceed the completion count");
     }
 
     #[test]
@@ -516,3 +839,4 @@ impl SessionBudget {
         self.max_usd.map(|m| (m - self.spent_usd).max(0.0))
     }
 }
+// weave: run 'weave explain crates/codegen/diapason-core/src/llm/usage_cost.rs' for per-hunk detail, 'weave check' to verify your resolution
