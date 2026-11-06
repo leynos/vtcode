@@ -18,6 +18,12 @@ Entry point for Diapason contributor workflows.
 
 - [Process Hardening](./PROCESS_HARDENING.md) - Runtime hardening controls.
 - [Execution Policy](./EXECUTION_POLICY.md) - Command policy model.
+- [Diapason policy RFC](../rfcs/rfc-0001-diapason-shell-policy.md) - Proposed
+  consolidation using Brush and Regorus, including policy supersession.
+- [Diapason policy design](../design/diapason-shell-policy-design.md) - Draft
+  evidence, authority, approval, and enforcement contracts.
+- [Diapason policy roadmap](../project/diapason-shell-policy-roadmap.md) - GIST
+  delivery sequence and acceptance evidence for the proposal.
 - [Command Security Model](./COMMAND_SECURITY_MODEL.md) - Command validation
   and threat model.
 - [WebMCP bridge](./webmcp.md) - Authenticated browser editing, pairing,
