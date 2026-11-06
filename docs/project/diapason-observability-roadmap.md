@@ -131,7 +131,9 @@ signals through a collector. Its outcome informs where deeper spans belong.
     records and terminal outcome with `content=none`. Before first opt-in,
     fixtures prove no-secret projection, managed destination/redirect/proxy/TLS
     enforcement, exporter failure isolation, and bounded queues, active spans
-    and shutdown. Later phases broaden these cases; they do not defer them.
+    and shutdown. They also prove that tool, hook and MCP child environments
+    exclude OTLP exporter URLs, headers and credentials even when propagation is
+    disabled. Later phases broaden these cases; they do not defer them.
   - Requires steps 1.1-1.2 and task 2.1.3.
   - See [design §§3, 5, 7](../design/diapason-observability-design.md).
 
