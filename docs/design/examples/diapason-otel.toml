@@ -1,8 +1,8 @@
-# Proposed configuration, not accepted by the current vtcode implementation.
+# Proposed configuration, not accepted by the current Diapason implementation.
 # Only trusted user or managed configuration can activate network export.
 [telemetry.otel]
 enabled = false
-service_name = "vtcode"
+service_name = "diapason"
 content = "none"
 shutdown_timeout_ms = 2000
 metric_interval_ms = 10000

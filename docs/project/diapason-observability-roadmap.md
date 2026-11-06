@@ -2,7 +2,7 @@
 
 This roadmap translates [RFC 0002](../rfcs/rfc-0002-diapason-observability.md)
 and the [technical design](../design/diapason-observability-design.md) into
-review-sized delivery work for vtcode. It does not promise dates. Phases are
+review-sized delivery work for Diapason. It does not promise dates. Phases are
 GIST ideas to validate or falsify; steps are workstreams that answer sequencing
 questions; numbered tasks deliver measurable changes.
 
@@ -100,7 +100,7 @@ local collection and managed deployment review. See
     [design §8](../design/diapason-observability-design.md#8-privacy-configuration-and-trust).
   - Requires 1.1.3 and 1.1.4.
 
-- [ ] 2.1.2. Add `vtcode telemetry status --json` and `doctor`.
+- [ ] 2.1.2. Add `diapason telemetry status --json` and `doctor`.
   - Report effective signals, safe endpoint origins, source precedence, schema
     versions and last local export health without revealing header values.
   - Success: both commands work without provider credentials; `doctor` makes
@@ -110,7 +110,7 @@ local collection and managed deployment review. See
   - Requires 2.1.1.
 
 - [ ] 2.1.3. Compose local and OTel layers in one owned runtime lifecycle.
-  - Add proposed `vtcode-telemetry` boundary and binary bootstrap/shutdown
+  - Add proposed `diapason-telemetry` boundary and binary bootstrap/shutdown
     ownership; retain the file, TUI and error-collector layers.
   - Success: a second global subscriber is diagnosed and cannot panic or
     silently replace an embedding application's providers.
@@ -260,7 +260,7 @@ slice fails if it must infer current success from stale or unproven telemetry.
 ### 5.1. Preserve exact correlation and evidence provenance
 
 This step asks whether independent orchestration systems can add their IDs
-without importing their packages or changing vtcode's runtime contract. Its
+without importing their packages or changing Diapason's runtime contract. Its
 outcome informs the compatibility projection. See
 [design §§4, 7, 10](../design/diapason-observability-design.md).
 

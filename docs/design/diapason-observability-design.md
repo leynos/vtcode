@@ -1,12 +1,11 @@
 # Diapason observability technical design
 
 - **Status:** Proposed; no runtime implementation is delivered by this document.
-- **Updated:** 2026-11-03.
+- **Updated:** 2026-11-06.
 - **Audience:** Runtime, provider, safety and configuration maintainers;
   operators and telemetry consumers.
 - **Scope:** OpenTelemetry (OTel) traces, metrics and structured logs for
-  vtcode. Diapason remains the proposed fork name. Existing crate names are
-  retained.
+  Diapason.
 - **Authority:** [RFC 0002](../rfcs/rfc-0002-diapason-observability.md) states
   the proposal; this document specifies its target contracts. The
   [GIST roadmap](../project/diapason-observability-roadmap.md) sequences
@@ -48,18 +47,17 @@ default.
 ## 2. Current implementation and integration seams
 
 This inventory describes base commit
-`ca5badd345722a15fcf3d891c91a3053fec6fc08`, inspected on 2026-11-03. Source
-paths retain vtcode naming.
+`bf987097b5eb98bbbaa1c128a19e82e90442070a`, inspected on 2026-11-06.
 
-| Existing seam                                                                    | Observed behaviour                                                                              | Required change                                                                                                   |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| [Tracing bootstrap](../../src/main_helpers/tracing.rs)                           | Separate initialization paths install a global subscriber, file/TUI layers and error collection | One composition root with independently filtered local and export layers                                          |
-| [Telemetry configuration](../../crates/codegen/vtcode-config/src/telemetry.rs)   | Trajectory, dashboard, retention and performance settings                                       | Add a distinct nested `telemetry.otel` configuration; do not reinterpret existing switches                        |
-| [Execution events](../../crates/common/vtcode-exec-events/src/lib.rs)            | `ThreadEvent` owns lifecycle semantics; optional `OtelEmitter` starts isolated spans            | Keep the event contract; replace isolated-span projection with safe event export and owner-created duration spans |
-| [Event recording](../../crates/codegen/vtcode-core/src/core/agent/events/mod.rs) | Events fan out to callback, recorder and memory                                                 | A single telemetry projection at the canonical emission seam, not each subscriber                                 |
-| [Session persistence](../../crates/codegen/vtcode-memory/src/event_log.rs)       | Explicit flush; `Drop` is best effort                                                           | Preserve finalization before bounded telemetry shutdown                                                           |
-| [Core metrics](../../crates/codegen/vtcode-core/src/metrics/mod.rs)              | JSON/Prometheus snapshots and provider metric methods                                           | Audit actual producers; provider-method existence does not prove production wiring                                |
-| [Workspace dependencies](../../Cargo.toml)                                       | `opentelemetry` 0.32 and `tracing-opentelemetry` 0.33                                           | Select a mutually compatible SDK/exporter family; no silent upgrade assumption                                    |
+| Existing seam                                                                      | Observed behaviour                                                                              | Required change                                                                                                   |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| [Tracing bootstrap](../../src/main_helpers/tracing.rs)                             | Separate initialization paths install a global subscriber, file/TUI layers and error collection | One composition root with independently filtered local and export layers                                          |
+| [Telemetry configuration](../../crates/codegen/diapason-config/src/telemetry.rs)   | Trajectory, dashboard, retention and performance settings                                       | Add a distinct nested `telemetry.otel` configuration; do not reinterpret existing switches                        |
+| [Execution events](../../crates/common/diapason-exec-events/src/lib.rs)            | `ThreadEvent` owns lifecycle semantics; optional `OtelEmitter` starts isolated spans            | Keep the event contract; replace isolated-span projection with safe event export and owner-created duration spans |
+| [Event recording](../../crates/codegen/diapason-core/src/core/agent/events/mod.rs) | Events fan out to callback, recorder and memory                                                 | A single telemetry projection at the canonical emission seam, not each subscriber                                 |
+| [Session persistence](../../crates/codegen/diapason-memory/src/event_log.rs)       | Explicit flush; `Drop` is best effort                                                           | Preserve finalization before bounded telemetry shutdown                                                           |
+| [Core metrics](../../crates/codegen/diapason-core/src/metrics/mod.rs)              | JSON/Prometheus snapshots and provider metric methods                                           | Audit actual producers; provider-method existence does not prove production wiring                                |
+| [Workspace dependencies](../../Cargo.toml)                                         | `opentelemetry` 0.32 and `tracing-opentelemetry` 0.33                                           | Select a mutually compatible SDK/exporter family; no silent upgrade assumption                                    |
 
 _Table 2: Implementation evidence and proposed ownership changes._
 
@@ -96,11 +94,11 @@ flowchart TD
 
 _Figure 1: Observation, persistence and export boundaries._
 
-Add a small proposed `vtcode-telemetry` crate under `crates/common/`. It owns
+Add a small proposed `diapason-telemetry` crate under `crates/common/`. It owns
 sanitized observation types, instrument handles, schema constants, context
-validation and SDK/exporter lifecycle. It may depend on `vtcode-exec-events`;
+validation and SDK/exporter lifecycle. It may depend on `diapason-exec-events`;
 the event crate must not depend back on it. Configuration deserialization stays
-in `vtcode-config`; the binary converts validated settings into telemetry
+in `diapason-config`; the binary converts validated settings into telemetry
 options. Core and provider adapters emit observations without initializing
 globals. Runtime event additions belong in `ThreadEvent`, not a rival business
 event enum. A projection record is an export representation of that contract,
@@ -170,7 +168,7 @@ response ID, a local operation ID, and a tool call ID are different identities.
 
 | Identity group    | Proposed attributes                                                                                                                                                                        | Rules                                                                                                                  |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Resource          | `service.name`, `service.version`, `service.instance.id`, `deployment.environment.name`                                                                                                    | Default service name `vtcode`; explicit `diapason` deployment override permitted; instance is random per process       |
+| Resource          | `service.name`, `service.version`, `service.instance.id`, `deployment.environment.name`                                                                                                    | Default service name `diapason`; explicit deployment override permitted; instance is random per process                |
 | Local execution   | `diapason.session.id`, `diapason.interaction.id`, `diapason.turn.id`, `diapason.operation.id`, `diapason.attempt.id`                                                                       | Generated once by the owning runtime; never reconstructed from content                                                 |
 | External work     | `diapason.correlation.id`, `diapason.workflow.run.id`, `diapason.task.id`, `diapason.task.attempt.id`, `diapason.agent.invocation.id`, `diapason.agent.process.id`, `diapason.cli.attempt` | Supplied by authenticated launcher/control protocol; absent when unknown; CLI attempt is a positive, one-based ordinal |
 | Work and evidence | `diapason.workspace.id`, `diapason.candidate.id`, `diapason.gate.id`, `diapason.artifact.id`                                                                                               | Opaque references; paths, Git remotes and signed URLs excluded by default                                              |
@@ -473,7 +471,7 @@ exported only under the identifier policy; no automatic Git remote URL capture.
 Line-change metrics report observed patch operations and can count rework; they
 are not final Git diff totals or developer productivity scores. Commit,
 pull-request and time-to-merge outcomes are external observations linked to
-candidate/task IDs. vtcode does not fabricate them by parsing model prose.
+candidate/task IDs. Diapason does not fabricate them by parsing model prose.
 
 The proposed shell-policy design in
 [RFC 0001](../rfcs/rfc-0001-diapason-shell-policy.md) supplies potential future
@@ -581,10 +579,10 @@ immutable during a run; changes take effect on next startup.
 
 ### 8.3. Operator interface
 
-Propose `vtcode telemetry status --json` for effective signal states, safe
+Propose `diapason telemetry status --json` for effective signal states, safe
 endpoint origins, configuration provenance, schema versions, sampler, queue
 limits and last export health. Mask userinfo, paths with sensitive segments,
-query strings and header values. `vtcode telemetry doctor` validates without
+query strings and header values. `diapason telemetry doctor` validates without
 network traffic; an explicit `--send-test` sends only a fixed synthetic record
 to already authorized destinations. Both work without provider authentication.
 These are proposed CLI contracts, not current commands.
@@ -668,10 +666,11 @@ consumers have a migration guide and comparison fixtures. Do not dual-publish
 renamed metrics into a shared total by default; use explicit compatibility
 views with documented queries and a removal boundary.
 
-Keep software and service naming independent of the proposed fork rename. Do
-not emit both `vtcode.*` and `diapason.*` aliases for the same measurement. A
-deployment can retain `service.name=vtcode` while using schema-v1 `diapason.*`
-custom fields. A future naming migration needs a separate decision.
+Use `diapason` as the default `service.name` and `diapason.*` as the schema-v1
+attribute namespace. Do not dual-publish the same measurement under a second
+service name or attribute namespace. A deployment may override `service.name`
+for its own inventory, but custom attribute fields keep the `diapason.*` names.
+Changing that namespace needs a versioned schema decision.
 
 Roll out disabled, then metadata-only opt-in with capture fixtures, then
 workflow/security coverage, then optional redacted content. Each release

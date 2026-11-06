@@ -8,14 +8,14 @@
 - **Audience:** Runtime, provider, safety, operations, and integration
   maintainers.
 - **Scope:** A portable tracing, metrics, and structured-event system for
-  vtcode. Diapason is the proposed name of the fork; this RFC does not
-  implement a rename.
+  Diapason. This RFC changes no runtime behaviour and delivers no
+  instrumentation.
 - **Companions:** [Technical design](../design/diapason-observability-design.md)
   and [GIST roadmap](../project/diapason-observability-roadmap.md).
 
 ## 1. Summary
 
-This RFC proposes an opt-in OpenTelemetry (OTel) system for vtcode that lets
+This RFC proposes an opt-in OpenTelemetry (OTel) system for Diapason that lets
 operators understand agent work from a user interaction through model requests,
 tools, approvals, retries, and outcomes. It combines idiomatic Rust `tracing`
 spans, typed OTel metrics, and structured lifecycle events, exported through
@@ -24,7 +24,7 @@ the OpenTelemetry Protocol (OTLP) to replaceable collectors and backends.
 The system targets functional parity with the agentic observability
 capabilities of Pi extensions, OpenAI Codex, Goose, and Claude Code. Parity
 means comparable visibility and control, not identical schemas or dashboards.
-vtcode will retain its runtime event contract, map compatible fields to
+Diapason will retain its runtime event contract, map compatible fields to
 evolving GenAI semantic conventions, and preserve business correlations for
 consumers such as df12-build, Dakar, and Corbusier.
 
@@ -47,15 +47,15 @@ behaviour. Exported business telemetry is not a durable audit record.
 The binary installs a global `tracing_subscriber` with local formatting,
 filtering, and error collection; no OTel provider or exporter is wired into that
 [bootstrap](../../src/main_helpers/tracing.rs). The optional `telemetry-otel`
-emitter in `vtcode-exec-events` creates isolated spans per event and includes
+emitter in `diapason-exec-events` creates isolated spans per event and includes
 fields that require privacy review. It does not create a session, interaction,
 request, and tool hierarchy. `ThreadEvent` is the existing lifecycle contract
 and must remain authoritative.
 
 The
-[event contract and emitter](../../crates/common/vtcode-exec-events/src/lib.rs)
-and [core metrics](../../crates/codegen/vtcode-core/src/metrics/mod.rs) were
-inspected at base `ca5badd345722a15fcf3d891c91a3053fec6fc08` on 2026-11-03.
+[event contract and emitter](../../crates/common/diapason-exec-events/src/lib.rs)
+and [core metrics](../../crates/codegen/diapason-core/src/metrics/mod.rs) were
+inspected at base `bf987097b5eb98bbbaa1c128a19e82e90442070a` on 2026-11-06.
 
 The core has a `MetricsCollector` with JSON and Prometheus text output. It
 tracks provider outcomes and timings, but inspected provider-attempt methods do
@@ -86,7 +86,7 @@ be reconciled with new instruments rather than counted twice.
 
 ### 5.1. Rust ownership and signal lifecycle
 
-Add a small proposed `vtcode-telemetry` crate for typed instruments,
+Add a small proposed `diapason-telemetry` crate for typed instruments,
 configuration validation, privacy filtering, and export lifecycle. The binary
 owns initialization and shutdown. It composes existing `tracing_subscriber`
 layers with `tracing-opentelemetry` and the OTel SDK/OTLP exporters, without
@@ -126,7 +126,7 @@ success from tool invocation or request completion alone.
 Model relationships explicitly: logical objective/correlation, workflow
 invocation, logical node, node attempt, agent invocation, process, CLI attempt,
 session, interaction, provider request, tool call, gate, and artifact. Not
-every vtcode run has every entity; fields are optional and consumers may add
+every Diapason run has every entity; fields are optional and consumers may add
 their own context. W3C trace context may cross deliberate child-process or
 remote boundaries. Do not forward exporter credentials, arbitrary environment,
 or untrusted trace baggage into shell commands, hooks, or tools.
@@ -248,8 +248,8 @@ ownership; then add opt-in export and instrument end-to-end operations. Keep
 existing JSON and Prometheus surfaces until parity is demonstrated, with one
 documented source of each measurement. Introduce schema/version changes
 additively and document any changed names or semantics. Do not couple this work
-to the proposed vtcode-to-Diapason rename or to the separate proposed
-shell-policy change in [RFC 0001](rfc-0001-diapason-shell-policy.md).
+to the separate proposed shell-policy change in
+[RFC 0001](rfc-0001-diapason-shell-policy.md).
 
 ## 9. Alternatives considered
 
