@@ -149,8 +149,8 @@ loaded or resumed later when durable history is enabled.
 When the ACP connection shuts down, Diapason cancels and drains its registered
 sessions and runs their cleanup within the bounded shutdown wait. If that wait
 expires, cleanup continues in the background. Notification hooks are not
-invented for ACP protocol messages; they run only for real Diapason notification
-events.
+invented for ACP protocol messages; they run only for real Diapason
+notification events.
 
 ### ACP capability negotiation and Lody extensions
 
@@ -171,8 +171,8 @@ Subagent and background-process lifecycle is represented with standard ACP
 `session/update` tool calls and tool-call updates. Their standard title, kind,
 content, and status fields are accompanied by `_meta.lody.task`, which carries
 the Diapason/Lody task snapshot and its additional identifiers, actor, timing,
-summary, or error fields. Diapason does not require non-standard `SubagentStart`
-or `SubagentStop` update types.
+summary, or error fields. Diapason does not require non-standard
+`SubagentStart` or `SubagentStop` update types.
 
 When subagent management is advertised, the following Lody requests are
 available: `_lody/subagents/list`, `_lody/subagents/cancel`, and
