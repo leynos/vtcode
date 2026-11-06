@@ -9,9 +9,9 @@ use futures::future::{BoxFuture, select_all};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Notify, RwLock};
+use std::sync::{Arc, OnceLock};
+use tokio::sync::{Mutex, Notify, RwLock};
 
 use crate::config::DiapasonConfig;
 use crate::config::types::ReasoningEffortLevel;
@@ -498,7 +498,12 @@ impl SubagentController {
             .children
             .get_mut(target)
             .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
-        if record.status == SubagentStatus::Closed {
+        // Cancellation must not rewrite a settled outcome. `Completed` and
+        // `Failed` children already stopped running, and a transport projects
+        // `Closed` as a failure, so closing them again would turn a
+        // successful task into a visibly failed one and overwrite its
+        // completion timestamp.
+        if record.status.is_terminal() {
             return Ok(record.build_status_entry());
         }
         if let Some(handle) = record.handle.take() {
@@ -585,6 +590,17 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) {
             return Ok(());
         }
+        if self.config.managed_background_runtime {
+            // Nested scopes never own background records. Persisting their
+            // always-empty view would erase the ledger owned by the root
+            // controller.
+            return Ok(());
+        }
+        // Take the persistence lock before snapshotting in-memory state.
+        // Reading first lets two concurrent saves snapshot v1 and v2, then
+        // write v2 before v1, leaving the older snapshot as the file. The lock
+        // must cover the read so the last write is always the newest state.
+        let _guard = background_state_persistence_lock().lock().await;
         let records = {
             let state = self.state.read().await;
             state
@@ -594,7 +610,25 @@ impl SubagentController {
                 .map(BackgroundRecord::into_persisted)
                 .collect()
         };
-        persist_background_state(&self.config.workspace_root, records).await
+        if let Some(owner_session_id) = self.background_owner_session_id.as_deref() {
+            let mut persisted_records = load_background_state(&self.config.workspace_root).await?.records;
+            persisted_records.retain(|record| record.owner_session_id.as_deref() != Some(owner_session_id));
+            persisted_records.extend(records);
+            persist_background_state(&self.config.workspace_root, persisted_records).await
+        } else {
+            // An unscoped controller shares this ledger with the owner-scoped
+            // controllers of other sessions and processes, and it loads their
+            // records so it can list and route them. Replacing the file with
+            // its own snapshot would delete a record another owner created
+            // after this controller loaded, or restore that owner's record
+            // from the stale copy it holds.
+            let persisted_records = load_background_state(&self.config.workspace_root).await?.records;
+            persist_background_state(
+                &self.config.workspace_root,
+                merge_unscoped_background_records(persisted_records, records),
+            )
+            .await
+        }
     }
 
     pub(super) async fn find_spec(&self, candidate: &str) -> Option<SubagentSpec> {
@@ -950,6 +984,47 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
         waiter.as_mut().enable();
     }
     waiters
+}
+
+static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+fn background_state_persistence_lock() -> &'static Mutex<()> {
+    BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Merges an unscoped controller's snapshot into the persisted ledger.
+///
+/// The unscoped controller is not the owner of the owner-scoped records it
+/// loads, so it must not replace them with its own copy. Records it does not
+/// track are kept exactly as another process last wrote them, and a record
+/// both sides hold keeps the copy with the newest `updated_at`: an untouched
+/// snapshot equals the copy this controller loaded, while a local refresh or
+/// cancellation is newer than it.
+fn merge_unscoped_background_records(
+    persisted: Vec<PersistedBackgroundRecord>,
+    snapshot: Vec<PersistedBackgroundRecord>,
+) -> Vec<PersistedBackgroundRecord> {
+    // Key on the canonical id: a ledger written by an older build can hold a
+    // legacy id for the same owner-scoped record, and the load path
+    // canonicalizes in memory. Keying on the raw id would let one record
+    // appear twice, or let two owners' records collapse into one entry.
+    let mut merged: BTreeMap<String, PersistedBackgroundRecord> = persisted
+        .into_iter()
+        .map(|mut record| {
+            record.canonicalize_id();
+            (record.id.clone(), record)
+        })
+        .collect();
+    for mut record in snapshot {
+        record.canonicalize_id();
+        match merged.get_mut(&record.id) {
+            Some(current) if record.is_at_least_as_new_as(current) => *current = record,
+            Some(_) => {}
+            None => {
+                merged.insert(record.id.clone(), record);
+            }
+        }
+    }
+    merged.into_values().collect()
 }
 
 #[cfg(test)]
