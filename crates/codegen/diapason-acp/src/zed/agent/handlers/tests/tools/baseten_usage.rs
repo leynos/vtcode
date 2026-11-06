@@ -7,21 +7,36 @@
 //! the `_lody/session/usage_update` notification the ACP client sees.
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
-use diapason_config::core::{CustomProviderApiFormat, CustomProviderConfig};
 use serde_json::Value;
+use diapason_config::core::{CustomProviderApiFormat, CustomProviderConfig};
+use diapason_config::CustomProviderPricingConfig;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 const BASETEN_MODEL: &str = "baseten/usage";
+
 const BASETEN_PROVIDER: &str = "baseten-fixture";
 
 /// One content delta followed by the terminal usage chunk Baseten streams when
 /// `stream_options.include_usage` is set.
+///
+/// The usage chunk nests reasoning tokens under `completion_tokens_details`,
+/// which is where OpenAI-compatible providers report them. The assembled path
+/// must lift that detail into the notification rather than dropping it.
 const TERMINAL_USAGE_STREAM: &str = concat!(
     "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n",
-    "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18}}\n\n",
+    "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18,\"completion_tokens_details\":{\"reasoning_tokens\":3}}}\n\n",
     "data: [DONE]\n\n",
 );
+
+/// Context window the fixture profile declares, in tokens.
+const BASETEN_CONTEXT_WINDOW: usize = 131_072;
+
+/// Declared input rate in USD per million tokens.
+const BASETEN_INPUT_PER_MILLION: f64 = 3.0;
+
+/// Declared output rate in USD per million tokens.
+const BASETEN_OUTPUT_PER_MILLION: f64 = 15.0;
 
 /// A provider stream that never reports usage, which is what an OpenAI-
 /// compatible origin does when it ignores `stream_options.include_usage`.
@@ -40,6 +55,13 @@ fn baseten_provider(base_url: &str) -> CustomProviderConfig {
         supports_stream_usage: Some(true),
         model: BASETEN_MODEL.to_string(),
         models: vec![BASETEN_MODEL.to_string()],
+        context_window: Some(BASETEN_CONTEXT_WINDOW),
+        pricing: CustomProviderPricingConfig {
+            input_per_million_usd: Some(BASETEN_INPUT_PER_MILLION),
+            output_per_million_usd: Some(BASETEN_OUTPUT_PER_MILLION),
+            cache_read_per_million_usd: None,
+            cache_write_per_million_usd: None,
+        },
         ..Default::default()
     }
 }
@@ -194,9 +216,24 @@ async fn terminal_only_baseten_usage_reaches_the_acp_client() {
     );
     let update = &updates[0];
     assert_eq!(update["usage"]["inputTokens"], 13);
-    assert_eq!(update["usage"]["outputTokens"], 5);
+    assert_eq!(
+        update["usage"]["outputTokens"], 2,
+        "reasoning tokens are reported separately and excluded from the output count"
+    );
+    assert_eq!(update["usage"]["reasoningOutputTokens"], 3);
+    assert_eq!(update["usage"]["contextWindow"], 131_072);
+    // OpenAI Chat reports prompt tokens inclusive of cache tokens, and the
+    // fixture declares no cache activity, so cost is the declared rates over
+    // the parser's prompt and completion counts.
+    let expected_cost = 13.0 * BASETEN_INPUT_PER_MILLION / 1_000_000.0 + 5.0 * BASETEN_OUTPUT_PER_MILLION / 1_000_000.0;
+    let cost = update["usage"]["costUSD"].as_f64().expect("the declared rates must price the turn");
+    assert!(
+        (cost - expected_cost).abs() < 1e-12,
+        "expected {expected_cost} from the declared rates, got {cost}"
+    );
     assert_eq!(update["modelUsage"][BASETEN_MODEL]["inputTokens"], 13);
-    assert_eq!(update["modelUsage"][BASETEN_MODEL]["outputTokens"], 5);
+    assert_eq!(update["modelUsage"][BASETEN_MODEL]["outputTokens"], 2);
+    assert_eq!(update["modelUsage"][BASETEN_MODEL]["reasoningOutputTokens"], 3);
 
     // The assembled path, not just the projection: the real OpenAI-chat
     // adapter opted into streamed usage for this profile.
@@ -232,3 +269,4 @@ async fn baseten_stream_without_usage_publishes_no_delta() {
         "the prompt must still reach the mock origin"
     );
 }
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/tests/tools/baseten_usage.rs' for per-hunk detail, 'weave check' to verify your resolution
