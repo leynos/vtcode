@@ -358,6 +358,50 @@ fn provider_error_telemetry_bounds_untrusted_codes() {
     }
 }
 
+/// Assert the emitted provider warning bounds an untrusted code.
+///
+/// The telemetry struct is bounded by construction, but operators read the
+/// warning that `failed` emits. Capture that warning so the allowlist fallback
+/// and the absence of the provider metadata are asserted at the boundary that
+/// actually writes the record, not only on the intermediate value.
+#[test]
+fn provider_failure_warning_bounds_untrusted_codes() {
+    let detail = "token=sk-live-secret POST https://api.example.invalid/v1 alice@example.com";
+    let error = LLMError::Network {
+        message: detail.to_string(),
+        metadata: Some(LLMErrorMetadata::new(
+            "Arli AI",
+            Some(500),
+            Some(detail.to_string()),
+            None,
+            None,
+            None,
+            Some(detail.to_string()),
+        )),
+    };
+
+    let capture = TraceCapture::default();
+    let subscriber = Registry::default().with(capture.clone());
+    tracing::subscriber::with_default(subscriber, || {
+        let runtime = retry_runtime();
+        let mut telemetry = GenerationTelemetry::start(&runtime);
+        telemetry.failed(&runtime, 0, "non_retryable", &error);
+    });
+
+    let captured = capture.0.lock().expect("trace capture lock").join("\n");
+    assert!(
+        captured.contains("ACP provider generation attempt failed"),
+        "the warning must be emitted: {captured}"
+    );
+    assert!(
+        captured.contains("provider_error_code=Some(\"other\")"),
+        "the code must fall back to the bounded value: {captured}"
+    );
+    for leaked in ["sk-live-secret", "api.example.invalid", "alice@example.com", "Arli AI"] {
+        assert!(!captured.contains(leaked), "{leaked} must stay out of the warning: {captured}");
+    }
+}
+
 /// Assert every allowlisted code survives unchanged.
 #[test]
 fn provider_error_telemetry_preserves_allowlisted_codes() {

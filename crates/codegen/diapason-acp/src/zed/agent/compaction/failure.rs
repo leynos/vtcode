@@ -6,8 +6,10 @@
 //! data, so both get a category from a closed set. The originating error's
 //! text is deliberately not retained: it may embed untrusted text, and nothing
 //! in this type may expose it to a log or a client. Only its byte length and a
-//! bounded digest survive, so repeated identical failures stay correlatable
-//! without their content being recoverable.
+//! bounded digest survive, so repeated identical failures stay correlatable.
+//! The digest is deterministic and unkeyed: it is a correlation aid, not a
+//! secrecy boundary, and a reader who can guess the original text can confirm
+//! that guess against it.
 
 use super::super::redaction::detail_correlation;
 use anyhow::Error;
@@ -42,11 +44,13 @@ impl CompactionFailureKind {
     }
 }
 
-/// Bounded, non-identifying description of a discarded source error.
+/// Bounded correlation aid describing a discarded source error.
 ///
 /// The rendering itself is never retained. The byte length and the digest let
 /// an operator tell two failures apart and group repeats, and neither can carry
-/// provider payload, hook output, a path, or personal data into a record.
+/// provider payload, hook output, a path, or personal data into a record. The
+/// digest is deterministic and unkeyed, so it identifies a repeat without being
+/// a secrecy boundary: a guessable original can be confirmed against it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FailureDetail {
     /// Byte length of the source error's outer message.
