@@ -66,7 +66,7 @@ prompt or tool call. Ambiguous history is rejected before any archive write.
 ### Stale exec-session error contract
 
 `ExecSessionNotFound` and `ExecSessionLostAfterInput` are typed causes in
-`vtcode-core`. `ToolExecutionError::from_anyhow` maps both to a non-retryable
+`diapason-core`. `ToolExecutionError::from_anyhow` maps both to a non-retryable
 `ResourceNotFound` classification and records a typed `stale_exec_session`
 state on the error. Policy decisions read that typed state; the client-facing
 `details` payload (`reason: "stale_exec_session"`, `session_id`, and

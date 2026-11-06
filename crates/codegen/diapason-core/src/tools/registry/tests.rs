@@ -15,6 +15,7 @@ use crate::tools::traits::Tool;
 use anyhow::Result;
 use async_trait::async_trait;
 use base64::Engine;
+use diapason_commons::ErrorCategory;
 use diapason_commons::canonicalize;
 use futures::future::BoxFuture;
 use rstest::{fixture, rstest};
@@ -25,11 +26,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 
-use vtcode_commons::{ErrorCategory, canonicalize};
-
-//! Tool registry policy, dispatch, and session behaviour against isolated fixtures.
-};
-
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
 
@@ -39,9 +35,7 @@ mod stale_exec_session;
 mod pipe_session;
 
 mod no_op_ladder;
-
 mod patch_failure_bound;
-
 mod patch_safety;
 
 const CUSTOM_TOOL_NAME: &str = "custom_test_tool";

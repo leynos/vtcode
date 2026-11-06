@@ -6,8 +6,8 @@ use super::super::tool_config::SessionToolDefinitionRequest;
 use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use super::provider::IncompleteProviderTurn;
 use super::*;
+use diapason_core::metrics::ToolRecoveryEvent;
 use tracing::Instrument;
-use vtcode_core::metrics::ToolRecoveryEvent;
 
 mod buffered;
 

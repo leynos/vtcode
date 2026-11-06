@@ -4,9 +4,9 @@
 //! `OnceLock`, so every test that reads or writes it must hold the same lock.
 //! Handler tests and session-state tests run in one test binary; a second lock
 //! would let them race.
+use diapason_config::codex::HistoryPersistence;
 use std::sync::LazyLock;
 use tokio::sync::MutexGuard;
-use diapason_config::codex::HistoryPersistence;
 
 pub(crate) static SESSION_HISTORY_TEST_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));

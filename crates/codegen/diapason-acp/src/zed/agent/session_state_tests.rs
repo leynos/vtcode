@@ -19,22 +19,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use vtcode_config::codex::HistoryPersistence;
-use vtcode_config::{SubagentDiscoveryInput, discover_subagents};
-use vtcode_core::config::core::PromptCachingConfig;
-use vtcode_core::config::types::{
-    AgentConfig as CoreAgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference,
-};
-use vtcode_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
-use vtcode_core::core::agent::snapshots::{DEFAULT_CHECKPOINTS_ENABLED, DEFAULT_MAX_AGE_DAYS, DEFAULT_MAX_SNAPSHOTS};
-use vtcode_core::utils::session_archive::{
-    SessionArchiveMetadata, SessionListing, SessionMessage, SessionSnapshot, find_session_by_identifier,
-};
-
-//! Builds ACP agent fixtures and groups tests for session state, configuration, metadata, and workspaces.
-};
-};
-
 struct NoOpWorkspaceTrustSynchronizer;
 
 #[async_trait::async_trait]
@@ -47,8 +31,6 @@ impl WorkspaceTrustSynchronizer for NoOpWorkspaceTrustSynchronizer {
         Ok(WorkspaceTrustSyncOutcome::AlreadyMatches(desired_level))
     }
 }
-
-
 
 use crate::zed::agent::test_support::HistorySettingsGuard;
 use crate::zed::agent::test_support::SESSION_HISTORY_TEST_LOCK as HISTORY_TEST_LOCK;
@@ -180,15 +162,11 @@ fn session_listing(
 
 #[path = "session_state_tests/archive.rs"]
 mod archive;
-
 #[path = "session_state_tests/configuration.rs"]
 mod configuration;
-
 #[path = "session_state_tests/metadata.rs"]
 mod metadata;
-
 #[path = "session_state_tests/tool_recovery.rs"]
 mod tool_recovery;
-
 #[path = "session_state_tests/workspace.rs"]
 mod workspace;

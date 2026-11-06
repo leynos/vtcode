@@ -130,7 +130,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   bounded error category, `InterruptedCall` for live interruptions, and
   `StaleWriteStdinRequest` for post-input session loss. The candidate awaits
   the shared scrutineer's four-gate run.
-- [x] (2026-11-02) The four-gate run found two `vtcode-core` failures in the
+- [x] (2026-11-02) The four-gate run found two `diapason-core` failures in the
   typed stale-session work. The registry returns tool failures as a JSON
   envelope, so the retry loop re-parsed the error and lost the typed
   classification (`stale_exec_session` is `#[serde(skip)]`), after which the
@@ -230,33 +230,61 @@ an archive with ambiguous terminal results is rejected before continuation.
   under Surprises.
 - [x] (2026-11-03) Pushed the plan record as `b83434d1d` after the four gates
   passed on `dfe463a06`, then investigated the inherited
-  `Check Unmaintained Dependencies` failure on the new merge ref
-  `3b04355f`. The failure reproduces identically on PR #12's own merge base
-  (`2396140df`), so it is parent-owned. The PR #13 branch cannot alter the
-  other parent's contribution to that merge. Watched run `41692498795`
-  (head `b83434d1d`): formatting, Clippy, Markdown, RustSec, MSRV, license,
-  custom invariants, unwrap/expect, workflow security, and Zen governance
-  passed; the unmaintained-dependency job was still running; Windows and
-  Cargo nextest were still running; CodeRabbit remained skipped at
-  `18:18:18Z` ahead of the queued review `9dfbd795`.
+  `Check Unmaintained Dependencies` failure on the new merge ref `3b04355f`.
+  The failure reproduces identically on PR #12's own merge base (`2396140df`),
+  so it is parent-owned. The PR #13 branch cannot alter the other parent's
+  contribution to that merge. Watched run `41692498795` (head `b83434d1d`):
+  formatting, Clippy, Markdown, RustSec, MSRV, license, custom invariants,
+  unwrap/expect, workflow security, and Zen governance passed; the
+  unmaintained-dependency job was still running; Windows and Cargo nextest were
+  still running; CodeRabbit remained skipped at `18:18:18Z` ahead of the queued
+  review `9dfbd795`.
 - [x] (2026-11-05) Verified and repaired the four inline findings from the
   completed review at `b83434d1d`. `exec_sessions.rs` now records
-  `StaleWriteStdinRequest` only when the invoked tool is `write_stdin`, with the
-  tool identity threaded through the wait path; `tool_recovery.rs` extracts
-  `tool_result_group_end` and `completed_tool_call_ids` and recomputes the group
-  after relocation; `handlers/tests/session.rs` is split into
+  `StaleWriteStdinRequest` only when the invoked tool is `write_stdin`, with
+  the tool identity threaded through the wait path; `tool_recovery.rs` extracts
+  `tool_result_group_end` and `completed_tool_call_ids` and recomputes the
+  group after relocation; `handlers/tests/session.rs` is split into
   `session/concurrent_prompt.rs` (281 lines remain in the parent); and the
   ExecPlan's registration-order claim is corrected.
 - [x] (2026-11-05) Closed the two pre-merge rows. Added the
   `execute_tool_round` duplicate-ID integration test in
   `handlers/tests/prompt.rs` (asserts rejection, unchanged history, unchanged
-  loop counter, and zero staged/replaced/interrupted counters) and three
-  focused `insta` snapshots: the recovery placeholder JSON, the stale-session
-  wire envelope, and the fixed `vtcode_tool_recovery_total` Prometheus series.
+  loop counter, and zero staged/replaced/interrupted counters) and three focused
+  `insta` snapshots: the recovery placeholder JSON, the stale-session wire
+  envelope, and the fixed `diapason_tool_recovery_total` Prometheus series.
 - [x] (2026-11-05) Raised the `unmaintained` job timeout from 20 to 30 minutes
   with an explanatory comment; scans have taken 14-16 minutes and one job was
-  cancelled at 20m16s. This is an availability fix, not a suppression: the
-  scan still fails on a real baseline violation.
+  cancelled at 20m16s. This is an availability fix, not a suppression: the scan
+  still fails on a real baseline violation.
+- [x] (2026-11-06) Restacked onto a re-parented `origin/main` that renamed
+  every `vtcode-*` crate to `diapason-*` (`70d92ddde`). The rename was applied
+  as a case-preserving textual transform (`vtcode_core`→`diapason_core`,
+  `VTCode`→`Diapason`, `VTCODE_`→`DIAPASON_`, `crates/codegen/vtcode-`→
+  `crates/codegen/diapason-`), leaving repository URLs, `/tmp` log paths and
+  user config paths (`github.com/leynos/vtcode`, `~/.config/vtcode`) untouched.
+  Weave auto-resolved the textual conflicts but left low-confidence artifacts —
+  an interstitial duplicate `pub use` block in `metrics/mod.rs`,
+  `// refused_by:` markers, and a dropped struct-literal terminator inside
+  `core/threads.rs` — so each affected file was rebuilt: pure-rename files were
+  restored from `239b65c42` and transformed, while files where the parent made
+  substantive changes (`registry/tests.rs`, `session_state/archive.rs`) were
+  re-merged three-way with `git merge-file --diff3` against the pre-rebase
+  base. Seven tests that git had placed under the old `vtcode-acp` paths were
+  relocated to `diapason-acp` and the stale directory removed. `Cargo.lock` was
+  regenerated from a `cargo metadata` run. `cargo fmt --all -- --check` exits 0
+  and no conflict or weave markers remain.
+- [x] (2026-11-06) Fixed the three `make test` failures the restack exposed.
+  Two were never-valid inline `insta` snapshots that listed JSON keys in sorted
+  order while the runtime serializes insertion order; both were rewritten from
+  the emitted output. The third,
+  `stale_unified_exec_continuations_do_not_count_as_write_stdin`, dispatched
+  the model-hidden `tools::UNIFIED_EXEC` name through
+  `execute_public_tool_request`, which can never resolve it. It now exercises
+  the internal `execute_command_session_internal` path that unified
+  continuations actually use and asserts the typed `ExecSessionNotFound`
+  classification plus the unchanged `StaleWriteStdinRequest` counter; the public
+  `ResourceNotFound` envelope stays covered by the `write_stdin` mode test.
 
 ## Surprises & discoveries
 
@@ -335,15 +363,15 @@ an archive with ambiguous terminal results is rejected before continuation.
   (`duplicate baseline finding identity at baseline.entries[33]`) is a
   persistent property of the stacked synthetic base, not a stale merge ref that
   a new head clears. After publishing `b83434d1d`, GitHub rebuilt
-  `refs/pull/13/merge` as `3b04355f`, whose parents are still
-  `2396140df` (the stack base) and the new branch head. `2396140df` merges
-  `0ef2b65de` (parent branch) into `ce140d638` (main). The parent branch's
-  baseline has 32 entries with one `terminfo 0.9.0` at `Age 365`; main's has 34
-  entries with `memmem 0.1.1`, `quick-error 2.0.1`, and `terminfo 0.9.0` at
-  `Age 368`. The textual merge keeps both `terminfo` entries, producing 35
-  entries. The checker normalises `{ "Age": N }` to the identity `"Age"`, so
-  the two entries collide as the same reviewed finding and
-  `_index_baseline_entries` raises the duplicate error at index 33.
+  `refs/pull/13/merge` as `3b04355f`, whose parents are still `2396140df` (the
+  stack base) and the new branch head. `2396140df` merges `0ef2b65de` (parent
+  branch) into `ce140d638` (main). The parent branch's baseline has 32 entries
+  with one `terminfo 0.9.0` at `Age 365`; main's has 34 entries with
+  `memmem 0.1.1`, `quick-error 2.0.1`, and `terminfo 0.9.0` at `Age 368`. The
+  textual merge keeps both `terminfo` entries, producing 35 entries. The
+  checker normalises `{ "Age": N }` to the identity `"Age"`, so the two entries
+  collide as the same reviewed finding and `_index_baseline_entries` raises the
+  duplicate error at index 33.
 - The failure is therefore inherited from the parent branch's mergeability
   preview, not introduced by this branch. PR #12 fails its own
   `Check Unmaintained Dependencies` identically on the same merge base:
@@ -357,17 +385,17 @@ an archive with ambiguous terminal results is rejected before continuation.
   entry. Owner: the PR #12 lifecycle; next action: update the parent branch
   from main and reconcile the baseline, then rerun both PRs' checks.
 - The unmaintained-dependency job has a second, independent reliability problem:
-  `.github/workflows/ci.yml:219` sets `timeout-minutes: 20`, while the scan step
-  routinely takes 14-16 minutes. Job `125973058233` (PR #12) took 11m33s;
-  job in run `41664625459` took 15m23s; the successful job in run
-  `41669725353` took 14m12s. On head `b83434d1d`, job `126114928567` started at
-  `18:19:15Z` and was cancelled by the workflow timeout at `18:39:31Z` while
-  still scanning, so the whole CI run is reported `cancelled` even though every
-  other job passed (Cargo nextest at `18:34:07Z`, Windows at `18:28:08Z`).
-  Raising the timeout to 30 minutes is a bounded availability fix, not a
-  suppression: it does not change the scan, its exit code, or the baseline
-  policy. It should be applied after the parent-owned duplicate is reconciled
-  so the check can return a determinate result.
+  `.github/workflows/ci.yml:219` sets `timeout-minutes: 20`, while the scan
+  step routinely takes 14-16 minutes. Job `125973058233` (PR #12) took 11m33s;
+  job in run `41664625459` took 15m23s; the successful job in run `41669725353`
+  took 14m12s. On head `b83434d1d`, job `126114928567` started at `18:19:15Z`
+  and was cancelled by the workflow timeout at `18:39:31Z` while still
+  scanning, so the whole CI run is reported `cancelled` even though every other
+  job passed (Cargo nextest at `18:34:07Z`, Windows at `18:28:08Z`). Raising
+  the timeout to 30 minutes is a bounded availability fix, not a suppression:
+  it does not change the scan, its exit code, or the baseline policy. It should
+  be applied after the parent-owned duplicate is reconciled so the check can
+  return a determinate result.
 
 ## Decision log
 
@@ -470,13 +498,14 @@ separates the two.
 
 ## Context and orientation
 
-`crates/codegen/vtcode-acp/src/zed/agent/handlers.rs` stages model tool calls,
-persists a write-ahead session checkpoint, then calls `execute_tool_calls`.
-`session_state.rs` reconstructs archive sessions, repairs their tool-call
-history, checkpoints that repaired history with `CheckpointDurability::Required`,
-and only then registers the resumed session handle. `tool_recovery.rs` stages,
-replaces and repairs tool-call result messages. `ThreadRuntimeHandle` in
-`crates/codegen/vtcode-core/src/core/threads.rs` owns the canonical message
+`crates/codegen/diapason-acp/src/zed/agent/handlers.rs` stages model tool
+calls, persists a write-ahead session checkpoint, then calls
+`execute_tool_calls`. `session_state.rs` reconstructs archive sessions, repairs
+their tool-call history, checkpoints that repaired history with
+`CheckpointDurability::Required`, and only then registers the resumed session
+handle. `tool_recovery.rs` stages, replaces and repairs tool-call result
+messages. `ThreadRuntimeHandle` in
+`crates/codegen/diapason-core/src/core/threads.rs` owns the canonical message
 history lock. A *write-ahead checkpoint* is the durable placeholder recording
 that a requested external effect may be uncertain before execution begins.
 
@@ -525,9 +554,10 @@ classify duplicate, contiguous, and non-contiguous cases so the property cannot
 pass vacuously.
 
 `INV-AMBIGUOUS-RESUME`: an archive with duplicate/conflicting tool results is
-rejected before registration, archive persistence, provider continuation, or
-tool replay; its exact on-disk bytes and side-effect sentinel remain unchanged.
-Repeated IDs in two completed assistant batches are a non-ambiguous control.
+rejected before archive persistence, session registration, provider
+continuation, or tool replay; its exact on-disk bytes and side-effect sentinel
+remain unchanged. Repeated IDs in two completed assistant batches are a
+non-ambiguous control.
 
 `INV-CODESCENE-RECOVERY`: the post-relocation recovery group computes its
 boundary before relocation and collects completed IDs exactly once afterwards;
@@ -591,7 +621,7 @@ Run all commands in
 
 1. Add focused tests and return their selectors to the root-designated
    scrutineer. The scrutineer, not an artisan, runs
-   `cargo nextest run --locked -p vtcode-acp <test filters>` with
+   `cargo nextest run --locked -p diapason-acp <test filters>` with
    `RUSTFLAGS='-D warnings'`. The initial source-only repair began under the
    exclusive-runner constraint, so the historical red run is absent; the
    scrutineer records the focused green result against the completed repair and

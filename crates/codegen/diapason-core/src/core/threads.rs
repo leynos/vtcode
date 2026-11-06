@@ -1,3 +1,8 @@
+//! Thread message history, turn admission, and archive lifecycle.
+//!
+//! History edits that must observe and replace messages as one step go
+//! through [`ThreadRuntimeHandle::mutate_messages`], so another owner cannot
+//! interleave a read or write inside the update.
 use crate::exec::events::ThreadEvent;
 use crate::llm::provider::Message;
 use crate::utils::session_archive::{
@@ -13,15 +18,6 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
-
-use vtcode_macros::StringNewtype;
-
-//! Thread message history, turn admission, and archive lifecycle.
-//!
-//! History edits that must observe and replace messages as one step go
-//! through [`ThreadRuntimeHandle::mutate_messages`], so another owner cannot
-//! interleave a read or write inside the update.
-};
 
 const DEFAULT_EVENT_BUFFER_CAPACITY: usize = 512;
 

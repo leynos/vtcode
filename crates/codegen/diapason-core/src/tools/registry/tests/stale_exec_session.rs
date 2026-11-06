@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::metrics::ToolRecoveryEvent;
+use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound};
 
 /// Loses the session after its input was consumed but before the response is collected.
 ///
@@ -210,17 +211,21 @@ async fn stale_unified_exec_continuations_do_not_count_as_write_stdin(
     ];
 
     for args in modes {
-        let policy = ExecutionPolicySnapshot::default()
-            .with_prevalidated(true)
-            .with_safety_prevalidated(true);
-        let outcome = registry
-            .execute_public_tool_request(ToolExecutionRequest::new(tools::UNIFIED_EXEC, args).with_policy(policy))
-            .await;
-        let error = outcome.error.expect("a stale unified continuation should return a structured error");
-        assert_eq!(error.category, ErrorCategory::ResourceNotFound);
+        // `exec_command` is the run-only public alias, so unified continuations
+        // are dispatched internally with the model-hidden tool identity. Exercise
+        // that path directly; the public envelope mapping is covered by the
+        // `write_stdin` mode test above.
+        let error = registry
+            .execute_command_session_internal(args, ExecSettlementMode::Manual)
+            .await
+            .expect_err("a stale unified continuation should return an error");
         assert!(
-            !error.partial_state_possible,
-            "a pre-write stale unified continuation must not claim partial state"
+            error.chain().any(|cause| cause.is::<ExecSessionNotFound>()),
+            "a stale unified continuation must surface the typed missing-session error: {error:#}"
+        );
+        assert!(
+            !error.chain().any(|cause| cause.is::<ExecSessionLostAfterInput>()),
+            "a pre-write stale unified continuation must not claim partial state: {error:#}"
         );
     }
 

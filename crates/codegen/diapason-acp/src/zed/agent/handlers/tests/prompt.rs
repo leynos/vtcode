@@ -3,8 +3,8 @@ use super::*;
 use crate::zed::agent::handlers::prompt::{ToolRoundRequest, execute_tool_round};
 use crate::zed::agent::test_support::HistorySettingsGuard;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
-use vtcode_config::codex::HistoryPersistence;
-use vtcode_core::metrics::ToolRecoveryEvent;
+use diapason_config::codex::HistoryPersistence;
+use diapason_core::metrics::ToolRecoveryEvent;
 
 mod compaction;
 
@@ -48,7 +48,7 @@ fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
 #[test]
 fn duplicate_tool_call_ids_are_rejected_before_staging() {
     let call = |id: &str| {
-        vtcode_core::llm::provider::ToolCall::function(id.to_string(), "read_file".to_string(), "{}".to_string())
+        diapason_core::llm::provider::ToolCall::function(id.to_string(), "read_file".to_string(), "{}".to_string())
     };
 
     let error = validate_tool_call_ids(&[call("call-1"), call("call-1")])
@@ -86,7 +86,7 @@ async fn duplicate_tool_call_ids_are_rejected_before_staging_or_execution() {
         .expect("ACP session lookup")
         .expect("created ACP session");
     let duplicate = || {
-        vtcode_core::llm::provider::ToolCall::function(
+        diapason_core::llm::provider::ToolCall::function(
             "call-duplicate".to_string(),
             "list_files".to_string(),
             r#"{"path":""}"#.to_string(),
