@@ -390,7 +390,36 @@ management requests return only tasks owned by the requested ACP session.
     (`/tmp/pr14-r14-check-ast-grep.out`), and `advisory` 0 in warn mode
     (`/tmp/pr14-r14-advisory.out`). No ast-grep scan ran.
 
+- [x] (2026-11-07) Ported onto the Diapason rename.
+  - The base branch adopted commit `70d92ddde "Adopt Diapason naming across
+    the VTCode fork (#188)"`, which renamed every crate (`vtcode-*` →
+    `diapason-*`), the workspace directory (`.vtcode` → `.diapason`), the
+    config type (`VTCodeConfig` → `DiapasonConfig`), and the `colour` spelling.
+    The feature branch predates it, so PR #14 reported `CONFLICTING`/`DIRTY`
+    across roughly 3000 files.
+  - The feature was squashed to one commit and replayed onto
+    `a159f03b4` (`refs/evidence/base-tip2`) with Git's own zdiff3 merge
+    backend. Ambient global Weave attributes were bypassed deliberately; the
+    repository has no tracked `.gitattributes`.
+  - 27 code and 5 documentation conflicts were resolved. Feature-owned files
+    were renamed; base-owned test scaffolding was kept and extended with the
+    feature's new fields; the base's earlier `_diapason/taskLifecycle`
+    iteration was superseded by the feature's standard `session/update`
+    projection and `_lody/*` management requests.
+  - Stale identifiers were swept (`vtcode_core::` → `diapason_core::`,
+    `VTCodeConfig`/`VTCodeSessionLifecycleState` → `Diapason*`,
+    `.vtcode/state` → `.diapason/state`, `vtcode acp` → `diapason acp`), the
+    proptest regression seed was relocated under `diapason-acp`, and
+    `Cargo.lock` was regenerated so `diapason-acp` records its `wiremock`
+    dev-dependency. Ported head: `d1834e73a` on `port/lody-on-diapason`.
+
 ## Surprises & discoveries
+
+- Observation: the repository identity changed mid-flight. `leynos/vtcode` is
+  now "Diapason, a df12 Productions hard fork of VTCode focused on ACP control
+  and observability". Evidence: `70d92ddde` and the `diapason-*` crate tree on
+  the base branch. Impact: the feature could not be merged as authored; it had
+  to be replayed onto the renamed tree, which is what the port above records.
 
 - Observation: Lody's version-1 task schema accepts only `pending`,
   `in_progress`, `completed` and `failed`; it does not accept `killed`.

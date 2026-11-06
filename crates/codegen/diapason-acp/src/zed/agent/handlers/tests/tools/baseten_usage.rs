@@ -7,8 +7,8 @@
 //! the `_lody/session/usage_update` notification the ACP client sees.
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
-use serde_json::Value;
 use diapason_config::core::{CustomProviderApiFormat, CustomProviderConfig};
+use serde_json::Value;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
