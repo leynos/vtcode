@@ -329,6 +329,21 @@ an archive with ambiguous terminal results is rejected before continuation.
   resolved `serde_json/preserve_order` feature tree. Queue request `718ceb25`
   remains the only pending review request and is not pinned to a commit, so it
   will inspect the head current when it runs.
+- [x] (2026-11-06) Restacked the 37-commit branch onto `origin/main`
+  `bf987097b` after `main` advanced by two commits and the PR became
+  `CONFLICTING`. Two documentation conflicts were resolved by keeping both
+  sides: the release-notes bullet plus the ACP recovery section in
+  `docs/developers-guide.md`, and both index bullets in `docs/INDEX.md`. The
+  finished rebase passed `make check-fmt`, `make lint`, `make typecheck` and
+  `make test` (10,618 passed, 22 skipped) on `f299dd9d1`, which was published
+  with an SSH lease pinned to `322b2a8b9`. Root cause of the missing CI: GitHub
+  does not create `pull_request` workflow runs while the PR has a merge
+  conflict, so the earlier heads had no `CI Pipeline` or `Coverage` runs at
+  all. Once the restack landed, all four runs appeared. Queue request
+  `718ceb25` executed against the pre-restack head and returned "Action not
+  completed — pull request base or head changed", so request `b3623b7e` was
+  queued for the restacked head and the evidence reply was re-posted at
+  <https://github.com/leynos/vtcode/pull/13#issuecomment-6687727601>.
 
 ## Surprises & discoveries
 
