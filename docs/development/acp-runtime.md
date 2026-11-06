@@ -423,9 +423,9 @@ inside a span carrying the fixed `operation` and `stage`, the bounded
 `session_correlation`, and the `outcome` and `elapsed_ms` recorded when the
 send returns. The span and the counters describe the local send outcome only: a
 rejected send is a failure, while an accepted send is an attempt with no
-confirmation that the client applied the update. A client that stops accepting
-updates is therefore measurable rather than only logged, but delivery is not
-provable end to end from this boundary.
+confirmation that the client applied the update. Local send failures are
+measurable, but the counters do not confirm client receipt, and a client that
+stops reading can remain undetected.
 
 ## Retry notices and usage publication
 
