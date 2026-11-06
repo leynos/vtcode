@@ -147,7 +147,12 @@ fn disconnected_client_counts_a_failed_notice_publication() {
     runtime.block_on(async {
         let _history_test_guard = lock_history_test_guard().await;
         let workspace = TempDir::new().expect("wire test workspace");
-        let agent = build_wire_test_agent_with_options(workspace.path(), None, None).await;
+        let mut agent = build_wire_test_agent_with_options(workspace.path(), None, None).await;
+        // This test asserts exact deltas, so it must not share the
+        // process-wide counters with another test that publishes a notice.
+        let notice_counts = Arc::new(crate::metrics::IsolatedPublicationRecorder::new());
+        let notice_recorder: Arc<dyn crate::metrics::PublicationRecorder> = notice_counts.clone();
+        agent.set_publication_recorders(notice_recorder, crate::metrics::compaction_update_recorder());
         let session_id = acp::SessionId::new(Arc::from("notice-span-session"));
         let error = LLMError::RateLimit {
             metadata: Some(LLMErrorMetadata::new(
@@ -161,14 +166,14 @@ fn disconnected_client_counts_a_failed_notice_publication() {
             )),
         };
         let trace = TraceCapture::default();
-        let before = crate::metrics::notice_metrics();
+        let before = notice_counts.metrics();
 
         {
             let _guard = tracing::subscriber::set_default(Registry::default().with(trace.clone()));
             agent.publish_rate_limit_notice(&session_id, "baseten", &error, None).await;
         }
 
-        let after = crate::metrics::notice_metrics();
+        let after = notice_counts.metrics();
         assert_eq!(
             after.attempts,
             before.attempts + 1,

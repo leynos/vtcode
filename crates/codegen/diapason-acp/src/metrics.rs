@@ -5,6 +5,7 @@
 //! publication outcomes are the two states of a send, and no session, provider,
 //! model, path, or payload value is ever recorded as a label.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Terminal outcome of one automatic compaction attempt.
@@ -149,13 +150,29 @@ pub(crate) fn record_compaction_finished(outcome: CompactionOutcome, cancelled: 
 ///
 /// `failures` is a subset of `attempts`: it counts the sends that returned an
 /// error. A notice that was never built and a serialization failure that never
-/// reached the transport are not attempts, so they move neither counter.
+/// reached the transport are not attempts, so they move neither counter. The
+/// two fields are loaded independently, so a snapshot can reflect slightly
+/// different instants; `attempts` is clamped to at least `failures` so the
+/// subset invariant holds in every snapshot.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PublicationMetrics {
     /// Sends attempted at this boundary.
     pub attempts: u64,
     /// Attempts whose send returned an error.
     pub failures: u64,
+}
+
+/// A narrow sink for the send outcomes of one ACP publication boundary.
+///
+/// Publication code depends on this port rather than on the process-wide
+/// statics, so a command test can hold an isolated recorder and assert exact
+/// deltas without racing another test that publishes to the same boundary.
+pub(crate) trait PublicationRecorder: Send + Sync {
+    /// Record one send attempt and whether the transport accepted it.
+    fn record(&self, sent: bool);
+
+    /// Return this recorder's cumulative snapshot.
+    fn snapshot(&self) -> PublicationMetrics;
 }
 
 /// Cumulative counters behind one publication boundary.
@@ -179,11 +196,72 @@ impl PublicationCounters {
         }
     }
 
+    /// Snapshot the cumulative counters.
+    ///
+    /// The two atomics are updated in separate steps, so the pair can reflect
+    /// slightly different instants. `attempts` is loaded after `failures` and
+    /// clamped to at least `failures`, so the published invariant — every
+    /// failure is one of the attempts — holds in every snapshot.
     fn snapshot(&self) -> PublicationMetrics {
-        PublicationMetrics {
-            attempts: self.attempts.load(Ordering::Relaxed),
-            failures: self.failures.load(Ordering::Relaxed),
-        }
+        let failures = self.failures.load(Ordering::Relaxed);
+        let attempts = self.attempts.load(Ordering::Relaxed);
+        PublicationMetrics { attempts: attempts.max(failures), failures }
+    }
+}
+
+impl PublicationRecorder for PublicationCounters {
+    fn record(&self, sent: bool) {
+        PublicationCounters::record(self, sent);
+    }
+
+    fn snapshot(&self) -> PublicationMetrics {
+        PublicationCounters::snapshot(self)
+    }
+}
+
+/// Process-wide recorder for one publication boundary.
+///
+/// This is the edge implementation: production wiring installs it once, and a
+/// test that needs exact deltas substitutes an isolated recorder instead.
+struct ProcessPublicationRecorder(&'static PublicationCounters);
+
+impl PublicationRecorder for ProcessPublicationRecorder {
+    fn record(&self, sent: bool) {
+        self.0.record(sent);
+    }
+
+    fn snapshot(&self) -> PublicationMetrics {
+        self.0.snapshot()
+    }
+}
+
+/// An isolated publication recorder owned by one test.
+#[cfg(test)]
+pub(crate) struct IsolatedPublicationRecorder {
+    counters: PublicationCounters,
+}
+
+#[cfg(test)]
+impl IsolatedPublicationRecorder {
+    /// Create a recorder with no prior counts.
+    pub(crate) fn new() -> Self {
+        Self { counters: PublicationCounters::new() }
+    }
+
+    /// Return the counts recorded so far.
+    pub(crate) fn metrics(&self) -> PublicationMetrics {
+        self.counters.snapshot()
+    }
+}
+
+#[cfg(test)]
+impl PublicationRecorder for IsolatedPublicationRecorder {
+    fn record(&self, sent: bool) {
+        self.counters.record(sent);
+    }
+
+    fn snapshot(&self) -> PublicationMetrics {
+        self.counters.snapshot()
     }
 }
 
@@ -200,18 +278,24 @@ pub fn compaction_update_metrics() -> PublicationMetrics {
     COMPACTION_UPDATE_COUNTERS.snapshot()
 }
 
-/// Record one attempt to publish a provider rate-limit notice.
-pub(crate) fn record_notice_publish(sent: bool) {
-    NOTICE_COUNTERS.record(sent);
+/// Return the process-wide recorder for provider rate-limit notices.
+pub(crate) fn notice_recorder() -> Arc<dyn PublicationRecorder> {
+    Arc::new(ProcessPublicationRecorder(&NOTICE_COUNTERS))
 }
 
-/// Record one attempt to publish a compaction activity update.
-pub(crate) fn record_compaction_update_publish(sent: bool) {
-    COMPACTION_UPDATE_COUNTERS.record(sent);
+/// Return the process-wide recorder for compaction activity updates.
+pub(crate) fn compaction_update_recorder() -> Arc<dyn PublicationRecorder> {
+    Arc::new(ProcessPublicationRecorder(&COMPACTION_UPDATE_COUNTERS))
 }
 
 #[cfg(test)]
 mod tests {
+    //! Covers the compaction and publication counter arithmetic.
+    //!
+    //! The counters are the observable half of the ACP metrics boundary, so
+    //! these tests pin their classification, saturation, and snapshot
+    //! behaviour without starting an ACP connection.
+
     use super::*;
 
     /// Assert a failure outranks a partially compacted history.
@@ -282,6 +366,23 @@ mod tests {
     #[test]
     fn fresh_publication_counters_report_zero() {
         assert_eq!(PublicationCounters::new().snapshot(), PublicationMetrics::default());
+    }
+
+    /// Assert a snapshot never reports more failures than attempts.
+    ///
+    /// The two counters are separate atomics, so a concurrent reader can
+    /// observe the failure increment before the attempt increment. The
+    /// snapshot clamps `attempts` to cover every observed failure so the
+    /// published subset invariant holds regardless of interleaving.
+    #[test]
+    fn publication_snapshot_never_reports_more_failures_than_attempts() {
+        let counters = PublicationCounters::new();
+        counters.failures.store(3, Ordering::Relaxed);
+        counters.attempts.store(1, Ordering::Relaxed);
+
+        let snapshot = counters.snapshot();
+        assert_eq!(snapshot.failures, 3);
+        assert_eq!(snapshot.attempts, 3, "attempts must be clamped to cover every observed failure");
     }
 
     /// Assert counter increments saturate rather than wrapping.
