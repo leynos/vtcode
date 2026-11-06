@@ -329,6 +329,10 @@ pub(crate) struct ZedAgent {
     launch_workspace_runtime: Arc<SessionWorkspaceRuntime>,
     workspace_runtimes: tokio::sync::Mutex<WorkspaceRuntimeCache<SessionWorkspaceRuntime>>,
     workspace_trust_synchronizer: Arc<dyn crate::workspace::WorkspaceTrustSynchronizer + Send + Sync>,
+    /// Recorder for provider rate-limit notice publication outcomes.
+    notice_recorder: Arc<dyn crate::metrics::PublicationRecorder>,
+    /// Recorder for compaction activity-update publication outcomes.
+    compaction_update_recorder: Arc<dyn crate::metrics::PublicationRecorder>,
 }
 
 pub(crate) struct ZedAgentSetup<'a> {
@@ -407,7 +411,25 @@ impl ZedAgent {
             launch_workspace_runtime: Arc::clone(&launch_runtime),
             workspace_runtimes: tokio::sync::Mutex::new(workspace_runtimes),
             workspace_trust_synchronizer: Arc::new(crate::workspace::DefaultWorkspaceTrustSynchronizer::new()),
+            notice_recorder: crate::metrics::notice_recorder(),
+            compaction_update_recorder: crate::metrics::compaction_update_recorder(),
         })
+    }
+
+    /// Install isolated publication recorders, for tests that assert exact
+    /// deltas.
+    ///
+    /// Production wiring installs the process-wide recorders; a command test
+    /// substitutes recorders it owns so a concurrent publisher cannot perturb
+    /// the counts it observes.
+    #[cfg(test)]
+    pub(crate) fn set_publication_recorders(
+        &mut self,
+        notice: Arc<dyn crate::metrics::PublicationRecorder>,
+        compaction_update: Arc<dyn crate::metrics::PublicationRecorder>,
+    ) {
+        self.notice_recorder = notice;
+        self.compaction_update_recorder = compaction_update;
     }
 
     /// Metrics collector that receives bounded ACP recovery counters.
