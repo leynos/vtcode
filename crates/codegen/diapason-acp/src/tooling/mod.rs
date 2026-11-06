@@ -1,3 +1,8 @@
+//! ACP tooling surface: catalogue, schemas, and display titles.
+//!
+//! Re-exports the tool registry and descriptors alongside the shared argument
+//! and response schema constants used by ACP tool handlers.
+
 mod catalogue;
 mod schemas;
 mod titles;
