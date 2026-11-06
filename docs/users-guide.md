@@ -34,7 +34,11 @@ falls back cleanly when a client ignores them. The
   input and output rates: catalogue pricing for catalogue models, or the opt-in
   `custom_providers.*.pricing` block for custom providers. Cost normalization
   follows the backend the request was routed to, so an Anthropic Messages
-  backend reports cache reads separately even under a custom provider name.
+  backend reports cache reads separately even under a custom provider name. An
+  update is published only for a response whose provider reported usage;
+  `cache_creation_input_tokens` and `reasoning_output_tokens` appear only when
+  the provider reported them, `contextWindow` only when the resolved profile
+  supplies one, and `costUSD` only when both rates are known.
 - **Automatic compaction.** `_meta.lody.compaction` announces the capability.
   Each compaction is a standard tool call whose terminal update carries
   `_meta.lody.activity` with the `compacted` outcome, token counts, duration,
@@ -42,11 +46,12 @@ falls back cleanly when a client ignores them. The
 - **Subagent management.** `_lody/subagents/list`, `_lody/subagents/cancel`, and
   `_lody/subagents/output` act only on tasks owned by the calling session.
   Progress arrives as standard ACP tool calls with `_meta.lody.task`.
-- **Rate limits.** A provider rate limit produces a warning notice. The HTTP
-  status, the provider's `Retry-After` value, and the scheduled retry appear
-  only when the provider actually supplied them; without a scheduled retry the
-  notice says so. VT Code does not invent quota windows, reset times, or
-  statuses.
+- **Rate limits.** A provider rate limit produces a warning notice. Each part
+  is reported only when it applies: the HTTP status and the provider's
+  `Retry-After` value only when the provider supplied them, and the retry delay
+  only when VT Code scheduled a further attempt. When no further attempt is
+  scheduled the notice says so. VT Code does not invent quota windows, reset
+  times, or statuses.
 - **Custom-provider pricing.** Opt in per provider or per profile under
   `custom_providers.*.pricing`; rates are USD per million tokens. See the
   [configuration guide](./config/config.md).
