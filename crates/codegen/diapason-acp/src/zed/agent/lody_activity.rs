@@ -141,6 +141,11 @@ fn duration_millis(duration: Duration) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    //! Covers the Lody activity metadata carried by compaction tool calls.
+    //!
+    //! Compaction rides the standard ACP tool lifecycle, so these tests pin the
+    //! serialized field names and statuses a Lody client reads.
+
     use super::*;
     use crate::zed::connection::ConnectionHandle;
     use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};

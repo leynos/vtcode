@@ -194,6 +194,12 @@ pub(super) fn detail_of(error: &Error) -> Option<&FailureDetail> {
 
 #[cfg(test)]
 mod tests {
+    //! Covers failure classification and the bounded detail derived from it.
+    //!
+    //! The category is the only failure signal a client sees and the only one
+    //! a log may name, so these tests pin every typed class, the untyped
+    //! fallback, and the correlation digest that replaces the raw error.
+
     use super::super::super::redaction::CORRELATION_HEX_LENGTH;
     use super::*;
 
