@@ -59,7 +59,7 @@ pub(super) fn safe_invalid_params_error(
 }
 
 struct SessionHandleBootstrap {
-    subagent_controller: Option<Arc<vtcode_core::subagents::SubagentController>>,
+    subagent_controller: Option<Arc<diapason_core::subagents::SubagentController>>,
     session_id: acp::SessionId,
     archive: Option<SessionArchive>,
     trigger: SessionStartTrigger,
@@ -72,7 +72,7 @@ impl ZedAgent {
         &self,
         runtime: &SessionWorkspaceRuntime,
         session_id: &acp::SessionId,
-    ) -> Option<Arc<vtcode_core::subagents::SubagentController>> {
+    ) -> Option<Arc<diapason_core::subagents::SubagentController>> {
         let registry = runtime.local_tool_registry.with_subagent_controller(None);
         let mut config = self.config.clone();
         config.workspace = runtime.workspace_root.clone();

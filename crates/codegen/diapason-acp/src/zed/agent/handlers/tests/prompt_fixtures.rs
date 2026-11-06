@@ -89,7 +89,7 @@ impl LLMProvider for StreamToolThenAnswerProvider {
                 tool_calls: Some(tool_calls),
                 finish_reason: diapason_core::llm::provider::FinishReason::ToolCalls,
                 model: "wire-model".to_string(),
-                usage: self.emit_usage.then(|| vtcode_core::llm::Usage {
+                usage: self.emit_usage.then(|| diapason_core::llm::Usage {
                     prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
                     completion_tokens: if response_index == 0 { 11 } else { 12 },
                     ..Default::default()
@@ -106,7 +106,7 @@ impl LLMProvider for StreamToolThenAnswerProvider {
                 content: Some("Tool complete.".to_string()),
                 finish_reason: diapason_core::llm::provider::FinishReason::Stop,
                 model: "wire-model".to_string(),
-                usage: self.emit_usage.then(|| vtcode_core::llm::Usage {
+                usage: self.emit_usage.then(|| diapason_core::llm::Usage {
                     prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
                     completion_tokens: if response_index == 0 { 11 } else { 12 },
                     ..Default::default()

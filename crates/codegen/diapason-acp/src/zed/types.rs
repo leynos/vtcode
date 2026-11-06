@@ -175,7 +175,7 @@ impl SessionHandle {
 }
 
 pub(crate) struct SessionData {
-    pub(in crate::zed) subagent_controller: Option<Arc<vtcode_core::subagents::SubagentController>>,
+    pub(in crate::zed) subagent_controller: Option<Arc<diapason_core::subagents::SubagentController>>,
     pub(crate) session_id: acp::SessionId,
     pub(crate) thread: ThreadRuntimeHandle,
     pub(crate) archive: Option<diapason_core::utils::session_archive::SessionArchive>,

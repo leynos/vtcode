@@ -90,7 +90,7 @@ work. A failure before the input was written sets neither flag.
 
 ## Lody ACP extensions in brief
 
-`vtcode acp` serves the Agent Client Protocol over stdio. During `initialize`,
+`diapason acp` serves the Agent Client Protocol over stdio. During `initialize`,
 VT Code advertises Lody extensions under `_meta.lody`: `usage` is always
 present, and subagent `lifecycle`, `list`, `cancel`, and `output` are
 advertised when a subagent controller exists for the launch workspace.

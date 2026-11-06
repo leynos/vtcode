@@ -5,8 +5,8 @@ use super::lody_support::{
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
-use std::time::Duration;
 use diapason_core::subagents::SpawnBackgroundSubprocessRequest;
+use std::time::Duration;
 
 #[test]
 fn advertised_capabilities_include_lody_subagent_management_with_subagents() {
@@ -413,14 +413,17 @@ async fn lody_management_reports_bounded_reasons_for_invalid_requests() {
     let launch_workspace = TempDir::new().expect("separate launch workspace");
     let agent = Arc::new(build_wire_test_agent(launch_workspace.path()).await);
     let (agent_channel, client_channel) = Channel::duplex();
-    let agent_connection = install_handlers(Agent.builder().name("diapason-lody-management-errors"), Arc::clone(&agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(&agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
+    let agent_connection = install_handlers(
+        Agent.builder().name("diapason-lody-management-errors"),
+        Arc::clone(&agent),
+    )
+    .connect_with(agent_channel, {
+        let agent = Arc::clone(&agent);
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        }
+    });
     let agent_task = tokio::spawn(agent_connection);
 
     let workspace_path = workspace.path().to_path_buf();
