@@ -8,6 +8,7 @@ use super::{
     VerifiedSessionArchiveIdentifier, find_session_by_identifier,
 };
 use crate::config::constants::defaults;
+use crate::utils::error_log_collector::ErrorLogAccumulator;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
@@ -157,6 +158,7 @@ pub struct SessionArchive {
     metadata: SessionArchiveMetadata,
     started_at: DateTime<Utc>,
     progress_throttle: Arc<Mutex<ProgressThrottle>>,
+    diagnostics: Arc<Mutex<ErrorLogAccumulator>>,
 }
 
 #[derive(Debug)]
@@ -180,6 +182,7 @@ impl SessionArchive {
             metadata,
             started_at,
             progress_throttle: Arc::new(Mutex::new(ProgressThrottle::new())),
+            diagnostics: Arc::new(Mutex::new(ErrorLogAccumulator::default())),
         }
     }
 

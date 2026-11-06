@@ -37,7 +37,7 @@ pub struct ErrorLogEntry {
     pub message: String,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct ErrorLogBuffer {
     entries: VecDeque<ErrorLogEntry>,
     total_estimated_bytes: usize,
@@ -94,6 +94,33 @@ fn take_buffer_entries(buffer: &mut ErrorLogBuffer) -> Vec<ErrorLogEntry> {
 /// Drain all collected error log entries, clearing the buffer.
 pub fn drain_error_logs() -> Vec<ErrorLogEntry> {
     with_error_log_buffer(take_buffer_entries)
+}
+
+/// Bounded accumulator for diagnostics that must survive repeated snapshots.
+///
+/// Session archives overwrite the same file for every progress and final
+/// snapshot, and each snapshot drains the global collector. Without an
+/// accumulator, a diagnostic captured before an intermediate progress write
+/// would exist only in that superseded file and be missing from the final
+/// archive. Accumulating drained entries keeps the whole session's diagnostics
+/// in every snapshot while retaining the collector's byte budget.
+#[derive(Debug, Default)]
+pub struct ErrorLogAccumulator {
+    buffer: ErrorLogBuffer,
+}
+
+impl ErrorLogAccumulator {
+    /// Merge newly drained entries, evicting the oldest when over budget.
+    pub fn merge(&mut self, entries: impl IntoIterator<Item = ErrorLogEntry>) {
+        for entry in entries {
+            push_entry_with_limit(&mut self.buffer, entry, ERROR_LOG_BUFFER_SIZE_LIMIT_BYTES);
+        }
+    }
+
+    /// Return the accumulated entries in capture order.
+    pub fn entries(&self) -> Vec<ErrorLogEntry> {
+        self.buffer.entries.iter().cloned().collect()
+    }
 }
 
 /// A tracing layer that silently collects ERROR-level events into the global buffer.
@@ -171,6 +198,20 @@ mod tests {
             !captures_default_diagnostic(Level::INFO, INSTRUCTION_DIAGNOSTIC_TARGET),
             "the archive records warnings and errors, not informational events"
         );
+    }
+
+    #[test]
+    fn accumulator_keeps_earlier_entries_across_snapshot_writes() {
+        let mut accumulator = ErrorLogAccumulator::default();
+        accumulator.merge(vec![make_entry("captured before progress write")]);
+        let progress_view = accumulator.entries();
+
+        accumulator.merge(vec![make_entry("captured after progress write")]);
+        let final_view = accumulator.entries();
+
+        assert_eq!(progress_view.len(), 1, "the progress snapshot sees only what was captured by then");
+        let messages: Vec<&str> = final_view.iter().map(|entry| entry.message.as_str()).collect();
+        assert_eq!(messages, vec!["captured before progress write", "captured after progress write"]);
     }
 
     #[test]

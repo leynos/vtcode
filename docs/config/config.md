@@ -562,7 +562,9 @@ instruction_import_max_depth = 5
   workspace guidance. The warning is captured by the session diagnostics
   collector even when `debug.enable_tracing` is off and `RUST_LOG` is unset, so
   a broken include remains available in the session archive when history
-  persistence is enabled.
+  persistence is enabled. Captured diagnostics accumulate across snapshot
+  writes, so the warning is still present in the final archive after later
+  progress snapshots overwrite the file.
 - `instruction_excludes` removes matching `AGENTS.md` or `.diapason/rules/`
   files from discovery. Excludes are fail-closed: an invalid exclude pattern
   stops discovery with an error rather than silently loading files that should
