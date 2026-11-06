@@ -78,7 +78,7 @@ partial-state reporting and single-turn prompt admission, are in the
 ### Stale `write_stdin` sessions
 
 An exec session identifier is process-local. It stops being valid when the
-command exits, the session is closed, or VT Code restarts. Continuing a stale
+command exits, the session is closed, or Diapason restarts. Continuing a stale
 identifier returns a non-retryable `ResourceNotFound` error with
 `reason: "stale_exec_session"`; start a new `exec_command` and use the session
 identifier it returns.
@@ -90,9 +90,9 @@ work. A failure before the input was written sets neither flag.
 
 ## Lody ACP extensions in brief
 
-`diapason acp` serves the Agent Client Protocol over stdio. During `initialize`,
-VT Code advertises Lody extensions under `_meta.lody`: `usage` is always
-present, and subagent `lifecycle`, `list`, `cancel`, and `output` are
+`diapason acp` serves the Agent Client Protocol over stdio. During
+`initialize`, Diapason advertises Lody extensions under `_meta.lody`: `usage`
+is always present, and subagent `lifecycle`, `list`, `cancel`, and `output` are
 advertised when a subagent controller exists for the launch workspace.
 `_meta.lody.tasks.background` appears only when background subagents are
 enabled. These capabilities describe the launch workspace. Management is
@@ -105,7 +105,7 @@ Subagent and background-process lifecycle is published as standard ACP
 `_lody/subagents/cancel`, and `_lody/subagents/output` requests operate only on
 tasks owned by the calling session. Provider usage is reported through
 `_lody/session/usage_update` as a per-response delta. Custom providers opt in
-to streamed usage with `supports_stream_usage`; VT Code only requests it when
+to streamed usage with `supports_stream_usage`; Diapason only requests it when
 the provider declares that support.
 
 For the full contract, see
