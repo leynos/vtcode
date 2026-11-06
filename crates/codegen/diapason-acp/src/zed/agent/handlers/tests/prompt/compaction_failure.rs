@@ -234,6 +234,58 @@ async fn failed_acp_compaction_publishes_a_provider_terminal_update() {
     );
 }
 
+/// Assert a compaction that adopts history but stays over budget reports both.
+///
+/// The adopted history is committed before the admission check, so the
+/// terminal update must say `compacted: true` and carry the post-compaction
+/// estimate while still failing with the closed-set `admission_budget`
+/// category. Reporting only the failure would hide that the session changed.
+#[tokio::test]
+async fn over_budget_acp_compaction_reports_the_adopted_history_and_failure() {
+    let _history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    use assert_fs::TempDir;
+
+    let workspace = TempDir::new().expect("temporary compaction workspace");
+    let config = compaction_config(true);
+    let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await);
+    let session = large_compaction_session(&agent, workspace.path()).await;
+    let before_len = agent.resolved_messages(&session).expect("pre-compaction history").len();
+
+    let started = Arc::new(tokio::sync::Notify::new());
+    let provider = Arc::new(OverBudgetCompactionProvider::new(Arc::clone(&started)));
+    let (updates, error) = run_failing_compaction_over_duplex(&agent, &session, provider, started, false).await;
+
+    assert!(
+        error.to_string().contains("still exceeds its safe provider admission budget"),
+        "the over-budget failure must name the admission budget: {error}"
+    );
+    assert_eq!(updates.len(), 2, "an over-budget compaction publishes one started and one terminal activity");
+    let started_update = &updates[0];
+    let finished = &updates[1];
+    assert_eq!(finished["sessionUpdate"], "tool_call_update");
+    assert_eq!(finished["status"], "failed");
+    assert_eq!(started_update["toolCallId"], finished["toolCallId"]);
+    let activity = &finished["_meta"]["lody"]["activity"];
+    assert_eq!(activity["kind"], "context_compaction");
+    assert_eq!(activity["compacted"], true, "the adopted history must be reported as compacted");
+    assert_eq!(activity["failureReason"], "admission_budget");
+
+    let adopted = agent.resolved_messages(&session).expect("adopted history");
+    assert!(
+        adopted.len() < before_len,
+        "compaction must replace the history: {before_len} -> {}",
+        adopted.len()
+    );
+    let adopted_tokens: usize = adopted.iter().map(|message| message.estimate_tokens()).sum();
+    assert_eq!(
+        activity["usedTokensAfter"].as_u64(),
+        Some(u64::try_from(adopted_tokens).expect("token estimate fits u64")),
+        "the terminal estimate must describe the history the session now holds"
+    );
+}
+
 /// Assert a failed activity-update send is counted and observed by a span.
 ///
 /// The send boundary is the only place that can tell a delivered update from
