@@ -1,3 +1,5 @@
+//! OpenAI Harmony-encoded client used for Harmony-format chat models.
+
 use super::super::errors::format_openai_error;
 use super::super::harmony;
 use super::super::headers;
@@ -13,11 +15,6 @@ use openai_harmony::chat::{
 use openai_harmony::{HarmonyEncodingName, ParseOptions, load_harmony_encoding};
 use serde_json::{Value, json};
 use tokio::task::spawn_blocking;
-
-use vtcode_config::types::ReasoningEffortLevel;
-
-//! OpenAI Harmony-encoded client used for Harmony-format chat models.
-};
 
 fn extract_text_content(parts: &[HarmonyContent]) -> Option<String> {
     let text = parts

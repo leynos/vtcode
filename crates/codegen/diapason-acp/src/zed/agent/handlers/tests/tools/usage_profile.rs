@@ -6,10 +6,10 @@
 //! together rather than projected in isolation.
 
 use super::*;
+use diapason_core::llm::Usage;
 use rstest::rstest;
 use serde_json::Value;
 use tokio::sync::Notify;
-use diapason_core::llm::Usage;
 
 const WIRE_PROVIDER: &str = "wire-test";
 

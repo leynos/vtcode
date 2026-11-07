@@ -11,8 +11,6 @@
 //! content are not ours to trust, so they are logged as bounded digests with
 //! their byte length rather than verbatim.
 
-
-
 /// Width of a rendered correlation key, in hexadecimal characters.
 pub(super) const CORRELATION_HEX_LENGTH: usize = 12;
 
@@ -246,4 +244,3 @@ mod tests {
         assert_eq!(session_correlation("session-alpha").len(), CORRELATION_HEX_LENGTH);
     }
 }
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/redaction.rs' for per-hunk detail, 'weave check' to verify your resolution

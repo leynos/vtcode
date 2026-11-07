@@ -124,4 +124,3 @@ async fn new_session_preserves_workspace_hook_provenance_gate() {
         );
     }
 }
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/session_state_tests/workspace_hooks.rs' for per-hunk detail, 'weave check' to verify your resolution
