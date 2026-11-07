@@ -182,11 +182,16 @@ Start at low density and increase only under a declared memory/CPU ceiling. An
 environment unable to run 50 agents reports that limit; it must not invent an
 extrapolated result. Preserve compiler caches and host build admission.
 
-Freeze commit, lockfile, toolchain, target, profile, allocator, worker budget,
-fixture digest, CPU affinity/quota, and background load for each paired run.
-Use at least five fresh-process paired repetitions, alternating order. Treat
-the run, not every token or sibling process, as the independent experimental
-unit. Retain raw samples and uncertainty alongside medians and p95 values.
+Record commit, lockfile, toolchain, target, profile, allocator, worker budget,
+fixture digest, CPU affinity/quota, and background load for every arm of a
+paired run. Hold that full list constant across each comparison, except for the
+single variable the comparison tests: let the commit differ for candidate
+versus baseline and the effective worker budget differ for the experiment
+against the default in section 4.1. Never vary more than the one tested
+variable, and record both arms' values rather than only the shared ones. Use at
+least five fresh-process paired repetitions, alternating order. Treat the run,
+not every token or sibling process, as the independent experimental unit.
+Retain raw samples and uncertainty alongside medians and p95 values.
 
 Proposed merge gates, to ratify before measurement, are unchanged semantic
 traces, enforced queue/shutdown bounds, and a repeatable material improvement
