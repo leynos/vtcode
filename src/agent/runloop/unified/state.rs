@@ -18,7 +18,13 @@ use diapason_core::llm::provider::{
 };
 use diapason_core::llm::provider_usage;
 use diapason_core::llm::request_gap::RequestGapTracker;
-use diapason_core::llm::usage_cost;
+
+
+//! Shared session state for the unified run loop.
+//!
+//! Tracks statistics, prompt-cache diagnostics, follow-up prompt actions, and
+//! interrupt handling shared between the loop and its handlers.
+};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AutoPermissionDenial {
