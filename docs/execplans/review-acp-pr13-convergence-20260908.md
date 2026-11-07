@@ -886,3 +886,15 @@ the working tree: `make check-fmt` (11 s), `make lint` (189 s, shell, policies,
 clippy and `cargo doc`), `make typecheck` (146 s) and `make test` (206 s;
 10,633 tests run, 10,633 passed, 22 skipped). The change set is published as
 `281d221b1` on `fix/acp-unresolved-tool-recovery`.
+
+2026-11-07: Hosted CI on `a280bdce4` failed only the Windows check, with
+`error: unused import: ExecSessionWriterClosed` in `stale_exec_session.rs`. The
+closed-writer tests are Unix-only, so that import is now gated with
+`#[cfg(unix)]`. The same gating was applied to the imports in
+`write_ahead_checkpoint.rs` that only its Unix-only execution-boundary test
+uses. A local Windows cross-check is not reproducible on this host because
+`aws-lc-sys` needs a Windows C toolchain, so verification defers to the hosted
+job. The sixth run is green on all four gates against `a280bdce4` plus those
+edits: `make check-fmt` (7 s), `make lint` (178 s, shell, policies, clippy and
+`cargo doc`), `make typecheck` (71 s) and `make test` (278 s; 10,633 tests run,
+10,633 passed, 22 skipped). The change set is published as `15b1895ff`.
