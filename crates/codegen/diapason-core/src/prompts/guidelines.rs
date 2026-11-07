@@ -108,6 +108,8 @@ pub fn append_runtime_tool_prompt_sections_for_profile(
 ) {
     remove_prompt_section(prompt, "## Active Tools");
     remove_prompt_section(prompt, "[Runtime Tool Catalogue]");
+    // Prompts supplied by embedders may still carry the pre-rename section.
+    remove_prompt_section(prompt, "[Runtime Tool Catalog]");
     while prompt.ends_with('\n') {
         prompt.pop();
     }
@@ -829,5 +831,23 @@ mod tests {
         assert!(!prompt.contains("version: 1"));
         assert!(prompt.contains("request_user_input_enabled: true"));
         assert!(!prompt.contains("request_user_input_enabled: false"));
+    }
+
+    #[test]
+    fn legacy_runtime_tool_catalog_section_is_removed_without_dropping_notices() {
+        let mut prompt = "Base prompt\n[Runtime Tool Catalog]\n- version: 1\n[Runtime Notice]\nKeep me\n".to_string();
+        let snapshot = SessionToolCatalogueSnapshot::new(1, 1, false, false, None, false);
+
+        append_runtime_tool_prompt_sections_for_profile(
+            &mut prompt,
+            &snapshot,
+            false,
+            ResolvedShellPromptProfile::UnixLike,
+        );
+
+        assert!(!prompt.contains("[Runtime Tool Catalog]"));
+        assert!(!prompt.contains("- version: 1"));
+        assert!(prompt.contains("[Runtime Notice]\nKeep me"));
+        assert_eq!(prompt.matches("## Active Tools").count(), 1);
     }
 }
