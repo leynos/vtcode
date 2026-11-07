@@ -1,6 +1,7 @@
 //! Session creation, workspace isolation, and runtime sharing tests.
 use super::*;
 use assert_fs::TempDir;
+use diapason_core::config::DiapasonConfig;
 
 #[derive(Debug, PartialEq)]
 struct WorkspaceSessionProjection {
