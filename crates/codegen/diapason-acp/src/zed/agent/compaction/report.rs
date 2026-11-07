@@ -5,8 +5,8 @@
 //! ACP activity update. Keeping that reporting beside the attempt result keeps
 //! the compaction pipeline itself a linear sequence of explicit steps.
 
+use super::super::ZedAgent;
 use super::super::redaction::{elapsed_millis, identifier_correlation, log_compaction_update_failure};
-use super::super::{ZedAgent, log_suppressed_error};
 use super::failure::{CompactionFailureKind, FailureDetail, classify, detail_of};
 use crate::metrics::CompactionOutcome;
 use anyhow::Result;
@@ -79,6 +79,29 @@ pub(super) struct CompactionReport<'a> {
     pub(super) elapsed_ms: u64,
 }
 
+/// Record a suppressed compaction failure at debug.
+///
+/// A typed failure's `Display` is only the fixed client-safe message, so
+/// deriving the digest from the error here would give this record and the
+/// operator warning two different correlations for the same failure. Both
+/// callers instead share the one bounded [`FailureDetail`], and a failure with
+/// no retained detail records none rather than inventing a digest.
+fn log_suppressed_compaction_failure(detail: Option<&FailureDetail>, category: &'static str) {
+    // Both records format the digest through `Display`, so an operator sees the
+    // identical text in the debug record and the warning rather than one value
+    // quoted and the other bare.
+    match detail {
+        Some(detail) => tracing::debug!(
+            operation = "context_compaction",
+            error_category = category,
+            error_bytes = detail.bytes,
+            detail_correlation = %detail.correlation,
+            "Suppressed ACP failure"
+        ),
+        None => tracing::debug!(operation = "context_compaction", error_category = category, "Suppressed ACP failure"),
+    }
+}
+
 impl ZedAgent {
     /// Record the terminal outcome of an attempt and return its category.
     ///
@@ -105,8 +128,9 @@ impl ZedAgent {
         let _ = span.record("elapsed_ms", report.elapsed_ms);
         if let (Some(error), Some(category)) = (attempt.failure.as_ref(), failure_category) {
             let _ = span.record("error_category", category);
-            log_suppressed_error(error, "context_compaction", category);
-            Self::warn_compaction_failure(detail_of(error), &report, outcome.as_str(), category);
+            let detail = detail_of(error);
+            log_suppressed_compaction_failure(detail, category);
+            Self::warn_compaction_failure(detail, &report, outcome.as_str(), category);
         } else {
             info!(
                 provider_correlation = %identifier_correlation(report.provider),

@@ -157,7 +157,7 @@ admission router records current queue depth, in-flight permits, cumulative
 queue wait time, and timeout count across ACP and child-agent requests, so user
 configured provider names cannot create unbounded metric series.
 
-`provider_error_code` is likewise bounded. `LLMErrorMetadata` is deserialisable
+`provider_error_code` is likewise bounded. `LLMErrorMetadata` is deserializable
 and its `code` is free-form, so the warning records a code only when it appears
 in the fixed allowlist, and reports `other` for anything else. ACP timeout
 codes are reported through `provider_timeout_phase` instead.
@@ -405,10 +405,13 @@ Bounded, process-local counters accumulate across compaction attempts:
 `started`, `compacted`, `no_change`, `failed`, `cancelled`, `elapsed_ms_total`,
 and `elapsed_ms_max`. Read them with
 `diapason_acp::metrics::compaction_metrics()`; the snapshot is cumulative and
-never reset, and `cancelled` is a subset of `failed`. Cardinality is fixed by
-construction: no session, provider, model, or path value is recorded. Spans and
-logs correlate attempts with `session_correlation`, a deterministic, truncated
-SHA-256 digest, never the raw session identifier.
+never reset, and `cancelled` is a subset of `failed`. The fields are loaded
+from separate atomics, so a snapshot can reflect slightly different instants;
+the snapshot loads `cancelled` first and clamps `failed` to at least
+`cancelled`, so the subset relationship holds in every snapshot. Cardinality is
+fixed by construction: no session, provider, model, or path value is recorded.
+Spans and logs correlate attempts with `session_correlation`, a deterministic,
+truncated SHA-256 digest, never the raw session identifier.
 
 The two ACP send boundaries that publish activity to a client are counted the
 same way. `diapason_acp::metrics::notice_metrics()` reports `attempts` and

@@ -165,7 +165,7 @@ provider or filesystem diagnostic. A completed activity with `compacted: false`
 reports that the attempt made no change, and it omits `usedTokensAfter` because
 no token count was reduced. No private ACP update type is required.
 
-VT Code does not advertise `_meta.lody.rateLimits` unless it has trustworthy
+Diapason does not advertise `_meta.lody.rateLimits` unless it has trustworthy
 quota state. A Baseten HTTP 429 is not treated as a quota window: the response
 and any `Retry-After` value are surfaced through warning notices and provider
 telemetry instead. This avoids presenting fabricated reset times or usage

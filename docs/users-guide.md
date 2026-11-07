@@ -49,8 +49,8 @@ falls back cleanly when a client ignores them. The
 - **Rate limits.** A provider rate limit produces a warning notice. Each part
   is reported only when it applies: the HTTP status and the provider's
   `Retry-After` value only when the provider supplied them, and the retry delay
-  only when VT Code scheduled a further attempt. When no further attempt is
-  scheduled the notice says so. VT Code does not invent quota windows, reset
+  only when Diapason scheduled a further attempt. When no further attempt is
+  scheduled the notice says so. Diapason does not invent quota windows, reset
   times, or statuses.
 - **Custom-provider pricing.** Opt in per provider or per profile under
   `custom_providers.*.pricing`; rates are USD per million tokens. See the
@@ -63,8 +63,11 @@ runtime records. `diapason_acp::metrics::compaction_metrics()` returns a
 `CompactionMetrics` snapshot with `started`, `compacted`, `no_change`, `failed`,
 `cancelled`, `elapsed_ms_total`, and `elapsed_ms_max`. The snapshot is
 cumulative for the process and never reset, and `cancelled` is a subset of
-`failed`. Cardinality is fixed by construction: no session, provider, model, or
-path value is recorded, so the counters are safe to export as-is.
+`failed`. The fields are read from separate atomics, so one snapshot can
+reflect slightly different instants; the snapshot loads `cancelled` first and
+clamps `failed` to at least `cancelled`, so the subset relationship holds in
+every snapshot. Cardinality is fixed by construction: no session, provider,
+model, or path value is recorded, so the counters are safe to export as-is.
 
 `diapason_acp::metrics::notice_metrics()` and
 `diapason_acp::metrics::compaction_update_metrics()` report `attempts` and

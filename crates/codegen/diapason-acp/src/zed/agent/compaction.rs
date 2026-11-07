@@ -35,6 +35,41 @@ use report::{AdoptedCompaction, CompactionAttemptResult, CompactionReport};
 
 const COMPACTION_SUMMARY_MAX_TOKENS: u32 = 4_096;
 
+/// Supplies the identity and monotonic clock for one compaction activity.
+///
+/// This is a driven port. The command boundary asks for the activity identity
+/// and the instants it needs, so the published activity and its duration stay a
+/// function of explicit inputs. Production wiring installs the system edge; a
+/// command test substitutes fixed values and asserts exact durations.
+pub(super) trait CompactionActivitySource: Send + Sync {
+    /// Return the identity for a newly started activity.
+    fn activity_id(&self) -> uuid::Uuid;
+
+    /// Return the current monotonic instant.
+    fn now(&self) -> std::time::Instant;
+}
+
+/// System implementation of [`CompactionActivitySource`].
+///
+/// This is the edge: it is the only place in the compaction path that reads the
+/// process clock or generates a random identity.
+struct SystemCompactionActivitySource;
+
+impl CompactionActivitySource for SystemCompactionActivitySource {
+    fn activity_id(&self) -> uuid::Uuid {
+        uuid::Uuid::new_v4()
+    }
+
+    fn now(&self) -> std::time::Instant {
+        std::time::Instant::now()
+    }
+}
+
+/// Return the process-wide compaction activity source.
+pub(super) fn compaction_activity_source() -> Arc<dyn CompactionActivitySource> {
+    Arc::new(SystemCompactionActivitySource)
+}
+
 pub(super) struct CompactionRequest<'a> {
     pub(super) session: &'a SessionHandle,
     pub(super) provider: &'a dyn LLMProvider,
@@ -66,13 +101,13 @@ impl ZedAgent {
         // Logs and spans correlate on a bounded key rather than the raw id.
         let session_key = session_correlation(&snapshot.session_id);
         self.compaction_recorder.record_started();
-        // The edge supplies the identity and clock so the activity projection
+        // The port supplies the identity and clock so the activity projection
         // stays a pure function of explicit inputs.
         let activity = super::lody_activity::CompactionActivity::begin(
             &acp_session_id,
             prompt_tokens,
-            uuid::Uuid::new_v4(),
-            std::time::Instant::now(),
+            self.compaction_activity_source.activity_id(),
+            self.compaction_activity_source.now(),
         );
         self.publish_compaction_update(
             &acp_session_id,
@@ -110,7 +145,7 @@ impl ZedAgent {
             )
             .instrument(span.clone())
             .await;
-        let finished_at = std::time::Instant::now();
+        let finished_at = self.compaction_activity_source.now();
         let failure_category = self.record_compaction_outcome(
             &span,
             &attempt,
