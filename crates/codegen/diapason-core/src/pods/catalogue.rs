@@ -1,3 +1,6 @@
+//! Pod deployment-profile catalogue: embedded defaults, profile lookup, and
+//! hardware matching.
+
 use super::state::PodState;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

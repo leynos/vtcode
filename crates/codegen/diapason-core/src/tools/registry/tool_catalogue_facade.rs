@@ -1,3 +1,6 @@
+//! Session tool-catalogue facade: namespace-derived groups, cached filtered
+//! snapshots, and client-side tool-search access.
+
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
