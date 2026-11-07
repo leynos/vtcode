@@ -1,12 +1,19 @@
 //! Covers the write-ahead checkpoint that must precede ACP tool execution.
 use super::*;
+// The execution-boundary test and its helpers are Unix-only, so their imports
+// are gated too; otherwise Windows builds warn about unused imports under
+// `-D warnings`.
+#[cfg(unix)]
 use crate::zed::agent::handlers::prompt::{
     SystemToolRoundTimer, ToolRoundOutcome, ToolRoundRequest, execute_tool_round,
 };
 use crate::zed::agent::test_support::{HistorySettingsGuard, lock_history_test_guard};
-use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest, SetSessionConfigOptionRequest};
+use agent_client_protocol::schema::v1::InitializeRequest;
+#[cfg(unix)]
+use agent_client_protocol::schema::v1::{NewSessionRequest, SetSessionConfigOptionRequest};
 use diapason_config::codex::HistoryPersistence;
 use std::path::PathBuf;
+#[cfg(unix)]
 use tokio::sync::oneshot;
 
 /// Makes the configured archive path unusable on the first provider response.
