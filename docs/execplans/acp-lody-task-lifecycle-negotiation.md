@@ -11,11 +11,11 @@ Status: COMPLETE
 
 After this change, a Lody client connected to Diapason over the Agent Client
 Protocol (ACP) can negotiate exactly the usage, background-task and subagent
-features that Diapason implements. Lody will receive provider token usage, render
-delegated agents and managed background processes as first-class tasks, and
-list, cancel or inspect output for those tasks. Diapason's model-facing task
-tracker remains a standard ACP `Plan`; this work does not create a second task
-tracker.
+features that Diapason implements. Lody will receive provider token usage,
+render delegated agents and managed background processes as first-class tasks,
+and list, cancel or inspect output for those tasks. Diapason's model-facing
+task tracker remains a standard ACP `Plan`; this work does not create a second
+task tracker.
 
 The visible success case is an ACP session in which initialization advertises
 `agentCapabilities._meta.lody`, a Baseten-backed turn produces a canonical
@@ -416,10 +416,11 @@ management requests return only tasks owned by the requested ACP session.
 ## Surprises & discoveries
 
 - Observation: the repository identity changed mid-flight. `leynos/diapason` is
-  now "Diapason, a df12 Productions hard fork of Diapason focused on ACP control
-  and observability". Evidence: `70d92ddde` and the `diapason-*` crate tree on
-  the base branch. Impact: the feature could not be merged as authored; it had
-  to be replayed onto the renamed tree, which is what the port above records.
+  now "Diapason, a df12 Productions hard fork of Diapason focused on ACP
+  control and observability". Evidence: `70d92ddde` and the `diapason-*` crate
+  tree on the base branch. Impact: the feature could not be merged as authored;
+  it had to be replayed onto the renamed tree, which is what the port above
+  records.
 
 - Observation: Lody's version-1 task schema accepts only `pending`,
   `in_progress`, `completed` and `failed`; it does not accept `killed`.
@@ -494,8 +495,8 @@ management requests return only tasks owned by the requested ACP session.
   tests in `zed/agent/handlers.rs`. Impact: no new plan/task-tracker protocol
   is required. The Lody `tasks` capability will advertise only enabled
   background-subagent work.
-- Observation: `_diapason/taskLifecycle` is neither a standard ACP task update nor
-  a Lody-recognized legacy extension, and its discriminator is incompatible
+- Observation: `_diapason/taskLifecycle` is neither a standard ACP task update
+  nor a Lody-recognized legacy extension, and its discriminator is incompatible
   with Lody's Claude compatibility parser. Evidence:
   `crates/codegen/diapason-acp/src/zed/agent/task_lifecycle.rs` uses
   `message.type`; Lody commit `dd241fd4108ba5de2f7e2d8d627713152d812a06`
@@ -510,10 +511,11 @@ management requests return only tasks owned by the requested ACP session.
 - Observation: Baseten documents per-request token usage, cached input tokens
   and final streamed usage, but the final usage chunk is conditional on
   `stream_options.include_usage: true`. Evidence: Baseten's Chat Completions
-  reference and GLM-5.3 Flash model page; Diapason currently adds the option only
-  for native OpenAI in `diapason-llm/src/providers/openai/provider/streaming.rs`.
-  Impact: negotiated Lody usage would remain empty for the user's Baseten
-  sessions without a provider-profile opt-in.
+  reference and GLM-5.3 Flash model page; Diapason currently adds the option
+  only for native OpenAI in
+  `diapason-llm/src/providers/openai/provider/streaming.rs`. Impact: negotiated
+  Lody usage would remain empty for the user's Baseten sessions without a
+  provider-profile opt-in.
 - Observation: Lody's canonical usage extension is the version-1
   `_lody/session/usage_update` method, and Diapason must advertise
   `usage: {version: 1}` even when a provider does not return usage. Evidence:
@@ -532,7 +534,8 @@ management requests return only tasks owned by the requested ACP session.
   to false; resolved profile precedence controls the request, while native
   OpenAI request behaviour is unchanged. Evidence: the configuration precedence
   and request-shape tests in
-  `/tmp/test-diapason-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out` and
+  `/tmp/test-diapason-config-fix-acp-lody-task-lifecycle-negotiation-epm3.out`
+  and
   `/tmp/test-diapason-llm-wiremock-fix-acp-lody-task-lifecycle-negotiation-epm3.out`.
   Impact: existing proxy configurations remain safe, and only an explicitly
   opted-in compatible endpoint receives `stream_options.include_usage`.
@@ -703,11 +706,11 @@ agent supports managed background or scheduled work. Lody task metadata is the
 UI/history representation for subagents, background work or scheduled work.
 Only the latter two are changed by this plan.
 
-Provider responses carry `diapason_commons::llm::Usage` with prompt, completion,
-cache-read and cache-creation counts. OpenAI-compatible streams expose usage in
-a terminal SSE chunk only when requested. The custom-provider OpenAI router
-already parses a received usage chunk, but it does not request one from Baseten
-today.
+Provider responses carry `diapason_commons::llm::Usage` with prompt,
+completion, cache-read and cache-creation counts. OpenAI-compatible streams
+expose usage in a terminal SSE chunk only when requested. The custom-provider
+OpenAI router already parses a received usage chunk, but it does not request
+one from Baseten today.
 
 ## Conformance basis
 
@@ -876,8 +879,8 @@ EP-M5 evidence addendum (2026-10-31):
   terminal-usage chunk produces exactly one `_lody/session/usage_update` while
   a usage-free stream publishes no delta; the same test also asserts the opt-in
   `stream_options.include_usage` request shape.
-  `crates/codegen/diapason-acp/src/zed/agent/tests/streamed_audit.rs` remains the
-  synthetic-provider projection check, and
+  `crates/codegen/diapason-acp/src/zed/agent/tests/streamed_audit.rs` remains
+  the synthetic-provider projection check, and
   `crates/codegen/diapason-llm/tests/vidaimock_streaming.rs` remains the parser
   boundary check.
 
@@ -1046,8 +1049,8 @@ controller's cancellation semantics or read an arbitrary transcript path.
 
 Focused tests, gates and binary installation are idempotent. Extension
 notifications are observational and do not change durable session history in
-Diapason. List and output are read-only; cancel is intentionally idempotent for a
-terminal owned task and never automatically replays work.
+Diapason. List and output are read-only; cancel is intentionally idempotent for
+a terminal owned task and never automatically replays work.
 
 If a rebase or stack operation conflicts, stop, inspect both intents and use
 `gh stack rebase`/`gh stack push`; do not use `git push --force`. If a test
@@ -1235,11 +1238,12 @@ terminal delta this plan consumes.
 
 ## Interfaces and dependencies
 
-Define private Serde DTOs in `crates/codegen/diapason-acp/src/zed/agent/lody.rs`
-for the version-1 capability map, task metadata, session usage update and three
-management request/response shapes. The serialized field names must match Lody
-Core revision `23c792b9` exactly. These types are an adapter boundary, not a
-new public crate API.
+Define private Serde DTOs in
+`crates/codegen/diapason-acp/src/zed/agent/lody.rs` for the version-1
+capability map, task metadata, session usage update and three management
+request/response shapes. The serialized field names must match Lody Core
+revision `23c792b9` exactly. These types are an adapter boundary, not a new
+public crate API.
 
 `advertised_agent_capabilities` will accept the agent/controller state needed
 to build `acp::AgentCapabilities.meta`. `task_lifecycle` will construct
@@ -1367,8 +1371,8 @@ the branch was replayed onto the new base. Recovery refs: old head
 Resolution decisions:
 
 - `session_state/archive.rs` and `session_state_tests.rs`: kept the target side,
-  which already contains a superset of the r16 lease-release and `DiapasonConfig`
-  import changes, so replaying them would duplicate work.
+  which already contains a superset of the r16 lease-release and
+  `DiapasonConfig` import changes, so replaying them would duplicate work.
 - `handlers/tests/session.rs`: the replay's commit had moved the
   concurrent-prompt test into `session_prompt_race.rs`, so the block was
   deleted from `session.rs`. The three target-added guard lines
@@ -1514,8 +1518,8 @@ assessment reply (2026-11-02T00:15:39Z) are now closed:
   `refresh_background_processes` remains an explicit command for the CLI and
   the output path.
 - `docs/guides/zed-acp.md` no longer documents the removed
-  `_diapason/taskLifecycle` extension; it points at the standard `session/update`
-  contract already described in the same guide.
+  `_diapason/taskLifecycle` extension; it points at the standard
+  `session/update` contract already described in the same guide.
 - `publish_initial_task_snapshots` records the snapshots queued before a
   partial queue rejection, so `initial_snapshots_published` no longer drops
   them.
@@ -1531,8 +1535,8 @@ had raised earlier: **Testing (Overall)** (error) and **Domain Architecture**
 
 **Domain Architecture — transport policy lived in the domain.** The output-tail
 default (200 lines), the hard cap (10,000 lines) and the request validation
-were defined in `diapason-core::subagents`, so the domain controller owned an ACP
-transport contract. They now live in the ACP adapter
+were defined in `diapason-core::subagents`, so the domain controller owned an
+ACP transport contract. They now live in the ACP adapter
 (`crates/codegen/diapason-acp/src/zed/agent/lody_management.rs`), and
 `SubagentController::background_output_tail` takes an already-validated
 `max_lines` and documents that transport limits belong to the adapter that owns
