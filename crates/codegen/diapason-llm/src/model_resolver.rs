@@ -14,6 +14,21 @@ use diapason_config::models::{
     model_catalogue_entry,
 };
 
+
+<<<<<<< ours
+//! Resolution of configured and dynamic models into provider-ready selections.
+//!
+//! Reports credential availability, merges catalogue and dynamic metadata, and
+//! exposes the pricing and context-window facts used by model pickers.
+||||||| original
+};
+};
+//! Resolves configured model identifiers into provider, pricing, and availability metadata.
+=======
+//! Resolves configured model identifiers into provider, pricing, and availability metadata.
+>>>>>>> theirs
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelAvailability {
     Available,

@@ -221,9 +221,4 @@ mod lease;
 #[path = "workspace_session.rs"]
 mod session;
 
-
-
 use diapason_config::{HookCommandConfig, HookGroupConfig, WorkspaceHookCommand, WorkspaceLifecycleHooks};
-
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/session_state_tests/workspace.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/session_state_tests/workspace.rs' for per-hunk detail, 'weave check' to verify your resolution

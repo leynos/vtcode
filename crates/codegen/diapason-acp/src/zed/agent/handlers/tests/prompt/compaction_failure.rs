@@ -53,15 +53,18 @@ async fn run_failing_compaction_over_duplex(
     let agent_attached_signal = Arc::clone(&agent_attached);
     let client_initialized_signal = Arc::clone(&client_initialized);
 
-    let agent_connection = install_handlers(Agent.builder().name("diapason-compaction-failure-test"), Arc::clone(agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                agent_attached_signal.notify_one();
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
+    let agent_connection = install_handlers(
+        Agent.builder().name("diapason-compaction-failure-test"),
+        Arc::clone(agent),
+    )
+    .connect_with(agent_channel, {
+        let agent = Arc::clone(agent);
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            agent_attached_signal.notify_one();
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        }
+    });
     let agent_task = tokio::spawn(agent_connection);
 
     let client_connection = Client
