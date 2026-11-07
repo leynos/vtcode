@@ -2,6 +2,7 @@
 use super::*;
 use assert_fs::TempDir;
 use diapason_config::{HookCommandConfig, HookGroupConfig, WorkspaceHookCommand, WorkspaceLifecycleHooks};
+use diapason_core::config::DiapasonConfig;
 use std::ffi::OsString;
 
 /// Restores `DIAPASON_CONFIG` when the test leaves scope, including on panic.
