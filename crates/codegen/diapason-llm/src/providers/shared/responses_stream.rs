@@ -657,6 +657,9 @@ mod tests {
                         "total_tokens": 18,
                         "input_tokens_details": {
                             "cached_tokens": 5
+                        },
+                        "output_tokens_details": {
+                            "reasoning_tokens": 2
                         }
                     },
                     "output": [],
@@ -677,6 +680,11 @@ mod tests {
         assert_eq!(usage.completion_tokens, 7);
         assert_eq!(usage.total_tokens, 18);
         assert_eq!(usage.cached_prompt_tokens, Some(5));
+        assert_eq!(
+            usage.reasoning_output_tokens,
+            Some(2),
+            "a reported reasoning count must survive the completed-event parse"
+        );
         assert_eq!(response.content.as_deref(), Some("streamed answer"));
         assert_eq!(response.request_id.as_deref(), Some("resp_streamed"));
     }
