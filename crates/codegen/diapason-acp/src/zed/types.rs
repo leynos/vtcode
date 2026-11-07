@@ -175,6 +175,7 @@ impl SessionHandle {
 }
 
 pub(crate) struct SessionData {
+    pub(in crate::zed) subagent_controller: Option<Arc<diapason_core::subagents::SubagentController>>,
     pub(crate) session_id: acp::SessionId,
     pub(crate) thread: ThreadRuntimeHandle,
     pub(crate) archive: Option<diapason_core::utils::session_archive::SessionArchive>,
@@ -253,13 +254,16 @@ impl SessionHandle {
     }
 
     pub(crate) async fn release_workspace_lease(&self) -> anyhow::Result<()> {
-        let (lease, runtime) = {
+        let (lease, runtime, controller) = {
             let mut data = self
                 .data
                 .lock()
                 .map_err(|error| lock_poison_error("releasing ACP session workspace lease", error))?;
-            (data.workspace_lease.take(), data.workspace_runtime.take())
+            (data.workspace_lease.take(), data.workspace_runtime.take(), data.subagent_controller.take())
         };
+        if let Some(controller) = controller {
+            controller.signal_shutdown().await;
+        }
         drop(runtime);
         if let Some(lease) = lease {
             lease.release().await;
