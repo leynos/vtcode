@@ -16,7 +16,8 @@
 - [Configuration field reference](./config/CONFIG_FIELD_REFERENCE.md)
 - [Documentation style guide](./documentation-style-guide.md)
 - [0.157.0 release notes](./releases/0.157.0.md) - Breaking API renames and
-  migration actions.
+  migration actions, including the `catalog` to `catalogue` Rust API rename and
+  the external spellings that remain unchanged.
 
 ## ACP interrupted tool recovery
 

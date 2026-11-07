@@ -44,6 +44,10 @@ pub fn stable_system_prefix_hash(system_prompt: &str) -> u64 {
         .split("\n[Runtime Tool Catalogue]\n")
         .next()
         .unwrap_or(system_prompt)
+        // Prompts supplied by embedders may still carry the pre-rename section.
+        .split("\n[Runtime Tool Catalog]\n")
+        .next()
+        .unwrap_or(system_prompt)
         .split("\n[Runtime Context]\n")
         .next()
         .unwrap_or(system_prompt)
@@ -113,5 +117,38 @@ impl<H: Hasher> std::io::Write for HasherWriter<'_, H> {
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+/// Tests for the stable system-prefix hash contract.
+///
+/// The hash must ignore runtime catalogue metadata, including the pre-rename
+/// section, while still changing when the stable prompt prefix changes.
+#[cfg(test)]
+mod tests {
+    use super::stable_system_prefix_hash;
+
+    #[test]
+    fn stable_prefix_hash_ignores_runtime_catalogue_metadata() {
+        let earlier = "Stable guidance.\n[Runtime Tool Catalogue]\n- version: 1\n- epoch: 2\n";
+        let later = "Stable guidance.\n[Runtime Tool Catalogue]\n- version: 9\n- epoch: 42\n";
+
+        assert_eq!(stable_system_prefix_hash(earlier), stable_system_prefix_hash(later));
+    }
+
+    #[test]
+    fn stable_prefix_hash_ignores_legacy_runtime_catalogue_metadata() {
+        let earlier = "Stable guidance.\n[Runtime Tool Catalog]\n- version: 1\n";
+        let later = "Stable guidance.\n[Runtime Tool Catalog]\n- version: 2\n";
+
+        assert_eq!(stable_system_prefix_hash(earlier), stable_system_prefix_hash(later));
+    }
+
+    #[test]
+    fn stable_prefix_hash_changes_with_the_stable_prefix() {
+        assert_ne!(
+            stable_system_prefix_hash("Stable guidance for a reviewer."),
+            stable_system_prefix_hash("Stable guidance for an implementer.")
+        );
     }
 }
