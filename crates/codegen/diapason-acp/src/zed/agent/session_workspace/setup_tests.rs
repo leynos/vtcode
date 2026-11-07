@@ -219,6 +219,25 @@ async fn workspace_registry_setup_reports_an_injected_stage_failure() {
 }
 
 #[tokio::test]
+async fn workspace_registry_setup_installs_the_agent_wide_metrics_collector() {
+    let temp = TempDir::new().expect("temporary workspace");
+    let runtime_config = runtime_config();
+    let collector = Arc::new(MetricsCollector::new());
+    let ports = WorkspaceSetupPorts::default().with_metrics(Arc::clone(&collector));
+
+    let registry = ports
+        .registry_setup
+        .initialize(temp.path(), &runtime_config, None)
+        .await
+        .expect("default workspace registry setup");
+
+    assert!(
+        Arc::ptr_eq(&registry.metrics_collector(), &collector),
+        "workspace registry must share the agent-wide collector"
+    );
+}
+
+#[tokio::test]
 async fn optional_workspace_attachments_preserve_degraded_and_disabled_outcomes() {
     let temp = TempDir::new().expect("temporary workspace");
     let registry = CoreToolRegistry::new(temp.path().to_path_buf()).await;

@@ -1,13 +1,22 @@
 //! Durable archive persistence and workspace-bound session restoration.
+//!
+//! Archive recovery records unresolved tool effects as uncertain before a
+//! session becomes active. Ambiguous terminal-result history is rejected
+//! without replaying calls or registering a resumable session.
 use anyhow::Context;
-use diapason_core::core::threads::ThreadBootstrap;
+use diapason_commons::fs::read_private_json_file;
+use diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics;
+use diapason_core::core::threads::{ThreadBootstrap, messages_from_session_listing};
 use diapason_core::hooks::SessionStartTrigger;
-use diapason_core::llm::provider::MessageRole;
+use diapason_core::llm::provider::{Message, MessageRole};
+use diapason_core::metrics::ToolRecoveryEvent;
 use diapason_core::utils::session_archive::{
     SessionArchive, SessionListing, SessionMessage, SessionProgressArgs, SessionProgressPersistenceStatus,
-    find_session_by_identifier, history_persistence_enabled, list_recent_sessions, session_workspace_path,
+    SessionSnapshot, find_session_by_identifier, history_persistence_enabled, list_recent_sessions,
+    session_workspace_path,
 };
 use futures::future::BoxFuture;
+use std::collections::HashSet;
 use std::future::Future;
 use std::path::Path;
 use std::time::Instant;
@@ -19,7 +28,13 @@ use crate::zed::types::{SessionHandle, lock_poison_error};
 
 use super::{SessionHandleBootstrap, ZedAgent, safe_internal_error, safe_invalid_params_error};
 use crate::zed::agent::log_suppressed_error;
+use crate::zed::agent::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
 
+/// Runs one session-storage operation inside a bounded telemetry span.
+///
+/// The span records the fixed operation name, a success/failure outcome, and
+/// elapsed milliseconds; it never records paths, session identifiers, or
+/// payloads.
 pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
     operation: &'static str,
     future: F,
@@ -43,13 +58,61 @@ where
     })
 }
 
+/// How strictly a checkpoint must reach durable storage.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CheckpointDurability {
+    /// A skipped or throttled checkpoint is logged and tolerated.
+    BestEffort,
+    /// The caller cannot proceed unless the snapshot was persisted.
+    Required,
+}
+
 impl ZedAgent {
+    /// Persists the session snapshot without turn diagnostics.
+    ///
+    /// This is the best-effort form used for ordinary transcript checkpoints.
+    /// Callers that must not proceed without durable storage use
+    /// [`Self::checkpoint_session_required`].
     pub(in crate::zed::agent) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session)).await
+        self.checkpoint_session_with_turn_diagnostics(session, None, CheckpointDurability::BestEffort)
+            .await
     }
 
-    async fn checkpoint_session_inner(&self, session: &SessionHandle) -> anyhow::Result<()> {
+    /// Persists the session snapshot and fails unless it reached storage.
+    ///
+    /// Used for the write-ahead checkpoint that gates tool execution: a
+    /// disabled or throttled write is an error, so no tool runs without a
+    /// durable record of the staged calls.
+    pub(in crate::zed::agent) async fn checkpoint_session_required(
+        &self,
+        session: &SessionHandle,
+    ) -> anyhow::Result<()> {
+        self.checkpoint_session_with_turn_diagnostics(session, None, CheckpointDurability::Required)
+            .await
+    }
+
+    /// Persists the session snapshot, optionally carrying turn diagnostics.
+    async fn checkpoint_session_with_turn_diagnostics(
+        &self,
+        session: &SessionHandle,
+        turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+        durability: CheckpointDurability,
+    ) -> anyhow::Result<()> {
+        trace_storage_operation("checkpoint", self.checkpoint_session_inner(session, turn_diagnostics, durability))
+            .await
+    }
+
+    /// Writes the checkpoint unless history persistence is disabled.
+    async fn checkpoint_session_inner(
+        &self,
+        session: &SessionHandle,
+        turn_diagnostics: Option<SnapshotTurnDiagnostics>,
+        durability: CheckpointDurability,
+    ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
+            if durability == CheckpointDurability::Required {
+                return Err(anyhow::anyhow!("ACP session checkpoint requires history persistence, which is disabled"));
+            }
             debug!("Skipped ACP session checkpoint because history persistence is disabled");
             return Ok(());
         }
@@ -70,7 +133,7 @@ impl ZedAgent {
         let mut archive = match existing_archive {
             Some(archive) => archive,
             None => {
-                let archive = SessionArchive::new_with_identifier(metadata.clone(), session_identifier).await?;
+                let archive = SessionArchive::new_with_identifier(metadata.clone(), session_identifier.clone()).await?;
                 let mut data = session
                     .data
                     .lock()
@@ -81,6 +144,13 @@ impl ZedAgent {
         };
         archive.replace_metadata(metadata);
 
+        // A required checkpoint gates tool execution, so remember which staged
+        // calls it must retain before compaction can silently drop them.
+        let staged_call_ids = if durability == CheckpointDurability::Required {
+            staged_tool_call_ids(&snapshot.messages)
+        } else {
+            Vec::new()
+        };
         let messages = snapshot.messages.iter().map(SessionMessage::from).collect::<Vec<_>>();
         let recent_start = messages.len().saturating_sub(20);
         let recent_messages = messages.iter().skip(recent_start).cloned().collect();
@@ -99,18 +169,33 @@ impl ZedAgent {
                 token_usage: None,
                 max_context_tokens: None,
                 loaded_skills: Some(snapshot.loaded_skills),
-                turn_diagnostics: None,
+                turn_diagnostics,
             })
             .await?;
-        let persistence_outcome = match persistence_status {
-            SessionProgressPersistenceStatus::Persisted(_) => "persisted",
-            SessionProgressPersistenceStatus::Throttled(_) => "throttled",
-            SessionProgressPersistenceStatus::Disabled(_) => "disabled",
+        let (persistence_outcome, persisted_path) = match persistence_status {
+            SessionProgressPersistenceStatus::Persisted(path) => ("persisted", Some(path)),
+            SessionProgressPersistenceStatus::Throttled(_) => ("throttled", None),
+            SessionProgressPersistenceStatus::Disabled(_) => ("disabled", None),
         };
         debug!(persistence_outcome, "Processed ACP session checkpoint");
+        let Some(persisted_path) = persisted_path else {
+            if durability == CheckpointDurability::Required {
+                return Err(anyhow::anyhow!(
+                    "ACP session checkpoint was not persisted (outcome: {persistence_outcome})"
+                ));
+            }
+            return Ok(());
+        };
+        if durability == CheckpointDurability::Required && !staged_call_ids.is_empty() {
+            verify_required_checkpoint_retention(&session_identifier, &persisted_path, &staged_call_ids).await?;
+        }
         Ok(())
     }
 
+    /// Rebuilds a thread from an archived listing and registers it.
+    ///
+    /// Interrupted tool calls are staged before the thread is handed out, and
+    /// the repaired history is checkpointed when recovery changed it.
     async fn attach_thread_from_archive(
         &self,
         session_id: &acp::SessionId,
@@ -118,73 +203,176 @@ impl ZedAgent {
         workspace: &AcpSessionWorkspace,
     ) -> anyhow::Result<SessionHandle> {
         trace_storage_operation("archive_attach", async {
+            let resume_lock = self.resume_lock(session_id)?;
+            let _resume_guard = resume_lock.lock().await;
+            // Another attempt may have registered the session while this one
+            // waited for the lock; reuse its result instead of repairing twice.
+            if let Some(existing) = self.session_handle(session_id)? {
+                return Ok(existing);
+            }
             let listing = find_session_by_identifier(identifier)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
-            let workspace_match = session_listing_workspace_match(&listing, workspace.path())
-                .with_context(|| format!("resolving workspace ownership for archived session '{identifier}'"))?;
-            anyhow::ensure!(
-                workspace_match == WorkspaceMatch::Matches,
-                "archived session '{identifier}' belongs to a different workspace"
+            self.attach_thread_from_listing_locked(session_id, workspace, listing).await
+        })
+        .await
+    }
+
+    /// Attach an already-loaded archive listing as a live ACP session.
+    ///
+    /// The listing's own identifier names the session, so callers cannot
+    /// attach a listing under a name that does not match its archive path.
+    /// Concurrent attempts for the same session are serialized so only one
+    /// repairs and registers it.
+    pub(super) async fn attach_thread_from_listing(
+        &self,
+        session_id: &acp::SessionId,
+        workspace: &AcpSessionWorkspace,
+        listing: SessionListing,
+    ) -> anyhow::Result<SessionHandle> {
+        let resume_lock = self.resume_lock(session_id)?;
+        let _resume_guard = resume_lock.lock().await;
+        if let Some(existing) = self.session_handle(session_id)? {
+            return Ok(existing);
+        }
+        self.attach_thread_from_listing_locked(session_id, workspace, listing).await
+    }
+
+    /// Attaches a listing while the caller already holds the per-session lock.
+    async fn attach_thread_from_listing_locked(
+        &self,
+        session_id: &acp::SessionId,
+        workspace: &AcpSessionWorkspace,
+        mut listing: SessionListing,
+    ) -> anyhow::Result<SessionHandle> {
+        let identifier = listing.identifier();
+        let identifier = identifier.as_str();
+        let workspace_match = session_listing_workspace_match(&listing, workspace.path())
+            .with_context(|| format!("resolving workspace ownership for archived session '{identifier}'"))?;
+        anyhow::ensure!(
+            workspace_match == WorkspaceMatch::Matches,
+            "archived session '{identifier}' belongs to a different workspace"
+        );
+        let preserved_turn_diagnostics = listing
+            .snapshot
+            .progress
+            .as_ref()
+            .and_then(|progress| progress.turn_diagnostics.clone());
+        let recovery = repair_archived_tool_calls(&mut listing).map_err(|error| {
+            self.recovery_metrics().record_tool_recovery(ToolRecoveryEvent::AmbiguousHistory);
+            warn!(session_id = %session_id, tool_recovery_outcome = "ambiguous_history_rejected",
+                  "Rejected archived ACP session with ambiguous tool-result history");
+            anyhow::anyhow!("Archived ACP session has ambiguous tool-result history and was not resumed; inspect the archive before continuing: {error}")
+        })?;
+        let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
+        let thread = self
+            .thread_manager
+            .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+        let workspace_lease = self
+            .workspace_runtime_for(workspace)
+            .await
+            .context("Failed to initialize archived ACP session workspace")?;
+        let handle = self.build_session_handle(
+            thread,
+            SessionHandleBootstrap {
+                session_id: session_id.clone(),
+                archive: Some(archive),
+                trigger: SessionStartTrigger::Resume,
+                workspace_runtime: Some(workspace_lease.runtime().clone()),
+                workspace_lease: Some(workspace_lease),
+            },
+        );
+        if recovery.truncated_prefix > 0 {
+            warn!(
+                session_id = %session_id,
+                truncated_results = recovery.truncated_prefix,
+                "Archived ACP session prefix was truncated; leading tool results have no retained request"
             );
-            let archive = SessionArchive::resume_from_listing(&listing, listing.snapshot.metadata.clone());
-            let thread = self
-                .thread_manager
-                .start_thread_with_identifier(listing.identifier(), ThreadBootstrap::from_listing(listing));
-            let workspace_lease = self
-                .workspace_runtime_for(workspace)
+        }
+        if recovery.history_changed() {
+            let metrics = self.recovery_metrics();
+            metrics.record_tool_recovery_events(ToolRecoveryEvent::InterruptedCall, recovery.repaired_calls);
+            metrics.record_tool_recovery_events(ToolRecoveryEvent::RelocatedResult, recovery.relocated_calls);
+            if let Err(error) = self
+                .checkpoint_session_with_turn_diagnostics(
+                    &handle,
+                    preserved_turn_diagnostics,
+                    CheckpointDurability::Required,
+                )
                 .await
-                .context("Failed to initialize archived ACP session workspace")?;
-            let handle = self.build_session_handle(
-                thread,
-                SessionHandleBootstrap {
-                    session_id: session_id.clone(),
-                    archive: Some(archive),
-                    trigger: SessionStartTrigger::Resume,
-                    workspace_runtime: Some(workspace_lease.runtime().clone()),
-                    workspace_lease: Some(workspace_lease),
-                },
-            );
-            let registration = self
-                .sessions
-                .lock()
-                .map_err(|error| lock_poison_error("registering resumed ACP session", error))
-                .map(|mut sessions| {
-                    if let Some(existing) = sessions.get(session_id) {
-                        return Some(existing.clone());
-                    }
-                    let replaced = sessions.insert(session_id.clone(), handle.clone());
-                    debug_assert!(replaced.is_none(), "resumed session registration must not replace a handle");
-                    None
-                });
-            let existing = match registration {
-                Ok(existing) => existing,
-                Err(error) => {
-                    if let Err(cleanup_error) = handle.release_workspace_lease().await {
-                        log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
-                        warn!(
-                            operation = "archive_attach",
-                            error_category = "workspace_lease_cleanup_failed",
-                            "Failed to release ACP workspace lease after resumed session registration failed"
-                        );
-                    }
-                    return Err(error);
-                }
-            };
-            if let Some(existing) = existing {
+            {
+                metrics.record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
                 if let Err(cleanup_error) = handle.release_workspace_lease().await {
                     log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
                     warn!(
                         operation = "archive_attach",
                         error_category = "workspace_lease_cleanup_failed",
-                        "Failed to release ACP workspace lease for a concurrently registered resumed session"
+                        "Failed to release ACP workspace lease after repaired history checkpoint failed"
                     );
                 }
-                return Ok(existing);
+                return Err(error).context("Failed to persist repaired ACP tool-call history");
             }
-            Ok(handle)
-        })
-        .await
+            metrics.record_tool_recovery(ToolRecoveryEvent::RepairedArchive);
+            warn!(
+                session_id = %session_id,
+                repaired_calls = recovery.repaired_calls,
+                relocated_calls = recovery.relocated_calls,
+                "Repaired unresolved tool calls while loading durable ACP session"
+            );
+        }
+        if let Some(existing) = self.register_resumed_session(session_id, &handle).await? {
+            return Ok(existing);
+        }
+        Ok(handle)
+    }
+
+    /// Publish a resumed session, returning any handle registered concurrently.
+    ///
+    /// If another task registered the same session first, the existing handle
+    /// wins and the newly built handle's workspace lease is released so a
+    /// failed load leaves no half-owned runtime.
+    async fn register_resumed_session(
+        &self,
+        session_id: &acp::SessionId,
+        handle: &SessionHandle,
+    ) -> anyhow::Result<Option<SessionHandle>> {
+        let registration = self
+            .sessions
+            .lock()
+            .map_err(|error| lock_poison_error("registering resumed ACP session", error))
+            .map(|mut sessions| {
+                if let Some(existing) = sessions.get(session_id) {
+                    return Some(existing.clone());
+                }
+                let replaced = sessions.insert(session_id.clone(), handle.clone());
+                debug_assert!(replaced.is_none(), "resumed session registration must not replace a handle");
+                None
+            });
+        let existing = match registration {
+            Ok(existing) => existing,
+            Err(error) => {
+                if let Err(cleanup_error) = handle.release_workspace_lease().await {
+                    log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+                    warn!(
+                        operation = "archive_attach",
+                        error_category = "workspace_lease_cleanup_failed",
+                        "Failed to release ACP workspace lease after resumed session registration failed"
+                    );
+                }
+                return Err(error);
+            }
+        };
+        if existing.is_some()
+            && let Err(cleanup_error) = handle.release_workspace_lease().await
+        {
+            log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+            warn!(
+                operation = "archive_attach",
+                error_category = "workspace_lease_cleanup_failed",
+                "Failed to release ACP workspace lease for a concurrently registered resumed session"
+            );
+        }
+        Ok(existing)
     }
 
     pub(super) async fn attach_or_get_session(
@@ -486,6 +674,10 @@ fn canonical_workspace_match(stored_workspace: &Path, requested_workspace: &Path
     })
 }
 
+/// Compares an archived listing's workspace with the requested one.
+///
+/// Fails when the listing carries no stored workspace path, because resuming
+/// in an unknown directory would defeat the workspace isolation check.
 pub(super) fn session_listing_workspace_match(
     listing: &SessionListing,
     requested_workspace: &Path,
@@ -493,4 +685,123 @@ pub(super) fn session_listing_workspace_match(
     let stored_workspace = session_workspace_path(listing)
         .ok_or_else(|| anyhow::anyhow!("archived session '{}' has no stored workspace path", listing.identifier()))?;
     canonical_workspace_match(&stored_workspace, requested_workspace)
+}
+
+/// Repairs unresolved archived calls into uncertain-effect placeholders for checkpointing.
+pub(super) fn repair_archived_tool_calls(
+    listing: &mut SessionListing,
+) -> Result<RecoveryReport, crate::zed::agent::tool_recovery::AmbiguousToolResultHistory> {
+    let mut messages = messages_from_session_listing(listing);
+    let report = repair_unresolved_tool_calls(&mut messages)?;
+    if report.history_changed() {
+        listing.snapshot.total_messages = messages.len();
+        listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
+    }
+    Ok(report)
+}
+
+/// Returns the tool-call ids staged by the most recent assistant tool batch.
+///
+/// A required checkpoint must retain this batch; an empty result means the
+/// snapshot carries no staged calls and needs no read-back verification.
+pub(super) fn staged_tool_call_ids(messages: &[Message]) -> Vec<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| {
+            message.role == MessageRole::Assistant
+                && message.tool_calls.as_deref().is_some_and(|calls| !calls.is_empty())
+        })
+        .and_then(|message| message.tool_calls.as_deref())
+        .map(|calls| calls.iter().map(|call| call.id.clone()).collect())
+        .unwrap_or_default()
+}
+
+/// Returns the staged tool-call ids the persisted messages no longer retain.
+///
+/// A retained call must appear both as a requested call id and as the
+/// `tool_call_id` of its result; compaction that drops either side has lost
+/// the staged batch.
+pub(super) fn missing_persisted_tool_calls(
+    staged_call_ids: &[String],
+    persisted_messages: &[SessionMessage],
+) -> Vec<String> {
+    let requested = persisted_messages
+        .iter()
+        .filter_map(|message| message.tool_calls.as_deref())
+        .flatten()
+        .map(|call| call.id.as_str())
+        .collect::<HashSet<_>>();
+    let answered = persisted_messages
+        .iter()
+        .filter_map(|message| message.tool_call_id.as_deref())
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    staged_call_ids
+        .iter()
+        .filter(|call_id| {
+            let call_id = call_id.as_str();
+            !requested.contains(call_id) || !answered.contains(call_id)
+        })
+        .cloned()
+        .collect()
+}
+
+/// Returns how many staged calls a checkpoint failed to retain, if any.
+///
+/// Best-effort checkpoints tolerate compaction loss; required checkpoints
+/// must reject a snapshot that dropped the staged batch.
+pub(super) fn required_checkpoint_retention_violation(
+    durability: CheckpointDurability,
+    staged_call_ids: &[String],
+    persisted_messages: &[SessionMessage],
+) -> Option<usize> {
+    if durability != CheckpointDurability::Required || staged_call_ids.is_empty() {
+        return None;
+    }
+    let missing = missing_persisted_tool_calls(staged_call_ids, persisted_messages);
+    (!missing.is_empty()).then_some(missing.len())
+}
+
+/// Reads the persisted checkpoint back and rejects a dropped staged batch.
+async fn verify_required_checkpoint_retention(
+    session_identifier: &str,
+    persisted_path: &Path,
+    staged_call_ids: &[String],
+) -> anyhow::Result<()> {
+    let persisted_messages = read_back_persisted_messages(session_identifier, persisted_path).await?;
+    if let Some(missing) =
+        required_checkpoint_retention_violation(CheckpointDurability::Required, staged_call_ids, &persisted_messages)
+    {
+        return Err(anyhow::anyhow!(
+            "required ACP session checkpoint dropped {missing} staged tool call(s) during compaction"
+        ));
+    }
+    Ok(())
+}
+
+/// Loads the messages of the archive a required checkpoint just persisted.
+///
+/// Canonical archives resolve through the session listing API. Archives
+/// attached from an explicit listing path (for example a resumed archive
+/// outside the session directory) are read from the exact file the checkpoint
+/// reported, so the retention proof still covers what was written.
+async fn read_back_persisted_messages(
+    session_identifier: &str,
+    persisted_path: &Path,
+) -> anyhow::Result<Vec<SessionMessage>> {
+    if let Some(listing) = find_session_by_identifier(session_identifier)
+        .await
+        .context("reading back the required ACP session checkpoint")?
+    {
+        return Ok(listing.snapshot.messages);
+    }
+    let persisted_stem = persisted_path.file_stem().and_then(|stem| stem.to_str());
+    if persisted_stem == Some(session_identifier) {
+        return Err(anyhow::anyhow!("required ACP session checkpoint could not be read back after persistence"));
+    }
+    let snapshot: SessionSnapshot = read_private_json_file(persisted_path)
+        .await
+        .context("reading back the required ACP session checkpoint file")?;
+    Ok(snapshot.messages)
 }

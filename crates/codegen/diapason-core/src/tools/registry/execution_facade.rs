@@ -1555,7 +1555,7 @@ impl ToolRegistry {
                             .await
                     }
                     crate::tools::command_args::WriteStdinDispatch::Wait => {
-                        self.execute_command_session_wait(exec_args).await
+                        self.execute_command_session_wait(exec_args, tools::WRITE_STDIN).await
                     }
                 }
             } else if let Some(registration) = self.inventory.registration_for(&tool_name) {

@@ -1,20 +1,34 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
+use std::collections::HashSet;
+
 use super::super::log_suppressed_error;
 use super::super::tool_config::SessionToolDefinitionRequest;
+use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use super::provider::IncompleteProviderTurn;
 use super::*;
+use diapason_core::metrics::ToolRecoveryEvent;
+use tracing::Instrument;
 
 mod buffered;
+
 mod input;
+
 mod lifecycle;
+
 mod provider_context;
+
 mod streaming;
 
 pub(super) use buffered::response_reasoning_update;
 
+/// Persists the session checkpoint and transcript path, logging failures
+/// without failing the prompt.
 #[tracing::instrument(skip_all, fields(boundary = boundary))]
 pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
     if let Err(error) = agent.checkpoint_session(session).await {
+        agent
+            .recovery_metrics()
+            .record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
         log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
         warn!(
             operation = "session_checkpoint",
@@ -71,8 +85,13 @@ pub(super) struct TurnGuard {
 }
 
 impl TurnGuard {
+    /// Claims the thread's turn slot for this prompt.
+    ///
+    /// A concurrent prompt is rejected with `turn_in_progress` instead of
+    /// interleaving tool results with the turn that already owns the thread.
     pub(super) fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
         let _submission_id = thread.begin_turn().map_err(|error| {
+            warn!(thread_id = %thread.thread_id(), prompt_outcome = "turn_in_progress_rejected", "Rejected concurrent ACP prompt");
             SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
         })?;
         Ok(Self { thread })
@@ -136,6 +155,31 @@ impl PromptToolState {
     }
 }
 
+/// Measures elapsed time for one tool round.
+///
+/// Production uses [`SystemToolRoundTimer`]; tests substitute a timer that
+/// returns fixed values so the `elapsed_ms` span field is deterministic.
+pub(super) trait ToolRoundTimer: Send + Sync {
+    /// Marks the start of a measured tool round.
+    fn start(&self) -> std::time::Instant;
+
+    /// Returns elapsed milliseconds for a round started at `started`.
+    fn elapsed_ms(&self, started: std::time::Instant) -> u64;
+}
+
+/// Production tool-round timer backed by the system clock.
+pub(super) struct SystemToolRoundTimer;
+
+impl ToolRoundTimer for SystemToolRoundTimer {
+    fn start(&self) -> std::time::Instant {
+        std::time::Instant::now()
+    }
+
+    fn elapsed_ms(&self, started: std::time::Instant) -> u64 {
+        elapsed_ms(started)
+    }
+}
+
 pub(super) struct ToolRoundRequest<'a> {
     pub(super) agent: &'a ZedAgent,
     pub(super) session: &'a SessionHandle,
@@ -146,6 +190,7 @@ pub(super) struct ToolRoundRequest<'a> {
     pub(super) reasoning_details: Option<Vec<String>>,
     pub(super) tool_loop_count: &'a mut usize,
     pub(super) streamed: bool,
+    pub(super) timer: &'a dyn ToolRoundTimer,
 }
 
 pub(super) enum ToolRoundOutcome {
@@ -190,6 +235,24 @@ pub(super) struct PromptExecution {
     stop_hook_checked: bool,
 }
 
+/// Rejects a provider batch whose tool-call IDs are not unique.
+///
+/// Duplicate IDs make placeholder replacement ambiguous: the second result
+/// overwrites the first, leaving one placeholder unresolved, and archive repair
+/// then refuses the batch. Rejecting before staging keeps history consistent.
+pub(super) fn validate_tool_call_ids(tool_calls: &[LLMToolCall]) -> Result<(), SdkError> {
+    let mut call_ids = HashSet::with_capacity(tool_calls.len());
+    if tool_calls.iter().any(|call| !call_ids.insert(call.id.as_str())) {
+        return Err(SdkError::internal_error().data("Provider returned duplicate tool-call IDs"));
+    }
+    Ok(())
+}
+
+/// Executes one assistant tool-call round and records every result.
+///
+/// The assistant message is appended before the tool calls run so an
+/// interruption leaves a recoverable, unambiguous history for
+/// `tool_recovery` to repair on the next session attach.
 pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<ToolRoundOutcome, SdkError> {
     let ToolRoundRequest {
         agent,
@@ -201,10 +264,17 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
         reasoning_details,
         tool_loop_count,
         streamed,
+        timer,
     } = request;
 
     if agent.tool_loop_limit_reached(*tool_loop_count) {
         return Ok(ToolRoundOutcome::LimitReached(agent.tool_loop_limit_message()));
+    }
+    if let Err(error) = validate_tool_call_ids(tool_calls) {
+        agent
+            .recovery_metrics()
+            .record_tool_recovery(ToolRecoveryEvent::DuplicateToolCallBatch);
+        return Err(error);
     }
     *tool_loop_count = tool_loop_count.saturating_add(1);
 
@@ -218,41 +288,93 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
     } else {
         Message::assistant_with_tools(assistant_message.to_string(), tool_calls.to_vec())
     };
-    push_session_message(agent, session, session_id, assistant_tool_message)?;
-    persist_session_checkpoint(agent, session, "assistant_tool_calls").await;
+    let thread = session.data.lock().map_err(|_err| SdkError::internal_error())?.thread.clone();
+    drop(stage_thread_tool_calls(&thread, assistant_tool_message));
+    let tool_call_count = tool_calls.len();
+    agent
+        .recovery_metrics()
+        .record_tool_recovery_events(ToolRecoveryEvent::StagedCall, tool_call_count);
+    info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
+          tool_recovery_outcome = "placeholders_staged", "ACP tool recovery placeholders staged");
+    require_session_checkpoint(agent, session, "assistant_tool_calls_write_ahead").await?;
 
-    let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
-        Ok(results) => results,
-        Err(error) => {
-            warn!(%error, "Tool execution failed");
-            for call in tool_calls {
-                push_session_message(
-                    agent,
-                    session,
-                    session_id,
-                    Message::tool_response(call.id.clone(), format!("Tool execution was interrupted: {error}")),
-                )?;
+    let execution_span = tracing::info_span!(
+        "acp_tool_execution",
+        operation = "execute_tool_round",
+        tool_call_count,
+        tool_loop_count = *tool_loop_count,
+        outcome = tracing::field::Empty,
+        finalized_tool_count = tracing::field::Empty,
+        elapsed_ms = tracing::field::Empty,
+    );
+    let started = timer.start();
+    async {
+        let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
+            Ok(results) => results,
+            Err(error) => {
+                let _ = execution_span.record("outcome", "execution_interrupted");
+                let _ = execution_span.record("elapsed_ms", timer.elapsed_ms(started));
+                agent
+                    .recovery_metrics()
+                    .record_tool_recovery_events(ToolRecoveryEvent::InterruptedCall, tool_call_count);
+                // The raw error is not logged: its message can embed client
+                // detail. A fixed category and the retry contract are enough
+                // to diagnose the interruption.
+                warn!(
+                    session_id = %session_id,
+                    tool_call_count,
+                    error_category = execution_error_category(&error),
+                    retryable = false,
+                    tool_recovery_outcome = "execution_interrupted",
+                    "Tool execution failed"
+                );
+                persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
+                return Err(error);
             }
-            persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
-            return Err(error);
-        }
-    };
+        };
 
-    for result in tool_results {
-        push_session_message(
-            agent,
-            session,
-            session_id,
-            Message::tool_response(result.tool_call_id, result.llm_response),
-        )?;
+        let finalized_tool_count = replace_thread_tool_results(&thread, &tool_results);
+        agent
+            .recovery_metrics()
+            .record_tool_recovery_events(ToolRecoveryEvent::ReplacedCall, finalized_tool_count);
+        let _ = execution_span.record("outcome", "results_replaced");
+        let _ = execution_span.record("finalized_tool_count", finalized_tool_count);
+        let _ = execution_span.record("elapsed_ms", timer.elapsed_ms(started));
+        info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
+              finalized_tool_count, tool_recovery_outcome = "results_replaced", "ACP tool recovery results replaced");
+        persist_session_checkpoint(agent, session, "tool_results").await;
+
+        Ok(if session.cancellation.is_cancelled() {
+            ToolRoundOutcome::Cancelled
+        } else {
+            ToolRoundOutcome::Continue
+        })
     }
-    persist_session_checkpoint(agent, session, "tool_results").await;
+    .instrument(execution_span.clone())
+    .await
+}
 
-    Ok(if session.cancellation.is_cancelled() {
-        ToolRoundOutcome::Cancelled
-    } else {
-        ToolRoundOutcome::Continue
-    })
+/// Bounded category for an ACP tool-execution failure.
+///
+/// The category is a fixed variant so it is safe to log and to use as a span
+/// field; the raw error message is not.
+fn execution_error_category(error: &SdkError) -> &'static str {
+    match error.code {
+        acp::ErrorCode::ParseError => "parse_error",
+        acp::ErrorCode::InvalidRequest => "invalid_request",
+        acp::ErrorCode::MethodNotFound => "method_not_found",
+        acp::ErrorCode::InvalidParams => "invalid_params",
+        acp::ErrorCode::InternalError => "internal_error",
+        acp::ErrorCode::RequestCancelled => "request_cancelled",
+        acp::ErrorCode::AuthRequired => "auth_required",
+        acp::ErrorCode::ResourceNotFound => "resource_not_found",
+        _ => "other",
+    }
+}
+
+/// Elapsed milliseconds, saturating rather than wrapping.
+fn elapsed_ms(started: std::time::Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {
@@ -317,6 +439,7 @@ impl PromptExecution {
         }
     }
 }
+
 pub(super) struct ProviderOutput {
     assistant_message: String,
     assistant_reasoning: String,
@@ -380,6 +503,10 @@ pub(super) fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
 }
 
+/// Builds the assistant message that introduces a batch of tool calls.
+///
+/// The tool-call identifiers it carries are the join keys that interrupted
+/// recovery uses to pair each placeholder with its stageable result.
 pub(super) fn assistant_tool_call_message(
     content: String,
     tool_calls: Vec<diapason_core::llm::provider::ToolCall>,
@@ -400,4 +527,41 @@ pub(super) fn assistant_tool_call_message(
         message.reasoning = Some(reasoning.to_owned());
     }
     message
+}
+
+/// Persists the strict write-ahead checkpoint required before tool execution.
+///
+/// Ordinary transcript checkpoints remain best-effort through
+/// [`persist_session_checkpoint`]. This path fails when the snapshot was not
+/// durably persisted, including when history persistence is disabled, so a
+/// tool never runs without a recoverable record of its staged call.
+async fn require_session_checkpoint(
+    agent: &ZedAgent,
+    session: &SessionHandle,
+    boundary: &'static str,
+) -> Result<(), SdkError> {
+    if let Err(error) = agent.checkpoint_session_required(session).await {
+        agent
+            .recovery_metrics()
+            .record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
+        log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
+        warn!(
+            operation = "session_checkpoint",
+            error_category = "archive_write_failed",
+            boundary,
+            "Failed to persist ACP session checkpoint"
+        );
+        return Err(SdkError::internal_error()
+            .data(format!("Failed to persist ACP session checkpoint at {boundary}: archive_write_failed")));
+    }
+    if let Err(error) = session.update_transcript_path().await {
+        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
+        warn!(
+            operation = "transcript_update",
+            error_category = "transcript_write_failed",
+            boundary,
+            "Failed to update ACP session transcript path"
+        );
+    }
+    Ok(())
 }

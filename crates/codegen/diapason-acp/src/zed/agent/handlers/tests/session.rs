@@ -3,6 +3,8 @@ use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
 use std::time::Duration;
 
+mod concurrent_prompt;
+
 #[test]
 fn advertised_capabilities_include_session_discovery_and_resume() {
     let capabilities = advertised_agent_capabilities();

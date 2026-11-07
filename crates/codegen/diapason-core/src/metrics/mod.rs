@@ -18,13 +18,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 pub mod discovery_metrics;
+
 pub mod execution_metrics;
+
 pub mod filtering_metrics;
+
 pub mod patch_safety_metrics;
+
 pub mod planning_metrics;
+
 pub mod sdk_metrics;
+
 pub mod security_metrics;
+
 pub mod skill_metrics;
+
+pub mod tool_recovery_metrics;
 
 pub use discovery_metrics::DiscoveryMetrics;
 pub use execution_metrics::ExecutionMetrics;
@@ -36,6 +45,7 @@ pub use planning_metrics::{PlanValidationRejectionReason, PlanningValidationMetr
 pub use sdk_metrics::SdkMetrics;
 pub use security_metrics::SecurityMetrics;
 pub use skill_metrics::SkillMetrics;
+pub use tool_recovery_metrics::{ToolRecoveryEvent, ToolRecoveryMetrics};
 
 /// Frozen, bounded snapshot of the process-wide admission counters.
 ///
@@ -200,6 +210,7 @@ pub struct MetricsCollector {
     sdk: Arc<Mutex<SdkMetrics>>,
     filtering: Arc<Mutex<FilteringMetrics>>,
     patch_safety: Arc<Mutex<PatchSafetyMetrics>>,
+    tool_recovery: Arc<Mutex<ToolRecoveryMetrics>>,
     planning: Arc<Mutex<PlanningValidationMetrics>>,
     skills: Arc<Mutex<SkillMetrics>>,
     security: Arc<Mutex<SecurityMetrics>>,
@@ -221,6 +232,8 @@ pub struct MetricsSummary {
     pub filtering: FilteringMetrics,
     #[serde(default)]
     pub patch_safety: PatchSafetyMetrics,
+    #[serde(default)]
+    pub tool_recovery: ToolRecoveryMetrics,
     pub planning: PlanningValidationMetrics,
     pub skills: SkillMetrics,
     pub security: SecurityMetrics,
@@ -259,6 +272,7 @@ impl MetricsCollector {
             sdk: Arc::new(Mutex::new(SdkMetrics::new())),
             filtering: Arc::new(Mutex::new(FilteringMetrics::new())),
             patch_safety: Arc::new(Mutex::new(PatchSafetyMetrics::default())),
+            tool_recovery: Arc::new(Mutex::new(ToolRecoveryMetrics::default())),
             planning: Arc::new(Mutex::new(PlanningValidationMetrics::default())),
             skills: Arc::new(Mutex::new(SkillMetrics::new())),
             security: Arc::new(Mutex::new(SecurityMetrics::new())),
@@ -553,6 +567,16 @@ impl MetricsCollector {
         self.patch_safety.lock().record_evaluation(duration_ms);
     }
 
+    /// Record one bounded tool-recovery event.
+    pub fn record_tool_recovery(&self, event: ToolRecoveryEvent) {
+        self.tool_recovery.lock().record(event);
+    }
+
+    /// Record `count` occurrences of one bounded tool-recovery event.
+    pub fn record_tool_recovery_events(&self, event: ToolRecoveryEvent, count: usize) {
+        self.tool_recovery.lock().record_many(event, count);
+    }
+
     // ========== Skill Metrics ==========
 
     /// Record skill execution
@@ -625,6 +649,11 @@ impl MetricsCollector {
         self.patch_safety.lock().clone()
     }
 
+    /// Get the current tool-recovery metrics snapshot.
+    pub fn get_tool_recovery_metrics(&self) -> ToolRecoveryMetrics {
+        self.tool_recovery.lock().clone()
+    }
+
     /// Get current skill metrics snapshot
     pub fn get_skill_metrics(&self) -> SkillMetrics {
         self.skills.lock().clone()
@@ -645,6 +674,7 @@ impl MetricsCollector {
             sdk: self.get_sdk_metrics(),
             filtering: self.get_filtering_metrics(),
             patch_safety: self.get_patch_safety_metrics(),
+            tool_recovery: self.get_tool_recovery_metrics(),
             planning: self.get_planning_metrics(),
             skills: self.get_skill_metrics(),
             security: self.get_security_metrics(),
@@ -674,6 +704,7 @@ struct PrometheusMetricsSnapshot {
     execution: ExecutionMetrics,
     filtering: FilteringMetrics,
     patch_safety: PatchSafetyMetrics,
+    tool_recovery: ToolRecoveryMetrics,
     planning: PlanningValidationMetrics,
     skills: SkillMetrics,
     security: SecurityMetrics,
@@ -691,6 +722,7 @@ impl PrometheusMetricsSnapshot {
             execution: collector.get_execution_metrics(),
             filtering: collector.get_filtering_metrics(),
             patch_safety: collector.get_patch_safety_metrics(),
+            tool_recovery: collector.get_tool_recovery_metrics(),
             planning: collector.get_planning_metrics(),
             skills: collector.get_skill_metrics(),
             security: collector.get_security_metrics(),
@@ -708,6 +740,7 @@ impl PrometheusMetricsSnapshot {
         self.append_execution(&mut output);
         self.append_filtering(&mut output);
         self.append_patch_safety(&mut output);
+        self.append_tool_recovery(&mut output);
         self.append_skills(&mut output);
         self.append_pii_detections(&mut output);
         self.append_provider_requests(&mut output);
@@ -912,6 +945,30 @@ impl PrometheusMetricsSnapshot {
             self.patch_safety.evaluations,
             self.patch_safety.avg_duration_ms()
         );
+    }
+
+    /// Append the bounded tool-recovery event counters.
+    ///
+    /// The event vocabulary is transport-neutral: core records the events it
+    /// originates and adapters map their own observations onto the same
+    /// variants, so the series carries no ACP-specific label.
+    fn append_tool_recovery(&self, output: &mut String) {
+        // Labels are fixed event variants, so neither tool names nor call
+        // identifiers can reach the series.
+        let _ = writeln!(
+            output,
+            "# HELP diapason_tool_recovery_total Total tool-recovery events recorded by the agent runtime\n\
+             # TYPE diapason_tool_recovery_total counter"
+        );
+        for event in ToolRecoveryEvent::ALL {
+            let _ = writeln!(
+                output,
+                "diapason_tool_recovery_total{{event=\"{}\"}} {}",
+                event.as_str(),
+                self.tool_recovery.count(event)
+            );
+        }
+        output.push('\n');
     }
 
     fn append_skills(&self, output: &mut String) {
@@ -1382,6 +1439,41 @@ mod tests {
         assert_eq!(metrics.circuit_open_events, 1);
         assert_eq!(metrics.half_open_events, 1);
         assert_eq!(metrics.breaker_denials, 1);
+    }
+
+    /// Fixes the bounded recovery series that dashboards and alerts consume.
+    ///
+    /// Every event is recorded exactly once, so the snapshot pins both the
+    /// fixed label set and its rendering order without introducing a
+    /// nondeterministic value.
+    #[test]
+    fn tool_recovery_prometheus_series_is_stable() {
+        let collector = MetricsCollector::new();
+        for event in ToolRecoveryEvent::ALL {
+            collector.record_tool_recovery(event);
+        }
+
+        let series = collector
+            .export_prometheus()
+            .lines()
+            .skip_while(|line| !line.starts_with("# HELP diapason_tool_recovery_total"))
+            .take_while(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!(series, @r###"
+        # HELP diapason_tool_recovery_total Total tool-recovery events recorded by the agent runtime
+        # TYPE diapason_tool_recovery_total counter
+        diapason_tool_recovery_total{event="staged_call"} 1
+        diapason_tool_recovery_total{event="replaced_call"} 1
+        diapason_tool_recovery_total{event="interrupted_call"} 1
+        diapason_tool_recovery_total{event="relocated_result"} 1
+        diapason_tool_recovery_total{event="repaired_archive"} 1
+        diapason_tool_recovery_total{event="ambiguous_history"} 1
+        diapason_tool_recovery_total{event="concurrent_prompt_rejection"} 1
+        diapason_tool_recovery_total{event="stale_write_stdin_request"} 1
+        diapason_tool_recovery_total{event="checkpoint_failure"} 1
+        diapason_tool_recovery_total{event="duplicate_tool_call_batch"} 1
+        "###);
     }
 
     #[test]
