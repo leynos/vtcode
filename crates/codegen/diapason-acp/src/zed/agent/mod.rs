@@ -331,6 +331,8 @@ pub(crate) struct ZedAgent {
     notice_recorder: Arc<dyn crate::metrics::PublicationRecorder>,
     /// Recorder for compaction activity-update publication outcomes.
     compaction_update_recorder: Arc<dyn crate::metrics::PublicationRecorder>,
+    /// Recorder for automatic compaction outcomes.
+    compaction_recorder: Arc<dyn crate::metrics::CompactionRecorder>,
 }
 
 pub(crate) struct ZedAgentSetup<'a> {
@@ -407,6 +409,7 @@ impl ZedAgent {
             workspace_trust_synchronizer: Arc::new(crate::workspace::DefaultWorkspaceTrustSynchronizer::new()),
             notice_recorder: crate::metrics::notice_recorder(),
             compaction_update_recorder: crate::metrics::compaction_update_recorder(),
+            compaction_recorder: crate::metrics::compaction_recorder(),
         })
     }
 
@@ -424,6 +427,17 @@ impl ZedAgent {
     ) {
         self.notice_recorder = notice;
         self.compaction_update_recorder = compaction_update;
+    }
+
+    /// Install an isolated compaction recorder, for tests that assert exact
+    /// deltas rather than a shared process-wide snapshot.
+    ///
+    /// Production wiring installs the process-wide recorder; a command test
+    /// substitutes a recorder it owns so another attempt cannot satisfy or
+    /// perturb the counts it observes.
+    #[cfg(test)]
+    pub(crate) fn set_compaction_recorder(&mut self, recorder: Arc<dyn crate::metrics::CompactionRecorder>) {
+        self.compaction_recorder = recorder;
     }
 
     /// Metrics collector that receives bounded ACP recovery counters.
