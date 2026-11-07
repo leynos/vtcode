@@ -109,6 +109,23 @@ existing application event/session boundary. Do not add a parallel event bus.
 Compile-time inclusion does not authorize runtime listening: existing explicit
 enablement, authentication, workspace controls, and origin restrictions remain.
 
+Browser-to-agent turns are retained, not retired with the TUI. Today they exist
+only in an active session: the standalone `webmcp serve` adapter rejects
+`request_turn`, and `/webmcp pair <origin>` inside an interactive session
+installs an adapter that reports turns available and pushes the prompt onto the
+session's own prompt channel. Deleting the TUI must keep that capability
+reachable from a headless session surface, because pairing is currently entered
+through the deleted slash-command renderer. Move the pairing entry point to the
+retained session surface chosen by the command inventory in section 3; do not
+make the standalone adapter silently lose turns, and do not grow a second
+prompt path. Handoff keeps its existing shape: browser request to the active
+adapter, adapter to the session prompt channel, then the ordinary turn loop
+with unchanged tool and approval policy. Outbound events keep flowing through
+the existing `ThreadEvent` boundary. Acceptance requires a `webmcp`-enabled
+build that pairs from the headless surface, submits a turn, and observes it
+handled as a normal session turn, while a default build still fails before any
+listener binds.
+
 Do not ban all HTTP server or WebSocket crates by name: another retained
 feature may legitimately use them. Check reachability and enabled features from
 the shipped executable, not the mere presence of a package in `Cargo.lock`. A

@@ -41,8 +41,12 @@ presentation deletion without losing useful agent behaviour.
 - [ ] 1.2.2. Capture build, dependency, and runtime resource baselines.
   - Record commit, lockfile, toolchain, target, profile, feature graph, workers,
     allocator, compiler-cache state, artifact size, PSS, and startup timings.
+  - Record clean and warm build cost and compiler/linker peak memory too, so
+    3.1.2 compares like for like instead of inventing its own baseline.
   - Success: reproducible raw evidence distinguishes executable size, private
-    memory, and shared pages without assuming a large RAM win.
+    memory, and shared pages without assuming a large RAM win, and includes
+    clean/warm build cost and compiler/linker peak memory; the task cannot pass
+    with those values missing.
   - Reuse the [performance workflow](../development/performance.md).
 
 ## 2. Remove presentation dependencies and gate WebMCP
@@ -63,8 +67,13 @@ without creating a parallel runtime or a no-op renderer.
   - Gate dependencies, commands, activation, listeners, and composition.
   - Remove any WebMCP dependence on TUI handles; retain explicit runtime
     authentication and listener authorization in the enabled build.
+  - Keep browser-to-agent turns reachable from a headless session surface: the
+    active adapter's turn handoff moves with the pairing entry point that
+    `/webmcp pair` currently provides through the deleted renderer.
   - Success: default builds cannot start the bridge; explicit feature builds
-    pass bridge tests; ordinary MCP and provider WebSockets remain functional.
+    pass bridge tests; ordinary MCP and provider WebSockets remain functional;
+    a headless surface can pair an origin and have its submitted turn handled
+    as a normal session turn.
   - Requires 1.1.2; coordinate shared-boundary changes with 2.1.1.
 
 ### 2.2. Delete the TUI and its exclusive dependency closure
@@ -95,6 +104,9 @@ from returning through a convenience import or a release script.
 - [ ] 3.1.1. Add source and resolved-dependency regression checks.
   - Check the shipped root closure and explicit feature combinations, not just
     lockfile package names or `--no-default-features`.
+  - Cover the retained WebMCP turn path: a `webmcp` build must still pair and
+    accept a turn headlessly, so deleting the TUI cannot quietly reduce the
+    bridge to workspace operations only.
   - Success: a seeded UI import or default WebMCP edge fails CI; historical
     documentation and legitimate non-UI HTTP/image/PTY consumers remain valid.
   - Requires 2.2.2.
@@ -112,8 +124,12 @@ from returning through a convenience import or a release script.
   - Update help, completions, generated schemas, README, active user/developer
     guides, crate instructions, and CI references to removed UI checks.
   - Document explicit WebMCP installation and feature-disabled errors.
+  - Document the new headless pairing entry point for browser-to-agent turns,
+    and state that standalone `webmcp serve` still exposes workspace
+    operations without agent turns.
   - Success: active documentation describes ACP/CLI only; local links pass and
-    no currently advertised command requires the deleted interface.
+    no currently advertised command requires the deleted interface; the
+    retained turn path is described where pairing is documented.
   - Requires 1.1.2 and 3.1.2.
 
 - [ ] 3.2.2. Record completion and residual non-UI work.
