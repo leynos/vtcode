@@ -45,6 +45,22 @@ falls back cleanly when a client ignores them. The
   `custom_providers.*.pricing`; rates are USD per million tokens. See the
   [configuration guide](./config/config.md).
 
+### Compaction metrics for library consumers
+
+Programs that embed the ACP bridge can read the same bounded counters the
+runtime records. `vtcode_acp::metrics::compaction_metrics()` returns a
+`CompactionMetrics` snapshot with `started`, `compacted`, `no_change`, `failed`,
+`cancelled`, `elapsed_ms_total`, and `elapsed_ms_max`. The snapshot is
+cumulative for the process and never reset, and `cancelled` is a subset of
+`failed`. Cardinality is fixed by construction: no session, provider, model, or
+path value is recorded, so the counters are safe to export as-is.
+
+`vtcode_acp::metrics::notice_metrics()` and
+`vtcode_acp::metrics::compaction_update_metrics()` report `attempts` and
+`failures` for the two ACP send boundaries that publish activity to a client.
+The full contract, including what a snapshot can and cannot prove about client
+receipt, is in the [ACP runtime guide](./development/acp-runtime.md).
+
 ## Patch safety in brief
 
 `read_file` returns a whole-file `content_hash` alongside the text, whenever
