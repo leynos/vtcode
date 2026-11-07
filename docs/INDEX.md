@@ -20,6 +20,10 @@ Last reviewed: 2026-11-03
 - [Zen Alignment](harness/ZEN_ALIGNMENT.md) - Full all-19 principle mapping and
   rollout.
 - [Architecture](ARCHITECTURE.md) - System structure and crate boundaries.
+- [Headless runtime RFC](rfcs/rfc-0003-diapason-headless-runtime.md) - Proposed
+  complete TUI removal and default-off WebMCP for an ACP/CLI product.
+- [Headless runtime roadmap](project/diapason-headless-roadmap.md) - Phased
+  contract, deletion, dependency-closure, and migration tasks.
 - [Contributing](CONTRIBUTING.md) - Contribution workflow and standards.
 
 ## Core Domains
