@@ -32,6 +32,10 @@ Last reviewed: 2026-11-03
   session behaviour.
 - [ACP Runtime Developer Guide](development/acp-runtime.md) - Runtime
   boundaries, persistence, provider policy, tools, and protocol updates.
+- [ACP hot-path RFC](rfcs/rfc-0004-diapason-acp-hot-path.md) - Proposed
+  evidence-led scheduling, initialization, and bounded forwarding changes.
+- [ACP hot-path roadmap](project/diapason-acp-hot-path-roadmap.md) - Measurable
+  runtime experiments, correctness gates, and density qualification.
 - [Instruction Discovery Boundary](development/instruction-discovery.md) -
   Home-directory injection, test isolation, and include/exclude error contracts.
 - [Config Field Reference](config/CONFIG_FIELD_REFERENCE.md) - Field-level
