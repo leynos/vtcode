@@ -290,7 +290,7 @@ a failure category is present; otherwise it reports `completed`, with
 `failureReason` drawn from a closed set: `cancelled`, `timeout`,
 `admission_budget`, `pre_compact_hook`, or `provider`.
 
-`vtcode-exec-events::ThreadEvent` remains the authoritative runtime event
+`diapason-exec-events::ThreadEvent` remains the authoritative runtime event
 contract, including its compaction boundary events. The ACP activity is a
 client projection of that runtime outcome, not a parallel event type: keep new
 compaction facts in the core event contract and translate them at the adapter.
@@ -309,28 +309,28 @@ and their content is not bounded or trusted.
 Bounded, process-local counters accumulate across compaction attempts:
 `started`, `compacted`, `no_change`, `failed`, `cancelled`, `elapsed_ms_total`,
 and `elapsed_ms_max`. Read them with
-`vtcode_acp::metrics::compaction_metrics()`; the snapshot is cumulative and
+`diapason_acp::metrics::compaction_metrics()`; the snapshot is cumulative and
 never reset, and `cancelled` is a subset of `failed`. Cardinality is fixed by
 construction: no session, provider, model, or path value is recorded. Spans and
 logs correlate attempts with `session_correlation`, a deterministic, truncated
 SHA-256 digest, never the raw session identifier.
 
 The two ACP send boundaries that publish activity to a client are counted the
-same way. `vtcode_acp::metrics::notice_metrics()` reports `attempts` and
+same way. `diapason_acp::metrics::notice_metrics()` reports `attempts` and
 `failures` for provider rate-limit notices, and
-`vtcode_acp::metrics::compaction_update_metrics()` reports them for compaction
-activity updates. `failures` is a subset of `attempts`. A notice that is never
-built, and a serialization failure that never reaches the transport, are not
-attempts and move neither counter. The two counters are loaded independently,
-so a snapshot can reflect slightly different instants; `attempts` is clamped to
-at least `failures` so the subset claim holds in every snapshot. Each send runs
-inside a span carrying the fixed `operation` and `stage`, the bounded
-`session_correlation`, and the `outcome` and `elapsed_ms` recorded when the
-send returns. The span and the counters describe the local send outcome only: a
-rejected send is a failure, while an accepted send is an attempt with no
-confirmation that the client applied the update. Local send failures are
-measurable, but the counters do not confirm client receipt, and a client that
-stops reading can remain undetected.
+`diapason_acp::metrics::compaction_update_metrics()` reports them for
+compaction activity updates. `failures` is a subset of `attempts`. A notice
+that is never built, and a serialization failure that never reaches the
+transport, are not attempts and move neither counter. The two counters are
+loaded independently, so a snapshot can reflect slightly different instants;
+`attempts` is clamped to at least `failures` so the subset claim holds in every
+snapshot. Each send runs inside a span carrying the fixed `operation` and
+`stage`, the bounded `session_correlation`, and the `outcome` and `elapsed_ms`
+recorded when the send returns. The span and the counters describe the local
+send outcome only: a rejected send is a failure, while an accepted send is an
+attempt with no confirmation that the client applied the update. Local send
+failures are measurable, but the counters do not confirm client receipt, and a
+client that stops reading can remain undetected.
 
 ## Retry notices and usage publication
 

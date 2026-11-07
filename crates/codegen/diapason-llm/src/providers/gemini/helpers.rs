@@ -1,4 +1,4 @@
-//! Conversions between vtcode request types and the Gemini wire format,
+//! Conversions between Diapason request types and the Gemini wire format,
 //! including streaming response parsing.
 
 use super::wire::{GenerationConfig, InlineData, StreamingError, ThinkingConfig};

@@ -1757,9 +1757,9 @@ The r23 candidate left five inline findings open. Repairs on top of `e26daba08`:
   cases, so a profiled model and a provider-default model are compared through
   the same assertions.
 - **Environment restoration (4464712594).** The workspace-hook test now uses a
-  local `VtcodeConfigGuard` whose `Drop` restores `VTCODE_CONFIG`, so a panic
-  no longer leaves the process environment pointing at a deleted temporary
-  directory.
+  local `DiapasonConfigGuard` whose `Drop` restores `DIAPASON_CONFIG`, so a
+  panic no longer leaves the process environment pointing at a deleted
+  temporary directory.
 - **Documentation (4464712613).** The ACP runtime guide now says the usage
   notification is published for each provider response *that includes usage*.
 
