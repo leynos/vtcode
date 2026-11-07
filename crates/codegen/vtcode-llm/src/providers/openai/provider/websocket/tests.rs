@@ -6,10 +6,11 @@
 
 use super::{
     OPENAI_BETA_RESPONSES_WEBSOCKET_V2, OUTPUT_STARTED_ERROR_CODE, OpenAIResponsesWebSocketContinuationCache,
-    PREVIOUS_RESPONSE_NOT_FOUND_CODE, WEBSOCKET_ACTIVE_RESPONSE_ERROR_PREFIX, WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE,
-    apply_generate_mode, input_is_incremental, is_websocket_active_response_error, is_websocket_connection_limit_error,
+    PREVIOUS_RESPONSE_NOT_FOUND_CODE, ProcessWebSocketRecoveryTelemetry, WEBSOCKET_ACTIVE_RESPONSE_ERROR_PREFIX,
+    WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE, WebSocketRecoveryTelemetry, apply_generate_mode, input_is_incremental,
+    is_websocket_active_response_error, is_websocket_connection_limit_error,
     is_websocket_previous_response_not_found_error, prepare_websocket_event, prohibit_websocket_replay,
-    responses_output_started_error, responses_websocket_url,
+    responses_output_started_error, responses_websocket_url, websocket_error_prohibits_replay,
 };
 use crate::provider::LLMError;
 use crate::provider::{LLMProvider, LLMRequest, Message as ProviderMessage};
@@ -18,6 +19,7 @@ use crate::providers::shared::responses_websocket_metrics;
 use futures::{SinkExt, StreamExt};
 use proptest::prelude::*;
 use serde_json::{Map, Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -43,16 +45,47 @@ fn output_started_conversion_preserves_the_output_started_code() {
     }
 }
 
-/// Prove the orchestration wrapper records one replay prohibition.
+/// Local telemetry sink that records replay prohibitions without global state.
+#[derive(Default)]
+struct LocalRecoveryTelemetry {
+    replay_prohibited: AtomicUsize,
+}
+
+impl WebSocketRecoveryTelemetry for LocalRecoveryTelemetry {
+    fn replay_prohibited(&self) {
+        self.replay_prohibited.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Prove the orchestration wrapper records once through the injected port.
 #[test]
-fn replay_prohibition_increments_the_replay_counter() {
+fn replay_prohibition_records_through_the_injected_sink() {
+    let telemetry = LocalRecoveryTelemetry::default();
+    let converted = prohibit_websocket_replay(
+        &telemetry,
+        LLMError::Provider {
+            message: "sensitive provider detail".to_string(),
+            metadata: None,
+        },
+    );
+
+    assert_eq!(
+        telemetry.replay_prohibited.load(Ordering::Relaxed),
+        1,
+        "the wrapper must record exactly one replay prohibition"
+    );
+    assert!(websocket_error_prohibits_replay(&converted));
+}
+
+/// Prove the production telemetry implementation reaches the process counters.
+#[test]
+fn process_recovery_telemetry_increments_the_replay_counter() {
     let before = responses_websocket_metrics().replay_prohibited_total;
-    let _converted = prohibit_websocket_replay(LLMError::Provider {
-        message: "sensitive provider detail".to_string(),
-        metadata: None,
-    });
+    ProcessWebSocketRecoveryTelemetry.replay_prohibited();
     let after = responses_websocket_metrics().replay_prohibited_total;
 
+    // Nextest runs each test in its own process, but the counter is still
+    // process-wide, so a lower bound is the strongest portable assertion.
     assert!(after > before, "replay prohibition must increment the replay_prohibited_total counter");
 }
 
@@ -412,7 +445,7 @@ async fn websocket_partial_output_failure_never_reconnects_or_falls_back_to_http
     .await
     .expect("must not start HTTP fallback")
     .expect_err("partial stream is incomplete");
-    assert!(super::websocket_error_prohibits_replay(&error));
+    assert!(websocket_error_prohibits_replay(&error));
     assert_eq!(recorded.lock().expect("recorded requests lock is not poisoned").len(), 2);
     assert!(provider.websocket_session.lock().await.is_none());
     assert!(provider.websocket_continuation_snapshot().is_none());

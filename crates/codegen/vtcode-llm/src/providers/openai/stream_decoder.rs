@@ -1035,6 +1035,43 @@ mod stream_transport_error_tests {
             .expect("headers should arrive before the truncated body")
     }
 
+    async fn response_with_complete_body(body: &'static str) -> reqwest::Response {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("test server should bind");
+        let address = listener.local_addr().expect("test server address should be available");
+        let content_length = body.len();
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("test request should connect");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let bytes_read = socket.read(&mut buffer).await.expect("request should be readable");
+                assert_ne!(bytes_read, 0, "request should include HTTP headers");
+                request.extend_from_slice(&buffer[..bytes_read]);
+            }
+
+            let headers = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n"
+            );
+            socket
+                .write_all(headers.as_bytes())
+                .await
+                .expect("response headers should be writable");
+            socket.write_all(body.as_bytes()).await.expect("body should be writable");
+            socket.flush().await.expect("body should flush");
+            socket.shutdown().await.expect("connection should close after a complete body");
+        });
+
+        reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("test HTTP client should build")
+            .get(format!("http://{address}/stream"))
+            .send()
+            .await
+            .expect("complete response body should arrive")
+    }
+
     async fn assert_custom_provider_body_error(stream: provider::LLMStream) {
         let events = stream.collect::<Vec<_>>().await;
         assert!(
@@ -1109,6 +1146,60 @@ mod stream_transport_error_tests {
         assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
         assert_eq!(observations[0].path, ResponsesStreamPath::Legacy);
         assert_eq!(observations[0].outcome, ResponsesStreamOutcome::TransportFailure);
+        assert!(!format!("{observations:?}").contains("sensitive provider detail"));
+    }
+
+    /// Prove the legacy path records one provider-failure outcome for `response.failed`.
+    #[tokio::test]
+    async fn responses_stream_records_provider_failure_outcome_for_response_failed() {
+        let response = response_with_complete_body(
+            "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"sensitive provider detail\"}}}\n\n",
+        )
+        .await;
+        let sink = Arc::new(TestSink::default());
+        let stream = create_responses_stream(
+            response,
+            CUSTOM_PROVIDER.to_owned(),
+            "custom-model".to_owned(),
+            false,
+            false,
+            sink.clone(),
+        );
+
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(events.iter().any(Result::is_err), "response.failed must fail the stream");
+
+        let observations = sink.observations.lock().expect("test sink lock").clone();
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Legacy);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ProviderFailure);
+        assert!(!format!("{observations:?}").contains("sensitive provider detail"));
+    }
+
+    /// Prove the legacy path records one malformed-event outcome for an unknown event.
+    #[tokio::test]
+    async fn responses_stream_records_malformed_outcome_for_unknown_event() {
+        let response = response_with_complete_body(
+            "data: {\"type\":\"response.unexpected.event\",\"delta\":\"sensitive provider detail\"}\n\n",
+        )
+        .await;
+        let sink = Arc::new(TestSink::default());
+        let stream = create_responses_stream(
+            response,
+            CUSTOM_PROVIDER.to_owned(),
+            "custom-model".to_owned(),
+            false,
+            false,
+            sink.clone(),
+        );
+
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(events.iter().any(Result::is_err), "an unknown event must fail the stream");
+
+        let observations = sink.observations.lock().expect("test sink lock").clone();
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Legacy);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::MalformedEvent);
         assert!(!format!("{observations:?}").contains("sensitive provider detail"));
     }
 }

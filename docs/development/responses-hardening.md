@@ -123,7 +123,10 @@ WebSocket recovery adds two counters to `responses_websocket_metrics()`:
 `replay_prohibited_total` increments when a post-output failure forbids replay,
 and `http_fallback_total` increments when a pre-output failure falls back to
 HTTP. The fallback tracing record includes a bounded `error_category` derived
-from `ErrorCategory` and never the provider message.
+from `ErrorCategory` and never the provider message. Replay prohibition is
+reported through a narrow `WebSocketRecoveryTelemetry` port: the process-wide
+implementation stays in `responses_observability`, and tests record into a
+local sink instead of mutating global state.
 
 ## Verification boundaries
 
