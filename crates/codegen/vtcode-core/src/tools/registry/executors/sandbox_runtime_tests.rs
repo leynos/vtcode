@@ -544,10 +544,12 @@ async fn prepare_exec_run_request_denies_nested_shell_source() {
 
     // Keep only a prefix deny rule, so the wrapped argv cannot match but the
     // nested source can: `bash -lc rm -rf /` does not start with the rule.
-    let mut config = vtcode_config::CommandsConfig::default();
-    config.deny_list = vec!["rm -rf /".to_string()];
-    config.deny_glob.clear();
-    config.deny_regex.clear();
+    let config = vtcode_config::CommandsConfig {
+        deny_list: vec!["rm -rf /".to_string()],
+        deny_glob: Vec::new(),
+        deny_regex: Vec::new(),
+        ..Default::default()
+    };
     registry.apply_commands_config(&config);
 
     reset_exec_command_rate_limit();
@@ -617,10 +619,12 @@ async fn prepare_exec_run_request_checks_explicit_shell_source() {
 
     // A prefix deny rule cannot match the wrapper argv `bash -lc rm -rf /`, so
     // only evaluating the source the caller supplied can produce a denial.
-    let mut config = vtcode_config::CommandsConfig::default();
-    config.deny_list = vec!["rm -rf /".to_string()];
-    config.deny_glob.clear();
-    config.deny_regex.clear();
+    let config = vtcode_config::CommandsConfig {
+        deny_list: vec!["rm -rf /".to_string()],
+        deny_glob: Vec::new(),
+        deny_regex: Vec::new(),
+        ..Default::default()
+    };
     registry.apply_commands_config(&config);
 
     for confirm in [false, true] {
