@@ -44,15 +44,23 @@ pub enum CustomProviderApiFormat {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq)]
 pub struct CustomProviderPricingConfig {
+    /// USD charged per million input tokens. `costUSD` is omitted from ACP
+    /// usage updates unless both this and the output rate are configured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_per_million_usd: Option<f64>,
 
+    /// USD charged per million output tokens. Required alongside the input
+    /// rate before usage updates carry `costUSD`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_per_million_usd: Option<f64>,
 
+    /// USD charged per million cache-read tokens. Used only when the provider
+    /// reports cache-read token counts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_read_per_million_usd: Option<f64>,
 
+    /// USD charged per million cache-write tokens. Used only when the provider
+    /// reports cache-creation token counts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write_per_million_usd: Option<f64>,
 }
