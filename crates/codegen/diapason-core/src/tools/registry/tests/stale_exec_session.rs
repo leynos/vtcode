@@ -2,7 +2,11 @@
 
 use super::*;
 use crate::metrics::ToolRecoveryEvent;
-use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound, ExecSessionWriterClosed};
+use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound};
+// Only the Unix-only closed-writer tests name this cause, so gating the import
+// keeps Windows builds free of an unused-import warning under `-D warnings`.
+#[cfg(unix)]
+use crate::tools::exec_session::ExecSessionWriterClosed;
 
 /// Loses the session after its input was consumed but before the response is collected.
 ///
