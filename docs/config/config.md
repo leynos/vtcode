@@ -301,7 +301,6 @@ model = "gpt-5.6-sol"
 # cache_read_per_million_usd = 0.03
 # cache_write_per_million_usd = 0.00
 
-
 [custom_providers.request_policy]
 max_in_flight_requests = 4
 queue_timeout_seconds = 120
@@ -369,9 +368,8 @@ For fine-grained overrides you can declare sparse per-model profiles. Profiles
 live in `custom_providers.profiles."<model-id>"` and only modify runtime
 defaults for that specific model identifier. IMPORTANT: profiles do not add or
 enable models in the picker — `model` / `models` remain the allowlist/default.
-A profile only changes how Diapason treats an already-selected model at
-runtime (capabilities, context window, api_format, sampling values, pricing,
-etc.).
+A profile only changes how Diapason treats an already-selected model at runtime
+(capabilities, context window, api_format, sampling values, pricing, etc.).
 
 Example per-model profile:
 
