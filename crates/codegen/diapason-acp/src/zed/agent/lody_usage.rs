@@ -9,72 +9,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::{field, info_span, warn};
-use diapason_config::models::ModelPricing;
 use diapason_core::llm::Usage;
-use diapason_core::llm::model_resolver::ModelResolver;
-use diapason_core::llm::usage_cost::{estimate_session_costs_with_pricing, normalized_turn_usage};
+use diapason_core::llm::provider_usage::usage_profile;
+use diapason_core::llm::usage_cost::{TurnUsage, UsageProfile, resolve_turn_usage};
 
 use super::redaction::detail_correlation;
 use super::task_lifecycle::bounded_session_correlation;
 use super::{ZedAgent, lody::lody_capabilities_mut};
-
-use diapason_config::CustomProviderApiFormat;
-use diapason_config::models::ModelPricing;
-use diapason_core::llm::Usage;
-use diapason_core::llm::model_resolver::ModelResolver;
-use diapason_core::llm::usage_cost::{
-    estimate_session_costs_with_pricing, normalized_turn_usage_with_input_semantics, provider_reports_exclusive_input,
-};
-
-//! Publishes usage deltas and advertises the Lody usage capability, including
-//! the `_lody/session/usage_update` extension notification.
-#[cfg(test)]
-};
-
-use diapason_config::models::ModelPricing;
-use diapason_config::{CustomProviderApiFormat, CustomProviderConfig};
-use diapason_core::llm::Usage;
-use diapason_core::llm::model_resolver::ModelResolver;
-use diapason_core::llm::usage_cost::{
-    estimate_session_costs_with_pricing, normalized_turn_usage_with_input_semantics, provider_reports_exclusive_input,
-};
-
-//! Publishes usage deltas and advertises the Lody usage capability, including
-//! the `_lody/session/usage_update` extension notification.
-#[cfg(test)]
-};
-//! Publishes usage deltas and advertises the Lody usage capability, including
-//! the `_lody/session/usage_update` extension notification.
-#[cfg(test)]
-};
-
-use vtcode_core::llm::Usage;
-use vtcode_core::llm::usage_cost::{TurnUsage, UsageProfile, resolve_turn_usage, usage_profile};
-
-//! Publishes usage deltas and advertises the Lody usage capability, including
-//! the `_lody/session/usage_update` extension notification.
-<<<<<<< ours
-#[cfg(test)]
-};
-//! Publishes usage deltas and advertises the Lody usage capability, including
-//! the `_lody/session/usage_update` extension notification.
-#[cfg(test)]
-};
-};
-//! Publishes usage deltas and advertises the Lody usage capability, including
-//! the `_lody/session/usage_update` extension notification.
-#[cfg(test)]
-};
-//! Publishes usage deltas and advertises the Lody usage capability, including
-//! the `_lody/session/usage_update` extension notification.
-#[cfg(test)]
-};
-||||||| original
-#[cfg(test)]
-};
-=======
-#[cfg(test)]
->>>>>>> theirs
 
 const LODY_EXTENSION_VERSION: u8 = 1;
 
