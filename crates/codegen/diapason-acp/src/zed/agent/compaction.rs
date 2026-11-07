@@ -7,7 +7,6 @@ use super::super::types::SessionHandle;
 use super::{ZedAgent, warn_hook_message};
 use crate::zed::agent::session_state::checkpoint_failure_label;
 use super::redaction::{identifier_correlation, session_correlation};
-use crate::metrics::record_compaction_started;
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
 use std::future::Future;
@@ -67,7 +66,7 @@ impl ZedAgent {
         let acp_session_id = crate::acp::SessionId::new(snapshot.session_id.clone());
         // Logs and spans correlate on a bounded key rather than the raw id.
         let session_key = session_correlation(&snapshot.session_id);
-        record_compaction_started();
+        self.compaction_recorder.record_started();
         // The edge supplies the identity and clock so the activity projection
         // stays a pure function of explicit inputs.
         let activity = super::lody_activity::CompactionActivity::begin(
