@@ -137,7 +137,7 @@
   without promoting notes to global memory. `SessionProgressSink` coalesces
   snapshots through a bounded writer, so progress mutations must not perform
   synchronous filesystem I/O.
-- `SessionToolCatalog` projection caches are private and lazy per
+- `SessionToolCatalogue` projection caches are private and lazy per
   entry/documentation mode; rebuild the catalog when registrations change.
   Basic directory-list caches are keyed by canonical workspace and response
   shape.

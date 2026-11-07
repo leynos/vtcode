@@ -11,13 +11,13 @@ use tokio::sync::{Notify, OnceCell};
 use super::super::OptionalWorkspaceSetupOutcomes;
 use crate::permissions::AcpPermissionPrompter;
 use crate::tooling::AcpToolRegistry;
-use crate::zed::helpers::PrimaryAgentCatalog;
+use crate::zed::helpers::PrimaryAgentCatalogue;
 
 pub(in crate::zed) struct SessionWorkspaceRuntime {
     pub(in crate::zed::agent) workspace_root: PathBuf,
     pub(in crate::zed::agent) workspace_hooks_gated: bool,
     pub(in crate::zed::agent) system_prompt: String,
-    pub(in crate::zed::agent) primary_agents: PrimaryAgentCatalog,
+    pub(in crate::zed::agent) primary_agents: PrimaryAgentCatalogue,
     pub(in crate::zed::agent) acp_tool_registry: Arc<AcpToolRegistry>,
     pub(in crate::zed::agent) permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync>,
     pub(in crate::zed::agent) local_tool_registry: CoreToolRegistry,

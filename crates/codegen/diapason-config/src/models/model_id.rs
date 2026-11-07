@@ -16,7 +16,7 @@ mod table;
 mod tests;
 
 pub use capabilities::{
-    ModelCatalogEntry, ModelPricing, catalog_provider_keys, model_catalog_entry, supported_models_for_provider,
+    ModelCatalogueEntry, ModelPricing, catalogue_provider_keys, model_catalogue_entry, supported_models_for_provider,
 };
 
 /// Centralized enum for all supported model identifiers
@@ -389,7 +389,7 @@ pub enum ModelId {
     /// Grok 4.20 0309 Reasoning - xAI's reasoning-optimized model with chain-of-thought
     XaiGrok420Reasoning,
 
-    /// User-defined model not in the hardcoded catalog.
+    /// User-defined model not in the hardcoded catalogue.
     /// Carries the provider key string and model identifier string.
     Custom(String, String),
 }

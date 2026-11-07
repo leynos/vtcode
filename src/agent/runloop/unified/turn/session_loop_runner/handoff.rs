@@ -59,7 +59,7 @@ pub(super) async fn apply_primary_agent_tool_policy_overrides(
 /// Select the write-capable agent that must own an approved-plan execution.
 ///
 /// Approval is a hard runtime boundary. If discovery returns a stale or
-/// read-only catalog, falling back to the built-in `build` spec is safer than
+/// read-only catalogue, falling back to the built-in `build` spec is safer than
 /// continuing with the planning agent and letting the first mutation fail
 /// under the planning policy.
 pub(super) async fn select_approved_plan_execution_agent(

@@ -4,7 +4,7 @@
 //!
 //! | Module | Responsibility | Public surface |
 //! |---|---|--|
-//! | `options` | Static model catalog + override-aware option list | `ModelOption`, `MODEL_OPTIONS`, `build_filtered_options`, `find_option_index`, `option_indexes_for_provider` |
+//! | `options` | Static model catalogue + override-aware option list | `ModelOption`, `MODEL_OPTIONS`, `build_filtered_options`, `find_option_index`, `option_indexes_for_provider` |
 //! | `selection` | `SelectionDetail` construction from options, dynamic entries, custom providers, or raw input | `SelectionDetail`, `parse_model_selection`, `selection_from_option`, `selection_from_dynamic`, `selections_from_custom_provider` |
 //! | `dynamic_models` | Dynamic model inventory (Ollama, LM Studio, LlamaCpp, Copilot) with cache | `DynamicModelRegistry` |
 //! | `rendering` | Step-one list rendering (inline + plain) | `render_step_one_inline`, `render_step_one_plain`, `custom_provider_subtitle`, `static_model_subtitle`, `dynamic_model_subtitle` |

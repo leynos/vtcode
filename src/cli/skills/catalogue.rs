@@ -1,3 +1,5 @@
+//! CLI handlers for listing, loading, inspecting, and configuring skills.
+
 use anyhow::{Context, Result, bail};
 use diapason_core::skills::container_validation::ContainerSkillsRequirement;
 use diapason_core::skills::loader::{EnhancedSkill, EnhancedSkillLoader};

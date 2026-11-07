@@ -216,9 +216,9 @@ impl ModelId {
     ///
     /// Models declared under the active provider in `[providers.<name>]`
     /// overrides or by a `[[custom_providers]]` profile are not part of the
-    /// static catalog, so they are represented as [`ModelId::Custom`].
+    /// static catalogue, so they are represented as [`ModelId::Custom`].
     /// Matching is scoped to the active provider to avoid mis-routing a model
-    /// ID shared across providers, mirroring the catalog and custom-provider
+    /// ID shared across providers, mirroring the catalogue and custom-provider
     /// branches of the subagent resolution path. Local-provider pass-through
     /// (arbitrary Ollama/llama.cpp IDs) is intentionally not handled here.
     pub fn from_config(
