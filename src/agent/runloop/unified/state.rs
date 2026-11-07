@@ -13,7 +13,6 @@ use diapason_core::llm::provider::{
 };
 use diapason_core::llm::provider_usage;
 use diapason_core::llm::request_gap::RequestGapTracker;
-use diapason_core::llm::usage_cost;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AutoPermissionDenial {
