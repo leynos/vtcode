@@ -850,11 +850,11 @@ allow_glob = [
     "git *",        # All git commands
     "cargo *",      # All cargo commands
     "python -m *",  # Python module commands
+    "rm *",         # Workspace-scoped deletion; still requires confirm=true
 ]
 
 # Command patterns that are denied (supports glob patterns)
 deny_glob = [
-    "rm *",         # All rm commands
     "sudo *",       # All sudo commands
     "chmod *",      # All chmod commands
     "chown *",      # All chown commands
@@ -865,7 +865,9 @@ deny_glob = [
 allow_regex = []
 
 # Regular expression patterns for denied commands (if needed)
-deny_regex = []
+deny_regex = [
+    '\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)',   # Recursive spellings and long --force
+]
 
 # Security configuration - Safety settings for automated operations
 [security]
@@ -1296,8 +1298,23 @@ fn default_primary_agent() -> String {
 #[cfg(test)]
 mod tests {
     use super::VTCodeConfig;
+    use crate::constants::commands as command_constants;
     use crate::constants::tool_limits;
     use tempfile::tempdir;
+
+    /// The bootstrap template is a raw TOML literal, so it cannot interpolate
+    /// [`command_constants::DEFAULT_RM_DENY_REGEX`]. Assert the literal stays
+    /// in step with the constant used by the in-code defaults.
+    #[cfg(feature = "bootstrap")]
+    #[test]
+    fn sample_config_template_contains_default_rm_deny_regex() {
+        let template = VTCodeConfig::default_vtcode_toml_template();
+
+        assert!(
+            template.contains(command_constants::DEFAULT_RM_DENY_REGEX),
+            "bootstrap template must ship the default recursive-rm deny regex"
+        );
+    }
 
     #[cfg(feature = "bootstrap")]
     #[test]

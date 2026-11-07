@@ -56,6 +56,7 @@ pub use debug::{
 pub use exec_env::{CommandSpec, ExecEnv, ExecExpiration, SandboxType};
 pub use manager::{SandboxManager, SandboxTransformError};
 pub use permissions::{AdditionalPermissions, SandboxPermissions};
+pub(crate) use policy::PROTECTED_WRITABLE_ROOT_DIR_NAMES;
 pub use policy::{
     BLOCKED_SYSCALLS, DEFAULT_SENSITIVE_PATHS, FILTERED_SYSCALLS, NetworkAllowlistEntry, ResourceLimits, SandboxPolicy,
     SeccompProfile, SensitivePath, WritableRoot, default_sensitive_paths,

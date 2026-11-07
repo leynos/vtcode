@@ -21,6 +21,10 @@ and sandboxing. Layer 1 crate — depends on vtcode-commons.
 - `SandboxPermissions::normalized_for` is the canonical boundary for
   additional-permission mode normalization; callers must not duplicate that
   rule.
+- `exec_policy::deletion` owns `rm` recognition and workspace target
+  assessment. Keep confirmation, prompts, and approval policy outside it, and
+  route both command preflight and the executor gate through the same
+  recognizer.
 - The `BashParser` singleton (`once_cell::Lazy`) is safe across crates —
   read-after-init pattern.
 

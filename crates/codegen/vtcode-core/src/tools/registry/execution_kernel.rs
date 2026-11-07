@@ -532,6 +532,33 @@ fn resolve_internal_dispatch_tool(registry: &ToolRegistry, name: &str) -> Option
         })
 }
 
+/// Evaluate the deletion branch of command preflight.
+///
+/// A supported workspace-scoped deletion defers the dangerous-command check
+/// to the executor, which validates resolved targets; without an explicit
+/// confirmation there is no deletion path at all. Everything else keeps the
+/// ordinary command-safety check.
+fn deletion_preflight_failure(
+    command_candidates: &[String],
+    confirm: bool,
+    joined_command: Option<&str>,
+) -> Option<String> {
+    use crate::tools::validation::commands::{self, DeletionCommandSet};
+
+    match commands::classify_deletion_commands(command_candidates) {
+        DeletionCommandSet::Unsupported { reason } => {
+            Some(format!("Command security check failed: deletion command is not supported: {reason}"))
+        }
+        DeletionCommandSet::Supported(_) if !confirm => {
+            Some("Deletion via exec_command requires confirm=true".to_string())
+        }
+        DeletionCommandSet::Supported(_) => None,
+        DeletionCommandSet::NotDeletion => joined_command
+            .and_then(|command| commands::validate_command_safety(command).err())
+            .map(|err| format!("Command security check failed: {err}")),
+    }
+}
+
 pub(super) fn preflight_validate_resolved_call(
     registry: &ToolRegistry,
     normalized_tool_name: &str,
@@ -621,13 +648,21 @@ pub(super) fn preflight_validate_resolved_call(
         tool_names::RUN_PTY_CMD | tool_names::CREATE_PTY_SESSION | tool_names::SHELL
     ) || (validation_tool_name == tool_names::UNIFIED_EXEC
         && crate::tools::command_args::command_session_requires_command_safety(validation_args.as_ref()));
-    if should_validate_command
-        && let Some(command) = crate::tools::command_args::command_text(validation_args.as_ref())
+    if should_validate_command {
+        // Verbatim string fields preserve shell operators that joining an argv
+        // would quote away, so both forms are inspected.
+        let joined_command = crate::tools::command_args::command_text(validation_args.as_ref())
             .ok()
-            .flatten()
-        && let Err(err) = commands::validate_command_safety(&command)
-    {
-        failures.push(format!("Command security check failed: {err}"));
+            .flatten();
+        let command_candidates = commands::deletion_candidates(validation_args.as_ref(), joined_command.clone());
+        let confirm = validation_args
+            .as_ref()
+            .get("confirm")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if let Some(failure) = deletion_preflight_failure(&command_candidates, confirm, joined_command.as_deref()) {
+            failures.push(failure);
+        }
     }
     enforce_file_operation_payload_limit(
         &validation_tool_name,

@@ -102,12 +102,24 @@ All file paths are validated:
 
 Additional blocking for:
 
-- Destructive commands: `rm`, `rmdir`, `dd`, `shred`
+- Destructive commands: `rmdir`, `dd`, `shred`, and root/home `rm` targets
 - Privilege escalation: `sudo`, `su`, `doas`
 - System modification: `chmod`, `chown`, `systemctl`
 - Container/orchestration: `docker`, `kubectl`
 - Network commands (without sandbox): `curl`, `wget`, `ssh`
 - OS task schedulers: `crontab`, `at`
+
+`rm` is not blanket-denied. A single simple invocation over literal workspace
+paths is allowed only with `confirm=true`, and the executor re-assesses every
+target for workspace containment, symlink escapes, the workspace root, the home
+directory, and protected metadata directories. Chains, pipes, redirects,
+wrappers, environment prefixes, globs, and shell expansion are refused as
+unsupported shapes. Configured deny rules and the default deny regex still win,
+so recursive spellings and the long `--force` option (`rm -rf`, `rm -fr`,
+`rm -Rf`, `rm -f -r`, `rm -r`, `--recursive`, `--force`) remain blocked by
+default in any flag order, while the short `-f` stays allowed; relaxing that
+`deny_regex` permits them. See
+[COMMAND_SECURITY_MODEL.md](../development/COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion).
 
 VT Code supports automation through its internal scheduler instead of raw shell
 scheduling commands. Use reminders for session-scoped prompts and
@@ -263,6 +275,25 @@ cat ../../../etc/passwd
 # Result: BLOCKED
 # Error: "path escapes the workspace root"
 ```
+
+### Blocked: Unconfirmed or Escaping Deletion
+
+```text
+# Missing confirmation:
+exec_command({"cmd": "rm -f scratch/tmp.txt"})
+# Result: BLOCKED at command preflight
+# Error: "Deletion via exec_command requires confirm=true"
+
+# Confirmed but escaping the workspace:
+exec_command({"cmd": "rm -f ../outside/sentinel.txt", "confirm": true})
+# Result: BLOCKED by the executor target assessment
+# Error: "refusing to delete '../outside/sentinel.txt': ... outside the workspace"
+```
+
+`--dangerously-skip-permissions` auto-approves the runloop permission step for
+a confirmed supported deletion, but it cannot bypass either error: preflight
+and the executor target assessment run regardless of the approval mode, so a
+missing `confirm=true` is still rejected.
 
 ### Blocked: Command Chaining
 

@@ -175,6 +175,51 @@ fn git_clean_is_force(clean_args: &[String]) -> bool {
     })
 }
 
+/// Check whether `rm` arguments request force or recursive deletion.
+///
+/// Options are inspected anywhere before the `--` terminator so stacked short
+/// groups (`-rf`, `-v -f`, `-Rf`) and long forms are all recognized, while
+/// operands after `--` (for example `rm -- -f`) are treated as filenames.
+fn rm_is_dangerous(rm_args: &[String]) -> bool {
+    for arg in rm_args {
+        if arg == "--" {
+            break;
+        }
+
+        if is_dangerous_rm_long_option(arg) {
+            return true;
+        }
+
+        if ['f', 'r', 'R'].into_iter().any(|flag| short_flag_group_contains(arg, flag)) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Whether a long `rm` option is a dangerous one, including abbreviations.
+///
+/// GNU `rm` parses long options with `getopt_long`, which accepts any
+/// unambiguous prefix. `rm --recurs dir` and `rm --forc file` therefore behave
+/// like the full spellings, and `--no-pre` selects `--no-preserve-root`. This
+/// over-approximates (it does not model which prefixes are ambiguous across
+/// the whole `rm` option table), which is the safe direction for a danger
+/// detector. The empty name produced by the `--` terminator never matches.
+fn is_dangerous_rm_long_option(arg: &str) -> bool {
+    let Some(option) = arg.strip_prefix("--") else {
+        return false;
+    };
+    let name = option.split('=').next().unwrap_or(option);
+    if name.is_empty() {
+        return false;
+    }
+
+    ["force", "recursive", "no-preserve-root"]
+        .iter()
+        .any(|dangerous| dangerous.starts_with(name))
+}
+
 /// Check if a command is a dangerous git subcommand (without the "git" prefix)
 /// This handles commands parsed from shell scripts where the binary name may be omitted
 fn is_dangerous_git_subcommand(command: &[String]) -> bool {
@@ -278,7 +323,7 @@ fn is_dangerous_to_call_with_exec(command: &[String]) -> bool {
         }
 
         // ──── Rm ────
-        "rm" => matches!(command.get(1).map(String::as_str), Some("-f" | "-rf" | "-fr" | "-r")),
+        "rm" => rm_is_dangerous(&command[1..]),
 
         // ──── Destructive system commands ────
         _ if base_cmd == "mkfs" || base_cmd.starts_with("mkfs.") => true,
@@ -357,6 +402,34 @@ mod tests {
     fn rm_without_flags_is_safe() {
         let cmd = vec!["rm".to_string()];
         assert!(!is_dangerous_to_call_with_exec(&cmd));
+    }
+
+    #[test]
+    fn rm_force_or_recursive_flag_anywhere_is_dangerous() {
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "-R", "file"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "-v", "-f", "file"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "-rvf", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--recursive", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--force", "file"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--no-preserve-root", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["/bin/rm", "-rf", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["sudo", "rm", "-f", "file"])));
+    }
+
+    #[test]
+    fn rm_operands_after_terminator_are_not_options() {
+        assert!(!command_might_be_dangerous(&vec_str(&["rm", "--", "-f"])));
+        assert!(!command_might_be_dangerous(&vec_str(&["rm", "file"])));
+    }
+
+    /// GNU `getopt_long` accepts unambiguous prefixes, so abbreviated
+    /// dangerous options are as dangerous as the full spellings.
+    #[test]
+    fn rm_abbreviated_long_options_are_dangerous() {
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--recurs", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--forc", "file"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--no-pre", "scratch"])));
+        assert!(command_might_be_dangerous(&vec_str(&["rm", "--force=always", "file"])));
     }
 
     #[test]
