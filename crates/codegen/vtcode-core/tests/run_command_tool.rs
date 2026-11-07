@@ -246,8 +246,12 @@ async fn exec_command_rejects_traversal_escape() -> Result<()> {
             .await,
     );
 
+    // Recognition refuses `..` operands before assessment, so the refusal
+    // names the parent-directory component rather than the resolved escape.
     assert!(
-        text.contains("outside the workspace") || text.contains("refusing to delete"),
+        text.contains("parent-directory")
+            || text.contains("outside the workspace")
+            || text.contains("refusing to delete"),
         "unexpected refusal: {text}"
     );
     assert!(sentinel.exists(), "traversal deletion must not touch the outside file");
