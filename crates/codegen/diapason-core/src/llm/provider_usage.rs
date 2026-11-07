@@ -1,14 +1,16 @@
 //! Provider/configuration adapter for usage reporting.
 //!
 //! The shared accounting in [`crate::llm::usage_cost`] works on a
-//! domain-shaped [`UsageProfile`]: it prices and normalizes a turn once the
-//! input-token semantics, context window, and rates are supplied, and it never
-//! inspects provider configuration or a vendor wire format. This module is the
-//! adapter that translates a provider's configuration and backend into that
-//! profile, so the domain boundary stays free of vendor-specific knowledge.
+//! domain-shaped [`UsageProfile`](crate::llm::usage_cost::UsageProfile): it
+//! prices and normalizes a turn once the input-token semantics, context
+//! window, and rates are supplied, and it never inspects provider
+//! configuration or a vendor wire format. This module is the adapter that
+//! translates a provider's configuration and backend into that profile, so the
+//! domain boundary stays free of vendor-specific knowledge.
 //!
 //! Adapters that publish usage — the ACP bridge among them — call
-//! [`usage_profile`] once per turn and then project the resolved
+//! [`usage_profile`](crate::llm::provider_usage::usage_profile) once per turn
+//! and then project the resolved
 //! [`TurnUsage`](crate::llm::usage_cost::TurnUsage) into their own wire format.
 
 use diapason_config::models::ModelPricing;

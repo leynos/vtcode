@@ -5,12 +5,13 @@
 //! module is the vendor-neutral half of that accounting: it normalizes per-turn
 //! provider usage into the canonical harness `Usage` shape once the
 //! input-token semantics are known, and prices a turn or session from a
-//! resolved [`ModelPricing`].
+//! resolved [`ModelPricing`](diapason_config::models::ModelPricing).
 //!
 //! It deliberately knows nothing about provider names, configuration, or wire
 //! formats. [`crate::llm::provider_usage`] is the adapter that translates a
-//! provider's configuration and backend into a [`UsageProfile`] for this
-//! module to price.
+//! provider's configuration and backend into a
+//! [`UsageProfile`](crate::llm::usage_cost::UsageProfile) for this module to
+//! price.
 
 use diapason_config::models::ModelPricing;
 
