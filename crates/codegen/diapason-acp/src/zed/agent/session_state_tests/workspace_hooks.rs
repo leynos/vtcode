@@ -30,12 +30,14 @@ impl Drop for DiapasonConfigGuard {
 
 #[tokio::test]
 async fn new_session_restores_matching_workspace_hook_approval_before_session_start() {
-    let workspace = TempDir::new().unwrap();
-    let dot_config = TempDir::new().unwrap();
+    let workspace = TempDir::new().expect("temporary ACP hook workspace");
+    let dot_config = TempDir::new().expect("temporary dot-config directory");
     let marker = workspace.path().join("approved-session-start");
     let command = format!("touch {}", marker.display());
     let _config_guard = DiapasonConfigGuard::set(&dot_config.path().join("config"));
-    diapason_core::utils::dot_config::initialize_dot_folder().await.unwrap();
+    diapason_core::utils::dot_config::initialize_dot_folder()
+        .await
+        .expect("initialize the dot-config folder for the hook approval");
 
     let mut vt_config = DiapasonConfig::default();
     vt_config.hooks.lifecycle.session_start.push(HookGroupConfig {
@@ -61,14 +63,14 @@ async fn new_session_restores_matching_workspace_hook_approval_before_session_st
         "approval-preview",
         true,
     )
-    .unwrap()
-    .unwrap();
+    .expect("build the session-gated lifecycle hook engine")
+    .expect("the workspace-controlled hook must produce a preview");
     diapason_core::utils::dot_config::update_lifecycle_hook_approval(
         workspace.path(),
         preview.command_digest().to_string(),
     )
     .await
-    .unwrap();
+    .expect("persist the hook approval for the workspace");
 
     let agent = build_agent_with_vt_config(workspace.path(), "duck", Some(&vt_config)).await;
     let result = agent.new_session(acp::NewSessionRequest::new(workspace.path())).await;

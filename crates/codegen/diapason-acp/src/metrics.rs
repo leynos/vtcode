@@ -46,7 +46,9 @@ impl CompactionOutcome {
 ///
 /// `cancelled` is a subset of `failed`. Each field is loaded independently
 /// with relaxed ordering, so concurrent updates can make the values reflect
-/// slightly different instants.
+/// slightly different instants; the snapshot loads `cancelled` first and
+/// clamps `failed` to at least it, so the subset invariant holds in every
+/// snapshot.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CompactionMetrics {
     /// Attempts that passed the admission decision and started.
@@ -106,13 +108,21 @@ impl CompactionCounters {
         let _ = self.elapsed_ms_max.fetch_max(elapsed_ms, Ordering::Relaxed);
     }
 
+    /// Snapshot the cumulative counters.
+    ///
+    /// The atomics are updated in separate steps, so the snapshot can reflect
+    /// slightly different instants. `cancelled` is loaded first and `failed` is
+    /// clamped to at least `cancelled`, so the published invariant — every
+    /// cancelled attempt is one of the failures — holds in every snapshot.
     fn snapshot(&self) -> CompactionMetrics {
+        let cancelled = self.cancelled.load(Ordering::Relaxed);
+        let failed = self.failed.load(Ordering::Relaxed).max(cancelled);
         CompactionMetrics {
             started: self.started.load(Ordering::Relaxed),
             compacted: self.compacted.load(Ordering::Relaxed),
             no_change: self.no_change.load(Ordering::Relaxed),
-            failed: self.failed.load(Ordering::Relaxed),
-            cancelled: self.cancelled.load(Ordering::Relaxed),
+            failed,
+            cancelled,
             elapsed_ms_total: self.elapsed_ms_total.load(Ordering::Relaxed),
             elapsed_ms_max: self.elapsed_ms_max.load(Ordering::Relaxed),
         }
@@ -462,6 +472,24 @@ mod tests {
         let snapshot = counters.snapshot();
         assert_eq!(snapshot.failures, 3);
         assert_eq!(snapshot.attempts, 3, "attempts must be clamped to cover every observed failure");
+    }
+
+    /// Assert a compaction snapshot never reports fewer failures than
+    /// cancellations.
+    ///
+    /// `record_finished` increments both counters for a cancelled attempt. A
+    /// concurrent reader can therefore observe the newer `cancelled` value
+    /// beside the older `failed` value. The snapshot clamps `failed` upward so
+    /// the published subset invariant holds regardless of interleaving.
+    #[test]
+    fn compaction_snapshot_never_reports_fewer_failures_than_cancellations() {
+        let counters = CompactionCounters::new();
+        counters.cancelled.store(3, Ordering::Relaxed);
+        counters.failed.store(1, Ordering::Relaxed);
+
+        let snapshot = counters.snapshot();
+        assert_eq!(snapshot.cancelled, 3);
+        assert_eq!(snapshot.failed, 3, "failed must be clamped to cover every observed cancellation");
     }
 
     /// Assert counter increments saturate rather than wrapping.

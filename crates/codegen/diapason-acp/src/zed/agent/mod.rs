@@ -335,6 +335,8 @@ pub(crate) struct ZedAgent {
     compaction_update_recorder: Arc<dyn crate::metrics::PublicationRecorder>,
     /// Recorder for automatic compaction outcomes.
     compaction_recorder: Arc<dyn crate::metrics::CompactionRecorder>,
+    /// Identity and clock source for published compaction activities.
+    compaction_activity_source: Arc<dyn compaction::CompactionActivitySource>,
 }
 
 pub(crate) struct ZedAgentSetup<'a> {
@@ -416,6 +418,7 @@ impl ZedAgent {
             notice_recorder: crate::metrics::notice_recorder(),
             compaction_update_recorder: crate::metrics::compaction_update_recorder(),
             compaction_recorder: crate::metrics::compaction_recorder(),
+            compaction_activity_source: compaction::compaction_activity_source(),
         })
     }
 
@@ -444,6 +447,20 @@ impl ZedAgent {
     #[cfg(test)]
     pub(crate) fn set_compaction_recorder(&mut self, recorder: Arc<dyn crate::metrics::CompactionRecorder>) {
         self.compaction_recorder = recorder;
+    }
+
+    /// Install a controlled activity identity and clock, for tests that assert
+    /// the published activity and its duration exactly.
+    ///
+    /// Production wiring installs the system source; a command test substitutes
+    /// fixed values so the assertions do not depend on the wall clock or on a
+    /// randomly generated identifier.
+    #[cfg(test)]
+    pub(in crate::zed::agent) fn set_compaction_activity_source(
+        &mut self,
+        source: Arc<dyn compaction::CompactionActivitySource>,
+    ) {
+        self.compaction_activity_source = source;
     }
 
     /// Metrics collector that receives bounded ACP recovery counters.
