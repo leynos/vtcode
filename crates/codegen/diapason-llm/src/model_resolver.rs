@@ -1,3 +1,5 @@
+//! Resolves configured model identifiers into provider, pricing, and availability metadata.
+
 use std::borrow::Cow;
 use std::str::FromStr;
 
@@ -7,16 +9,6 @@ use diapason_config::auth::AuthCredentialsStoreMode;
 use diapason_config::models::{
     ModelCatalogEntry, ModelId, ModelPricing, Provider, ProviderModelSupport, catalog_provider_keys,
     model_catalog_entry,
-};
-
-use vtcode_config::api_keys::api_key_env_var;
-use vtcode_config::auth::AuthCredentialsStoreMode;
-use vtcode_config::models::{
-    ModelCatalogEntry, ModelId, ModelPricing, Provider, ProviderModelSupport, catalog_provider_keys,
-    model_catalog_entry,
-};
-
-//! Resolves configured model identifiers into provider, pricing, and availability metadata.
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

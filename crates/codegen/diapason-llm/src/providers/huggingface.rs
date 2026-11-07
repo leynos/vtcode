@@ -16,13 +16,13 @@ use crate::providers::shared::{
 };
 use async_stream::try_stream;
 use async_trait::async_trait;
-use futures::StreamExt;
-use reqwest::{Client as HttpClient, Response, StatusCode};
-use serde_json::{Value, json};
 use diapason_commons::sanitizer::sanitize_provider_diagnostic;
 use diapason_config::TimeoutsConfig;
 use diapason_config::constants::{env_vars, models, urls};
 use diapason_config::core::{AnthropicConfig, ModelConfig, PromptCachingConfig};
+use futures::StreamExt;
+use reqwest::{Client as HttpClient, Response, StatusCode};
+use serde_json::{Value, json};
 
 use super::common::{
     assistant_interleaved_history_text, ensure_model, impl_llm_client, is_minimax_m2_model, map_finish_reason_common,

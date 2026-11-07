@@ -8,18 +8,17 @@ use super::redaction::{identifier_correlation, session_correlation};
 use super::{ZedAgent, log_suppressed_error, warn_hook_message};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
-use std::future::Future;
-use std::sync::Arc;
-use tokio::time::{Instant, sleep_until};
-use tracing::{Instrument, info, warn};
 use diapason_core::compaction::auto::{AutoCompactionInput, AutoCompactionOutcome, auto_compact_messages};
 use diapason_core::compaction::memory_envelope::{MemoryEnvelopePlacement, local_compaction_config};
 use diapason_core::compaction::{CompactionStrategy, ManualCompactionOptions, manual_compaction_strategy};
 use diapason_core::exec::events::{CompactionMode, CompactionTrigger};
 use diapason_core::llm::provider::{LLMProvider, ToolDefinition};
+use std::future::Future;
+use std::sync::Arc;
+use tokio::time::{Instant, sleep_until};
+use tracing::{Instrument, info, warn};
 
 mod failure;
-
 
 mod plan;
 

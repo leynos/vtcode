@@ -1,16 +1,11 @@
+//! Unit tests for the unified runloop context manager.
+
 use super::*;
 use diapason_core::{
     EditorContextSnapshot, EditorFileContext, EditorLineRange, EditorSelectionContext, EditorSelectionRange,
 };
 use std::borrow::Cow;
 use std::path::PathBuf;
-
-use vtcode_core::{
-    EditorContextSnapshot, EditorFileContext, EditorLineRange, EditorSelectionContext, EditorSelectionRange,
-};
-
-//! Unit tests for the unified runloop context manager.
-};
 
 #[test]
 fn normalize_history_for_request_borrows_clean_history() {

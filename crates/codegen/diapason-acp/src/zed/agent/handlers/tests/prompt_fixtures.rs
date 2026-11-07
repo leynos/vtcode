@@ -234,7 +234,6 @@ impl LLMProvider for PendingCompactionProvider {
     }
 }
 
-
 #[async_trait]
 impl LLMProvider for FailThenSucceedProvider {
     /// Return the provider name used by prompt-routing tests.
@@ -374,5 +373,3 @@ pub(super) fn compaction_config(enabled: bool) -> DiapasonConfig {
     config.agent.harness.auto_compaction_threshold_tokens = Some(1);
     config
 }
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/tests/prompt_fixtures.rs' for per-hunk detail, 'weave check' to verify your resolution
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/handlers/tests/prompt_fixtures.rs' for per-hunk detail, 'weave check' to verify your resolution

@@ -11,21 +11,9 @@ use diapason_core::exec::events::Usage as HarnessUsage;
 use diapason_core::llm::provider::{
     Message, PromptCacheProfile, ResponsesContinuationState, ToolDefinition, responses_continuation_key,
 };
+use diapason_core::llm::provider_usage;
 use diapason_core::llm::request_gap::RequestGapTracker;
 use diapason_core::llm::usage_cost;
-
-use vtcode_core::compaction::PrefireState;
-use vtcode_core::config::WorkspaceTrustLevel;
-use vtcode_core::core::agent::harness_kernel::hash_value;
-use vtcode_core::core::agent::request_envelope::{SegmentBoundaryReason, SessionRequestEnvelope};
-use vtcode_core::exec::events::Usage as HarnessUsage;
-use vtcode_core::llm::provider::{
-    Message, PromptCacheProfile, ResponsesContinuationState, ToolDefinition, responses_continuation_key,
-};
-use vtcode_core::llm::provider_usage;
-use vtcode_core::llm::request_gap::RequestGapTracker;
-
-};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AutoPermissionDenial {

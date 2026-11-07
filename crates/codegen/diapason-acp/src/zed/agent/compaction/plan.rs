@@ -7,12 +7,12 @@
 use crate::zed::provider_runtime::ProviderRequestRuntime;
 use crate::zed::types::SessionHandle;
 use anyhow::Result;
-use std::sync::Arc;
 use diapason_core::compaction::auto::AutoCompactionOutcome;
 use diapason_core::compaction::memory_envelope::effective_compaction_threshold;
 use diapason_core::config::DiapasonConfig;
 use diapason_core::core::threads::ThreadRuntimeHandle;
 use diapason_core::llm::provider::{LLMProvider, Message, ToolDefinition};
+use std::sync::Arc;
 
 const DEFAULT_OUTPUT_RESERVE_TOKENS: usize = 16_384;
 

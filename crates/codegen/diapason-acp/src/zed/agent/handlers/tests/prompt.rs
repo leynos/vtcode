@@ -194,7 +194,6 @@ async fn duplicate_tool_call_ids_are_rejected_before_staging_or_execution() {
     assert_eq!(audit_entries(), 1, "a rejected batch must never reach the executor");
 }
 
-
 /// Assert reasoning still produces an ACP thought chunk when tools are requested.
 #[test]
 fn reasoning_remains_visible_when_response_requests_a_tool() {

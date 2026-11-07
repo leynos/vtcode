@@ -20,13 +20,14 @@ mod projection_tests;
 
 #[cfg(test)]
 mod queue_accounting_tests;
-use diapason_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
-use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
+use super::redaction::CORRELATION_HEX_LENGTH;
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
 use chrono::{DateTime, Utc};
+use diapason_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
+use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 use hashbrown::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -35,7 +36,6 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 use tracing::{Span, debug, field, info_span, warn};
-use super::redaction::CORRELATION_HEX_LENGTH;
 
 const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
@@ -572,4 +572,3 @@ fn spawn_task_lifecycle_forwarder(
         .instrument(span),
     )
 }
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/task_lifecycle.rs' for per-hunk detail, 'weave check' to verify your resolution
