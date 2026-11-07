@@ -1664,7 +1664,7 @@ Apache License 2.0 — SPDX: Apache-2.0
   relative-path 1.9.3
     Source: https://github.com/udoprog/relative-path
     License: MIT OR Apache-2.0
-  rio-unicode 0.5.27
+  rio-unicode 0.5.29
     Source: https://github.com/raphamorim/rio
     License: MIT OR Apache-2.0
   rmcp-macros 3.2.0
@@ -1885,7 +1885,7 @@ Boost Software License 1.0 — SPDX: BSL-1.0
 --------------------------------------------------------------------------------
 Boost Software License 1.0 — SPDX: BSL-1.0
 --------------------------------------------------------------------------------
-  clipboard-win 5.4.2
+  clipboard-win 5.4.1
     Source: https://github.com/DoumanAsh/clipboard-win
     License: BSL-1.0
 --------------------------------------------------------------------------------
@@ -2659,7 +2659,7 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  teletypewriter 0.5.27
+  teletypewriter 0.5.29
     Source: https://github.com/raphamorim/rio
     License: MIT
 --------------------------------------------------------------------------------
@@ -2719,7 +2719,7 @@ MIT License — SPDX: MIT
   block2 0.6.2
     Source: https://github.com/madsmtm/objc2
     License: MIT
-  corcovado 0.5.27
+  corcovado 0.5.29
     Source: https://github.com/raphamorim/rio
     License: MIT
   difflib 0.4.0
@@ -2764,10 +2764,10 @@ MIT License — SPDX: MIT
   ratatui-cheese 0.7.0
     Source: https://github.com/shashanktomar/ratatui-cheese
     License: MIT
-  rio-graphics 0.5.27
+  rio-graphics 0.5.29
     Source: https://github.com/raphamorim/rio
     License: MIT
-  rio-vt 0.5.26
+  rio-vt 0.5.29
     Source: https://github.com/raphamorim/rio
     License: MIT
   simd_helpers 0.1.0
@@ -2797,7 +2797,7 @@ MIT License — SPDX: MIT
   tokio-util 0.7.19
     Source: https://github.com/tokio-rs/tokio
     License: MIT
-  tokio 1.53.3
+  tokio 1.53.1
     Source: https://github.com/tokio-rs/tokio
     License: MIT
 --------------------------------------------------------------------------------
@@ -2809,7 +2809,7 @@ MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
 MIT License — SPDX: MIT
 --------------------------------------------------------------------------------
-  rio-grapheme-width 0.5.27
+  rio-grapheme-width 0.5.29
     Source: https://github.com/raphamorim/rio
     License: MIT
 --------------------------------------------------------------------------------
@@ -2845,7 +2845,7 @@ MIT License — SPDX: MIT
   pulldown-cmark-escape 0.11.0
     Source: https://github.com/raphlinus/pulldown-cmark
     License: MIT
-  pulldown-cmark 0.13.5
+  pulldown-cmark 0.13.6
     Source: https://github.com/raphlinus/pulldown-cmark
     License: MIT
 --------------------------------------------------------------------------------
