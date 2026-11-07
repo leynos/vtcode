@@ -29,7 +29,9 @@ an archive with ambiguous terminal results is rejected before continuation.
   existing best-effort behaviour.
 - Add no dependency, compatibility wrapper, new event contract, or broad
   refactor. `ThreadRuntimeHandle` may gain one minimal closure-based atomic
-  mutation method only if its existing locking contract permits it.
+  mutation method only if its existing locking contract permits it. (Historical
+  constraint; superseded by the final implementation, which adds the test-only
+  `insta` dev-dependency for inline snapshots.)
 - Only the root-designated scrutineer runs repository gates and CodeRabbit.
   Do not push, rebase, restack, comment, request review, mark PR state, or
   merge in this plateau.
@@ -389,7 +391,9 @@ an archive with ambiguous terminal results is rejected before continuation.
 - The completed four-file production/test delta is 597 additions and 25
   deletions, or +572 non-plan lines. It remains within the root-approved +600
   tolerance. The only public interface addition is the approved existing handle
-  method; no wire or archive format changes were made.
+  method; no wire or archive format changes were made. (Later superseded by the
+  additive `stale_exec_session` error-envelope field; the archive format
+  remained unchanged.)
 - CodeScene reports the four observations in
   `ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive` as a
   large assertion block. They are one failure contract for one resume attempt:
@@ -662,16 +666,22 @@ There is no compatibility layer.
 `EP-M2` ends after the narrow production repair and focused green tests. Its
 acceptance evidence is no tool fake call on checkpoint error, no registered
 failed repair, preserved concurrent history, canonical unambiguous repaired
-messages, and fail-closed ambiguous archive continuation. The conformance check
-confirms no wire/archive schema change and only the approved minimal public
-`ThreadRuntimeHandle::mutate_messages<T>` addition. At the time `EP-M2` closed,
-the remaining work was the ACP/core relevant gates, Clippy, documentation
-checks and external review; the Progress section records that work as completed.
+messages, and fail-closed ambiguous archive continuation. At the time `EP-M2`
+closed, the conformance check confirmed no wire/archive schema change and only
+the approved minimal public `ThreadRuntimeHandle::mutate_messages<T>` addition;
+the final implementation later superseded the wire part by adding the additive
+`stale_exec_session` error-envelope field. When it closed, the remaining work
+was the ACP/core relevant gates, Clippy, documentation checks and external
+review; the Progress section records that work as completed.
 
 `EP-M3` ends after root-scheduled gates and review convergence. Its recovery is
-to retain the focused commit and re-run the gate packet; publication is outside
-this plateau. The only compatibility decision is the approved additive method
-on the existing public thread handle; all other changed interfaces are internal.
+to retain the focused commit and re-run the gate packet. At the time `EP-M3`
+closed, publication was outside this plateau; the Progress section records that
+the branch was subsequently published and reviewed. The only compatibility
+decision recorded here is the approved additive method on the existing public
+thread handle; the final implementation also adds the additive
+`stale_exec_session` error-envelope field, and all other changed interfaces are
+internal.
 
 ## Concrete steps
 
@@ -706,7 +716,8 @@ the commit exists. The Progress section records each of those as obtained.
 
 ## Idempotence and recovery
 
-The clean branch remains local until root approves publication. Re-running the
+The clean branch remained local until root approved publication. It has since
+been published and reviewed, as the Progress section records. Re-running the
 tests is safe. If an edit exceeds a tolerance, preserve it in the worktree,
 record the failure in this plan, and escalate rather than copying from the
 dirty historical worktree or force-pushing a stack branch.
@@ -716,8 +727,12 @@ dirty historical worktree or force-pushing a stack branch.
 `ThreadRuntimeHandle::mutate_messages<T>` is the root-approved additive public
 closure operation over the canonical `Vec<Message>` while its existing lock is
 held. Its closure must be short, synchronous and non-reentrant, with no handle
-calls, I/O or await while locked. It does not create a second state owner. No
-external dependency, wire interface, or archive-format interface is added.
+calls, I/O or await while locked. It does not create a second state owner. The
+original plan added no external dependency, wire interface, or archive-format
+interface. The final implementation supersedes the first two: it adds the
+test-only `insta` dev-dependency for inline snapshots and the additive
+`stale_exec_session` field to the `ToolExecutionError` JSON envelope. The
+archive format is unchanged.
 
 ## Revision note
 
@@ -771,17 +786,17 @@ any edit; the dispositions below are the working plan for this round.
 
 ### Pre-merge rows
 
-| Row | Disposition |
-| --- | --- |
-| Testing (Overall) | Valid. Add a test that blocks a tool at the execution boundary, reads the durable archive before release, and asserts the assistant call and incomplete placeholder are present. |
-| Module-Level Documentation | Valid. Add a module docstring to `mod tests` in `tool_recovery_metrics.rs`. |
-| Testing (Unit And Behavioural) | Valid. Add protocol-level load/resume plus prompt tests for an interrupted archive and for ambiguous-archive rejection. |
-| Unit Architecture | Valid. Make the tool-round timing substitutable and test controlled elapsed times for successful and interrupted rounds. |
-| User-Facing Documentation | Valid. Document the required-checkpoint/history-persistence interaction in the user guide and 0.157.0 migration notes, and correct the Zed guide. |
-| Developer Documentation | Valid. Update both ExecPlans to separate historical constraints from the final implementation, including the `insta` dependency, the `stale_exec_session` envelope field, and publication status. |
-| Testing (Property / Proof) | Valid. Extend the property test to multiple batches, late results, reused IDs and varied orderings, asserting idempotence and ambiguity rejection. |
-| Domain Architecture | Valid. Verify the required checkpoint retained the staged batch (reject otherwise) and serialize archive attach/repair per session. |
-| Observability | Valid. Justify the bounded session/thread log fields in the runtime guide and add a bounded duplicate-ID rejection counter with a test. |
+| Row                            | Disposition                                                                                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Testing (Overall)              | Valid. Add a test that blocks a tool at the execution boundary, reads the durable archive before release, and asserts the assistant call and incomplete placeholder are present.                  |
+| Module-Level Documentation     | Valid. Add a module docstring to `mod tests` in `tool_recovery_metrics.rs`.                                                                                                                       |
+| Testing (Unit And Behavioural) | Valid. Add protocol-level load/resume plus prompt tests for an interrupted archive and for ambiguous-archive rejection.                                                                           |
+| Unit Architecture              | Valid. Make the tool-round timing substitutable and test controlled elapsed times for successful and interrupted rounds.                                                                          |
+| User-Facing Documentation      | Valid. Document the required-checkpoint/history-persistence interaction in the user guide and 0.157.0 migration notes, and correct the Zed guide.                                                 |
+| Developer Documentation        | Valid. Update both ExecPlans to separate historical constraints from the final implementation, including the `insta` dependency, the `stale_exec_session` envelope field, and publication status. |
+| Testing (Property / Proof)     | Valid. Extend the property test to multiple batches, late results, reused IDs and varied orderings, asserting idempotence and ambiguity rejection.                                                |
+| Domain Architecture            | Valid. Verify the required checkpoint retained the staged batch (reject otherwise) and serialize archive attach/repair per session.                                                               |
+| Observability                  | Valid. Justify the bounded session/thread log fields in the runtime guide and add a bounded duplicate-ID rejection counter with a test.                                                           |
 
 ### Execution order
 
@@ -794,3 +809,67 @@ shared scrutineer runs `make check-fmt`, `make lint`, `make typecheck` and
 gate. After the gates pass, the head is committed, pushed over SSH with the
 tracking ref refreshed, and every finding and row is answered through the
 pool-token comment route.
+
+2026-11-07: Review 5807467338 raised a developer-documentation finding. The
+constraints, `EP-M2`/`EP-M3` milestones, idempotence section, and interfaces
+section recorded the original plan's no-dependency and no-wire-change
+constraints and its local-only publication state. Those statements are
+historical. The final implementation adds the test-only `insta` dev-dependency
+and the additive `stale_exec_session` field to the `ToolExecutionError` JSON
+envelope, and the branch has been published and reviewed. The statements were
+amended in place with superseding notes; the Progress log is unchanged.
+
+### Progress
+
+| Packet                                      | State          | Evidence                                                                                                  |
+| ------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
+| Core stale-session classification           | Edits complete | `ExecSessionWriterClosed`, registry classification, `write_stdin` counter, three registry tests           |
+| ACP recovery-metric sharing                 | Edits complete | `set_metrics_collector`, `WorkspaceSetupPorts::with_metrics`, `Arc::ptr_eq` regression test               |
+| ACP prompt, observability, timing           | Edits complete | Boundary error category, `DuplicateToolCallBatch`, `ToolRoundTimer`, boundary-pause and fixed-timer tests |
+| Property tests and seed move                | Edits complete | Seed relocated to `tool_recovery/tests.txt`; multi-batch and ambiguity properties added                   |
+| Developer documentation                     | Complete       | Both ExecPlans amended; runtime guide lists the new counter and justifies the bounded log fields          |
+| Archive durability and attach serialization | Edits complete | Required-checkpoint retention read-back plus per-session resume lock                                      |
+
+2026-11-07: All six packets are edit-complete and the tree is formatted
+(`cargo fmt --all`, then `cargo fmt --all -- --check`, both clean). Three
+`diapason-acp` clippy warnings from the boundary-pause test were fixed at
+source rather than suppressed: an ignored `SetSessionConfigOptionResponse`, and
+two fully qualified `tokio::time::Instant` paths. The full sequential gate run
+is now delegated to the shared scrutineer.
+
+2026-11-07: The first gate run failed at `make check-fmt` on `mdtablefix`
+formatting for four Markdown files; `make fmt` reformatted them in place. The
+second run passed `make check-fmt` and failed `make lint` (`lint-clippy`) with
+two `clippy::map_err_ignore` errors in `exec_session.rs`: the two
+`write_failure` call sites discarded the underlying channel error. The fix
+retains that error as the typed error's `#[source]` rather than silencing the
+lint, so the typed classification and client-visible message are unchanged
+while the original cause is preserved for diagnosis.
+`ExecSessionLostAfterInput` gained a `pub(crate) new` constructor so its three
+out-of-module call sites keep their message and field visibility.
+
+None of the packet tests have been executed. Each packet cancelled its focused
+run when the shared artifact lock and compile-admission queue stalled, so the
+scrutineer's single sequential gate run is the first execution evidence for
+this round. Two risks are carried forward explicitly: the boundary-pause test
+depends on `exec_command` blocking on a gate file rather than failing fast, and
+the property-test packet's new code has never been compiled.
+
+2026-11-07: The third gate run passed `make check-fmt`, `make lint` and
+`make typecheck`, and failed `make test` on exactly the carried-forward risk:
+`staged_call_and_placeholder_are_durable_before_tool_execution_completes`
+panicked after its 5 s poll deadline. A focused rerun reproduced it in
+isolation. The test's failure message was extended to report the finished
+round's outcome and the durable archive, which showed the cause: the gate
+command was rejected before execution, so the round completed with `Continue`
+and the placeholder was replaced immediately. `exec_command` does not run a
+shell; it splits the command into argv and validates the program against the
+execution-policy allow-list, so `while [ ! -f ... ]; do sleep ...; done` was
+rejected as `command 'while' is not permitted by the execution policy`.
+
+The gate now uses a FIFO created with `mkfifo` and the permitted read-only
+command `tail <fifo>`. `tail` blocks opening the FIFO until the test opens it
+for writing, and exits at end-of-file, so the test still observes the durable
+staged call and placeholder strictly before execution completes and then
+releases the command to prove the round continues. The test and its Unix-only
+helpers are gated with `#[cfg(unix)]`.

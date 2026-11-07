@@ -52,6 +52,9 @@ from both lower layers.
 - Scope: stop if the implementation needs more than 12 production files or
   900 net new production lines, excluding tests, documentation, and this plan.
 - Interface: stop if an existing public Rust API or ACP wire schema must change.
+  (Historical tolerance; the final implementation adds the additive
+  `stale_exec_session` error-envelope field described in the EP-M3
+  compatibility decision.)
 - Persistence: stop if recovery requires rewriting archives other than through
   the existing atomic checkpoint path.
 - Dependencies: stop if a new crate is required.
@@ -498,8 +501,12 @@ links the three PRs as a stack when GitHub stacked PR support is available.
   check: only missing exec-session lookup is special-cased; other command
   failures preserve existing safety semantics. Recovery: revert the typed error
   and mapping together. Remaining gaps: documentation, full gates,
-  installation, and publication. Compatibility decision: none; the public JSON
-  shape is unchanged and only field values become more accurate.
+  installation, and publication. Compatibility decision: the historical
+  constraint was that the public JSON shape stay unchanged. The final
+  implementation supersedes it: `ToolExecutionError::to_json_value` adds a
+  `stale_exec_session` envelope field when a stale-session classification is
+  present, so consumers must tolerate one additive field. The persisted
+  `SessionMessage` archive shape remains unchanged.
 
 - Identifier and outcome: EP-M4, validated stacked draft PR and installed
   aggregate build. Requirements and gaps: all requirements and documentation
@@ -609,7 +616,9 @@ workspace and submit a materially new tool call if required.
 The core implementation should add a typed crate-private exec-session lookup
 error and preserve its type through `anyhow` so
 `ToolExecutionError::from_anyhow` can map it without parsing text. No new crate
-or wire schema is required.
+is required. The original plan expected no wire-schema change; the final
+implementation adds the additive `stale_exec_session` envelope field described
+in the EP-M3 compatibility decision.
 
 ## Revision note
 
@@ -653,3 +662,13 @@ candidate (`check-fmt` 8s, `lint` 615s, `typecheck` 1657s, `test` 1327s with
 CodeRabbit confirmed each fix. A fresh review is queued through `comenq`
 (request `25da8dc2`, ETA about 10h29m) because auto-review is paused and the
 included-review allowance is one per hour. CI on `c89e005f6` is in progress.
+
+2026-11-07: Review 5807467338 raised a developer-documentation finding. The
+EP-M3 compatibility decision and the interfaces section previously stated that
+no public JSON shape changed. That was the historical constraint; the final
+implementation adds the additive `stale_exec_session` envelope field to
+`ToolExecutionError::to_json_value`, so both statements now distinguish the
+constraint from the delivered behaviour. The same round corrected the product
+name in the user guide and Zed ACP guide and documented that ACP tool rounds
+require `[history]` persistence, so `persistence = "none"` fails the prompt
+before any tool executes. No progress entry was removed.

@@ -75,10 +75,21 @@ partial-state reporting and single-turn prompt admission, are in the
 [Zed ACP guide](./guides/zed-acp.md) and the
 [ACP runtime guide](./development/acp-runtime.md).
 
+### Durable checkpoints before tool rounds
+
+ACP requires a durable session checkpoint before every tool round. The
+checkpoint records the assistant tool request and one incomplete result per
+call, so an interrupted round can be repaired on load. When
+`[history].persistence = "none"`, the checkpoint cannot be written and the
+prompt fails with a checkpoint error before any tool executes. No tool side
+effects occur in that case. Enable durable history, for example
+`history.persistence = "file"`, to use ACP tool rounds. See
+[durable session archives](./config/config.md#durable-session-archives).
+
 ### Stale `write_stdin` sessions
 
 An exec session identifier is process-local. It stops being valid when the
-command exits, the session is closed, or VT Code restarts. Continuing a stale
+command exits, the session is closed, or Diapason restarts. Continuing a stale
 identifier returns a non-retryable `ResourceNotFound` error with
 `reason: "stale_exec_session"`; start a new `exec_command` and use the session
 identifier it returns.

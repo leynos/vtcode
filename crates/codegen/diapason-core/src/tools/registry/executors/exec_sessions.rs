@@ -4,17 +4,18 @@
 //! the shared settle/prune helpers that keep a session's spool consistent with
 //! its terminal state. Session lookup resolves process-local identifiers
 //! against the registry's execution-session store and returns typed
-//! [`ExecSessionNotFound`] and [`ExecSessionLostAfterInput`] errors so the
-//! registry can classify a stale continuation without parsing messages. This
-//! module performs no ACP-specific work: the adapter consumes the typed errors
-//! and the transport-neutral recovery counters.
+//! [`ExecSessionNotFound`], [`ExecSessionWriterClosed`] and
+//! [`ExecSessionLostAfterInput`] errors so the registry can classify a stale
+//! continuation without parsing messages. This module performs no ACP-specific
+//! work: the adapter consumes the typed errors and the transport-neutral
+//! recovery counters.
 
 use super::exec_support::*;
 use super::{
     ExecRunBackendKind, ExecSettlementMode, ToolRegistry, acquire_executor_rate_limit, annotate_exec_run_response,
 };
 use crate::config::constants::tools;
-use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound};
+use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound, ExecSessionWriterClosed};
 use crate::tools::registry::ToolTimeoutCategory;
 use crate::tools::types::DiapasonExecSession;
 use crate::zsh_exec_bridge::ZshExecBridgeSession;
@@ -177,9 +178,12 @@ impl ToolRegistry {
         let max_tokens = max_output_tokens_from_payload(payload)
             .unwrap_or(crate::config::constants::defaults::DEFAULT_PTY_OUTPUT_MAX_TOKENS);
 
-        self.exec_sessions
+        let write = self
+            .exec_sessions
             .send_input_to_session(session.metadata.id.as_str(), input.as_bytes(), false)
-            .await?;
+            .await;
+        record_stale_write_stdin_write(&write, &self.metrics_collector(), progress_tool_name);
+        write?;
 
         self.build_passthrough_exec_response(
             &session,
@@ -790,6 +794,28 @@ fn record_stale_write_stdin_lookup(
     }
 }
 
+/// Records a stale `write_stdin` continuation when its writer was already
+/// closed before any input was delivered.
+///
+/// Like [`record_stale_write_stdin_lookup`], the externally visible
+/// [`ToolRecoveryEvent::StaleWriteStdinRequest`] series belongs to
+/// `write_stdin`, so a unified `exec_command` write that hits the same closed
+/// writer is deliberately left uncounted. Only the typed
+/// [`ExecSessionWriterClosed`] cause counts; a failure after the input was
+/// delivered is handled by [`mark_input_delivered`].
+fn record_stale_write_stdin_write(write: &Result<usize>, metrics: &crate::metrics::MetricsCollector, tool_name: &str) {
+    if tool_name != tools::WRITE_STDIN {
+        return;
+    }
+    let closed = write
+        .as_ref()
+        .err()
+        .is_some_and(|error| error.downcast_ref::<ExecSessionWriterClosed>().is_some());
+    if closed {
+        metrics.record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
+    }
+}
+
 /// Marks a post-write failure that lost its exec session as input-delivered.
 ///
 /// The input bytes were already handed to the session before the response was
@@ -809,7 +835,7 @@ fn mark_input_delivered(
         if tool_name == tools::WRITE_STDIN {
             metrics.record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
         }
-        anyhow::Error::new(ExecSessionLostAfterInput { session_id: session_id.to_string() })
+        anyhow::Error::new(ExecSessionLostAfterInput::new(session_id))
     } else {
         error
     }

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::metrics::ToolRecoveryEvent;
-use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound};
+use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound, ExecSessionWriterClosed};
 
 /// Loses the session after its input was consumed but before the response is collected.
 ///
@@ -111,6 +111,177 @@ async fn write_stdin_losing_session_after_delivery_reports_partial_state(
         "losing the session after input delivery must record exactly one stale write_stdin request"
     );
 
+    Ok(())
+}
+
+/// Rejects input to a pipe session whose writer is already closed.
+///
+/// The session record still exists, so this is not a missing session; the
+/// process has exited or its writer task has stopped before any input was
+/// delivered. The failure must be a stale session with no partial state and
+/// must record one `write_stdin` recovery event.
+#[cfg(unix)]
+#[rstest]
+#[tokio::test]
+async fn write_stdin_closed_writer_before_delivery_is_stale_without_partial_state(
+    #[future] command_session_fixture: Result<CommandSessionFixture>,
+) -> Result<()> {
+    let fixture = command_session_fixture.await?;
+    let registry = &fixture.registry;
+    registry.allow_all_tools().await?;
+
+    let session_id = "run-closed-writer";
+    let session_manager = registry.exec_session_manager();
+    // Create the session directly so it is not pruned when the process exits;
+    // the continuation then resolves a live record whose process has already
+    // exited and whose writer can no longer accept input.
+    session_manager
+        .create_pipe_session(
+            session_id.to_string().into(),
+            vec!["/bin/sh".to_string(), "-c".to_string(), "true".to_string()],
+            registry.workspace_root().clone(),
+            hashbrown::HashMap::new(),
+        )
+        .await?;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if session_manager.is_session_completed(session_id).await?.is_some() {
+                return Ok::<(), anyhow::Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await??;
+    let stale_baseline = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
+
+    let policy = ExecutionPolicySnapshot::default()
+        .with_prevalidated(true)
+        .with_safety_prevalidated(true);
+    let outcome = registry
+        .execute_public_tool_request(
+            ToolExecutionRequest::new(
+                tools::WRITE_STDIN,
+                json!({
+                    "session_id": session_id,
+                    "chars": "input",
+                }),
+            )
+            .with_policy(policy),
+        )
+        .await;
+    let error = outcome.error.expect("a closed writer should return a structured error");
+
+    assert_eq!(error.category, ErrorCategory::ResourceNotFound);
+    assert_eq!(error.error_type, ToolErrorType::ResourceNotFound);
+    assert!(!error.retryable);
+    assert!(error.is_recoverable);
+    assert!(!error.circuit_breaker_impact);
+    assert!(!error.partial_state_possible, "nothing was delivered, so no partial state is possible");
+
+    let details = error
+        .rendered_details()
+        .ok_or_else(|| anyhow::anyhow!("a closed writer must carry details"))?;
+    assert_eq!(details.get("reason").and_then(Value::as_str), Some("stale_exec_session"));
+    assert_eq!(details.get("session_id").and_then(Value::as_str), Some(session_id));
+    assert!(
+        details.get("input_delivered").is_none(),
+        "a pre-write closed writer must not report that input was delivered"
+    );
+
+    let stale_after = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
+    assert_eq!(
+        stale_after,
+        stale_baseline + 1,
+        "a closed writer on write_stdin must record exactly one stale request"
+    );
+
+    Ok(())
+}
+
+/// Keeps a unified `exec_command` closed-writer continuation out of the
+/// `write_stdin` counter.
+#[cfg(unix)]
+#[rstest]
+#[tokio::test]
+async fn closed_writer_unified_exec_continuation_does_not_count_as_write_stdin(
+    #[future] command_session_fixture: Result<CommandSessionFixture>,
+) -> Result<()> {
+    let fixture = command_session_fixture.await?;
+    let registry = &fixture.registry;
+    registry.allow_all_tools().await?;
+
+    let session_id = "run-closed-writer-unified";
+    let session_manager = registry.exec_session_manager();
+    session_manager
+        .create_pipe_session(
+            session_id.to_string().into(),
+            vec!["/bin/sh".to_string(), "-c".to_string(), "true".to_string()],
+            registry.workspace_root().clone(),
+            hashbrown::HashMap::new(),
+        )
+        .await?;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if session_manager.is_session_completed(session_id).await?.is_some() {
+                return Ok::<(), anyhow::Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await??;
+    let stale_baseline = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
+
+    let error = registry
+        .execute_command_session_internal(
+            json!({"action": "write", "session_id": session_id, "chars": "input"}),
+            ExecSettlementMode::Manual,
+        )
+        .await
+        .expect_err("a stale unified continuation should return an error");
+    assert!(
+        error.chain().any(|cause| cause.is::<ExecSessionWriterClosed>()),
+        "a closed writer must surface the typed cause: {error:#}"
+    );
+    assert!(
+        !error.chain().any(|cause| cause.is::<ExecSessionLostAfterInput>()),
+        "a pre-write closed writer must not claim partial state: {error:#}"
+    );
+
+    let stale_after = registry
+        .metrics_collector()
+        .get_tool_recovery_metrics()
+        .count(ToolRecoveryEvent::StaleWriteStdinRequest);
+    assert_eq!(
+        stale_after, stale_baseline,
+        "unified exec_command continuations must not increment the write_stdin counter"
+    );
+
+    Ok(())
+}
+
+/// Classifies a post-delivery write failure as input-delivered so partial
+/// state stays possible.
+#[test]
+fn closed_writer_after_delivery_reports_partial_state() -> Result<()> {
+    let source = anyhow::Error::new(ExecSessionLostAfterInput::new("run-lost"));
+    let error = ToolExecutionError::from_anyhow(tools::WRITE_STDIN, &source, 0, false, false, None)
+        .with_tool_call_context(tools::WRITE_STDIN, &json!({"session_id": "run-lost", "chars": ""}));
+
+    assert!(error.partial_state_possible, "input delivered before the writer closed may have side effects");
+    let details = error
+        .rendered_details()
+        .ok_or_else(|| anyhow::anyhow!("a post-delivery failure must carry details"))?;
+    assert_eq!(details.get("reason").and_then(Value::as_str), Some("stale_exec_session"));
+    assert_eq!(details.get("input_delivered").and_then(Value::as_bool), Some(true));
     Ok(())
 }
 

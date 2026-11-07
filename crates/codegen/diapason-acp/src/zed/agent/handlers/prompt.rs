@@ -155,6 +155,31 @@ impl PromptToolState {
     }
 }
 
+/// Measures elapsed time for one tool round.
+///
+/// Production uses [`SystemToolRoundTimer`]; tests substitute a timer that
+/// returns fixed values so the `elapsed_ms` span field is deterministic.
+pub(super) trait ToolRoundTimer: Send + Sync {
+    /// Marks the start of a measured tool round.
+    fn start(&self) -> std::time::Instant;
+
+    /// Returns elapsed milliseconds for a round started at `started`.
+    fn elapsed_ms(&self, started: std::time::Instant) -> u64;
+}
+
+/// Production tool-round timer backed by the system clock.
+pub(super) struct SystemToolRoundTimer;
+
+impl ToolRoundTimer for SystemToolRoundTimer {
+    fn start(&self) -> std::time::Instant {
+        std::time::Instant::now()
+    }
+
+    fn elapsed_ms(&self, started: std::time::Instant) -> u64 {
+        elapsed_ms(started)
+    }
+}
+
 pub(super) struct ToolRoundRequest<'a> {
     pub(super) agent: &'a ZedAgent,
     pub(super) session: &'a SessionHandle,
@@ -165,6 +190,7 @@ pub(super) struct ToolRoundRequest<'a> {
     pub(super) reasoning_details: Option<Vec<String>>,
     pub(super) tool_loop_count: &'a mut usize,
     pub(super) streamed: bool,
+    pub(super) timer: &'a dyn ToolRoundTimer,
 }
 
 pub(super) enum ToolRoundOutcome {
@@ -238,12 +264,18 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
         reasoning_details,
         tool_loop_count,
         streamed,
+        timer,
     } = request;
 
     if agent.tool_loop_limit_reached(*tool_loop_count) {
         return Ok(ToolRoundOutcome::LimitReached(agent.tool_loop_limit_message()));
     }
-    validate_tool_call_ids(tool_calls)?;
+    if let Err(error) = validate_tool_call_ids(tool_calls) {
+        agent
+            .recovery_metrics()
+            .record_tool_recovery(ToolRecoveryEvent::DuplicateToolCallBatch);
+        return Err(error);
+    }
     *tool_loop_count = tool_loop_count.saturating_add(1);
 
     let assistant_tool_message = if streamed {
@@ -275,13 +307,13 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
         finalized_tool_count = tracing::field::Empty,
         elapsed_ms = tracing::field::Empty,
     );
-    let started = std::time::Instant::now();
+    let started = timer.start();
     async {
         let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
             Ok(results) => results,
             Err(error) => {
                 let _ = execution_span.record("outcome", "execution_interrupted");
-                let _ = execution_span.record("elapsed_ms", elapsed_ms(started));
+                let _ = execution_span.record("elapsed_ms", timer.elapsed_ms(started));
                 agent
                     .recovery_metrics()
                     .record_tool_recovery_events(ToolRecoveryEvent::InterruptedCall, tool_call_count);
@@ -307,7 +339,7 @@ pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<
             .record_tool_recovery_events(ToolRecoveryEvent::ReplacedCall, finalized_tool_count);
         let _ = execution_span.record("outcome", "results_replaced");
         let _ = execution_span.record("finalized_tool_count", finalized_tool_count);
-        let _ = execution_span.record("elapsed_ms", elapsed_ms(started));
+        let _ = execution_span.record("elapsed_ms", timer.elapsed_ms(started));
         info!(session_id = %session_id, tool_call_count, tool_loop_count = *tool_loop_count,
               finalized_tool_count, tool_recovery_outcome = "results_replaced", "ACP tool recovery results replaced");
         persist_session_checkpoint(agent, session, "tool_results").await;
@@ -519,9 +551,8 @@ async fn require_session_checkpoint(
             boundary,
             "Failed to persist ACP session checkpoint"
         );
-        return Err(
-            SdkError::internal_error().data(format!("Failed to persist ACP session checkpoint at {boundary}: {error}"))
-        );
+        return Err(SdkError::internal_error()
+            .data(format!("Failed to persist ACP session checkpoint at {boundary}: archive_write_failed")));
     }
     if let Err(error) = session.update_transcript_path().await {
         log_suppressed_error(&error, "transcript_update", "transcript_write_failed");

@@ -5,6 +5,7 @@ use diapason_config::{DiapasonConfig, SubagentDiscoveryInput, discover_subagents
 use diapason_core::config::ToolDocumentationMode;
 use diapason_core::config::types::{AgentConfig as CoreAgentConfig, CapabilityLevel};
 use diapason_core::config::{AgentClientProtocolZedConfig, CommandsConfig, ToolsConfig};
+use diapason_core::metrics::MetricsCollector;
 use diapason_core::prompts::system::generate_system_instruction_with_config;
 use diapason_core::tools::file_ops::FileOpsTool;
 use diapason_core::tools::grep_file::GrepSearchManager;
@@ -137,11 +138,23 @@ pub(super) struct WorkspaceSetupPorts {
     permission_construction: Arc<dyn AcpPermissionPrompterConstruction>,
 }
 
+impl WorkspaceSetupPorts {
+    /// Return these ports with `metrics` installed on every workspace registry
+    /// created by the default registry setup.
+    ///
+    /// ACP workspace registries share the agent-wide collector so recovery
+    /// counters recorded by any workspace appear in the agent's snapshot.
+    pub(super) fn with_metrics(mut self, metrics: Arc<MetricsCollector>) -> Self {
+        self.registry_setup = Arc::new(DefaultWorkspaceToolRegistrySetup { metrics: Some(metrics) });
+        self
+    }
+}
+
 impl Default for WorkspaceSetupPorts {
     fn default() -> Self {
         Self {
             agent_discovery: Arc::new(DefaultWorkspaceAgentDiscovery),
-            registry_setup: Arc::new(DefaultWorkspaceToolRegistrySetup),
+            registry_setup: Arc::new(DefaultWorkspaceToolRegistrySetup::default()),
             file_ops_tool_construction: Arc::new(DefaultWorkspaceFileOpsToolConstruction),
             subagent_attachment: Arc::new(DefaultAcpSubagentControllerAttacher),
             mcp_attachment: Arc::new(DefaultAcpMcpClientAttacher),
@@ -164,7 +177,11 @@ impl WorkspaceAgentDiscovery for DefaultWorkspaceAgentDiscovery {
     }
 }
 
-struct DefaultWorkspaceToolRegistrySetup;
+/// Default registry setup that optionally installs an agent-wide collector.
+#[derive(Default)]
+struct DefaultWorkspaceToolRegistrySetup {
+    metrics: Option<Arc<MetricsCollector>>,
+}
 
 impl WorkspaceToolRegistrySetup for DefaultWorkspaceToolRegistrySetup {
     fn initialize<'a>(
@@ -174,7 +191,10 @@ impl WorkspaceToolRegistrySetup for DefaultWorkspaceToolRegistrySetup {
         vt_config: Option<&'a DiapasonConfig>,
     ) -> BoxFuture<'a, anyhow::Result<CoreToolRegistry>> {
         Box::pin(async move {
-            let local_tool_registry = CoreToolRegistry::new(workspace_root.to_path_buf()).await;
+            let mut local_tool_registry = CoreToolRegistry::new(workspace_root.to_path_buf()).await;
+            if let Some(metrics) = &self.metrics {
+                local_tool_registry.set_metrics_collector(Arc::clone(metrics));
+            }
             configure_acp_tool_call_limits(&local_tool_registry, vt_config);
             local_tool_registry
                 .apply_tool_runtime_config(&runtime_config.commands_config, &runtime_config.tools_config)

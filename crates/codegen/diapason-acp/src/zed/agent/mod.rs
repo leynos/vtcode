@@ -284,6 +284,8 @@ pub(crate) struct ZedAgent {
     credential_storage_mode: AuthCredentialsStoreMode,
     system_prompt: String,
     sessions: Arc<Mutex<HashMap<acp::SessionId, SessionHandle>>>,
+    /// Serializes archive attach/repair for each session independently.
+    resume_locks: Mutex<HashMap<acp::SessionId, Arc<tokio::sync::Mutex<()>>>>,
     next_session_id: AtomicU64,
     acp_tool_registry: Arc<AcpToolRegistry>,
     permission_prompter: Arc<dyn AcpPermissionPrompter + Send + Sync>,
@@ -342,9 +344,12 @@ impl ZedAgent {
             super::AcpWorkspacePolicy::new(&setup.config.workspace, &setup.zed_config.allowed_workspace_roots)
                 .await
                 .context("building ACP allowed-workspace policy")?;
-        let workspace_setup_ports = WorkspaceSetupPorts::default();
-        let launch_runtime = Arc::new(build_launch_workspace_runtime(&setup, &workspace_setup_ports).await?);
+        let launch_setup_ports = WorkspaceSetupPorts::default();
+        let launch_runtime = Arc::new(build_launch_workspace_runtime(&setup, &launch_setup_ports).await?);
         let provider_metrics = launch_runtime.local_tool_registry.metrics_collector();
+        // Every session workspace registry shares the launch registry's
+        // collector, which is the agent-wide recovery snapshot.
+        let workspace_setup_ports = launch_setup_ports.with_metrics(Arc::clone(&provider_metrics));
         let mut workspace_runtimes = WorkspaceRuntimeCache::new(Arc::clone(&provider_metrics));
         if let Ok(canonical_workspace) = diapason_commons::canonicalize(&launch_runtime.workspace_root) {
             workspace_runtimes.remember_runtime(canonical_workspace, &launch_runtime);
@@ -354,6 +359,7 @@ impl ZedAgent {
             credential_storage_mode: setup.credential_storage_mode,
             system_prompt: setup.system_prompt,
             sessions: Arc::new(Mutex::new(HashMap::with_capacity(10))),
+            resume_locks: Mutex::new(HashMap::new()),
             next_session_id: AtomicU64::new(0),
             acp_tool_registry: Arc::clone(&launch_runtime.acp_tool_registry),
             permission_prompter: Arc::clone(&launch_runtime.permission_prompter),
@@ -389,6 +395,22 @@ impl ZedAgent {
     /// session that never opened a workspace runtime still reports them.
     pub(super) fn recovery_metrics(&self) -> Arc<diapason_core::metrics::MetricsCollector> {
         self.local_tool_registry.metrics_collector()
+    }
+
+    /// Return the per-session archive attach/repair lock, creating it on first use.
+    ///
+    /// The map guard is dropped before the caller awaits the returned lock, so
+    /// no [`std::sync::MutexGuard`] is ever held across an await.
+    fn resume_lock(&self, session_id: &acp::SessionId) -> anyhow::Result<Arc<tokio::sync::Mutex<()>>> {
+        let mut locks = self
+            .resume_locks
+            .lock()
+            .map_err(|error| crate::zed::types::lock_poison_error("acquiring ACP session resume lock", error))?;
+        Ok(Arc::clone(
+            locks
+                .entry(session_id.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+        ))
     }
 
     fn session_subagent_controller(&self, session: &SessionHandle) -> anyhow::Result<Option<Arc<SubagentController>>> {

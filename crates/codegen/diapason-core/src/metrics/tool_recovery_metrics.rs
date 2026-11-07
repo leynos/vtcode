@@ -36,11 +36,17 @@ pub enum ToolRecoveryEvent {
     StaleWriteStdinRequest,
     /// A session checkpoint failed.
     CheckpointFailure,
+    /// A provider tool-call batch was rejected because its IDs were not unique.
+    ///
+    /// The batch is rejected before any placeholder is staged or any tool
+    /// executes, so this counter records a refused round rather than a
+    /// recovered one.
+    DuplicateToolCallBatch,
 }
 
 impl ToolRecoveryEvent {
     /// Every event, in the order rendered for Prometheus.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::StagedCall,
         Self::ReplacedCall,
         Self::InterruptedCall,
@@ -50,6 +56,7 @@ impl ToolRecoveryEvent {
         Self::ConcurrentPromptRejection,
         Self::StaleWriteStdinRequest,
         Self::CheckpointFailure,
+        Self::DuplicateToolCallBatch,
     ];
 
     /// Stable Prometheus label and log field for this event.
@@ -64,6 +71,7 @@ impl ToolRecoveryEvent {
             Self::ConcurrentPromptRejection => "concurrent_prompt_rejection",
             Self::StaleWriteStdinRequest => "stale_write_stdin_request",
             Self::CheckpointFailure => "checkpoint_failure",
+            Self::DuplicateToolCallBatch => "duplicate_tool_call_batch",
         }
     }
 }
@@ -94,6 +102,8 @@ pub struct ToolRecoveryMetrics {
     pub stale_write_stdin_requests: u64,
     /// Failed session checkpoints.
     pub checkpoint_failures: u64,
+    /// Provider tool-call batches rejected for duplicate call IDs.
+    pub duplicate_tool_call_batches: u64,
 }
 
 impl ToolRecoveryMetrics {
@@ -117,6 +127,7 @@ impl ToolRecoveryMetrics {
             ToolRecoveryEvent::ConcurrentPromptRejection => &mut self.concurrent_prompt_rejections,
             ToolRecoveryEvent::StaleWriteStdinRequest => &mut self.stale_write_stdin_requests,
             ToolRecoveryEvent::CheckpointFailure => &mut self.checkpoint_failures,
+            ToolRecoveryEvent::DuplicateToolCallBatch => &mut self.duplicate_tool_call_batches,
         };
         *counter = counter.saturating_add(count);
     }
@@ -133,12 +144,14 @@ impl ToolRecoveryMetrics {
             ToolRecoveryEvent::ConcurrentPromptRejection => self.concurrent_prompt_rejections,
             ToolRecoveryEvent::StaleWriteStdinRequest => self.stale_write_stdin_requests,
             ToolRecoveryEvent::CheckpointFailure => self.checkpoint_failures,
+            ToolRecoveryEvent::DuplicateToolCallBatch => self.duplicate_tool_call_batches,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    //! Verifies the bounded recovery counters in summary JSON and Prometheus export.
     use super::{ToolRecoveryEvent, ToolRecoveryMetrics};
     use crate::metrics::MetricsCollector;
 
@@ -149,15 +162,18 @@ mod tests {
         collector.record_tool_recovery(ToolRecoveryEvent::StagedCall);
         collector.record_tool_recovery_events(ToolRecoveryEvent::InterruptedCall, 3);
         collector.record_tool_recovery(ToolRecoveryEvent::AmbiguousHistory);
+        collector.record_tool_recovery(ToolRecoveryEvent::DuplicateToolCallBatch);
 
         let summary = collector.get_summary();
         assert_eq!(summary.tool_recovery.staged_calls, 1);
         assert_eq!(summary.tool_recovery.interrupted_calls, 3);
         assert_eq!(summary.tool_recovery.ambiguous_histories, 1);
+        assert_eq!(summary.tool_recovery.duplicate_tool_call_batches, 1);
 
         let json = collector.export_json().expect("metrics JSON should serialize");
         assert_eq!(json["tool_recovery"]["staged_calls"], 1);
         assert_eq!(json["tool_recovery"]["interrupted_calls"], 3);
+        assert_eq!(json["tool_recovery"]["duplicate_tool_call_batches"], 1);
         // Labels are fixed variants, so no call content can reach the export.
         let rendered = json.to_string();
         assert!(!rendered.contains("tool_call_id"));
@@ -165,6 +181,7 @@ mod tests {
         let prometheus = collector.export_prometheus();
         assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="staged_call"} 1"#));
         assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="interrupted_call"} 3"#));
+        assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="duplicate_tool_call_batch"} 1"#));
     }
 
     /// Saturates counters at `u64::MAX` instead of wrapping.
