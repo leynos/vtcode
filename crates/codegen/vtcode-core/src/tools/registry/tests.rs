@@ -12,7 +12,7 @@ use crate::tools::handlers::{
 };
 use crate::tools::registry::mcp_helpers::normalize_mcp_tool_identifier;
 use crate::tools::traits::Tool;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use futures::future::BoxFuture;
 use rstest::{fixture, rstest};
@@ -63,6 +63,35 @@ async fn command_session_fixture() -> Result<CommandSessionFixture> {
         _config_defaults: config_defaults,
         _temp_dir: temp_dir,
     })
+}
+
+/// Fully collected output and exit status for a retained terminal session.
+struct CompletedTerminalSession {
+    exit_code: i32,
+    output: String,
+}
+
+async fn await_harness_exec_session_exit_and_collect_output(
+    registry: &ToolRegistry,
+    session_id: &str,
+    initial_output: String,
+) -> Result<CompletedTerminalSession> {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        let mut collected_output = initial_output;
+        loop {
+            if let Some(output) = registry.exec_sessions.read_session_output(session_id, true).await? {
+                collected_output.push_str(&output);
+            }
+            if let Some(exit_code) = registry.harness_exec_session_completed(session_id).await?
+                && registry.exec_sessions.is_output_drained(session_id).await?
+            {
+                return Ok(CompletedTerminalSession { exit_code, output: collected_output });
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .with_context(|| format!("terminal session '{session_id}' did not exit before the test deadline"))?
 }
 
 struct CustomEchoTool;
@@ -632,9 +661,25 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
         .as_str()
         .expect("terminal run should expose session_id")
         .to_string();
-    assert_eq!(response["exit_code"], 0);
-    assert_eq!(response["output"].as_str(), Some("vtcode-terminal"));
-    assert_eq!(registry.harness_exec_session_completed(&session_id).await?, Some(0));
+    let initial_output = response["output"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("terminal run should expose text output"))?
+        .to_owned();
+
+    let CompletedTerminalSession { exit_code, output: terminal_output } =
+        await_harness_exec_session_exit_and_collect_output(registry, &session_id, initial_output).await?;
+    assert_eq!(exit_code, 0, "terminal fixture should exit successfully");
+    assert_eq!(
+        terminal_output, "vtcode-terminal",
+        "terminal output must be fully collected after the reader reaches EOF"
+    );
+
+    let retained_exit_code = registry.harness_exec_session_completed(&session_id).await?;
+    assert_eq!(
+        retained_exit_code,
+        Some(exit_code),
+        "completed terminal session must remain queryable until explicit close"
+    );
 
     registry.close_harness_exec_session(&session_id).await?;
     registry.harness_exec_session_completed(&session_id).await.unwrap_err();

@@ -46,7 +46,7 @@ async fn ungated_engine_runs_hooks_without_approval() {
     let temp_dir = TempDir::new().expect("tempdir");
     let workspace = temp_dir.path();
     let marker = workspace.join("vt-ungated-marker");
-    let command = format!("touch {}", marker.display());
+    let command = format!("cat >/dev/null; touch {}", marker.display());
 
     // User-level-only hook config: no workspace-controlled content, no gate.
     let engine = build_engine(workspace, &session_start_config(&[&command]), false);
@@ -64,8 +64,8 @@ async fn gated_engine_skips_all_hooks_until_approved() {
     let workspace = temp_dir.path();
     let user_marker = workspace.join("vt-user-marker");
     let workspace_marker = workspace.join("vt-workspace-marker");
-    let user_command = format!("touch {}", user_marker.display());
-    let workspace_command = format!("touch {}", workspace_marker.display());
+    let user_command = format!("cat >/dev/null; touch {}", user_marker.display());
+    let workspace_command = format!("cat >/dev/null; touch {}", workspace_marker.display());
 
     // Both user- and workspace-sourced commands live in the same engine; when
     // workspace-controlled hook content is present, the whole engine is gated
@@ -99,8 +99,8 @@ async fn changed_commands_invalidate_prior_approval() {
     let workspace = temp_dir.path();
     let first_marker = workspace.join("vt-first-marker");
     let second_marker = workspace.join("vt-second-marker");
-    let first_command = format!("touch {}", first_marker.display());
-    let second_command = format!("touch {}", second_marker.display());
+    let first_command = format!("cat >/dev/null; touch {}", first_marker.display());
+    let second_command = format!("cat >/dev/null; touch {}", second_marker.display());
 
     // The user approved the original command set...
     let first_engine = build_engine(workspace, &session_start_config(&[&first_command]), true);
@@ -179,7 +179,7 @@ async fn persisted_approval_restores_only_when_digest_matches() {
     let temp_dir = TempDir::new().expect("tempdir");
     let workspace = temp_dir.path();
     let marker = workspace.join("vt-restored-marker");
-    let command = format!("touch {}", marker.display());
+    let command = format!("cat >/dev/null; touch {}", marker.display());
 
     // Isolate the dot config used by the approval store.
     let env_guard = lock();
@@ -229,7 +229,7 @@ async fn carry_or_restore_keeps_session_only_approval_across_rebuild() {
     let temp_dir = TempDir::new().expect("tempdir");
     let workspace = temp_dir.path();
     let marker = workspace.join("vt-carried-marker");
-    let command = format!("touch {}", marker.display());
+    let command = format!("cat >/dev/null; touch {}", marker.display());
 
     // Isolate the dot config so NO persisted record exists: only the in-memory
     // approval can survive the rebuild.

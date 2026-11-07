@@ -16,7 +16,7 @@ async fn test_pre_tool_use_hook_allows_by_default() {
             matcher: Some(".*".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Pre-tool processing'".into(),
+                command: "cat >/dev/null; echo 'Pre-tool processing'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -48,7 +48,7 @@ async fn test_pre_tool_use_hook_parses_updated_input() {
             matcher: Some("exec_command".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"rtk cargo build"}}}'"#.into(),
+                command: r#"cat >/dev/null; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"rtk cargo build"}}}'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -80,7 +80,7 @@ async fn test_pre_tool_use_hook_updated_input_without_decision() {
             matcher: Some("exec_command".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecisionReason":"RTK auto-rewrite","updatedInput":{"command":"rtk ls"}}}'"#.into(),
+                command: r#"cat >/dev/null; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecisionReason":"RTK auto-rewrite","updatedInput":{"command":"rtk ls"}}}'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -176,7 +176,7 @@ async fn test_pre_tool_use_hook_blocks_with_exit_code_2() {
             matcher: Some("TestTool".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "printf 'Tool blocked' >&2; exit 2".into(),
+                command: "cat >/dev/null; printf 'Tool blocked' >&2; exit 2".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -208,7 +208,7 @@ async fn test_pre_tool_use_hook_exit_code_2_requires_feedback() {
             matcher: Some("TestTool".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "exit 2".into(),
+                command: "cat >/dev/null; exit 2".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -246,7 +246,7 @@ async fn test_pre_tool_use_hook_allows_with_json_response() {
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
                 command:
-                    r#"printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}\n'"#
+                    r#"cat >/dev/null; printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}\n'"#
                         .into(),
                 timeout_seconds: None,
             }],
@@ -278,7 +278,7 @@ async fn test_post_tool_use_hook_execution() {
             matcher: Some("TestTool".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Post-tool processing complete'".into(),
+                command: "cat >/dev/null; echo 'Post-tool processing complete'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -316,7 +316,7 @@ async fn test_post_tool_use_json_like_stdout_failure_is_reported() {
             matcher: Some("TestTool".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"decision":"block"'"#.into(),
+                command: r#"cat >/dev/null; printf '{"decision":"block"'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -353,7 +353,7 @@ async fn test_post_tool_use_block_requires_reason() {
             matcher: Some("TestTool".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"decision":"block"}'"#.into(),
+                command: r#"cat >/dev/null; printf '{"decision":"block"}'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -391,7 +391,7 @@ async fn test_quiet_success_output_suppresses_plain_stdout() {
             matcher: Some("TestTool".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Post-tool processing complete'".into(),
+                command: "cat >/dev/null; echo 'Post-tool processing complete'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -423,7 +423,7 @@ async fn test_quiet_success_output_keeps_structured_context() {
             matcher: Some("Test prompt".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"systemMessage":"Structured note","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"Added context"}}\n'"#.into(),
+                command: r#"cat >/dev/null; printf '{"systemMessage":"Structured note","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"Added context"}}\n'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -484,7 +484,7 @@ async fn test_hook_matcher_functionality() {
                 matcher: Some("Write".into()),
                 hooks: vec![HookCommandConfig {
                     kind: Default::default(),
-                    command: "echo 'Write tool matched'".into(),
+                    command: "cat >/dev/null; echo 'Write tool matched'".into(),
                     timeout_seconds: None,
                 }],
             },
@@ -492,7 +492,7 @@ async fn test_hook_matcher_functionality() {
                 matcher: Some("Bash".into()),
                 hooks: vec![HookCommandConfig {
                     kind: Default::default(),
-                    command: "echo 'Bash tool matched'".into(),
+                    command: "cat >/dev/null; echo 'Bash tool matched'".into(),
                     timeout_seconds: None,
                 }],
             },
@@ -531,7 +531,7 @@ async fn test_regex_matcher_functionality() {
             matcher: Some(".*security.*".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: "echo 'Security prompt detected'".into(),
+                command: "cat >/dev/null; echo 'Security prompt detected'".into(),
                 timeout_seconds: None,
             }],
         }],
@@ -574,7 +574,7 @@ async fn test_permission_request_hook_parses_decision_and_updates() {
             matcher: Some("command_session".into()),
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"},"updatedInput":{"command":"echo approved"},"updatedPermissions":[{"destination":"session","addRules":["bash(echo approved)"]}]}}'"#.into(),
+                command: r#"cat >/dev/null; printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"},"updatedInput":{"command":"echo approved"},"updatedPermissions":[{"destination":"session","addRules":["bash(echo approved)"]}]}}'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -626,7 +626,7 @@ async fn test_stop_hook_blocks_completion() {
             matcher: None,
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"decision":"block","reason":"keep going"}'"#.into(),
+                command: r#"cat >/dev/null; printf '{"decision":"block","reason":"keep going"}'"#.into(),
                 timeout_seconds: None,
             }],
         }],
@@ -660,7 +660,7 @@ async fn test_hook_env_exposes_claude_aliases() {
             matcher: None,
             hooks: vec![HookCommandConfig {
                 kind: Default::default(),
-                command: r#"printf '{"additional_context":"'"$CLAUDE_SESSION_ID"'|'"$CLAUDE_PROJECT_DIR"'|'"$CLAUDE_TRANSCRIPT_PATH"'"}'"#.into(),
+                command: r#"cat >/dev/null; printf '{"additional_context":"'"$CLAUDE_SESSION_ID"'|'"$CLAUDE_PROJECT_DIR"'|'"$CLAUDE_TRANSCRIPT_PATH"'"}'"#.into(),
                 timeout_seconds: None,
             }],
         }],
