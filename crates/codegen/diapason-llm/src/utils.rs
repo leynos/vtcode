@@ -316,7 +316,10 @@ mod tests {
             }],
             "usage": {
                 "prompt_tokens": 10,
-                "completion_tokens": 5
+                "completion_tokens": 5,
+                "completion_tokens_details": {
+                    "reasoning_tokens": 3
+                }
             },
             "model": "gpt-5"
         });
@@ -326,6 +329,7 @@ mod tests {
         let usage = result.usage.expect("usage should be present");
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.completion_tokens, 5);
+        assert_eq!(usage.reasoning_output_tokens, Some(3), "a reported reasoning count must survive response parsing");
     }
 
     #[test]

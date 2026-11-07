@@ -2502,4 +2502,24 @@ mod tests {
         assert_eq!(response.content.as_deref(), Some("legacy hello"));
         assert_eq!(response.finish_reason, FinishReason::Stop);
     }
+
+    /// A reported reasoning count must survive native usage parsing.
+    ///
+    /// Both the native response and the native stream build their usage
+    /// through `parse_native_usage`, so this pins the shared assignment rather
+    /// than one caller's copy of it.
+    #[test]
+    fn native_usage_keeps_reported_reasoning_tokens() {
+        let usage = MergeGatewayProvider::parse_native_usage(Some(&json!({
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15,
+            "output_tokens_details": {"reasoning_tokens": 4}
+        })))
+        .expect("usage should parse");
+
+        assert_eq!(usage.prompt_tokens, 10);
+        assert_eq!(usage.completion_tokens, 5);
+        assert_eq!(usage.reasoning_output_tokens, Some(4));
+    }
 }
