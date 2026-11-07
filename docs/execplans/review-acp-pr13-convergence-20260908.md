@@ -873,3 +873,16 @@ for writing, and exits at end-of-file, so the test still observes the durable
 staged call and placeholder strictly before execution completes and then
 releases the command to prove the round continues. The test and its Unix-only
 helpers are gated with `#[cfg(unix)]`.
+
+2026-11-07: The fourth gate run passed `make check-fmt` and failed `make lint`
+at `lint-clippy` with one `clippy::string_slice` error in the new
+`describe_archive_contents` helper. The helper already derived its truncation
+offset from `char_indices`, so the boundary was sound, but clippy rejects the
+indexing form itself. `contents.get(..offset).unwrap_or(contents)` keeps the
+truncation UTF-8 safe without indexing.
+
+2026-11-07: The fifth run is green on all four gates against `f31794ab7` plus
+the working tree: `make check-fmt` (11 s), `make lint` (189 s, shell, policies,
+clippy and `cargo doc`), `make typecheck` (146 s) and `make test` (206 s;
+10,633 tests run, 10,633 passed, 22 skipped). The change set is published as
+`281d221b1` on `fix/acp-unresolved-tool-recovery`.
