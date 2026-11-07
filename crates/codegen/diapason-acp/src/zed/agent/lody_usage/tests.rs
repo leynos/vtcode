@@ -6,12 +6,12 @@
 
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
-use proptest::prelude::*;
-use tokio::sync::{Notify, mpsc};
-use vtcode_config::models::ModelPricing;
-use vtcode_config::{
+use diapason_config::models::ModelPricing;
+use diapason_config::{
     CustomProviderApiFormat, CustomProviderConfig, CustomProviderPricingConfig, CustomProviderProfileConfig,
 };
+use proptest::prelude::*;
+use tokio::sync::{Notify, mpsc};
 
 #[path = "tests/transport.rs"]
 mod transport;
@@ -121,9 +121,9 @@ fn response_pricing_follows_the_model_the_provider_served() {
         )]),
         ..custom_provider("acme", CustomProviderApiFormat::OpenAIChat, None, CustomProviderPricingConfig::default())
     }];
-    let response = vtcode_core::llm::provider::LLMResponse {
+    let response = diapason_core::llm::provider::LLMResponse {
         model: "served-model".to_string(),
-        ..vtcode_core::llm::provider::LLMResponse::new("session-model", "answer")
+        ..diapason_core::llm::provider::LLMResponse::new("session-model", "answer")
     };
 
     let profile = usage_profile(&providers, "acme", effective_model("session-model", &response));
@@ -161,7 +161,7 @@ fn custom_provider_profile_drives_the_notification_context_window_and_cost() {
 /// Assert a response without usage produces no notification.
 #[test]
 fn response_without_usage_produces_no_notification() {
-    let response = vtcode_core::llm::provider::LLMResponse::new("model-a", "answer");
+    let response = diapason_core::llm::provider::LLMResponse::new("model-a", "answer");
 
     let notification = response_usage_notification(
         &acp::SessionId::new(Arc::from("session-1")),
@@ -184,14 +184,14 @@ fn reported_model_names(notification: acp::ExtNotification) -> Vec<String> {
 /// Assert usage is attributed to the model the provider reported.
 #[test]
 fn response_usage_is_attributed_to_the_model_the_provider_served() {
-    let response = vtcode_core::llm::provider::LLMResponse {
+    let response = diapason_core::llm::provider::LLMResponse {
         model: "served-model".to_string(),
         usage: Some(Usage {
             prompt_tokens: 4,
             completion_tokens: 2,
             ..Usage::default()
         }),
-        ..vtcode_core::llm::provider::LLMResponse::new("fallback-model", "answer")
+        ..diapason_core::llm::provider::LLMResponse::new("fallback-model", "answer")
     };
 
     let notification = response_usage_notification(
@@ -209,14 +209,14 @@ fn response_usage_is_attributed_to_the_model_the_provider_served() {
 /// Assert a response without a model uses the session model.
 #[test]
 fn response_without_a_model_falls_back_to_the_session_model() {
-    let response = vtcode_core::llm::provider::LLMResponse {
+    let response = diapason_core::llm::provider::LLMResponse {
         model: String::new(),
         usage: Some(Usage {
             prompt_tokens: 4,
             completion_tokens: 2,
             ..Usage::default()
         }),
-        ..vtcode_core::llm::provider::LLMResponse::new("fallback-model", "answer")
+        ..diapason_core::llm::provider::LLMResponse::new("fallback-model", "answer")
     };
 
     let notification = response_usage_notification(

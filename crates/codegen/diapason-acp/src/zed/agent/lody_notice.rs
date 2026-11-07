@@ -3,13 +3,13 @@
 //! supplied and never a fabricated quota window.
 
 use crate::acp;
-use serde_json::{Map, Value};
 use diapason_core::llm::provider::{LLMError, LLMErrorMetadata};
+use serde_json::{Map, Value};
 use std::time::{Duration, Instant};
 use tracing::{Instrument, field, info_span};
 
-use super::redaction::{elapsed_millis, log_notice_publish_failure, session_correlation};
 use super::ZedAgent;
+use super::redaction::{elapsed_millis, log_notice_publish_failure, session_correlation};
 
 impl ZedAgent {
     /// Publish a warning notice when `error` reports a provider rate limit.

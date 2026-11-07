@@ -2,8 +2,8 @@
 
 use diapason_core::exec::events::Usage as HarnessUsage;
 use diapason_core::llm::provider as uni;
+use diapason_core::llm::provider_usage;
 use diapason_core::llm::usage_cost;
-use vtcode_core::llm::provider_usage;
 
 pub(super) fn accumulate_turn_usage(provider: &str, total: &mut HarnessUsage, usage: &Option<uni::Usage>) {
     let Some(usage) = usage else {

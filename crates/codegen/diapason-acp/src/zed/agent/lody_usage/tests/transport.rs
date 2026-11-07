@@ -12,7 +12,7 @@ async fn sends_usage_through_the_official_acp_extension_channel() {
     let notification_received = Arc::new(Notify::new());
     let agent_ack = Arc::clone(&notification_received);
 
-    let agent_connection = Agent.builder().name("vtcode-usage-test").connect_with(
+    let agent_connection = Agent.builder().name("diapason-usage-test").connect_with(
         agent_channel,
         move |cx: ConnectionTo<Client>| async move {
             agent_ready.notified().await;

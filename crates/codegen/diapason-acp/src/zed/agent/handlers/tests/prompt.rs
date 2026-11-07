@@ -52,6 +52,7 @@ fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
 
 
 
+
 /// Assert reasoning still produces an ACP thought chunk when tools are requested.
 #[test]
 fn reasoning_remains_visible_when_response_requests_a_tool() {
