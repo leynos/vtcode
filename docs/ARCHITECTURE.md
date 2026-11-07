@@ -68,7 +68,7 @@ policy stays transport-agnostic. Buffered generation reports through
 `RateLimitNoticeSink`, which implements that port in ACP; streaming calls
 `publish_rate_limit_notice` directly because it has no buffered attempt to
 sink. Compaction activity is a derived client projection:
-`vtcode-exec-events::ThreadEvent` remains the authoritative runtime event
+`diapason-exec-events::ThreadEvent` remains the authoritative runtime event
 contract, and ACP compaction diagnostics are redacted and bounded before they
 reach clients or logs.
 
