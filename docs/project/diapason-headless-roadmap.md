@@ -1,9 +1,10 @@
 # Headless ACP/CLI roadmap
 
-This roadmap delivers [RFC 0003](../rfcs/rfc-0003-diapason-headless-runtime.md),
-codename `kthxbai`. Status: proposed; every implementation task remains open.
-Phases are ideas to validate, steps are workstreams, and numbered tasks have
-observable acceptance criteria. Merging this plan does not remove code.
+This roadmap delivers
+[RFC 0003](../rfcs/rfc-0003-diapason-headless-runtime.md), codename `kthxbai`.
+Status: proposed; every implementation task remains open. Phases are ideas to
+validate, steps are workstreams, and numbered tasks have observable acceptance
+criteria. Merging this plan does not remove code.
 
 ## 1. Establish the headless product contract
 
