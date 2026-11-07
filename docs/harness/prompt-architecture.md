@@ -52,7 +52,7 @@ immutable `system_prompt` in this order:
 6. **Harness Limits** — `harness_limits::upsert_harness_limits_section`.
 7. **Recovery Mode** — when `tool_free_recovery` is active; tools are
    stripped from the catalog snapshot.
-8. **Runtime Tool Catalog** — `append_runtime_tool_prompt_sections` with
+8. **Runtime Tool Catalogue** — `append_runtime_tool_prompt_sections` with
    the planning/capability filtered `SessionToolCatalogueSnapshot`.
 9. **GitHub Copilot Client Tools** — only for the Copilot provider.
 10. **Active Primary Agent Runtime State** — model, reasoning effort,

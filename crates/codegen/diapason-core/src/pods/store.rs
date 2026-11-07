@@ -89,6 +89,10 @@ fn ensure_user_dir(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+/// Regression tests for `PodsStore` path resolution.
+///
+/// These tests pin the persisted filenames independently of the Rust API
+/// spelling so a mechanical rename cannot silently orphan user data.
 #[cfg(test)]
 mod tests {
     use super::*;
