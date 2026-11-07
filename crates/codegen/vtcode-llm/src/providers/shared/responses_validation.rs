@@ -28,6 +28,12 @@ pub(crate) fn validate_completed_response(response: &Value) -> Result<(), LLMErr
 
 #[cfg(test)]
 mod tests {
+    //! Completion-boundary tests for the shared Responses validation helper.
+    //!
+    //! Each case pins one way a payload can look complete without being a
+    //! valid `response.completed`, so every decoder rejects the same inputs for
+    //! the same reason instead of accepting a truncated or failed response.
+
     use super::validate_completed_response;
     use serde_json::json;
 

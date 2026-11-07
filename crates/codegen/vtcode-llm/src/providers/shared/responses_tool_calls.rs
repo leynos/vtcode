@@ -34,6 +34,12 @@ pub(crate) fn correlated_response_call(
 
 #[cfg(test)]
 mod tests {
+    //! Coverage for the call-correlation predicate both Responses decoders use.
+    //!
+    //! The tests pin the rule that a streamed call is adopted only when exactly
+    //! one completed response call matches its identifiers, so fabricated or
+    //! ambiguous identifiers never select a tool-call slot.
+
     use super::correlated_response_call;
     use crate::provider::ToolCall;
     use hashbrown::HashSet;

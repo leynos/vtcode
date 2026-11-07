@@ -104,6 +104,13 @@ pub(crate) fn parse_usage(response: &Value, include_cached: bool) -> Result<Opti
 
 #[cfg(test)]
 mod tests {
+    //! Checked usage-conversion coverage for both Responses streaming paths.
+    //!
+    //! Unit tests pin absence versus measured zero, representable bounds and
+    //! derived totals; the property tests exercise the same conversion over
+    //! generated counter values, so a malformed provider usage object fails
+    //! rather than silently becoming zero.
+
     use super::parse_usage;
     use proptest::prelude::*;
     use serde_json::json;

@@ -68,6 +68,13 @@ impl ResponsesSseDecoder {
 
 #[cfg(test)]
 mod tests {
+    //! SSE framing and byte-partition coverage for the Responses wire decoder.
+    //!
+    //! The property tests split the same event stream at arbitrary byte
+    //! boundaries and require identical frames, so transport chunking never
+    //! changes event semantics. Unit tests pin the pending-frame bound and the
+    //! incomplete-frame rejection.
+
     use super::{MAX_PENDING_FRAME_BYTES, ResponsesSseDecoder, StreamAssemblyError};
     use crate::providers::shared::responses_adapter::{ResponsesStreamAdapter, ResponsesStreamEvent};
     use proptest::prelude::*;
