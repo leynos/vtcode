@@ -1,3 +1,9 @@
+//! Bounded Kani proofs for the shared Responses stream reconciler.
+//!
+//! Each proof exhaustively checks one reducer invariant over a stated bound and
+//! is compiled only with `--cfg kani`; unit and property tests cover the
+//! unbounded and payload-projection behaviour.
+
 use super::{
     FinalInputPreference, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
     correlated_custom_track_position, reconcile_final_input, reconcile_snapshot,
@@ -106,11 +112,15 @@ fn responses_reducer_admission_terminal_and_eof_match_independent_oracle() {
 fn responses_reducer_captures_canonical_two_call_base_state() {
     let mut reconciler = ResponsesStreamReconciler::default();
     kani::assert(
-        reconciler.capture_custom_call(bounded_identity(false), Some("e"), None).is_ok(),
+        reconciler
+            .capture_custom_call(bounded_identity(false), Some("e"), None, false)
+            .is_ok(),
         "the first canonical call must be captured",
     );
     kani::assert(
-        reconciler.capture_custom_call(bounded_identity(true), Some("f"), None).is_ok(),
+        reconciler
+            .capture_custom_call(bounded_identity(true), Some("f"), None, false)
+            .is_ok(),
         "the second canonical call must be captured",
     );
 

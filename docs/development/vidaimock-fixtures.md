@@ -11,7 +11,7 @@ timing and SSE frames; request headers and the request body were removed.
 ## Run the probe
 
 Use the official ACP Rust SDK as the client harness. These instructions require
-a separate checkout of `vtcode-arli-toolcall-fixture` and VidaiMock 0.1.3 on
+a separate checkout of `vtcode-arli-toolcall-fixture` and VidaiMock 0.3.1 on
 `PATH`. Set `VT_FIXTURE_REPO` to that checkout and `VT_FIXTURES` to this
 repository's fixture directory, adjusting both example paths to match your
 checkouts. Start the mock from the fixture repository with the scenario you

@@ -80,6 +80,7 @@ output still apply.
 Notices use the existing standard `session/update` notification with
 `sessionUpdate: "session_info_update"`. The extension data is:
 
+<!-- markdownlint-disable MD013 -- a JSON string value cannot be wrapped -->
 ```json
 {
   "_meta": {
@@ -93,6 +94,7 @@ Notices use the existing standard `session/update` notification with
   }
 }
 ```
+<!-- markdownlint-enable MD013 -->
 
 The shape follows `LodyNotice` in `Lody/acp-extension-core/src/session.ts` and
 the warning handler in `Lody/apps/cli/src/agent/agent-client.ts`. Notices do

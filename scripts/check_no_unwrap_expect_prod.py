@@ -15,7 +15,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 UNWRAP_EXPECT_RE = re.compile(r"\.(unwrap|expect)\s*\(")
-CFG_TEST_RE = re.compile(r"#\s*\[\s*cfg\s*\((?!not\s*\()[^]]*test")
+# Match only a test-only predicate: `cfg(test)` or `cfg(all(test, ...))`.
+# Substring matching would also accept `cfg(feature = "latest")` and
+# `cfg(any(test, ...))`, which can still compile as production code.
+CFG_TEST_RE = re.compile(r"#\s*\[\s*cfg\s*\(\s*(?:all\s*\(\s*)?test\s*[,)]")
 PATH_ATTRIBUTE_RE = re.compile(r'#\s*\[\s*path\s*=\s*"([^"]+)"\s*\]')
 OUT_OF_LINE_MODULE_RE = re.compile(r"(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+\w+\s*;")
 TEST_ROOT_DIRECTORIES = ("fuzz", "target", "tests")
@@ -85,7 +88,7 @@ def cfg_test_path_modules() -> frozenset[Path]:
         declared_path: str | None = None
         for raw_line in lines:
             line = raw_line.strip()
-            if not line or line.startswith("//") or line.startswith("/*"):
+            if not line or line.startswith(("//", "/*")):
                 continue
             if CFG_TEST_RE.search(line):
                 cfg_test_pending = True
@@ -193,7 +196,7 @@ def scan_file(path: Path, rules: list[AllowRule]) -> list[tuple[str, int, str]]:
     for idx, raw_line in enumerate(lines, start=1):
         line = raw_line
 
-        if re.search(r"#\s*\[\s*cfg\s*\((?!not\s*\()[^]]*test", line):
+        if CFG_TEST_RE.search(line):
             pending_cfg_test = True
 
         if pending_cfg_test:

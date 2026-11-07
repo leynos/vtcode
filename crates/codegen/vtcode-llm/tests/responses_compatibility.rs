@@ -7,8 +7,8 @@ use vtcode_llm::providers::CustomProviderBackendRouter;
 use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-#[tokio::test]
 /// Prove the router omits an optional format and preserves raw tool history.
+#[tokio::test]
 async fn custom_responses_router_omits_optional_format_and_preserves_raw_tool_history() {
     let server = MockServer::start().await;
     let input = "*** Begin Patch\n*** Update File: café.txt\n@@\n-old\n+quote: \"\\\"\n*** End Patch\n";

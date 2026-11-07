@@ -53,10 +53,12 @@ execute a tool. Execution still requires the completed response.
 
 ACP publishes partial tool input as a standard pending tool preview with an
 explicit “not executed” label. Preview IDs are distinct from execution IDs and
-their displayed input is capped at 8,192 characters. A provider failure or
-cancellation closes the preview as failed; provider completion closes it as
-complete before any actual execution lifecycle begins. Preview text is not
-inserted into assistant messages or durable executable tool-call history.
+their displayed input is capped at 8,192 characters. Preview updates are
+advisory and best effort: a provider failure or cancellation attempts to close
+the preview as failed, and provider completion attempts to close it as
+complete, but a terminal update can be lost if the client disconnects. Preview
+text is never inserted into assistant messages or durable executable tool-call
+history, and no preview state authorizes execution.
 
 Events with sequence numbers are admitted only when strictly newer than the
 last admitted sequence number. Duplicate and stale frames are ignored;
@@ -182,19 +184,19 @@ actual reconciliation helper over representative prefix relations; reasoning
 identity checks cover output/part-index separation.
 
 Payload append, arbitrary alias enrichment, registration histories and the
-allocating `custom_tool_calls()` projection remain unit/property-test
-obligations, not formal claims. Proof-local values may be forgotten after all
-assertions: allocator teardown is outside this state contract. No allocator
-growth-policy assumption or modified pointer encoding is required.
+allocating `announced_custom_tool_calls()` / `completed_custom_tool_calls()`
+projections remain unit/property-test obligations, not formal claims.
+Proof-local values may be forgotten after all assertions: allocator teardown is
+outside this state contract. No allocator growth-policy assumption or modified
+pointer encoding is required.
 
-All six bounded harnesses passed with Kani 0.67.0 and safety/unwind checks
-enabled. Routing uses an unwind bound of 64 to include bytewise comparison of
-its full diagnostic strings; the bound is not a claim of 64-call coverage.
+Run the harnesses with Kani 0.67.0 and safety/unwind checks enabled. Routing
+uses an unwind bound of 64 to include bytewise comparison of its full
+diagnostic strings; the bound is not a claim of 64-call coverage.
 
-All 13 new properties and all six proofs rejected deliberate production
-mutations with meaningful assertion failures, not compilation failures or
-solver exhaustion. The following mutation groups provide reproducible
-witnesses; restore production code before running ordinary gates:
+The following mutation groups are the reproducible witnesses a change must
+reject before it is accepted; restore production code before running ordinary
+gates:
 
 | Production fault                                      | Property/proof obligation exercised               |
 | ----------------------------------------------------- | ------------------------------------------------- |
@@ -210,9 +212,9 @@ witnesses; restore production code before running ordinary gates:
 | Replace a captured call name                          | Two-call capture proof                            |
 | Prefer stale final input over longer streamed input   | Final-input preference proof                      |
 
-Ordinary unit, property and ACP behavioural tests and VidaiMock 0.3.1 physics
-tests passed at the restart checkpoint. Live Friendli compatibility is checked
-separately; offline verification alone does not establish provider support.
+Run results belong in the pull request or release notes, not in this working
+contract. Live Friendli compatibility is checked separately; offline
+verification alone does not establish provider support.
 
 ## Live compatible-provider checks
 

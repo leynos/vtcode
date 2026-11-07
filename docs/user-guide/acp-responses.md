@@ -2,8 +2,8 @@
 
 Use this guide when an editor or agent client connects to VT Code through the
 Agent Client Protocol (ACP) and the selected provider serves the OpenAI
-Responses wire format. It explains what you see while a turn runs, how to
-recover from an interrupted response, and which limits apply to tool previews.
+Responses wire format. It explains the events visible while a turn runs, how an
+interrupted response recovers, and which limits apply to tool previews.
 
 ## Configure a Responses provider
 
@@ -24,8 +24,8 @@ model = "my-model"
 MY_RESPONSES_GATEWAY_API_KEY=... vtcode
 ```
 
-Select the provider and model in your ACP client, then start a session as
-usual. The Responses format does not by itself enable WebSocket transport; the
+Select the provider and model in the ACP client, then start a session as usual.
+The Responses format does not by itself enable WebSocket transport; the
 optional WebSocket path applies only when it is configured separately.
 
 ## Completion, partial output, and recovery
@@ -54,8 +54,9 @@ tool call. The preview is advisory:
 - it is labelled as **not executed** in both the pending and terminal states;
 - it shows at most **8,192 characters** and appends `[preview truncated]` when
   input is longer;
-- it always finishes with a terminal state before the real tool-call lifecycle
-  begins;
+- preview updates are advisory and best effort: a terminal update is attempted
+  before the real tool-call lifecycle begins, but it can fail to arrive if the
+  client disconnects;
 - its identifier is distinct from the execution identifier, so a preview cannot
   be mistaken for an executed call;
 - preview text is kept out of assistant messages and durable executable
@@ -92,3 +93,5 @@ of expecting an automatic replay.
 - [ACP quick reference](../acp/ACP_QUICK_REFERENCE.md)
 - [Provider rate limits](./provider-rate-limits.md)
 - [Responses transport hardening](../development/responses-hardening.md)
+- [Responses stream events for API consumers](../development/responses-hardening.md#stream-event-contract-and-module-boundaries)
+- [0.157.0 release notes](../releases/0.157.0.md)

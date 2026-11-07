@@ -256,7 +256,9 @@ impl Drop for ResponsesAbandonGuard {
 ///
 /// This is the single boundary that covers early failures in both streaming
 /// implementations: every `Err` is classified once, and consuming code that
-/// stops polling is recorded as abandonment rather than silence.
+/// stops polling is recorded as abandonment rather than silence. The guard is
+/// built before the generator so that dropping the stream without polling it
+/// still records one `Abandoned` outcome.
 pub(crate) fn observe_responses_stream<S, T>(
     inner: S,
     recorder: Arc<ResponsesOutcomeRecorder>,
@@ -265,8 +267,9 @@ where
     S: Stream<Item = Result<T, LLMError>> + Send,
     T: Send,
 {
+    let abandon_guard = ResponsesAbandonGuard { recorder: Arc::clone(&recorder) };
     stream! {
-        let _abandon_guard = ResponsesAbandonGuard { recorder: Arc::clone(&recorder) };
+        let _abandon_guard = abandon_guard;
         pin_mut!(inner);
         while let Some(item) = inner.next().await {
             if let Err(error) = &item {
@@ -386,128 +389,5 @@ pub(crate) fn responses_error_category(error: &LLMError) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Mutex;
-
-    use super::{
-        ResponsesObservation, ResponsesOutcomeRecorder, ResponsesStreamOutcome, ResponsesStreamPath,
-        ResponsesTelemetrySink, observe_responses_stream, record_responses_replay_prohibited,
-        record_responses_websocket_fallback, responses_websocket_metrics,
-    };
-    use crate::provider::LLMError;
-    use futures::StreamExt;
-    use futures::stream;
-
-    #[derive(Debug, Default)]
-    struct TestSink {
-        observations: Mutex<Vec<ResponsesObservation>>,
-    }
-
-    impl ResponsesTelemetrySink for TestSink {
-        fn record(&self, observation: &ResponsesObservation) {
-            self.observations.lock().expect("test sink lock").push(observation.clone());
-        }
-    }
-
-    impl TestSink {
-        fn observations(&self) -> Vec<ResponsesObservation> {
-            self.observations.lock().expect("test sink lock").clone()
-        }
-    }
-
-    fn provider_error() -> LLMError {
-        LLMError::Provider {
-            message: "sensitive provider detail".to_string(),
-            metadata: None,
-        }
-    }
-
-    #[test]
-    fn recorder_keeps_only_the_first_terminal_outcome() {
-        let sink = std::sync::Arc::new(TestSink::default());
-        let recorder = ResponsesOutcomeRecorder::new(ResponsesStreamPath::Shared, "TestProvider", sink.clone());
-
-        assert!(recorder.record(ResponsesStreamOutcome::Incomplete));
-        assert!(!recorder.record(ResponsesStreamOutcome::Abandoned));
-
-        let observations = sink.observations();
-        assert_eq!(observations.len(), 1);
-        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::Incomplete);
-        assert_eq!(observations[0].path, ResponsesStreamPath::Shared);
-    }
-
-    #[tokio::test]
-    async fn early_error_is_recorded_once_without_payload_content() {
-        let sink = std::sync::Arc::new(TestSink::default());
-        let recorder = ResponsesOutcomeRecorder::new(ResponsesStreamPath::Legacy, "TestProvider", sink.clone());
-        let inner = stream::iter(vec![Ok(1_u8), Err(provider_error())]);
-        let observed = observe_responses_stream(inner, std::sync::Arc::clone(&recorder));
-
-        let items: Vec<_> = observed.collect().await;
-
-        assert_eq!(items.len(), 2);
-        assert!(items[1].is_err());
-        let observations = sink.observations();
-        assert_eq!(observations.len(), 1);
-        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ProviderFailure);
-        let serialized = format!("{observations:?}");
-        assert!(!serialized.contains("sensitive provider detail"));
-    }
-
-    #[tokio::test]
-    async fn transport_error_is_classified_as_transport_failure() {
-        let sink = std::sync::Arc::new(TestSink::default());
-        let recorder = ResponsesOutcomeRecorder::new(ResponsesStreamPath::Shared, "TestProvider", sink.clone());
-        let inner = stream::iter(vec![Err::<u8, _>(LLMError::Network {
-            message: "socket closed".to_string(),
-            metadata: None,
-        })]);
-
-        let items: Vec<_> = observe_responses_stream(inner, recorder).collect().await;
-
-        assert_eq!(items.len(), 1);
-        assert_eq!(sink.observations()[0].outcome, ResponsesStreamOutcome::TransportFailure);
-    }
-
-    #[tokio::test]
-    async fn dropping_a_stream_before_a_terminal_records_abandonment() {
-        let sink = std::sync::Arc::new(TestSink::default());
-        let recorder = ResponsesOutcomeRecorder::new(ResponsesStreamPath::Legacy, "TestProvider", sink.clone());
-        let inner = stream::iter(vec![Ok::<u8, LLMError>(1)]);
-        let mut observed = Box::pin(observe_responses_stream(inner, recorder));
-
-        assert!(matches!(observed.next().await, Some(Ok(1))));
-        drop(observed);
-
-        let observations = sink.observations();
-        assert_eq!(observations.len(), 1);
-        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::Abandoned);
-    }
-
-    #[tokio::test]
-    async fn a_recorded_terminal_outcome_is_not_overwritten_by_drop() {
-        let sink = std::sync::Arc::new(TestSink::default());
-        let recorder = ResponsesOutcomeRecorder::new(ResponsesStreamPath::Shared, "TestProvider", sink.clone());
-        let inner = stream::iter(vec![Ok::<u8, LLMError>(1)]);
-        let mut observed = Box::pin(observe_responses_stream(inner, std::sync::Arc::clone(&recorder)));
-
-        assert!(matches!(observed.next().await, Some(Ok(1))));
-        assert!(recorder.record(ResponsesStreamOutcome::Completed));
-        drop(observed);
-
-        let observations = sink.observations();
-        assert_eq!(observations.len(), 1);
-        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::Completed);
-    }
-
-    #[test]
-    fn websocket_recovery_counters_are_monotonic() {
-        let before = responses_websocket_metrics();
-        record_responses_replay_prohibited();
-        record_responses_websocket_fallback();
-        let after = responses_websocket_metrics();
-
-        assert_eq!(after.replay_prohibited_total, before.replay_prohibited_total.saturating_add(1));
-        assert_eq!(after.http_fallback_total, before.http_fallback_total.saturating_add(1));
-    }
-}
+#[path = "responses_observability_tests.rs"]
+mod tests;

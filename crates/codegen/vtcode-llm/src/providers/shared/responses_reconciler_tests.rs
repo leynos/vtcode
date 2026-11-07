@@ -1,3 +1,9 @@
+//! Unit and property tests for the shared Responses stream reconciler.
+//!
+//! These tests pin the wire-order assumptions both Responses decoders rely on:
+//! per-call byte correlation, absorbing terminal states, and the rule that only
+//! completed custom input may become an executable call.
+
 use super::{
     FinalInputPreference, ReasoningChannel, ResponsesItemIdentity, ResponsesStreamReconciler, ResponsesTerminalState,
     reconcile_final_input,
@@ -66,14 +72,19 @@ fn eof_is_not_a_success_terminal() {
 #[test]
 fn two_interleaved_custom_calls_keep_raw_input_correlated() {
     let mut reconciler = ResponsesStreamReconciler::default();
-    reconciler.capture_custom_call(item(0), Some("patch"), None).expect("metadata");
-    reconciler.capture_custom_call(item(1), Some("shell"), None).expect("metadata");
+    reconciler
+        .capture_custom_call(item(0), Some("patch"), None, false)
+        .expect("metadata");
+    reconciler
+        .capture_custom_call(item(1), Some("shell"), None, false)
+        .expect("metadata");
     let _ = reconciler.custom_input_delta(item(0), "*** Begin").expect("first delta");
     let _ = reconciler.custom_input_delta(item(1), "cargo ").expect("second delta");
     let _ = reconciler.custom_input_delta(item(0), " Patch").expect("first delta");
     let _ = reconciler.custom_input_done(item(1), "cargo check").expect("second done");
+    let _ = reconciler.custom_input_done(item(0), "*** Begin Patch").expect("first done");
 
-    let calls = reconciler.custom_tool_calls();
+    let calls = reconciler.completed_custom_tool_calls();
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].input, "*** Begin Patch");
     assert_eq!(calls[1].input, "cargo check");
@@ -83,7 +94,9 @@ fn two_interleaved_custom_calls_keep_raw_input_correlated() {
 #[test]
 fn contradictory_custom_call_aliases_are_rejected() {
     let mut reconciler = ResponsesStreamReconciler::default();
-    reconciler.capture_custom_call(item(0), Some("patch"), None).expect("metadata");
+    reconciler
+        .capture_custom_call(item(0), Some("patch"), None, true)
+        .expect("metadata");
     let contradictory =
         ResponsesItemIdentity::new(Some("item_0".to_string()), Some("call_changed".to_string()), Some(0));
 
@@ -91,7 +104,7 @@ fn contradictory_custom_call_aliases_are_rejected() {
         reconciler.custom_input_delta(contradictory, "unsafe"),
         Err("custom tool call correlation aliases conflict")
     );
-    assert_eq!(reconciler.custom_tool_calls()[0].input, "");
+    assert_eq!(reconciler.announced_custom_tool_calls()[0].input, "");
 }
 
 /// Prove reasoning sub-indexes reconcile independently within one item.
@@ -154,6 +167,59 @@ fn final_tool_input_must_extend_or_be_extended_by_streamed_input() {
     assert_eq!(reconcile_final_input("abc", "abX"), Err("completed tool input diverges from streamed prefix"));
 }
 
+/// Prove partial streamed input is never recoverable as an executable call.
+#[test]
+fn partial_custom_input_stays_unrecoverable_until_completed() {
+    let mut reconciler = ResponsesStreamReconciler::default();
+    reconciler
+        .capture_custom_call(item(0), Some("patch"), None, false)
+        .expect("metadata");
+    let _ = reconciler.custom_input_delta(item(0), "*** Begin").expect("delta");
+
+    assert_eq!(reconciler.announced_custom_tool_calls().len(), 1);
+    assert!(reconciler.completed_custom_tool_calls().is_empty());
+
+    let _ = reconciler.custom_input_done(item(0), "*** Begin Patch").expect("done");
+    let calls = reconciler.completed_custom_tool_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].input, "*** Begin Patch");
+}
+
+/// Prove an item-only completion also marks streamed input complete.
+#[test]
+fn completed_item_snapshot_marks_custom_input_complete() {
+    let mut reconciler = ResponsesStreamReconciler::default();
+    reconciler
+        .capture_custom_call(item(0), Some("patch"), Some("*** Begin Patch"), true)
+        .expect("metadata");
+
+    let calls = reconciler.completed_custom_tool_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].input, "*** Begin Patch");
+}
+
+/// Prove a bridging identity that matches two tracks is rejected.
+#[test]
+fn bridging_custom_call_identity_matching_multiple_tracks_is_rejected() {
+    let mut reconciler = ResponsesStreamReconciler::default();
+    let call_only = ResponsesItemIdentity::new(None, Some("shared".to_string()), None);
+    let item_only = ResponsesItemIdentity::new(Some("shared".to_string()), None, None);
+    reconciler
+        .capture_custom_call(call_only, Some("first"), None, false)
+        .expect("first track");
+    reconciler
+        .capture_custom_call(item_only, Some("second"), None, false)
+        .expect("second track");
+    let bridging = ResponsesItemIdentity::new(Some("shared".to_string()), Some("shared".to_string()), None);
+
+    assert_eq!(
+        reconciler.custom_input_delta(bridging, "input"),
+        Err("custom tool call correlation matches multiple tracks")
+    );
+    assert_eq!(reconciler.announced_custom_tool_calls().len(), 2);
+    assert!(reconciler.completed_custom_tool_calls().is_empty());
+}
+
 proptest! {
     /// Prove a done snapshot emits only the suffix not already emitted.
     #[test]
@@ -210,8 +276,8 @@ proptest! {
         history in prop::collection::vec((any::<bool>(), "[ -~]{0,8}"), 0..32),
     ) {
         let mut reconciler = ResponsesStreamReconciler::default();
-        prop_assert!(reconciler.capture_custom_call(item(0), Some("first"), None).is_ok());
-        prop_assert!(reconciler.capture_custom_call(item(1), Some("second"), None).is_ok());
+        prop_assert!(reconciler.capture_custom_call(item(0), Some("first"), None, false).is_ok());
+        prop_assert!(reconciler.capture_custom_call(item(1), Some("second"), None, false).is_ok());
         let mut expected = [String::new(), String::new()];
 
         for (second_call, delta) in history {
@@ -220,8 +286,10 @@ proptest! {
             let actual = reconciler.custom_input_delta(item(index), &delta);
             prop_assert_eq!(actual.as_deref(), Ok(delta.as_str()));
         }
+        prop_assert!(reconciler.custom_input_done(item(0), &expected[0]).is_ok());
+        prop_assert!(reconciler.custom_input_done(item(1), &expected[1]).is_ok());
 
-        let calls = reconciler.custom_tool_calls();
+        let calls = reconciler.completed_custom_tool_calls();
         prop_assert_eq!(calls.len(), 2);
         prop_assert_eq!(&calls[0].input, &expected[0]);
         prop_assert_eq!(&calls[1].input, &expected[1]);
@@ -247,8 +315,9 @@ proptest! {
     #[test]
     fn conflicting_alias_mutations_do_not_cross_route_generated_input(delta in ".{0,32}") {
         let mut reconciler = ResponsesStreamReconciler::default();
-        prop_assert!(reconciler.capture_custom_call(item(0), Some("tool"), None).is_ok());
+        prop_assert!(reconciler.capture_custom_call(item(0), Some("tool"), None, false).is_ok());
         prop_assert!(reconciler.custom_input_delta(item(0), &delta).is_ok());
+        prop_assert!(reconciler.custom_input_done(item(0), &delta).is_ok());
         let contradictory = ResponsesItemIdentity::new(
             Some("item_0".to_string()),
             Some("call_changed".to_string()),
@@ -256,7 +325,7 @@ proptest! {
         );
 
         prop_assert!(reconciler.custom_input_delta(contradictory, "mutated").is_err());
-        let calls = reconciler.custom_tool_calls();
+        let calls = reconciler.completed_custom_tool_calls();
         prop_assert_eq!(calls.len(), 1);
         prop_assert_eq!(&calls[0].input, &delta);
     }

@@ -69,9 +69,13 @@ async fn streamed_response(provider: &CustomProviderBackendRouter, request: LLMR
     anyhow::bail!("Friendli stream ended without completion")
 }
 
+/// Run the opt-in bounded Friendli Responses compatibility probe.
+///
+/// The probe checks buffered text, streamed text, a function call, and a raw
+/// custom call through the live Friendli Responses endpoint. It is ignored by
+/// default because it spends paid API budget and needs an explicit key file.
 #[tokio::test]
 #[ignore = "paid Friendli API; explicit opt-in/key-file required; at most 8192 requested output tokens"]
-/// Run the opt-in bounded Friendli Responses compatibility probe.
 async fn friendli_responses_bounded_compatibility() -> Result<()> {
     ensure!(OUTPUT_CAP * PROBE_COUNT <= 10_000, "live probe output budget exceeded");
     let provider = live_provider()?;

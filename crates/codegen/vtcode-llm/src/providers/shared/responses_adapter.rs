@@ -75,6 +75,8 @@ pub(crate) enum ResponsesStreamEvent {
         input: Option<String>,
         output_index: Option<usize>,
         sequence_number: Option<u64>,
+        /// Whether the frame was a completed item snapshot (`output_item.done`).
+        input_complete: bool,
     },
     CustomToolCallInputDelta {
         item_id: Option<String>,
@@ -523,6 +525,7 @@ fn adapt_rig_gap_output_item_envelope(payload: &Value) -> Option<ResponsesStream
             input: optional_owned_string(item, "input"),
             output_index: optional_output_index(payload),
             sequence_number: payload.get("sequence_number").and_then(Value::as_u64),
+            input_complete: event_type == "response.output_item.done",
         });
     }
     if !raw_output_item_is_rig_unknown(item) {

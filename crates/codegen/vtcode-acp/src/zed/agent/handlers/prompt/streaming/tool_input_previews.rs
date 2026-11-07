@@ -46,7 +46,10 @@ impl StreamedToolInputPreviews {
     /// Append one streamed delta and return the updates it produces.
     ///
     /// Input beyond [`STREAMED_TOOL_PREVIEW_MAX_CHARS`] is discarded, not
-    /// buffered for later display, and records that truncation happened.
+    /// buffered for later display, and records that truncation happened. A
+    /// delta that changes neither the retained input nor the truncation flag
+    /// produces no update, so a saturated preview does not republish the same
+    /// bounded text for every later delta.
     pub(super) fn push_delta(&mut self, call_id: String, delta: &str) -> Vec<acp::SessionUpdate> {
         let mut updates = Vec::new();
         if !self.calls.contains_key(&call_id) {
@@ -55,6 +58,8 @@ impl StreamedToolInputPreviews {
         let Some(preview) = self.calls.get_mut(&call_id) else {
             return updates;
         };
+        let retained_bytes = preview.input.len();
+        let was_truncated = preview.truncated;
         let retained_chars = preview.input.chars().count();
         let mut delta_chars = delta.chars();
         preview.input.extend(
@@ -63,6 +68,9 @@ impl StreamedToolInputPreviews {
                 .take(STREAMED_TOOL_PREVIEW_MAX_CHARS.saturating_sub(retained_chars)),
         );
         preview.truncated |= delta_chars.next().is_some();
+        if preview.input.len() == retained_bytes && preview.truncated == was_truncated {
+            return updates;
+        }
         let fields = acp::ToolCallUpdateFields::new()
             .title(streamed_tool_preview_title(preview.name.as_deref(), "Preparing", false))
             .status(acp::ToolCallStatus::Pending)
@@ -105,8 +113,9 @@ impl StreamedToolInputPreviews {
 /// Implementors translate one [`acp::SessionUpdate`] into transport work. The
 /// publisher owns the advisory-error policy rather than each transport.
 trait PreviewUpdateSink {
-    /// Transport error type; only its display form reaches the log.
-    type Error: Display;
+    /// Transport error type. The publisher drops the value and logs only the
+    /// stable phase and category, so it needs no further bound.
+    type Error;
 
     /// Publish one preview update.
     async fn publish(&mut self, update: acp::SessionUpdate) -> Result<(), Self::Error>;
@@ -150,14 +159,18 @@ async fn publish_preview_updates_via<S: PreviewUpdateSink>(
     updates: Vec<acp::SessionUpdate>,
 ) {
     for update in updates {
-        if let Err(error) = sink.publish(update).await {
-            record_preview_publish_failure(session_id, phase, error);
+        if sink.publish(update).await.is_err() {
+            record_preview_publish_failure(session_id, phase);
         }
     }
 }
 
 /// Record one preview publication failure as a metric and a stable log record.
-fn record_preview_publish_failure(session_id: &acp::SessionId, phase: &'static str, error: impl Display) {
+///
+/// The transport error is deliberately not logged: an `acp::Error` can carry
+/// arbitrary message text, and a preview failure must never expose streamed
+/// tool input.
+fn record_preview_publish_failure(session_id: &acp::SessionId, phase: &'static str) {
     let mut tags = HashMap::new();
     let _previous = tags.insert("phase".to_string(), phase.to_string());
     vtcode_core::telemetry::perf::record_value(PREVIEW_PUBLISH_FAILURE_TOTAL, 1.0, tags);
@@ -165,7 +178,6 @@ fn record_preview_publish_failure(session_id: &acp::SessionId, phase: &'static s
         %session_id,
         phase,
         error_category = "acp_preview_publish_failed",
-        %error,
         "Streamed tool input preview was not published"
     );
 }
@@ -199,6 +211,13 @@ fn streamed_tool_preview_content(input: &str, note: &str, truncated: bool) -> Ve
 
 #[cfg(test)]
 mod tests {
+    //! Behavioural coverage for bounded, non-executable tool-input previews.
+    //!
+    //! The tests drive the preview state machine directly and through the
+    //! publication boundary. A property test compares retained prefix,
+    //! truncation flag, and terminal updates against a per-call model around
+    //! the character cap, while unit tests pin the advisory failure policy.
+
     use super::{
         PreviewUpdateSink, STREAMED_TOOL_PREVIEW_MAX_CHARS, StreamedToolInputPreviews, publish_preview_updates_via,
     };
@@ -302,6 +321,90 @@ mod tests {
         assert_eq!(terminal.len(), 1);
         assert_eq!(preview_status(&terminal[0]), acp::ToolCallStatus::Completed);
         assert!(preview_text(&terminal[0]).contains("[preview truncated]"));
+    }
+
+    /// Prove a saturated preview stops republishing unchanged bounded text.
+    #[test]
+    fn saturated_preview_does_not_repeat_unchanged_updates() {
+        let mut previews = StreamedToolInputPreviews::default();
+        let _started = previews.start("call_1".to_string(), Some("read_file".to_string()));
+        let _filled = previews.push_delta("call_1".to_string(), &"a".repeat(STREAMED_TOOL_PREVIEW_MAX_CHARS));
+
+        let first_overflow = previews.push_delta("call_1".to_string(), "b");
+        assert_eq!(first_overflow.len(), 1, "the truncation flag change is published once");
+        assert!(preview_text(&first_overflow[0]).contains("[preview truncated]"));
+
+        assert!(previews.push_delta("call_1".to_string(), "c").is_empty());
+        assert!(previews.push_delta("call_1".to_string(), "").is_empty());
+    }
+
+    proptest::proptest! {
+        /// Compare retained prefix, truncation flag, and terminal updates with
+        /// a per-call model across interleaved Unicode deltas.
+        #[test]
+        fn preview_updates_match_a_per_call_model(
+            operations in proptest::collection::vec(
+                (0_u8..3, "[\\p{L}\\p{N}\"\\{\\}:,]{0,300}"),
+                1..200,
+            ),
+        ) {
+            let mut previews = StreamedToolInputPreviews::default();
+            let mut model: [Option<(String, bool)>; 3] = [None, None, None];
+
+            for (call_index, delta) in operations {
+                let call_id = format!("call_{call_index}");
+                let started_before = model[usize::from(call_index)].is_some();
+                let updates = previews.push_delta(call_id.clone(), &delta);
+
+                let (input, truncated) = model[usize::from(call_index)].get_or_insert_with(|| (String::new(), false));
+                let retained_chars = input.chars().count();
+                let mut delta_chars = delta.chars();
+                let added: String = delta_chars
+                    .by_ref()
+                    .take(STREAMED_TOOL_PREVIEW_MAX_CHARS.saturating_sub(retained_chars))
+                    .collect();
+                input.push_str(&added);
+                let overflowed = delta_chars.next().is_some();
+                let was_truncated = *truncated;
+                *truncated |= overflowed;
+                // A saturated preview publishes nothing for a later overflow:
+                // neither the retained text nor the truncation flag changed.
+                let changed = !added.is_empty() || (*truncated && !was_truncated);
+
+                let expected_updates = usize::from(!started_before) + usize::from(changed);
+                proptest::prop_assert_eq!(updates.len(), expected_updates);
+                if changed {
+                    let text = preview_text(updates.last().expect("a changed preview publishes an update"));
+                    let truncation_note = if *truncated { "\n\n[preview truncated]" } else { "" };
+                    let expected = if input.is_empty() {
+                        format!("Input is streaming; it has not been executed.{truncation_note}")
+                    } else {
+                        format!("Input is streaming; it has not been executed.\n\n{input}{truncation_note}")
+                    };
+                    proptest::prop_assert_eq!(text, expected);
+                }
+            }
+
+            let terminal = previews.finish(acp::ToolCallStatus::Completed, "Prepared; it was not executed.");
+            let started_calls = model.iter().filter(|entry| entry.is_some()).count();
+            proptest::prop_assert_eq!(terminal.len(), started_calls);
+            for update in &terminal {
+                let text = preview_text(update);
+                let matching = model
+                    .iter()
+                    .flatten()
+                    .find(|(input, truncated)| {
+                        let truncation_note = if *truncated { "\n\n[preview truncated]" } else { "" };
+                        let expected = if input.is_empty() {
+                            format!("Prepared; it was not executed.{truncation_note}")
+                        } else {
+                            format!("Prepared; it was not executed.\n\n{input}{truncation_note}")
+                        };
+                        text == expected
+                    });
+                proptest::prop_assert!(matching.is_some(), "terminal update must match one call model");
+            }
+        }
     }
 
     /// Prove a repeated start keeps the accumulated input.

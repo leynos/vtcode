@@ -164,9 +164,13 @@ fn nonempty(value: Option<&str>) -> Option<&str> {
     value.filter(|value| !value.is_empty())
 }
 
-/// Return the position of the identity matching `identity`, rejecting conflicting aliases.
+/// Return the position of the identity matching `identity`, rejecting ambiguity.
+///
+/// A bridging event can match more than one registered track when each track
+/// holds a different alias. Choosing one arbitrarily would merge unrelated
+/// calls, so an ambiguous match is rejected before any state changes.
 fn correlated_custom_track_position<'a, I>(
-    mut identities: I,
+    identities: I,
     identity: &ResponsesItemIdentity,
 ) -> Result<Option<usize>, &'static str>
 where
@@ -175,13 +179,18 @@ where
     if !identity.has_key() {
         return Err("custom tool input event has no correlation identity");
     }
-    if identities
-        .clone()
-        .any(|registered| registered.call_relation(identity) == IdentityRelation::Conflict)
-    {
-        return Err("custom tool call correlation aliases conflict");
+    let mut matched: Option<usize> = None;
+    for (position, registered) in identities.enumerate() {
+        match registered.call_relation(identity) {
+            IdentityRelation::Conflict => return Err("custom tool call correlation aliases conflict"),
+            IdentityRelation::Match if matched.is_some() => {
+                return Err("custom tool call correlation matches multiple tracks");
+            }
+            IdentityRelation::Match => matched = Some(position),
+            IdentityRelation::Distinct => {}
+        }
     }
-    Ok(identities.position(|registered| registered.call_relation(identity) == IdentityRelation::Match))
+    Ok(matched)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -195,6 +204,8 @@ struct CustomCallTrack {
     identity: ResponsesItemIdentity,
     name: Option<String>,
     input: String,
+    /// Whether a completed input snapshot (`*.done`) has been observed.
+    input_complete: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -305,12 +316,17 @@ impl ResponsesStreamReconciler {
         reconcile_snapshot(&mut track.text, snapshot)
     }
 
-    /// Capture completed custom-call metadata without replaying an emitted prefix.
+    /// Capture custom-call metadata without replaying an emitted prefix.
+    ///
+    /// `input_complete` states whether the source frame was a completed item
+    /// snapshot (`output_item.done`), not merely an added one. Only completed
+    /// input may later be adopted as an executable call.
     pub(crate) fn capture_custom_call(
         &mut self,
         identity: ResponsesItemIdentity,
         name: Option<&str>,
         input_snapshot: Option<&str>,
+        input_complete: bool,
     ) -> Result<(), &'static str> {
         let track = self.custom_track(identity)?;
         if track.name.as_deref().is_none_or(str::is_empty)
@@ -321,6 +337,7 @@ impl ResponsesStreamReconciler {
         if let Some(input_snapshot) = input_snapshot {
             reconcile_snapshot(&mut track.input, input_snapshot)?;
         }
+        track.input_complete |= input_complete;
         Ok(())
     }
 
@@ -335,26 +352,38 @@ impl ResponsesStreamReconciler {
     }
 
     /// Reconcile a completed custom-tool input snapshot with streamed deltas.
+    ///
+    /// A `*.done` snapshot proves the provider finished the input, so the
+    /// track becomes eligible for recovery from the streamed aggregate.
     pub(crate) fn custom_input_done(
         &mut self,
         identity: ResponsesItemIdentity,
         snapshot: &str,
     ) -> Result<Option<String>, &'static str> {
         let track = self.custom_track(identity)?;
-        reconcile_snapshot(&mut track.input, snapshot)
+        let delta = reconcile_snapshot(&mut track.input, snapshot)?;
+        track.input_complete = true;
+        Ok(delta)
     }
 
-    /// Return the reconciled custom calls that have both a name and an identity.
-    pub(crate) fn custom_tool_calls(&self) -> Vec<ReconciledCustomToolCall> {
+    /// Return every announced custom call: a name and a correlating identity.
+    ///
+    /// Announced calls are used to detect a completed response that contradicts
+    /// the stream. They are not necessarily executable: `input_complete` may
+    /// still be `false`.
+    pub(crate) fn announced_custom_tool_calls(&self) -> Vec<ReconciledCustomToolCall> {
+        self.custom_call_tracks.iter().filter_map(reconciled_custom_call).collect()
+    }
+
+    /// Return adoptable custom calls: completed input, a name, and an identity.
+    ///
+    /// Calls whose input never reached a completed snapshot stay out of the
+    /// aggregate so partial streamed input cannot become an executable call.
+    pub(crate) fn completed_custom_tool_calls(&self) -> Vec<ReconciledCustomToolCall> {
         self.custom_call_tracks
             .iter()
-            .filter_map(|track| {
-                Some(ReconciledCustomToolCall {
-                    call_id: track.identity.response_call_id()?.to_string(),
-                    name: nonempty(track.name.as_deref())?.to_string(),
-                    input: track.input.clone(),
-                })
-            })
+            .filter(|track| track.input_complete)
+            .filter_map(reconciled_custom_call)
             .collect()
     }
 
@@ -368,12 +397,25 @@ impl ResponsesStreamReconciler {
             return Ok(track);
         }
 
-        self.custom_call_tracks
-            .push(CustomCallTrack { identity, name: None, input: String::new() });
+        self.custom_call_tracks.push(CustomCallTrack {
+            identity,
+            name: None,
+            input: String::new(),
+            input_complete: false,
+        });
         self.custom_call_tracks
             .last_mut()
             .ok_or("custom call track insertion did not retain the new track")
     }
+}
+
+/// Project one custom-call track into its wire-facing form.
+fn reconciled_custom_call(track: &CustomCallTrack) -> Option<ReconciledCustomToolCall> {
+    Some(ReconciledCustomToolCall {
+        call_id: track.identity.response_call_id()?.to_string(),
+        name: nonempty(track.name.as_deref())?.to_string(),
+        input: track.input.clone(),
+    })
 }
 
 /// Find or create a reasoning text track, keeping channels and sub-indexes apart.

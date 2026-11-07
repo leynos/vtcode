@@ -25,7 +25,9 @@ pub(crate) use responses_observability::{
     record_responses_websocket_fallback, responses_error_category,
 };
 pub(crate) use responses_stream::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
-pub(crate) use responses_stream::{ResponsesStreamEventPolicy, response_stream_event_policy};
+pub(crate) use responses_stream::{
+    ResponsesStreamEventPolicy, ensure_streamed_custom_calls_are_accounted, response_stream_event_policy,
+};
 use serde_json::{Map, Value};
 use std::borrow::Cow;
 pub use tag_sanitizer::TagStreamSanitizer;

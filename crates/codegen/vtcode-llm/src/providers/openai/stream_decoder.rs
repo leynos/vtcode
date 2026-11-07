@@ -23,8 +23,8 @@ use crate::providers::shared::responses_validation;
 use crate::providers::shared::responses_wire::ResponsesSseDecoder;
 use crate::providers::shared::{
     ResponsesOutcomeRecorder, ResponsesStreamEventPolicy, ResponsesStreamOutcome, ResponsesStreamPath,
-    ResponsesTelemetrySink, StreamAssemblyError, extract_data_payload, observe_responses_stream,
-    process_responses_telemetry, reasoning_part_text, response_stream_event_policy,
+    ResponsesTelemetrySink, StreamAssemblyError, ensure_streamed_custom_calls_are_accounted, extract_data_payload,
+    observe_responses_stream, process_responses_telemetry, reasoning_part_text, response_stream_event_policy,
 };
 use async_stream::try_stream;
 use futures::StreamExt;
@@ -471,6 +471,7 @@ pub(crate) fn create_responses_stream(
                         .get("type")
                         .and_then(Value::as_str)
                         .ok_or_else(|| {
+                            stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
                             StreamAssemblyError::MissingField("type").into_llm_error("OpenAI")
                         })?;
 
@@ -486,11 +487,19 @@ pub(crate) fn create_responses_stream(
                                 let call_id = identity
                                     .response_call_id()
                                     .map(ToOwned::to_owned)
-                                    .ok_or_else(|| StreamAssemblyError::InvalidPayload("custom tool input has no call id".to_string()).into_llm_error("OpenAI"))?;
-                                let delta = required_string_field(&payload, "delta")?;
+                                    .ok_or_else(|| StreamAssemblyError::InvalidPayload("custom tool input has no call id".to_string()).into_llm_error("OpenAI"))
+                                    .inspect_err(|_| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                    })?;
+                                let delta = required_string_field(&payload, "delta").inspect_err(|_| {
+                                    stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                })?;
                                 let delta = reconciler
                                     .custom_input_delta(identity, delta)
-                                    .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
+                                    .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))
+                                    .inspect_err(|_| {
+                                        stream_recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+                                    })?;
                                 if !delta.is_empty() {
                                     telemetry.on_tool_call_delta();
                                     yield provider::LLMStreamEvent::ToolCallDelta { call_id, delta };
@@ -501,13 +510,24 @@ pub(crate) fn create_responses_stream(
                                 let call_id = identity
                                     .response_call_id()
                                     .map(ToOwned::to_owned)
-                                    .ok_or_else(|| StreamAssemblyError::InvalidPayload("custom tool input has no call id".to_string()).into_llm_error("OpenAI"))?;
-                                let input = optional_string_field(&payload, "input")?
-                                    .or(optional_string_field(&payload, "delta")?)
+                                    .ok_or_else(|| StreamAssemblyError::InvalidPayload("custom tool input has no call id".to_string()).into_llm_error("OpenAI"))
+                                    .inspect_err(|_| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                    })?;
+                                let input = optional_string_field(&payload, "input")
+                                    .inspect_err(|_| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                    })?
+                                    .or(optional_string_field(&payload, "delta").inspect_err(|_| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                    })?)
                                     .unwrap_or_default();
                                 let delta = reconciler
                                     .custom_input_done(identity, &input)
-                                    .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
+                                    .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))
+                                    .inspect_err(|_| {
+                                        stream_recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+                                    })?;
                                 if let Some(delta) = delta
                                     && !delta.is_empty()
                                 {
@@ -530,6 +550,7 @@ pub(crate) fn create_responses_stream(
                                     .get("delta")
                                     .and_then(|value| value.as_str())
                                     .ok_or_else(|| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
                                         StreamAssemblyError::MissingField("delta")
                                             .into_llm_error("OpenAI")
                                     })?;
@@ -544,6 +565,7 @@ pub(crate) fn create_responses_stream(
                                     .get("delta")
                                     .and_then(|value| value.as_str())
                                     .ok_or_else(|| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
                                         StreamAssemblyError::MissingField("delta")
                                             .into_llm_error("OpenAI")
                                     })?;
@@ -559,13 +581,21 @@ pub(crate) fn create_responses_stream(
                                     aggregator: &mut aggregator,
                                     telemetry: &telemetry,
                                     reconciler: &mut reconciler,
+                                })
+                                .inspect_err(|_| {
+                                    stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
                                 })? {
                                     yield event;
                                 }
                             }
                             "response.reasoning_part.added" | "response.reasoning_part.done" => {
-                                let text = reasoning_part_text("OpenAI", &payload)?;
-                                let delta = reconcile_reasoning_done(&mut reconciler, &payload, event_type, text)?;
+                                let text = reasoning_part_text("OpenAI", &payload).inspect_err(|_| {
+                                    stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                })?;
+                                let delta = reconcile_reasoning_done(&mut reconciler, &payload, event_type, text)
+                                    .inspect_err(|_| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                    })?;
                                 if retain_reasoning
                                     && let Some(delta) = delta
                                     && !delta.is_empty()
@@ -586,8 +616,12 @@ pub(crate) fn create_responses_stream(
                                                 identity,
                                                 name.as_deref(),
                                                 item.get("input").and_then(Value::as_str),
+                                                event_type == "response.output_item.done",
                                             )
-                                            .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))?;
+                                            .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))
+                                            .inspect_err(|_| {
+                                                stream_recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+                                            })?;
                                         if let Some(call_id) = progress_call_id {
                                             yield provider::LLMStreamEvent::ToolCallStart { call_id, name };
                                         }
@@ -609,8 +643,11 @@ pub(crate) fn create_responses_stream(
                                 }
                             }
                             "response.function_call_arguments.delta" => {
-                                if let Some((call_id, delta)) =
-                                    tool_call_state.handle_arguments_delta(&mut aggregator, &payload)?
+                                if let Some((call_id, delta)) = tool_call_state
+                                    .handle_arguments_delta(&mut aggregator, &payload)
+                                    .inspect_err(|_| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                    })?
                                 {
                                     telemetry.on_tool_call_delta();
                                     yield provider::LLMStreamEvent::ToolCallDelta { call_id, delta };
@@ -618,13 +655,17 @@ pub(crate) fn create_responses_stream(
                             }
                             "response.completed" => {
                                 if let Some(response_value) = payload.get("response") {
-                                    responses_validation::validate_completed_response(response_value)?;
+                                    responses_validation::validate_completed_response(response_value)
+                                        .inspect_err(|_| {
+                                            stream_recorder.record(ResponsesStreamOutcome::FinalResponseInvalid);
+                                        })?;
                                     final_response = Some(response_value.clone());
                                 }
                                 reconciler.mark_completed();
                             }
                             "response.failed" | "response.incomplete" => {
                                 reconciler.mark_failed();
+                                stream_recorder.record(ResponsesStreamOutcome::ProviderFailure);
                                 let error_message = if let Some(err) = payload.get("response")
                                     .and_then(|r| r.get("error"))
                                 {
@@ -642,6 +683,7 @@ pub(crate) fn create_responses_stream(
                             }
                             "error" => {
                                 reconciler.mark_failed();
+                                stream_recorder.record(ResponsesStreamOutcome::ProviderFailure);
                                 let error_message = payload
                                     .get("error")
                                     .and_then(|error| error.get("message"))
@@ -731,10 +773,17 @@ pub(crate) fn create_responses_stream(
             response.reasoning = final_aggregator_response.reasoning;
         }
 
+        let final_output_empty = final_response_output_is_empty(&response_value);
+        if !final_output_empty {
+            ensure_streamed_custom_calls_are_accounted(&response, &reconciler, "OpenAI").inspect_err(|_| {
+                stream_recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+            })?;
+        }
         reconcile_streamed_tool_calls(
             &mut response,
             final_aggregator_response.tool_calls.as_deref(),
             &fabricated_tool_call_ids,
+            final_output_empty,
         )
         .inspect_err(|_| {
             stream_recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
@@ -809,7 +858,7 @@ fn merge_reconciled_custom_calls(
     response: &mut provider::LLMResponse,
     reconciler: &ResponsesStreamReconciler,
 ) -> Result<(), provider::LLMError> {
-    let streamed_calls = reconciler.custom_tool_calls();
+    let streamed_calls = reconciler.completed_custom_tool_calls();
     if streamed_calls.is_empty() {
         return Ok(());
     }
@@ -827,15 +876,26 @@ fn merge_reconciled_custom_calls(
 }
 
 /// Pair streamed tool calls with completed counterparts and reconcile them.
+///
+/// `final_output_empty` is the only state in which streamed tool calls may be
+/// adopted wholesale. A non-empty completed output that omits them is a
+/// provider contract violation, not permission to execute unconfirmed input.
 fn reconcile_streamed_tool_calls(
     response: &mut provider::LLMResponse,
     streamed_calls: Option<&[provider::ToolCall]>,
     fabricated_tool_call_ids: &HashSet<String>,
+    final_output_empty: bool,
 ) -> Result<(), provider::LLMError> {
     let Some(streamed_calls) = streamed_calls.filter(|calls| !calls.is_empty()) else {
         return Ok(());
     };
     let Some(response_calls) = response.tool_calls.as_mut() else {
+        if !final_output_empty {
+            return Err(StreamAssemblyError::InvalidPayload(
+                "completed response omitted a streamed tool call".to_string(),
+            )
+            .into_llm_error("OpenAI"));
+        }
         response.tool_calls = Some(streamed_calls.to_vec());
         return Ok(());
     };
@@ -1102,12 +1162,19 @@ fn response_reasoning_event(
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for the legacy OpenAI streaming decoder.
+    //!
+    //! The decoder's wire loop needs a live HTTP body, so these tests pin the
+    //! pure helpers it composes: usage overlays, tool-call correlation, and the
+    //! rule that streamed calls are adopted only from an empty completed output.
+
     use super::{
         ResponsesToolCallState, capture_chat_usage, final_response_output_is_empty, merge_final_response_metadata,
-        streamed_response_is_usable,
+        reconcile_streamed_tool_calls, streamed_response_is_usable,
     };
     use crate::provider::{LLMResponse, ToolCall};
     use crate::providers::shared::StreamAggregator;
+    use hashbrown::HashSet;
     use serde_json::json;
 
     #[test]
@@ -1195,6 +1262,40 @@ mod tests {
 
         assert!(final_response_output_is_empty(&json!({"output": []})));
         assert!(streamed_response_is_usable(&response));
+    }
+
+    #[test]
+    fn non_empty_completed_output_cannot_omit_a_streamed_tool_call() {
+        let mut response = LLMResponse {
+            content: Some("answered without the tool".to_string()),
+            ..Default::default()
+        };
+        let streamed = vec![ToolCall::custom(
+            "call_patch_1".to_string(),
+            "apply_patch".to_string(),
+            "*** Begin Patch\n*** End Patch\n".to_string(),
+        )];
+
+        let error = reconcile_streamed_tool_calls(&mut response, Some(&streamed), &HashSet::new(), false)
+            .expect_err("a non-empty completed output must account for streamed calls");
+
+        assert!(error.to_string().contains("completed response omitted a streamed tool call"));
+        assert!(response.tool_calls.is_none(), "unconfirmed input must not become executable");
+    }
+
+    #[test]
+    fn empty_completed_output_adopts_a_streamed_tool_call() {
+        let mut response = LLMResponse::default();
+        let streamed = vec![ToolCall::custom(
+            "call_patch_1".to_string(),
+            "apply_patch".to_string(),
+            "*** Begin Patch\n*** End Patch\n".to_string(),
+        )];
+
+        reconcile_streamed_tool_calls(&mut response, Some(&streamed), &HashSet::new(), true)
+            .expect("an empty completed output is the documented recovery case");
+
+        assert_eq!(response.tool_calls.as_deref(), Some(streamed.as_slice()));
     }
 
     #[test]

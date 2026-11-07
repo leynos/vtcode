@@ -208,7 +208,10 @@ where
     }
 
     fn handle_payload_data(&mut self, payload: &str) -> Result<Vec<NormalizedStreamEvent>, LLMError> {
-        let event = ResponsesStreamAdapter::parse_sse_data_for_provider(self.options.provider_name, payload)?;
+        let event = ResponsesStreamAdapter::parse_sse_data_for_provider(self.options.provider_name, payload)
+            .inspect_err(|_| {
+                self.recorder.record(ResponsesStreamOutcome::MalformedEvent);
+            })?;
         self.handle_event(event)
     }
 
@@ -308,11 +311,22 @@ where
                     }
                 })]);
             }
-            ResponsesStreamEvent::CustomToolCall { item_id, call_id, name, input, output_index, .. } => {
+            ResponsesStreamEvent::CustomToolCall {
+                item_id,
+                call_id,
+                name,
+                input,
+                output_index,
+                input_complete,
+                ..
+            } => {
                 let identity = ResponsesItemIdentity::new(item_id, call_id, output_index);
                 let progress_call_id = identity.response_call_id().map(ToOwned::to_owned);
                 self.reconciler
-                    .capture_custom_call(identity, name.as_deref(), input.as_deref())
+                    .capture_custom_call(identity, name.as_deref(), input.as_deref(), input_complete)
+                    .inspect_err(|_| {
+                        self.recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+                    })
                     .map_err(|message| provider_error(self.options.provider_name, message))?;
                 if let Some(call_id) = progress_call_id {
                     self.push_tool_call_start(&mut events, call_id, name);
@@ -320,13 +334,16 @@ where
             }
             ResponsesStreamEvent::CustomToolCallInputDelta { item_id, call_id, delta, output_index, .. } => {
                 let identity = ResponsesItemIdentity::new(item_id, call_id, output_index);
-                let progress_call_id = identity
-                    .response_call_id()
-                    .map(ToOwned::to_owned)
-                    .ok_or_else(|| provider_error(self.options.provider_name, "custom tool input has no call id"))?;
+                let progress_call_id = identity.response_call_id().map(ToOwned::to_owned).ok_or_else(|| {
+                    self.recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                    provider_error(self.options.provider_name, "custom tool input has no call id")
+                })?;
                 let delta = self
                     .reconciler
                     .custom_input_delta(identity, &delta)
+                    .inspect_err(|_| {
+                        self.recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+                    })
                     .map_err(|message| provider_error(self.options.provider_name, message))?;
                 self.push_tool_call_start(&mut events, progress_call_id.clone(), None);
                 if !delta.is_empty() {
@@ -335,13 +352,16 @@ where
             }
             ResponsesStreamEvent::CustomToolCallInputDone { item_id, call_id, input, output_index, .. } => {
                 let identity = ResponsesItemIdentity::new(item_id, call_id, output_index);
-                let progress_call_id = identity
-                    .response_call_id()
-                    .map(ToOwned::to_owned)
-                    .ok_or_else(|| provider_error(self.options.provider_name, "custom tool input has no call id"))?;
+                let progress_call_id = identity.response_call_id().map(ToOwned::to_owned).ok_or_else(|| {
+                    self.recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                    provider_error(self.options.provider_name, "custom tool input has no call id")
+                })?;
                 let delta = self
                     .reconciler
                     .custom_input_done(identity, &input)
+                    .inspect_err(|_| {
+                        self.recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+                    })
                     .map_err(|message| provider_error(self.options.provider_name, message))?;
                 self.push_tool_call_start(&mut events, progress_call_id.clone(), None);
                 if let Some(delta) = delta
@@ -351,12 +371,15 @@ where
                 }
             }
             ResponsesStreamEvent::CompletedResponse { response, .. } => {
-                responses_validation::validate_completed_response(&response)?;
+                responses_validation::validate_completed_response(&response).inspect_err(|_| {
+                    self.recorder.record(ResponsesStreamOutcome::FinalResponseInvalid);
+                })?;
                 self.final_response = Some(response);
                 self.reconciler.mark_completed();
             }
             ResponsesStreamEvent::Error { message, .. } => {
                 self.reconciler.mark_failed();
+                self.recorder.record(ResponsesStreamOutcome::ProviderFailure);
                 return Err(provider_error(self.options.provider_name, message));
             }
             ResponsesStreamEvent::Lifecycle { .. }
@@ -431,15 +454,14 @@ where
             self.recorder.record(ResponsesStreamOutcome::MissingFinalResponse);
             return Err(provider_error(provider_name, "response.completed event did not contain a response"));
         };
+        let final_output_empty = final_response_output_is_empty(&final_response);
         let mut streamed = self.aggregator.finalize();
         merge_reconciled_custom_calls(&mut streamed, &self.reconciler, provider_name).inspect_err(|_| {
             self.recorder.record(ResponsesStreamOutcome::ReconciliationFailed);
         })?;
         let mut response = match (self.parse_final_response)(final_response.clone()) {
             Ok(response) => response,
-            Err(_) if final_response_output_is_empty(&final_response) && streamed_response_is_usable(&streamed) => {
-                streamed.clone()
-            }
+            Err(_) if final_output_empty && streamed_response_is_usable(&streamed) => streamed.clone(),
             Err(err) => {
                 self.recorder.record(ResponsesStreamOutcome::FinalResponseInvalid);
                 return Err(err);
@@ -450,11 +472,17 @@ where
                 self.recorder.record(ResponsesStreamOutcome::MetadataInvalid);
             })?;
 
-        merge_streamed_response(&mut response, streamed, &fabricated_tool_call_ids, provider_name).inspect_err(
-            |_| {
+        if !final_output_empty {
+            ensure_streamed_custom_calls_are_accounted(&response, &self.reconciler, provider_name).inspect_err(
+                |_| {
+                    self.recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
+                },
+            )?;
+        }
+        merge_streamed_response(&mut response, streamed, &fabricated_tool_call_ids, final_output_empty, provider_name)
+            .inspect_err(|_| {
                 self.recorder.record(ResponsesStreamOutcome::ToolCallReconciliationFailed);
-            },
-        )?;
+            })?;
         self.recorder.record(ResponsesStreamOutcome::Completed);
 
         let mut events = Vec::new();
@@ -560,6 +588,8 @@ where
                     continue;
                 }
 
+                // The processor records the precise outcome at each failure
+                // site; this fallback only covers an unclassified error.
                 let events = processor
                     .handle_payload_data(trimmed_payload)
                     .inspect_err(|_| {
@@ -611,10 +641,16 @@ fn final_response_output_is_empty(final_response: &Value) -> bool {
 }
 
 /// Fill an incomplete completed response from the streamed aggregate.
+///
+/// `final_output_empty` is the only state in which streamed tool calls may be
+/// adopted wholesale: an empty completed output is the documented recovery
+/// case, while a non-empty output that omits a streamed call is a contract
+/// violation and must not become executable input.
 fn merge_streamed_response(
     response: &mut LLMResponse,
     streamed: LLMResponse,
     fabricated_tool_call_ids: &HashSet<String>,
+    final_output_empty: bool,
     provider_name: &str,
 ) -> Result<(), LLMError> {
     if response.content.as_deref().unwrap_or_default().is_empty() {
@@ -626,7 +662,13 @@ fn merge_streamed_response(
         content.push_str(&streamed_content);
     }
 
-    reconcile_streamed_tool_calls(response, streamed.tool_calls.as_deref(), fabricated_tool_call_ids, provider_name)?;
+    reconcile_streamed_tool_calls(
+        response,
+        streamed.tool_calls.as_deref(),
+        fabricated_tool_call_ids,
+        final_output_empty,
+        provider_name,
+    )?;
 
     if response.usage.is_none() {
         response.usage = streamed.usage;
@@ -660,7 +702,7 @@ fn merge_reconciled_custom_calls(
     reconciler: &ResponsesStreamReconciler,
     provider_name: &str,
 ) -> Result<(), LLMError> {
-    let streamed_calls = reconciler.custom_tool_calls();
+    let streamed_calls = reconciler.completed_custom_tool_calls();
     if streamed_calls.is_empty() {
         return Ok(());
     }
@@ -677,17 +719,48 @@ fn merge_reconciled_custom_calls(
     Ok(())
 }
 
+/// Reject announced custom calls that a non-empty completed output omits.
+///
+/// A streamed `ToolCallStart` is a promise to the consumer. When the provider
+/// completes a non-empty response that never names the call, the stream and the
+/// completed response contradict each other, so the attempt fails instead of
+/// silently dropping a call the consumer already saw.
+pub(crate) fn ensure_streamed_custom_calls_are_accounted(
+    response: &LLMResponse,
+    reconciler: &ResponsesStreamReconciler,
+    provider_name: &str,
+) -> Result<(), LLMError> {
+    let accounted: HashSet<&str> = response.tool_calls.iter().flatten().map(|call| call.id.as_str()).collect();
+    let omitted = reconciler
+        .announced_custom_tool_calls()
+        .iter()
+        .any(|call| !accounted.contains(call.call_id.as_str()));
+    if omitted {
+        return Err(provider_error(provider_name, "completed response omitted a streamed tool call"));
+    }
+    Ok(())
+}
+
 /// Pair each streamed tool call with its completed counterpart and reconcile it.
+///
+/// Streamed calls are adopted only when the completed output is empty. If the
+/// provider completed a non-empty response that names one of the streamed
+/// calls, that call's input is authoritative; a non-empty output that names
+/// none of them contradicts the stream and is rejected.
 fn reconcile_streamed_tool_calls(
     response: &mut LLMResponse,
     streamed_calls: Option<&[ToolCall]>,
     fabricated_tool_call_ids: &HashSet<String>,
+    final_output_empty: bool,
     provider_name: &str,
 ) -> Result<(), LLMError> {
     let Some(streamed_calls) = streamed_calls.filter(|calls| !calls.is_empty()) else {
         return Ok(());
     };
     let Some(response_calls) = response.tool_calls.as_mut() else {
+        if !final_output_empty {
+            return Err(provider_error(provider_name, "completed response omitted a streamed tool call"));
+        }
         response.tool_calls = Some(streamed_calls.to_vec());
         return Ok(());
     };
@@ -748,6 +821,12 @@ fn provider_error(provider_name: &str, message: impl Into<String>) -> LLMError {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for the shared Responses stream processor.
+    //!
+    //! Each test drives the processor with synthetic wire payloads and pins one
+    //! contract: emitted events, terminal outcomes, or the reconciliation rules
+    //! that decide when streamed tool input becomes executable.
+
     use super::{
         ResponsesNormalizedStreamOptions, ResponsesNormalizedStreamProcessor, ResponsesStreamEventPolicy,
         merge_streamed_response, process_responses_telemetry, provider_error, response_stream_event_policy,
@@ -851,6 +930,24 @@ mod tests {
             "type": "response.completed",
             "sequence_number": sequence_number,
             "response": completed_response_fixture(output)
+        })
+    }
+
+    /// Build the `output_item.added` frame that names a streamed custom call.
+    fn custom_tool_call_started_fixture(sequence_number: u64) -> Value {
+        json!({
+            "type": "response.output_item.added",
+            "sequence_number": sequence_number,
+            "item_id": "ct_1",
+            "output_index": 0,
+            "item": {
+                "type": "custom_tool_call",
+                "id": "ct_1",
+                "call_id": "call_patch_1",
+                "name": "apply_patch",
+                "input": "",
+                "status": "in_progress"
+            }
         })
     }
 
@@ -1563,6 +1660,107 @@ mod tests {
         assert_eq!(observations[0].outcome, ResponsesStreamOutcome::Completed);
     }
 
+    /// Prove an admitted `response.failed` is recorded as a provider failure.
+    #[test]
+    fn shared_processor_records_provider_failure_for_response_failed() {
+        let (options, sink) = recording_options();
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options, parse_response);
+        let error = processor
+            .handle_payload(json!({
+                "type": "response.failed",
+                "sequence_number": 1,
+                "response": response_fixture("failed", json!([]), Value::Null)
+            }))
+            .expect_err("response.failed must fail the stream");
+
+        assert!(error.to_string().contains("TestProvider"));
+        let observations = observations(&sink);
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Shared);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ProviderFailure);
+    }
+
+    /// Prove streamed custom input cannot be silently replaced by a message-only
+    /// completed output.
+    #[test]
+    fn completed_output_omitting_streamed_custom_input_is_rejected() {
+        let (options, sink) = recording_options();
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options, parse_response);
+        processor
+            .handle_payload(custom_tool_call_started_fixture(1))
+            .expect("custom tool call start should parse");
+        processor
+            .handle_payload(json!({
+                "type": "response.custom_tool_call_input.delta",
+                "sequence_number": 2,
+                "item_id": "ct_1",
+                "call_id": "call_patch_1",
+                "output_index": 0,
+                "delta": "*** Begin"
+            }))
+            .expect("custom tool input delta should parse");
+        processor
+            .handle_payload(completion_event(
+                3,
+                json!([{
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "answered without the tool"}]
+                }]),
+            ))
+            .expect("completion should parse");
+
+        let error = processor
+            .finish()
+            .expect_err("a non-empty completed output must account for streamed calls");
+        assert!(error.to_string().contains("completed response omitted a streamed tool call"));
+
+        let observations = observations(&sink);
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ToolCallReconciliationFailed);
+    }
+
+    /// Prove an empty completed output still recovers completed custom input.
+    #[test]
+    fn empty_completed_output_recovers_completed_streamed_custom_input() {
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options(), parse_response);
+        processor
+            .handle_payload(custom_tool_call_started_fixture(1))
+            .expect("custom tool call start should parse");
+        processor
+            .handle_payload(json!({
+                "type": "response.custom_tool_call_input.delta",
+                "sequence_number": 2,
+                "item_id": "ct_1",
+                "call_id": "call_patch_1",
+                "output_index": 0,
+                "delta": "*** Begin"
+            }))
+            .expect("custom tool input delta should parse");
+        processor
+            .handle_payload(json!({
+                "type": "response.custom_tool_call_input.done",
+                "sequence_number": 3,
+                "item_id": "ct_1",
+                "call_id": "call_patch_1",
+                "output_index": 0,
+                "input": "*** Begin Patch\n*** End Patch\n"
+            }))
+            .expect("custom tool input done should parse");
+        processor
+            .handle_payload(completion_event(4, json!([])))
+            .expect("completion should parse");
+
+        let finished = processor.finish().expect("completed custom input should be recovered");
+        let response = match finished.as_slice() {
+            [NormalizedStreamEvent::Done { response }] => response,
+            other => panic!("unexpected events: {other:?}"),
+        };
+        let tool_calls = response.tool_calls.as_ref().expect("recovered custom call");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "call_patch_1");
+        assert_eq!(tool_calls[0].raw_input(), Some("*** Begin Patch\n*** End Patch\n"));
+    }
+
     /// Prove the completed terminal absorbs every later frame.
     #[test]
     fn terminal_completion_absorbs_later_frames() {
@@ -1902,7 +2100,7 @@ mod tests {
                 tool_calls: Some(vec![streamed_call]),
                 ..Default::default()
             };
-            let error = merge_streamed_response(&mut response, streamed, &HashSet::new(), "TestProvider")
+            let error = merge_streamed_response(&mut response, streamed, &HashSet::new(), false, "TestProvider")
                 .expect_err("divergent completed input must fail");
             assert!(error.to_string().contains("diverges from streamed prefix"));
             assert_eq!(response.tool_calls.as_mut().and_then(|calls| calls.pop()), Some(final_call));

@@ -44,5 +44,21 @@ class TestPathClassification(unittest.TestCase):
         self.assertFalse(scanner.is_test_path(production_path))
 
 
+class TestCfgTestPredicate(unittest.TestCase):
+    def test_test_only_predicates_are_recognised(self) -> None:
+        for line in ('#[cfg(test)]', '#[cfg(all(test, feature = "fixtures"))]'):
+            with self.subTest(line=line):
+                self.assertIsNotNone(scanner.CFG_TEST_RE.search(line))
+
+    def test_production_predicates_are_not_test_only(self) -> None:
+        for line in (
+            '#[cfg(feature = "latest")]',
+            '#[cfg(any(test, feature = "fixtures"))]',
+            "#[cfg(not(test))]",
+        ):
+            with self.subTest(line=line):
+                self.assertIsNone(scanner.CFG_TEST_RE.search(line))
+
+
 if __name__ == "__main__":
     unittest.main()
