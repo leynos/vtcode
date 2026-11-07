@@ -8,7 +8,7 @@
 use super::super::redaction::{elapsed_millis, identifier_correlation, log_compaction_update_failure};
 use super::super::{ZedAgent, log_suppressed_error};
 use super::failure::{CompactionFailureKind, FailureDetail, classify, detail_of};
-use crate::metrics::{CompactionOutcome, record_compaction_finished};
+use crate::metrics::CompactionOutcome;
 use anyhow::Result;
 use std::time::Instant;
 use tracing::{Instrument, field, info, info_span, warn};
@@ -96,7 +96,11 @@ impl ZedAgent {
         let failure_kind = attempt.failure.as_ref().map(classify);
         let failure_category = failure_kind.map(CompactionFailureKind::category);
         let outcome = CompactionOutcome::for_result(failure_kind.is_some(), attempt.compacted);
-        record_compaction_finished(outcome, failure_kind == Some(CompactionFailureKind::Cancelled), report.elapsed_ms);
+        self.compaction_recorder.record_finished(
+            outcome,
+            failure_kind == Some(CompactionFailureKind::Cancelled),
+            report.elapsed_ms,
+        );
         let _ = span.record("outcome", outcome.as_str());
         let _ = span.record("elapsed_ms", report.elapsed_ms);
         if let (Some(error), Some(category)) = (attempt.failure.as_ref(), failure_category) {

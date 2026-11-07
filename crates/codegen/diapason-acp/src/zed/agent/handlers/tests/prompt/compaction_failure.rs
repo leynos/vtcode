@@ -158,22 +158,24 @@ async fn cancelled_acp_compaction_publishes_a_cancelled_terminal_update() {
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
-    let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await);
+    let mut agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+    // An isolated recorder makes the assertions below independent of any
+    // other attempt that may compact in this process.
+    let counts = Arc::new(crate::metrics::IsolatedCompactionRecorder::new());
+    agent.set_compaction_recorder(counts.clone());
     let session = large_compaction_session(&agent, workspace.path()).await;
+    let agent = Arc::new(agent);
 
     let started = Arc::new(tokio::sync::Notify::new());
     let provider = Arc::new(PendingCompactionProvider::new(Arc::clone(&started)));
-    let before = crate::metrics::compaction_metrics();
     let (updates, error) = run_failing_compaction_over_duplex(&agent, &session, provider, started, true).await;
-    let after = crate::metrics::compaction_metrics();
+    let metrics = counts.metrics();
 
     assert_eq!(error.to_string(), "ACP compaction cancelled", "a cancelled compaction must surface its own message");
     assert_failed_terminal_activity(&updates, "cancelled");
-    assert!(
-        after.cancelled > before.cancelled,
-        "a cancelled attempt must be counted as a cancelled failure: {before:?} -> {after:?}"
-    );
-    assert!(after.failed > before.failed, "cancellation is a subset of failed attempts: {before:?} -> {after:?}");
+    assert_eq!(metrics.started, 1, "exactly one attempt must be counted as started: {metrics:?}");
+    assert_eq!(metrics.cancelled, 1, "a cancelled attempt must be counted as a cancelled failure: {metrics:?}");
+    assert_eq!(metrics.failed, 1, "cancellation is a subset of failed attempts: {metrics:?}");
 }
 
 #[tokio::test]
@@ -381,7 +383,11 @@ async fn disconnected_client_keeps_the_compaction_result_and_logs_fixed_fields()
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
-    let agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+    let mut agent = build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await;
+    // An isolated recorder makes the assertions below independent of any
+    // other attempt that may compact in this process.
+    let counts = Arc::new(crate::metrics::IsolatedCompactionRecorder::new());
+    agent.set_compaction_recorder(counts.clone());
     let session = large_compaction_session(&agent, workspace.path()).await;
     let raw_session_id = session.data.lock().expect("ACP session data").session_id.to_string();
     let workspace_path = workspace.path().to_string_lossy().into_owned();
@@ -396,7 +402,6 @@ async fn disconnected_client_keeps_the_compaction_result_and_logs_fixed_fields()
     };
     let runtime = agent.provider_runtime.for_provider("wire-test");
 
-    let before = crate::metrics::compaction_metrics();
     let captured = CaptureWriter::default();
     let _guard = tracing::subscriber::set_default(capture_subscriber(&captured));
     let compacted = agent
@@ -409,24 +414,22 @@ async fn disconnected_client_keeps_the_compaction_result_and_logs_fixed_fields()
         })
         .await
         .expect("an update delivery failure must not replace the compaction result");
-    let after = crate::metrics::compaction_metrics();
+    let metrics = counts.metrics();
 
     assert!(compacted, "the compacted history must still be adopted");
-    assert!(after.started > before.started, "the attempt must record a start: {before:?} -> {after:?}");
-    assert!(after.compacted > before.compacted, "the terminal outcome must be recorded: {before:?} -> {after:?}");
+    assert_eq!(metrics.started, 1, "exactly one attempt must be counted as started: {metrics:?}");
+    assert_eq!(metrics.compacted, 1, "exactly one terminal outcome must be counted: {metrics:?}");
     // The provider stalls for a controlled interval, so elapsed recording must
     // reach at least that interval in both the running total and the recorded
-    // maximum. Bounding by the known delay keeps the assertion meaningful
-    // without requiring the process-wide maximum to grow: another attempt in
-    // this process may already have recorded a longer one.
-    let elapsed_ms_delta = after.elapsed_ms_total - before.elapsed_ms_total;
+    // maximum. The recorder is isolated, so the assertion does not depend on
+    // any other attempt in this process.
     assert!(
-        elapsed_ms_delta >= PROVIDER_DELAY_MS,
-        "the attempt duration must cover the provider delay: {before:?} -> {after:?}"
+        metrics.elapsed_ms_total >= PROVIDER_DELAY_MS,
+        "the attempt duration must cover the provider delay: {metrics:?}"
     );
     assert!(
-        after.elapsed_ms_max >= PROVIDER_DELAY_MS,
-        "the longest attempt duration must cover the provider delay: {before:?} -> {after:?}"
+        metrics.elapsed_ms_max >= PROVIDER_DELAY_MS,
+        "the longest attempt duration must cover the provider delay: {metrics:?}"
     );
 
     let output = String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");

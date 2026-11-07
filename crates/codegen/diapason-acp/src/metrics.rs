@@ -127,6 +127,90 @@ fn saturating_add(counter: &AtomicU64, amount: u64) {
         counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| Some(current.saturating_add(amount)));
 }
 
+/// A narrow sink for the outcomes of one compaction command boundary.
+///
+/// Compaction code depends on this port rather than on the process-wide
+/// statics, so a command test can hold an isolated recorder and assert exact
+/// deltas without racing another attempt that compacts in the same process.
+pub(crate) trait CompactionRecorder: Send + Sync {
+    /// Record that an attempt started.
+    fn record_started(&self);
+
+    /// Record the terminal outcome and duration of an attempt.
+    fn record_finished(&self, outcome: CompactionOutcome, cancelled: bool, elapsed_ms: u64);
+
+    /// Return this recorder's cumulative snapshot.
+    fn snapshot(&self) -> CompactionMetrics;
+}
+
+impl CompactionRecorder for CompactionCounters {
+    fn record_started(&self) {
+        CompactionCounters::record_started(self);
+    }
+
+    fn record_finished(&self, outcome: CompactionOutcome, cancelled: bool, elapsed_ms: u64) {
+        CompactionCounters::record_finished(self, outcome, cancelled, elapsed_ms);
+    }
+
+    fn snapshot(&self) -> CompactionMetrics {
+        CompactionCounters::snapshot(self)
+    }
+}
+
+/// Process-wide recorder for automatic compaction outcomes.
+///
+/// This is the edge implementation: production wiring installs it once, and a
+/// test that needs exact deltas substitutes an isolated recorder instead.
+struct ProcessCompactionRecorder(&'static CompactionCounters);
+
+impl CompactionRecorder for ProcessCompactionRecorder {
+    fn record_started(&self) {
+        self.0.record_started();
+    }
+
+    fn record_finished(&self, outcome: CompactionOutcome, cancelled: bool, elapsed_ms: u64) {
+        self.0.record_finished(outcome, cancelled, elapsed_ms);
+    }
+
+    fn snapshot(&self) -> CompactionMetrics {
+        self.0.snapshot()
+    }
+}
+
+/// An isolated compaction recorder owned by one test.
+#[cfg(test)]
+pub(crate) struct IsolatedCompactionRecorder {
+    counters: CompactionCounters,
+}
+
+#[cfg(test)]
+impl IsolatedCompactionRecorder {
+    /// Create a recorder with no prior counts.
+    pub(crate) fn new() -> Self {
+        Self { counters: CompactionCounters::new() }
+    }
+
+    /// Return the counts recorded so far.
+    pub(crate) fn metrics(&self) -> CompactionMetrics {
+        self.counters.snapshot()
+    }
+}
+
+#[cfg(test)]
+impl CompactionRecorder for IsolatedCompactionRecorder {
+    fn record_started(&self) {
+        self.counters.record_started();
+    }
+
+    fn record_finished(&self, outcome: CompactionOutcome, cancelled: bool, elapsed_ms: u64) {
+        self.counters.record_finished(outcome, cancelled, elapsed_ms);
+    }
+
+    fn snapshot(&self) -> CompactionMetrics {
+        self.counters.snapshot()
+    }
+}
+
 static COMPACTION_COUNTERS: CompactionCounters = CompactionCounters::new();
 
 /// Return the cumulative automatic-compaction counters.
@@ -136,14 +220,9 @@ pub fn compaction_metrics() -> CompactionMetrics {
     COMPACTION_COUNTERS.snapshot()
 }
 
-/// Record that an automatic compaction attempt started.
-pub(crate) fn record_compaction_started() {
-    COMPACTION_COUNTERS.record_started();
-}
-
-/// Record the terminal outcome and duration of an automatic compaction attempt.
-pub(crate) fn record_compaction_finished(outcome: CompactionOutcome, cancelled: bool, elapsed_ms: u64) {
-    COMPACTION_COUNTERS.record_finished(outcome, cancelled, elapsed_ms);
+/// Return the process-wide recorder for automatic compaction outcomes.
+pub(crate) fn compaction_recorder() -> Arc<dyn CompactionRecorder> {
+    Arc::new(ProcessCompactionRecorder(&COMPACTION_COUNTERS))
 }
 
 /// Snapshot of the cumulative publication counters for one ACP send boundary.
