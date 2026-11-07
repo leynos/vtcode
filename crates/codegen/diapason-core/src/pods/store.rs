@@ -28,9 +28,13 @@ impl PodsStore {
         self.base_dir.join("state.json")
     }
 
-    /// Return the path to the `catalogue.json` file.
+    /// Return the path to the persisted `catalog.json` file.
+    ///
+    /// The on-disk filename keeps its original spelling so existing
+    /// installations retain their customised deployment profiles. Only the
+    /// Rust API uses the native `catalogue` spelling.
     pub fn catalogue_path(&self) -> PathBuf {
-        self.base_dir.join("catalogue.json")
+        self.base_dir.join("catalog.json")
     }
 
     /// Create the base directory and seed default files if they do not exist.
@@ -83,4 +87,15 @@ impl PodsStore {
 fn ensure_user_dir(path: &std::path::Path) -> Result<()> {
     DiapasonPaths::ensure_user_dir(path).context("failed to create private pod state directory")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalogue_path_keeps_the_persisted_filename() {
+        let store = PodsStore::new("/tmp/diapason-pods");
+        assert_eq!(store.catalogue_path(), PathBuf::from("/tmp/diapason-pods/catalog.json"));
+    }
 }
