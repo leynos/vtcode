@@ -68,6 +68,10 @@ Last reviewed: 2026-11-03
 
 - [Development Setup](development/DEVELOPMENT_SETUP.md) - Canonical contributor
   setup and local quality loop.
+- [Allocator spike RFC](rfcs/rfc-0005-diapason-allocator-spike.md) - Proposed
+  one-day comparison with a conditional, evidence-gated allocator switch.
+- [Allocator spike roadmap](project/diapason-allocator-roadmap.md) - Bounded
+  benchmark repairs, go/no-go measurement, and conditional implementation.
 - [Documentation style guide](documentation-style-guide.md) - Authoring
   standards, including RFC and ADR filenames.
 - [C++ Core Guidelines Adoption](development/CPP_CORE_GUIDELINES_ADOPTION.md) -
