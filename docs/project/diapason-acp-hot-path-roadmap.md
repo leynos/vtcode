@@ -2,8 +2,8 @@
 
 This roadmap delivers [RFC 0004](../rfcs/rfc-0004-diapason-acp-hot-path.md),
 codename `shoopdawoop`. Status: proposed; no optimization or benchmark result
-ships with this plan. Phases are falsifiable ideas, steps are workstreams,
-and numbered tasks are review-sized changes with measurable outcomes.
+ships with this plan. Phases are falsifiable ideas, steps are workstreams, and
+numbered tasks are review-sized changes with measurable outcomes.
 
 ## 1. Establish representative evidence and budgets
 
@@ -34,7 +34,8 @@ provider delay, compilation, tool children, and already-skipped TUI work.
     timing, resource, and semantic-trace evidence without live credentials.
   - Success: 1-, 10-, and resource-permitting 50-process cases reproduce the
     RFC workload matrix; slow-reader and cancellation cases cannot hang it.
-  - Requires 1.1.2; see [RFC section 5](../rfcs/rfc-0004-diapason-acp-hot-path.md).
+  - Requires 1.1.2; see
+    [RFC section 5](../rfcs/rfc-0004-diapason-acp-hot-path.md).
 
 - [ ] 1.2.2. Rank measured bottlenecks and select the smallest candidates.
   - Attribute waits to scheduling, initialization, provider, locks, projection,
@@ -55,7 +56,8 @@ per-process cost without removing tools or weakening session isolation.
     report effective workers; do not confuse one worker with current-thread.
   - Success: repeated density runs identify a winner or retain the default;
     unrelated sessions and cancellation remain responsive under tool load.
-  - Requires 1.2.2; see [RFC section 4.1](../rfcs/rfc-0004-diapason-acp-hot-path.md).
+  - Requires 1.2.2; see
+    [RFC section 4.1](../rfcs/rfc-0004-diapason-acp-hot-path.md).
 
 - [ ] 2.1.2. Bound expensive blocking admission and audit stack requirements.
   - Add only evidence-supported workload limits before blocking submission;
@@ -71,7 +73,8 @@ per-process cost without removing tools or weakening session isolation.
     cache invalidation; reuse existing immutable catalogue projections.
   - Success: equivalent model tools and semantic traces require less measured
     setup work, without sharing mutable state between unrelated workspaces.
-  - Requires 1.2.2; see [RFC section 4.2](../rfcs/rfc-0004-diapason-acp-hot-path.md).
+  - Requires 1.2.2; see
+    [RFC section 4.2](../rfcs/rfc-0004-diapason-acp-hot-path.md).
 
 - [ ] 2.2.2. Evaluate bounded optional setup and safe deferral.
   - Test MCP/subagent setup independently; retain eager MCP discovery unless
@@ -83,8 +86,8 @@ per-process cost without removing tools or weakening session isolation.
 
 ## 3. Bound and optimize demonstrated forwarding hotspots
 
-Idea: explicit queue ownership and small measured changes improve responsiveness
-without dropping semantic events or concealing backpressure.
+Idea: explicit queue ownership and small measured changes improve
+responsiveness without dropping semantic events or concealing backpressure.
 
 ### 3.1. Establish lossless flow control and lifecycle ownership
 
@@ -93,7 +96,8 @@ without dropping semantic events or concealing backpressure.
     replaceable progress, maximum flush delay, and explicit overload outcomes.
   - Success: slow/stopped readers and bursty tools obey the bounds while text,
     tool arguments, approvals, usage, and terminal results remain lossless.
-  - Requires 1.2.2; see [RFC section 4.3](../rfcs/rfc-0004-diapason-acp-hot-path.md).
+  - Requires 1.2.2; see
+    [RFC section 4.3](../rfcs/rfc-0004-diapason-acp-hot-path.md).
 
 - [ ] 3.1.2. Prove cancellation and durable shutdown under pressure.
   - Keep cancellation actionable independently of saturated normal output;
