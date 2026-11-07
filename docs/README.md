@@ -278,8 +278,8 @@ Deploying VT Code in production? Focus on enterprise features:
 VT Code implements a **multi-layered security model** to protect against prompt
 injection and argument injection attacks:
 
-- **Execution Policy** - Command allowlist with per-command argument validation
-  (only 9 safe commands allowed)
+- **Execution Policy** - Deny-list command safety net with per-command argument
+  validation
 - **Argument Injection Protection** - Explicit blocking of dangerous flags
   (e.g., `--pre`, `-exec`, `-e`)
 - **Workspace Isolation** - All operations confined to workspace boundaries

@@ -193,20 +193,21 @@ stat --format="%A %n" ~/.cargo/bin/cargo  # Linux
 
 ### Default Behavior
 
-By default, VT Code allows a comprehensive set of safe commands. See
-`ALLOWED_COMMANDS_REFERENCE.md` for the full list.
+By default, VT Code allows commands unless they match a configured deny rule.
+See `ALLOWED_COMMANDS_REFERENCE.md` for the catalogue of tools it commonly
+works with.
 
 ### Custom Configuration (vtcode.toml)
 
 ```toml
 [commands]
-# Explicitly allow commands
+# Record commands as recognised-safe (auto-approval and diagnostics)
 allow_list = [
     "my-custom-tool",
     "special-script"
 ]
 
-# Allow command patterns (glob)
+# Record command patterns as recognised-safe (glob)
 allow_glob = [
     "my-tool *",
     "custom-*.sh"
@@ -380,7 +381,7 @@ export NODE_OPTIONS="--max-old-space-size=4096"
 ## See Also
 
 - `docs/environment/PATH_VISIBILITY_FIX.md` - Technical details of the fix
-- `docs/environment/ALLOWED_COMMANDS_REFERENCE.md` - Complete list of allowed
+- `docs/environment/ALLOWED_COMMANDS_REFERENCE.md` - Catalogue of commonly used
     commands
 - `docs/development/EXECUTION_POLICY.md` - Detailed execution policy
     documentation

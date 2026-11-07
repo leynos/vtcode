@@ -42,8 +42,10 @@ consent.
 
 ## Design Philosophy
 
-**Safe-by-default**: All known safe commands for development and system
-utilities are enabled without requiring user confirmation or configuration.
+**Allow-by-default**: The configured policy is a deny-list safety net modelled
+on [cc-safety-net](https://github.com/kenryu42/cc-safety-net). A command that
+matches no deny rule is allowed, so harmless invocations such as `gh --version`
+do not need an allow-list entry.
 
 **Layered Defense**: Multiple validation layers (allow_list, allow_glob,
 deny_list, deny_glob, allow_regex, deny_regex) work together to prevent
@@ -68,10 +70,45 @@ Commands are validated against these layers in order:
 ```
 Input: command → Check deny_list → Check deny_glob → Check deny_regex
                     ↓ MATCH = DENY
+              No allow rules configured at all → ALLOW
+                    ↓ otherwise
               Check allow_list → Check allow_glob → Check allow_regex
                     ↓ MATCH = ALLOW
-              Otherwise → DENY (fail-closed)
+              Otherwise → ALLOW (deny-list safety net)
 ```
+
+The configured policy is a deny-list safety net: an unmatched command is
+allowed whether or not allow rules are configured. Allow rules record commands
+the policy recognises as safe and support auto-approval and diagnostics, but a
+miss does not gate execution. Only a matching deny rule, or an empty command,
+denies. This matches the
+[cc-safety-net](https://github.com/kenryu42/cc-safety-net) reference policy,
+where commands are allowed by default and specific destructive operations are
+blocked. The shipped defaults therefore block dangerous `rm` forms, privilege
+escalation, system control, and privileged container operations while leaving
+other commands, including every `gh` invocation, available.
+
+When a request carries both an argv and a distinct raw shell source (for
+example a `raw_command` field), both representations are evaluated against this
+same pipeline. The command runs only when both pass, so a denied command cannot
+hide behind a permitted representation, or vice versa.
+
+When the executor wraps an argv in a shell, it joins the argv with
+`shell_words::join`, which quotes arguments that contain spaces or shell
+metacharacters. The executed source then differs from the unquoted argv form,
+and both must pass. A caller-supplied shell invocation such as
+`bash -lc "<source>"` is checked the same way: the argv must pass, and the
+source the shell actually runs is evaluated on its own, so the wrapper cannot
+lend its allowance to that source. This is a compatibility change for policies
+that matched only the argv form: an `allow_list` prefix or anchored
+`allow_regex` may need an additional pattern for the quoted source, such as
+`/bin/sh -lc 'printf value with space'`.
+
+Permission modes are a separate gate: `--dangerously-skip-permissions`,
+`--skip-confirmations`, and `--full-auto` auto-approve promptable actions but
+do not override a configured deny rule, the curated command validator, or an
+active sandbox. See
+[Granular Permissions](../guides/permissions.md#execution-policy-and-skip-permissions).
 
 ## Safe Commands (Enabled by Default)
 
@@ -95,6 +132,16 @@ Inspect repository state and manage commits safely:
 - **Safe workflows**: `git fetch`, `git pull`, `git add`, `git commit`,
     `git stash`, `git tag`
 - **Other VCS**: `hg`, `svn`, `git-lfs`
+
+#### 2a. GitHub CLI
+
+The configured policy is a deny-list safety net, so every `gh` invocation is
+allowed by default, including `gh --version`, `gh api`, `gh auth`, `gh alias`,
+`gh extension`, resource subcommands, absolute paths, composed commands, and
+`bash -lc` wrappers. No `gh`-specific allow rule is shipped. Destructive
+operations are blocked by the configured deny rules, which still win over the
+default allowance, and the curated command validator keeps no separate GitHub
+CLI allow-list.
 
 #### 3. Build Systems
 
@@ -355,7 +402,8 @@ enforce `confirm=true` or assess targets; deletion must go through
 
 ### `allow_list` - Explicit Commands
 
-Exact command matches allowed without confirmation.
+Exact command matches the policy records as safe. They support auto-approval;
+an unmatched command is still allowed.
 
 ```toml
 [commands]
@@ -382,7 +430,8 @@ deny_list = [
 
 ### `allow_glob` - Glob Patterns
 
-Wildcard patterns for command families.
+Wildcard patterns that record command families as recognised-safe. They do not
+gate execution.
 
 ```toml
 allow_glob = [
@@ -392,6 +441,10 @@ allow_glob = [
   "rm *",         # Workspace-scoped deletion; still needs confirm=true
 ]
 ```
+
+A wildcard-free entry is an exact full-command match. Allow rules are
+informational under the deny-list safety net: a command that matches none of
+them is still allowed. To block a command, add a deny rule instead.
 
 ### `deny_glob` - Denied Patterns
 
@@ -406,7 +459,8 @@ deny_glob = [
 
 ### `allow_regex` - Regex Patterns
 
-Regular expressions for complex allow rules.
+Regular expressions that record complex command shapes as recognised-safe. They
+do not gate execution.
 
 ```toml
 allow_regex = [
@@ -426,6 +480,24 @@ deny_regex = [
   r"docker\s+run\s+.*--privileged",
 ]
 ```
+
+### Denial Diagnostics
+
+A policy denial keeps the stable
+`command '<program>' is not permitted by the execution policy` prefix and
+appends the deciding category:
+
+- the matched deny collection and configured pattern, for `deny_list`,
+  `deny_glob`, or `deny_regex`; or
+- that the command is empty.
+
+An unmatched command is allowed by the deny-list safety net, so it produces no
+denial message.
+
+The message ends by stating that `--dangerously-skip-permissions` does not
+override the command policy. It names only the program basename; command
+arguments are never included, so secrets passed on the command line do not
+reach logs or tool results.
 
 ## PATH Configuration
 
@@ -545,13 +617,16 @@ cache_ttl_seconds = 300
 
 Out of the box:
 
-1. Agent can execute all safe commands from `allow_list`
-2. Agent can use pattern-based commands like `git *`, `cargo *`
+1. Agent can execute any command that matches no deny rule, whether or not an
+   allow rule mentions it
+2. Allow rules such as `git *` and `cargo *` record recognised-safe families
+   and support auto-approval
 3. Dangerous commands are automatically blocked with no prompt
 
 ### Adding Custom Commands
 
-To enable additional safe commands:
+To record additional commands as recognised-safe (for auto-approval and
+diagnostics):
 
 ```toml
 [commands]
@@ -587,20 +662,28 @@ run_pty_cmd(
 
 ### Restrictive Setup (High Security)
 
+There is no allow-list-only mode: an unmatched command is allowed. A
+restrictive posture must name what it blocks. Deny rules win over every allow
+rule, so `deny_glob` entries decide execution regardless of `allow_list`.
+
 ```toml
 [commands]
-# Only allow explicit commands
+# Record the commands the workflow depends on (auto-approval only)
 allow_list = [
   "ls", "pwd", "cat", "git", "cargo", "python"
 ]
 
-# Block everything else
-allow_glob = []
-allow_regex = []
-
-# Extensive deny lists
+# Block the command families this workspace must never run
 deny_glob = [
-  "*",  # Deny everything by default
+  "sudo *",
+  "chmod *",
+  "chown *",
+  "systemctl *",
+  "kubectl *",
+]
+
+deny_regex = [
+  r"\brm\s+(\S+\s+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--force)(\s|$)",
 ]
 ```
 
@@ -608,7 +691,7 @@ deny_glob = [
 
 ```toml
 [commands]
-# Allow development tools broadly
+# Record development tools as recognised-safe
 allow_glob = [
   "git *",
   "cargo *",
@@ -634,7 +717,7 @@ allow_list = [
   "ls", "pwd", "cat", "grep",
 ]
 
-# Allow project-specific tools
+# Record project-specific tools as recognised-safe
 allow_glob = [
   "make *",
   "./scripts/*",
@@ -666,7 +749,8 @@ commands in a bad state
 ### Best Practices
 
 1. **Keep deny_list comprehensive** - Always block system-altering commands
-2. **Use allow_glob sparingly** - More specific allow_list entries are safer
+2. **Keep deny rules specific and complete** - Deny rules are the only gate;
+   allow rules do not restrict execution
 3. **Monitor audit logs** - Review the user state directory's `audit/` path
    regularly for suspicious patterns
 4. **Test configurations** - Validate with `cargo test` before deploying

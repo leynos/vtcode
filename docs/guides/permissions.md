@@ -78,6 +78,49 @@ skip-confirmations receives a normal permission request for the deletion rather
 than a read-only auto-allow. See
 [Command Security Model](../development/COMMAND_SECURITY_MODEL.md#workspace-scoped-deletion).
 
+## Execution Policy and Skip-Permissions
+
+Permission rules and the configured `[commands]` policy are separate gates.
+Global and agent `allow`/`ask`/`auto`/`deny` rules decide whether a tool call
+may proceed. `--full-auto`, `--skip-confirmations`, and
+`--dangerously-skip-permissions` only auto-approve the promptable part of that
+decision. They never relax the configured command policy, the curated command
+validator, or mandatory sandbox restrictions.
+
+A command denied by the configured policy is reported as:
+
+```text
+command '<program>' is not permitted by the execution policy: <category>;
+--dangerously-skip-permissions does not override the command policy
+```
+
+The category names the rule collection that decided and its configured pattern:
+
+- a `deny_list`, `deny_glob`, or `deny_regex` match names the collection and
+  the configured pattern; deny rules win over every allow rule.
+
+Denials are only produced by a deny rule or an empty command. The configured
+policy is a deny-list safety net, so an unmatched command is allowed and
+produces no denial message.
+
+Diagnostics name only the program basename. Command arguments are never echoed,
+so values passed to a command do not leak into logs or tool results.
+
+When a request carries both an argv and a distinct raw shell source, both
+representations are evaluated and the command runs only when both pass. A
+caller-supplied `bash -lc "<source>"` is checked the same way: the source is
+evaluated on its own. Composition, aliases, wrappers such as `bash -lc`, and
+leading environment prefixes cannot hide a denied command from evaluation.
+
+### GitHub CLI
+
+Every `gh` invocation is allowed by default, including `gh --version`, `gh api`,
+`gh auth`, `gh alias`, `gh extension`, resource subcommands, absolute paths,
+composed commands, and `bash -lc` wrappers. No `gh`-specific allow rule is
+shipped. Add a narrow `[commands]` deny rule to block a specific operation;
+deny rules still take precedence over the default allowance. The curated
+command validator keeps no separate GitHub CLI allow-list.
+
 ## Classifier Review Settings
 
 The classifier used by `permissions.auto` can be tuned from the permission

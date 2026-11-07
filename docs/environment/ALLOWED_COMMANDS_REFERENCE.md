@@ -1,16 +1,18 @@
 # VT Code Allowed Commands Reference
 
-This document outlines all commands that VT Code allows agents to execute,
-organized by category.
+This document catalogues the commands VT Code commonly works with, organized by
+category. Commands are allowed by default; this is a reference for what the
+agent expects to find, not an access-control list.
 
 ## Overview
 
-VT Code maintains a comprehensive allow-list of safe commands that the agent
-can execute. The list is defined in
-`crates/codegen/vtcode-config/src/constants.rs` and can be customized via
-`vtcode.toml`.
+VT Code's configured command policy is a deny-list safety net: commands are
+allowed by default and blocked only when they match a deny rule. The shipped
+rules are defined in `crates/codegen/vtcode-config/src/core/commands.rs` and
+can be customized via `[commands]` in `vtcode.toml`. The catalogue below lists
+tools the agent commonly uses; it is not an exhaustive allow-list.
 
-**Total Allowed Commands**: 380+ (as of v0.43.3)
+**Catalogue Size**: 380+ tools (as of v0.43.3)
 
 ## Command Categories
 
@@ -167,6 +169,12 @@ speedtest-cli, ab, wrk, hey
 gh, gitlab-ci, bitbucket, azure-pipelines, circleci,
 jenkins, drone, buildkite, travis, appveyor
 ```
+
+This catalogue lists tools VT Code can work with; it is not the configured
+allow-list. The shipped command policy allows every `gh` invocation by default,
+including `gh api`, `gh auth`, and resource subcommands. Add a narrow deny rule
+in `[commands]` to block a specific operation. See
+[Command Security Model](../development/COMMAND_SECURITY_MODEL.md#2a-github-cli).
 
 ### Web Development (15+)
 
@@ -353,8 +361,8 @@ type <command>
 command -v <command>
 ```
 
-If a command is in PATH but not in VT Code's allow-list, it will be blocked by
-policy enforcement.
+A command in PATH is allowed unless it matches a configured deny rule. Check
+`[commands]` in `vtcode.toml` when a command is unexpectedly blocked.
 
 ## Troubleshooting
 
@@ -362,8 +370,7 @@ policy enforcement.
 
 1. Verify the command is installed: `which <command>`
 2. Check it's in PATH: `echo $PATH`
-3. Verify it's in the allow-list or matches an allow-glob pattern
-4. Check vtcode.toml for deny rules that might block it
+3. Check `[commands]` in vtcode.toml for deny rules that might block it
 
 ### PATH Not Inherited
 

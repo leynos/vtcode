@@ -36,10 +36,13 @@ outside the allow-list are denied, and tools inside the allow-list still pass
 explicit deny and policy checks. Promptable outcomes that remain inside the
 allow-list are routed through automatic permission review instead of asking.
 `--dangerously-skip-permissions` similarly auto-approves promptable actions
-while still respecting explicit denies and policy blocks. You can capture the
-final summary separately with `--last-message-file` or persist the raw JSON
-stream with `--events`. Use `--json` when you want to see the live JSONL feed
-on stdout.
+while still respecting explicit denies and policy blocks. Neither flag relaxes
+the configured `[commands]` policy, the curated command validator, or an active
+sandbox; see
+[Granular Permissions](../guides/permissions.md#execution-policy-and-skip-permissions).
+Capture the final summary separately with `--last-message-file` or persist the
+raw JSON stream with `--events`. Use `--json` to display the live JSONL feed on
+stdout.
 
 ### Granting workspace trust
 

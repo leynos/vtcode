@@ -369,7 +369,8 @@ pub(super) fn enforce_pty_command_policy(display_command: &str) -> Result<()> {
     let standalone_denied = is_standalone && PTY_DENY_STANDALONE.contains(&trimmed);
 
     if deny_match || standalone_denied {
-        return Err(anyhow!("Command '{display_command}' is blocked by PTY safety policy."));
+        let program = crate::tools::command_args::diagnostic_program_name(display_command);
+        return Err(anyhow!("Command '{program}' is blocked by PTY safety policy."));
     }
 
     Ok(())

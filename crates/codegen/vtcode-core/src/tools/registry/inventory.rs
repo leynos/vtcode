@@ -11,6 +11,7 @@ use tracing::info;
 use super::registration::ToolRegistration;
 use crate::config::CommandsConfig;
 use crate::tools::command::CommandTool;
+use crate::tools::command_policy::CommandPolicyDecision;
 use crate::tools::edited_file_monitor::EditedFileMonitor;
 use crate::tools::file_ops::FileOpsTool;
 use crate::tools::grep_file::GrepSearchManager;
@@ -143,8 +144,14 @@ impl ToolInventory {
         self.command_tool.write().update_commands_config(commands_config);
     }
 
-    pub(super) fn command_policy_allows(&self, command: &[String]) -> bool {
-        self.command_tool.read().policy_allows(command)
+    /// Structured configured-policy decision for an argv request.
+    pub(super) fn command_policy_decision(&self, command: &[String]) -> CommandPolicyDecision {
+        self.command_tool.read().policy_decision(command)
+    }
+
+    /// Structured configured-policy decision for a raw shell source.
+    pub(super) fn command_policy_decision_text(&self, command_text: &str) -> CommandPolicyDecision {
+        self.command_tool.read().policy_decision_text(command_text)
     }
 
     pub fn grep_file_manager(&self) -> Arc<GrepSearchManager> {
