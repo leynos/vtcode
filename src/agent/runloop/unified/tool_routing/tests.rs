@@ -1243,6 +1243,66 @@ async fn skip_confirmations_does_not_bypass_tool_policy_deny() {
     assert_eq!(flow, ToolPermissionFlow::Denied);
 }
 
+/// Regression for issue #175: permission routing must admit a local GitHub
+/// CLI version query both with and without skip-confirmations.
+#[tokio::test]
+async fn gh_version_query_is_admitted_with_and_without_skip_confirmations() {
+    for skip_confirmations in [false, true] {
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+        let mut session = create_headless_session();
+        let handle = session.clone_inline_handle();
+        let mut renderer = AnsiRenderer::with_inline_ui(handle.clone(), Default::default());
+        let ctrl_c_state = Arc::new(crate::agent::runloop::unified::state::CtrlCState::new());
+        let ctrl_c_notify = Arc::new(Notify::new());
+        let permissions = PermissionsConfig::default();
+        let agent_permissions = AgentPermissionsConfig::new(PermissionDefault::Allow);
+        let approval_policy = if skip_confirmations {
+            reject_all_approvals()
+        } else {
+            AskForApproval::OnRequest
+        };
+
+        let flow = ensure_tool_permission(
+            ToolPermissionsContext {
+                tool_registry: &registry,
+                renderer: &mut renderer,
+                handle: &handle,
+                session: &mut session,
+                default_placeholder: None,
+                ctrl_c_state: &ctrl_c_state,
+                ctrl_c_notify: &ctrl_c_notify,
+                hooks: None,
+                justification: None,
+                approval_recorder: None,
+                decision_ledger: None,
+                tool_permission_cache: None,
+                permissions_state: None,
+                active_agent_permissions: Some(&agent_permissions),
+                hitl_notification_bell: false,
+                approval_policy,
+                skip_confirmations,
+                permissions_config: Some(&permissions),
+                auto_permission_runtime: None,
+                active_thread_label: None,
+                session_stats: None,
+                safety_approval_justification: None,
+                harness_emitter: None,
+            },
+            tools::RUN_PTY_CMD,
+            Some(&json!({"command": ["gh", "--version"], "working_dir": "."})),
+        )
+        .await
+        .expect("permission flow");
+
+        assert_eq!(
+            flow,
+            ToolPermissionFlow::Approved { updated_args: None },
+            "skip_confirmations={skip_confirmations}: gh --version must be admitted"
+        );
+    }
+}
+
 #[tokio::test]
 async fn confirmed_supported_deletion_is_approved_under_skip_confirmations() {
     let temp_dir = tempfile::TempDir::new().expect("temp dir");

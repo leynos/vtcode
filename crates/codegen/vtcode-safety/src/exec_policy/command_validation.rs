@@ -69,6 +69,11 @@ pub async fn validate_command(
         "uname" => validate_uname(args),
         "wc" => validate_wc(args, workspace_root, working_dir).await,
         "git" => validate_git(args, workspace_root, working_dir, confirm).await,
+        // The configured command policy is a deny-list safety net, so `gh` is
+        // allowed by default. This curated layer keeps no separate GitHub CLI
+        // allow-list; destructive operations are blocked by the configured
+        // deny rules instead.
+        "gh" => Ok(()),
         "cargo" => validate_cargo(args, workspace_root, working_dir, confirm).await,
         "python" | "python3" => validate_python(args, workspace_root, working_dir).await,
         "npm" => validate_npm(args, workspace_root, working_dir).await,
@@ -1192,6 +1197,32 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn validate_command_allows_gh_invocations() {
+        let workspace = tempdir().expect("workspace tempdir");
+        let root = workspace.path();
+
+        for args in [
+            &[][..],
+            &["--version"][..],
+            &["version"][..],
+            &["api", "repos/owner/repo"][..],
+            &["auth", "status"][..],
+            &["alias", "list"][..],
+            &["extension", "list"][..],
+            &["repo", "view"][..],
+        ] {
+            let mut command = vec!["gh".to_owned()];
+            command.extend(args.iter().map(|arg| (*arg).to_owned()));
+            validate_command(&command, root, root, false)
+                .await
+                .unwrap_or_else(|error| panic!("{command:?} must be allowed (confirm=false): {error}"));
+            validate_command(&command, root, root, true)
+                .await
+                .unwrap_or_else(|error| panic!("{command:?} must be allowed (confirm=true): {error}"));
+        }
     }
 
     #[tokio::test]

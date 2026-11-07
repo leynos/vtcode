@@ -91,9 +91,19 @@ async fn preflight_rejects_deletion_mixed_with_a_different_raw_command() -> Resu
 async fn harness_terminal_run_refuses_escaped_deletion_forms() -> Result<()> {
     // The harness path reaches the executor gate without command preflight, so
     // the gate alone must refuse a shell spelling the recognizer would
-    // otherwise miss.
+    // otherwise miss. The configured policy admits both the escaped source and
+    // its normalized argv, so the refusal below can only come from the deletion
+    // gate rather than from the command policy.
     let temp_dir = TempDir::new()?;
     let registry = ToolRegistry::new(temp_dir.path().to_path_buf()).await;
+    let mut config = CommandsConfig::default();
+    config.allow_list.clear();
+    config.allow_glob.clear();
+    config.allow_regex = vec![
+        r"^rm scratch/tmp\.txt$".to_owned(),
+        r"^\\rm scratch/tmp\.txt$".to_owned(),
+    ];
+    registry.apply_commands_config(&config);
 
     for args in [
         json!({"action": "run", "cmd": "\\rm scratch/tmp.txt", "yield_time_ms": 100}),

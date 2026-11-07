@@ -1359,3 +1359,77 @@ async fn test_prevalidated_runloop_execution_consumes_safety_budget_once() {
     // reached (max: 2)" and only one call could execute.
     assert_eq!(gateway.get_stats().turn_count, 2);
 }
+
+/// Regression for issue #175: the tool pipeline must dispatch a local GitHub
+/// CLI version query under skip-confirmations. `gh` may be absent, so a
+/// command-not-found result is acceptable; a configured-policy denial is not.
+#[tokio::test]
+async fn test_run_tool_call_dispatches_gh_version_query_under_skip_confirmations() {
+    let mut test_ctx = TestContext::new().await;
+    test_ctx.session.set_skip_confirmations(true);
+    let mut registry = test_ctx.registry;
+
+    let permission_cache_arc = Arc::new(tokio::sync::RwLock::new(ToolPermissionCache::new()));
+    {
+        let mut cache = permission_cache_arc.write().await;
+        cache.cache_grant(tools::EXEC_COMMAND.to_string(), PermissionGrant::Permanent);
+    }
+
+    let result_cache = Arc::new(tokio::sync::RwLock::new(ToolResultCache::new(32)));
+    let decision_ledger = Arc::new(tokio::sync::RwLock::new(DecisionTracker::new()));
+    let mut session_stats = crate::agent::runloop::unified::state::SessionStats::default();
+    let mut plan_session =
+        crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState::default();
+    let mut mcp_panel = crate::agent::runloop::mcp_events::McpPanelState::new(10, true);
+    let approval_recorder = test_ctx.approval_recorder;
+    let traj = TrajectoryLogger::new(&test_ctx.workspace);
+    let tools = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+
+    let mut harness_state = build_harness_state();
+    let mut ctx = crate::agent::runloop::unified::run_loop_context::RunLoopContext::new(
+        &mut test_ctx.renderer,
+        &test_ctx.handle,
+        &mut registry,
+        &tools,
+        &result_cache,
+        &permission_cache_arc,
+        &test_ctx.permissions_state,
+        &decision_ledger,
+        &mut session_stats,
+        &mut plan_session,
+        &mut mcp_panel,
+        &approval_recorder,
+        &mut test_ctx.session,
+        None,
+        &traj,
+        &mut harness_state,
+        None,
+    );
+
+    let ctrl_c_state = Arc::new(CtrlCState::new());
+    let ctrl_c_notify = Arc::new(Notify::new());
+
+    for command in ["gh --version", "gh version"] {
+        let args = serde_json::to_string(&json!({
+            "action": "run",
+            "command": command,
+        }))
+        .expect("serialize command_session args");
+        let call = vtcode_core::llm::provider::ToolCall::function(
+            format!("call_gh_version_{}", command.replace([' ', '-'], "_")),
+            tools::EXEC_COMMAND.to_string(),
+            args,
+        );
+
+        let outcome =
+            run_tool_call(&mut ctx, &call, &ctrl_c_state, &ctrl_c_notify, None, None, true, None, 0, false).await;
+        let text = match outcome {
+            Ok(outcome) => format!("{:?}", outcome.status),
+            Err(error) => error.to_string(),
+        };
+        assert!(
+            !text.contains("not permitted by the execution policy"),
+            "`{command}` must not be policy-denied under skip-confirmations: {text}"
+        );
+    }
+}

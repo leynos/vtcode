@@ -356,6 +356,34 @@ pub(crate) fn command_words_after_environment_prefix(words: &[String]) -> &[Stri
     &words[start..]
 }
 
+/// Program name used in command-policy diagnostics.
+///
+/// The first raw whitespace token may be an environment assignment whose value
+/// is a secret, so the words are parsed and leading assignments skipped before
+/// naming the program. Only the name is returned; arguments never are.
+///
+/// The result is reduced to a basename so a full executable path is not echoed
+/// either. Every diagnostic that names a program goes through this helper, so
+/// the redaction rule cannot drift between call sites.
+pub(crate) fn diagnostic_program_name(command_text: &str) -> String {
+    let words = shell_words::split(command_text).unwrap_or_default();
+    diagnostic_program_name_from_words(&words)
+}
+
+/// Program name used in command-policy diagnostics, from parsed words.
+///
+/// Callers that already hold an argv use this form so the same redaction rule
+/// applies without re-joining and re-splitting the command. Leading
+/// environment assignments are skipped and only the basename is returned.
+pub(crate) fn diagnostic_program_name_from_words(words: &[String]) -> String {
+    command_words_after_environment_prefix(words)
+        .first()
+        .and_then(|word| Path::new(word).file_name())
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 /// Return whether a parsed command uses an option that can turn an otherwise
 /// read-only inspection program into a writer or command launcher.
 ///
@@ -861,7 +889,8 @@ pub fn normalize_shell_args(args: &Value) -> Result<Value, &'static str> {
 mod tests {
     use super::{
         WriteStdinDispatch, command_session_missing_required_args, command_session_requires_command_safety,
-        command_text, command_words, contains_dynamic_shell_syntax, has_indexed_command_parts, interactive_input_text,
+        command_text, command_words, contains_dynamic_shell_syntax, diagnostic_program_name,
+        diagnostic_program_name_from_words, has_indexed_command_parts, interactive_input_text,
         is_readonly_command_string, normalize_indexed_command_args, normalize_shell_args, normalized_command_value,
         parse_indexed_command_parts, raw_command_text, session_id_text, session_id_text_from_payload, working_dir_text,
         working_dir_text_from_payload, write_stdin_dispatch,
@@ -1264,5 +1293,19 @@ mod tests {
         assert!(!contains_dynamic_shell_syntax("find src -name \"*.rs\""));
         assert!(contains_dynamic_shell_syntax("find src -exe$''c touch {} +"));
         assert!(contains_dynamic_shell_syntax("find src -ex{e,}c touch {} +"));
+    }
+
+    /// A leading environment assignment may carry a secret, so the diagnostic
+    /// name must skip it and report only the program basename.
+    #[test]
+    fn diagnostic_program_name_skips_environment_assignments() {
+        let words = vec![
+            "API_TOKEN=secret".to_string(),
+            "/usr/bin/rm".to_string(),
+            "scratch.txt".to_string(),
+        ];
+        assert_eq!(diagnostic_program_name_from_words(&words), "rm");
+        assert_eq!(diagnostic_program_name("API_TOKEN=secret /usr/bin/rm scratch.txt"), "rm");
+        assert_eq!(diagnostic_program_name_from_words(&[]), "unknown");
     }
 }

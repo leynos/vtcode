@@ -23,6 +23,11 @@ workspace configuration and have reviewed the safeguards below.
   refused by command preflight, and the executor re-assesses every target
   against the workspace.
 
+A policy denial is never a promptable outcome. Both flags leave the configured
+`[commands]` policy, the curated command validator, and any active sandbox
+intact; see
+[Granular Permissions](permissions.md#execution-policy-and-skip-permissions).
+
 Primary-agent selection still works normally. If you explicitly select or
 configure a primary agent, including `duck`, full-auto runs on top of that
 agent. If no primary agent is explicitly selected or configured, VT Code

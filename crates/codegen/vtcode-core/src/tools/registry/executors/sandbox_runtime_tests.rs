@@ -96,6 +96,16 @@ fn preflight_blocks_network_commands_when_network_disabled() {
     assert!(error.to_string().contains("denies network"));
 }
 
+/// A local `gh --version` query needs no network, so the sandbox preflight
+/// must not classify it as a network command and refuse it.
+#[test]
+fn preflight_allows_gh_version_query_without_network() {
+    let policy = SandboxPolicy::workspace_write(vec![PathBuf::from("/tmp/ws")]);
+    let command = vec!["gh".to_string(), "--version".to_string()];
+    enforce_sandbox_preflight_guards(&command, &policy, PathBuf::from(".").as_path())
+        .expect("version query requires no network access");
+}
+
 #[test]
 fn workspace_write_allow_all_network_is_not_blocked() {
     let mut config = vtcode_config::SandboxConfig {
@@ -479,6 +489,337 @@ fn prepare_exec_command_keeps_existing_shell_invocation() {
     assert_eq!(prepared.command, command);
     assert_eq!(prepared.requested_command_display, "/bin/zsh -c 'echo hi'");
     assert_eq!(prepared.display_command, "/bin/zsh -c 'echo hi'");
+    assert_eq!(prepared.executed_shell_source.as_deref(), Some("echo hi"));
+}
+
+/// Every spelling of the shell's command flag must expose the source string,
+/// otherwise an allow-listed shell would admit an unchecked source.
+#[test]
+fn prepare_exec_command_detects_shell_command_flag_variants() {
+    let payload = json!({});
+    let payload = payload.as_object().expect("payload object");
+
+    for (shell, command) in [
+        ("/bin/bash", vec!["/bin/bash", "-ec", "echo hi"]),
+        ("/bin/bash", vec!["/bin/bash", "-l", "-c", "echo hi"]),
+        ("cmd", vec!["cmd", "/c", "echo hi"]),
+        ("cmd", vec!["cmd", "/k", "echo hi"]),
+        ("powershell", vec!["powershell", "-command", "echo hi"]),
+        // Options that merely contain `c` must not be mistaken for the
+        // command flag; the source is the token after `-Command`.
+        ("powershell", vec!["powershell", "-NonInteractive", "-Command", "echo hi"]),
+        ("powershell", vec!["powershell", "-ExecutionPolicy", "Bypass", "-Command", "echo hi"]),
+    ] {
+        let command: Vec<String> = command.into_iter().map(str::to_string).collect();
+        let prepared = prepare_exec_command(payload, shell, false, command, None);
+        assert_eq!(prepared.executed_shell_source.as_deref(), Some("echo hi"), "shell={shell}");
+    }
+
+    let script = vec!["/bin/bash".to_string(), "script.sh".to_string()];
+    let prepared = prepare_exec_command(payload, "/bin/bash", false, script, None);
+    assert_eq!(prepared.executed_shell_source, None);
+}
+
+/// A requested argv that is itself a shell invocation exposes its inner source
+/// as a separate policy representation.
+#[test]
+fn explicit_shell_source_extracts_nested_source() {
+    let command = vec![
+        "bash".to_string(),
+        "-lc".to_string(),
+        "curl https://example.com".to_string(),
+    ];
+    assert_eq!(super::exec_command::explicit_shell_source(&command).as_deref(), Some("curl https://example.com"));
+
+    let command = vec!["echo".to_string(), "hi".to_string()];
+    assert_eq!(super::exec_command::explicit_shell_source(&command), None);
+}
+
+/// The nested source of a caller-supplied shell invocation is evaluated on its
+/// own even when the selected shell differs from the requested one.
+#[tokio::test]
+async fn prepare_exec_run_request_denies_nested_shell_source() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    // Keep only a prefix deny rule, so the wrapped argv cannot match but the
+    // nested source can: `bash -lc rm -rf /` does not start with the rule.
+    let config = vtcode_config::CommandsConfig {
+        deny_list: vec!["rm -rf /".to_string()],
+        deny_glob: Vec::new(),
+        deny_regex: Vec::new(),
+        ..Default::default()
+    };
+    registry.apply_commands_config(&config);
+
+    reset_exec_command_rate_limit();
+    let args = serde_json::json!({
+        "command": ["bash", "-lc", "rm -rf /"],
+        "shell": "/bin/sh",
+    });
+    let error = match super::ToolRegistry::prepare_exec_run_request(
+        &registry,
+        &args,
+        super::ExecRunBackendKind::Pipe,
+        "missing command",
+        "empty command",
+    )
+    .await
+    {
+        Ok(_) => panic!("nested shell source must be evaluated"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("command 'rm'"), "denial should name the nested program: {error}");
+}
+
+/// The executor rate limiter is process-global. Reset its bucket before each
+/// policy probe so these assertions measure the configured policy rather than
+/// token exhaustion shared with tests running in parallel.
+fn reset_exec_command_rate_limit() {
+    if let Ok(mut limiter) = crate::tools::rate_limiter::PER_TOOL_RATE_LIMITER.lock() {
+        limiter.reset_tool("exec_command:run");
+    }
+}
+
+/// Regression for issue #175: local GitHub CLI version queries are allowed by
+/// the default configured policy, with and without confirmation.
+#[tokio::test]
+async fn prepare_exec_run_request_allows_gh_version_queries() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    for command in [vec!["gh", "--version"], vec!["gh", "version"]] {
+        for confirm in [false, true] {
+            reset_exec_command_rate_limit();
+            let args = serde_json::json!({
+                "command": command,
+                "confirm": confirm,
+            });
+            let prepared = super::ToolRegistry::prepare_exec_run_request(
+                &registry,
+                &args,
+                super::ExecRunBackendKind::Pipe,
+                "missing command",
+                "empty command",
+            )
+            .await
+            .unwrap_or_else(|error| panic!("default policy should allow {command:?} (confirm={confirm}): {error}"));
+            assert_eq!(prepared.prepared_command.requested_command, command);
+        }
+    }
+}
+
+/// A caller-supplied shell invocation is not exempt from the policy: the
+/// source the shell runs must pass on its own, not only the wrapper argv that
+/// carries it.
+#[tokio::test]
+async fn prepare_exec_run_request_checks_explicit_shell_source() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    // A prefix deny rule cannot match the wrapper argv `bash -lc rm -rf /`, so
+    // only evaluating the source the caller supplied can produce a denial.
+    let config = vtcode_config::CommandsConfig {
+        deny_list: vec!["rm -rf /".to_string()],
+        deny_glob: Vec::new(),
+        deny_regex: Vec::new(),
+        ..Default::default()
+    };
+    registry.apply_commands_config(&config);
+
+    for confirm in [false, true] {
+        reset_exec_command_rate_limit();
+        let args = serde_json::json!({
+            "command": ["bash", "-lc", "rm -rf /"],
+            "shell": "bash",
+            "confirm": confirm,
+        });
+        let error = match super::ToolRegistry::prepare_exec_run_request(
+            &registry,
+            &args,
+            super::ExecRunBackendKind::Pipe,
+            "missing command",
+            "empty command",
+        )
+        .await
+        {
+            Ok(_) => panic!("a denied shell source must be refused (confirm={confirm})"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("not permitted by the execution policy"),
+            "confirm={confirm}: unexpected error: {error}"
+        );
+    }
+
+    reset_exec_command_rate_limit();
+    let allowed = serde_json::json!({
+        "command": ["bash", "-lc", "git status"],
+        "shell": "bash",
+    });
+    super::ToolRegistry::prepare_exec_run_request(
+        &registry,
+        &allowed,
+        super::ExecRunBackendKind::Pipe,
+        "missing command",
+        "empty command",
+    )
+    .await
+    .expect("a shell source that matches no deny rule is permitted");
+}
+
+/// The configured policy is a deny-list safety net, so every `gh` shape is
+/// allowed unless it matches a deny rule. Composed shell source is still
+/// evaluated, so a denied command inside the composition is refused.
+#[tokio::test]
+async fn prepare_exec_run_request_allows_gh_invocations_by_default() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    let allowed_commands = [
+        json!(["gh"]),
+        json!(["gh", "--version", "extra"]),
+        json!(["gh", "api", "repos/owner/repo"]),
+        json!(["gh", "auth", "status"]),
+        json!(["gh", "alias", "list"]),
+        json!(["gh", "extension", "list"]),
+        json!(["gh", "repo", "delete", "owner/repo"]),
+        json!(["gh", "workflow", "run", "ci"]),
+        json!(["gh", "version", "--json"]),
+        json!(["/usr/bin/gh", "--version"]),
+        json!(["bash", "-lc", "gh --version"]),
+        json!("/bin/gh --version"),
+        json!(["gh", "--version", ";", "id"]),
+        json!(["gh", "--version", "|", "cat"]),
+        json!(["gh", "--version", "$(", "id", ")"]),
+    ];
+
+    for command in allowed_commands {
+        for confirm in [false, true] {
+            reset_exec_command_rate_limit();
+            let args = serde_json::json!({
+                "command": command,
+                "confirm": confirm,
+            });
+            super::ToolRegistry::prepare_exec_run_request(
+                &registry,
+                &args,
+                super::ExecRunBackendKind::Pipe,
+                "missing command",
+                "empty command",
+            )
+            .await
+            .unwrap_or_else(|error| panic!("policy should allow {command} (confirm={confirm}): {error}"));
+        }
+    }
+
+    // A deny rule inside a composed command still wins.
+    for confirm in [false, true] {
+        reset_exec_command_rate_limit();
+        let args = serde_json::json!({
+            "command": ["gh", "--version", "&&", "rm", "-rf", "build"],
+            "confirm": confirm,
+        });
+        let error = match super::ToolRegistry::prepare_exec_run_request(
+            &registry,
+            &args,
+            super::ExecRunBackendKind::Pipe,
+            "missing command",
+            "empty command",
+        )
+        .await
+        {
+            Ok(_) => panic!("a denied command inside a composition must be refused (confirm={confirm})"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("not permitted by the execution policy"),
+            "confirm={confirm}: unexpected error: {error}"
+        );
+    }
+}
+
+/// Composing a permitted argv with extra shell source cannot smuggle a
+/// denied command past the configured policy.
+#[tokio::test]
+async fn prepare_exec_run_request_denies_composed_gh_raw_command() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    for confirm in [false, true] {
+        reset_exec_command_rate_limit();
+        let args = serde_json::json!({
+            "command": ["gh", "--version"],
+            "raw_command": "gh --version && rm -rf /",
+            "confirm": confirm,
+        });
+        let error = match super::ToolRegistry::prepare_exec_run_request(
+            &registry,
+            &args,
+            super::ExecRunBackendKind::Pipe,
+            "missing command",
+            "empty command",
+        )
+        .await
+        {
+            Ok(_) => panic!("composed raw_command must be denied (confirm={confirm})"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("not permitted by the execution policy"),
+            "confirm={confirm}: unexpected error: {error}"
+        );
+    }
+}
+
+/// Explicit deny rules keep precedence over the default allowance that would
+/// otherwise permit every `gh` invocation.
+#[tokio::test]
+async fn prepare_exec_run_request_explicit_deny_wins_over_gh_allow() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let registry = crate::tools::registry::ToolRegistry::new(workspace.path().to_path_buf()).await;
+
+    let deny_configs = [
+        ("deny_list", "gh"),
+        ("deny_glob", "*--version*"),
+        ("deny_regex", r"^gh\s"),
+    ];
+
+    for (rule, pattern) in deny_configs {
+        let mut config = vtcode_config::CommandsConfig::default();
+        match rule {
+            "deny_list" => config.deny_list.push(pattern.to_string()),
+            "deny_glob" => config.deny_glob.push(pattern.to_string()),
+            "deny_regex" => config.deny_regex.push(pattern.to_string()),
+            other => panic!("unexpected rule fixture: {other}"),
+        }
+        registry.apply_commands_config(&config);
+
+        for confirm in [false, true] {
+            reset_exec_command_rate_limit();
+            let args = serde_json::json!({
+                "command": ["gh", "--version"],
+                "confirm": confirm,
+            });
+            let error = match super::ToolRegistry::prepare_exec_run_request(
+                &registry,
+                &args,
+                super::ExecRunBackendKind::Pipe,
+                "missing command",
+                "empty command",
+            )
+            .await
+            {
+                Ok(_) => panic!("{rule} must win over the default allowance (confirm={confirm})"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains(rule), "confirm={confirm}: expected the {rule} rule named in: {error}");
+            assert!(
+                error.to_string().contains("--dangerously-skip-permissions does not override"),
+                "confirm={confirm}: denial must state the skip flag cannot override: {error}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -655,4 +996,13 @@ async fn require_escalated_accepts_justified_request() {
             .expect("justified require_escalated should parse");
     assert_eq!(sandbox_permissions, SandboxPermissions::RequireEscalated);
     assert!(additional_permissions.is_none());
+}
+
+#[test]
+fn pty_policy_denial_names_only_the_program() {
+    let error = super::exec_support::enforce_pty_command_policy("vim /workspace/secret.txt")
+        .expect_err("interactive editors are refused for PTY execution");
+    let message = error.to_string();
+    assert!(message.contains("'vim'"), "unexpected error: {message}");
+    assert!(!message.contains("/workspace/secret.txt"), "PTY denial leaked an argument: {message}");
 }

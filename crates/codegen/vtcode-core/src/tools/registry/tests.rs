@@ -52,7 +52,14 @@ fn command_session_fixture_commands_config() -> CommandsConfig {
     config.allow_regex = vec![
         r"^cat$".to_owned(),
         r"^sleep 0\.4 && printf second && sleep 0\.4 && printf third && sleep 0\.4 && printf done$".to_owned(),
+        // The configured policy checks both the normalized argv and the raw
+        // shell source that actually runs. The source quotes the argument that
+        // contains a space, so it is allow-listed in that form as well.
         r"^/bin/sh -lc printf vtcode-terminal$".to_owned(),
+        r"^/bin/sh -lc 'printf vtcode-terminal'$".to_owned(),
+        // The nested source of the caller-supplied shell invocation is
+        // evaluated on its own as well.
+        r"^printf vtcode-terminal$".to_owned(),
     ];
     config
 }
@@ -657,12 +664,21 @@ async fn harness_terminal_runs_retain_completed_sessions_until_close(
     .await
     .expect("terminal session should complete before deadline")?;
     assert_eq!(exit_code, 0);
-    let retained_output = registry
-        .read_harness_exec_session_output(&session_id, false)
-        .await?
-        .unwrap_or_default();
+    // The PTY reader may publish the final bytes just after the session is
+    // marked complete, so poll the retained buffer instead of reading once.
     let initial_output = response["output"].as_str().unwrap_or_default();
-    let complete_output = format!("{initial_output}{retained_output}");
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let complete_output = loop {
+        let retained_output = registry
+            .read_harness_exec_session_output(&session_id, false)
+            .await?
+            .unwrap_or_default();
+        let complete_output = format!("{initial_output}{retained_output}");
+        if complete_output.contains("vtcode-terminal") || tokio::time::Instant::now() >= deadline {
+            break complete_output;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
     assert!(complete_output.contains("vtcode-terminal"), "terminal output must remain observable until close");
     assert_eq!(registry.harness_exec_session_completed(&session_id).await?, Some(0));
 

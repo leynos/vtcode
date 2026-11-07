@@ -3,18 +3,120 @@ use crate::config::CommandsConfig;
 use crate::tools::command_cache::PermissionCache;
 use crate::tools::command_resolver::CommandResolver;
 use regex::Regex;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::warn;
+
+/// A compiled configured rule together with the pattern text it came from.
+#[derive(Debug, Clone)]
+struct CompiledPattern {
+    pattern: String,
+    regex: Regex,
+}
+
+/// Rule collection that produced a [`CommandPolicyDecision`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandPolicyRule {
+    AllowList,
+    DenyList,
+    AllowGlob,
+    DenyGlob,
+    AllowRegex,
+    DenyRegex,
+}
+
+impl CommandPolicyRule {
+    /// Configuration key that owns this rule collection.
+    pub fn config_key(self) -> &'static str {
+        match self {
+            Self::AllowList => "allow_list",
+            Self::DenyList => "deny_list",
+            Self::AllowGlob => "allow_glob",
+            Self::DenyGlob => "deny_glob",
+            Self::AllowRegex => "allow_regex",
+            Self::DenyRegex => "deny_regex",
+        }
+    }
+}
+
+/// Structured outcome of evaluating one command against the configured policy.
+///
+/// The decision records which rule collection decided so diagnostics can name
+/// it without repeating the command text. `denial_message` is secret-safe: it
+/// includes configured rule patterns and the program basename only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandPolicyDecision {
+    /// A configured allow rule matched.
+    AllowedByRule { rule: CommandPolicyRule, pattern: String },
+    /// No allow rules are configured, so unmatched commands are allowed.
+    AllowedWithoutAllowRules,
+    /// A configured deny rule matched; deny rules win over every allow rule.
+    DeniedByRule { rule: CommandPolicyRule, pattern: String },
+    /// Allow rules are configured and none of them matched.
+    ///
+    /// The policy is a deny-list safety net: an unmatched command is allowed.
+    /// Allow rules record the commands that are known-safe, but they do not
+    /// gate execution.
+    AllowedWithoutAllowRuleMatch,
+    /// The command text is empty, so there is nothing to evaluate.
+    DeniedEmptyCommand,
+}
+
+impl CommandPolicyDecision {
+    pub fn is_allowed(&self) -> bool {
+        matches!(
+            self,
+            Self::AllowedByRule { .. } | Self::AllowedWithoutAllowRules | Self::AllowedWithoutAllowRuleMatch
+        )
+    }
+
+    /// Deny rule and configured pattern, when a deny rule decided.
+    pub fn denied_by_rule(&self) -> Option<(CommandPolicyRule, &str)> {
+        match self {
+            Self::DeniedByRule { rule, pattern } => Some((*rule, pattern.as_str())),
+            _ => None,
+        }
+    }
+
+    /// Build the operator-facing denial message.
+    ///
+    /// `program` is reduced to its basename and no command arguments are
+    /// included, so diagnostics cannot leak values passed on the command line.
+    pub fn denial_message(&self, program: &str) -> Option<String> {
+        let detail = match self {
+            Self::AllowedByRule { .. } | Self::AllowedWithoutAllowRules | Self::AllowedWithoutAllowRuleMatch => {
+                return None;
+            }
+            Self::DeniedByRule { rule, pattern } => {
+                format!("blocked by the [commands] {} rule '{pattern}'", rule.config_key())
+            }
+            Self::DeniedEmptyCommand => "the command is empty".to_string(),
+        };
+        let program = program_basename(program);
+        Some(format!(
+            "command '{program}' is not permitted by the execution policy: {detail}; \
+             --dangerously-skip-permissions does not override the command policy"
+        ))
+    }
+}
+
+/// Reduce a program path to the basename used in diagnostics.
+fn program_basename(program: &str) -> &str {
+    Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(program)
+}
 
 #[derive(Clone)]
 pub struct CommandPolicyEvaluator {
     allow_prefixes: Vec<String>,
     deny_prefixes: Vec<String>,
-    allow_regexes: Vec<Regex>,
-    deny_regexes: Vec<Regex>,
-    allow_glob_regexes: Vec<Regex>,
-    deny_glob_regexes: Vec<Regex>,
+    allow_regexes: Vec<CompiledPattern>,
+    deny_regexes: Vec<CompiledPattern>,
+    allow_glob_regexes: Vec<CompiledPattern>,
+    deny_glob_regexes: Vec<CompiledPattern>,
     allow_regexes_empty: bool,
     allow_globs_empty: bool,
     // NEW: Command resolution and caching for improved security visibility
@@ -83,36 +185,77 @@ impl CommandPolicyEvaluator {
     }
 
     pub fn allows(&self, command: &[String]) -> bool {
-        if command.is_empty() {
-            return false;
-        }
-        let command_text = command.join(" ");
-        self.allows_text(&command_text)
+        self.decision(command).is_allowed()
     }
 
     pub fn allows_text(&self, command_text: &str) -> bool {
+        self.decision_text(command_text).is_allowed()
+    }
+
+    /// Structured decision for an argv request.
+    pub fn decision(&self, command: &[String]) -> CommandPolicyDecision {
+        if command.is_empty() {
+            return CommandPolicyDecision::DeniedEmptyCommand;
+        }
+        self.decision_text(&command.join(" "))
+    }
+
+    /// Structured decision for a raw command line.
+    pub fn decision_text(&self, command_text: &str) -> CommandPolicyDecision {
         let cmd = command_text.trim();
         if cmd.is_empty() {
-            return false;
+            return CommandPolicyDecision::DeniedEmptyCommand;
         }
 
         // Deny takes precedence
-        if self.matches_prefix(cmd, &self.deny_prefixes)
-            || Self::matches_any(&self.deny_regexes, cmd)
-            || Self::matches_any(&self.deny_glob_regexes, cmd)
-        {
-            return false;
+        if let Some(pattern) = first_matching_prefix(cmd, &self.deny_prefixes) {
+            return CommandPolicyDecision::DeniedByRule {
+                rule: CommandPolicyRule::DenyList,
+                pattern: pattern.to_string(),
+            };
+        }
+        if let Some(pattern) = first_matching(cmd, &self.deny_regexes) {
+            return CommandPolicyDecision::DeniedByRule {
+                rule: CommandPolicyRule::DenyRegex,
+                pattern: pattern.to_string(),
+            };
+        }
+        if let Some(pattern) = first_matching(cmd, &self.deny_glob_regexes) {
+            return CommandPolicyDecision::DeniedByRule {
+                rule: CommandPolicyRule::DenyGlob,
+                pattern: pattern.to_string(),
+            };
         }
 
         // If no allow rules defined, allow by default
         if self.allow_prefixes.is_empty() && self.allow_regexes_empty && self.allow_globs_empty {
-            return true;
+            return CommandPolicyDecision::AllowedWithoutAllowRules;
         }
 
         // Check allow rules
-        self.matches_prefix(cmd, &self.allow_prefixes)
-            || Self::matches_any(&self.allow_regexes, cmd)
-            || Self::matches_any(&self.allow_glob_regexes, cmd)
+        if let Some(pattern) = first_matching_prefix(cmd, &self.allow_prefixes) {
+            return CommandPolicyDecision::AllowedByRule {
+                rule: CommandPolicyRule::AllowList,
+                pattern: pattern.to_string(),
+            };
+        }
+        if let Some(pattern) = first_matching(cmd, &self.allow_regexes) {
+            return CommandPolicyDecision::AllowedByRule {
+                rule: CommandPolicyRule::AllowRegex,
+                pattern: pattern.to_string(),
+            };
+        }
+        if let Some(pattern) = first_matching(cmd, &self.allow_glob_regexes) {
+            return CommandPolicyDecision::AllowedByRule {
+                rule: CommandPolicyRule::AllowGlob,
+                pattern: pattern.to_string(),
+            };
+        }
+
+        // The policy is a deny-list safety net, so an unmatched command is
+        // allowed. Allow rules are recorded for diagnostics and auto-approval,
+        // but a miss does not gate execution.
+        CommandPolicyDecision::AllowedWithoutAllowRuleMatch
     }
 
     /// Enhanced async evaluation with command resolution and caching
@@ -134,23 +277,23 @@ impl CommandPolicyEvaluator {
         let resolved_path = self.resolve_path(cmd);
 
         // Evaluate policy
-        let allowed = self.allows_text(cmd);
+        let decision = self.decision_text(cmd);
+        let allowed = decision.is_allowed();
 
-        // Determine reason - use static strings where possible to avoid allocations
-        let reason = if allowed {
-            if self.matches_prefix(cmd, &self.allow_prefixes) {
-                format!("allow_list match: {cmd}")
-            } else if Self::matches_any(&self.allow_glob_regexes, cmd) {
-                "allow_glob match".to_string()
-            } else {
-                "allow_regex match".to_string()
+        // Determine reason from the structured decision. Reasons name the rule
+        // collection and its configured pattern, never the command arguments.
+        let reason = match &decision {
+            CommandPolicyDecision::AllowedByRule { rule, pattern }
+            | CommandPolicyDecision::DeniedByRule { rule, pattern } => {
+                format!("{} match: {pattern}", rule.config_key())
             }
-        } else if self.matches_prefix(cmd, &self.deny_prefixes) {
-            format!("deny_list match: {cmd}")
-        } else if Self::matches_any(&self.deny_glob_regexes, cmd) {
-            "deny_glob match".to_string()
-        } else {
-            "deny_regex match".to_string()
+            CommandPolicyDecision::AllowedWithoutAllowRules => {
+                "no allow rules configured; allowed by default".to_string()
+            }
+            CommandPolicyDecision::AllowedWithoutAllowRuleMatch => {
+                "no allow rule matches; allowed by default".to_string()
+            }
+            CommandPolicyDecision::DeniedEmptyCommand => "command is empty".to_string(),
         };
 
         // Cache the result
@@ -164,24 +307,29 @@ impl CommandPolicyEvaluator {
 
         (allowed, resolved_path, reason, decision)
     }
-
-    fn matches_prefix(&self, value: &str, prefixes: &[String]) -> bool {
-        prefixes
-            .iter()
-            .filter(|pattern| !pattern.is_empty())
-            .any(|pattern| value.starts_with(pattern))
-    }
-
-    fn matches_any(regexes: &[Regex], value: &str) -> bool {
-        regexes.iter().any(|re| re.is_match(value))
-    }
 }
 
-fn compile_regexes(patterns: &[String]) -> Vec<Regex> {
+fn first_matching_prefix<'a>(value: &str, prefixes: &'a [String]) -> Option<&'a str> {
+    prefixes
+        .iter()
+        .filter(|pattern| !pattern.is_empty())
+        .find(|pattern| value.starts_with(pattern.as_str()))
+        .map(String::as_str)
+}
+
+fn first_matching<'a>(value: &str, patterns: &'a [CompiledPattern]) -> Option<&'a str> {
+    patterns
+        .iter()
+        .find(|compiled| compiled.regex.is_match(value))
+        .map(|compiled| compiled.pattern.as_str())
+}
+
+fn compile_regexes(patterns: &[String]) -> Vec<CompiledPattern> {
     patterns
         .iter()
         .filter_map(|pattern| {
             Regex::new(pattern)
+                .map(|regex| CompiledPattern { pattern: pattern.clone(), regex })
                 .map_err(|error| {
                     warn!(%error, %pattern, "Ignoring invalid command regex pattern");
                     error
@@ -191,13 +339,14 @@ fn compile_regexes(patterns: &[String]) -> Vec<Regex> {
         .collect()
 }
 
-fn compile_globs(patterns: &[String]) -> Vec<Regex> {
+fn compile_globs(patterns: &[String]) -> Vec<CompiledPattern> {
     patterns
         .iter()
         .filter_map(|pattern| {
             let escaped = regex::escape(pattern);
             let glob_regex = format!("^{}$", escaped.replace(r"\*", ".*").replace(r"\?", "."));
             Regex::new(&glob_regex)
+                .map(|regex| CompiledPattern { pattern: pattern.clone(), regex })
                 .map_err(|error| {
                     warn!(%error, pattern = %pattern, "Ignoring invalid command glob pattern");
                     error
@@ -208,95 +357,4 @@ fn compile_globs(patterns: &[String]) -> Vec<Regex> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::CommandsConfig;
-
-    #[test]
-    fn glob_allows_cargo_commands() {
-        let mut config = CommandsConfig::default();
-        config.allow_list.clear();
-        config.allow_regex.clear();
-        config.allow_glob = vec!["cargo *".to_string()];
-        let evaluator = CommandPolicyEvaluator::from_config(&config);
-        assert!(evaluator.allows_text("cargo fmt"));
-        assert!(evaluator.allows(&["cargo".into(), "check".into()]));
-    }
-
-    #[test]
-    fn glob_supports_question_mark() {
-        let mut config = CommandsConfig::default();
-        config.allow_list.clear();
-        config.allow_regex.clear();
-        config.allow_glob = vec!["go test ./pkg/?".to_string()];
-        let evaluator = CommandPolicyEvaluator::from_config(&config);
-        assert!(evaluator.allows_text("go test ./pkg/a"));
-        assert!(!evaluator.allows_text("go test ./pkg/ab"));
-    }
-
-    #[test]
-    fn glob_allows_node_ecosystem_commands() {
-        let mut config = CommandsConfig::default();
-        config.allow_list.clear();
-        config.allow_regex.clear();
-        config.allow_glob = vec!["npm *".to_string(), "bun *".to_string()];
-        let evaluator = CommandPolicyEvaluator::from_config(&config);
-        assert!(evaluator.allows_text("npm install"));
-        assert!(evaluator.allows_text("npm run build"));
-        assert!(evaluator.allows_text("bun install"));
-        assert!(evaluator.allows_text("bun run check"));
-    }
-
-    /// The default policy allows `rm` only as a whole command token, so
-    /// `rmdir`-style neighbours stay fail-closed, and the shipped deny rules
-    /// still win over the allow glob.
-    #[test]
-    fn default_policy_allows_workspace_rm_without_widening_similar_commands() {
-        let config = CommandsConfig::default();
-        let evaluator = CommandPolicyEvaluator::from_config(&config);
-
-        assert!(evaluator.allows_text("rm -f scratch/tmp.txt"));
-        assert!(evaluator.allows_text("rm scratch/tmp.txt"));
-        assert!(!evaluator.allows_text("rmdir scratch"));
-        assert!(!evaluator.allows_text("rmx scratch"));
-        assert!(!evaluator.allows_text("rm -rf /"));
-        assert!(!evaluator.allows_text("rm --force scratch/tmp.txt"));
-        // Recursive and forced removals stay denied in any flag order.
-        for command in [
-            "rm -r scratch",
-            "rm -fr scratch",
-            "rm -Rf scratch",
-            "rm -f -r scratch",
-            "rm --recursive scratch",
-        ] {
-            assert!(!evaluator.allows_text(command), "expected denial: {command}");
-        }
-    }
-
-    /// The default deny regex matches `rm` as a command word, not as the
-    /// suffix of another command name such as `terraform`.
-    #[test]
-    fn default_deny_regex_matches_rm_as_a_word_only() {
-        let mut config = CommandsConfig::default();
-        config.allow_glob.push("terraform *".to_string());
-        let evaluator = CommandPolicyEvaluator::from_config(&config);
-
-        assert!(evaluator.allows_text("terraform -r apply"));
-        assert!(!evaluator.allows_text("rm -r scratch"));
-        assert!(!evaluator.allows_text("ls && rm -r scratch"));
-    }
-
-    #[test]
-    fn allow_list_allows_exact_git_and_cargo_commands() {
-        let mut config = CommandsConfig::default();
-        // Clear default allow_list to reduce noise
-        config.allow_list.clear();
-        config.allow_list.push("git".to_string());
-        config.allow_list.push("cargo".to_string());
-        let evaluator = CommandPolicyEvaluator::from_config(&config);
-        assert!(evaluator.allows_text("git"));
-        assert!(evaluator.allows_text("cargo"));
-        assert!(evaluator.allows(&["git".into()]));
-        assert!(evaluator.allows(&["cargo".into()]));
-    }
-}
+mod tests;

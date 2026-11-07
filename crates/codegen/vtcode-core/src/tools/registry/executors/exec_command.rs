@@ -20,6 +20,13 @@ pub(in crate::tools::registry) struct PreparedExecCommand {
     pub(in crate::tools::registry) requested_command: Vec<String>,
     pub(in crate::tools::registry) display_command: String,
     pub(in crate::tools::registry) requested_command_display: String,
+    /// Raw shell source the shell will actually run.
+    ///
+    /// Set when the executor wraps the argv in a shell invocation, and also
+    /// when the requested argv already spells out a shell command flag so the
+    /// source still needs its own policy check. `None` when no shell parses a
+    /// command string.
+    pub(in crate::tools::registry) executed_shell_source: Option<String>,
 }
 
 pub(super) fn parse_command_parts(
@@ -193,6 +200,62 @@ fn shell_command_flag(shell_program: &str, normalized_shell: &str) -> String {
     }
 }
 
+/// Whether a program name is a shell whose command flag introduces a source.
+pub(super) fn is_known_shell_program(program: &str) -> bool {
+    matches!(
+        normalized_shell_name(program).as_str(),
+        "sh" | "bash"
+            | "zsh"
+            | "dash"
+            | "ksh"
+            | "ksh93"
+            | "mksh"
+            | "fish"
+            | "cmd"
+            | "cmd.exe"
+            | "powershell"
+            | "powershell.exe"
+            | "pwsh"
+            | "pwsh.exe"
+    )
+}
+
+/// Whether a token is a shell flag that makes the next token a source string.
+///
+/// Recognition is shell-dependent so an option that merely contains `c` is not
+/// mistaken for the command flag. POSIX shells accept `-c` and combined short
+/// flags such as `-lc` or `-ec`. `cmd` accepts only `/c` and `/k`, and
+/// PowerShell only its named forms, so options such as `-NonInteractive` or
+/// `-ExecutionPolicy` are skipped.
+fn is_shell_command_flag(shell_program: &str, part: &str) -> bool {
+    let lower = part.to_ascii_lowercase();
+    match normalized_shell_name(shell_program).as_str() {
+        "cmd" | "cmd.exe" => matches!(lower.as_str(), "/c" | "/k"),
+        "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe" => {
+            matches!(lower.as_str(), "-c" | "-command" | "--command")
+        }
+        _ => part.strip_prefix('-').is_some_and(|flags| {
+            !flags.is_empty() && flags.chars().all(|ch| ch.is_ascii_alphabetic()) && flags.contains('c')
+        }),
+    }
+}
+
+/// Source string carried by an explicit shell invocation.
+///
+/// The first token names the shell, so the command flag is that shell's own
+/// and the next token is the text the shell will run. The program name is
+/// skipped so an operand cannot be mistaken for the flag.
+pub(super) fn explicit_shell_source(command: &[String]) -> Option<String> {
+    let shell_program = command.first()?;
+    let flag_index = command
+        .iter()
+        .skip(1)
+        .position(|part| is_shell_command_flag(shell_program, part))?
+        + 1;
+    let source = command.get(flag_index + 1)?.trim();
+    (!source.is_empty()).then(|| source.to_string())
+}
+
 fn command_display_for_shell(parts: &[String], shell_program: &str) -> String {
     if should_use_windows_command_tokenizer(Some(shell_program)) {
         join_windows_command(parts)
@@ -212,6 +275,7 @@ pub(super) fn prepare_exec_command(
 
     let normalized_shell = normalized_shell_name(shell_program);
     let existing_shell = command.first().map(|existing| normalized_shell_name(existing));
+    let mut executed_shell_source = None;
 
     if existing_shell != Some(normalized_shell.clone()) {
         let raw_command = payload
@@ -221,6 +285,7 @@ pub(super) fn prepare_exec_command(
             .or(auto_raw_command);
 
         let command_string = build_shell_command_string(raw_command.as_deref(), &command, shell_program);
+        executed_shell_source = Some(command_string.clone());
 
         let mut shell_invocation = Vec::with_capacity(4);
         shell_invocation.push(shell_program.to_string());
@@ -232,6 +297,11 @@ pub(super) fn prepare_exec_command(
         shell_invocation.push(shell_command_flag(shell_program, &normalized_shell));
         shell_invocation.push(command_string);
         command = shell_invocation;
+    } else if let Some(source) = explicit_shell_source(&command) {
+        // The caller supplied the shell invocation itself, so the executor
+        // does not wrap it. Record the source anyway: policy must evaluate the
+        // text the shell runs, not only the joined argv that contains it.
+        executed_shell_source = Some(source);
     }
 
     PreparedExecCommand {
@@ -239,6 +309,7 @@ pub(super) fn prepare_exec_command(
         requested_command_display: command_display_for_shell(&requested_command, shell_program),
         command,
         requested_command,
+        executed_shell_source,
     }
 }
 

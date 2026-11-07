@@ -22,27 +22,24 @@ which is independent of workspace file contents.
 VT Code implements a **defense-in-depth security model** with multiple layers
 of protection:
 
-### Layer 1: Command Allowlist
+### Layer 1: Command Deny List
 
-Only explicitly approved commands can execute. The allowlist includes:
+The configured `[commands]` policy is a deny-list safety net modelled on
+[cc-safety-net](https://github.com/kenryu42/cc-safety-net): commands are
+allowed by default and blocked only when they match a deny rule. The shipped
+deny rules cover:
 
-- `ls` - List directory contents
-- `cat` - Display file contents  
-- `cp` - Copy files
-- `head` - Display file beginning
-- `printenv` - Show environment variables
-- `pwd` - Print working directory
-- `rg` - Ripgrep text search
-- `sed` - Stream editor
-- `which` - Locate programs
-
-**All other commands are blocked by default**, including:
-
-- Destructive commands: root/home `rm` targets, `dd`, `shred`
+- Destructive commands: root/home `rm` targets, recursive or forced `rm`,
+  `dd`, `shred`
 - Privilege escalation: `sudo`, `su`, `doas`
 - System modification: `chmod`, `chown`, `systemctl`
-- Network commands: `curl`, `wget`, `ssh`
-- Container tools: `docker`, `kubectl`
+- Container tools: privileged `docker run` and administrative `kubectl`
+  operations
+
+Allow rules (`allow_list`, `allow_glob`, `allow_regex`) record commands the
+policy recognises as safe and support auto-approval, but they are not required
+for a command to run. Add a deny rule to block a command; unmatched commands,
+including every `gh` invocation, are allowed.
 
 A single simple `rm` over literal workspace paths is allowed only when the call
 sets `confirm: true`; unsupported shapes and targets outside the workspace are
@@ -51,7 +48,8 @@ refused. See
 
 ### Layer 2: Argument Validation
 
-Each allowed command has a dedicated validator that:
+Commands with a curated validator are checked argument by argument. Commands
+without one are still permitted unless a deny rule matches. A validator:
 
 - **Validates all flags** - Only explicitly allowed flags are permitted
 - **Blocks execution flags** - Prevents `-exec`, `--pre`, `-e`, etc.

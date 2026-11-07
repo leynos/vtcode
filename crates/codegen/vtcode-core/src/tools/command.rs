@@ -6,7 +6,7 @@ use crate::command_safety::command_might_be_dangerous;
 use crate::command_safety::unified::EvaluationReason;
 use crate::config::CommandsConfig;
 use crate::exec_policy::command_validation::{sanitize_working_dir, validate_command};
-use crate::tools::command_policy::CommandPolicyEvaluator;
+use crate::tools::command_policy::{CommandPolicyDecision, CommandPolicyEvaluator};
 use crate::tools::path_env;
 use crate::tools::shell::resolve_fallback_shell;
 use anyhow::{Result, anyhow};
@@ -103,6 +103,16 @@ impl CommandTool {
         self.policy.allows(command)
     }
 
+    /// Structured configured-policy decision for an argv request.
+    pub fn policy_decision(&self, command: &[String]) -> CommandPolicyDecision {
+        self.policy.decision(command)
+    }
+
+    /// Structured configured-policy decision for a raw shell source.
+    pub fn policy_decision_text(&self, command_text: &str) -> CommandPolicyDecision {
+        self.policy.decision_text(command_text)
+    }
+
     #[cfg_attr(
         not(test),
         expect(
@@ -134,7 +144,8 @@ impl CommandTool {
             return Err(anyhow!("Command appears destructive; set the `confirm` field to true to proceed."));
         }
 
-        let policy_allowed = self.policy.allows(command);
+        let policy_decision = self.policy.decision(command);
+        let policy_allowed = policy_decision.is_allowed();
 
         // Use unified evaluator with policy layer
         let eval_result = self
@@ -144,7 +155,13 @@ impl CommandTool {
 
         if !eval_result.allowed {
             if !policy_allowed {
-                return Err(anyhow!("command '{program}' is not permitted by the execution policy"));
+                // The first argv element may be an environment assignment whose
+                // value is a secret, so diagnostics use the shared redaction.
+                let diagnostic_program = crate::tools::command_args::diagnostic_program_name_from_words(command);
+                if let Some(message) = policy_decision.denial_message(&diagnostic_program) {
+                    return Err(anyhow!("{message}"));
+                }
+                return Err(anyhow!("command '{diagnostic_program}' is not permitted by the execution policy"));
             }
             // If unified evaluator denied, still allow explicitly confirmed risky commands
             // when they are permitted by the configured policy.
@@ -332,15 +349,17 @@ mod tests {
         assert_eq!(invocation.display, "cargo check");
     }
 
+    /// The configured policy is a deny-list safety net: a command that no
+    /// allow rule mentions is still prepared for execution.
     #[tokio::test]
-    async fn prepare_invocation_rejects_command_not_in_policy() {
+    async fn prepare_invocation_allows_command_outside_allow_list() {
         let tool = make_tool();
         let input = make_input(vec!["custom-tool"]);
-        let error = tool
+        let invocation = tool
             .prepare_invocation(&input)
             .await
-            .expect_err("custom-tool should be blocked");
-        assert!(error.to_string().contains("is not permitted by the execution policy"));
+            .expect("an unmatched command is allowed by default");
+        assert_eq!(invocation.display, "custom-tool");
     }
 
     #[tokio::test]

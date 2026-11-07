@@ -23,6 +23,7 @@ use crate::config::CommandsConfig;
 use crate::config::constants::tools;
 use crate::dotfile_protection::{AccessContext, AccessType, DotfileGuardian, ProtectionDecision, get_global_guardian};
 use crate::tools::apply_patch::{Patch, PatchOperation, decode_apply_patch_input};
+use crate::tools::command_args::diagnostic_program_name;
 use crate::tools::command_policy::CommandPolicyEvaluator;
 use crate::tools::invocation::ToolInvocationId;
 use crate::tools::rate_limit_config::{tool_calls_per_minute_from_env, tool_calls_per_second_from_env};
@@ -687,16 +688,17 @@ impl SafetyGateway {
                 );
             }
 
-            if let Some(ref policy) = self.command_policy
-                && !policy.allows_text(&command)
-            {
-                let reason = format!("Command '{command}' blocked by policy");
-                tracing::info!(
-                    invocation_id = %inv_id,
-                    command = %command,
-                    "SafetyGateway: command policy denied"
-                );
-                return SafetyDecision::Deny(reason);
+            if let Some(ref policy) = self.command_policy {
+                let decision = policy.decision_text(&command);
+                let program = diagnostic_program_name(&command);
+                if let Some(reason) = decision.denial_message(&program) {
+                    tracing::info!(
+                        invocation_id = %inv_id,
+                        tool = %tool_name,
+                        "SafetyGateway: command policy denied"
+                    );
+                    return SafetyDecision::Deny(reason);
+                }
             }
         }
 
@@ -1211,6 +1213,33 @@ mod tests {
             .await;
 
         assert!(decision.is_denied());
+    }
+
+    #[tokio::test]
+    async fn command_policy_denial_names_only_the_program() {
+        let mut commands_config = CommandsConfig::default();
+        commands_config.deny_list.push("rm".to_string());
+
+        let gateway = SafetyGateway::new().with_commands_config(&commands_config);
+        let ctx = make_ctx();
+
+        let decision = gateway
+            .check_safety(
+                &ctx,
+                "shell",
+                &serde_json::json!({"command": "API_TOKEN=super-secret rm -rf /workspace/secret"}),
+            )
+            .await;
+
+        let SafetyDecision::Deny(reason) = decision else {
+            panic!("expected a policy denial, got {decision:?}");
+        };
+        assert!(
+            reason.contains("command 'rm' is not permitted by the execution policy"),
+            "unexpected denial message: {reason}"
+        );
+        assert!(!reason.contains("super-secret"), "denial leaked an assignment value: {reason}");
+        assert!(!reason.contains("/workspace/secret"), "denial leaked an argument: {reason}");
     }
 
     #[tokio::test]
