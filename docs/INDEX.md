@@ -84,6 +84,15 @@ Last reviewed: 2026-11-03
 - [Loop Engineering](loop-engineering.md) - Worktree isolation, propose/verify
   sub-agents, loop state, cost guardrails.
 
+## Proposed Diapason observability
+
+- [Observability RFC](rfcs/rfc-0002-diapason-observability.md) - Requirements,
+  prior-art parity and trade-offs; proposed, not implemented.
+- [Observability technical design](design/diapason-observability-design.md) -
+  Rust ownership, telemetry contracts, privacy and operational guarantees.
+- [Observability GIST roadmap](project/diapason-observability-roadmap.md) -
+  Delivery slices and measurable acceptance criteria.
+
 ## Module Documentation
 
 - [diapason-ui](modules/diapason_ui.md) - UI framework, design system, theme
