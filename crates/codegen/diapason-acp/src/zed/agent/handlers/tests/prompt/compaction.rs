@@ -1,6 +1,5 @@
 //! Covers ACP compaction admission, cancellation, and checkpoint restoration.
 use super::*;
-use crate::metrics::compaction_metrics;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
 
 /// A `tracing` writer that collects formatted output for one test only.
