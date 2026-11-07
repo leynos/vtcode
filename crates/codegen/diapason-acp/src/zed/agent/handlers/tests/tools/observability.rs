@@ -1,6 +1,6 @@
 //! Covers the `acp_tool_execution` span and its bounded recovery counters.
 use super::*;
-use crate::zed::agent::handlers::prompt::{ToolRoundRequest, execute_tool_round};
+use crate::zed::agent::handlers::prompt::{ToolRoundOutcome, ToolRoundRequest, ToolRoundTimer, execute_tool_round};
 use crate::zed::agent::test_support::HistorySettingsGuard;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use diapason_config::codex::HistoryPersistence;
@@ -123,6 +123,91 @@ fn successful_tool_round_emits_acp_tool_execution_span_and_replaced_counter() {
     });
 }
 
+/// Timer that returns a fixed elapsed value so span fields are assertable.
+struct FixedToolRoundTimer {
+    started: std::time::Instant,
+    elapsed_ms: u64,
+}
+
+impl FixedToolRoundTimer {
+    /// Builds a timer whose rounds always report `elapsed_ms`.
+    fn new(elapsed_ms: u64) -> Self {
+        Self { started: std::time::Instant::now(), elapsed_ms }
+    }
+}
+
+impl ToolRoundTimer for FixedToolRoundTimer {
+    /// Returns a stable start instant, which the fake elapsed value ignores.
+    fn start(&self) -> std::time::Instant {
+        self.started
+    }
+
+    /// Returns the configured elapsed value regardless of the start instant.
+    fn elapsed_ms(&self, _started: std::time::Instant) -> u64 {
+        self.elapsed_ms
+    }
+}
+
+/// Records the injected timer value for a successful round.
+#[test]
+fn successful_tool_round_uses_injected_timer_elapsed_value() {
+    let capture = TraceCapture::default();
+    let captured = capture.clone();
+    with_trace_capture(capture, async move {
+        let _history_test_guard = lock_history_test_guard().await;
+        let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+        let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+        let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+        let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+
+        let workspace = TempDir::new().expect("wire test workspace");
+        let agent = Arc::new(build_wire_test_agent(workspace.path()).await);
+        let session_id = agent
+            .new_session(NewSessionRequest::new(workspace.path()))
+            .await
+            .expect("create ACP session")
+            .session_id;
+        let session = agent
+            .session_handle(&session_id)
+            .expect("ACP session lookup")
+            .expect("created ACP session");
+        let calls = vec![diapason_core::llm::provider::ToolCall::function(
+            "call-timer-success".to_string(),
+            "list_files".to_string(),
+            r#"{"path":""}"#.to_string(),
+        )];
+        let mut tool_loop_count = 0usize;
+        let timer = FixedToolRoundTimer::new(700);
+
+        let outcome = execute_tool_round(ToolRoundRequest {
+            agent: agent.as_ref(),
+            session: &session,
+            session_id: &session_id,
+            tool_calls: &calls,
+            assistant_message: "Inspect the workspace.",
+            assistant_reasoning: "",
+            reasoning_details: None,
+            tool_loop_count: &mut tool_loop_count,
+            streamed: false,
+            timer: &timer,
+        })
+        .await
+        .expect("a successful tool round must complete");
+        assert!(matches!(outcome, ToolRoundOutcome::Continue));
+
+        let trace = captured.0.lock().expect("trace capture lock").clone();
+        let joined = trace.join("\n");
+        assert!(
+            joined.contains("elapsed_ms=700"),
+            "a successful tool round must record the injected elapsed value: {joined}"
+        );
+        assert!(
+            joined.contains("outcome=\"results_replaced\""),
+            "a successful tool round must record the results_replaced outcome: {joined}"
+        );
+    });
+}
+
 /// Emits the span, bounded error category, and one interruption counter.
 #[test]
 fn interrupted_tool_round_emits_span_and_fixed_error_category() {
@@ -173,6 +258,7 @@ fn interrupted_tool_round_emits_span_and_fixed_error_category() {
             r#"{"path":""}"#.to_string(),
         )];
         let mut tool_loop_count = 0usize;
+        let timer = FixedToolRoundTimer::new(900);
         let error = match execute_tool_round(ToolRoundRequest {
             agent: agent.as_ref(),
             session: &session,
@@ -183,6 +269,7 @@ fn interrupted_tool_round_emits_span_and_fixed_error_category() {
             reasoning_details: None,
             tool_loop_count: &mut tool_loop_count,
             streamed: false,
+            timer: &timer,
         })
         .await
         {
@@ -200,7 +287,10 @@ fn interrupted_tool_round_emits_span_and_fixed_error_category() {
             joined.contains("outcome=\"execution_interrupted\""),
             "an interrupted tool round must record the execution_interrupted outcome: {joined}"
         );
-        assert!(joined.contains("elapsed_ms="), "an interrupted tool round must record elapsed_ms: {joined}");
+        assert!(
+            joined.contains("elapsed_ms=900"),
+            "an interrupted tool round must record the injected elapsed value: {joined}"
+        );
 
         let warn_line = trace
             .iter()

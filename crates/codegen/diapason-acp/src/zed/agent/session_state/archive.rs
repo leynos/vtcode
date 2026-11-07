@@ -4,16 +4,19 @@
 //! session becomes active. Ambiguous terminal-result history is rejected
 //! without replaying calls or registering a resumable session.
 use anyhow::Context;
+use diapason_commons::fs::read_private_json_file;
 use diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics;
 use diapason_core::core::threads::{ThreadBootstrap, messages_from_session_listing};
 use diapason_core::hooks::SessionStartTrigger;
-use diapason_core::llm::provider::MessageRole;
+use diapason_core::llm::provider::{Message, MessageRole};
 use diapason_core::metrics::ToolRecoveryEvent;
 use diapason_core::utils::session_archive::{
     SessionArchive, SessionListing, SessionMessage, SessionProgressArgs, SessionProgressPersistenceStatus,
-    find_session_by_identifier, history_persistence_enabled, list_recent_sessions, session_workspace_path,
+    SessionSnapshot, find_session_by_identifier, history_persistence_enabled, list_recent_sessions,
+    session_workspace_path,
 };
 use futures::future::BoxFuture;
+use std::collections::HashSet;
 use std::future::Future;
 use std::path::Path;
 use std::time::Instant;
@@ -57,7 +60,7 @@ where
 
 /// How strictly a checkpoint must reach durable storage.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum CheckpointDurability {
+pub(super) enum CheckpointDurability {
     /// A skipped or throttled checkpoint is logged and tolerated.
     BestEffort,
     /// The caller cannot proceed unless the snapshot was persisted.
@@ -130,7 +133,7 @@ impl ZedAgent {
         let mut archive = match existing_archive {
             Some(archive) => archive,
             None => {
-                let archive = SessionArchive::new_with_identifier(metadata.clone(), session_identifier).await?;
+                let archive = SessionArchive::new_with_identifier(metadata.clone(), session_identifier.clone()).await?;
                 let mut data = session
                     .data
                     .lock()
@@ -141,6 +144,13 @@ impl ZedAgent {
         };
         archive.replace_metadata(metadata);
 
+        // A required checkpoint gates tool execution, so remember which staged
+        // calls it must retain before compaction can silently drop them.
+        let staged_call_ids = if durability == CheckpointDurability::Required {
+            staged_tool_call_ids(&snapshot.messages)
+        } else {
+            Vec::new()
+        };
         let messages = snapshot.messages.iter().map(SessionMessage::from).collect::<Vec<_>>();
         let recent_start = messages.len().saturating_sub(20);
         let recent_messages = messages.iter().skip(recent_start).cloned().collect();
@@ -162,14 +172,22 @@ impl ZedAgent {
                 turn_diagnostics,
             })
             .await?;
-        let (persistence_outcome, persisted) = match persistence_status {
-            SessionProgressPersistenceStatus::Persisted(_) => ("persisted", true),
-            SessionProgressPersistenceStatus::Throttled(_) => ("throttled", false),
-            SessionProgressPersistenceStatus::Disabled(_) => ("disabled", false),
+        let (persistence_outcome, persisted_path) = match persistence_status {
+            SessionProgressPersistenceStatus::Persisted(path) => ("persisted", Some(path)),
+            SessionProgressPersistenceStatus::Throttled(_) => ("throttled", None),
+            SessionProgressPersistenceStatus::Disabled(_) => ("disabled", None),
         };
         debug!(persistence_outcome, "Processed ACP session checkpoint");
-        if durability == CheckpointDurability::Required && !persisted {
-            return Err(anyhow::anyhow!("ACP session checkpoint was not persisted (outcome: {persistence_outcome})"));
+        let Some(persisted_path) = persisted_path else {
+            if durability == CheckpointDurability::Required {
+                return Err(anyhow::anyhow!(
+                    "ACP session checkpoint was not persisted (outcome: {persistence_outcome})"
+                ));
+            }
+            return Ok(());
+        };
+        if durability == CheckpointDurability::Required && !staged_call_ids.is_empty() {
+            verify_required_checkpoint_retention(&session_identifier, &persisted_path, &staged_call_ids).await?;
         }
         Ok(())
     }
@@ -185,10 +203,17 @@ impl ZedAgent {
         workspace: &AcpSessionWorkspace,
     ) -> anyhow::Result<SessionHandle> {
         trace_storage_operation("archive_attach", async {
+            let resume_lock = self.resume_lock(session_id)?;
+            let _resume_guard = resume_lock.lock().await;
+            // Another attempt may have registered the session while this one
+            // waited for the lock; reuse its result instead of repairing twice.
+            if let Some(existing) = self.session_handle(session_id)? {
+                return Ok(existing);
+            }
             let listing = find_session_by_identifier(identifier)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
-            self.attach_thread_from_listing(session_id, workspace, listing).await
+            self.attach_thread_from_listing_locked(session_id, workspace, listing).await
         })
         .await
     }
@@ -197,7 +222,24 @@ impl ZedAgent {
     ///
     /// The listing's own identifier names the session, so callers cannot
     /// attach a listing under a name that does not match its archive path.
+    /// Concurrent attempts for the same session are serialized so only one
+    /// repairs and registers it.
     pub(super) async fn attach_thread_from_listing(
+        &self,
+        session_id: &acp::SessionId,
+        workspace: &AcpSessionWorkspace,
+        listing: SessionListing,
+    ) -> anyhow::Result<SessionHandle> {
+        let resume_lock = self.resume_lock(session_id)?;
+        let _resume_guard = resume_lock.lock().await;
+        if let Some(existing) = self.session_handle(session_id)? {
+            return Ok(existing);
+        }
+        self.attach_thread_from_listing_locked(session_id, workspace, listing).await
+    }
+
+    /// Attaches a listing while the caller already holds the per-session lock.
+    async fn attach_thread_from_listing_locked(
         &self,
         session_id: &acp::SessionId,
         workspace: &AcpSessionWorkspace,
@@ -656,4 +698,110 @@ pub(super) fn repair_archived_tool_calls(
         listing.snapshot.messages = messages.iter().map(SessionMessage::from).collect();
     }
     Ok(report)
+}
+
+/// Returns the tool-call ids staged by the most recent assistant tool batch.
+///
+/// A required checkpoint must retain this batch; an empty result means the
+/// snapshot carries no staged calls and needs no read-back verification.
+pub(super) fn staged_tool_call_ids(messages: &[Message]) -> Vec<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| {
+            message.role == MessageRole::Assistant
+                && message.tool_calls.as_deref().is_some_and(|calls| !calls.is_empty())
+        })
+        .and_then(|message| message.tool_calls.as_deref())
+        .map(|calls| calls.iter().map(|call| call.id.clone()).collect())
+        .unwrap_or_default()
+}
+
+/// Returns the staged tool-call ids the persisted messages no longer retain.
+///
+/// A retained call must appear both as a requested call id and as the
+/// `tool_call_id` of its result; compaction that drops either side has lost
+/// the staged batch.
+pub(super) fn missing_persisted_tool_calls(
+    staged_call_ids: &[String],
+    persisted_messages: &[SessionMessage],
+) -> Vec<String> {
+    let requested = persisted_messages
+        .iter()
+        .filter_map(|message| message.tool_calls.as_deref())
+        .flatten()
+        .map(|call| call.id.as_str())
+        .collect::<HashSet<_>>();
+    let answered = persisted_messages
+        .iter()
+        .filter_map(|message| message.tool_call_id.as_deref())
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    staged_call_ids
+        .iter()
+        .filter(|call_id| {
+            let call_id = call_id.as_str();
+            !requested.contains(call_id) || !answered.contains(call_id)
+        })
+        .cloned()
+        .collect()
+}
+
+/// Returns how many staged calls a checkpoint failed to retain, if any.
+///
+/// Best-effort checkpoints tolerate compaction loss; required checkpoints
+/// must reject a snapshot that dropped the staged batch.
+pub(super) fn required_checkpoint_retention_violation(
+    durability: CheckpointDurability,
+    staged_call_ids: &[String],
+    persisted_messages: &[SessionMessage],
+) -> Option<usize> {
+    if durability != CheckpointDurability::Required || staged_call_ids.is_empty() {
+        return None;
+    }
+    let missing = missing_persisted_tool_calls(staged_call_ids, persisted_messages);
+    (!missing.is_empty()).then_some(missing.len())
+}
+
+/// Reads the persisted checkpoint back and rejects a dropped staged batch.
+async fn verify_required_checkpoint_retention(
+    session_identifier: &str,
+    persisted_path: &Path,
+    staged_call_ids: &[String],
+) -> anyhow::Result<()> {
+    let persisted_messages = read_back_persisted_messages(session_identifier, persisted_path).await?;
+    if let Some(missing) =
+        required_checkpoint_retention_violation(CheckpointDurability::Required, staged_call_ids, &persisted_messages)
+    {
+        return Err(anyhow::anyhow!(
+            "required ACP session checkpoint dropped {missing} staged tool call(s) during compaction"
+        ));
+    }
+    Ok(())
+}
+
+/// Loads the messages of the archive a required checkpoint just persisted.
+///
+/// Canonical archives resolve through the session listing API. Archives
+/// attached from an explicit listing path (for example a resumed archive
+/// outside the session directory) are read from the exact file the checkpoint
+/// reported, so the retention proof still covers what was written.
+async fn read_back_persisted_messages(
+    session_identifier: &str,
+    persisted_path: &Path,
+) -> anyhow::Result<Vec<SessionMessage>> {
+    if let Some(listing) = find_session_by_identifier(session_identifier)
+        .await
+        .context("reading back the required ACP session checkpoint")?
+    {
+        return Ok(listing.snapshot.messages);
+    }
+    let persisted_stem = persisted_path.file_stem().and_then(|stem| stem.to_str());
+    if persisted_stem == Some(session_identifier) {
+        return Err(anyhow::anyhow!("required ACP session checkpoint could not be read back after persistence"));
+    }
+    let snapshot: SessionSnapshot = read_private_json_file(persisted_path)
+        .await
+        .context("reading back the required ACP session checkpoint file")?;
+    Ok(snapshot.messages)
 }

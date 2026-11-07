@@ -601,6 +601,19 @@ fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, so
             return classify_stale_exec_session(error, &lost.session_id, true);
         }
 
+        // A pipe session whose writer was already closed before the first
+        // write delivered nothing, so it is a stale session with no partial
+        // state. It is a distinct cause from a missing session record.
+        if let Some(closed) = source.downcast_ref::<crate::tools::exec_session::ExecSessionWriterClosed>() {
+            debug!(
+                tool_name,
+                session_id = %closed.session_id,
+                tool_recovery_outcome = "exec_session_writer_closed",
+                "Rejected write_stdin session with a closed writer"
+            );
+            return classify_stale_exec_session(error, &closed.session_id, false);
+        }
+
         if let Some(missing) = source.downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>() {
             debug!(
                 tool_name,
@@ -836,8 +849,7 @@ mod tests {
     fn write_stdin_session_lost_after_input_reports_partial_state() {
         // Input written to the session may already have been consumed, so a
         // concurrent close after the write cannot claim "no partial state".
-        let source =
-            Error::new(crate::tools::exec_session::ExecSessionLostAfterInput { session_id: "run-lost".to_string() });
+        let source = Error::new(crate::tools::exec_session::ExecSessionLostAfterInput::new("run-lost"));
 
         let error = ToolExecutionError::from_anyhow(
             crate::config::constants::tools::WRITE_STDIN,

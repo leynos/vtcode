@@ -109,16 +109,27 @@ cargo nextest run -p diapason-core stale_write_stdin_modes_are_resource_not_foun
 `metrics::tool_recovery_metrics` counts recovery events in bounded,
 fixed-variant counters: staged calls, replaced calls, interrupted calls,
 relocated results, repaired archives, ambiguous histories, concurrent prompt
-rejections, stale `write_stdin` requests, and checkpoint failures. The snapshot
-appears as `tool_recovery` in the metrics summary JSON and as
+rejections, stale `write_stdin` requests, checkpoint failures, and
+`duplicate_tool_call_batch` for a provider batch rejected before staging. The
+snapshot appears as `tool_recovery` in the metrics summary JSON and as
 `diapason_tool_recovery_total{event=...}` in the Prometheus export.
 
 Every label is a fixed event variant. Session identifiers, tool-call
 identifiers, tool names, and tool output never become a metric label or an
 exported metric value, so a session can export the snapshot without leaking
-which tools it invoked or what they returned. Structured logs can still carry
-session identifiers. Adding a dimension means adding an enum variant and its
-`as_str` arm; a free-form string label is not acceptable.
+which tools it invoked or what they returned. Adding a dimension means adding
+an enum variant and its `as_str` arm; a free-form string label is not
+acceptable.
+
+Structured recovery logs are deliberately wider than the metric labels, and
+their extra fields are bounded. A recovery record carries the session
+identifier, the tool name, and a fixed `tool_recovery_outcome` category: the
+identifier is the opaque protocol value that lets an operator correlate one
+record with the session that produced it, the tool name is drawn from the fixed
+tool vocabulary, and the outcome is one of the fixed enum variants above. Tool
+arguments, tool output, and prompt text are never recorded, so a log record
+identifies which session recovered and which bounded cause applied without
+reproducing conversation content.
 
 ## Providers
 

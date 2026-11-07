@@ -1,7 +1,7 @@
 //! Verifies ACP prompt streaming, partial-turn recovery, compaction, and reasoning projection.
 use super::*;
 use crate::audit::AcpAuditLogger;
-use crate::zed::agent::handlers::prompt::{ToolRoundRequest, execute_tool_round};
+use crate::zed::agent::handlers::prompt::{SystemToolRoundTimer, ToolRoundRequest, execute_tool_round};
 use crate::zed::agent::test_support::HistorySettingsGuard;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
 use diapason_config::codex::HistoryPersistence;
@@ -69,8 +69,8 @@ fn duplicate_tool_call_ids_are_rejected_before_staging() {
 /// `execute_tool_round`, which stages placeholders and executes tools, so it
 /// proves a rejected batch reaches neither. Execution is observed through the
 /// ACP tool-audit sink, which records every attempted tool call even when no
-/// client is attached: a control round with unique IDs appends one entry, and
-/// the rejected duplicate round must leave the count unchanged. The counter
+/// client is attached: the rejected duplicate round must leave the sink empty,
+/// and a control round with unique IDs then appends one entry. The counter
 /// assertions alone cannot prove non-invocation, because `InterruptedCall`
 /// records interruptions rather than attempts.
 #[tokio::test]
@@ -101,42 +101,9 @@ async fn duplicate_tool_call_ids_are_rejected_before_staging_or_execution() {
     };
     assert_eq!(audit_entries(), 0, "the audit sink must start empty");
 
-    // Control: the same harness executes a unique-ID batch, so an unchanged
-    // audit count below means the duplicate batch never reached the executor.
-    let control_session_id = agent
-        .new_session(NewSessionRequest::new(workspace.path()))
-        .await
-        .expect("create control ACP session")
-        .session_id;
-    let control_session = agent
-        .session_handle(&control_session_id)
-        .expect("control ACP session lookup")
-        .expect("created control ACP session");
-    let control_calls = vec![diapason_core::llm::provider::ToolCall::function(
-        "call-control".to_string(),
-        "list_files".to_string(),
-        r#"{"path":""}"#.to_string(),
-    )];
-    let mut control_loop_count = 0usize;
-    let _control_outcome = execute_tool_round(ToolRoundRequest {
-        agent: agent.as_ref(),
-        session: &control_session,
-        session_id: &control_session_id,
-        tool_calls: &control_calls,
-        assistant_message: "Inspect the workspace.",
-        assistant_reasoning: "",
-        reasoning_details: None,
-        tool_loop_count: &mut control_loop_count,
-        streamed: false,
-    })
-    .await
-    .expect("a unique-ID batch must reach tool execution");
-    assert_eq!(audit_entries(), 1, "the control round must record one attempted tool call");
-    let control_metrics = agent.recovery_metrics().get_tool_recovery_metrics();
-    let staged_baseline = control_metrics.count(ToolRecoveryEvent::StagedCall);
-    let replaced_baseline = control_metrics.count(ToolRecoveryEvent::ReplacedCall);
-    let interrupted_baseline = control_metrics.count(ToolRecoveryEvent::InterruptedCall);
-
+    // Reject the duplicate batch first, while every recovery counter and the
+    // audit sink are still pristine. A staged placeholder, an executed tool,
+    // or a replaced result would move one of them.
     let session_id = agent
         .new_session(NewSessionRequest::new(workspace.path()))
         .await
@@ -166,6 +133,7 @@ async fn duplicate_tool_call_ids_are_rejected_before_staging_or_execution() {
         reasoning_details: None,
         tool_loop_count: &mut tool_loop_count,
         streamed: false,
+        timer: &SystemToolRoundTimer,
     })
     .await
     .err()
@@ -179,14 +147,57 @@ async fn duplicate_tool_call_ids_are_rejected_before_staging_or_execution() {
     let messages = session.data.lock().expect("wire session data").thread.messages();
     assert!(messages.is_empty(), "a rejected round must not stage history: {messages:?}");
     let metrics = agent.recovery_metrics().get_tool_recovery_metrics();
-    assert_eq!(metrics.count(ToolRecoveryEvent::StagedCall), staged_baseline, "no placeholder may be staged");
-    assert_eq!(metrics.count(ToolRecoveryEvent::ReplacedCall), replaced_baseline, "no result may be replaced");
     assert_eq!(
-        metrics.count(ToolRecoveryEvent::InterruptedCall),
-        interrupted_baseline,
-        "no tool may be interrupted"
+        metrics.count(ToolRecoveryEvent::DuplicateToolCallBatch),
+        1,
+        "the rejected batch must be counted exactly once"
     );
-    assert_eq!(audit_entries(), 1, "a rejected batch must never reach the executor");
+    assert_eq!(metrics.count(ToolRecoveryEvent::StagedCall), 0, "no placeholder may be staged");
+    assert_eq!(metrics.count(ToolRecoveryEvent::ReplacedCall), 0, "no result may be replaced");
+    assert_eq!(metrics.count(ToolRecoveryEvent::InterruptedCall), 0, "no tool may be interrupted");
+    assert_eq!(audit_entries(), 0, "a rejected batch must never reach the executor");
+
+    // Control: the same harness executes a unique-ID batch, proving the audit
+    // sink and the staging/replacement counters move for an admitted round.
+    let control_session_id = agent
+        .new_session(NewSessionRequest::new(workspace.path()))
+        .await
+        .expect("create control ACP session")
+        .session_id;
+    let control_session = agent
+        .session_handle(&control_session_id)
+        .expect("control ACP session lookup")
+        .expect("created control ACP session");
+    let control_calls = vec![diapason_core::llm::provider::ToolCall::function(
+        "call-control".to_string(),
+        "list_files".to_string(),
+        r#"{"path":""}"#.to_string(),
+    )];
+    let mut control_loop_count = 0usize;
+    let _control_outcome = execute_tool_round(ToolRoundRequest {
+        agent: agent.as_ref(),
+        session: &control_session,
+        session_id: &control_session_id,
+        tool_calls: &control_calls,
+        assistant_message: "Inspect the workspace.",
+        assistant_reasoning: "",
+        reasoning_details: None,
+        tool_loop_count: &mut control_loop_count,
+        streamed: false,
+        timer: &SystemToolRoundTimer,
+    })
+    .await
+    .expect("a unique-ID batch must reach tool execution");
+    assert_eq!(audit_entries(), 1, "the control round must record one attempted tool call");
+    let control_metrics = agent.recovery_metrics().get_tool_recovery_metrics();
+    assert!(
+        control_metrics.count(ToolRecoveryEvent::StagedCall) >= 1,
+        "the control round must stage a placeholder"
+    );
+    assert!(
+        control_metrics.count(ToolRecoveryEvent::ReplacedCall) >= 1,
+        "the control round must replace its placeholder"
+    );
 }
 
 #[test]

@@ -199,6 +199,7 @@ async fn execute_buffered_tool_calls(
         reasoning_details: None,
         tool_loop_count,
         streamed: false,
+        timer: &SystemToolRoundTimer,
     })
     .await?;
     match outcome {
