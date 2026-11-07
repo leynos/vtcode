@@ -8,9 +8,11 @@
 
 use anyhow::Error;
 use diapason_commons::ErrorCategory;
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Value, json};
 use std::borrow::Cow;
+use tracing::debug;
 
 use crate::retry::{RetryDecision, RetryPolicy, RetryPolicyCoreExt};
 use crate::tools::tool_intent::is_command_tool;
@@ -23,7 +25,38 @@ pub struct ToolErrorDebugContext {
     pub metadata: Vec<(String, String)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Typed classification of a `write_stdin` continuation whose exec session
+/// has already terminated.
+///
+/// This is the internal policy representation. [`ToolExecutionError::details`]
+/// is only the client-facing rendering of the same state. The wire envelope
+/// carries this typed value alongside that rendering, so a JSON round trip
+/// restores the classification through serde and policy never parses
+/// `details`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StaleExecSession {
+    /// Identifier the caller supplied for the terminated session.
+    pub session_id: String,
+    /// Whether the input write completed before the session was lost.
+    pub input_delivered: bool,
+}
+
+impl StaleExecSession {
+    /// Render the client-facing `details` payload for this classification.
+    fn to_details(&self) -> Value {
+        let mut details = json!({
+            "reason": STALE_EXEC_SESSION_REASON,
+            "session_id": self.session_id,
+            "next_action": "Start a new exec_command and use the returned session ID."
+        });
+        if self.input_delivered {
+            details["input_delivered"] = json!(true);
+        }
+        details
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ToolExecutionError {
     pub tool_name: String,
     pub error_type: ToolErrorType,
@@ -39,8 +72,52 @@ pub struct ToolExecutionError {
     pub rollback_performed: bool,
     pub debug_context: Option<ToolErrorDebugContext>,
     pub original_error: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Explicit client-facing payload attached with [`Self::with_details`].
+    ///
+    /// A stale-session classification is rendered on demand instead of being
+    /// stored here, so this field never carries policy state. The manual
+    /// [`Serialize`] implementation emits `details` only when
+    /// [`Self::rendered_details`] yields a payload.
+    #[serde(default)]
     pub details: Option<Value>,
+    /// Typed stale-session classification.
+    ///
+    /// Serialized as its own envelope field so a round trip restores policy
+    /// state without reading the client-facing [`Self::details`] rendering.
+    #[serde(default)]
+    pub stale_exec_session: Option<StaleExecSession>,
+}
+
+impl Serialize for ToolExecutionError {
+    /// Serializes every field, adding rendered `details` and any typed
+    /// stale-session state.
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("tool_name", &self.tool_name)?;
+        map.serialize_entry("error_type", &self.error_type)?;
+        map.serialize_entry("category", &self.category)?;
+        map.serialize_entry("message", &self.message)?;
+        map.serialize_entry("retryable", &self.retryable)?;
+        map.serialize_entry("is_recoverable", &self.is_recoverable)?;
+        map.serialize_entry("recovery_suggestions", &self.recovery_suggestions)?;
+        map.serialize_entry("retry_delay_ms", &self.retry_delay_ms)?;
+        map.serialize_entry("retry_after_ms", &self.retry_after_ms)?;
+        map.serialize_entry("circuit_breaker_impact", &self.circuit_breaker_impact)?;
+        map.serialize_entry("partial_state_possible", &self.partial_state_possible)?;
+        map.serialize_entry("rollback_performed", &self.rollback_performed)?;
+        map.serialize_entry("debug_context", &self.debug_context)?;
+        map.serialize_entry("original_error", &self.original_error)?;
+        if let Some(details) = self.rendered_details() {
+            map.serialize_entry("details", &details)?;
+        }
+        if let Some(classified) = &self.stale_exec_session {
+            map.serialize_entry("stale_exec_session", classified)?;
+        }
+        map.end()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +187,7 @@ impl ToolExecutionError {
             debug_context: None,
             original_error: None,
             details: None,
+            stale_exec_session: None,
         }
     }
 
@@ -218,11 +296,35 @@ impl ToolExecutionError {
         self
     }
 
+    /// Client-facing `details` payload, rendered on demand.
+    ///
+    /// An explicit [`Self::with_details`] payload wins. Otherwise a typed
+    /// stale-session classification is rendered here, so the wire payload is
+    /// built only when the error is serialized for a caller.
+    #[must_use]
+    pub fn rendered_details(&self) -> Option<Value> {
+        self.details
+            .clone()
+            .or_else(|| self.stale_exec_session.as_ref().map(StaleExecSession::to_details))
+    }
+
+    /// Classify whether a failed tool call may have left partial state behind.
+    ///
+    /// A stale `write_stdin` continuation and an `apply_patch` rejection both
+    /// report their own explicit recovery outcome, so they are excluded from
+    /// the generic mutation heuristic.
     #[must_use]
     pub fn with_tool_call_context(mut self, tool_name: &str, args: &Value) -> Self {
         self.tool_name = tool_name.to_string();
 
         if tool_name == crate::config::constants::tools::APPLY_PATCH {
+            return self;
+        }
+        // Returning `self` preserves the explicit classification set by
+        // `apply_explicit_error_state`. In particular, a session lost after the
+        // input write keeps `partial_state_possible = true` instead of being
+        // overwritten here by the generic command heuristic.
+        if tool_name == crate::config::constants::tools::WRITE_STDIN && self.stale_exec_session.is_some() {
             return self;
         }
 
@@ -239,6 +341,7 @@ impl ToolExecutionError {
         self.debug_context.as_ref().and_then(|context| context.attempt)
     }
 
+    /// Summarises prior retries and any recommended wait for the user.
     #[must_use]
     pub fn retry_summary(&self) -> Option<String> {
         let retry_count = self.attempts_made().map(|attempts| attempts.saturating_sub(1)).unwrap_or(0);
@@ -361,10 +464,14 @@ impl ToolExecutionError {
     }
 
     /// Serialize the error into the canonical tool-output envelope.
+    ///
+    /// The envelope carries the client-facing `details` rendering and, when a
+    /// stale session was classified, the same state as a typed field. A round
+    /// trip therefore restores policy state through serde rather than by
+    /// parsing `details`.
     #[must_use]
     pub fn to_json_value(&self) -> Value {
-        json!({
-            "error": {
+        let mut error = json!({
                 "tool_name": self.tool_name,
                 "error_type": self.error_type.as_str(),
                 "category": self.category,
@@ -379,9 +486,12 @@ impl ToolExecutionError {
                 "rollback_performed": self.rollback_performed,
                 "debug_context": self.debug_context,
                 "original_error": self.original_error,
-                "details": self.details,
-            }
-        })
+                "details": self.rendered_details(),
+        });
+        if let Some(classified) = &self.stale_exec_session {
+            error["stale_exec_session"] = json!(classified);
+        }
+        json!({ "error": error })
     }
 }
 
@@ -395,6 +505,8 @@ impl std::error::Error for ToolExecutionError {}
 
 // Use static string slices to avoid allocations for recovery suggestions.
 // Delegates to the shared `ErrorCategory` recovery suggestions where possible.
+/// Derives retryability, recoverability, and recovery suggestions from the
+/// category.
 #[inline]
 fn generate_recovery_info(
     tool_name: &str,
@@ -433,7 +545,73 @@ fn format_retry_delay(delay_ms: u64) -> String {
     }
 }
 
+/// `details.reason` value shared by every stale exec-session classification.
+const STALE_EXEC_SESSION_REASON: &str = "stale_exec_session";
+
+/// Applies the shared stale-session classification to `error`.
+///
+/// `input_delivered` separates a session lost after `write_stdin` wrote its
+/// input, where side effects may already exist, from a lookup that failed
+/// before anything was delivered.
+fn classify_stale_exec_session(
+    mut error: ToolExecutionError,
+    session_id: &str,
+    input_delivered: bool,
+) -> ToolExecutionError {
+    error.category = ErrorCategory::ResourceNotFound;
+    error.error_type = ToolErrorType::ResourceNotFound;
+    error.retryable = false;
+    error.is_recoverable = true;
+    error.recovery_suggestions = vec![Cow::Borrowed(
+        "Start a new exec_command and use the new active session ID",
+    )];
+    error.retry_delay_ms = None;
+    error.retry_after_ms = None;
+    error.circuit_breaker_impact = false;
+    error.partial_state_possible = input_delivered;
+    error.rollback_performed = false;
+    // Record the typed classification only. The client-facing `details`
+    // payload is rendered from it when the error is serialized, so policy
+    // never depends on the wire representation.
+    error.stale_exec_session = Some(StaleExecSession {
+        session_id: session_id.to_string(),
+        input_delivered,
+    });
+    error
+}
+
+/// Applies the typed recovery state this error cause implies for the tool.
+///
+/// `write_stdin` distinguishes a pre-write resolution failure (nothing was
+/// delivered) from a session lost after the input was written, so callers are
+/// told accurately whether partial state is possible.
 fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, source: &Error) -> ToolExecutionError {
+    if tool_name == crate::config::constants::tools::WRITE_STDIN {
+        // Input written to the session may already have been consumed, so a
+        // concurrent close *after* the write cannot claim "no partial state".
+        // This branch must precede the stale-session one: the post-write error
+        // is a distinct typed cause that warrants the partial-state flag.
+        if let Some(lost) = source.downcast_ref::<crate::tools::exec_session::ExecSessionLostAfterInput>() {
+            debug!(
+                tool_name,
+                session_id = %lost.session_id,
+                tool_recovery_outcome = "exec_session_lost_after_input",
+                "Lost write_stdin session after delivering input"
+            );
+            return classify_stale_exec_session(error, &lost.session_id, true);
+        }
+
+        if let Some(missing) = source.downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>() {
+            debug!(
+                tool_name,
+                session_id = %missing.session_id,
+                tool_recovery_outcome = "stale_exec_session_rejected",
+                "Rejected stale write_stdin session"
+            );
+            return classify_stale_exec_session(error, &missing.session_id, false);
+        }
+    }
+
     if tool_name != crate::config::constants::tools::APPLY_PATCH {
         return error;
     }
@@ -611,6 +789,166 @@ mod tests {
         assert!(!error.rollback_performed);
     }
 
+    #[test]
+    fn stale_write_stdin_session_has_precise_non_mutating_recovery() {
+        let source =
+            Error::new(crate::tools::exec_session::ExecSessionNotFound { session_id: "run-stale".to_string() });
+
+        let error = ToolExecutionError::from_anyhow(
+            crate::config::constants::tools::WRITE_STDIN,
+            &source,
+            0,
+            false,
+            false,
+            Some("tool_registry"),
+        )
+        .with_tool_call_context(
+            crate::config::constants::tools::WRITE_STDIN,
+            &serde_json::json!({"session_id": "run-stale", "chars": ""}),
+        );
+
+        assert_eq!(error.category, ErrorCategory::ResourceNotFound);
+        assert_eq!(error.error_type, ToolErrorType::ResourceNotFound);
+        assert!(!error.retryable);
+        assert!(error.is_recoverable);
+        assert!(!error.circuit_breaker_impact);
+        assert!(!error.partial_state_possible);
+        assert!(!error.rollback_performed);
+        assert_eq!(error.retry_delay_ms, None);
+        assert_eq!(error.retry_after_ms, None);
+        let details = error
+            .rendered_details()
+            .expect("stale-session classification must render details");
+        assert_eq!(details.get("reason").and_then(Value::as_str), Some("stale_exec_session"));
+        assert_eq!(details.get("session_id").and_then(Value::as_str), Some("run-stale"));
+        assert!(
+            details.get("input_delivered").is_none(),
+            "a pre-write missing session must not report that input was delivered"
+        );
+        assert!(error.details.is_none(), "the typed classification must not be stored in the client-facing field");
+        let message = error.user_message();
+        assert!(!message.contains("Partial changes may still exist"));
+        assert!(message.contains("Start a new exec_command"));
+    }
+
+    /// Reports partial state when input was delivered before the session was lost.
+    #[test]
+    fn write_stdin_session_lost_after_input_reports_partial_state() {
+        // Input written to the session may already have been consumed, so a
+        // concurrent close after the write cannot claim "no partial state".
+        let source =
+            Error::new(crate::tools::exec_session::ExecSessionLostAfterInput { session_id: "run-lost".to_string() });
+
+        let error = ToolExecutionError::from_anyhow(
+            crate::config::constants::tools::WRITE_STDIN,
+            &source,
+            1,
+            false,
+            false,
+            None,
+        )
+        .with_tool_call_context(
+            crate::config::constants::tools::WRITE_STDIN,
+            &serde_json::json!({"session_id": "run-lost", "chars": ""}),
+        );
+
+        assert_eq!(error.category, ErrorCategory::ResourceNotFound);
+        assert_eq!(error.error_type, ToolErrorType::ResourceNotFound);
+        assert!(!error.retryable);
+        assert!(error.is_recoverable);
+        assert!(!error.circuit_breaker_impact);
+        assert!(error.partial_state_possible);
+        assert!(!error.rollback_performed);
+        assert_eq!(error.retry_delay_ms, None);
+        assert_eq!(error.retry_after_ms, None);
+
+        let details = error.rendered_details().expect("typed session loss should render details");
+        assert_eq!(details.get("reason").and_then(Value::as_str), Some("stale_exec_session"));
+        assert_eq!(details.get("session_id").and_then(Value::as_str), Some("run-lost"));
+        assert_eq!(details.get("input_delivered").and_then(Value::as_bool), Some(true));
+
+        let message = error.user_message();
+        assert!(message.contains("Partial changes may still exist"));
+        assert!(message.contains("Start a new exec_command"));
+    }
+
+    /// Preserves the typed stale-session classification through the JSON envelope.
+    #[test]
+    fn stale_write_stdin_classification_survives_the_wire_round_trip() {
+        // The registry returns tool failures as a JSON envelope, which the
+        // retry loop parses back into a structured error. The typed
+        // classification must survive that round trip, or the generic
+        // mutating-tool heuristic would mark a pre-write stale continuation as
+        // partial state.
+        let source =
+            Error::new(crate::tools::exec_session::ExecSessionNotFound { session_id: "run-stale".to_string() });
+        let error = ToolExecutionError::from_anyhow(
+            crate::config::constants::tools::WRITE_STDIN,
+            &source,
+            0,
+            false,
+            false,
+            Some("tool_registry"),
+        );
+
+        let payload = error.to_json_value();
+        let round_tripped = ToolExecutionError::from_tool_output(&payload)
+            .expect("the canonical envelope must parse back into a structured error")
+            .with_tool_call_context(
+                crate::config::constants::tools::WRITE_STDIN,
+                &serde_json::json!({"session_id": "run-stale", "chars": "input"}),
+            );
+
+        assert_eq!(round_tripped.stale_exec_session, error.stale_exec_session);
+        assert!(!round_tripped.partial_state_possible);
+        let details = round_tripped
+            .rendered_details()
+            .expect("the round-tripped classification must render details");
+        assert_eq!(details.get("reason").and_then(Value::as_str), Some("stale_exec_session"));
+        assert!(details.get("input_delivered").is_none());
+
+        // The envelope is a stable structured output: adapters parse the typed
+        // classification back out, so its field set and values must not drift
+        // silently.
+        insta::assert_json_snapshot!(payload, @r###"
+        {
+          "error": {
+            "tool_name": "write_stdin",
+            "error_type": "ResourceNotFound",
+            "category": "ResourceNotFound",
+            "message": "exec session 'run-stale' not found",
+            "retryable": false,
+            "is_recoverable": true,
+            "recovery_suggestions": [
+              "Start a new exec_command and use the new active session ID"
+            ],
+            "retry_delay_ms": null,
+            "retry_after_ms": null,
+            "circuit_breaker_impact": false,
+            "partial_state_possible": false,
+            "rollback_performed": false,
+            "debug_context": {
+              "surface": "tool_registry",
+              "attempt": null,
+              "invocation_id": null,
+              "metadata": []
+            },
+            "original_error": "exec session 'run-stale' not found",
+            "details": {
+              "reason": "stale_exec_session",
+              "session_id": "run-stale",
+              "next_action": "Start a new exec_command and use the returned session ID."
+            },
+            "stale_exec_session": {
+              "session_id": "run-stale",
+              "input_delivered": false
+            }
+          }
+        }
+        "###);
+    }
+
+    /// Leaves an `apply_patch` rejection marked as rolled back.
     #[test]
     fn tool_call_context_marks_apply_patch_failures_as_rolled_back() {
         let source = Error::new(crate::tools::editing::PatchError::RolledBack {

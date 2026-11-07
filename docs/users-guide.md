@@ -51,3 +51,39 @@ detected conflict.
 
 The full behaviour, including how conflict and stale-file details reach an ACP
 client, is in the [patch safety guide](./guides/patch-safety.md).
+
+## ACP recovery in brief
+
+A tool round can be interrupted after the model has asked for tools but before
+every call has a result, for example when the editor or process exits mid-turn.
+Loading or resuming such a session repairs the history instead of replaying it:
+
+- Every unresolved call gets an explicit incomplete result, whose text says the
+  call was not replayed and that its side effects are uncertain. Verify the
+  workspace and resubmit only the work that is still needed.
+- A terminal result that belongs unambiguously to an earlier call is moved back
+  beside that call rather than duplicated.
+- Duplicate, conflicting, or orphaned results make the history ambiguous. The
+  archive is left untouched and the session is refused rather than resumed with
+  a guess.
+- Recovery writes a checkpoint before the session becomes visible, so an
+  uncertain history cannot be resumed half-repaired.
+
+Interrupted recovery never executes a tool a second time, because the original
+call may already have changed files. The mechanics, including `write_stdin`
+partial-state reporting and single-turn prompt admission, are in the
+[Zed ACP guide](./guides/zed-acp.md) and the
+[ACP runtime guide](./development/acp-runtime.md).
+
+### Stale `write_stdin` sessions
+
+An exec session identifier is process-local. It stops being valid when the
+command exits, the session is closed, or VT Code restarts. Continuing a stale
+identifier returns a non-retryable `ResourceNotFound` error with
+`reason: "stale_exec_session"`; start a new `exec_command` and use the session
+identifier it returns.
+
+If the session was lost after `write_stdin` delivered its input, the error also
+reports `input_delivered: true` and `partial_state_possible: true`. The bytes
+may already have been consumed, so verify the workspace before repeating the
+work. A failure before the input was written sets neither flag.

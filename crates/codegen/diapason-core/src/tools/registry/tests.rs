@@ -15,6 +15,7 @@ use crate::tools::traits::Tool;
 use anyhow::Result;
 use async_trait::async_trait;
 use base64::Engine;
+use diapason_commons::ErrorCategory;
 use diapason_commons::canonicalize;
 use futures::future::BoxFuture;
 use rstest::{fixture, rstest};
@@ -27,6 +28,8 @@ use tempfile::TempDir;
 
 #[path = "../../../tests/support/config_defaults.rs"]
 mod config_defaults;
+
+mod stale_exec_session;
 
 #[cfg(unix)]
 mod pipe_session;
@@ -47,6 +50,7 @@ const MUTUAL_REENTRANT_TOOL_B: &str = "mutual_reentrant_tool_b";
 
 const REPLACE_DISPATCH_TOOL_NAME: &str = "replace_dispatch_test_tool";
 
+/// Commands config that permits only the fixture's deterministic commands.
 fn command_session_fixture_commands_config() -> CommandsConfig {
     let mut config = CommandsConfig::default();
     config.allow_list.clear();
@@ -2151,7 +2155,7 @@ async fn timeout_errors_are_structured_and_track_failures() -> Result<()> {
     let error = outcome.error.expect("timeout outcome should include error");
     assert_eq!(error.tool_name, SLOW_TIMEOUT_TOOL_NAME);
     assert!(matches!(error.error_type, ToolErrorType::Timeout));
-    assert_eq!(error.category, diapason_commons::ErrorCategory::Timeout);
+    assert_eq!(error.category, ErrorCategory::Timeout);
     assert!(error.is_recoverable);
     assert!(error.retry_after_ms.is_some());
     assert!(error.message.contains("exceeded the standard timeout ceiling"));

@@ -1,8 +1,20 @@
+//! Command-session operations for the unified exec tools.
+//!
+//! Implements `exec_command` session start, `write_stdin` write/poll/wait, and
+//! the shared settle/prune helpers that keep a session's spool consistent with
+//! its terminal state. Session lookup resolves process-local identifiers
+//! against the registry's execution-session store and returns typed
+//! [`ExecSessionNotFound`] and [`ExecSessionLostAfterInput`] errors so the
+//! registry can classify a stale continuation without parsing messages. This
+//! module performs no ACP-specific work: the adapter consumes the typed errors
+//! and the transport-neutral recovery counters.
+
 use super::exec_support::*;
 use super::{
     ExecRunBackendKind, ExecSettlementMode, ToolRegistry, acquire_executor_rate_limit, annotate_exec_run_response,
 };
 use crate::config::constants::tools;
+use crate::tools::exec_session::{ExecSessionLostAfterInput, ExecSessionNotFound};
 use crate::tools::registry::ToolTimeoutCategory;
 use crate::tools::types::DiapasonExecSession;
 use crate::zsh_exec_bridge::ZshExecBridgeSession;
@@ -136,6 +148,10 @@ impl ToolRegistry {
         self.execute_command_session_write_for_tool(args, tools::UNIFIED_EXEC).await
     }
 
+    /// Writes to an existing exec session on behalf of `progress_tool_name`.
+    ///
+    /// The tool name is threaded through so progress events and error recovery
+    /// state are attributed to the tool the caller actually invoked.
     pub(crate) async fn execute_command_session_write_for_tool(
         &self,
         args: Value,
@@ -151,7 +167,9 @@ impl ToolRegistry {
                 "session_id is required for command session write",
                 "command session write",
             )
-            .await?;
+            .await;
+        record_stale_write_stdin_lookup(&session, &self.metrics_collector(), progress_tool_name);
+        let session = session?;
         let input = crate::tools::command_args::interactive_input_text(&args)
             .ok_or_else(|| anyhow!("input is required for command session write"))?;
 
@@ -171,8 +189,12 @@ impl ToolRegistry {
             progress_tool_name,
         )
         .await
+        .map_err(|error| {
+            mark_input_delivered(error, session.metadata.id.as_str(), &self.metrics_collector(), progress_tool_name)
+        })
     }
 
+    /// Polls an exec session using the unified `exec_command` tool identity.
     pub(super) async fn execute_command_session_poll_internal(
         &self,
         args: Value,
@@ -198,7 +220,9 @@ impl ToolRegistry {
                 "session_id is required for command session read",
                 "command session read",
             )
-            .await?;
+            .await;
+        record_stale_write_stdin_lookup(&session, &self.metrics_collector(), progress_tool_name);
+        let session = session?;
         let yield_time_ms = clamp_exec_yield_ms(payload.get("yield_time_ms").and_then(Value::as_u64), 1000);
         let max_tokens = max_output_tokens_from_payload(payload);
 
@@ -212,7 +236,11 @@ impl ToolRegistry {
         .await
     }
 
-    pub(crate) async fn execute_command_session_wait(&self, args: Value) -> Result<Value> {
+    pub(crate) async fn execute_command_session_wait(
+        &self,
+        args: Value,
+        progress_tool_name: &'static str,
+    ) -> Result<Value> {
         acquire_executor_rate_limit("write_stdin:wait", 1.0)?;
 
         let payload = exec_session_payload(&args, "command session wait requires a JSON object")?;
@@ -223,7 +251,9 @@ impl ToolRegistry {
                 "session_id is required for command session wait",
                 "command session wait",
             )
-            .await?;
+            .await;
+        record_stale_write_stdin_lookup(&session, &self.metrics_collector(), progress_tool_name);
+        let session = session?;
         let ceiling = self
             .timeout_policy()
             .ceiling_for(ToolTimeoutCategory::LongRunningCommand)
@@ -237,7 +267,7 @@ impl ToolRegistry {
         let deadline = requested_seconds.min(ceiling);
         let max_tokens = max_output_tokens_from_payload(payload);
         let capture = self
-            .wait_for_exec_yield(session.metadata.id.as_str(), deadline, Some(tools::WRITE_STDIN), true)
+            .wait_for_exec_yield(session.metadata.id.as_str(), deadline, Some(progress_tool_name), true)
             .await;
         let mut response =
             build_exec_passthrough_response(&session.metadata, &session.command_display, &capture, max_tokens);
@@ -716,6 +746,11 @@ impl ToolRegistry {
         Ok(())
     }
 
+    /// Parses and validates the session identifier plus its live metadata.
+    ///
+    /// This is a read-only lookup. Recovery accounting for a missing session
+    /// belongs to the command path that requested it, so callers record the
+    /// stale-continuation event themselves.
     async fn resolve_exec_session(
         &self,
         args: &Value,
@@ -726,6 +761,57 @@ impl ToolRegistry {
         let session_id = resolve_exec_session_id(args, object_error, session_id_error, validation_context)?;
         let metadata = self.exec_session_metadata(&session_id).await?;
         Ok(ResolvedExecSession::new(metadata))
+    }
+}
+
+/// Records a stale `write_stdin` continuation when session lookup fails.
+///
+/// The [`ToolRecoveryEvent::StaleWriteStdinRequest`] series is documented for
+/// `write_stdin`, so a unified `exec_command` continuation that resolves the
+/// same missing session is deliberately left uncounted. Only a typed
+/// [`ExecSessionNotFound`] counts; validation failures and other lookup errors
+/// stay unclassified. The command paths call this explicitly so the externally
+/// visible counter is owned by the operation that observed the stale request
+/// rather than by the read-only lookup helper.
+fn record_stale_write_stdin_lookup(
+    session: &Result<ResolvedExecSession>,
+    metrics: &crate::metrics::MetricsCollector,
+    tool_name: &str,
+) {
+    if tool_name != tools::WRITE_STDIN {
+        return;
+    }
+    let missing = session
+        .as_ref()
+        .err()
+        .is_some_and(|error| error.downcast_ref::<ExecSessionNotFound>().is_some());
+    if missing {
+        metrics.record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
+    }
+}
+
+/// Marks a post-write failure that lost its exec session as input-delivered.
+///
+/// The input bytes were already handed to the session before the response was
+/// captured, so a missing-session error afterwards must not claim that no
+/// partial state exists. When the caller invoked `write_stdin`, the same
+/// condition is also a stale continuation and is counted alongside the
+/// pre-write lookup failure; unified `exec_command` keeps the classification
+/// without incrementing the write-specific counter. Unrelated errors are
+/// returned unchanged.
+fn mark_input_delivered(
+    error: anyhow::Error,
+    session_id: &str,
+    metrics: &crate::metrics::MetricsCollector,
+    tool_name: &str,
+) -> anyhow::Error {
+    if error.chain().any(|cause| cause.is::<ExecSessionNotFound>()) {
+        if tool_name == tools::WRITE_STDIN {
+            metrics.record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
+        }
+        anyhow::Error::new(ExecSessionLostAfterInput { session_id: session_id.to_string() })
+    } else {
+        error
     }
 }
 

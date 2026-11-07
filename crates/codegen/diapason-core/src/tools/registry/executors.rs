@@ -32,14 +32,23 @@ use crate::tools::{native_memory, tool_intent};
 use patch_preconditions::repeated_patch_failure_error;
 
 mod cargo_failure_diagnostics;
+
 mod exec_command;
+
 mod exec_output;
+
 mod exec_sessions;
+
 mod exec_support;
+
 mod patch_pipeline;
+
 pub(crate) mod patch_preconditions;
+
 mod sandbox_runtime;
+
 mod search_introspection;
+
 mod subagents;
 
 pub use sandbox_runtime::sandbox_policy_from_runtime_config;
@@ -422,7 +431,7 @@ impl ToolRegistry {
             CommandSessionAction::Run => self.execute_command_session_run_internal(args, exec_settlement_mode).await,
             CommandSessionAction::Write => self.execute_command_session_write(args).await,
             CommandSessionAction::Poll => self.execute_command_session_poll_internal(args, exec_settlement_mode).await,
-            CommandSessionAction::Wait => self.execute_command_session_wait(args).await,
+            CommandSessionAction::Wait => self.execute_command_session_wait(args, tools::UNIFIED_EXEC).await,
             CommandSessionAction::Continue => {
                 self.execute_command_session_continue_internal(args, exec_settlement_mode).await
             }
@@ -683,7 +692,9 @@ impl ToolRegistry {
                     self.execute_command_session_poll_for_tool(args, ExecSettlementMode::Manual, tools::WRITE_STDIN)
                         .await
                 }
-                crate::tools::command_args::WriteStdinDispatch::Wait => self.execute_command_session_wait(args).await,
+                crate::tools::command_args::WriteStdinDispatch::Wait => {
+                    self.execute_command_session_wait(args, tools::WRITE_STDIN).await
+                }
             }?;
             Ok(response)
         })
