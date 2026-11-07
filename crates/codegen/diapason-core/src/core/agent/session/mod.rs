@@ -117,7 +117,7 @@ pub struct SessionStats {
     pub turn_durations: Vec<Duration>,
     pub total_usage: Usage,
     /// Provider name for the active session, used to normalize per-turn usage
-    /// (see [`crate::llm::usage_cost::provider_reports_exclusive_input`]). An
+    /// (see [`crate::llm::provider_usage::provider_reports_exclusive_input`]). An
     /// empty string is treated as a non-exclusive-input provider, which
     /// preserves existing behaviour for callers that never set it.
     pub provider_name: String,
@@ -126,7 +126,7 @@ pub struct SessionStats {
 impl SessionStats {
     pub fn merge_usage(&mut self, usage: &crate::llm::provider::Usage) {
         self.total_usage
-            .add(&crate::llm::usage_cost::normalized_turn_usage(&self.provider_name, usage));
+            .add(&crate::llm::provider_usage::normalized_turn_usage(&self.provider_name, usage));
     }
 }
 
@@ -611,6 +611,7 @@ impl AgentSessionState {
 /// always skipped; this cap limits unique-but-repetitive warnings. One extra
 /// elision marker may be appended beyond this count.
 const MAX_SESSION_WARNINGS: usize = 200;
+
 const WARNINGS_ELIDED_MARKER: &str = "[Additional unique warnings elided — session warning cap reached]";
 
 #[cfg(test)]
