@@ -146,8 +146,8 @@ pub struct UsageProfile {
     pub context_window: Option<usize>,
     /// Rates used for cost reporting, absent when none are declared.
     pub pricing: Option<ModelPricing>,
-    /// Whether `prompt_tokens` excludes cached prompt tokens, so cost
-    /// normalization must add them back.
+    /// Whether `prompt_tokens` excludes cached prompt tokens, so both the
+    /// reported total and the cost must add them back.
     pub exclusive_input: bool,
 }
 
@@ -178,9 +178,10 @@ pub struct TurnUsage {
 
 /// Resolve one turn's provider usage against its reporting profile.
 ///
-/// Cost is computed in the provider's own input-token semantics rather than
-/// reinterpreting a shared total, so an inclusive and an exclusive
-/// representation of the same tokens price identically.
+/// The provider's own input-token semantics are applied once, so the reported
+/// [`TurnUsage::input_tokens`] total and the cost describe the same token set.
+/// An inclusive and an exclusive representation of the same tokens therefore
+/// report the same total and price identically.
 #[must_use]
 pub fn resolve_turn_usage(usage: &ProviderUsage, profile: UsageProfile) -> TurnUsage {
     let reasoning_output_tokens = usage
@@ -189,13 +190,15 @@ pub fn resolve_turn_usage(usage: &ProviderUsage, profile: UsageProfile) -> TurnU
     let output_tokens = usage
         .completion_tokens
         .saturating_sub(reasoning_output_tokens.unwrap_or_default());
+    let normalized = normalized_turn_usage_with_input_semantics(profile.exclusive_input, usage);
     let cost_usd = profile.pricing.and_then(|pricing| {
-        let normalized = normalized_turn_usage_with_input_semantics(profile.exclusive_input, usage);
         estimate_session_costs_with_pricing(pricing, &normalized).map(|estimate| estimate.effective_usd)
     });
 
     TurnUsage {
-        input_tokens: usage.prompt_tokens,
+        // The normalized total is a `u64`; a turn that overflows `u32` is
+        // reported at the ceiling rather than wrapped.
+        input_tokens: u32::try_from(normalized.input_tokens).unwrap_or(u32::MAX),
         output_tokens,
         cache_read_input_tokens: usage.cache_read_tokens_or_fallback(),
         cache_creation_input_tokens: usage.cache_creation_tokens,
@@ -209,6 +212,7 @@ pub fn resolve_turn_usage(usage: &ProviderUsage, profile: UsageProfile) -> TurnU
 mod tests {
     use super::*;
 
+    use proptest::prelude::*;
     use serde_json::json;
 
     fn approx_eq(a: f64, b: f64) {
@@ -327,6 +331,103 @@ mod tests {
 
         assert_eq!(resolved.reasoning_output_tokens, Some(2));
         assert_eq!(resolved.output_tokens, 0, "reasoning must never exceed the completion count");
+    }
+
+    #[test]
+    fn resolved_turn_usage_reports_the_total_prompt_tokens_for_exclusive_input() {
+        let usage = ProviderUsage {
+            prompt_tokens: 100,
+            completion_tokens: 20,
+            cache_read_tokens: Some(400),
+            cache_creation_tokens: Some(50),
+            ..ProviderUsage::default()
+        };
+
+        let resolved = resolve_turn_usage(&usage, UsageProfile { exclusive_input: true, ..UsageProfile::default() });
+
+        assert_eq!(
+            resolved.input_tokens, 550,
+            "an exclusive prompt count must be reported as the total the contract documents"
+        );
+        assert_eq!(resolved.cache_read_input_tokens, 400);
+        assert_eq!(resolved.cache_creation_input_tokens, Some(50));
+    }
+
+    #[test]
+    fn resolved_turn_usage_keeps_inclusive_prompt_tokens_as_reported() {
+        let usage = ProviderUsage {
+            prompt_tokens: 500,
+            completion_tokens: 20,
+            cached_prompt_tokens: Some(400),
+            ..ProviderUsage::default()
+        };
+
+        let resolved = resolve_turn_usage(&usage, UsageProfile::default());
+
+        assert_eq!(resolved.input_tokens, 500, "an inclusive prompt count already contains the cached tokens");
+        assert_eq!(resolved.cache_read_input_tokens, 400);
+    }
+
+    #[test]
+    fn resolved_turn_usage_saturates_an_input_total_that_overflows_u32() {
+        let usage = ProviderUsage {
+            prompt_tokens: u32::MAX,
+            cache_read_tokens: Some(u32::MAX),
+            ..ProviderUsage::default()
+        };
+
+        let resolved = resolve_turn_usage(&usage, UsageProfile { exclusive_input: true, ..UsageProfile::default() });
+
+        assert_eq!(resolved.input_tokens, u32::MAX, "an overflowing total is reported at the ceiling");
+    }
+
+    proptest! {
+        /// The reported total is the provider's own count, plus the cache
+        /// counts only when the backend excludes them, saturating at `u32::MAX`.
+        ///
+        /// Both representations are generated, the cache counts are optional,
+        /// and the boundary values `0` and `u32::MAX` are drawn deliberately
+        /// rather than left to chance, so overflow and absence are exercised.
+        #[test]
+        fn resolved_input_tokens_follow_the_selected_semantics(
+            prompt in token_count(),
+            cache_read in proptest::option::of(token_count()),
+            cached_prompt in proptest::option::of(token_count()),
+            cache_creation in proptest::option::of(token_count()),
+            exclusive_input in any::<bool>(),
+        ) {
+            let usage = ProviderUsage {
+                prompt_tokens: prompt,
+                cache_read_tokens: cache_read,
+                cached_prompt_tokens: cached_prompt,
+                cache_creation_tokens: cache_creation,
+                ..ProviderUsage::default()
+            };
+            // The documented contract: a cache-read count falls back to the
+            // provider's older cached-prompt field, and an absent count is zero.
+            let cached = cache_read.or(cached_prompt).unwrap_or(0);
+            let creation = cache_creation.unwrap_or(0);
+            let total = if exclusive_input {
+                u64::from(prompt) + u64::from(cached) + u64::from(creation)
+            } else {
+                u64::from(prompt)
+            };
+            let expected = u32::try_from(total).unwrap_or(u32::MAX);
+
+            let resolved = resolve_turn_usage(
+                &usage,
+                UsageProfile { exclusive_input, ..UsageProfile::default() },
+            );
+
+            prop_assert_eq!(resolved.input_tokens, expected);
+            prop_assert_eq!(resolved.cache_read_input_tokens, cached);
+            prop_assert_eq!(resolved.cache_creation_input_tokens, cache_creation);
+        }
+    }
+
+    /// A token count that reaches the boundaries of the released range.
+    fn token_count() -> impl Strategy<Value = u32> {
+        prop_oneof![Just(0u32), Just(u32::MAX), Just(u32::MAX - 1), 1u32..=u32::MAX - 2]
     }
 
     #[test]

@@ -60,6 +60,62 @@ fn maps_resolved_usage_to_the_lody_delta_contract() {
     assert_eq!(value["modelUsage"]["model-a"], value["usage"]);
 }
 
+/// Assert an exclusive prompt count reaches the wire as the documented total.
+///
+/// Anthropic-style backends report `prompt_tokens` without the cache-read and
+/// cache-creation tokens. The delta must publish the full prompt total in
+/// `inputTokens` and keep the cached counts in their own fields, so a client
+/// that adds the three fields together does not double-count.
+#[test]
+fn exclusive_prompt_count_reaches_the_delta_as_the_total() {
+    let usage = Usage {
+        prompt_tokens: 21,
+        completion_tokens: 8,
+        cache_read_tokens: Some(5),
+        cache_creation_tokens: Some(3),
+        ..Usage::default()
+    };
+
+    let value = resolved_notification(&usage, UsageProfile { exclusive_input: true, ..UsageProfile::default() });
+
+    assert_eq!(value["usage"]["inputTokens"], 29, "21 uncached + 5 cached + 3 cache-creation");
+    assert_eq!(value["usage"]["cacheReadInputTokens"], 5);
+    assert_eq!(value["usage"]["cacheCreationInputTokens"], 3);
+    assert_eq!(value["modelUsage"]["model-a"], value["usage"]);
+}
+
+/// Assert the inclusive and exclusive representations of one turn agree.
+///
+/// Both describe the same tokens; only the provider's own `prompt_tokens`
+/// convention differs. The published `inputTokens` total must therefore match.
+#[test]
+fn inclusive_and_exclusive_representations_publish_the_same_input_total() {
+    let cached = 5;
+    let created = 3;
+    let uncached = 21;
+    let exclusive = Usage {
+        prompt_tokens: uncached,
+        cache_read_tokens: Some(cached),
+        cache_creation_tokens: Some(created),
+        ..Usage::default()
+    };
+    let inclusive = Usage {
+        prompt_tokens: uncached + cached + created,
+        cache_read_tokens: Some(cached),
+        cache_creation_tokens: Some(created),
+        ..Usage::default()
+    };
+
+    let exclusive_value =
+        resolved_notification(&exclusive, UsageProfile { exclusive_input: true, ..UsageProfile::default() });
+    let inclusive_value = resolved_notification(&inclusive, UsageProfile::default());
+
+    assert_eq!(exclusive_value["usage"]["inputTokens"], 29);
+    assert_eq!(inclusive_value["usage"]["inputTokens"], 29, "an inclusive count already contains the cached tokens");
+    assert_eq!(inclusive_value["usage"]["cacheReadInputTokens"], 5);
+    assert_eq!(exclusive_value["usage"]["cacheReadInputTokens"], 5);
+}
+
 /// Assert optional fields stay absent when the profile supplies none.
 #[test]
 fn absent_profile_fields_are_not_projected_as_zero_or_invented() {
@@ -348,12 +404,29 @@ proptest! {
             + f64::from(cache_creation) * write_rate
             + f64::from(output) * output_per_token;
 
-        let inclusive_cost = resolved_notification(&inclusive, profile(false))["usage"]["costUSD"]
-            .as_f64()
-            .expect("inclusive costUSD");
-        let exclusive_cost = resolved_notification(&exclusive, profile(true))["usage"]["costUSD"]
-            .as_f64()
-            .expect("exclusive costUSD");
+        let inclusive_value = resolved_notification(&inclusive, profile(false));
+        let exclusive_value = resolved_notification(&exclusive, profile(true));
+        let inclusive_cost = inclusive_value["usage"]["costUSD"].as_f64().expect("inclusive costUSD");
+        let exclusive_cost = exclusive_value["usage"]["costUSD"].as_f64().expect("exclusive costUSD");
+
+        // Both representations describe the same token set, so the ACP
+        // `inputTokens` total is the full prompt count in both cases and the
+        // cached count is reported beside it rather than double-counted.
+        let full_prompt = uncached + cache_read + cache_creation;
+        for (representation, value) in [("inclusive", &inclusive_value), ("exclusive", &exclusive_value)] {
+            prop_assert_eq!(
+                value["usage"]["inputTokens"].as_u64(),
+                Some(u64::from(full_prompt)),
+                "{} inputTokens must report the total prompt count",
+                representation
+            );
+            prop_assert_eq!(
+                value["usage"]["cacheReadInputTokens"].as_u64(),
+                Some(u64::from(cache_read)),
+                "{} cacheReadInputTokens must report the cached count",
+                representation
+            );
+        }
 
         let tolerance = 1e-9 * expected_cost.abs().max(1.0);
         prop_assert!(
