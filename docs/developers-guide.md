@@ -21,6 +21,9 @@
 
 ## Catalogue naming
 
+The naming and compatibility decisions are recorded in
+[Tool catalogue naming and compatibility](./design/tool-catalogue-naming.md).
+
 Rust APIs use the native `catalogue` spelling: `ToolCatalogue`,
 `ToolCatalogueEntry`, `ToolCatalogueSource`, `CatalogueToolKind`,
 `SessionToolCatalogue`, `SessionToolCatalogueSnapshot`,
