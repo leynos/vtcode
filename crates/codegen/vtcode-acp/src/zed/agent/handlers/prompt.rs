@@ -316,10 +316,14 @@ impl PromptExecution {
         retry_observed_at: &provider::RetryObservationClock<'_>,
     ) -> Result<PromptResponse, SdkError> {
         let outcome = if self.allow_streaming {
-            streaming::run_streaming_provider_turn(&mut self, retry_observed_at).await?
+            streaming::run_streaming_provider_turn(&mut self, retry_observed_at).await
         } else {
-            buffered::run_buffered_provider_turn(&mut self, retry_observed_at).await?
+            buffered::run_buffered_provider_turn(&mut self, retry_observed_at).await
         };
+        // Emit the process-wide Responses counters once per turn, including a
+        // failed attempt, so an operator can read them from the tracing log.
+        self.agent.recovery_metrics().emit_responses_stream_metrics();
+        let outcome = outcome?;
         match outcome {
             ProviderTurnOutcome::StopReason(stop_reason) => self.finish(stop_reason).await,
             ProviderTurnOutcome::Response(response) => Ok(response),

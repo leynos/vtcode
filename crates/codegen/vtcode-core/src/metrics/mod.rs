@@ -123,6 +123,18 @@ impl ResponsesMetricsSource for ZeroResponsesMetricsSource {
     }
 }
 
+/// Render one stream path's `(outcome, total)` pairs for a tracing record.
+///
+/// Labels come from the closed provider vocabulary, so the rendered string is
+/// bounded and contains no payload text.
+fn path_outcome_totals(metrics: &ResponsesStreamMetrics, path: &str) -> String {
+    let mut totals = String::new();
+    for metric in metrics.outcomes.iter().filter(|metric| metric.path == path) {
+        write!(totals, "{}={},", metric.outcome, metric.total).expect("writing to a String cannot fail");
+    }
+    totals
+}
+
 /// Bounded aggregate metrics for model-provider request attempts.
 ///
 /// Provider names are deliberately not labels here: user-defined provider
@@ -452,6 +464,27 @@ impl MetricsCollector {
     /// monotonic: consumers sample deltas rather than resetting them.
     pub fn get_responses_stream_metrics(&self) -> ResponsesStreamMetrics {
         self.responses_metrics_source.snapshot()
+    }
+
+    /// Emit the Responses stream counters as one bounded tracing record.
+    ///
+    /// This is the operator-facing view of the same snapshot returned by
+    /// [`Self::get_responses_stream_metrics`]: a fixed per-path outcome series
+    /// plus the two WebSocket recovery counters. The record carries aggregate
+    /// counts only, so response text, tool arguments, request identifiers and
+    /// provider diagnostics never enter the log. Callers that own a collector
+    /// emit it at the boundary they monitor; the ACP agent emits it once per
+    /// prompt turn.
+    pub fn emit_responses_stream_metrics(&self) {
+        let metrics = self.get_responses_stream_metrics();
+        tracing::debug!(
+            target: "vtcode::metrics::responses_stream",
+            shared_outcomes = %path_outcome_totals(&metrics, "shared"),
+            legacy_outcomes = %path_outcome_totals(&metrics, "legacy"),
+            websocket_replay_prohibited_total = metrics.websocket_replay_prohibited_total,
+            websocket_http_fallback_total = metrics.websocket_http_fallback_total,
+            "Responses stream terminal outcome counters"
+        );
     }
 
     /// Get the bounded aggregate MCP startup metrics snapshot.
@@ -1677,6 +1710,77 @@ mod tests {
         assert_eq!(summary.responses_stream.websocket_http_fallback_total, 2);
         assert_eq!(summary.responses_stream.outcomes.len(), 1);
         assert_eq!(summary.responses_stream.outcomes[0].outcome, "abandoned");
+    }
+
+    /// Terminal count for one `(path, outcome)` pair, or zero when unrecorded.
+    fn total_for(
+        metrics: &ResponsesStreamMetrics,
+        path: vtcode_llm::providers::shared::ResponsesStreamPath,
+        outcome: vtcode_llm::providers::shared::ResponsesStreamOutcome,
+    ) -> u64 {
+        metrics
+            .outcomes
+            .iter()
+            .find(|metric| metric.path == path.as_str() && metric.outcome == outcome.as_str())
+            .map_or(0, |metric| metric.total)
+    }
+
+    /// An outcome recorded through the provider sink must reach the JSON and
+    /// Prometheus views a production collector exports.
+    ///
+    /// The counters are process-wide, so the assertions compare against the
+    /// value read immediately before recording rather than an absolute total.
+    #[test]
+    fn recorded_responses_outcomes_reach_the_export_boundary() {
+        use vtcode_llm::providers::shared::{
+            ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, process_responses_telemetry,
+        };
+
+        const PROVIDER_NAME: &str = "export-boundary-probe";
+        let shared_outcome = ResponsesStreamOutcome::Completed;
+        let legacy_outcome = ResponsesStreamOutcome::ProviderFailure;
+        let collector = MetricsCollector::new();
+        let before = collector.get_responses_stream_metrics();
+        let shared_before = total_for(&before, ResponsesStreamPath::Shared, shared_outcome);
+        let legacy_before = total_for(&before, ResponsesStreamPath::Legacy, legacy_outcome);
+
+        for (path, outcome) in [
+            (ResponsesStreamPath::Shared, shared_outcome),
+            (ResponsesStreamPath::Legacy, legacy_outcome),
+        ] {
+            process_responses_telemetry().record(&ResponsesObservation {
+                path,
+                provider: PROVIDER_NAME.to_string(),
+                outcome,
+            });
+        }
+
+        collector.emit_responses_stream_metrics();
+        let after = collector.get_responses_stream_metrics();
+        let shared_after = total_for(&after, ResponsesStreamPath::Shared, shared_outcome);
+        let legacy_after = total_for(&after, ResponsesStreamPath::Legacy, legacy_outcome);
+        assert!(shared_after > shared_before, "shared outcome must be counted");
+        assert!(legacy_after > legacy_before, "legacy outcome must be counted");
+
+        let prometheus = collector.export_prometheus();
+        for (path, outcome, total) in [
+            ("shared", shared_outcome.as_str(), shared_after),
+            ("legacy", legacy_outcome.as_str(), legacy_after),
+        ] {
+            let series =
+                format!("vtcode_responses_stream_outcomes_total{{path=\"{path}\",outcome=\"{outcome}\"}} {total}");
+            assert!(prometheus.contains(&series), "missing exported series {series}");
+        }
+        assert!(prometheus.contains("vtcode_responses_websocket_replay_prohibited_total"));
+        assert!(prometheus.contains("vtcode_responses_websocket_http_fallback_total"));
+
+        let json = collector.export_json().expect("metrics export must serialize");
+        let json = serde_json::to_string(&json).expect("exported JSON must render");
+        assert!(json.contains("\"responses_stream\""), "summary must carry the Responses counters");
+        for export in [&prometheus, &json] {
+            assert!(!export.contains(PROVIDER_NAME), "provider identity leaked into the export");
+            assert!(!export.contains("tool_arguments"), "payload field leaked into the export");
+        }
     }
 
     /// Fake admission source whose values change between reads, so a collector

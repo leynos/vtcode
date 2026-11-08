@@ -143,6 +143,18 @@ Label cardinality is bounded by the closed path and outcome vocabulary.
 for deterministic tests; use `with_responses_metrics_source` to supply a
 recorded snapshot.
 
+Operators read the counters through two paths. The ACP agent calls
+`MetricsCollector::emit_responses_stream_metrics()` once per prompt turn,
+including a failed attempt, which emits one `vtcode::metrics::responses_stream`
+debug record carrying the per-path `(outcome, total)` series and the two
+WebSocket counters; collect it by enabling that target in `RUST_LOG`. Hosts
+that embed the collector can instead call `get_responses_stream_metrics()`,
+`export_json()`, or `export_prometheus()` directly, for example from a
+monitoring endpoint they own. VTCode itself does not run a Prometheus scraper:
+the exposition is an in-process interface, the counts are process-wide and
+monotonic rather than per session, and a process that exits without a final
+prompt turn emits no last record.
+
 ## Verification boundaries
 
 The tests distinguish the legacy `provider.stream` path used by ACP from the

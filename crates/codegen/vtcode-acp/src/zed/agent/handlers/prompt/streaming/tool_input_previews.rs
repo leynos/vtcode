@@ -306,6 +306,15 @@ mod tests {
             .collect()
     }
 
+    /// Return the title carried by a preview update.
+    fn preview_title(update: &acp::SessionUpdate) -> &str {
+        match update {
+            acp::SessionUpdate::ToolCall(update) => &update.title,
+            acp::SessionUpdate::ToolCallUpdate(update) => update.fields.title.as_deref().unwrap_or_default(),
+            other => panic!("unexpected preview update: {other:?}"),
+        }
+    }
+
     /// Return the tool-call status carried by a preview update.
     fn preview_status(update: &acp::SessionUpdate) -> acp::ToolCallStatus {
         match update {
@@ -352,8 +361,8 @@ mod tests {
         assert_eq!(sink.attempts, 2, "a failed preview must not stop later updates");
     }
 
-    /// Prove every publication phase logs a stable category and never the
-    /// streamed tool input or the transport error.
+    /// Prove every publication phase publishes the updates production sends and
+    /// logs a stable category without streamed input or transport error text.
     #[tokio::test]
     async fn preview_publish_failures_log_stable_categories_without_tool_input() {
         const TOOL_INPUT_MARKER: &str = "TOOL_INPUT_MARKER_3f8c";
@@ -362,16 +371,41 @@ mod tests {
         let session_id = acp::SessionId::new("preview-trace");
         let mut sink = RecordingSink { attempts: 0, failures_remaining: usize::MAX };
 
-        for phase in ["start", "delta", "completed", "failed"] {
+        let mut previews = StreamedToolInputPreviews::default();
+        let start = previews.start("call_1".to_string(), Some("read_file".to_string()));
+        publish_preview_updates_via(&mut sink, &session_id, "start", start).await;
+
+        let delta = previews.push_delta("call_1".to_string(), TOOL_INPUT_MARKER);
+        publish_preview_updates_via(&mut sink, &session_id, "delta", delta).await;
+
+        for (phase, status, note) in [
+            (
+                "completed",
+                acp::ToolCallStatus::Completed,
+                "Provider input streaming completed; execution is handled separately.",
+            ),
+            ("failed", acp::ToolCallStatus::Failed, "The provider stream failed."),
+            ("cancelled", acp::ToolCallStatus::Failed, "Input streaming was cancelled; it was not executed."),
+        ] {
             let mut previews = StreamedToolInputPreviews::default();
-            let mut updates = previews.start("call_1".to_string(), Some("read_file".to_string()));
-            updates.extend(previews.push_delta("call_1".to_string(), TOOL_INPUT_MARKER));
-            publish_preview_updates_via(&mut sink, &session_id, phase, updates).await;
+            let started = previews.start("call_1".to_string(), Some("read_file".to_string()));
+            assert_eq!(started.len(), 1, "the {phase} phase starts one preview");
+            let streamed = previews.push_delta("call_1".to_string(), TOOL_INPUT_MARKER);
+            assert_eq!(streamed.len(), 1, "the {phase} phase streams one delta");
+            let terminal = previews.finish(status, note);
+            assert_eq!(terminal.len(), 1, "the {phase} phase publishes the finish() terminal update");
+            assert_eq!(preview_status(&terminal[0]), status, "{phase} terminal status");
+            assert!(
+                preview_title(&terminal[0]).contains("input preview (not executed)"),
+                "{phase} terminal preview must stay non-executable"
+            );
+            publish_preview_updates_via(&mut sink, &session_id, phase, terminal).await;
         }
 
+        assert_eq!(sink.attempts, 5, "start, delta, completed, failed and cancelled all published");
         let events = events.lock().expect("captured event lock");
         let logs = events.join("\n");
-        for phase in ["start", "delta", "completed", "failed"] {
+        for phase in ["start", "delta", "completed", "failed", "cancelled"] {
             assert!(logs.contains(&format!("phase=\"{phase}\"")), "missing {phase}: {logs}");
         }
         assert!(logs.contains("acp_preview_publish_failed"), "{logs}");
