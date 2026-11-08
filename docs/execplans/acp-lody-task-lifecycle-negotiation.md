@@ -440,6 +440,42 @@ management requests return only tasks owned by the requested ACP session.
     `attach_session_subagent_controller`. The base's new
     `SessionHandleBootstrap` fixture needed the feature's
     `subagent_controller: None` field.
+- [x] (2026-11-08) EP-M5 ninth review repair: close the six findings from the
+  2026-11-07 review of `30d4be819`.
+  - `lody_management.rs` was 563 lines and breached the repository's 400-line
+    module limit. The test module moved verbatim to `lody_management_tests.rs`
+    (declared `#[cfg(test)] #[path = "lody_management_tests.rs"] mod tests;`),
+    and `ManagedTask`, `managed_child_task`, `managed_background_task` and
+    `epoch_seconds` moved to `lody_management/projection.rs` with `pub(super)`
+    visibility. The parent is now 392 lines; test names are unchanged because
+    the module path is still `zed::agent::lody_management::tests::*`.
+  - `background_status_entries_with_liveness` ignored the restart budget, so a
+    background process that had already spent its single restart was still
+    projected as `Starting` — reported to ACP as `running` and kept inside
+    `activeOnly` — although a refresh would settle it as `Error`. The overlay
+    now reads `record.restart_attempts` and reports `Error` once the budget is
+    spent, while preserving `Starting` for a restart genuinely in progress
+    (budget still available, or the cached status already `Starting` because
+    the counter was incremented before the replacement exec session was
+    registered). It remains a pure query.
+  - `openai_streaming.rs` gained an `api_format = "auto"` case proving the Auto
+    route reaches Chat Completions with `stream_options.include_usage` and
+    retains the terminal usage frame.
+  - `docs/acp/ACP_QUICK_REFERENCE.md` and `docs/acp/ACP_INTEGRATION.md` now
+    document the request and response shape of all three `_lody/subagents/*`
+    methods, derived from `lody_management.rs`: `sessionId` required for all
+    three, `taskId` additionally for `cancel` and `output`, the `tail` default
+    of 200 with a hard maximum of 10,000, the `camelCase` task fields, the
+    `running`/`completed`/`failed`/`killed` status set, and the explicit `null`
+    end instant of an active task.
+  - The "List and output are read-only" claim was wrong for a background task:
+    `subagent_output` refreshes the controller first, so it can persist state
+    and, with auto-restore enabled, respawn an exited process. The ExecPlan and
+    `docs/development/acp-runtime.md` now state that list is a pure query,
+    foreground output is a pure snapshot read, and background output is not.
+  - The focused test command now uses `-p diapason-acp`, and the installation
+    checks verify the `diapason` binary as well as the legacy `vtcode` path.
+    Dated evidence blocks were deliberately left verbatim.
 
 ## Surprises & discoveries
 
@@ -1007,7 +1043,7 @@ project and branch naming convention. Use focused nextest filters during TDD;
 never run `cargo test`.
 
 ```bash
-cargo nextest run -p vtcode-acp -E 'test(lody)' 2>&1 \
+cargo nextest run -p diapason-acp -E 'test(lody)' 2>&1 \
   | tee /tmp/test-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
 ```
 
@@ -1022,6 +1058,8 @@ cargo install --path . --locked --force 2>&1 \
   | tee /tmp/install-vtcode-fix-acp-lody-task-lifecycle-negotiation.out
 readlink -f /home/leynos/.local/bin/vtcode
 /home/leynos/.local/bin/vtcode --version
+readlink -f /home/leynos/.local/bin/diapason
+/home/leynos/.local/bin/diapason --version
 ```
 
 Before publication, inspect and submit the complete stack non-interactively:
@@ -1053,7 +1091,8 @@ milestone. The final branch is accepted only when:
   opt-in and reaches Lody through local playback/physics tests;
 - `./scripts/check.sh` passes through `scrutineer` before every code commit and
   once more at the final branch tip;
-- the installed user binary resolves through `/home/leynos/.local/bin/vtcode`;
+- the installed user binaries resolve through `/home/leynos/.local/bin/vtcode`
+  and `/home/leynos/.local/bin/diapason`;
 - the pushed local and remote SHA match; and
 - the new draft PR targets `fix/acp-unresolved-tool-recovery` and is linked to
   the stack containing PR #13.
@@ -1072,8 +1111,11 @@ controller's cancellation semantics or read an arbitrary transcript path.
 
 Focused tests, gates and binary installation are idempotent. Extension
 notifications are observational and do not change durable session history in
-VTCode. List and output are read-only; cancel is intentionally idempotent for a
-terminal owned task and never automatically replays work.
+VTCode. List is a pure query. Output for a foreground child task is a pure
+snapshot read, but output for a background task refreshes the controller before
+reading the tail, so it may persist state or restart an exited process when
+auto-restore is enabled. Cancel is intentionally idempotent for a terminal
+owned task and never automatically replays work.
 
 If a rebase or stack operation conflicts, stop, inspect both intents and use
 `gh stack rebase`/`gh stack push`; do not use `git push --force`. If a test
