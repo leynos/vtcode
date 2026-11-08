@@ -151,4 +151,20 @@ mod tests {
             stable_system_prefix_hash("Stable guidance for an implementer.")
         );
     }
+
+    #[test]
+    fn stable_prefix_hash_ignores_appended_catalogue_metadata() {
+        let prefix = "Stable guidance.";
+        let with_metadata = "Stable guidance.\n[Runtime Tool Catalogue]\n- version: 3\n- epoch: 4\n";
+
+        assert_eq!(stable_system_prefix_hash(prefix), stable_system_prefix_hash(with_metadata));
+    }
+
+    #[test]
+    fn stable_prefix_hash_distinguishes_prefixes_with_catalogue_header() {
+        let reviewer = "Stable guidance for a reviewer.\n[Runtime Tool Catalogue]\n- version: 1\n";
+        let implementer = "Stable guidance for an implementer.\n[Runtime Tool Catalogue]\n- version: 1\n";
+
+        assert_ne!(stable_system_prefix_hash(reviewer), stable_system_prefix_hash(implementer));
+    }
 }
