@@ -54,6 +54,75 @@ was advertised:
 - `_lody/subagents/cancel` requests cancellation of an owned task; and
 - `_lody/subagents/output` returns a bounded output tail for an owned task.
 
+All three require `sessionId`; `cancel` and `output` also require `taskId`.
+Requests and responses use `camelCase` field names.
+
+`_lody/subagents/list` accepts an optional `activeOnly` boolean (default
+`false`) and returns the caller session's owned tasks:
+
+```json
+{
+  "sessionId": "session-id",
+  "activeOnly": false
+}
+```
+
+```json
+{
+  "tasks": [
+    {
+      "taskId": "task-id",
+      "description": "Review the parser",
+      "status": "running",
+      "agentId": "agent-session-id",
+      "subagentType": "reviewer",
+      "startedAtEpochSeconds": 1756339200.0,
+      "endedAtEpochSeconds": null
+    }
+  ]
+}
+```
+
+Each task carries `taskId`, `description`, `status`, `startedAtEpochSeconds`,
+and `endedAtEpochSeconds` (a number, or `null` while the task is active), plus
+optional `agentId`, `subagentType`, and `stopReason`. `status` is one of
+`running`, `completed`, `failed`, or `killed`.
+
+`_lody/subagents/cancel` requires `sessionId` and `taskId`; an optional
+`reason` is accepted and currently ignored. It returns an empty object:
+
+```json
+{
+  "sessionId": "session-id",
+  "taskId": "task-id"
+}
+```
+
+```json
+{}
+```
+
+A task id the session does not own fails with error data
+`{"reason": "unknown_task"}`.
+
+`_lody/subagents/output` requires `sessionId` and `taskId` and accepts an
+optional `tail` (default 200 lines, hard maximum 10,000). It returns the
+bounded output tail:
+
+```json
+{
+  "sessionId": "session-id",
+  "taskId": "task-id",
+  "tail": 200
+}
+```
+
+```json
+{
+  "output": "last lines of task output"
+}
+```
+
 Usage is reported with the `_lody/session/usage_update` extension notification.
 Its parameters contain `sessionId`, a `usage` object with normalized input,
 output, and cache token counts, and `modelUsage`, keyed by model name. The

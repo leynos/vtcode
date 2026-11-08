@@ -254,7 +254,11 @@ reconciles, respawns, publishes a lifecycle update, or persists state, and a
 read cannot restart work. `cancel` closes a child agent or force-cancels a
 background record. `output` returns a bounded tail: `tail` defaults to 200
 lines, and the ACP adapter rejects values above its 10,000-line transport bound
-with `invalid_tail`. Each request re-resolves the session's controller tree.
+with `invalid_tail`. For a foreground child task, output is a pure snapshot
+read. For a background task, the handler refreshes the controller before
+reading the tail; that refresh performs exit detection, publishes lifecycle
+updates, persists state, and, when auto-restore is enabled, can respawn an
+exited process. Each request re-resolves the session's controller tree.
 
 ### Usage publication
 
