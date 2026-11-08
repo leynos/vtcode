@@ -129,6 +129,14 @@ pub(crate) struct TestTurnProcessingBacking {
 
 impl TestTurnProcessingBacking {
     pub(crate) async fn new(max_tool_calls: usize) -> Self {
+        Self::new_with_base_prompt(max_tool_calls, "You are Diapason.".to_string()).await
+    }
+
+    /// Build a backing whose base system prompt is supplied by the caller.
+    ///
+    /// Prompt-assembly tests use this to seed sections an embedder could still
+    /// provide, such as a pre-rename runtime catalogue header.
+    pub(crate) async fn new_with_base_prompt(max_tool_calls: usize, base_system_prompt: String) -> Self {
         let temp = tempfile::TempDir::new().expect("temp workspace");
         let workspace = temp.path().to_path_buf();
 
@@ -144,7 +152,7 @@ impl TestTurnProcessingBacking {
             crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState::default();
         let mcp_panel_state = McpPanelState::default();
         let loaded_skills = Arc::new(RwLock::new(HashMap::new()));
-        let context_manager = ContextManager::new("You are Diapason.".to_string(), (), loaded_skills, None);
+        let context_manager = ContextManager::new(base_system_prompt, (), loaded_skills, None);
         let last_forced_redraw = Instant::now();
         let input_status_state = InputStatusState::default();
         let (mut session, command_receiver) = create_headless_session();
