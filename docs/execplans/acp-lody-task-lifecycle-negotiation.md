@@ -412,6 +412,34 @@ management requests return only tasks owned by the requested ACP session.
     proptest regression seed was relocated under `diapason-acp`, and
     `Cargo.lock` was regenerated so `diapason-acp` records its `wiremock`
     dev-dependency. Ported head: `d1834e73a` on `port/lody-on-diapason`.
+- [x] (2026-11-08) EP-M5 eighth review repair: close the remaining
+  `Testing (Overall)` coverage gaps and restack onto the advanced base.
+  - CodeRabbit's pre-merge reconciliation reply kept the error-level
+    `Testing (Overall)` row open and named three gaps: management tests that
+    did not assert the projected status or start/end instants, projection
+    precedence and pre-epoch clamping that covered only one task kind and one
+    emission form, and tail-bound assertions written against the constants
+    rather than the transport literals.
+  - `lody_management.rs` now asserts the literal ACP transport contract: a
+    default of 200 lines, acceptance of 10,000, and rejection of 10,001.
+  - `projection_tests.rs` exercises error > summary > description precedence
+    and pre-epoch clamping of both the start and end instants for both task
+    kinds and both emission forms, with post-epoch control cases so the test
+    cannot pass by clamping everything.
+  - The management duplex test now waits for the controller to record the
+    background task's start and end, then compares the listed `status`,
+    `startedAtEpochSeconds` and `endedAtEpochSeconds` against that record, and
+    asserts an active task reports a null end instant. The nested test does the
+    same for foreground tasks, including the `killed` status and end instant of
+    a cancelled grandchild.
+  - The base branch advanced from `a159f03b4` to `37d493337` (five commits,
+    including the tool-recovery review round). The five feature commits were
+    replayed onto the new tip with Git's zdiff3 backend; one conflict in
+    `session_workspace.rs` was resolved by keeping both the base's
+    `with_metrics` port builder and the feature's
+    `attach_session_subagent_controller`. The base's new
+    `SessionHandleBootstrap` fixture needed the feature's
+    `subagent_controller: None` field.
 
 ## Surprises & discoveries
 

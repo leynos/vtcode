@@ -1,7 +1,7 @@
 //! Nested delegation ownership regressions for the Lody management extensions.
 use super::lody_support::{
     GlobalProviderRegistration, NESTED_CHILD_TASK, NESTED_GRANDCHILD_TASK, NESTED_MODEL, NESTED_PROVIDER,
-    ParkedProvider, lody_cancel, lody_list, lody_output,
+    ParkedProvider, expected_epoch_seconds, lody_cancel, lody_list, lody_output,
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
@@ -152,6 +152,29 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
                 listed_ids, expected_ids,
                 "the root session must list its child and both grandchildren exactly once: {listed}"
             );
+            // The root controller tracks the child; the child-scoped controller
+            // tracks both grandchildren.
+            let root_entries = root.status_entries().await;
+            let child_entries = child_controller.status_entries().await;
+            for task in &tasks {
+                let task_id = task["taskId"].as_str().expect("listed task ID");
+                let record = if task_id == child.id.as_str() {
+                    root_entries.iter().find(|entry| entry.id == task_id)
+                } else {
+                    child_entries.iter().find(|entry| entry.id == task_id)
+                }
+                .expect("the owning controller must track every listed task");
+                assert_eq!(task["status"], "running", "a live foreground task must be listed as running: {task}");
+                assert_eq!(
+                    task["startedAtEpochSeconds"],
+                    expected_epoch_seconds(record.created_at),
+                    "the listed start must project the owning controller record: {task}"
+                );
+                assert!(
+                    task["endedAtEpochSeconds"].is_null(),
+                    "an active foreground task must not report an end instant: {task}"
+                );
+            }
             let active_listed = lody_list(&cx, &session.session_id, true).await?;
             assert_eq!(active_listed, listed, "every spawned task is still running, so activeOnly must change nothing");
 
@@ -247,6 +270,27 @@ async fn nested_subagent_management_is_owned_by_the_root_session() {
                 unfiltered_after_cancel["tasks"].as_array().map(Vec::len),
                 Some(3),
                 "the unfiltered list must keep a terminal task: {unfiltered_after_cancel}"
+            );
+            let cancelled_record = child_controller
+                .status_entries()
+                .await
+                .into_iter()
+                .find(|entry| entry.id == grandchild.id)
+                .expect("the cancelled grandchild record");
+            let cancelled_listed = unfiltered_after_cancel["tasks"]
+                .as_array()
+                .expect("Lody task list")
+                .iter()
+                .find(|task| task["taskId"].as_str() == Some(grandchild.id.as_str()))
+                .expect("the cancelled grandchild must remain listed");
+            assert_eq!(
+                cancelled_listed["status"], "killed",
+                "a cancelled foreground task is reported as killed: {cancelled_listed}"
+            );
+            assert_eq!(
+                cancelled_listed["endedAtEpochSeconds"],
+                expected_epoch_seconds(cancelled_record.completed_at.expect("a cancelled task records its completion")),
+                "the listed end must project the owning controller record: {cancelled_listed}"
             );
             let active_after_cancel = lody_list(&cx, &session.session_id, true).await?;
             let mut active_after_cancel_ids = active_after_cancel["tasks"]
