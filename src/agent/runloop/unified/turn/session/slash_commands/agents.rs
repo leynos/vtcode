@@ -166,6 +166,9 @@ fn render_missing_subagent_controller(ctx: &mut SlashCommandContext<'_>) -> Resu
     Ok(SlashCommandControl::Continue)
 }
 
+/// Show the agents manager modal and dispatch the selected management action.
+/// Returns the control flow produced by that action, or `Continue` when the
+/// modal is dismissed.
 async fn show_agents_manager(mut ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
     ctx.handle.show_list_modal(
         "Agents".to_string(),
@@ -255,6 +258,8 @@ async fn show_agents_manager(mut ctx: SlashCommandContext<'_>) -> Result<SlashCo
     }
 }
 
+/// List effective and shadowed agent definitions in a modal, then render details
+/// for the selected agent. Returns `Continue` when dismissed or after inspection.
 async fn show_agent_catalogue(mut ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
     let Some(controller) = ctx.tool_registry.subagent_controller() else {
         return render_missing_subagent_controller(&mut ctx);

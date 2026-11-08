@@ -663,6 +663,8 @@ pub(super) fn timeline_rows_from_messages(messages: &[Value]) -> Vec<TimelineRow
     rows
 }
 
+/// Render the timeline export and session log into a self-contained HTML
+/// document. Both JSON payloads are escaped before being embedded in script tags.
 pub(super) fn render_session_timeline_html(export: &TimelineExport, session_log_json: &Value) -> Result<String> {
     let export_json = serde_json::to_string(export).context("Failed to serialize timeline data")?;
     let session_log_json = serde_json::to_string_pretty(session_log_json).context("Failed to serialize session log")?;

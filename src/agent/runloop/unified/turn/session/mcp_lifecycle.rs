@@ -30,6 +30,9 @@ fn decide_refresh_action(pending_refresh: bool, tool_list_changed: bool) -> Refr
     }
 }
 
+/// Attach the MCP client once initialisation completes and refresh MCP tools at
+/// the configured interval. Tool-list changes are deferred to the next turn
+/// boundary to keep the active turn's tool set stable.
 #[expect(
     clippy::too_many_arguments,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."

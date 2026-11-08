@@ -39,6 +39,8 @@ fn is_readonly_repo_browsing_tool(tool_name: &str, args: &Value) -> bool {
         || (tool_name == tools::UNIFIED_FILE && tool_intent::file_operation_action_is(args, "read"))
 }
 
+/// Report whether a tool call is a stable catalogue lookup whose result can be
+/// cached regardless of its arguments.
 fn is_stable_tool_catalogue_lookup(tool_name: &str, args: &Value) -> bool {
     let _ = args;
     matches!(tool_name, "search_tools" | "get_errors" | "agent_info")

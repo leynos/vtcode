@@ -95,6 +95,10 @@ pub(super) fn public_tool_name_candidates(name: &str) -> Vec<String> {
     candidates
 }
 
+/// Map public tool names and aliases to their registration resolutions.
+///
+/// Removed public tool names are skipped for both names and aliases, and an
+/// alias never replaces a resolution already registered for that name.
 fn build_public_routes(catalogue: &SessionToolCatalogue) -> FxHashMap<String, PublicToolResolution> {
     let mut public_routes = FxHashMap::default();
 

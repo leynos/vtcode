@@ -334,6 +334,10 @@ fn log_discovery_warnings(operation: &'static str, errors: &[SkillErrorInfo]) {
     );
 }
 
+/// Discover session skills and return the resolved Codex home with the outcome.
+///
+/// Discovery warnings are logged rather than returned; only resolving the
+/// Codex home can fail.
 fn discover_skill_catalogue(
     workspace_root: &Path,
     explicit_codex_home: Option<&Path>,

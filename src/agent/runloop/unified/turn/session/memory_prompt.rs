@@ -271,6 +271,8 @@ pub(crate) async fn handle_memory_prompt(
     }
 }
 
+/// Handle a "show memory" request by dispatching the `ShowMemory` slash command
+/// and mapping its control flow into an interaction outcome.
 async fn handle_show_memory_intent(
     ctx: &mut InteractionLoopContext<'_>,
     state: &mut InteractionState<'_>,

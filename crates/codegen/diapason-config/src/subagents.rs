@@ -727,6 +727,9 @@ pub fn builtin_primary_duck_agent() -> SubagentSpec {
     }
 }
 
+/// Returns the tool ids granted to built-in read-only agents. The direct read
+/// tools are listed explicitly so a denied `bash` does not reduce the effective
+/// catalogue to `code_search`.
 fn builtin_readonly_tool_ids() -> Vec<String> {
     // The direct read tools must be listed explicitly: read-only agents deny
     // `bash`, so the wire shaper hides `exec_command` for them — without

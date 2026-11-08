@@ -223,10 +223,13 @@ fn skill_invocation_status_message(skill_name: &str) -> String {
     format!("Running {invocation_target}...")
 }
 
+/// Build a skill session runtime from the current slash-command context.
 fn skill_runtime(ctx: &SlashCommandContext<'_>) -> diapason_core::tools::skills::SkillToolSessionRuntime {
     skill_runtime_for_session(ctx.tool_registry, ctx.tools, ctx.tool_catalogue, ctx.config, ctx.vt_cfg.as_ref())
 }
 
+/// Build a skill session runtime bound to the given registry, tool snapshot, and
+/// catalogue, with the configured tool profile and child-agent fork executor.
 fn skill_runtime_for_session(
     tool_registry: &diapason_core::tools::ToolRegistry,
     tools: &Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
@@ -681,6 +684,7 @@ async fn prompt_text(
     Ok(Some(trimmed))
 }
 
+/// Show the skills manager action list without waiting for a selection.
 fn show_skills_manager_actions_modal(ctx: &mut SlashCommandContext<'_>) {
     let items = vec![
         InlineListItem {

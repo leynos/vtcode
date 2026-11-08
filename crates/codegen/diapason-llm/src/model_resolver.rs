@@ -373,6 +373,9 @@ fn parse_provider_override(value: &str) -> Option<Provider> {
     }
 }
 
+/// Finds the provider for a model by searching the generated catalogue and
+/// selecting the highest-precedence match. Returns `None` when no catalogue
+/// provider lists the model.
 fn find_catalogue_provider(model: &str) -> Option<(Provider, ModelCatalogueEntry)> {
     let mut matches: Vec<(Provider, ModelCatalogueEntry)> = catalogue_provider_keys()
         .iter()

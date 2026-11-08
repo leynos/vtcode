@@ -111,6 +111,9 @@ struct TrajectorySummary {
     recent_timestamps: Vec<i64>,
 }
 
+/// Reads a trajectory JSONL stream and aggregates route, tool, prompt-cache,
+/// and tool-catalogue statistics. Blank lines and records of unknown shape are
+/// skipped.
 fn summarize_trajectory<R: BufRead>(reader: R) -> Result<TrajectorySummary> {
     let mut summary = TrajectorySummary::default();
 
@@ -200,6 +203,9 @@ fn summarize_trajectory<R: BufRead>(reader: R) -> Result<TrajectorySummary> {
     Ok(summary)
 }
 
+/// Prints a trajectory report for the given log file, defaulting to the
+/// workspace's `logs/trajectory.jsonl`. The log is read on a blocking task, and
+/// each section lists the top `top` entries.
 pub async fn handle_trajectory_command(_cfg: &CoreAgentConfig, file: Option<PathBuf>, top: usize) -> Result<()> {
     let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let log_path = match file {
@@ -378,6 +384,7 @@ fn format_timestamp(ts: i64) -> String {
     }
 }
 
+/// Format a token count with an `m` or `k` suffix once it reaches that scale.
 fn format_token_count(tokens: u64) -> String {
     if tokens >= 1_000_000 {
         format!("{:.1}m", tokens as f64 / 1_000_000.0)

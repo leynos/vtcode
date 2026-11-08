@@ -133,6 +133,9 @@ pub(super) fn redact_timeline_export(export: &TimelineExport) -> TimelineExport 
     presentation::redact_timeline_export(export)
 }
 
+/// Aggregate thread events into a session overview of turns, token usage, file
+/// changes, and prompt-cache diagnostics. The row count and prompt-cache
+/// diagnostics are supplied by the caller.
 fn build_session_overview(
     provider: &str,
     model: &str,

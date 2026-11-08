@@ -354,6 +354,7 @@ fn register_mcp(_plan_state: Option<&PlanningWorkflowState>) -> ToolRegistration
     ])
 }
 
+/// Register the `search_tools` builtin for searching the deferred tool catalogue.
 #[distributed_slice(BUILTIN_TOOLS)]
 fn register_search_tools(_plan_state: Option<&PlanningWorkflowState>) -> ToolRegistration {
     ToolRegistration::new(

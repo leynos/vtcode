@@ -33,6 +33,9 @@ pub struct ModelCatalogueEntry {
     pub pricing: ModelPricing,
 }
 
+/// Maps a provider name to its canonical model-catalogue key, comparing case
+/// insensitively and folding aliases such as `google`/`gemini` and
+/// `meta-ai`/`meta`. Unrecognised names are returned unchanged.
 fn catalogue_provider_key(provider: &str) -> &str {
     if provider.eq_ignore_ascii_case("google") || provider.eq_ignore_ascii_case("gemini") {
         "gemini"
@@ -77,6 +80,7 @@ fn catalogue_provider_key(provider: &str) -> &str {
     }
 }
 
+/// Return the stable catalogue key used for a provider's capability entry.
 fn capability_provider_key(provider: Provider) -> &'static str {
     match provider {
         Provider::Gemini => "gemini",
@@ -108,6 +112,8 @@ fn capability_provider_key(provider: Provider) -> &'static str {
     }
 }
 
+/// Looks up generated catalogue metadata for a provider and model id. Returns
+/// `None` when the model is not present in the catalogue.
 fn generated_catalogue_entry(provider: &str, id: &str) -> Option<ModelCatalogueEntry> {
     capability_generated::metadata_for(catalogue_provider_key(provider), id).map(|entry| ModelCatalogueEntry {
         provider: entry.provider,
@@ -131,14 +137,18 @@ fn generated_catalogue_entry(provider: &str, id: &str) -> Option<ModelCatalogueE
     })
 }
 
+/// Returns the generated catalogue entry for a provider and model id, if any.
 pub fn model_catalogue_entry(provider: &str, id: &str) -> Option<ModelCatalogueEntry> {
     generated_catalogue_entry(provider, id)
 }
 
+/// Returns the catalogue model ids for a provider, or `None` when the provider
+/// has no generated catalogue.
 pub fn supported_models_for_provider(provider: &str) -> Option<&'static [&'static str]> {
     capability_generated::models_for_provider(catalogue_provider_key(provider))
 }
 
+/// Returns the provider keys present in the generated model catalogue.
 pub fn catalogue_provider_keys() -> &'static [&'static str] {
     capability_generated::PROVIDERS
 }

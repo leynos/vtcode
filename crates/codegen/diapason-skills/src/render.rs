@@ -27,6 +27,9 @@ pub fn render_skills_section(skills: &[SkillMetadata]) -> Option<String> {
     Some(lines.join("\n"))
 }
 
+/// Renders the skills section for model-eligible skills, sorted by name and
+/// capped at five entries with an overflow note. Returns `None` when no skill
+/// is eligible.
 pub fn render_prompt_skills_section(skills: &[SkillMetadata]) -> Option<String> {
     let visible_skills = skills
         .iter()

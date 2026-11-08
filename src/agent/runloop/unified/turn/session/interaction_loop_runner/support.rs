@@ -1024,6 +1024,8 @@ pub(crate) async fn handle_select_primary_agent(
     Ok(())
 }
 
+/// Forward the interaction-loop context into the shared primary-agent runtime
+/// synchronisation so both handoff paths apply identical updates.
 async fn sync_primary_agent_runtime(
     ctx: &mut InteractionLoopContext<'_>,
     state: &mut InteractionState<'_>,

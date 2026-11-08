@@ -119,6 +119,9 @@ pub(crate) fn resolve_provider_label(config: &CoreAgentConfig, vt_cfg: Option<&D
     key.to_string()
 }
 
+/// Build the session state for a run, initialising notification config, MCP,
+/// skills, subagents, and the tool registry. Returns an error when the provider
+/// client or the workspace trust level cannot be established.
 pub(crate) async fn initialize_session(
     config: &CoreAgentConfig,
     vt_cfg: Option<&DiapasonConfig>,
@@ -601,6 +604,8 @@ pub(crate) fn active_anthropic_native_memory(
     )
 }
 
+/// Rebuild the shared tool-definition snapshot exposed to the model from the
+/// registry's current model tools. The existing snapshot is replaced in place.
 pub(crate) async fn refresh_tool_snapshot(
     tool_registry: &ToolRegistry,
     tools: &Arc<RwLock<Vec<uni::ToolDefinition>>>,
