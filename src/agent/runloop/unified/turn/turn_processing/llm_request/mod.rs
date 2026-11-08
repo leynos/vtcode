@@ -14,6 +14,8 @@ mod metrics;
 mod prompt_assembly;
 mod prompt_runtime;
 mod prompt_sections;
+#[cfg(test)]
+mod provider_endpoint_tests;
 mod request_builder;
 mod response_chain;
 mod retry;
