@@ -123,6 +123,7 @@ fn test_child_record(
     }
 }
 
+mod background_liveness_tests;
 mod invocation_context_tests;
 mod owner_scope_tests;
 mod progress_observer_tests;
