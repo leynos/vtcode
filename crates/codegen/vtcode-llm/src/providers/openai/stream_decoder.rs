@@ -1291,6 +1291,48 @@ mod stream_transport_error_tests {
         assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ToolCallReconciliationFailed);
         assert!(!format!("{observations:?}").contains("bridge"));
     }
+
+    /// Prove a message-only completion that omits an announced custom call
+    /// fails the legacy stream even when the streamed input is only a partial
+    /// prefix, and that no `Completed` event is emitted.
+    #[tokio::test]
+    async fn responses_stream_rejects_message_only_completion_that_omits_partial_custom_input() {
+        let response = response_with_complete_body(
+            "data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_index\":0,\"item\":{\"type\":\"custom_tool_call\",\"id\":\"item_patch_1\",\"call_id\":\"call_patch_1\",\"name\":\"apply_patch\"}}\n\ndata: {\"type\":\"response.custom_tool_call_input.delta\",\"sequence_number\":2,\"item_id\":\"item_patch_1\",\"call_id\":\"call_patch_1\",\"output_index\":0,\"delta\":\"*** Begin\"}\n\ndata: {\"type\":\"response.completed\",\"sequence_number\":3,\"response\":{\"id\":\"resp_partial_custom\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answered without the tool\"}]}]}}\n\n",
+        )
+        .await;
+        let sink = Arc::new(TestSink::default());
+        let stream = create_responses_stream(
+            response,
+            CUSTOM_PROVIDER.to_owned(),
+            "custom-model".to_owned(),
+            false,
+            false,
+            sink.clone(),
+        );
+
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                Err(LLMError::Provider { message, .. })
+                    if message.contains("completed response omitted a streamed tool call")
+            )),
+            "the omission must fail the stream: {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Ok(provider::LLMStreamEvent::Completed { .. }))),
+            "an omitted streamed call must not complete: {events:?}"
+        );
+
+        let observations = sink.observations.lock().expect("test sink lock").clone();
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Legacy);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ToolCallReconciliationFailed);
+        assert!(!format!("{observations:?}").contains("*** Begin"));
+    }
 }
 
 struct ResponsesReasoningContext<'a> {
