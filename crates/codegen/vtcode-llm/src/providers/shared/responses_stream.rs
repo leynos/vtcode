@@ -399,6 +399,9 @@ where
         let delta = self
             .reconciler
             .reasoning_delta(reasoning.identity, &reasoning.text)
+            .inspect_err(|_| {
+                self.recorder.record(ResponsesStreamOutcome::ReconciliationFailed);
+            })
             .map_err(|message| provider_error(self.options.provider_name, message))?;
         self.emit_reasoning_delta(events, delta);
         Ok(())
@@ -413,6 +416,9 @@ where
         let delta = self
             .reconciler
             .reasoning_done(reasoning.identity, &reasoning.text)
+            .inspect_err(|_| {
+                self.recorder.record(ResponsesStreamOutcome::ReconciliationFailed);
+            })
             .map_err(|message| provider_error(self.options.provider_name, message))?;
         if let Some(delta) = delta {
             self.emit_reasoning_delta(events, delta);
@@ -1761,6 +1767,52 @@ mod tests {
         assert_eq!(tool_calls[0].raw_input(), Some("*** Begin Patch\n*** End Patch\n"));
     }
 
+    /// Prove a bridging alias that matches two custom-call tracks is rejected
+    /// before it can assign input, on the shared path.
+    #[test]
+    fn shared_processor_rejects_bridging_custom_call_aliases_before_assignment() {
+        let (options, sink) = recording_options();
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options, parse_response);
+        processor
+            .handle_payload(json!({
+                "type": "response.custom_tool_call_input.delta",
+                "sequence_number": 1,
+                "call_id": "call_a",
+                "delta": "first"
+            }))
+            .expect("a call-id-only delta should register one track");
+        processor
+            .handle_payload(json!({
+                "type": "response.custom_tool_call_input.delta",
+                "sequence_number": 2,
+                "item_id": "item_b",
+                "delta": "second"
+            }))
+            .expect("an item-id-only delta should register a distinct track");
+
+        let error = processor
+            .handle_payload(json!({
+                "type": "response.custom_tool_call_input.delta",
+                "sequence_number": 3,
+                "item_id": "item_b",
+                "call_id": "call_a",
+                "delta": "bridge"
+            }))
+            .expect_err("an event matching both tracks must be rejected");
+        assert!(error.to_string().contains("TestProvider"));
+
+        let observations = observations(&sink);
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Shared);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ToolCallReconciliationFailed);
+        assert!(!format!("{observations:?}").contains("bridge"));
+
+        let terminated = processor
+            .finish()
+            .expect_err("the rejected bridge must not complete the stream");
+        assert!(!terminated.to_string().contains("bridge"));
+    }
+
     /// Prove the completed terminal absorbs every later frame.
     #[test]
     fn terminal_completion_absorbs_later_frames() {
@@ -1833,6 +1885,62 @@ mod tests {
             finished.as_slice(),
             [NormalizedStreamEvent::Done { response }] if response.reasoning.as_deref() == Some("haha")
         ));
+    }
+
+    /// Prove a divergent reasoning snapshot is reported as a reconciliation
+    /// failure on the shared path, not as a malformed frame, exactly once.
+    #[test]
+    fn shared_processor_records_reconciliation_failure_for_divergent_reasoning_snapshot() {
+        let (options, sink) = recording_options();
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options, parse_response);
+        processor
+            .handle_payload(json!({
+                "type": "response.reasoning_text.delta",
+                "sequence_number": 1,
+                "item_id": "reasoning_1",
+                "output_index": 0,
+                "delta": "streamed prefix"
+            }))
+            .expect("reasoning delta should parse");
+
+        let error = processor
+            .handle_payload(json!({
+                "type": "response.reasoning_text.done",
+                "sequence_number": 2,
+                "item_id": "reasoning_1",
+                "output_index": 0,
+                "text": "different snapshot"
+            }))
+            .expect_err("a divergent snapshot must fail reconciliation");
+        assert!(error.to_string().contains("TestProvider"));
+
+        let observations = observations(&sink);
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Shared);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ReconciliationFailed);
+        assert!(!format!("{observations:?}").contains("streamed prefix"));
+    }
+
+    /// Prove a malformed reasoning frame stays distinct from a reconciliation
+    /// failure on the shared path.
+    #[test]
+    fn shared_processor_keeps_malformed_reasoning_frames_distinct() {
+        let (options, sink) = recording_options();
+        let mut processor = ResponsesNormalizedStreamProcessor::new(options, parse_response);
+
+        processor
+            .handle_payload(json!({
+                "type": "response.reasoning_text.delta",
+                "sequence_number": 1,
+                "item_id": "reasoning_1",
+                "output_index": 0
+            }))
+            .expect_err("a reasoning delta without text is malformed");
+
+        let observations = observations(&sink);
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Shared);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::MalformedEvent);
     }
 
     /// Prove part snapshots keep an emitted prefix without replaying done text.

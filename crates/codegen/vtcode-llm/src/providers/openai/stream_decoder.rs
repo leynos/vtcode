@@ -581,6 +581,7 @@ pub(crate) fn create_responses_stream(
                                     aggregator: &mut aggregator,
                                     telemetry: &telemetry,
                                     reconciler: &mut reconciler,
+                                    recorder: &stream_recorder,
                                 })
                                 .inspect_err(|_| {
                                     stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
@@ -594,7 +595,7 @@ pub(crate) fn create_responses_stream(
                                 })?;
                                 let delta = reconcile_reasoning_done(&mut reconciler, &payload, event_type, text)
                                     .inspect_err(|_| {
-                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                        stream_recorder.record(ResponsesStreamOutcome::ReconciliationFailed);
                                     })?;
                                 if retain_reasoning
                                     && let Some(delta) = delta
@@ -1202,6 +1203,94 @@ mod stream_transport_error_tests {
         assert_eq!(observations[0].outcome, ResponsesStreamOutcome::MalformedEvent);
         assert!(!format!("{observations:?}").contains("sensitive provider detail"));
     }
+
+    /// Prove a divergent reasoning snapshot is a reconciliation failure on the
+    /// legacy path, not a malformed frame, and is recorded exactly once.
+    #[tokio::test]
+    async fn responses_stream_records_reconciliation_outcome_for_divergent_reasoning_snapshot() {
+        let response = response_with_complete_body(
+            "data: {\"type\":\"response.reasoning_text.delta\",\"sequence_number\":1,\"item_id\":\"reasoning_1\",\"output_index\":0,\"delta\":\"streamed prefix\"}\n\ndata: {\"type\":\"response.reasoning_text.done\",\"sequence_number\":2,\"item_id\":\"reasoning_1\",\"output_index\":0,\"text\":\"different snapshot\"}\n\n",
+        )
+        .await;
+        let sink = Arc::new(TestSink::default());
+        let stream = create_responses_stream(
+            response,
+            CUSTOM_PROVIDER.to_owned(),
+            "custom-model".to_owned(),
+            false,
+            true,
+            sink.clone(),
+        );
+
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(events.iter().any(Result::is_err), "a divergent snapshot must fail the stream");
+
+        let observations = sink.observations.lock().expect("test sink lock").clone();
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Legacy);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ReconciliationFailed);
+        assert!(!format!("{observations:?}").contains("streamed prefix"));
+    }
+
+    /// Prove a malformed reasoning frame stays distinct from a reconciliation
+    /// failure on the legacy path.
+    #[tokio::test]
+    async fn responses_stream_keeps_malformed_reasoning_frames_distinct() {
+        let response = response_with_complete_body(
+            "data: {\"type\":\"response.reasoning_text.delta\",\"sequence_number\":1,\"item_id\":\"reasoning_1\",\"output_index\":0,\"detail\":\"sensitive provider detail\"}\n\n",
+        )
+        .await;
+        let sink = Arc::new(TestSink::default());
+        let stream = create_responses_stream(
+            response,
+            CUSTOM_PROVIDER.to_owned(),
+            "custom-model".to_owned(),
+            false,
+            true,
+            sink.clone(),
+        );
+
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(events.iter().any(Result::is_err), "a reasoning delta without text must fail");
+
+        let observations = sink.observations.lock().expect("test sink lock").clone();
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Legacy);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::MalformedEvent);
+        assert!(!format!("{observations:?}").contains("sensitive provider detail"));
+    }
+
+    /// Prove a bridging alias that matches two custom-call tracks is rejected
+    /// before it can assign input, and that later frames never run.
+    #[tokio::test]
+    async fn responses_stream_rejects_bridging_custom_call_aliases_before_assignment() {
+        let response = response_with_complete_body(
+            "data: {\"type\":\"response.custom_tool_call_input.delta\",\"sequence_number\":1,\"call_id\":\"call_a\",\"delta\":\"first\"}\n\ndata: {\"type\":\"response.custom_tool_call_input.delta\",\"sequence_number\":2,\"item_id\":\"item_b\",\"delta\":\"second\"}\n\ndata: {\"type\":\"response.custom_tool_call_input.delta\",\"sequence_number\":3,\"item_id\":\"item_b\",\"call_id\":\"call_a\",\"delta\":\"bridge\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":4,\"delta\":\"after the rejection\"}\n\n",
+        )
+        .await;
+        let sink = Arc::new(TestSink::default());
+        let stream = create_responses_stream(
+            response,
+            CUSTOM_PROVIDER.to_owned(),
+            "custom-model".to_owned(),
+            false,
+            false,
+            sink.clone(),
+        );
+
+        let events = stream.collect::<Vec<_>>().await;
+        assert!(events.iter().any(Result::is_err), "a bridging alias must fail the stream");
+        assert!(
+            !events.iter().any(|event| format!("{event:?}").contains("after the rejection")),
+            "frames after the rejection must not be processed"
+        );
+
+        let observations = sink.observations.lock().expect("test sink lock").clone();
+        assert_eq!(observations.len(), 1, "one terminal outcome per attempt");
+        assert_eq!(observations[0].path, ResponsesStreamPath::Legacy);
+        assert_eq!(observations[0].outcome, ResponsesStreamOutcome::ToolCallReconciliationFailed);
+        assert!(!format!("{observations:?}").contains("bridge"));
+    }
 }
 
 struct ResponsesReasoningContext<'a> {
@@ -1209,6 +1298,7 @@ struct ResponsesReasoningContext<'a> {
     aggregator: &'a mut crate::providers::shared::StreamAggregator,
     telemetry: &'a OpenAIStreamTelemetry,
     reconciler: &'a mut ResponsesStreamReconciler,
+    recorder: &'a ResponsesOutcomeRecorder,
 }
 
 fn response_reasoning_event(
@@ -1236,9 +1326,15 @@ fn response_reasoning_event(
         return Ok(None);
     };
     let delta = if matches!(event_type, "response.reasoning_text.done" | "response.reasoning_summary_text.done") {
-        reconcile_reasoning_done(context.reconciler, payload, event_type, reasoning.as_ref())?
+        reconcile_reasoning_done(context.reconciler, payload, event_type, reasoning.as_ref()).inspect_err(|_| {
+            context.recorder.record(ResponsesStreamOutcome::ReconciliationFailed);
+        })?
     } else {
-        Some(reconcile_reasoning_delta(context.reconciler, payload, event_type, reasoning.as_ref())?)
+        Some(reconcile_reasoning_delta(context.reconciler, payload, event_type, reasoning.as_ref()).inspect_err(
+            |_| {
+                context.recorder.record(ResponsesStreamOutcome::ReconciliationFailed);
+            },
+        )?)
     };
     if !context.retain_reasoning {
         return Ok(None);

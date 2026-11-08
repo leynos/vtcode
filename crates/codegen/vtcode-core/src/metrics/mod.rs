@@ -73,6 +73,56 @@ pub trait ProviderAdmissionMetricsSource: std::fmt::Debug + Send + Sync {
     fn snapshot(&self) -> ProviderAdmissionSnapshot;
 }
 
+/// Bounded Responses stream terminal counters.
+///
+/// Every label comes from a closed enum, so the series count is fixed: two
+/// streaming implementations times eleven terminal outcomes, plus two recovery
+/// counters. No response text, tool input, request identifier or provider
+/// diagnostic is included.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResponsesStreamMetrics {
+    /// One entry per `(stream path, terminal outcome)` pair.
+    pub outcomes: Vec<ResponsesStreamOutcomeMetric>,
+    /// WebSocket attempts that failed after output began, so replay was refused.
+    pub websocket_replay_prohibited_total: u64,
+    /// WebSocket attempts that fell back to HTTP.
+    pub websocket_http_fallback_total: u64,
+}
+
+/// One terminal counter for a Responses stream path and outcome.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResponsesStreamOutcomeMetric {
+    /// Streaming implementation label (`shared` or `legacy`).
+    pub path: String,
+    /// Terminal outcome label.
+    pub outcome: String,
+    /// Cumulative attempts that terminated with this outcome.
+    pub total: u64,
+}
+
+/// Consumer-owned port for sampling the process-wide Responses stream counters.
+///
+/// As with [`ProviderAdmissionMetricsSource`], the concrete provider adapter is
+/// injected at the composition boundary so this module never names a provider
+/// API. Implementations must read the live counters on every call.
+pub trait ResponsesMetricsSource: std::fmt::Debug + Send + Sync {
+    /// Read the current process-wide Responses stream counters.
+    fn snapshot(&self) -> ResponsesStreamMetrics;
+}
+
+/// Responses source for collectors that must export deterministic zeros.
+///
+/// Tests and alternate hosts that do not sample the real process counters use
+/// this source so a snapshot never depends on unrelated global activity.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ZeroResponsesMetricsSource;
+
+impl ResponsesMetricsSource for ZeroResponsesMetricsSource {
+    fn snapshot(&self) -> ResponsesStreamMetrics {
+        ResponsesStreamMetrics::default()
+    }
+}
+
 /// Bounded aggregate metrics for model-provider request attempts.
 ///
 /// Provider names are deliberately not labels here: user-defined provider
@@ -228,6 +278,7 @@ pub struct MetricsCollector {
     acp_extension: Arc<Mutex<AcpExtensionMetrics>>,
     workspace_runtime_cache_entries: Arc<AtomicU64>,
     admission_metrics_source: Arc<dyn ProviderAdmissionMetricsSource>,
+    responses_metrics_source: Arc<dyn ResponsesMetricsSource>,
     start_time: Instant,
 }
 
@@ -255,28 +306,55 @@ pub struct MetricsSummary {
     pub acp_extension: AcpExtensionMetrics,
     #[serde(default)]
     pub workspace_runtime_cache_entries: u64,
+    #[serde(default)]
+    pub responses_stream: ResponsesStreamMetrics,
 }
 
 impl MetricsCollector {
     /// Create a new metrics collector.
     ///
-    /// Admission counters are sampled from the real process-wide provider
-    /// source, so a collector built through this entry point never exports a
-    /// permanently zeroed admission snapshot in production. Callers that need a
-    /// different source (tests, alternate hosts) use
-    /// [`Self::with_admission_metrics_source`] instead.
+    /// Admission and Responses counters are sampled from the real process-wide
+    /// provider sources, so a collector built through this entry point never
+    /// exports a permanently zeroed provider snapshot in production. Callers
+    /// that need a different source (tests, alternate hosts) use
+    /// [`Self::with_admission_metrics_source`] or
+    /// [`Self::with_responses_metrics_source`] instead.
     pub fn new() -> Self {
-        Self::with_admission_metrics_source(Arc::new(
-            crate::llm::admission_metrics::ProcessProviderAdmissionMetricsSource::new(),
-        ))
+        Self::with_provider_metrics_sources(
+            Arc::new(crate::llm::admission_metrics::ProcessProviderAdmissionMetricsSource::new()),
+            Arc::new(crate::llm::responses_metrics::ProcessResponsesMetricsSource::new()),
+        )
     }
 
     /// Create a metrics collector that samples admission counters from `source`.
     ///
     /// This is the injection seam: production supplies the concrete provider
     /// adapter through [`Self::new`], while tests supply a fake source to make
-    /// the exported values deterministic.
+    /// the exported values deterministic. Responses counters are pinned to
+    /// [`ZeroResponsesMetricsSource`] so they cannot perturb the same
+    /// deterministic assertions; use [`Self::with_responses_metrics_source`] to
+    /// inject those separately.
     pub fn with_admission_metrics_source(source: Arc<dyn ProviderAdmissionMetricsSource>) -> Self {
+        Self::with_provider_metrics_sources(source, Arc::new(ZeroResponsesMetricsSource))
+    }
+
+    /// Create a metrics collector that samples Responses counters from `source`.
+    ///
+    /// Admission counters come from the real process-wide provider source, so a
+    /// test that only substitutes Responses samples still observes the
+    /// production admission wiring.
+    pub fn with_responses_metrics_source(source: Arc<dyn ResponsesMetricsSource>) -> Self {
+        Self::with_provider_metrics_sources(
+            Arc::new(crate::llm::admission_metrics::ProcessProviderAdmissionMetricsSource::new()),
+            source,
+        )
+    }
+
+    /// Create a metrics collector with explicit provider metric sources.
+    fn with_provider_metrics_sources(
+        admission_metrics_source: Arc<dyn ProviderAdmissionMetricsSource>,
+        responses_metrics_source: Arc<dyn ResponsesMetricsSource>,
+    ) -> Self {
         Self {
             discovery: Arc::new(Mutex::new(DiscoveryMetrics::new())),
             execution: Arc::new(Mutex::new(ExecutionMetrics::new())),
@@ -292,7 +370,8 @@ impl MetricsCollector {
             task_lifecycle_notification_queue: Arc::new(Mutex::new(TaskLifecycleNotificationQueueMetrics::default())),
             acp_extension: Arc::new(Mutex::new(AcpExtensionMetrics::default())),
             workspace_runtime_cache_entries: Arc::new(AtomicU64::new(0)),
-            admission_metrics_source: source,
+            admission_metrics_source,
+            responses_metrics_source,
             start_time: Instant::now(),
         }
     }
@@ -364,6 +443,15 @@ impl MetricsCollector {
         metrics.custom_provider_queue_wait_ms = admission.queue_wait_ms;
         metrics.custom_provider_queue_timeouts = admission.queue_timeouts;
         metrics
+    }
+
+    /// Get the bounded Responses stream terminal counters.
+    ///
+    /// The counters are sampled from the injected [`ResponsesMetricsSource`] on
+    /// every call, so the result is never cached. They are process-wide and
+    /// monotonic: consumers sample deltas rather than resetting them.
+    pub fn get_responses_stream_metrics(&self) -> ResponsesStreamMetrics {
+        self.responses_metrics_source.snapshot()
     }
 
     /// Get the bounded aggregate MCP startup metrics snapshot.
@@ -725,6 +813,7 @@ impl MetricsCollector {
             task_lifecycle_notification_queue: self.get_task_lifecycle_notification_queue_metrics(),
             acp_extension: self.get_acp_extension_metrics(),
             workspace_runtime_cache_entries: self.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
+            responses_stream: self.get_responses_stream_metrics(),
         }
     }
 
@@ -755,6 +844,7 @@ struct PrometheusMetricsSnapshot {
     service_startup: ServiceStartupMetrics,
     task_lifecycle_notification_queue: TaskLifecycleNotificationQueueMetrics,
     workspace_runtime_cache_entries: u64,
+    responses_stream: ResponsesStreamMetrics,
 }
 
 impl PrometheusMetricsSnapshot {
@@ -773,6 +863,7 @@ impl PrometheusMetricsSnapshot {
             service_startup: collector.get_service_startup_metrics(),
             task_lifecycle_notification_queue: collector.get_task_lifecycle_notification_queue_metrics(),
             workspace_runtime_cache_entries: collector.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
+            responses_stream: collector.get_responses_stream_metrics(),
         }
     }
 
@@ -790,8 +881,39 @@ impl PrometheusMetricsSnapshot {
         self.append_service_startup(&mut output);
         self.append_task_lifecycle_notification_queue(&mut output);
         self.append_workspace_runtime_cache(&mut output);
+        self.append_responses_stream(&mut output);
         self.append_tokens_created(&mut output);
         output
+    }
+
+    /// Render the bounded Responses stream terminal counters.
+    ///
+    /// `path` and `outcome` come from closed enums in the provider layer, so the
+    /// family has a fixed 22-series ceiling and never carries payload text.
+    fn append_responses_stream(&self, output: &mut String) {
+        let _ = write!(
+            output,
+            "# HELP vtcode_responses_stream_outcomes_total Responses stream attempts by path and terminal outcome\n\
+             # TYPE vtcode_responses_stream_outcomes_total counter\n"
+        );
+        for metric in &self.responses_stream.outcomes {
+            let _ = writeln!(
+                output,
+                "vtcode_responses_stream_outcomes_total{{path=\"{}\",outcome=\"{}\"}} {}",
+                metric.path, metric.outcome, metric.total
+            );
+        }
+        let _ = write!(
+            output,
+            "\n# HELP vtcode_responses_websocket_replay_prohibited_total WebSocket failures that prohibited automatic replay\n\
+             # TYPE vtcode_responses_websocket_replay_prohibited_total counter\n\
+             vtcode_responses_websocket_replay_prohibited_total {}\n\n\
+             # HELP vtcode_responses_websocket_http_fallback_total WebSocket exchanges that fell back to HTTP\n\
+             # TYPE vtcode_responses_websocket_http_fallback_total counter\n\
+             vtcode_responses_websocket_http_fallback_total {}\n\n",
+            self.responses_stream.websocket_replay_prohibited_total,
+            self.responses_stream.websocket_http_fallback_total
+        );
     }
 
     fn append_discovery(&self, output: &mut String) {
@@ -1487,6 +1609,74 @@ mod tests {
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_depth"));
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_waits_total"));
         assert!(prometheus.contains("vtcode_custom_provider_admission_queue_timeouts_total"));
+    }
+
+    /// Responses source with fixed samples, so the exported labels and values
+    /// are deterministic.
+    #[derive(Debug)]
+    struct StaticResponsesSource {
+        metrics: ResponsesStreamMetrics,
+    }
+
+    impl ResponsesMetricsSource for StaticResponsesSource {
+        fn snapshot(&self) -> ResponsesStreamMetrics {
+            self.metrics.clone()
+        }
+    }
+
+    #[test]
+    fn responses_stream_prometheus_exports_bounded_path_and_outcome_labels() {
+        let collector = MetricsCollector::with_responses_metrics_source(Arc::new(StaticResponsesSource {
+            metrics: ResponsesStreamMetrics {
+                outcomes: vec![
+                    ResponsesStreamOutcomeMetric {
+                        path: "shared".to_string(),
+                        outcome: "completed".to_string(),
+                        total: 3,
+                    },
+                    ResponsesStreamOutcomeMetric {
+                        path: "legacy".to_string(),
+                        outcome: "reconciliation_failed".to_string(),
+                        total: 2,
+                    },
+                ],
+                websocket_replay_prohibited_total: 5,
+                websocket_http_fallback_total: 1,
+            },
+        }));
+
+        let prometheus = collector.export_prometheus();
+        assert!(prometheus.contains("vtcode_responses_stream_outcomes_total{path=\"shared\",outcome=\"completed\"} 3"));
+        assert!(
+            prometheus.contains(
+                "vtcode_responses_stream_outcomes_total{path=\"legacy\",outcome=\"reconciliation_failed\"} 2"
+            )
+        );
+        assert!(prometheus.contains("vtcode_responses_websocket_replay_prohibited_total 5"));
+        assert!(prometheus.contains("vtcode_responses_websocket_http_fallback_total 1"));
+        assert!(!prometheus.contains("provider-input"), "counters must not carry streamed input");
+    }
+
+    #[test]
+    fn responses_stream_metrics_reach_the_json_summary() {
+        let collector = MetricsCollector::with_responses_metrics_source(Arc::new(StaticResponsesSource {
+            metrics: ResponsesStreamMetrics {
+                outcomes: vec![ResponsesStreamOutcomeMetric {
+                    path: "shared".to_string(),
+                    outcome: "abandoned".to_string(),
+                    total: 4,
+                }],
+                websocket_replay_prohibited_total: 1,
+                websocket_http_fallback_total: 2,
+            },
+        }));
+
+        let summary = collector.get_summary();
+
+        assert_eq!(summary.responses_stream.websocket_replay_prohibited_total, 1);
+        assert_eq!(summary.responses_stream.websocket_http_fallback_total, 2);
+        assert_eq!(summary.responses_stream.outcomes.len(), 1);
+        assert_eq!(summary.responses_stream.outcomes[0].outcome, "abandoned");
     }
 
     /// Fake admission source whose values change between reads, so a collector

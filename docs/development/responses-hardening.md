@@ -128,6 +128,21 @@ reported through a narrow `WebSocketRecoveryTelemetry` port: the process-wide
 implementation stays in `responses_observability`, and tests record into a
 local sink instead of mutating global state.
 
+These counters reach production telemetry through the core metrics collector.
+`MetricsCollector::get_responses_stream_metrics()` returns the current snapshot
+directly, the metrics summary JSON includes it as `responses_stream`, and the
+Prometheus rendering exports `vtcode_responses_stream_outcomes_total` labelled
+by `path` and `outcome`, alongside
+`vtcode_responses_websocket_replay_prohibited_total` and
+`vtcode_responses_websocket_http_fallback_total`. Collection flows through the
+`ResponsesMetricsSource` port, so `crate::metrics` never names a provider type;
+`llm::responses_metrics::ProcessResponsesMetricsSource` is the production
+adapter, and each snapshot reads the live atomics rather than caching a value.
+Label cardinality is bounded by the closed path and outcome vocabulary.
+`MetricsCollector::with_admission_metrics_source` keeps a zero Responses source
+for deterministic tests; use `with_responses_metrics_source` to supply a
+recorded snapshot.
+
 ## Verification boundaries
 
 The tests distinguish the legacy `provider.stream` path used by ACP from the

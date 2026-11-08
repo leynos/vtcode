@@ -1,4 +1,12 @@
-//! Opt-in, bounded compatibility probe. No workspace tools are executed.
+//! Opt-in, bounded Friendli Responses compatibility probe.
+//!
+//! The probe exercises the live Friendli `openai-responses` endpoint with four
+//! bounded checks: a buffered text response, a streamed text response, a
+//! function tool call, and a raw custom tool call. It confirms that both text
+//! transports complete, that streamed tool progress is observable through
+//! `LLMStreamEvent`, and that the function/custom wire kind survives the round
+//! trip. No workspace tools are executed and nothing is written outside the
+//! process.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};

@@ -222,6 +222,49 @@ mod tests {
         PreviewUpdateSink, STREAMED_TOOL_PREVIEW_MAX_CHARS, StreamedToolInputPreviews, publish_preview_updates_via,
     };
     use crate::acp;
+    use std::fmt::Write as _;
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::{Event, Metadata, Subscriber};
+
+    /// Captures rendered event fields so a test can assert exactly what the
+    /// production preview warning records.
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Subscriber for CapturedEvents {
+        fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _attributes: &Attributes<'_>) -> Id {
+            Id::from_u64(1)
+        }
+
+        fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+        fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            let mut fields = String::new();
+            event.record(&mut CapturedFields(&mut fields));
+            self.events.lock().expect("captured event lock").push(fields);
+        }
+
+        fn enter(&self, _span: &Id) {}
+
+        fn exit(&self, _span: &Id) {}
+    }
+
+    struct CapturedFields<'a>(&'a mut String);
+
+    impl Visit for CapturedFields<'_> {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            writeln!(self.0, "{}={value:?}", field.name()).expect("writing to a String cannot fail");
+        }
+    }
 
     /// Records publications and fails a configured number of leading attempts.
     struct RecordingSink {
@@ -272,6 +315,15 @@ mod tests {
         }
     }
 
+    /// Return the provider call id carried by a preview update.
+    fn preview_call_id(update: &acp::SessionUpdate) -> &str {
+        match update {
+            acp::SessionUpdate::ToolCall(update) => update.tool_call_id.0.as_ref(),
+            acp::SessionUpdate::ToolCallUpdate(update) => update.tool_call_id.0.as_ref(),
+            other => panic!("unexpected preview update: {other:?}"),
+        }
+    }
+
     /// Prove the publisher sends every update when the sink succeeds.
     #[tokio::test]
     async fn publisher_publishes_every_update_when_the_sink_succeeds() {
@@ -298,6 +350,33 @@ mod tests {
         publish_preview_updates_via(&mut sink, &session_id, "delta", updates).await;
 
         assert_eq!(sink.attempts, 2, "a failed preview must not stop later updates");
+    }
+
+    /// Prove every publication phase logs a stable category and never the
+    /// streamed tool input or the transport error.
+    #[tokio::test]
+    async fn preview_publish_failures_log_stable_categories_without_tool_input() {
+        const TOOL_INPUT_MARKER: &str = "TOOL_INPUT_MARKER_3f8c";
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let _guard = tracing::subscriber::set_default(CapturedEvents { events: Arc::clone(&events) });
+        let session_id = acp::SessionId::new("preview-trace");
+        let mut sink = RecordingSink { attempts: 0, failures_remaining: usize::MAX };
+
+        for phase in ["start", "delta", "completed", "failed"] {
+            let mut previews = StreamedToolInputPreviews::default();
+            let mut updates = previews.start("call_1".to_string(), Some("read_file".to_string()));
+            updates.extend(previews.push_delta("call_1".to_string(), TOOL_INPUT_MARKER));
+            publish_preview_updates_via(&mut sink, &session_id, phase, updates).await;
+        }
+
+        let events = events.lock().expect("captured event lock");
+        let logs = events.join("\n");
+        for phase in ["start", "delta", "completed", "failed"] {
+            assert!(logs.contains(&format!("phase=\"{phase}\"")), "missing {phase}: {logs}");
+        }
+        assert!(logs.contains("acp_preview_publish_failed"), "{logs}");
+        assert!(!logs.contains(TOOL_INPUT_MARKER), "tool input leaked into logs: {logs}");
+        assert!(!logs.contains("client disconnected"), "transport error leaked into logs: {logs}");
     }
 
     /// Prove preview input is bounded and the truncation marker appears once.
@@ -338,21 +417,40 @@ mod tests {
         assert!(previews.push_delta("call_1".to_string(), "").is_empty());
     }
 
+    /// Build a deterministic Unicode delta of `chars` scalars.
+    ///
+    /// The alphabet mixes one-, two- and four-byte scalars so the retained cap
+    /// is exercised in characters, not bytes.
+    fn unicode_delta(chars: usize) -> String {
+        const ALPHABET: [char; 4] = ['a', 'é', '漢', '🦀'];
+        (0..chars).map(|index| ALPHABET[index % ALPHABET.len()]).collect()
+    }
+
+    /// Classify a delta as small, at the character cap, or above it, so a
+    /// generated history covers below/at/above the truncation boundary.
+    fn delta_size_class(class: u8) -> usize {
+        match class {
+            0 => 0,
+            1 => STREAMED_TOOL_PREVIEW_MAX_CHARS - 1,
+            2 => STREAMED_TOOL_PREVIEW_MAX_CHARS,
+            _ => STREAMED_TOOL_PREVIEW_MAX_CHARS + 1,
+        }
+    }
+
     proptest::proptest! {
-        /// Compare retained prefix, truncation flag, and terminal updates with
-        /// a per-call model across interleaved Unicode deltas.
+        /// Compare retained prefix, truncation flag, and per-call terminal
+        /// updates with a per-call model across interleaved Unicode histories
+        /// sized below, at, and above the character cap.
         #[test]
         fn preview_updates_match_a_per_call_model(
-            operations in proptest::collection::vec(
-                (0_u8..3, "[\\p{L}\\p{N}\"\\{\\}:,]{0,300}"),
-                1..200,
-            ),
+            operations in proptest::collection::vec((0_u8..3, 0_u8..4), 1..12),
         ) {
             let mut previews = StreamedToolInputPreviews::default();
             let mut model: [Option<(String, bool)>; 3] = [None, None, None];
 
-            for (call_index, delta) in operations {
+            for (call_index, size_class) in operations {
                 let call_id = format!("call_{call_index}");
+                let delta = unicode_delta(delta_size_class(size_class));
                 let started_before = model[usize::from(call_index)].is_some();
                 let updates = previews.push_delta(call_id.clone(), &delta);
 
@@ -388,21 +486,37 @@ mod tests {
             let terminal = previews.finish(acp::ToolCallStatus::Completed, "Prepared; it was not executed.");
             let started_calls = model.iter().filter(|entry| entry.is_some()).count();
             proptest::prop_assert_eq!(terminal.len(), started_calls);
+            let mut terminal_calls = std::collections::BTreeSet::new();
             for update in &terminal {
-                let text = preview_text(update);
-                let matching = model
-                    .iter()
-                    .flatten()
-                    .find(|(input, truncated)| {
-                        let truncation_note = if *truncated { "\n\n[preview truncated]" } else { "" };
-                        let expected = if input.is_empty() {
-                            format!("Prepared; it was not executed.{truncation_note}")
-                        } else {
-                            format!("Prepared; it was not executed.\n\n{input}{truncation_note}")
-                        };
-                        text == expected
-                    });
-                proptest::prop_assert!(matching.is_some(), "terminal update must match one call model");
+                let call_id = preview_call_id(update);
+                let call_index = call_id
+                    .strip_prefix("provider-input-preview:call_")
+                    .and_then(|index| index.parse::<usize>().ok())
+                    .expect("terminal update must name a generated call");
+                proptest::prop_assert!(
+                    terminal_calls.insert(call_index),
+                    "each call must receive exactly one terminal update"
+                );
+                let (input, truncated) = model[call_index]
+                    .as_ref()
+                    .expect("terminal update must match a started call");
+                proptest::prop_assert_eq!(
+                    preview_status(update),
+                    acp::ToolCallStatus::Completed,
+                    "terminal status must match the finish status"
+                );
+                let truncation_note = if *truncated { "\n\n[preview truncated]" } else { "" };
+                let expected = if input.is_empty() {
+                    format!("Prepared; it was not executed.{truncation_note}")
+                } else {
+                    format!("Prepared; it was not executed.\n\n{input}{truncation_note}")
+                };
+                proptest::prop_assert_eq!(
+                    preview_text(update),
+                    expected,
+                    "terminal update for {} must carry its retained prefix and truncation flag",
+                    call_id
+                );
             }
         }
     }

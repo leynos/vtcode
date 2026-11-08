@@ -28,6 +28,21 @@ fn truncate_for_log(input: &str, max_chars: usize) -> String {
     input.chars().take(max_chars).collect()
 }
 
+/// Emit the bounded record for a WebSocket exchange that retries over HTTP.
+///
+/// The record carries the model, a fixed outcome label and a closed error
+/// category. The provider error's message is deliberately omitted: it can hold
+/// arbitrary response text, and fallback is normal enough that it must not leak
+/// payload detail into logs.
+fn log_websocket_http_fallback(model: &str, error: &provider::LLMError) {
+    tracing::debug!(
+        model = %model,
+        outcome = "responses_websocket_http_fallback",
+        error_category = responses_error_category(error),
+        "Responses WebSocket exchange failed; falling back to HTTP"
+    );
+}
+
 fn payload_uses_flex_service_tier(payload: &Value) -> bool {
     payload
         .get("service_tier")
@@ -312,12 +327,7 @@ impl OpenAIProvider {
                     Err(error) if super::websocket::websocket_error_prohibits_replay(&error) => return Err(error),
                     Err(error) => {
                         record_responses_websocket_fallback();
-                        tracing::debug!(
-                            model = %model,
-                            outcome = "responses_websocket_http_fallback",
-                            error_category = responses_error_category(&error),
-                            "Responses WebSocket exchange failed; falling back to HTTP"
-                        );
+                        log_websocket_http_fallback(&model, &error);
                     }
                 }
             }
@@ -575,12 +585,82 @@ impl OpenAIProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResponsesApiState, should_attempt_responses_api};
+    //! Bounded logging coverage for the Responses WebSocket fallback.
+
+    use super::{ResponsesApiState, log_websocket_http_fallback, should_attempt_responses_api};
+    use crate::provider::LLMError;
+    use std::fmt::Write as _;
+    use std::sync::{Arc, Mutex};
+    use tracing::field::{Field, Visit};
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::{Event, Metadata, Subscriber};
 
     #[test]
     fn responses_attempt_logic_prefers_responses_for_allowed_and_required() {
         assert!(should_attempt_responses_api(ResponsesApiState::Allowed));
         assert!(should_attempt_responses_api(ResponsesApiState::Required));
         assert!(!should_attempt_responses_api(ResponsesApiState::Disabled));
+    }
+
+    /// Captures rendered event fields so a test can assert exactly what a
+    /// production `tracing::debug!` record contains.
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Subscriber for CapturedEvents {
+        fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _attributes: &Attributes<'_>) -> Id {
+            Id::from_u64(1)
+        }
+
+        fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+        fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+        fn event(&self, event: &Event<'_>) {
+            let mut fields = String::new();
+            event.record(&mut CapturedFields(&mut fields));
+            self.events.lock().expect("captured event lock").push(fields);
+        }
+
+        fn enter(&self, _span: &Id) {}
+
+        fn exit(&self, _span: &Id) {}
+    }
+
+    struct CapturedFields<'a>(&'a mut String);
+
+    impl Visit for CapturedFields<'_> {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            writeln!(self.0, "{}={value:?}", field.name()).expect("writing to a String cannot fail");
+        }
+    }
+
+    /// Prove the fallback record carries a stable category and no raw provider
+    /// diagnostic.
+    #[test]
+    fn websocket_fallback_log_carries_a_stable_category_without_provider_text() {
+        const PROVIDER_MARKER: &str = "PROVIDER_BODY_MARKER_9f21c7";
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = CapturedEvents { events: Arc::clone(&events) };
+        let error = LLMError::Provider {
+            message: format!("upstream said {PROVIDER_MARKER}"),
+            metadata: None,
+        };
+
+        tracing::subscriber::with_default(subscriber, || {
+            log_websocket_http_fallback("gpt-5", &error);
+        });
+
+        let events = events.lock().expect("captured event lock");
+        let logs = events.join("\n");
+        assert!(logs.contains("responses_websocket_http_fallback"), "{logs}");
+        assert!(logs.contains("error_category="), "{logs}");
+        assert!(logs.contains("model=gpt-5"), "{logs}");
+        assert!(!logs.contains(PROVIDER_MARKER), "provider detail leaked into logs: {logs}");
     }
 }

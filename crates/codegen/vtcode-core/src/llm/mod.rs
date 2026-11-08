@@ -199,6 +199,8 @@ pub mod providers;
 /// Shared idle-gap tracker for detecting when the provider prompt cache has
 /// likely expired between dispatched LLM requests.
 pub mod request_gap;
+/// Adapter from Responses stream counters to the core metrics port.
+pub(crate) mod responses_metrics;
 /// Adapter for the Rig agent framework.
 pub mod rig_adapter;
 /// RL optimization loop: adaptive action selection (bandit / actor-critic).
