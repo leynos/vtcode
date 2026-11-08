@@ -1001,6 +1001,7 @@ async fn required_checkpoint_verifies_the_persisted_staged_batch() {
     let handle = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new(identifier),
             archive: Some(archive),
             trigger: SessionStartTrigger::Resume,
