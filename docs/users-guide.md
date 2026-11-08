@@ -9,6 +9,11 @@
 - [User data directories](./guides/user-data-directories.md)
 - [0.157.0 release notes](./releases/0.157.0.md) - Breaking API renames, the
   `--no-colour` flag, and configuration spelling aliases.
+- [Catalogue API migration](./releases/0.157.0.md#catalogue-spelling-renames) -
+  the `catalog` to `catalogue` Rust API rename, the removed names, and the
+  external spellings that stay unchanged. Library consumers must update their
+  callers; configuration keys, wire fields, telemetry names and the persisted
+  `catalog.json` filename are unaffected.
 
 ## Patch safety in brief
 
