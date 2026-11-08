@@ -154,6 +154,11 @@ pub(super) async fn lody_output_error(
     .expect_err("Lody output request should fail")
 }
 
+/// Projects a controller timestamp exactly as the ACP management transport does.
+pub(super) fn expected_epoch_seconds(timestamp: chrono::DateTime<chrono::Utc>) -> f64 {
+    timestamp.timestamp_millis().max(0) as f64 / 1_000.0
+}
+
 pub(super) fn write_lody_background_fixture(workspace: &std::path::Path) {
     let agent_dir = workspace.join(".diapason/agents");
     std::fs::create_dir_all(&agent_dir).expect("create Lody test agent directory");

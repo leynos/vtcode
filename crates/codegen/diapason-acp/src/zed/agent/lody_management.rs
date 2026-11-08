@@ -549,18 +549,15 @@ mod tests {
 
     /// The output-tail bound is an ACP transport contract, so the adapter owns
     /// the default and the hard maximum rather than the domain controller.
+    ///
+    /// These are the ACP transport contract literals: an omitted `tail` means
+    /// 200 lines, 10_000 is the inclusive maximum, and 10_001 is rejected.
     #[test]
     fn output_tail_defaults_and_rejects_values_above_the_transport_bound() {
-        assert_eq!(normalize_output_tail_lines(None).expect("default tail size"), DEFAULT_TASK_OUTPUT_TAIL_LINES);
-        assert_eq!(
-            normalize_output_tail_lines(Some(MAX_TASK_OUTPUT_TAIL_LINES)).expect("boundary tail size"),
-            MAX_TASK_OUTPUT_TAIL_LINES
-        );
-        let error = normalize_output_tail_lines(Some(MAX_TASK_OUTPUT_TAIL_LINES + 1))
-            .expect_err("a tail above the transport bound must be rejected");
-        assert!(
-            error.contains(&MAX_TASK_OUTPUT_TAIL_LINES.to_string()),
-            "the rejection must name the bound: {error}"
-        );
+        assert_eq!(normalize_output_tail_lines(None).expect("default tail size"), 200);
+        assert_eq!(normalize_output_tail_lines(Some(10_000)).expect("boundary tail size"), 10_000);
+        let error =
+            normalize_output_tail_lines(Some(10_001)).expect_err("a tail above the transport bound must be rejected");
+        assert!(error.contains("10000"), "the rejection must name the bound: {error}");
     }
 }
