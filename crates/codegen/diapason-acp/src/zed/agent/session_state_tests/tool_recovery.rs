@@ -201,6 +201,111 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     );
 }
 
+/// A repair checkpoint fails when compaction drops its repaired evidence.
+///
+/// The staged batch alone is not enough: this archive's last batch survives
+/// compaction, and only the repaired earlier call is trimmed away.
+#[tokio::test]
+async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    // The budget fits the last assistant batch and its result but not the
+    // oversized repaired call, so front trimming removes exactly that call.
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("create temporary workspace for the repair compaction test");
+    let mut listing = archived_listing("repair-compaction", temp.path(), "continue");
+    listing.snapshot.messages = repaired_evidence_under_compaction(32 * 1024);
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let agent = build_agent(temp.path()).await;
+
+    let error = match agent
+        .attach_thread_from_listing(
+            &acp::SessionId::new("repair-compaction-session"),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
+            listing,
+        )
+        .await
+    {
+        Ok(_) => panic!("a repair checkpoint that dropped its evidence must fail"),
+        Err(error) => error,
+    };
+
+    assert!(
+        format!("{error:#}").contains("dropped 1 staged tool call"),
+        "the failure must name the dropped repaired evidence: {error:#}"
+    );
+}
+
+/// A repair checkpoint succeeds when compaction retains the repaired call.
+#[tokio::test]
+async fn repair_checkpoint_succeeds_when_compaction_retains_repaired_evidence() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("create temporary workspace for the repair retention test");
+    let mut listing = archived_listing("repair-retained", temp.path(), "continue");
+    listing.snapshot.messages = repaired_evidence_under_compaction(0);
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive_path = listing.path.clone();
+    let agent = build_agent(temp.path()).await;
+
+    let handle = agent
+        .attach_thread_from_listing(
+            &acp::SessionId::new("repair-retained-session"),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
+            listing,
+        )
+        .await
+        .expect("a repaired batch that survives compaction must attach");
+
+    let messages = handle.data.lock().expect("lock the attached session data").thread.messages();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.tool_call_id.as_deref() == Some("repaired-evidence-call")),
+        "the repaired placeholder must remain in the live history"
+    );
+    let persisted: SessionSnapshot =
+        serde_json::from_str(&fs::read_to_string(archive_path).expect("read the repaired archive"))
+            .expect("parse the repaired archive snapshot");
+    assert!(
+        persisted
+            .messages
+            .iter()
+            .any(|message| message.tool_call_id.as_deref().is_some_and(|id| id == "repaired-evidence-call")),
+        "the repaired placeholder must remain in the persisted archive"
+    );
+}
+
+/// Builds an archive with an earlier repaired call and a later completed batch.
+///
+/// `padding` lengthens the repaired call's arguments so front compaction must
+/// trim that first message while the later batch still fits the budget.
+fn repaired_evidence_under_compaction(padding: usize) -> Vec<SessionMessage> {
+    vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "repaired-evidence-call".to_string(),
+                "read_file".to_string(),
+                format!("{{\"path\":\"{}\"}}", "x".repeat(padding)),
+            )],
+        )),
+        SessionMessage::from(&Message::user("continue".to_string())),
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "later-batch-call".to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response("later-batch-call".to_string(), "later result".to_string())),
+    ]
+}
+
 /// Rejects an ambiguous archive without rewriting it or replaying its call.
 #[tokio::test]
 async fn ambiguous_archive_is_not_resumed_or_replayed_and_preserves_the_archive() {

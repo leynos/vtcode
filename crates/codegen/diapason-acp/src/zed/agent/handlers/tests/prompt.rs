@@ -8,6 +8,8 @@ use diapason_config::codex::HistoryPersistence;
 use diapason_config::safety::ToolAuditConfig;
 use diapason_core::metrics::ToolRecoveryEvent;
 
+mod archive_recovery;
+
 mod compaction;
 
 mod interrupted_tool;

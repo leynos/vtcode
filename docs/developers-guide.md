@@ -63,6 +63,23 @@ the session. A failed repair checkpoint releases the workspace lease and
 returns an error, so a partially repaired session never becomes visible to a
 prompt or tool call. Ambiguous history is rejected before any archive write.
 
+### Agent-wide recovery metrics
+
+Recovery counters are per agent, not per workspace. `ZedAgent::new` builds the
+launch workspace runtime first and takes its
+`ToolRegistry::metrics_collector()`. That same `Arc<MetricsCollector>` is
+passed to `WorkspaceSetupPorts::with_metrics` and to
+`WorkspaceRuntimeCache::new`, so a session workspace registry records into the
+collector the agent reports from. A workspace registry built with fresh ports
+would silently keep its own counters.
+
+`ToolRegistry::set_metrics_collector` replaces the registry's collector, but it
+is not a global rebind: components that cloned the previous `Arc` at
+construction keep it. Paths that read the collector through
+`ToolRegistry::metrics_collector()` observe the replacement; anything else does
+not. Install the shared collector while building the workspace, before
+dependent components capture it, rather than replacing it later.
+
 ### Stale exec-session error contract
 
 `ExecSessionNotFound` and `ExecSessionLostAfterInput` are typed causes in

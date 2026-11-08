@@ -541,3 +541,44 @@ fn incomplete_placeholder_schema_is_stable() {
     }
     "###);
 }
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    /// A late result for a call ID reused across batches cannot be attributed
+    /// to one batch, so recovery rejects the history instead of guessing.
+    #[test]
+    fn reused_id_late_results_are_rejected_as_ambiguous(
+        reused in call_id_strategy(),
+        filler_len in 0usize..=3,
+        late_position in any::<prop::sample::Index>(),
+    ) {
+        // Two batches request the same ID, so a later result for it is not
+        // uniquely attributable to either batch.
+        let other = reused.wrapping_add(1) % 3;
+        let mut messages = vec![
+            assistant(vec![call(&call_id_text(other)), call(&call_id_text(reused))]),
+            tool_result(&call_id_text(other), "first-terminal"),
+            Message::user("continue".to_string()),
+            assistant(vec![call(&call_id_text(reused))]),
+            Message::user("continue".to_string()),
+        ];
+        let mut trailing = (0..filler_len)
+            .map(|_| Message::user("again".to_string()))
+            .collect::<Vec<_>>();
+        let at = late_position.index(trailing.len() + 1);
+        trailing.insert(at, tool_result(&call_id_text(reused), "late-terminal"));
+        messages.extend(trailing);
+
+        let result = repair_unresolved_tool_calls(&mut messages);
+
+        prop_assert!(
+            matches!(result, Err(AmbiguousToolResultHistory)),
+            "a reused ID with a late result must be rejected as ambiguous"
+        );
+        prop_assert!(
+            messages.iter().any(|message| message.content.as_text() == "late-terminal"),
+            "rejection must not silently drop the ambiguous terminal result"
+        );
+    }
+}

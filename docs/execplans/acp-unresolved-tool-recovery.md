@@ -672,3 +672,24 @@ constraint from the delivered behaviour. The same round corrected the product
 name in the user guide and Zed ACP guide and documented that ACP tool rounds
 require `[history]` persistence, so `persistence = "none"` fails the prompt
 before any tool executes. No progress entry was removed.
+
+2026-11-08: Review walkthrough `5307347085` closed the remaining testing and
+documentation rows. Retention verification now takes an injectable
+`CheckpointReader`, so a storage failure and a dropped staged batch are
+observable at the checkpoint boundary without touching the session store.
+`RecoveryReport::evidence_call_ids` carries the calls a repair inserted or
+relocated into the repair checkpoint, so compaction cannot silently drop the
+evidence the repair just made durable; size-limited tests cover both the
+dropped and retained cases. Protocol-level tests drive initialize, load and
+prompt over a duplex channel: a repaired archive continues without replaying
+its mutating call, and an ambiguous archive fails the load with its bytes
+unchanged. `docs/users-guide.md` gained recovery-metrics and history-mutation
+sections, `docs/releases/0.157.0.md` documents the two new required struct
+fields, and `docs/developers-guide.md` records the shared agent-wide collector
+and the limits of `set_metrics_collector`. `session_state/archive.rs` is now
+365 lines: the checkpoint gate lives in `archive/checkpoint.rs` and the
+listing-attach path in `archive/attach.rs`, so no module in that subtree
+exceeds the 400-line limit. The `checkpoint_session_with_turn_diagnostics` seam
+became `pub(super)`, and the moved inherent methods keep
+`pub(in crate::zed::agent::session_state)` visibility so the tests still reach
+them.

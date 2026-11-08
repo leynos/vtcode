@@ -54,8 +54,21 @@ pub(crate) struct ExecSessionLostAfterInput {
 
 impl ExecSessionLostAfterInput {
     /// Build the typed error for a write that failed after the first send.
+    ///
+    /// Production always has a channel failure to retain, so this
+    /// source-less form exists only for tests that exercise classification
+    /// without constructing a live session.
+    #[cfg(test)]
     pub(crate) fn new(session_id: &str) -> Self {
         Self { session_id: session_id.to_string(), source: None }
+    }
+
+    /// Build the typed error and retain the underlying failure for diagnosis.
+    pub(crate) fn with_source(session_id: &str, source: anyhow::Error) -> Self {
+        Self {
+            session_id: session_id.to_string(),
+            source: Some(source.into()),
+        }
     }
 }
 

@@ -835,7 +835,7 @@ fn mark_input_delivered(
         if tool_name == tools::WRITE_STDIN {
             metrics.record_tool_recovery(crate::metrics::ToolRecoveryEvent::StaleWriteStdinRequest);
         }
-        anyhow::Error::new(ExecSessionLostAfterInput::new(session_id))
+        anyhow::Error::new(ExecSessionLostAfterInput::with_source(session_id, error))
     } else {
         error
     }

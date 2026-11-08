@@ -123,10 +123,14 @@ acceptable.
 
 Structured recovery logs are deliberately wider than the metric labels, and
 their extra fields are bounded. A recovery record carries the session
-identifier, the tool name, and a fixed `tool_recovery_outcome` category: the
-identifier is the opaque protocol value that lets an operator correlate one
-record with the session that produced it, the tool name is drawn from the fixed
-tool vocabulary, and the outcome is one of the fixed enum variants above. Tool
+identifier and a fixed `tool_recovery_outcome` category. That category is a
+separate fixed set of log values, not a `ToolRecoveryEvent` variant or an
+`as_str` label: ACP records use `placeholders_staged`, `results_replaced`,
+`execution_interrupted` and `ambiguous_history_rejected`, while the core
+stale-session classification uses `exec_session_lost_after_input`,
+`exec_session_writer_closed` and `stale_exec_session_rejected`. Only those
+stale-session records also carry the tool name, drawn from the fixed tool
+vocabulary; ACP tool-round records carry the call and loop counts instead. Tool
 arguments, tool output, and prompt text are never recorded, so a log record
 identifies which session recovered and which bounded cause applied without
 reproducing conversation content.

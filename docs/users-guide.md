@@ -98,3 +98,35 @@ If the session was lost after `write_stdin` delivered its input, the error also
 reports `input_delivered: true` and `partial_state_possible: true`. The bytes
 may already have been consumed, so verify the workspace before repeating the
 work. A failure before the input was written sets neither flag.
+
+### Recovery metrics
+
+Recovery records bounded counters instead of identifiers, so an export can
+never leak session identifiers, tool names, call IDs, or tool output. Read them
+from a session's metrics summary:
+
+```rust
+let recovery = collector.get_tool_recovery_metrics();
+println!("interrupted calls: {}", recovery.interrupted_calls);
+```
+
+`MetricsSummary.tool_recovery` carries the same counters in the JSON summary,
+and Prometheus exports them as `diapason_tool_recovery_total{event="…"}`. The
+`event` label is one of `staged_call`, `replaced_call`, `interrupted_call`,
+`relocated_result`, `repaired_archive`, `ambiguous_history`,
+`concurrent_prompt_rejection`, `stale_write_stdin_request`,
+`checkpoint_failure`, and `duplicate_tool_call_batch`.
+
+Agents that embed Diapason can read the same vocabulary from
+`diapason_core::metrics::{ToolRecoveryEvent, ToolRecoveryMetrics}`. Record an
+event with `MetricsCollector::record_tool_recovery`, or a batch with
+`record_tool_recovery_events`, rather than incrementing a private counter.
+
+### History mutation API
+
+`ThreadRuntimeHandle::mutate_messages` applies a short, synchronous callback
+while the session lock is held, and `replace_messages` swaps in a history that
+does not depend on the current one. Both are the supported way to stage
+incomplete tool results and replace them with terminal results. The callback
+must not call back into the handle, await, or perform I/O, because it runs with
+the history lock taken.

@@ -21,6 +21,12 @@ pub(super) struct RecoveryReport {
     pub(super) repaired_calls: usize,
     pub(super) relocated_calls: usize,
     pub(super) truncated_prefix: usize,
+    /// Call identifiers whose evidence this repair inserted or relocated.
+    ///
+    /// The repair checkpoint must retain these calls. The staged batch alone
+    /// is not enough: a repair can touch an earlier batch, and compaction must
+    /// not drop the evidence the repair just made durable.
+    pub(super) evidence_call_ids: Vec<String>,
 }
 
 impl RecoveryReport {
@@ -117,6 +123,7 @@ pub(super) fn repair_unresolved_tool_calls(
 ) -> Result<RecoveryReport, AmbiguousToolResultHistory> {
     let mut repaired_calls = 0;
     let mut relocated_calls = 0;
+    let mut evidence_call_ids = Vec::new();
     let mut message_index = 0;
 
     // Archive snapshots are compacted from the front
@@ -142,15 +149,17 @@ pub(super) fn repair_unresolved_tool_calls(
 
         let group_end = tool_result_group_end(messages, message_index + 1);
 
-        relocated_calls += relocate_unique_late_results(messages, message_index, group_end, &calls);
+        relocated_calls +=
+            relocate_unique_late_results(messages, message_index, group_end, &calls, &mut evidence_call_ids);
         let group_end = tool_result_group_end(messages, message_index + 1);
         let completed_ids = completed_tool_call_ids(messages, message_index + 1, group_end);
 
-        let missing = calls
+        let missing_calls = calls
             .iter()
             .filter(|call| !completed_ids.contains(call.id.as_str()))
-            .map(incomplete_tool_result)
             .collect::<Vec<_>>();
+        evidence_call_ids.extend(missing_calls.iter().map(|call| call.id.clone()));
+        let missing = missing_calls.into_iter().map(incomplete_tool_result).collect::<Vec<_>>();
         repaired_calls += missing.len();
         let missing_count = missing.len();
         drop(messages.splice(group_end..group_end, missing));
@@ -158,7 +167,14 @@ pub(super) fn repair_unresolved_tool_calls(
     }
 
     reject_ambiguous_tool_result_history(messages)?;
-    Ok(RecoveryReport { repaired_calls, relocated_calls, truncated_prefix })
+    evidence_call_ids.sort();
+    evidence_call_ids.dedup();
+    Ok(RecoveryReport {
+        repaired_calls,
+        relocated_calls,
+        truncated_prefix,
+        evidence_call_ids,
+    })
 }
 
 /// Validates that one completed assistant batch has unique matching results.
@@ -222,6 +238,7 @@ fn relocate_unique_late_results(
     assistant_index: usize,
     contiguous_end: usize,
     calls: &[ToolCall],
+    evidence_call_ids: &mut Vec<String>,
 ) -> usize {
     let mut relocated = 0;
     let mut result_end = contiguous_end;
@@ -257,6 +274,7 @@ fn relocate_unique_late_results(
         messages.insert(result_end, result);
         result_end += 1;
         relocated += 1;
+        evidence_call_ids.push(call.id.clone());
     }
 
     debug_assert!(

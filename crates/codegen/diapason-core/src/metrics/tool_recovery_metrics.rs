@@ -184,6 +184,26 @@ mod tests {
         assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="duplicate_tool_call_batch"} 1"#));
     }
 
+    /// Every recovery label is usable in a constant expression.
+    ///
+    /// This is the compile-time equivalent of a trybuild check: if `as_str`
+    /// stopped being `const fn`, these constant items would fail to compile
+    /// rather than only being caught by a runtime assertion.
+    #[test]
+    fn recovery_labels_are_const_evaluable() {
+        const STAGED_CALL: &str = ToolRecoveryEvent::StagedCall.as_str();
+        const AMBIGUOUS_HISTORY: &str = ToolRecoveryEvent::AmbiguousHistory.as_str();
+        const DUPLICATE_TOOL_CALL_BATCH: &str = ToolRecoveryEvent::DuplicateToolCallBatch.as_str();
+
+        assert_eq!(STAGED_CALL, "staged_call");
+        assert_eq!(AMBIGUOUS_HISTORY, "ambiguous_history");
+        assert_eq!(DUPLICATE_TOOL_CALL_BATCH, "duplicate_tool_call_batch");
+
+        let labels = ToolRecoveryEvent::ALL.map(ToolRecoveryEvent::as_str);
+        let unique: std::collections::HashSet<_> = labels.iter().collect();
+        assert_eq!(unique.len(), labels.len(), "every recovery label must be unique");
+    }
+
     /// Saturates counters at `u64::MAX` instead of wrapping.
     #[test]
     fn counts_saturate_instead_of_wrapping() {

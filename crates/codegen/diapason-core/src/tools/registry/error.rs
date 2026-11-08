@@ -580,49 +580,63 @@ fn classify_stale_exec_session(
     error
 }
 
+/// A stale `write_stdin` cause recovered from the error chain.
+///
+/// The precedence of the causes is significant: a failure after the input was
+/// delivered must be classified with partial state possible before the
+/// closed-writer and missing-session causes are considered.
+struct StaleWriteStdinCause<'a> {
+    session_id: &'a str,
+    input_delivered: bool,
+    outcome: &'static str,
+    message: &'static str,
+}
+
+/// Recovers the stale `write_stdin` cause `source` carries, if any.
+fn stale_write_stdin_cause(source: &Error) -> Option<StaleWriteStdinCause<'_>> {
+    if let Some(lost) = source.downcast_ref::<crate::tools::exec_session::ExecSessionLostAfterInput>() {
+        return Some(StaleWriteStdinCause {
+            session_id: &lost.session_id,
+            input_delivered: true,
+            outcome: "exec_session_lost_after_input",
+            message: "Lost write_stdin session after delivering input",
+        });
+    }
+    if let Some(closed) = source.downcast_ref::<crate::tools::exec_session::ExecSessionWriterClosed>() {
+        return Some(StaleWriteStdinCause {
+            session_id: &closed.session_id,
+            input_delivered: false,
+            outcome: "exec_session_writer_closed",
+            message: "Rejected write_stdin session with a closed writer",
+        });
+    }
+    source
+        .downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>()
+        .map(|missing| StaleWriteStdinCause {
+            session_id: &missing.session_id,
+            input_delivered: false,
+            outcome: "stale_exec_session_rejected",
+            message: "Rejected stale write_stdin session",
+        })
+}
+
 /// Applies the typed recovery state this error cause implies for the tool.
 ///
 /// `write_stdin` distinguishes a pre-write resolution failure (nothing was
 /// delivered) from a session lost after the input was written, so callers are
 /// told accurately whether partial state is possible.
 fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, source: &Error) -> ToolExecutionError {
-    if tool_name == crate::config::constants::tools::WRITE_STDIN {
-        // Input written to the session may already have been consumed, so a
-        // concurrent close *after* the write cannot claim "no partial state".
-        // This branch must precede the stale-session one: the post-write error
-        // is a distinct typed cause that warrants the partial-state flag.
-        if let Some(lost) = source.downcast_ref::<crate::tools::exec_session::ExecSessionLostAfterInput>() {
-            debug!(
-                tool_name,
-                session_id = %lost.session_id,
-                tool_recovery_outcome = "exec_session_lost_after_input",
-                "Lost write_stdin session after delivering input"
-            );
-            return classify_stale_exec_session(error, &lost.session_id, true);
-        }
-
-        // A pipe session whose writer was already closed before the first
-        // write delivered nothing, so it is a stale session with no partial
-        // state. It is a distinct cause from a missing session record.
-        if let Some(closed) = source.downcast_ref::<crate::tools::exec_session::ExecSessionWriterClosed>() {
-            debug!(
-                tool_name,
-                session_id = %closed.session_id,
-                tool_recovery_outcome = "exec_session_writer_closed",
-                "Rejected write_stdin session with a closed writer"
-            );
-            return classify_stale_exec_session(error, &closed.session_id, false);
-        }
-
-        if let Some(missing) = source.downcast_ref::<crate::tools::exec_session::ExecSessionNotFound>() {
-            debug!(
-                tool_name,
-                session_id = %missing.session_id,
-                tool_recovery_outcome = "stale_exec_session_rejected",
-                "Rejected stale write_stdin session"
-            );
-            return classify_stale_exec_session(error, &missing.session_id, false);
-        }
+    if tool_name == crate::config::constants::tools::WRITE_STDIN
+        && let Some(cause) = stale_write_stdin_cause(source)
+    {
+        debug!(
+            tool_name,
+            session_id = %cause.session_id,
+            tool_recovery_outcome = cause.outcome,
+            "{}",
+            cause.message
+        );
+        return classify_stale_exec_session(error, cause.session_id, cause.input_delivered);
     }
 
     if tool_name != crate::config::constants::tools::APPLY_PATCH {
