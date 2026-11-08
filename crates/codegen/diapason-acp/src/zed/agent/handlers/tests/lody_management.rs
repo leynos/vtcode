@@ -1,11 +1,12 @@
 //! Exercises the Lody subagent-management extensions over the official ACP duplex.
 
 use super::lody_support::{
-    lifecycle_task_id, lifecycle_task_meta, lody_ext, lody_list, lody_output_error, write_lody_background_fixture,
+    expected_epoch_seconds, lifecycle_task_id, lifecycle_task_meta, lody_ext, lody_list, lody_output_error,
+    write_lody_background_fixture,
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
-use diapason_core::subagents::SpawnBackgroundSubprocessRequest;
+use diapason_core::subagents::{BackgroundSubprocessStatus, SpawnBackgroundSubprocessRequest};
 use std::time::Duration;
 
 #[test]
@@ -163,8 +164,45 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 "a restored task that is still running must be published as active, got {restored_status}"
             );
 
+            // The background process records its start asynchronously, so wait
+            // until the controller observes it before asserting the projection.
+            let active_entry = tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let entry = controller
+                        .background_snapshot(&background.id)
+                        .await
+                        .expect("read the owned background snapshot")
+                        .entry;
+                    if entry.started_at.is_some() {
+                        break entry;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+            })
+            .await
+            .expect("the background task must record its start");
+
             let response = lody_list(&cx, &session.session_id, false).await?;
             assert_eq!(response["tasks"][0]["taskId"], background.id);
+            let expected_status = match active_entry.status {
+                BackgroundSubprocessStatus::Starting | BackgroundSubprocessStatus::Running => "running",
+                BackgroundSubprocessStatus::Stopped => "completed",
+                BackgroundSubprocessStatus::Error => "failed",
+            };
+            assert_eq!(
+                response["tasks"][0]["status"], expected_status,
+                "the listed status must project the controller record: {response}"
+            );
+            assert_eq!(
+                response["tasks"][0]["startedAtEpochSeconds"],
+                expected_epoch_seconds(active_entry.started_at.unwrap_or(active_entry.created_at)),
+                "the listed start must project the controller record: {response}"
+            );
+            assert!(
+                response["tasks"][0]["endedAtEpochSeconds"].is_null(),
+                "an active task must not report an end instant: {response}"
+            );
+            let active_started_at_epoch_seconds = response["tasks"][0]["startedAtEpochSeconds"].clone();
             let active_response = lody_list(&cx, &session.session_id, true).await?;
             assert_eq!(
                 active_response["tasks"][0]["taskId"], background.id,
@@ -286,6 +324,24 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 .await?;
             assert_eq!(cancelled, serde_json::json!({}));
 
+            // The cancelled task records its end asynchronously; wait for the
+            // controller to observe it before asserting the terminal projection.
+            let ended_entry = tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let entry = controller
+                        .background_snapshot(&background.id)
+                        .await
+                        .expect("read the owned background snapshot")
+                        .entry;
+                    if entry.ended_at.is_some() {
+                        break entry;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+            })
+            .await
+            .expect("the cancelled background task must record its end");
+
             // A cancelled task is terminal: the unfiltered list still reports
             // it, while `activeOnly` must drop it.
             let all_after_cancel = lody_list(&cx, &session.session_id, false).await?;
@@ -293,6 +349,15 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             assert_eq!(
                 all_after_cancel["tasks"][0]["status"], "completed",
                 "a cancelled background task is reported as a completed task: {all_after_cancel}"
+            );
+            assert_eq!(
+                all_after_cancel["tasks"][0]["startedAtEpochSeconds"], active_started_at_epoch_seconds,
+                "cancelling a task must not move its start instant: {all_after_cancel}"
+            );
+            assert_eq!(
+                all_after_cancel["tasks"][0]["endedAtEpochSeconds"],
+                expected_epoch_seconds(ended_entry.ended_at.expect("the cancelled task records an end instant")),
+                "the listed end must project the controller record: {all_after_cancel}"
             );
             let active_after_cancel = lody_list(&cx, &session.session_id, true).await?;
             assert_eq!(
