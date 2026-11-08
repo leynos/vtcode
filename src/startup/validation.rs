@@ -169,6 +169,9 @@ pub(super) fn resolve_workspace_path(workspace_arg: Option<PathBuf>) -> Result<P
     Ok(canonicalize_workspace(&resolved))
 }
 
+/// Validates the loaded configuration at startup, reporting catalogue problems
+/// as warnings without aborting. Also emits token-overhead warnings and, unless
+/// deferred, checks the system-prompt size.
 pub(super) async fn validate_startup_configuration(
     config: &DiapasonConfig,
     workspace: &Path,

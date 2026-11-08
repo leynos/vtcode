@@ -79,6 +79,9 @@ pub(super) struct TurnRequestSnapshot {
     pub client_local_tool_deferral: bool,
 }
 
+/// Captures the immutable per-turn request snapshot from the current context,
+/// resolving the effective model, provider capabilities, and deferred-tool
+/// policy. The snapshot is reused for prompt assembly and request building.
 pub(super) fn capture_turn_request_snapshot(
     ctx: &mut TurnProcessingContext<'_>,
     active_model: &str,

@@ -312,6 +312,9 @@ fn reasoning_effort_name(level: ReasoningEffortLevel) -> &'static str {
     }
 }
 
+/// Builds the ACP session configuration options for the primary agent,
+/// provider, model and, when requested, reasoning effort. An unknown primary
+/// agent falls back to the catalogue default.
 pub(crate) fn session_config_options(
     current_primary_agent: &str,
     primary_agents: &PrimaryAgentCatalogue,

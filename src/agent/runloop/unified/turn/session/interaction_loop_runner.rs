@@ -40,6 +40,10 @@ const REPEATED_FOLLOW_UP_STALLED_DIRECTIVE: &str = "Previous turn stalled or abo
 const SCHEDULED_PROMPT_INACTIVITY_GRACE: Duration = Duration::from_secs(2);
 const DURABLE_SCHEDULER_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Run the interactive input loop, applying live config reloads and dispatching
+/// model-picker input, direct tools, memory prompts, and slash commands. Returns
+/// an exit outcome, a direct-tool outcome, or a `Continue` outcome carrying the
+/// submitted prompt for the next turn.
 #[cfg_attr(feature = "profiling", hotpath::measure)]
 pub(super) async fn run_interaction_loop_impl(
     ctx: &mut InteractionLoopContext<'_>,

@@ -403,6 +403,8 @@ async fn prepare_session_workspace<'a>(
     })
 }
 
+/// Discovers primary agents for a session using the default workspace
+/// discovery backend. Available only in tests.
 #[cfg(test)]
 fn discover_session_primary_agents(
     input: &SubagentDiscoveryInput,
@@ -411,6 +413,8 @@ fn discover_session_primary_agents(
     discover_session_primary_agents_with(&DefaultWorkspaceAgentDiscovery, input, default_primary_agent)
 }
 
+/// Discovers primary agents for a session through the supplied discovery port,
+/// adding context to discovery errors.
 fn discover_session_primary_agents_with(
     agent_discovery: &dyn WorkspaceAgentDiscovery,
     input: &SubagentDiscoveryInput,

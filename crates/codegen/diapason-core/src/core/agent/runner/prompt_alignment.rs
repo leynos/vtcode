@@ -151,6 +151,10 @@ pub fn validate_prompt_catalogue_alignment(
     Ok(())
 }
 
+/// Parse the `[Runtime Tool Catalogue]` block from a system instruction.
+///
+/// Returns `None` when the block is absent; otherwise returns the metadata
+/// parsed from its `- key: value` lines, with unparsable values left as `None`.
 fn parse_runtime_tool_catalogue_metadata(system_instruction: &str) -> Option<RuntimeToolCatalogueMetadata> {
     let start = system_instruction.rfind("[Runtime Tool Catalogue]")?;
     let mut metadata = RuntimeToolCatalogueMetadata::default();
@@ -186,6 +190,10 @@ fn parse_runtime_tool_catalogue_metadata(system_instruction: &str) -> Option<Run
     Some(metadata)
 }
 
+/// Check parsed prompt metadata against the session tool catalogue snapshot.
+///
+/// Returns an error naming the first field whose prompt value disagrees with
+/// the snapshot.
 fn validate_runtime_tool_catalogue_metadata(
     metadata: &RuntimeToolCatalogueMetadata,
     tool_snapshot: &SessionToolCatalogueSnapshot,
@@ -202,6 +210,10 @@ fn validate_runtime_tool_catalogue_metadata(
     Ok(())
 }
 
+/// Compare one optional prompt metadata value with its snapshot counterpart.
+///
+/// A missing prompt value is accepted; a present value that differs from the
+/// snapshot produces a mismatch error for the named field.
 fn validate_metadata_value<T>(
     field: &'static str,
     prompt_value: Option<T>,

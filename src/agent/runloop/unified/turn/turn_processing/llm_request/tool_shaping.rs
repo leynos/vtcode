@@ -22,6 +22,9 @@ pub(super) fn uses_out_of_band_copilot_tools(provider_name: &str) -> bool {
     provider_name.eq_ignore_ascii_case(diapason_core::copilot::COPILOT_PROVIDER_KEY)
 }
 
+/// Applies the active primary agent's tool policy and effective permissions to
+/// a catalogue snapshot. Returns a new snapshot with the filtered tool list and
+/// the original version, epoch, and cache metadata.
 pub(super) fn apply_primary_agent_policy_to_tool_snapshot(
     snapshot: SessionToolCatalogueSnapshot,
     active_primary_agent: &ActivePrimaryAgent,

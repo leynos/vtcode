@@ -36,6 +36,9 @@ pub(crate) async fn discover_skills(config: &CoreAgentConfig, resume: Option<&Re
     SkillSetupState { active_skills_map }
 }
 
+/// Register the skill tools and refresh the model tool snapshot. The skill
+/// runtime shares the registry, tool catalogue, and fork executor with the
+/// session.
 pub(crate) async fn register_skill_tools(
     tool_registry: &mut ToolRegistry,
     tools: &Arc<RwLock<Vec<uni::ToolDefinition>>>,
@@ -92,6 +95,8 @@ pub(crate) async fn register_skill_tools(
     Ok(())
 }
 
+/// Register the `list_skills` tool, wiring both the built-in registration and
+/// its native per-call factory.
 async fn register_list_skills_tool(
     tool_registry: &mut ToolRegistry,
     workspace_root: std::path::PathBuf,
@@ -119,6 +124,7 @@ async fn register_list_skills_tool(
     Ok(())
 }
 
+/// Register the `load_skill_resource` tool against the shared active-skills map.
 async fn register_load_skill_resource_tool(
     tool_registry: &mut ToolRegistry,
     active_skills_map: Arc<RwLock<HashMap<String, diapason_core::skills::types::Skill>>>,
@@ -141,6 +147,8 @@ async fn register_load_skill_resource_tool(
     Ok(())
 }
 
+/// Register the `load_skill` tool, passing the skill session runtime into both
+/// the built-in registration and its native factory.
 async fn register_load_skill_tool(
     tool_registry: &mut ToolRegistry,
     workspace_root: std::path::PathBuf,

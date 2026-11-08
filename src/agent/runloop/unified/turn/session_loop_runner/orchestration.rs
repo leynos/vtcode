@@ -109,6 +109,9 @@ pub(super) fn resolve_thread_completion_status(
     session_end_reason.thread_completion_status(budget_limit_reached)
 }
 
+/// Runs the unified single-agent session loop, creating or resuming a thread
+/// and driving turns until the session ends. Returns an error if session setup,
+/// turn execution, or finalization fails.
 #[cfg_attr(feature = "profiling", hotpath::measure)]
 pub(crate) async fn run_single_agent_loop_unified_impl(
     config: &CoreAgentConfig,

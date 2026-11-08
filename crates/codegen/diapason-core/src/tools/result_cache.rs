@@ -201,6 +201,9 @@ fn is_directory_scoped_tool(tool_name: &str) -> bool {
     )
 }
 
+/// Report whether a tool is a catalogue lookup whose results stay stable.
+///
+/// Covers `search_tools`, `get_errors` and `agent_info`.
 fn is_stable_tool_catalogue_lookup(tool_name: &str) -> bool {
     matches!(tool_name, "search_tools" | "get_errors" | "agent_info")
 }

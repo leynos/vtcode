@@ -52,6 +52,9 @@ pub(crate) fn sync_primary_agent_permissions(
     }
 }
 
+/// Rebuild the lifecycle hooks, notification hook engine, MCP runtime, and tool
+/// snapshot for the active primary agent. When no configuration is available the
+/// hooks are cleared.
 pub(crate) async fn sync_primary_agent_runtime(ctx: &mut PrimaryAgentRuntimeSyncContext<'_>) -> Result<()> {
     let Some(cfg) = ctx.vt_cfg else {
         *ctx.lifecycle_hooks = None;

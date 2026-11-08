@@ -528,6 +528,9 @@ pub(crate) fn thread_completed_event(
     })
 }
 
+/// Build a thread compaction-boundary event, copying segment identities from the
+/// optional transition. The resulting event leaves the new prefix and catalogue
+/// hashes unset.
 pub(crate) fn compact_boundary_event(
     thread_id: impl Into<String>,
     trigger: CompactionTrigger,

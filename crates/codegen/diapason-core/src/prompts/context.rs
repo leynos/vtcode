@@ -231,6 +231,10 @@ impl PromptContext {
     }
 }
 
+/// Collect lightweight metadata for skills eligible for the model catalogue.
+///
+/// Bundled skills are enabled unless the workspace configuration says
+/// otherwise, and configuration load failures fall back to enabled.
 fn collect_available_skill_metadata(workspace: &Path, home_dir: &Path) -> Vec<SkillMetadata> {
     let bundled_skills_enabled = ConfigManager::load_from_workspace(workspace)
         .map(|manager| manager.config().skills.bundled.enabled)

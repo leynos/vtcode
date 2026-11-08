@@ -19,6 +19,9 @@ pub(super) struct ToolCatalogueCacheMetrics<'a> {
     pub active_loaded_skill_names: Option<&'a [String]>,
 }
 
+/// Emits the tool-catalogue cache metrics for a turn to tracing and the
+/// trajectory log. Records cache-hit state, prefix hashes, and the catalogue,
+/// wire, and deferred tool counts.
 pub(super) fn emit_tool_catalogue_cache_metrics(
     ctx: &TurnProcessingContext<'_>,
     metrics: ToolCatalogueCacheMetrics<'_>,

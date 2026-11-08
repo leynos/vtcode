@@ -118,6 +118,9 @@ fn append_collapsed_tool_output_notice(ctx: &mut TurnProcessingContext<'_>) {
     }
 }
 
+/// Assembles the prompt and builds the provider request for one turn, applying
+/// sampling overrides, tool shaping, and prompt-cache settings. Returns the
+/// built request with its runtime tools and continuation messages.
 pub(super) async fn build_turn_request(
     ctx: &mut TurnProcessingContext<'_>,
     step_count: usize,

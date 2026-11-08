@@ -23,6 +23,9 @@ pub(crate) enum CommandProcessingResult {
     UpdateInput(String),
 }
 
+/// Handle built-in input commands, slash commands, and scheduled-task language
+/// commands. Returns whether to continue the loop, exit, replace the pending
+/// input, or fall through as not handled.
 pub(crate) async fn handle_input_commands(
     input: &str,
     ctx: &mut InteractionLoopContext<'_>,

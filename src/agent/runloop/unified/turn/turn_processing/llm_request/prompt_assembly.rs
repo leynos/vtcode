@@ -51,6 +51,10 @@ pub(super) async fn assemble_prompt(
     validate_prompt_output_with_rebuild(ctx, input.turn, prompt_output).await
 }
 
+/// Builds the per-turn system prompt and tool-catalogue snapshot from the turn
+/// snapshot. Appends primary-agent skills, harness limits, runtime tool
+/// sections, deferred-tool guidance, and few-shot examples, skipping tools and
+/// examples during tool-free recovery.
 async fn build_prompt_output(
     ctx: &mut TurnProcessingContext<'_>,
     input: PromptAssemblyInput<'_>,
@@ -208,6 +212,9 @@ async fn build_prompt_output(
     })
 }
 
+/// Checks that the assembled system prompt's runtime tool-catalogue metadata
+/// matches the accompanying tool snapshot. Returns an alignment error when the
+/// two disagree.
 fn validate_prompt_output_alignment(
     prompt_output: &PromptAssemblyOutput,
     turn: &TurnRequestSnapshot,
@@ -220,6 +227,9 @@ fn validate_prompt_output_alignment(
     )
 }
 
+/// Validates prompt/catalogue alignment and rebuilds the prompt once if it is
+/// misaligned. Returns the aligned output, or an error if the mismatch persists
+/// after the rebuild.
 async fn validate_prompt_output_with_rebuild(
     ctx: &mut TurnProcessingContext<'_>,
     turn: &TurnRequestSnapshot,

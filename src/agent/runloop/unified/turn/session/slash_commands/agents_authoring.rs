@@ -856,6 +856,9 @@ async fn prompt_text_value(
     }
 }
 
+/// Run the interactive tool-selection checklist, letting the user toggle tools,
+/// add custom ids, and save or cancel. Returns the ordered selection on save and
+/// `None` when cancelled or dismissed.
 async fn edit_tools_checklist(
     ctx: &mut SlashCommandContext<'_>,
     current_tools: &[String],
@@ -957,6 +960,8 @@ async fn edit_tools_checklist(
     }
 }
 
+/// Build the checklist catalogue of default tools plus any extra ids from the
+/// initial or current selection. Default entries are ordered first.
 fn tool_catalogue(initial_tools: &[String], selected: &BTreeSet<String>) -> Vec<(String, String, String)> {
     let extra_tools = initial_tools
         .iter()

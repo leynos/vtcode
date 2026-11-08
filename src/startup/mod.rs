@@ -575,6 +575,8 @@ async fn resolve_codex_fallback_selection(
     );
 }
 
+/// Returns `model` when it exists in the OpenAI catalogue, otherwise the
+/// default OpenAI model.
 fn openai_fallback_model(model: &str) -> String {
     if model_catalogue_entry("openai", model).is_some() {
         return model.to_string();

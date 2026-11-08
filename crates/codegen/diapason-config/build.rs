@@ -388,6 +388,9 @@ impl Provider {
     }
 }
 
+/// Loads model capability entries from the workspace `docs/models.json`, sorted
+/// by provider then model id. Returns an empty vector when the file is absent
+/// and registers the file as a build rerun dependency.
 fn load_model_capability_entries(manifest_dir: &Path) -> Result<Vec<CapabilityEntry>> {
     let docs_path = manifest_dir.join("../../../docs/models.json");
     if !docs_path.exists() {

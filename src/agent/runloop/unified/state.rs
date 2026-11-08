@@ -699,6 +699,9 @@ impl SessionStats {
     }
 }
 
+/// Classify why a request-identity change forces a new segment. Model, provider,
+/// and mode are checked first, then instruction hashes and the tool catalogue;
+/// any remaining difference is attributed to the primary agent.
 fn request_identity_boundary_reason(
     previous: &RequestEnvelopeIdentity,
     current: &RequestEnvelopeIdentity,

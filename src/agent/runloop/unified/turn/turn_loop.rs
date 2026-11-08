@@ -659,6 +659,10 @@ pub(crate) const POST_TOOL_TOOL_ENABLED_RETRY_DIRECTIVE: &str = "The previous mo
 
 // For `TurnLoopContext`, we will reuse the generic `handle_pipeline_output` via an adapter below.
 
+/// Runs one turn of the agent loop, issuing LLM requests, executing tools, and
+/// applying recovery until the turn completes, blocks, or exits. Returns the
+/// turn outcome, including modified files, diagnostics, and any pending
+/// primary-agent handoff.
 pub(crate) async fn run_turn_loop(
     working_history: &mut Vec<uni::Message>,
     mut ctx: TurnLoopContext<'_>,
