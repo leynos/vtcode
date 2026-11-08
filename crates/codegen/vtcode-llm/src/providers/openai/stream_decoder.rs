@@ -521,7 +521,10 @@ pub(crate) fn create_responses_stream(
                                     .or(optional_string_field(&payload, "delta").inspect_err(|_| {
                                         stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
                                     })?)
-                                    .unwrap_or_default();
+                                    .ok_or_else(|| {
+                                        stream_recorder.record(ResponsesStreamOutcome::MalformedEvent);
+                                        StreamAssemblyError::MissingField("input").into_llm_error("OpenAI")
+                                    })?;
                                 let delta = reconciler
                                     .custom_input_done(identity, &input)
                                     .map_err(|message| StreamAssemblyError::InvalidPayload(message.to_string()).into_llm_error("OpenAI"))

@@ -68,6 +68,41 @@ def list_tracked_rust_files() -> list[Path]:
     return [REPO_ROOT / Path(rel) for rel in raw.split("\0") if rel]
 
 
+def _declared_cfg_test_modules(path: Path) -> set[Path]:
+    """Return paths declared by `#[cfg(test)] #[path = ...] mod x;` in one file.
+
+    A `#[path]` attribute and the `mod` item it decorates may sit on separate
+    lines, so the scan carries both as pending state across lines.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return set()
+
+    declared: set[Path] = set()
+    cfg_test_pending = False
+    declared_path: str | None = None
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith(("//", "/*")):
+            continue
+        if CFG_TEST_RE.search(line):
+            cfg_test_pending = True
+            continue
+        path_match = PATH_ATTRIBUTE_RE.search(line)
+        if path_match:
+            declared_path = path_match.group(1)
+            continue
+        if line.startswith("#"):
+            continue
+        if cfg_test_pending and declared_path and OUT_OF_LINE_MODULE_RE.search(line):
+            declared.add((path.parent / declared_path).resolve())
+        cfg_test_pending = False
+        declared_path = None
+
+    return declared
+
+
 @functools.lru_cache(maxsize=1)
 def cfg_test_path_modules() -> frozenset[Path]:
     """Return files declared by an out-of-line `#[cfg(test)]` path module.
@@ -76,33 +111,16 @@ def cfg_test_path_modules() -> frozenset[Path]:
     test-only code even though its file name carries no test suffix. Locating
     those declarations lets the scanner skip them without allowlisting each
     helper individually.
+
+    Returns
+    -------
+    frozenset of pathlib.Path
+        Absolute, resolved paths of every tracked Rust file declared by a
+        test-only `#[path]` module.
     """
     declared: set[Path] = set()
     for path in list_tracked_rust_files():
-        try:
-            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        except OSError:
-            continue
-
-        cfg_test_pending = False
-        declared_path: str | None = None
-        for raw_line in lines:
-            line = raw_line.strip()
-            if not line or line.startswith(("//", "/*")):
-                continue
-            if CFG_TEST_RE.search(line):
-                cfg_test_pending = True
-                continue
-            path_match = PATH_ATTRIBUTE_RE.search(line)
-            if path_match:
-                declared_path = path_match.group(1)
-                continue
-            if line.startswith("#"):
-                continue
-            if cfg_test_pending and declared_path and OUT_OF_LINE_MODULE_RE.search(line):
-                declared.add((path.parent / declared_path).resolve())
-            cfg_test_pending = False
-            declared_path = None
+        declared |= _declared_cfg_test_modules(path)
 
     return frozenset(declared)
 

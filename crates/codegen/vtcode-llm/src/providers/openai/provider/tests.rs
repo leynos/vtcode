@@ -922,6 +922,72 @@ async fn api_key_responses_stream_sends_metadata_and_preserves_usage() {
     assert_ne!(payload.get("include").and_then(Value::as_array), Some(&vec![json!("reasoning.encrypted_content")]));
 }
 
+/// A `custom_tool_call_input.done` frame with no input must fail closed.
+///
+/// An empty snapshot is a prefix of any accumulated input, so the reconciler
+/// accepts it as unchanged and marks the input complete. Adopting that track
+/// would turn the partial streamed text into an executable call once the
+/// completed response carries an empty `output`.
+#[tokio::test]
+async fn responses_stream_rejects_custom_tool_input_done_without_input() {
+    let Some(server) = start_mock_server_or_skip().await else {
+        return;
+    };
+    let stream_body = concat!(
+        "data: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"item_id\":\"ct_1\",\"output_index\":0,\"item\":{\"type\":\"custom_tool_call\",\"id\":\"ct_1\",\"call_id\":\"call_patch_1\",\"name\":\"apply_patch\",\"input\":\"\",\"status\":\"in_progress\"}}\n\n",
+        "data: {\"type\":\"response.custom_tool_call_input.delta\",\"sequence_number\":2,\"item_id\":\"ct_1\",\"call_id\":\"call_patch_1\",\"output_index\":0,\"delta\":\"*** Begin\"}\n\n",
+        "data: {\"type\":\"response.custom_tool_call_input.done\",\"sequence_number\":3,\"item_id\":\"ct_1\",\"call_id\":\"call_patch_1\",\"output_index\":0}\n\n",
+        "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_missing_input\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":2,\"total_tokens\":7}}}\n\n",
+    );
+
+    Mock::given(method("POST"))
+        .and(path("/responses"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(stream_body),
+        )
+        .mount(&server)
+        .await;
+
+    let provider = OpenAIProvider::new_with_client(
+        String::new(),
+        Some(sample_chatgpt_auth_handle()),
+        models::openai::GPT_5_6_SOL.to_string(),
+        reqwest::Client::builder().no_proxy().build().expect("test client"),
+        chatgpt_mock_base_url(&server),
+        TimeoutsConfig::default(),
+    );
+
+    let mut stream = provider
+        .stream(provider::LLMRequest {
+            messages: vec![provider::Message::user("Hello".to_string())].into(),
+            model: models::openai::GPT_5_6_SOL.to_string(),
+            ..Default::default()
+        })
+        .await
+        .expect("stream should start");
+
+    let mut saw_partial_delta = false;
+    let error = loop {
+        match stream.next().await {
+            Some(Ok(provider::LLMStreamEvent::ToolCallDelta { delta, .. })) => {
+                assert_eq!(delta, "*** Begin", "the partial delta is progress only");
+                saw_partial_delta = true;
+            }
+            Some(Ok(provider::LLMStreamEvent::Completed { .. })) => {
+                panic!("a custom-tool-input frame without input must not complete the stream");
+            }
+            Some(Ok(_)) => {}
+            Some(Err(error)) => break error,
+            None => panic!("the stream must reject the frame instead of ending cleanly"),
+        }
+    };
+
+    assert!(saw_partial_delta, "precondition: the partial input reached the stream");
+    assert!(error.to_string().contains("input"), "the rejection must name the missing field: {error}");
+}
+
 #[tokio::test]
 async fn chatgpt_responses_stream_accepts_empty_final_output_after_text_delta() {
     let Some(server) = start_mock_server_or_skip().await else {
