@@ -1,10 +1,15 @@
-//! Assembled Baseten-compatible streamed usage: provider SSE to ACP usage update.
+//! Assembled streamed usage: provider SSE to ACP usage update.
 //!
 //! The other usage tests inject a synthetic `LLMProvider`, so they prove the
 //! projection but not the path that fills `LLMResponse::usage`. These tests
-//! keep the real OpenAI-chat streaming adapter in the loop: a mock HTTP origin
-//! serves the terminal-usage chunk Baseten emits, and the assertion is made on
-//! the `_lody/session/usage_update` notification the ACP client sees.
+//! keep the real provider streaming adapters in the loop: a mock HTTP origin
+//! serves the usage-bearing SSE each wire format emits, and the assertion is
+//! made on the `_lody/session/usage_update` notification the ACP client sees.
+//!
+//! Two wire formats are covered because they disagree about `input_tokens`:
+//! the OpenAI chat format reports a prompt count that already contains the
+//! cached tokens, while the Anthropic Messages format reports one that excludes
+//! them. The assembled path must publish the same total either way.
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use diapason_config::CustomProviderPricingConfig;
@@ -16,6 +21,15 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 const BASETEN_MODEL: &str = "baseten/usage";
 
 const BASETEN_PROVIDER: &str = "baseten-fixture";
+
+/// Custom provider whose resolved backend is the Anthropic Messages API.
+///
+/// The name deliberately is not `anthropic`: the wire format, not the name,
+/// decides the input-token semantics, so an exclusive-input fixture has to be
+/// recognised from the backend it was routed to.
+const ANTHROPIC_MODEL: &str = "anthropic-fixture/usage";
+
+const ANTHROPIC_PROVIDER: &str = "anthropic-fixture";
 
 /// One content delta followed by the terminal usage chunk Baseten streams when
 /// `stream_options.include_usage` is set.
@@ -37,6 +51,21 @@ const BASETEN_INPUT_PER_MILLION: f64 = 3.0;
 
 /// Declared output rate in USD per million tokens.
 const BASETEN_OUTPUT_PER_MILLION: f64 = 15.0;
+
+/// Anthropic Messages stream whose prompt count excludes the cached tokens.
+///
+/// `message_start` carries the input side (including both cache counts) and
+/// `message_delta` carries the completion count, which is where the wire
+/// format splits one turn's usage. The ACP delta must add the three input
+/// fields back into one total while still publishing each cache count.
+const ANTHROPIC_CACHE_USAGE_STREAM: &str = concat!(
+    "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_usage\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"anthropic-fixture/usage\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":21,\"output_tokens\":0,\"cache_read_input_tokens\":5,\"cache_creation_input_tokens\":3}}}\n\n",
+    "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+    "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"answer\"}}\n\n",
+    "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+    "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":21,\"output_tokens\":8}}\n\n",
+    "data: {\"type\":\"message_stop\"}\n\n",
+);
 
 /// A provider stream that never reports usage, which is what an OpenAI-
 /// compatible origin does when it ignores `stream_options.include_usage`.
@@ -66,12 +95,39 @@ fn baseten_provider(base_url: &str) -> CustomProviderConfig {
     }
 }
 
+fn anthropic_provider(base_url: &str) -> CustomProviderConfig {
+    CustomProviderConfig {
+        name: ANTHROPIC_PROVIDER.to_string(),
+        display_name: "Anthropic Fixture".to_string(),
+        base_url: base_url.to_string(),
+        api_format: CustomProviderApiFormat::AnthropicMessages,
+        supports_stream_usage: Some(true),
+        model: ANTHROPIC_MODEL.to_string(),
+        models: vec![ANTHROPIC_MODEL.to_string()],
+        context_window: Some(BASETEN_CONTEXT_WINDOW),
+        ..Default::default()
+    }
+}
+
 fn baseten_core_config(workspace: &std::path::Path) -> CoreAgentConfig {
+    custom_provider_core_config(workspace, BASETEN_PROVIDER, BASETEN_MODEL, "BASETEN_FIXTURE_API_KEY")
+}
+
+fn anthropic_core_config(workspace: &std::path::Path) -> CoreAgentConfig {
+    custom_provider_core_config(workspace, ANTHROPIC_PROVIDER, ANTHROPIC_MODEL, "ANTHROPIC_FIXTURE_API_KEY")
+}
+
+fn custom_provider_core_config(
+    workspace: &std::path::Path,
+    provider: &str,
+    model: &str,
+    api_key_env: &str,
+) -> CoreAgentConfig {
     CoreAgentConfig {
-        model: BASETEN_MODEL.to_string(),
+        model: model.to_string(),
         api_key: "fixture-key".to_string(),
-        provider: BASETEN_PROVIDER.to_string(),
-        api_key_env: "BASETEN_FIXTURE_API_KEY".to_string(),
+        provider: provider.to_string(),
+        api_key_env: api_key_env.to_string(),
         workspace: workspace.to_path_buf(),
         verbose: false,
         quiet: false,
@@ -91,12 +147,17 @@ fn baseten_core_config(workspace: &std::path::Path) -> CoreAgentConfig {
     }
 }
 
-/// Mounts one SSE chat-completion origin and records every request body.
-async fn mount_stream(server: &MockServer, body: &'static str) -> Arc<Mutex<Vec<Value>>> {
+/// Mounts one SSE origin at `request_path` and records every request body.
+///
+/// The path is a parameter because the two wire formats are reached through
+/// different routes: an OpenAI-chat backend posts to `/chat/completions`, while
+/// the Anthropic Messages adapter appends `/messages` to the configured base
+/// URL, which therefore ends in `/v1`.
+async fn mount_stream(server: &MockServer, body: &'static str, request_path: &'static str) -> Arc<Mutex<Vec<Value>>> {
     let requests = Arc::new(Mutex::new(Vec::new()));
     let requests_for_mock = Arc::clone(&requests);
     Mock::given(method("POST"))
-        .and(path("/chat/completions"))
+        .and(path(request_path))
         .respond_with(move |request: &Request| {
             requests_for_mock
                 .lock()
@@ -113,11 +174,13 @@ async fn mount_stream(server: &MockServer, body: &'static str) -> Arc<Mutex<Vec<
 
 /// Runs one ACP prompt end to end against the mock origin and returns every
 /// notification the ACP client received.
-async fn run_assembled_prompt(workspace: &std::path::Path, vt_config: &DiapasonConfig) -> Vec<acp::AgentNotification> {
-    let core_config = baseten_core_config(workspace);
-    let startup = crate::zed::session::prepare_acp_agent_startup(&core_config, vt_config, None, true)
+async fn run_assembled_prompt(
+    core_config: &CoreAgentConfig,
+    vt_config: &DiapasonConfig,
+) -> Vec<acp::AgentNotification> {
+    let startup = crate::zed::session::prepare_acp_agent_startup(core_config, vt_config, None, true)
         .await
-        .expect("prepare ACP launch with a Baseten-compatible custom provider");
+        .expect("prepare ACP launch with a custom provider");
     let agent = Arc::new(
         crate::zed::session::create_acp_agent(startup)
             .await
@@ -126,7 +189,7 @@ async fn run_assembled_prompt(workspace: &std::path::Path, vt_config: &DiapasonC
     let (agent_channel, client_channel) = Channel::duplex();
     let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
 
-    let agent_connection = install_handlers(Agent.builder().name("diapason-baseten-usage-test"), Arc::clone(&agent))
+    let agent_connection = install_handlers(Agent.builder().name("diapason-assembled-usage-test"), Arc::clone(&agent))
         .connect_with(agent_channel, {
             let agent = Arc::clone(&agent);
             async move |cx: ConnectionTo<Client>| {
@@ -136,7 +199,7 @@ async fn run_assembled_prompt(workspace: &std::path::Path, vt_config: &DiapasonC
         });
     let agent_task = tokio::spawn(agent_connection);
 
-    let session_workspace = workspace.to_path_buf();
+    let session_workspace = core_config.workspace.clone();
     let client_connection = Client
         .builder()
         .on_receive_notification(
@@ -166,8 +229,8 @@ async fn run_assembled_prompt(workspace: &std::path::Path, vt_config: &DiapasonC
 
     tokio::time::timeout(Duration::from_secs(5), client_connection)
         .await
-        .expect("assembled Baseten prompt should finish")
-        .expect("assembled Baseten protocol flow should succeed");
+        .expect("assembled prompt should finish")
+        .expect("assembled protocol flow should succeed");
     agent_task.abort();
     drop(agent_task.await);
 
@@ -196,6 +259,13 @@ fn baseten_vt_config(base_url: &str) -> DiapasonConfig {
     }
 }
 
+fn anthropic_vt_config(base_url: &str) -> DiapasonConfig {
+    DiapasonConfig {
+        custom_providers: vec![anthropic_provider(base_url)],
+        ..DiapasonConfig::default()
+    }
+}
+
 #[tokio::test]
 async fn terminal_only_baseten_usage_reaches_the_acp_client() {
     let _history_test_guard = lock_history_test_guard().await;
@@ -204,9 +274,10 @@ async fn terminal_only_baseten_usage_reaches_the_acp_client() {
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
 
     let server = MockServer::start().await;
-    let requests = mount_stream(&server, TERMINAL_USAGE_STREAM).await;
+    let requests = mount_stream(&server, TERMINAL_USAGE_STREAM, "/chat/completions").await;
     let workspace = TempDir::new().expect("Baseten usage workspace");
-    let notifications = run_assembled_prompt(workspace.path(), &baseten_vt_config(&server.uri())).await;
+    let notifications =
+        run_assembled_prompt(&baseten_core_config(workspace.path()), &baseten_vt_config(&server.uri())).await;
 
     let updates = usage_updates(&notifications);
     assert_eq!(
@@ -247,6 +318,51 @@ async fn terminal_only_baseten_usage_reaches_the_acp_client() {
     }
 }
 
+/// An exclusive-input backend that also reports cache activity must publish a
+/// prompt total that includes the cached tokens, alongside both cache counts.
+///
+/// This is the end-to-end counterpart to the unit tests on
+/// `normalized_turn_usage`: the OpenAI-chat fixture proves inclusive semantics,
+/// this one proves exclusive semantics are added back. Asserting on both
+/// `usage` and `modelUsage` keeps the two projections from drifting apart.
+#[tokio::test]
+async fn exclusive_anthropic_cache_usage_reaches_both_usage_fields() {
+    let _history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+
+    let server = MockServer::start().await;
+    let requests = mount_stream(&server, ANTHROPIC_CACHE_USAGE_STREAM, "/v1/messages").await;
+    let workspace = TempDir::new().expect("Anthropic usage workspace");
+    let base_url = format!("{}/v1", server.uri());
+    let notifications =
+        run_assembled_prompt(&anthropic_core_config(workspace.path()), &anthropic_vt_config(&base_url)).await;
+
+    let updates = usage_updates(&notifications);
+    assert_eq!(updates.len(), 1, "one response with split usage must publish exactly one usage delta: {updates:?}");
+    let update = &updates[0];
+
+    // 21 uncached + 5 cache-read + 3 cache-creation. The Anthropic wire format
+    // reports `input_tokens` exclusive of the cache counts, so publishing the
+    // raw value would understate the prompt by the cached tokens.
+    let expected_input = 21 + 5 + 3;
+    for usage in [&update["usage"], &update["modelUsage"][ANTHROPIC_MODEL]] {
+        assert_eq!(usage["inputTokens"], expected_input);
+        assert_eq!(usage["cacheReadInputTokens"], 5);
+        assert_eq!(usage["cacheCreationInputTokens"], 3);
+        assert_eq!(usage["outputTokens"], 8);
+    }
+    assert_eq!(update["usage"]["contextWindow"], 131_072);
+    assert_eq!(
+        update["modelUsage"][ANTHROPIC_MODEL], update["usage"],
+        "the per-model and session projections must agree for a single model"
+    );
+
+    let requests = requests.lock().expect("stream request mutex");
+    assert!(!requests.is_empty(), "the prompt must reach the mock origin");
+}
+
 #[tokio::test]
 async fn baseten_stream_without_usage_publishes_no_delta() {
     let _history_test_guard = lock_history_test_guard().await;
@@ -255,9 +371,10 @@ async fn baseten_stream_without_usage_publishes_no_delta() {
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
 
     let server = MockServer::start().await;
-    let requests = mount_stream(&server, USAGE_FREE_STREAM).await;
+    let requests = mount_stream(&server, USAGE_FREE_STREAM, "/chat/completions").await;
     let workspace = TempDir::new().expect("Baseten usage workspace");
-    let notifications = run_assembled_prompt(workspace.path(), &baseten_vt_config(&server.uri())).await;
+    let notifications =
+        run_assembled_prompt(&baseten_core_config(workspace.path()), &baseten_vt_config(&server.uri())).await;
 
     assert!(
         usage_updates(&notifications).is_empty(),

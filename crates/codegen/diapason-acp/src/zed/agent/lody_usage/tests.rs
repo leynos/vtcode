@@ -287,7 +287,111 @@ fn response_without_a_model_falls_back_to_the_session_model() {
     assert_eq!(reported_model_names(notification), vec!["fallback-model".to_string()]);
 }
 
+/// Generate a `u32` count, favouring the values where a sum can saturate.
+fn boundary_or_arbitrary_u32() -> impl Strategy<Value = u32> {
+    prop_oneof![Just(0u32), Just(1u32), Just(u32::MAX - 1), Just(u32::MAX), any::<u32>(),]
+}
+
 proptest! {
+    /// Assert the resolved input total saturates rather than wrapping, and that
+    /// both ACP input fields carry it.
+    ///
+    /// The optional cache counts mean both the "provider reported a cache
+    /// count" and the "provider reported none" shapes are generated. The
+    /// expected total is computed here from the generated counts rather than
+    /// from the production resolver, so a regression that wraps, drops the
+    /// cached tokens, or publishes the provider's raw count fails the property
+    /// instead of agreeing with itself.
+    #[test]
+    fn resolved_input_total_saturates_and_reaches_both_usage_fields(
+        uncached in boundary_or_arbitrary_u32(),
+        cache_read in proptest::option::of(boundary_or_arbitrary_u32()),
+        cache_creation in proptest::option::of(boundary_or_arbitrary_u32()),
+    ) {
+        let read = cache_read.unwrap_or(0);
+        let creation = cache_creation.unwrap_or(0);
+        // The documented total is uncached + cached + cache-creation tokens,
+        // reported at the `u32` ceiling when the sum overflows.
+        let expected_total = u32::try_from(
+            u64::from(uncached) + u64::from(read) + u64::from(creation),
+        )
+        .unwrap_or(u32::MAX);
+        let usage = Usage {
+            prompt_tokens: uncached,
+            completion_tokens: 0,
+            cache_read_tokens: cache_read,
+            cache_creation_tokens: cache_creation,
+            ..Usage::default()
+        };
+        let exclusive = resolved_notification(&usage, UsageProfile { exclusive_input: true, ..UsageProfile::default() });
+        // An inclusive representation of the same turn carries the total in
+        // its own prompt count, saturating there exactly as the resolver does.
+        let inclusive = resolved_notification(
+            &Usage {
+                prompt_tokens: uncached.saturating_add(read).saturating_add(creation),
+                ..usage
+            },
+            UsageProfile::default(),
+        );
+
+        for (representation, value) in [("exclusive", &exclusive), ("inclusive", &inclusive)] {
+            prop_assert_eq!(
+                value["usage"]["inputTokens"].as_u64(),
+                Some(u64::from(expected_total)),
+                "{} usage.inputTokens must report the saturated total",
+                representation
+            );
+            prop_assert_eq!(
+                value["modelUsage"]["model-a"]["inputTokens"].as_u64(),
+                Some(u64::from(expected_total)),
+                "{} modelUsage.inputTokens must report the saturated total",
+                representation
+            );
+            prop_assert_eq!(
+                value["usage"]["cacheReadInputTokens"].as_u64(),
+                Some(u64::from(read)),
+                "{} usage.cacheReadInputTokens must report the cached count",
+                representation
+            );
+            prop_assert_eq!(
+                value["modelUsage"]["model-a"]["cacheReadInputTokens"].as_u64(),
+                Some(u64::from(read)),
+                "{} modelUsage.cacheReadInputTokens must report the cached count",
+                representation
+            );
+            match cache_creation {
+                Some(count) => {
+                    prop_assert_eq!(
+                        value["usage"]["cacheCreationInputTokens"].as_u64(),
+                        Some(u64::from(count)),
+                        "{} usage.cacheCreationInputTokens must report the written count",
+                        representation
+                    );
+                    prop_assert_eq!(
+                        value["modelUsage"]["model-a"]["cacheCreationInputTokens"].as_u64(),
+                        Some(u64::from(count)),
+                        "{} modelUsage.cacheCreationInputTokens must report the written count",
+                        representation
+                    );
+                }
+                None => {
+                    prop_assert!(
+                        value["usage"].get("cacheCreationInputTokens").is_none(),
+                        "{} must not invent a cache-creation count",
+                        representation
+                    );
+                    prop_assert!(
+                        value["modelUsage"]["model-a"].get("cacheCreationInputTokens").is_none(),
+                        "{} must not invent a cache-creation count",
+                        representation
+                    );
+                }
+            }
+        }
+        prop_assert_eq!(&exclusive["modelUsage"]["model-a"], &exclusive["usage"]);
+        prop_assert_eq!(&inclusive["modelUsage"]["model-a"], &inclusive["usage"]);
+    }
+
     /// Assert every resolved u32 usage count survives serialization.
     #[test]
     fn preserves_all_resolved_u32_usage_counts(
