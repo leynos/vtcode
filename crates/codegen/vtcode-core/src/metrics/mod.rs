@@ -1725,6 +1725,74 @@ mod tests {
             .map_or(0, |metric| metric.total)
     }
 
+    /// A `tracing` writer that collects formatted output for one test only.
+    #[derive(Clone, Default)]
+    struct CaptureWriter(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut guard = self
+                .0
+                .lock()
+                .map_err(|poisoned| std::io::Error::other(format!("capture poisoned: {poisoned}")))?;
+            guard.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// The ACP prompt turn emits the counters through this operator-facing
+    /// record, so it must carry the same per-path series the structured exports
+    /// report — and must not carry the provider identity.
+    #[test]
+    fn emitted_responses_stream_record_carries_the_exported_series() {
+        use vtcode_llm::providers::shared::{
+            ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, process_responses_telemetry,
+        };
+
+        const PROVIDER_NAME: &str = "tracing-boundary-probe";
+        let path = ResponsesStreamPath::Shared;
+        let outcome = ResponsesStreamOutcome::Completed;
+        let collector = MetricsCollector::new();
+        process_responses_telemetry().record(&ResponsesObservation {
+            path,
+            provider: PROVIDER_NAME.to_string(),
+            outcome,
+        });
+        let expected_total = total_for(&collector.get_responses_stream_metrics(), path, outcome);
+        assert!(expected_total > 0, "precondition: the recorded outcome is counted");
+
+        let captured = CaptureWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .with_writer(captured.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || collector.emit_responses_stream_metrics());
+
+        let output =
+            String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
+        assert!(output.contains("vtcode::metrics::responses_stream"), "record target missing: {output}");
+        assert!(output.contains("shared_outcomes="), "shared series missing: {output}");
+        assert!(output.contains("legacy_outcomes="), "legacy series missing: {output}");
+        assert!(
+            output.contains(&format!("completed={expected_total},")),
+            "record must carry the counted total: {output}"
+        );
+        assert!(!output.contains(PROVIDER_NAME), "provider identity leaked into the record: {output}");
+    }
+
     /// An outcome recorded through the provider sink must reach the JSON and
     /// Prometheus views a production collector exports.
     ///
@@ -1771,12 +1839,40 @@ mod tests {
                 format!("vtcode_responses_stream_outcomes_total{{path=\"{path}\",outcome=\"{outcome}\"}} {total}");
             assert!(prometheus.contains(&series), "missing exported series {series}");
         }
-        assert!(prometheus.contains("vtcode_responses_websocket_replay_prohibited_total"));
-        assert!(prometheus.contains("vtcode_responses_websocket_http_fallback_total"));
-
+        let websocket_before = vtcode_llm::providers::shared::responses_websocket_metrics();
         let json = collector.export_json().expect("metrics export must serialize");
+        let websocket_after = vtcode_llm::providers::shared::responses_websocket_metrics();
+        let responses = json.get("responses_stream").expect("summary must carry the Responses counters");
+
+        // The WebSocket recovery counters are process-wide and monotonic, so the
+        // exported value must fall inside the window sampled around the export.
+        // That proves the export carries the live counter instead of a label
+        // with a constant or zero-filled value.
+        let exported_replay = responses
+            .get("websocket_replay_prohibited_total")
+            .and_then(serde_json::Value::as_u64)
+            .expect("JSON must carry the replay-prohibited counter");
+        assert!(
+            (websocket_before.replay_prohibited_total..=websocket_after.replay_prohibited_total)
+                .contains(&exported_replay),
+            "JSON replay-prohibited total {exported_replay} is outside the live sample window"
+        );
+        let exported_fallback = responses
+            .get("websocket_http_fallback_total")
+            .and_then(serde_json::Value::as_u64)
+            .expect("JSON must carry the HTTP fallback counter");
+        assert!(
+            (websocket_before.http_fallback_total..=websocket_after.http_fallback_total).contains(&exported_fallback),
+            "JSON HTTP fallback total {exported_fallback} is outside the live sample window"
+        );
+        for (name, total) in [
+            ("vtcode_responses_websocket_replay_prohibited_total", exported_replay),
+            ("vtcode_responses_websocket_http_fallback_total", exported_fallback),
+        ] {
+            let series = format!("{name} {total}");
+            assert!(prometheus.contains(&series), "missing exported series {series}");
+        }
         let json = serde_json::to_string(&json).expect("exported JSON must render");
-        assert!(json.contains("\"responses_stream\""), "summary must carry the Responses counters");
         for export in [&prometheus, &json] {
             assert!(!export.contains(PROVIDER_NAME), "provider identity leaked into the export");
             assert!(!export.contains("tool_arguments"), "payload field leaked into the export");

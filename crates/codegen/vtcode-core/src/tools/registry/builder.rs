@@ -142,14 +142,13 @@ impl ToolRegistry {
         } = workspace_config;
         let edited_file_monitor = Arc::new(crate::tools::edited_file_monitor::EditedFileMonitor::new());
         let inventory = ToolInventory::new(workspace_root.clone(), Arc::clone(&edited_file_monitor));
-        // Composition boundary: install the concrete provider admission source
-        // explicitly so the core metrics module stays free of provider
-        // sampling. This is the construction path behind every `ToolRegistry`
-        // variant, so registry-owned collectors sample the live process-wide
-        // counters rather than a substitute.
-        let metrics = Arc::new(crate::metrics::MetricsCollector::with_admission_metrics_source(Arc::new(
-            crate::llm::admission_metrics::ProcessProviderAdmissionMetricsSource::new(),
-        )));
+        // `MetricsCollector::new` is the composition boundary that installs the
+        // concrete provider admission *and* Responses sources, so this path —
+        // behind every `ToolRegistry` variant, and the collector ACP exposes as
+        // `recovery_metrics()` — samples the live process-wide counters rather
+        // than an inert substitute. Using the admission-only test constructor
+        // here previously left the Responses counters permanently zeroed.
+        let metrics = Arc::new(crate::metrics::MetricsCollector::new());
         let planning_workflow_state = PlanningWorkflowState::new(workspace_root.clone()).with_metrics(metrics.clone());
 
         register_builtin_packs(&inventory, &planning_workflow_state, &tool_config).await;
@@ -338,5 +337,67 @@ tool_output_threshold = "oops"
         // proves neither path substitutes a permanently zero snapshot.
         let direct = crate::metrics::MetricsCollector::new().get_provider_request_metrics();
         assert_eq!(direct.custom_provider_queue_waits, exported.custom_provider_queue_waits);
+    }
+
+    /// The ACP agent emits its Responses counters from this registry collector
+    /// (`ZedAgent::recovery_metrics`). A sample taken here must therefore carry
+    /// a terminal outcome recorded through the production sink; the
+    /// admission-only constructor would have exported zeros forever.
+    #[tokio::test]
+    async fn registry_metrics_sample_the_live_responses_stream_counters() {
+        use vtcode_llm::providers::shared::{
+            ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, process_responses_telemetry,
+            responses_stream_metrics, responses_websocket_metrics,
+        };
+
+        let temp = tempdir().expect("workspace");
+        let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
+        let collector = registry.metrics_collector();
+
+        let path = ResponsesStreamPath::Legacy;
+        let outcome = ResponsesStreamOutcome::TransportFailure;
+        let before = responses_total(&collector.get_responses_stream_metrics(), path, outcome);
+
+        process_responses_telemetry().record(&ResponsesObservation {
+            path,
+            provider: "registry-live-probe".to_string(),
+            outcome,
+        });
+
+        let after = responses_total(&collector.get_responses_stream_metrics(), path, outcome);
+        assert!(after > before, "the registry collector must observe the recorded outcome");
+
+        // The registry sample tracks the provider counters exactly, and the
+        // WebSocket recovery values are the live ones rather than constants.
+        let provider = responses_stream_metrics();
+        let provider_total = provider
+            .iter()
+            .find(|metric| metric.path == path && metric.outcome == outcome)
+            .map_or(0, |metric| metric.total);
+        assert_eq!(after, provider_total, "registry sample must equal the live provider counter");
+
+        let exported = collector.get_responses_stream_metrics();
+        let websocket = responses_websocket_metrics();
+        assert_eq!(
+            exported.websocket_replay_prohibited_total, websocket.replay_prohibited_total,
+            "registry must sample the live replay-prohibited counter"
+        );
+        assert_eq!(
+            exported.websocket_http_fallback_total, websocket.http_fallback_total,
+            "registry must sample the live HTTP fallback counter"
+        );
+    }
+
+    /// Terminal count for one `(path, outcome)` pair, or zero when unrecorded.
+    fn responses_total(
+        metrics: &crate::metrics::ResponsesStreamMetrics,
+        path: vtcode_llm::providers::shared::ResponsesStreamPath,
+        outcome: vtcode_llm::providers::shared::ResponsesStreamOutcome,
+    ) -> u64 {
+        metrics
+            .outcomes
+            .iter()
+            .find(|metric| metric.path == path.as_str() && metric.outcome == outcome.as_str())
+            .map_or(0, |metric| metric.total)
     }
 }

@@ -141,7 +141,11 @@ adapter, and each snapshot reads the live atomics rather than caching a value.
 Label cardinality is bounded by the closed path and outcome vocabulary.
 `MetricsCollector::with_admission_metrics_source` keeps a zero Responses source
 for deterministic tests; use `with_responses_metrics_source` to supply a
-recorded snapshot.
+recorded snapshot. Production composition must use `MetricsCollector::new()`,
+which installs both live provider sources; the `ToolRegistry` builder — the
+collector the ACP agent exposes as its recovery metrics — is one such call
+site, and a registry-level regression asserts that a recorded outcome and the
+live WebSocket recovery values appear in its snapshot.
 
 Operators read the counters through two paths. The ACP agent calls
 `MetricsCollector::emit_responses_stream_metrics()` once per prompt turn,
