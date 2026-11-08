@@ -2,11 +2,12 @@
 
 use crate::acp;
 use agent_client_protocol::Error as SdkError;
+#[cfg(test)]
+use diapason_core::subagents::BackgroundSubprocessStatus;
 use diapason_core::subagents::{
-    BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentController, SubagentStatus, SubagentStatusEntry,
-    extract_tail_lines,
+    BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry, extract_tail_lines,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
@@ -18,6 +19,10 @@ use super::{
     lody::{owned_background_ids, owned_child_ids},
     task_lifecycle::bounded_session_correlation,
 };
+
+mod projection;
+
+use self::projection::{managed_background_task, managed_child_task};
 
 /// The bounded set of Lody subagent management RPCs.
 ///
@@ -97,22 +102,6 @@ struct SubagentOutputRequest {
     session_id: String,
     task_id: String,
     tail: Option<usize>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ManagedTask {
-    task_id: String,
-    description: String,
-    status: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    agent_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    subagent_type: Option<String>,
-    started_at_epoch_seconds: f64,
-    ended_at_epoch_seconds: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stop_reason: Option<String>,
 }
 
 pub(super) fn is_lody_subagent_management_method(method: &str) -> bool {
@@ -387,43 +376,6 @@ async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Re
     Ok(serde_json::json!({ "output": output }))
 }
 
-fn managed_child_task(entry: &SubagentStatusEntry) -> ManagedTask {
-    let status = match entry.status {
-        SubagentStatus::Queued | SubagentStatus::Running | SubagentStatus::Waiting => "running",
-        SubagentStatus::Completed => "completed",
-        SubagentStatus::Failed => "failed",
-        SubagentStatus::Closed => "killed",
-    };
-    ManagedTask {
-        task_id: entry.id.clone(),
-        description: entry.description.clone(),
-        status,
-        agent_id: Some(entry.session_id.clone()),
-        subagent_type: Some(entry.agent_name.clone()),
-        started_at_epoch_seconds: epoch_seconds(entry.created_at),
-        ended_at_epoch_seconds: entry.completed_at.map(epoch_seconds),
-        stop_reason: entry.error.clone(),
-    }
-}
-
-fn managed_background_task(entry: &BackgroundSubprocessEntry) -> ManagedTask {
-    let status = match entry.status {
-        BackgroundSubprocessStatus::Starting | BackgroundSubprocessStatus::Running => "running",
-        BackgroundSubprocessStatus::Stopped => "completed",
-        BackgroundSubprocessStatus::Error => "failed",
-    };
-    ManagedTask {
-        task_id: entry.id.clone(),
-        description: entry.description.clone(),
-        status,
-        agent_id: Some(entry.session_id.clone()),
-        subagent_type: Some(entry.agent_name.clone()),
-        started_at_epoch_seconds: epoch_seconds(entry.started_at.unwrap_or(entry.created_at)),
-        ended_at_epoch_seconds: entry.ended_at.map(epoch_seconds),
-        stop_reason: entry.error.clone(),
-    }
-}
-
 fn unknown_task_error() -> SdkError {
     SdkError::invalid_params().data(serde_json::json!({ "reason": "unknown_task" }))
 }
@@ -435,129 +387,6 @@ fn internal_management_error(error: anyhow::Error) -> SdkError {
     }))
 }
 
-fn epoch_seconds(timestamp: chrono::DateTime<chrono::Utc>) -> f64 {
-    timestamp.timestamp_millis().max(0) as f64 / 1_000.0
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use assert_fs::TempDir;
-    use diapason_config::DiapasonConfig;
-    use diapason_core::config::types::ReasoningEffortLevel;
-    use diapason_core::subagents::SubagentControllerConfig;
-    use diapason_core::tools::exec_session::ExecSessionManager;
-    use diapason_core::tools::registry::PtySessionManager;
-
-    fn persisted_running_record_json() -> Value {
-        serde_json::json!({
-            "records": [{
-                "id": "background-worker",
-                "agent_name": "worker",
-                "display_label": "worker",
-                "description": "worker",
-                "source": "builtin",
-                "color": null,
-                "owner_session_id": "session-a",
-                "session_id": "session-worker",
-                "exec_session_id": "exec-missing",
-                "desired_enabled": false,
-                "status": "running",
-                "created_at": "2026-08-28T00:00:00Z",
-                "updated_at": "2026-08-28T00:00:00Z",
-                "started_at": "2026-08-28T00:00:00Z",
-                "ended_at": null,
-                "pid": 4321,
-                "prompt": "work",
-                "summary": null,
-                "error": null,
-                "archive_path": null,
-                "transcript_path": null,
-                "max_turns": null,
-                "model_override": null,
-                "reasoning_override": null,
-                "restart_attempts": 0
-            }]
-        })
-    }
-
-    /// `_lody/subagents/list` is a read-only query: it projects cached records
-    /// with liveness overlaid, so an exited process is not reported as running
-    /// and a read never mutates the record set or rewrites the ledger.
-    #[tokio::test]
-    async fn listing_projects_liveness_without_mutating_records() {
-        let temp = TempDir::new().expect("tempdir");
-        let state_dir = temp.path().join(".diapason/state");
-        std::fs::create_dir_all(&state_dir).expect("state dir");
-        std::fs::write(state_dir.join("background_subagents.json"), persisted_running_record_json().to_string())
-            .expect("write state");
-
-        let vt_cfg = DiapasonConfig::default();
-        let pty_sessions = PtySessionManager::new(temp.path().to_path_buf(), vt_cfg.pty.clone());
-        let exec_sessions = ExecSessionManager::new(temp.path().to_path_buf(), pty_sessions.clone());
-        let controller = Arc::new(
-            SubagentController::new_with_background_owner(
-                SubagentControllerConfig {
-                    workspace_root: temp.path().to_path_buf(),
-                    parent_session_id: "session-a".to_string(),
-                    parent_model: "test-model".to_string(),
-                    parent_provider: "openai".to_string(),
-                    parent_reasoning_effort: ReasoningEffortLevel::Medium,
-                    api_key: "test-key".to_string(),
-                    vt_cfg,
-                    openai_chatgpt_auth: None,
-                    depth: 0,
-                    workspace_gated: false,
-                    exec_sessions,
-                    pty_manager: pty_sessions.manager().clone(),
-                    managed_background_runtime: false,
-                },
-                Some("session-a"),
-            )
-            .await
-            .expect("scoped controller"),
-        );
-        let controllers = [Arc::clone(&controller)];
-
-        let cached = background_status_entries(&controllers).await;
-        assert_eq!(
-            cached.iter().map(|entry| entry.status).collect::<Vec<_>>(),
-            [BackgroundSubprocessStatus::Running],
-            "the cached projection reports the persisted state"
-        );
-
-        let ledger_path = state_dir.join("background_subagents.json");
-        let ledger_before = std::fs::read_to_string(&ledger_path).expect("read ledger before list");
-
-        let observed = observed_background_entries(&controllers).await;
-        assert_eq!(
-            observed.iter().map(|entry| entry.status).collect::<Vec<_>>(),
-            [BackgroundSubprocessStatus::Stopped],
-            "listing must observe the exit instead of reporting a stale running process"
-        );
-
-        let after = background_status_entries(&controllers).await;
-        assert_eq!(
-            after.iter().map(|entry| entry.status).collect::<Vec<_>>(),
-            [BackgroundSubprocessStatus::Running],
-            "the read-only query must not mutate the record set"
-        );
-
-        let ledger_after = std::fs::read_to_string(&ledger_path).expect("read ledger after list");
-        assert_eq!(ledger_before, ledger_after, "the read-only query must not rewrite the persisted ledger");
-    }
-
-    /// The output-tail bound is an ACP transport contract, so the adapter owns
-    /// the default and the hard maximum rather than the domain controller.
-    ///
-    /// These are the ACP transport contract literals: an omitted `tail` means
-    /// 200 lines, 10_000 is the inclusive maximum, and 10_001 is rejected.
-    #[test]
-    fn output_tail_defaults_and_rejects_values_above_the_transport_bound() {
-        assert_eq!(normalize_output_tail_lines(None).expect("default tail size"), 200);
-        assert_eq!(normalize_output_tail_lines(Some(10_000)).expect("boundary tail size"), 10_000);
-        let error =
-            normalize_output_tail_lines(Some(10_001)).expect_err("a tail above the transport bound must be rejected");
-        assert!(error.contains("10000"), "the rejection must name the bound: {error}");
-    }
-}
+#[path = "lody_management_tests.rs"]
+mod tests;
