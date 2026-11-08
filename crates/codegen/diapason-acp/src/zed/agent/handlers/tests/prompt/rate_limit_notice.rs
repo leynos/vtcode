@@ -136,11 +136,15 @@ async fn retryable_stream_rate_limit_publishes_a_notice_announcing_the_retry() {
     assert!(retried_answer, "the scheduled retry must deliver the follow-up answer: {updates:?}");
 }
 
+/// Interval the injected publication clock reports, in milliseconds.
+const NOTICE_STEP_MS: u64 = 275;
+
 /// Assert a failed notice send is counted and observed by a bounded span.
 ///
 /// With no client attached the transport rejects the send. The attempt must
 /// still be counted, and the span must carry the fixed operation and stage
 /// plus a bounded session correlation rather than the raw session identifier.
+/// The duration comes from the injected clock, so it is asserted exactly.
 #[test]
 fn disconnected_client_counts_a_failed_notice_publication() {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -156,6 +160,9 @@ fn disconnected_client_counts_a_failed_notice_publication() {
         let notice_counts = Arc::new(crate::metrics::IsolatedPublicationRecorder::new());
         let notice_recorder: Arc<dyn crate::metrics::PublicationRecorder> = notice_counts.clone();
         agent.set_publication_recorders(notice_recorder, crate::metrics::compaction_update_recorder());
+        // The send reads the clock twice, so a stepped clock makes the reported
+        // duration exactly one step instead of a wall-clock measurement.
+        agent.set_publication_clock(Arc::new(SteppedPublicationClock::new(Duration::from_millis(NOTICE_STEP_MS))));
         let session_id = acp::SessionId::new(Arc::from("notice-span-session"));
         let error = LLMError::RateLimit {
             metadata: Some(LLMErrorMetadata::new(
@@ -194,10 +201,14 @@ fn disconnected_client_counts_a_failed_notice_publication() {
             "operation=\"provider_rate_limit_notice\"",
             "stage=\"publish_rate_limit_notice\"",
             "outcome=\"failed\"",
-            "elapsed_ms=",
         ] {
             assert!(captured.contains(expected), "missing {expected} in: {captured}");
         }
+        let expected_elapsed = format!("elapsed_ms={NOTICE_STEP_MS}");
+        assert!(
+            captured.contains(&expected_elapsed),
+            "the send duration must be the injected interval, not the wall clock: {captured}"
+        );
         assert!(captured.contains("session_correlation="), "the span must correlate the send: {captured}");
         assert!(!captured.contains("notice-span-session"), "the raw session id must not reach a span: {captured}");
     });

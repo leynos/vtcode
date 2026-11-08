@@ -10,7 +10,6 @@ use super::super::redaction::{elapsed_millis, identifier_correlation, log_compac
 use super::failure::{CompactionFailureKind, FailureDetail, classify, detail_of};
 use crate::metrics::CompactionOutcome;
 use anyhow::Result;
-use std::time::Instant;
 use tracing::{Instrument, field, info, info_span, warn};
 
 /// What one automatic compaction attempt achieved.
@@ -195,7 +194,7 @@ impl ZedAgent {
     /// send is observed by a span and by the publication counters, so a
     /// client that stops accepting activity updates is measurable rather than
     /// merely logged.
-    pub(super) async fn publish_compaction_update(
+    pub(in crate::zed::agent) async fn publish_compaction_update(
         &self,
         session_id: &crate::acp::SessionId,
         update: Result<crate::acp::SessionUpdate>,
@@ -220,13 +219,14 @@ impl ZedAgent {
             outcome = field::Empty,
             elapsed_ms = field::Empty,
         );
-        let started_at = Instant::now();
+        let started_at = self.publication_clock.now();
         async {
             let result = self.send_update(session_id, update).await;
+            let finished_at = self.publication_clock.now();
             let span = tracing::Span::current();
             let sent = result.is_ok();
             let _outcome_recorded = span.record("outcome", if sent { "sent" } else { "failed" });
-            let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at));
+            let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at, finished_at));
             self.compaction_update_recorder.record(sent);
             if let Err(error) = &result {
                 log_compaction_update_failure(error, session_key, publish_stage);

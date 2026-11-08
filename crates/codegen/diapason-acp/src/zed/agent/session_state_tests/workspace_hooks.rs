@@ -5,36 +5,57 @@ use diapason_config::{HookCommandConfig, HookGroupConfig, WorkspaceHookCommand, 
 use diapason_core::config::DiapasonConfig;
 use std::ffi::OsString;
 
-/// Restores `DIAPASON_CONFIG` when the test leaves scope, including on panic.
-struct DiapasonConfigGuard {
-    previous: Option<OsString>,
+/// Points the user data roots at `root` for the life of the guard.
+///
+/// The dot-config manager resolves its roots once per process and caches the
+/// manager, so the environment has to be redirected *before* the first lookup.
+/// `DIAPASON_CONFIG` is not one of those roots: the path resolver ignores the
+/// former application-specific overrides, so setting it would leave both the
+/// approval write and the session lookup reading the developer's real
+/// `config.toml`.
+struct IsolatedUserDataDirs {
+    previous: Vec<(&'static str, Option<OsString>)>,
     environment_lock: diapason_commons::env_lock::EnvGuard,
 }
 
-impl DiapasonConfigGuard {
-    /// Point `DIAPASON_CONFIG` at `config_dir` while holding the process-wide
-    /// environment lock, remembering the value to restore.
-    fn set(config_dir: &Path) -> Self {
+impl IsolatedUserDataDirs {
+    /// Redirect every canonical XDG root under `root` while holding the
+    /// process-wide environment lock, remembering the values to restore.
+    fn set(root: &Path) -> Self {
         let environment_lock = diapason_commons::env_lock::lock();
-        let previous = std::env::var_os("DIAPASON_CONFIG");
-        environment_lock.set_var("DIAPASON_CONFIG", config_dir);
+        let mut previous = Vec::with_capacity(4);
+        for (variable, directory) in [
+            ("XDG_CONFIG_HOME", "config"),
+            ("XDG_DATA_HOME", "data"),
+            ("XDG_STATE_HOME", "state"),
+            ("XDG_CACHE_HOME", "cache"),
+        ] {
+            previous.push((variable, std::env::var_os(variable)));
+            environment_lock.set_var(variable, root.join(directory));
+        }
         Self { previous, environment_lock }
     }
 }
 
-impl Drop for DiapasonConfigGuard {
+impl Drop for IsolatedUserDataDirs {
     fn drop(&mut self) {
-        self.environment_lock.restore_var("DIAPASON_CONFIG", self.previous.as_ref());
+        for (variable, previous) in &self.previous {
+            self.environment_lock.restore_var(variable, previous.as_ref());
+        }
     }
 }
 
 #[tokio::test]
 async fn new_session_restores_matching_workspace_hook_approval_before_session_start() {
     let workspace = TempDir::new().expect("temporary ACP hook workspace");
-    let dot_config = TempDir::new().expect("temporary dot-config directory");
+    let user_data = TempDir::new().expect("temporary user data directory");
     let marker = workspace.path().join("approved-session-start");
     let command = format!("touch {}", marker.display());
-    let _config_guard = DiapasonConfigGuard::set(&dot_config.path().join("config"));
+    // Redirect the user data roots before the first manager lookup: the
+    // approval below is written through the process-wide dot-config manager,
+    // so without this the test would persist it into the developer's own
+    // `config.toml` and the session would read it back from there.
+    let _user_data_guard = IsolatedUserDataDirs::set(user_data.path());
     diapason_core::utils::dot_config::initialize_dot_folder()
         .await
         .expect("initialize the dot-config folder for the hook approval");

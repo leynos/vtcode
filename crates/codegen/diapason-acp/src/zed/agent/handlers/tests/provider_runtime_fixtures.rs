@@ -1,5 +1,8 @@
 //! Shared mock providers and tracing capture for provider-runtime handler tests.
 use super::*;
+use crate::zed::agent::publication_clock::PublicationClock;
+use std::sync::atomic::AtomicU64;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Default)]
 pub(super) struct TraceCapture(pub(super) Arc<Mutex<Vec<String>>>);
@@ -199,6 +202,36 @@ pub(super) fn retry_runtime() -> ProviderRequestRuntime {
         Arc::new(diapason_core::metrics::MetricsCollector::new()),
     )
     .for_provider("retry-test")
+}
+
+/// A publication clock that advances by a fixed step on every read.
+///
+/// A send reads the clock once before and once after the transport call, so
+/// the reported duration is exactly `step` rather than however long the send
+/// actually took. This is what lets a command test assert an exact
+/// `elapsed_ms` span field.
+pub(super) struct SteppedPublicationClock {
+    epoch: Instant,
+    step: Duration,
+    calls: AtomicU64,
+}
+
+impl SteppedPublicationClock {
+    /// Create a clock that reports `epoch`, then `epoch + step`, and so on.
+    pub(super) fn new(step: Duration) -> Self {
+        Self {
+            epoch: Instant::now(),
+            step,
+            calls: AtomicU64::new(0),
+        }
+    }
+}
+
+impl PublicationClock for SteppedPublicationClock {
+    fn now(&self) -> Instant {
+        let index = self.calls.fetch_add(1, Ordering::SeqCst);
+        self.epoch + self.step * u32::try_from(index).unwrap_or(u32::MAX)
+    }
 }
 
 pub(super) fn timeout_runtime() -> ProviderRequestRuntime {

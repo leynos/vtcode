@@ -5,7 +5,7 @@
 use crate::acp;
 use diapason_core::llm::provider::{LLMError, LLMErrorMetadata};
 use serde_json::{Map, Value};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::{Instrument, field, info_span};
 
 use super::ZedAgent;
@@ -38,13 +38,14 @@ impl ZedAgent {
             outcome = field::Empty,
             elapsed_ms = field::Empty,
         );
-        let started_at = Instant::now();
+        let started_at = self.publication_clock.now();
         async {
             let result = self.send_update(session_id, update).await;
+            let finished_at = self.publication_clock.now();
             let span = tracing::Span::current();
             let sent = result.is_ok();
             let _outcome_recorded = span.record("outcome", if sent { "sent" } else { "failed" });
-            let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at));
+            let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at, finished_at));
             self.notice_recorder.record(sent);
             if let Err(error) = &result {
                 // The transport error and the raw session id are both

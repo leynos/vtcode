@@ -535,6 +535,11 @@ async fn compaction_activity_uses_the_injected_identity_and_clock() {
         activity_id,
         Duration::from_millis(STEP_MS),
     )));
+    // An isolated recorder makes the duration assertions exact: no other
+    // attempt in this process can contribute to the totals.
+    let recorder = Arc::new(crate::metrics::IsolatedCompactionRecorder::new());
+    let compaction_recorder: Arc<dyn crate::metrics::CompactionRecorder> = recorder.clone();
+    agent.set_compaction_recorder(compaction_recorder);
     let session = large_compaction_session(&agent, workspace.path()).await;
     let raw_session_id = session.data.lock().expect("ACP session data").session_id.to_string();
     let agent = Arc::new(agent);
@@ -552,6 +557,20 @@ async fn compaction_activity_uses_the_injected_identity_and_clock() {
     assert_eq!(
         updates[1]["_meta"]["lody"]["activity"]["durationMs"], STEP_MS,
         "the terminal duration must come from the injected clock, not the wall clock"
+    );
+    // The duration the activity reports and the duration the metrics record are
+    // the same injected interval, so doubling either recording would fail here
+    // rather than merely satisfy a wall-clock lower bound.
+    let metrics = recorder.metrics();
+    assert_eq!(metrics.started, 1, "exactly one attempt must be counted: {metrics:?}");
+    assert_eq!(metrics.failed, 1, "the attempt must be counted as failed: {metrics:?}");
+    assert_eq!(
+        metrics.elapsed_ms_total, STEP_MS,
+        "the recorded total must be the injected interval, not the wall clock: {metrics:?}"
+    );
+    assert_eq!(
+        metrics.elapsed_ms_max, STEP_MS,
+        "the recorded maximum must be the injected interval, not the wall clock: {metrics:?}"
     );
 }
 
@@ -613,4 +632,80 @@ async fn production_recorder_publishes_an_attempt_through_the_public_metrics() {
         after.failed >= after.cancelled,
         "the published subset invariant must hold in every snapshot: {after:?}"
     );
+}
+
+/// Interval the injected publication clock reports for the send, in
+/// milliseconds.
+const COMPACTION_UPDATE_STEP_MS: u64 = 640;
+
+/// Assert the compaction activity update reports the injected clock interval.
+///
+/// The publication boundary is driven directly rather than through a whole
+/// compaction attempt, so the assertion is about the send's own timing. With
+/// no client attached the send fails deterministically while still reading the
+/// clock before and after, so the recorded `elapsed_ms` must be exactly one
+/// step: either a doubled read or a wall-clock measurement would report a
+/// different value.
+#[test]
+fn compaction_update_reports_the_injected_send_duration() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("test runtime should build");
+    runtime.block_on(async {
+        let _history_test_guard = lock_history_test_guard().await;
+        let workspace = TempDir::new().expect("wire test workspace");
+        let mut agent = build_wire_test_agent_with_options(workspace.path(), None, None).await;
+        // Isolated recorders and a stepped clock keep the assertions exact: no
+        // other publisher in this process can perturb the counts or the span.
+        let update_counts = Arc::new(crate::metrics::IsolatedPublicationRecorder::new());
+        let update_recorder: Arc<dyn crate::metrics::PublicationRecorder> = update_counts.clone();
+        agent.set_publication_recorders(crate::metrics::notice_recorder(), update_recorder);
+        agent.set_publication_clock(Arc::new(SteppedPublicationClock::new(Duration::from_millis(
+            COMPACTION_UPDATE_STEP_MS,
+        ))));
+        let session_id = acp::SessionId::new(Arc::from("compaction-update-clock-session"));
+        let update = acp::SessionUpdate::ToolCall(acp::ToolCall::new(
+            "activity:compaction:clock-session",
+            "Compact conversation context",
+        ));
+        let trace = TraceCapture::default();
+
+        {
+            let _guard = tracing::subscriber::set_default(Registry::default().with(trace.clone()));
+            agent
+                .publish_compaction_update(
+                    &session_id,
+                    Ok(update),
+                    "clock-session-correlation",
+                    "publish_compaction_update",
+                    "serialize_compaction_update",
+                )
+                .await;
+        }
+
+        let metrics = update_counts.metrics();
+        assert_eq!(metrics.attempts, 1, "a send that reached the transport is one attempt: {metrics:?}");
+        assert_eq!(metrics.failures, 1, "a disconnected client must fail the send: {metrics:?}");
+
+        let captured = trace.0.lock().expect("trace capture lock").join("\n");
+        for expected in [
+            "span=acp_compaction_update_publish",
+            "operation=\"context_compaction_update\"",
+            "stage=\"publish_compaction_update\"",
+            "outcome=\"failed\"",
+            "session_correlation=",
+        ] {
+            assert!(captured.contains(expected), "missing {expected} in: {captured}");
+        }
+        let expected_elapsed = format!("elapsed_ms={COMPACTION_UPDATE_STEP_MS}");
+        assert!(
+            captured.contains(&expected_elapsed),
+            "the send duration must be the injected interval, not the wall clock: {captured}"
+        );
+        assert!(
+            !captured.contains("compaction-update-clock-session"),
+            "the raw session id must not reach a span: {captured}"
+        );
+    });
 }
