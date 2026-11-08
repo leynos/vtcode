@@ -320,3 +320,58 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
     assert_eq!(opted_in["stream_options"]["include_usage"], true);
     assert!(opted_out.get("stream_options").is_none());
 }
+
+#[tokio::test]
+async fn auto_api_format_routes_to_chat_and_requests_stream_usage() {
+    const MODEL: &str = "baseten/usage";
+
+    let server = MockServer::start().await;
+    let captured: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
+    let captured_for_mock = Arc::clone(&captured);
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(move |request: &wiremock::Request| {
+            *captured_for_mock.lock().expect("capture mutex") =
+                serde_json::from_slice(&request.body).ok();
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(
+                    "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n\
+                     data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18}}\n\n\
+                     data: [DONE]\n\n",
+                )
+        })
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let config = CustomProviderConfig {
+        name: "baseten-auto".to_string(),
+        display_name: "Baseten Auto".to_string(),
+        base_url: server.uri(),
+        api_format: CustomProviderApiFormat::Auto,
+        supports_stream_usage: Some(true),
+        model: MODEL.to_string(),
+        models: vec![MODEL.to_string()],
+        ..Default::default()
+    };
+    let router = CustomProviderBackendRouter::from_config(
+        config,
+        Some("fixture-key".to_string()),
+        Some(MODEL.to_string()),
+        server.uri(),
+        None,
+        None,
+        None,
+        Some(AnthropicConfig::default()),
+        None,
+        None,
+    );
+
+    let response = collect_completed_response(&router, MODEL).await;
+    let usage = response.usage.expect("terminal Auto usage should be retained");
+    assert_eq!((usage.prompt_tokens, usage.completion_tokens, usage.total_tokens), (13, 5, 18));
+
+    let payload = captured.lock().expect("capture mutex").clone().expect("request captured");
+    assert_eq!(payload["stream_options"]["include_usage"], true);
+}
