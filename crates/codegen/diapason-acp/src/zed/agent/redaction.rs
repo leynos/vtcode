@@ -45,12 +45,15 @@ pub(super) fn identifier_correlation(identifier: &str) -> String {
     bounded_digest(identifier)
 }
 
-/// Convert a measurement start into whole elapsed milliseconds.
+/// Convert a measurement interval into whole elapsed milliseconds.
 ///
-/// Span fields and metrics report whole milliseconds, and a duration beyond
-/// `u64::MAX` milliseconds saturates rather than wrapping.
-pub(super) fn elapsed_millis(started_at: std::time::Instant) -> u64 {
-    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+/// Both endpoints are supplied because the publication commands read an
+/// injected clock rather than the ambient one, so the interval is what the
+/// clock reported and not what the process observed. Span fields and metrics
+/// report whole milliseconds, and a duration beyond `u64::MAX` milliseconds
+/// saturates rather than wrapping.
+pub(super) fn elapsed_millis(started_at: std::time::Instant, finished_at: std::time::Instant) -> u64 {
+    u64::try_from(finished_at.saturating_duration_since(started_at).as_millis()).unwrap_or(u64::MAX)
 }
 
 fn bounded_digest(value: &str) -> String {

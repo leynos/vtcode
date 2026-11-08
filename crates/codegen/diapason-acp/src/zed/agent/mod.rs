@@ -27,6 +27,7 @@ use super::types::SessionHandle;
 use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 
 mod optional_setup;
+mod publication_clock;
 mod redaction;
 mod session_workspace;
 use optional_setup::{
@@ -337,6 +338,8 @@ pub(crate) struct ZedAgent {
     compaction_recorder: Arc<dyn crate::metrics::CompactionRecorder>,
     /// Identity and clock source for published compaction activities.
     compaction_activity_source: Arc<dyn compaction::CompactionActivitySource>,
+    /// Clock source for the duration of an ACP publication send.
+    publication_clock: Arc<dyn publication_clock::PublicationClock>,
 }
 
 pub(crate) struct ZedAgentSetup<'a> {
@@ -419,6 +422,7 @@ impl ZedAgent {
             compaction_update_recorder: crate::metrics::compaction_update_recorder(),
             compaction_recorder: crate::metrics::compaction_recorder(),
             compaction_activity_source: compaction::compaction_activity_source(),
+            publication_clock: publication_clock::publication_clock(),
         })
     }
 
@@ -461,6 +465,17 @@ impl ZedAgent {
         source: Arc<dyn compaction::CompactionActivitySource>,
     ) {
         self.compaction_activity_source = source;
+    }
+
+    /// Install a controlled publication clock, for tests that assert the
+    /// elapsed time a send reports exactly.
+    ///
+    /// Production wiring installs the system clock; a command test substitutes
+    /// a stepped clock so the span's `elapsed_ms` is the injected interval
+    /// rather than however long the transport actually took.
+    #[cfg(test)]
+    pub(in crate::zed::agent) fn set_publication_clock(&mut self, clock: Arc<dyn publication_clock::PublicationClock>) {
+        self.publication_clock = clock;
     }
 
     /// Metrics collector that receives bounded ACP recovery counters.
