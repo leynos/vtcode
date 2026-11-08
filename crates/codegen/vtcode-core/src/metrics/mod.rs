@@ -130,7 +130,7 @@ impl ResponsesMetricsSource for ZeroResponsesMetricsSource {
 fn path_outcome_totals(metrics: &ResponsesStreamMetrics, path: &str) -> String {
     let mut totals = String::new();
     for metric in metrics.outcomes.iter().filter(|metric| metric.path == path) {
-        write!(totals, "{}={},", metric.outcome, metric.total).expect("writing to a String cannot fail");
+        let _ = write!(totals, "{}={},", metric.outcome, metric.total);
     }
     totals
 }
@@ -1756,9 +1756,11 @@ mod tests {
     /// record, so it must carry the same per-path series the structured exports
     /// report — and must not carry the provider identity.
     #[test]
+    #[serial_test::serial(responses_stream_counters)]
     fn emitted_responses_stream_record_carries_the_exported_series() {
         use vtcode_llm::providers::shared::{
-            ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, process_responses_telemetry,
+            ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, process_responses_recovery_telemetry,
+            process_responses_telemetry,
         };
 
         const PROVIDER_NAME: &str = "tracing-boundary-probe";
@@ -1770,8 +1772,16 @@ mod tests {
             provider: PROVIDER_NAME.to_string(),
             outcome,
         });
-        let expected_total = total_for(&collector.get_responses_stream_metrics(), path, outcome);
+        let recovery_telemetry = process_responses_recovery_telemetry();
+        recovery_telemetry.replay_prohibited();
+        recovery_telemetry.http_fallback();
+        let exported = collector.get_responses_stream_metrics();
+        let expected_total = total_for(&exported, path, outcome);
         assert!(expected_total > 0, "precondition: the recorded outcome is counted");
+        assert!(
+            exported.websocket_replay_prohibited_total > 0 && exported.websocket_http_fallback_total > 0,
+            "precondition: both recovery counters are recorded"
+        );
 
         let captured = CaptureWriter::default();
         let subscriber = tracing_subscriber::fmt()
@@ -1779,7 +1789,9 @@ mod tests {
             .with_ansi(false)
             .with_writer(captured.clone())
             .finish();
+        let recovery_before = collector.get_responses_stream_metrics();
         tracing::subscriber::with_default(subscriber, || collector.emit_responses_stream_metrics());
+        let recovery_after = collector.get_responses_stream_metrics();
 
         let output =
             String::from_utf8(captured.0.lock().expect("capture lock").clone()).expect("captured output is UTF-8");
@@ -1790,7 +1802,45 @@ mod tests {
             output.contains(&format!("completed={expected_total},")),
             "record must carry the counted total: {output}"
         );
+        for (name, before, after) in [
+            (
+                "websocket_replay_prohibited_total",
+                recovery_before.websocket_replay_prohibited_total,
+                recovery_after.websocket_replay_prohibited_total,
+            ),
+            (
+                "websocket_http_fallback_total",
+                recovery_before.websocket_http_fallback_total,
+                recovery_after.websocket_http_fallback_total,
+            ),
+        ] {
+            let rendered = rendered_counter(&output, name);
+            assert!(
+                (before..=after).contains(&rendered),
+                "record must carry the live {name}: rendered {rendered}, sampled {before}..={after}"
+            );
+        }
         assert!(!output.contains(PROVIDER_NAME), "provider identity leaked into the record: {output}");
+    }
+
+    /// Parse one rendered counter value out of a captured tracing record.
+    fn rendered_counter(record: &str, name: &str) -> u64 {
+        let field = format!("{name}=");
+        let start = record
+            .find(&field)
+            .unwrap_or_else(|| panic!("record is missing {name}: {record}"))
+            + field.len();
+        let digits: String = record[start..].chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().expect("a rendered counter must be a number")
+    }
+
+    /// Parse the sample value of one unlabelled Prometheus family.
+    fn prometheus_sample(export: &str, name: &str) -> u64 {
+        export
+            .lines()
+            .find_map(|line| line.strip_prefix(name)?.strip_prefix(' '))
+            .and_then(|value| value.trim().parse().ok())
+            .unwrap_or_else(|| panic!("export is missing the {name} sample: {export}"))
     }
 
     /// An outcome recorded through the provider sink must reach the JSON and
@@ -1799,6 +1849,7 @@ mod tests {
     /// The counters are process-wide, so the assertions compare against the
     /// value read immediately before recording rather than an absolute total.
     #[test]
+    #[serial_test::serial(responses_stream_counters)]
     fn recorded_responses_outcomes_reach_the_export_boundary() {
         use vtcode_llm::providers::shared::{
             ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, process_responses_telemetry,
@@ -1830,6 +1881,14 @@ mod tests {
         assert!(shared_after > shared_before, "shared outcome must be counted");
         assert!(legacy_after > legacy_before, "legacy outcome must be counted");
 
+        // Trigger both recovery paths through the production sink before the
+        // exports are rendered, so neither a zero-valued nor a stale sample can
+        // satisfy the assertions below.
+        let recovery_telemetry = vtcode_llm::providers::shared::process_responses_recovery_telemetry();
+        let recovery_before = vtcode_llm::providers::shared::responses_websocket_metrics();
+        recovery_telemetry.replay_prohibited();
+        recovery_telemetry.http_fallback();
+
         let prometheus = collector.export_prometheus();
         for (path, outcome, total) in [
             ("shared", shared_outcome.as_str(), shared_after),
@@ -1839,6 +1898,14 @@ mod tests {
                 format!("vtcode_responses_stream_outcomes_total{{path=\"{path}\",outcome=\"{outcome}\"}} {total}");
             assert!(prometheus.contains(&series), "missing exported series {series}");
         }
+        for (name, before) in [
+            ("vtcode_responses_websocket_replay_prohibited_total", recovery_before.replay_prohibited_total),
+            ("vtcode_responses_websocket_http_fallback_total", recovery_before.http_fallback_total),
+        ] {
+            let rendered = prometheus_sample(&prometheus, name);
+            assert!(rendered > before, "{name} must advance past {before}, rendered {rendered}");
+        }
+
         let websocket_before = vtcode_llm::providers::shared::responses_websocket_metrics();
         let json = collector.export_json().expect("metrics export must serialize");
         let websocket_after = vtcode_llm::providers::shared::responses_websocket_metrics();
@@ -1857,6 +1924,11 @@ mod tests {
                 .contains(&exported_replay),
             "JSON replay-prohibited total {exported_replay} is outside the live sample window"
         );
+        assert!(
+            exported_replay > recovery_before.replay_prohibited_total,
+            "JSON replay-prohibited total {exported_replay} did not advance past {}",
+            recovery_before.replay_prohibited_total
+        );
         let exported_fallback = responses
             .get("websocket_http_fallback_total")
             .and_then(serde_json::Value::as_u64)
@@ -1865,13 +1937,11 @@ mod tests {
             (websocket_before.http_fallback_total..=websocket_after.http_fallback_total).contains(&exported_fallback),
             "JSON HTTP fallback total {exported_fallback} is outside the live sample window"
         );
-        for (name, total) in [
-            ("vtcode_responses_websocket_replay_prohibited_total", exported_replay),
-            ("vtcode_responses_websocket_http_fallback_total", exported_fallback),
-        ] {
-            let series = format!("{name} {total}");
-            assert!(prometheus.contains(&series), "missing exported series {series}");
-        }
+        assert!(
+            exported_fallback > recovery_before.http_fallback_total,
+            "JSON HTTP fallback total {exported_fallback} did not advance past {}",
+            recovery_before.http_fallback_total
+        );
         let json = serde_json::to_string(&json).expect("exported JSON must render");
         for export in [&prometheus, &json] {
             assert!(!export.contains(PROVIDER_NAME), "provider identity leaked into the export");

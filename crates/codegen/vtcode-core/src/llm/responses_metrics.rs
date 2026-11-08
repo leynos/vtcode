@@ -74,15 +74,28 @@ mod tests {
     /// Recovery counters must be read from the provider counters, not zeroed.
     #[test]
     fn websocket_recovery_counters_map_from_the_provider() {
-        let before = vtcode_llm::providers::shared::responses_websocket_metrics();
+        use vtcode_llm::providers::shared::{process_responses_recovery_telemetry, responses_websocket_metrics};
+
+        let before = responses_websocket_metrics();
+        // Trigger both recovery paths through the production sink so the
+        // assertions below cannot pass on a pair of zero-valued counters.
+        let telemetry = process_responses_recovery_telemetry();
+        telemetry.replay_prohibited();
+        telemetry.http_fallback();
         let snapshot = ProcessResponsesMetricsSource::new().snapshot();
-        let after = vtcode_llm::providers::shared::responses_websocket_metrics();
+        let after = responses_websocket_metrics();
 
         // Concurrent streams may advance the counters between reads, so assert
         // monotonic containment rather than an exact equality.
-        assert!(snapshot.websocket_replay_prohibited_total >= before.replay_prohibited_total);
+        assert!(
+            snapshot.websocket_replay_prohibited_total > before.replay_prohibited_total,
+            "the replay-prohibited counter must advance after a recorded prohibition"
+        );
         assert!(snapshot.websocket_replay_prohibited_total <= after.replay_prohibited_total);
-        assert!(snapshot.websocket_http_fallback_total >= before.http_fallback_total);
+        assert!(
+            snapshot.websocket_http_fallback_total > before.http_fallback_total,
+            "the HTTP fallback counter must advance after a recorded fallback"
+        );
         assert!(snapshot.websocket_http_fallback_total <= after.http_fallback_total);
     }
 

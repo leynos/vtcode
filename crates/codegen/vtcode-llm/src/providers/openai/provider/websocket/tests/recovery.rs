@@ -1,6 +1,7 @@
 //! Recovery-path coverage for the Responses WebSocket transport.
 
 use crate::provider::LLMProvider;
+use crate::providers::shared::{ResponsesRecoveryObservation, process_responses_recovery_telemetry};
 use futures::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -9,6 +10,7 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
 use super::super::{PREVIOUS_RESPONSE_NOT_FOUND_CODE, websocket_error_prohibits_replay};
+use super::LocalRecoveryTelemetry;
 use super::support::{
     ScriptedReply, seed_continuation_cache, spawn_scripted_websocket_server, websocket_test_custom_provider,
     websocket_test_provider, websocket_test_request,
@@ -35,6 +37,44 @@ async fn websocket_partial_output_failure_never_reconnects_or_falls_back_to_http
     assert_eq!(recorded.lock().expect("recorded requests lock is not poisoned").len(), 2);
     assert!(provider.websocket_session.lock().await.is_none());
     assert!(provider.websocket_continuation_snapshot().is_none());
+    server.await.expect("fixture server completes");
+}
+
+/// Prove the WebSocket orchestration reports a replay prohibition through the
+/// injected sink rather than writing the process-wide counter itself.
+#[tokio::test]
+async fn websocket_partial_output_reports_replay_prohibition_through_the_injected_sink() {
+    use std::sync::atomic::Ordering;
+
+    let (base_url, recorded, server) = spawn_scripted_websocket_server(vec![vec![
+        ScriptedReply::Completed { response_id: "warmup", text: "" },
+        ScriptedReply::PartialThenClose,
+    ]])
+    .await
+    .expect("local server");
+    let provider = websocket_test_custom_provider(base_url);
+    let telemetry = LocalRecoveryTelemetry::default();
+
+    let error = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        provider.generate_via_responses_websocket(&websocket_test_request(), &telemetry),
+    )
+    .await
+    .expect("must not start HTTP fallback")
+    .expect_err("partial stream is incomplete");
+
+    assert!(websocket_error_prohibits_replay(&error));
+    assert_eq!(recorded.lock().expect("recorded requests lock is not poisoned").len(), 2);
+    assert_eq!(
+        telemetry.replay_prohibited.load(Ordering::Relaxed),
+        1,
+        "the injected sink must receive exactly one replay prohibition"
+    );
+    assert_eq!(
+        telemetry.http_fallback.load(Ordering::Relaxed),
+        0,
+        "a post-output failure must not report an HTTP fallback"
+    );
     server.await.expect("fixture server completes");
 }
 
@@ -76,8 +116,9 @@ async fn websocket_cancelled_pending_read_discards_socket_and_continuation() {
     let provider = websocket_test_custom_provider(base_url);
     let request = websocket_test_request();
     seed_continuation_cache(&provider, &request, "abandoned", false);
+    let process_telemetry = process_responses_recovery_telemetry();
     {
-        let pending = provider.generate_via_responses_websocket(&request);
+        let pending = provider.generate_via_responses_websocket(&request, &process_telemetry);
         tokio::pin!(pending);
         tokio::select! {
             result = &mut pending => panic!("pending read unexpectedly completed: {result:?}"),
@@ -86,11 +127,13 @@ async fn websocket_cancelled_pending_read_discards_socket_and_continuation() {
     }
     assert!(provider.websocket_session.lock().await.is_none());
     assert!(provider.websocket_continuation_snapshot().is_none());
-    let response =
-        tokio::time::timeout(std::time::Duration::from_secs(5), provider.generate_via_responses_websocket(&request))
-            .await
-            .expect("reconnect completes within the deadline")
-            .expect("reconnect returns a response");
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        provider.generate_via_responses_websocket(&request, &process_telemetry),
+    )
+    .await
+    .expect("reconnect completes within the deadline")
+    .expect("reconnect returns a response");
     assert_eq!(response.content.as_deref(), Some("fresh response"));
     server.await.expect("fixture server completes");
 }

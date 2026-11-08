@@ -17,8 +17,10 @@ mod tag_sanitizer;
 use crate::providers::split_reasoning_from_text;
 pub(crate) use responses_adapter::reasoning_part_text;
 pub use responses_observability::{
-    ResponsesObservation, ResponsesStreamMetric, ResponsesStreamOutcome, ResponsesStreamPath, ResponsesTelemetrySink,
-    ResponsesWebSocketMetric, process_responses_telemetry, responses_stream_metrics, responses_websocket_metrics,
+    ProcessResponsesRecoveryTelemetry, ResponsesObservation, ResponsesRecoveryObservation, ResponsesRecoveryTelemetry,
+    ResponsesStreamMetric, ResponsesStreamOutcome, ResponsesStreamPath, ResponsesTelemetrySink,
+    ResponsesWebSocketMetric, process_responses_recovery_telemetry, process_responses_telemetry,
+    responses_stream_metrics, responses_websocket_metrics,
 };
 pub(crate) use responses_observability::{
     ResponsesOutcomeRecorder, observe_responses_stream, record_responses_replay_prohibited,

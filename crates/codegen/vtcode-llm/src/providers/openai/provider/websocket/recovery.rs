@@ -1,32 +1,13 @@
 //! Recovery telemetry and replay prohibition for the Responses WebSocket transport.
 
 use crate::provider::LLMError;
-use crate::providers::shared::record_responses_replay_prohibited;
+use crate::providers::shared::{ResponsesRecoveryObservation, ResponsesRecoveryTelemetry, responses_error_category};
 
 use super::error::responses_output_started_error;
 
-/// Narrow telemetry port for WebSocket recovery decisions.
-///
-/// The transport reports through this boundary so the process-wide counters
-/// stay in [`responses_observability`](crate::providers::shared) and tests can
-/// record into a local sink instead of mutating global state.
-pub(super) trait WebSocketRecoveryTelemetry {
-    /// Record that a post-output failure prohibited automatic replay.
-    fn replay_prohibited(&self);
-}
-
-/// Production telemetry: the process-wide Responses recovery counters.
-pub(super) struct ProcessWebSocketRecoveryTelemetry;
-
-impl WebSocketRecoveryTelemetry for ProcessWebSocketRecoveryTelemetry {
-    fn replay_prohibited(&self) {
-        record_responses_replay_prohibited();
-    }
-}
-
 /// Record and convert a post-output failure that must not be replayed.
-pub(super) fn prohibit_websocket_replay(telemetry: &impl WebSocketRecoveryTelemetry, error: LLMError) -> LLMError {
-    telemetry.replay_prohibited();
+pub(super) fn prohibit_websocket_replay(telemetry: &impl ResponsesRecoveryTelemetry, error: LLMError) -> LLMError {
+    telemetry.record(ResponsesRecoveryObservation::ReplayProhibited);
     tracing::warn!(
         target = "vtcode::llm::responses::websocket",
         outcome = "replay_prohibited",
@@ -34,4 +15,24 @@ pub(super) fn prohibit_websocket_replay(telemetry: &impl WebSocketRecoveryTeleme
         "Responses WebSocket failed after output began; automatic replay is disabled"
     );
     responses_output_started_error(error)
+}
+
+/// Record and log a WebSocket exchange that retries over HTTP.
+///
+/// The record carries the model, a fixed outcome label and a closed error
+/// category. The provider error's message is deliberately omitted: it can hold
+/// arbitrary response text, and fallback is normal enough that it must not leak
+/// payload detail into logs.
+pub(crate) fn record_websocket_http_fallback(
+    telemetry: &impl ResponsesRecoveryTelemetry,
+    model: &str,
+    error: &LLMError,
+) {
+    telemetry.record(ResponsesRecoveryObservation::HttpFallback);
+    tracing::debug!(
+        model = %model,
+        outcome = "responses_websocket_http_fallback",
+        error_category = responses_error_category(error),
+        "Responses WebSocket exchange failed; falling back to HTTP"
+    );
 }

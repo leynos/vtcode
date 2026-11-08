@@ -20,9 +20,31 @@ api_format = "openai-responses"
 model = "my-model"
 ```
 
-```text
-MY_RESPONSES_GATEWAY_API_KEY=... vtcode
+The environment variable named by `api_key_env` must be present in the
+environment that the ACP client passes to the VT Code process. An editor or
+agent client spawns the ACP server itself, so a `VAR=value` prefix typed before
+an interactive `vtcode` run never reaches it, and the `api_key_env` lookup
+fails.
+
+Supply the variable through the client's agent-server entry instead. In Zed's
+`settings.json`:
+
+```json
+{
+    "agent_servers": {
+        "vtcode": {
+            "command": "/absolute/path/to/vtcode",
+            "args": ["acp"],
+            "env": { "MY_RESPONSES_GATEWAY_API_KEY": "..." }
+        }
+    }
+}
 ```
+
+See the [Zed ACP guide](../guides/zed-acp.md) for the full client setup. An
+interactive terminal run may still use a shell prefix such as
+`MY_RESPONSES_GATEWAY_API_KEY=... vtcode`, because the shell starts that
+process directly.
 
 Select the provider and model in the ACP client, then start a session as usual.
 The Responses format does not by itself enable WebSocket transport; the

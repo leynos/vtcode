@@ -383,6 +383,56 @@ pub(crate) fn record_responses_websocket_fallback() {
     websocket_counters().http_fallback_total.fetch_add(1, Ordering::Relaxed);
 }
 
+/// Stable outcome of a Responses WebSocket recovery decision.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResponsesRecoveryObservation {
+    /// A post-output failure prohibited automatic replay.
+    ReplayProhibited,
+    /// A recoverable WebSocket failure fell back to the HTTP transport.
+    HttpFallback,
+}
+
+/// Narrow sink for WebSocket recovery observations.
+///
+/// The transport reports through this boundary so the process-wide counters
+/// stay in this module and tests can record into a local sink instead of
+/// mutating global state.
+pub trait ResponsesRecoveryTelemetry {
+    /// Record one recovery observation.
+    fn record(&self, observation: ResponsesRecoveryObservation);
+}
+
+/// Production sink: the process-wide WebSocket recovery counters.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ProcessResponsesRecoveryTelemetry;
+
+impl ProcessResponsesRecoveryTelemetry {
+    /// Record one replay prohibition in the process-wide counters.
+    pub fn replay_prohibited(&self) {
+        record_responses_replay_prohibited();
+    }
+
+    /// Record one HTTP fallback in the process-wide counters.
+    pub fn http_fallback(&self) {
+        record_responses_websocket_fallback();
+    }
+}
+
+impl ResponsesRecoveryTelemetry for ProcessResponsesRecoveryTelemetry {
+    fn record(&self, observation: ResponsesRecoveryObservation) {
+        match observation {
+            ResponsesRecoveryObservation::ReplayProhibited => self.replay_prohibited(),
+            ResponsesRecoveryObservation::HttpFallback => self.http_fallback(),
+        }
+    }
+}
+
+/// Return the sink that writes the process-wide recovery counters.
+#[must_use]
+pub fn process_responses_recovery_telemetry() -> ProcessResponsesRecoveryTelemetry {
+    ProcessResponsesRecoveryTelemetry
+}
+
 /// Stable category label for a provider error.
 pub(crate) fn responses_error_category(error: &LLMError) -> &'static str {
     ErrorCategory::from(error).as_str()

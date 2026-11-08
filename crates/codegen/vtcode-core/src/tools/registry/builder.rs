@@ -344,15 +344,18 @@ tool_output_threshold = "oops"
     /// a terminal outcome recorded through the production sink; the
     /// admission-only constructor would have exported zeros forever.
     #[tokio::test]
+    #[serial_test::serial(responses_stream_counters)]
     async fn registry_metrics_sample_the_live_responses_stream_counters() {
         use vtcode_llm::providers::shared::{
-            ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, process_responses_telemetry,
-            responses_stream_metrics, responses_websocket_metrics,
+            ResponsesObservation, ResponsesStreamOutcome, ResponsesStreamPath, process_responses_recovery_telemetry,
+            process_responses_telemetry, responses_stream_metrics, responses_websocket_metrics,
         };
 
         let temp = tempdir().expect("workspace");
         let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
         let collector = registry.metrics_collector();
+        let recovery_before = responses_websocket_metrics();
+        let recovery_telemetry = process_responses_recovery_telemetry();
 
         let path = ResponsesStreamPath::Legacy;
         let outcome = ResponsesStreamOutcome::TransportFailure;
@@ -376,8 +379,23 @@ tool_output_threshold = "oops"
             .map_or(0, |metric| metric.total);
         assert_eq!(after, provider_total, "registry sample must equal the live provider counter");
 
+        // Trigger both recovery paths through the production sink, so the
+        // registry assertions cannot pass on counters that are permanently
+        // zero. Reading the live sample immediately afterwards keeps the
+        // comparison robust against other tests in the same process.
+        recovery_telemetry.replay_prohibited();
+        recovery_telemetry.http_fallback();
+
         let exported = collector.get_responses_stream_metrics();
         let websocket = responses_websocket_metrics();
+        assert!(
+            exported.websocket_replay_prohibited_total > recovery_before.replay_prohibited_total,
+            "the registry collector must observe the recorded replay prohibition"
+        );
+        assert!(
+            exported.websocket_http_fallback_total > recovery_before.http_fallback_total,
+            "the registry collector must observe the recorded HTTP fallback"
+        );
         assert_eq!(
             exported.websocket_replay_prohibited_total, websocket.replay_prohibited_total,
             "registry must sample the live replay-prohibited counter"

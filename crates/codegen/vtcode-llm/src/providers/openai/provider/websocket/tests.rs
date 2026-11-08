@@ -6,17 +6,25 @@
 
 use super::{
     OPENAI_BETA_RESPONSES_WEBSOCKET_V2, OUTPUT_STARTED_ERROR_CODE, OpenAIResponsesWebSocketContinuationCache,
-    PREVIOUS_RESPONSE_NOT_FOUND_CODE, ProcessWebSocketRecoveryTelemetry, WEBSOCKET_ACTIVE_RESPONSE_ERROR_PREFIX,
-    WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE, WebSocketRecoveryTelemetry, apply_generate_mode, input_is_incremental,
-    is_websocket_active_response_error, is_websocket_connection_limit_error,
+    PREVIOUS_RESPONSE_NOT_FOUND_CODE, WEBSOCKET_ACTIVE_RESPONSE_ERROR_PREFIX, WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE,
+    apply_generate_mode, input_is_incremental, is_websocket_active_response_error, is_websocket_connection_limit_error,
     is_websocket_previous_response_not_found_error, prepare_websocket_event, prohibit_websocket_replay,
-    responses_output_started_error, responses_websocket_url, websocket_error_prohibits_replay,
+    record_websocket_http_fallback, responses_output_started_error, responses_websocket_url,
+    websocket_error_prohibits_replay,
 };
 use crate::provider::LLMError;
-use crate::providers::shared::responses_websocket_metrics;
+use crate::providers::shared::{
+    ResponsesRecoveryObservation, ResponsesRecoveryTelemetry, process_responses_recovery_telemetry,
+    responses_websocket_metrics,
+};
 use proptest::prelude::*;
 use serde_json::{Map, Value, json};
+use std::fmt::Write as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use tracing::field::{Field, Visit};
+use tracing::span::{Attributes, Id, Record};
+use tracing::{Event, Metadata, Subscriber};
 
 mod recovery;
 mod scripted;
@@ -38,19 +46,27 @@ fn output_started_conversion_preserves_the_output_started_code() {
     }
 }
 
-/// Local telemetry sink that records replay prohibitions without global state.
+/// Local telemetry sink that records recovery observations without global state.
 #[derive(Default)]
 struct LocalRecoveryTelemetry {
     replay_prohibited: AtomicUsize,
+    http_fallback: AtomicUsize,
 }
 
-impl WebSocketRecoveryTelemetry for LocalRecoveryTelemetry {
-    fn replay_prohibited(&self) {
-        self.replay_prohibited.fetch_add(1, Ordering::Relaxed);
+impl ResponsesRecoveryTelemetry for LocalRecoveryTelemetry {
+    fn record(&self, observation: ResponsesRecoveryObservation) {
+        match observation {
+            ResponsesRecoveryObservation::ReplayProhibited => {
+                self.replay_prohibited.fetch_add(1, Ordering::Relaxed);
+            }
+            ResponsesRecoveryObservation::HttpFallback => {
+                self.http_fallback.fetch_add(1, Ordering::Relaxed);
+            }
+        }
     }
 }
 
-/// Prove the orchestration wrapper records once through the injected port.
+/// Prove the replay wrapper records once through the injected port.
 #[test]
 fn replay_prohibition_records_through_the_injected_sink() {
     let telemetry = LocalRecoveryTelemetry::default();
@@ -67,19 +83,102 @@ fn replay_prohibition_records_through_the_injected_sink() {
         1,
         "the wrapper must record exactly one replay prohibition"
     );
+    assert_eq!(telemetry.http_fallback.load(Ordering::Relaxed), 0, "a replay prohibition is not an HTTP fallback");
     assert!(websocket_error_prohibits_replay(&converted));
 }
 
-/// Prove the production telemetry implementation reaches the process counters.
+/// Captures rendered event fields so a test can assert exactly what a
+/// production `tracing::debug!` record contains.
+struct CapturedEvents {
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl Subscriber for CapturedEvents {
+    fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, _attributes: &Attributes<'_>) -> Id {
+        Id::from_u64(1)
+    }
+
+    fn record(&self, _span: &Id, _values: &Record<'_>) {}
+
+    fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+
+    fn event(&self, event: &Event<'_>) {
+        let mut fields = String::new();
+        event.record(&mut CapturedFields(&mut fields));
+        self.events.lock().expect("captured event lock").push(fields);
+    }
+
+    fn enter(&self, _span: &Id) {}
+
+    fn exit(&self, _span: &Id) {}
+}
+
+struct CapturedFields<'a>(&'a mut String);
+
+impl Visit for CapturedFields<'_> {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        writeln!(self.0, "{}={value:?}", field.name()).expect("writing to a String cannot fail");
+    }
+}
+
+/// Prove the fallback path records through the injected sink and logs a stable
+/// category without the raw provider diagnostic.
 #[test]
-fn process_recovery_telemetry_increments_the_replay_counter() {
-    let before = responses_websocket_metrics().replay_prohibited_total;
-    ProcessWebSocketRecoveryTelemetry.replay_prohibited();
-    let after = responses_websocket_metrics().replay_prohibited_total;
+fn http_fallback_records_through_the_injected_sink_without_provider_text() {
+    const PROVIDER_MARKER: &str = "PROVIDER_BODY_MARKER_9f21c7";
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = CapturedEvents { events: Arc::clone(&events) };
+    let telemetry = LocalRecoveryTelemetry::default();
+    let error = LLMError::Provider {
+        message: format!("upstream said {PROVIDER_MARKER}"),
+        metadata: None,
+    };
+
+    tracing::subscriber::with_default(subscriber, || {
+        record_websocket_http_fallback(&telemetry, "gpt-5", &error);
+    });
+
+    assert_eq!(
+        telemetry.http_fallback.load(Ordering::Relaxed),
+        1,
+        "the fallback path must record exactly one HTTP fallback"
+    );
+    assert_eq!(
+        telemetry.replay_prohibited.load(Ordering::Relaxed),
+        0,
+        "an HTTP fallback is not a replay prohibition"
+    );
+    let events = events.lock().expect("captured event lock");
+    let logs = events.join("\n");
+    assert!(logs.contains("responses_websocket_http_fallback"), "{logs}");
+    assert!(logs.contains("error_category="), "{logs}");
+    assert!(logs.contains("model=gpt-5"), "{logs}");
+    assert!(!logs.contains(PROVIDER_MARKER), "provider detail leaked into logs: {logs}");
+}
+
+/// Prove the production sink reaches both process counters.
+#[test]
+fn process_recovery_telemetry_increments_both_recovery_counters() {
+    let before = responses_websocket_metrics();
+    let telemetry = process_responses_recovery_telemetry();
+    telemetry.record(ResponsesRecoveryObservation::ReplayProhibited);
+    telemetry.record(ResponsesRecoveryObservation::HttpFallback);
+    let after = responses_websocket_metrics();
 
     // Nextest runs each test in its own process, but the counter is still
     // process-wide, so a lower bound is the strongest portable assertion.
-    assert!(after > before, "replay prohibition must increment the replay_prohibited_total counter");
+    assert!(
+        after.replay_prohibited_total > before.replay_prohibited_total,
+        "replay prohibition must increment the replay_prohibited_total counter"
+    );
+    assert!(
+        after.http_fallback_total > before.http_fallback_total,
+        "HTTP fallback must increment the http_fallback_total counter"
+    );
 }
 
 #[test]

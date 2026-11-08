@@ -25,8 +25,11 @@ use error::{
     is_websocket_active_response_error, is_websocket_auth_retryable, is_websocket_previous_response_not_found_error,
     is_websocket_reconnect_error,
 };
-use recovery::{ProcessWebSocketRecoveryTelemetry, prohibit_websocket_replay};
+use recovery::prohibit_websocket_replay;
+pub(super) use recovery::record_websocket_http_fallback;
 use transport::{responses_websocket_url, send_websocket_event};
+
+use crate::providers::shared::ResponsesRecoveryTelemetry;
 
 #[cfg(test)]
 use continuation::{apply_generate_mode, input_is_incremental};
@@ -35,13 +38,20 @@ use error::{
     OUTPUT_STARTED_ERROR_CODE, PREVIOUS_RESPONSE_NOT_FOUND_CODE, WEBSOCKET_ACTIVE_RESPONSE_ERROR_PREFIX,
     WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE, is_websocket_connection_limit_error, responses_output_started_error,
 };
-#[cfg(test)]
-use recovery::WebSocketRecoveryTelemetry;
 
 impl OpenAIProvider {
-    pub(super) async fn generate_via_responses_websocket(&self, request: &LLMRequest) -> Result<LLMResponse, LLMError> {
+    /// Run one turn over the Responses WebSocket transport.
+    ///
+    /// `telemetry` is the narrow recovery port: the production caller passes
+    /// the process-wide sink, while tests pass a local recording sink. Every
+    /// replay decision and HTTP fallback reports through it, so the transport
+    /// never writes global counters itself.
+    pub(super) async fn generate_via_responses_websocket(
+        &self,
+        request: &LLMRequest,
+        telemetry: &impl ResponsesRecoveryTelemetry,
+    ) -> Result<LLMResponse, LLMError> {
         let payload = self.convert_to_openai_responses_format(request)?;
-        let telemetry = ProcessWebSocketRecoveryTelemetry;
         let mut retried_active_response = false;
         let mut retried_reconnect = false;
         let mut retried_new_chain = false;
@@ -67,7 +77,7 @@ impl OpenAIProvider {
                         *session_guard = None;
                         self.clear_nonpersistent_websocket_continuation();
                         if session.output_started {
-                            return Err(prohibit_websocket_replay(&telemetry, err));
+                            return Err(prohibit_websocket_replay(telemetry, err));
                         }
                         if !retried_reconnect && is_websocket_reconnect_error(&err) {
                             retried_reconnect = true;
@@ -85,7 +95,7 @@ impl OpenAIProvider {
                 Ok(response_json) => {
                     let parsed = self
                         .parse_openai_responses_response(response_json.clone(), request.model.clone())
-                        .map_err(|err| prohibit_websocket_replay(&telemetry, err))?;
+                        .map_err(|err| prohibit_websocket_replay(telemetry, err))?;
                     self.update_websocket_continuation(&response_json, request, &prepared, &self.model);
                     *session_guard = Some(session);
                     continuation_lease.completed = true;
@@ -95,7 +105,7 @@ impl OpenAIProvider {
                     *session_guard = None;
                     self.clear_nonpersistent_websocket_continuation();
                     if session.output_started {
-                        return Err(prohibit_websocket_replay(&telemetry, err));
+                        return Err(prohibit_websocket_replay(telemetry, err));
                     }
                     if !retried_active_response && is_websocket_active_response_error(&err) {
                         tracing::warn!(
