@@ -75,7 +75,7 @@ pub fn unescape_whitespace(token: &str) -> String {
             && next.is_ascii_whitespace()
         {
             result.push(*next);
-            chars.next();
+            let _ = chars.next();
             continue;
         }
         result.push(ch);

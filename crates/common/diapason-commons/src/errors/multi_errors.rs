@@ -44,6 +44,7 @@ impl<E> MultiErrors<E> {
     }
 
     /// Extend the collection with multiple errors.
+    #[cfg(test)]
     pub(super) fn extend(&mut self, iter: impl IntoIterator<Item = E>) {
         self.errors.extend(iter);
     }
@@ -62,6 +63,7 @@ impl<E> MultiErrors<E> {
 
     /// Consume the collector and return the underlying error vector.
     #[must_use]
+    #[cfg(test)]
     pub(super) fn into_inner(self) -> Vec<E> {
         self.errors
     }

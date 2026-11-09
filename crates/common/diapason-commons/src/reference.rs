@@ -1,3 +1,5 @@
+//! In-memory implementations of the crate's path, telemetry and error ports.
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 

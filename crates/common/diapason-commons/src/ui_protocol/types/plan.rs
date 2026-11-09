@@ -11,31 +11,47 @@ use crate::utils::saturating_float_to_u8;
 /// A step in an implementation plan.
 #[derive(Clone, Debug)]
 pub struct PlanStep {
+    /// One-based step number.
     pub number: usize,
+    /// Short description of the step.
     pub description: String,
+    /// Optional expanded details.
     pub details: Option<String>,
+    /// Files the step touches.
     pub files: Vec<String>,
+    /// Whether the step has been completed.
     pub completed: bool,
 }
 
 /// A phase in an implementation plan (groups related steps).
 #[derive(Clone, Debug)]
 pub struct PlanPhase {
+    /// Phase name.
     pub name: String,
+    /// Steps belonging to the phase.
     pub steps: Vec<PlanStep>,
+    /// Whether every step in the phase is complete.
     pub completed: bool,
 }
 
 /// Structured plan content for display in the Implementation Blueprint panel.
 #[derive(Clone, Debug)]
 pub struct PlanContent {
+    /// Plan title.
     pub title: String,
+    /// Short summary of the plan.
     pub summary: String,
+    /// Path of the plan file, when it came from disk.
     pub file_path: Option<String>,
+    /// Phases making up the plan.
     pub phases: Vec<PlanPhase>,
+    /// Questions still open for the user.
     pub open_questions: Vec<String>,
+    /// Original plan source text.
     pub raw_content: String,
+    /// Total number of steps in the plan.
     pub total_steps: usize,
+    /// Number of steps already completed.
     pub completed_steps: usize,
 }
 

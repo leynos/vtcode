@@ -9,14 +9,12 @@
 //! and core-layer protocols diverge.
 
 mod activity;
-mod markdown;
 mod selection;
 mod style;
 mod tool_summary;
 mod types;
 
 pub use activity::*;
-pub use markdown::*;
 pub use selection::*;
 pub use style::*;
 pub use tool_summary::*;

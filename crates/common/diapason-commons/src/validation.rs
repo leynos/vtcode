@@ -109,10 +109,12 @@ pub fn validate_identifier(id: &str, field_name: &str) -> Result<()> {
 pub struct NonEmptyString(String);
 
 impl NonEmptyString {
+    /// Return the validated string.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Consume the wrapper and return the inner string.
     pub fn into_inner(self) -> String {
         self.0
     }

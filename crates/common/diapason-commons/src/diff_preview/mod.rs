@@ -8,23 +8,35 @@ use crate::diff_paths::{
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 /// Counts additions and deletions in a structured diff.
 pub struct DiffChangeCounts {
+    /// Number of added lines.
     pub additions: usize,
+    /// Number of deleted lines.
     pub deletions: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// How a line in a rendered diff preview is displayed.
 pub enum DiffDisplayKind {
+    /// Non-diff metadata line.
     Metadata,
+    /// Hunk header line.
     HunkHeader,
+    /// Unchanged context line.
     Context,
+    /// Added line.
     Addition,
+    /// Deleted line.
     Deletion,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A single rendered line in a diff preview.
 pub struct DiffDisplayLine {
+    /// Display kind of the line.
     pub kind: DiffDisplayKind,
+    /// Source line number, when the line has one.
     pub line_number: Option<u32>,
+    /// Line text without its diff marker.
     pub text: String,
 }
 
@@ -86,6 +98,7 @@ pub fn count_diff_changes(hunks: &[DiffHunk]) -> DiffChangeCounts {
     counts
 }
 
+/// Render structured hunks as display lines.
 pub fn display_lines_from_hunks(hunks: &[DiffHunk]) -> Vec<DiffDisplayLine> {
     // Each hunk contributes 1 header + its lines; pre-size to avoid reallocations
     // on large diffs (the count is exact, so no over-allocation).
@@ -107,6 +120,7 @@ pub fn display_lines_from_hunks(hunks: &[DiffHunk]) -> Vec<DiffDisplayLine> {
     lines
 }
 
+/// Render a unified-diff string as display lines.
 pub fn display_lines_from_unified_diff(diff_content: &str) -> Vec<DiffDisplayLine> {
     // Upper-bound the capacity to the line count — the double scan is cheap
     // (L1-bound byte search) and avoids 10+ reallocations on large diffs.
@@ -189,6 +203,7 @@ pub fn display_lines_from_unified_diff(diff_content: &str) -> Vec<DiffDisplayLin
     lines
 }
 
+/// Return the column width needed for line numbers.
 pub fn diff_display_line_number_width(lines: &[DiffDisplayLine]) -> usize {
     let max_digits = lines
         .iter()
@@ -208,6 +223,7 @@ fn digit_count(mut value: u32) -> usize {
     digits
 }
 
+/// Render a unified diff with line numbers prefixed.
 pub fn format_numbered_unified_diff(diff_content: &str) -> Vec<String> {
     let display_lines = display_lines_from_unified_diff(diff_content);
     let width = diff_display_line_number_width(&display_lines);

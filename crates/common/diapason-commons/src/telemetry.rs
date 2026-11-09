@@ -1,3 +1,5 @@
+//! Telemetry sink abstraction shared by the runtime and its adapters.
+
 use anyhow::Result;
 
 /// A lightweight sink used to record telemetry events emitted by extracted

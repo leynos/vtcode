@@ -9,9 +9,13 @@ use super::chunks::{Chunk, compute_diff_chunks};
 /// Options for diff generation.
 #[derive(Debug, Clone)]
 pub struct DiffOptions<'a> {
+    /// Number of context lines shown around each change.
     pub context_lines: usize,
+    /// Label for the old side of the diff header.
     pub old_label: Option<&'a str>,
+    /// Label for the new side of the diff header.
     pub new_label: Option<&'a str>,
+    /// Whether to warn about a missing trailing newline.
     pub missing_newline_hint: bool,
 }
 
@@ -29,18 +33,26 @@ impl Default for DiffOptions<'_> {
 /// A diff rendered with both structured hunks and formatted text.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiffBundle {
+    /// Structured hunks making up the diff.
     pub hunks: Vec<DiffHunk>,
+    /// Diff rendered as unified text.
     pub formatted: String,
+    /// Whether the diff has no changes.
     pub is_empty: bool,
 }
 
 /// A diff hunk with metadata for old/new ranges.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiffHunk {
+    /// First line number in the old file.
     pub old_start: usize,
+    /// Number of lines taken from the old file.
     pub old_lines: usize,
+    /// First line number in the new file.
     pub new_start: usize,
+    /// Number of lines taken from the new file.
     pub new_lines: usize,
+    /// Annotated lines in this hunk.
     pub lines: Vec<DiffLine>,
 }
 
@@ -48,17 +60,24 @@ pub struct DiffHunk {
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DiffLineKind {
+    /// Unchanged context line.
     Context,
+    /// Added line.
     Addition,
+    /// Deleted line.
     Deletion,
 }
 
 /// Metadata for a single line inside a diff hunk.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiffLine {
+    /// Kind of change this line represents.
     pub kind: DiffLineKind,
+    /// Line number in the old file, when the line exists there.
     pub old_line: Option<u32>,
+    /// Line number in the new file, when the line exists there.
     pub new_line: Option<u32>,
+    /// Line content, including its terminator.
     pub text: String,
 }
 

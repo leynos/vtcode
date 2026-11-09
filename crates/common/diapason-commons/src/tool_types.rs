@@ -73,18 +73,25 @@ pub const NETWORK_ERROR_PATTERNS: &[&str] = &["connection", "timeout", "network"
 
 /// Default capacity hints for common collections
 pub const DEFAULT_VEC_CAPACITY: usize = 32;
+/// Default capacity hint for hash maps.
 pub const DEFAULT_HASHMAP_CAPACITY: usize = 16;
+/// Default capacity hint for strings.
 pub const DEFAULT_STRING_CAPACITY: usize = 256;
 
 /// Context optimization constants following AGENTS.md guidelines
 pub const MAX_SEARCH_RESULTS: usize = 5;
+/// Maximum number of items summarized in a list.
 pub const MAX_LIST_ITEMS_SUMMARY: usize = 5;
+/// Prefix of the overflow indicator.
 pub const OVERFLOW_INDICATOR_PREFIX: &str = "[+]";
+/// Suffix of the overflow indicator.
 pub const OVERFLOW_INDICATOR_SUFFIX: &str = "more items]";
 
 /// Common tool operation limits
 pub const MAX_FILE_SIZE_FOR_PROCESSING: usize = 100 * 1024 * 1024; // 100MB
+/// Maximum number of context lines included in a tool result.
 pub const MAX_CONTEXT_LINES: usize = 20;
+/// Maximum number of output tokens included in a tool result.
 pub const MAX_OUTPUT_TOKENS: usize = 4000;
 
 /// Reusable empty JSON object schema `{"type": "object"}` for tool parameter definitions.
@@ -272,6 +279,7 @@ pub struct EnhancedToolResult {
 }
 
 impl EnhancedToolResult {
+    /// Wrap a freshly produced tool value.
     pub fn new(value: Value, metadata: ResultMetadata, tool_name: impl Into<CompactStr>) -> Self {
         Self {
             value,
@@ -285,6 +293,7 @@ impl EnhancedToolResult {
         }
     }
 
+    /// Wrap a tool value served from the cache.
     pub fn from_cache(value: Value, metadata: ResultMetadata, tool_name: impl Into<CompactStr>) -> Self {
         Self {
             value,

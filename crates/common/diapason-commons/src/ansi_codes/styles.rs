@@ -5,89 +5,158 @@
 pub const RESET: &str = "\x1b[0m";
 
 // === Text Styles ===
+/// Bold text.
 pub const BOLD: &str = "\x1b[1m";
+/// Dim (faint) text.
 pub const DIM: &str = "\x1b[2m";
+/// Italic text.
 pub const ITALIC: &str = "\x1b[3m";
+/// Underlined text.
 pub const UNDERLINE: &str = "\x1b[4m";
+/// Blinking text.
 pub const BLINK: &str = "\x1b[5m";
+/// Reverse video, swapping foreground and background.
 pub const REVERSE: &str = "\x1b[7m";
+/// Hidden (concealed) text.
 pub const HIDDEN: &str = "\x1b[8m";
+/// Struck-through text.
 pub const STRIKETHROUGH: &str = "\x1b[9m";
 
+/// Reset the bold and dim attributes.
 pub const RESET_BOLD_DIM: &str = "\x1b[22m";
+/// Reset the italic attribute.
 pub const RESET_ITALIC: &str = "\x1b[23m";
+/// Reset the underline attribute.
 pub const RESET_UNDERLINE: &str = "\x1b[24m";
+/// Reset the blink attribute.
 pub const RESET_BLINK: &str = "\x1b[25m";
+/// Reset the reverse-video attribute.
 pub const RESET_REVERSE: &str = "\x1b[27m";
+/// Reset the hidden attribute.
 pub const RESET_HIDDEN: &str = "\x1b[28m";
+/// Reset the strikethrough attribute.
 pub const RESET_STRIKETHROUGH: &str = "\x1b[29m";
 
 // === Foreground Colours (30-37) ===
+/// Set the foreground colour to black.
 pub const FG_BLACK: &str = "\x1b[30m";
+/// Set the foreground colour to red.
 pub const FG_RED: &str = "\x1b[31m";
+/// Set the foreground colour to green.
 pub const FG_GREEN: &str = "\x1b[32m";
+/// Set the foreground colour to yellow.
 pub const FG_YELLOW: &str = "\x1b[33m";
+/// Set the foreground colour to blue.
 pub const FG_BLUE: &str = "\x1b[34m";
+/// Set the foreground colour to magenta.
 pub const FG_MAGENTA: &str = "\x1b[35m";
+/// Set the foreground colour to cyan.
 pub const FG_CYAN: &str = "\x1b[36m";
+/// Set the foreground colour to white.
 pub const FG_WHITE: &str = "\x1b[37m";
+/// Reset the foreground colour to the terminal default.
 pub const FG_DEFAULT: &str = "\x1b[39m";
 
 // === Background Colours (40-47) ===
+/// Set the background colour to black.
 pub const BG_BLACK: &str = "\x1b[40m";
+/// Set the background colour to red.
 pub const BG_RED: &str = "\x1b[41m";
+/// Set the background colour to green.
 pub const BG_GREEN: &str = "\x1b[42m";
+/// Set the background colour to yellow.
 pub const BG_YELLOW: &str = "\x1b[43m";
+/// Set the background colour to blue.
 pub const BG_BLUE: &str = "\x1b[44m";
+/// Set the background colour to magenta.
 pub const BG_MAGENTA: &str = "\x1b[45m";
+/// Set the background colour to cyan.
 pub const BG_CYAN: &str = "\x1b[46m";
+/// Set the background colour to white.
 pub const BG_WHITE: &str = "\x1b[47m";
+/// Reset the background colour to the terminal default.
 pub const BG_DEFAULT: &str = "\x1b[49m";
 
 // === Bright Foreground Colours (90-97) ===
+/// Set the foreground colour to bright black.
 pub const FG_BRIGHT_BLACK: &str = "\x1b[90m";
+/// Set the foreground colour to bright red.
 pub const FG_BRIGHT_RED: &str = "\x1b[91m";
+/// Set the foreground colour to bright green.
 pub const FG_BRIGHT_GREEN: &str = "\x1b[92m";
+/// Set the foreground colour to bright yellow.
 pub const FG_BRIGHT_YELLOW: &str = "\x1b[93m";
+/// Set the foreground colour to bright blue.
 pub const FG_BRIGHT_BLUE: &str = "\x1b[94m";
+/// Set the foreground colour to bright magenta.
 pub const FG_BRIGHT_MAGENTA: &str = "\x1b[95m";
+/// Set the foreground colour to bright cyan.
 pub const FG_BRIGHT_CYAN: &str = "\x1b[96m";
+/// Set the foreground colour to bright white.
 pub const FG_BRIGHT_WHITE: &str = "\x1b[97m";
 
 // === Bright Background Colours (100-107) ===
+/// Set the background colour to bright black.
 pub const BG_BRIGHT_BLACK: &str = "\x1b[100m";
+/// Set the background colour to bright red.
 pub const BG_BRIGHT_RED: &str = "\x1b[101m";
+/// Set the background colour to bright green.
 pub const BG_BRIGHT_GREEN: &str = "\x1b[102m";
+/// Set the background colour to bright yellow.
 pub const BG_BRIGHT_YELLOW: &str = "\x1b[103m";
+/// Set the background colour to bright blue.
 pub const BG_BRIGHT_BLUE: &str = "\x1b[104m";
+/// Set the background colour to bright magenta.
 pub const BG_BRIGHT_MAGENTA: &str = "\x1b[105m";
+/// Set the background colour to bright cyan.
 pub const BG_BRIGHT_CYAN: &str = "\x1b[106m";
+/// Set the background colour to bright white.
 pub const BG_BRIGHT_WHITE: &str = "\x1b[107m";
 
 // === Cursor Control ===
+/// Move the cursor to the home position.
 pub const CURSOR_HOME: &str = "\x1b[H";
+/// Hide the cursor.
 pub const CURSOR_HIDE: &str = "\x1b[?25l";
+/// Show the cursor.
 pub const CURSOR_SHOW: &str = "\x1b[?25h";
+/// Save the cursor position using the DEC sequence.
 pub const CURSOR_SAVE_DEC: &str = "\x1b7";
+/// Restore the cursor position using the DEC sequence.
 pub const CURSOR_RESTORE_DEC: &str = "\x1b8";
+/// Save the cursor position using the SCO sequence.
 pub const CURSOR_SAVE_SCO: &str = "\x1b[s";
+/// Restore the cursor position using the SCO sequence.
 pub const CURSOR_RESTORE_SCO: &str = "\x1b[u";
 
 // === Erase Functions ===
+/// Erase the entire screen.
 pub const CLEAR_SCREEN: &str = "\x1b[2J";
+/// Erase from the cursor to the end of the screen.
 pub const CLEAR_TO_END_OF_SCREEN: &str = "\x1b[0J";
+/// Erase from the start of the screen to the cursor.
 pub const CLEAR_TO_START_OF_SCREEN: &str = "\x1b[1J";
+/// Erase saved lines from the scrollback buffer.
 pub const CLEAR_SAVED_LINES: &str = "\x1b[3J";
+/// Erase the entire current line.
 pub const CLEAR_LINE: &str = "\x1b[2K";
+/// Erase from the cursor to the end of the line.
 pub const CLEAR_TO_END_OF_LINE: &str = "\x1b[0K";
+/// Erase from the start of the line to the cursor.
 pub const CLEAR_TO_START_OF_LINE: &str = "\x1b[1K";
 
 // === Screen Modes ===
+/// Switch to the alternate screen buffer.
 pub const ALT_BUFFER_ENABLE: &str = "\x1b[?1049h";
+/// Switch back to the primary screen buffer.
 pub const ALT_BUFFER_DISABLE: &str = "\x1b[?1049l";
+/// Save the screen contents using the legacy mode 47 sequence.
 pub const SCREEN_SAVE: &str = "\x1b[?47h";
+/// Restore the screen contents saved with the legacy mode 47 sequence.
 pub const SCREEN_RESTORE: &str = "\x1b[?47l";
+/// Enable line wrapping.
 pub const LINE_WRAP_ENABLE: &str = "\x1b[=7h";
+/// Disable line wrapping.
 pub const LINE_WRAP_DISABLE: &str = "\x1b[=7l";
 
 // === Scroll Region ===
@@ -131,41 +200,53 @@ pub const KEYPAD_NUMERIC: &str = "\x1b>";
 // === Mouse Tracking Modes (DECSET/DECRST) ===
 /// X10 mouse reporting — button press only (mode 9)
 pub const MOUSE_X10_ENABLE: &str = "\x1b[?9h";
+/// Disable X10 mouse reporting (mode 9).
 pub const MOUSE_X10_DISABLE: &str = "\x1b[?9l";
 /// Normal mouse tracking — press and release (mode 1000)
 pub const MOUSE_NORMAL_ENABLE: &str = "\x1b[?1000h";
+/// Disable normal mouse tracking (mode 1000).
 pub const MOUSE_NORMAL_DISABLE: &str = "\x1b[?1000l";
 /// Button-event mouse tracking (mode 1002)
 pub const MOUSE_BUTTON_EVENT_ENABLE: &str = "\x1b[?1002h";
+/// Disable button-event mouse tracking (mode 1002).
 pub const MOUSE_BUTTON_EVENT_DISABLE: &str = "\x1b[?1002l";
 /// Any-event mouse tracking (mode 1003)
 pub const MOUSE_ANY_EVENT_ENABLE: &str = "\x1b[?1003h";
+/// Disable any-event mouse tracking (mode 1003).
 pub const MOUSE_ANY_EVENT_DISABLE: &str = "\x1b[?1003l";
 /// SGR extended mouse coordinates (mode 1006)
 pub const MOUSE_SGR_ENABLE: &str = "\x1b[?1006h";
+/// Disable SGR extended mouse coordinates (mode 1006).
 pub const MOUSE_SGR_DISABLE: &str = "\x1b[?1006l";
 /// URXVT extended mouse coordinates (mode 1015)
 pub const MOUSE_URXVT_ENABLE: &str = "\x1b[?1015h";
+/// Disable URXVT extended mouse coordinates (mode 1015).
 pub const MOUSE_URXVT_DISABLE: &str = "\x1b[?1015l";
 
 // === Terminal Mode Controls (DECSET/DECRST) ===
 /// Bracketed Paste Mode (mode 2004)
 pub const BRACKETED_PASTE_ENABLE: &str = "\x1b[?2004h";
+/// Disable bracketed paste mode (mode 2004).
 pub const BRACKETED_PASTE_DISABLE: &str = "\x1b[?2004l";
 /// Focus Event Tracking (mode 1004)
 pub const FOCUS_EVENT_ENABLE: &str = "\x1b[?1004h";
+/// Disable focus event tracking (mode 1004).
 pub const FOCUS_EVENT_DISABLE: &str = "\x1b[?1004l";
 /// Synchronized Output (mode 2026) — batch rendering
 pub const SYNC_OUTPUT_BEGIN: &str = "\x1b[?2026h";
+/// End a synchronized-output batch (mode 2026).
 pub const SYNC_OUTPUT_END: &str = "\x1b[?2026l";
 /// Application Cursor Keys (DECCKM, mode 1)
 pub const APP_CURSOR_KEYS_ENABLE: &str = "\x1b[?1h";
+/// Disable application cursor keys (DECCKM).
 pub const APP_CURSOR_KEYS_DISABLE: &str = "\x1b[?1l";
 /// Origin Mode (DECOM, mode 6)
 pub const ORIGIN_MODE_ENABLE: &str = "\x1b[?6h";
+/// Disable origin mode (DECOM).
 pub const ORIGIN_MODE_DISABLE: &str = "\x1b[?6l";
 /// Auto-Wrap Mode (DECAWM, mode 7)
 pub const AUTO_WRAP_ENABLE: &str = "\x1b[?7h";
+/// Disable autowrap (DECAWM).
 pub const AUTO_WRAP_DISABLE: &str = "\x1b[?7l";
 
 // === Device Status / Attributes ===

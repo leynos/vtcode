@@ -3,37 +3,59 @@
 /// A terminal emulator recognized by `VTCode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalType {
+    /// Ghostty.
     Ghostty,
+    /// Kitty.
     Kitty,
+    /// Alacritty.
     Alacritty,
+    /// WezTerm.
     WezTerm,
+    /// Apple Terminal.
     TerminalApp,
+    /// xterm.
     Xterm,
+    /// The Zed editor's terminal.
     Zed,
+    /// Warp.
     Warp,
+    /// iTerm2.
     ITerm2,
+    /// The VS Code integrated terminal.
     VSCode,
+    /// Windows Terminal.
     WindowsTerminal,
+    /// Hyper.
     Hyper,
+    /// Tabby.
     Tabby,
+    /// An unrecognized terminal.
     Unknown,
 }
 
 /// Terminal features that can be configured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalFeature {
+    /// Multi-line input.
     Multiline,
+    /// Enhanced copy and paste.
     CopyPaste,
+    /// Shell integration.
     ShellIntegration,
+    /// Synchronizing the theme with the terminal.
     ThemeSync,
+    /// Desktop notifications.
     Notifications,
 }
 
 /// How Diapason should present `/terminal-setup` for a terminal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalSetupAvailability {
+    /// The terminal supports setup natively; no prompting is needed.
     NativeSupport,
+    /// Setup can be offered to the user.
     Offered,
+    /// Only written guidance can be given.
     GuidanceOnly,
 }
 
@@ -125,6 +147,7 @@ impl TerminalType {
         }
     }
     /// Check if terminal requires manual setup (vs automatic config).
+    #[cfg(test)]
     pub(super) fn requires_manual_setup(&self) -> bool {
         self.should_offer_terminal_setup()
     }

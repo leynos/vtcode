@@ -1,7 +1,5 @@
-pub mod buffer;
-pub mod events;
-pub(crate) mod format;
+//! Buffered mid-turn user interjections and their synthetic message framing.
 
-pub(crate) use buffer::{FormattedInterjection, InterjectionBuffer, PendingInterjection, drain_formatted};
-pub(crate) use events::EventQueue;
-pub(crate) use format::{LARGE_PROMPT_THRESHOLD, format_interjection, user_query};
+pub(crate) mod buffer;
+pub(crate) mod events;
+pub(crate) mod format;
