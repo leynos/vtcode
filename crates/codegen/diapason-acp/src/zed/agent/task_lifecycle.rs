@@ -548,10 +548,10 @@ fn spawn_task_lifecycle_forwarder(
                     continue;
                 }
                 if !ordering.admit(&update) {
-                    // Task ids are client-supplied and unbounded, so the
-                    // forwarder logs carry no per-task field; the enclosing
-                    // span's bounded session correlation identifies the stream.
-                    debug!("Dropped superseded ACP task lifecycle update");
+                    debug!(
+                        task_correlation = %super::redaction::identifier_correlation(lody_task_id(&update)),
+                        "Dropped superseded ACP task lifecycle update"
+                    );
                     continue;
                 }
                 let task_id = lody_task_id(&update).to_string();
@@ -578,3 +578,4 @@ fn spawn_task_lifecycle_forwarder(
         .instrument(span),
     )
 }
+// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/task_lifecycle.rs' for per-hunk detail, 'weave check' to verify your resolution

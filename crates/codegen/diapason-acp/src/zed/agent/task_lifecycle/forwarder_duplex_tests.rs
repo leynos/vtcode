@@ -153,3 +153,83 @@ async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
 
     duplex.finish().await;
 }
+
+/// Log sink that retains formatted records so a test can inspect them.
+#[derive(Clone, Default)]
+struct CapturedLogs(Arc<Mutex<Vec<u8>>>);
+
+impl CapturedLogs {
+    /// The captured output as text.
+    fn text(&self) -> String {
+        let bytes = self.0.lock().expect("captured log mutex").clone();
+        String::from_utf8(bytes).expect("captured logs are UTF-8")
+    }
+}
+
+impl std::io::Write for CapturedLogs {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("captured log mutex").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for CapturedLogs {
+    type Writer = Self;
+
+    fn make_writer(&'writer self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// A superseded snapshot is dropped without logging its identifiers.
+///
+/// The forwarder orders task revisions, so a late snapshot that cannot
+/// supersede the forwarded one is discarded rather than rolling the client's
+/// task back. That diagnostic is the only place the dropped task is reported,
+/// and the task and session identifiers are client-visible values: the record
+/// must carry a bounded correlation instead of either one.
+#[tokio::test]
+async fn superseded_task_update_logs_a_bounded_correlation() {
+    let logs = CapturedLogs::default();
+    let _guard = tracing::subscriber::set_default(
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .with_writer(logs.clone())
+            .finish(),
+    );
+
+    let mut duplex = ForwarderDuplex::start("diapason-task-correlation-test", |progress_tx, queue| {
+        queue
+            .try_send(&progress_tx, with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"))
+            .unwrap();
+        // The same revision instant, but not terminal: a replay artefact
+        // rather than a recorded transition, so the forwarder drops it.
+        queue
+            .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z"))
+            .unwrap();
+    });
+
+    let settled = duplex.next(Duration::from_secs(2)).await.expect("settled task update");
+    assert!(
+        matches!(settled, acp::AgentNotification::SessionNotification(_)),
+        "task lifecycle stays on session updates"
+    );
+    let stale = duplex.next(Duration::from_millis(250)).await;
+    assert!(stale.is_none(), "a superseded snapshot must not be forwarded");
+
+    duplex.finish().await;
+
+    let captured = logs.text();
+    let record = captured
+        .lines()
+        .find(|line| line.contains("Dropped superseded ACP task lifecycle update"))
+        .expect("the forwarder must report the dropped update");
+    assert!(record.contains("task_correlation="), "the diagnostic must carry a bounded correlation: {record}");
+    assert!(!record.contains("child-1"), "the task id must not reach the log: {record}");
+    assert!(!record.contains("parent-session"), "the session id must not reach the log: {record}");
+}
