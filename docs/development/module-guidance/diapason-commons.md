@@ -13,7 +13,7 @@ business logic — pure infrastructure.
 
 - Traits: `paths/`, `errors/`, `telemetry/`.
 - Display: `ansi/`, `colors/`, `styling/`, `diff_preview/`, `color256_theme/`,
-  `color_policy/`; LLM: `llm/`.
+  `colour_policy/`; LLM: `llm/`.
 - Filesystem: `fs/`, `paths/`, `diapason_paths/`, `diff/`, `diff_paths/`,
   `diapasongitignore/`, `workspace_snapshot/`; text: `tokens/`, `unicode/`,
   `sanitizer/`, `slug/`, `formatting/`.

@@ -661,9 +661,9 @@ mod tests {
         let canonical_page =
             ManPageGenerator::generate_command_man_page("analyse").expect("analyse man page should be generated");
         let legacy_page = ManPageGenerator::generate_command_man_page("analyze")
-            .expect("legacy analyze man page should dispatch to the canonical page");
+            .expect("legacy alias man page should dispatch to the canonical page");
 
-        assert_eq!(legacy_page, canonical_page, "legacy analyze dispatch should return the canonical analyse man page");
+        assert_eq!(legacy_page, canonical_page, "legacy alias dispatch should return the canonical analyse man page");
         assert!(
             canonical_page.contains("DIAPASON-ANALYSE"),
             "analyse dispatch should generate the canonical man-page title"

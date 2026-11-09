@@ -1,4 +1,4 @@
-//! Checks that registry declarations and model-facing tool catalogs stay synchronized.
+//! Checks that registry declarations and model-facing tool catalogues stay synchronized.
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, test, or API-shape suppression."

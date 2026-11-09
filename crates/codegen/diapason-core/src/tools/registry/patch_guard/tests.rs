@@ -26,7 +26,7 @@ fn update_operation(path: &str) -> CanonicalPatchOperation {
 /// Equivalent spellings of one edit must share a signature.
 ///
 /// The transport-alias case checks LF, CRLF, and `./` spellings of the same
-/// path normalise to one signature. The independent-operations case checks a
+/// path normalize to one signature. The independent-operations case checks a
 /// swapped listing of unrelated updates hashes identically.
 #[rstest]
 #[case::transport_and_path_aliases(
