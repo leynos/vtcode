@@ -37,7 +37,7 @@ or cross-platform performance campaign belongs in this spike.
 The inspected source baseline is `0c54619cb827e48bf09ea3b68b41cd6d2e72d905`.
 The historical allocator report contains macOS measurements and extrapolates
 Linux reclamation from an external workload; it does not establish a current
-Rohga result.[^1] Preserve those numbers as dated reported evidence, not fresh
+Linux result.[^1] Preserve those numbers as dated reported evidence, not fresh
 measurements or portable truth. Recover source revision, hardware, settings,
 and raw samples where available; explicitly label missing provenance.
 

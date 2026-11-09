@@ -24,7 +24,7 @@ question without establishing a new performance programme.
   - Inspect selector/platform/profiling differences between binary and bench,
     the linked allocator version, configuration symbol, and effective purging.
   - Success: an experiment record names the actual baseline and no inherited
-    sentence masquerades as a new Rohga result.
+    sentence masquerades as a new measured result.
   - See [RFC section 2](../rfcs/rfc-0005-diapason-allocator-spike.md).
 
 - [ ] 1.1.2. Repair the existing burst/idle measurement boundary.
