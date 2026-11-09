@@ -154,6 +154,7 @@ pub fn catalogue_provider_keys() -> &'static [&'static str] {
 }
 
 impl ModelId {
+    /// Catalogue entry for this model in the generated metadata, when present.
     fn generated_capabilities(&self) -> Option<ModelCatalogueEntry> {
         generated_catalogue_entry(capability_provider_key(self.provider()), &self.as_str())
     }

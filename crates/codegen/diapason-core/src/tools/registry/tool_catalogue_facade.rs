@@ -122,6 +122,8 @@ impl SessionToolCatalogueState {
         pending.insert(reason.to_string());
     }
 
+    /// Advance the cache epoch and catalogue version for an explicit
+    /// refresh, drain the recorded refresh reasons, and return the new epoch.
     pub fn note_explicit_refresh(&self, reason: &str) -> u64 {
         let cache_epoch = self.cache_epoch.fetch_add(1, Ordering::AcqRel) + 1;
         let version = self.version.fetch_add(1, Ordering::AcqRel) + 1;
@@ -148,6 +150,8 @@ impl SessionToolCatalogueState {
         })
     }
 
+    /// Expand deferred definitions named by the model's tool references and
+    /// return the new cache epoch when anything became newly visible.
     pub async fn note_tool_references(
         &self,
         tools: &Arc<RwLock<Vec<ToolDefinition>>>,
@@ -241,6 +245,8 @@ impl SessionToolCatalogueState {
         index.search(query, max_results)
     }
 
+    /// Filtered catalogue snapshot for the current version and mode,
+    /// reusing a cached snapshot when one matches.
     pub async fn filtered_snapshot_with_stats(
         &self,
         tools: &Arc<RwLock<Vec<ToolDefinition>>>,
@@ -288,6 +294,8 @@ impl SessionToolCatalogueState {
         snapshot
     }
 
+    /// Build a catalogue snapshot from an explicit definition list, with no
+    /// cached active-name projection.
     pub fn snapshot_for_defs(
         &self,
         defs: Vec<ToolDefinition>,
@@ -310,6 +318,8 @@ impl SessionToolCatalogueState {
         )
     }
 
+    /// Build a snapshot from an explicit definition list, retaining only
+    /// requested active names that still exist among the definitions.
     pub fn snapshot_for_stable_defs_with_active_names(
         &self,
         defs: Vec<ToolDefinition>,
@@ -338,6 +348,8 @@ impl SessionToolCatalogueState {
         )
     }
 
+    /// Sorted definition list for the current version, reusing the cached
+    /// ordering when the version is unchanged.
     async fn sorted_snapshot(&self, tools: &Arc<RwLock<Vec<ToolDefinition>>>) -> Option<Arc<Vec<ToolDefinition>>> {
         let version = self.current_version();
         if let Some(snapshot) = {

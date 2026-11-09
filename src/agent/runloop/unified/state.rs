@@ -279,6 +279,9 @@ impl SessionStats {
         envelope
     }
 
+    /// Record the wire-level catalogue identity and report whether it differs
+    /// from the previously recorded one, so observability emits change-only
+    /// records.
     pub(crate) fn note_tool_catalogue_observability_change(
         &mut self,
         ordered_wire_tool_names: &[String],

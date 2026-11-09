@@ -18,6 +18,8 @@ impl ToolRegistry {
         *self.tool_assembly.write().unwrap_or_else(std::sync::PoisonError::into_inner) = next;
     }
 
+    /// Public tool names exposed on `surface` at `capability_level`, dropping
+    /// subagent tools when no subagent controller is registered.
     pub async fn public_tool_names(&self, surface: SessionSurface, capability_level: CapabilityLevel) -> Vec<String> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut names = assembly.catalogue().public_tool_names(
@@ -41,6 +43,8 @@ impl ToolRegistry {
         names
     }
 
+    /// Schema entries for the catalogue under `config`, excluding subagent
+    /// tools when no subagent controller is registered.
     pub async fn schema_entries(&self, config: SessionToolsConfig) -> Vec<ToolSchemaEntry> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut entries = assembly.catalogue().schema_entries(config);
@@ -50,6 +54,8 @@ impl ToolRegistry {
         entries
     }
 
+    /// Provider function declarations for the catalogue under `config`,
+    /// excluding subagent tools when no subagent controller is registered.
     pub async fn function_declarations(&self, config: SessionToolsConfig) -> Vec<FunctionDeclaration> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut declarations = assembly.catalogue().function_declarations(config);
@@ -59,6 +65,8 @@ impl ToolRegistry {
         declarations
     }
 
+    /// Model-facing tool definitions for the catalogue under `config`,
+    /// excluding subagent tools when no subagent controller is registered.
     pub async fn model_tools(&self, config: SessionToolsConfig) -> Vec<ToolDefinition> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut tools = assembly.catalogue().model_tools(config);
@@ -68,6 +76,8 @@ impl ToolRegistry {
         tools
     }
 
+    /// Schema entry for a public tool name, or `None` when it is unknown or a
+    /// subagent tool without a registered controller.
     pub async fn schema_for_public_name(&self, name: &str, config: SessionToolsConfig) -> Option<ToolSchemaEntry> {
         let assembly = self.tool_assembly.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         if !self.has_subagent_controller() && is_subagent_tool(name) {

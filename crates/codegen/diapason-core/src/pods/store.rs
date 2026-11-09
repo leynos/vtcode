@@ -76,6 +76,8 @@ impl PodsStore {
             .with_context(|| format!("failed to read pod catalogue at {}", self.catalogue_path().display()))
     }
 
+    /// Persist the deployment catalogue to the private store, creating the
+    /// store directory when needed.
     pub async fn save_catalogue(&self, catalogue: &PodCatalogue) -> Result<()> {
         ensure_user_dir(&self.base_dir)?;
         write_private_json_file(&self.catalogue_path(), catalogue)

@@ -21,6 +21,7 @@ pub struct SessionToolCatalogueSnapshot {
 }
 
 impl SessionToolCatalogueSnapshot {
+    /// Build a snapshot whose active names are derived from the definitions.
     pub fn new(
         version: u64,
         epoch: u64,
@@ -41,6 +42,8 @@ impl SessionToolCatalogueSnapshot {
         )
     }
 
+    /// Build a snapshot with an explicit active-name projection, hashing the
+    /// definitions for change detection.
     pub fn with_active_tool_names(
         version: u64,
         epoch: u64,
@@ -63,24 +66,29 @@ impl SessionToolCatalogueSnapshot {
         }
     }
 
+    /// Number of tools active for this turn.
     pub fn available_tools(&self) -> usize {
         self.active_tool_names.len()
     }
 
+    /// Number of definitions carried by the catalogue, including deferred ones.
     pub fn catalogue_tools(&self) -> usize {
         self.snapshot.as_ref().map_or(0, |defs| defs.len())
     }
 
+    /// Whether the snapshot carries any definitions.
     pub fn has_tools(&self) -> bool {
         self.snapshot.is_some()
     }
 
+    /// Mark whether this snapshot was served from cache.
     pub fn with_cache_hit(mut self, cache_hit: bool) -> Self {
         self.cache_hit = cache_hit;
         self
     }
 }
 
+/// Collect the function names from an optional definition list.
 fn tool_names_from_definitions(tools: Option<&Vec<ToolDefinition>>) -> Vec<String> {
     let Some(tools) = tools else {
         return Vec::new();

@@ -363,6 +363,8 @@ impl PodManager {
         Ok(pod)
     }
 
+    /// Resolve the deployment profile for a start request, honouring an
+    /// explicit profile name and otherwise matching the pod's model and GPUs.
     fn resolve_profile(
         &self,
         catalogue: &PodCatalogue,

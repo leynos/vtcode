@@ -197,6 +197,8 @@ impl AgentRunner {
         .await
     }
 
+    /// Rebuild the runtime prompt bundle when the tool catalogue version moved
+    /// since the bundle was built. Returns whether a rebuild happened.
     async fn refresh_runtime_prompt_bundle_if_catalogue_changed(
         &self,
         bundle: &mut RuntimePromptBundle,

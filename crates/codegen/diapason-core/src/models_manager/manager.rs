@@ -285,6 +285,8 @@ impl ModelsManager {
         }
     }
 
+    /// Convert an available Merge Gateway catalogue record into picker
+    /// metadata, dropping models the gateway marks unavailable.
     fn merge_catalogue_model_info(model: MergeCatalogueModel) -> Option<ModelInfo> {
         if model.availability != MergeCatalogueAvailability::Available {
             return None;
