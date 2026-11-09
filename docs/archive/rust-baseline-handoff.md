@@ -883,23 +883,24 @@ evidence for this head.
 The workflow repair layer follows source spelling PR #66 and prepares the
 existing five workflows for Netsuke's yamllint and actionlint policy. It adds
 document markers, corrects comment spacing, expands a compact mapping, and
-wraps long commands without changing their arguments or folded Rust flags.
-Tag polling still makes 12 attempts with ten-second sleeps; diagnostics now
-include the attempt number. The binary-size fallback keeps its existing
+wraps long commands without changing their arguments or folded Rust flags. Tag
+polling still makes 12 attempts with ten-second sleeps; diagnostics now include
+the attempt number. The binary-size fallback keeps its existing
 platform-specific probes and unknown-size outcome.
 
 The source revision is `d0bb051fac02416cb38a8e76865b1b569d5ec163` from Netsuke.
 Parsed YAML comparison preserves the CI, coverage, tool-eval, and WebMCP jobs
 exactly. Build-workflow differences are confined to the documented equivalent
-command forms and retry diagnostics. The Rust toolchain file remains byte-exact.
-This layer carries source repairs only; the next layer installs the linters,
-tests the process boundaries, and enables the gate.
+command forms and retry diagnostics. The Rust toolchain file remains
+byte-exact. This layer carries source repairs only; the next layer installs the
+linters, tests the process boundaries, and enables the gate.
 
-This layer passed format, lint, build, type-check, workspace, and harness gates:
-10,094 workspace tests passed with 17 skipped, and all 67 harness tests passed.
-Advisory checks passed in warning mode. Optional ast-grep was unavailable, and
-the same four rustdoc warnings remain under the existing configuration. Final
-document and proposed workflow-linter checks include this evidence update.
+This layer passed format, lint, build, type-check, workspace, and harness
+gates: 10,094 workspace tests passed with 17 skipped, and all 67 harness tests
+passed. Advisory checks passed in warning mode. Optional ast-grep was
+unavailable, and the same four rustdoc warnings remain under the existing
+configuration. Final document and proposed workflow-linter checks include this
+evidence update.
 
 ## PR 67 after PR 66 merged
 
@@ -908,5 +909,5 @@ it with `git rebase --onto 47cb1867c a4b6f55b0`. The only conflict was this
 handoff file, which now keeps every earlier record. The earlier record above
 names the unmerged parent for the workflow-sources restack; the replay moved
 the layer's own two commits onto `47cb1867c` without changing their content.
-The gate evidence recorded above describes earlier replays onto unmerged parents
-and is not evidence for this head.
+The gate evidence recorded above describes earlier replays onto unmerged
+parents and is not evidence for this head.
