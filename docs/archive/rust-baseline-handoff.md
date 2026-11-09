@@ -864,11 +864,11 @@ guide, with no additions. CI installs typos in both spelling-dependent jobs.
 
 ## Module structure layer
 
-This layer moves self-named Rust modules into `mod.rs` form and extracts API-key
-and Anthropic validation sections without changing their behaviour. Forty-five
-moves preserve their complete source bytes. The API-key production section and
-all extracted test bodies retain their contents; Anthropic tool validation gains
-only the visibility needed by its new private child module.
+This layer moves self-named Rust modules into `mod.rs` form and extracts
+API-key and Anthropic validation sections without changing their behaviour.
+Forty-five moves preserve their complete source bytes. The API-key production
+section and all extracted test bodies retain their contents; Anthropic tool
+validation gains only the visibility needed by its new private child module.
 
 Ten relative module paths are adjusted for their new directories. Current
 source-path guidance receives 35 literal substitutions across 23 documents;
@@ -885,6 +885,7 @@ and all 67 harness tests. Advisory checks pass; AST-grep is unavailable and the
 existing optional target skips it. Four inherited rustdoc warnings remain for
 the later source-fix layer.
 
-All 24 changed documents pass Nixie. Exact-parent Markdown comparison identified
-one new long line from a longer module path, now wrapped; the other 1,134
-diagnostics are inherited. Final document validation follows that correction.
+All 24 changed documents pass Nixie. Exact-parent Markdown comparison
+identified one new long line from a longer module path, now wrapped; the other
+1,134 diagnostics are inherited. Final document validation follows that
+correction.
