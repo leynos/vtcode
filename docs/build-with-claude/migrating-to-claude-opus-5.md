@@ -859,7 +859,7 @@ ______________________________________________________________________
 | `LLMResponse`          | `diapason-commons/src/llm.rs`                      | Universal response struct                                          |
 | `FinishReason`         | `diapason-commons/src/llm.rs`                      | Stop reason enum                                                   |
 | `AnthropicProvider`    | `diapason-llm/src/providers/anthropic/provider.rs` | Request building, HTTP, response parsing                           |
-| `ModelResolver`        | `diapason-llm/src/model_resolver.rs`               | Resolves model string → provider + catalogue                         |
+| `ModelResolver`        | `diapason-llm/src/model_resolver.rs`               | Resolves model string → provider + catalogue                       |
 | `ThinkingDisplayMode`  | `diapason-config/src/core/provider.rs`             | `Summarized` / `Omitted` / `Unknown`                               |
 
 ### How Diapason translates config to API

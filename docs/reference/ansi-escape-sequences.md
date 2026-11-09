@@ -163,7 +163,7 @@ colours are set by the user, but have commonly defined meanings.
 #### 8-16 Colours
 
 | Colour Name | Foreground Colour Code | Background Colour Code |
-| :---------  | :--------------------  | :--------------------  |
+| :---------- | :--------------------- | :--------------------- |
 | Black       | `30`                   | `40`                   |
 | Red         | `31`                   | `41`                   |
 | Green       | `32`                   | `42`                   |
@@ -174,9 +174,9 @@ colours are set by the user, but have commonly defined meanings.
 | White       | `37`                   | `47`                   |
 | Default     | `39`                   | `49`                   |
 
-Most terminals, apart from the basic set of 8 colours, also support the "bright"
-or "bold" colours. These have their own set of codes, mirroring the normal
-colours, but with an additional `;1` in their codes:
+Most terminals, apart from the basic set of 8 colours, also support the
+"bright" or "bold" colours. These have their own set of codes, mirroring the
+normal colours, but with an additional `;1` in their codes:
 
 ```sh
 # Set style to bold, red foreground.
@@ -190,25 +190,25 @@ Terminals that support the
 provides bright versions of the ISO colours, without the need to use the bold
 modifier:
 
-| Colour Name     | Foreground Colour Code | Background Colour Code |
-| :-------------  | :--------------------  | :--------------------  |
-| Bright Black    | `90`                   | `100`                  |
-| Bright Red      | `91`                   | `101`                  |
-| Bright Green    | `92`                   | `102`                  |
-| Bright Yellow   | `93`                   | `103`                  |
-| Bright Blue     | `94`                   | `104`                  |
-| Bright Magenta  | `95`                   | `105`                  |
-| Bright Cyan     | `96`                   | `106`                  |
-| Bright White    | `97`                   | `107`                  |
+| Colour Name    | Foreground Colour Code | Background Colour Code |
+| :------------- | :--------------------- | :--------------------- |
+| Bright Black   | `90`                   | `100`                  |
+| Bright Red     | `91`                   | `101`                  |
+| Bright Green   | `92`                   | `102`                  |
+| Bright Yellow  | `93`                   | `103`                  |
+| Bright Blue    | `94`                   | `104`                  |
+| Bright Magenta | `95`                   | `105`                  |
+| Bright Cyan    | `96`                   | `106`                  |
+| Bright White   | `97`                   | `107`                  |
 
 #### 256 Colours
 
 The following escape codes tells the terminal to use the given colour ID:
 
-| ESC Code Sequence | Description           |
-| :---------------- | :-------------------- |
-| `ESC[38;5;{ID}m`  | Set foreground colour.|
-| `ESC[48;5;{ID}m`  | Set background colour.|
+| ESC Code Sequence | Description            |
+| :---------------- | :--------------------- |
+| `ESC[38;5;{ID}m`  | Set foreground colour. |
+| `ESC[48;5;{ID}m`  | Set background colour. |
 
 Where `{ID}` should be replaced with the colour index from 0 to 255 of the
 following colour table:
@@ -232,10 +232,10 @@ RGB.
 
 These escape sequences are usually not well documented.
 
-| ESC Code Sequence       | Description                  |
-| :---------------------- | :--------------------------- |
-| `ESC[38;2;{r};{g};{b}m` | Set foreground colour as RGB.|
-| `ESC[48;2;{r};{g};{b}m` | Set background colour as RGB.|
+| ESC Code Sequence       | Description                   |
+| :---------------------- | :---------------------------- |
+| `ESC[38;2;{r};{g};{b}m` | Set foreground colour as RGB. |
+| `ESC[48;2;{r};{g};{b}m` | Set background colour as RGB. |
 
 > Note that `;38` and `;48` corresponds to the 16 colour sequence and is
 > interpreted by the terminal to set the foreground and background colour

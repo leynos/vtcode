@@ -73,8 +73,8 @@ When omitted, the provider uses the default context window. The separate
 
 Use `api_format` when the endpoint needs an explicit request shape. Accepted
 values are `auto`, `openai-chat`, `openai-responses`, and `anthropic-messages`.
-Omitting the field preserves legacy autodetection. An explicit value is honoured
-and does not silently fall back to another format.
+Omitting the field preserves legacy autodetection. An explicit value is
+honoured and does not silently fall back to another format.
 
 Provider-level capability defaults are useful when the endpoint does not return
 model metadata. Supported defaults include:

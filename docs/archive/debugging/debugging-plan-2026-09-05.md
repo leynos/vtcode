@@ -76,8 +76,8 @@ The reconnaissance agent must compare the description, supported effort levels
 and related model metadata. Falsify H3 if the asserted older family remains
 supported and the production description is inconsistent.
 
-These are read-only source checks. Do not change runtime capability behaviour or
-import changes from the separate capability-hardening train. Report precise
+These are read-only source checks. Do not change runtime capability behaviour
+or import changes from the separate capability-hardening train. Report precise
 source evidence before deciding whether either failure is a test-only repair.
 
 H2 was not falsified: both GPT-5.5 fixtures are absent from the current model
@@ -182,11 +182,11 @@ current historical result and was superseded by the completion-sweep run below.
 
 ## H9 result: sidecar fallback and current model support
 
-H9 was not falsified. `gpt-5-codex` is intentionally not catalogue-supported, so
-the sidecar fallback selects the current OpenAI default, `gpt-5.6-sol`, rather
-than preserving that unsupported identifier. A worker is adding tests for
-preservation of a current supported model and for fallback from an unsupported
-model. Runtime fallback behaviour is unchanged.
+H9 was not falsified. `gpt-5-codex` is intentionally not catalogue-supported,
+so the sidecar fallback selects the current OpenAI default, `gpt-5.6-sol`,
+rather than preserving that unsupported identifier. A worker is adding tests
+for preservation of a current supported model and for fallback from an
+unsupported model. Runtime fallback behaviour is unchanged.
 
 ## Resumed remediation wave
 

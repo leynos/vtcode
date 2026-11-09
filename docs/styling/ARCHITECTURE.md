@@ -170,26 +170,26 @@ ______________________________________________________________________
 
 ### Before Integration (Current)
 
-| Effect               | Supported | Remark                            |
-| -------------------- | --------- | --------------------------------- |
-| **Bold**             | Yes       | Explicit `bold: bool` field       |
-| **Italic**           | Yes       | Explicit `italic: bool` field     |
-| **Dim**              | No        | Not modelled                       |
-| **Underline**        | No        | Not modelled                       |
-| **Strikethrough**    | No        | Not modelled                       |
-| **Reverse**          | No        | Not modelled                       |
+| Effect                | Supported | Remark                             |
+| --------------------- | --------- | ---------------------------------- |
+| **Bold**              | Yes       | Explicit `bold: bool` field        |
+| **Italic**            | Yes       | Explicit `italic: bool` field      |
+| **Dim**               | No        | Not modelled                       |
+| **Underline**         | No        | Not modelled                       |
+| **Strikethrough**     | No        | Not modelled                       |
+| **Reverse**           | No        | Not modelled                       |
 | **Background Colour** | No        | InlineTextStyle has no `bg_colour` |
 
 ### After Integration (Phase 1)
 
-| Effect               | Supported | Remark                                      |
-| -------------------- | --------- | ------------------------------------------- |
-| **Bold**             | Yes       | From `Effects::BOLD` bitmask                |
-| **Italic**           | Yes       | From `Effects::ITALIC` bitmask              |
-| **Dim**              | Yes       | From `Effects::DIMMED` bitmask              |
-| **Underline**        | Yes       | From `Effects::UNDERLINE` bitmask           |
-| **Strikethrough**    | Yes       | From `Effects::STRIKETHROUGH` bitmask       |
-| **Reverse**          | Yes       | From `Effects::REVERSE` bitmask             |
+| Effect                | Supported | Remark                                        |
+| --------------------- | --------- | --------------------------------------------- |
+| **Bold**              | Yes       | From `Effects::BOLD` bitmask                  |
+| **Italic**            | Yes       | From `Effects::ITALIC` bitmask                |
+| **Dim**               | Yes       | From `Effects::DIMMED` bitmask                |
+| **Underline**         | Yes       | From `Effects::UNDERLINE` bitmask             |
+| **Strikethrough**     | Yes       | From `Effects::STRIKETHROUGH` bitmask         |
+| **Reverse**           | Yes       | From `Effects::REVERSE` bitmask               |
 | **Background Colour** | Yes       | New `bg_colour: Option<AnsiColourEnum>` field |
 
 ______________________________________________________________________
@@ -252,7 +252,7 @@ ______________________________________________________________________
 | `session/input.rs`      | 215-217  | Update style field access | Low - Simple field rename      |
 | `session/header.rs`     | 234, 261 | Add to style tuple        | Low - Tuple context            |
 | `session/navigation.rs` | 251, 286 | Update fallback logic     | Low - Conditional changes      |
-| `session/slash.rs`      | 371, 380 | Update colour merge        | Low - Method calls             |
+| `session/slash.rs`      | 371, 380 | Update colour merge       | Low - Method calls             |
 | `types.rs`              | 82-97    | Core struct expansion     | Medium - Must update default() |
 
 **Total Call Sites**: ~15-20 across 5-6 files **Risk Level**: Low (mostly
@@ -276,8 +276,8 @@ When styling a file or element, resolve colours in this order:
 5. Terminal default colour
 ```
 
-This allows layered customization: system colours → git colours → diapason theme
-→ fallback.
+This allows layered customization: system colours → git colours → diapason
+theme → fallback.
 
 ______________________________________________________________________
 

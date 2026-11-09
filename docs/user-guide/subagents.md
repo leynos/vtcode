@@ -250,7 +250,7 @@ Only `name` and `description` are required.
 | `tools`                                | allowlist of tool names                                               | use Diapason tool ids from `diapason schema tools`, such as `exec_command`, `write_stdin`, `apply_patch`, or advanced `code_search` |
 | `disallowedTools` / `disallowed_tools` | denylist removed from inherited or allowed tools                      | use the same Diapason tool ids as `tools`; applied before runtime filtering                                                         |
 | `model`                                | model override                                                        | defaults to `inherit`; also accepts `small`, `haiku`, `sonnet`, `opus`, or a full model id                                          |
-| `color`                                | TUI colour metadata                                                    | optional; accepts simple colour names such as `blue`, hex like `#4f8fd8`, or Git-style fg/bg strings such as `white #4f8fd8`         |
+| `color`                                | TUI colour metadata                                                   | optional; accepts simple colour names such as `blue`, hex like `#4f8fd8`, or Git-style fg/bg strings such as `white #4f8fd8`        |
 | `aliases`                              | alternate names for lookup                                            | exact `name` matches still win over aliases                                                                                         |
 | `reasoning_effort`                     | per-agent reasoning override                                          | `effort` and `model_reasoning_effort` are also accepted                                                                             |
 | `permissions`                          | granular permission policy                                            | required; set `default` plus optional `allow`, `ask`, `auto`, and `deny` tool lists                                                 |
@@ -315,8 +315,9 @@ Special model values:
   parent model
 - `haiku`, `sonnet`, and `opus` map to provider-appropriate siblings of the
   active provider
-- Diapason only honours `spawn_agent.model` when the current user turn explicitly
-  asks for that model; opportunistic overrides from the model are ignored
+- Diapason only honours `spawn_agent.model` when the current user turn
+  explicitly asks for that model; opportunistic overrides from the model are
+  ignored
 - if `spawn_agent.model` cannot be resolved, Diapason warns, ignores that
   override, and falls back to the agent file's `model` or the parent session
   model

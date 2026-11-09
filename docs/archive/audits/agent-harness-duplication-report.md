@@ -182,8 +182,9 @@ ______________________________________________________________________
 
 These shape payloads differently and share no logic. `rg` confirms the runner
 never calls `compact_model_tool_payload` and the unified loop never calls
-`reduce_tool_result`. Merging them would *invent* new combined behaviour neither
-currently has (over-engineering + behaviour change), so no refactor is warranted.
+`reduce_tool_result`. Merging them would *invent* new combined behaviour
+neither currently has (over-engineering + behaviour change), so no refactor is
+warranted.
 
 > This **is** a behavioural *consistency* observation (each loop economizes
 > context differently) of the same family as F2 — tracked below, not a DRY fix.
