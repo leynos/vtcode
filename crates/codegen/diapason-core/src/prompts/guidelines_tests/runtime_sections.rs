@@ -111,7 +111,7 @@ fn render_catalogue_metadata(version: u64, epoch: u64) -> String {
 
 /// Replace the per-session version and epoch so the metadata can be compared
 /// as a stable snapshot.
-fn normalise_catalogue_metadata(metadata: &str) -> String {
+fn normalize_catalogue_metadata(metadata: &str) -> String {
     metadata
         .lines()
         .map(|line| {
@@ -133,8 +133,8 @@ fn runtime_catalogue_metadata_snapshot_is_stable_across_variable_values() {
     let second = render_catalogue_metadata(41, 99);
 
     assert_eq!(
-        normalise_catalogue_metadata(&first),
-        normalise_catalogue_metadata(&second),
+        normalize_catalogue_metadata(&first),
+        normalize_catalogue_metadata(&second),
         "only the version and epoch should vary between sessions"
     );
 
@@ -146,7 +146,7 @@ fn runtime_catalogue_metadata_snapshot_is_stable_across_variable_values() {
 - available_tools: 1
 - currently_available_tools: read_file
 - request_user_input_enabled: false";
-    assert_eq!(normalise_catalogue_metadata(&first), expected);
+    assert_eq!(normalize_catalogue_metadata(&first), expected);
 
     assert!(first.contains("- version: 1"));
     assert!(first.contains("- epoch: 2"));

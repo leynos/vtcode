@@ -40,7 +40,7 @@ presentation deletion without losing useful agent behaviour.
 
 - [ ] 1.2.2. Capture build, dependency, and runtime resource baselines.
   - Record commit, lockfile, toolchain, target, profile, feature graph, workers,
-    allocator, compiler-cache state, artifact size, PSS, and startup timings.
+    allocator, compiler-cache state, artefact size, PSS, and startup timings.
   - Record clean and warm build cost and compiler/linker peak memory too, so
     3.1.2 compares like for like instead of inventing its own baseline.
   - Success: reproducible raw evidence distinguishes executable size, private
@@ -114,7 +114,7 @@ from returning through a convenience import or a release script.
 - [ ] 3.1.2. Run functional equivalence and resource comparisons.
   - Repeat 1.2.1 and 1.2.2 under identical workload and build conditions.
   - Success: preserved contracts pass and a report publishes clean/warm build
-    cost, compiler/linker peak memory, artifact size, ACP startup, and PSS.
+    cost, compiler/linker peak memory, artefact size, ACP startup, and PSS.
     No numerical improvement is claimed from a changed allocator or worker pool.
   - Requires 3.1.1.
 

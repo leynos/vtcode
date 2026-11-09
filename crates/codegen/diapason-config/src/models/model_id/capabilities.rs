@@ -40,7 +40,7 @@ pub struct ModelCatalogueEntry {
 
 /// Maps a provider name to its canonical model-catalogue key, comparing case
 /// insensitively and folding aliases such as `google`/`gemini` and
-/// `meta-ai`/`meta`. Unrecognised names are returned unchanged.
+/// `meta-ai`/`meta`. Unrecognized names are returned unchanged.
 fn catalogue_provider_key(provider: &str) -> &str {
     if provider.eq_ignore_ascii_case("google") || provider.eq_ignore_ascii_case("gemini") {
         "gemini"
