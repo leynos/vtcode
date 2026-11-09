@@ -61,7 +61,8 @@ warning: function check_prompt_reference_trigger is never used
 --> crates/codegen/diapason-core/src/ui/tui/session/command.rs:321:15
 ```
 
-(The function name and path would be coloured yellow/orange and red respectively)
+(The function name and path would be coloured yellow/orange and red
+respectively)
 
 ### After (stripped)
 

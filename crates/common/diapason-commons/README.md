@@ -28,7 +28,7 @@ See `docs/modules/diapason_commons_reference.md` for ready-to-use adapters.
 | -------------------------------------------------- | ------------------------------------------------------------------ |
 | `ansi`, `ansi_capabilities`, `ansi_codes`          | ANSI escape helpers and terminal capability detection              |
 | `async_utils`                                      | Async convenience wrappers                                         |
-| `colours`, `colour_policy`, `colour256_theme`         | Colour utilities and theming                                        |
+| `colours`, `colour_policy`, `colour256_theme`      | Colour utilities and theming                                       |
 | `diff`, `diff_paths`, `diff_preview`, `diff_theme` | Unified diff rendering                                             |
 | `errors`, `error_category`                         | Error formatting, reporting, and retry classification              |
 | `formatting`                                       | Text formatting helpers                                            |

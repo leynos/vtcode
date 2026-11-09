@@ -12,17 +12,28 @@ use std::fmt;
 pub mod constants {
     pub(crate) const NONE: &str = "none";
     pub(crate) const MINIMAL: &str = "minimal";
+    /// Low reasoning effort.
     pub const LOW: &str = "low";
+    /// Medium reasoning effort.
     pub const MEDIUM: &str = "medium";
+    /// High reasoning effort.
     pub const HIGH: &str = "high";
+    /// Extra-high reasoning effort.
     pub const XHIGH: &str = "xhigh";
+    /// Maximum reasoning effort.
     pub const MAX: &str = "max";
     pub(crate) const ALLOWED_LEVELS: &[&str] = &[MINIMAL, LOW, MEDIUM, HIGH, XHIGH, MAX];
+    /// Display label for low effort.
     pub const LABEL_LOW: &str = "Low";
+    /// Display label for medium effort.
     pub const LABEL_MEDIUM: &str = "Medium";
+    /// Display label for high effort.
     pub const LABEL_HIGH: &str = "High";
+    /// Description of low effort.
     pub const DESCRIPTION_LOW: &str = "Fast responses with lightweight reasoning.";
+    /// Description of medium effort.
     pub const DESCRIPTION_MEDIUM: &str = "Balanced depth and speed for general tasks. (Note: May not be fully available for all models including Gemini 3 Pro)";
+    /// Description of high effort.
     pub const DESCRIPTION_HIGH: &str = "Maximum reasoning depth for complex problems.";
 }
 

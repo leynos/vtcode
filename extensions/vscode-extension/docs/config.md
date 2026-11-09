@@ -6,9 +6,9 @@ the workflows in the extension, the participant system, and the tool approval
 mechanisms available in the application.
 
 Diapason uses a configuration file named `config.toml` that can be placed at
-the root of your project workspace to customize behaviour. The extension watches
-for changes to this file and will automatically update settings when it's
-modified.
+the root of your project workspace to customize behaviour. The extension
+watches for changes to this file and will automatically update settings when
+it's modified.
 
 ## Getting Started with Configuration
 

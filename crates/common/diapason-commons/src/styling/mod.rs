@@ -7,13 +7,18 @@ use anstyle::{AnsiColor, Color, Effects, Style};
 /// Standard colour palette with semantic names
 #[derive(Debug, Clone, Copy)]
 pub struct ColourPalette {
+    /// Success accent colour.
     pub success: Color, // Green
-    pub error: Color,   // Red
+    /// Error accent colour.
+    pub error: Color, // Red
+    /// Warning accent colour.
     pub warning: Color, // Yellow
-    pub info: Color,    // Cyan
-    pub accent: Color,  // Magenta
-    primary: Color,     // Cyan
-    pub muted: Color,   // Gray/Dim
+    /// Informational accent colour.
+    pub info: Color, // Cyan
+    /// General accent colour.
+    pub accent: Color, // Magenta
+    /// De-emphasized colour.
+    pub muted: Color, // Gray/Dim
 }
 
 impl Default for ColourPalette {
@@ -24,7 +29,6 @@ impl Default for ColourPalette {
             warning: Color::Ansi(AnsiColor::Yellow),
             info: Color::Ansi(AnsiColor::Cyan),
             accent: Color::Ansi(AnsiColor::Magenta),
-            primary: Color::Ansi(AnsiColor::Cyan),
             muted: Color::Ansi(AnsiColor::BrightBlack),
         }
     }
@@ -108,36 +112,36 @@ pub fn dimmed_colour(colour: AnsiColor) -> Style {
 /// Uses standard ANSI colours without bold for accessibility and consistency.
 #[derive(Debug, Clone, Copy)]
 pub struct DiffColourPalette {
+    /// Foreground colour for added lines.
     pub added_fg: Color,
-    added_bg: Color,
+    /// Foreground colour for removed lines.
     pub removed_fg: Color,
-    removed_bg: Color,
+    /// Foreground colour for hunk headers.
     pub header_fg: Color,
-    header_bg: Color,
 }
 
 impl Default for DiffColourPalette {
     fn default() -> Self {
         Self {
             added_fg: Color::Ansi(AnsiColor::Green),
-            added_bg: Color::Ansi(AnsiColor::Green),
             removed_fg: Color::Ansi(AnsiColor::Red),
-            removed_bg: Color::Ansi(AnsiColor::Red),
             header_fg: Color::Ansi(AnsiColor::Cyan),
-            header_bg: Color::Ansi(AnsiColor::Cyan),
         }
     }
 }
 
 impl DiffColourPalette {
+    /// Return the style used for added lines.
     pub fn added_style(&self) -> Style {
         Style::new().fg_color(Some(self.added_fg))
     }
 
+    /// Return the style used for removed lines.
     pub fn removed_style(&self) -> Style {
         Style::new().fg_color(Some(self.removed_fg))
     }
 
+    /// Return the style used for hunk headers.
     pub fn header_style(&self) -> Style {
         Style::new().fg_color(Some(self.header_fg))
     }

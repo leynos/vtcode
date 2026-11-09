@@ -836,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_runtime_tool_catalog_section_is_removed_without_dropping_notices() {
+    fn legacy_runtime_tool_header_is_removed_without_dropping_notices() {
         let mut prompt = "Base prompt\n[Runtime Tool Catalog]\n- version: 1\n[Runtime Notice]\nKeep me\n".to_string();
         let snapshot = SessionToolCatalogueSnapshot::new(1, 1, false, false, None, false);
 

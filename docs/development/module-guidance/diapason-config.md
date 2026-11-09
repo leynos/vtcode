@@ -16,10 +16,10 @@ vars, URLs, tools, and shared tool limits | `core/` AgentConfig + all nested
 config structs | `models/` ModelId + Provider enums | `types/`
 ReasoningEffortLevel and related enums | `schema/` JSON Schema export
 (feature-gated) | `defaults/` ConfigDefaultsProvider | `auth/` auth config
-re-exports | `api_keys/mod.rs` facade + `api_keys/credential_resolution.rs` source
-precedence | `mcp/` MCP config | `webmcp.rs` opt-in browser and remote MCP
-config | `acp/` ACP config | `hooks/` lifecycle hooks | `subagents/` subagent
-discovery | `core/network_allowlist.rs` | `core/provider_override.rs`
+re-exports | `api_keys/mod.rs` facade + `api_keys/credential_resolution.rs`
+source precedence | `mcp/` MCP config | `webmcp.rs` opt-in browser and remote
+MCP config | `acp/` ACP config | `hooks/` lifecycle hooks | `subagents/`
+subagent discovery | `core/network_allowlist.rs` | `core/provider_override.rs`
 
 ## Rules
 
@@ -33,7 +33,7 @@ discovery | `core/network_allowlist.rs` | `core/provider_override.rs`
   consumers.
 - `schema` feature gates `diapason_config_schema_json()` — used by `build.rs`.
 
-## Adding a Model — **OpenRouter** (code-generated): edit `ModelId`, `Provider::OpenRouter` match, and `docs/models.json`; the build script handles the rest. **Non-OpenRouter** (manual): add the constant, `ModelId` variant and match arms, defaults if needed, preset, optional resolver update, and `docs/models.json`; gateway providers may intentionally accept explicit catalog-missing route IDs. See `adding-llm-providers` skill for the checklist
+## Adding a Model — **OpenRouter** (code-generated): edit `ModelId`, `Provider::OpenRouter` match, and `docs/models.json`; the build script handles the rest. **Non-OpenRouter** (manual): add the constant, `ModelId` variant and match arms, defaults if needed, preset, optional resolver update, and `docs/models.json`; gateway providers may intentionally accept explicit catalogue-missing route IDs. See `adding-llm-providers` skill for the checklist
 
 ## Gotchas
 

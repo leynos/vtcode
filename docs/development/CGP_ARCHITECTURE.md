@@ -181,7 +181,7 @@ Ownership-first rule: prefer `wrap_native_tool_interactive()` /
 
 ## Named Providers
 
-| Provider                  | Implements         | Behaviour                                                        |
+| Provider                  | Implements         | Behaviour                                                       |
 | ------------------------- | ------------------ | --------------------------------------------------------------- |
 | `AutoApproval`            | `ApprovalProvider` | Always approves                                                 |
 | `DenyAllApproval`         | `ApprovalProvider` | Always denies                                                   |

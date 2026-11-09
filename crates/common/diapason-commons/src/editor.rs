@@ -1,9 +1,4 @@
-#![expect(
-    clippy::indexing_slicing,
-    clippy::string_slice,
-    unused_results,
-    reason = "Editor URI parsing uses validated delimiters and intentionally ignores String mutation results."
-)]
+//! Editor target parsing and path resolution for `file:line:column` links.
 
 use std::borrow::Cow;
 use std::env;
@@ -13,12 +8,16 @@ use percent_encoding::percent_decode_str;
 use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A zero-based position inside an editor buffer.
 pub struct EditorPoint {
+    /// One-based line number.
     pub line: usize,
+    /// One-based column number, when the link supplied one.
     pub column: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A parsed editor link: a path plus its optional location suffix.
 pub struct EditorTarget {
     path: PathBuf,
     location_suffix: Option<String>,
@@ -26,27 +25,32 @@ pub struct EditorTarget {
 
 impl EditorTarget {
     #[must_use]
+    /// Create a target from a path and an optional `line:column` suffix.
     pub fn new(path: PathBuf, location_suffix: Option<String>) -> Self {
         Self { path, location_suffix }
     }
 
     #[must_use]
+    /// Return the target path.
     pub fn path(&self) -> &Path {
         &self.path
     }
 
     #[must_use]
+    /// Return the raw location suffix, if one was supplied.
     pub fn location_suffix(&self) -> Option<&str> {
         self.location_suffix.as_deref()
     }
 
     #[must_use]
+    /// Resolve the path against `base` when it is relative.
     pub fn with_resolved_path(mut self, base: &Path) -> Self {
         self.path = resolve_editor_path(&self.path, base);
         self
     }
 
     #[must_use]
+    /// Render the target as `path:line:column`.
     pub fn canonical_string(&self) -> String {
         let mut target = self.path.display().to_string();
         if let Some(location) = self.location_suffix() {
@@ -56,6 +60,7 @@ impl EditorTarget {
     }
 
     #[must_use]
+    /// Return the parsed line and column, when present.
     pub fn point(&self) -> Option<EditorPoint> {
         let suffix = self.location_suffix()?.strip_prefix(':')?;
         if suffix.contains('-') {
@@ -74,6 +79,7 @@ impl EditorTarget {
 }
 
 #[must_use]
+/// Parse an editor link of the form `path`, `path:line` or `path:line:column`.
 pub fn parse_editor_target(raw: &str) -> Option<EditorTarget> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -111,8 +117,8 @@ pub fn parse_editor_target(raw: &str) -> Option<EditorTarget> {
     }
 
     if let Some(paren_start) = location_paren_suffix_start(raw) {
-        let location_suffix = parse_paren_location_suffix(&raw[paren_start..])?;
-        let path_str = &raw[..paren_start];
+        let location_suffix = parse_paren_location_suffix(raw.get(paren_start..).unwrap_or_default())?;
+        let path_str = raw.get(..paren_start).unwrap_or_default();
         if path_str.is_empty() {
             return None;
         }
@@ -126,7 +132,7 @@ pub fn parse_editor_target(raw: &str) -> Option<EditorTarget> {
 
     let location_suffix = extract_trailing_location(raw);
     let path_str = match location_suffix.as_deref() {
-        Some(suffix) => &raw[..raw.len().saturating_sub(suffix.len())],
+        Some(suffix) => raw.get(..raw.len().saturating_sub(suffix.len())).unwrap_or_default(),
         None => raw,
     };
     if path_str.is_empty() {
@@ -141,11 +147,13 @@ pub fn parse_editor_target(raw: &str) -> Option<EditorTarget> {
 }
 
 #[must_use]
+/// Parse and resolve an editor link against `base`.
 pub fn resolve_editor_target(raw: &str, base: &Path) -> Option<EditorTarget> {
     parse_editor_target(raw).map(|target| target.with_resolved_path(base))
 }
 
 #[must_use]
+/// Resolve `path` against `base` when it is relative.
 pub fn resolve_editor_path(path: &Path, base: &Path) -> PathBuf {
     if path.is_absolute() {
         return path.to_path_buf();
@@ -156,7 +164,7 @@ pub fn resolve_editor_path(path: &Path, base: &Path) -> PathBuf {
         match component {
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
-                joined.pop();
+                let _removed = joined.pop();
             }
             other => joined.push(other.as_os_str()),
         }
@@ -177,21 +185,25 @@ fn decode_bare_local_path(path: &str) -> Cow<'_, str> {
 fn extract_trailing_location(raw: &str) -> Option<String> {
     let bytes = raw.as_bytes();
     let mut idx = bytes.len();
-    while idx > 0 && (bytes[idx - 1].is_ascii_digit() || matches!(bytes[idx - 1], b':' | b'-')) {
+    while idx > 0
+        && bytes
+            .get(idx - 1)
+            .is_some_and(|byte| byte.is_ascii_digit() || matches!(byte, b':' | b'-'))
+    {
         idx -= 1;
     }
     if idx >= bytes.len() || bytes.get(idx).copied() != Some(b':') {
         return None;
     }
 
-    let suffix = &raw[idx..];
+    let suffix = raw.get(idx..).unwrap_or_default();
     let digits = suffix.chars().filter(|ch| ch.is_ascii_digit()).count();
     (digits > 0).then(|| suffix.to_string())
 }
 
 fn location_paren_suffix_start(token: &str) -> Option<usize> {
     let paren_start = token.rfind('(')?;
-    let inner = token[paren_start + 1..].strip_suffix(')')?;
+    let inner = token.get(paren_start + 1..)?.strip_suffix(')')?;
     let valid = !inner.is_empty()
         && !inner.starts_with(',')
         && !inner.ends_with(',')
@@ -230,6 +242,7 @@ fn parse_paren_location_suffix(suffix: &str) -> Option<String> {
 }
 
 #[must_use]
+/// Normalize an editor hash fragment, returning `None` when it is unusable.
 pub fn normalize_editor_hash_fragment(fragment: &str) -> Option<String> {
     let (start, end) = match fragment.split_once('-') {
         Some((start, end)) => (start, Some(end)),

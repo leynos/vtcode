@@ -225,13 +225,14 @@ validator and has a persisted task tracker. The canonical sections are
 and `Assumptions` are accepted case-insensitively. Plans may also include
 optional `Expected Outcomes` and `Dependencies and Prerequisites` sections; the
 validator tolerates additional sections and enforces only the canonical four.
-Every numbered implementation step must name a concrete file, symbol, behaviour,
-or other repository target and include a non-empty `verify:`/`verification:`
-command or check. Placeholder tokens and unresolved `Next open decision` or
-`Open question` entries block approval. Invalid candidates are rejected before
-persistence, so an existing valid draft is preserved. Diapason gives the model
-one bounded repair request; if the repaired artefact is still invalid, planning
-remains active with the validation reasons visible.
+Every numbered implementation step must name a concrete file, symbol,
+behaviour, or other repository target and include a non-empty
+`verify:`/`verification:` command or check. Placeholder tokens and unresolved
+`Next open decision` or `Open question` entries block approval. Invalid
+candidates are rejected before persistence, so an existing valid draft is
+preserved. Diapason gives the model one bounded repair request; if the repaired
+artefact is still invalid, planning remains active with the validation reasons
+visible.
 
 Creating the `task_tracker` checklist is part of the approval gate. If the
 tracker tool is unavailable, fails, or does not persist its tracker file, the

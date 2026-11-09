@@ -197,7 +197,7 @@ fn resolver_ignores_vtcode_environment_and_existing_home_directories() {
 }
 
 #[test]
-fn all_platforms_honor_explicit_xdg_roots() {
+fn all_platforms_honour_explicit_xdg_roots() {
     let temp = tempdir().expect("temporary XDG roots");
     let config = temp.path().join("configuration");
     let state = temp.path().join("durable-state");

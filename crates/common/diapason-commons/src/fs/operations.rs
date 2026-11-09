@@ -26,11 +26,11 @@ pub async fn read_file_with_context(path: &Path, context: &str) -> Result<String
 }
 
 /// Write a file with contextual error message, ensuring parent directory exists
-pub async fn write_file_with_context(path: &Path, content: &str, context: &str) -> Result<()> {
+pub async fn write_file_with_context(path: &Path, payload: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists(parent).await?;
     }
-    fs::write(path, content)
+    fs::write(path, payload)
         .await
         .with_context(|| format!("Failed to write {}: {}", context, path.display()))
 }
@@ -46,19 +46,19 @@ pub async fn write_file_with_context(path: &Path, content: &str, context: &str) 
 ///
 /// On rename failure the temp file is best-effort removed before returning
 /// the error.
-pub async fn write_file_atomic_with_context(path: &Path, content: &str, context: &str) -> Result<()> {
+pub async fn write_file_atomic_with_context(path: &Path, payload: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists(parent).await?;
     }
 
     let temp_path = atomic_temp_path(path);
 
-    fs::write(&temp_path, content)
+    fs::write(&temp_path, payload)
         .await
         .with_context(|| format!("Failed to write {}: {}", context, temp_path.display()))?;
 
     if let Err(err) = fs::rename(&temp_path, path).await {
-        let _ = fs::remove_file(&temp_path).await;
+        let _cleanup_result = fs::remove_file(&temp_path).await;
         return Err(err).with_context(|| format!("Failed to write {}: {}", context, path.display()));
     }
 
@@ -167,8 +167,8 @@ pub async fn read_json_file<T: for<'de> Deserialize<'de>>(path: &Path) -> Result
 }
 
 /// Parse JSON with context for better error messages
-pub fn parse_json_with_context<T: for<'de> Deserialize<'de>>(content: &str, context: &str) -> Result<T> {
-    serde_json::from_str(content).with_context(|| format!("Failed to parse JSON from {context}"))
+pub fn parse_json_with_context<T: for<'de> Deserialize<'de>>(serialized: &str, context: &str) -> Result<T> {
+    serde_json::from_str(serialized).with_context(|| format!("Failed to parse JSON from {context}"))
 }
 
 /// Serialize JSON with context

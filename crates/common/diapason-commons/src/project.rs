@@ -1,8 +1,3 @@
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "Project rendering intentionally ignores infallible writes into String buffers."
-)]
-
 //! Project-related utilities and structures
 
 use crate::utils::{extract_readme_excerpt, extract_toml_str};
@@ -12,24 +7,30 @@ use tokio::fs;
 
 /// Lightweight project overview extracted from workspace files
 pub struct ProjectOverview {
+    /// Project name from the manifest.
     pub name: Option<String>,
+    /// Project version from the manifest.
     pub version: Option<String>,
+    /// Project description from the manifest.
     pub description: Option<String>,
+    /// Excerpt of the project README.
     pub readme_excerpt: Option<String>,
+    /// Workspace root the overview was built from.
     pub root: PathBuf,
 }
 
 impl ProjectOverview {
+    /// Render a short one-line description for display.
     pub fn short_for_display(&self) -> String {
         let mut out = String::new();
         if let Some(name) = &self.name {
-            let _ = write!(out, "Project: {name}");
+            let _write_result = write!(out, "Project: {name}");
         }
         if let Some(ver) = &self.version {
             if !out.is_empty() {
                 out.push(' ');
             }
-            let _ = write!(out, "v{ver}");
+            let _write_result = write!(out, "v{ver}");
         }
         if !out.is_empty() {
             out.push('\n');
@@ -38,22 +39,23 @@ impl ProjectOverview {
             out.push_str(desc);
             out.push('\n');
         }
-        let _ = write!(out, "Root: {}", self.root.display());
+        let _write_result = write!(out, "Root: {}", self.root.display());
         out
     }
 
+    /// Render the overview as a prompt block.
     pub fn as_prompt_block(&self) -> String {
         let mut s = String::new();
         if let Some(name) = &self.name {
-            let _ = writeln!(s, "- Name: {name}");
+            let _write_result = writeln!(s, "- Name: {name}");
         }
         if let Some(ver) = &self.version {
-            let _ = writeln!(s, "- Version: {ver}");
+            let _write_result = writeln!(s, "- Version: {ver}");
         }
         if let Some(desc) = &self.description {
-            let _ = writeln!(s, "- Description: {desc}");
+            let _write_result = writeln!(s, "- Description: {desc}");
         }
-        let _ = writeln!(s, "- Workspace Root: {}", self.root.display());
+        let _write_result = writeln!(s, "- Workspace Root: {}", self.root.display());
         if let Some(excerpt) = &self.readme_excerpt {
             s.push_str("- README Excerpt: \n");
             s.push_str(excerpt);

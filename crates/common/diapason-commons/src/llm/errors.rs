@@ -12,11 +12,15 @@ use crate::sanitizer::sanitize_provider_diagnostic;
 #[derive(Clone, Deserialize, PartialEq, Eq)]
 pub struct LLMErrorMetadata {
     provider: Option<String>,
+    /// HTTP status code returned by the provider.
     pub status: Option<u16>,
+    /// Provider-specific error code.
     pub code: Option<String>,
     request_id: Option<String>,
     organization_id: Option<String>,
+    /// Retry delay reported by the provider, if any.
     pub retry_after: Option<String>,
+    /// Sanitized provider diagnostic message.
     pub message: Option<String>,
 }
 
@@ -91,23 +95,37 @@ impl LLMErrorMetadata {
 #[derive(Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LLMError {
+    /// The provider rejected the credentials.
     Authentication {
+        /// Human-readable description of the failure.
         message: String,
+        /// Provider metadata for the failure.
         metadata: Option<Box<LLMErrorMetadata>>,
     },
+    /// The provider throttled the request.
     RateLimit {
+        /// Provider metadata for the failure.
         metadata: Option<Box<LLMErrorMetadata>>,
     },
+    /// The request was rejected as malformed.
     InvalidRequest {
+        /// Human-readable description of the failure.
         message: String,
+        /// Provider metadata for the failure.
         metadata: Option<Box<LLMErrorMetadata>>,
     },
+    /// A transport-level failure occurred.
     Network {
+        /// Human-readable description of the failure.
         message: String,
+        /// Provider metadata for the failure.
         metadata: Option<Box<LLMErrorMetadata>>,
     },
+    /// The provider reported an error.
     Provider {
+        /// Human-readable description of the failure.
         message: String,
+        /// Provider metadata for the failure.
         metadata: Option<Box<LLMErrorMetadata>>,
     },
 }

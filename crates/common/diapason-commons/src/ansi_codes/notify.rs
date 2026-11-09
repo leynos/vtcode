@@ -1,8 +1,3 @@
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "ANSI output cleanup intentionally ignores the best-effort flush result."
-)]
-
 //! Terminal notification modes, detection, and emission helpers.
 
 use super::{BEL, OSC};
@@ -12,24 +7,33 @@ use std::io::{IsTerminal, Write};
 /// Notification preference (rich OSC vs bell-only)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HitlNotifyMode {
+    /// Notifications are disabled.
     Off,
+    /// Use the terminal bell only.
     Bell,
+    /// Use rich OSC notifications where supported.
     Rich,
 }
 
 /// Terminal-specific notification capabilities
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalNotifyKind {
+    /// The terminal only supports the bell.
     BellOnly,
+    /// The terminal supports OSC 9 notifications.
     Osc9,
+    /// The terminal supports OSC 777 notifications.
     Osc777,
 }
 
 /// Explicit terminal notification transport override.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotifyMethodOverride {
+    /// Detect the best transport automatically.
     Auto,
+    /// Force the terminal bell.
     Bell,
+    /// Force OSC 9 notifications.
     Osc9,
 }
 
@@ -56,15 +60,17 @@ fn is_bell_enabled(default_enabled: bool) -> bool {
 #[inline]
 fn emit_bell() {
     print!("{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 #[inline]
+/// Signal user attention using the automatically detected transport.
 pub fn notify_attention(default_enabled: bool, message: Option<&str>) {
     notify_attention_with_mode(default_enabled, message, NotifyMethodOverride::Auto);
 }
 
 #[inline]
+/// Signal user attention using an explicit transport override.
 pub fn notify_attention_with_mode(default_enabled: bool, message: Option<&str>, method: NotifyMethodOverride) {
     if !is_bell_enabled(default_enabled) {
         return;
@@ -139,14 +145,14 @@ fn send_osc777_notification(message: Option<&str>) {
     let title = sanitize_notification_text("Diapason");
     let payload = build_osc777_payload(&title, &body);
     print!("{payload}{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 fn send_osc9_notification(message: Option<&str>) {
     let body = sanitize_notification_text(message.unwrap_or("Human approval required"));
     let payload = build_osc9_payload(&body);
     print!("{payload}{BEL}");
-    let _ = std::io::stdout().flush();
+    let _flush_result = std::io::stdout().flush();
 }
 
 fn sanitize_notification_text(raw: &str) -> String {

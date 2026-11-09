@@ -1,5 +1,9 @@
 //! Implementation-plan data extracted from the original UI protocol types module.
 
+use num_traits::ToPrimitive;
+
+use crate::utils::saturating_float_to_u8;
+
 // ---------------------------------------------------------------------------
 // Plan types
 // ---------------------------------------------------------------------------
@@ -7,32 +11,67 @@
 /// A step in an implementation plan.
 #[derive(Clone, Debug)]
 pub struct PlanStep {
+    /// One-based step number.
     pub number: usize,
+    /// Short description of the step.
     pub description: String,
+    /// Optional expanded details.
     pub details: Option<String>,
+    /// Files the step touches.
     pub files: Vec<String>,
+    /// Whether the step has been completed.
     pub completed: bool,
 }
 
 /// A phase in an implementation plan (groups related steps).
 #[derive(Clone, Debug)]
 pub struct PlanPhase {
+    /// Phase name.
     pub name: String,
+    /// Steps belonging to the phase.
     pub steps: Vec<PlanStep>,
+    /// Whether every step in the phase is complete.
     pub completed: bool,
 }
 
 /// Structured plan content for display in the Implementation Blueprint panel.
 #[derive(Clone, Debug)]
 pub struct PlanContent {
+    /// Plan title.
     pub title: String,
+    /// Short summary of the plan.
     pub summary: String,
+    /// Path of the plan file, when it came from disk.
     pub file_path: Option<String>,
+    /// Phases making up the plan.
     pub phases: Vec<PlanPhase>,
+    /// Questions still open for the user.
     pub open_questions: Vec<String>,
+    /// Original plan source text.
     pub raw_content: String,
+    /// Total number of steps in the plan.
     pub total_steps: usize,
+    /// Number of steps already completed.
     pub completed_steps: usize,
+}
+
+fn finish_phase(phases: &mut Vec<PlanPhase>, current_phase: &mut Option<PlanPhase>) {
+    if let Some(phase) = current_phase.take() {
+        phases.push(phase);
+    }
+}
+
+fn add_plan_step(current_phase: &mut Option<PlanPhase>, description: &str, completed: bool) {
+    let Some(phase) = current_phase else {
+        return;
+    };
+    phase.steps.push(PlanStep {
+        number: phase.steps.len() + 1,
+        description: description.to_owned(),
+        details: None,
+        files: Vec::new(),
+        completed,
+    });
 }
 
 impl PlanContent {
@@ -59,12 +98,14 @@ impl PlanContent {
             }
 
             if reading_summary {
-                if !trimmed.is_empty() {
-                    if summary.is_empty() {
-                        summary = trimmed.to_string();
-                    }
+                if trimmed.is_empty() {
                     reading_summary = false;
+                    continue;
                 }
+                if summary.is_empty() {
+                    summary = trimmed.to_string();
+                }
+                reading_summary = false;
                 continue;
             }
 
@@ -76,9 +117,7 @@ impl PlanContent {
 
             // Phase headers (## Phase X: ...)
             if let Some(phase_name) = trimmed.strip_prefix("## ") {
-                if let Some(phase) = current_phase.take() {
-                    phases.push(phase);
-                }
+                finish_phase(&mut phases, &mut current_phase);
                 current_phase = Some(PlanPhase {
                     name: phase_name.to_string(),
                     steps: Vec::new(),
@@ -89,55 +128,29 @@ impl PlanContent {
 
             // Open questions section
             if trimmed == "## Open Questions" {
-                if let Some(phase) = current_phase.take() {
-                    phases.push(phase);
-                }
+                finish_phase(&mut phases, &mut current_phase);
                 continue;
             }
 
             // Step items ([ ] or [x] prefixed)
             if let Some(rest) = trimmed.strip_prefix("[ ] ") {
                 total_steps += 1;
-                if let Some(ref mut phase) = current_phase {
-                    phase.steps.push(PlanStep {
-                        number: phase.steps.len() + 1,
-                        description: rest.to_string(),
-                        details: None,
-                        files: Vec::new(),
-                        completed: false,
-                    });
-                }
+                add_plan_step(&mut current_phase, rest, false);
                 continue;
             }
 
             if let Some(rest) = trimmed.strip_prefix("[x] ").or_else(|| trimmed.strip_prefix("[X] ")) {
                 total_steps += 1;
                 completed_steps += 1;
-                if let Some(ref mut phase) = current_phase {
-                    phase.steps.push(PlanStep {
-                        number: phase.steps.len() + 1,
-                        description: rest.to_string(),
-                        details: None,
-                        files: Vec::new(),
-                        completed: true,
-                    });
-                }
+                add_plan_step(&mut current_phase, rest, true);
                 continue;
             }
 
             // Numbered steps (1. **Step 1** ...)
             if trimmed.starts_with(|c: char| c.is_ascii_digit()) && trimmed.contains('.') {
                 total_steps += 1;
-                if let Some(ref mut phase) = current_phase {
-                    let desc = trimmed.split_once('.').map(|x| x.1).unwrap_or("").trim();
-                    phase.steps.push(PlanStep {
-                        number: phase.steps.len() + 1,
-                        description: desc.to_string(),
-                        details: None,
-                        files: Vec::new(),
-                        completed: false,
-                    });
-                }
+                let description = trimmed.split_once('.').map_or("", |(_, rest)| rest).trim();
+                add_plan_step(&mut current_phase, description, false);
                 continue;
             }
 
@@ -171,15 +184,13 @@ impl PlanContent {
     }
 
     /// Get progress as a percentage.
-    #[allow(
-        clippy::cast_sign_loss,
-        reason = "Intentional compatibility, platform, or test-only suppression."
-    )]
     pub fn progress_percent(&self) -> u8 {
         if self.total_steps == 0 {
             0
         } else {
-            ((self.completed_steps as f32 / self.total_steps as f32) * 100.0) as u8
+            let completed_steps = self.completed_steps.to_f32().unwrap_or(f32::MAX);
+            let total_steps = self.total_steps.to_f32().unwrap_or(f32::MAX);
+            saturating_float_to_u8(completed_steps / total_steps * 100.0)
         }
     }
 }

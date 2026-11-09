@@ -13,6 +13,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ProviderParseError {
     #[error("Invalid provider: '{}'. Supported providers: {}", .0, crate::provider::Provider::all_providers().iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "))]
+    /// The provider name could not be parsed.
     InvalidProvider(String),
 }
 
@@ -172,14 +173,17 @@ impl Provider {
         }
     }
 
+    /// Return whether the provider's model list is discovered at runtime.
     pub fn is_dynamic(&self) -> bool {
         matches!(self, Provider::Copilot) || self.is_local()
     }
 
+    /// Return whether the provider runs locally.
     pub fn is_local(&self) -> bool {
         matches!(self, Provider::Ollama | Provider::LmStudio | Provider::LlamaCpp)
     }
 
+    /// Return install and startup instructions for a local provider.
     pub fn local_install_instructions(&self) -> Option<&'static str> {
         match self {
             Provider::Ollama => Some(
@@ -195,10 +199,12 @@ impl Provider {
         }
     }
 
+    /// Return whether authentication is managed by the application.
     pub fn uses_managed_auth(&self) -> bool {
         matches!(self, Provider::Copilot)
     }
 
+    /// Return the provider's API-key management URL.
     pub fn platform_url(&self) -> Option<&'static str> {
         match self {
             Provider::Gemini => Some("https://aistudio.google.com/app/apikey"),

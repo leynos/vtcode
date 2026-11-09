@@ -68,140 +68,136 @@ The complete PR train is not yet delivered.
   removed diagnostics; the handoff, Nixie, and cached diff checks passed.
 - [Draft PR #28](https://github.com/leynos/vtcode/pull/28) publishes
   `harden-lint-spelling-catalogue` at
-  `b06ef5e694d222c0ad273d681180b78ef3df75f6`, based on #27.
-  It renames native catalogue APIs, modules, provider adapters, and callers,
-  preserving serialized and persisted names. Formatting, lint, and build
-  passed initially, but the full suite found a missing native skill-discovery
-  keyword. Both `rule-catalogue` and legacy `rule-catalog` are now retained,
-  with query regressions. The original full retry passed: 10,081 tests, 17 skipped,
-  and 67 harness tests. Formatting, lint, build, advisory, and changed Python
+  `b06ef5e694d222c0ad273d681180b78ef3df75f6`, based on #27. It renames native
+  catalogue APIs, modules, provider adapters, and callers, preserving
+  serialized and persisted names. Formatting, lint, and build passed initially,
+  but the full suite found a missing native skill-discovery keyword. Both
+  `rule-catalogue` and legacy `rule-catalog` are now retained, with query
+  regressions. The original full retry passed: 10,081 tests, 17 skipped, and 67
+  harness tests. Formatting, lint, build, advisory, and changed Python
   compilation passed. Optional ast-grep remained unavailable.
 - [Draft PR #29](https://github.com/leynos/vtcode/pull/29) publishes
   `harden-lint-spelling-fulfilment` at
-  `efb89ce02714fec24942146416d7becb0c56494a`, based on #28.
-  It adopts native fulfilment, sceptic, and cancelled names with callers,
-  preserving established wire values and adding an A2A serialization check.
-  Its original full gates passed: formatting, lint, build, 10,081 workspace tests
-  with 17 skipped, and all 67 harness tests. Changed shell syntax and advisory
-  checks passed; optional ast-grep remained unavailable. Formatting and lint
-  logs use the unnumbered fulfilment suffix; build, test, test-harness, shell,
-  and advisory logs use `ACTION-2` with that suffix.
+  `efb89ce02714fec24942146416d7becb0c56494a`, based on #28. It adopts native
+  fulfilment, sceptic, and cancelled names with callers, preserving established
+  wire values and adding an A2A serialization check. Its original full gates
+  passed: formatting, lint, build, 10,081 workspace tests with 17 skipped, and
+  all 67 harness tests. Changed shell syntax and advisory checks passed;
+  optional ast-grep remained unavailable. Formatting and lint logs use the
+  unnumbered fulfilment suffix; build, test, test-harness, shell, and advisory
+  logs use `ACTION-2` with that suffix.
 - [Draft PR #30](https://github.com/leynos/vtcode/pull/30) publishes
-  `harden-lint-spelling-oxford` at
-  `3a7c80a4821147d5d27fae46b8d7e392e8be70e1`, based on #29.
-  It applies the reviewed Oxford source patch, including normalized code-search
-  APIs and their callers. A seven-file residual patch updates authored source
-  text and future plan-name vocabulary to `harbour`; existing paths remain
-  readable. Parser compatibility still accepts both finalizing/finalising.
-  Its original old-config gates passed: formatting, lint, build, 10,081 workspace
-  tests with 17 skipped, and all 67 harness tests. Advisory checks passed;
-  optional ast-grep remained unavailable. Logs use
-  `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-oxford.out`.
+  `harden-lint-spelling-oxford` at `3a7c80a4821147d5d27fae46b8d7e392e8be70e1`,
+  based on #29. It applies the reviewed Oxford source patch, including
+  normalized code-search APIs and their callers. A seven-file residual patch
+  updates authored source text and future plan-name vocabulary to `harbour`;
+  existing paths remain readable. Parser compatibility still accepts both
+  finalizing/finalising. Its original old-config gates passed: formatting,
+  lint, build, 10,081 workspace tests with 17 skipped, and all 67 harness
+  tests. Advisory checks passed; optional ast-grep remained unavailable. Logs
+  use `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-oxford.out`.
 - [Draft PR #31](https://github.com/leynos/vtcode/pull/31) publishes
-  `harden-lint-spelling-source` at
-  `20e8f952d4341a2cf50df0e65c119ff521fef80c`, based on #30.
-  It combines authored core/provider/source prose with the complete native
-  `AnsiColourEnum` alias caller set: 149 reviewed files plus this record.
-  External colour types, fixed wire names, and discovery aliases remain intact.
-  Its original old-config gates passed: formatting, lint, build, 10,081 workspace
-  tests with 17 skipped, and all 67 harness tests. Nixie passed all 21 changed
-  Markdown files. Markdownlint retains 881 inherited findings across 20 files;
-  exact path, line, and rule identities match the parent, with none added or
-  removed. Advisory passed; optional ast-grep remained unavailable. Logs use
+  `harden-lint-spelling-source` at `20e8f952d4341a2cf50df0e65c119ff521fef80c`,
+  based on #30. It combines authored core/provider/source prose with the
+  complete native `AnsiColourEnum` alias caller set: 149 reviewed files plus
+  this record. External colour types, fixed wire names, and discovery aliases
+  remain intact. Its original old-config gates passed: formatting, lint, build,
+  10,081 workspace tests with 17 skipped, and all 67 harness tests. Nixie
+  passed all 21 changed Markdown files. Markdownlint retains 881 inherited
+  findings across 20 files; exact path, line, and rule identities match the
+  parent, with none added or removed. Advisory passed; optional ast-grep
+  remained unavailable. Logs use
   `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-source.out`.
 - [Draft PR #32](https://github.com/leynos/vtcode/pull/32) publishes
   `harden-lint-spelling-foundation` at
-  `90858bff6edbde66bea79a9c68a91b1a903707db`, based on #31.
-  It corrects authored foundation-crate prose and preserves the newly renamed
-  colour aliases, existing wire values, and generated model metadata.
-  Its original old-config gates passed: formatting, lint, build, 10,081 workspace
-  tests with 17 skipped, and all 67 harness tests. The initial runner report
-  cited a nonexistent full-test log; that claim was rejected before commit,
-  and the actual full suite subsequently passed in `test-2`. Preliminary
-  Markdownlint retains 87 inherited diagnostics with exact path, line, and
-  rule identities unchanged; Nixie passed all six changed Markdown files.
-  Advisory passed; optional ast-grep remained unavailable. Logs use the
-  foundation branch suffix, with `test-2` for the verified full-suite run.
+  `90858bff6edbde66bea79a9c68a91b1a903707db`, based on #31. It corrects
+  authored foundation-crate prose and preserves the newly renamed colour
+  aliases, existing wire values, and generated model metadata. Its original
+  old-config gates passed: formatting, lint, build, 10,081 workspace tests with
+  17 skipped, and all 67 harness tests. The initial runner report cited a
+  nonexistent full-test log; that claim was rejected before commit, and the
+  actual full suite subsequently passed in `test-2`. Preliminary Markdownlint
+  retains 87 inherited diagnostics with exact path, line, and rule identities
+  unchanged; Nixie passed all six changed Markdown files. Advisory passed;
+  optional ast-grep remained unavailable. Logs use the foundation branch
+  suffix, with `test-2` for the verified full-suite run.
 - [Draft PR #33](https://github.com/leynos/vtcode/pull/33) publishes
   `harden-lint-spelling-engineering-docs` at
-  `d94310f9a6be1cd8b5ba29cdb7c87e39f6368202`, based on #32.
-  It corrects engineering, guide, and harness prose. The colour guide moves
-  to `COLOUR_GUIDELINES.md` with both documentation-map links updated together.
+  `d94310f9a6be1cd8b5ba29cdb7c87e39f6368202`, based on #32. It corrects
+  engineering, guide, and harness prose. The colour guide moves to
+  `COLOUR_GUIDELINES.md` with both documentation-map links updated together.
   Preliminary Markdown checks found 41 new table-spacing and line-length
   diagnostics. Those were repaired, along with a stale native catalogue path.
   The original 3,579 diagnostics match parent path, mapped line, and rule
   identities, with none added or removed. Nixie passed all 81 changed files.
-  All seven original ordered code gates recorded exit zero: formatting, lint, build,
-  10,081 workspace tests with 17 skipped, 67 harness tests, the optional
+  All seven original ordered code gates recorded exit zero: formatting, lint,
+  build, 10,081 workspace tests with 17 skipped, 67 harness tests, the optional
   ast-grep skip, and advisory. Logs use `ACTION-manifest` with the engineering
   branch suffix.
 - [Draft PR #34](https://github.com/leynos/vtcode/pull/34) publishes
   `harden-lint-spelling-user-docs` at
-  `b1328dc3fedc00e01da8a8688abceb19a2a53f21`, based on #33.
-  It corrects 94 user, reference, and provider documents, including native
-  colour aliases in examples. Fixed URLs, APIs, configuration keys, and
-  protocol names remain intact. All seven original code gates recorded exit
-  zero: formatting, lint, build, 10,081 workspace tests with 17 skipped,
-  67 harness tests, the optional ast-grep skip, and advisory. Logs use
-  `ACTION-manifest` with the user-docs branch suffix. Nixie passed all
-  95 changed documents. Original table and wrapping repairs left 5,069
-  inherited Markdown diagnostics against 5,074 in the parent: no added
-  path, mapped-line, and rule identities; five inherited instances removed.
-  Two residual Oxford spellings found by reconnaissance are queued for the
-  next source-fix layer before the final spelling scan and gate.
+  `b1328dc3fedc00e01da8a8688abceb19a2a53f21`, based on #33. It corrects 94
+  user, reference, and provider documents, including native colour aliases in
+  examples. Fixed URLs, APIs, configuration keys, and protocol names remain
+  intact. All seven original code gates recorded exit zero: formatting, lint,
+  build, 10,081 workspace tests with 17 skipped, 67 harness tests, the optional
+  ast-grep skip, and advisory. Logs use `ACTION-manifest` with the user-docs
+  branch suffix. Nixie passed all 95 changed documents. Original table and
+  wrapping repairs left 5,069 inherited Markdown diagnostics against 5,074 in
+  the parent: no added path, mapped-line, and rule identities; five inherited
+  instances removed. Two residual Oxford spellings found by reconnaissance are
+  queued for the next source-fix layer before the final spelling scan and gate.
 - [Draft PR #38](https://github.com/leynos/vtcode/pull/38) tracks
   `harden-lint-spelling-residual`; the rebased candidate targets
   [Draft PR #34](https://github.com/leynos/vtcode/pull/34) at
   `b1328dc3fedc00e01da8a8688abceb19a2a53f21`. The original residual validation
   evidence below remains historical against its previous parent. This candidate
-  has completed fresh gates and supplement provenance checks, recorded below.
-  A fresh scan using
-  the reviewed external configuration found 1,086 candidates across 310 files.
-  These include fixed external names and intentional malformed inputs, so
-  classification precedes source fixes and narrow contract exemptions.
-  The scan used typos 1.50.1 and exited 2; its log is
+  has completed fresh gates and supplement provenance checks, recorded below. A
+  fresh scan using the reviewed external configuration found 1,086 candidates
+  across 310 files. These include fixed external names and intentional
+  malformed inputs, so classification precedes source fixes and narrow contract
+  exemptions. The scan used typos 1.50.1 and exited 2; its log is
   `/tmp/spelling-measure-2-vtcode-df12-onboarding-harden-lint-spelling-residual.out`.
-  All seven ordered workspace gates passed: formatting, lint, build,
-  10,081 tests with 17 skipped, 67 harness tests, the optional ast-grep skip,
-  and advisory. Logs use `ACTION-manifest` with this branch suffix.
-  WebMCP typecheck, 41 tests, and build passed; VS Code bundled successfully;
-  Python compilation and shell syntax checks passed. The excluded Zed crate
-  passed its WASM check. Exact-parent comparisons found no added supplementary
-  failures: Zed retains 83 formatting hunks and three cache Arc-count test
-  failures (149 tests pass); VS Code retains 578 TypeScript diagnostics.
-  Markdown retains 3,384 inherited findings against 3,390 in the parent,
-  with no added mapped identities; Nixie passed all 57 changed documents.
-  A refined offline spelling scan found 335 candidates across 115 files;
-  further native sample and command-skill corrections precede the gate.
+  All seven ordered workspace gates passed: formatting, lint, build, 10,081
+  tests with 17 skipped, 67 harness tests, the optional ast-grep skip, and
+  advisory. Logs use `ACTION-manifest` with this branch suffix. WebMCP
+  typecheck, 41 tests, and build passed; VS Code bundled successfully; Python
+  compilation and shell syntax checks passed. The excluded Zed crate passed its
+  WASM check. Exact-parent comparisons found no added supplementary failures:
+  Zed retains 83 formatting hunks and three cache Arc-count test failures (149
+  tests pass); VS Code retains 578 TypeScript diagnostics. Markdown retains
+  3,384 inherited findings against 3,390 in the parent, with no added mapped
+  identities; Nixie passed all 57 changed documents. A refined offline spelling
+  scan found 335 candidates across 115 files; further native sample and
+  command-skill corrections precede the gate.
 - [Draft PR #51](https://github.com/leynos/vtcode/pull/51) tracks
   `harden-lint-spelling-examples`; the rebased candidate targets
   [PR #38](https://github.com/leynos/vtcode/pull/38) at
   `03ab606cc8ed15f29a5eb84e360fd872edd465ab`. The original examples validation
   evidence below remains historical against its previous parent. Fresh gates
   and supplementary comparisons are recorded below. The additional workflow
-  validation remains a later onboarding layer. The command-skill
-  migration retains the legacy ID, discovery precedence, and model-catalogue
-  exclusion. Authored test prompts and examples follow in the same layer;
-  all seven ordered workspace gates passed. The full run passed 10,090 tests
-  with 17 skipped and one leaky-process result. Its focused repeat passed
-  without a leak; the unchanged snapshot test has no process-spawn path.
-  The 67 harness tests passed. Logs use `ACTION-manifest-2` with this branch
-  suffix. Nixie, Python compilation, and VS Code bundling passed. The focused
-  mention-parser suite passed 16 tests and reproduced the exact parent's one
-  email-detection failure, tracked as
-  [issue #48](https://github.com/leynos/vtcode/issues/48). Markdownlint retains
-  the exact parent's 31 findings with no added or removed identities.
-  The proposed spelling scan now reports 137 findings
-  across 58 files; the policy remains outside the live tree.
+  validation remains a later onboarding layer. The command-skill migration
+  retains the legacy ID, discovery precedence, and model-catalogue exclusion.
+  Authored test prompts and examples follow in the same layer; all seven
+  ordered workspace gates passed. The full run passed 10,090 tests with 17
+  skipped and one leaky-process result. Its focused repeat passed without a
+  leak; the unchanged snapshot test has no process-spawn path. The 67 harness
+  tests passed. Logs use `ACTION-manifest-2` with this branch suffix. Nixie,
+  Python compilation, and VS Code bundling passed. The focused mention-parser
+  suite passed 16 tests and reproduced the exact parent's one email-detection
+  failure, tracked as [issue #48](https://github.com/leynos/vtcode/issues/48).
+  Markdownlint retains the exact parent's 31 findings with no added or removed
+  identities. The proposed spelling scan now reports 137 findings across 58
+  files; the policy remains outside the live tree.
 - The user now prioritizes review and merge readiness for #20 and subsequent
-  PRs in order, using the comenq-coderabbit workflow and worker agents.
-  GitHub cancelled #20's cold `tool-eval` job at its 15-minute ceiling after
-  a 10m43s build; a 30-minute budget patch is prepared for that PR. Its first
-  CodeRabbit review has six inline findings. Pertinent fixes are being
-  prepared against #20; spelling and structural findings are assigned to the
-  later train layers. Every bot reply must mention `@coderabbitai`. Valid
-  out-of-scope findings require GitHub issues. Preserve the current layer as
-  a gated commit before switching to the review fixes.
+  PRs in order, using the comenq-coderabbit workflow and worker agents. GitHub
+  cancelled #20's cold `tool-eval` job at its 15-minute ceiling after a 10m43s
+  build; a 30-minute budget patch is prepared for that PR. Its first CodeRabbit
+  review has six inline findings. Pertinent fixes are being prepared against
+  #20; spelling and structural findings are assigned to the later train layers.
+  Every bot reply must mention `@coderabbitai`. Valid out-of-scope findings
+  require GitHub issues. Preserve the current layer as a gated commit before
+  switching to the review fixes.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -563,12 +559,12 @@ entry point.
 The fulfilment, sceptic and cancelled spelling layer is rebased onto PR #28
 `b06ef5e69`. The replay completed without conflicts; all 57 non-handoff paths
 are byte-identical to the original layer. Fixed configuration keys, event
-values and A2A cancellation protocol names remain intact. All eight
-sequential gates passed, including typecheck, 10,085 workspace tests, 17 skips
-and 67 harness tests. Logs use `restack-1` on `harden-lint-spelling-fulfilment`;
-final handoff checks use `handoff-restack-1`. The optional ast-grep scan was
-skipped because the tool is unavailable. The push uses an explicit lease
-against the original published PR #29 head.
+values and A2A cancellation protocol names remain intact. All eight sequential
+gates passed, including typecheck, 10,085 workspace tests, 17 skips and 67
+harness tests. Logs use `restack-1` on `harden-lint-spelling-fulfilment`; final
+handoff checks use `handoff-restack-1`. The optional ast-grep scan was skipped
+because the tool is unavailable. The push uses an explicit lease against the
+original published PR #29 head.
 
 ## PR 30 review restack
 
@@ -576,53 +572,53 @@ The Oxford source layer is rebased onto PR #29 `efb89ce02`. The replay
 completed without conflicts. The cache replay helper and both property tests
 remain intact alongside the normalized identity names; the hermetic registry
 fixture and its six consumers are preserved. Generated `harbour` names,
-existing supplied plan names and both parser spellings remain supported.
-All eight sequential gates passed, including typecheck, 10,085 workspace
-tests, 17 skips and 67 harness tests. Logs use `restack-1` on
+existing supplied plan names and both parser spellings remain supported. All
+eight sequential gates passed, including typecheck, 10,085 workspace tests, 17
+skips and 67 harness tests. Logs use `restack-1` on
 `harden-lint-spelling-oxford`; final handoff checks use `handoff-restack-1`.
 The optional ast-grep scan was skipped because the tool is unavailable. The
 push uses an explicit lease against the original published PR #30 head.
 
 ## PR 31 review restack
 
-The source-prose layer is rebased onto PR #30 `3a7c80a48`. The replay
-completed without conflicts and its patch is unchanged. Lower cache tests,
-TTY capability checks and startup environment locking remain intact. The
-20 Markdown files outside this handoff and their parent versions are
-byte-identical to the original comparison, preserving the inherited
-881-diagnostic baseline. All eight sequential gates passed, including
-typecheck, 10,085 workspace tests, 17 skips and 67 harness tests. Logs use
-`restack-1` on `harden-lint-spelling-source`; final handoff checks use
-`handoff-restack-1`. The optional ast-grep scan was skipped because the tool
-is unavailable. The push uses an explicit lease against the original
-published PR #31 head.
+The source-prose layer is rebased onto PR #30 `3a7c80a48`. The replay completed
+without conflicts and its patch is unchanged. Lower cache tests, TTY capability
+checks and startup environment locking remain intact. The 20 Markdown files
+outside this handoff and their parent versions are byte-identical to the
+original comparison, preserving the inherited 881-diagnostic baseline. All
+eight sequential gates passed, including typecheck, 10,085 workspace tests, 17
+skips and 67 harness tests. Logs use `restack-1` on
+`harden-lint-spelling-source`; final handoff checks use `handoff-restack-1`.
+The optional ast-grep scan was skipped because the tool is unavailable. The
+push uses an explicit lease against the original published PR #31 head.
 
 ## PR 32 review restack
 
 The foundation-prose layer is rebased onto PR #31 `20e8f952d`. The replay
-completed without conflicts; all 80 non-handoff paths are byte-identical to
-the original layer. The five crate guides and their comparison base blobs
-are unchanged, preserving the 87 inherited diagnostic identities. All eight
+completed without conflicts; all 80 non-handoff paths are byte-identical to the
+original layer. The five crate guides and their comparison base blobs are
+unchanged, preserving the 87 inherited diagnostic identities. All eight
 sequential gates passed, including typecheck, 10,085 workspace tests, 17 skips
 and 67 harness tests. Logs use `restack-1` on
-`harden-lint-spelling-foundation`; final handoff checks use `handoff-restack-1`.
-The optional ast-grep scan was skipped because the tool is unavailable. The
-push uses an explicit lease against the original published PR #32 head.
+`harden-lint-spelling-foundation`; final handoff checks use
+`handoff-restack-1`. The optional ast-grep scan was skipped because the tool is
+unavailable. The push uses an explicit lease against the original published PR
+#32 head.
 
 ## PR 33 review restack
 
 The engineering-documentation layer is rebased onto PR #32 `90858bff6`. The
 replay completed without conflicts. The testing and WebMCP guides retain the
 lower hermetic-fixture and fail-closed sandbox requirements alongside their
-spelling changes; the renamed colour guide and both map links are intact.
-All eight sequential code gates passed, including 10,085 workspace tests
-with 17 skipped and 67 harness tests. The optional ast-grep scan was skipped
-because the tool is unavailable. Logs use `ACTION-restack-1` with the
-engineering branch suffix.
+spelling changes; the renamed colour guide and both map links are intact. All
+eight sequential code gates passed, including 10,085 workspace tests with 17
+skipped and 67 harness tests. The optional ast-grep scan was skipped because
+the tool is unavailable. Logs use `ACTION-restack-1` with the engineering
+branch suffix.
 
-The fresh Markdown comparison found 3,103 diagnostics in both the current
-layer and its final parent, with no added or removed path, mapped-line, rule,
-and multiplicity identities. The comparison handles the renamed colour guide,
+The fresh Markdown comparison found 3,103 diagnostics in both the current layer
+and its final parent, with no added or removed path, mapped-line, rule, and
+multiplicity identities. The comparison handles the renamed colour guide,
 spelling replacements, and unchanged end-of-file blank lines. Both raw logs
 confirm that 81 files were linted. Nixie validated the 81 changed files.
 
@@ -644,13 +640,14 @@ optional ast-grep scan remains unavailable. Logs use `ACTION-pr34-restack-1`
 with the user-documentation branch suffix.
 
 Fresh Markdownlint checked all 95 changed documents: 3,814 current diagnostics
-against 3,819 in the final parent. Source-line mapping found no added identities
-and five removed instances: one line-length finding in the LM Studio guide and
-four table-spacing findings in the ANSI reference and styling architecture.
-These are inherited failures, not a passing Markdownlint gate. Nixie passed all
-95 files. Raw logs use `markdownlint-pr34-{current,parent}-restack-1`; the mapped
-comparison is `/tmp/vtcode-pr34-md-identity-root.json`. This evidence supersedes
-the original diagnostic counts for this restack.
+against 3,819 in the final parent. Source-line mapping found no added
+identities and five removed instances: one line-length finding in the LM Studio
+guide and four table-spacing findings in the ANSI reference and styling
+architecture. These are inherited failures, not a passing Markdownlint gate.
+Nixie passed all 95 files. Raw logs use
+`markdownlint-pr34-{current,parent}-restack-1`; the mapped comparison is
+`/tmp/vtcode-pr34-md-identity-root.json`. This evidence supersedes the original
+diagnostic counts for this restack.
 
 ## Additional Markdown-formatting requirement
 
@@ -687,14 +684,14 @@ Markdownlint checked 57 changed documents: 3,384 current diagnostics versus
 six removed instances. The rewritten parser-guide subtitle retains its existing
 MD036 finding; its corresponding source line was checked explicitly. Three
 obsolete list entries and three unsupported configuration rows account for the
-removed findings. These inherited failures are not a passing Markdownlint
-gate. Nixie passed all 57 files. The mapped comparison is
+removed findings. These inherited failures are not a passing Markdownlint gate.
+Nixie passed all 57 files. The mapped comparison is
 `/tmp/vtcode-pr38-md-identity-root.json`.
 
 The original Zed, VS Code, and WebMCP supplement results above are carried
 forward, not rerun. Exact blob and mode comparison found identical 16-path
-changes across the original and rebased transitions. The four inherited
-WebMCP and Cargo differences match the parent transition. Evidence is in
+changes across the original and rebased transitions. The four inherited WebMCP
+and Cargo differences match the parent transition. Evidence is in
 `/tmp/pr38-supplement-parity-final.json`; inherited supplement failures remain
 reported separately from the passing workspace gates.
 
@@ -706,10 +703,10 @@ workflow-security checks, require yamllint before actionlint, and test failure
 propagation. Pin yamllint 1.38.0 and actionlint 1.7.12; verify the actionlint
 archive before installation and use the reviewed installer revision.
 
-Workflow repairs precede the gate that requires them. The offline candidate
-and process-contract tests are under review and are not delivered. This
-addition retains mdtablefix 0.5.1, the requested shared-actions revision, and
-the project's unchanged primary Rust toolchain.
+Workflow repairs precede the gate that requires them. The offline candidate and
+process-contract tests are under review and are not delivered. This addition
+retains mdtablefix 0.5.1, the requested shared-actions revision, and the
+project's unchanged primary Rust toolchain.
 
 ## PR 51 review restack
 
@@ -722,13 +719,13 @@ skip, and advisory. Logs use `ACTION-pr51-restack-1` with the examples branch
 suffix. The optional scan remains unavailable.
 
 Fresh supplementary checks passed Nixie for three documents, Python
-compilation, and VS Code bundling. The mention-parser suite passed 16 tests
-and reproduced the exact parent's email-detection failure from issue #48.
+compilation, and VS Code bundling. The mention-parser suite passed 16 tests and
+reproduced the exact parent's email-detection failure from issue #48.
 Markdownlint initially found one new handoff line-length finding; it was
 wrapped before the final document checks. The other 31 diagnostic identities
 belong to the native-plugin guide and match the final parent. The renamed
-bundled command-skill document is clean. These inherited supplementary
-failures remain visible and do not represent passing gates.
+bundled command-skill document is clean. These inherited supplementary failures
+remain visible and do not represent passing gates.
 
 PR #20 has separately published review fixes at `8f34d6e94`. Its hosted eval
 checks passed, and its next CodeRabbit review is queued. The upper train must
@@ -754,17 +751,17 @@ claim to implement or validate that policy.
 Fresh format, lint, build, type-check, workspace, and harness gates passed:
 10,094 workspace tests passed with 17 skipped, and all 67 harness tests passed.
 The advisory target passed in warning mode; optional ast-grep was unavailable.
-Documentation generation retains the four previously recorded warnings.
-Python compilation and Nixie passed. The Markdown and workflow-validation
+Documentation generation retains the four previously recorded warnings. Python
+compilation and Nixie passed. The Markdown and workflow-validation
 prerequisites remain separate until their own full gates pass.
 
 The subsequent tracked-index measurement found eight correctable textual hits.
 This layer corrects the native `normalize` assertion prose and Copilot guidance
-prose. The two stale guidance references had no CodeGraph symbol or code-pattern
-wiring, so they were removed rather than renaming or inventing a tool API. The
-actual CLI keeps canonical `analyse` and its legacy alias.
-The earlier permission-hook JSON key remains accurate and
-unchanged; its precise external-contract policy treatment is separate.
+prose. The two stale guidance references had no CodeGraph symbol or
+code-pattern wiring, so they were removed rather than renaming or inventing a
+tool API. The actual CLI keeps canonical `analyse` and its legacy alias. The
+earlier permission-hook JSON key remains accurate and unchanged; its precise
+external-contract policy treatment is separate.
 
 The proposed tracked-file spelling scan checked 3,095 existing paths and found
 zero textual findings, plus 22 informational binary-file records. Its inherited
@@ -774,31 +771,33 @@ or paths. The fixed references must remain byte-exact.
 
 The first Markdown check found 334 diagnostics against 333 on the exact parent.
 The sole added diagnostic was the rewritten Copilot instruction's line length;
-that instruction is now wrapped. Final Markdown and spelling checks include this
-handoff update. The inherited Markdown findings remain for the formatting work.
+that instruction is now wrapped. Final Markdown and spelling checks include
+this handoff update. The inherited Markdown findings remain for the formatting
+work.
 
 ## Workflow source prerequisite
 
 The workflow repair layer follows source spelling PR #66 and prepares the
 existing five workflows for Netsuke's yamllint and actionlint policy. It adds
 document markers, corrects comment spacing, expands a compact mapping, and
-wraps long commands without changing their arguments or folded Rust flags.
-Tag polling still makes 12 attempts with ten-second sleeps; diagnostics now
-include the attempt number. The binary-size fallback keeps its existing
+wraps long commands without changing their arguments or folded Rust flags. Tag
+polling still makes 12 attempts with ten-second sleeps; diagnostics now include
+the attempt number. The binary-size fallback keeps its existing
 platform-specific probes and unknown-size outcome.
 
 The source revision is `d0bb051fac02416cb38a8e76865b1b569d5ec163` from Netsuke.
 Parsed YAML comparison preserves the CI, coverage, tool-eval, and WebMCP jobs
 exactly. Build-workflow differences are confined to the documented equivalent
-command forms and retry diagnostics. The Rust toolchain file remains byte-exact.
-This layer carries source repairs only; the next layer installs the linters,
-tests the process boundaries, and enables the gate.
+command forms and retry diagnostics. The Rust toolchain file remains
+byte-exact. This layer carries source repairs only; the next layer installs the
+linters, tests the process boundaries, and enables the gate.
 
-This layer passed format, lint, build, type-check, workspace, and harness gates:
-10,094 workspace tests passed with 17 skipped, and all 67 harness tests passed.
-Advisory checks passed in warning mode. Optional ast-grep was unavailable, and
-the same four rustdoc warnings remain under the existing configuration. Final
-document and proposed workflow-linter checks include this evidence update.
+This layer passed format, lint, build, type-check, workspace, and harness
+gates: 10,094 workspace tests passed with 17 skipped, and all 67 harness tests
+passed. Advisory checks passed in warning mode. Optional ast-grep was
+unavailable, and the same four rustdoc warnings remain under the existing
+configuration. Final document and proposed workflow-linter checks include this
+evidence update.
 
 ## GitHub Actions validation gate
 
@@ -816,26 +815,27 @@ tests cover every linter exit status and fail-closed download/checksum paths.
 CI uses the absolute Make binary, preserves its four-job build limit, and
 triggers on Makefile changes as well.
 
-The primary Rust toolchain, existing workflow security policy, and job selection
-are preserved. Markdown formatter installation remains a separate layer.
+The primary Rust toolchain, existing workflow security policy, and job
+selection are preserved. Markdown formatter installation remains a separate
+layer.
 
 This layer passed all 13 contract tests, format, lint, build, type-check,
 workspace, and harness gates: 10,094 workspace tests passed with 17 skipped,
 and all 67 harness tests passed. Advisory checks passed in warning mode;
-optional ast-grep was unavailable. The same four rustdoc warnings remain.
-Final contracts, workflow linters, and document checks include the CI job-limit
+optional ast-grep was unavailable. The same four rustdoc warnings remain. Final
+contracts, workflow linters, and document checks include the CI job-limit
 correction and this evidence update.
 
 ## Historical CHANGELOG spelling layer
 
-This layer applies 196 reviewed prose-only spelling corrections to `CHANGELOG.md`.
-It preserves 137 commit-hash fragments and 22 historical identifiers or paths;
-18 newly introduced single trailing spaces on changed release bullets were removed.
-No generated spelling configuration is included. Format, lint, build, type-check,
-workspace, and harness gates passed: 10,094 tests passed with 17 skipped, plus
-all 67 harness tests. The 13 workflow contracts passed. Advisory checks passed
-in warning mode; optional ast-grep was unavailable. Four inherited rustdoc
-warnings remain.
+This layer applies 196 reviewed prose-only spelling corrections to
+`CHANGELOG.md`. It preserves 137 commit-hash fragments and 22 historical
+identifiers or paths; 18 newly introduced single trailing spaces on changed
+release bullets were removed. No generated spelling configuration is included.
+Format, lint, build, type-check, workspace, and harness gates passed: 10,094
+tests passed with 17 skipped, plus all 67 harness tests. The 13 workflow
+contracts passed. Advisory checks passed in warning mode; optional ast-grep was
+unavailable. Four inherited rustdoc warnings remain.
 
 The replacement history policy checked all 3,099 tracked files with no textual
 findings. Markdownlint findings fell from 11,252 on the exact parent to 11,229,
@@ -845,9 +845,9 @@ Nixie passed for both changed documents.
 ## Tracked-file spelling gate
 
 This layer enables the reviewed Oxford spelling policy through `make spelling`
-and `make lint`. Discovery uses Git's tracked-file index, preserves NUL-delimited
-paths, skips deleted files, and fails closed on discovery errors. CI installs
-pinned typos-cli 1.50.1 and invokes the same Make target.
+and `make lint`. Discovery uses Git's tracked-file index, preserves
+NUL-delimited paths, skips deleted files, and fails closed on discovery errors.
+CI installs pinned typos-cli 1.50.1 and invokes the same Make target.
 
 Historical exceptions enumerate the audited commit hashes and names instead of
 excluding changelogs. Custom file types match basenames, so both changelogs
@@ -857,18 +857,18 @@ instructions. The primary Rust toolchain remains unchanged.
 All eight spelling contracts, the 3,104-file spelling scan, and 13 workflow
 contracts passed. Format, lint, build, type-check, workspace tests, and harness
 checks passed: 10,094 tests passed with 17 skipped, plus all 67 harness tests.
-Advisory checks passed in warning mode; optional ast-grep was unavailable.
-Four inherited rustdoc warnings remain. Nixie passed both changed documents;
-Markdownlint retains seven exact-parent line-length findings in the setup guide,
-with no additions. CI installs typos in both spelling-dependent jobs.
+Advisory checks passed in warning mode; optional ast-grep was unavailable. Four
+inherited rustdoc warnings remain. Nixie passed both changed documents;
+Markdownlint retains seven exact-parent line-length findings in the setup
+guide, with no additions. CI installs typos in both spelling-dependent jobs.
 
 ## Module structure layer
 
-This layer moves self-named Rust modules into `mod.rs` form and extracts API-key
-and Anthropic validation sections without changing their behaviour. Forty-five
-moves preserve their complete source bytes. The API-key production section and
-all extracted test bodies retain their contents; Anthropic tool validation gains
-only the visibility needed by its new private child module.
+This layer moves self-named Rust modules into `mod.rs` form and extracts
+API-key and Anthropic validation sections without changing their behaviour.
+Forty-five moves preserve their complete source bytes. The API-key production
+section and all extracted test bodies retain their contents; Anthropic tool
+validation gains only the visibility needed by its new private child module.
 
 Ten relative module paths are adjusted for their new directories. Current
 source-path guidance receives 35 literal substitutions across 23 documents;
@@ -885,17 +885,18 @@ and all 67 harness tests. Advisory checks pass; AST-grep is unavailable and the
 existing optional target skips it. Four inherited rustdoc warnings remain for
 the later source-fix layer.
 
-All 24 changed documents pass Nixie. Exact-parent Markdown comparison identified
-one new long line from a longer module path, now wrapped; the other 1,134
-diagnostics are inherited. Final document validation follows that correction.
+All 24 changed documents pass Nixie. Exact-parent Markdown comparison
+identified one new long line from a longer module path, now wrapped; the other
+1,134 diagnostics are inherited. Final document validation follows that
+correction.
 
 ## Test-module extraction follow-up
 
 This layer (`harden-lint-test-modules`) follows module structure PR #71 at
 `630f2c7589d5860a1c8eca3772968903ba571566`. It extracts two source groups,
 totalling 147 tests plus helpers: 105 OpenAI provider tests across 13 child
-modules and 42 session tool catalogue tests across seven child modules.
-Each extracted test module remains below 400 lines.
+modules and 42 session tool catalogue tests across seven child modules. Each
+extracted test module remains below 400 lines.
 
 Test bodies are preserved. Private helper visibility and import wiring change
 only as required by the new boundaries. Leading attributes and documentation
@@ -907,10 +908,9 @@ The corrected layer passes formatting, lint, build and type-checking. All
 10,094 workspace tests pass (17 skipped), preserving the original discovery
 count; all 67 harness tests pass. The eight spelling and 13 Actions contracts
 pass. Advisory checks pass; the existing AST-grep target skips because the
-binary is unavailable. Four inherited rustdoc warnings remain for later
-source fixes. The handoff passes Nixie; final Markdown and spelling checks
-validate these notes.
-The tool-output test extraction remains a subsequent layer.
+binary is unavailable. Four inherited rustdoc warnings remain for later source
+fixes. The handoff passes Nixie; final Markdown and spelling checks validate
+these notes. The tool-output test extraction remains a subsequent layer.
 
 ## Changelog Markdown prerequisite
 
@@ -933,25 +933,25 @@ blobs match the audited candidate, and both parent document blobs match its
 exact parent, so the diagnostic identity mapping still applies.
 
 Current-layer formatting, lint, build, type-checking, all 10,094 workspace
-tests (17 skipped), all 67 harness tests, eight spelling contracts and
-13 Actions contracts pass. The generator fixture also passes on this branch.
-Advisory checks and Nixie pass; optional AST-grep is unavailable. Four inherited
-rustdoc warnings remain for later source fixes. Final handoff and spelling
-checks validate these notes; mechanical Markdown formatting follows in later
-layers.
+tests (17 skipped), all 67 harness tests, eight spelling contracts and 13
+Actions contracts pass. The generator fixture also passes on this branch.
+Advisory checks and Nixie pass; optional AST-grep is unavailable. Four
+inherited rustdoc warnings remain for later source fixes. Final handoff and
+spelling checks validate these notes; mechanical Markdown formatting follows in
+later layers.
 
 ## Agent test-module extraction
 
 This layer (`harden-lint-agent-test-modules`) follows parent PR #73 at
-`bfe2c66d`. It extracts four groups: 47 tool-output-handler tests,
-60 tool-outcome helper tests, 69 system-prompt tests and 27 execution-history
+`bfe2c66d`. It extracts four groups: 47 tool-output-handler tests, 60
+tool-outcome helper tests, 69 system-prompt tests and 27 execution-history
 tests, including two property-test blocks. Named, test-gated module roots
 connect the child files. Shared helpers remain private to the test subtree.
 
 Independent audits verify complete items, attached attributes and comments,
 required import scope and authored diagnostic fixtures. In particular, the
-synthetic `runner/tests.rs` strings remain unchanged. Child modules contain
-at most 315 lines after formatting. Compilation exposed two move-sensitive
+synthetic `runner/tests.rs` strings remain unchanged. Child modules contain at
+most 315 lines after formatting. Compilation exposed two move-sensitive
 references: the system-prompt fixture include needs a parent-directory prefix,
 and the extent-coverage child needs a distinct name to avoid shadowing the
 production read-extent module. Both are corrected without changing fixture

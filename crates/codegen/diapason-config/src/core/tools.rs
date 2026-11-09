@@ -16,7 +16,7 @@ pub enum ToolProfile {
     #[serde(alias = "codex_default")]
     #[cfg_attr(feature = "schema", schemars(rename = "diapason"))]
     Diapason,
-    /// Diapason specialised tools, including code_search and eligible dynamic tools.
+    /// Diapason specialized tools, including code_search and eligible dynamic tools.
     #[serde(rename = "advanced_diapason")]
     #[cfg_attr(feature = "schema", schemars(rename = "advanced_diapason"))]
     AdvancedDiapason,

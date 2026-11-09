@@ -1,7 +1,7 @@
 //! Terminal configuration path resolution for each supported platform.
 
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 

@@ -1,6 +1,7 @@
 //! Test-only Git fixtures and clean-child execution support.
 
 use anyhow::{Context, Result, bail};
+use diapason_commons::canonicalize;
 use std::ffi::OsStr;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -8,7 +9,6 @@ use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 use tempfile::{NamedTempFile, TempDir};
-use diapason_commons::canonicalize;
 
 const FIXTURE_COMMIT_MESSAGE: &str = "git-info fixture commit";
 pub(crate) const CLEAN_TEST_CHILD_ENV: &str = "DIAPASON_GIT_INFO_CLEAN_TEST_CHILD";

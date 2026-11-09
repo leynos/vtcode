@@ -44,6 +44,7 @@ impl<E> MultiErrors<E> {
     }
 
     /// Extend the collection with multiple errors.
+    #[cfg(test)]
     pub(super) fn extend(&mut self, iter: impl IntoIterator<Item = E>) {
         self.errors.extend(iter);
     }
@@ -62,6 +63,7 @@ impl<E> MultiErrors<E> {
 
     /// Consume the collector and return the underlying error vector.
     #[must_use]
+    #[cfg(test)]
     pub(super) fn into_inner(self) -> Vec<E> {
         self.errors
     }
@@ -149,19 +151,18 @@ impl<'de, E: serde::Deserialize<'de>> serde::Deserialize<'de> for MultiErrors<E>
 
 impl<E: fmt::Display> fmt::Display for MultiErrors<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.errors.len() {
-            0 => write!(f, "no errors"),
-            1 => write!(f, "{}", self.errors[0]),
-            _ => {
-                for (i, error) in self.errors.iter().enumerate() {
-                    if i > 0 {
-                        writeln!(f)?;
-                    }
-                    write!(f, "  {}. {error}", i + 1)?;
-                }
-                Ok(())
-            }
+        let Some(first) = self.errors.first() else {
+            return write!(f, "no errors");
+        };
+        if self.errors.len() == 1 {
+            return write!(f, "{first}");
         }
+        write!(f, "  1. {first}")?;
+        for (index, error) in self.errors.iter().enumerate().skip(1) {
+            writeln!(f)?;
+            write!(f, "  {}. {error}", index + 1)?;
+        }
+        Ok(())
     }
 }
 

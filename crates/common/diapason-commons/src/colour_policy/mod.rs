@@ -28,7 +28,9 @@ pub enum ColourOutputPolicySource {
 /// Runtime colour output policy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ColourOutputPolicy {
+    /// Whether colour output is enabled.
     pub enabled: bool,
+    /// Where the decision came from.
     pub source: ColourOutputPolicySource,
 }
 

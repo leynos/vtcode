@@ -1,4 +1,4 @@
-//! Tests tool-call pipeline authorization, execution, result handling, and session-level permission behavior.
+//! Tests tool-call pipeline authorization, execution, result handling, and session-level permission behaviour.
 #![allow(
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."

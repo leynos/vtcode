@@ -127,26 +127,24 @@ impl ToolCall {
 
         match self.call_type.as_str() {
             "function" => {
-                if let Some(func) = &self.function {
-                    if func.name.is_empty() {
-                        return Err("Function name cannot be empty".to_owned());
-                    }
-                    // Validate that arguments is valid JSON for function tools
-                    if let Err(e) = self.parsed_arguments() {
-                        return Err(format!("Invalid JSON in function arguments: {e}"));
-                    }
-                } else {
+                let Some(func) = &self.function else {
                     return Err("Function tool call missing function details".to_owned());
+                };
+                if func.name.is_empty() {
+                    return Err("Function name cannot be empty".to_owned());
                 }
+                // Validate that arguments is valid JSON for function tools
+                let _ = self
+                    .parsed_arguments()
+                    .map_err(|error| format!("Invalid JSON in function arguments: {error}"))?;
             }
             "custom" => {
                 // For custom tools, we allow raw text payload without JSON validation
-                if let Some(func) = &self.function {
-                    if func.name.is_empty() {
-                        return Err("Custom tool name cannot be empty".to_owned());
-                    }
-                } else {
+                let Some(func) = &self.function else {
                     return Err("Custom tool call missing function details".to_owned());
+                };
+                if func.name.is_empty() {
+                    return Err("Custom tool name cannot be empty".to_owned());
                 }
             }
             _ => return Err(format!("Unsupported tool call type: {}", self.call_type)),
@@ -212,8 +210,8 @@ fn extract_balanced_json(input: &str) -> Option<&str> {
 
         match ch {
             '"' => in_string = true,
-            _ if ch as u32 == opening as u32 => depth += 1,
-            _ if ch as u32 == closing as u32 => {
+            _ if u32::from(ch) == u32::from(opening) => depth += 1,
+            _ if u32::from(ch) == u32::from(closing) => {
                 depth = depth.saturating_sub(1);
                 if depth == 0 {
                     let end = start + offset + ch.len_utf8();

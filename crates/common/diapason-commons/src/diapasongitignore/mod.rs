@@ -1,9 +1,3 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    unused_results,
-    reason = "Ignore-pattern counts use the platform's documented compact representation and builder calls are side effects."
-)]
-
 //! .diapasongitignore file pattern matching utilities
 //!
 //! Uses the `ignore` crate's gitignore parser for correct, battle-tested
@@ -75,7 +69,7 @@ impl DiapasonGitignore {
                 continue;
             }
 
-            builder
+            let _ = builder
                 .add_line(None, line)
                 .map_err(|e| anyhow!("Invalid pattern on line {}: '{}': {}", line_num + 1, line, e))?;
         }
@@ -116,7 +110,7 @@ impl DiapasonGitignore {
 
     /// Get the number of patterns loaded
     pub fn pattern_count(&self) -> usize {
-        self.matcher.num_ignores() as usize
+        usize::try_from(self.matcher.num_ignores()).unwrap_or(usize::MAX)
     }
 
     /// Get the root directory

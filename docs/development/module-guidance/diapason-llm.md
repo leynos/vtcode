@@ -12,7 +12,8 @@ and implementations.
 ## Key Modules
 
 `provider/` trait + shared types | `providers/` per-provider impls |
-`providers/custom_provider.rs` custom profile router | `provider/mod.rs` re-exports
+`providers/custom_provider.rs` custom profile router | `provider/mod.rs`
+re-exports
 | `client.rs` + `optimized_client.rs` | `copilot/` (feature-gated) |
 `open_responses/` | `factory_types.rs` + `provider_config_types.rs` config |
 `system_prompt.rs` injection | `http_client.rs` | `types.rs` shared types |

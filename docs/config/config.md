@@ -312,8 +312,8 @@ Notes:
 - `api_format` is a hint to Diapason about how this provider / endpoint expects
   model traffic. Accepted values are: `auto`, `openai-chat`,
   `openai-responses`, and `anthropic-messages`. When omitted Diapason preserves
-  legacy behaviour and will try to autodetect; an explicit value is honoured and
-  Diapason will not silently fallback to a different format.
+  legacy behaviour and will try to autodetect; an explicit value is honoured
+  and Diapason will not silently fallback to a different format.
 - `request_policy` controls admission and transient retries for this provider.
   The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
   `retry_initial_backoff_ms = 10000`, `retry_max_backoff_ms = 160000`, and
