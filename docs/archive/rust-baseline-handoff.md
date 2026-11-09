@@ -123,9 +123,9 @@ The complete PR train is not yet delivered.
   suffix, with `test-2` for the verified full-suite run.
 - [Draft PR #33](https://github.com/leynos/vtcode/pull/33) publishes
   `harden-lint-spelling-engineering-docs` at
-  `d94310f9a6be1cd8b5ba29cdb7c87e39f6368202`, based on #32.
-  It corrects engineering, guide, and harness prose. The colour guide moves
-  to `COLOUR_GUIDELINES.md` with both documentation-map links updated together.
+  `d94310f9a6be1cd8b5ba29cdb7c87e39f6368202`, based on #32. It corrects
+  engineering, guide, and harness prose. The colour guide moves to
+  `COLOUR_GUIDELINES.md` with both documentation-map links updated together.
   Preliminary Markdown checks found 41 new table-spacing and line-length
   diagnostics. Those were repaired, along with a stale native catalogue path.
   The original 3,579 diagnostics match parent path, mapped line, and rule
@@ -138,14 +138,14 @@ The complete PR train is not yet delivered.
   It corrects 94 user, reference, and provider documents, including native
   colour aliases in examples. Fixed URLs, APIs, configuration keys, and
   protocol names remain intact. All seven original code gates recorded exit
-  zero: formatting, lint, build, 10,081 workspace tests with 17 skipped,
-  67 harness tests, the optional ast-grep skip, and advisory. Logs use
-  `ACTION-manifest` with the user-docs branch suffix. Nixie passed all
-  95 changed documents. Original table and wrapping repairs left 5,069
-  inherited Markdown diagnostics against 5,074 in the parent: no added
-  path, mapped-line, and rule identities; five inherited instances removed.
-  Two residual Oxford spellings found by reconnaissance are queued for the
-  next source-fix layer before the final spelling scan and gate.
+  zero: formatting, lint, build, 10,081 workspace tests with 17 skipped, 67
+  harness tests, the optional ast-grep skip, and advisory. Logs use
+  `ACTION-manifest` with the user-docs branch suffix. Nixie passed all 95
+  changed documents. Original table and wrapping repairs left 5,069 inherited
+  Markdown diagnostics against 5,074 in the parent: no added path, mapped-line,
+  and rule identities; five inherited instances removed. Two residual Oxford
+  spellings found by reconnaissance are queued for the next source-fix layer
+  before the final spelling scan and gate.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -586,13 +586,14 @@ optional ast-grep scan remains unavailable. Logs use `ACTION-pr34-restack-1`
 with the user-documentation branch suffix.
 
 Fresh Markdownlint checked all 95 changed documents: 3,814 current diagnostics
-against 3,819 in the final parent. Source-line mapping found no added identities
-and five removed instances: one line-length finding in the LM Studio guide and
-four table-spacing findings in the ANSI reference and styling architecture.
-These are inherited failures, not a passing Markdownlint gate. Nixie passed all
-95 files. Raw logs use `markdownlint-pr34-{current,parent}-restack-1`; the mapped
-comparison is `/tmp/vtcode-pr34-md-identity-root.json`. This evidence supersedes
-the original diagnostic counts for this restack.
+against 3,819 in the final parent. Source-line mapping found no added
+identities and five removed instances: one line-length finding in the LM Studio
+guide and four table-spacing findings in the ANSI reference and styling
+architecture. These are inherited failures, not a passing Markdownlint gate.
+Nixie passed all 95 files. Raw logs use
+`markdownlint-pr34-{current,parent}-restack-1`; the mapped comparison is
+`/tmp/vtcode-pr34-md-identity-root.json`. This evidence supersedes the original
+diagnostic counts for this restack.
 
 ## Additional Markdown-formatting requirement
 
