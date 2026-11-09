@@ -166,8 +166,8 @@ before GitHub Actions-specific validation runs.
 CI pins yamllint 1.38.0 through `uv tool install`. It caches only the uv tool
 directories needed for that tool. CI downloads actionlint 1.7.12 from its
 pinned release URL, verifies archive SHA-256
-`8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`, then
-passes that verified archive to the reviewed installer revision
+`8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`, then passes
+that verified archive to the reviewed installer revision
 `914e7df21a07ef503a81201c76d2b11c789d3fca`. The CI lint invocation uses
 `/usr/bin/make` with `BUILD_JOBS="--jobs 4"` and
 `ACTIONLINT="$GITHUB_WORKSPACE/actionlint"`. This preserves CI's four-job limit
