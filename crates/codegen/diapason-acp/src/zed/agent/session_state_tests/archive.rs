@@ -434,11 +434,7 @@ fn required_checkpoint_accepts_a_snapshot_that_retains_the_staged_batch() {
 struct FailingCheckpointReader;
 
 impl CheckpointReader for FailingCheckpointReader {
-    async fn read_persisted_messages(
-        &self,
-        _session_identifier: &str,
-        _persisted_path: &Path,
-    ) -> anyhow::Result<Vec<SessionMessage>> {
+    async fn read_persisted_messages(&self, _persisted_path: &Path) -> anyhow::Result<Vec<SessionMessage>> {
         Err(anyhow::anyhow!("checkpoint storage unavailable"))
     }
 }
@@ -450,8 +446,8 @@ async fn required_checkpoint_propagates_a_checkpoint_read_failure() {
 
     let error = verify_required_checkpoint_retention(
         &FailingCheckpointReader,
-        "checkpoint-read-failure",
         Path::new("/nonexistent/checkpoint.json"),
+        &staged,
         &staged,
     )
     .await
@@ -501,9 +497,9 @@ async fn required_checkpoint_reader_leaves_the_persisted_archive_unchanged() {
 
     verify_required_checkpoint_retention(
         &SessionArchiveCheckpointReader,
-        "read-only-identifier",
         &archive_path,
-        &[staged_id],
+        std::slice::from_ref(&staged_id),
+        std::slice::from_ref(&staged_id),
     )
     .await
     .expect("a retained staged batch must verify");
@@ -536,6 +532,7 @@ async fn required_checkpoint_fails_when_compaction_drops_the_staged_batch() {
     let oversized_arguments = "x".repeat(32 * 1024);
     let mut listing = session_listing(identifier, temp.path(), metadata.clone(), Vec::new());
     listing.path = session_dir.join(format!("{identifier}.json"));
+    let archive_path = listing.path.clone();
     listing.snapshot.messages = vec![
         SessionMessage::from(&Message::assistant_with_tools(
             String::new(),
@@ -571,6 +568,21 @@ async fn required_checkpoint_fails_when_compaction_drops_the_staged_batch() {
     assert!(
         format!("{error:#}").contains("dropped 1 staged tool call"),
         "the failure must name the dropped staged batch: {error:#}"
+    );
+    assert!(
+        !archive_path.exists(),
+        "a rejected required checkpoint must not write the compacted payload to disk"
+    );
+
+    // A retry must fail too: the rejected checkpoint cannot leave a compacted
+    // archive that a later attempt would accept without the staged batch.
+    let retry = agent
+        .checkpoint_session_required(&handle)
+        .await
+        .expect_err("a retried required checkpoint must fail the same way");
+    assert!(
+        format!("{retry:#}").contains("dropped 1 staged tool call"),
+        "the retried failure must still name the dropped staged batch: {retry:#}"
     );
 }
 

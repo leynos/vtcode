@@ -215,6 +215,7 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
     let mut listing = archived_listing("repair-compaction", temp.path(), "continue");
     listing.snapshot.messages = repaired_evidence_under_compaction(32 * 1024);
     listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive_path = listing.path.clone();
     let agent = build_agent(temp.path()).await;
 
     let error = match agent
@@ -234,6 +235,27 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
     assert!(
         format!("{error:#}").contains("dropped 1 staged tool call"),
         "the failure must name the dropped repaired evidence: {error:#}"
+    );
+    assert!(!archive_path.exists(), "a rejected repair checkpoint must leave no compacted archive behind");
+
+    // A retry must fail too: because the rejected checkpoint wrote nothing,
+    // the second attempt replays the same repair and rejects it again rather
+    // than resuming from a compacted archive that lost the repaired evidence.
+    let mut retry_listing = archived_listing("repair-compaction", temp.path(), "continue");
+    retry_listing.snapshot.messages = repaired_evidence_under_compaction(32 * 1024);
+    retry_listing.snapshot.total_messages = retry_listing.snapshot.messages.len();
+    let retry = agent
+        .attach_thread_from_listing(
+            &acp::SessionId::new("repair-compaction-session-retry"),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
+            retry_listing,
+        )
+        .await;
+    assert!(
+        retry.is_err(),
+        "a retry from the unchanged archive must fail instead of resuming without the repaired evidence"
     );
 }
 

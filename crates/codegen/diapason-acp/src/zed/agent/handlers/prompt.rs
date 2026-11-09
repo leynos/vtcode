@@ -6,6 +6,7 @@ use super::super::tool_config::SessionToolDefinitionRequest;
 use super::super::tool_recovery::{replace_thread_tool_results, stage_thread_tool_calls};
 use super::provider::IncompleteProviderTurn;
 use super::*;
+use crate::zed::agent::session_state::{CheckpointFailure, RequiredCheckpointError};
 use diapason_core::metrics::ToolRecoveryEvent;
 use tracing::Instrument;
 
@@ -544,15 +545,21 @@ async fn require_session_checkpoint(
         agent
             .recovery_metrics()
             .record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
-        log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
+        // The raw error never reaches the client: it can name archive paths or
+        // storage detail. Report one bounded category instead so log queries and
+        // client errors distinguish a write failure, an unreadable read-back and
+        // a compacted payload that dropped staged evidence.
+        let error_category = error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map_or(CheckpointFailure::WriteFailed, RequiredCheckpointError::failure)
+            .label();
+        log_suppressed_error(&error, "session_checkpoint", error_category);
         warn!(
             operation = "session_checkpoint",
-            error_category = "archive_write_failed",
-            boundary,
-            "Failed to persist ACP session checkpoint"
+            error_category, boundary, "Failed to persist ACP session checkpoint"
         );
         return Err(SdkError::internal_error()
-            .data(format!("Failed to persist ACP session checkpoint at {boundary}: archive_write_failed")));
+            .data(format!("Failed to persist ACP session checkpoint at {boundary}: {error_category}")));
     }
     if let Err(error) = session.update_transcript_path().await {
         log_suppressed_error(&error, "transcript_update", "transcript_write_failed");

@@ -25,9 +25,11 @@ mod retention;
 
 use crate::zed::agent::log_suppressed_error;
 use crate::zed::agent::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
+pub(in crate::zed::agent) use checkpoint::{CheckpointFailure, RequiredCheckpointError};
 pub(super) use retention::{
-    CheckpointReader, SessionArchiveCheckpointReader, missing_persisted_tool_calls,
-    required_checkpoint_retention_violation, staged_tool_call_ids, verify_required_checkpoint_retention,
+    CheckpointReader, SessionArchiveCheckpointReader, missing_persisted_tool_calls, missing_staged_batch_calls,
+    required_checkpoint_retention_violation, required_staged_batch_violation, staged_tool_call_ids,
+    verify_required_checkpoint_retention,
 };
 
 /// How strictly a checkpoint must reach durable storage.

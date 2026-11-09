@@ -1,11 +1,14 @@
 //! Covers interrupted-archive recovery through the ACP session/load and prompt
 //! protocol flow.
 use super::*;
+use crate::zed::agent::test_support::HistorySettingsGuard;
 use crate::zed::connection::ConnectionHandle;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest};
 use chrono::Utc;
 use diapason_commons::fs::write_private_json_file;
+use diapason_config::codex::HistoryPersistence;
 use diapason_core::llm::provider::{Message, MessageRole, ToolCall};
+use diapason_core::metrics::ToolRecoveryEvent;
 use diapason_core::utils::session_archive::{SessionArchiveMetadata, SessionMessage, SessionSnapshot};
 
 /// Captures provider requests and answers every turn with plain text.
@@ -145,6 +148,7 @@ async fn load_and_prompt_continue_from_a_repaired_interrupted_archive() {
 
     let workspace_path = workspace.path().to_path_buf();
     let session_id = acp::SessionId::new(identifier);
+    let load_archive_path = archive_path.clone();
     let client_connection = Client.builder().connect_with(client_channel, {
         let session_id = session_id.clone();
         async move |cx: ConnectionTo<Agent>| {
@@ -157,6 +161,20 @@ async fn load_and_prompt_continue_from_a_repaired_interrupted_archive() {
                 cx.send_request(LoadSessionRequest::new(session_id.clone(), workspace_path))
                     .block_task()
                     .await?,
+            );
+            // The prompt turn checkpoints as well, so assert the repaired
+            // placeholder here: between `session/load` and `session/prompt`,
+            // only the load-time repair checkpoint can have written it.
+            let repaired: SessionSnapshot = serde_json::from_slice(
+                &std::fs::read(&load_archive_path).expect("read the archive after session/load"),
+            )
+            .expect("parse the archive after session/load");
+            assert!(
+                repaired
+                    .messages
+                    .iter()
+                    .any(|message| message.tool_call_id.as_deref().is_some_and(|id| id == "legacy-call")),
+                "session/load must persist the repaired placeholder before the prompt runs"
             );
             let response = cx
                 .send_request(PromptRequest::new(
@@ -192,17 +210,6 @@ async fn load_and_prompt_continue_from_a_repaired_interrupted_archive() {
     assert_eq!(payload["status"], "incomplete");
     assert_eq!(payload["replayed"], false);
     drop(broker_requests);
-
-    let persisted: SessionSnapshot =
-        serde_json::from_slice(&std::fs::read(&archive_path).expect("read the repaired session archive"))
-            .expect("parse the repaired session archive");
-    assert!(
-        persisted
-            .messages
-            .iter()
-            .any(|message| message.tool_call_id.as_deref().is_some_and(|id| id == "legacy-call")),
-        "the repair must be persisted before the session becomes visible"
-    );
 }
 
 /// Rejects an ambiguous archive over the wire without rewriting it.
@@ -288,6 +295,14 @@ async fn ambiguous_archive_load_fails_and_preserves_the_archive() {
     drop(agent_task.await);
 
     assert_eq!(load_failed.load(Ordering::SeqCst), 1, "session/load must reject ambiguous history");
+    assert_eq!(
+        agent
+            .recovery_metrics()
+            .get_tool_recovery_metrics()
+            .count(ToolRecoveryEvent::AmbiguousHistory),
+        1,
+        "the rejected load must reach the ambiguity path"
+    );
     assert_eq!(
         std::fs::read(&archive_path).expect("read the ambiguous archive after rejection"),
         original_bytes,

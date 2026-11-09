@@ -32,6 +32,8 @@ mod configuration;
 mod lifecycle;
 mod metadata;
 
+pub(in crate::zed::agent) use archive::{CheckpointFailure, RequiredCheckpointError};
+
 pub(super) fn safe_internal_error(
     operation: &'static str,
     error_category: &'static str,

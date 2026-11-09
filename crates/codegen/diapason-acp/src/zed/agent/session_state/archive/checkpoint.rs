@@ -6,7 +6,7 @@
 use diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics;
 use diapason_core::llm::provider::MessageRole;
 use diapason_core::utils::session_archive::{
-    SessionArchive, SessionMessage, SessionProgressArgs, SessionProgressPersistenceStatus, history_persistence_enabled,
+    SessionArchive, SessionMessage, SessionProgressArgs, history_persistence_enabled,
 };
 use tracing::debug;
 
@@ -14,9 +14,73 @@ use crate::zed::agent::session_state::ZedAgent;
 use crate::zed::types::SessionHandle;
 
 use super::{
-    CheckpointDurability, SessionArchiveCheckpointReader, staged_tool_call_ids, trace_storage_operation,
+    CheckpointDurability, SessionArchiveCheckpointReader, required_checkpoint_retention_violation,
+    required_staged_batch_violation, staged_tool_call_ids, trace_storage_operation,
     verify_required_checkpoint_retention,
 };
+
+/// The bounded reason a required checkpoint failed.
+///
+/// Callers report these categories instead of the raw cause, so a client error
+/// and its log line stay stable while the underlying archive error remains in
+/// the debug-only error chain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::zed::agent) enum CheckpointFailure {
+    /// History persistence is disabled, so nothing was written.
+    PersistenceDisabled,
+    /// The snapshot could not be prepared or written to storage.
+    WriteFailed,
+    /// The persisted archive could not be read back for verification.
+    ReadBackFailed,
+    /// The compacted payload dropped evidence the checkpoint promised.
+    RetentionDropped,
+}
+
+impl CheckpointFailure {
+    /// Returns the stable label used in logs and client-visible errors.
+    pub(in crate::zed::agent) const fn label(self) -> &'static str {
+        match self {
+            Self::PersistenceDisabled => "persistence_disabled",
+            Self::WriteFailed => "archive_write_failed",
+            Self::ReadBackFailed => "archive_read_back_failed",
+            Self::RetentionDropped => "staged_batch_dropped",
+        }
+    }
+}
+
+/// A required-checkpoint failure that carries its bounded category.
+#[derive(Debug)]
+pub(in crate::zed::agent) struct RequiredCheckpointError {
+    failure: CheckpointFailure,
+    source: anyhow::Error,
+}
+
+impl RequiredCheckpointError {
+    /// Wraps a cause with the category reported at the failure boundary.
+    pub(in crate::zed::agent) fn new(failure: CheckpointFailure, source: impl Into<anyhow::Error>) -> Self {
+        Self { failure, source: source.into() }
+    }
+
+    /// Returns the bounded failure category.
+    pub(in crate::zed::agent) const fn failure(&self) -> CheckpointFailure {
+        self.failure
+    }
+}
+
+impl std::fmt::Display for RequiredCheckpointError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Print the wrapped chain so the debug-only suppressed-error log keeps
+        // the cause and every context frame attached to it.
+        write!(formatter, "{:#}", self.source)
+    }
+}
+
+impl std::error::Error for RequiredCheckpointError {}
+
+/// Wraps a checkpoint cause as a write failure.
+fn write_failure(source: impl Into<anyhow::Error>) -> anyhow::Error {
+    RequiredCheckpointError::new(CheckpointFailure::WriteFailed, source).into()
+}
 
 impl ZedAgent {
     /// Persists the session snapshot without turn diagnostics.
@@ -71,7 +135,11 @@ impl ZedAgent {
     ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
             if durability == CheckpointDurability::Required {
-                return Err(anyhow::anyhow!("ACP session checkpoint requires history persistence, which is disabled"));
+                return Err(RequiredCheckpointError::new(
+                    CheckpointFailure::PersistenceDisabled,
+                    anyhow::anyhow!("ACP session checkpoint requires history persistence, which is disabled"),
+                )
+                .into());
             }
             debug!("Skipped ACP session checkpoint because history persistence is disabled");
             return Ok(());
@@ -81,7 +149,7 @@ impl ZedAgent {
             let data = session
                 .data
                 .lock()
-                .map_err(|error| anyhow::anyhow!("ACP session lock poisoned: {error}"))?;
+                .map_err(|error| write_failure(anyhow::anyhow!("ACP session lock poisoned: {error}")))?;
             let snapshot = data.thread.snapshot();
             (data.archive.clone(), snapshot, data.session_id.0.to_string())
         };
@@ -89,15 +157,17 @@ impl ZedAgent {
         let metadata = snapshot
             .metadata
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("ACP session is missing archive metadata"))?;
+            .ok_or_else(|| write_failure(anyhow::anyhow!("ACP session is missing archive metadata")))?;
         let mut archive = match existing_archive {
             Some(archive) => archive,
             None => {
-                let archive = SessionArchive::new_with_identifier(metadata.clone(), session_identifier.clone()).await?;
+                let archive = SessionArchive::new_with_identifier(metadata.clone(), session_identifier.clone())
+                    .await
+                    .map_err(write_failure)?;
                 let mut data = session
                     .data
                     .lock()
-                    .map_err(|error| anyhow::anyhow!("ACP session lock poisoned: {error}"))?;
+                    .map_err(|error| write_failure(anyhow::anyhow!("ACP session lock poisoned: {error}")))?;
                 data.archive = Some(archive.clone());
                 archive
             }
@@ -108,8 +178,13 @@ impl ZedAgent {
         // it must retain before compaction can silently drop them. The latest
         // staged batch is always required; repair callers also name any
         // evidence they just made durable.
+        let staged_call_ids = if durability == CheckpointDurability::Required {
+            staged_tool_call_ids(&snapshot.messages)
+        } else {
+            Vec::new()
+        };
         let retained_call_ids = if durability == CheckpointDurability::Required {
-            let mut ids = staged_tool_call_ids(&snapshot.messages);
+            let mut ids = staged_call_ids.clone();
             ids.extend(required_call_ids.iter().cloned());
             ids.sort();
             ids.dedup();
@@ -125,8 +200,8 @@ impl ZedAgent {
             .iter()
             .filter(|message| message.role == MessageRole::User)
             .count();
-        let persistence_status = archive
-            .persist_checkpoint_async(SessionProgressArgs {
+        let prepared = archive
+            .prepare_checkpoint_snapshot(SessionProgressArgs {
                 total_messages: messages.len(),
                 distinct_tools: Vec::new(),
                 messages,
@@ -137,26 +212,62 @@ impl ZedAgent {
                 loaded_skills: Some(snapshot.loaded_skills),
                 turn_diagnostics,
             })
-            .await?;
-        let (persistence_outcome, persisted_path) = match persistence_status {
-            SessionProgressPersistenceStatus::Persisted(path) => ("persisted", Some(path)),
-            SessionProgressPersistenceStatus::Throttled(_) => ("throttled", None),
-            SessionProgressPersistenceStatus::Disabled(_) => ("disabled", None),
-        };
-        debug!(persistence_outcome, "Processed ACP session checkpoint");
-        let Some(persisted_path) = persisted_path else {
+            .map_err(write_failure)?;
+        let Some(prepared_snapshot) = prepared else {
+            debug!(persistence_outcome = "disabled", "Processed ACP session checkpoint");
             if durability == CheckpointDurability::Required {
-                return Err(anyhow::anyhow!(
-                    "ACP session checkpoint was not persisted (outcome: {persistence_outcome})"
-                ));
+                return Err(RequiredCheckpointError::new(
+                    CheckpointFailure::PersistenceDisabled,
+                    anyhow::anyhow!("ACP session checkpoint was not persisted (outcome: disabled)"),
+                )
+                .into());
             }
             return Ok(());
         };
+
+        // A required checkpoint rejects a compacted payload before it replaces
+        // the archive on disk. Verifying only after the write would leave the
+        // dropped evidence persisted, so a later retry could resume from it.
+        if durability == CheckpointDurability::Required && !retained_call_ids.is_empty() {
+            if let Some(missing) = required_staged_batch_violation(
+                CheckpointDurability::Required,
+                &staged_call_ids,
+                &prepared_snapshot.messages,
+            ) {
+                return Err(RequiredCheckpointError::new(
+                    CheckpointFailure::RetentionDropped,
+                    anyhow::anyhow!(
+                        "required ACP session checkpoint dropped {missing} staged tool call(s) from their batch \
+                         during compaction"
+                    ),
+                )
+                .into());
+            }
+            if let Some(missing) = required_checkpoint_retention_violation(
+                CheckpointDurability::Required,
+                &retained_call_ids,
+                &prepared_snapshot.messages,
+            ) {
+                return Err(RequiredCheckpointError::new(
+                    CheckpointFailure::RetentionDropped,
+                    anyhow::anyhow!(
+                        "required ACP session checkpoint dropped {missing} staged tool call(s) during compaction"
+                    ),
+                )
+                .into());
+            }
+        }
+
+        let persisted_path = archive
+            .write_prepared_checkpoint_async(prepared_snapshot)
+            .await
+            .map_err(write_failure)?;
+        debug!(persistence_outcome = "persisted", "Processed ACP session checkpoint");
         if durability == CheckpointDurability::Required && !retained_call_ids.is_empty() {
             verify_required_checkpoint_retention(
                 &SessionArchiveCheckpointReader,
-                &session_identifier,
                 &persisted_path,
+                &staged_call_ids,
                 &retained_call_ids,
             )
             .await?;

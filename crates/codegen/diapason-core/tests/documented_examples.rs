@@ -16,6 +16,7 @@
 mod doc_examples;
 
 use diapason_core::config::constants::tools;
+use diapason_core::metrics::{MetricsCollector, ToolRecoveryEvent, ToolRecoveryMetrics};
 use diapason_core::tools::ToolRegistry;
 use doc_examples::load_example;
 use serde_json::Value;
@@ -61,5 +62,44 @@ async fn versioned_patch_example_applies_to_its_fixture() {
     assert_eq!(
         fs::read_to_string(workspace.path().join("src/app.rs")).expect("read patched file"),
         "fn main() {\nnew\n}\n"
+    );
+}
+
+/// The published tool-recovery summary matches what a collector exports.
+///
+/// The counters in the guide are the user-visible contract for recovery
+/// observability, so the events recorded here must produce exactly the
+/// published JSON. A renamed field or a miscounted event breaks this test
+/// rather than silently changing what users are told to expect.
+#[test]
+fn tool_recovery_summary_example_matches_the_collector() {
+    let example = load_example("docs/users-guide.md", "users-guide-tool-recovery-summary")
+        .expect("the users guide must publish a marked tool-recovery summary example");
+    assert_eq!(example.language, "json", "the example must stay a JSON metrics summary");
+    #[derive(serde::Deserialize)]
+    struct PublishedSummary {
+        tool_recovery: ToolRecoveryMetrics,
+    }
+    let published: PublishedSummary =
+        serde_json::from_str(&example.body).expect("the published example must be a JSON metrics summary");
+
+    let collector = MetricsCollector::new();
+    collector.record_tool_recovery_events(ToolRecoveryEvent::StagedCall, 3);
+    collector.record_tool_recovery_events(ToolRecoveryEvent::ReplacedCall, 3);
+    for event in [
+        ToolRecoveryEvent::InterruptedCall,
+        ToolRecoveryEvent::RelocatedResult,
+        ToolRecoveryEvent::RepairedArchive,
+        ToolRecoveryEvent::AmbiguousHistory,
+        ToolRecoveryEvent::StaleWriteStdinRequest,
+        ToolRecoveryEvent::DuplicateToolCallBatch,
+    ] {
+        collector.record_tool_recovery(event);
+    }
+
+    assert_eq!(
+        published.tool_recovery,
+        collector.get_tool_recovery_metrics(),
+        "the published counters must describe the events the collector records"
     );
 }

@@ -102,20 +102,35 @@ work. A failure before the input was written sets neither flag.
 ### Recovery metrics
 
 Recovery records bounded counters instead of identifiers, so an export can
-never leak session identifiers, tool names, call IDs, or tool output. Read them
-from a session's metrics summary:
+never leak session identifiers, tool names, call IDs, or tool output. The
+`tool_recovery` object of a session's `MetricsSummary` holds one counter per
+recovery event:
 
-```rust
-let recovery = collector.get_tool_recovery_metrics();
-println!("interrupted calls: {}", recovery.interrupted_calls);
+<!-- tested-example: users-guide-tool-recovery-summary -->
+
+```json
+{
+  "tool_recovery": {
+    "staged_calls": 3,
+    "replaced_calls": 3,
+    "interrupted_calls": 1,
+    "relocated_results": 1,
+    "repaired_archives": 1,
+    "ambiguous_histories": 1,
+    "concurrent_prompt_rejections": 0,
+    "stale_write_stdin_requests": 1,
+    "checkpoint_failures": 0,
+    "duplicate_tool_call_batches": 1
+  }
+}
 ```
 
-`MetricsSummary.tool_recovery` carries the same counters in the JSON summary,
-and Prometheus exports them as `diapason_tool_recovery_total{event="…"}`. The
-`event` label is one of `staged_call`, `replaced_call`, `interrupted_call`,
-`relocated_result`, `repaired_archive`, `ambiguous_history`,
-`concurrent_prompt_rejection`, `stale_write_stdin_request`,
-`checkpoint_failure`, and `duplicate_tool_call_batch`.
+Prometheus exports the same counters as
+`diapason_tool_recovery_total{event="…"}`. The `event` label is one of
+`staged_call`, `replaced_call`, `interrupted_call`, `relocated_result`,
+`repaired_archive`, `ambiguous_history`, `concurrent_prompt_rejection`,
+`stale_write_stdin_request`, `checkpoint_failure`, and
+`duplicate_tool_call_batch`.
 
 Agents that embed Diapason can read the same vocabulary from
 `diapason_core::metrics::{ToolRecoveryEvent, ToolRecoveryMetrics}`. Record an

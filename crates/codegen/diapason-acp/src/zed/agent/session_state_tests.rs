@@ -166,6 +166,8 @@ mod archive;
 mod configuration;
 #[path = "session_state_tests/metadata.rs"]
 mod metadata;
+#[path = "session_state_tests/retention_properties.rs"]
+mod retention_properties;
 #[path = "session_state_tests/tool_recovery.rs"]
 mod tool_recovery;
 #[path = "session_state_tests/workspace.rs"]

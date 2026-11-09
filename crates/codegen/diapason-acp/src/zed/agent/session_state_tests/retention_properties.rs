@@ -1,0 +1,138 @@
+//! Property coverage for staged-batch retention across compaction boundaries.
+use super::super::archive::{
+    CheckpointDurability, missing_persisted_tool_calls, missing_staged_batch_calls, required_staged_batch_violation,
+};
+use diapason_core::llm::provider::{Message, MessageRole, ToolCall};
+use diapason_core::utils::session_archive::SessionMessage;
+use proptest::prelude::*;
+
+/// Returns the id used for a generated call slot.
+fn call_id(slot: u8) -> String {
+    format!("call-{slot}")
+}
+
+/// Generates one to three batches of one or two call slots.
+///
+/// Slots are drawn from a small range so generated histories reuse call ids
+/// across batches, which is the case the per-id retention check cannot see.
+fn batch_slots() -> impl Strategy<Value = Vec<Vec<u8>>> {
+    proptest::collection::vec(proptest::collection::vec(0u8..4, 1..3), 1..4)
+}
+
+/// Builds the persisted history for batches of call slots.
+///
+/// Each batch is one assistant request followed by one tool result per call,
+/// matching the order the write-ahead checkpoint stages.
+fn history_for(batches: &[Vec<u8>]) -> Vec<SessionMessage> {
+    let mut messages = Vec::new();
+    for batch in batches {
+        let calls = batch
+            .iter()
+            .map(|slot| ToolCall::function(call_id(*slot), "read_file".to_string(), "{}".to_string()))
+            .collect::<Vec<_>>();
+        messages.push(SessionMessage::from(&Message::assistant_with_tools(String::new(), calls)));
+        for slot in batch {
+            messages.push(SessionMessage::from(&Message::tool_response(call_id(*slot), "result".to_string())));
+        }
+    }
+    messages
+}
+
+/// Returns the call ids of the last batch of slots.
+fn last_batch_ids(batches: &[Vec<u8>]) -> Vec<String> {
+    batches
+        .last()
+        .expect("a generated history holds at least one batch")
+        .iter()
+        .map(|slot| call_id(*slot))
+        .collect()
+}
+
+/// Returns the call ids requested by the last assistant tool batch.
+fn last_requested_ids(messages: &[SessionMessage]) -> Vec<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| {
+            message.role == MessageRole::Assistant
+                && message.tool_calls.as_deref().is_some_and(|calls| !calls.is_empty())
+        })
+        .and_then(|message| message.tool_calls.as_deref())
+        .map(|calls| calls.iter().map(|call| call.id.clone()).collect())
+        .unwrap_or_default()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    /// A history that still ends with the staged batch always verifies.
+    #[test]
+    fn a_retained_staged_batch_verifies(batches in batch_slots()) {
+        let history = history_for(&batches);
+        let staged = last_batch_ids(&batches);
+        prop_assert!(missing_staged_batch_calls(&staged, &history).is_empty());
+        prop_assert_eq!(
+            required_staged_batch_violation(CheckpointDurability::Required, &staged, &history),
+            None
+        );
+    }
+
+    /// Compaction that drops the staged request is rejected, even when an
+    /// older batch reused some of the same call ids.
+    ///
+    /// A byte-identical duplicate batch is the one indistinguishable case: the
+    /// surviving history still requests and answers every staged id, so no
+    /// content check can tell the batches apart. The archive repair path
+    /// rejects that duplicated-result history as ambiguous before a checkpoint
+    /// is attempted.
+    #[test]
+    fn a_dropped_staged_batch_is_rejected_despite_reused_ids(
+        mut batches in batch_slots(),
+        reused in proptest::collection::vec(0u8..4, 1..3),
+    ) {
+        batches.push(reused);
+        let history = history_for(&batches);
+        let staged = last_batch_ids(&batches);
+        let staged_batch_index = history.len() - batches.last().expect("a generated batch").len() - 1;
+        let mut compacted = history.clone();
+        drop(compacted.remove(staged_batch_index));
+
+        let surviving_requested = last_requested_ids(&compacted);
+        if staged.iter().all(|call_id| surviving_requested.contains(call_id)) {
+            // The surviving batch is an indistinguishable duplicate.
+            return Ok(());
+        }
+
+        let missing = missing_staged_batch_calls(&staged, &compacted);
+        prop_assert!(
+            !missing.is_empty(),
+            "a dropped staged batch must not survive verification: {compacted:?}"
+        );
+        prop_assert_eq!(
+            required_staged_batch_violation(CheckpointDurability::Required, &staged, &compacted),
+            Some(missing.len())
+        );
+    }
+}
+
+/// Older batches that between them requested and answered every staged id
+/// blind the per-id check, while the batch check still sees that the surviving
+/// request never made the whole staged batch.
+#[test]
+fn a_reused_batch_is_rejected_by_the_batch_check() {
+    let history = history_for(&[vec![1], vec![2], vec![1, 2]]);
+    let staged = vec![call_id(1), call_id(2)];
+    let mut compacted = history.clone();
+    // Drop the third assistant request, keeping both of its results.
+    drop(compacted.remove(4));
+
+    assert!(
+        missing_persisted_tool_calls(&staged, &compacted).is_empty(),
+        "the per-id check cannot see a drop whose ids older batches reused"
+    );
+    assert_eq!(
+        missing_staged_batch_calls(&staged, &compacted),
+        vec![call_id(1)],
+        "the batch check must reject the call the surviving request never made"
+    );
+}

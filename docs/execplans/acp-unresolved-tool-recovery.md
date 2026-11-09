@@ -693,3 +693,51 @@ exceeds the 400-line limit. The `checkpoint_session_with_turn_diagnostics` seam
 became `pub(super)`, and the moved inherent methods keep
 `pub(in crate::zed::agent::session_state)` visibility so the tests still reach
 them.
+
+2026-11-09: Third review round on `f2b79335e`. The Major data-integrity finding
+was valid: `SessionArchive::write_snapshot_async` compacted the snapshot and
+wrote it, and the required-durability retention check only ran afterwards, so a
+payload that dropped staged evidence still replaced the archive on disk and a
+later retry could resume from it. `SessionArchive` now exposes
+`prepare_checkpoint_snapshot` and `write_prepared_checkpoint_async`, the
+checkpoint runs `required_checkpoint_retention_violation` on the prepared
+snapshot before writing, and only then persists and re-verifies from disk. Both
+compaction tests now assert the rejected archive path does not exist and that a
+second attempt fails identically, so the gate is proven to fail closed rather
+than merely to return an error on one attempt.
+
+The same round narrowed the `CheckpointReader` seam to the persisted path — the
+snapshot was already discarded by the read-back, so the unused argument was
+removed from the trait, its implementation and the read-back helper. The
+protocol test for a repaired archive now asserts the repaired placeholder in
+the archive immediately after `session/load`, between the load-time repair
+checkpoint and the prompt turn, since a post-flow assertion could also pass on
+the prompt's own checkpoint; the ambiguous-load test also asserts one
+`AmbiguousHistory` counter, proving the rejection reaches the ambiguity path.
+`handlers/tests/prompt.rs` and `tool_recovery/tests.rs` were split into
+submodules (`prompt/duplicate_tool_call_ids.rs`,
+`tool_recovery/tests/properties.rs`) to stay under the 400-line limit, keeping
+helper access through `use super::*`. The unmarked, non-compiling Rust fragment
+in the users-guide recovery-metrics section became a JSON `tool_recovery`
+summary carrying a `tested-example` marker, exercised by
+`tool_recovery_summary_example_matches_the_collector` in
+`documented_examples.rs`, which records the documented events on a real
+collector and compares the exported counters.
+
+The same round closed the remaining observability and testing rows. Required
+checkpoint failures now carry a bounded `CheckpointFailure`
+(`persistence_disabled`, `archive_write_failed`, `archive_read_back_failed`,
+`staged_batch_dropped`) inside a `RequiredCheckpointError`, and
+`require_session_checkpoint` reports that category in both the warning and the
+client error instead of labelling every failure `archive_write_failed`; the raw
+cause still reaches the debug-only suppressed-error log. Retention now also
+checks the staged batch as a unit: the last persisted assistant tool batch must
+request every staged call, with results after it. That catches a compacted
+history whose surviving request is an older, partially overlapping batch, which
+the per-id check treats as retained; `retention_properties.rs` generates
+multiple batches with reused ids and a dropped staged request, and also covers
+the retained case. A byte-identical duplicate batch remains indistinguishable
+from a retained one by content alone, and the archive repair path already
+rejects the duplicated-result history as ambiguous before any checkpoint runs.
+`cargo nextest run -p diapason-acp` passes 380 of 380 tests. Validation of this
+round through the full commit gate is in progress.
