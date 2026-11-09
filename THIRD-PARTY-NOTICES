@@ -1628,7 +1628,7 @@ Apache License 2.0 — SPDX: Apache-2.0
   proc-macro2 1.0.107
     Source: https://github.com/dtolnay/proc-macro2
     License: MIT OR Apache-2.0
-  process-wrap 9.1.0
+  process-wrap 10.0.1
     Source: https://github.com/watchexec/process-wrap
     License: Apache-2.0 OR MIT
   profiling-procmacros 1.0.18
@@ -1670,10 +1670,10 @@ Apache License 2.0 — SPDX: Apache-2.0
   rio-unicode 0.5.29
     Source: https://github.com/raphamorim/rio
     License: MIT OR Apache-2.0
-  rmcp-macros 3.2.0
+  rmcp-macros 3.9.0
     Source: https://github.com/modelcontextprotocol/rust-sdk/
     License: Apache-2.0
-  rmcp 3.1.4
+  rmcp 3.9.0
     Source: https://github.com/modelcontextprotocol/rust-sdk/
     License: Apache-2.0
   rustc-hash 2.1.3
