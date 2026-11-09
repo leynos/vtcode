@@ -157,7 +157,7 @@ and is emitted through standard `tool_call` and `tool_call_update` updates. The
 updates carry `_meta.lody.activity` for the `compacted` outcome, token counts,
 and duration; a failed attempt adds a closed-set `failureReason` category
 (`cancelled`, `timeout`, `admission_budget`, `pre_compact_hook`, `provider`)
-rather than a raw diagnostic. VT Code does not advertise
+rather than a raw diagnostic. Diapason does not advertise
 `_meta.lody.rateLimits` without trustworthy quota state; HTTP 429 and
 `Retry-After` are instead reported in warning notices and provider telemetry.
 
