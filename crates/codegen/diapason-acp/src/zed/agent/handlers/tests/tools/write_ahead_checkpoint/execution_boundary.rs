@@ -136,6 +136,10 @@ async fn staged_call_and_placeholder_are_durable_before_tool_execution_completes
         .expect("tool round task should not panic")
         .expect("the released tool round should succeed");
     assert!(matches!(outcome, ToolRoundOutcome::Continue), "the released round should continue the tool loop");
+    assert!(
+        session.data.lock().expect("session data lock").write_ahead_call_ids.is_empty(),
+        "terminal results released by a checkpoint that retains them must clear write-ahead protection"
+    );
 
     agent_task.abort();
     drop(agent_task.await);

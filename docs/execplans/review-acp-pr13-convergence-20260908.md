@@ -175,7 +175,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   `resolve_exec_session` a pure read and moved `StaleWriteStdinRequest`
   recording into the three `execute_command_session_*` command paths through
   the named `record_stale_write_stdin_lookup` helper. Domain architecture:
-  serialised the typed `stale_exec_session` classification as its own envelope
+  serialized the typed `stale_exec_session` classification as its own envelope
   field, removed the `details` rehydration path, and made the Prometheus family
   transport-neutral. User-facing documentation: added the ACP recovery, archive
   repair, and stale `write_stdin` entries to `docs/releases/0.157.0.md`.
@@ -432,7 +432,7 @@ an archive with ambiguous terminal results is rejected before continuation.
   with one `terminfo 0.9.0` at `Age 365`; main's has 34 entries with
   `memmem 0.1.1`, `quick-error 2.0.1`, and `terminfo 0.9.0` at `Age 368`. The
   textual merge keeps both `terminfo` entries, producing 35 entries. The
-  checker normalises `{ "Age": N }` to the identity `"Age"`, so the two entries
+  checker normalizes `{ "Age": N }` to the identity `"Age"`, so the two entries
   collide as the same reviewed finding and `_index_baseline_entries` raises the
   duplicate error at index 33.
 - The failure is therefore inherited from the parent branch's mergeability

@@ -724,9 +724,14 @@ async fn best_effort_checkpoint_preserves_write_ahead_evidence_under_compaction(
         });
 
     agent
-        .checkpoint_session(&handle)
+        .checkpoint_terminal_tool_results(&handle)
         .await
         .expect("a best-effort checkpoint must tolerate the loss by skipping the write");
+    assert_eq!(
+        handle.data.lock().expect("session data lock").write_ahead_call_ids.clone(),
+        vec![staged_id.clone()],
+        "a skipped terminal-results checkpoint must keep write-ahead protection"
+    );
 
     let after = fs::read(&archive_path).expect("read the archive after the skipped checkpoint");
     assert_eq!(before, after, "a skipped best-effort checkpoint must leave the archive unchanged");

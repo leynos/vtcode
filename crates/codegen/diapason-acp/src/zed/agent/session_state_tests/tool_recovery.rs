@@ -276,9 +276,18 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
             retry_listing,
         )
         .await;
-    assert!(
-        retry.is_err(),
-        "a retry from the unchanged archive must fail instead of resuming without the repaired evidence"
+    let retry_error = match retry {
+        Ok(_) => {
+            panic!("a retry from the unchanged archive must fail instead of resuming without the repaired evidence")
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        retry_error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map(RequiredCheckpointError::failure),
+        Some(CheckpointFailure::RetentionDropped),
+        "the retry must be rejected by the retention gate, not by an unrelated failure"
     );
     assert_eq!(
         fs::read(&archive_path).expect("read the existing archive after the retry"),
@@ -355,9 +364,18 @@ async fn repair_checkpoint_fails_when_compaction_drops_the_repaired_request() {
             retry_listing,
         )
         .await;
-    assert!(
-        retry.is_err(),
-        "a retry from the unchanged archive must fail instead of resuming without the repaired request"
+    let retry_error = match retry {
+        Ok(_) => {
+            panic!("a retry from the unchanged archive must fail instead of resuming without the repaired request")
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        retry_error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map(RequiredCheckpointError::failure),
+        Some(CheckpointFailure::RetentionDropped),
+        "the retry must be rejected by the retention gate, not by an unrelated failure"
     );
     assert_eq!(
         fs::read(&archive_path).expect("read the existing archive after the retry"),

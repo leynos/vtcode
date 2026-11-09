@@ -83,6 +83,19 @@ fn write_failure(source: impl Into<anyhow::Error>) -> anyhow::Error {
     RequiredCheckpointError::new(CheckpointFailure::WriteFailed, source).into()
 }
 
+/// Whether a written checkpoint still carries the write-ahead protected batch.
+///
+/// A best-effort checkpoint that was skipped, failed, or compacted the batch
+/// away reports [`Self::Unproven`], so the caller keeps write-ahead protection.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(in crate::zed::agent) enum WriteAheadRetention {
+    /// The checkpoint did not prove the protected batch is still persisted.
+    #[default]
+    Unproven,
+    /// The written archive carries every write-ahead protected call.
+    Retained,
+}
+
 impl ZedAgent {
     /// Persists the session snapshot without turn diagnostics.
     ///
@@ -98,6 +111,39 @@ impl ZedAgent {
             &SessionArchiveCheckpointReader,
         )
         .await
+        .map(|_retention| ())
+    }
+
+    /// Persists terminal tool results and releases write-ahead protection.
+    ///
+    /// The caller has replaced the staged placeholders with terminal results,
+    /// so the batch no longer represents an uncertain effect once the archive
+    /// carries it. Protection is released only when the best-effort write
+    /// succeeded and retained every protected call; a skipped or failed write
+    /// keeps it, so a later checkpoint cannot replace the archive that still
+    /// holds the batch.
+    pub(in crate::zed::agent) async fn checkpoint_terminal_tool_results(
+        &self,
+        session: &SessionHandle,
+    ) -> anyhow::Result<()> {
+        let retention = self
+            .checkpoint_session_with_turn_diagnostics(
+                session,
+                None,
+                CheckpointDurability::BestEffort,
+                &[],
+                &SessionArchiveCheckpointReader,
+            )
+            .await?;
+        if retention == WriteAheadRetention::Retained {
+            session
+                .data
+                .lock()
+                .map_err(|error| write_failure(anyhow::anyhow!("ACP session lock poisoned: {error}")))?
+                .write_ahead_call_ids
+                .clear();
+        }
+        Ok(())
     }
 
     /// Persists the session snapshot and fails unless it reached storage.
@@ -117,6 +163,7 @@ impl ZedAgent {
             &SessionArchiveCheckpointReader,
         )
         .await
+        .map(|_retention| ())
     }
 
     /// Persists the session snapshot, optionally carrying turn diagnostics.
@@ -138,7 +185,7 @@ impl ZedAgent {
         durability: CheckpointDurability,
         required_evidence: &[RetainedEvidence],
         reader: &dyn CheckpointReader,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<WriteAheadRetention> {
         trace_storage_operation(
             "checkpoint",
             self.checkpoint_session_inner(session, turn_diagnostics, durability, required_evidence, reader),
@@ -154,7 +201,7 @@ impl ZedAgent {
         durability: CheckpointDurability,
         required_evidence: &[RetainedEvidence],
         reader: &dyn CheckpointReader,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<WriteAheadRetention> {
         if !history_persistence_enabled() {
             if durability == CheckpointDurability::Required {
                 return Err(RequiredCheckpointError::new(
@@ -164,7 +211,7 @@ impl ZedAgent {
                 .into());
             }
             debug!("Skipped ACP session checkpoint because history persistence is disabled");
-            return Ok(());
+            return Ok(WriteAheadRetention::Unproven);
         }
 
         let (existing_archive, snapshot, session_identifier) = {
@@ -257,28 +304,33 @@ impl ZedAgent {
                 )
                 .into());
             }
-            return Ok(());
+            return Ok(WriteAheadRetention::Unproven);
         };
 
+        // Ordinary best-effort checkpoints must not overwrite the last archive
+        // that still holds the live write-ahead evidence. Skipping the write
+        // keeps that file intact; the next required checkpoint replaces the
+        // protected set. A write that keeps the whole batch is reported so the
+        // terminal-results caller can release protection it no longer needs.
+        let mut write_ahead_retention = WriteAheadRetention::Unproven;
         if durability == CheckpointDurability::BestEffort {
-            // Ordinary transcript checkpoints stay best-effort, but they must
-            // not overwrite the last archive that still holds the live
-            // write-ahead evidence. Skipping the write keeps that file intact;
-            // the next required checkpoint replaces the protected set.
             let protected_call_ids = session
                 .data
                 .lock()
                 .map_err(|error| write_failure(anyhow::anyhow!("ACP session lock poisoned: {error}")))?
                 .write_ahead_call_ids
                 .clone();
-            if !protected_call_ids.is_empty()
-                && !missing_persisted_tool_calls(&protected_call_ids, &prepared_snapshot.messages).is_empty()
-            {
-                debug!(
-                    protected_calls = protected_call_ids.len(),
-                    "Skipped ACP session checkpoint that would drop write-ahead tool-call evidence"
-                );
-                return Ok(());
+            let missing_protected = missing_persisted_tool_calls(&protected_call_ids, &prepared_snapshot.messages);
+            if !protected_call_ids.is_empty() {
+                if missing_protected.is_empty() {
+                    write_ahead_retention = WriteAheadRetention::Retained;
+                } else {
+                    debug!(
+                        protected_calls = protected_call_ids.len(),
+                        "Skipped ACP session checkpoint that would drop write-ahead tool-call evidence"
+                    );
+                    return Ok(WriteAheadRetention::Unproven);
+                }
             }
         }
 
@@ -359,6 +411,6 @@ impl ZedAgent {
                 .map_err(|error| write_failure(anyhow::anyhow!("ACP session lock poisoned: {error}")))?
                 .write_ahead_call_ids = staged_call_ids;
         }
-        Ok(())
+        Ok(write_ahead_retention)
     }
 }

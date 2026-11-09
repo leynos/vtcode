@@ -212,17 +212,13 @@ pub(super) fn repair_unresolved_tool_calls(
     }
 
     reject_ambiguous_tool_result_history(messages)?;
-    let mut unique_evidence = Vec::with_capacity(evidence.len());
-    for retained in evidence {
-        if !unique_evidence.contains(&retained) {
-            unique_evidence.push(retained);
-        }
-    }
+    // Every recorded entry owns a distinct history position, so the repair
+    // cannot record the same slot twice and needs no de-duplication.
     Ok(RecoveryReport {
         repaired_calls,
         relocated_calls,
         truncated_prefix,
-        evidence: unique_evidence,
+        evidence,
     })
 }
 
