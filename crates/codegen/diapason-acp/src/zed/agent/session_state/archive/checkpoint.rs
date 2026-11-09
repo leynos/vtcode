@@ -11,6 +11,7 @@ use diapason_core::utils::session_archive::{
 use tracing::debug;
 
 use crate::zed::agent::session_state::ZedAgent;
+use crate::zed::agent::tool_recovery::RetainedEvidence;
 use crate::zed::types::SessionHandle;
 
 use super::{
@@ -120,10 +121,11 @@ impl ZedAgent {
 
     /// Persists the session snapshot, optionally carrying turn diagnostics.
     ///
-    /// `required_evidence` names messages the caller made durable in this
-    /// checkpoint beyond the latest staged batch, such as the request and
-    /// results an archive repair just inserted or relocated. Their content and
-    /// position, not only their call id, must survive compaction.
+    /// `required_evidence` names the repaired messages the caller made durable
+    /// in this checkpoint beyond the latest staged batch, such as the request
+    /// and results an archive repair just inserted or relocated. Their content
+    /// and recorded history position, not only their call id, must survive
+    /// compaction.
     ///
     /// `reader` supplies the read-back used to verify the persisted payload.
     /// Production always passes [`SessionArchiveCheckpointReader`]; tests
@@ -134,7 +136,7 @@ impl ZedAgent {
         session: &SessionHandle,
         turn_diagnostics: Option<SnapshotTurnDiagnostics>,
         durability: CheckpointDurability,
-        required_evidence: &[SessionMessage],
+        required_evidence: &[RetainedEvidence],
         reader: &dyn CheckpointReader,
     ) -> anyhow::Result<()> {
         trace_storage_operation(
@@ -150,7 +152,7 @@ impl ZedAgent {
         session: &SessionHandle,
         turn_diagnostics: Option<SnapshotTurnDiagnostics>,
         durability: CheckpointDurability,
-        required_evidence: &[SessionMessage],
+        required_evidence: &[RetainedEvidence],
         reader: &dyn CheckpointReader,
     ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
@@ -208,7 +210,7 @@ impl ZedAgent {
             ids.extend(
                 required_evidence
                     .iter()
-                    .filter_map(|message| message.tool_call_id.as_deref().cloned()),
+                    .filter_map(|evidence| evidence.message.tool_call_id.as_deref().cloned()),
             );
             ids.sort();
             ids.dedup();

@@ -3,6 +3,7 @@ use super::super::archive::{
     CheckpointDurability, missing_persisted_evidence, missing_persisted_tool_calls, missing_staged_batch_calls,
     required_checkpoint_evidence_violation, required_staged_batch_violation,
 };
+use crate::zed::agent::tool_recovery::RetainedEvidence;
 use diapason_core::llm::provider::{Message, MessageContent, MessageRole, ToolCall};
 use diapason_core::utils::session_archive::SessionMessage;
 use proptest::prelude::*;
@@ -37,6 +38,11 @@ fn history_for(batches: &[Vec<u8>]) -> Vec<SessionMessage> {
         }
     }
     messages
+}
+
+/// Names a repaired message at the position the repair recorded for it.
+fn evidence_at(history_index: usize, message: SessionMessage) -> RetainedEvidence {
+    RetainedEvidence { history_index, message }
 }
 
 /// Returns the call ids of the last batch of slots.
@@ -128,7 +134,7 @@ fn truncated_repaired_evidence_is_retained_in_its_slot() {
         request_for(&id),
         SessionMessage::with_tool_call_id(MessageRole::Tool, content.as_str(), Some(id)),
     ];
-    let evidence = history[1].clone();
+    let evidence = evidence_at(1, history[1].clone());
     let mut persisted = history.clone();
     persisted[1].content = MessageContent::Text(format!("{}...", "a".repeat(29)));
 
@@ -140,7 +146,7 @@ fn truncated_repaired_evidence_is_retained_in_its_slot() {
     persisted[1].content = MessageContent::Text("unrelated truncated text...".to_string());
     assert_eq!(
         missing_persisted_evidence(std::slice::from_ref(&evidence), &history, &persisted),
-        vec![evidence.tool_call_id.as_deref().expect("evidence call id").to_string()],
+        vec![evidence.message.tool_call_id.as_deref().expect("evidence call id").to_string()],
         "content that is not a truncation of the evidence must not verify"
     );
 }
@@ -183,6 +189,7 @@ proptest! {
         );
         let history = vec![request.clone(), placeholder.clone(), request, later_result];
         let compacted = &history[2..];
+        let evidence = evidence_at(1, placeholder.clone());
 
         prop_assert!(
             missing_persisted_tool_calls(std::slice::from_ref(&id), compacted).is_empty(),
@@ -193,20 +200,20 @@ proptest! {
             "the later batch satisfies the batch check"
         );
         prop_assert_eq!(
-            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, compacted),
+            missing_persisted_evidence(std::slice::from_ref(&evidence), &history, compacted),
             vec![id.clone()]
         );
         prop_assert_eq!(
             required_checkpoint_evidence_violation(
                 CheckpointDurability::Required,
-                std::slice::from_ref(&placeholder),
+                std::slice::from_ref(&evidence),
                 &history,
                 compacted,
             ),
             Some(1)
         );
         prop_assert!(
-            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, &history).is_empty(),
+            missing_persisted_evidence(std::slice::from_ref(&evidence), &history, &history).is_empty(),
             "an uncompacted history retains the repaired evidence"
         );
     }
@@ -229,9 +236,10 @@ proptest! {
             identical_later_result,
         ];
         let compacted = &history[2..];
+        let evidence = evidence_at(1, placeholder);
 
         prop_assert_eq!(
-            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, compacted),
+            missing_persisted_evidence(std::slice::from_ref(&evidence), &history, compacted),
             vec![id]
         );
     }
@@ -255,9 +263,10 @@ proptest! {
             later_result,
         ];
         let compacted = &history[2..];
+        let evidence = evidence_at(1, placeholder);
 
         prop_assert_eq!(
-            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, compacted),
+            missing_persisted_evidence(std::slice::from_ref(&evidence), &history, compacted),
             vec![id]
         );
     }
@@ -275,10 +284,11 @@ proptest! {
             .map(|index| SessionMessage::from(&Message::user(format!("filler {index}"))))
             .collect::<Vec<_>>();
         history.insert(position, placeholder.clone());
+        let evidence = evidence_at(position, placeholder);
         let dropped = dropped.min(history.len());
         let persisted = &history[dropped..];
 
-        let missing = missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, persisted);
+        let missing = missing_persisted_evidence(std::slice::from_ref(&evidence), &history, persisted);
         if position < dropped {
             prop_assert_eq!(missing, vec![id]);
         } else {
@@ -319,8 +329,9 @@ fn dropped_repaired_request_is_rejected_despite_reused_ids() {
         request_for(&id),
         SessionMessage::with_tool_call_id(MessageRole::Tool, "later terminal output", Some(id.clone())),
     ];
+    let evidence = [evidence_at(0, request.clone()), evidence_at(1, placeholder.clone())];
     assert!(
-        missing_persisted_evidence(&[request.clone(), placeholder.clone()], &history, &history).is_empty(),
+        missing_persisted_evidence(&evidence, &history, &history).is_empty(),
         "an uncompacted history retains the request and its result"
     );
 
@@ -336,13 +347,41 @@ fn dropped_repaired_request_is_rejected_despite_reused_ids() {
         "the later batch satisfies the batch check"
     );
     assert!(
-        missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, compacted).is_empty(),
+        missing_persisted_evidence(std::slice::from_ref(&evidence[1]), &history, compacted).is_empty(),
         "the repaired result itself keeps its slot"
     );
     assert_eq!(
-        missing_persisted_evidence(&[request, placeholder], &history, compacted),
+        missing_persisted_evidence(&evidence, &history, compacted),
         vec![format!("request:{id}")],
         "a dropped request must be reported even when the result survives"
+    );
+}
+
+/// An earlier identical batch does not shadow a retained repaired request.
+///
+/// The two requests are indistinguishable by role, content and requested ids,
+/// so searching the history for a match selects the earlier one. Only the
+/// position the repair recorded shows that the repaired request itself is
+/// still present.
+#[test]
+fn an_earlier_identical_batch_does_not_shadow_the_repaired_request() {
+    let id = "reused-request-call".to_string();
+    let repaired_request = request_for(&id);
+    let placeholder = repaired_placeholder(&id);
+    let history = vec![
+        request_for(&id),
+        SessionMessage::with_tool_call_id(MessageRole::Tool, "earlier terminal output", Some(id.clone())),
+        repaired_request.clone(),
+        placeholder.clone(),
+    ];
+    let evidence = [evidence_at(2, repaired_request), evidence_at(3, placeholder)];
+
+    // Front compaction removes exactly the earlier completed batch.
+    let compacted = &history[2..];
+
+    assert!(
+        missing_persisted_evidence(&evidence, &history, compacted).is_empty(),
+        "the repaired request must be checked at the position the repair recorded"
     );
 }
 
@@ -361,8 +400,9 @@ fn a_different_request_does_not_replace_dropped_request_evidence() {
     ];
     let compacted = &history[1..];
 
+    let evidence = evidence_at(0, request_for(&repaired_id));
     assert_eq!(
-        missing_persisted_evidence(&[request_for(&repaired_id)], &history, compacted),
+        missing_persisted_evidence(std::slice::from_ref(&evidence), &history, compacted),
         vec![format!("request:{repaired_id}")]
     );
 }
@@ -377,9 +417,10 @@ fn an_empty_result_is_retained_in_its_slot() {
     let request = request_for(&id);
     let empty_result = SessionMessage::with_tool_call_id(MessageRole::Tool, "", Some(id.clone()));
     let history = vec![request.clone(), empty_result.clone()];
+    let evidence = [evidence_at(0, request), evidence_at(1, empty_result)];
 
     assert!(
-        missing_persisted_evidence(&[request, empty_result], &history, &history).is_empty(),
+        missing_persisted_evidence(&evidence, &history, &history).is_empty(),
         "unchanged empty evidence must verify without compaction"
     );
 }

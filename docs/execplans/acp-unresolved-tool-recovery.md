@@ -794,3 +794,29 @@ through the checkpoint boundary, and property cases for a dropped request, a
 different empty request and empty evidence. The retry in the earlier compaction
 test now reads the preserved archive from disk instead of rebuilding the
 pre-repair snapshot. `cargo nextest run -p diapason-acp` passes 396 of 396.
+
+The follow-up review of the request-evidence round found that the positional
+check still searched the history for the repaired message. Two batches can
+carry byte-identical requests for the same call id, and `evidence_slot_matches`
+compares only role, content and call ids, so a history shaped
+`request A(x), result A(x), request R(x), placeholder(x)` mapped the repaired
+request `R` onto `A`. Front trimming that removed only the earlier completed
+batch was then reported as losing the repaired request, rejecting an attach
+whose own evidence had survived. Searching cannot recover this provenance:
+first-match attribution is wrong for this shape, while last-match attribution
+would accept the shifted shape the previous round's failing test covers.
+`RetainedEvidence` now carries the message together with the `history_index`
+the repair recorded when it inserted or relocated it,
+`RecoveryReport::evidence` replaces `evidence_messages`, and
+`missing_persisted_evidence` checks only that recorded slot. The repair records
+the request at its own index, each relocated result at the index it was moved
+to, and each placeholder at its known splice offset, so no search runs
+afterwards. Two regression tests encode the reported shape: a repair-level test
+asserts the recorded positions for reused ids, a verifier test asserts the
+retained request is not reported missing, and
+`repair_checkpoint_retains_a_request_after_an_earlier_identical_batch` drives
+an archive whose oversized earlier request and result are trimmed while the
+repaired request and placeholder survive. Both new retention tests were run
+against the previous search-based verifier and failed with "dropped repaired
+evidence for 1 tool call(s)", confirming they detect the reported defect.
+`cargo nextest run -p diapason-acp` passes 399 of 399.

@@ -15,6 +15,23 @@ use diapason_core::utils::session_archive::SessionMessage;
 use serde_json::json;
 use std::collections::HashSet;
 
+/// A message the repair inserted or relocated, with its position in the
+/// repaired history.
+///
+/// The repair checkpoint must retain this exact message, and only its position
+/// identifies it. A later batch may reuse the call id, so searching the history
+/// for a matching request or result can select the wrong batch; two batches can
+/// even carry byte-identical requests. Compaction only removes messages from
+/// the front, so the position recorded here fixes the one persisted slot that
+/// can still carry the repaired evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RetainedEvidence {
+    /// Index of the evidence message in the repaired history.
+    pub(super) history_index: usize,
+    /// The message the repair made durable at that position.
+    pub(super) message: SessionMessage,
+}
+
 /// Counts placeholders inserted and results relocated while repairing an
 /// archived tool-call history, plus any front-truncated tool-result prefix.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -25,15 +42,15 @@ pub(super) struct RecoveryReport {
     /// The assistant requests and result messages this repair inserted or
     /// relocated evidence for, in history order.
     ///
-    /// The repair checkpoint must retain these messages. The staged batch
-    /// alone is not enough: a repair can touch an earlier batch, and
-    /// compaction must not drop the evidence the repair just made durable.
-    /// The message content, not only the call id, distinguishes the evidence
-    /// from a later batch that reuses the id. A batch that was repaired also
-    /// names its own request: a later batch reusing the id can satisfy the
-    /// per-id checks by itself, so only the request's own position shows that
-    /// the call it answers was retained.
-    pub(super) evidence_messages: Vec<SessionMessage>,
+    /// The staged batch alone is not enough: a repair can touch an earlier
+    /// batch, and compaction must not drop the evidence the repair just made
+    /// durable. The message content, not only the call id, distinguishes the
+    /// evidence from a later batch that reuses the id, and its recorded
+    /// position distinguishes evidence that content cannot. A batch that was
+    /// repaired also names its own request: a later batch reusing the id can
+    /// satisfy the per-id checks by itself, so only the request's own position
+    /// shows that the call it answers was retained.
+    pub(super) evidence: Vec<RetainedEvidence>,
 }
 
 impl RecoveryReport {
@@ -130,7 +147,7 @@ pub(super) fn repair_unresolved_tool_calls(
 ) -> Result<RecoveryReport, AmbiguousToolResultHistory> {
     let mut repaired_calls = 0;
     let mut relocated_calls = 0;
-    let mut evidence_messages = Vec::new();
+    let mut evidence = Vec::new();
     let mut message_index = 0;
 
     // Archive snapshots are compacted from the front
@@ -176,28 +193,36 @@ pub(super) fn repair_unresolved_tool_calls(
         // the order the positional retention check requires.
         let repaired_batch = relocated_for_batch > 0 || !missing.is_empty();
         if repaired_batch && let Some(request) = messages.get(message_index) {
-            evidence_messages.push(SessionMessage::from(request));
+            evidence.push(RetainedEvidence {
+                history_index: message_index,
+                message: SessionMessage::from(request),
+            });
         }
-        evidence_messages.append(&mut batch_evidence);
-        evidence_messages.extend(missing.iter().map(SessionMessage::from));
+        evidence.append(&mut batch_evidence);
         repaired_calls += missing.len();
+        // Each placeholder is inserted at a known offset, so the repair can
+        // record its position without searching the history for it later.
+        evidence.extend(missing.iter().enumerate().map(|(offset, placeholder)| RetainedEvidence {
+            history_index: group_end + offset,
+            message: SessionMessage::from(placeholder),
+        }));
         let missing_count = missing.len();
         drop(messages.splice(group_end..group_end, missing));
         message_index = group_end + missing_count;
     }
 
     reject_ambiguous_tool_result_history(messages)?;
-    let mut unique_evidence = Vec::with_capacity(evidence_messages.len());
-    for message in evidence_messages {
-        if !unique_evidence.contains(&message) {
-            unique_evidence.push(message);
+    let mut unique_evidence = Vec::with_capacity(evidence.len());
+    for retained in evidence {
+        if !unique_evidence.contains(&retained) {
+            unique_evidence.push(retained);
         }
     }
     Ok(RecoveryReport {
         repaired_calls,
         relocated_calls,
         truncated_prefix,
-        evidence_messages: unique_evidence,
+        evidence: unique_evidence,
     })
 }
 
@@ -262,7 +287,7 @@ fn relocate_unique_late_results(
     assistant_index: usize,
     contiguous_end: usize,
     calls: &[ToolCall],
-    evidence_messages: &mut Vec<SessionMessage>,
+    evidence: &mut Vec<RetainedEvidence>,
 ) -> usize {
     let mut relocated = 0;
     let mut result_end = contiguous_end;
@@ -296,8 +321,11 @@ fn relocate_unique_late_results(
 
         let result = messages.remove(*result_index);
         messages.insert(result_end, result);
-        if let Some(evidence) = messages.get(result_end) {
-            evidence_messages.push(SessionMessage::from(evidence));
+        if let Some(relocated_result) = messages.get(result_end) {
+            evidence.push(RetainedEvidence {
+                history_index: result_end,
+                message: SessionMessage::from(relocated_result),
+            });
         }
         result_end += 1;
         relocated += 1;

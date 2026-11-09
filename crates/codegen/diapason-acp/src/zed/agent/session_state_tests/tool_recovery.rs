@@ -366,6 +366,63 @@ async fn repair_checkpoint_fails_when_compaction_drops_the_repaired_request() {
     );
 }
 
+/// A retained repaired request is not reported lost when an earlier identical
+/// batch was trimmed away.
+///
+/// Both batches request the same call id with an empty body, so searching the
+/// history by content selects the earlier request. Retention must check the
+/// position the repair recorded; otherwise a checkpoint whose own evidence
+/// survived is rejected.
+#[tokio::test]
+async fn repair_checkpoint_retains_a_request_after_an_earlier_identical_batch() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("create temporary workspace for the earlier-identical-batch test");
+    let mut listing = archived_listing("repair-earlier-identical-batch", temp.path(), "continue");
+    listing.snapshot.messages = identical_completed_batch_before_the_repaired_request(32 * 1024);
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive_path = listing.path.clone();
+    let agent = build_agent(temp.path()).await;
+
+    let handle = agent
+        .attach_thread_from_listing(
+            &acp::SessionId::new("repair-earlier-identical-batch-session"),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
+            listing,
+        )
+        .await
+        .expect("a repaired request that survives compaction must not be reported lost");
+
+    let persisted: SessionSnapshot =
+        serde_json::from_str(&fs::read_to_string(&archive_path).expect("read the repaired archive"))
+            .expect("parse the repaired archive snapshot");
+    assert_eq!(persisted.messages.len(), 2, "front compaction must trim the earlier completed batch");
+    assert_eq!(persisted.messages[0].role, MessageRole::Assistant);
+    assert_eq!(
+        persisted.messages[0]
+            .tool_calls
+            .as_deref()
+            .and_then(|calls| calls.first())
+            .map(|call| call.id.as_str()),
+        Some("reused-completed-call"),
+        "the repaired request must be the surviving request"
+    );
+    assert_eq!(
+        persisted.messages[1].tool_call_id.as_deref().map(String::as_str),
+        Some("reused-completed-call"),
+        "the repaired placeholder must be the surviving result"
+    );
+    let messages = handle.data.lock().expect("lock the attached session data").thread.messages();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.tool_call_id.as_deref() == Some("reused-completed-call")),
+        "the retained placeholder must remain in the live history"
+    );
+}
+
 /// A repair checkpoint retains a relocated result whose content is empty.
 ///
 /// A tool that returned no output is legitimate evidence, so retention must
@@ -513,6 +570,35 @@ fn reused_id_repaired_request_under_compaction(padding: usize) -> Vec<SessionMes
             )],
         )),
         SessionMessage::from(&Message::tool_response("reused-evidence-call".to_string(), "later result".to_string())),
+    ]
+}
+
+/// Builds an archive whose repaired batch follows an identical completed one.
+///
+/// `padding` oversizes both the earlier request's arguments and its result, so
+/// front compaction trims that whole earlier batch while the repaired request
+/// and the placeholder the repair inserts still fit the budget. The two
+/// requests are indistinguishable by role, content and call id, so only the
+/// position the repair records identifies the repaired one.
+fn identical_completed_batch_before_the_repaired_request(padding: usize) -> Vec<SessionMessage> {
+    vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "reused-completed-call".to_string(),
+                "read_file".to_string(),
+                format!("{{\"path\":\"{}\"}}", "x".repeat(padding)),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response("reused-completed-call".to_string(), "x".repeat(padding))),
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "reused-completed-call".to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
     ]
 }
 

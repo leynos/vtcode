@@ -14,6 +14,7 @@ use std::path::Path;
 
 use super::CheckpointDurability;
 use super::checkpoint::{CheckpointFailure, RequiredCheckpointError};
+use crate::zed::agent::tool_recovery::RetainedEvidence;
 
 /// Returns the tool-call ids staged by the most recent assistant tool batch.
 ///
@@ -75,51 +76,35 @@ pub(in crate::zed::agent::session_state) fn missing_persisted_tool_calls(
 /// Provenance is positional instead. Compaction only removes messages from the
 /// front of the snapshot, so the persisted payload is always a suffix of the
 /// uncompacted history and each repaired message has exactly one persisted slot
-/// that can still carry it. Retention therefore requires that slot to hold the
-/// repaired message itself. A later message that reuses the call id occupies a
-/// different slot, so it cannot stand in for dropped evidence.
+/// that can still carry it. The repair records that slot when it makes a
+/// message durable: searching the history afterwards cannot recover it, because
+/// an earlier completed batch can carry a byte-identical request or result for
+/// the same call id and would be found first. Retention therefore requires the
+/// recorded slot to hold the repaired message itself. A later message that
+/// reuses the call id occupies a different slot, so it cannot stand in for
+/// dropped evidence.
 ///
 /// Request evidence covers the other half of the same failure: front trimming
 /// can drop the repaired batch's request while a later batch reuses its id, so
 /// the per-id checks and the result's own slot both still pass. Naming the
 /// request in `required_evidence` makes that loss observable.
 pub(in crate::zed::agent::session_state) fn missing_persisted_evidence(
-    required_evidence: &[SessionMessage],
+    required_evidence: &[RetainedEvidence],
     history_messages: &[SessionMessage],
     persisted_messages: &[SessionMessage],
 ) -> Vec<String> {
     let removed = history_messages.len().saturating_sub(persisted_messages.len());
-    let mut search_start = 0;
     let mut missing = Vec::new();
     for evidence in required_evidence {
-        let Some(history_index) = find_evidence_position(history_messages, evidence, search_start) else {
-            missing.push(evidence_label(evidence));
-            continue;
-        };
-        search_start = history_index + 1;
-        let retained = history_index >= removed
+        let retained = evidence.history_index >= removed
             && persisted_messages
-                .get(history_index - removed)
-                .is_some_and(|persisted| evidence_slot_matches(evidence, persisted));
+                .get(evidence.history_index - removed)
+                .is_some_and(|persisted| evidence_slot_matches(&evidence.message, persisted));
         if !retained {
-            missing.push(evidence_label(evidence));
+            missing.push(evidence_label(&evidence.message));
         }
     }
     missing
-}
-
-/// Returns the first position at or after `start` holding the repaired message.
-fn find_evidence_position(
-    history_messages: &[SessionMessage],
-    evidence: &SessionMessage,
-    start: usize,
-) -> Option<usize> {
-    history_messages
-        .iter()
-        .enumerate()
-        .skip(start)
-        .find(|(_, message)| evidence_slot_matches(evidence, message))
-        .map(|(index, _)| index)
 }
 
 /// Returns the call a missing-evidence report names.
@@ -281,7 +266,7 @@ pub(in crate::zed::agent::session_state) fn required_checkpoint_retention_violat
 /// fixes the position each repaired message must occupy after front trimming.
 pub(in crate::zed::agent::session_state) fn required_checkpoint_evidence_violation(
     durability: CheckpointDurability,
-    required_evidence: &[SessionMessage],
+    required_evidence: &[RetainedEvidence],
     history_messages: &[SessionMessage],
     persisted_messages: &[SessionMessage],
 ) -> Option<usize> {
@@ -345,15 +330,15 @@ impl CheckpointReader for SessionArchiveCheckpointReader {
 /// together as one batch. `required_call_ids` names every call the caller made
 /// durable in this checkpoint, including repaired evidence from older batches.
 /// `required_evidence` carries the requests and results the repair made durable,
-/// so retention is checked against their content and position rather than their
-/// call id alone. `history_messages` is the uncompacted payload that fixes those
-/// positions.
+/// so retention is checked against their content and recorded position rather
+/// than their call id alone. `history_messages` is the uncompacted payload that
+/// fixes those positions.
 pub(in crate::zed::agent::session_state) async fn verify_required_checkpoint_retention(
     reader: &dyn CheckpointReader,
     persisted_path: &Path,
     staged_call_ids: &[String],
     required_call_ids: &[String],
-    required_evidence: &[SessionMessage],
+    required_evidence: &[RetainedEvidence],
     history_messages: &[SessionMessage],
 ) -> anyhow::Result<()> {
     let persisted_messages = reader
