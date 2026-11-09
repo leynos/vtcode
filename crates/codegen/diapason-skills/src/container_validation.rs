@@ -595,7 +595,7 @@ mod wire_compatibility_tests {
         let encoded = serde_json::to_value(report).expect("validation report serialization should succeed");
         let serialized_count = encoded.get("total_skills_analyzed").and_then(|value| value.as_u64());
 
-        assert_eq!(serialized_count, Some(0), "serialized report should contain total_skills_analyzed as zero",);
+        assert_eq!(serialized_count, Some(0), "serialized report should contain `total_skills_analyzed` as zero",);
         assert!(
             encoded.get("total_skills_analysed").is_none(),
             "serialized report should not emit the native total_skills_analysed key",
@@ -638,7 +638,7 @@ mod wire_compatibility_tests {
 
         assert!(
             historical_output.contains("Total Skills Analysed: 3"),
-            "historical total_skills_analyzed should populate the report count",
+            "historical `total_skills_analyzed` should populate the report count",
         );
         assert!(
             native_output.contains("Total Skills Analysed: 3"),

@@ -6,6 +6,6 @@
   policy.
 - Built-in theme foreground and accent colours must meet WCAG AA 4.5:1 against
   their background; run the theme nextest filter after changes.
-- Preserve accessible contrast, keyboard behavior and terminal capability
+- Preserve accessible contrast, keyboard behaviour and terminal capability
   fallbacks. Detailed module guidance:
   [diapason-ui](../../../docs/development/module-guidance/diapason-ui.md).

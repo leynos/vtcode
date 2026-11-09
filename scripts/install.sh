@@ -395,7 +395,7 @@ install_binary() {
     log_success "Binary installed to $target"
 }
 
-# Build into an owned temporary Cargo root, then copy the artifact to target_path.
+# Build into an owned temporary Cargo root, then copy the artefact to target_path.
 install_from_source() (
     local target_path="$1"
 
@@ -537,7 +537,7 @@ main() {
             log_info "Use --source-build or --binary PATH to install without curl."
             exit 1
         fi
-        # Only Diapason-named release artifacts are accepted. Earlier VTCode
+        # Only Diapason-named release artefacts are accepted. Earlier VTCode
         # releases in this repository therefore cannot be installed here.
         local current_platform
         current_platform=$(detect_platform)

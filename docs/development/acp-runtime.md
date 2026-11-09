@@ -36,7 +36,7 @@ allowed by default, with additional absolute roots configured through
 allowed root; filesystem roots and the home directory are rejected. The same
 policy validates list, load and resume requests before workspace trust is
 persisted. Each session's canonical workspace scopes its local tools, MCP
-configuration, prompt context, sub-agents, compaction artifacts and archive
+configuration, prompt context, sub-agents, compaction artefacts and archive
 metadata. Do not substitute the server launch directory when the requested
 workspace is invalid.
 

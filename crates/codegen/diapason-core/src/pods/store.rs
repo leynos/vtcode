@@ -31,7 +31,7 @@ impl PodsStore {
     /// Return the path to the persisted `catalog.json` file.
     ///
     /// The on-disk filename keeps its original spelling so existing
-    /// installations retain their customised deployment profiles. Only the
+    /// installations retain their customized deployment profiles. Only the
     /// Rust API uses the native `catalogue` spelling.
     pub fn catalogue_path(&self) -> PathBuf {
         self.base_dir.join("catalog.json")

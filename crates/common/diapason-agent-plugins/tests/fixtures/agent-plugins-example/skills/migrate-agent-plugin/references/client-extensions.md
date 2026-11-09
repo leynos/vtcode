@@ -1,4 +1,4 @@
 # Client Extensions
 
-How to use reverse-domain namespaces for client-specific behavior without
+How to use reverse-domain namespaces for client-specific behaviour without
 breaking portability.

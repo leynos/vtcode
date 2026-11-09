@@ -2060,18 +2060,14 @@ permissions = { default = "ask" }
         };
 
         let mut canonical = serde_json::to_value(&spec).expect("the subagent specification should serialize");
-        assert_eq!(
-            canonical.get("color"),
-            Some(&json!("orchid")),
-            "serialization should emit the canonical color wire key"
-        );
+        assert_eq!(canonical.get("color"), Some(&json!("orchid")), "serialization should emit the canonical wire key");
         assert!(canonical.get("colour").is_none(), "serialization should not emit the British alias");
 
         let canonical_value = canonical
             .as_object_mut()
             .expect("a serialized subagent specification should be an object")
             .remove("color")
-            .expect("the canonical color key should be present");
+            .expect("the canonical wire key should be present");
         let previous_british_alias = canonical
             .as_object_mut()
             .expect("a serialized subagent specification should remain an object")
@@ -2097,7 +2093,7 @@ permissions = { default = "ask" }
     }
 
     #[test]
-    fn discover_subagents_prefers_canonical_color_for_cli_agents() -> Result<()> {
+    fn discover_subagents_prefers_canonical_key_for_cli_agents() -> Result<()> {
         let temp = TempDir::new()?;
         let mut input = SubagentDiscoveryInput::new(temp.path().to_path_buf());
         input.include_user_agents = false;
@@ -2119,7 +2115,7 @@ permissions = { default = "ask" }
         assert_eq!(
             spec.colour.as_deref(),
             Some("violet"),
-            "CLI JSON should prefer the canonical color key when both spellings are present"
+            "CLI JSON should prefer the canonical key when both spellings are present"
         );
         Ok(())
     }
