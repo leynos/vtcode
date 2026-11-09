@@ -50,6 +50,11 @@ reasoning_effort = "low"
 # ]
 # Optional explicit pricing for ACP usage updates (USD per million tokens).
 # Declare it after the provider-level fields and models list above.
+# The rates below are ILLUSTRATIVE PLACEHOLDERS. They apply to every model in
+# the profile that has no override, so an unchanged copy reports costs that may
+# be wrong, including zero for cache writes; replace them with the provider's
+# published prices. Where rates differ per model, declare a
+# `custom_providers.profiles` entry with its own `pricing` table instead.
 # [custom_providers.pricing]
 # input_per_million_usd = 0.15
 # output_per_million_usd = 0.50

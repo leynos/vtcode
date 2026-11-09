@@ -52,6 +52,25 @@ const BASETEN_INPUT_PER_MILLION: f64 = 3.0;
 /// Declared output rate in USD per million tokens.
 const BASETEN_OUTPUT_PER_MILLION: f64 = 15.0;
 
+/// Declared cache-read rate in USD per million tokens.
+///
+/// Deliberately different from the input rate so a cost that prices every
+/// prompt token at the input rate cannot pass by coincidence.
+const BASETEN_CACHE_READ_PER_MILLION: f64 = 0.3;
+
+/// OpenAI Chat stream whose prompt count already includes the cached tokens.
+///
+/// This is the inclusive counterpart to the Anthropic fixture: `prompt_tokens`
+/// is 24 uncached plus 5 cache-read tokens, and the cache detail is reported
+/// separately under `prompt_tokens_details`. The ACP delta must publish that
+/// total unchanged while still surfacing the cache count and pricing the two
+/// token sets at their own rates.
+const OPENAI_CACHE_USAGE_STREAM: &str = concat!(
+    "data: {\"id\":\"chatcmpl-cache\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"chatcmpl-cache\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":29,\"completion_tokens\":8,\"total_tokens\":37,\"prompt_tokens_details\":{\"cached_tokens\":5}}}\n\n",
+    "data: [DONE]\n\n",
+);
+
 /// Anthropic Messages stream whose prompt count excludes the cached tokens.
 ///
 /// `message_start` carries the input side (including both cache counts) and
@@ -111,6 +130,19 @@ fn anthropic_provider(base_url: &str) -> CustomProviderConfig {
 
 fn baseten_core_config(workspace: &std::path::Path) -> CoreAgentConfig {
     custom_provider_core_config(workspace, BASETEN_PROVIDER, BASETEN_MODEL, "BASETEN_FIXTURE_API_KEY")
+}
+
+/// The same provider with cache metrics turned off in the global prompt-cache
+/// configuration.
+///
+/// OpenAI-compatible providers only parse the nested cache detail when both
+/// prompt caching and `surface_metrics` are enabled, so this fixture proves the
+/// disabled configuration through the provider path rather than by omitting
+/// the wire field from the stream.
+fn baseten_core_config_without_cache_metrics(workspace: &std::path::Path) -> CoreAgentConfig {
+    let mut config = baseten_core_config(workspace);
+    config.prompt_cache.providers.openai.surface_metrics = false;
+    config
 }
 
 fn anthropic_core_config(workspace: &std::path::Path) -> CoreAgentConfig {
@@ -259,6 +291,17 @@ fn baseten_vt_config(base_url: &str) -> DiapasonConfig {
     }
 }
 
+/// The same OpenAI-chat provider, but with a declared cache-read rate so the
+/// cost assertion can distinguish cached from uncached prompt tokens.
+fn cache_priced_baseten_vt_config(base_url: &str) -> DiapasonConfig {
+    let mut provider = baseten_provider(base_url);
+    provider.pricing.cache_read_per_million_usd = Some(BASETEN_CACHE_READ_PER_MILLION);
+    DiapasonConfig {
+        custom_providers: vec![provider],
+        ..DiapasonConfig::default()
+    }
+}
+
 fn anthropic_vt_config(base_url: &str) -> DiapasonConfig {
     DiapasonConfig {
         custom_providers: vec![anthropic_provider(base_url)],
@@ -266,122 +309,8 @@ fn anthropic_vt_config(base_url: &str) -> DiapasonConfig {
     }
 }
 
-#[tokio::test]
-async fn terminal_only_baseten_usage_reaches_the_acp_client() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+#[path = "assembled_usage/anthropic.rs"]
+mod anthropic;
 
-    let server = MockServer::start().await;
-    let requests = mount_stream(&server, TERMINAL_USAGE_STREAM, "/chat/completions").await;
-    let workspace = TempDir::new().expect("Baseten usage workspace");
-    let notifications =
-        run_assembled_prompt(&baseten_core_config(workspace.path()), &baseten_vt_config(&server.uri())).await;
-
-    let updates = usage_updates(&notifications);
-    assert_eq!(
-        updates.len(),
-        1,
-        "one response with terminal-only usage must publish exactly one usage delta: {updates:?}"
-    );
-    let update = &updates[0];
-    assert_eq!(update["usage"]["inputTokens"], 13);
-    assert_eq!(
-        update["usage"]["outputTokens"], 2,
-        "reasoning tokens are reported separately and excluded from the output count"
-    );
-    assert_eq!(update["usage"]["reasoningOutputTokens"], 3);
-    assert_eq!(update["usage"]["contextWindow"], 131_072);
-    // OpenAI Chat reports prompt tokens inclusive of cache tokens, and the
-    // fixture declares no cache activity, so cost is the declared rates over
-    // the parser's prompt and completion counts.
-    let expected_cost = 13.0 * BASETEN_INPUT_PER_MILLION / 1_000_000.0 + 5.0 * BASETEN_OUTPUT_PER_MILLION / 1_000_000.0;
-    let cost = update["usage"]["costUSD"]
-        .as_f64()
-        .expect("the declared rates must price the turn");
-    assert!((cost - expected_cost).abs() < 1e-12, "expected {expected_cost} from the declared rates, got {cost}");
-    assert_eq!(update["modelUsage"][BASETEN_MODEL]["inputTokens"], 13);
-    assert_eq!(update["modelUsage"][BASETEN_MODEL]["outputTokens"], 2);
-    assert_eq!(update["modelUsage"][BASETEN_MODEL]["reasoningOutputTokens"], 3);
-
-    // The assembled path, not just the projection: the real OpenAI-chat
-    // adapter opted into streamed usage for this profile.
-    let requests = requests.lock().expect("stream request mutex");
-    assert!(!requests.is_empty(), "the prompt must reach the mock origin");
-    for request in requests.iter() {
-        assert_eq!(request["model"], BASETEN_MODEL);
-        assert_eq!(
-            request["stream_options"]["include_usage"], true,
-            "an opted-in Baseten profile must request streamed usage"
-        );
-    }
-}
-
-/// An exclusive-input backend that also reports cache activity must publish a
-/// prompt total that includes the cached tokens, alongside both cache counts.
-///
-/// This is the end-to-end counterpart to the unit tests on
-/// `normalized_turn_usage`: the OpenAI-chat fixture proves inclusive semantics,
-/// this one proves exclusive semantics are added back. Asserting on both
-/// `usage` and `modelUsage` keeps the two projections from drifting apart.
-#[tokio::test]
-async fn exclusive_anthropic_cache_usage_reaches_both_usage_fields() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-
-    let server = MockServer::start().await;
-    let requests = mount_stream(&server, ANTHROPIC_CACHE_USAGE_STREAM, "/v1/messages").await;
-    let workspace = TempDir::new().expect("Anthropic usage workspace");
-    let base_url = format!("{}/v1", server.uri());
-    let notifications =
-        run_assembled_prompt(&anthropic_core_config(workspace.path()), &anthropic_vt_config(&base_url)).await;
-
-    let updates = usage_updates(&notifications);
-    assert_eq!(updates.len(), 1, "one response with split usage must publish exactly one usage delta: {updates:?}");
-    let update = &updates[0];
-
-    // 21 uncached + 5 cache-read + 3 cache-creation. The Anthropic wire format
-    // reports `input_tokens` exclusive of the cache counts, so publishing the
-    // raw value would understate the prompt by the cached tokens.
-    let expected_input = 21 + 5 + 3;
-    for usage in [&update["usage"], &update["modelUsage"][ANTHROPIC_MODEL]] {
-        assert_eq!(usage["inputTokens"], expected_input);
-        assert_eq!(usage["cacheReadInputTokens"], 5);
-        assert_eq!(usage["cacheCreationInputTokens"], 3);
-        assert_eq!(usage["outputTokens"], 8);
-    }
-    assert_eq!(update["usage"]["contextWindow"], 131_072);
-    assert_eq!(
-        update["modelUsage"][ANTHROPIC_MODEL], update["usage"],
-        "the per-model and session projections must agree for a single model"
-    );
-
-    let requests = requests.lock().expect("stream request mutex");
-    assert!(!requests.is_empty(), "the prompt must reach the mock origin");
-}
-
-#[tokio::test]
-async fn baseten_stream_without_usage_publishes_no_delta() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-
-    let server = MockServer::start().await;
-    let requests = mount_stream(&server, USAGE_FREE_STREAM, "/chat/completions").await;
-    let workspace = TempDir::new().expect("Baseten usage workspace");
-    let notifications =
-        run_assembled_prompt(&baseten_core_config(workspace.path()), &baseten_vt_config(&server.uri())).await;
-
-    assert!(
-        usage_updates(&notifications).is_empty(),
-        "a provider stream that reports no usage must not invent a delta"
-    );
-    assert!(
-        !requests.lock().expect("stream request mutex").is_empty(),
-        "the prompt must still reach the mock origin"
-    );
-}
+#[path = "assembled_usage/chat.rs"]
+mod chat;
