@@ -30,7 +30,7 @@ impl SupportedTool {
     }
 
     /// Human-readable title used when a call supplies no arguments to
-    /// specialise.
+    /// specialize.
     pub(crate) fn default_title(&self) -> &'static str {
         match self {
             Self::ReadFile => "Read file",

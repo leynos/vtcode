@@ -23,7 +23,7 @@ workflow scheduling, billing, security adjudication, or a telemetry backend.
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Why did this task stall or fail?               | Task/run/attempt joins, operation timelines, retries, waits, cancellation and classified errors | Missing telemetry is unknown, never proof of inactivity                      |
 | What did the task cost?                        | Normalized tokens, provider billing evidence, pricing revision, known and unknown contributions | Estimates are distinct from provider charges; no invoice authority           |
-| Was the change useful and verified?            | Gate/review outcomes, candidate identity, artifact references and evidence source               | Tool success is not task success; external verdicts retain their issuer      |
+| Was the change useful and verified?            | Gate/review outcomes, candidate identity, artefact references and evidence source               | Tool success is not task success; external verdicts retain their issuer      |
 | What did the agent do under which permissions? | Policy revision, decision ID, approval wait, actual enforcement outcome                         | Export cannot authorize actions; no completeness or tamper-proof audit claim |
 | Can workflows recover and compare providers?   | Stable logical IDs, new attempt IDs, lineage links and usage provenance                         | No dependence on Dakar, df12-build, or Corbusier storage schemas             |
 
@@ -454,11 +454,11 @@ consumer deduplication domain.
 | --------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | Session/interaction/operation lifecycle | IDs, terminal outcome, elapsed time, termination reason                                      | Business completion from a successful model response |
 | Provider usage and model change         | Request/attempt IDs, normalized counts, source/completeness, old/new approved model identity | Exact bill without provider billing evidence         |
-| Tool, MCP and hook result               | Call ID, operation class, result/error class, artifact reference                             | Semantic correctness of output                       |
+| Tool, MCP and hook result               | Call ID, operation class, result/error class, artefact reference                             | Semantic correctness of output                       |
 | Policy and approval                     | Decision ID, engine/profile revision, effect class, allow/deny/ask, approval origin and wait | Actual enforcement merely from intended obligations  |
 | Enforcement                             | Decision ID, sandbox/network restriction result, violation class                             | Absence of unobserved bypasses                       |
 | Compaction and delegation               | Before/after counts, strategy, child/recovery lineage                                        | Content quality or causal benefit without evaluation |
-| Gate/review/change outcome              | Candidate ID, gate/verdict/issuer, verified time, artifact IDs, observed line changes        | Current-head verification from an older candidate    |
+| Gate/review/change outcome              | Candidate ID, gate/verdict/issuer, verified time, artefact IDs, observed line changes        | Current-head verification from an older candidate    |
 | Telemetry configuration change          | Safe profile ID, signal state, reason class, configuration source                            | Secret values or complete audit delivery             |
 
 _Table 6: Evidence exported for operational and security analysis._
@@ -618,7 +618,7 @@ SDK/transport buffers and active spans require additional bounded budgets
 measured in §11.
 
 Retry transient export failures at most twice within the signal's export
-budget, with jitter and cancellation. Honor retry hints only within that
+budget, with jitter and cancellation. Honour retry hints only within that
 budget. Permanent authentication/configuration errors stop retries and surface
 locally. OTLP partial-success rejection counts are recorded as loss; do not
 resend an entire partially accepted batch blindly. Delivery is best effort,
