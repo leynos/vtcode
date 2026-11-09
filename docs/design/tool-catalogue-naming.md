@@ -25,8 +25,11 @@ contracts that outlive a release:
 - runtime prompt section headers that embedders may already supply.
 
 Renaming those strings would break existing deployments, dashboards and
-third-party prompts. Renaming only the Rust items keeps the source tree
-consistent without changing any external contract.
+third-party prompts. So the rename is confined to Rust items, with one
+explicitly handled exception: the runtime prompt header moves to the
+`catalogue` spelling, and a prompt that still carries the old header is
+refreshed in place rather than left alongside the new one (see decision 5).
+Every other external contract keeps its existing spelling.
 
 ## Decision
 
