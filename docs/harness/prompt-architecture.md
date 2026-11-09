@@ -3,10 +3,10 @@
 ## Cache-stable segments
 
 Each harness segment freezes one `SessionRequestEnvelope`: a segment ID, the
-system prompt, a canonically ordered tool catalogue, and the instruction digest.
-Ordinary turns only append messages. Compaction or a change to the catalogue
-epoch, primary agent, model, provider, mode, or instruction digest starts a new
-segment and therefore one intentional cache miss.
+system prompt, a canonically ordered tool catalogue, and the instruction
+digest. Ordinary turns only append messages. Compaction or a change to the
+catalogue epoch, primary agent, model, provider, mode, or instruction digest
+starts a new segment and therefore one intentional cache miss.
 
 Session-start time is rendered once into the cached system prompt. Later time
 must come from tool output. Approval and sandbox policy values are execution

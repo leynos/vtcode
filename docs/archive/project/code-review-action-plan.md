@@ -27,8 +27,8 @@ crates. Updated action plan: `docs/project/code-review-action-plan.md`.
 **Files:** `src/agent/runloop/unified/session_setup/init.rs`
 (`resolve_provider_label`), `crates/codegen/diapason-llm/src/providers/mimo.rs`
 **Impact:** Invalid `mimo_auth_method` config values (e.g., `"oauth"`) silently
-use PayAsYouGo API key header format, base URL, and model list - wrong behaviour
-with no warning. **Fix applied:** `resolve_provider_label` in
+use PayAsYouGo API key header format, base URL, and model list - wrong
+behaviour with no warning. **Fix applied:** `resolve_provider_label` in
 `src/agent/runloop/unified/session_setup/init.rs` now logs
 `warn!("Unrecognized MiMo auth method in config; falling back to API-key detection")`
 when the configured method is `Unknown` and falls through to API-key detection

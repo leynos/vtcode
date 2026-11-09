@@ -90,7 +90,8 @@ For budgeted-thinking models, Diapason sends:
 
 ## Feature Compatibility
 
-When thinking is active, Diapason enforces or normalizes the following behaviour:
+When thinking is active, Diapason enforces or normalizes the following
+behaviour:
 
 - `tool_choice` is limited to `auto` or `none`
 - assistant prefills are incompatible with Claude Opus 4.6/4.7 and Claude

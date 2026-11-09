@@ -2,10 +2,10 @@
 
 Diapason has two distinct prompt sources:
 
-| Source                    | Loaded from                                                     | Purpose                                                                                                   | Trust boundary                                     |
-| ------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Source                    | Loaded from                                                     | Purpose                                                                                                    | Trust boundary                                     |
+| ------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | Compiled runtime guidance | `crates/codegen/diapason-core/src/prompts/runtime_guidance.rs`  | Small, universal user-facing behaviour included in Default, Minimal, Lightweight, and Specialized profiles | Part of the application runtime                    |
-| Project instruction map   | User/workspace `AGENTS.md`, `CLAUDE.md`, and `.diapason/rules/` | Project conventions, local architecture, and maintainer workflows                                         | User-controlled context, never a security boundary |
+| Project instruction map   | User/workspace `AGENTS.md`, `CLAUDE.md`, and `.diapason/rules/` | Project conventions, local architecture, and maintainer workflows                                          | User-controlled context, never a security boundary |
 
 The compiled section is deterministic, cached with the static profile, and kept
 below its approximate 256-token cap. It must not read, embed, or generate
