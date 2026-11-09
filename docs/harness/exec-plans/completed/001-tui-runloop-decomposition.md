@@ -5,8 +5,8 @@
 ## Goal
 
 Reduce the largest TUI runloop and slash-command modules to smaller, navigable
-units without changing slash-command behaviour, modal behaviour, or session-loop
-outcomes.
+units without changing slash-command behaviour, modal behaviour, or
+session-loop outcomes.
 
 ## Context
 

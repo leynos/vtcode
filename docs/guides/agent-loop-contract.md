@@ -170,8 +170,8 @@ Fields:
 - `previous_segment_id` and `new_segment_id`: optional cache segment transition
 - `previous_prefix_hash` and `new_prefix_hash`: optional immutable
   prompt-prefix hashes
-- `previous_catalogue_hash` and `new_catalogue_hash`: optional ordered tool-catalogue
-  hashes
+- `previous_catalogue_hash` and `new_catalogue_hash`: optional ordered
+  tool-catalogue hashes
 
 Each request segment freezes one system prompt, instruction digest, and
 deterministically ordered tool catalogue. Ordinary turns only append messages.
