@@ -46,12 +46,12 @@ Improving diapason's styling system to:
 
 ### Key Benefits
 
-| Aspect            | Current           | After                                                |
-| ----------------- | ----------------- | ---------------------------------------------------- |
-| Text Effects      | bold, italic      | bold, dim, italic, underline, strikethrough, reverse |
-| Config Sources    | Hard-coded themes | Git config, LS_COLORS, custom files                  |
+| Aspect             | Current           | After                                                |
+| ------------------ | ----------------- | ---------------------------------------------------- |
+| Text Effects       | bold, italic      | bold, dim, italic, underline, strikethrough, reverse |
+| Config Sources     | Hard-coded themes | Git config, LS_COLORS, custom files                  |
 | Background Colours | Unsupported       | Full support                                         |
-| Code Quality      | Custom parsing    | Leverage `anstyle-git`, `anstyle-ls`                 |
+| Code Quality       | Custom parsing    | Leverage `anstyle-git`, `anstyle-ls`                 |
 
 ### Timeline
 

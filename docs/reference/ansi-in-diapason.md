@@ -415,16 +415,16 @@ let s = String::from_utf8(chunk).unwrap(); // May panic
 
 ### OSC Sequences
 
-| Usage            | Sequence prefix | Diapason Constant               |
-| ---------------- | --------------- | ------------------------------- |
-| Set title        | `OSC 2 ;`       | `OSC_SET_TITLE_PREFIX`          |
-| Set icon name    | `OSC 1 ;`       | `OSC_SET_ICON_PREFIX`           |
-| Set icon+title   | `OSC 0 ;`       | `OSC_SET_ICON_AND_TITLE_PREFIX` |
+| Usage             | Sequence prefix | Diapason Constant               |
+| ----------------- | --------------- | ------------------------------- |
+| Set title         | `OSC 2 ;`       | `OSC_SET_TITLE_PREFIX`          |
+| Set icon name     | `OSC 1 ;`       | `OSC_SET_ICON_PREFIX`           |
+| Set icon+title    | `OSC 0 ;`       | `OSC_SET_ICON_AND_TITLE_PREFIX` |
 | Foreground colour | `OSC 10 ;`      | `OSC_FG_COLOR_PREFIX`           |
 | Background colour | `OSC 11 ;`      | `OSC_BG_COLOR_PREFIX`           |
 | Cursor colour     | `OSC 12 ;`      | `OSC_CURSOR_COLOR_PREFIX`       |
-| Hyperlink        | `OSC 8 ;`       | `OSC_HYPERLINK_PREFIX`          |
-| Clipboard        | `OSC 52 ;`      | `OSC_CLIPBOARD_PREFIX`          |
+| Hyperlink         | `OSC 8 ;`       | `OSC_HYPERLINK_PREFIX`          |
+| Clipboard         | `OSC 52 ;`      | `OSC_CLIPBOARD_PREFIX`          |
 
 ### Device Status / Attributes
 
