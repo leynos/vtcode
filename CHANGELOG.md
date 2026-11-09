@@ -495,7 +495,8 @@ All notable changes to vtcode will be documented in this file.
 
 - Serialize f32 sampling params without binary tails  (cc875d39)
   (@7jrxt42BxFZo4iAnN4CX)
-- Guard against stale full_auto allowlist collapsing the tool catalogue (545104b4)
+- Guard against stale full_auto allowlist collapsing the tool catalogue
+  (545104b4)
 
 ### Other Changes
 
@@ -6810,8 +6811,8 @@ All notable changes to vtcode will be documented in this file.
 - Add prompt assembly mode and enhance tool validation (480ed33a) (@vinhnx)
 - Enhance plan mode handling and tool safety validation; refactor prompt
   management and session loop logic (63a40249) (@vinhnx)
-- Implement tool catalogue state management and integrate into MCP tool lifecycle
-  (18c73b54) (@vinhnx)
+- Implement tool catalogue state management and integrate into MCP tool
+  lifecycle (18c73b54) (@vinhnx)
 - Add GLM-5 model support and remove deprecated GLM-4.5/4.6 models (29d0992a)
   (@vinhnx)
 - Update models and configurations for Gemini 3 and GLM-5; adjust tool
@@ -7634,8 +7635,8 @@ All notable changes to vtcode will be documented in this file.
 - Implement prompt cache lineage management and enhance runtime context
   handling (9e26d8de) (@vinhnx)
 - Update session ID and timestamps in current_blocked.md; modify GPU type
-  matching logic and add tests in catalogue.rs; change API key and model settings
-  in vtcode.toml (b5a2f974) (@vinhnx)
+  matching logic and add tests in catalogue.rs; change API key and model
+  settings in vtcode.toml (b5a2f974) (@vinhnx)
 - Enhance system prompt handling by adding history directives and runtime
   context checks; add tests for new functionality (c406e88b) (@vinhnx)
 - Refactor tool policies and update configuration for Ollama provider
@@ -7758,8 +7759,8 @@ All notable changes to vtcode will be documented in this file.
   normalize exit codes for no matches and findings in structural search.
   (29867cdc) (@vinhnx)
 - Enhance documentation for Rust, TypeScript, TSX, YAML, Ruby, Python, Kotlin,
-  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for adapting
-  rules to repository-specific conventions. (819298a2) (@vinhnx)
+  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for
+  adapting rules to repository-specific conventions. (819298a2) (@vinhnx)
 - Enhance documentation for ast-grep project workflows and APIs; clarify
   project discovery behaviour, scan vs run requirements, and performance
   optimizations (3db5c5e5) (@vinhnx)
@@ -7931,7 +7932,8 @@ All notable changes to vtcode will be documented in this file.
   components, and skills modules (b2cc57e0) (@vinhnx)
 - Add tests for structural search functionality and request validation
   (f4649c89) (@vinhnx)
-- Add tests for tool execution and sandbox runtime behaviour (cbf7effb) (@vinhnx)
+- Add tests for tool execution and sandbox runtime behaviour (cbf7effb)
+  (@vinhnx)
 - Refactor UI command item creation for improved readability and
   maintainability (0db3b4d4) (@vinhnx)
 - Update tool policies, fix keyboard shortcuts, and enhance documentation
@@ -11303,8 +11305,8 @@ All notable changes to vtcode will be documented in this file.
   normalize exit codes for no matches and findings in structural search.
   (29867cdc)
 - Enhance documentation for Rust, TypeScript, TSX, YAML, Ruby, Python, Kotlin,
-  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for adapting
-  rules to repository-specific conventions. (819298a2)
+  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for
+  adapting rules to repository-specific conventions. (819298a2)
 - Enhance documentation for ast-grep project workflows and APIs; clarify
   project discovery behaviour, scan vs run requirements, and performance
   optimizations (3db5c5e5)
@@ -11385,8 +11387,8 @@ All notable changes to vtcode will be documented in this file.
   normalize exit codes for no matches and findings in structural search.
   (29867cdc)
 - Enhance documentation for Rust, TypeScript, TSX, YAML, Ruby, Python, Kotlin,
-  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for adapting
-  rules to repository-specific conventions. (819298a2)
+  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for
+  adapting rules to repository-specific conventions. (819298a2)
 - Enhance documentation for ast-grep project workflows and APIs; clarify
   project discovery behaviour, scan vs run requirements, and performance
   optimizations (3db5c5e5)
@@ -11617,8 +11619,8 @@ All notable changes to vtcode will be documented in this file.
 - Implement prompt cache lineage management and enhance runtime context
   handling (9e26d8de)
 - Update session ID and timestamps in current_blocked.md; modify GPU type
-  matching logic and add tests in catalogue.rs; change API key and model settings
-  in vtcode.toml (b5a2f974)
+  matching logic and add tests in catalogue.rs; change API key and model
+  settings in vtcode.toml (b5a2f974)
 - Enhance system prompt handling by adding history directives and runtime
   context checks; add tests for new functionality (c406e88b)
 - Refactor tool policies and update configuration for Ollama provider (eaaa2b83)
@@ -11699,8 +11701,8 @@ All notable changes to vtcode will be documented in this file.
 - Implement prompt cache lineage management and enhance runtime context
   handling (9e26d8de)
 - Update session ID and timestamps in current_blocked.md; modify GPU type
-  matching logic and add tests in catalogue.rs; change API key and model settings
-  in vtcode.toml (b5a2f974)
+  matching logic and add tests in catalogue.rs; change API key and model
+  settings in vtcode.toml (b5a2f974)
 - Enhance system prompt handling by adding history directives and runtime
   context checks; add tests for new functionality (c406e88b)
 - Refactor tool policies and update configuration for Ollama provider (eaaa2b83)
@@ -15548,8 +15550,8 @@ All notable changes to vtcode will be documented in this file.
   capabilities and user confirmations (7f05b778) (@vinhnx)
 - Add GLM-5 model support and remove deprecated GLM-4.5/4.6 models (29d0992a)
   (@vinhnx)
-- Implement tool catalogue state management and integrate into MCP tool lifecycle
-  (18c73b54) (@vinhnx)
+- Implement tool catalogue state management and integrate into MCP tool
+  lifecycle (18c73b54) (@vinhnx)
 - Enhance planning workflow handling and tool safety validation; refactor
   prompt management and session loop logic (63a40249) (@vinhnx)
 - Add prompt assembly mode and enhance tool validation (480ed33a) (@vinhnx)
@@ -15624,8 +15626,8 @@ All notable changes to vtcode will be documented in this file.
   capabilities and user confirmations (7f05b778) (@vinhnx)
 - Add GLM-5 model support and remove deprecated GLM-4.5/4.6 models (29d0992a)
   (@vinhnx)
-- Implement tool catalogue state management and integrate into MCP tool lifecycle
-  (18c73b54) (@vinhnx)
+- Implement tool catalogue state management and integrate into MCP tool
+  lifecycle (18c73b54) (@vinhnx)
 - Enhance planning workflow handling and tool safety validation; refactor
   prompt management and session loop logic (63a40249) (@vinhnx)
 - Add prompt assembly mode and enhance tool validation (480ed33a) (@vinhnx)
