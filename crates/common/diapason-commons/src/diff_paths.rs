@@ -1,3 +1,5 @@
+//! Git diff header path parsing.
+
 use std::path::Path;
 
 /// Parse `diff --git a/... b/...` line and return normalized new path.

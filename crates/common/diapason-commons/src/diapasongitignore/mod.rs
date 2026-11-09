@@ -69,7 +69,7 @@ impl DiapasonGitignore {
                 continue;
             }
 
-            builder
+            let _ = builder
                 .add_line(None, line)
                 .map_err(|e| anyhow!("Invalid pattern on line {}: '{}': {}", line_num + 1, line, e))?;
         }

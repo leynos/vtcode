@@ -212,4 +212,3 @@ mod tests {
         assert_eq!(plan.raw_content.lines().next(), Some("Summary"));
     }
 }
-// weave: run 'weave explain crates/common/diapason-commons/src/ui_protocol/types/plan.rs' for per-hunk detail, 'weave check' to verify your resolution

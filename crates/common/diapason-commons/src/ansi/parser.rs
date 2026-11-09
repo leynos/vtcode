@@ -225,6 +225,7 @@ pub fn strip_ansi(text: &str) -> String {
 /// Strip ANSI escape codes from arbitrary bytes, preserving non-control bytes.
 ///
 /// This is the preferred API when input may contain raw C1 (8-bit) controls.
+#[cfg(test)]
 fn strip_ansi_bytes(input: &[u8]) -> Vec<u8> {
     let mut output = Vec::with_capacity(input.len());
     let bytes = input;

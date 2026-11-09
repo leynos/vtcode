@@ -30,7 +30,6 @@ pub fn read_file_with_context_sync(path: &Path, context: &str) -> Result<String>
 }
 
 /// Write a file with contextual error message (sync)
-// refused_by: statement_fold · collision: none (both sides edited, nowhere the same lines)
 ///
 /// # Errors
 ///
@@ -78,10 +77,6 @@ pub fn is_image_path(path: &Path) -> bool {
 }
 
 /// Check whether a string is a Windows absolute path (e.g., `C:\...` or `C:/...`).
-#[expect(
-    clippy::indexing_slicing,
-    reason = "Indices 0, 1 and 2 are covered by the preceding `bytes.len() > 2` check."
-)]
 pub fn is_windows_absolute_path(path: &str) -> bool {
     let bytes = path.as_bytes();
     bytes.len() > 2
@@ -94,10 +89,6 @@ pub fn is_windows_absolute_path(path: &str) -> bool {
 ///
 /// A backslash followed by an ASCII whitespace character is replaced by the
 /// whitespace character itself.  All other characters are passed through.
-#[expect(
-    unused_results,
-    reason = "The peeked character has already been pushed to `result`; consuming it only advances the iterator."
-)]
 pub fn unescape_whitespace(token: &str) -> String {
     let mut result = String::with_capacity(token.len());
     let mut chars = token.chars().peekable();
@@ -107,7 +98,7 @@ pub fn unescape_whitespace(token: &str) -> String {
             && next.is_ascii_whitespace()
         {
             result.push(*next);
-            chars.next();
+            let _ = chars.next();
             continue;
         }
         result.push(ch);
@@ -124,10 +115,6 @@ pub fn unescape_whitespace(token: &str) -> String {
 ///
 /// The `candidate_check` closure receives a trimmed candidate string and
 /// returns `true` if it should be accepted as a valid image path.
-#[expect(
-    clippy::string_slice,
-    reason = "`last_space` comes from `rfind(' ')`, so it is a character boundary within `candidate`."
-)]
 pub fn trim_trailing_image_path<F>(raw: &str, candidate_check: F) -> &str
 where
     F: Fn(&str) -> bool,
@@ -191,4 +178,3 @@ mod tests {
         assert_eq!(trim_trailing_image_path_str(raw), raw);
     }
 }
-// weave: run 'weave explain crates/common/diapason-commons/src/fs/utilities.rs' for per-hunk detail, 'weave check' to verify your resolution

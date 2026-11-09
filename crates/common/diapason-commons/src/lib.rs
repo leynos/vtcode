@@ -35,6 +35,7 @@ pub mod formatting;
 pub mod fs;
 pub mod http;
 pub mod image;
+#[cfg(test)]
 pub mod interjection;
 pub mod interner;
 pub mod llm;
@@ -82,10 +83,6 @@ pub use error_category::{
     is_context_capacity_error, is_context_capacity_message, is_retryable_llm_error_message,
 };
 pub use errors::{DisplayErrorFormatter, ErrorFormatter, ErrorReporter, MultiErrors, NoopErrorReporter};
-pub(crate) use interjection::{
-    EventQueue, FormattedInterjection, InterjectionBuffer, LARGE_PROMPT_THRESHOLD, PendingInterjection,
-    drain_formatted, format_interjection, user_query,
-};
 pub use interner::{StringId, StringInterner};
 pub use paths::{
     PathExt, PathResolver, PathScope, StrPathExt, WorkspacePaths, canonicalize, canonicalize_async,
@@ -102,6 +99,3 @@ pub use unicode::{UNICODE_MONITOR, UnicodeMonitor, UnicodeValidationContext};
 pub use workspace_dirs::{
     validate_workspace_dir_override, workspace_data_dir, workspace_dir_name, workspace_state_dir,
 };
-
-// Re-export key thread safety primitives.
-pub(crate) use thread_safety::RelaxedAtomic;

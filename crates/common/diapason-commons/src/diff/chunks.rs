@@ -3,21 +3,16 @@
 /// Represents a chunk of text in a diff (Equal, Delete, or Insert).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chunk<'a> {
+    /// A run of text present in both inputs.
     Equal(&'a str),
+    /// A run of text present only in the old input.
     Delete(&'a str),
+    /// A run of text present only in the new input.
     Insert(&'a str),
 }
 
 /// Compute an optimal diff between two strings using Myers algorithm.
 #[inline]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "The byte-start tables are indexed only at positions the Myers walk has already visited."
-)]
-#[expect(
-    clippy::string_slice,
-    reason = "Offsets come from `char_indices` or summed `len_utf8` values of the same text, so each boundary is a character boundary."
-)]
 pub fn compute_diff_chunks<'a>(old: &'a str, new: &'a str) -> Vec<Chunk<'a>> {
     if old.is_empty() && new.is_empty() {
         return Vec::with_capacity(0);
@@ -131,7 +126,9 @@ impl<'a, 'b> MiddleDiff<'a, 'b> {
 
     fn apply(&mut self, edit: Edit) -> bool {
         if edit == Edit::Equal {
-            self.equal_run_start.get_or_insert(self.old_pos);
+            if self.equal_run_start.is_none() {
+                self.equal_run_start = Some(self.old_pos);
+            }
             self.old_pos += 1;
             self.new_pos += 1;
             return true;
@@ -220,11 +217,6 @@ fn backtrack_equal_run(
 }
 
 fn myers_diff(old: &[char], new: &[char]) -> Vec<Edit> {
-    let max_distance_i32 = i32::try_from(max_distance).unwrap_or_default();
-
-    if let Some(value) = furthest_x.get_mut(max_distance) {
-        *value = 0;
-    }
     let old_len = old.len();
     let new_len = new.len();
 
@@ -238,7 +230,11 @@ fn myers_diff(old: &[char], new: &[char]) -> Vec<Edit> {
     let max_distance = old_len
         .saturating_add(new_len)
         .min(usize::try_from(i32::MAX).unwrap_or(usize::MAX));
+    let max_distance_i32 = i32::try_from(max_distance).unwrap_or_default();
     let mut furthest_x = vec![0; 2 * max_distance + 1];
+    if let Some(value) = furthest_x.get_mut(max_distance) {
+        *value = 0;
+    }
     let mut v_index = vec![0usize; (max_distance + 1) * (2 * max_distance + 1)];
     let row_len = 2 * max_distance + 1;
 
@@ -349,4 +345,3 @@ fn backtrack_myers(
 #[cfg(test)]
 #[path = "chunk_tests.rs"]
 mod tests;
-// weave: run 'weave explain crates/common/diapason-commons/src/diff/chunks.rs' for per-hunk detail, 'weave check' to verify your resolution

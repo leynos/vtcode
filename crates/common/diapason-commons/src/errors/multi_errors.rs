@@ -64,6 +64,7 @@ impl<E> MultiErrors<E> {
     /// Consume the collector and return the underlying error vector.
     #[cfg(test)]
     #[must_use]
+    #[cfg(test)]
     pub(super) fn into_inner(self) -> Vec<E> {
         self.errors
     }
@@ -151,7 +152,6 @@ impl<'de, E: serde::Deserialize<'de>> serde::Deserialize<'de> for MultiErrors<E>
 
 impl<E: fmt::Display> fmt::Display for MultiErrors<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-// refused_by: container_member · collision: `match self.errors.len() {` +4 more
         match self.errors.as_slice() {
             [] => write!(f, "no errors"),
             [error] => write!(f, "{error}"),
@@ -173,4 +173,3 @@ impl<E: std::error::Error + 'static> std::error::Error for MultiErrors<E> {
         self.errors.first().map(|e| e as &(dyn std::error::Error + 'static))
     }
 }
-// weave: run 'weave explain crates/common/diapason-commons/src/errors/multi_errors.rs' for per-hunk detail, 'weave check' to verify your resolution

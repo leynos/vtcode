@@ -63,7 +63,12 @@ pub enum Retryability {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackoffStrategy {
     /// Exponential backoff with base delay and maximum cap.
-    Exponential { base: Duration, max: Duration },
+    Exponential {
+        /// Delay before the first retry.
+        base: Duration,
+        /// Upper bound on the delay between attempts.
+        max: Duration,
+    },
     /// Fixed delay between retries (e.g., for rate-limited APIs with Retry-After).
     Fixed(Duration),
 }

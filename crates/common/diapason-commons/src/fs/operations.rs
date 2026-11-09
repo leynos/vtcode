@@ -48,11 +48,6 @@ pub async fn write_file_with_context(path: &Path, payload: &str, context: &str) 
 ///
 /// On rename failure the temp file is best-effort removed before returning
 /// the error.
-// refused_by: statement_fold · collision: none (both sides edited, nowhere the same lines)
-#[expect(
-    clippy::let_underscore_must_use,
-    reason = "Temp-file cleanup is best-effort; the rename error is returned and must not be masked by a cleanup failure."
-)]
 pub async fn write_file_atomic_with_context(path: &Path, payload: &str, context: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir_exists(parent).await?;
@@ -277,4 +272,3 @@ pub async fn rename_async(from: &Path, to: &Path) -> Result<()> {
         .await
         .with_context(|| format!("Failed to rename {} to {}", from.display(), to.display()))
 }
-// weave: run 'weave explain crates/common/diapason-commons/src/fs/operations.rs' for per-hunk detail, 'weave check' to verify your resolution

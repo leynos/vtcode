@@ -55,13 +55,13 @@ pub fn redact_secrets(input: String) -> String {
         .map_or_else(|| input.clone().into(), |regex| regex.replace_all(&input, "[REDACTED_SECRET]"));
     let r2 = AWS_ACCESS_KEY_ID_REGEX
         .as_ref()
-        .map_or_else(|| r1.clone().into(), |regex| regex.replace_all(&r1, "[REDACTED_SECRET]"));
+        .map_or_else(|| r1.clone(), |regex| regex.replace_all(&r1, "[REDACTED_SECRET]"));
     let r3 = BEARER_TOKEN_REGEX
         .as_ref()
-        .map_or_else(|| r2.clone().into(), |regex| regex.replace_all(&r2, "Bearer [REDACTED_SECRET]"));
+        .map_or_else(|| r2.clone(), |regex| regex.replace_all(&r2, "Bearer [REDACTED_SECRET]"));
     let r4 = SECRET_ASSIGNMENT_REGEX
         .as_ref()
-        .map_or_else(|| r3.clone().into(), |regex| regex.replace_all(&r3, "$1$2$3[REDACTED_SECRET]"));
+        .map_or_else(|| r3.clone(), |regex| regex.replace_all(&r3, "$1$2$3[REDACTED_SECRET]"));
     // `into_owned` clones only when the final result is `Borrowed` (no regex
     // matched at all); when any redaction occurred it moves the owned string
     // without an extra allocation. Do NOT short-circuit on `Cow::Borrowed` —

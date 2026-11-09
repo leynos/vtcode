@@ -150,6 +150,7 @@ pub fn style(text: impl std::fmt::Display) -> StyledString {
     StyledString { text: text.to_string(), style: Style::new() }
 }
 
+/// A string carrying a console style.
 pub struct StyledString {
     text: String,
     style: Style,

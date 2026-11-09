@@ -126,26 +126,12 @@ impl ToolCall {
         }
 
         match self.call_type.as_str() {
-            "function" => {
-                let Some(func) = &self.function else {
-                    return Err("Function tool call missing function details".to_owned());
-                };
-                if func.name.is_empty() {
-                    return Err("Function name cannot be empty".to_owned());
-                }
-                // Validate that arguments is valid JSON for function tools
-                self.parsed_arguments()
-                    .map_err(|error| format!("Invalid JSON in function arguments: {error}"))?;
-            }
-            "custom" => {
-                // For custom tools, we allow raw text payload without JSON validation
-                let Some(func) = &self.function else {
-                    return Err("Custom tool call missing function details".to_owned());
-                };
-                if func.name.is_empty() {
-                    return Err("Custom tool name cannot be empty".to_owned());
-                }
-            }
+            "function" => self.validate_function()?,
+            // For custom tools, we allow raw text payload without JSON validation
+            "custom" => self.validate_named_function(
+                "Custom tool call missing function details",
+                "Custom tool name cannot be empty",
+            )?,
             _ => return Err(format!("Unsupported tool call type: {}", self.call_type)),
         }
 
@@ -164,9 +150,10 @@ impl ToolCall {
     /// Validates a function-type tool call, including its JSON arguments.
     fn validate_function(&self) -> Result<(), String> {
         self.validate_named_function("Function tool call missing function details", "Function name cannot be empty")?;
-        self.parsed_arguments()
-            .map(|_| ())
-            .map_err(|error| format!("Invalid JSON in function arguments: {error}"))
+        let _ = self
+            .parsed_arguments()
+            .map_err(|error| format!("Invalid JSON in function arguments: {error}"))?;
+        Ok(())
     }
 }
 
@@ -317,4 +304,3 @@ fn close_incomplete_json_prefix(prefix: &str) -> Option<String> {
 
     Some(repaired)
 }
-// weave: run 'weave explain crates/common/diapason-commons/src/llm/tool_calls.rs' for per-hunk detail, 'weave check' to verify your resolution

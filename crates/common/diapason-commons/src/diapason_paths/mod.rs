@@ -3,8 +3,6 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::{Result, anyhow};
-
 mod accessors;
 #[path = "migration/mod.rs"]
 mod migration;
@@ -18,7 +16,8 @@ pub use migration::{
     LegacyMigrator, MigrationEntry, MigrationFailure, MigrationReport, MigrationSkip, MigrationSkipReason,
 };
 
-use private_files::{create_private_new_file, ensure_migration_dir, ensure_private_dir, open_no_follow};
+// Sibling modules reach these through `super`; only the unused name is dropped.
+use private_files::{ensure_migration_dir, ensure_private_dir, open_no_follow};
 
 const APP: &str = "diapason";
 const MARKER: &str = "legacy-v1.complete";

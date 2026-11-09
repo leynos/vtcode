@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 
 use super::super::ensure_private_dir;
 use super::{
-    DiapasonPaths, LegacyMapping, MigrationFailure, MigrationReport, MigrationSkip, MigrationSkipReason,
+    DiapasonPaths, MigrationFailure, MigrationReport, MigrationSkip, MigrationSkipReason,
     copy_legacy_tree_with_exclusions, legacy_mappings, persist_report, persist_report_best_effort,
     record_unmapped_entries, valid_migration_marker, write_private_atomic,
 };
@@ -27,7 +27,6 @@ enum MarkerState {
     Absent,
 }
 
-// refused_by: merge_ladder_exhausted · collision: `if mapping.source == mapping.destination {` +24 more
 /// Inspects the migration marker, recording any failure in `report`.
 fn inspect_marker(marker: &Path, report: &mut MigrationReport) -> MarkerState {
     match fs::symlink_metadata(marker) {
@@ -225,8 +224,3 @@ impl LegacyMigrator {
         report
     }
 }
-
-
-
-
-// weave: run 'weave explain crates/common/diapason-commons/src/diapason_paths/migration/run.rs' for per-hunk detail, 'weave check' to verify your resolution

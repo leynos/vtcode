@@ -5,38 +5,68 @@ use serde::{Deserialize, Serialize};
 /// Identifies the backend family that produced an LLM response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BackendKind {
+    /// Google Gemini.
     Gemini,
+    /// OpenAI.
     OpenAI,
+    /// Anthropic.
     Anthropic,
+    /// DeepSeek.
     DeepSeek,
+    /// Meta.
     Meta,
+    /// Mistral.
     Mistral,
+    /// OpenRouter.
     OpenRouter,
+    /// Ollama (local).
     Ollama,
+    /// llama.cpp (local).
     LlamaCpp,
+    /// Z.AI.
     ZAI,
+    /// Moonshot.
     Moonshot,
+    /// Hugging Face.
     HuggingFace,
+    /// MiniMax.
     Minimax,
+    /// MiMo.
     MiMo,
+    /// OpenCode Zen.
     OpenCodeZen,
+    /// OpenCode Go.
     OpenCodeGo,
+    /// Qwen.
     Qwen,
+    /// StepFun.
     StepFun,
+    /// Evolink.
     Evolink,
+    /// Poolside.
     Poolside,
+    /// xAI.
     Xai,
+    /// NVIDIA.
     Nvidia,
+    /// Merge Gateway.
     MergeGateway,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+/// Token counts reported for one LLM response.
 pub struct Usage {
+    /// Tokens consumed by the prompt.
     pub prompt_tokens: u32,
+    /// Tokens produced in the completion.
     pub completion_tokens: u32,
+    /// Total tokens billed for the response.
     pub total_tokens: u32,
+    /// Prompt tokens served from cache, when reported.
     pub cached_prompt_tokens: Option<u32>,
+    /// Tokens written to the prompt cache, when reported.
     pub cache_creation_tokens: Option<u32>,
+    /// Tokens read from the prompt cache, when reported.
     pub cache_read_tokens: Option<u32>,
     /// Per-iteration token usage for Anthropic server-side fallback and compaction.
     /// Each entry represents one sampling pass (message, fallback_message, or compaction).
@@ -133,6 +163,7 @@ pub struct DeepSeekBalanceResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Balance reported for one currency.
 pub struct DeepSeekCurrencyBalance {
     currency: String,
     total_balance: String,
@@ -163,12 +194,19 @@ impl From<DeepSeekBalanceResponse> for BalanceInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum FinishReason {
     #[default]
+    /// The model stopped naturally.
     Stop,
+    /// The output hit the token limit.
     Length,
+    /// The model requested tool calls.
     ToolCalls,
+    /// Content was withheld by a filter.
     ContentFilter,
+    /// Generation paused and can be resumed.
     Pause,
+    /// The model refused to continue.
     Refusal,
+    /// The provider reported an error with the given message.
     Error(String),
 }
 

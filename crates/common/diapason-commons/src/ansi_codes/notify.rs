@@ -1,21 +1,4 @@
-<<<<<<< ours
 //! Terminal notification modes, detection, and emission helpers.
-
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "ANSI output cleanup intentionally ignores the best-effort flush result."
-)]
-||||||| original
-#![expect(
-    clippy::let_underscore_must_use,
-    reason = "ANSI output cleanup intentionally ignores the best-effort flush result."
-)]
-
-//! Terminal notification modes, detection, and emission helpers.
-=======
-//! Terminal notification modes, detection, and emission helpers.
->>>>>>> theirs
-
 
 use super::{BEL, OSC};
 use once_cell::sync::Lazy;

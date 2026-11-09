@@ -56,7 +56,6 @@ fn classify_llm_metadata(metadata: Option<&crate::llm::LLMErrorMetadata>, fallba
         hint.push(' ');
     }
     if let Some(status) = metadata.status {
-// refused_by: statement_fold · collision: `let _ = write!(&mut hint, "{status}");`
         let _ignored = write!(&mut hint, "{status}");
     }
 
@@ -67,4 +66,3 @@ fn classify_llm_metadata(metadata: Option<&crate::llm::LLMErrorMetadata>, fallba
         classified
     }
 }
-// weave: run 'weave explain crates/common/diapason-commons/src/error_category/llm.rs' for per-hunk detail, 'weave check' to verify your resolution

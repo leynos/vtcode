@@ -93,13 +93,19 @@ mod tests {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One line of a compact tool summary.
 pub struct CompactToolSummaryLine {
+    /// Display kind of the line.
     pub kind: CompactToolSummaryLineKind,
+    /// Line text.
     pub text: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How a compact summary line is displayed.
 pub enum CompactToolSummaryLineKind {
+    /// Primary informational line.
     Info,
+    /// Indented detail line.
     Detail,
 }

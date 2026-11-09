@@ -47,6 +47,7 @@ where
     K: Eq + Hash + Clone + Send + Sync,
     V: Clone + Send + Sync,
 {
+    /// Create an empty map.
     pub fn new() -> Self {
         let (writer, reader) = left_right::new_from_empty(HashMap::new());
         let factory = reader.factory();
@@ -66,6 +67,7 @@ where
         reader.enter().and_then(|map| map.get(key).cloned())
     }
 
+    /// Insert or replace `key`, publishing a new snapshot.
     pub fn insert(&self, key: K, value: V) {
         match self.writer.lock() {
             Ok(mut w) => {
@@ -78,6 +80,7 @@ where
         }
     }
 
+    /// Remove every entry, publishing a new snapshot.
     pub fn clear(&self) {
         match self.writer.lock() {
             Ok(mut w) => {
@@ -90,11 +93,13 @@ where
         }
     }
 
+    /// Return the number of entries in the current snapshot.
     pub fn len(&self) -> usize {
         let reader = self.reader_factory.handle();
         reader.enter().map(|m| m.len()).unwrap_or(0)
     }
 
+    /// Return whether the current snapshot has no entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
