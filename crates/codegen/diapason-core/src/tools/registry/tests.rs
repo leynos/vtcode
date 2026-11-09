@@ -2209,3 +2209,11 @@ async fn code_search_executes_with_policy_capped_max_results() -> Result<()> {
     assert_eq!(response["results"].as_array().map(Vec::len), Some(1));
     Ok(())
 }
+
+#[test]
+fn replacement_catalogue_names_remain_public() {
+    // Compile-pass guard: downstream crates and callers must be able to name
+    // the renamed public trait and source enum.
+    fn _accepts_trait_object(_catalogue: &dyn ToolCatalogue) {}
+    fn _accepts_source(_source: ToolCatalogueSource) {}
+}

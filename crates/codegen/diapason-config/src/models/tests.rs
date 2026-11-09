@@ -693,3 +693,10 @@ fn from_config_falls_through_to_catalogue_for_known_models() {
     let parsed = ModelId::from_config("gpt-5.6-sol", "openai", &Default::default(), &[]).unwrap();
     assert_eq!(parsed, ModelId::GPT56Sol);
 }
+
+#[test]
+fn replacement_catalogue_names_remain_public() {
+    // Compile-pass guard: downstream crates and callers must be able to name
+    // the renamed public catalogue entry type.
+    fn _accepts(_entry: ModelCatalogueEntry) {}
+}
