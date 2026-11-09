@@ -96,9 +96,8 @@ quick_cache = "0.7"
 roff = "1.1"
 unicode-width = { workspace = true }
 crossterm = { workspace = true, features = ["event-stream"], optional = true }
-# Keep the optional SQLite feature on the stable toolchain: rusqlite 0.40
-# requires libsqlite3-sys 0.38, which uses unstable cfg_select.
-rusqlite = { version = "0.40", features = ["bundled"], optional = true }
+# rusqlite 0.41 pulls libsqlite3-sys 0.39, which clears RUSTSEC-2026-0459.
+rusqlite = { version = "0.41", features = ["bundled"], optional = true }
 nix = { workspace = true, features = ["user", "signal", "poll", "term"] }
 ratatui = { workspace = true, features = [
     "crossterm",
