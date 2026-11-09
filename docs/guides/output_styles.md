@@ -2,8 +2,8 @@
 
 ## Overview
 
-Diapason now supports output styles, allowing you to customize the behaviour and
-response format of the assistant. This feature enables different modes of
+Diapason now supports output styles, allowing you to customize the behaviour
+and response format of the assistant. This feature enables different modes of
 operation, from concise responses to detailed explanations, and even
 specialized workflows like learning and architectural design.
 

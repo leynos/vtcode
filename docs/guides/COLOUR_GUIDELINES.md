@@ -122,8 +122,8 @@ color_scheme_mode = "auto"
 
 ## Bold-is-Bright Compatibility
 
-Some legacy terminals map bold text to bright colours. This can cause visibility
-issues when:
+Some legacy terminals map bold text to bright colours. This can cause
+visibility issues when:
 
 - Bold red becomes bright red (different shade)
 - Bold black becomes bright black (gray)

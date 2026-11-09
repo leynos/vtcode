@@ -67,8 +67,8 @@ normalization and continuation boundaries.
 
 Request envelopes retain the source tool-catalogue `Arc` within a request
 segment. When model/provider/mode/prompt identity is unchanged, subsequent
-turns reuse the frozen ordered catalogue without cloning, sorting, or re-hashing
-its schema; segment boundaries clear that marker before rebuilding.
+turns reuse the frozen ordered catalogue without cloning, sorting, or
+re-hashing its schema; segment boundaries clear that marker before rebuilding.
 
 Read-only tool calls are batched only after per-call preflight confirms that
 each call is parallel-safe; duplicate names are not a safety signal. Batch line
@@ -187,8 +187,8 @@ registry construction while remaining standalone and provider-free.
 
 For each case and launch mode, retain the raw millisecond samples and report
 the median and p95. The median is the primary central result; p95 exposes
-startup tail behaviour. Use the same binary, machine, environment, sample count,
-and isolation layout for before/after comparisons. Keep
+startup tail behaviour. Use the same binary, machine, environment, sample
+count, and isolation layout for before/after comparisons. Keep
 `DIAPASON_STARTUP_TRACE=0` (or unset) during timed runs; enable
 `DIAPASON_STARTUP_TRACE=1` only for a separate diagnostic run.
 
@@ -309,9 +309,9 @@ scripts when the question is broader end-to-end behaviour.
 
 The `agent_harness` target measures the repeated work that affects interactive
 requests: warm prompt-resource cache hits, few-shot tag selection, tool
-definition sorting during catalogue refresh, scoring against a warm indexed file
-list, and cold-cache tool-catalogue assembly under hosted, client-local, and
-disabled deferred-loading policies. Its fixtures are deterministic and keep
+definition sorting during catalogue refresh, scoring against a warm indexed
+file list, and cold-cache tool-catalogue assembly under hosted, client-local,
+and disabled deferred-loading policies. Its fixtures are deterministic and keep
 filesystem setup outside the timed iterations.
 
 Prompt resources use canonical source paths, a five-minute bounded cache, and a
@@ -336,8 +336,8 @@ The same target also includes uncached filesystem workloads:
 candidate aggregation, while `agent_harness_file_index_build` measures a full
 index construction per iteration.
 `agent_harness_tool_catalog_projection_repeat` measures repeated
-schema/model-tool projection after the catalogue is warm; its projection cache is
-private to an immutable catalogue and keyed by documentation mode. These
+schema/model-tool projection after the catalogue is warm; its projection cache
+is private to an immutable catalogue and keyed by documentation mode. These
 benchmarks expose repeated work and synchronization cost rather than serving as
 universal CI thresholds.
 
