@@ -978,9 +978,9 @@ parents and is not evidence for this head.
 ## Tracked-file spelling gate
 
 This layer enables the reviewed Oxford spelling policy through `make spelling`
-and `make lint`. Discovery uses Git's tracked-file index, preserves NUL-delimited
-paths, skips deleted files, and fails closed on discovery errors. CI installs
-pinned typos-cli 1.50.1 and invokes the same Make target.
+and `make lint`. Discovery uses Git's tracked-file index, preserves
+NUL-delimited paths, skips deleted files, and fails closed on discovery errors.
+CI installs pinned typos-cli 1.50.1 and invokes the same Make target.
 
 Historical exceptions enumerate the audited commit hashes and names instead of
 excluding changelogs. Custom file types match basenames, so both changelogs
@@ -990,10 +990,10 @@ instructions. The primary Rust toolchain remains unchanged.
 All eight spelling contracts, the 3,104-file spelling scan, and 13 workflow
 contracts passed. Format, lint, build, type-check, workspace tests, and harness
 checks passed: 10,094 tests passed with 17 skipped, plus all 67 harness tests.
-Advisory checks passed in warning mode; optional ast-grep was unavailable.
-Four inherited rustdoc warnings remain. Nixie passed both changed documents;
-Markdownlint retains seven exact-parent line-length findings in the setup guide,
-with no additions. CI installs typos in both spelling-dependent jobs.
+Advisory checks passed in warning mode; optional ast-grep was unavailable. Four
+inherited rustdoc warnings remain. Nixie passed both changed documents;
+Markdownlint retains seven exact-parent line-length findings in the setup
+guide, with no additions. CI installs typos in both spelling-dependent jobs.
 
 ## PR 70 after PR 69 merged
 
