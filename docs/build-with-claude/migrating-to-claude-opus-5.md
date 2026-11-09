@@ -852,7 +852,7 @@ ______________________________________________________________________
 
 | Type                   | Location                                           | Role                                                               |
 | ---------------------- | -------------------------------------------------- | ------------------------------------------------------------------ |
-| `ModelId`              | `diapason-config/src/models/model_id/mod.rs`           | Canonical model enum; add new models here                          |
+| `ModelId`              | `diapason-config/src/models/model_id/mod.rs`       | Canonical model enum; add new models here                          |
 | `AnthropicConfig`      | `diapason-config/src/core/provider.rs`             | All Anthropic-specific settings                                    |
 | `ReasoningEffortLevel` | `diapason-commons/src/reasoning.rs`                | Effort enum (`None`/`Minimal`/`Low`/`Medium`/`High`/`XHigh`/`Max`) |
 | `LLMRequest`           | `diapason-llm/src/provider/request.rs`             | Universal request struct                                           |
