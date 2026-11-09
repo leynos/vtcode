@@ -23,7 +23,7 @@ use futures::stream;
 use futures::{Sink, Stream, StreamExt};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{ClientJsonRpcMessage, Implementation, ServerCapabilities, ServerInfo, ServerJsonRpcMessage, Tool};
+use rmcp::model::{ClientJsonRpcMessage, Implementation, ServerCapabilities, ServerConfig, ServerJsonRpcMessage, Tool};
 use rmcp::transport::sink_stream::SinkStreamTransport;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
@@ -461,8 +461,8 @@ impl RemoteMcpHandler {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for RemoteMcpHandler {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("diapason-webmcp", env!("CARGO_PKG_VERSION")))
             .with_instructions(
                 "This server exposes only read-only search and fetch tools over the configured workspace.",
