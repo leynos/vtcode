@@ -226,7 +226,8 @@ pub enum StyleDialect {
 **Use Case**: When displaying files in the file picker modal, respect system
 `LS_COLORS` preferences
 
-**Current implementation**: `crates/codegen/diapason-ui/src/tui/ui/file_colourizer.rs`
+**Current implementation**:
+`crates/codegen/diapason-ui/src/tui/ui/file_colourizer.rs`
 
 ```rust
 use std::path::Path;
