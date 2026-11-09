@@ -1,11 +1,17 @@
 # RFC 0005: Bounded allocator switchover spike
 
-- Status: Proposed; documentation only, with no allocator change authorized
+## Preamble
+
+- **RFC number:** 0005
+- **Status:** Proposed; documentation only, with no allocator change authorized
   solely by merging this RFC.
-- Date: 2026-11-07.
-- Codename: `ytmnd`.
-- Scope: One short Linux allocator experiment and a conditional minimal change.
-- Delivery: [Allocator spike roadmap](../project/diapason-allocator-roadmap.md).
+- **Created:** 2026-11-07
+- **Codename:** `ytmnd`
+- **Audience:** Runtime, packaging, performance, and release maintainers.
+- **Scope:** One short Linux allocator experiment and a conditional minimal
+  change.
+- **Companions:**
+  [Allocator spike roadmap](../project/diapason-allocator-roadmap.md).
 
 ## 1. Question, budget, and possible outcomes
 
