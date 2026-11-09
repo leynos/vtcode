@@ -226,7 +226,8 @@ pub enum StyleDialect {
 **Use Case**: When displaying files in the file picker modal, respect system
 `LS_COLORS` preferences
 
-**Current implementation**: `crates/codegen/diapason-ui/src/tui/ui/file_colourizer.rs`
+**Current implementation**:
+`crates/codegen/diapason-ui/src/tui/ui/file_colourizer.rs`
 
 ```rust
 use std::path::Path;
@@ -382,7 +383,7 @@ pub fn ratatui_style_from_inline(
 | ---------------------- | --------------------------- | ---------------------------------------------------- |
 | **Effect Support**     | bold, italic only           | bold, dim, italic, underline, strikethrough, reverse |
 | **Configuration**      | Hard-coded palettes         | Parse Git/LS configs + custom files                  |
-| **Background Colours**  | Not supported               | Full support via `bg_colour`                          |
+| **Background Colours** | Not supported               | Full support via `bg_colour`                         |
 | **System Integration** | None                        | Read LS_COLORS, .git/config, custom configs          |
 | **Code Reuse**         | Custom parsing              | Leverage `anstyle-git`, `anstyle-ls`                 |
 | **WCAG Compliance**    | Partial (contrast checking) | Enhanced with full effect control                    |

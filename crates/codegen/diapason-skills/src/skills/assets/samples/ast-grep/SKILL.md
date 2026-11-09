@@ -231,8 +231,8 @@ rules are organized by language:
 - `prefer-iterator-sum`: flags manual accumulator loops in favour of `.sum()`
 - `prefer-retain-over-filter-collect`: flags `.filter().collect()` on a `Vec`
   in favour of `.retain()`
-- `prefer-unwrap-or-default`: flags `.unwrap_or(Default::default())` in favour of
-  `.unwrap_or_default()`
+- `prefer-unwrap-or-default`: flags `.unwrap_or(Default::default())` in favour
+  of `.unwrap_or_default()`
 
 ### Kotlin (`rules/kotlin/`)
 
@@ -345,9 +345,9 @@ rule:
 fix: "$NUM.checked_ilog10().unwrap_or(0) + 1"
 ```
 
-- Unsafe function without unsafe block: the Rust catalogue’s `function_item` rule
-  that requires `unsafe` modifiers but rejects bodies containing `unsafe_block`
-  is a good review rule for redundant `unsafe` markers. It is
+- Unsafe function without unsafe block: the Rust catalogue’s `function_item`
+  rule that requires `unsafe` modifiers but rejects bodies containing
+  `unsafe_block` is a good review rule for redundant `unsafe` markers. It is
   diagnostic-oriented and should usually stay a scan rule, not an automatic
   rewrite. The rule uses `kind: function_item` with `has` checking
   `function_modifiers` via `regex: "^unsafe"` and `not` rejecting bodies
@@ -568,8 +568,8 @@ fix:
   `do |$V| $V.$METHOD end`, wrap in the enclosing method call and use
   `selector: call` to match the outer call. For symbol-to-proc, match the
   enclosing method call directly with `$LIST.$ITER(&:$METHOD)`.
-- Adapt Ruby catalogue rules to the repository’s Rails version, Ruby style guide,
-  and security posture before using them directly.
+- Adapt Ruby catalogue rules to the repository’s Rails version, Ruby style
+  guide, and security posture before using them directly.
 
 ## Python Catalogue Highlights
 
@@ -750,9 +750,9 @@ The recursive variant handles nested `Union` and `Optional` types using multiple
 - Clean-architecture import checks: good scan-rule example for enforcing
   architectural boundaries with `files` plus import-path constraints. Treat it
   as repository-policy enforcement rather than a universal Kotlin rule.
-- The Kotlin catalogue example is diagnostic-oriented, not rewrite-oriented. Keep
-  it on the scan path because import-boundary violations usually need design
-  review instead of blind mutation.
+- The Kotlin catalogue example is diagnostic-oriented, not rewrite-oriented.
+  Keep it on the scan path because import-boundary violations usually need
+  design review instead of blind mutation.
 - File-scoped package constraints are the point of the example: adapt the
   `files` glob and package regexes to the repository’s actual module layout
   before relying on the result.
@@ -1151,8 +1151,9 @@ fix: $B == $A
 Treat it as optional rewrite material only where the project explicitly prefers
 constant-on-the-left comparisons.
 
-- Adapt C catalogue rules to the repository’s parser choice, macro usage, pointer
-  conventions, coding style, and safety policy before using them directly.
+- Adapt C catalogue rules to the repository’s parser choice, macro usage,
+  pointer conventions, coding style, and safety policy before using them
+  directly.
 
 ## Markdown Catalogue Highlights
 

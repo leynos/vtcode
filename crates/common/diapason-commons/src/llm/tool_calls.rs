@@ -134,7 +134,8 @@ impl ToolCall {
                     return Err("Function name cannot be empty".to_owned());
                 }
                 // Validate that arguments is valid JSON for function tools
-                self.parsed_arguments()
+                let _ = self
+                    .parsed_arguments()
                     .map_err(|error| format!("Invalid JSON in function arguments: {error}"))?;
             }
             "custom" => {

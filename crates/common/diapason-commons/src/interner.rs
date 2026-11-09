@@ -96,6 +96,7 @@ impl StringInterner {
     }
 
     /// Get the StringId for a byte string without interning it.
+    #[cfg(test)]
     fn get_bytes_id(&self, s: &[u8]) -> Option<StringId> {
         let hash = Self::hash_bytes(s);
         self.lookup
@@ -105,6 +106,7 @@ impl StringInterner {
 
     /// Get the StringId for a UTF-8 string without interning it.
     #[inline]
+    #[cfg(test)]
     fn get_id(&self, s: &str) -> Option<StringId> {
         self.get_bytes_id(s.as_bytes())
     }
@@ -126,6 +128,7 @@ impl StringInterner {
 
     /// Number of interned strings.
     #[inline]
+    #[cfg(test)]
     fn len(&self) -> usize {
         self.offsets.len()
     }

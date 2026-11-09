@@ -53,6 +53,11 @@ impl EnvGuard {
     /// Safe because `self` proves the global env mutex is held, so no other
     /// caller routed through this module is reading or writing the environment
     /// concurrently.
+    #[expect(
+        unsafe_code,
+        reason = "`std::env::set_var` is unsafe in edition 2024 and has no safe equivalent; \
+                  the guard proves exclusive access."
+    )]
     pub fn set_var(&self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) {
         // SAFETY: `self` is the unique holder of the process-wide env mutex
         // for the duration of this call; all set/remove calls in this module
@@ -65,6 +70,11 @@ impl EnvGuard {
     /// Remove a process environment variable.
     ///
     /// See [`Self::set_var`] for the safety argument.
+    #[expect(
+        unsafe_code,
+        reason = "`std::env::remove_var` is unsafe in edition 2024 and has no safe equivalent; \
+                  the guard proves exclusive access."
+    )]
     pub fn remove_var(&self, key: impl AsRef<OsStr>) {
         // SAFETY: see `set_var` — the guard serializes all mutators.
         unsafe {

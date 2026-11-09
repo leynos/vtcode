@@ -249,7 +249,7 @@ async fn handle_update_available(updater: &Updater, update: &UpdateInfo, options
     .context("Failed to read confirmation input")?;
 
     if !proceed {
-println!("{} Update cancelled.", "✗".yellow());
+        println!("{} Update cancelled.", "✗".yellow());
         println!("{} You can run this again with `diapason update`.", "→".cyan());
         return Ok(());
     }

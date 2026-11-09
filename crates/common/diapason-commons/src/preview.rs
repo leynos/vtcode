@@ -3,25 +3,36 @@
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// A head/tail window over a slice.
 pub struct HeadTailPreview<'a, T> {
+    /// Items taken from the start of the slice.
     pub head: &'a [T],
+    /// Items taken from the end of the slice.
     pub tail: &'a [T],
+    /// Number of items omitted between `head` and `tail`.
     pub hidden_count: usize,
     total: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A head/tail window over the lines of a text block.
 pub struct TextLineExcerpt<'a> {
+    /// Lines taken from the start of the text.
     pub head: Vec<&'a str>,
+    /// Lines taken from the end of the text.
     pub tail: Vec<&'a str>,
+    /// Number of lines omitted between `head` and `tail`.
     pub hidden_count: usize,
+    /// Total number of lines in the source text.
     pub total: usize,
 }
 
+/// Return the terminal display width of `text`.
 pub fn display_width(text: &str) -> usize {
     UnicodeWidthStr::width(text)
 }
 
+/// Truncate `text` to at most `max_width` display columns.
 pub fn truncate_to_display_width(text: &str, max_width: usize) -> &str {
     if max_width == 0 {
         return "";
@@ -42,6 +53,7 @@ pub fn truncate_to_display_width(text: &str, max_width: usize) -> &str {
     text
 }
 
+/// Truncate `text` to `max_width` columns, appending `ellipsis`.
 pub fn truncate_with_ellipsis(text: &str, max_width: usize, ellipsis: &str) -> String {
     if max_width == 0 {
         return String::new();
@@ -59,6 +71,7 @@ pub fn truncate_with_ellipsis(text: &str, max_width: usize, ellipsis: &str) -> S
     format!("{truncated}{ellipsis}")
 }
 
+/// Right-pad `text` with `pad_char` until it reaches `width` columns.
 pub fn pad_to_display_width(text: &str, width: usize, pad_char: char) -> String {
     let current = display_width(text);
     if current >= width {
@@ -69,6 +82,7 @@ pub fn pad_to_display_width(text: &str, width: usize, pad_char: char) -> String 
     format!("{text}{padding}")
 }
 
+/// Return the trailing portion of `value` that fits in `max_width` columns.
 pub fn suffix_for_display_width(value: &str, max_width: usize) -> &str {
     if display_width(value) <= max_width {
         return value;
@@ -91,6 +105,7 @@ pub fn suffix_for_display_width(value: &str, max_width: usize) -> &str {
     value.get(start_idx..).unwrap_or_default()
 }
 
+/// Format the summary line shown in place of hidden lines.
 pub fn format_hidden_lines_summary(hidden: usize) -> String {
     if hidden == 1 {
         "… +1 line".to_string()
@@ -122,6 +137,7 @@ fn split_head_tail_preview<'a, T>(items: &'a [T], head: usize, tail: usize) -> H
     }
 }
 
+/// Build a head/tail preview of at most `limit` items, preferring `preferred_head`.
 pub fn split_head_tail_preview_with_limit<'a, T>(
     items: &'a [T],
     limit: usize,
@@ -149,6 +165,7 @@ pub fn split_head_tail_preview_with_limit<'a, T>(
     split_head_tail_preview(items, head, tail)
 }
 
+/// Split `limit` into a head and tail count, reserving one line for the summary.
 pub fn summary_window(limit: usize, preferred_head: usize) -> (usize, usize) {
     if limit <= 2 {
         return (0, limit);
@@ -159,6 +176,7 @@ pub fn summary_window(limit: usize, preferred_head: usize) -> (usize, usize) {
     (head, tail)
 }
 
+/// Excerpt the first `head` and last `tail` lines of `text`.
 pub fn excerpt_text_lines<'a>(text: &'a str, head: usize, tail: usize) -> TextLineExcerpt<'a> {
     let lines: Vec<&str> = text.lines().collect();
     let total = lines.len();
@@ -183,6 +201,7 @@ pub fn excerpt_text_lines<'a>(text: &'a str, head: usize, tail: usize) -> TextLi
     }
 }
 
+/// Excerpt `text` down to at most `limit` lines, preferring `preferred_head`.
 pub fn excerpt_text_lines_with_limit<'a>(text: &'a str, limit: usize, preferred_head: usize) -> TextLineExcerpt<'a> {
     let lines: Vec<&str> = text.lines().collect();
     let preview = split_head_tail_preview_with_limit(lines.as_slice(), limit, preferred_head);
@@ -199,6 +218,7 @@ fn format_hidden_bytes_summary(hidden: usize) -> String {
     format!("… [{hidden} bytes omitted] …")
 }
 
+/// Condense `content` to its first `head_bytes` and last `tail_bytes`.
 pub fn condense_text_bytes(content: &str, head_bytes: usize, tail_bytes: usize) -> String {
     let byte_len = content.len();
     let max_inline = head_bytes + tail_bytes;
@@ -220,6 +240,7 @@ pub fn condense_text_bytes(content: &str, head_bytes: usize, tail_bytes: usize) 
     )
 }
 
+/// Return the last `tail_bytes` of `content`, limited to `max_lines` lines.
 pub fn tail_preview_text(content: &str, tail_bytes: usize, max_lines: usize) -> String {
     if content.is_empty() {
         return String::new();

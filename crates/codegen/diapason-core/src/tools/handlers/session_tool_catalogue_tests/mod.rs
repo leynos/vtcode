@@ -19,8 +19,8 @@ fn public_names_for_single_tool(name: &'static str, surface: SessionSurface) -> 
     let registration = registration(name)
         .with_description("Test tool")
         .with_parameter_schema(empty_object_schema());
-    let catalog = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
-    catalog.public_tool_names(SessionToolsConfig::full_public(
+    let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+    catalogue.public_tool_names(SessionToolsConfig::full_public(
         surface,
         CapabilityLevel::CodeSearch,
         ToolDocumentationMode::Full,

@@ -91,15 +91,15 @@ let style = ThemeConfigParser::parse_flexible("green")?;
 
 ## Key Crates
 
-| Crate           | Version | Purpose                             |
-| --------------- | ------- | ----------------------------------- |
-| `anstyle`       | 1.0     | ANSI style abstraction              |
-| `anstyle-git`   | 1.1     | Git colour config parsing           |
-| `anstyle-ls`    | 1.0     | LS_COLORS parsing                   |
-| `anstyle-parse` | 0.2     | ANSI escape sequence parsing        |
-| `anstyle-query` | 1.0     | Terminal colour capability detection|
-| `ratatui`       | 0.30    | TUI rendering                       |
-| `catppuccin`    | 2.5     | Theme colour palettes               |
+| Crate           | Version | Purpose                              |
+| --------------- | ------- | ------------------------------------ |
+| `anstyle`       | 1.0     | ANSI style abstraction               |
+| `anstyle-git`   | 1.1     | Git colour config parsing            |
+| `anstyle-ls`    | 1.0     | LS_COLORS parsing                    |
+| `anstyle-parse` | 0.2     | ANSI escape sequence parsing         |
+| `anstyle-query` | 1.0     | Terminal colour capability detection |
+| `ratatui`       | 0.30    | TUI rendering                        |
+| `catppuccin`    | 2.5     | Theme colour palettes                |
 
 All crates are in `diapason-core/Cargo.toml`
 

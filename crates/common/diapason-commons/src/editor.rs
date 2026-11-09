@@ -1,3 +1,5 @@
+//! Editor target parsing and path resolution for `file:line:column` links.
+
 use std::borrow::Cow;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -6,12 +8,16 @@ use percent_encoding::percent_decode_str;
 use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A zero-based position inside an editor buffer.
 pub struct EditorPoint {
+    /// One-based line number.
     pub line: usize,
+    /// One-based column number, when the link supplied one.
     pub column: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A parsed editor link: a path plus its optional location suffix.
 pub struct EditorTarget {
     path: PathBuf,
     location_suffix: Option<String>,
@@ -19,27 +25,32 @@ pub struct EditorTarget {
 
 impl EditorTarget {
     #[must_use]
+    /// Create a target from a path and an optional `line:column` suffix.
     pub fn new(path: PathBuf, location_suffix: Option<String>) -> Self {
         Self { path, location_suffix }
     }
 
     #[must_use]
+    /// Return the target path.
     pub fn path(&self) -> &Path {
         &self.path
     }
 
     #[must_use]
+    /// Return the raw location suffix, if one was supplied.
     pub fn location_suffix(&self) -> Option<&str> {
         self.location_suffix.as_deref()
     }
 
     #[must_use]
+    /// Resolve the path against `base` when it is relative.
     pub fn with_resolved_path(mut self, base: &Path) -> Self {
         self.path = resolve_editor_path(&self.path, base);
         self
     }
 
     #[must_use]
+    /// Render the target as `path:line:column`.
     pub fn canonical_string(&self) -> String {
         let mut target = self.path.display().to_string();
         if let Some(location) = self.location_suffix() {
@@ -49,6 +60,7 @@ impl EditorTarget {
     }
 
     #[must_use]
+    /// Return the parsed line and column, when present.
     pub fn point(&self) -> Option<EditorPoint> {
         let suffix = self.location_suffix()?.strip_prefix(':')?;
         if suffix.contains('-') {
@@ -67,6 +79,7 @@ impl EditorTarget {
 }
 
 #[must_use]
+/// Parse an editor link of the form `path`, `path:line` or `path:line:column`.
 pub fn parse_editor_target(raw: &str) -> Option<EditorTarget> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -134,11 +147,13 @@ pub fn parse_editor_target(raw: &str) -> Option<EditorTarget> {
 }
 
 #[must_use]
+/// Parse and resolve an editor link against `base`.
 pub fn resolve_editor_target(raw: &str, base: &Path) -> Option<EditorTarget> {
     parse_editor_target(raw).map(|target| target.with_resolved_path(base))
 }
 
 #[must_use]
+/// Resolve `path` against `base` when it is relative.
 pub fn resolve_editor_path(path: &Path, base: &Path) -> PathBuf {
     if path.is_absolute() {
         return path.to_path_buf();
@@ -227,6 +242,7 @@ fn parse_paren_location_suffix(suffix: &str) -> Option<String> {
 }
 
 #[must_use]
+/// Normalize an editor hash fragment, returning `None` when it is unusable.
 pub fn normalize_editor_hash_fragment(fragment: &str) -> Option<String> {
     let (start, end) = match fragment.split_once('-') {
         Some((start, end)) => (start, Some(end)),

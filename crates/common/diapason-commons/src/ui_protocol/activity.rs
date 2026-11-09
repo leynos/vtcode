@@ -1,15 +1,20 @@
 //! Explicit global activity states shared by the runloop and terminal UI.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Coarse-grained activity state shared by the runloop and terminal UI.
 pub enum ActivityState {
     #[default]
+    /// The agent is waiting for input.
     Idle,
     /// The agent is working inside the plan workflow (research/synthesis).
     Planning,
+    /// A fresh execution thread is being prepared.
     PreparingFreshExecutionThread,
+    /// An approved plan is being restored into context.
     RestoringApprovedPlan,
     /// The agent is executing an approved plan.
     Building,
+    /// A build is starting.
     StartingBuild,
     /// A bounded tool-free recovery pass is running after blocked tool calls.
     /// Tools are disabled for this pass; input stays enabled.
@@ -31,6 +36,7 @@ impl ActivityState {
         matches!(self, Self::Planning | Self::Building | Self::Recovery)
     }
 
+    /// Return the status line shown for this state, if any.
     pub const fn status(self) -> Option<&'static str> {
         match self {
             Self::Idle => None,

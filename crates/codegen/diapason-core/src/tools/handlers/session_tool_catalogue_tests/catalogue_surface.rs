@@ -221,8 +221,8 @@ fn acp_surface_admits_mcp_sources_without_admitting_unrelated_dynamic_tools() {
             .with_parameter_schema(empty_object_schema()),
     ];
 
-    let catalog = SessionToolCatalogue::rebuild_from_registrations(registrations);
-    let names = catalog.public_tool_names(
+    let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+    let names = catalogue.public_tool_names(
         SessionToolsConfig::full_public(
             SessionSurface::Acp,
             CapabilityLevel::CodeSearch,

@@ -36,7 +36,8 @@ namespace.
       provider/model IDs
 - [ ] If the model is OpenRouter-only, mirror its metadata in
       `build_data/openrouter_models.json`
-- [ ] Add enum variant (`crates/codegen/diapason-config/src/models/model_id/mod.rs`)
+- [ ] Add enum variant
+      (`crates/codegen/diapason-config/src/models/model_id/mod.rs`)
 - [ ] Update `as_str.rs` - string mapping
 - [ ] Update `display.rs` - human-readable name
 - [ ] Update `description.rs` - model description

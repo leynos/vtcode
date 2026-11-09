@@ -96,16 +96,16 @@ All tests validate:
 Due to anstyle-crossterm's design, standard ANSI colours are mapped to indexed
 variants for terminal compatibility:
 
-| Input Colour| Output (via anstyle-crossterm) |
-| ----------- | ------------------------------ |
-| Red         | Indexed(52) - DarkRed          |
-| Green       | Indexed(22) - DarkGreen        |
-| Blue        | Indexed(17) - DarkBlue         |
-| Yellow      | Indexed(58) - DarkYellow       |
-| Magenta     | Indexed(53) - DarkMagenta      |
-| Cyan        | Indexed(23) - DarkCyan         |
-| White       | Gray                           |
-| BrightBlack | DarkGray                       |
+| Input Colour | Output (via anstyle-crossterm) |
+| ------------ | ------------------------------ |
+| Red          | Indexed(52) - DarkRed          |
+| Green        | Indexed(22) - DarkGreen        |
+| Blue         | Indexed(17) - DarkBlue         |
+| Yellow       | Indexed(58) - DarkYellow       |
+| Magenta      | Indexed(53) - DarkMagenta      |
+| Cyan         | Indexed(23) - DarkCyan         |
+| White        | Gray                           |
+| BrightBlack  | DarkGray                       |
 
 This ensures consistent rendering across different terminal colour schemes.
 

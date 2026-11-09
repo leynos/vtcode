@@ -1350,7 +1350,7 @@ Review the target changes."#,
         draft.description = "Review native colour handling".to_string();
         let rendered = draft.render_markdown().expect("the edited agent should render");
 
-        assert!(rendered.contains("color: orchid"), "the rendered agent should use the canonical color key");
+        assert!(rendered.contains("color: orchid"), "the rendered agent should use the fixed schema key");
         assert!(
             !rendered.contains("colour: orchid"),
             "the rendered agent should not retain the British alias alongside the canonical key"

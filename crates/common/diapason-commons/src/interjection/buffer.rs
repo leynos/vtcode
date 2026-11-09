@@ -1,3 +1,5 @@
+//! Pending interjections and their conversion into formatted messages.
+
 use super::events::EventQueue;
 use super::format::format_interjection;
 

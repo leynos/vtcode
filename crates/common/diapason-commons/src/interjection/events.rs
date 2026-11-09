@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Debug)]
+/// A cloneable, mutex-protected FIFO queue of events.
 pub struct EventQueue<E> {
     events: Arc<Mutex<Vec<E>>>,
 }

@@ -9,7 +9,7 @@
 /// How a hunk's anchors are matched against the current file.
 ///
 /// `Sequenced` is the historical apply path: exact, then whitespace-tolerant,
-/// then Unicode-normalised matching, with semantic fallback layered on top.
+/// then Unicode-normalized matching, with semantic fallback layered on top.
 /// `StrictUnique` is used only by rebase assessment and accepts a single
 /// byte-exact occurrence, so an ambiguous or merely similar anchor cannot be
 /// reported as safely rebasable.

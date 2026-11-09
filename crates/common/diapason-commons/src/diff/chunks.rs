@@ -3,8 +3,11 @@
 /// Represents a chunk of text in a diff (Equal, Delete, or Insert).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chunk<'a> {
+    /// A run of text present in both inputs.
     Equal(&'a str),
+    /// A run of text present only in the old input.
     Delete(&'a str),
+    /// A run of text present only in the new input.
     Insert(&'a str),
 }
 
@@ -123,7 +126,9 @@ impl<'a, 'b> MiddleDiff<'a, 'b> {
 
     fn apply(&mut self, edit: Edit) -> bool {
         if edit == Edit::Equal {
-            self.equal_run_start.get_or_insert(self.old_pos);
+            if self.equal_run_start.is_none() {
+                self.equal_run_start = Some(self.old_pos);
+            }
             self.old_pos += 1;
             self.new_pos += 1;
             return true;

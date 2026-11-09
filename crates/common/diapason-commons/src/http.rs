@@ -5,6 +5,7 @@ use std::time::Duration;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Timeout for long-running HTTP requests (5 minutes).
 pub const LONG_TIMEOUT: Duration = Duration::from_secs(300);
 
 fn apply_platform_proxy_policy(builder: ClientBuilder) -> ClientBuilder {

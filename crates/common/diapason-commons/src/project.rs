@@ -7,14 +7,20 @@ use tokio::fs;
 
 /// Lightweight project overview extracted from workspace files
 pub struct ProjectOverview {
+    /// Project name from the manifest.
     pub name: Option<String>,
+    /// Project version from the manifest.
     pub version: Option<String>,
+    /// Project description from the manifest.
     pub description: Option<String>,
+    /// Excerpt of the project README.
     pub readme_excerpt: Option<String>,
+    /// Workspace root the overview was built from.
     pub root: PathBuf,
 }
 
 impl ProjectOverview {
+    /// Render a short one-line description for display.
     pub fn short_for_display(&self) -> String {
         let mut out = String::new();
         if let Some(name) = &self.name {
@@ -37,6 +43,7 @@ impl ProjectOverview {
         out
     }
 
+    /// Render the overview as a prompt block.
     pub fn as_prompt_block(&self) -> String {
         let mut s = String::new();
         if let Some(name) = &self.name {
