@@ -21,8 +21,9 @@ question without establishing a new performance programme.
 - [ ] 1.1.1. Audit the old report and active allocator identity.
   - Recover available revisions, hardware, settings, and raw samples; label
     missing provenance and distinguish macOS measurements from Linux inference.
-  - Inspect selector/platform/profiling differences between binary and bench,
-    the linked allocator version, configuration symbol, and effective purging.
+  - Inspect selector, profiling, and release-workflow differences between
+    binary and bench, the linked allocator version, configuration symbol, and
+    effective purging.
   - Success: an experiment record names the actual baseline and no inherited
     sentence masquerades as a new measured result.
   - See [RFC section 2](../rfcs/rfc-0005-diapason-allocator-spike.md).
@@ -42,8 +43,9 @@ question without establishing a new performance programme.
 - [ ] 1.2.1. Ratify thresholds, controls, and the host-resource ceiling.
   - Freeze worker count, build profile, input/commit/lockfile, repetition, and
     memory/latency/CPU gates before collecting deciding measurements.
-  - Select mimalloc versus verified jemalloc reclamation, with at most one
-    preregistered configuration-only candidate; no extra allocator or upgrade.
+  - Compare each target package's deployed allocator and settings against a
+    verified reclamation configuration, with at most one preregistered
+    configuration-only candidate; no extra allocator or upgrade.
   - Success: the record contains a hard stop time/effort, a falsifier, and the
     exact conditions for a go, no-go, or inconclusive outcome.
   - Requires 1.1.1; see
@@ -83,7 +85,8 @@ allocator research project.
 - [ ] 3.1.1. Apply and verify the minimal winning selection, only on go.
   - Limit the change to validated Linux packaging/configuration and necessary
     identity/selection tests; preserve other platforms and profiling behaviour.
-  - Retest the final artifact and document the exact mimalloc rollback.
+  - Retest the final artifact and document the exact rollback to the deployed
+    allocator and settings.
   - Success: the packaged candidate still clears the gates and fits the total
     time box. Otherwise retain defaults and record a recommendation only.
   - Requires a go from 2.1.2 and sufficient remaining budget.
