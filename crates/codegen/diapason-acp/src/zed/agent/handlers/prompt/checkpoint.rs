@@ -7,7 +7,7 @@
 
 use super::*;
 use crate::zed::agent::log_suppressed_error;
-use crate::zed::agent::session_state::{CheckpointFailure, RequiredCheckpointError};
+use crate::zed::agent::session_state::checkpoint_failure_label;
 use diapason_core::metrics::ToolRecoveryEvent;
 
 /// Persists the session checkpoint and transcript path, logging failures
@@ -48,10 +48,13 @@ fn record_checkpoint_failure(agent: &ZedAgent, error: &anyhow::Error, boundary: 
     agent
         .recovery_metrics()
         .record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
-    log_suppressed_error(error, "session_checkpoint", "archive_write_failed");
+    // The raw chain is never logged, even at debug level: it can name archive
+    // paths or storage detail. A bounded category and the chain depth are
+    // enough to diagnose the failure.
     warn!(
         operation = "session_checkpoint",
-        error_category = "archive_write_failed",
+        error_category = checkpoint_failure_label(error),
+        error_chain_depth = error.chain().count(),
         boundary,
         "Failed to persist ACP session checkpoint"
     );
@@ -85,18 +88,17 @@ pub(super) async fn require_session_checkpoint(
         agent
             .recovery_metrics()
             .record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
-        // The raw error never reaches the client: it can name archive paths or
-        // storage detail. Report one bounded category instead so log queries and
-        // client errors distinguish a write failure, an unreadable read-back and
-        // a compacted payload that dropped staged evidence.
-        let error_category = error
-            .downcast_ref::<RequiredCheckpointError>()
-            .map_or(CheckpointFailure::WriteFailed, RequiredCheckpointError::failure)
-            .label();
-        log_suppressed_error(&error, "session_checkpoint", error_category);
+        // The raw error never reaches the client or the log: it can name archive
+        // paths or storage detail. Report one bounded category instead so log
+        // queries and client errors distinguish a write failure, an unreadable
+        // read-back and a compacted payload that dropped staged evidence.
+        let error_category = checkpoint_failure_label(&error);
         warn!(
             operation = "session_checkpoint",
-            error_category, boundary, "Failed to persist ACP session checkpoint"
+            error_category,
+            error_chain_depth = error.chain().count(),
+            boundary,
+            "Failed to persist ACP session checkpoint"
         );
         return Err(SdkError::internal_error()
             .data(format!("Failed to persist ACP session checkpoint at {boundary}: {error_category}")));

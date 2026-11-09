@@ -723,6 +723,10 @@ async fn best_effort_checkpoint_preserves_write_ahead_evidence_under_compaction(
             }
         });
 
+    let capture = TraceCapture::default();
+    let subscriber = Registry::default().with(capture.clone());
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
     agent
         .checkpoint_terminal_tool_results(&handle)
         .await
@@ -731,6 +735,33 @@ async fn best_effort_checkpoint_preserves_write_ahead_evidence_under_compaction(
         handle.data.lock().expect("session data lock").write_ahead_call_ids.clone(),
         vec![staged_id.clone()],
         "a skipped terminal-results checkpoint must keep write-ahead protection"
+    );
+
+    let trace = capture.0.lock().expect("trace capture lock").join("\n");
+    let archive_path_text = archive_path.to_string_lossy();
+    let session_dir_text = session_dir.to_string_lossy();
+    assert_storage_trace(
+        &trace,
+        "checkpoint",
+        "degraded",
+        &[
+            archive_path_text.as_ref(),
+            session_dir_text.as_ref(),
+            staged_id.as_str(),
+        ],
+    );
+    assert!(
+        trace.contains("persistence_outcome=\"skipped_protected_evidence\""),
+        "a skipped checkpoint must report its bounded persistence outcome: {trace}"
+    );
+    assert!(
+        trace.contains("protected_calls=1"),
+        "a skipped checkpoint must report how many calls it protected: {trace}"
+    );
+    assert_eq!(
+        agent.recovery_metrics().get_tool_recovery_metrics().checkpoint_skips,
+        1,
+        "a skipped checkpoint must be counted as a degraded outcome"
     );
 
     let after = fs::read(&archive_path).expect("read the archive after the skipped checkpoint");

@@ -122,6 +122,7 @@ that collector produces holds one counter per recovery event:
     "concurrent_prompt_rejections": 0,
     "stale_write_stdin_requests": 1,
     "checkpoint_failures": 0,
+    "checkpoint_skips": 1,
     "duplicate_tool_call_batches": 1
   }
 }
@@ -131,7 +132,7 @@ Prometheus exports the same counters as
 `diapason_tool_recovery_total{event="…"}`. The `event` label is one of
 `staged_call`, `replaced_call`, `interrupted_call`, `relocated_result`,
 `repaired_archive`, `ambiguous_history`, `concurrent_prompt_rejection`,
-`stale_write_stdin_request`, `checkpoint_failure`, and
+`stale_write_stdin_request`, `checkpoint_failure`, `checkpoint_skipped`, and
 `duplicate_tool_call_batch`.
 
 Agents that embed Diapason can read the same vocabulary from
@@ -147,6 +148,23 @@ construction keep recording into it. Paths that read the collector through
 `ToolRegistry::metrics_collector()` observe the new value. Install the shared
 collector while the registry is being built, before dependent components
 capture it.
+
+### Checkpoint preparation API
+
+`SessionArchive::prepare_checkpoint_snapshot` compacts a checkpoint payload and
+returns it without writing anything.
+`SessionArchive::write_prepared_checkpoint_async` then writes exactly that
+payload to the archive path. Splitting the operation lets a caller inspect the
+compacted snapshot, or reject it, before it replaces the archive on disk, so a
+payload that lost required evidence cannot overwrite the copy an earlier
+checkpoint made durable. Pass the snapshot returned by the first call straight
+to the second; preparing it again would compile a different payload.
+
+`prepare_checkpoint_snapshot` returns `None` when history persistence is
+disabled. Callers that treat the checkpoint as required must report that as a
+failure rather than writing unconditionally, which is why an ACP tool round
+cannot run with `[history].persistence = "none"`. A caller that only records
+transcript progress may treat `None` as a skipped, best-effort write.
 
 ### History mutation API
 

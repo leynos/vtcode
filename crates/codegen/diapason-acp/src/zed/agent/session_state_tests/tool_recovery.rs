@@ -175,6 +175,7 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     );
     listing.snapshot.messages = vec![SessionMessage::from(&unresolved)];
     listing.snapshot.total_messages = 1;
+    let archive_path = listing.path.clone();
     fs::create_dir(&listing.path).expect("occupy the archive path with a directory");
 
     let session_id = acp::SessionId::new("repair-checkpoint-failure-session");
@@ -192,7 +193,16 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
         Err(error) => error,
     };
 
-    assert!(error.to_string().contains("Failed to persist repaired ACP tool-call history"));
+    let message = error.to_string();
+    assert_eq!(
+        message, "Failed to persist repaired ACP tool-call history: archive_write_failed",
+        "the repair failure must report its bounded checkpoint category"
+    );
+    let archive_path_text = archive_path.to_string_lossy();
+    assert!(
+        !message.contains(archive_path_text.as_ref()),
+        "the repair failure must not expose the archive path: {message}"
+    );
     assert!(
         agent
             .session_handle(&session_id)

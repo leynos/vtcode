@@ -96,12 +96,16 @@ pub(in crate::zed::agent::session_state) fn missing_persisted_evidence(
     let removed = history_messages.len().saturating_sub(persisted_messages.len());
     let mut missing = Vec::new();
     for evidence in required_evidence {
+        // The repair policy records provider messages; the persisted archive
+        // representation belongs to this adapter, so convert once here rather
+        // than in the policy that produces the evidence.
+        let expected = SessionMessage::from(&evidence.message);
         let retained = evidence.history_index >= removed
             && persisted_messages
                 .get(evidence.history_index - removed)
-                .is_some_and(|persisted| evidence_slot_matches(&evidence.message, persisted));
+                .is_some_and(|persisted| evidence_slot_matches(&expected, persisted));
         if !retained {
-            missing.push(evidence_label(&evidence.message));
+            missing.push(evidence_label(&expected));
         }
     }
     missing

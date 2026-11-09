@@ -34,7 +34,7 @@ fn repaired_batch_reports_its_request_before_its_results() {
         Some(vec!["repaired-call"])
     );
     assert_eq!(evidence[1].message.role, MessageRole::Tool);
-    assert_eq!(evidence[1].message.tool_call_id.as_deref().map(String::as_str), Some("repaired-call"));
+    assert_eq!(evidence[1].message.tool_call_id.as_deref(), Some("repaired-call"));
     assert_eq!(
         evidence.iter().map(|evidence| evidence.history_index).collect::<Vec<_>>(),
         vec![0, 1],
@@ -58,7 +58,7 @@ fn relocation_only_repair_reports_its_request_before_the_result() {
     assert_eq!(evidence.len(), 2, "the batch reports its request and the relocated result");
     assert_eq!(evidence[0].message.role, MessageRole::Assistant);
     assert_eq!(evidence[1].message.role, MessageRole::Tool);
-    assert_eq!(evidence[1].message.tool_call_id.as_deref().map(String::as_str), Some("late-call"));
+    assert_eq!(evidence[1].message.tool_call_id.as_deref(), Some("late-call"));
     assert_eq!(
         evidence.iter().map(|evidence| evidence.history_index).collect::<Vec<_>>(),
         vec![0, 1],
@@ -92,7 +92,7 @@ fn repaired_evidence_records_the_position_of_a_reused_call_id() {
         "the repaired request and its placeholder must keep their own positions"
     );
     assert_eq!(
-        report.evidence[0].message.tool_calls.as_deref().map(Vec::as_slice),
+        report.evidence[0].message.tool_calls.as_deref(),
         messages[2].tool_calls.as_deref(),
         "the earlier request is byte-identical, so only the position distinguishes them"
     );

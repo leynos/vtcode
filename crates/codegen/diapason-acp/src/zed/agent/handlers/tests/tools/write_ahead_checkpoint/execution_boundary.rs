@@ -1,20 +1,25 @@
-//! Proves the write-ahead checkpoint is durable before tool execution completes.
+//! Proves the write-ahead checkpoint is durable before tool execution starts.
 //!
-//! A FIFO holds a real `exec_command` at the execution boundary while the test
-//! polls the persisted archive.
+//! The tool command itself inspects the durable archive and only then blocks on
+//! a FIFO, so a command that reached the FIFO is evidence that the staged call
+//! and its placeholder were already persisted when execution began.
 use super::*;
 use crate::zed::agent::handlers::prompt::{
     SystemToolRoundTimer, ToolRoundOutcome, ToolRoundRequest, execute_tool_round,
 };
 use agent_client_protocol::schema::v1::{NewSessionRequest, SetSessionConfigOptionRequest};
 use tokio::sync::oneshot;
-/// Reads the staged call and placeholder from the durable archive while the
-/// tool call is still blocked at the execution boundary.
+/// Proves the staged call and placeholder are durable when execution begins.
 ///
-/// The command reads a release gate that the test opens only after both
-/// records are durable, so observing them in the archive proves the write-ahead
-/// checkpoint crossed the boundary before execution completed. Moving staging
-/// after execution would leave the archive without them and fail the poll.
+/// The tool command runs under `sh -c` and chains three read-only steps: it
+/// greps the durable session archive for the staged call, greps it again for
+/// the incomplete placeholder, and only then blocks reading a FIFO. Shell
+/// `&&` short-circuits, so the command can reach the FIFO only if both records
+/// were already persisted when the tool process started. The test asserts the
+/// round is still running once the archive is externally visible, which means
+/// the command is parked inside `tail` and the in-path proof has succeeded.
+/// Moving staging after execution would make a grep fail, finish the round
+/// early, and fail the test.
 #[tokio::test]
 async fn staged_call_and_placeholder_are_durable_before_tool_execution_completes() {
     let _history_test_guard = lock_history_test_guard().await;
@@ -58,9 +63,16 @@ async fn staged_call_and_placeholder_are_durable_before_tool_execution_completes
     agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
 
     let call_id = "call-execution-boundary";
-    // `tail` blocks opening the gate until the test opens it for writing, and
-    // the execution policy admits it as a read-only command.
-    let command = format!("tail {}", gate_path.display());
+    // The two greps are the in-path ordering proof: `&&` reaches `tail` only
+    // when the durable archive already holds the staged call and its
+    // incomplete placeholder. `tail` then blocks opening the gate until the
+    // test opens it for writing. Every segment is a read-only command, and the
+    // build agent admits `exec_command`, so the policy allows the chain.
+    let session_root = session_dir.path().display();
+    let command = format!(
+        "grep -rq '{call_id}' '{session_root}' && grep -rq 'durable terminal result' '{session_root}' && tail '{}'",
+        gate_path.display()
+    );
     let calls = vec![diapason_core::llm::provider::ToolCall::function(
         call_id.to_string(),
         "exec_command".to_string(),

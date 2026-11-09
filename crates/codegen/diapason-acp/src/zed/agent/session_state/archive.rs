@@ -25,7 +25,7 @@ mod retention;
 
 use crate::zed::agent::log_suppressed_error;
 use crate::zed::agent::tool_recovery::{RecoveryReport, repair_unresolved_tool_calls};
-pub(in crate::zed::agent) use checkpoint::{CheckpointFailure, RequiredCheckpointError};
+pub(in crate::zed::agent) use checkpoint::{CheckpointFailure, RequiredCheckpointError, checkpoint_failure_label};
 pub(super) use retention::{
     CheckpointReader, SessionArchiveCheckpointReader, missing_persisted_evidence, missing_persisted_tool_calls,
     missing_staged_batch_calls, required_checkpoint_evidence_violation, required_checkpoint_retention_violation,
@@ -53,6 +53,24 @@ pub(super) fn trace_storage_operation<'a, T: 'a, E: 'a, F>(
 where
     F: Future<Output = Result<T, E>> + Send + 'a,
 {
+    trace_storage_operation_with(operation, |result| if result.is_ok() { "success" } else { "failure" }, future)
+}
+
+/// Runs one session-storage operation with a caller-chosen outcome label.
+///
+/// An operation that can complete without doing its work, such as a checkpoint
+/// skipped to keep protected evidence durable, reports a bounded degraded
+/// outcome instead of claiming success. The label must stay a fixed string;
+/// the span never records paths, session identifiers, or payloads.
+pub(super) fn trace_storage_operation_with<'a, T: 'a, E: 'a, F, O>(
+    operation: &'static str,
+    outcome: O,
+    future: F,
+) -> BoxFuture<'a, Result<T, E>>
+where
+    F: Future<Output = Result<T, E>> + Send + 'a,
+    O: FnOnce(&Result<T, E>) -> &'static str + Send + 'a,
+{
     let span = tracing::info_span!(
         "acp_session_storage",
         operation,
@@ -62,7 +80,7 @@ where
     let started_at = Instant::now();
     Box::pin(async move {
         let result = future.instrument(span.clone()).await;
-        let _ = span.record("outcome", if result.is_ok() { "success" } else { "failure" });
+        let _ = span.record("outcome", outcome(&result));
         let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
         let _ = span.record("elapsed_ms", elapsed_ms);
         result

@@ -11,7 +11,6 @@
 use super::super::types::ToolCallResult;
 use diapason_core::core::threads::ThreadRuntimeHandle;
 use diapason_core::llm::provider::{Message, MessageRole, ToolCall};
-use diapason_core::utils::session_archive::SessionMessage;
 use serde_json::json;
 use std::collections::HashSet;
 
@@ -24,17 +23,22 @@ use std::collections::HashSet;
 /// even carry byte-identical requests. Compaction only removes messages from
 /// the front, so the position recorded here fixes the one persisted slot that
 /// can still carry the repaired evidence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) struct RetainedEvidence {
     /// Index of the evidence message in the repaired history.
     pub(super) history_index: usize,
     /// The message the repair made durable at that position.
-    pub(super) message: SessionMessage,
+    ///
+    /// The recovery policy works with provider messages; the archive adapter
+    /// converts this to the persisted representation at its own boundary.
+    pub(super) message: Message,
 }
 
 /// Counts placeholders inserted and results relocated while repairing an
 /// archived tool-call history, plus any front-truncated tool-result prefix.
-#[derive(Debug, Default, PartialEq, Eq)]
+/// The report compares its counts and evidence; the provider message it records
+/// is not `Eq`, so the report is only `PartialEq`.
+#[derive(Debug, Default, PartialEq)]
 pub(super) struct RecoveryReport {
     pub(super) repaired_calls: usize,
     pub(super) relocated_calls: usize,
@@ -195,7 +199,7 @@ pub(super) fn repair_unresolved_tool_calls(
         if repaired_batch && let Some(request) = messages.get(message_index) {
             evidence.push(RetainedEvidence {
                 history_index: message_index,
-                message: SessionMessage::from(request),
+                message: request.clone(),
             });
         }
         evidence.append(&mut batch_evidence);
@@ -204,7 +208,7 @@ pub(super) fn repair_unresolved_tool_calls(
         // record its position without searching the history for it later.
         evidence.extend(missing.iter().enumerate().map(|(offset, placeholder)| RetainedEvidence {
             history_index: group_end + offset,
-            message: SessionMessage::from(placeholder),
+            message: placeholder.clone(),
         }));
         let missing_count = missing.len();
         drop(messages.splice(group_end..group_end, missing));
@@ -320,7 +324,7 @@ fn relocate_unique_late_results(
         if let Some(relocated_result) = messages.get(result_end) {
             evidence.push(RetainedEvidence {
                 history_index: result_end,
-                message: SessionMessage::from(relocated_result),
+                message: relocated_result.clone(),
             });
         }
         result_end += 1;

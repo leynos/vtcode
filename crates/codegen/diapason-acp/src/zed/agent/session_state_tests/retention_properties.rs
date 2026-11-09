@@ -3,7 +3,7 @@ use super::super::archive::{
     CheckpointDurability, missing_persisted_evidence, missing_persisted_tool_calls, missing_staged_batch_calls,
     required_checkpoint_evidence_violation, required_staged_batch_violation,
 };
-use crate::zed::agent::tool_recovery::RetainedEvidence;
+use crate::zed::agent::tool_recovery::{RetainedEvidence, repair_unresolved_tool_calls};
 use diapason_core::llm::provider::{Message, MessageContent, MessageRole, ToolCall};
 use diapason_core::utils::session_archive::SessionMessage;
 use proptest::prelude::*;
@@ -41,8 +41,12 @@ fn history_for(batches: &[Vec<u8>]) -> Vec<SessionMessage> {
 }
 
 /// Names a repaired message at the position the repair recorded for it.
-fn evidence_at(history_index: usize, message: SessionMessage) -> RetainedEvidence {
-    RetainedEvidence { history_index, message }
+///
+/// The repair policy records the provider message and the archive adapter
+/// converts it, so mirror that shape here rather than storing the persisted
+/// type in the evidence.
+fn evidence_at(history_index: usize, message: &SessionMessage) -> RetainedEvidence {
+    RetainedEvidence { history_index, message: Message::from(message) }
 }
 
 /// Returns the call ids of the last batch of slots.
@@ -134,7 +138,7 @@ fn truncated_repaired_evidence_is_retained_in_its_slot() {
         request_for(&id),
         SessionMessage::with_tool_call_id(MessageRole::Tool, content.as_str(), Some(id)),
     ];
-    let evidence = evidence_at(1, history[1].clone());
+    let evidence = evidence_at(1, &history[1]);
     let mut persisted = history.clone();
     persisted[1].content = MessageContent::Text(format!("{}...", "a".repeat(29)));
 
@@ -189,7 +193,7 @@ proptest! {
         );
         let history = vec![request.clone(), placeholder.clone(), request, later_result];
         let compacted = &history[2..];
-        let evidence = evidence_at(1, placeholder.clone());
+        let evidence = evidence_at(1, &placeholder);
 
         prop_assert!(
             missing_persisted_tool_calls(std::slice::from_ref(&id), compacted).is_empty(),
@@ -236,7 +240,7 @@ proptest! {
             identical_later_result,
         ];
         let compacted = &history[2..];
-        let evidence = evidence_at(1, placeholder);
+        let evidence = evidence_at(1, &placeholder);
 
         prop_assert_eq!(
             missing_persisted_evidence(std::slice::from_ref(&evidence), &history, compacted),
@@ -263,7 +267,7 @@ proptest! {
             later_result,
         ];
         let compacted = &history[2..];
-        let evidence = evidence_at(1, placeholder);
+        let evidence = evidence_at(1, &placeholder);
 
         prop_assert_eq!(
             missing_persisted_evidence(std::slice::from_ref(&evidence), &history, compacted),
@@ -284,7 +288,7 @@ proptest! {
             .map(|index| SessionMessage::from(&Message::user(format!("filler {index}"))))
             .collect::<Vec<_>>();
         history.insert(position, placeholder.clone());
-        let evidence = evidence_at(position, placeholder);
+        let evidence = evidence_at(position, &placeholder);
         let dropped = dropped.min(history.len());
         let persisted = &history[dropped..];
 
@@ -329,7 +333,7 @@ fn dropped_repaired_request_is_rejected_despite_reused_ids() {
         request_for(&id),
         SessionMessage::with_tool_call_id(MessageRole::Tool, "later terminal output", Some(id.clone())),
     ];
-    let evidence = [evidence_at(0, request.clone()), evidence_at(1, placeholder.clone())];
+    let evidence = [evidence_at(0, &request), evidence_at(1, &placeholder)];
     assert!(
         missing_persisted_evidence(&evidence, &history, &history).is_empty(),
         "an uncompacted history retains the request and its result"
@@ -374,7 +378,7 @@ fn an_earlier_identical_batch_does_not_shadow_the_repaired_request() {
         repaired_request.clone(),
         placeholder.clone(),
     ];
-    let evidence = [evidence_at(2, repaired_request), evidence_at(3, placeholder)];
+    let evidence = [evidence_at(2, &repaired_request), evidence_at(3, &placeholder)];
 
     // Front compaction removes exactly the earlier completed batch.
     let compacted = &history[2..];
@@ -400,7 +404,7 @@ fn a_different_request_does_not_replace_dropped_request_evidence() {
     ];
     let compacted = &history[1..];
 
-    let evidence = evidence_at(0, request_for(&repaired_id));
+    let evidence = evidence_at(0, &request_for(&repaired_id));
     assert_eq!(
         missing_persisted_evidence(std::slice::from_ref(&evidence), &history, compacted),
         vec![format!("request:{repaired_id}")]
@@ -417,12 +421,122 @@ fn an_empty_result_is_retained_in_its_slot() {
     let request = request_for(&id);
     let empty_result = SessionMessage::with_tool_call_id(MessageRole::Tool, "", Some(id.clone()));
     let history = vec![request.clone(), empty_result.clone()];
-    let evidence = [evidence_at(0, request), evidence_at(1, empty_result)];
+    let evidence = [evidence_at(0, &request), evidence_at(1, &empty_result)];
 
     assert!(
         missing_persisted_evidence(&evidence, &history, &history).is_empty(),
         "unchanged empty evidence must verify without compaction"
     );
+}
+
+/// Generates one to three batches of distinct call slots.
+///
+/// The archive repair rejects a completed batch with duplicate call ids, so a
+/// batch draws distinct slots while separate batches can still reuse them.
+fn unique_batch_slots() -> impl Strategy<Value = Vec<Vec<u8>>> {
+    proptest::collection::vec(
+        proptest::collection::hash_set(0u8..4, 1..3).prop_map(|slots| {
+            let mut slots = slots.into_iter().collect::<Vec<_>>();
+            slots.sort_unstable();
+            slots
+        }),
+        1..4,
+    )
+}
+
+/// Builds a provider history where the flagged batches carry terminal results.
+///
+/// An unflagged batch is interrupted: its request has no results, so the
+/// archive repair must insert a durable placeholder for every call.
+fn provider_history_for(batches: &[Vec<u8>], completed: &[bool]) -> Vec<Message> {
+    let mut messages = Vec::new();
+    for (batch, completed) in batches.iter().zip(completed) {
+        let calls = batch
+            .iter()
+            .map(|slot| ToolCall::function(call_id(*slot), "read_file".to_string(), "{}".to_string()))
+            .collect::<Vec<_>>();
+        messages.push(Message::assistant_with_tools(String::new(), calls));
+        if *completed {
+            for slot in batch {
+                messages.push(Message::tool_response(call_id(*slot), "result".to_string()));
+            }
+        }
+    }
+    messages
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    /// Evidence produced by a real repair is retained exactly when it survives
+    /// front compaction.
+    ///
+    /// Histories mix completed and interrupted batches, reuse call ids across
+    /// batches, and vary how many leading messages compaction removes. The
+    /// repair's own evidence positions decide the verdict: every surviving slot
+    /// is accepted, and every slot compaction removed is rejected.
+    #[test]
+    fn repaired_evidence_retention_follows_the_compaction_boundary(
+        batches in unique_batch_slots(),
+        completions in proptest::collection::vec(any::<bool>(), 1..4),
+        dropped in 0usize..16,
+    ) {
+        let mut completion_flags = completions;
+        completion_flags.truncate(batches.len());
+        while completion_flags.len() < batches.len() {
+            completion_flags.push(false);
+        }
+        // Force one interrupted batch so the property always exercises evidence
+        // the real repair policy produced.
+        if let Some(last) = completion_flags.last_mut() {
+            *last = false;
+        }
+
+        let mut messages = provider_history_for(&batches, &completion_flags);
+        let report = repair_unresolved_tool_calls(&mut messages)
+            .expect("generated batches have distinct ids and contiguous results");
+        prop_assert!(
+            !report.evidence.is_empty(),
+            "an interrupted batch must produce repaired evidence"
+        );
+
+        let history = messages.iter().map(SessionMessage::from).collect::<Vec<_>>();
+        prop_assert!(
+            report.evidence.iter().all(|evidence| evidence.history_index < history.len()),
+            "every evidence position must address the repaired history"
+        );
+
+        let dropped = dropped.min(history.len());
+        let persisted = &history[dropped..];
+        let missing = missing_persisted_evidence(&report.evidence, &history, persisted);
+        let lost = report
+            .evidence
+            .iter()
+            .filter(|evidence| evidence.history_index < dropped)
+            .count();
+
+        prop_assert_eq!(
+            missing.len(),
+            lost,
+            "retention must accept surviving evidence and reject removed evidence: evidence={:?}, dropped={}",
+            report.evidence,
+            dropped
+        );
+        prop_assert_eq!(
+            required_checkpoint_evidence_violation(
+                CheckpointDurability::Required,
+                &report.evidence,
+                &history,
+                persisted,
+            ),
+            (lost > 0).then_some(lost),
+            "the violation count must match the evidence compaction removed"
+        );
+        prop_assert!(
+            missing_persisted_evidence(&report.evidence, &history, &history).is_empty(),
+            "an uncompacted history must retain every repaired evidence slot"
+        );
+    }
 }
 
 /// Older batches that between them requested and answered every staged id

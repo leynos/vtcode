@@ -162,6 +162,8 @@ fn session_listing(
 
 #[path = "session_state_tests/archive.rs"]
 mod archive;
+#[path = "session_state_tests/checkpoint_categories.rs"]
+mod checkpoint_categories;
 #[path = "session_state_tests/configuration.rs"]
 mod configuration;
 #[path = "session_state_tests/metadata.rs"]

@@ -19,8 +19,9 @@ use crate::zed::session::AcpSessionWorkspace;
 use crate::zed::types::{SessionHandle, lock_poison_error};
 
 use super::{
-    CheckpointDurability, SessionArchiveCheckpointReader, WorkspaceMatch, canonical_workspace_match,
-    repair_archived_tool_calls, session_listing_workspace_match, trace_storage_operation,
+    CheckpointDurability, CheckpointFailure, RequiredCheckpointError, SessionArchiveCheckpointReader, WorkspaceMatch,
+    canonical_workspace_match, checkpoint_failure_label, repair_archived_tool_calls, session_listing_workspace_match,
+    trace_storage_operation,
 };
 
 impl ZedAgent {
@@ -136,15 +137,41 @@ impl ZedAgent {
                 .await
             {
                 metrics.record_tool_recovery(ToolRecoveryEvent::CheckpointFailure);
+                let error_category = checkpoint_failure_label(&error);
                 if let Err(cleanup_error) = handle.release_workspace_lease().await {
-                    log_suppressed_error(&cleanup_error, "archive_attach", "workspace_lease_cleanup_failed");
+                    // Neither chain is logged: both can name archive or
+                    // workspace paths, so only bounded categories and depths
+                    // are reported.
                     warn!(
+                        session_id = %session_id,
                         operation = "archive_attach",
                         error_category = "workspace_lease_cleanup_failed",
+                        error_chain_depth = cleanup_error.chain().count(),
                         "Failed to release ACP workspace lease after repaired history checkpoint failed"
                     );
                 }
-                return Err(error).context("Failed to persist repaired ACP tool-call history");
+                warn!(
+                    session_id = %session_id,
+                    operation = "archive_attach",
+                    error_category,
+                    error_chain_depth = error.chain().count(),
+                    repaired_calls = recovery.repaired_calls,
+                    relocated_calls = recovery.relocated_calls,
+                    "Failed to persist repaired ACP tool-call history"
+                );
+                // The caller and client see only the bounded category, so a
+                // storage cause cannot leak an archive path. A retention cause
+                // reports counts rather than storage detail, so it stays in
+                // the chain for diagnostics.
+                let bounded = format!("Failed to persist repaired ACP tool-call history: {error_category}");
+                let retention_dropped = error
+                    .downcast_ref::<RequiredCheckpointError>()
+                    .is_some_and(|required| required.failure() == CheckpointFailure::RetentionDropped);
+                return Err(if retention_dropped {
+                    error.context(bounded)
+                } else {
+                    anyhow::anyhow!(bounded)
+                });
             }
             metrics.record_tool_recovery(ToolRecoveryEvent::RepairedArchive);
             warn!(

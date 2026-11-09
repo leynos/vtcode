@@ -36,6 +36,12 @@ pub enum ToolRecoveryEvent {
     StaleWriteStdinRequest,
     /// A session checkpoint failed.
     CheckpointFailure,
+    /// A best-effort checkpoint was skipped to keep protected evidence durable.
+    ///
+    /// The write was intentionally not attempted because the compacted payload
+    /// would have dropped write-ahead tool-call evidence. The previous archive
+    /// remains intact, so this is a degraded checkpoint rather than a failure.
+    CheckpointSkipped,
     /// A provider tool-call batch was rejected because its IDs were not unique.
     ///
     /// The batch is rejected before any placeholder is staged or any tool
@@ -46,7 +52,7 @@ pub enum ToolRecoveryEvent {
 
 impl ToolRecoveryEvent {
     /// Every event, in the order rendered for Prometheus.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::StagedCall,
         Self::ReplacedCall,
         Self::InterruptedCall,
@@ -56,6 +62,7 @@ impl ToolRecoveryEvent {
         Self::ConcurrentPromptRejection,
         Self::StaleWriteStdinRequest,
         Self::CheckpointFailure,
+        Self::CheckpointSkipped,
         Self::DuplicateToolCallBatch,
     ];
 
@@ -71,6 +78,7 @@ impl ToolRecoveryEvent {
             Self::ConcurrentPromptRejection => "concurrent_prompt_rejection",
             Self::StaleWriteStdinRequest => "stale_write_stdin_request",
             Self::CheckpointFailure => "checkpoint_failure",
+            Self::CheckpointSkipped => "checkpoint_skipped",
             Self::DuplicateToolCallBatch => "duplicate_tool_call_batch",
         }
     }
@@ -102,6 +110,8 @@ pub struct ToolRecoveryMetrics {
     pub stale_write_stdin_requests: u64,
     /// Failed session checkpoints.
     pub checkpoint_failures: u64,
+    /// Best-effort checkpoints skipped to keep protected evidence durable.
+    pub checkpoint_skips: u64,
     /// Provider tool-call batches rejected for duplicate call IDs.
     pub duplicate_tool_call_batches: u64,
 }
@@ -127,6 +137,7 @@ impl ToolRecoveryMetrics {
             ToolRecoveryEvent::ConcurrentPromptRejection => &mut self.concurrent_prompt_rejections,
             ToolRecoveryEvent::StaleWriteStdinRequest => &mut self.stale_write_stdin_requests,
             ToolRecoveryEvent::CheckpointFailure => &mut self.checkpoint_failures,
+            ToolRecoveryEvent::CheckpointSkipped => &mut self.checkpoint_skips,
             ToolRecoveryEvent::DuplicateToolCallBatch => &mut self.duplicate_tool_call_batches,
         };
         *counter = counter.saturating_add(count);
@@ -144,6 +155,7 @@ impl ToolRecoveryMetrics {
             ToolRecoveryEvent::ConcurrentPromptRejection => self.concurrent_prompt_rejections,
             ToolRecoveryEvent::StaleWriteStdinRequest => self.stale_write_stdin_requests,
             ToolRecoveryEvent::CheckpointFailure => self.checkpoint_failures,
+            ToolRecoveryEvent::CheckpointSkipped => self.checkpoint_skips,
             ToolRecoveryEvent::DuplicateToolCallBatch => self.duplicate_tool_call_batches,
         }
     }
@@ -163,12 +175,14 @@ mod tests {
         collector.record_tool_recovery_events(ToolRecoveryEvent::InterruptedCall, 3);
         collector.record_tool_recovery(ToolRecoveryEvent::AmbiguousHistory);
         collector.record_tool_recovery(ToolRecoveryEvent::DuplicateToolCallBatch);
+        collector.record_tool_recovery(ToolRecoveryEvent::CheckpointSkipped);
 
         let summary = collector.get_summary();
         assert_eq!(summary.tool_recovery.staged_calls, 1);
         assert_eq!(summary.tool_recovery.interrupted_calls, 3);
         assert_eq!(summary.tool_recovery.ambiguous_histories, 1);
         assert_eq!(summary.tool_recovery.duplicate_tool_call_batches, 1);
+        assert_eq!(summary.tool_recovery.checkpoint_skips, 1);
 
         let json = collector.export_json().expect("metrics JSON should serialize");
         assert_eq!(json["tool_recovery"]["staged_calls"], 1);
@@ -182,6 +196,7 @@ mod tests {
         assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="staged_call"} 1"#));
         assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="interrupted_call"} 3"#));
         assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="duplicate_tool_call_batch"} 1"#));
+        assert!(prometheus.contains(r#"diapason_tool_recovery_total{event="checkpoint_skipped"} 1"#));
     }
 
     /// Every recovery label is usable in a constant expression.
@@ -194,10 +209,12 @@ mod tests {
         const STAGED_CALL: &str = ToolRecoveryEvent::StagedCall.as_str();
         const AMBIGUOUS_HISTORY: &str = ToolRecoveryEvent::AmbiguousHistory.as_str();
         const DUPLICATE_TOOL_CALL_BATCH: &str = ToolRecoveryEvent::DuplicateToolCallBatch.as_str();
+        const CHECKPOINT_SKIPPED: &str = ToolRecoveryEvent::CheckpointSkipped.as_str();
 
         assert_eq!(STAGED_CALL, "staged_call");
         assert_eq!(AMBIGUOUS_HISTORY, "ambiguous_history");
         assert_eq!(DUPLICATE_TOOL_CALL_BATCH, "duplicate_tool_call_batch");
+        assert_eq!(CHECKPOINT_SKIPPED, "checkpoint_skipped");
 
         let labels = ToolRecoveryEvent::ALL.map(ToolRecoveryEvent::as_str);
         let unique: std::collections::HashSet<_> = labels.iter().collect();

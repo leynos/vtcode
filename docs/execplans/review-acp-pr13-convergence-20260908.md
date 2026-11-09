@@ -5,7 +5,7 @@ pull request #13 only. Its required living sections are `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`, `Decision log`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`.
 
-Status: IN PROGRESS (2026-11-05)
+Status: IN PROGRESS (2026-11-09)
 
 ## Purpose / big picture
 
@@ -346,6 +346,38 @@ an archive with ambiguous terminal results is rejected before continuation.
   completed — pull request base or head changed", so request `b3623b7e` was
   queued for the restacked head and the evidence reply was re-posted at
   <https://github.com/leynos/vtcode/pull/13#issuecomment-6687727601>.
+- [x] (2026-11-09) Reconciled the seven pre-merge rows on `7659caed2` in
+  source. Repaired evidence now carries the provider `Message` and its history
+  position (`RetainedEvidence { history_index, message }`); the archive adapter
+  converts it once and verifies persistence by position and content. The
+  `CheckpointFailure` categories gained a compile-time label proof
+  (`session_state_tests/checkpoint_categories.rs`), and the archive adapter
+  exposes `checkpoint_failure_label` so handler, compaction, and attach logs
+  report a bounded category plus chain depth instead of a raw chain. The attach
+  boundary returns
+  `Failed to persist repaired ACP tool-call history: <category>`, so an archive
+  path cannot reach the client. A best-effort checkpoint that would drop
+  write-ahead evidence now reports `WriteAheadRetention::Skipped`, records the
+  new `checkpoint_skipped` recovery event, and marks its `acp_session_storage`
+  span `outcome="degraded"`; the existing archive is left byte-identical. A
+  composite proptest covers the repaired-evidence compaction boundary. Rows 2
+  and 3 are documented in `docs/users-guide.md` (`checkpoint_skips`,
+  `checkpoint_skipped`, and the two-step
+  `prepare_checkpoint_snapshot`/`write_prepared_checkpoint_async` API) and
+  signposted in `docs/releases/0.157.0.md`. Focused nextest selectors for the
+  four repaired behaviours, the tool-recovery counters, and the Prometheus
+  series pass locally; the four sequential repository gates are pending on this
+  tree.
+- [x] (2026-11-09) The first four-gate run passed `check-fmt`, `lint` and
+  `typecheck` but failed `make test` on two archive-repair retention tests
+  (`repair_checkpoint_fails_when_compaction_drops_repaired_evidence` and
+  `..._drops_the_repaired_request`). The bounded attach message had replaced
+  the error chain outright, so `{error:#}` no longer named the dropped
+  evidence. The attach boundary now keeps the cause only for
+  `RetentionDropped`, whose message reports counts rather than storage detail;
+  storage categories still return the bounded message alone, so no archive path
+  enters the chain. The two tests and the neighbouring repair selectors pass
+  again (38/38).
 
 ## Surprises & discoveries
 
@@ -459,6 +491,11 @@ an archive with ambiguous terminal results is rejected before continuation.
   it does not change the scan, its exit code, or the baseline policy. It should
   be applied after the parent-owned duplicate is reconciled so the check can
   return a determinate result.
+- `str` equality is still not const-evaluable on the pinned stable compiler
+  (`matches!` on a `&str` in a `const` block fails with E0658), so the
+  compile-time proof of `CheckpointFailure::label` compares bytes with a small
+  `const fn` instead. The proof still fails to compile when a variant is added
+  without a label.
 
 ## Decision log
 
@@ -537,6 +574,15 @@ an archive with ambiguous terminal results is rejected before continuation.
   retain independent verification through the root-designated scrutineer.
   Rationale: no agent was available without disrupting concurrent ACP work.
   Date/Author: 2026-09-08 / root authorized.
+- Decision: report checkpoint failures at every boundary as a fixed
+  `CheckpointFailure` category plus chain depth, never as the raw error chain.
+  A best-effort checkpoint skipped to preserve write-ahead evidence reports a
+  distinct degraded outcome (`WriteAheadRetention::Skipped`,
+  `checkpoint_skipped`, span `outcome="degraded"`) rather than a failure.
+  Rationale: raw chains can name archive or workspace paths, and a skipped
+  write is neither success nor failure; both distinctions must survive in
+  bounded telemetry for operators to act on. Date/Author: 2026-11-09 / PR13
+  pre-merge reconciliation.
 
 ## Outcomes & retrospective
 
@@ -637,6 +683,16 @@ archives, concurrent prompts, and stale exec sessions retain their existing
 control flow and wire errors. Compile/lint coverage verifies the additions;
 existing behavioural selectors verify the unchanged recovery path without
 requiring a log-capture dependency.
+
+`INV-CHECKPOINT-BOUNDED`: a skipped best-effort checkpoint records one
+`checkpoint_skipped` counter and a storage span whose outcome is `degraded`,
+with `persistence_outcome = "skipped_protected_evidence"` and the protected
+call count; a failed repair checkpoint reports exactly its `CheckpointFailure`
+category and no archive path. Assert both by capturing the
+`acp_session_storage` span and its events in the archive and session-state
+tests, and by comparing the returned attach error to the bounded category
+string. `CheckpointFailure::label` is additionally pinned in a `const` block,
+so a new variant without a label fails to compile.
 
 The only external axiom is the filesystem's reported checkpoint error. Tests
 exercise repository-owned error handling using an invalid archive destination;

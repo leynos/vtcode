@@ -92,6 +92,7 @@ fn tool_recovery_summary_example_matches_the_collector() {
         ToolRecoveryEvent::RepairedArchive,
         ToolRecoveryEvent::AmbiguousHistory,
         ToolRecoveryEvent::StaleWriteStdinRequest,
+        ToolRecoveryEvent::CheckpointSkipped,
         ToolRecoveryEvent::DuplicateToolCallBatch,
     ] {
         collector.record_tool_recovery(event);

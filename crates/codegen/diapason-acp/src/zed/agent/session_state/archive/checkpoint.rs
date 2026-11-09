@@ -5,10 +5,11 @@
 //! retain.
 use diapason_core::core::agent::snapshots::SnapshotTurnDiagnostics;
 use diapason_core::llm::provider::MessageRole;
+use diapason_core::metrics::ToolRecoveryEvent;
 use diapason_core::utils::session_archive::{
     SessionArchive, SessionMessage, SessionProgressArgs, history_persistence_enabled,
 };
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::zed::agent::session_state::ZedAgent;
 use crate::zed::agent::tool_recovery::RetainedEvidence;
@@ -17,7 +18,7 @@ use crate::zed::types::SessionHandle;
 use super::{
     CheckpointDurability, CheckpointReader, SessionArchiveCheckpointReader, missing_persisted_tool_calls,
     required_checkpoint_evidence_violation, required_checkpoint_retention_violation, required_staged_batch_violation,
-    staged_tool_call_ids, trace_storage_operation, verify_required_checkpoint_retention,
+    staged_tool_call_ids, trace_storage_operation_with, verify_required_checkpoint_retention,
 };
 
 /// The bounded reason a required checkpoint failed.
@@ -78,6 +79,19 @@ impl std::fmt::Display for RequiredCheckpointError {
 
 impl std::error::Error for RequiredCheckpointError {}
 
+/// Returns the bounded category of a checkpoint failure.
+///
+/// Callers that only have an [`anyhow::Error`] use this to report a stable
+/// category instead of the raw cause, which can name archive paths or storage
+/// detail. An error that is not a required-checkpoint failure is reported as
+/// [`CheckpointFailure::WriteFailed`].
+pub(in crate::zed::agent) fn checkpoint_failure_label(error: &anyhow::Error) -> &'static str {
+    error
+        .downcast_ref::<RequiredCheckpointError>()
+        .map_or(CheckpointFailure::WriteFailed, RequiredCheckpointError::failure)
+        .label()
+}
+
 /// Wraps a checkpoint cause as a write failure.
 fn write_failure(source: impl Into<anyhow::Error>) -> anyhow::Error {
     RequiredCheckpointError::new(CheckpointFailure::WriteFailed, source).into()
@@ -86,7 +100,8 @@ fn write_failure(source: impl Into<anyhow::Error>) -> anyhow::Error {
 /// Whether a written checkpoint still carries the write-ahead protected batch.
 ///
 /// A best-effort checkpoint that was skipped, failed, or compacted the batch
-/// away reports [`Self::Unproven`], so the caller keeps write-ahead protection.
+/// away reports [`Self::Unproven`] or [`Self::Skipped`], so the caller keeps
+/// write-ahead protection.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(in crate::zed::agent) enum WriteAheadRetention {
     /// The checkpoint did not prove the protected batch is still persisted.
@@ -94,6 +109,11 @@ pub(in crate::zed::agent) enum WriteAheadRetention {
     Unproven,
     /// The written archive carries every write-ahead protected call.
     Retained,
+    /// The write was skipped because it would have dropped protected evidence.
+    ///
+    /// The previous archive remains intact, so this is a degraded checkpoint
+    /// rather than a failure and rather than a proven retention.
+    Skipped,
 }
 
 impl ZedAgent {
@@ -186,8 +206,13 @@ impl ZedAgent {
         required_evidence: &[RetainedEvidence],
         reader: &dyn CheckpointReader,
     ) -> anyhow::Result<WriteAheadRetention> {
-        trace_storage_operation(
+        trace_storage_operation_with(
             "checkpoint",
+            |result: &anyhow::Result<WriteAheadRetention>| match result {
+                Ok(WriteAheadRetention::Skipped) => "degraded",
+                Ok(_) => "success",
+                Err(_) => "failure",
+            },
             self.checkpoint_session_inner(session, turn_diagnostics, durability, required_evidence, reader),
         )
         .await
@@ -257,7 +282,7 @@ impl ZedAgent {
             ids.extend(
                 required_evidence
                     .iter()
-                    .filter_map(|evidence| evidence.message.tool_call_id.as_deref().cloned()),
+                    .filter_map(|evidence| evidence.message.tool_call_id.clone()),
             );
             ids.sort();
             ids.dedup();
@@ -325,11 +350,18 @@ impl ZedAgent {
                 if missing_protected.is_empty() {
                     write_ahead_retention = WriteAheadRetention::Retained;
                 } else {
-                    debug!(
+                    // A skipped write is a bounded degraded outcome, not a
+                    // failure: the archive on disk still holds the protected
+                    // batch, so the caller must keep write-ahead protection.
+                    self.recovery_metrics()
+                        .record_tool_recovery(ToolRecoveryEvent::CheckpointSkipped);
+                    warn!(
+                        operation = "session_checkpoint",
+                        persistence_outcome = "skipped_protected_evidence",
                         protected_calls = protected_call_ids.len(),
                         "Skipped ACP session checkpoint that would drop write-ahead tool-call evidence"
                     );
-                    return Ok(WriteAheadRetention::Unproven);
+                    return Ok(WriteAheadRetention::Skipped);
                 }
             }
         }

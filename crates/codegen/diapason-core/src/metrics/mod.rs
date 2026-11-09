@@ -1472,6 +1472,7 @@ mod tests {
         diapason_tool_recovery_total{event="concurrent_prompt_rejection"} 1
         diapason_tool_recovery_total{event="stale_write_stdin_request"} 1
         diapason_tool_recovery_total{event="checkpoint_failure"} 1
+        diapason_tool_recovery_total{event="checkpoint_skipped"} 1
         diapason_tool_recovery_total{event="duplicate_tool_call_batch"} 1
         "###);
     }
