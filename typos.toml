@@ -293,6 +293,11 @@ extend-ignore-re = [
     'ColourSelection[[:space:]]*\{[[:space:]]*color:[[:space:]]*ColorChoice::',
     'args\.colour\.color',
     'ToolDefinition::google_maps\(json!\(\{"center"',
+    'historical `catalog`',
+    # Rename documentation and historical report labels name the pre-rename
+    # spelling as their subject; match only those exact phrases.
+    '`catalog` to `catalogue` rename',
+    '"Tool Catalog Order"',
 ]
 
 [type.md]
@@ -308,6 +313,20 @@ extend-ignore-re = [
     '`(?:catalog|color)` to `[^`\n]*`',
     'canonical `(?:catalog|color)` spelling',
     'formerly named `BehaviorConfig`',
+    # The observability schema fixes this telemetry attribute name.
+    '`diapason\.artifact\.id`',
+    '`(?:ToolCatalog|SessionToolCatalog)`',
+    'used the American `catalog`',
+    'Some `catalog` strings',
+    'existing `catalog` spelling',
+]
+
+[type.json]
+# OpenTelemetry example payloads use fixed attribute names and hexadecimal
+# identifiers, which are data rather than prose.
+extend-ignore-re = [
+    '"(?:artifact|artefact)[-_][A-Za-z0-9_-]+"',
+    '"[0-9a-f]{16}"',
 ]
 
 [type.py]

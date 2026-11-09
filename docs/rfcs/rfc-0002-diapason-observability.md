@@ -116,7 +116,7 @@ the event recorder. Their OTLP delivery remains best-effort.
 Use histograms for durations and counters for completed operations and token
 contributions. Keep metric dimensions limited to bounded categories such as
 provider, model family or configured model, operation, tool type, outcome, and
-error class. Put run, task, session, attempt, workspace, and artifact
+error class. Put run, task, session, attempt, workspace, and artefact
 identities on spans or event records, never as metric labels. Costs carry
 provenance and confidence; unknown prices remain unknown. Never infer task
 success from tool invocation or request completion alone.
@@ -125,7 +125,7 @@ success from tool invocation or request completion alone.
 
 Model relationships explicitly: logical objective/correlation, workflow
 invocation, logical node, node attempt, agent invocation, process, CLI attempt,
-session, interaction, provider request, tool call, gate, and artifact. Not
+session, interaction, provider request, tool call, gate, and artefact. Not
 every Diapason run has every entity; fields are optional and consumers may add
 their own context. W3C trace context may cross deliberate child-process or
 remote boundaries. Do not forward exporter credentials, arbitrary environment,
@@ -196,7 +196,7 @@ _Table 2: Evidence-to-capability parity, including extension and native paths._
 Pi's cited implementations are extensions: they show session-to-tool traces,
 token and tool metrics, selectable signals, sampling, and metadata-only
 defaults. Codex's Rust OTel component demonstrates `tracing_subscriber`
-integration and session events, with explicit content minimisation. Goose
+integration and session events, with explicit content minimization. Goose
 documents OTLP trace export for model, tool, and subagent work. Claude Code
 documents metrics and structured events, optional tracing, managed destination
 controls, and short-lived exporter limits. Together these systems support the
@@ -205,7 +205,7 @@ a neutral contract.
 
 The consumer evidence extends the feature set beyond model calls: task and
 attempt lineage, cost provenance, gates and review, policy decisions, recovery,
-artifact references, and final outcomes. Dakar currently reports stage results,
+artefact references, and final outcomes. Dakar currently reports stage results,
 findings, token totals, and estimated cost in its review harness. df12-build's
 accepted ADR and contract distinguish workflow, node, agent, process, and CLI
 attempt identities; collector and wiring work remain proposed. Corbusier's
