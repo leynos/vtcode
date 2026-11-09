@@ -7,8 +7,8 @@ and numbered tasks have observable acceptance criteria.
 
 The total budget is one engineer-day, at most eight active hours including
 conditional implementation. At most two allocator builds and one additional
-configuration-only candidate are permitted. Record effort as work proceeds.
-At the cap, stop and publish the current conclusion; do not extend the spike
+configuration-only candidate are permitted. Record effort as work proceeds. At
+the cap, stop and publish the current conclusion; do not extend the spike
 implicitly. No-go and inconclusive are valid completed outcomes.
 
 ## 1. Restore a trustworthy experiment
@@ -46,7 +46,8 @@ question without establishing a new performance programme.
     preregistered configuration-only candidate; no extra allocator or upgrade.
   - Success: the record contains a hard stop time/effort, a falsifier, and the
     exact conditions for a go, no-go, or inconclusive outcome.
-  - Requires 1.1.1; see [RFC section 3](../rfcs/rfc-0005-diapason-allocator-spike.md).
+  - Requires 1.1.1; see
+    [RFC section 3](../rfcs/rfc-0005-diapason-allocator-spike.md).
 
 ## 2. Measure realistic ACP work and decide
 
