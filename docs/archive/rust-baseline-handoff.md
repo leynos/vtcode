@@ -176,29 +176,28 @@ The complete PR train is not yet delivered.
   `03ab606cc8ed15f29a5eb84e360fd872edd465ab`. The original examples validation
   evidence below remains historical against its previous parent. Fresh gates
   and supplementary comparisons are recorded below. The additional workflow
-  validation remains a later onboarding layer. The command-skill
-  migration retains the legacy ID, discovery precedence, and model-catalogue
-  exclusion. Authored test prompts and examples follow in the same layer;
-  all seven ordered workspace gates passed. The full run passed 10,090 tests
-  with 17 skipped and one leaky-process result. Its focused repeat passed
-  without a leak; the unchanged snapshot test has no process-spawn path.
-  The 67 harness tests passed. Logs use `ACTION-manifest-2` with this branch
-  suffix. Nixie, Python compilation, and VS Code bundling passed. The focused
-  mention-parser suite passed 16 tests and reproduced the exact parent's one
-  email-detection failure, tracked as
-  [issue #48](https://github.com/leynos/vtcode/issues/48). Markdownlint retains
-  the exact parent's 31 findings with no added or removed identities.
-  The proposed spelling scan now reports 137 findings
-  across 58 files; the policy remains outside the live tree.
+  validation remains a later onboarding layer. The command-skill migration
+  retains the legacy ID, discovery precedence, and model-catalogue exclusion.
+  Authored test prompts and examples follow in the same layer; all seven
+  ordered workspace gates passed. The full run passed 10,090 tests with 17
+  skipped and one leaky-process result. Its focused repeat passed without a
+  leak; the unchanged snapshot test has no process-spawn path. The 67 harness
+  tests passed. Logs use `ACTION-manifest-2` with this branch suffix. Nixie,
+  Python compilation, and VS Code bundling passed. The focused mention-parser
+  suite passed 16 tests and reproduced the exact parent's one email-detection
+  failure, tracked as [issue #48](https://github.com/leynos/vtcode/issues/48).
+  Markdownlint retains the exact parent's 31 findings with no added or removed
+  identities. The proposed spelling scan now reports 137 findings across 58
+  files; the policy remains outside the live tree.
 - The user now prioritizes review and merge readiness for #20 and subsequent
-  PRs in order, using the comenq-coderabbit workflow and worker agents.
-  GitHub cancelled #20's cold `tool-eval` job at its 15-minute ceiling after
-  a 10m43s build; a 30-minute budget patch is prepared for that PR. Its first
-  CodeRabbit review has six inline findings. Pertinent fixes are being
-  prepared against #20; spelling and structural findings are assigned to the
-  later train layers. Every bot reply must mention `@coderabbitai`. Valid
-  out-of-scope findings require GitHub issues. Preserve the current layer as
-  a gated commit before switching to the review fixes.
+  PRs in order, using the comenq-coderabbit workflow and worker agents. GitHub
+  cancelled #20's cold `tool-eval` job at its 15-minute ceiling after a 10m43s
+  build; a 30-minute budget patch is prepared for that PR. Its first CodeRabbit
+  review has six inline findings. Pertinent fixes are being prepared against
+  #20; spelling and structural findings are assigned to the later train layers.
+  Every bot reply must mention `@coderabbitai`. Valid out-of-scope findings
+  require GitHub issues. Preserve the current layer as a gated commit before
+  switching to the review fixes.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -720,13 +719,13 @@ skip, and advisory. Logs use `ACTION-pr51-restack-1` with the examples branch
 suffix. The optional scan remains unavailable.
 
 Fresh supplementary checks passed Nixie for three documents, Python
-compilation, and VS Code bundling. The mention-parser suite passed 16 tests
-and reproduced the exact parent's email-detection failure from issue #48.
+compilation, and VS Code bundling. The mention-parser suite passed 16 tests and
+reproduced the exact parent's email-detection failure from issue #48.
 Markdownlint initially found one new handoff line-length finding; it was
 wrapped before the final document checks. The other 31 diagnostic identities
 belong to the native-plugin guide and match the final parent. The renamed
-bundled command-skill document is clean. These inherited supplementary
-failures remain visible and do not represent passing gates.
+bundled command-skill document is clean. These inherited supplementary failures
+remain visible and do not represent passing gates.
 
 PR #20 has separately published review fixes at `8f34d6e94`. Its hosted eval
 checks passed, and its next CodeRabbit review is queued. The upper train must
