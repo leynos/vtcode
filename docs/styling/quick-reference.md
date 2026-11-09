@@ -150,7 +150,8 @@ From `.git/config`:
 Supported style values:
 
 - `bold`, `dim`, `italic`, `underline`, `reverse`, `strikethrough` (modifiers)
-- `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` (colours)
+- `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`
+  (colours)
 - `bright` prefix for bright colours
 - `default` for terminal default colour
 

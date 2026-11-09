@@ -121,9 +121,10 @@ the upstream response and error behaviour.
 
 When the Merge provider is selected and `MERGE_GATEWAY_API_KEY` is available,
 Diapason fetches the authenticated `GET /v1/models` catalogue with cursor
-pagination. Catalogue data is cached per provider and reused when refresh fails;
-unknown explicit `provider/model` route IDs remain valid and use conservative
-capabilities. Deprecated catalogue routes are not added to the picker.
+pagination. Catalogue data is cached per provider and reused when refresh
+fails; unknown explicit `provider/model` route IDs remain valid and use
+conservative capabilities. Deprecated catalogue routes are not added to the
+picker.
 
 The supplied
 [`models/catalogue/llms.txt`](https://docs.merge.dev/merge-gateway/models/catalog/llms.txt)

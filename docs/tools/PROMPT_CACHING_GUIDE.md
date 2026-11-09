@@ -2,8 +2,8 @@
 
 The harness treats a cache prefix as an immutable segment. Tool definitions use
 deterministic core-first ordering followed by tool name and type, and the
-serialized catalogue is reused for the segment. Catalogue expansion through tool
-discovery takes effect at the next segment boundary.
+serialized catalogue is reused for the segment. Catalogue expansion through
+tool discovery takes effect at the next segment boundary.
 
 Prompt caching lets Diapason reuse validated conversation prefixes across
 providers to reduce latency and token consumption. This guide explains how to
@@ -186,8 +186,8 @@ report_savings = true
 enabled = true
 ```
 
-Z.AI handles caching server-side. When the override is enabled, Diapason honours
-upstream behaviour and surfaces usage metrics when available.
+Z.AI handles caching server-side. When the override is enabled, Diapason
+honours upstream behaviour and surfaces usage metrics when available.
 
 ## Usage Telemetry
 
