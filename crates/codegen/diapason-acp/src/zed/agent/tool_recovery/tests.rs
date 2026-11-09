@@ -284,6 +284,55 @@ fn recovery_reports_relocation_without_inserting_placeholders() {
     assert_eq!(messages[2].role, MessageRole::User);
 }
 
+/// A repaired batch names its own request before the results it made durable.
+///
+/// A later batch that reuses the call id can request and answer it alone, so
+/// the request must be retained in place as well as the inserted placeholder.
+#[test]
+fn repaired_batch_reports_its_request_before_its_results() {
+    let mut messages = vec![
+        assistant([call("repaired-call")]),
+        Message::user("continue".to_string()),
+        assistant([call("later-call")]),
+        tool_result("later-call", "later result"),
+    ];
+
+    let report = repair_unresolved_tool_calls(&mut messages).expect("unambiguous history should repair");
+
+    assert_eq!(report.repaired_calls, 1);
+    let evidence = &report.evidence_messages;
+    assert_eq!(evidence.len(), 2, "the batch reports its request and its placeholder");
+    assert_eq!(evidence[0].role, MessageRole::Assistant);
+    assert_eq!(
+        evidence[0]
+            .tool_calls
+            .as_deref()
+            .map(|calls| calls.iter().map(|call| call.id.as_str()).collect::<Vec<_>>()),
+        Some(vec!["repaired-call"])
+    );
+    assert_eq!(evidence[1].role, MessageRole::Tool);
+    assert_eq!(evidence[1].tool_call_id.as_deref().map(String::as_str), Some("repaired-call"));
+}
+
+/// A relocation-only repair also names the request that owns the result.
+#[test]
+fn relocation_only_repair_reports_its_request_before_the_result() {
+    let mut messages = vec![
+        assistant([call("late-call")]),
+        Message::user("continue".to_string()),
+        tool_result("late-call", "late result"),
+    ];
+
+    let report = repair_unresolved_tool_calls(&mut messages).expect("a unique late result should relocate cleanly");
+
+    assert_eq!(report.relocated_calls, 1);
+    let evidence = &report.evidence_messages;
+    assert_eq!(evidence.len(), 2, "the batch reports its request and the relocated result");
+    assert_eq!(evidence[0].role, MessageRole::Assistant);
+    assert_eq!(evidence[1].role, MessageRole::Tool);
+    assert_eq!(evidence[1].tool_call_id.as_deref().map(String::as_str), Some("late-call"));
+}
+
 /// Fixes the durable placeholder schema that archives and agents depend on.
 ///
 /// The placeholder is a stable structured output: recovery consumers read its

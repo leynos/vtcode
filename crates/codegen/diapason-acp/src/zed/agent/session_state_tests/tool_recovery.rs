@@ -10,7 +10,7 @@ use crate::zed::agent::session_state::{CheckpointFailure, RequiredCheckpointErro
 use crate::zed::session::AcpSessionWorkspace;
 use assert_fs::TempDir;
 use diapason_core::core::threads::messages_from_session_listing;
-use diapason_core::llm::provider::{MessageRole, ToolCall};
+use diapason_core::llm::provider::{MessageContent, MessageRole, ToolCall};
 
 /// Closes a legacy tool call with an incomplete result before a later user
 /// message.
@@ -258,10 +258,14 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
     );
 
     // A retry must fail too: because the rejected checkpoint wrote nothing,
-    // the second attempt replays the same repair and rejects it again rather
-    // than resuming from a compacted archive that lost the repaired evidence.
+    // the second attempt replays the same repair from the preserved archive
+    // bytes and rejects it again rather than resuming from a compacted archive
+    // that lost the repaired evidence.
+    let preserved: SessionSnapshot =
+        serde_json::from_slice(&fs::read(&archive_path).expect("read the preserved archive before the retry"))
+            .expect("parse the preserved archive before the retry");
     let mut retry_listing = archived_listing("repair-compaction", temp.path(), "continue");
-    retry_listing.snapshot.messages = repaired_evidence_under_compaction(32 * 1024);
+    retry_listing.snapshot = preserved;
     retry_listing.snapshot.total_messages = retry_listing.snapshot.messages.len();
     let retry = agent
         .attach_thread_from_listing(
@@ -281,6 +285,139 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
         existing_archive,
         "a retried rejected checkpoint must leave the existing archive bytes unchanged"
     );
+}
+
+/// A repair checkpoint fails when compaction drops only its repaired request.
+///
+/// The later completed batch reuses the repaired call id, so the ordered per-id
+/// check and the batch check both still pass, and the repaired placeholder keeps
+/// its own slot. Only the request's position shows that the batch which owned
+/// the repaired result was trimmed away.
+#[tokio::test]
+async fn repair_checkpoint_fails_when_compaction_drops_the_repaired_request() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    // The budget fits the later batch and its result but not the oversized
+    // repaired request, so front trimming removes exactly that request.
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("create temporary workspace for the repaired-request test");
+    let mut listing = archived_listing("repair-request-compaction", temp.path(), "continue");
+    listing.snapshot.messages = reused_id_repaired_request_under_compaction(32 * 1024);
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive_path = listing.path.clone();
+    let existing_archive = serde_json::to_vec(&listing.snapshot).expect("serialize the existing archive");
+    fs::write(&archive_path, &existing_archive).expect("seed the existing repaired-session archive");
+    let agent = build_agent(temp.path()).await;
+
+    let error = match agent
+        .attach_thread_from_listing(
+            &acp::SessionId::new("repair-request-compaction-session"),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
+            listing,
+        )
+        .await
+    {
+        Ok(_) => panic!("a repair checkpoint that dropped its repaired request must fail"),
+        Err(error) => error,
+    };
+
+    assert!(
+        format!("{error:#}").contains("dropped repaired evidence for 1 tool call"),
+        "the failure must name the dropped repaired request: {error:#}"
+    );
+    assert_eq!(
+        error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map(RequiredCheckpointError::failure),
+        Some(CheckpointFailure::RetentionDropped),
+        "dropped repaired evidence must carry the bounded retention category"
+    );
+    assert_eq!(
+        fs::read(&archive_path).expect("read the existing archive after the rejected checkpoint"),
+        existing_archive,
+        "a rejected repair checkpoint must leave the existing archive bytes unchanged"
+    );
+
+    // A retry from the preserved archive must fail again for the same reason.
+    let preserved: SessionSnapshot =
+        serde_json::from_slice(&fs::read(&archive_path).expect("read the preserved archive before the retry"))
+            .expect("parse the preserved archive before the retry");
+    let mut retry_listing = archived_listing("repair-request-compaction", temp.path(), "continue");
+    retry_listing.snapshot = preserved;
+    retry_listing.snapshot.total_messages = retry_listing.snapshot.messages.len();
+    let retry = agent
+        .attach_thread_from_listing(
+            &acp::SessionId::new("repair-request-compaction-session-retry"),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
+            retry_listing,
+        )
+        .await;
+    assert!(
+        retry.is_err(),
+        "a retry from the unchanged archive must fail instead of resuming without the repaired request"
+    );
+    assert_eq!(
+        fs::read(&archive_path).expect("read the existing archive after the retry"),
+        existing_archive,
+        "a retried rejected checkpoint must leave the existing archive bytes unchanged"
+    );
+}
+
+/// A repair checkpoint retains a relocated result whose content is empty.
+///
+/// A tool that returned no output is legitimate evidence, so retention must
+/// accept the unchanged empty content rather than wait for compaction.
+#[tokio::test]
+async fn repair_checkpoint_retains_an_empty_relocated_result() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("create temporary workspace for the empty-result test");
+    let mut listing = archived_listing("empty-relocated-result", temp.path(), "continue");
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "empty-result-call".to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::user("continue".to_string())),
+        SessionMessage::from(&Message::tool_response("empty-result-call".to_string(), String::new())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive_path = listing.path.clone();
+    let agent = build_agent(temp.path()).await;
+
+    let handle = agent
+        .attach_thread_from_listing(
+            &acp::SessionId::new("empty-relocated-result-session"),
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
+            listing,
+        )
+        .await
+        .expect("an empty relocated result must not fail retention");
+
+    let messages = handle.data.lock().expect("lock the attached session data").thread.messages();
+    assert_eq!(messages[1].role, MessageRole::Tool);
+    assert_eq!(messages[1].tool_call_id.as_deref(), Some("empty-result-call"));
+    assert_eq!(messages[1].content.as_text(), "");
+
+    let persisted: SessionSnapshot =
+        serde_json::from_str(&fs::read_to_string(&archive_path).expect("read the repaired archive"))
+            .expect("parse the repaired archive snapshot");
+    assert_eq!(persisted.messages[1].role, MessageRole::Tool);
+    assert_eq!(
+        persisted.messages[1].tool_call_id.as_deref().map(String::as_str),
+        Some("empty-result-call"),
+        "the retained archive must keep the relocated empty result"
+    );
+    assert_eq!(persisted.messages[1].content, MessageContent::Text(String::new()));
 }
 
 /// A repair checkpoint succeeds when compaction retains the repaired call.
@@ -349,6 +486,33 @@ fn repaired_evidence_under_compaction(padding: usize) -> Vec<SessionMessage> {
             )],
         )),
         SessionMessage::from(&Message::tool_response("later-batch-call".to_string(), "later result".to_string())),
+    ]
+}
+
+/// Builds an archive whose repaired batch and a later batch reuse a call id.
+///
+/// `padding` lengthens the repaired request's arguments so front compaction
+/// trims that request while the later completed batch still fits the budget.
+fn reused_id_repaired_request_under_compaction(padding: usize) -> Vec<SessionMessage> {
+    vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "reused-evidence-call".to_string(),
+                "read_file".to_string(),
+                format!("{{\"path\":\"{}\"}}", "x".repeat(padding)),
+            )],
+        )),
+        SessionMessage::from(&Message::user("continue".to_string())),
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "reused-evidence-call".to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response("reused-evidence-call".to_string(), "later result".to_string())),
     ]
 }
 

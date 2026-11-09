@@ -773,3 +773,24 @@ retry.
 The full local commit gate passed on this round: `make check-fmt`, `make lint`,
 `make typecheck` and `make test` each exited 0, with 10,657 tests passing and
 22 skipped.
+
+The review of the positional fix found two remaining gaps. The repaired batch's
+own assistant request was not required evidence: given
+`request A(x), repaired result(x), request B(x), result B(x)`, front compaction
+could drop only request A while request B satisfied the per-id checks and the
+repaired result kept its slot, so the checkpoint accepted a history whose
+repaired call had lost its owner. `repair_unresolved_tool_calls` now reports
+the owning request, in history order before the results it made durable, for
+every batch it repaired or relocated, and the positional matcher compares the
+requested call ids (with the same ellipsis tolerance) because an empty-bodied
+request otherwise matches any empty assistant message. The empty-content guard
+was also wrong in the other direction: an unchanged empty relocated result was
+rejected before equality was considered, so a tool that returned no output
+could not be checkpointed at all. Equality now wins before the truncation
+check. Tests cover the request-loss scenario through
+`attach_thread_from_listing` (reused id, request-only trim, unchanged archive
+bytes, failing retry from the preserved bytes), a unique empty relocated result
+through the checkpoint boundary, and property cases for a dropped request, a
+different empty request and empty evidence. The retry in the earlier compaction
+test now reads the preserved archive from disk instead of rebuilding the
+pre-repair snapshot. `cargo nextest run -p diapason-acp` passes 396 of 396.

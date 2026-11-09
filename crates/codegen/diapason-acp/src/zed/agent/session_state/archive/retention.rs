@@ -6,7 +6,7 @@
 
 use anyhow::Context;
 use diapason_commons::fs::read_private_json_file;
-use diapason_core::llm::provider::{Message, MessageContent, MessageRole};
+use diapason_core::llm::provider::{Message, MessageContent, MessageRole, ToolCall};
 use diapason_core::utils::session_archive::{SessionMessage, SessionSnapshot};
 use futures::future::BoxFuture;
 use std::collections::HashSet;
@@ -78,6 +78,11 @@ pub(in crate::zed::agent::session_state) fn missing_persisted_tool_calls(
 /// that can still carry it. Retention therefore requires that slot to hold the
 /// repaired message itself. A later message that reuses the call id occupies a
 /// different slot, so it cannot stand in for dropped evidence.
+///
+/// Request evidence covers the other half of the same failure: front trimming
+/// can drop the repaired batch's request while a later batch reuses its id, so
+/// the per-id checks and the result's own slot both still pass. Naming the
+/// request in `required_evidence` makes that loss observable.
 pub(in crate::zed::agent::session_state) fn missing_persisted_evidence(
     required_evidence: &[SessionMessage],
     history_messages: &[SessionMessage],
@@ -117,40 +122,89 @@ fn find_evidence_position(
         .map(|(index, _)| index)
 }
 
-/// Returns the call id a missing-evidence report names.
+/// Returns the call a missing-evidence report names.
+///
+/// Result evidence names its own call id. Request evidence carries no
+/// `tool_call_id`, so it is named by the calls it requested.
 fn evidence_label(evidence: &SessionMessage) -> String {
-    evidence
-        .tool_call_id
+    if let Some(call_id) = evidence.tool_call_id.as_deref() {
+        return call_id.to_string();
+    }
+    let requested = evidence
+        .tool_calls
         .as_deref()
-        .map_or_else(|| "<unidentified>".to_string(), ToString::to_string)
+        .map(|calls| calls.iter().map(|call| call.id.as_str()).collect::<Vec<_>>())
+        .unwrap_or_default();
+    match requested.as_slice() {
+        [] => "<unidentified>".to_string(),
+        [only] => format!("request:{only}"),
+        many => format!("request:{}", many.join(",")),
+    }
 }
 
 /// Returns whether a persisted slot still carries the repaired message.
+///
+/// Compaction shrinks every string field, so the call id is compared with the
+/// same truncation tolerance as the content. An assistant request is normally
+/// empty-bodied and carries no `tool_call_id`, which makes it indistinguishable
+/// from any other empty assistant message; its requested call ids are therefore
+/// part of the comparison.
 fn evidence_slot_matches(expected: &SessionMessage, persisted: &SessionMessage) -> bool {
     expected.role == persisted.role
-        && expected.tool_call_id == persisted.tool_call_id
+        && evidence_optional_text_matches(
+            expected.tool_call_id.as_deref().map(String::as_str),
+            persisted.tool_call_id.as_deref().map(String::as_str),
+        )
         && evidence_content_matches(&expected.content, &persisted.content)
+        && evidence_tool_calls_match(
+            expected.tool_calls.as_deref().map(Vec::as_slice),
+            persisted.tool_calls.as_deref().map(Vec::as_slice),
+        )
+}
+
+/// Returns whether both sides name the same optional field.
+fn evidence_optional_text_matches(expected: Option<&str>, persisted: Option<&str>) -> bool {
+    match (expected, persisted) {
+        (None, None) => true,
+        (Some(expected), Some(persisted)) => evidence_text_matches(expected, persisted),
+        (Some(_), None) | (None, Some(_)) => false,
+    }
+}
+
+/// Returns whether persisted tool calls still carry the expected call ids.
+fn evidence_tool_calls_match(expected: Option<&[ToolCall]>, persisted: Option<&[ToolCall]>) -> bool {
+    match (expected, persisted) {
+        (None, None) => true,
+        (Some(expected), Some(persisted)) if expected.len() == persisted.len() => expected
+            .iter()
+            .zip(persisted)
+            .all(|(expected, persisted)| evidence_text_matches(&expected.id, &persisted.id)),
+        (Some(_), Some(_)) | (Some(_), None) | (None, Some(_)) => false,
+    }
 }
 
 /// Returns whether persisted content is the repaired evidence, possibly shrunk.
+fn evidence_content_matches(expected: &MessageContent, persisted: &MessageContent) -> bool {
+    match (expected, persisted) {
+        (MessageContent::Text(expected), MessageContent::Text(persisted)) => evidence_text_matches(expected, persisted),
+        _ => expected == persisted,
+    }
+}
+
+/// Returns whether persisted text is the expected text, possibly truncated.
 ///
 /// The size-bounded archive compactor truncates an overlong string to roughly
 /// half its length and appends an ellipsis, so persisted text may be a prefix
 /// of the expected text followed by `"..."`. Compaction never lengthens a
 /// value, so a persisted value that is not such a truncation is different
-/// content even if it shares a prefix with the expected value.
-fn evidence_content_matches(expected: &MessageContent, persisted: &MessageContent) -> bool {
-    match (expected, persisted) {
-        (MessageContent::Text(expected), MessageContent::Text(persisted)) => {
-            !expected.is_empty()
-                && !persisted.is_empty()
-                && (expected == persisted
-                    || persisted
-                        .strip_suffix("...")
-                        .is_some_and(|prefix| !prefix.is_empty() && expected.starts_with(prefix)))
-        }
-        _ => expected == persisted,
-    }
+/// content even if it shares a prefix with the expected value. An unchanged
+/// value matches directly, including an empty one: a tool that returned no
+/// output is legitimate evidence and must verify without compaction.
+fn evidence_text_matches(expected: &str, persisted: &str) -> bool {
+    expected == persisted
+        || persisted
+            .strip_suffix("...")
+            .is_some_and(|prefix| !prefix.is_empty() && expected.starts_with(prefix))
 }
 
 /// Returns the staged calls a persisted history no longer retains as one batch.
@@ -290,7 +344,7 @@ impl CheckpointReader for SessionArchiveCheckpointReader {
 /// `staged_call_ids` is the batch the checkpoint staged, which must survive
 /// together as one batch. `required_call_ids` names every call the caller made
 /// durable in this checkpoint, including repaired evidence from older batches.
-/// `required_evidence` carries the messages the repair inserted or relocated,
+/// `required_evidence` carries the requests and results the repair made durable,
 /// so retention is checked against their content and position rather than their
 /// call id alone. `history_messages` is the uncompacted payload that fixes those
 /// positions.

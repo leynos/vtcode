@@ -301,6 +301,89 @@ proptest! {
     }
 }
 
+/// Front trimming that drops only the repaired batch's request is rejected.
+///
+/// The repaired result keeps its slot and a later batch reuses the call id, so
+/// the ordered per-id check, the batch check, and the result's positional check
+/// all pass. Only the request's own position shows that the batch it names was
+/// lost.
+#[test]
+fn dropped_repaired_request_is_rejected_despite_reused_ids() {
+    let id = "repaired-request-call".to_string();
+    let request = request_for(&id);
+    let placeholder = repaired_placeholder(&id);
+    let history = vec![
+        request.clone(),
+        placeholder.clone(),
+        SessionMessage::from(&Message::user("continue".to_string())),
+        request_for(&id),
+        SessionMessage::with_tool_call_id(MessageRole::Tool, "later terminal output", Some(id.clone())),
+    ];
+    assert!(
+        missing_persisted_evidence(&[request.clone(), placeholder.clone()], &history, &history).is_empty(),
+        "an uncompacted history retains the request and its result"
+    );
+
+    // Front compaction removes exactly the repaired batch's request.
+    let compacted = &history[1..];
+
+    assert!(
+        missing_persisted_tool_calls(std::slice::from_ref(&id), compacted).is_empty(),
+        "the later batch satisfies the ordered per-id check"
+    );
+    assert!(
+        missing_staged_batch_calls(std::slice::from_ref(&id), compacted).is_empty(),
+        "the later batch satisfies the batch check"
+    );
+    assert!(
+        missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, compacted).is_empty(),
+        "the repaired result itself keeps its slot"
+    );
+    assert_eq!(
+        missing_persisted_evidence(&[request, placeholder], &history, compacted),
+        vec![format!("request:{id}")],
+        "a dropped request must be reported even when the result survives"
+    );
+}
+
+/// Another empty assistant request cannot stand in for a dropped one.
+///
+/// Repaired requests are normally empty-bodied and carry no `tool_call_id`, so
+/// only the requested call ids distinguish them.
+#[test]
+fn a_different_request_does_not_replace_dropped_request_evidence() {
+    let repaired_id = "repaired-request-call".to_string();
+    let other_id = "other-request-call".to_string();
+    let history = vec![
+        request_for(&repaired_id),
+        request_for(&other_id),
+        SessionMessage::with_tool_call_id(MessageRole::Tool, "other output", Some(other_id)),
+    ];
+    let compacted = &history[1..];
+
+    assert_eq!(
+        missing_persisted_evidence(&[request_for(&repaired_id)], &history, compacted),
+        vec![format!("request:{repaired_id}")]
+    );
+}
+
+/// An empty relocated tool result verifies unchanged in its slot.
+///
+/// A tool that returned no output is legitimate evidence, so the comparison
+/// must accept equality before considering truncation.
+#[test]
+fn an_empty_result_is_retained_in_its_slot() {
+    let id = "empty-result-call".to_string();
+    let request = request_for(&id);
+    let empty_result = SessionMessage::with_tool_call_id(MessageRole::Tool, "", Some(id.clone()));
+    let history = vec![request.clone(), empty_result.clone()];
+
+    assert!(
+        missing_persisted_evidence(&[request, empty_result], &history, &history).is_empty(),
+        "unchanged empty evidence must verify without compaction"
+    );
+}
+
 /// Older batches that between them requested and answered every staged id
 /// blind the per-id check, while the batch check still sees that the surviving
 /// request never made the whole staged batch.

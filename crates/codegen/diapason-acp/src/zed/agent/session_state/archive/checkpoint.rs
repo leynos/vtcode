@@ -121,9 +121,9 @@ impl ZedAgent {
     /// Persists the session snapshot, optionally carrying turn diagnostics.
     ///
     /// `required_evidence` names messages the caller made durable in this
-    /// checkpoint beyond the latest staged batch, such as results an archive
-    /// repair just inserted or relocated. Their content and position, not only
-    /// their call id, must survive compaction.
+    /// checkpoint beyond the latest staged batch, such as the request and
+    /// results an archive repair just inserted or relocated. Their content and
+    /// position, not only their call id, must survive compaction.
     ///
     /// `reader` supplies the read-back used to verify the persisted payload.
     /// Production always passes [`SessionArchiveCheckpointReader`]; tests

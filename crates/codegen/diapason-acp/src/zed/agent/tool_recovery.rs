@@ -22,13 +22,17 @@ pub(super) struct RecoveryReport {
     pub(super) repaired_calls: usize,
     pub(super) relocated_calls: usize,
     pub(super) truncated_prefix: usize,
-    /// Result messages whose evidence this repair inserted or relocated.
+    /// The assistant requests and result messages this repair inserted or
+    /// relocated evidence for, in history order.
     ///
     /// The repair checkpoint must retain these messages. The staged batch
     /// alone is not enough: a repair can touch an earlier batch, and
     /// compaction must not drop the evidence the repair just made durable.
     /// The message content, not only the call id, distinguishes the evidence
-    /// from a later batch that reuses the id.
+    /// from a later batch that reuses the id. A batch that was repaired also
+    /// names its own request: a later batch reusing the id can satisfy the
+    /// per-id checks by itself, so only the request's own position shows that
+    /// the call it answers was retained.
     pub(super) evidence_messages: Vec<SessionMessage>,
 }
 
@@ -152,8 +156,10 @@ pub(super) fn repair_unresolved_tool_calls(
 
         let group_end = tool_result_group_end(messages, message_index + 1);
 
-        relocated_calls +=
-            relocate_unique_late_results(messages, message_index, group_end, &calls, &mut evidence_messages);
+        let mut batch_evidence = Vec::new();
+        let relocated_for_batch =
+            relocate_unique_late_results(messages, message_index, group_end, &calls, &mut batch_evidence);
+        relocated_calls += relocated_for_batch;
         let group_end = tool_result_group_end(messages, message_index + 1);
         let completed_ids = completed_tool_call_ids(messages, message_index + 1, group_end);
 
@@ -162,6 +168,17 @@ pub(super) fn repair_unresolved_tool_calls(
             .filter(|call| !completed_ids.contains(call.id.as_str()))
             .collect::<Vec<_>>();
         let missing = missing_calls.into_iter().map(incomplete_tool_result).collect::<Vec<_>>();
+
+        // The repaired batch's own request must survive with its evidence: a
+        // later batch that reuses the id can request and answer it on its own,
+        // so the per-id checks alone cannot prove this request was retained.
+        // The request precedes every result this batch made durable, which is
+        // the order the positional retention check requires.
+        let repaired_batch = relocated_for_batch > 0 || !missing.is_empty();
+        if repaired_batch && let Some(request) = messages.get(message_index) {
+            evidence_messages.push(SessionMessage::from(request));
+        }
+        evidence_messages.append(&mut batch_evidence);
         evidence_messages.extend(missing.iter().map(SessionMessage::from));
         repaired_calls += missing.len();
         let missing_count = missing.len();
