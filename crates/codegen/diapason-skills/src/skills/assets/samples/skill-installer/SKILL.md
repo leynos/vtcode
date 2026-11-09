@@ -7,8 +7,8 @@ metadata:
 
 # Skill Installer
 
-Helps install skills. Listing uses the embedded offline catalog by default.
-Users can explicitly select a remote catalog with `--source`, or provide a
+Helps install skills. Listing uses the embedded offline catalogue by default.
+Users can explicitly select a remote catalogue with `--source`, or provide a
 GitHub repository and skill path for installation.
 
 Use the helper scripts based on the task:
@@ -31,13 +31,13 @@ Install skills with the helper scripts.
 
 ### List Curated Skills
 
-Show available skills from the embedded offline catalog:
+Show available skills from the embedded offline catalogue:
 
 ```bash
 scripts/list-curated-skills.py
 ```
 
-Optional: explicitly select a remote catalog URL:
+Optional: explicitly select a remote catalogue URL:
 
 ```bash
 scripts/list-curated-skills.py --source https://example.com/catalog.json
@@ -47,7 +47,7 @@ Output formats:
 
 - Default: table of skill names, categories, and descriptions
 - JSON: `--json` for programmatic use
-- Offline: `--offline` uses the embedded catalog even when `--source` is set
+- Offline: `--offline` uses the embedded catalogue even when `--source` is set
 
 ### Install from Curated List
 

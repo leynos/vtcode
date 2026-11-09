@@ -10,8 +10,8 @@
 
 ## Module map
 
-- `core/agent/`: runtime, event recording, runner, progress, harness artifacts;
-  `request_envelope` freezes each segment's prompt and ordered catalog.
+- `core/agent/`: runtime, event recording, runner, progress, harness artefacts;
+  `request_envelope` freezes each segment's prompt and ordered catalogue.
 - `tools/`: handlers, registry, policy, execution;
   `ToolRegistry::new_for_schema` builds offline metadata registries without
   persistent workspace policy state; `output_spooler.rs` owns bounded model
@@ -37,7 +37,7 @@
 - `skills/skill_policy.rs` owns skill-scoped tool/network/sandbox policy;
   `skills/executor.rs` owns sub-LLM/fork execution. `skills/loader.rs` loads
   `SKILL.md` manifests from plugin `skills/*/` directories into the session
-  skill catalog; repository plugin roots are metadata-only and native loading
+  skill catalogue; repository plugin roots are metadata-only and native loading
   is explicit and approval-gated.
 - `notifications/`: maps important runtime events to OS/desktop alerts via
   dedicated call-site helpers (`send_global_notification`). Session completion
@@ -85,7 +85,7 @@
 - Add tools under `tools/`, register/classify them, wire them into
   `core/agent/`; approved-plan task trackers deduplicate normalized step
   descriptions while preserving first-seen order, approval must fail closed if
-  the tracker cannot be persisted, and plan artifacts must validate concrete
+  the tracker cannot be persisted, and plan artefacts must validate concrete
   targets plus command/observable verification markers before writing (leading
   shell env assignments are allowed only before a concrete command; lists need
   at least one concrete target). Add providers with `adding-llm-providers` and
@@ -138,13 +138,13 @@
   snapshots through a bounded writer, so progress mutations must not perform
   synchronous filesystem I/O.
 - `SessionToolCatalogue` projection caches are private and lazy per
-  entry/documentation mode; rebuild the catalog when registrations change.
+  entry/documentation mode; rebuild the catalogue when registrations change.
   Basic directory-list caches are keyed by canonical workspace and response
   shape.
 - `TerminalAppLauncher::launch_editor_target_non_waiting` is for existing-file
   GUI opens; preserve adapter-specific reuse/location flags and keep
   temporary-file `/edit` flows on the waiting API.
-- Token/catalog deferral thresholds are correct behavior; warn only when
+- Token/catalog deferral thresholds are correct behaviour; warn only when
   deferral is disabled but beneficial. Shell safety must preserve raw command
   text when classifying dynamic syntax; activity and read-only intent share the
   static shell parser, allowing compound sequences only when every segment is
@@ -163,7 +163,7 @@
   sandbox-aware launch APIs rather than bypassing them. Batch file ranges
   remain under the absolute line cap, and duplicate tool calls may batch only
   after preflight marks each call parallel-safe; unified and runner dispatch
-  honor `agent.harness.max_parallel_tool_calls`. Persistent-memory remember
+  honour `agent.harness.max_parallel_tool_calls`. Persistent-memory remember
   planning may receive only one explicitly selected immediate assistant reply
   for deictic requests; keep that reference separate from supplemental answers,
   tool output, and wider conversation history, and preserve planner validation,
@@ -177,7 +177,7 @@
   structured metadata; compact view rows must not reintroduce them as visible
   detail lines. Planning prompt guidance is part of the runtime contract: keep
   plan steps concrete and verifiable, omit unused optional `code_search`
-  filters (never `path: ""`), reserve `<plan>` for approval artifacts while
+  filters (never `path: ""`), reserve `<plan>` for approval artefacts while
   structured reasoning uses its distinct marker, require one plan block without
   policy echo, and keep rejected drafts in assistant history. Planning
   empty-response recovery allows one strict tool-free synthesis after two

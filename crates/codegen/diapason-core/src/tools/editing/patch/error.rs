@@ -53,7 +53,7 @@ pub enum PatchError {
     AmbiguousAnchor { path: String, anchor: String },
 
     #[error(
-        "patch anchor '{anchor}' for '{path}' does not match exactly; only a whitespace- or Unicode-normalised match exists, which rebase assessment will not use"
+        "patch anchor '{anchor}' for '{path}' does not match exactly; only a whitespace- or Unicode-normalized match exists, which rebase assessment will not use"
     )]
     InexactAnchor { path: String, anchor: String },
 

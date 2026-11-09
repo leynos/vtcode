@@ -33,7 +33,7 @@ discovery | `core/network_allowlist.rs` | `core/provider_override.rs`
   consumers.
 - `schema` feature gates `diapason_config_schema_json()` — used by `build.rs`.
 
-## Adding a Model — **OpenRouter** (code-generated): edit `ModelId`, `Provider::OpenRouter` match, and `docs/models.json`; the build script handles the rest. **Non-OpenRouter** (manual): add the constant, `ModelId` variant and match arms, defaults if needed, preset, optional resolver update, and `docs/models.json`; gateway providers may intentionally accept explicit catalog-missing route IDs. See `adding-llm-providers` skill for the checklist
+## Adding a Model — **OpenRouter** (code-generated): edit `ModelId`, `Provider::OpenRouter` match, and `docs/models.json`; the build script handles the rest. **Non-OpenRouter** (manual): add the constant, `ModelId` variant and match arms, defaults if needed, preset, optional resolver update, and `docs/models.json`; gateway providers may intentionally accept explicit catalogue-missing route IDs. See `adding-llm-providers` skill for the checklist
 
 ## Gotchas
 

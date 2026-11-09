@@ -155,7 +155,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    const VALID_PLAN: &str = "# Plan\n\n## Summary\nA concrete plan.\n\n## Implementation Steps\n1. Update src/lib.rs -> files: [src/lib.rs] -> verify: [cargo check]\n\n## Test Cases and Validation\n1. Run cargo check.\n\n## Assumptions and Defaults\n1. Preserve existing behavior.\n";
+    const VALID_PLAN: &str = "# Plan\n\n## Summary\nA concrete plan.\n\n## Implementation Steps\n1. Update src/lib.rs -> files: [src/lib.rs] -> verify: [cargo check]\n\n## Test Cases and Validation\n1. Run cargo check.\n\n## Assumptions and Defaults\n1. Preserve existing behaviour.\n";
 
     #[test]
     fn only_definitive_placeholder_rejections_are_recorded() {

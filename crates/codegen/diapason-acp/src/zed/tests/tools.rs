@@ -1,4 +1,4 @@
-//! Tests for ACP file discovery and local tool behavior.
+//! Tests for ACP file discovery and local tool behaviour.
 
 use super::*;
 

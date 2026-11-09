@@ -1,6 +1,6 @@
 ---
 name: migrate-agent-plugin
-description: Migrate an existing Claude, Copilot, Codex, Cursor, Kiro, VS Code, or other client-specific agent plugin to the portable Agent Plugins v1 structure while preserving platform-specific hooks, agents, commands, LSP, UI, and marketplace behavior. Use when auditing, converting, or modernizing an agent plugin.
+description: Migrate an existing Claude, Copilot, Codex, Cursor, Kiro, VS Code, or other client-specific agent plugin to the portable Agent Plugins v1 structure while preserving platform-specific hooks, agents, commands, LSP, UI, and marketplace behaviour. Use when auditing, converting, or modernizing an agent plugin.
 license: MIT
 metadata:
   version: "1.0.0"
@@ -9,7 +9,7 @@ metadata:
 # Migrate an Agent Plugin
 
 Convert an existing plugin to the Agent Plugins v1 portable core without
-prematurely removing behavior required by its current clients.
+prematurely removing behaviour required by its current clients.
 
 ## Source of truth
 
@@ -28,18 +28,18 @@ Read these references before editing:
 1. Inventory the current plugin before moving files.
    - Record every manifest, skill, prompt or command, agent, MCP server, hook,
      LSP server, UI resource, script, secret requirement, and marketplace entry.
-   - Identify the clients that currently load each artifact and the install
+   - Identify the clients that currently load each artefact and the install
      paths or discovery rules they require.
    - Run existing tests or capture a manual smoke-test baseline.
 
-2. Classify each artifact.
+2. Classify each artefact.
    - Portable core: root `plugin.json`, Agent Skills in `skills/`, and MCP
      servers in `mcp.json`.
-   - Client extension: additional behavior loaded through a reverse-domain
+   - Client extension: additional behaviour loaded through a reverse-domain
      namespace owned and documented by a client.
    - Compatibility layer: legacy files or a generated client package retained
      until that client supports the portable or namespaced form.
-   - Distribution metadata: marketplace catalogs, install policy, signing, and
+   - Distribution metadata: marketplace catalogues, install policy, signing, and
      release configuration; these are outside the portable package format.
 
 3. Add the portable manifest.
@@ -61,7 +61,7 @@ Read these references before editing:
    - Use `${PLUGIN_ROOT}` for packaged read-only resources and `${PLUGIN_DATA}`
      for persistent writable state where the MCP schema permits expansion.
 
-5. Preserve non-core behavior.
+5. Preserve non-core behaviour.
    - Use a client extension only when the target client publishes a
      reverse-domain namespace and its semantics.
    - If the client still requires a legacy layout, keep or generate a separate
@@ -74,16 +74,16 @@ Read these references before editing:
    - Validate the portable manifest, every skill, optional MCP configuration,
      and package path containment.
    - Test each supported client independently, including hooks and other
-     compatibility behavior.
-   - Remove legacy artifacts only after the replacement passes the same
-     behavior checks.
+     compatibility behaviour.
+   - Remove legacy artefacts only after the replacement passes the same
+     behaviour checks.
 
 ## Required migration report
 
 Before finishing, report:
 
 - The discovered source format and target clients.
-- A mapping from every original artifact to portable core, extension,
+- A mapping from every original artefact to portable core, extension,
   compatibility layer, distribution metadata, or removal.
 - Files added, moved, generated, retained, and intentionally omitted.
 - Validation and client smoke-test results.

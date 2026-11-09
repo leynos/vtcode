@@ -47,9 +47,9 @@ parallel event type in a consumer crate.
   map ACP requests such as session creation, resume, and prompt, plus cancel
   notifications, to runtime operations and send session updates to the client.
 - `SessionHandle` holds per-session state, cancellation, the thread handle, and
-  its archive. `SessionWorkspaceRuntime` groups the prompt, agent catalog, tool
-  registries, and permission prompter for a canonical workspace; the ACP agent
-  caches these runtimes by workspace.
+  its archive. `SessionWorkspaceRuntime` groups the prompt, agent catalogue,
+  tool registries, and permission prompter for a canonical workspace; the ACP
+  agent caches these runtimes by workspace.
 - ACP handlers drive protocol sequencing and checkpoint session snapshots at
   lifecycle boundaries. Tool handlers request client permission before
   dispatching local calls through the core tool registry, which applies its

@@ -16,7 +16,8 @@ format for tool invocations and results.
   `Serialize` and `Deserialize`.
 - This crate is a leaf dependency -- do not add dependencies on other diapason
   workspace crates (except `diapason-commons` if needed).
-- Schema types are passive data containers with no behavior or validation logic.
+- Schema types are passive data containers with no behaviour or validation
+  logic.
 - Uses `rmcp` for MCP schema compatibility.
 - Use `with_max_output_tokens_parameter` when exposing object-shaped function
   schemas to models; execution validation belongs in `diapason-core`.

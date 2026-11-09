@@ -49,7 +49,7 @@ impl NoOpPatchGuard {
     /// states, so a materially different retry — or the same retry after
     /// productive work — starts over instead of escalating.
     ///
-    /// `canonical_operations` must be the normalised form of `patch`: raw
+    /// `canonical_operations` must be the normalized form of `patch`: raw
     /// transport text and path aliases would otherwise hash differently and
     /// defeat the repeat detection.
     pub(super) fn observe(
@@ -92,7 +92,7 @@ impl NoOpPatchGuard {
 
 /// Hash the identity of a no-op request.
 ///
-/// Covers the patch contents, the canonicalised paths, and the before/after
+/// Covers the patch contents, the canonicalized paths, and the before/after
 /// state of every touched path, so two requests share a signature only when
 /// repeating one would be genuinely identical. See [`encode_patch`] and
 /// [`encode_states`] for the encoding.

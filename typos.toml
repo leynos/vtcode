@@ -70,6 +70,24 @@ extend-ignore-re = [
     '"(?:artifact_paths|last_artifact_path|history_artifact_path|last_artifact_dir|artifacts|canceled|tool_catalog_epoch|previous_catalog_hash|new_catalog_hash|next_catalog_epoch|catalog\.json)"',
     '\.(?:fg_color|bg_color|get_fg_color|get_bg_color)\(',
     '`(?:artifact_paths|last_artifact_path|history_artifact_path|last_artifact_dir|artifacts|canceled|tool_catalog_epoch|previous_catalog_hash|new_catalog_hash|next_catalog_epoch|catalog\.json|tool_catalog|stable_prefix\+tool_catalog|rule-catalog|safe_colors_only|color_scheme_mode|skeptic_panel)`',
+    # The pre-rename runtime prompt header is retained so a prompt refresh can
+    # remove it. The persisted `[behavior]` table and the subagent schema's
+    # `color` key are fixed on the wire, so match only their documented,
+    # serialized or asserted forms rather than the bare words.
+    '\[Runtime Tool Catalog\]',
+    '\[behavior\](?:`|"\))',
+    '(?:get|remove|insert)\("color"',
+    '"color"[[:space:]]*:',
+    'color:[[:space:]]*(?:blue|cyan|magenta|violet|orchid|#[0-9a-fA-F]{6})',
+    '"total_skills_analyzed"',
+    # The legacy `analyze` CLI alias and the historical `Analyze` ToolIntent
+    # wire name are compatibility contracts; each expression matches the
+    # comparison, dispatch or fixture that must accept the old spelling.
+    '"analyse"[[:space:]]*\|[[:space:]]*"analyze"',
+    '\["analyse", "analyze"\]',
+    'generate_command_man_page\("analyze"\)',
+    'json!\(\{"Analyze": "config"\}\)',
+    '\("Analyze the config file please", "analyze"\)',
     # Concrete third-party configuration and terminal protocol syntax.
     '\[color(?:[[:space:]]|"|\])',
     '\[\[?colors(?:[.\]])',
@@ -79,7 +97,7 @@ extend-ignore-re = [
     # Legacy public command and published-skill identifiers remain input
     # compatibility contracts; each expression includes its calling syntax.
     'visible_alias[[:space:]]*=[[:space:]]*"analyze"',
-    'Cli::(?:try_)?parse_from\(\["vtcode", "analyze", "security"\]\)',
+    'Cli::(?:try_)?parse_from\(\["(?:vtcode|diapason)", "analyze", "security"\]\)',
     'vtcode\.runAnalyze',
     # Exact compatibility tokens: the historical ACP security deny-list entry
     # and a legacy skill metadata keyword.
@@ -90,7 +108,7 @@ extend-ignore-re = [
     '"hte"[[:space:]]*↔[[:space:]]*"the"',
     '"git diff -o(?:out|output)(?:\.txt)?"',
     '\[Oo\]utput',
-    'vtcode initilize',
+    '(?:vtcode|diapason) initilize',
     'branc\.\.\.',
     '61baed0db',
     # The retained planning-language compatibility values are full phrases,
@@ -110,7 +128,7 @@ extend-ignore-re = [
     '(?:set_value|get_value)\("behavior\.max_input_lines"',
     '"(?:behavior\.max_input_lines|includeArtifacts|task-artifact)"',
     'Wire key `(?:artifact|includeArtifacts|behavior)` is fixed by the A2A schema',
-    '(?:color-eyre|VTCODE_COLOR_EYRE|(?:screen|tmux)-256color|truecolor)',
+    '(?:color-eyre|(?:VTCODE|DIAPASON)_COLOR_EYRE|(?:screen|tmux)-256color|truecolor)',
     '(?:prefers-color-scheme|color-scheme):[[:space:]]*(?:dark|light)',
     '(?:(?:^|[;{])color:[[:space:]]*(?:var\(|#[[:xdigit:]]|inherit))',
     '(?:align|justify)-items:[[:space:]]*center',
@@ -275,6 +293,21 @@ extend-ignore-re = [
     'ColourSelection[[:space:]]*\{[[:space:]]*color:[[:space:]]*ColorChoice::',
     'args\.colour\.color',
     'ToolDefinition::google_maps\(json!\(\{"center"',
+]
+
+[type.md]
+# Migration notes and guides document pre-rename spellings as their subject.
+# Each expression matches rename-documentation syntax only: a removed name in a
+# table's first column, an explicit "becomes"/"to"/arrow rename, the
+# canonical-wire-key sentence, or a named former Rust type.
+extend-ignore-re = [
+    '(?m)^\|[^|\n]*`[^`\n]*`[^|\n]*\|',
+    '(?m)^\|[[:space:]]*`color`[[:space:]]*\|',
+    '`[^`\n]*`[[:space:]]*becomes[[:space:]]*`[^`\n]*`',
+    '`[^`\n]*`[[:space:]]*→[[:space:]]*`[^`\n]*`',
+    '`(?:catalog|color)` to `[^`\n]*`',
+    'canonical `(?:catalog|color)` spelling',
+    'formerly named `BehaviorConfig`',
 ]
 
 [type.py]

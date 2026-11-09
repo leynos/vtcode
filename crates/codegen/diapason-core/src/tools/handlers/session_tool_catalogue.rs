@@ -1,4 +1,4 @@
-//! Builds the model-facing tool catalog for a session from provider capabilities and tool policy.
+//! Builds the model-facing tool catalogue for a session from provider capabilities and tool policy.
 use crate::config::ModelId;
 use crate::config::ToolDocumentationMode;
 use crate::config::constants::tools;
@@ -991,8 +991,8 @@ mod tests {
         let registration = registration(name)
             .with_description("Test tool")
             .with_parameter_schema(empty_object_schema());
-        let catalog = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
-        catalog.public_tool_names(SessionToolsConfig::full_public(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
+        catalogue.public_tool_names(SessionToolsConfig::full_public(
             surface,
             CapabilityLevel::CodeSearch,
             ToolDocumentationMode::Full,
@@ -1488,8 +1488,8 @@ mod tests {
                 .with_parameter_schema(empty_object_schema()),
         ];
 
-        let catalog = SessionToolCatalogue::rebuild_from_registrations(registrations);
-        let names = catalog.public_tool_names(
+        let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
+        let names = catalogue.public_tool_names(
             SessionToolsConfig::full_public(
                 SessionSurface::Acp,
                 CapabilityLevel::CodeSearch,
