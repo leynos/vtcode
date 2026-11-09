@@ -815,12 +815,13 @@ tests cover every linter exit status and fail-closed download/checksum paths.
 CI uses the absolute Make binary, preserves its four-job build limit, and
 triggers on Makefile changes as well.
 
-The primary Rust toolchain, existing workflow security policy, and job selection
-are preserved. Markdown formatter installation remains a separate layer.
+The primary Rust toolchain, existing workflow security policy, and job
+selection are preserved. Markdown formatter installation remains a separate
+layer.
 
 This layer passed all 13 contract tests, format, lint, build, type-check,
 workspace, and harness gates: 10,094 workspace tests passed with 17 skipped,
 and all 67 harness tests passed. Advisory checks passed in warning mode;
-optional ast-grep was unavailable. The same four rustdoc warnings remain.
-Final contracts, workflow linters, and document checks include the CI job-limit
+optional ast-grep was unavailable. The same four rustdoc warnings remain. Final
+contracts, workflow linters, and document checks include the CI job-limit
 correction and this evidence update.
