@@ -460,7 +460,7 @@ impl Service<RoleClient> for ElicitationClientService {
         <LoggingClientHandler as Service<RoleClient>>::handle_notification(&self.handler, notification, context).await
     }
 
-    fn get_info(&self) -> rmcp::model::ClientInfo {
+    fn get_info(&self) -> rmcp::model::ClientConfig {
         <LoggingClientHandler as Service<RoleClient>>::get_info(&self.handler)
     }
 }
@@ -775,14 +775,14 @@ impl ClientHandler for LoggingClientHandler {
         async move {}
     }
 
-    fn get_info(&self) -> rmcp::model::ClientInfo {
+    fn get_info(&self) -> rmcp::model::ClientConfig {
         convert_to_rmcp(self.initialize_params.clone()).unwrap_or_else(|error| {
             warn!(
                 provider = self.provider.as_str(),
                 error = %error,
                 "Failed to convert MCP initialize params; using fallback client info"
             );
-            rmcp::model::ClientInfo::new(Default::default(), super::utils::build_client_implementation())
+            rmcp::model::ClientConfig::new(Default::default(), super::utils::build_client_implementation())
         })
     }
 }
