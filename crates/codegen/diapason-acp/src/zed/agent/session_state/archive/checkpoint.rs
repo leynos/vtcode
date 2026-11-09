@@ -14,7 +14,7 @@ use crate::zed::agent::session_state::ZedAgent;
 use crate::zed::types::SessionHandle;
 
 use super::{
-    CheckpointDurability, SessionArchiveCheckpointReader, missing_persisted_tool_calls,
+    CheckpointDurability, CheckpointReader, SessionArchiveCheckpointReader, missing_persisted_tool_calls,
     required_checkpoint_evidence_violation, required_checkpoint_retention_violation, required_staged_batch_violation,
     staged_tool_call_ids, trace_storage_operation, verify_required_checkpoint_retention,
 };
@@ -89,8 +89,14 @@ impl ZedAgent {
     /// Callers that must not proceed without durable storage use
     /// [`Self::checkpoint_session_required`].
     pub(in crate::zed::agent) async fn checkpoint_session(&self, session: &SessionHandle) -> anyhow::Result<()> {
-        self.checkpoint_session_with_turn_diagnostics(session, None, CheckpointDurability::BestEffort, &[])
-            .await
+        self.checkpoint_session_with_turn_diagnostics(
+            session,
+            None,
+            CheckpointDurability::BestEffort,
+            &[],
+            &SessionArchiveCheckpointReader,
+        )
+        .await
     }
 
     /// Persists the session snapshot and fails unless it reached storage.
@@ -102,26 +108,38 @@ impl ZedAgent {
         &self,
         session: &SessionHandle,
     ) -> anyhow::Result<()> {
-        self.checkpoint_session_with_turn_diagnostics(session, None, CheckpointDurability::Required, &[])
-            .await
+        self.checkpoint_session_with_turn_diagnostics(
+            session,
+            None,
+            CheckpointDurability::Required,
+            &[],
+            &SessionArchiveCheckpointReader,
+        )
+        .await
     }
 
     /// Persists the session snapshot, optionally carrying turn diagnostics.
     ///
     /// `required_evidence` names messages the caller made durable in this
     /// checkpoint beyond the latest staged batch, such as results an archive
-    /// repair just inserted or relocated. Their content, not only their call
-    /// id, must survive compaction.
-    pub(super) async fn checkpoint_session_with_turn_diagnostics(
+    /// repair just inserted or relocated. Their content and position, not only
+    /// their call id, must survive compaction.
+    ///
+    /// `reader` supplies the read-back used to verify the persisted payload.
+    /// Production always passes [`SessionArchiveCheckpointReader`]; tests
+    /// inject a failing reader to observe how the checkpoint boundary reports a
+    /// storage read failure.
+    pub(in crate::zed::agent::session_state) async fn checkpoint_session_with_turn_diagnostics(
         &self,
         session: &SessionHandle,
         turn_diagnostics: Option<SnapshotTurnDiagnostics>,
         durability: CheckpointDurability,
         required_evidence: &[SessionMessage],
+        reader: &dyn CheckpointReader,
     ) -> anyhow::Result<()> {
         trace_storage_operation(
             "checkpoint",
-            self.checkpoint_session_inner(session, turn_diagnostics, durability, required_evidence),
+            self.checkpoint_session_inner(session, turn_diagnostics, durability, required_evidence, reader),
         )
         .await
     }
@@ -133,6 +151,7 @@ impl ZedAgent {
         turn_diagnostics: Option<SnapshotTurnDiagnostics>,
         durability: CheckpointDurability,
         required_evidence: &[SessionMessage],
+        reader: &dyn CheckpointReader,
     ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
             if durability == CheckpointDurability::Required {
@@ -198,6 +217,15 @@ impl ZedAgent {
             Vec::new()
         };
         let messages = snapshot.messages.iter().map(SessionMessage::from).collect::<Vec<_>>();
+        // Repaired evidence is verified positionally: compaction only removes
+        // messages from the front, so this uncompacted payload fixes which
+        // persisted slot each evidence message must still occupy. Copy it only
+        // when a caller supplied evidence that needs the check.
+        let history_messages = if required_evidence.is_empty() {
+            Vec::new()
+        } else {
+            messages.clone()
+        };
         let recent_start = messages.len().saturating_sub(20);
         let recent_messages = messages.iter().skip(recent_start).cloned().collect();
         let turn_number = snapshot
@@ -288,6 +316,7 @@ impl ZedAgent {
             if let Some(missing) = required_checkpoint_evidence_violation(
                 CheckpointDurability::Required,
                 required_evidence,
+                &history_messages,
                 &prepared_snapshot.messages,
             ) {
                 return Err(RequiredCheckpointError::new(
@@ -310,11 +339,12 @@ impl ZedAgent {
             && (!retained_call_ids.is_empty() || !required_evidence.is_empty())
         {
             verify_required_checkpoint_retention(
-                &SessionArchiveCheckpointReader,
+                reader,
                 &persisted_path,
                 &staged_call_ids,
                 &retained_call_ids,
                 required_evidence,
+                &history_messages,
             )
             .await?;
         }

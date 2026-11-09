@@ -141,6 +141,16 @@ from both lower layers.
   histories, concurrent prompt rejections, stale `write_stdin` requests, and
   checkpoint failures. Removed three stray `weave` resolution markers left at
   the end of `session_state/archive.rs`.
+- [x] (2026-11-09) Made repaired-evidence retention positional. Compaction only
+  removes messages from the front, so the persisted payload is a suffix of the
+  uncompacted history; each repaired message now has to occupy the one slot
+  that suffix leaves for it. A later batch that reuses a call id with identical
+  or prefix-matching content therefore cannot stand in for dropped evidence,
+  and the `"..."` truncation marker is handled explicitly instead of treating
+  either side as the other's prefix. The read-back failure test now drives
+  `checkpoint_session_with_turn_diagnostics` with an injected reader, and the
+  failed repair test seeds an existing archive and asserts its bytes survive
+  both the rejected attempt and the retry.
 
 ## Surprises & discoveries
 
@@ -739,5 +749,27 @@ multiple batches with reused ids and a dropped staged request, and also covers
 the retained case. A byte-identical duplicate batch remains indistinguishable
 from a retained one by content alone, and the archive repair path already
 rejects the duplicated-result history as ambiguous before any checkpoint runs.
-`cargo nextest run -p diapason-acp` passes 380 of 380 tests. Validation of this
-round through the full commit gate is in progress.
+`cargo nextest run -p diapason-acp` passes 380 of 380 tests.
+
+The final round closed the remaining retention objection. `shrink_string`
+appends `"..."`, so the earlier prefix-tolerant comparison was wrong for shrunk
+values in both directions; the matcher now strips one trailing marker and
+requires the persisted text to be a prefix of the repaired text. More
+importantly, content equality by itself could not prove which batch survived,
+so retention became positional: `missing_persisted_evidence` takes the
+uncompacted history as well as the persisted payload, derives how many messages
+front trimming removed, and requires each repaired message to sit in the slot
+its history position maps to. A later result for a reused id lives in a
+different slot, so identical and prefix-matching results both fail closed
+without an archive-format change. `history_messages` is copied only when a
+repair supplies evidence, and the read-back seam accepts a boxed-future reader
+so the failure test can run through `checkpoint_session_with_turn_diagnostics`
+rather than the verifier alone. Property tests cover reused ids with different,
+identical and prefix-matching results, random front-trim boundaries, and
+ellipsis truncation; the failed repair test now begins with an existing archive
+and asserts its bytes are unchanged after the rejected attempt and after the
+retry.
+
+The full local commit gate passed on this round: `make check-fmt`, `make lint`,
+`make typecheck` and `make test` each exited 0, with 10,657 tests passing and
+22 skipped.

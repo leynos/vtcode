@@ -19,8 +19,8 @@ use crate::zed::session::AcpSessionWorkspace;
 use crate::zed::types::{SessionHandle, lock_poison_error};
 
 use super::{
-    CheckpointDurability, WorkspaceMatch, canonical_workspace_match, repair_archived_tool_calls,
-    session_listing_workspace_match, trace_storage_operation,
+    CheckpointDurability, SessionArchiveCheckpointReader, WorkspaceMatch, canonical_workspace_match,
+    repair_archived_tool_calls, session_listing_workspace_match, trace_storage_operation,
 };
 
 impl ZedAgent {
@@ -131,6 +131,7 @@ impl ZedAgent {
                     preserved_turn_diagnostics,
                     CheckpointDurability::Required,
                     &recovery.evidence_messages,
+                    &SessionArchiveCheckpointReader,
                 )
                 .await
             {

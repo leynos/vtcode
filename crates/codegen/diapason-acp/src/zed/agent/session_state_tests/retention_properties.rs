@@ -3,7 +3,7 @@ use super::super::archive::{
     CheckpointDurability, missing_persisted_evidence, missing_persisted_tool_calls, missing_staged_batch_calls,
     required_checkpoint_evidence_violation, required_staged_batch_violation,
 };
-use diapason_core::llm::provider::{Message, MessageRole, ToolCall};
+use diapason_core::llm::provider::{Message, MessageContent, MessageRole, ToolCall};
 use diapason_core::utils::session_archive::SessionMessage;
 use proptest::prelude::*;
 
@@ -116,6 +116,35 @@ proptest! {
     }
 }
 
+/// The compactor's ellipsis-truncated evidence still verifies in its slot.
+///
+/// `shrink_string` keeps a prefix and appends `"..."`, so the retained slot
+/// holds a shortened form of the repaired result rather than the whole text.
+#[test]
+fn truncated_repaired_evidence_is_retained_in_its_slot() {
+    let id = "truncated-evidence-call".to_string();
+    let content = "a".repeat(64);
+    let history = vec![
+        request_for(&id),
+        SessionMessage::with_tool_call_id(MessageRole::Tool, content.as_str(), Some(id)),
+    ];
+    let evidence = history[1].clone();
+    let mut persisted = history.clone();
+    persisted[1].content = MessageContent::Text(format!("{}...", "a".repeat(29)));
+
+    assert!(
+        missing_persisted_evidence(std::slice::from_ref(&evidence), &history, &persisted).is_empty(),
+        "an ellipsis-truncated copy in the evidence slot must verify"
+    );
+
+    persisted[1].content = MessageContent::Text("unrelated truncated text...".to_string());
+    assert_eq!(
+        missing_persisted_evidence(std::slice::from_ref(&evidence), &history, &persisted),
+        vec![evidence.tool_call_id.as_deref().expect("evidence call id").to_string()],
+        "content that is not a truncation of the evidence must not verify"
+    );
+}
+
 /// Builds one assistant request for `call_id`.
 fn request_for(call_id: &str) -> SessionMessage {
     SessionMessage::from(&Message::assistant_with_tools(
@@ -140,8 +169,8 @@ proptest! {
     /// completed batch reuses the repaired call id.
     ///
     /// The later batch requests and answers the id, so the ordered per-id check
-    /// and the batch check both pass. Only the evidence content shows that the
-    /// repaired placeholder is gone.
+    /// and the batch check both pass. Only the evidence's position shows that
+    /// the repaired placeholder is gone.
     #[test]
     fn dropped_repaired_evidence_is_rejected_despite_reused_ids(slot in 0u8..4) {
         let id = call_id(slot);
@@ -164,21 +193,97 @@ proptest! {
             "the later batch satisfies the batch check"
         );
         prop_assert_eq!(
-            missing_persisted_evidence(std::slice::from_ref(&placeholder), compacted),
+            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, compacted),
             vec![id.clone()]
         );
         prop_assert_eq!(
             required_checkpoint_evidence_violation(
                 CheckpointDurability::Required,
                 std::slice::from_ref(&placeholder),
+                &history,
                 compacted,
             ),
             Some(1)
         );
         prop_assert!(
-            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history).is_empty(),
+            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, &history).is_empty(),
             "an uncompacted history retains the repaired evidence"
         );
+    }
+
+    /// A later result with the identical call id and identical content cannot
+    /// stand in for dropped repaired evidence.
+    ///
+    /// Content equality and prefix tolerance both accept the later message; only
+    /// its position shows that it is a different result.
+    #[test]
+    fn identical_later_result_does_not_replace_dropped_evidence(slot in 0u8..4) {
+        let id = call_id(slot);
+        let placeholder = repaired_placeholder(&id);
+        let identical_later_result = placeholder.clone();
+        let history = vec![
+            request_for(&id),
+            placeholder.clone(),
+            SessionMessage::from(&Message::user("continue".to_string())),
+            request_for(&id),
+            identical_later_result,
+        ];
+        let compacted = &history[2..];
+
+        prop_assert_eq!(
+            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, compacted),
+            vec![id]
+        );
+    }
+
+    /// A later result that starts with the repaired result's text cannot stand
+    /// in for dropped repaired evidence.
+    #[test]
+    fn prefix_matching_later_result_does_not_replace_dropped_evidence(slot in 0u8..4) {
+        let id = call_id(slot);
+        let placeholder = repaired_placeholder(&id);
+        let later_result = SessionMessage::with_tool_call_id(
+            MessageRole::Tool,
+            "{\"status\":\"incomplete\",\"detail\":\"later\"}",
+            Some(id.clone()),
+        );
+        let history = vec![
+            request_for(&id),
+            placeholder.clone(),
+            SessionMessage::from(&Message::user("continue".to_string())),
+            request_for(&id),
+            later_result,
+        ];
+        let compacted = &history[2..];
+
+        prop_assert_eq!(
+            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, compacted),
+            vec![id]
+        );
+    }
+
+    /// Front trimming retains evidence exactly when it survives the boundary.
+    #[test]
+    fn evidence_retention_follows_the_compaction_boundary(
+        dropped in 0usize..6,
+        position in 0usize..6,
+        slot in 0u8..4,
+    ) {
+        let id = call_id(slot);
+        let placeholder = repaired_placeholder(&id);
+        let mut history = (0..6)
+            .map(|index| SessionMessage::from(&Message::user(format!("filler {index}"))))
+            .collect::<Vec<_>>();
+        history.insert(position, placeholder.clone());
+        let dropped = dropped.min(history.len());
+        let persisted = &history[dropped..];
+
+        let missing = missing_persisted_evidence(std::slice::from_ref(&placeholder), &history, persisted);
+        if position < dropped {
+            prop_assert_eq!(missing, vec![id]);
+        } else {
+            prop_assert!(missing.is_empty(), "evidence inside the retained suffix must verify");
+        }
     }
 
     /// A result that precedes every request for its id does not retain the

@@ -205,7 +205,9 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
 /// A repair checkpoint fails when compaction drops its repaired evidence.
 ///
 /// The staged batch alone is not enough: this archive's last batch survives
-/// compaction, and only the repaired earlier call is trimmed away.
+/// compaction, and only the repaired earlier call is trimmed away. The
+/// pre-write gate rejects the payload, so the archive already on disk keeps its
+/// exact bytes and a retry fails again.
 #[tokio::test]
 async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
     let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
@@ -217,6 +219,11 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
     listing.snapshot.messages = repaired_evidence_under_compaction(32 * 1024);
     listing.snapshot.total_messages = listing.snapshot.messages.len();
     let archive_path = listing.path.clone();
+    // The interrupted session already has an archive from its last checkpoint.
+    // It is over this run's budget, which is exactly why the repaired payload
+    // cannot retain the evidence.
+    let existing_archive = serde_json::to_vec(&listing.snapshot).expect("serialize the existing archive");
+    fs::write(&archive_path, &existing_archive).expect("seed the existing repaired-session archive");
     let agent = build_agent(temp.path()).await;
 
     let error = match agent
@@ -244,7 +251,11 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
         Some(CheckpointFailure::RetentionDropped),
         "dropped repaired evidence must carry the bounded retention category"
     );
-    assert!(!archive_path.exists(), "a rejected repair checkpoint must leave no compacted archive behind");
+    assert_eq!(
+        fs::read(&archive_path).expect("read the existing archive after the rejected checkpoint"),
+        existing_archive,
+        "a rejected repair checkpoint must leave the existing archive bytes unchanged"
+    );
 
     // A retry must fail too: because the rejected checkpoint wrote nothing,
     // the second attempt replays the same repair and rejects it again rather
@@ -264,6 +275,11 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
     assert!(
         retry.is_err(),
         "a retry from the unchanged archive must fail instead of resuming without the repaired evidence"
+    );
+    assert_eq!(
+        fs::read(&archive_path).expect("read the existing archive after the retry"),
+        existing_archive,
+        "a retried rejected checkpoint must leave the existing archive bytes unchanged"
     );
 }
 

@@ -8,6 +8,7 @@ use super::*;
 use crate::zed::agent::session_state::{CheckpointFailure, RequiredCheckpointError};
 use assert_fs::TempDir;
 use diapason_core::llm::provider::{MessageRole, ToolCall};
+use futures::future::BoxFuture;
 use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::sync::{Arc, Mutex};
@@ -435,29 +436,113 @@ fn required_checkpoint_accepts_a_snapshot_that_retains_the_staged_batch() {
 struct FailingCheckpointReader;
 
 impl CheckpointReader for FailingCheckpointReader {
-    async fn read_persisted_messages(&self, _persisted_path: &Path) -> anyhow::Result<Vec<SessionMessage>> {
-        Err(anyhow::anyhow!("checkpoint storage unavailable"))
+    fn read_persisted_messages<'a>(
+        &'a self,
+        _persisted_path: &'a Path,
+    ) -> BoxFuture<'a, anyhow::Result<Vec<SessionMessage>>> {
+        Box::pin(async { Err(anyhow::anyhow!("checkpoint storage unavailable")) })
     }
 }
 
-/// A required checkpoint fails and retains the cause when its read-back fails.
-#[tokio::test]
-async fn required_checkpoint_propagates_a_checkpoint_read_failure() {
-    let staged = vec!["staged-read-failure-call".to_string()];
-
-    let error = verify_required_checkpoint_retention(
-        &FailingCheckpointReader,
-        Path::new("/nonexistent/checkpoint.json"),
-        &staged,
-        &staged,
-        &[],
+/// Builds a session handle whose thread holds one staged tool batch.
+fn staged_checkpoint_handle(
+    agent: &ZedAgent,
+    workspace: &Path,
+    archive_path: &Path,
+    identifier: &str,
+    staged_id: &str,
+) -> SessionHandle {
+    let metadata =
+        SessionArchiveMetadata::new("diapason", workspace.to_string_lossy(), "gpt-5.4", "openai", "test", "low");
+    let mut listing = session_listing(identifier, workspace, metadata.clone(), Vec::new());
+    listing.path = archive_path.to_path_buf();
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                staged_id.to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response(staged_id.to_string(), "result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive = SessionArchive::resume_from_listing(&listing, metadata);
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+    agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            session_id: acp::SessionId::new(identifier),
+            archive: Some(archive),
+            trigger: SessionStartTrigger::Resume,
+            workspace_runtime: None,
+            workspace_lease: None,
+        },
     )
-    .await
-    .expect_err("a storage failure must fail the required checkpoint");
+}
+
+/// A read-back failure at the production checkpoint boundary is categorized.
+///
+/// The snapshot is written first, so the archive directory holds exactly the
+/// committed payload; the failure is the read-back that must prove retention.
+/// The staged batch is not marked as write-ahead protected, because the
+/// checkpoint did not establish that it is durable.
+#[tokio::test]
+async fn required_checkpoint_reports_a_read_back_failure_at_the_checkpoint_boundary() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("temporary directory for the boundary read-back test");
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).expect("create the isolated ACP session directory");
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+    let agent = build_agent(temp.path()).await;
+    let staged_id = "staged-read-back-call-0001";
+    let identifier = "required-read-back-failure";
+    let handle = staged_checkpoint_handle(
+        &agent,
+        temp.path(),
+        &session_dir.join(format!("{identifier}.json")),
+        identifier,
+        staged_id,
+    );
+
+    let error = agent
+        .checkpoint_session_with_turn_diagnostics(
+            &handle,
+            None,
+            CheckpointDurability::Required,
+            &[],
+            &FailingCheckpointReader,
+        )
+        .await
+        .expect_err("a storage read failure must fail the required checkpoint");
 
     assert!(
         format!("{error:#}").contains("checkpoint storage unavailable"),
         "the reader's storage failure must be retained: {error:#}"
+    );
+    assert_eq!(
+        error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map(RequiredCheckpointError::failure),
+        Some(CheckpointFailure::ReadBackFailed),
+        "a read-back failure must carry the bounded read-back category"
+    );
+    assert!(
+        handle.data.lock().expect("session data lock").write_ahead_call_ids.is_empty(),
+        "a checkpoint whose retention was not proven must not protect its staged batch"
+    );
+    let entries = fs::read_dir(&session_dir)
+        .expect("list the archive directory")
+        .map(|entry| entry.expect("read an archive directory entry").file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        entries,
+        vec![std::ffi::OsString::from("required-read-back-failure.json")],
+        "the write must commit before the read-back fails, leaving only the checkpoint file"
     );
 }
 
@@ -503,6 +588,7 @@ async fn required_checkpoint_reader_leaves_the_persisted_archive_unchanged() {
         std::slice::from_ref(&staged_id),
         std::slice::from_ref(&staged_id),
         &[],
+        &[],
     )
     .await
     .expect("a retained staged batch must verify");
@@ -533,17 +619,23 @@ async fn production_checkpoint_reader_reports_a_missing_archive() {
     );
 }
 
-/// A storage failure at the production boundary is a read-back failure.
+/// The verifier maps a missing production archive to a read-back failure.
 #[tokio::test]
 async fn required_checkpoint_reports_a_production_read_back_failure() {
     let temp = TempDir::new().expect("temporary directory for the read-back category test");
     let missing_path = temp.path().join("absent-checkpoint.json");
     let staged = vec!["read-back-category-call".to_string()];
 
-    let error =
-        verify_required_checkpoint_retention(&SessionArchiveCheckpointReader, &missing_path, &staged, &staged, &[])
-            .await
-            .expect_err("a missing archive must fail the required checkpoint");
+    let error = verify_required_checkpoint_retention(
+        &SessionArchiveCheckpointReader,
+        &missing_path,
+        &staged,
+        &staged,
+        &[],
+        &[],
+    )
+    .await
+    .expect_err("a missing archive must fail the required checkpoint");
 
     let failure = error
         .downcast_ref::<RequiredCheckpointError>()
