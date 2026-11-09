@@ -1376,7 +1376,7 @@ mod tests {
         });
 
         let envelope: SessionMemoryEnvelope =
-            serde_json::from_value(legacy_envelope).expect("legacy history_artifact_path fixture should deserialize");
+            serde_json::from_value(legacy_envelope).expect("legacy `history_artifact_path` fixture should deserialize");
         assert_eq!(
             envelope.history_artefact_path.as_deref(),
             Some("/tmp/legacy-history.json"),

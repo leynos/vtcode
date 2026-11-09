@@ -20,12 +20,12 @@ verification.
 | Orchestration  | `executor` — `EvalExecutor` trait + `run_suite` (pure, I/O-free)                          |
 | Environment    | `environment` — `EnvironmentProbe` + `CommandProbe`, `FileExistsProbe`, `GitCleanProbe`   |
 | Reporting      | `report` — `EvalReport`, `SuiteReport`, `TaskReport`, `to_markdown`, `build_task_report`  |
-| Trace analysis | `trace_analyzer` — privacy-preserving JSONL aggregate summaries                           |
+| Trace analysis | `trace_analyser` — privacy-preserving JSONL aggregate summaries                           |
 
 ## Rules
 
 - `lib.rs` re-exports the public facade: types from `task`/`suite`/`metric`/
-  `report`, `executor::{EvalExecutor, run_suite}`, and `trace_analyzer`
+  `report`, `executor::{EvalExecutor, run_suite}`, and `trace_analyser`
   summaries.
 - `run_suite` depends only on the `EvalExecutor` trait — no file I/O, config,
   or trust checks. Keep it that way; the caller owns I/O.
@@ -44,6 +44,6 @@ verification.
 - Environment verification (`EnvironmentProbe`) is a separate concern from
   outcome grading — `EvalExecutor` implementations decide how/whether to apply
   probes before returning `RunOutcome`.
-- `trace_analyzer` retains aggregate facts only; summaries must not include
+- `trace_analyser` retains aggregate facts only; summaries must not include
   command arguments, file contents, or tool output. Its public facade delegates
   bounded streaming and metric accounting to private submodules.

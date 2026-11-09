@@ -1,4 +1,4 @@
-//! Tests for explicit session configuration override behavior.
+//! Tests for explicit session configuration override behaviour.
 
 use super::*;
 

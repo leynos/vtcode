@@ -100,9 +100,9 @@ Providers:
 ### Real-time Code Analysis
 
 ```rust
-// Diapason analyzes code using Tree-Sitter + LLM
+// Diapason analyses code using Tree-Sitter + LLM
 // Provides semantic understanding beyond simple text matching
-let result = analyze_code_with_hf(code_snippet).await?;
+let result = analyse_code_with_hf(code_snippet).await?;
 ```
 
 ### Streaming Responses
