@@ -24,9 +24,13 @@
 repair shared by live turns and archive attach. Its contracts:
 
 - `stage_tool_calls` writes one incomplete result per call before execution, and
-  the write-ahead checkpoint must succeed before any tool runs. "Succeed" means
-  the snapshot was persisted: a disabled or throttled history write fails the
-  turn instead of running tools it could not recover.
+  the write-ahead checkpoint must succeed before any tool runs. Persistence
+  alone is not success: a disabled or throttled history write fails the turn
+  instead of running tools it could not recover.
+- A required checkpoint also verifies retention. A compacted payload that drops
+  the staged tool batch, or any evidence a repair just made durable, is
+  rejected before it replaces the archive, and the persisted file at the exact
+  written path is read back and checked again.
 - `replace_tool_results` replaces the latest staged placeholder for each reused
   call identifier, so a completed batch is never left partially resolved.
 - `repair_unresolved_tool_calls` inserts placeholders for legacy archives,

@@ -898,3 +898,12 @@ job. The sixth run is green on all four gates against `a280bdce4` plus those
 edits: `make check-fmt` (7 s), `make lint` (178 s, shell, policies, clippy and
 `cargo doc`), `make typecheck` (71 s) and `make test` (278 s; 10,633 tests run,
 10,633 passed, 22 skipped). The change set is published as `15b1895ff`.
+
+2026-11-09: The protocol-level tests in the pre-merge
+`Testing (Unit And Behavioural)` row are implemented and green in
+`crates/codegen/diapason-acp/src/zed/agent/handlers/tests/prompt/archive_recovery.rs`.
+`load_and_prompt_continue_from_a_repaired_interrupted_archive` loads a
+repaired archive and continues it over a duplex channel without replaying its
+mutating call, and `ambiguous_archive_load_fails_and_preserves_the_archive`
+rejects the load with the archive bytes unchanged. The `diapason-acp` suite
+covering them passes in full.

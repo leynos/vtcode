@@ -11,6 +11,7 @@
 use super::super::types::ToolCallResult;
 use diapason_core::core::threads::ThreadRuntimeHandle;
 use diapason_core::llm::provider::{Message, MessageRole, ToolCall};
+use diapason_core::utils::session_archive::SessionMessage;
 use serde_json::json;
 use std::collections::HashSet;
 
@@ -21,12 +22,14 @@ pub(super) struct RecoveryReport {
     pub(super) repaired_calls: usize,
     pub(super) relocated_calls: usize,
     pub(super) truncated_prefix: usize,
-    /// Call identifiers whose evidence this repair inserted or relocated.
+    /// Result messages whose evidence this repair inserted or relocated.
     ///
-    /// The repair checkpoint must retain these calls. The staged batch alone
-    /// is not enough: a repair can touch an earlier batch, and compaction must
-    /// not drop the evidence the repair just made durable.
-    pub(super) evidence_call_ids: Vec<String>,
+    /// The repair checkpoint must retain these messages. The staged batch
+    /// alone is not enough: a repair can touch an earlier batch, and
+    /// compaction must not drop the evidence the repair just made durable.
+    /// The message content, not only the call id, distinguishes the evidence
+    /// from a later batch that reuses the id.
+    pub(super) evidence_messages: Vec<SessionMessage>,
 }
 
 impl RecoveryReport {
@@ -123,7 +126,7 @@ pub(super) fn repair_unresolved_tool_calls(
 ) -> Result<RecoveryReport, AmbiguousToolResultHistory> {
     let mut repaired_calls = 0;
     let mut relocated_calls = 0;
-    let mut evidence_call_ids = Vec::new();
+    let mut evidence_messages = Vec::new();
     let mut message_index = 0;
 
     // Archive snapshots are compacted from the front
@@ -150,7 +153,7 @@ pub(super) fn repair_unresolved_tool_calls(
         let group_end = tool_result_group_end(messages, message_index + 1);
 
         relocated_calls +=
-            relocate_unique_late_results(messages, message_index, group_end, &calls, &mut evidence_call_ids);
+            relocate_unique_late_results(messages, message_index, group_end, &calls, &mut evidence_messages);
         let group_end = tool_result_group_end(messages, message_index + 1);
         let completed_ids = completed_tool_call_ids(messages, message_index + 1, group_end);
 
@@ -158,8 +161,8 @@ pub(super) fn repair_unresolved_tool_calls(
             .iter()
             .filter(|call| !completed_ids.contains(call.id.as_str()))
             .collect::<Vec<_>>();
-        evidence_call_ids.extend(missing_calls.iter().map(|call| call.id.clone()));
         let missing = missing_calls.into_iter().map(incomplete_tool_result).collect::<Vec<_>>();
+        evidence_messages.extend(missing.iter().map(SessionMessage::from));
         repaired_calls += missing.len();
         let missing_count = missing.len();
         drop(messages.splice(group_end..group_end, missing));
@@ -167,13 +170,17 @@ pub(super) fn repair_unresolved_tool_calls(
     }
 
     reject_ambiguous_tool_result_history(messages)?;
-    evidence_call_ids.sort();
-    evidence_call_ids.dedup();
+    let mut unique_evidence = Vec::with_capacity(evidence_messages.len());
+    for message in evidence_messages {
+        if !unique_evidence.contains(&message) {
+            unique_evidence.push(message);
+        }
+    }
     Ok(RecoveryReport {
         repaired_calls,
         relocated_calls,
         truncated_prefix,
-        evidence_call_ids,
+        evidence_messages: unique_evidence,
     })
 }
 
@@ -238,7 +245,7 @@ fn relocate_unique_late_results(
     assistant_index: usize,
     contiguous_end: usize,
     calls: &[ToolCall],
-    evidence_call_ids: &mut Vec<String>,
+    evidence_messages: &mut Vec<SessionMessage>,
 ) -> usize {
     let mut relocated = 0;
     let mut result_end = contiguous_end;
@@ -272,9 +279,11 @@ fn relocate_unique_late_results(
 
         let result = messages.remove(*result_index);
         messages.insert(result_end, result);
+        if let Some(evidence) = messages.get(result_end) {
+            evidence_messages.push(SessionMessage::from(evidence));
+        }
         result_end += 1;
         relocated += 1;
-        evidence_call_ids.push(call.id.clone());
     }
 
     debug_assert!(

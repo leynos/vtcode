@@ -130,7 +130,7 @@ impl ZedAgent {
                     &handle,
                     preserved_turn_diagnostics,
                     CheckpointDurability::Required,
-                    &recovery.evidence_call_ids,
+                    &recovery.evidence_messages,
                 )
                 .await
             {

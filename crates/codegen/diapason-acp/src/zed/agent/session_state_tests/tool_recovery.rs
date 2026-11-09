@@ -6,6 +6,7 @@
 use super::super::archive::repair_archived_tool_calls;
 use super::archive::archived_listing;
 use super::*;
+use crate::zed::agent::session_state::{CheckpointFailure, RequiredCheckpointError};
 use crate::zed::session::AcpSessionWorkspace;
 use assert_fs::TempDir;
 use diapason_core::core::threads::messages_from_session_listing;
@@ -235,6 +236,13 @@ async fn repair_checkpoint_fails_when_compaction_drops_repaired_evidence() {
     assert!(
         format!("{error:#}").contains("dropped 1 staged tool call"),
         "the failure must name the dropped repaired evidence: {error:#}"
+    );
+    assert_eq!(
+        error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map(RequiredCheckpointError::failure),
+        Some(CheckpointFailure::RetentionDropped),
+        "dropped repaired evidence must carry the bounded retention category"
     );
     assert!(!archive_path.exists(), "a rejected repair checkpoint must leave no compacted archive behind");
 

@@ -172,6 +172,7 @@ impl ZedAgent {
                 provider,
                 model,
                 last_tool_call_at: None,
+                write_ahead_call_ids: Vec::new(),
                 auto_compact_suppressed: 0,
                 lifecycle_hooks,
                 session_started: false,

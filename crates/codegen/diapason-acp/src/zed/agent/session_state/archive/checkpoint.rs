@@ -14,9 +14,9 @@ use crate::zed::agent::session_state::ZedAgent;
 use crate::zed::types::SessionHandle;
 
 use super::{
-    CheckpointDurability, SessionArchiveCheckpointReader, required_checkpoint_retention_violation,
-    required_staged_batch_violation, staged_tool_call_ids, trace_storage_operation,
-    verify_required_checkpoint_retention,
+    CheckpointDurability, SessionArchiveCheckpointReader, missing_persisted_tool_calls,
+    required_checkpoint_evidence_violation, required_checkpoint_retention_violation, required_staged_batch_violation,
+    staged_tool_call_ids, trace_storage_operation, verify_required_checkpoint_retention,
 };
 
 /// The bounded reason a required checkpoint failed.
@@ -108,19 +108,20 @@ impl ZedAgent {
 
     /// Persists the session snapshot, optionally carrying turn diagnostics.
     ///
-    /// `required_call_ids` names evidence the caller made durable in this
-    /// checkpoint beyond the latest staged batch, such as calls an archive
-    /// repair just inserted or relocated.
+    /// `required_evidence` names messages the caller made durable in this
+    /// checkpoint beyond the latest staged batch, such as results an archive
+    /// repair just inserted or relocated. Their content, not only their call
+    /// id, must survive compaction.
     pub(super) async fn checkpoint_session_with_turn_diagnostics(
         &self,
         session: &SessionHandle,
         turn_diagnostics: Option<SnapshotTurnDiagnostics>,
         durability: CheckpointDurability,
-        required_call_ids: &[String],
+        required_evidence: &[SessionMessage],
     ) -> anyhow::Result<()> {
         trace_storage_operation(
             "checkpoint",
-            self.checkpoint_session_inner(session, turn_diagnostics, durability, required_call_ids),
+            self.checkpoint_session_inner(session, turn_diagnostics, durability, required_evidence),
         )
         .await
     }
@@ -131,7 +132,7 @@ impl ZedAgent {
         session: &SessionHandle,
         turn_diagnostics: Option<SnapshotTurnDiagnostics>,
         durability: CheckpointDurability,
-        required_call_ids: &[String],
+        required_evidence: &[SessionMessage],
     ) -> anyhow::Result<()> {
         if !history_persistence_enabled() {
             if durability == CheckpointDurability::Required {
@@ -185,7 +186,11 @@ impl ZedAgent {
         };
         let retained_call_ids = if durability == CheckpointDurability::Required {
             let mut ids = staged_call_ids.clone();
-            ids.extend(required_call_ids.iter().cloned());
+            ids.extend(
+                required_evidence
+                    .iter()
+                    .filter_map(|message| message.tool_call_id.as_deref().cloned()),
+            );
             ids.sort();
             ids.dedup();
             ids
@@ -225,10 +230,34 @@ impl ZedAgent {
             return Ok(());
         };
 
+        if durability == CheckpointDurability::BestEffort {
+            // Ordinary transcript checkpoints stay best-effort, but they must
+            // not overwrite the last archive that still holds the live
+            // write-ahead evidence. Skipping the write keeps that file intact;
+            // the next required checkpoint replaces the protected set.
+            let protected_call_ids = session
+                .data
+                .lock()
+                .map_err(|error| write_failure(anyhow::anyhow!("ACP session lock poisoned: {error}")))?
+                .write_ahead_call_ids
+                .clone();
+            if !protected_call_ids.is_empty()
+                && !missing_persisted_tool_calls(&protected_call_ids, &prepared_snapshot.messages).is_empty()
+            {
+                debug!(
+                    protected_calls = protected_call_ids.len(),
+                    "Skipped ACP session checkpoint that would drop write-ahead tool-call evidence"
+                );
+                return Ok(());
+            }
+        }
+
         // A required checkpoint rejects a compacted payload before it replaces
         // the archive on disk. Verifying only after the write would leave the
         // dropped evidence persisted, so a later retry could resume from it.
-        if durability == CheckpointDurability::Required && !retained_call_ids.is_empty() {
+        if durability == CheckpointDurability::Required
+            && (!retained_call_ids.is_empty() || !required_evidence.is_empty())
+        {
             if let Some(missing) = required_staged_batch_violation(
                 CheckpointDurability::Required,
                 &staged_call_ids,
@@ -256,6 +285,20 @@ impl ZedAgent {
                 )
                 .into());
             }
+            if let Some(missing) = required_checkpoint_evidence_violation(
+                CheckpointDurability::Required,
+                required_evidence,
+                &prepared_snapshot.messages,
+            ) {
+                return Err(RequiredCheckpointError::new(
+                    CheckpointFailure::RetentionDropped,
+                    anyhow::anyhow!(
+                        "required ACP session checkpoint dropped repaired evidence for {missing} tool call(s) \
+                         during compaction"
+                    ),
+                )
+                .into());
+            }
         }
 
         let persisted_path = archive
@@ -263,14 +306,26 @@ impl ZedAgent {
             .await
             .map_err(write_failure)?;
         debug!(persistence_outcome = "persisted", "Processed ACP session checkpoint");
-        if durability == CheckpointDurability::Required && !retained_call_ids.is_empty() {
+        if durability == CheckpointDurability::Required
+            && (!retained_call_ids.is_empty() || !required_evidence.is_empty())
+        {
             verify_required_checkpoint_retention(
                 &SessionArchiveCheckpointReader,
                 &persisted_path,
                 &staged_call_ids,
                 &retained_call_ids,
+                required_evidence,
             )
             .await?;
+        }
+        if durability == CheckpointDurability::Required {
+            // Later best-effort checkpoints must not compact this evidence away
+            // until a newer required checkpoint protects its own batch.
+            session
+                .data
+                .lock()
+                .map_err(|error| write_failure(anyhow::anyhow!("ACP session lock poisoned: {error}")))?
+                .write_ahead_call_ids = staged_call_ids;
         }
         Ok(())
     }

@@ -1,6 +1,7 @@
 //! Property coverage for staged-batch retention across compaction boundaries.
 use super::super::archive::{
-    CheckpointDurability, missing_persisted_tool_calls, missing_staged_batch_calls, required_staged_batch_violation,
+    CheckpointDurability, missing_persisted_evidence, missing_persisted_tool_calls, missing_staged_batch_calls,
+    required_checkpoint_evidence_violation, required_staged_batch_violation,
 };
 use diapason_core::llm::provider::{Message, MessageRole, ToolCall};
 use diapason_core::utils::session_archive::SessionMessage;
@@ -111,6 +112,86 @@ proptest! {
         prop_assert_eq!(
             required_staged_batch_violation(CheckpointDurability::Required, &staged, &compacted),
             Some(missing.len())
+        );
+    }
+}
+
+/// Builds one assistant request for `call_id`.
+fn request_for(call_id: &str) -> SessionMessage {
+    SessionMessage::from(&Message::assistant_with_tools(
+        String::new(),
+        vec![ToolCall::function(
+            call_id.to_string(),
+            "read_file".to_string(),
+            "{}".to_string(),
+        )],
+    ))
+}
+
+/// Builds the durable placeholder a repair inserts for an interrupted call.
+fn repaired_placeholder(call_id: &str) -> SessionMessage {
+    SessionMessage::with_tool_call_id(MessageRole::Tool, "{\"status\":\"incomplete\"}", Some(call_id.to_string()))
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    /// Compaction that drops repaired evidence is rejected even when a later
+    /// completed batch reuses the repaired call id.
+    ///
+    /// The later batch requests and answers the id, so the ordered per-id check
+    /// and the batch check both pass. Only the evidence content shows that the
+    /// repaired placeholder is gone.
+    #[test]
+    fn dropped_repaired_evidence_is_rejected_despite_reused_ids(slot in 0u8..4) {
+        let id = call_id(slot);
+        let request = request_for(&id);
+        let placeholder = repaired_placeholder(&id);
+        let later_result = SessionMessage::with_tool_call_id(
+            MessageRole::Tool,
+            "later terminal output",
+            Some(id.clone()),
+        );
+        let history = vec![request.clone(), placeholder.clone(), request, later_result];
+        let compacted = &history[2..];
+
+        prop_assert!(
+            missing_persisted_tool_calls(std::slice::from_ref(&id), compacted).is_empty(),
+            "the later batch satisfies the ordered per-id check"
+        );
+        prop_assert!(
+            missing_staged_batch_calls(std::slice::from_ref(&id), compacted).is_empty(),
+            "the later batch satisfies the batch check"
+        );
+        prop_assert_eq!(
+            missing_persisted_evidence(std::slice::from_ref(&placeholder), compacted),
+            vec![id.clone()]
+        );
+        prop_assert_eq!(
+            required_checkpoint_evidence_violation(
+                CheckpointDurability::Required,
+                std::slice::from_ref(&placeholder),
+                compacted,
+            ),
+            Some(1)
+        );
+        prop_assert!(
+            missing_persisted_evidence(std::slice::from_ref(&placeholder), &history).is_empty(),
+            "an uncompacted history retains the repaired evidence"
+        );
+    }
+
+    /// A result that precedes every request for its id does not retain the
+    /// call, even though the id appears on both sides of the history.
+    #[test]
+    fn a_result_before_its_request_is_not_retained(slot in 0u8..4) {
+        let id = call_id(slot);
+        let result = SessionMessage::from(&Message::tool_response(id.clone(), "result".to_string()));
+        let history = vec![result, request_for(&id)];
+
+        prop_assert_eq!(
+            missing_persisted_tool_calls(std::slice::from_ref(&id), &history),
+            vec![id]
         );
     }
 }

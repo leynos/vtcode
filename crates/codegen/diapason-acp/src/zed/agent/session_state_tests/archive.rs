@@ -5,6 +5,7 @@ use super::super::archive::{
     staged_tool_call_ids, trace_storage_operation, verify_required_checkpoint_retention,
 };
 use super::*;
+use crate::zed::agent::session_state::{CheckpointFailure, RequiredCheckpointError};
 use assert_fs::TempDir;
 use diapason_core::llm::provider::{MessageRole, ToolCall};
 use std::fmt::Write as FmtWrite;
@@ -449,6 +450,7 @@ async fn required_checkpoint_propagates_a_checkpoint_read_failure() {
         Path::new("/nonexistent/checkpoint.json"),
         &staged,
         &staged,
+        &[],
     )
     .await
     .expect_err("a storage failure must fail the required checkpoint");
@@ -500,12 +502,154 @@ async fn required_checkpoint_reader_leaves_the_persisted_archive_unchanged() {
         &archive_path,
         std::slice::from_ref(&staged_id),
         std::slice::from_ref(&staged_id),
+        &[],
     )
     .await
     .expect("a retained staged batch must verify");
 
     let after = fs::read(&archive_path).expect("read the archive after verification");
     assert_eq!(before, after, "verification must not rewrite the persisted archive");
+}
+
+/// The production reader fails closed on a missing archive without creating one.
+#[tokio::test]
+async fn production_checkpoint_reader_reports_a_missing_archive() {
+    let temp = TempDir::new().expect("temporary directory for the missing-reader test");
+    let missing_path = temp.path().join("absent-checkpoint.json");
+
+    let error = SessionArchiveCheckpointReader
+        .read_persisted_messages(&missing_path)
+        .await
+        .expect_err("reading a missing checkpoint must fail");
+    assert!(
+        format!("{error:#}").contains("reading back the required ACP session checkpoint file"),
+        "the read-back failure must carry its operation context: {error:#}"
+    );
+    assert!(!missing_path.exists(), "a failed read must not create the archive");
+    assert_eq!(
+        fs::read_dir(temp.path()).expect("list the archive directory").count(),
+        0,
+        "the production reader must not write anything into the session directory"
+    );
+}
+
+/// A storage failure at the production boundary is a read-back failure.
+#[tokio::test]
+async fn required_checkpoint_reports_a_production_read_back_failure() {
+    let temp = TempDir::new().expect("temporary directory for the read-back category test");
+    let missing_path = temp.path().join("absent-checkpoint.json");
+    let staged = vec!["read-back-category-call".to_string()];
+
+    let error =
+        verify_required_checkpoint_retention(&SessionArchiveCheckpointReader, &missing_path, &staged, &staged, &[])
+            .await
+            .expect_err("a missing archive must fail the required checkpoint");
+
+    let failure = error
+        .downcast_ref::<RequiredCheckpointError>()
+        .expect("the failure must carry its bounded category")
+        .failure();
+    assert_eq!(failure, CheckpointFailure::ReadBackFailed);
+}
+
+/// A best-effort checkpoint must not replace an archive whose compacted payload
+/// lost the write-ahead evidence.
+///
+/// The checkpoint cannot fail the turn, so it skips the write and leaves the
+/// last archive that still contains the staged request and result.
+#[tokio::test]
+async fn best_effort_checkpoint_preserves_write_ahead_evidence_under_compaction() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    // The small write-ahead batch fits; a large terminal result does not.
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("temporary directory for the write-ahead protection test");
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).expect("create the isolated ACP session directory");
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+    let agent = build_agent(temp.path()).await;
+
+    let identifier = "best-effort-write-ahead-protection";
+    let metadata =
+        SessionArchiveMetadata::new("diapason", temp.path().to_string_lossy(), "gpt-5.4", "openai", "test", "low");
+    let staged_id = "staged-protected-call-0001".to_string();
+    let mut listing = session_listing(identifier, temp.path(), metadata.clone(), Vec::new());
+    let archive_path = session_dir.join(format!("{identifier}.json"));
+    listing.path = archive_path.clone();
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                staged_id.clone(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response(staged_id.clone(), "incomplete result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive = SessionArchive::resume_from_listing(&listing, metadata);
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+    let handle = agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            session_id: acp::SessionId::new(identifier),
+            archive: Some(archive),
+            trigger: SessionStartTrigger::Resume,
+            workspace_runtime: None,
+            workspace_lease: None,
+        },
+    );
+
+    agent
+        .checkpoint_session_required(&handle)
+        .await
+        .expect("the small write-ahead batch must persist");
+    let before = fs::read(&archive_path).expect("read the write-ahead archive");
+    assert_eq!(
+        handle.data.lock().expect("session data lock").write_ahead_call_ids.clone(),
+        vec![staged_id.clone()],
+        "the required checkpoint must protect its staged call"
+    );
+
+    // A terminal result too large for the budget makes compaction trim the
+    // assistant request away, so the prepared payload loses the request side
+    // of the write-ahead evidence.
+    let oversized_result = "r".repeat(32 * 1024);
+    handle
+        .data
+        .lock()
+        .expect("session data lock")
+        .thread
+        .mutate_messages(|messages| {
+            for message in messages
+                .iter_mut()
+                .filter(|message| message.tool_call_id.as_deref() == Some(staged_id.as_str()))
+            {
+                *message = Message::tool_response(staged_id.clone(), oversized_result.clone());
+            }
+        });
+
+    agent
+        .checkpoint_session(&handle)
+        .await
+        .expect("a best-effort checkpoint must tolerate the loss by skipping the write");
+
+    let after = fs::read(&archive_path).expect("read the archive after the skipped checkpoint");
+    assert_eq!(before, after, "a skipped best-effort checkpoint must leave the archive unchanged");
+    let persisted = find_session_by_identifier(identifier)
+        .await
+        .expect("read the persisted archive")
+        .expect("the write-ahead archive must remain discoverable");
+    assert_eq!(persisted.snapshot.messages.len(), 2, "the archived write-ahead request and result must survive");
+    assert!(
+        persisted.snapshot.messages.iter().any(|message| message
+            .tool_calls
+            .as_deref()
+            .is_some_and(|calls| calls.iter().any(|call| call.id == staged_id))),
+        "the archived write-ahead request must still be present"
+    );
 }
 
 /// Compaction that drops the staged batch fails the required checkpoint.
@@ -568,6 +712,13 @@ async fn required_checkpoint_fails_when_compaction_drops_the_staged_batch() {
     assert!(
         format!("{error:#}").contains("dropped 1 staged tool call"),
         "the failure must name the dropped staged batch: {error:#}"
+    );
+    assert_eq!(
+        error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map(RequiredCheckpointError::failure),
+        Some(CheckpointFailure::RetentionDropped),
+        "a dropped batch must carry the bounded retention category"
     );
     assert!(
         !archive_path.exists(),

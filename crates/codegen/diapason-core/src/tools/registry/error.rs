@@ -620,6 +620,17 @@ fn stale_write_stdin_cause(source: &Error) -> Option<StaleWriteStdinCause<'_>> {
         })
 }
 
+/// Returns a short, non-reversible digest for a caller-supplied session id.
+///
+/// `write_stdin` session identifiers come from tool arguments, so they can
+/// carry credential-shaped text. A digest keeps operator correlation between
+/// the request, error and recovery metric without persisting the identifier
+/// itself.
+fn session_id_digest(session_id: &str) -> String {
+    let digest = diapason_commons::utils::calculate_sha256(session_id.as_bytes());
+    digest.get(..12).map(str::to_owned).unwrap_or(digest)
+}
+
 /// Applies the typed recovery state this error cause implies for the tool.
 ///
 /// `write_stdin` distinguishes a pre-write resolution failure (nothing was
@@ -631,7 +642,7 @@ fn apply_explicit_error_state(mut error: ToolExecutionError, tool_name: &str, so
     {
         debug!(
             tool_name,
-            session_id = %cause.session_id,
+            session_id_digest = %session_id_digest(cause.session_id),
             tool_recovery_outcome = cause.outcome,
             "{}",
             cause.message
@@ -994,6 +1005,26 @@ mod tests {
 
         assert!(!error.partial_state_possible);
         assert!(error.rollback_performed);
+    }
+
+    /// A credential-shaped caller-supplied session id never reaches the log.
+    #[test]
+    fn caller_supplied_session_ids_are_logged_as_bounded_digests() {
+        let credential_shaped = "sk-live-0123456789abcdef";
+        let digest = session_id_digest(credential_shaped);
+
+        assert_eq!(digest.len(), 12, "the log field must stay bounded");
+        assert!(
+            digest.chars().all(|character| character.is_ascii_hexdigit()),
+            "the digest must be hex rather than carry identifier text"
+        );
+        assert!(!digest.contains("sk-live"), "the digest must not expose the identifier");
+        assert_eq!(
+            digest,
+            session_id_digest(credential_shaped),
+            "the digest must stay stable so operators can correlate the request"
+        );
+        assert_ne!(digest, session_id_digest("another-session-id"));
     }
 
     #[test]

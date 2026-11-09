@@ -103,8 +103,10 @@ work. A failure before the input was written sets neither flag.
 
 Recovery records bounded counters instead of identifiers, so an export can
 never leak session identifiers, tool names, call IDs, or tool output. The
-`tool_recovery` object of a session's `MetricsSummary` holds one counter per
-recovery event:
+counters are agent-wide, not per session: every workspace registry the agent
+builds records into the same collector, so events from any session accumulate
+in the agent's snapshot. The `tool_recovery` object of the `MetricsSummary`
+that collector produces holds one counter per recovery event:
 
 <!-- tested-example: users-guide-tool-recovery-summary -->
 
@@ -136,6 +138,15 @@ Agents that embed Diapason can read the same vocabulary from
 `diapason_core::metrics::{ToolRecoveryEvent, ToolRecoveryMetrics}`. Record an
 event with `MetricsCollector::record_tool_recovery`, or a batch with
 `record_tool_recovery_events`, rather than incrementing a private counter.
+
+A host that builds more than one `ToolRegistry` can install one shared
+collector with `ToolRegistry::set_metrics_collector`. The replacement affects
+only the registry instance it is called on: counters already recorded in the
+previous collector are not migrated, and components that cloned that `Arc` at
+construction keep recording into it. Paths that read the collector through
+`ToolRegistry::metrics_collector()` observe the new value. Install the shared
+collector while the registry is being built, before dependent components
+capture it.
 
 ### History mutation API
 
