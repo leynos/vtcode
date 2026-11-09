@@ -36,6 +36,7 @@ pub enum MergeCatalogueAvailability {
 }
 
 impl From<MergeAvailabilityStatus> for MergeCatalogueAvailability {
+    /// Map the wire availability status onto the normalized catalogue value.
     fn from(value: MergeAvailabilityStatus) -> Self {
         match value {
             MergeAvailabilityStatus::Available => Self::Available,
@@ -56,6 +57,7 @@ pub enum MergeCatalogueServiceTier {
 }
 
 impl From<MergeServiceTier> for MergeCatalogueServiceTier {
+    /// Map the wire service tier onto the normalized catalogue value.
     fn from(value: MergeServiceTier) -> Self {
         match value {
             MergeServiceTier::Standard => Self::Standard,
@@ -226,6 +228,8 @@ impl MergeGatewayCatalogueClient {
         }
     }
 
+    /// Validate the API key and normalize the base URL before constructing the
+    /// catalogue client.
     fn try_from_parts(api_key: String, base_url: String, http_client: Client) -> Result<Self> {
         let api_key = api_key.trim().to_owned();
         ensure!(!api_key.is_empty(), "Merge Gateway API key cannot be empty");
@@ -239,6 +243,8 @@ impl MergeGatewayCatalogueClient {
     }
 }
 
+/// Build the catalogue HTTP client, taking the request timeout from
+/// configuration and falling back to the default.
 fn build_http_client(timeouts: Option<&TimeoutsConfig>) -> Result<Client> {
     let request_timeout = timeouts
         .and_then(|config| config.ceiling_duration(config.default_ceiling_seconds))
@@ -265,6 +271,8 @@ fn normalize_optional_value(value: Option<&str>) -> Option<CompactStr> {
     value.map(str::trim).filter(|value| !value.is_empty()).map(CompactStr::from)
 }
 
+/// Normalize a configured base URL to the catalogue root: trim
+/// endpoint suffixes and trailing slashes, then append `/v1` when absent.
 fn normalize_catalogue_base_url(base_url: &str) -> Result<String> {
     let mut normalized = base_url.trim().trim_end_matches('/').to_owned();
     ensure!(!normalized.is_empty(), "Merge Gateway base URL cannot be empty");
@@ -308,6 +316,7 @@ fn header_value_to_string(value: Option<&reqwest::header::HeaderValue>) -> Optio
         .map(ToOwned::to_owned)
 }
 
+/// Render catalogue filters and cursor for trace logging.
 fn describe_filters(filters: &MergeCatalogueFilters, cursor: Option<&str>) -> String {
     format!(
         "cursor={cursor:?}, model={:?}, provider={:?}, vendor={:?}",
@@ -317,6 +326,8 @@ fn describe_filters(filters: &MergeCatalogueFilters, cursor: Option<&str>) -> St
     )
 }
 
+/// Fold a raw multi-vendor model record into one normalized catalogue entry,
+/// aggregating context limits, capabilities, tiers, and reasoning controls.
 fn normalize_catalogue_model(record: MergeModelRecord) -> MergeCatalogueModel {
     let context_window = aggregate_min_context_window(&record.vendors);
     let max_output_tokens = aggregate_min_max_output_tokens(&record.vendors);
@@ -366,6 +377,8 @@ fn aggregate_min_max_output_tokens(vendors: &BTreeMap<CompactStr, MergeVendorMod
     vendors.values().filter_map(|vendor| vendor.max_output_tokens).min()
 }
 
+/// Whether every vendor supports a capability; an empty vendor set reports
+/// `false` rather than a vacuous `true`.
 fn all_vendors_support(
     vendors: &BTreeMap<CompactStr, MergeVendorModelInfo>,
     predicate: impl Fn(&MergeVendorModelInfo) -> bool,
@@ -373,6 +386,7 @@ fn all_vendors_support(
     !vendors.is_empty() && vendors.values().all(predicate)
 }
 
+/// Service tiers supported by every vendor, as an ordered intersection.
 fn aggregate_service_tiers(vendors: &BTreeMap<CompactStr, MergeVendorModelInfo>) -> Vec<MergeCatalogueServiceTier> {
     let mut intersection: Option<BTreeSet<MergeCatalogueServiceTier>> = None;
 
@@ -393,6 +407,8 @@ fn aggregate_service_tiers(vendors: &BTreeMap<CompactStr, MergeVendorModelInfo>)
     intersection.map(|tiers| tiers.into_iter().collect()).unwrap_or_default()
 }
 
+/// Reasoning controls shared by every vendor, or an empty list when any
+/// vendor lacks reasoning support.
 fn aggregate_reasoning_controls(vendors: &BTreeMap<CompactStr, MergeVendorModelInfo>) -> Vec<String> {
     if !all_vendors_support(vendors, |vendor| vendor.capabilities.supports_reasoning()) {
         return Vec::new();

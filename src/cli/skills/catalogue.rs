@@ -209,6 +209,8 @@ pub async fn handle_skills_config(options: &SkillsCommandOptions) -> Result<()> 
     Ok(())
 }
 
+/// Regenerate the skills index, then build a loader that has discovered every
+/// skill in the workspace.
 async fn prepare_loader(options: &SkillsCommandOptions) -> Result<EnhancedSkillLoader> {
     refresh_skill_index(options).await;
 
@@ -217,6 +219,8 @@ async fn prepare_loader(options: &SkillsCommandOptions) -> Result<EnhancedSkillL
     Ok(loader)
 }
 
+/// Resolve a requested skill from an explicit path or the discovered
+/// catalogue, rejecting built-in command skills and name mismatches.
 async fn resolve_skill_load(
     options: &SkillsCommandOptions,
     requested_name: &str,
@@ -256,6 +260,7 @@ async fn resolve_skill_load(
     Ok(skill)
 }
 
+/// Parse and load a skill from an explicit directory after validating it.
 fn load_skill_from_path(path: &Path) -> Result<Skill> {
     validate_skill_path(path)?;
 
@@ -265,6 +270,7 @@ fn load_skill_from_path(path: &Path) -> Result<Skill> {
         .with_context(|| format!("Failed to load skill at {}", path.display()))
 }
 
+/// Reject a skill path that does not exist or is not a directory.
 fn validate_skill_path(path: &Path) -> Result<()> {
     if !path.exists() {
         bail!(
@@ -283,6 +289,7 @@ fn validate_skill_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Print a one-line summary of a loaded skill and return its name.
 fn print_loaded_skill_summary(skill: EnhancedSkill) -> String {
     match skill {
         EnhancedSkill::Traditional(skill) => {
@@ -331,6 +338,8 @@ fn print_loaded_skill_summary(skill: EnhancedSkill) -> String {
     }
 }
 
+/// Regenerate the workspace skills index, logging rather than failing when
+/// regeneration is unavailable.
 async fn refresh_skill_index(options: &SkillsCommandOptions) {
     if let Err(err) = crate::cli::skills_index::generate_comprehensive_skills_index(&options.workspace).await {
         tracing::warn!("Failed to regenerate skills index: {err}");

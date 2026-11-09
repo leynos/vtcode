@@ -157,6 +157,8 @@ impl DeferredToolPolicy {
         matches!(self.search_kind, Some(DeferredToolSearchKind::ClientLocal))
     }
 
+    /// Whether an entry is always available, matched by public name,
+    /// registration name, or any alias.
     fn keeps_entry_available(&self, entry: &ToolCatalogueEntry) -> bool {
         self.always_available_tools.contains(entry.public_name.as_str())
             || self.always_available_tools.contains(entry.registration_name.as_str())
@@ -166,6 +168,8 @@ impl DeferredToolPolicy {
                 .any(|alias| self.always_available_tools.contains(alias.as_str()))
     }
 
+    /// Wire-level tool-search definition for provider-hosted deferral, or
+    /// `None` when discovery is client-local.
     fn tool_search_definition(&self) -> Option<ToolDefinition> {
         match self.search_kind {
             Some(DeferredToolSearchKind::Anthropic(algorithm)) => Some(ToolDefinition::tool_search(algorithm)),
@@ -570,6 +574,8 @@ impl SessionToolCatalogue {
         &self.entries
     }
 
+    /// Approximate the serialized schema cost of the selected entries for the
+    /// current documentation mode.
     fn estimate_schema_tokens(&self, entry_indices: &[usize], config: &SessionToolsConfig) -> usize {
         entry_indices
             .iter()
@@ -598,6 +604,8 @@ impl SessionToolCatalogue {
         self.projection_cache.get_or_init(entry_index, entry, documentation_mode)
     }
 
+    /// Parameter schema for an entry, substituting the workflow-specific
+    /// task-tracker schema when applicable.
     fn parameters_for_entry(
         &self,
         entry: &ToolCatalogueEntry,
@@ -616,6 +624,8 @@ impl SessionToolCatalogue {
         projection.parameters().clone()
     }
 
+    /// Description for an entry, substituting the workflow-specific
+    /// task-tracker text when applicable.
     fn description_for_entry<'a>(
         &self,
         entry: &'a ToolCatalogueEntry,
@@ -649,6 +659,8 @@ fn serialized_schema_token_estimate(name: &str, description: &str, parameters: &
 }
 
 impl ToolCatalogueEntry {
+    /// Project a tool registration into a catalogue entry, or `None` when the
+    /// registration carries no description.
     fn from_registration(registration: &ToolRegistration) -> Option<Self> {
         let metadata = registration.metadata();
         let description = metadata.description()?.to_string();
@@ -776,6 +788,8 @@ impl ToolCatalogueEntry {
         }
     }
 
+    /// Whether this entry is visible under the capability, profile, surface,
+    /// and feature gates in `config`.
     fn is_visible(&self, config: &SessionToolsConfig) -> bool {
         if self.capability > config.capability_level {
             return false;
@@ -801,6 +815,8 @@ impl ToolCatalogueEntry {
     }
 }
 
+/// Apply the tool-profile allow-list, which widens to read-only inspection
+/// tools and the interview tool while planning is active.
 fn profile_allows_tool(profile: ToolProfile, tool_name: &str, planning_active: bool) -> bool {
     match profile {
         // Planning keeps every read-only inspection surface plus the
@@ -839,6 +855,8 @@ fn profile_allows_tool(profile: ToolProfile, tool_name: &str, planning_active: b
     }
 }
 
+/// Catalogue source for a registration; the special apply-patch surface is
+/// always reported as built-in.
 fn registration_catalogue_source(registration: &ToolRegistration, kind: CatalogueToolKind) -> ToolCatalogueSource {
     if matches!(kind, CatalogueToolKind::ApplyPatch) {
         return ToolCatalogueSource::Builtin;
@@ -847,6 +865,8 @@ fn registration_catalogue_source(registration: &ToolRegistration, kind: Catalogu
     registration.catalogue_source()
 }
 
+/// Whether deferred-loading policy hides this entry's schema until discovery,
+/// keeping policy-pinned core tools eagerly loaded.
 fn should_defer_tool_loading(entry: &ToolCatalogueEntry, config: &SessionToolsConfig) -> bool {
     if !config.deferred_tool_policy.is_enabled() {
         return false;
@@ -866,6 +886,8 @@ fn should_defer_tool_loading(entry: &ToolCatalogueEntry, config: &SessionToolsCo
     matches!(entry.source, ToolCatalogueSource::Builtin | ToolCatalogueSource::Mcp | ToolCatalogueSource::Dynamic)
 }
 
+/// Whether an entry is a core tool that must stay eagerly loaded, including
+/// features gated on current configuration.
 fn is_core_tool_entry(entry: &ToolCatalogueEntry, config: &SessionToolsConfig) -> bool {
     // `entry.public_name` is always the canonical registration name, never an
     // alias (spawn_agent/spawn_background_subprocess/send_input/wait_agent/
@@ -891,6 +913,8 @@ fn is_core_tool_entry(entry: &ToolCatalogueEntry, config: &SessionToolsConfig) -
     }
 }
 
+/// Apply the surface-specific allow-list, including ACP's narrow built-in
+/// surface and its deliberate direct-MCP exception.
 fn surface_allows_tool(surface: SessionSurface, entry: &ToolCatalogueEntry) -> bool {
     let tool_name = entry.public_name.as_str();
     match surface {
@@ -918,6 +942,8 @@ fn surface_allows_tool(surface: SessionSurface, entry: &ToolCatalogueEntry) -> b
     }
 }
 
+/// Catalogue kind declared by a registration's behaviour metadata, defaulting
+/// to a plain function tool.
 fn registration_catalogue_kind(registration: &ToolRegistration) -> CatalogueToolKind {
     registration
         .metadata()
@@ -929,6 +955,8 @@ fn registration_catalogue_kind(registration: &ToolRegistration) -> CatalogueTool
         .unwrap_or(CatalogueToolKind::Function)
 }
 
+/// Whether a registration may run in parallel, preferring declared behaviour
+/// metadata over the handler's own safety hint.
 fn registration_supports_parallel_tool_calls(registration: &ToolRegistration) -> bool {
     if let Some(behaviour) = registration.metadata().behaviour() {
         return behaviour.supports_parallel_calls;

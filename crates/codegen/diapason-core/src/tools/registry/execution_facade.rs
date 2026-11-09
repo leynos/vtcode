@@ -523,6 +523,8 @@ impl ToolRegistry {
         matches!(self.exec_session_completed(session_id).await, Ok(None))
     }
 
+    /// Sorted available tool names plus names similar to `requested_name`, used
+    /// to build an unknown-tool error.
     async fn public_tool_catalogue_for_error(&self, requested_name: &str) -> (Vec<String>, Vec<String>) {
         let mut tool_names = self.available_tools().await;
         tool_names.sort_unstable();

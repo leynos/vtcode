@@ -33,6 +33,9 @@ impl AgentRunner {
         }
     }
 
+    /// Build the tool snapshot exposed to the provider, retaining both the
+    /// planning and normal projections so definitions stay stable across mode
+    /// transitions.
     async fn build_exposed_tool_snapshot(&self) -> Result<SessionToolCatalogueSnapshot> {
         let planning_active = self.tool_registry.is_planning_active();
         let request_user_input_enabled = false;
@@ -122,6 +125,8 @@ impl AgentRunner {
         self.build_exposed_tool_definitions().await
     }
 
+    /// Build a tool snapshot that honours an explicit definition override
+    /// before falling back to the provider-exposed snapshot.
     pub(crate) async fn build_universal_tool_snapshot(&self) -> Result<SessionToolCatalogueSnapshot> {
         if let Some(definitions) = self.tool_definitions_override.read().clone() {
             return Ok(self.tool_registry.tool_catalogue_state().snapshot_for_defs(

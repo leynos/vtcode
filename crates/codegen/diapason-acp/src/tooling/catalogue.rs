@@ -21,6 +21,7 @@ pub enum SupportedTool {
 }
 
 impl SupportedTool {
+    /// ACP tool kind advertised for this tool.
     pub(crate) fn kind(&self) -> crate::acp::ToolKind {
         match self {
             Self::ReadFile => crate::acp::ToolKind::Read,
@@ -28,6 +29,8 @@ impl SupportedTool {
         }
     }
 
+    /// Human-readable title used when a call supplies no arguments to
+    /// specialise.
     pub(crate) fn default_title(&self) -> &'static str {
         match self {
             Self::ReadFile => "Read file",
@@ -35,6 +38,7 @@ impl SupportedTool {
         }
     }
 
+    /// Provider-facing function name registered for this tool.
     pub fn function_name(&self) -> &'static str {
         match self {
             Self::ReadFile => tools::READ_FILE,
@@ -42,6 +46,7 @@ impl SupportedTool {
         }
     }
 
+    /// Stable ordering key that fixes the advertised tool order.
     fn sort_key(&self) -> u8 {
         match self {
             Self::ReadFile => 0,
@@ -57,6 +62,8 @@ pub enum ToolDescriptor {
 }
 
 impl ToolDescriptor {
+    /// ACP tool kind for this descriptor; locally registered tools report
+    /// [`crate::acp::ToolKind::Other`].
     pub fn kind(self) -> crate::acp::ToolKind {
         match self {
             Self::Acp(tool) => tool.kind(),
@@ -77,6 +84,8 @@ pub struct AcpToolRegistry {
 }
 
 impl AcpToolRegistry {
+    /// Build a registry from the enabled ACP tools plus any locally registered
+    /// definitions.
     pub(crate) fn new(
         workspace_root: &Path,
         read_file_enabled: bool,
@@ -153,6 +162,8 @@ impl AcpToolRegistry {
         self.tool_kind_for_call(function_name, None)
     }
 
+    /// ACP tool kind for a call; `args` is accepted for future call-specific
+    /// classification and currently ignored.
     pub(crate) fn tool_kind_for_call(&self, function_name: &str, args: Option<&Value>) -> crate::acp::ToolKind {
         let _ = args;
         match function_name {
@@ -179,6 +190,8 @@ impl AcpToolRegistry {
         }
     }
 
+    /// Resolve a function name to its descriptor, preferring advertised ACP
+    /// tools and falling back to the local definitions.
     pub(crate) fn lookup(&self, function_name: &str) -> Option<ToolDescriptor> {
         self.mapping.get(function_name).copied().or_else(|| {
             self.local_definitions

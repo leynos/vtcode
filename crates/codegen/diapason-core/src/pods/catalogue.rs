@@ -14,6 +14,7 @@ pub struct PodCatalogue {
 }
 
 impl Default for PodCatalogue {
+    /// Start from the embedded default catalogue shipped with the binary.
     fn default() -> Self {
         Self::embedded_default()
     }
@@ -129,6 +130,7 @@ impl PodProfile {
     }
 }
 
+/// Default vLLM launch command template used when a profile omits one.
 fn default_command_template() -> String {
     "vllm serve {{MODEL_ID}} --served-model-name {{NAME}} --port {{PORT}} {{VLLM_ARGS}}".to_string()
 }

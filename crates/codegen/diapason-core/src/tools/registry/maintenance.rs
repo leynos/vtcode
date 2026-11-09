@@ -17,6 +17,7 @@ impl ToolRegistry {
         self.sync_policy_catalogue_serialized().await;
     }
 
+    /// Refresh the policy catalogue while the caller holds the lifecycle lock.
     async fn sync_policy_catalogue_serialized(&self) {
         // Include aliases so policy prompts stay in sync with exposed names
         let mut available = self.available_tools().await;
