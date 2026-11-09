@@ -88,8 +88,8 @@ supporting infrastructure they need:
 `ExecEventRecorder` inside the agent runner. You can attach an event sink by
 supplying a closure when constructing the runner, enabling streaming telemetry
 or custom logging
-pipelines.F:crates/codegen/diapason-core/src/core/agent/runner/mod.rs†L42-L87 The
-recorder invokes the sink for every serialized `ThreadEvent`, including
+pipelines.F:crates/codegen/diapason-core/src/core/agent/runner/mod.rs†L42-L87
+The recorder invokes the sink for every serialized `ThreadEvent`, including
 streaming message deltas and command status
 transitions.F:crates/codegen/diapason-core/src/core/agent/runner/mod.rs†L89-L154
 

@@ -129,7 +129,8 @@ Clean, machine-readable output to agent
 
 - `crates/codegen/diapason-core/src/utils/ansi_parser.rs`: 10+ tests covering
     CSI, OSC, edge cases
-- `crates/codegen/diapason-core/src/tools/pty/mod.rs`: Scrollback size, overflow,
+- `crates/codegen/diapason-core/src/tools/pty/mod.rs`: Scrollback size,
+  overflow,
     metrics tests
 - Implicit: Every `strip_ansi()` call prevents malformed output
 
