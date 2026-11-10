@@ -477,6 +477,7 @@ fn staged_checkpoint_handle(
     agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new(identifier),
             archive: Some(archive),
             trigger: SessionStartTrigger::Resume,
@@ -688,6 +689,7 @@ async fn best_effort_checkpoint_preserves_write_ahead_evidence_under_compaction(
     let handle = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new(identifier),
             archive: Some(archive),
             trigger: SessionStartTrigger::Resume,
@@ -826,6 +828,7 @@ async fn required_checkpoint_fails_when_compaction_drops_the_staged_batch() {
     let handle = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new(identifier),
             archive: Some(archive),
             trigger: SessionStartTrigger::Resume,
@@ -904,6 +907,7 @@ async fn required_checkpoint_succeeds_when_compaction_retains_the_staged_batch()
     let handle = agent.build_session_handle(
         thread,
         SessionHandleBootstrap {
+            subagent_controller: None,
             session_id: acp::SessionId::new(identifier),
             archive: Some(archive),
             trigger: SessionStartTrigger::Resume,

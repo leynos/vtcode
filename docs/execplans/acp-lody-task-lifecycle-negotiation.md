@@ -476,6 +476,38 @@ management requests return only tasks owned by the requested ACP session.
   - The focused test command now uses `-p diapason-acp`, and the installation
     checks verify the `diapason` binary as well as the legacy `vtcode` path.
     Dated evidence blocks were deliberately left verbatim.
+- [x] (2026-11-10) EP-M5 tenth review repair: close the nine findings from the
+  2026-11-10 review of `077ed7615`, after the stacked parent landed and this
+  branch was retargeted onto `main`.
+  - Two test modules breached the 400-line budget. `lody_management.rs` lost
+    its capability and bounded-failure cases to `lody_management_errors.rs`
+    (146 lines) and three duplicated request blocks to the shared
+    `lody_support.rs` helpers; it is now 385 lines. `projection_tests.rs` lost
+    its full-metadata section to `projection_metadata_tests.rs` (314 lines)
+    and is now 261 lines.
+  - `subagent_output` refreshed the controller before reading the tail, which
+    made a query into a command: it could persist state and, with auto-restore
+    enabled, respawn an exited process. The refresh is removed, so all three
+    management methods are pure projections; `ACP_INTEGRATION.md`,
+    `ACP_QUICK_REFERENCE.md` and `docs/development/acp-runtime.md` state that
+    contract.
+  - Three overlapping liveness-projection tests became one `#[rstest]` table
+    with named `exhausted_budget`, `restart_in_progress` and `available_budget`
+    cases, keeping the mutation-safety test separate because it asserts a
+    different property.
+  - The guides publish marked request and response examples for all three
+    management methods plus the usage notification. A new
+    `lody_management_doc_tests.rs` loads them through the shared
+    `doc_examples` loader and decodes them with the handler's own request types
+    and the management projection, so a guide that drifts from the wire shape
+    fails a test instead of misleading a client author.
+  - `meta.lody.task` is corrected to `_meta.lody.task` in `ACP_INTEGRATION.md`,
+    matching where the projection writes it.
+  - The client-side duplex tests raised their outer timeouts from 5 s to 30 s
+    so a queued compile or a loaded host cannot fail them spuriously.
+  - `docs/development/acp-runtime.md` now records that lifecycle forwarding is
+    best effort: the bounded channel drops an update when full or closed and
+    counts it, and clients reconcile through `_lody/subagents/list`.
 
 ## Surprises & discoveries
 
@@ -1581,3 +1613,88 @@ bound.
 **Gate state (r24).** The first gate run stopped at `make check-fmt` on ten
 rustfmt diffs in the new test code; `cargo fmt --all` was applied and the full
 sequence re-dispatched on the corrected candidate.
+
+### Revision note (2026-11-09, r25 round: ten failed pre-merge rows)
+
+Review `5820620441` returned CHANGES_REQUESTED with nine inline comments and
+ten failed pre-merge rows. The rows and their repairs:
+
+- **Module-Length Limits (inline).** `handlers/tests/lody_management.rs` and
+  `task_lifecycle/projection_tests.rs` grew past the 400-line budget. The first
+  split into `lody_management_errors.rs` (146 lines) left the remainder at 428
+  lines, so three inline `ClientRequest::ExtMethodRequest` blocks became shared
+  helpers in `lody_support.rs` (`lody_output_tail`, `lody_cancel_with_reason`,
+  `runtime_active_sessions`); the request bytes are unchanged. The metadata
+  projection tests moved to `projection_metadata_tests.rs`.
+- **Test timeouts (inline).** Both outer duplex waits are 30 s; the inner
+  staged waits stay at 2 s / 10 s / 10 s so a timing failure still names the
+  stage that stalled.
+- **Read-only output (inline, two comments).** `_lody/subagents/output` now
+  calls `background_output_tail` directly and no longer runs
+  `refresh_background_processes`, so a read cannot respawn a process, publish a
+  lifecycle update, persist state or fail because of an unrelated record. The
+  page-length comment and the two guides describe that contract instead of the
+  removed side effect.
+- **Best-effort forwarding (inline).** `docs/development/acp-runtime.md` states
+  that publication uses a bounded non-blocking send, that a full-queue drop is
+  counted under the `full` queue-drop category alongside `closed`, and that a
+  client reconciles by treating `_lody/subagents/list` as authoritative.
+- **Published examples (inline).** Thirteen `tested-example` markers were added
+  across `docs/acp/ACP_INTEGRATION.md` (six) and
+  `docs/acp/ACP_QUICK_REFERENCE.md` (seven), and the new
+  `lody_management_doc_tests.rs` loads the shipped text through the same
+  `doc_examples` loader the core integration tests use: every request decodes
+  with the handler's own request type, responses match their published shapes,
+  and the published `tasks` entry equals the serialized `managed_child_task`.
+- **Docstring Coverage.** Doc comments were added to the new proptest helpers
+  in `controller_spawn_run.rs` and a module docstring to `mod tests` in
+  `lody_usage.rs`.
+- **Testing (Overall).** New status tables assert the wire status and both
+  instants for every `SubagentStatus` and `BackgroundSubprocessStatus` variant,
+  in the management projection and in the lifecycle `_meta.lody.task` shape,
+  against literal epoch constants rather than the helper under test.
+- **Testing (Property / Proof).**
+  `unscoped_merge_joins_records_by_canonical_key` checks the merge against an
+  independent model over multiple owners, canonical and legacy ids, arbitrary
+  orderings, and older, newer and equal timestamps.
+- **Testing (Unit And Behavioural).** `handlers/tests/lody_prompt_delegation.rs`
+  drives the `agent` tool through normal prompt execution, asserting task
+  ownership, sibling-session isolation, and the unavailable-controller path
+  through the same boundary.
+- **User-Facing Documentation.** The user guide and the 0.157.0 notes name the
+  removed `_diapason/taskLifecycle` notification and tell clients to read the
+  standard `session/update` tool calls instead.
+- **Observability.** The stale-update debug log no longer carries a
+  client-supplied task id, and the management failure warning repeats the
+  bounded `session_correlation` explicitly because its span has already exited.
+
+**Operating note.** The r25 edits were applied while the r24 gate run was still
+compiling, so that run's `check-fmt` and early `lint` evidence is stale for the
+edited files. `cargo fmt --all -- --check` and `mdtablefix --check` were re-run
+over the whole tree, and a fresh sequential four-gate run covers the final
+candidate before publication.
+
+#### Lesson: the prompt path bypassed the session-scoped tool registry
+
+The new prompt-driven tests failed in two ways that looked contradictory: the
+fail-closed case succeeded in spawning through an *ownerless* controller, and
+the ownership case never recorded anything on the session controller, even
+though `execute_tool_call_inner` (`tool_execution/authorization.rs`) builds a
+registry scoped to `session_subagent_controller(...)` before execution.
+
+The cause was a second, independent registry selection inside
+`execute_session_local_invocation` (`tool_execution_local.rs`). The ACP local
+tool path re-derived the registry from the session workspace runtime and never
+applied the scoped overlay, so `agent` calls executed through the workspace's
+ownerless controller. Session ownership therefore held for the management
+extensions, which take the session controller explicitly, but not for a
+prompt-driven spawn: the child was recorded under `background-<agent>` with no
+owner instead of `background-<agent>@<session>`, and a session with no
+controller could still spawn.
+
+The fix passes the already-scoped registry into `SessionLocalToolRequest` so
+one selection serves admission, permission preapproval and execution. Two
+consequences worth keeping: a future change that re-derives the registry in the
+execution path reintroduces the ownership escape, and the fail-closed case must
+assert on the *scoped* registry rather than on the launch registry, because the
+launch registry legitimately keeps its own controller.

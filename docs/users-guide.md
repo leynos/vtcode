@@ -199,12 +199,14 @@ session-scoped, so a request can still fail with
 
 Subagent and background-process lifecycle is published as standard ACP
 `session/update` tool calls and tool-call updates, with the task snapshot under
-`_meta.lody.task`. When management is available, the `_lody/subagents/list`,
-`_lody/subagents/cancel`, and `_lody/subagents/output` requests operate only on
-tasks owned by the calling session. Provider usage is reported through
-`_lody/session/usage_update` as a per-response delta. Custom providers opt in
-to streamed usage with `supports_stream_usage`; Diapason only requests it when
-the provider declares that support.
+`_meta.lody.task`. The earlier `_diapason/taskLifecycle` extension notification
+is no longer emitted, so a client that read task state from it must read the
+tool call and tool-call updates instead. When management is available, the
+`_lody/subagents/list`, `_lody/subagents/cancel`, and `_lody/subagents/output`
+requests operate only on tasks owned by the calling session. Provider usage is
+reported through `_lody/session/usage_update` as a per-response delta. Custom
+providers opt in to streamed usage with `supports_stream_usage`; Diapason only
+requests it when the provider declares that support.
 
 For the full contract, see
 [ACP capability negotiation and Lody extensions](./guides/zed-acp.md#acp-capability-negotiation-and-lody-extensions)

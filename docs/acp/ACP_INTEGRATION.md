@@ -43,7 +43,7 @@ fails, Lody management requests for the session return
 
 Subagent and background-process progress uses ordinary ACP `session/update`
 tool calls and tool-call updates. The update carries task description and
-status in standard fields, while `meta.lody.task` contains the additional Lody
+status in standard fields, while `_meta.lody.task` contains the additional Lody
 task snapshot, such as task ID, kind, actor, timestamps, summary, and error
 details.
 
@@ -60,6 +60,7 @@ Requests and responses use `camelCase` field names.
 `_lody/subagents/list` accepts an optional `activeOnly` boolean (default
 `false`) and returns the caller session's owned tasks:
 
+<!-- tested-example: acp-integration-subagent-list-request -->
 ```json
 {
   "sessionId": "session-id",
@@ -67,6 +68,7 @@ Requests and responses use `camelCase` field names.
 }
 ```
 
+<!-- tested-example: acp-integration-subagent-list-response -->
 ```json
 {
   "tasks": [
@@ -91,6 +93,7 @@ optional `agentId`, `subagentType`, and `stopReason`. `status` is one of
 `_lody/subagents/cancel` requires `sessionId` and `taskId`; an optional
 `reason` is accepted and currently ignored. It returns an empty object:
 
+<!-- tested-example: acp-integration-subagent-cancel-request -->
 ```json
 {
   "sessionId": "session-id",
@@ -98,6 +101,7 @@ optional `agentId`, `subagentType`, and `stopReason`. `status` is one of
 }
 ```
 
+<!-- tested-example: acp-integration-subagent-cancel-response -->
 ```json
 {}
 ```
@@ -109,6 +113,7 @@ A task id the session does not own fails with error data
 optional `tail` (default 200 lines, hard maximum 10,000). It returns the
 bounded output tail:
 
+<!-- tested-example: acp-integration-subagent-output-request -->
 ```json
 {
   "sessionId": "session-id",
@@ -117,11 +122,18 @@ bounded output tail:
 }
 ```
 
+<!-- tested-example: acp-integration-subagent-output-response -->
 ```json
 {
   "output": "last lines of task output"
 }
 ```
+
+Reading output is a pure query. It neither advances lifecycle state nor
+restarts a background process, and a failure while reading one task cannot
+affect another. When the live exec session for a background task is gone, the
+tail is served from the recorded transcript or archive instead, so an exited
+process still reports its last output.
 
 Usage is reported with the `_lody/session/usage_update` extension notification.
 Its parameters contain `sessionId`, a `usage` object with normalized input,

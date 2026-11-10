@@ -14,6 +14,8 @@ use hashbrown::HashSet;
 #[cfg(test)]
 mod forwarder_duplex_tests;
 #[cfg(test)]
+mod projection_metadata_tests;
+#[cfg(test)]
 mod projection_tests;
 #[cfg(test)]
 mod queue_accounting_tests;
@@ -545,7 +547,10 @@ fn spawn_task_lifecycle_forwarder(
                     continue;
                 }
                 if !ordering.admit(&update) {
-                    debug!(task_id = lody_task_id(&update), "Dropped superseded ACP task lifecycle update");
+                    // Task ids are client-supplied and unbounded, so the
+                    // forwarder logs carry no per-task field; the enclosing
+                    // span's bounded session correlation identifies the stream.
+                    debug!("Dropped superseded ACP task lifecycle update");
                     continue;
                 }
                 let task_id = lody_task_id(&update).to_string();

@@ -1030,6 +1030,7 @@ fn merge_unscoped_background_records(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use std::time::Duration;
 
     #[tokio::test]
@@ -1044,5 +1045,168 @@ mod tests {
 
         let outcome = tokio::time::timeout(Duration::from_millis(50), select_all(waiters)).await;
         assert!(outcome.is_ok(), "registered waiter should retain the wakeup");
+    }
+
+    /// The owner/agent shapes whose records must stay distinct after a merge.
+    ///
+    /// Entries 0 and 1 share an agent name but not an owner, and entry 2 is the
+    /// same agent with no owner at all. A legacy (unscoped) id therefore
+    /// collides across them, which is exactly what canonicalization must
+    /// separate rather than collapse.
+    const MERGE_SHAPES: [(&str, Option<&str>); 4] = [
+        ("worker", Some("session-a")),
+        ("worker", Some("session-b")),
+        ("worker", None),
+        ("reviewer", Some("session-a")),
+    ];
+
+    /// One generated merge input.
+    #[derive(Debug, Clone, Copy)]
+    struct MergeRecord {
+        /// Index into [`MERGE_SHAPES`], selecting the agent and owner.
+        shape: usize,
+        /// Seconds past the fixture epoch at which the record was updated.
+        updated_offset: u8,
+        /// Whether the record still carries the pre-canonicalization id.
+        legacy_id: bool,
+    }
+
+    /// Generates a record with an arbitrary shape, freshness and id form.
+    fn merge_record() -> impl Strategy<Value = MergeRecord> {
+        (0usize..MERGE_SHAPES.len(), 0u8..3u8, any::<bool>())
+            .prop_map(|(shape, updated_offset, legacy_id)| MergeRecord { shape, updated_offset, legacy_id })
+    }
+
+    /// The canonical key, recomputed from the agent and owner alone.
+    ///
+    /// The generated names contain only characters that survive sanitization,
+    /// so this is the documented id format rather than a call back into the
+    /// production helper the merge uses.
+    fn merge_canonical_id(shape: usize) -> String {
+        let (agent, owner) = MERGE_SHAPES[shape];
+        match owner {
+            Some(owner) => format!("background-{agent}@{owner}"),
+            None => format!("background-{agent}"),
+        }
+    }
+
+    /// Renders one persisted record, tagging it so its provenance survives.
+    fn merge_record_json(record: &MergeRecord, tag: &str) -> serde_json::Value {
+        let (agent, owner) = MERGE_SHAPES[record.shape];
+        let id = if record.legacy_id {
+            format!("background-{agent}")
+        } else {
+            merge_canonical_id(record.shape)
+        };
+        serde_json::json!({
+            "id": id,
+            "owner_session_id": owner,
+            "agent_name": agent,
+            "display_label": agent,
+            "description": "merge fixture",
+            "source": "builtin",
+            "color": null,
+            "session_id": "child-session",
+            "exec_session_id": "exec-session",
+            "desired_enabled": true,
+            "status": "running",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": format!("2026-08-28T00:00:0{}Z", record.updated_offset),
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": tag,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        })
+    }
+
+    /// Deserializes generated records and records each tag's own timestamp.
+    ///
+    /// The ledger keeps the tags so the property can compare the winning
+    /// record's timestamp with the input it came from.
+    fn merge_input(
+        records: &[MergeRecord],
+        prefix: &str,
+        updated_by_tag: &mut BTreeMap<String, i64>,
+    ) -> Vec<PersistedBackgroundRecord> {
+        records
+            .iter()
+            .enumerate()
+            .map(|(index, record)| {
+                let tag = format!("{prefix}{index}");
+                let value = merge_record_json(record, &tag);
+                updated_by_tag.insert(tag, merge_timestamp_millis(&value["updated_at"]));
+                serde_json::from_value(value).expect("generated persisted record")
+            })
+            .collect()
+    }
+
+    /// Parses a serialized timestamp so comparisons do not depend on format.
+    fn merge_timestamp_millis(value: &serde_json::Value) -> i64 {
+        chrono::DateTime::parse_from_rfc3339(value.as_str().expect("serialized timestamp"))
+            .expect("parse serialized timestamp")
+            .timestamp_millis()
+    }
+
+    proptest! {
+        /// The unscoped merge is a per-key join against an independent model.
+        ///
+        /// The model canonicalizes each generated id from its agent and owner,
+        /// keeps the last copy a ledger repeats, prefers the snapshot on a tie,
+        /// and keeps every record only one side holds. It never calls the
+        /// production id or freshness helpers, so a change to either contract
+        /// shows up as a disagreement rather than being mirrored by the test.
+        #[test]
+        fn unscoped_merge_joins_records_by_canonical_key(
+            persisted in prop::collection::vec(merge_record(), 0..=5),
+            snapshot in prop::collection::vec(merge_record(), 0..=5),
+        ) {
+            let mut updated_by_tag = BTreeMap::new();
+            let persisted_records = merge_input(&persisted, "p", &mut updated_by_tag);
+            let snapshot_records = merge_input(&snapshot, "s", &mut updated_by_tag);
+
+            let mut expected: BTreeMap<String, (u8, String)> = BTreeMap::new();
+            for (index, record) in persisted.iter().enumerate() {
+                expected.insert(merge_canonical_id(record.shape), (record.updated_offset, format!("p{index}")));
+            }
+            for (index, record) in snapshot.iter().enumerate() {
+                let key = merge_canonical_id(record.shape);
+                let tag = format!("s{index}");
+                match expected.get_mut(&key) {
+                    Some(current) if record.updated_offset >= current.0 => *current = (record.updated_offset, tag),
+                    Some(_) => {}
+                    None => {
+                        expected.insert(key, (record.updated_offset, tag));
+                    }
+                }
+            }
+
+            let merged = merge_unscoped_background_records(persisted_records, snapshot_records);
+            let observed = merged
+                .iter()
+                .map(|record| {
+                    let value = serde_json::to_value(record).expect("serialize merged record");
+                    (
+                        value["id"].as_str().expect("merged id").to_owned(),
+                        value["summary"].as_str().expect("provenance tag").to_owned(),
+                        merge_timestamp_millis(&value["updated_at"]),
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            prop_assert_eq!(observed.len(), expected.len());
+            for (entry, (key, (_, tag))) in observed.iter().zip(expected.iter()) {
+                prop_assert_eq!(&entry.0, key, "records are canonicalized and ordered by key");
+                prop_assert_eq!(&entry.1, tag, "the newest copy wins and a tie keeps the snapshot");
+                prop_assert_eq!(Some(&entry.2), updated_by_tag.get(tag), "the winner keeps its own timestamp");
+            }
+        }
     }
 }

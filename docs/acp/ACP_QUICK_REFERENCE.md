@@ -39,6 +39,7 @@ Requests and responses use `camelCase` field names.
 `_lody/subagents/list` accepts an optional `activeOnly` boolean (default
 `false`) and returns the caller session's owned tasks:
 
+<!-- tested-example: acp-quick-reference-subagent-list-request -->
 ```json
 {
   "sessionId": "session-id",
@@ -46,6 +47,7 @@ Requests and responses use `camelCase` field names.
 }
 ```
 
+<!-- tested-example: acp-quick-reference-subagent-list-response -->
 ```json
 {
   "tasks": [
@@ -70,6 +72,7 @@ optional `agentId`, `subagentType`, and `stopReason`. `status` is one of
 `_lody/subagents/cancel` requires `sessionId` and `taskId`; an optional
 `reason` is accepted and currently ignored. It returns an empty object:
 
+<!-- tested-example: acp-quick-reference-subagent-cancel-request -->
 ```json
 {
   "sessionId": "session-id",
@@ -77,6 +80,7 @@ optional `agentId`, `subagentType`, and `stopReason`. `status` is one of
 }
 ```
 
+<!-- tested-example: acp-quick-reference-subagent-cancel-response -->
 ```json
 {}
 ```
@@ -85,9 +89,10 @@ A task id the session does not own fails with error data
 `{"reason": "unknown_task"}`.
 
 `_lody/subagents/output` requires `sessionId` and `taskId` and accepts an
-optional `tail` (default 200 lines, hard maximum 10,000). It returns the
-bounded output tail:
+optional `tail` (default 200 lines, hard maximum 10,000). The response carries
+the requested lines:
 
+<!-- tested-example: acp-quick-reference-subagent-output-request -->
 ```json
 {
   "sessionId": "session-id",
@@ -96,15 +101,22 @@ bounded output tail:
 }
 ```
 
+<!-- tested-example: acp-quick-reference-subagent-output-response -->
 ```json
 {
   "output": "last lines of task output"
 }
 ```
 
+Reading output is a pure query: it sends no lifecycle update, restarts no
+background process, and cannot be failed by an unrelated task. A background
+task whose live exec session has exited is served from its recorded transcript
+or archive.
+
 The server reports per-response provider usage through the extension
 notification `_lody/session/usage_update`. Its parameters contain:
 
+<!-- tested-example: acp-quick-reference-usage-update -->
 ```json
 {
   "sessionId": "session-id",
