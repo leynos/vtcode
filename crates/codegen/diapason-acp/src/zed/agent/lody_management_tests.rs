@@ -69,6 +69,7 @@ async fn listing_projects_liveness_without_mutating_records() {
                 depth: 0,
                 workspace_gated: false,
                 exec_sessions,
+                output_reader: None,
                 pty_manager: pty_sessions.manager().clone(),
                 managed_background_runtime: false,
             },

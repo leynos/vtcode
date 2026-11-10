@@ -17,9 +17,10 @@ const AGENT_TOOL_ARGUMENTS: &str = r#"{"action":"spawn_subprocess","agent_type":
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
-const FAIL_CLOSED_MESSAGE: &str = "Subagent controller is not active in this session";
+pub(super) const FAIL_CLOSED_MESSAGE: &str = "Subagent controller is not active in this session";
 
-fn install_agent_tool_provider() -> (Arc<AtomicUsize>, Arc<Mutex<Vec<LLMRequest>>>, PromptProviderFactoryGuard) {
+pub(super) fn install_agent_tool_provider()
+-> (Arc<AtomicUsize>, Arc<Mutex<Vec<LLMRequest>>>, PromptProviderFactoryGuard) {
     let calls = Arc::new(AtomicUsize::new(0));
     let requests = Arc::new(Mutex::new(Vec::new()));
     let factory_calls = Arc::clone(&calls);
@@ -41,7 +42,7 @@ fn install_agent_tool_provider() -> (Arc<AtomicUsize>, Arc<Mutex<Vec<LLMRequest>
 }
 
 /// Awaits the terminal ACP update for the mocked model's tool call.
-async fn terminal_tool_update(
+pub(super) async fn terminal_tool_update(
     updates: &mut mpsc::UnboundedReceiver<acp::SessionNotification>,
 ) -> agent_client_protocol::schema::v1::ToolCallUpdate {
     tokio::time::timeout(POLL_TIMEOUT, async {
@@ -63,7 +64,7 @@ async fn terminal_tool_update(
     .expect("the prompt-driven tool call must report a terminal ACP update")
 }
 
-fn tool_update_text(update: &agent_client_protocol::schema::v1::ToolCallUpdate) -> String {
+pub(super) fn tool_update_text(update: &agent_client_protocol::schema::v1::ToolCallUpdate) -> String {
     update
         .fields
         .content
@@ -81,7 +82,7 @@ fn tool_update_text(update: &agent_client_protocol::schema::v1::ToolCallUpdate) 
         .join("\n")
 }
 
-fn assert_tool_reached_the_model(provider_calls: &AtomicUsize, provider_requests: &Mutex<Vec<LLMRequest>>) {
+pub(super) fn assert_tool_reached_the_model(provider_calls: &AtomicUsize, provider_requests: &Mutex<Vec<LLMRequest>>) {
     assert_eq!(provider_calls.load(Ordering::SeqCst), 2, "the tool result must return to the provider");
     let requests = provider_requests.lock().expect("read provider requests");
     assert!(
@@ -97,7 +98,7 @@ fn assert_tool_reached_the_model(provider_calls: &AtomicUsize, provider_requests
     );
 }
 
-fn assert_tool_response_contains(provider_requests: &Mutex<Vec<LLMRequest>>, expected: &str) {
+pub(super) fn assert_tool_response_contains(provider_requests: &Mutex<Vec<LLMRequest>>, expected: &str) {
     let requests = provider_requests.lock().expect("read provider requests");
     let response = requests[1]
         .messages
@@ -108,7 +109,7 @@ fn assert_tool_response_contains(provider_requests: &Mutex<Vec<LLMRequest>>, exp
     assert!(response.contains(expected), "the model must receive the tool result: {response}");
 }
 
-fn delegation_prompt(session_id: acp::SessionId) -> PromptRequest {
+pub(super) fn delegation_prompt(session_id: acp::SessionId) -> PromptRequest {
     PromptRequest::new(
         session_id,
         vec![acp::ContentBlock::Text(acp::TextContent::new(

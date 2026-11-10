@@ -10,6 +10,7 @@ mod lody_management;
 mod lody_management_errors;
 mod lody_nested_management;
 mod lody_prompt_delegation;
+mod lody_prompt_delegation_shared_controller;
 mod lody_support;
 mod prompt;
 mod provider;
