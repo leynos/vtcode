@@ -251,6 +251,36 @@ The pieces that carry that contract:
   the `agent` tool. A detached view with `None` fails closed, so a session
   without a controller cannot execute through a shared, ownerless controller.
 
+### Background output reader
+
+`diapason_core::subagents::BackgroundOutputReader` is the injection point for
+background output storage access. It is keyed by one task's storage identity,
+`BackgroundOutputSource`, which carries the exec-session id and the recorded
+transcript and archive paths. `read_output` returns a domain result:
+`BackgroundOutput::Live`, `BackgroundOutput::Archived`, or
+`BackgroundOutput::NotReady`. The reader owns storage access, exec-session
+error classification and archive-path selection. It does not bound output,
+enforce a transport limit, or validate, because those are the caller's policy.
+The default adapter, `ExecSessionOutputReader`, reads through the workspace
+`ExecSessionManager` and the session archive loader.
+
+A controller receives the reader through
+`SubagentControllerConfig.output_reader: Option<Arc<dyn BackgroundOutputReader>>`
+and resolves it once at construction. `None` keeps the default adapter, so a
+caller that does not care about storage leaves the field `None`. An embedder
+that serves background output from another store injects its own reader
+instead. The default adapter treats a not-ready live session and a missing exec
+session, identified by the typed `ExecSessionNotFound` cause, as archive
+fallback. Any other live-read fault is returned as
+`BackgroundOutputError::Live` rather than masked, so an environmental fault is
+not reported as an exited process. A failed archive read is returned as
+`BackgroundOutputError::Archived`.
+
+`background_output_tail` applies the line bound to whichever output the reader
+returns and fails with the target in its context on any read fault. The bounded
+preview in a background snapshot uses the same rule, except that an unreadable
+archive yields an empty preview rather than failing the snapshot.
+
 ### Lifecycle projection
 
 Each snapshot is projected into a standard ACP `session/update`. The first

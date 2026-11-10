@@ -276,7 +276,7 @@ pub(super) fn background_ledger_path(workspace_root: &std::path::Path) -> std::p
 /// the effect of the request made between them.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct ObservableBackgroundSnapshot {
-    /// Full serialised records keyed by task id, so a new or changed record
+    /// Full serialized records keyed by task id, so a new or changed record
     /// registers even when a subset of the projected fields happens to match.
     pub(super) entries: BTreeMap<String, serde_json::Value>,
     /// Exact persisted ledger bytes, or `None` while no ledger exists.

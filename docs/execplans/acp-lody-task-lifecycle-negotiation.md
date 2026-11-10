@@ -1743,25 +1743,27 @@ resolved, with four concrete items. This round closes them.
   fail-closed message and leaves the shared controller's record list empty,
   with no pid and no persisted ledger.
 - **Read-only output boundary.** `lody_management` now samples an
-  `ObservableBackgroundSnapshot` before and after every
-  `_lody/subagents/output` read, after draining queued notifications so only
-  the read's own effects remain. The snapshot compares every serialised record
-  keyed by task id (not a subset of fields), the exact persisted ledger bytes,
-  and OS liveness of each recorded child from `/proc`, and the test asserts
-  zero notifications and full snapshot equality. The existing output assertions
-  are retained.
+  `ObservableBackgroundSnapshot` before and after each successful
+  `_lody/subagents/output` read of the owned background task, after draining
+  queued notifications so only the read's own effects remain. The snapshot
+  compares every serialized record keyed by task id (not a subset of fields),
+  the exact persisted ledger bytes, and OS liveness of each recorded child from
+  `/proc`, and the test asserts zero notifications and full snapshot equality.
+  The existing output assertions are retained.
 - **Injectable output reader.** `subagents::BackgroundOutputReader` is a new
-  domain port with `read_live_output` and `read_archived_output`;
-  `ExecSessionOutputReader` is its default adapter over the workspace exec
-  sessions and the session archive. `SubagentControllerConfig` gains an
-  optional reader and the controller resolves one at construction, so ACP tests
-  can substitute a fake while tail bounds, transport limits, validation and
-  error mapping stay in the adapter. Precedence and fallback are preserved:
-  live output wins, `Ok(None)` falls back with `live_output_not_ready`, only a
-  typed `ExecSessionNotFound` falls back with `live_session_missing`, and any
-  other read error propagates with `read background output for {target}`
-  context. Focused tests cover each of those four paths plus an unbounded
-  archived transcript.
+  domain port keyed by a task's `BackgroundOutputSource` and returning
+  `BackgroundOutput::{Live, Archived, NotReady}`. `ExecSessionOutputReader` is
+  its default adapter over the workspace exec sessions and the session archive.
+  `SubagentControllerConfig` gains an optional reader and the controller
+  resolves one at construction, so ACP tests can substitute a fake while tail
+  bounds, transport limits, validation and error mapping stay in the adapter.
+  The reader owns exec-session error classification and archive-path selection.
+  Precedence and fallback are preserved: live output wins, a not-ready live
+  session and only a typed `ExecSessionNotFound` fall back to the archive, and
+  any other live-read error returns `BackgroundOutputError::Live` and
+  propagates with `read background output for {target}` context. A failed
+  archive read returns `BackgroundOutputError::Archived`. Focused tests cover
+  each path across the controller and the default adapter.
 
 #### Lesson: an injectable reader makes a side-effect assertion measurable
 
@@ -1772,3 +1774,58 @@ records, ledger bytes, child liveness and notifications, because a fake reader
 can no longer refresh, respawn or persist anything by accident. The same split
 also settles the domain-architecture row: ACP keeps its tail policy and its
 error mapping, and core owns only the storage seam.
+
+### Revision note (2026-11-10, r27 round: review `5848908254`)
+
+Review `5848908254` raised one inline finding, three outside-diff findings and
+nine failed pre-merge rows. This round dispositions all of them.
+
+- **Preview fallback (inline).** `background_snapshot` now reads its preview
+  through the same task-shaped reader as the tail. A not-ready live session and
+  a missing exec session fall back to the archive; any other live-read fault is
+  propagated with the target in its context and never replaced by archive
+  output.
+- **Legacy restore (outside diff, major).** A record created before session
+  ownership has no `owner_session_id`, so a session controller excludes it and
+  the workspace controller previously skipped restoration. The workspace
+  controller now calls `restore_legacy_background_subagents`, which restores
+  only records whose `owner_session_id` is `None` and whose `desired_enabled`
+  is set. A record owned by another session is never selected, so isolation is
+  preserved. `legacy_restore_ignores_records_owned_by_a_session` proves the
+  exclusion and contrasts it with the unfiltered restore.
+- **Spelling and read-boundary wording (outside diff).** `serialised` became
+  `serialized`, and the read-boundary description now says "each successful
+  `_lody/subagents/output` read of the owned background task".
+- **User-facing documentation.** The 0.157.0 notes now list all four structs
+  that gained a field, including `SubagentControllerConfig.output_reader` and
+  `MetricsSummary.acp_extension`, and no longer claim that only two structs
+  changed. The user guide signposts the breaking Rust API changes and describes
+  the ACP extension counters.
+- **Developer documentation.** `docs/development/acp-runtime.md` gains a
+  "Background output reader" section covering the interface, the default
+  adapter, the injection point, and the split of responsibility for bounds and
+  error handling. The r26 progress entry above was corrected to describe the
+  final task-shaped API rather than the earlier two-method port.
+- **Module documentation.** The `background_output` test module has a docstring
+  that states its purpose and its relationship to `BackgroundOutputReader`.
+- **Unit and domain architecture.** The reader is now keyed by a task's storage
+  identity and returns a domain result, so exec-session error classification
+  and archive-path selection live behind the port. The `tracing::info!` that
+  fired on every archive fallback was removed from the query path, so
+  `_lody/subagents/output` and the snapshot preview no longer emit telemetry.
+- **Observability.** `AcpExtensionMetrics` is now exported both in the JSON
+  `MetricsSummary` and in the Prometheus snapshot as `diapason_acp_*` series,
+  and the user guide and release notes document both paths. A rendering test
+  asserts each series and its value.
+- **Testing (property/proof).** Rebutted with evidence: the repository has no
+  Hypothesis dependency or harness, and the table/backtick renderer named by
+  the row (`diapason-core/src/ui/table_formatter.rs`) is not in this PR's diff.
+  The applicable Rust property coverage for the lifecycle projection already
+  exists as a proptest regression file added by this branch.
+
+#### Lesson: a query path must not log
+
+The archive fallback is a degraded read, but logging it inside the read made a
+documented pure query emit telemetry on every call. The fallback is already
+visible in the returned `BackgroundOutput::Archived` variant, so the domain
+result carries the fact and the query stays side-effect free.

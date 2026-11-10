@@ -19,7 +19,7 @@ use crate::core::agent::task::Task;
 use crate::core::threads::{ThreadBootstrap, ThreadId, ThreadRuntimeHandle, ThreadSnapshot};
 use crate::hooks::{LifecycleHookEngine, SessionStartTrigger};
 use crate::llm::provider::Message;
-use crate::tools::exec_session::{ExecSessionManager, ExecSessionNotFound};
+use crate::tools::exec_session::ExecSessionManager;
 use crate::tools::pty::{PtyManager, PtySize};
 use crate::utils::session_archive::{SessionArchive, find_session_by_identifier};
 use diapason_config::SubagentSpec;
@@ -30,7 +30,7 @@ use self::config::*;
 use self::constants::*;
 use self::discovery::discover_controller_subagents;
 use self::model::*;
-use super::BackgroundOutputReader;
+use super::{BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource};
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
 struct CapturedSubagentThread {
@@ -67,16 +67,6 @@ enum BackgroundCancellationMode {
 
 fn usable_background_parent_session_id(owner: Option<String>) -> Option<String> {
     owner.filter(|owner| !owner.is_empty())
-}
-
-/// Reports whether a live-output read failed because the exec session is gone.
-///
-/// That is the expected end state for a background subprocess whose output has
-/// already been archived, so it is the only read failure that falls back to the
-/// archive. Any other error is an environmental fault and is returned to the
-/// caller.
-fn is_missing_exec_session(error: &anyhow::Error) -> bool {
-    error.chain().any(|cause| cause.is::<ExecSessionNotFound>())
 }
 
 struct PreparedBackgroundSubprocess {
@@ -225,23 +215,7 @@ impl SubagentController {
             record.build_status_entry()
         };
 
-        let preview = if entry.exec_session_id.is_empty() {
-            String::new()
-        } else {
-            match self.output_reader.read_live_output(&entry.exec_session_id).await {
-                Ok(Some(output)) => extract_tail_lines(&output, SUBAGENT_PREVIEW_LINES),
-                Ok(None) | Err(_) => {
-                    if let Some(path) = entry.transcript_path.as_ref().or(entry.archive_path.as_ref()) {
-                        match self.output_reader.read_archived_output(path).await {
-                            Ok(transcript) => extract_tail_lines(&transcript, SUBAGENT_PREVIEW_LINES),
-                            Err(_) => String::new(),
-                        }
-                    } else {
-                        String::new()
-                    }
-                }
-            }
-        };
+        let preview = read_preview(self.output_reader.as_ref(), &entry, target).await?;
 
         Ok(BackgroundSubprocessSnapshot { entry, preview })
     }
@@ -259,9 +233,9 @@ impl SubagentController {
     /// is given. The existing [`Self::background_snapshot`] 24-line preview is
     /// unchanged.
     ///
-    /// Storage access is delegated to the controller's
-    /// [`BackgroundOutputReader`]; the controller keeps the line bound, the
-    /// archive-fallback policy, and the error mapping.
+    /// Storage access and archive fallback are delegated to the controller's
+    /// [`BackgroundOutputReader`]; the controller keeps the line bound and the
+    /// error mapping.
     pub async fn background_output_tail(&self, target: &str, max_lines: usize) -> Result<String> {
         let entry = {
             let state = self.state.read().await;
@@ -374,6 +348,67 @@ impl SubagentController {
         }
 
         self.refresh_background_processes().await
+    }
+
+    /// Restores only the background records that no session owns.
+    ///
+    /// The ACP workspace controller loads every record so a session-scoped
+    /// controller can be built from the same ledger, but it must never respawn
+    /// work another session owns. Legacy records predate ownership and belong
+    /// to no session, so they are the only ones it may restore. Unlike
+    /// [`Self::restore_background_subagents`] this does not refresh the whole
+    /// ledger, because that would settle and respawn records owned by live
+    /// sessions.
+    pub async fn restore_legacy_background_subagents(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
+        if !self.config.vt_cfg.subagents.background.auto_restore {
+            return Ok(Vec::new());
+        }
+        let desired_records = {
+            let state = self.state.read().await;
+            state
+                .background_children
+                .values()
+                .filter(|record| record.desired_enabled && record.owner_session_id.is_none())
+                .map(|record| {
+                    (
+                        record.id.clone(),
+                        record.agent_name.clone(),
+                        record.exec_session_id.clone(),
+                        record.restart_attempts,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let mut restored = Vec::new();
+        for (record_id, agent_name, exec_session_id, restart_attempts) in desired_records {
+            let is_live = !exec_session_id.is_empty()
+                && self
+                    .config
+                    .exec_sessions
+                    .snapshot_session(&exec_session_id)
+                    .await
+                    .ok()
+                    .is_some_and(|snapshot| exec_session_is_running(&snapshot));
+            if is_live {
+                continue;
+            }
+            tracing::info!(
+                agent_name = agent_name.as_str(),
+                record_id = record_id.as_str(),
+                "Restoring legacy background subagent subprocess"
+            );
+            restored.push(
+                self.ensure_background_record_running(BackgroundRunRequest {
+                    agent_name,
+                    stable_id: Some(record_id),
+                    restart_attempts,
+                    overrides: None,
+                })
+                .await?,
+            );
+        }
+        Ok(restored)
     }
 
     /// Refreshes the state of all background subprocesses and respawns as needed.
@@ -1150,106 +1185,87 @@ impl SubagentController {
     }
 }
 
-/// Reads the bounded output tail through an injectable reader.
+/// Reads the bounded preview through the task-shaped reader.
 ///
-/// Live output wins. `Ok(None)` means live output is not ready yet, and a
-/// missing exec session is the expected end of the process; both fall back to
-/// the archive. Any other error is an environmental fault and is propagated
-/// with the caller's target in the context. The controller keeps the line
-/// bound; the reader only owns storage access.
+/// A preview is best effort: a task without output, or one whose transcript is
+/// unreadable, yields an empty preview. A live-read fault is not masked,
+/// because it would otherwise hide a real storage failure behind an empty
+/// preview.
+async fn read_preview(
+    reader: &dyn BackgroundOutputReader,
+    entry: &BackgroundSubprocessEntry,
+    target: &str,
+) -> Result<String> {
+    match reader.read_output(BackgroundOutputSource::from_entry(entry)).await {
+        Ok(BackgroundOutput::Live(output) | BackgroundOutput::Archived(output)) => {
+            Ok(extract_tail_lines(&output, SUBAGENT_PREVIEW_LINES))
+        }
+        Ok(BackgroundOutput::NotReady) => Ok(String::new()),
+        Err(BackgroundOutputError::Archived(_)) => Ok(String::new()),
+        Err(error @ BackgroundOutputError::Live(_)) => {
+            Err(anyhow::Error::new(error)).with_context(|| format!("read background output for {target}"))
+        }
+    }
+}
+
+/// Reads the bounded output tail through the task-shaped reader.
+///
+/// The reader owns storage access and fallback selection; the controller keeps
+/// the line bound. Any read fault is propagated with the caller's target in the
+/// context.
 async fn read_output_tail(
     reader: &dyn BackgroundOutputReader,
     entry: &BackgroundSubprocessEntry,
     target: &str,
     max_lines: usize,
 ) -> Result<String> {
-    if entry.exec_session_id.is_empty() {
-        return Ok(String::new());
-    }
-
-    match reader.read_live_output(&entry.exec_session_id).await {
-        Ok(Some(output)) => Ok(extract_tail_lines(&output, max_lines)),
-        Ok(None) => read_archived_tail(reader, entry, max_lines, "live_output_not_ready").await,
-        Err(error) if is_missing_exec_session(&error) => {
-            read_archived_tail(reader, entry, max_lines, "live_session_missing").await
+    match reader.read_output(BackgroundOutputSource::from_entry(entry)).await {
+        Ok(BackgroundOutput::Live(output) | BackgroundOutput::Archived(output)) => {
+            Ok(extract_tail_lines(&output, max_lines))
         }
-        Err(error) => Err(error).with_context(|| format!("read background output for {target}")),
+        Ok(BackgroundOutput::NotReady) => Ok(String::new()),
+        Err(error) => Err(anyhow::Error::new(error)).with_context(|| format!("read background output for {target}")),
     }
-}
-
-/// Reads the archived tail after live output is unavailable.
-async fn read_archived_tail(
-    reader: &dyn BackgroundOutputReader,
-    entry: &BackgroundSubprocessEntry,
-    max_lines: usize,
-    reason: &'static str,
-) -> Result<String> {
-    let Some(path) = entry.transcript_path.as_ref().or(entry.archive_path.as_ref()) else {
-        return Ok(String::new());
-    };
-    // A fallback is a degraded read the caller cannot otherwise observe:
-    // it returns archive output that may lag the live process. Log the
-    // decision with bounded shape only, never the task, session, or path.
-    tracing::info!(task_kind = "background_subagent", reason, "Background output fell back to the session archive");
-    let transcript = reader.read_archived_output(path).await?;
-    Ok(extract_tail_lines(&transcript, max_lines))
 }
 
 #[cfg(test)]
 mod background_owner_tests {
     use super::{
-        BackgroundOutputReader, BackgroundSubprocessEntry, is_missing_exec_session, read_output_tail,
-        usable_background_parent_session_id,
+        BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource,
+        BackgroundSubprocessEntry, read_output_tail, read_preview, usable_background_parent_session_id,
     };
-    use crate::tools::exec_session::ExecSessionNotFound;
-    use anyhow::Result;
     use futures::future::BoxFuture;
-    use std::path::Path;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::subagents::constants::SUBAGENT_PREVIEW_LINES;
 
     const TARGET: &str = "background-worker";
 
-    enum FakeLive {
-        Output(Option<String>),
-        Missing,
-        Failure(&'static str),
+    enum FakeOutput {
+        Live(&'static str),
+        Archived(&'static str),
+        NotReady,
+        LiveFailure(&'static str),
+        ArchiveFailure(&'static str),
     }
 
     struct FakeOutputReader {
-        live: FakeLive,
-        archived: Result<String, &'static str>,
-        archive_reads: AtomicUsize,
-    }
-
-    impl FakeOutputReader {
-        fn new(live: FakeLive, archived: Result<&'static str, &'static str>) -> Self {
-            Self {
-                live,
-                archived: archived.map(str::to_string),
-                archive_reads: AtomicUsize::new(0),
-            }
-        }
+        output: FakeOutput,
     }
 
     impl BackgroundOutputReader for FakeOutputReader {
-        fn read_live_output<'a>(&'a self, _exec_session_id: &'a str) -> BoxFuture<'a, Result<Option<String>>> {
+        fn read_output<'a>(
+            &'a self,
+            _source: BackgroundOutputSource<'a>,
+        ) -> BoxFuture<'a, Result<BackgroundOutput, BackgroundOutputError>> {
             Box::pin(async move {
-                match &self.live {
-                    FakeLive::Output(output) => Ok(output.clone()),
-                    FakeLive::Missing => {
-                        Err(anyhow::Error::new(ExecSessionNotFound { session_id: "exec-1".to_string() }))
+                match self.output {
+                    FakeOutput::Live(output) => Ok(BackgroundOutput::Live(output.to_string())),
+                    FakeOutput::Archived(output) => Ok(BackgroundOutput::Archived(output.to_string())),
+                    FakeOutput::NotReady => Ok(BackgroundOutput::NotReady),
+                    FakeOutput::LiveFailure(message) => Err(BackgroundOutputError::Live(anyhow::anyhow!("{message}"))),
+                    FakeOutput::ArchiveFailure(message) => {
+                        Err(BackgroundOutputError::Archived(anyhow::anyhow!("{message}")))
                     }
-                    FakeLive::Failure(message) => Err(anyhow::anyhow!("{message}")),
-                }
-            })
-        }
-
-        fn read_archived_output<'a>(&'a self, _path: &'a Path) -> BoxFuture<'a, Result<String>> {
-            Box::pin(async move {
-                self.archive_reads.fetch_add(1, Ordering::SeqCst);
-                match &self.archived {
-                    Ok(transcript) => Ok(transcript.clone()),
-                    Err(message) => Err(anyhow::anyhow!("{message}")),
                 }
             })
         }
@@ -1281,67 +1297,98 @@ mod background_owner_tests {
         assert_eq!(previous_owner.unwrap_or(current_owner), "current-session");
     }
 
-    #[test]
-    fn only_a_missing_exec_session_falls_back_to_archive_output() {
-        let missing = anyhow::Error::new(ExecSessionNotFound { session_id: "exec-1".to_string() });
-
-        assert!(is_missing_exec_session(&missing.context("read background output")));
-        assert!(
-            !is_missing_exec_session(&anyhow::anyhow!("permission denied reading output")),
-            "an environmental read fault must stay visible to the caller"
-        );
-    }
-
     #[tokio::test]
-    async fn live_output_beats_the_archive_and_keeps_the_requested_bound() {
-        let reader =
-            FakeOutputReader::new(FakeLive::Output(Some("one\ntwo\nthree".to_string())), Ok("old archived output"));
+    /// Live output is bounded by the caller's line count.
+    async fn live_output_keeps_the_requested_bound() {
+        let reader = FakeOutputReader { output: FakeOutput::Live("one\ntwo\nthree") };
         let entry = entry_with_transcript(Some("/tmp/session.json"));
 
         let output = read_output_tail(&reader, &entry, TARGET, 2).await.expect("live output tail");
 
         assert_eq!(output, "two\nthree");
-        assert_eq!(
-            reader.archive_reads.load(Ordering::SeqCst),
-            0,
-            "the archive must not be consulted while live output exists"
-        );
     }
 
     #[tokio::test]
-    async fn archive_is_used_when_live_output_is_not_ready() {
-        let reader = FakeOutputReader::new(FakeLive::Output(None), Ok("old\narchived"));
+    /// Archived output is bounded by the caller's line count.
+    async fn archived_output_keeps_the_requested_bound() {
+        let reader = FakeOutputReader { output: FakeOutput::Archived("old\narchived") };
         let entry = entry_with_transcript(Some("/tmp/session.json"));
 
         let output = read_output_tail(&reader, &entry, TARGET, 1).await.expect("archived tail");
 
         assert_eq!(output, "archived");
-        assert_eq!(reader.archive_reads.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
-    async fn archive_is_used_when_the_exec_session_is_missing() {
-        let reader = FakeOutputReader::new(FakeLive::Missing, Ok("archived"));
-        let entry = entry_with_transcript(Some("/tmp/session.json"));
+    /// A task with no output yet reads as an empty tail.
+    async fn not_ready_output_is_empty() {
+        let reader = FakeOutputReader { output: FakeOutput::NotReady };
+        let entry = entry_with_transcript(None);
 
-        let output = read_output_tail(&reader, &entry, TARGET, 10).await.expect("archived tail");
+        let output = read_output_tail(&reader, &entry, TARGET, 10).await.expect("empty tail");
 
-        assert_eq!(output, "archived");
-        assert_eq!(reader.archive_reads.load(Ordering::SeqCst), 1);
+        assert!(output.is_empty());
     }
 
     #[tokio::test]
-    async fn unrelated_read_errors_are_not_replaced_by_the_archive() {
-        let reader = FakeOutputReader::new(FakeLive::Failure("permission denied"), Ok("archived"));
+    /// A read fault names the task it was reading.
+    async fn read_errors_are_reported_with_the_target() {
+        let reader = FakeOutputReader {
+            output: FakeOutput::LiveFailure("permission denied"),
+        };
         let entry = entry_with_transcript(Some("/tmp/session.json"));
 
         let error = read_output_tail(&reader, &entry, TARGET, 10)
             .await
-            .expect_err("an environmental read fault must reach the caller");
+            .expect_err("a read fault must reach the caller");
 
         let rendered = format!("{error:#}");
         assert!(rendered.contains("read background output for background-worker"), "{rendered}");
         assert!(rendered.contains("permission denied"), "{rendered}");
-        assert_eq!(reader.archive_reads.load(Ordering::SeqCst), 0, "the archive must not mask an environmental fault");
+    }
+
+    #[tokio::test]
+    /// A preview applies the fixed preview bound.
+    async fn preview_keeps_the_preview_bound() {
+        let archived = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26";
+        let reader = FakeOutputReader { output: FakeOutput::Archived(archived) };
+        let entry = entry_with_transcript(Some("/tmp/session.json"));
+
+        let preview = read_preview(&reader, &entry, TARGET).await.expect("archived preview");
+
+        let lines = preview.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), SUBAGENT_PREVIEW_LINES);
+        assert_eq!(lines.first().copied(), Some("3"));
+        assert_eq!(lines.last().copied(), Some("26"));
+    }
+
+    #[tokio::test]
+    /// A preview is best effort when the archive cannot be read.
+    async fn preview_is_empty_when_the_archive_is_unreadable() {
+        let reader = FakeOutputReader {
+            output: FakeOutput::ArchiveFailure("archive is corrupt"),
+        };
+        let entry = entry_with_transcript(Some("/tmp/session.json"));
+
+        let preview = read_preview(&reader, &entry, TARGET).await.expect("a preview is best effort");
+
+        assert!(preview.is_empty());
+    }
+
+    #[tokio::test]
+    /// A preview does not mask a live-read fault.
+    async fn preview_propagates_a_live_read_fault() {
+        let reader = FakeOutputReader {
+            output: FakeOutput::LiveFailure("permission denied"),
+        };
+        let entry = entry_with_transcript(Some("/tmp/session.json"));
+
+        let error = read_preview(&reader, &entry, TARGET)
+            .await
+            .expect_err("a live read fault must reach the caller");
+
+        let rendered = format!("{error:#}");
+        assert!(rendered.contains("read background output for background-worker"), "{rendered}");
+        assert!(rendered.contains("permission denied"), "{rendered}");
     }
 }

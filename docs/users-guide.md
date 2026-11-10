@@ -151,6 +151,12 @@ Agents that embed Diapason can read the same vocabulary from
 event with `MetricsCollector::record_tool_recovery`, or a batch with
 `record_tool_recovery_events`, rather than incrementing a private counter.
 
+ACP extension activity is counted separately in the `acp_extension` object of
+the same summary: management requests started, succeeded, failed and in flight,
+their total duration, usage notifications sent and failed, and initial snapshot
+publications and failures. The same counters are exported as `diapason_acp_*`
+series in the Prometheus snapshot.
+
 A host that builds more than one `ToolRegistry` can install one shared
 collector with `ToolRegistry::set_metrics_collector`. The replacement affects
 only the registry instance it is called on: counters already recorded in the
@@ -185,6 +191,18 @@ does not depend on the current one. Both are the supported way to stage
 incomplete tool results and replace them with terminal results. The callback
 must not call back into the handle, await, or perform I/O, because it runs with
 the history lock taken.
+
+### Embedding API changes
+
+The complete list of Rust API changes in this release, including the new
+required struct fields on `MetricsSummary`, `ToolExecutionError`, and
+`SubagentControllerConfig`, is in the
+[0.157.0 release notes](./releases/0.157.0.md#breaking-rust-api-changes).
+Embedders that serve sessions over ACP can substitute background output storage
+access with `SubagentControllerConfig.output_reader`; the default
+`ExecSessionOutputReader` reads live exec-session output and falls back to the
+session archive. See the
+[background output reader](./development/acp-runtime.md#background-output-reader).
 
 ## Lody ACP extensions in brief
 

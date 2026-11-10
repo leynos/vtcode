@@ -781,6 +781,7 @@ struct PrometheusMetricsSnapshot {
     provider_requests: ProviderRequestMetrics,
     service_startup: ServiceStartupMetrics,
     task_lifecycle_notification_queue: TaskLifecycleNotificationQueueMetrics,
+    acp_extension: AcpExtensionMetrics,
     workspace_runtime_cache_entries: u64,
 }
 
@@ -799,6 +800,7 @@ impl PrometheusMetricsSnapshot {
             provider_requests: collector.get_provider_request_metrics(),
             service_startup: collector.get_service_startup_metrics(),
             task_lifecycle_notification_queue: collector.get_task_lifecycle_notification_queue_metrics(),
+            acp_extension: collector.get_acp_extension_metrics(),
             workspace_runtime_cache_entries: collector.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
         }
     }
@@ -816,6 +818,7 @@ impl PrometheusMetricsSnapshot {
         self.append_provider_requests(&mut output);
         self.append_service_startup(&mut output);
         self.append_task_lifecycle_notification_queue(&mut output);
+        self.append_acp_extension(&mut output);
         self.append_workspace_runtime_cache(&mut output);
         self.append_tokens_created(&mut output);
         output
@@ -1143,6 +1146,52 @@ impl PrometheusMetricsSnapshot {
     fn append_task_lifecycle_notification_queue(&self, output: &mut String) {
         append_task_lifecycle_notification_queue_prometheus(output, &self.task_lifecycle_notification_queue);
     }
+
+    fn append_acp_extension(&self, output: &mut String) {
+        append_acp_extension_prometheus(output, &self.acp_extension);
+    }
+}
+
+fn append_acp_extension_prometheus(output: &mut String, metrics: &AcpExtensionMetrics) {
+    let _ = write!(
+        output,
+        "# HELP diapason_acp_management_requests_started_total Lody ACP management requests started\n\
+         # TYPE diapason_acp_management_requests_started_total counter\n\
+         diapason_acp_management_requests_started_total {}\n\n\
+         # HELP diapason_acp_management_requests_succeeded_total Lody ACP management requests that succeeded\n\
+         # TYPE diapason_acp_management_requests_succeeded_total counter\n\
+         diapason_acp_management_requests_succeeded_total {}\n\n\
+         # HELP diapason_acp_management_requests_failed_total Lody ACP management requests that failed\n\
+         # TYPE diapason_acp_management_requests_failed_total counter\n\
+         diapason_acp_management_requests_failed_total {}\n\n\
+         # HELP diapason_acp_management_requests_in_flight Lody ACP management requests currently running\n\
+         # TYPE diapason_acp_management_requests_in_flight gauge\n\
+         diapason_acp_management_requests_in_flight {}\n\n\
+         # HELP diapason_acp_management_duration_ms_total Total time spent serving Lody ACP management requests\n\
+         # TYPE diapason_acp_management_duration_ms_total counter\n\
+         diapason_acp_management_duration_ms_total {}\n\n\
+         # HELP diapason_acp_usage_notifications_sent_total Lody ACP usage notifications sent\n\
+         # TYPE diapason_acp_usage_notifications_sent_total counter\n\
+         diapason_acp_usage_notifications_sent_total {}\n\n\
+         # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notifications that failed to send\n\
+         # TYPE diapason_acp_usage_notifications_failed_total counter\n\
+         diapason_acp_usage_notifications_failed_total {}\n\n\
+         # HELP diapason_acp_initial_snapshots_published_total Lody ACP initial task snapshots published\n\
+         # TYPE diapason_acp_initial_snapshots_published_total counter\n\
+         diapason_acp_initial_snapshots_published_total {}\n\n\
+         # HELP diapason_acp_initial_snapshot_publish_failures_total Lody ACP initial task snapshots that failed to publish\n\
+         # TYPE diapason_acp_initial_snapshot_publish_failures_total counter\n\
+         diapason_acp_initial_snapshot_publish_failures_total {}\n\n",
+        metrics.management_requests_started,
+        metrics.management_requests_succeeded,
+        metrics.management_requests_failed,
+        metrics.management_requests_in_flight,
+        metrics.management_total_duration_ms,
+        metrics.usage_notifications_sent,
+        metrics.usage_notifications_failed,
+        metrics.initial_snapshots_published,
+        metrics.initial_snapshot_publish_failures,
+    );
 }
 
 fn append_task_lifecycle_notification_queue_prometheus(
@@ -1556,6 +1605,63 @@ mod tests {
         assert!(prometheus.contains("diapason_execution_total"));
         assert!(prometheus.contains("diapason_execution_duration_ms"));
         assert!(prometheus.contains("diapason_retry_attempts_total"));
+    }
+
+    /// Pins the ACP extension series that dashboards consume.
+    ///
+    /// The counters are bounded aggregates with no session or task labels, so
+    /// the rendered values are deterministic for a fixed recording sequence.
+    #[test]
+    fn acp_extension_prometheus_series_is_stable() {
+        let collector = MetricsCollector::new();
+        collector.record_acp_management_started();
+        collector.record_acp_management_finished(true, 12);
+        collector.record_acp_management_started();
+        collector.record_acp_management_finished(false, 3);
+        collector.record_acp_usage_notification(true);
+        collector.record_acp_usage_notification(false);
+        collector.record_acp_initial_snapshots_published(2);
+        collector.record_acp_initial_snapshot_publish_failure();
+
+        let series = collector
+            .export_prometheus()
+            .lines()
+            .filter(|line| {
+                line.starts_with("# HELP diapason_acp_")
+                    || line.starts_with("# TYPE diapason_acp_")
+                    || line.starts_with("diapason_acp_")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        insta::assert_snapshot!(series, @r###"
+        # HELP diapason_acp_management_requests_started_total Lody ACP management requests started
+        # TYPE diapason_acp_management_requests_started_total counter
+        diapason_acp_management_requests_started_total 2
+        # HELP diapason_acp_management_requests_succeeded_total Lody ACP management requests that succeeded
+        # TYPE diapason_acp_management_requests_succeeded_total counter
+        diapason_acp_management_requests_succeeded_total 1
+        # HELP diapason_acp_management_requests_failed_total Lody ACP management requests that failed
+        # TYPE diapason_acp_management_requests_failed_total counter
+        diapason_acp_management_requests_failed_total 1
+        # HELP diapason_acp_management_requests_in_flight Lody ACP management requests currently running
+        # TYPE diapason_acp_management_requests_in_flight gauge
+        diapason_acp_management_requests_in_flight 0
+        # HELP diapason_acp_management_duration_ms_total Total time spent serving Lody ACP management requests
+        # TYPE diapason_acp_management_duration_ms_total counter
+        diapason_acp_management_duration_ms_total 15
+        # HELP diapason_acp_usage_notifications_sent_total Lody ACP usage notifications sent
+        # TYPE diapason_acp_usage_notifications_sent_total counter
+        diapason_acp_usage_notifications_sent_total 1
+        # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notifications that failed to send
+        # TYPE diapason_acp_usage_notifications_failed_total counter
+        diapason_acp_usage_notifications_failed_total 1
+        # HELP diapason_acp_initial_snapshots_published_total Lody ACP initial task snapshots published
+        # TYPE diapason_acp_initial_snapshots_published_total counter
+        diapason_acp_initial_snapshots_published_total 2
+        # HELP diapason_acp_initial_snapshot_publish_failures_total Lody ACP initial task snapshots that failed to publish
+        # TYPE diapason_acp_initial_snapshot_publish_failures_total counter
+        diapason_acp_initial_snapshot_publish_failures_total 1
+        "###);
     }
 
     #[test]
