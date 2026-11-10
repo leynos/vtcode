@@ -1230,6 +1230,15 @@ async fn read_output_tail(
 
 #[cfg(test)]
 mod background_owner_tests {
+    //! Exercises the controller side of the background output boundary.
+    //!
+    //! Each case pins one contract the controller relies on when it reads
+    //! through [`BackgroundOutputReader`]: a live tail keeps the requested
+    //! bound, a not-ready or archived task serves the recorded output, a
+    //! live-read fault is reported against its target instead of being masked
+    //! by an empty result, the preview applies its fixed bound, an unreadable
+    //! archive yields an empty preview, and an empty legacy owner falls back to
+    //! the current session.
     use super::{
         BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource,
         BackgroundSubprocessEntry, read_output_tail, read_preview, usable_background_parent_session_id,
