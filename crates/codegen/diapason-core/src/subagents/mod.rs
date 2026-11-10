@@ -1,4 +1,8 @@
 //! Coordinates subagent discovery, execution, background work, and the public controller API.
+//!
+//! Storage access for live and archived background output is injectable through
+//! [`BackgroundOutputReader`]. The controller and its adapters keep line bounds,
+//! transport limits, validation, and error mapping.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -6,6 +10,7 @@
 // ─── Module Structure ───────────────────────────────────────────────────────
 
 mod background;
+mod background_output;
 mod config;
 mod constants;
 mod discovery;
@@ -19,6 +24,7 @@ pub use background::{
     background_record_id, background_record_id_for_owner, build_background_subagent_command, extract_tail_lines,
     load_archive_preview, subagent_display_label,
 };
+pub use background_output::{BackgroundOutputReader, ExecSessionOutputReader};
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
     normalize_background_child_max_turns, normalize_child_max_turns, prepare_child_runtime_config,
@@ -159,6 +165,8 @@ pub struct SubagentControllerConfig {
     pub workspace_gated: bool,
     /// Manager for exec sessions (PTY and pipe).
     pub exec_sessions: ExecSessionManager,
+    /// Reader for live and archived background output; `None` uses the exec-session default.
+    pub output_reader: Option<Arc<dyn BackgroundOutputReader>>,
     /// PTY session manager.
     pub pty_manager: PtyManager,
     /// Whether this controller manages a background runtime subprocess.
@@ -199,6 +207,9 @@ impl Drop for SubagentProgressObserverRegistration {
 #[derive(Clone)]
 pub struct SubagentController {
     config: Arc<SubagentControllerConfig>,
+    /// Reads live and archived background output. Resolved once at construction
+    /// so every read path shares the same injectable storage access.
+    output_reader: Arc<dyn BackgroundOutputReader>,
     background_owner_session_id: Option<String>,
     parent_session_id: Arc<RwLock<String>>,
     lifecycle_hooks: Option<LifecycleHookEngine>,
@@ -273,8 +284,13 @@ impl SubagentController {
                     .collect()
             };
             let parent_session_id = Arc::new(RwLock::new(config.parent_session_id.clone()));
+            let output_reader = config
+                .output_reader
+                .clone()
+                .unwrap_or_else(|| Arc::new(ExecSessionOutputReader::new(config.exec_sessions.clone())));
             Ok(Self {
                 config: Arc::new(config),
+                output_reader,
                 background_owner_session_id,
                 parent_session_id,
                 lifecycle_hooks,

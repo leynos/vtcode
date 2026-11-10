@@ -204,8 +204,17 @@ pub async fn load_archive_preview(path: &Path) -> Result<String> {
 }
 
 pub(crate) async fn load_archive_output_tail(path: &Path, max_lines: usize) -> Result<String> {
+    let transcript = load_archive_transcript(path).await?;
+    Ok(extract_tail_lines(&transcript, max_lines))
+}
+
+/// Loads the full archived transcript, without applying a line bound.
+///
+/// Callers own any bounding; the controller keeps its preview and requested
+/// tail limits when it reads through an injected output reader.
+pub(crate) async fn load_archive_transcript(path: &Path) -> Result<String> {
     let listing = load_session_listing(path).await?;
-    Ok(extract_tail_lines(&listing.snapshot.transcript.join("\n"), max_lines))
+    Ok(listing.snapshot.transcript.join("\n"))
 }
 
 async fn load_session_listing(path: &Path) -> Result<SessionListing> {
