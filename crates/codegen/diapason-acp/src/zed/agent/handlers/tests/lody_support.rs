@@ -1,5 +1,54 @@
 //! Shared fixtures and request helpers for the Lody management protocol tests.
 use super::*;
+use agent_client_protocol::schema::v1::{
+    CloseSessionRequest, InitializeRequest, NewSessionRequest, NewSessionResponse, SetSessionConfigOptionRequest,
+};
+
+// ─── Duplex connection plumbing ─────────────────────────────────────────────
+
+/// Serves the agent half of a duplex connection over the supplied agent.
+///
+/// The returned handle owns the client half, and the join handle stops the
+/// server task when a test finishes.
+pub(super) fn spawn_agent_connection(
+    agent: &Arc<ZedAgent>,
+    name: &'static str,
+) -> (Channel, tokio::task::JoinHandle<agent_client_protocol::Result<()>>) {
+    let (agent_channel, client_channel) = Channel::duplex();
+    let connection = install_handlers(Agent.builder().name(name), Arc::clone(agent)).connect_with(agent_channel, {
+        let agent = Arc::clone(agent);
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        }
+    });
+    (client_channel, tokio::spawn(connection))
+}
+
+/// Initializes the connection and opens a session on the `build` primary agent.
+pub(super) async fn open_build_session(
+    cx: &ConnectionTo<Agent>,
+    workspace: std::path::PathBuf,
+) -> Result<NewSessionResponse, acp::Error> {
+    drop(
+        cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+            .block_task()
+            .await?,
+    );
+    let session = cx.send_request(NewSessionRequest::new(workspace)).block_task().await?;
+    drop(
+        cx.send_request(SetSessionConfigOptionRequest::new(session.session_id.clone(), "primary_agent", "build"))
+            .block_task()
+            .await?,
+    );
+    Ok(session)
+}
+
+/// Closes an ACP session, waiting for the acknowledgement.
+pub(super) async fn close_session(cx: &ConnectionTo<Agent>, session_id: acp::SessionId) -> Result<(), acp::Error> {
+    drop(cx.send_request(CloseSessionRequest::new(session_id)).block_task().await?);
+    Ok(())
+}
 
 // ─── Nested delegation over ACP ─────────────────────────────────────────────
 
@@ -96,10 +145,20 @@ pub(super) async fn lody_output(
     session_id: &acp::SessionId,
     task_id: &str,
 ) -> Result<serde_json::Value, acp::Error> {
+    lody_output_tail(connection, session_id, task_id, 20).await
+}
+
+/// Requests an output tail of exactly `tail` lines.
+pub(super) async fn lody_output_tail(
+    connection: &ConnectionTo<Agent>,
+    session_id: &acp::SessionId,
+    task_id: &str,
+    tail: usize,
+) -> Result<serde_json::Value, acp::Error> {
     lody_ext(
         connection,
         crate::zed::agent::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
-        serde_json::json!({ "sessionId": session_id, "taskId": task_id, "tail": 20 }),
+        serde_json::json!({ "sessionId": session_id, "taskId": task_id, "tail": tail }),
     )
     .await
 }
@@ -109,14 +168,20 @@ pub(super) async fn lody_cancel(
     session_id: &acp::SessionId,
     task_id: &str,
 ) -> Result<serde_json::Value, acp::Error> {
+    lody_cancel_with_reason(connection, session_id, task_id, "nested management regression").await
+}
+
+/// Requests cancellation with an explicit reason.
+pub(super) async fn lody_cancel_with_reason(
+    connection: &ConnectionTo<Agent>,
+    session_id: &acp::SessionId,
+    task_id: &str,
+    reason: &str,
+) -> Result<serde_json::Value, acp::Error> {
     lody_ext(
         connection,
         crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
-        serde_json::json!({
-            "sessionId": session_id,
-            "taskId": task_id,
-            "reason": "nested management regression",
-        }),
+        serde_json::json!({ "sessionId": session_id, "taskId": task_id, "reason": reason }),
     )
     .await
 }
@@ -154,9 +219,45 @@ pub(super) async fn lody_output_error(
     .expect_err("Lody output request should fail")
 }
 
+/// Reads a workspace runtime's live session count under its lifecycle lock.
+pub(super) fn runtime_active_sessions(runtime: &crate::zed::agent::SessionWorkspaceRuntime) -> usize {
+    runtime
+        .lifecycle
+        .lock()
+        .expect("workspace runtime lifecycle lock")
+        .active_sessions
+}
+
 /// Projects a controller timestamp exactly as the ACP management transport does.
 pub(super) fn expected_epoch_seconds(timestamp: chrono::DateTime<chrono::Utc>) -> f64 {
     timestamp.timestamp_millis().max(0) as f64 / 1_000.0
+}
+
+/// Observable state of one background record, read without refreshing it.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct ObservedBackgroundState {
+    pub(super) active: bool,
+    pub(super) updated_at_millis: i64,
+}
+
+/// Reads a record's observable state without refreshing the controller.
+///
+/// The management tests probe this on both sides of a read request. Because
+/// the probe itself never refreshes or mutates, a difference between the two
+/// samples can only come from the request under test.
+pub(super) async fn background_record_state(
+    controller: &diapason_core::subagents::SubagentController,
+    task_id: &str,
+) -> Option<ObservedBackgroundState> {
+    controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == task_id)
+        .map(|entry| ObservedBackgroundState {
+            active: entry.status.is_active(),
+            updated_at_millis: entry.updated_at.timestamp_millis(),
+        })
 }
 
 pub(super) fn write_lody_background_fixture(workspace: &std::path::Path) {

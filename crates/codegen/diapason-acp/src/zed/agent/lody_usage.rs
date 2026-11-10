@@ -156,6 +156,13 @@ impl ZedAgent {
 
 #[cfg(test)]
 mod tests {
+    //! Contract tests for Lody usage publication.
+    //!
+    //! A successful provider response is mapped onto the camelCase
+    //! `_lody/session/usage_update` delta, published once over the real duplex
+    //! channel, and counted against the extension metrics. A response that
+    //! carries no usage publishes nothing, so a provider that never reports
+    //! tokens never produces an invented count.
     use super::*;
     use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
     use proptest::prelude::*;

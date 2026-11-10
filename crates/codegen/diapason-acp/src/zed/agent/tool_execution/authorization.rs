@@ -78,7 +78,7 @@ impl ZedAgent {
         let authorization = self
             .authorize_tool_call(&context, &resolved, ToolAuthorizationInput { pre_tool_decision, audit_arguments })
             .await?;
-        let execution = self.execute_authorized_tool(&context, &resolved, authorization).await?;
+        let execution = Box::pin(self.execute_authorized_tool(&context, &resolved, authorization)).await?;
         self.finish_tool_call(&context, &resolved, execution).await
     }
 
