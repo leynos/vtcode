@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import sys
+
+from hypothesis import given, strategies as st
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -40,6 +43,77 @@ def test_format_code_span_pads_a_leading_backtick() -> None:
 
 def test_format_code_span_pads_a_trailing_backtick() -> None:
     assert generator.format_code_span("value`") == "`` value` ``", "a trailing backtick must be padded"
+
+
+def _split_rendered_code_span(rendered: str) -> tuple[int, str]:
+    """Recover a rendered code span's delimiter length and inner content.
+
+    This is an independent oracle: it reads the rendered string the way a
+    Markdown parser does, rather than recomputing what ``format_code_span``
+    did.
+    """
+    delimiter_length = len(rendered) - len(rendered.lstrip("`"))
+    assert delimiter_length > 0, f"a code span must open with a backtick run: {rendered!r}"
+    assert rendered.endswith("`" * delimiter_length), (
+        f"a code span must close with the delimiter run it opened: {rendered!r}"
+    )
+    return delimiter_length, rendered[delimiter_length : len(rendered) - delimiter_length]
+
+
+# Fragments bias the strategy towards backtick runs at both boundaries and in
+# the middle, alongside pipes and spaces. Values are non-empty because GFM
+# cannot express an empty inline code span (a lone backtick string has no
+# matching closer), and every caller passes a field path, type name, or
+# JSON-rendered default.
+_SPAN_FRAGMENTS = st.lists(
+    st.sampled_from(["`", "``", "```", "````", "text", "|", " "]),
+    min_size=1,
+    max_size=12,
+).map("".join)
+_SPAN_TEXT = st.one_of(
+    _SPAN_FRAGMENTS,
+    st.text(alphabet=st.characters(blacklist_characters="\n\r"), min_size=1, max_size=40),
+)
+
+
+@given(_SPAN_TEXT)
+def test_format_code_span_round_trips_and_cannot_close_early(value: str) -> None:
+    """A rendered span must enclose its value without closing early.
+
+    The oracle reads the rendered string the way a Markdown parser does, so a
+    delimiter that appears inside the content, or padding that changes the
+    value, fails the test.
+    """
+    rendered = generator.format_code_span(value)
+    delimiter_length, content = _split_rendered_code_span(rendered)
+
+    assert "`" * delimiter_length not in content, (
+        "the delimiter must be longer than every backtick run it encloses, or "
+        f"the span closes early: {value!r} -> {rendered!r}"
+    )
+
+    expected_content = f" {value} " if value.startswith("`") or value.endswith("`") else value
+    assert content == expected_content, (
+        "a boundary backtick must be padded so it cannot extend the delimiter, "
+        f"and every other value must survive unchanged: {value!r} -> {rendered!r}"
+    )
+
+
+@given(_SPAN_TEXT)
+def test_format_code_span_uses_the_shortest_safe_delimiter(value: str) -> None:
+    """The delimiter must be exactly one backtick longer than the longest run.
+
+    A shorter delimiter would close early; a longer one would render more
+    backticks than the value needs.
+    """
+    rendered = generator.format_code_span(value)
+    delimiter_length, _content = _split_rendered_code_span(rendered)
+    longest_run = max((len(match) for match in re.findall(r"`+", value)), default=0)
+
+    assert delimiter_length == longest_run + 1, (
+        "the delimiter must be exactly one backtick longer than the longest run "
+        f"in the value: {value!r} -> {rendered!r}"
+    )
 
 
 def test_long_default_remains_parseable_json() -> None:

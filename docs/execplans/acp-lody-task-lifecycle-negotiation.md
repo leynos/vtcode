@@ -156,9 +156,11 @@ management requests return only tasks owned by the requested ACP session.
   - The config-reference generator completed; its unrelated pre-existing
     full-file drift was excluded and the two new schema rows were retained.
     A later formatting commit (`677c32f15`) re-laid the whole table at the
-    formatter's canonical column widths, so the file's diff against the base
-    is 922 reformatted lines plus the two-row content change, not 922 lines of
-    new content.
+    formatter's canonical column widths, so the file's diff against that
+    moment's base was 922 reformatted lines plus the two-row content change.
+    That reflow is historical: against the current base the file's diff is the
+    two added rows with no deletions, so a reviewer compares content, not
+    formatting.
   - Both user-level Baseten profiles now opt into streamed usage.
   - The final release gate passed with 6,588 tests and 16 skips; the user-level
     binary was reinstalled and resolves through `/home/leynos/.local/bin/vtcode`.
@@ -1829,3 +1831,53 @@ The archive fallback is a degraded read, but logging it inside the read made a
 documented pure query emit telemetry on every call. The fallback is already
 visible in the returned `BackgroundOutput::Archived` variant, so the domain
 result carries the fact and the query stays side-effect free.
+
+### Revision note (2026-11-11, r28 round: review `5848908254` follow-up)
+
+CodeRabbit's reply to the r27 dispositions kept eight rows open. This round
+closes or rebuts each one.
+
+- **Testing (Overall), blocking.** The ACP regression now spawns a second owned
+  background task from a fixture script that exits after printing, waits for
+  the liveness projection to report the ended exec session while the cached
+  record stays active, and then reads the task's output over ACP. It compares
+  complete records, ledger bytes, child liveness and notifications around the
+  request, asserts the cached record is still active afterwards, and checks the
+  served output against the recorded transcript or archive. The liveness probe
+  is a Linux `/proc` check; elsewhere it is a documented no-op, and the
+  decisive assertions (cached status, ledger bytes, notification count) hold on
+  every platform.
+- **Unit Architecture.** The accounting stays in
+  `handle_lody_subagent_management`, which is the ACP request boundary for all
+  three extension methods; the domain queries it calls remain pure. Removing it
+  would make `diapason_acp_management_requests_*` blind to list and output, so
+  the round instead proves the accounting: the ACP test asserts started,
+  in-flight, succeeded-plus-failed and failed counters, and renders the
+  Prometheus series through the production `ToolRegistry::metrics_collector()`
+  accessor.
+- **User-facing documentation.** The 0.157.0 table now lists seven structs
+  across eight fields, including `BackgroundSubprocessEntry.owner_session_id`
+  and `supports_stream_usage` on the three custom-provider types.
+- **Developer documentation.** The `677c32f15` progress entry marks the 922-line
+  reflow as historical and states that the current base-to-head diff is the two
+  added rows with no deletions.
+- **Testing (Property / Proof).**
+  `scripts/tests/test_generate_config_field_reference.py` gains two Hypothesis
+  properties over backtick runs, boundary backticks, pipes and spaces. An
+  independent parser-style oracle recovers the delimiter length and content, so
+  the tests check round-tripping, early closure, padding and
+  shortest-safe-delimiter selection rather than restating the implementation.
+- **Domain Architecture.** Rebutted with evidence. The reader is a storage port:
+  the controller has already resolved the task id and validated ownership, so
+  the port receives the resolved storage identity. A task-id-keyed reader would
+  need ledger access to resolve that identity, which would make the port a
+  second controller and reintroduce the coupling the port removes. The domain
+  result (`BackgroundOutput`) is task-shaped; only the input is storage-shaped.
+- **Observability.** The ACP test reaches the collector through
+  `ToolRegistry::metrics_collector()`, the same accessor the handler uses, and
+  renders `export_prometheus()`. No binary surface renders Prometheus output
+  for any metric family, which predates this branch; wiring an endpoint is a
+  separate feature, not a repair to this PR.
+- **Docstring Coverage.** The `background_owner_tests` module docstring and the
+  two new Python property-test docstrings are added; the diff-scoped percentage
+  is recomputed by the next review.
