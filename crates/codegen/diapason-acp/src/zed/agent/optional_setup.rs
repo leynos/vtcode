@@ -238,10 +238,12 @@ pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerS
             return OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable);
         }
     };
-    let failures = if owner_session_id.is_some() {
-        restore_configured_background_subagents(&controller, &controller_vt_cfg).await
-    } else {
-        Vec::new()
+    let failures = match owner_session_id {
+        Some(_) => restore_configured_background_subagents(&controller, &controller_vt_cfg).await,
+        // A legacy record has no owner, so no session controller may adopt it.
+        // The workspace controller is therefore the only scope that can bring
+        // it back, and it restores only those ownerless records.
+        None => restore_legacy_background_subagents(&controller, &controller_vt_cfg).await,
     };
     registry.set_subagent_controller(controller);
     OptionalSetupOutcome::attached_with_degradation(failures)
@@ -291,6 +293,27 @@ async fn restore_configured_background_subagents(
         Ok(_) => Vec::new(),
         Err(error) => {
             log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "background_subagent_restore_failed");
+            vec![OptionalSetupFailure::BackgroundSubagentRestoreFailed]
+        }
+    }
+}
+
+/// Restores background records that predate session ownership.
+///
+/// A session controller must not adopt an ownerless record, so the workspace
+/// controller is the only scope that can restore it. Only ownerless records
+/// are restored, so a record another session owns is never respawned here.
+async fn restore_legacy_background_subagents(
+    controller: &SubagentController,
+    config: &DiapasonConfig,
+) -> Vec<OptionalSetupFailure> {
+    if !config.subagents.background.auto_restore {
+        return Vec::new();
+    }
+    match controller.restore_legacy_background_subagents().await {
+        Ok(_) => Vec::new(),
+        Err(error) => {
+            log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "legacy_background_subagent_restore_failed");
             vec![OptionalSetupFailure::BackgroundSubagentRestoreFailed]
         }
     }

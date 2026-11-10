@@ -310,6 +310,25 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 "activeOnly must exclude a terminal task"
             );
 
+            // A read of a task whose process has already exited must be as
+            // inert as a live read. The exec session is gone, so the reader
+            // falls back to the archive; the request must not settle, respawn,
+            // persist, or publish anything.
+            let _ = drain_notifications(&mut notification_rx);
+            let before = observable_background_snapshot(&controller, &workspace_path, 0).await;
+            let exited_output = lody_output_tail(&cx, &session.session_id, &background.id, 20).await?;
+            let delivered = drain_notifications(&mut notification_rx);
+            let after = observable_background_snapshot(&controller, &workspace_path, delivered).await;
+            assert_eq!(
+                after, before,
+                "an output read of an exited task must not change records, timestamps, ledger bytes, or process state"
+            );
+            assert_eq!(delivered, 0, "an output read of an exited task must not publish session notifications");
+            assert!(
+                exited_output["output"].as_str().is_some(),
+                "an exited task must still answer with a bounded output string: {exited_output}"
+            );
+
             // Exercise the registry route itself: a detached session view must
             // never execute through the shared runtime's ownerless controller.
             let registry = foreign_runtime

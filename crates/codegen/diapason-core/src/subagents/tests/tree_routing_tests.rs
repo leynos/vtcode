@@ -405,6 +405,58 @@ async fn cancelling_a_settled_background_record_keeps_it_out_of_restore() {
     restored.signal_shutdown().await;
 }
 
+/// The ACP workspace controller loads every record so a session controller can
+/// be built from the same ledger, but it must never respawn work another
+/// session owns. Only ownerless legacy records are eligible.
+#[tokio::test]
+async fn legacy_restore_ignores_records_owned_by_a_session() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let mut vt_cfg = DiapasonConfig::default();
+    vt_cfg.subagents.background.auto_restore = true;
+    let controller =
+        SubagentController::new_with_background_owner(test_controller_config(workspace_root, vt_cfg), None)
+            .await
+            .expect("workspace controller");
+
+    let owned_id = background_record_id_for_owner("watcher", Some("other-session"));
+    let mut owned = settled_background_record(&owned_id, "other-session", BackgroundSubprocessStatus::Running, None);
+    owned.desired_enabled = true;
+    owned.exec_session_id = "missing-owned-session".to_string();
+    let owned_updated_at = owned.updated_at;
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(owned_id.clone(), owned);
+    }
+
+    let restored = controller
+        .restore_legacy_background_subagents()
+        .await
+        .expect("legacy restore must ignore a session-owned record");
+    assert!(restored.is_empty(), "no ownerless record exists to restore");
+
+    let untouched = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == owned_id)
+        .expect("the owned record stays in the ledger");
+    assert_eq!(untouched.status, BackgroundSubprocessStatus::Running);
+    assert_eq!(
+        untouched.updated_at, owned_updated_at,
+        "an owned record must not be settled, respawned, or rewritten"
+    );
+
+    // Contrast: the unfiltered restore does select the same record, so the
+    // exclusion above comes from the owner filter rather than an empty ledger.
+    controller
+        .restore_background_subagents()
+        .await
+        .expect_err("the unfiltered restore selects the owned record");
+
+    controller.signal_shutdown().await;
+}
+
 #[tokio::test]
 async fn nested_scope_never_restores_the_workspace_background_ledger() {
     let temp = TempDir::new().expect("tempdir");
