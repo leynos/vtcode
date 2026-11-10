@@ -1,6 +1,7 @@
 //! The read-only liveness projection of a background listing must follow the
 //! record's restart budget and never mutate the persisted ledger.
 use super::*;
+use rstest::rstest;
 
 /// Builds a persisted record whose exec session is not registered with the
 /// controller, so the liveness overlay applies, and overrides the cached
@@ -56,50 +57,34 @@ async fn projected_liveness_status(
         .status
 }
 
+/// The liveness overlay follows the record's restart budget.
+///
 /// A record that has already spent its one restart is reported as the error a
-/// refresh would settle it as, not as a restart that will never happen.
-#[tokio::test]
-async fn exhausted_restart_budget_projects_error() {
-    let temp = TempDir::new().expect("tempdir");
-    let status = projected_liveness_status(
-        &temp,
-        record_with_restart_state("background-worker", Some("session-a"), "running", 1),
-        true,
-    )
-    .await;
-
-    assert_eq!(status, BackgroundSubprocessStatus::Error);
-}
-
-/// The restart count is incremented before the replacement exec session is
+/// refresh would settle it as, not as a restart that will never happen. The
+/// restart count is incremented before the replacement exec session is
 /// registered, so a cached `Starting` record with a spent budget is a restart
-/// still in progress and must keep reporting `Starting`.
+/// still in progress and keeps reporting `Starting`. A record that has not yet
+/// spent its allowance is about to be restarted, so an exited process is also
+/// projected as `Starting`.
+#[rstest]
+#[case::exhausted_budget("running", 1, BackgroundSubprocessStatus::Error)]
+#[case::restart_in_progress("starting", 1, BackgroundSubprocessStatus::Starting)]
+#[case::available_budget("running", 0, BackgroundSubprocessStatus::Starting)]
 #[tokio::test]
-async fn restart_in_progress_projects_starting() {
+async fn liveness_projection_follows_the_restart_budget(
+    #[case] cached_status: &str,
+    #[case] restart_attempts: u8,
+    #[case] expected: BackgroundSubprocessStatus,
+) {
     let temp = TempDir::new().expect("tempdir");
     let status = projected_liveness_status(
         &temp,
-        record_with_restart_state("background-worker", Some("session-a"), "starting", 1),
+        record_with_restart_state("background-worker", Some("session-a"), cached_status, restart_attempts),
         true,
     )
     .await;
 
-    assert_eq!(status, BackgroundSubprocessStatus::Starting);
-}
-
-/// A record that has not yet spent its restart allowance is about to be
-/// restarted, so an exited process is projected as `Starting`.
-#[tokio::test]
-async fn available_restart_budget_projects_starting() {
-    let temp = TempDir::new().expect("tempdir");
-    let status = projected_liveness_status(
-        &temp,
-        record_with_restart_state("background-worker", Some("session-a"), "running", 0),
-        true,
-    )
-    .await;
-
-    assert_eq!(status, BackgroundSubprocessStatus::Starting);
+    assert_eq!(status, expected, "cached {cached_status} record with {restart_attempts} restart(s) already spent");
 }
 
 /// The liveness query is a projection: it must not settle the cached record,

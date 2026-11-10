@@ -30,6 +30,7 @@ impl ZedAgent {
             ToolDescriptor::Local => {
                 self.execute_session_local_tool(SessionLocalToolRequest {
                     session: context.invocation.session,
+                    registry: context.local_tool_registry,
                     invocation: LocalToolInvocation {
                         tool_name,
                         args,

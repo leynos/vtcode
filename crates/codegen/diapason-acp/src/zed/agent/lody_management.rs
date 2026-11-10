@@ -119,10 +119,11 @@ pub(super) async fn handle_lody_subagent_management(
     params: Value,
 ) -> Result<Value, SdkError> {
     let operation = ManagementOperation::of(method);
+    let session_correlation = request_session_correlation(&params);
     let span = info_span!(
         "acp_lody_subagent_management",
         operation = operation.as_str(),
-        session_correlation = %request_session_correlation(&params),
+        session_correlation = %session_correlation,
         outcome = field::Empty,
         elapsed_ms = field::Empty,
         error_category = field::Empty
@@ -146,9 +147,14 @@ pub(super) async fn handle_lody_subagent_management(
     if let Err(error) = &result {
         let error_category = management_error_reason(error);
         let _error_category_recorded = span.record("error_category", error_category);
+        // The span has already exited by the time the failure is logged, so
+        // the bounded correlation is repeated here rather than inherited.
         warn!(
             operation = operation.as_str(),
-            error_category, elapsed_ms, "Lody subagent management request failed"
+            session_correlation = %session_correlation,
+            error_category,
+            elapsed_ms,
+            "Lody subagent management request failed"
         );
     }
     metrics.record_acp_management_finished(result.is_ok(), elapsed_ms);
@@ -359,15 +365,10 @@ async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Re
         else {
             return Err(unknown_task_error());
         };
-        // Refreshing is a command with side effects (exit detection, lifecycle
-        // publication, persistence), so it stays an explicit step here while
-        // the output read remains a pure query.
-        drop(
-            controller
-                .refresh_background_processes()
-                .await
-                .map_err(internal_management_error)?,
-        );
+        // The controller's own tail read is a pure query: it reports the live
+        // session while it exists and falls back to the recorded transcript or
+        // archive once it is gone. Refreshing here would turn a read into a
+        // command that can respawn processes and fail on unrelated records.
         controller
             .background_output_tail(&request.task_id, tail)
             .await
@@ -387,6 +388,9 @@ fn internal_management_error(error: anyhow::Error) -> SdkError {
     }))
 }
 
+#[cfg(test)]
+#[path = "lody_management_doc_tests.rs"]
+mod doc_tests;
 #[cfg(test)]
 #[path = "lody_management_tests.rs"]
 mod tests;

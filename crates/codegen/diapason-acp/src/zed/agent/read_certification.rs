@@ -109,8 +109,9 @@ pub(super) async fn capture_read_version(
     expected_hash: &str,
     certification: &ReadCertification,
 ) -> Value {
-    // Select the registry once, as `execute_session_local_invocation` does, so
-    // the two success arms cannot drift apart.
+    // Select the workspace registry once so the two success arms cannot drift
+    // apart. This only reads the file-ops service, so it needs no session-scoped
+    // subagent controller.
     let runtime = session.workspace_runtime();
     let registry = match &runtime {
         Ok(Some(runtime)) => &runtime.local_tool_registry,

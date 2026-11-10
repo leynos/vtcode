@@ -232,6 +232,25 @@ by their explicit `owner_session_id`. A task id outside that owned set and an
 id that does not exist both return the same `unknown_task` error, so the
 boundary does not disclose another session's tasks.
 
+The pieces that carry that contract:
+
+- `SubagentController::new_with_background_owner` scopes a controller to one
+  persisted background owner, so a session cannot load or restore another
+  session's background records. The CLI keeps `new` and its restore-all
+  behaviour.
+- `SubagentController::attach_child_controller` attaches a child run's
+  controller so grandchildren stay reachable across resumes; it fails closed
+  for a child this controller does not track. `descendant_controllers` walks
+  that attached tree, deduplicated by allocation so a re-parented controller
+  cannot form a cycle.
+- `SubagentController::background_output_tail` is the domain-shaped output
+  reader. It serves the live exec session while it exists and falls back to the
+  recorded transcript or archive once that session is gone, taking an
+  already-validated line bound rather than a transport default.
+- `ToolRegistry::with_subagent_controller` hands a session's own controller to
+  the `agent` tool. A detached view with `None` fails closed, so a session
+  without a controller cannot execute through a shared, ownerless controller.
+
 ### Lifecycle projection
 
 Each snapshot is projected into a standard ACP `session/update`. The first
@@ -242,6 +261,15 @@ carries the Lody snapshot: `version`, `taskId`, `kind`, `status`, `description`,
 `actor`, start and end times, and optional `summary` or `error`. The adapter
 filters updates by parent session, drops superseded revisions by `updated_at`,
 and replays still-active tasks when the observer is registered.
+
+Forwarding is best-effort. Live observers publish with a bounded, non-blocking
+send, so if the lifecycle queue is full the snapshot is dropped rather than
+delaying the producer. A drop is counted under the `full` queue-drop category,
+alongside the `closed` category used once the receiver is gone, so the loss is
+visible in metrics but not retried. A client therefore cannot treat the update
+stream as a complete log: after a gap, or on first attach, it reconciles by
+listing its tasks with `_lody/subagents/list` and treating that response as the
+authoritative snapshot.
 
 ### Management RPCs
 
@@ -254,11 +282,12 @@ reconciles, respawns, publishes a lifecycle update, or persists state, and a
 read cannot restart work. `cancel` closes a child agent or force-cancels a
 background record. `output` returns a bounded tail: `tail` defaults to 200
 lines, and the ACP adapter rejects values above its 10,000-line transport bound
-with `invalid_tail`. For a foreground child task, output is a pure snapshot
-read. For a background task, the handler refreshes the controller before
-reading the tail; that refresh performs exit detection, publishes lifecycle
-updates, persists state, and, when auto-restore is enabled, can respawn an
-exited process. Each request re-resolves the session's controller tree.
+with `invalid_tail`. Output is a pure read for both task kinds: a foreground
+child is served from its in-memory snapshot, and a background task is served
+from its live exec session, falling back to the recorded transcript or archive
+once that session is gone. The handler never refreshes the controller, so a
+read cannot advance lifecycle state, respawn an exited process, or fail because
+of an unrelated record. Each request re-resolves the session's controller tree.
 
 ### Usage publication
 
