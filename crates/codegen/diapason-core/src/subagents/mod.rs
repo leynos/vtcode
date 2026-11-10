@@ -1,8 +1,9 @@
 //! Coordinates subagent discovery, execution, background work, and the public controller API.
 //!
 //! Storage access for live and archived background output is injectable through
-//! [`BackgroundOutputReader`]. The controller and its adapters keep line bounds,
-//! transport limits, validation, and error mapping.
+//! [`BackgroundOutputReader`]. A reader is keyed by one task's storage identity
+//! and returns a domain result, so the controller keeps line bounds, transport
+//! limits, validation, and error mapping.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -24,7 +25,9 @@ pub use background::{
     background_record_id, background_record_id_for_owner, build_background_subagent_command, extract_tail_lines,
     load_archive_preview, subagent_display_label,
 };
-pub use background_output::{BackgroundOutputReader, ExecSessionOutputReader};
+pub use background_output::{
+    BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource, ExecSessionOutputReader,
+};
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
     normalize_background_child_max_turns, normalize_child_max_turns, prepare_child_runtime_config,
