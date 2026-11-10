@@ -20,7 +20,106 @@ use crate::utils::path::{canonicalize_workspace, ensure_path_within_workspace};
 use crate::zsh_exec_bridge::ZshExecBridgeSession;
 
 const PIPE_OUTPUT_HEAD_BYTES: usize = 8 * 1024;
+
 const PIPE_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
+
+/// A continuation referenced an exec session that is no longer active.
+#[derive(Debug, thiserror::Error)]
+#[error("exec session '{session_id}' not found")]
+pub(crate) struct ExecSessionNotFound {
+    pub(crate) session_id: String,
+}
+
+impl ExecSessionNotFound {
+    /// Build the typed error for a continuation naming an unknown session.
+    fn new(session_id: &str) -> Self {
+        Self { session_id: session_id.to_string() }
+    }
+}
+
+/// A `write_stdin` continuation lost its session after the input bytes were
+/// already handed to the session, so the effect of that input is uncertain.
+#[derive(Debug, thiserror::Error)]
+#[error("exec session '{session_id}' ended after the write was delivered")]
+pub(crate) struct ExecSessionLostAfterInput {
+    pub(crate) session_id: String,
+    /// The underlying channel error, retained for diagnosis.
+    ///
+    /// The typed cause above, not this message, is what callers classify and
+    /// what the client sees, so retaining the original error does not widen the
+    /// client-visible detail.
+    #[source]
+    source: Option<Box<dyn std::error::Error + Send + Sync>>,
+}
+
+impl ExecSessionLostAfterInput {
+    /// Build the typed error for a write that failed after the first send.
+    ///
+    /// Production always has a channel failure to retain, so this
+    /// source-less form exists only for tests that exercise classification
+    /// without constructing a live session.
+    #[cfg(test)]
+    pub(crate) fn new(session_id: &str) -> Self {
+        Self { session_id: session_id.to_string(), source: None }
+    }
+
+    /// Build the typed error and retain the underlying failure for diagnosis.
+    pub(crate) fn with_source(session_id: &str, source: anyhow::Error) -> Self {
+        Self {
+            session_id: session_id.to_string(),
+            source: Some(source.into()),
+        }
+    }
+}
+
+/// A pipe-backed exec session whose stdin writer was already closed before any
+/// input could be delivered.
+///
+/// This is distinct from [`ExecSessionNotFound`]: the session record still
+/// exists, but its process has exited or its writer task has stopped, so the
+/// write cannot reach the child. Because nothing was delivered, the failure
+/// carries no partial-state risk.
+#[derive(Debug, thiserror::Error)]
+#[error("exec session '{session_id}' is no longer writable")]
+pub(crate) struct ExecSessionWriterClosed {
+    pub(crate) session_id: String,
+    /// The underlying channel error, retained for diagnosis.
+    ///
+    /// The typed cause above, not this message, is what callers classify and
+    /// what the client sees, so retaining the original error does not widen the
+    /// client-visible detail.
+    #[source]
+    source: Option<Box<dyn std::error::Error + Send + Sync>>,
+}
+
+/// Wrap [`ExecSessionNotFound`] so callers can recover the typed source.
+fn missing_session(session_id: &str) -> anyhow::Error {
+    anyhow::Error::new(ExecSessionNotFound::new(session_id))
+}
+
+/// Map a failed stdin write to the typed cause that reflects whether any input
+/// had already been delivered.
+///
+/// A failure before the first write means nothing reached the child, so it is
+/// [`ExecSessionWriterClosed`]. A failure after the first write means the input
+/// was already handed to the session, so it is [`ExecSessionLostAfterInput`]
+/// and callers must treat partial state as possible.
+///
+/// `source` is the underlying send failure when one exists. It is kept as the
+/// typed error's source so the original cause is not discarded, while the
+/// classification and the client-visible message continue to come from the
+/// typed cause alone.
+fn write_failure(
+    session_id: &str,
+    input_delivered: bool,
+    source: Option<Box<dyn std::error::Error + Send + Sync>>,
+) -> anyhow::Error {
+    if input_delivered {
+        anyhow::Error::new(ExecSessionLostAfterInput { session_id: session_id.to_string(), source })
+    } else {
+        anyhow::Error::new(ExecSessionWriterClosed { session_id: session_id.to_string(), source })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PipeOutputStats {
@@ -339,18 +438,27 @@ impl PipeSessionManager {
 
     async fn send_input_to_session(&self, session_id: &str, data: &[u8], append_newline: bool) -> Result<usize> {
         let record = self.session_record(session_id).await?;
+        // A process that has already exited, or a writer task that has already
+        // stopped, cannot accept input. Report this as the typed closed-writer
+        // cause so the registry can classify it as a stale session without
+        // claiming that any input was delivered.
+        if record.handle.has_exited() || record.handle.is_writer_closed() {
+            return Err(write_failure(session_id, false, None));
+        }
         record
             .handle
             .write(data.to_vec())
             .await
-            .map_err(|e| anyhow!("exec session '{session_id}' is no longer writable: {e}"))?;
+            .map_err(|error| write_failure(session_id, false, Some(Box::new(error))))?;
 
         if append_newline {
+            // The first write already reached the session, so a failure here
+            // must keep the partial-state distinction.
             record
                 .handle
                 .write(b"\n".to_vec())
                 .await
-                .map_err(|e| anyhow!("exec session '{session_id}' is no longer writable: {e}"))?;
+                .map_err(|error| write_failure(session_id, true, Some(Box::new(error))))?;
         }
 
         Ok(data.len() + usize::from(append_newline))
@@ -371,12 +479,14 @@ impl PipeSessionManager {
         Ok(())
     }
 
+    /// Removes and terminates a pipe-backed session.
+    ///
+    /// A missing identifier is reported through [`missing_session`]; callers
+    /// surface that as a precise, non-mutating recovery hint.
     async fn close_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
         let record = {
             let mut sessions = self.sessions.write().await;
-            sessions
-                .remove(session_id)
-                .ok_or_else(|| anyhow!("exec session '{session_id}' not found"))?
+            sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?
         };
 
         record.handle.terminate();
@@ -418,14 +528,13 @@ impl PipeSessionManager {
         Ok(())
     }
 
+    /// Looks up a live pipe session record by identifier.
     async fn session_record(&self, session_id: &str) -> Result<Arc<PipeSessionRecord>> {
         let sessions = self.sessions.read().await;
-        sessions
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("exec session '{session_id}' not found"))
+        sessions.get(session_id).cloned().ok_or_else(|| missing_session(session_id))
     }
 
+    /// Rejects a path that escapes the session workspace root.
     fn ensure_within_workspace(&self, candidate: &Path) -> Result<()> {
         ensure_path_within_workspace(candidate, &self.workspace_root).map(|_| ())
     }
@@ -652,12 +761,14 @@ impl ExecSessionManager {
         }
     }
 
+    /// Removes and terminates a session, whatever its backend.
+    ///
+    /// A missing identifier is reported through [`missing_session`] rather
+    /// than being treated as a successful no-op.
     pub(crate) async fn close_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
         let record = {
             let mut sessions = self.sessions.write().await;
-            sessions
-                .remove(session_id)
-                .ok_or_else(|| anyhow!("exec session '{session_id}' not found"))?
+            sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?
         };
 
         let metadata = match record.backend {
@@ -728,12 +839,10 @@ impl ExecSessionManager {
         Ok(())
     }
 
+    /// Looks up a live exec session record by identifier.
     async fn session_record(&self, session_id: &str) -> Result<Arc<ExecSessionRecord>> {
         let sessions = self.sessions.read().await;
-        sessions
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("exec session '{session_id}' not found"))
+        sessions.get(session_id).cloned().ok_or_else(|| missing_session(session_id))
     }
 }
 
@@ -744,12 +853,15 @@ mod tests {
     use tokio::sync::watch;
     use tokio::time::{Duration, timeout};
 
-    use super::ExecSessionManager;
+    use super::{
+        ExecSessionLostAfterInput, ExecSessionManager, ExecSessionNotFound, ExecSessionWriterClosed, write_failure,
+    };
     use crate::config::PtyConfig;
     use crate::tools::pty::PtySize;
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
 
+    /// Polls the session's activity channel until output appears or times out.
     async fn wait_for_pipe_output(
         manager: &ExecSessionManager,
         session_id: &str,
@@ -764,6 +876,90 @@ mod tests {
             }
         })
         .await?
+    }
+
+    /// Reports a missing session as the typed `ExecSessionNotFound` error.
+    #[tokio::test]
+    async fn missing_session_preserves_typed_identity() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root, pty_sessions);
+
+        let error = manager
+            .read_session_output("run-stale", true)
+            .await
+            .expect_err("unknown session should fail");
+        let missing = error
+            .downcast_ref::<ExecSessionNotFound>()
+            .expect("missing session should retain its typed cause");
+
+        assert_eq!(missing.session_id, "run-stale");
+        assert_eq!(error.to_string(), "exec session 'run-stale' not found");
+        Ok(())
+    }
+
+    /// Reports a terminated pipe writer as the typed closed-writer cause.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn send_input_to_terminated_pipe_session_reports_closed_writer() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions);
+
+        manager
+            .create_pipe_session(
+                "writer-closed".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "cat".to_string()],
+                workspace_root,
+                HashMap::new(),
+            )
+            .await?;
+
+        // Terminating the session aborts the writer task without removing the
+        // session record, so a later write must fail as a closed writer rather
+        // than as a missing session.
+        manager.terminate_session("writer-closed").await?;
+        let record = manager.pipe_sessions.session_record("writer-closed").await?;
+        timeout(Duration::from_secs(5), async {
+            while !record.handle.has_exited() && !record.handle.is_writer_closed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await?;
+
+        let error = manager
+            .send_input_to_session("writer-closed", b"input", false)
+            .await
+            .expect_err("a terminated pipe writer must reject input");
+        let closed = error
+            .downcast_ref::<ExecSessionWriterClosed>()
+            .expect("closed writer should retain its typed cause");
+        assert_eq!(closed.session_id, "writer-closed");
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_none(),
+            "a closed writer must stay distinct from a missing session"
+        );
+
+        manager.close_session("writer-closed").await?;
+        Ok(())
+    }
+
+    /// Keeps the post-delivery cause distinct from the pre-delivery cause.
+    #[test]
+    fn write_failure_keeps_partial_state_distinction() {
+        let before = write_failure("run-1", false, None);
+        let before = before
+            .downcast_ref::<ExecSessionWriterClosed>()
+            .expect("a pre-delivery failure is a closed writer");
+        assert_eq!(before.session_id, "run-1");
+
+        let after = write_failure("run-1", true, None);
+        let after = after
+            .downcast_ref::<ExecSessionLostAfterInput>()
+            .expect("a post-delivery failure lost the session after input");
+        assert_eq!(after.session_id, "run-1");
     }
 
     #[tokio::test]

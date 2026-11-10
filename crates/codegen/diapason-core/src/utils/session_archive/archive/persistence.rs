@@ -220,6 +220,26 @@ impl SessionArchive {
         self.persist_progress_async_with_status_forced(args).await
     }
 
+    /// Prepares the checkpoint snapshot without writing it.
+    ///
+    /// A caller that must gate on the payload before it replaces the archive
+    /// on disk inspects the prepared snapshot and then writes it with
+    /// [`Self::write_prepared_checkpoint_async`]. That keeps a rejected
+    /// snapshot from overwriting the evidence an earlier checkpoint made
+    /// durable. Returns `None` when history persistence is disabled.
+    pub fn prepare_checkpoint_snapshot(&self, args: SessionProgressArgs) -> Result<Option<SessionSnapshot>> {
+        prepare_snapshot_for_write(self.build_progress_snapshot(args))
+    }
+
+    /// Writes a snapshot prepared by [`Self::prepare_checkpoint_snapshot`].
+    ///
+    /// The snapshot is already compacted, so this writes exactly the payload
+    /// the caller inspected.
+    pub async fn write_prepared_checkpoint_async(&self, snapshot: SessionSnapshot) -> Result<PathBuf> {
+        write_private_json_file_async(&self.path, &snapshot).await?;
+        Ok(self.path.clone())
+    }
+
     /// Persist progress asynchronously and return the archive path.
     ///
     /// Use [`Self::persist_progress_async_with_status`] when the caller needs

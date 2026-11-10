@@ -1973,6 +1973,7 @@ dependencies = [
  "humantime",
  "ignore",
  "indexmap 2.14.1",
+ "insta",
  "json5",
  "jsonschema",
  "libc",

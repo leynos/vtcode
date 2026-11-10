@@ -432,8 +432,32 @@ and `[history]` settings do not control ACP audit output.
   archives belonging to that workspace. An ACP client can pass a returned
   session ID to either `session/load` or `session/resume`; both restore that
   archive by exact session ID, including after a Diapason process or editor
-  restart. Set `history.persistence = "none"` to disable durable archives and
-  discovery; sessions then remain process-local.
+  restart. Durable archives are required for ACP tool rounds: the write-ahead
+  checkpoint that precedes execution must be persisted. Set
+  `history.persistence = "none"` to disable durable archives and discovery;
+  sessions then remain process-local, and a prompt that requests tools fails
+  with a checkpoint error before execution. No tool side effects occur in that
+  case.
+- **Interrupted tool recovery** – Before executing model-requested tools, ACP
+  checkpoints the assistant request with one incomplete Tool result per call.
+  That write-ahead checkpoint is required: if it cannot be persisted, including
+  when `history.persistence = "none"`, the prompt fails before any tool runs,
+  so no tool side effect occurs without a recoverable record. Normal completion
+  replaces those placeholders with real results before the provider
+  continuation. Loading a legacy archive repairs any unresolved call in the
+  same form, marks its side effects as uncertain, and tells the model to verify
+  workspace state and resubmit only if needed. A uniquely attributable late
+  terminal result is moved beside its assistant request. Duplicate,
+  conflicting, or orphaned terminal evidence leaves the archive untouched;
+  `session/load` and `session/resume` reject it rather than registering the
+  session. Inspect the workspace and archive, then resubmit only work that is
+  still needed. Diapason never replays a recovered tool call automatically
+  because it may already have mutated state.
+
+  Maintainers preserve this order: stage placeholders, require the durable
+  write-ahead checkpoint, execute, replace terminal results, then make the
+  ordinary best-effort checkpoint. Archive repairs also checkpoint before
+  session registration, so an uncertain history cannot become resumable.
 - **Sub-agent delegation** – When ACP sub-agents are enabled, the session
   exposes the canonical `agent` tool. Its actions are `spawn`,
   `spawn_subprocess`, `send_input`, `wait`, `resume`, and `close`. Before

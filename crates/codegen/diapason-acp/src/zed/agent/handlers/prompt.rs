@@ -1,38 +1,29 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
-use super::super::log_suppressed_error;
 use super::super::tool_config::SessionToolDefinitionRequest;
 use super::provider::IncompleteProviderTurn;
 use super::*;
+use checkpoint::require_session_checkpoint;
 
 mod buffered;
+
+mod checkpoint;
+
 mod input;
+
 mod lifecycle;
+
 mod provider_context;
+
 mod streaming;
 
-pub(super) use buffered::response_reasoning_update;
+mod tool_round;
 
-#[tracing::instrument(skip_all, fields(boundary = boundary))]
-pub(super) async fn persist_session_checkpoint(agent: &ZedAgent, session: &SessionHandle, boundary: &'static str) {
-    if let Err(error) = agent.checkpoint_session(session).await {
-        log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
-        warn!(
-            operation = "session_checkpoint",
-            error_category = "archive_write_failed",
-            boundary,
-            "Failed to persist ACP session checkpoint"
-        );
-    }
-    if let Err(error) = session.update_transcript_path().await {
-        log_suppressed_error(&error, "transcript_update", "transcript_write_failed");
-        warn!(
-            operation = "transcript_update",
-            error_category = "transcript_write_failed",
-            boundary,
-            "Failed to update ACP session transcript path"
-        );
-    }
-}
+pub(super) use buffered::response_reasoning_update;
+pub(super) use checkpoint::{persist_session_checkpoint, persist_terminal_tool_results};
+pub(super) use tool_round::{
+    SystemToolRoundTimer, ToolRoundOutcome, ToolRoundRequest, ToolRoundTimer, execute_tool_round,
+    validate_tool_call_ids,
+};
 
 pub(super) async fn finish_failed_provider_turn(
     turn: &PromptExecution,
@@ -71,8 +62,13 @@ pub(super) struct TurnGuard {
 }
 
 impl TurnGuard {
+    /// Claims the thread's turn slot for this prompt.
+    ///
+    /// A concurrent prompt is rejected with `turn_in_progress` instead of
+    /// interleaving tool results with the turn that already owns the thread.
     pub(super) fn begin(thread: ThreadRuntimeHandle) -> Result<Self, SdkError> {
         let _submission_id = thread.begin_turn().map_err(|error| {
+            warn!(thread_id = %thread.thread_id(), prompt_outcome = "turn_in_progress_rejected", "Rejected concurrent ACP prompt");
             SdkError::internal_error().data(json!({ "reason": "turn_in_progress", "detail": error.to_string() }))
         })?;
         Ok(Self { thread })
@@ -136,24 +132,6 @@ impl PromptToolState {
     }
 }
 
-pub(super) struct ToolRoundRequest<'a> {
-    pub(super) agent: &'a ZedAgent,
-    pub(super) session: &'a SessionHandle,
-    pub(super) session_id: &'a acp::SessionId,
-    pub(super) tool_calls: &'a [LLMToolCall],
-    pub(super) assistant_message: &'a str,
-    pub(super) assistant_reasoning: &'a str,
-    pub(super) reasoning_details: Option<Vec<String>>,
-    pub(super) tool_loop_count: &'a mut usize,
-    pub(super) streamed: bool,
-}
-
-pub(super) enum ToolRoundOutcome {
-    Continue,
-    Cancelled,
-    LimitReached(String),
-}
-
 pub(super) struct PromptInput {
     agent: Arc<ZedAgent>,
     args: PromptRequest,
@@ -188,71 +166,6 @@ pub(super) struct PromptExecution {
     assistant_reasoning: String,
     stop_hook_active: bool,
     stop_hook_checked: bool,
-}
-
-pub(super) async fn execute_tool_round(request: ToolRoundRequest<'_>) -> Result<ToolRoundOutcome, SdkError> {
-    let ToolRoundRequest {
-        agent,
-        session,
-        session_id,
-        tool_calls,
-        assistant_message,
-        assistant_reasoning,
-        reasoning_details,
-        tool_loop_count,
-        streamed,
-    } = request;
-
-    if agent.tool_loop_limit_reached(*tool_loop_count) {
-        return Ok(ToolRoundOutcome::LimitReached(agent.tool_loop_limit_message()));
-    }
-    *tool_loop_count = tool_loop_count.saturating_add(1);
-
-    let assistant_tool_message = if streamed {
-        assistant_tool_call_message(
-            assistant_message.to_string(),
-            tool_calls.to_vec(),
-            assistant_reasoning,
-            reasoning_details,
-        )
-    } else {
-        Message::assistant_with_tools(assistant_message.to_string(), tool_calls.to_vec())
-    };
-    push_session_message(agent, session, session_id, assistant_tool_message)?;
-    persist_session_checkpoint(agent, session, "assistant_tool_calls").await;
-
-    let tool_results = match agent.execute_tool_calls(session, session_id, tool_calls).await {
-        Ok(results) => results,
-        Err(error) => {
-            warn!(%error, "Tool execution failed");
-            for call in tool_calls {
-                push_session_message(
-                    agent,
-                    session,
-                    session_id,
-                    Message::tool_response(call.id.clone(), format!("Tool execution was interrupted: {error}")),
-                )?;
-            }
-            persist_session_checkpoint(agent, session, "interrupted_tool_results").await;
-            return Err(error);
-        }
-    };
-
-    for result in tool_results {
-        push_session_message(
-            agent,
-            session,
-            session_id,
-            Message::tool_response(result.tool_call_id, result.llm_response),
-        )?;
-    }
-    persist_session_checkpoint(agent, session, "tool_results").await;
-
-    Ok(if session.cancellation.is_cancelled() {
-        ToolRoundOutcome::Cancelled
-    } else {
-        ToolRoundOutcome::Continue
-    })
 }
 
 async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {
@@ -317,6 +230,7 @@ impl PromptExecution {
         }
     }
 }
+
 pub(super) struct ProviderOutput {
     assistant_message: String,
     assistant_reasoning: String,
@@ -380,6 +294,10 @@ pub(super) fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
 }
 
+/// Builds the assistant message that introduces a batch of tool calls.
+///
+/// The tool-call identifiers it carries are the join keys that interrupted
+/// recovery uses to pair each placeholder with its stageable result.
 pub(super) fn assistant_tool_call_message(
     content: String,
     tool_calls: Vec<diapason_core::llm::provider::ToolCall>,

@@ -1,8 +1,14 @@
 //! Archive behaviour for ACP session state.
-use super::super::archive::{WorkspaceMatch, session_listing_workspace_match, trace_storage_operation};
+use super::super::archive::{
+    CheckpointDurability, CheckpointReader, SessionArchiveCheckpointReader, WorkspaceMatch,
+    missing_persisted_tool_calls, required_checkpoint_retention_violation, session_listing_workspace_match,
+    staged_tool_call_ids, trace_storage_operation, verify_required_checkpoint_retention,
+};
 use super::*;
+use crate::zed::agent::session_state::{CheckpointFailure, RequiredCheckpointError};
 use assert_fs::TempDir;
-use diapason_core::llm::provider::MessageRole;
+use diapason_core::llm::provider::{MessageRole, ToolCall};
+use futures::future::BoxFuture;
 use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::sync::{Arc, Mutex};
@@ -108,7 +114,8 @@ struct SessionListProjection<TCursor> {
     next_cursor: TCursor,
 }
 
-fn archived_listing(identifier: &str, workspace: &Path, prompt: &str) -> SessionListing {
+/// Builds a minimal archived session listing for resume tests.
+pub(super) fn archived_listing(identifier: &str, workspace: &Path, prompt: &str) -> SessionListing {
     session_listing(
         identifier,
         workspace,
@@ -386,4 +393,698 @@ fn session_list_cursor_advances_to_the_next_page() {
     let second = ZedAgent::session_list_response(&acp::ListSessionsRequest::new().cursor(cursor), listings).unwrap();
     assert_eq!(second.sessions.len(), 1);
     assert!(second.next_cursor.is_none());
+}
+
+/// A required checkpoint must reject a snapshot compacted past its staged batch.
+#[test]
+fn required_checkpoint_rejects_a_snapshot_compacted_beyond_its_staged_calls() {
+    let staged = vec!["staged-call-0001".to_string()];
+
+    assert_eq!(
+        required_checkpoint_retention_violation(CheckpointDurability::Required, &staged, &[]),
+        Some(1),
+        "an emptied snapshot must be rejected when durability is required"
+    );
+    assert_eq!(
+        required_checkpoint_retention_violation(CheckpointDurability::BestEffort, &staged, &[]),
+        None,
+        "best-effort checkpoints tolerate compaction loss"
+    );
+}
+
+/// A required checkpoint accepts a snapshot that retains both sides of the batch.
+#[test]
+fn required_checkpoint_accepts_a_snapshot_that_retains_the_staged_batch() {
+    let staged = vec!["staged-call-0001".to_string()];
+    let messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                staged[0].clone(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response(staged[0].clone(), "result".to_string())),
+    ];
+
+    assert!(missing_persisted_tool_calls(&staged, &messages).is_empty());
+    assert_eq!(required_checkpoint_retention_violation(CheckpointDurability::Required, &staged, &messages), None);
+}
+
+/// A checkpoint reader that always fails to read the archive back.
+struct FailingCheckpointReader;
+
+impl CheckpointReader for FailingCheckpointReader {
+    fn read_persisted_messages<'a>(
+        &'a self,
+        _persisted_path: &'a Path,
+    ) -> BoxFuture<'a, anyhow::Result<Vec<SessionMessage>>> {
+        Box::pin(async { Err(anyhow::anyhow!("checkpoint storage unavailable")) })
+    }
+}
+
+/// Builds a session handle whose thread holds one staged tool batch.
+fn staged_checkpoint_handle(
+    agent: &ZedAgent,
+    workspace: &Path,
+    archive_path: &Path,
+    identifier: &str,
+    staged_id: &str,
+) -> SessionHandle {
+    let metadata =
+        SessionArchiveMetadata::new("diapason", workspace.to_string_lossy(), "gpt-5.4", "openai", "test", "low");
+    let mut listing = session_listing(identifier, workspace, metadata.clone(), Vec::new());
+    listing.path = archive_path.to_path_buf();
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                staged_id.to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response(staged_id.to_string(), "result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive = SessionArchive::resume_from_listing(&listing, metadata);
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+    agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            session_id: acp::SessionId::new(identifier),
+            archive: Some(archive),
+            trigger: SessionStartTrigger::Resume,
+            workspace_runtime: None,
+            workspace_lease: None,
+        },
+    )
+}
+
+/// A read-back failure at the production checkpoint boundary is categorized.
+///
+/// The snapshot is written first, so the archive directory holds exactly the
+/// committed payload; the failure is the read-back that must prove retention.
+/// The staged batch is not marked as write-ahead protected, because the
+/// checkpoint did not establish that it is durable.
+#[tokio::test]
+async fn required_checkpoint_reports_a_read_back_failure_at_the_checkpoint_boundary() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("temporary directory for the boundary read-back test");
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).expect("create the isolated ACP session directory");
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+    let agent = build_agent(temp.path()).await;
+    let staged_id = "staged-read-back-call-0001";
+    let identifier = "required-read-back-failure";
+    let handle = staged_checkpoint_handle(
+        &agent,
+        temp.path(),
+        &session_dir.join(format!("{identifier}.json")),
+        identifier,
+        staged_id,
+    );
+
+    let error = agent
+        .checkpoint_session_with_turn_diagnostics(
+            &handle,
+            None,
+            CheckpointDurability::Required,
+            &[],
+            &FailingCheckpointReader,
+        )
+        .await
+        .expect_err("a storage read failure must fail the required checkpoint");
+
+    assert!(
+        format!("{error:#}").contains("checkpoint storage unavailable"),
+        "the reader's storage failure must be retained: {error:#}"
+    );
+    assert_eq!(
+        error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map(RequiredCheckpointError::failure),
+        Some(CheckpointFailure::ReadBackFailed),
+        "a read-back failure must carry the bounded read-back category"
+    );
+    assert!(
+        handle.data.lock().expect("session data lock").write_ahead_call_ids.is_empty(),
+        "a checkpoint whose retention was not proven must not protect its staged batch"
+    );
+    let entries = fs::read_dir(&session_dir)
+        .expect("list the archive directory")
+        .map(|entry| entry.expect("read an archive directory entry").file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        entries,
+        vec![std::ffi::OsString::from("required-read-back-failure.json")],
+        "the write must commit before the read-back fails, leaving only the checkpoint file"
+    );
+}
+
+/// The production reader verifies retention without rewriting the archive.
+#[tokio::test]
+async fn required_checkpoint_reader_leaves_the_persisted_archive_unchanged() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let temp = TempDir::new().expect("temporary directory for the read-only checkpoint test");
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).expect("create the isolated ACP session directory");
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+
+    let metadata =
+        SessionArchiveMetadata::new("diapason", temp.path().to_string_lossy(), "gpt-5.4", "openai", "test", "low");
+    let staged_id = "staged-read-only-call-0001".to_string();
+    let listing = session_listing(
+        "read-only-identifier",
+        temp.path(),
+        metadata,
+        vec![
+            SessionMessage::from(&Message::assistant_with_tools(
+                String::new(),
+                vec![ToolCall::function(
+                    staged_id.clone(),
+                    "read_file".to_string(),
+                    "{}".to_string(),
+                )],
+            )),
+            SessionMessage::from(&Message::tool_response(staged_id.clone(), "result".to_string())),
+        ],
+    );
+    // The file stem differs from the identifier, so the reader must fall back
+    // to this exact path rather than resolving through the session listing.
+    let archive_path = temp.path().join("checkpoint-read-only.json");
+    diapason_commons::fs::write_private_json_file(&archive_path, &listing.snapshot)
+        .await
+        .expect("persist the checkpoint archive");
+    let before = fs::read(&archive_path).expect("read the archive before verification");
+
+    verify_required_checkpoint_retention(
+        &SessionArchiveCheckpointReader,
+        &archive_path,
+        std::slice::from_ref(&staged_id),
+        std::slice::from_ref(&staged_id),
+        &[],
+        &[],
+    )
+    .await
+    .expect("a retained staged batch must verify");
+
+    let after = fs::read(&archive_path).expect("read the archive after verification");
+    assert_eq!(before, after, "verification must not rewrite the persisted archive");
+}
+
+/// The production reader fails closed on a missing archive without creating one.
+#[tokio::test]
+async fn production_checkpoint_reader_reports_a_missing_archive() {
+    let temp = TempDir::new().expect("temporary directory for the missing-reader test");
+    let missing_path = temp.path().join("absent-checkpoint.json");
+
+    let error = SessionArchiveCheckpointReader
+        .read_persisted_messages(&missing_path)
+        .await
+        .expect_err("reading a missing checkpoint must fail");
+    assert!(
+        format!("{error:#}").contains("reading back the required ACP session checkpoint file"),
+        "the read-back failure must carry its operation context: {error:#}"
+    );
+    assert!(!missing_path.exists(), "a failed read must not create the archive");
+    assert_eq!(
+        fs::read_dir(temp.path()).expect("list the archive directory").count(),
+        0,
+        "the production reader must not write anything into the session directory"
+    );
+}
+
+/// The verifier maps a missing production archive to a read-back failure.
+#[tokio::test]
+async fn required_checkpoint_reports_a_production_read_back_failure() {
+    let temp = TempDir::new().expect("temporary directory for the read-back category test");
+    let missing_path = temp.path().join("absent-checkpoint.json");
+    let staged = vec!["read-back-category-call".to_string()];
+
+    let error = verify_required_checkpoint_retention(
+        &SessionArchiveCheckpointReader,
+        &missing_path,
+        &staged,
+        &staged,
+        &[],
+        &[],
+    )
+    .await
+    .expect_err("a missing archive must fail the required checkpoint");
+
+    let failure = error
+        .downcast_ref::<RequiredCheckpointError>()
+        .expect("the failure must carry its bounded category")
+        .failure();
+    assert_eq!(failure, CheckpointFailure::ReadBackFailed);
+}
+
+/// A best-effort checkpoint must not replace an archive whose compacted payload
+/// lost the write-ahead evidence.
+///
+/// The checkpoint cannot fail the turn, so it skips the write and leaves the
+/// last archive that still contains the staged request and result.
+#[tokio::test]
+async fn best_effort_checkpoint_preserves_write_ahead_evidence_under_compaction() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    // The small write-ahead batch fits; a large terminal result does not.
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("temporary directory for the write-ahead protection test");
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).expect("create the isolated ACP session directory");
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+    let agent = build_agent(temp.path()).await;
+
+    let identifier = "best-effort-write-ahead-protection";
+    let metadata =
+        SessionArchiveMetadata::new("diapason", temp.path().to_string_lossy(), "gpt-5.4", "openai", "test", "low");
+    let staged_id = "staged-protected-call-0001".to_string();
+    let mut listing = session_listing(identifier, temp.path(), metadata.clone(), Vec::new());
+    let archive_path = session_dir.join(format!("{identifier}.json"));
+    listing.path = archive_path.clone();
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                staged_id.clone(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response(staged_id.clone(), "incomplete result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive = SessionArchive::resume_from_listing(&listing, metadata);
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+    let handle = agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            session_id: acp::SessionId::new(identifier),
+            archive: Some(archive),
+            trigger: SessionStartTrigger::Resume,
+            workspace_runtime: None,
+            workspace_lease: None,
+        },
+    );
+
+    agent
+        .checkpoint_session_required(&handle)
+        .await
+        .expect("the small write-ahead batch must persist");
+    let before = fs::read(&archive_path).expect("read the write-ahead archive");
+    assert_eq!(
+        handle.data.lock().expect("session data lock").write_ahead_call_ids.clone(),
+        vec![staged_id.clone()],
+        "the required checkpoint must protect its staged call"
+    );
+
+    // A terminal result too large for the budget makes compaction trim the
+    // assistant request away, so the prepared payload loses the request side
+    // of the write-ahead evidence.
+    let oversized_result = "r".repeat(32 * 1024);
+    handle
+        .data
+        .lock()
+        .expect("session data lock")
+        .thread
+        .mutate_messages(|messages| {
+            for message in messages
+                .iter_mut()
+                .filter(|message| message.tool_call_id.as_deref() == Some(staged_id.as_str()))
+            {
+                *message = Message::tool_response(staged_id.clone(), oversized_result.clone());
+            }
+        });
+
+    let capture = TraceCapture::default();
+    let subscriber = Registry::default().with(capture.clone());
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+    agent
+        .checkpoint_terminal_tool_results(&handle)
+        .await
+        .expect("a best-effort checkpoint must tolerate the loss by skipping the write");
+    assert_eq!(
+        handle.data.lock().expect("session data lock").write_ahead_call_ids.clone(),
+        vec![staged_id.clone()],
+        "a skipped terminal-results checkpoint must keep write-ahead protection"
+    );
+
+    let trace = capture.0.lock().expect("trace capture lock").join("\n");
+    let archive_path_text = archive_path.to_string_lossy();
+    let session_dir_text = session_dir.to_string_lossy();
+    assert_storage_trace(
+        &trace,
+        "checkpoint",
+        "degraded",
+        &[
+            archive_path_text.as_ref(),
+            session_dir_text.as_ref(),
+            staged_id.as_str(),
+        ],
+    );
+    assert!(
+        trace.contains("persistence_outcome=\"skipped_protected_evidence\""),
+        "a skipped checkpoint must report its bounded persistence outcome: {trace}"
+    );
+    assert!(
+        trace.contains("protected_calls=1"),
+        "a skipped checkpoint must report how many calls it protected: {trace}"
+    );
+    assert_eq!(
+        agent.recovery_metrics().get_tool_recovery_metrics().checkpoint_skips,
+        1,
+        "a skipped checkpoint must be counted as a degraded outcome"
+    );
+
+    let after = fs::read(&archive_path).expect("read the archive after the skipped checkpoint");
+    assert_eq!(before, after, "a skipped best-effort checkpoint must leave the archive unchanged");
+    let persisted = find_session_by_identifier(identifier)
+        .await
+        .expect("read the persisted archive")
+        .expect("the write-ahead archive must remain discoverable");
+    assert_eq!(persisted.snapshot.messages.len(), 2, "the archived write-ahead request and result must survive");
+    assert!(
+        persisted.snapshot.messages.iter().any(|message| message
+            .tool_calls
+            .as_deref()
+            .is_some_and(|calls| calls.iter().any(|call| call.id == staged_id))),
+        "the archived write-ahead request must still be present"
+    );
+}
+
+/// Compaction that drops the staged batch fails the required checkpoint.
+///
+/// A tool round only starts after a required checkpoint succeeds, so this
+/// boundary is what prevents executing a call whose write-ahead evidence the
+/// archive no longer retains.
+#[tokio::test]
+async fn required_checkpoint_fails_when_compaction_drops_the_staged_batch() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    // This budget fits the metadata and a lone tool result but not the
+    // assistant batch, so compaction trims the request side away.
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("temporary directory for the compaction checkpoint test");
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).expect("create the isolated ACP session directory");
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+    let agent = build_agent(temp.path()).await;
+
+    let identifier = "required-checkpoint-compaction";
+    let metadata =
+        SessionArchiveMetadata::new("diapason", temp.path().to_string_lossy(), "gpt-5.4", "openai", "test", "low");
+    let staged_id = "staged-compaction-call-0001".to_string();
+    let oversized_arguments = "x".repeat(32 * 1024);
+    let mut listing = session_listing(identifier, temp.path(), metadata.clone(), Vec::new());
+    listing.path = session_dir.join(format!("{identifier}.json"));
+    let archive_path = listing.path.clone();
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                staged_id.clone(),
+                "read_file".to_string(),
+                oversized_arguments,
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response(staged_id, "result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive = SessionArchive::resume_from_listing(&listing, metadata);
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+    let handle = agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            session_id: acp::SessionId::new(identifier),
+            archive: Some(archive),
+            trigger: SessionStartTrigger::Resume,
+            workspace_runtime: None,
+            workspace_lease: None,
+        },
+    );
+
+    let error = agent
+        .checkpoint_session_required(&handle)
+        .await
+        .expect_err("a snapshot compacted past its staged batch must fail the required checkpoint");
+
+    assert!(
+        format!("{error:#}").contains("dropped 1 staged tool call"),
+        "the failure must name the dropped staged batch: {error:#}"
+    );
+    assert_eq!(
+        error
+            .downcast_ref::<RequiredCheckpointError>()
+            .map(RequiredCheckpointError::failure),
+        Some(CheckpointFailure::RetentionDropped),
+        "a dropped batch must carry the bounded retention category"
+    );
+    assert!(
+        !archive_path.exists(),
+        "a rejected required checkpoint must not write the compacted payload to disk"
+    );
+
+    // A retry must fail too: the rejected checkpoint cannot leave a compacted
+    // archive that a later attempt would accept without the staged batch.
+    let retry = agent
+        .checkpoint_session_required(&handle)
+        .await
+        .expect_err("a retried required checkpoint must fail the same way");
+    assert!(
+        format!("{retry:#}").contains("dropped 1 staged tool call"),
+        "the retried failure must still name the dropped staged batch: {retry:#}"
+    );
+}
+
+/// A required checkpoint still succeeds when compaction retains the batch.
+#[tokio::test]
+async fn required_checkpoint_succeeds_when_compaction_retains_the_staged_batch() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    // The same budget as the loss case, but a small enough batch to survive.
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, Some(8 * 1024));
+    let temp = TempDir::new().expect("temporary directory for the retained compaction test");
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).expect("create the isolated ACP session directory");
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+    let agent = build_agent(temp.path()).await;
+
+    let identifier = "required-checkpoint-retained";
+    let metadata =
+        SessionArchiveMetadata::new("diapason", temp.path().to_string_lossy(), "gpt-5.4", "openai", "test", "low");
+    let staged_id = "staged-retained-call-0001".to_string();
+    let mut listing = session_listing(identifier, temp.path(), metadata.clone(), Vec::new());
+    listing.path = session_dir.join(format!("{identifier}.json"));
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                staged_id.clone(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response(staged_id, "result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive = SessionArchive::resume_from_listing(&listing, metadata);
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+    let handle = agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            session_id: acp::SessionId::new(identifier),
+            archive: Some(archive),
+            trigger: SessionStartTrigger::Resume,
+            workspace_runtime: None,
+            workspace_lease: None,
+        },
+    );
+
+    agent
+        .checkpoint_session_required(&handle)
+        .await
+        .expect("a batch that survives compaction must verify");
+}
+
+/// Only the most recent assistant tool batch is treated as staged.
+#[test]
+fn staged_tool_call_ids_selects_the_last_assistant_batch() {
+    let messages = vec![
+        Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                "earlier-call".to_string(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        ),
+        Message::tool_response("earlier-call".to_string(), "earlier result".to_string()),
+        Message::assistant_with_tools(
+            String::new(),
+            vec![
+                ToolCall::function("staged-call-a".to_string(), "read_file".to_string(), "{}".to_string()),
+                ToolCall::function("staged-call-b".to_string(), "read_file".to_string(), "{}".to_string()),
+            ],
+        ),
+    ];
+
+    assert_eq!(staged_tool_call_ids(&messages), ["staged-call-a", "staged-call-b"]);
+    assert!(staged_tool_call_ids(&[Message::user("no tools".to_string())]).is_empty());
+}
+
+/// Restores the process session directory for the guard's lifetime.
+struct SessionDirGuard {
+    previous: Option<std::ffi::OsString>,
+    environment_lock: diapason_commons::env_lock::EnvGuard,
+}
+
+impl SessionDirGuard {
+    fn set(path: &Path) -> Self {
+        let environment_lock = diapason_commons::env_lock::lock();
+        let previous = std::env::var_os(diapason_core::utils::session_archive::SESSION_DIR_ENV);
+        environment_lock.set_var(diapason_core::utils::session_archive::SESSION_DIR_ENV, path.as_os_str());
+        Self { previous, environment_lock }
+    }
+}
+
+impl Drop for SessionDirGuard {
+    fn drop(&mut self) {
+        self.environment_lock
+            .restore_var(diapason_core::utils::session_archive::SESSION_DIR_ENV, self.previous.as_ref());
+    }
+}
+
+/// A required checkpoint reads its canonical archive back and retains the batch.
+#[tokio::test]
+async fn required_checkpoint_verifies_the_persisted_staged_batch() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().unwrap();
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).unwrap();
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+    let agent = build_agent(temp.path()).await;
+    let identifier = "required-checkpoint-retention";
+    let metadata =
+        SessionArchiveMetadata::new("diapason", temp.path().to_string_lossy(), "gpt-5.4", "openai", "test", "low");
+    let staged_id = "staged-retention-call-0001".to_string();
+    let mut listing = session_listing(identifier, temp.path(), metadata.clone(), Vec::new());
+    listing.path = session_dir.join(format!("{identifier}.json"));
+    listing.snapshot.messages = vec![
+        SessionMessage::from(&Message::assistant_with_tools(
+            String::new(),
+            vec![ToolCall::function(
+                staged_id.clone(),
+                "read_file".to_string(),
+                "{}".to_string(),
+            )],
+        )),
+        SessionMessage::from(&Message::tool_response(staged_id, "result".to_string())),
+    ];
+    listing.snapshot.total_messages = listing.snapshot.messages.len();
+    let archive = SessionArchive::resume_from_listing(&listing, metadata);
+    let thread = agent
+        .thread_manager
+        .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+    let handle = agent.build_session_handle(
+        thread,
+        SessionHandleBootstrap {
+            session_id: acp::SessionId::new(identifier),
+            archive: Some(archive),
+            trigger: SessionStartTrigger::Resume,
+            workspace_runtime: None,
+            workspace_lease: None,
+        },
+    );
+
+    agent
+        .checkpoint_session_required(&handle)
+        .await
+        .expect("a checkpoint that retained the staged batch must verify");
+
+    let persisted = find_session_by_identifier(identifier)
+        .await
+        .expect("read the persisted checkpoint")
+        .expect("the required checkpoint must be discoverable");
+    assert_eq!(persisted.snapshot.messages.len(), 2);
+}
+
+/// Concurrent attaches for one session repair and register it exactly once.
+#[tokio::test]
+async fn concurrent_attach_repairs_and_registers_once() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("temporary directory for the concurrent attach test");
+    // The repair checkpoint reads its archive back through the session
+    // directory, so isolate it instead of scanning the host's real one.
+    let session_dir = temp.path().join("sessions");
+    fs::create_dir_all(&session_dir).expect("create the isolated ACP session directory");
+    let _session_dir_guard = SessionDirGuard::set(&session_dir);
+    let agent = build_agent(temp.path()).await;
+    let workspace = AcpSessionWorkspace::from_client_cwd(temp.path())
+        .await
+        .expect("build the ACP session workspace from the temporary directory");
+    let session_id = acp::SessionId::new("concurrent-resume-session");
+    let staged_call = ToolCall::function("concurrent-call-0001".to_string(), "read_file".to_string(), "{}".to_string());
+
+    let mut first = archived_listing("concurrent-resume-first", temp.path(), "continue");
+    first.snapshot.messages = vec![SessionMessage::from(&Message::assistant_with_tools(
+        String::new(),
+        vec![staged_call.clone()],
+    ))];
+    first.snapshot.total_messages = 1;
+    let mut second = archived_listing("concurrent-resume-second", temp.path(), "continue");
+    second.snapshot.messages = vec![SessionMessage::from(&Message::assistant_with_tools(
+        String::new(),
+        vec![staged_call],
+    ))];
+    second.snapshot.total_messages = 1;
+
+    let first_archive = first.path.clone();
+    let second_archive = second.path.clone();
+    let first_original = serde_json::to_vec(&first.snapshot).unwrap();
+    let second_original = serde_json::to_vec(&second.snapshot).unwrap();
+    fs::write(&first_archive, &first_original).unwrap();
+    fs::write(&second_archive, &second_original).unwrap();
+
+    let (first_result, second_result) = tokio::join!(
+        agent.attach_thread_from_listing(&session_id, &workspace, first),
+        agent.attach_thread_from_listing(&session_id, &workspace, second),
+    );
+    let first_handle = first_result.expect("the first concurrent attach must succeed");
+    let second_handle = second_result.expect("the second concurrent attach must succeed");
+    let registered = agent
+        .session_handle(&session_id)
+        .expect("query the session registry after concurrent attaches")
+        .expect("a concurrent attach must register the session");
+
+    assert!(
+        Arc::ptr_eq(&first_handle.data, &registered.data),
+        "both concurrent attaches must yield the registered session"
+    );
+    assert!(
+        Arc::ptr_eq(&second_handle.data, &registered.data),
+        "both concurrent attaches must yield the registered session"
+    );
+    assert_eq!(
+        registered.data.lock().unwrap().thread.messages().len(),
+        2,
+        "the registered session must carry exactly one repaired batch"
+    );
+
+    let rewritten = [(&first_archive, &first_original), (&second_archive, &second_original)]
+        .into_iter()
+        .filter(|(path, original)| fs::read(path).unwrap() != **original)
+        .count();
+    assert_eq!(rewritten, 1, "only the winning attach may write the repair checkpoint");
 }

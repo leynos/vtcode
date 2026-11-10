@@ -32,6 +32,8 @@ mod configuration;
 mod lifecycle;
 mod metadata;
 
+pub(in crate::zed::agent) use archive::{CheckpointFailure, RequiredCheckpointError, checkpoint_failure_label};
+
 pub(super) fn safe_internal_error(
     operation: &'static str,
     error_category: &'static str,
@@ -170,6 +172,7 @@ impl ZedAgent {
                 provider,
                 model,
                 last_tool_call_at: None,
+                write_ahead_call_ids: Vec::new(),
                 auto_compact_suppressed: 0,
                 lifecycle_hooks,
                 session_started: false,

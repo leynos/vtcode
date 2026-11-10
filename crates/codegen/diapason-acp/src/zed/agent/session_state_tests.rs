@@ -18,8 +18,6 @@ use diapason_core::utils::session_archive::{
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
-use std::sync::LazyLock;
-use tokio::sync::Mutex as AsyncMutex;
 
 struct NoOpWorkspaceTrustSynchronizer;
 
@@ -34,27 +32,8 @@ impl WorkspaceTrustSynchronizer for NoOpWorkspaceTrustSynchronizer {
     }
 }
 
-static HISTORY_TEST_LOCK: LazyLock<AsyncMutex<()>> = LazyLock::new(|| AsyncMutex::new(()));
-
-struct HistorySettingsGuard;
-
-impl HistorySettingsGuard {
-    fn set(persistence: HistoryPersistence, max_bytes: Option<usize>) -> Self {
-        let mut config = diapason_core::config::DiapasonConfig::default();
-        config.history.persistence = persistence;
-        config.history.max_bytes = max_bytes;
-        diapason_core::utils::session_archive::apply_session_history_config_from_diapason(&config);
-        Self
-    }
-}
-
-impl Drop for HistorySettingsGuard {
-    fn drop(&mut self) {
-        diapason_core::utils::session_archive::apply_session_history_config_from_diapason(
-            &diapason_core::config::DiapasonConfig::default(),
-        );
-    }
-}
+use crate::zed::agent::test_support::HistorySettingsGuard;
+use crate::zed::agent::test_support::SESSION_HISTORY_TEST_LOCK as HISTORY_TEST_LOCK;
 #[derive(Debug, PartialEq)]
 struct SessionConfigProjection {
     primary_agent: String,
@@ -183,9 +162,15 @@ fn session_listing(
 
 #[path = "session_state_tests/archive.rs"]
 mod archive;
+#[path = "session_state_tests/checkpoint_categories.rs"]
+mod checkpoint_categories;
 #[path = "session_state_tests/configuration.rs"]
 mod configuration;
 #[path = "session_state_tests/metadata.rs"]
 mod metadata;
+#[path = "session_state_tests/retention_properties.rs"]
+mod retention_properties;
+#[path = "session_state_tests/tool_recovery.rs"]
+mod tool_recovery;
 #[path = "session_state_tests/workspace.rs"]
 mod workspace;

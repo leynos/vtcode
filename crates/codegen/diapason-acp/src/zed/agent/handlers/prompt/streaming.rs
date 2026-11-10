@@ -243,6 +243,7 @@ async fn process_stream_response(
             reasoning_details: response.reasoning_details.clone(),
             tool_loop_count,
             streamed: true,
+            timer: &SystemToolRoundTimer,
         })
         .await?;
         match outcome {

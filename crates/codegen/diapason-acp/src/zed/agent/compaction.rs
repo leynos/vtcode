@@ -4,7 +4,8 @@
 //! automatic, provider-native, and hook-assisted compaction.
 
 use super::super::types::SessionHandle;
-use super::{ZedAgent, log_suppressed_error, warn_hook_message};
+use super::{ZedAgent, warn_hook_message};
+use crate::zed::agent::session_state::checkpoint_failure_label;
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
 use diapason_core::compaction::auto::{AutoCompactionInput, AutoCompactionOutcome, auto_compact_messages};
@@ -200,10 +201,12 @@ impl ZedAgent {
         let CompactionCommit { session, thread, history, tools, decision } = commit;
         thread.replace_messages(history);
         if let Err(error) = self.checkpoint_session(session).await {
-            log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
+            // The raw chain can name archive paths or storage detail, so only
+            // its bounded category and depth are logged.
             warn!(
                 operation = "session_checkpoint",
-                error_category = "archive_write_failed",
+                error_category = checkpoint_failure_label(&error),
+                error_chain_depth = error.chain().count(),
                 "Failed to persist compacted ACP session checkpoint"
             );
         }

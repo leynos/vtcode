@@ -185,6 +185,9 @@ pub(crate) struct SessionData {
     pub(crate) provider: String,
     pub(crate) model: String,
     pub(crate) last_tool_call_at: Option<Instant>,
+    /// Call ids whose write-ahead evidence the last required checkpoint made
+    /// durable. Best-effort checkpoints must not compact them away.
+    pub(crate) write_ahead_call_ids: Vec<String>,
     pub(crate) auto_compact_suppressed: u8,
     pub(crate) lifecycle_hooks: Option<LifecycleHookEngine>,
     pub(crate) session_started: bool,
