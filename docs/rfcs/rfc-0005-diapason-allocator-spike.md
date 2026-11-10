@@ -45,17 +45,17 @@ and raw samples where available; explicitly label missing provenance.
 The production selector defaults to mimalloc and offers `allocator-jemalloc`,
 with `profiling` taking precedence over both. The release workflow enables
 `allocator-jemalloc` for Linux GNU targets and leaves the musl and Windows
-packages on the mimalloc default.[^5] The GNU packages therefore already deploy
+packages on the mimalloc default.[^2] The GNU packages therefore already deploy
 jemalloc, so mimalloc is not their baseline. The standalone throughput
 benchmark duplicates selection without all those conditions or the same
-configuration symbol.[^2] A Cargo feature name alone is therefore insufficient
+configuration symbol.[^3] A Cargo feature name alone is therefore insufficient
 evidence of the active allocator.
 
 The burst benchmark starts a fixed 60-second peak sampler and awaits it before
 recording `post_burst`. Consequently that sample can include an unintended idle
 interval rather than the immediate end of work. Its explanatory verdict also
 assumes jemalloc on Linux independently of the selected allocator, and its
-inner task join loop ignores failures.[^3] Repair those measurement defects
+inner task join loop ignores failures.[^4] Repair those measurement defects
 before using the benchmark to decide anything.
 
 The configured jemalloc symbol and profiling options require validation against
@@ -65,7 +65,7 @@ packages must be measured rather than assumed. Compile-time support for
 background threads does not by itself prove runtime enablement or successful
 purging. Likewise, old prose about unsupported platforms or mimalloc's
 retention behaviour is not a substitute for checking the linked versions and
-observed settings.[^4]
+observed settings.[^5]
 
 ## 3. Small experimental design
 
@@ -196,12 +196,12 @@ as decisively as a successful switch. No follow-on tuning project is implied.
 ## 6. References
 
 [^1]: [Historical allocator analysis](../development/ALLOCATOR_MEMORY.md).
-[^2]: [Production selection](../../src/allocator.rs) and
+[^2]: [Linux and Windows release build](../../.github/workflows/build-linux-windows.yml)
+    selects `allocator-jemalloc` for Linux GNU targets only.
+[^3]: [Production selection](../../src/allocator.rs) and
     [throughput benchmark](../../benches/allocator_throughput.rs).
-[^3]: [Burst/idle benchmark](../../src/cli/bench_allocator.rs).
-[^4]: [jemalloc runtime configuration](https://jemalloc.net/jemalloc.3.html)
+[^4]: [Burst/idle benchmark](../../src/cli/bench_allocator.rs).
+[^5]: [jemalloc runtime configuration](https://jemalloc.net/jemalloc.3.html)
     and [mimalloc environment options](https://microsoft.github.io/mimalloc/environment.html).
     Check the locked native versions; current manuals alone do not identify
     the behaviour of a vendored build.
-[^5]: [Linux and Windows release build](../../.github/workflows/build-linux-windows.yml)
-    selects `allocator-jemalloc` for Linux GNU targets only.
