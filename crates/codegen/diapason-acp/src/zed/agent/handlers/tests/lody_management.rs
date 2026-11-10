@@ -1,8 +1,9 @@
 //! Exercises the Lody subagent-management extensions over the official ACP duplex.
 
 use super::lody_support::{
-    background_record_state, expected_epoch_seconds, lifecycle_task_id, lifecycle_task_meta, lody_cancel_with_reason,
-    lody_ext, lody_list, lody_output_error, lody_output_tail, runtime_active_sessions, write_lody_background_fixture,
+    drain_notifications, expected_epoch_seconds, lifecycle_task_id, lifecycle_task_meta, lody_cancel_with_reason,
+    lody_ext, lody_list, lody_output_error, lody_output_tail, observable_background_snapshot, runtime_active_sessions,
+    write_lody_background_fixture,
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
@@ -175,21 +176,26 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 "an active task must be reported as active, got {active_status}"
             );
 
-            let state_before_output = background_record_state(&controller, &background.id).await;
             let mut output = serde_json::Value::Null;
             for _ in 0..20 {
+                // Async lifecycle updates are not part of the read boundary;
+                // clear them so only notifications caused by the read remain.
+                let _ = drain_notifications(&mut notification_rx);
+                let before = observable_background_snapshot(&controller, &workspace_path, 0).await;
                 output = lody_output_tail(&cx, &session.session_id, &background.id, 1).await?;
+                let delivered = drain_notifications(&mut notification_rx);
+                let after = observable_background_snapshot(&controller, &workspace_path, delivered).await;
+                assert_eq!(
+                    after, before,
+                    "an output read must not change records, timestamps, ledger bytes, or process state"
+                );
+                assert_eq!(delivered, 0, "an output read must not publish session notifications");
                 if output["output"] == "lody-output-two" {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
             assert_eq!(output["output"], "lody-output-two");
-            assert_eq!(
-                background_record_state(&controller, &background.id).await,
-                state_before_output,
-                "an output read must not change record state, timestamps, or process state"
-            );
 
             let oversized_tail = lody_ext(
                 &cx,

@@ -470,6 +470,7 @@ impl SubagentController {
             depth: self.config.depth.saturating_add(1),
             workspace_gated: self.config.workspace_gated,
             exec_sessions: self.config.exec_sessions.clone(),
+            output_reader: None,
             pty_manager: self.config.pty_manager.clone(),
             managed_background_runtime: true,
         };

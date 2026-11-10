@@ -227,6 +227,7 @@ pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerS
         depth: 0,
         workspace_gated,
         exec_sessions: registry.exec_session_manager(),
+        output_reader: None,
         pty_manager: registry.pty_manager().clone(),
         managed_background_runtime: false,
     };

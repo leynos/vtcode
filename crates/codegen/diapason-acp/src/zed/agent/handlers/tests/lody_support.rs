@@ -260,6 +260,85 @@ pub(super) async fn background_record_state(
         })
 }
 
+/// Path of the workspace's persisted background-subagent ledger.
+pub(super) fn background_ledger_path(workspace_root: &std::path::Path) -> std::path::PathBuf {
+    workspace_root
+        .join(diapason_commons::workspace_dir_name())
+        .join("state")
+        .join("background_subagents.json")
+}
+
+/// Every observable controller fact around a read-only management request.
+///
+/// The probe is a pure query: it reads the cached records, the persisted
+/// ledger bytes, and the OS liveness of recorded children without refreshing,
+/// respawning, or rewriting anything. Comparing two samples therefore isolates
+/// the effect of the request made between them.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct ObservableBackgroundSnapshot {
+    /// Full serialised records keyed by task id, so a new or changed record
+    /// registers even when a subset of the projected fields happens to match.
+    pub(super) entries: BTreeMap<String, serde_json::Value>,
+    /// Exact persisted ledger bytes, or `None` while no ledger exists.
+    pub(super) ledger: Option<Vec<u8>>,
+    /// Liveness of each recorded child pid, ordered by task id.
+    pub(super) process_liveness: Vec<(u32, bool)>,
+    /// Session notifications delivered since the caller last drained.
+    pub(super) notifications: usize,
+}
+
+/// Samples the observable controller state without refreshing it.
+pub(super) async fn observable_background_snapshot(
+    controller: &diapason_core::subagents::SubagentController,
+    workspace_root: &std::path::Path,
+    notifications: usize,
+) -> ObservableBackgroundSnapshot {
+    let entries = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .map(|entry| {
+            let value = serde_json::to_value(&entry).expect("serialize a background subprocess entry");
+            (entry.id, value)
+        })
+        .collect::<BTreeMap<_, _>>();
+    let process_liveness = entries
+        .values()
+        .filter_map(|entry| entry.get("pid").and_then(serde_json::Value::as_u64))
+        .filter_map(|pid| u32::try_from(pid).ok())
+        .map(|pid| (pid, process_is_alive(pid)))
+        .collect();
+    let ledger = match std::fs::read(background_ledger_path(workspace_root)) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => panic!("read the Lody background ledger: {error}"),
+    };
+    ObservableBackgroundSnapshot { entries, ledger, process_liveness, notifications }
+}
+
+/// Reports whether a recorded child process is still live.
+///
+/// Linux exposes one `/proc` entry per live process; other platforms have no
+/// portable equivalent here, so liveness is a documented no-op.
+#[cfg(target_os = "linux")]
+fn process_is_alive(pid: u32) -> bool {
+    std::path::Path::new(&format!("/proc/{pid}")).exists()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_is_alive(_pid: u32) -> bool {
+    true
+}
+
+/// Drains and counts the session notifications already queued.
+pub(super) fn drain_notifications(notifications: &mut mpsc::UnboundedReceiver<acp::AgentNotification>) -> usize {
+    let mut count = 0;
+    while notifications.try_recv().is_ok() {
+        count += 1;
+    }
+    count
+}
+
 pub(super) fn write_lody_background_fixture(workspace: &std::path::Path) {
     let agent_dir = workspace.join(".diapason/agents");
     std::fs::create_dir_all(&agent_dir).expect("create Lody test agent directory");

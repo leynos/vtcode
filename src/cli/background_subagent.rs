@@ -48,6 +48,7 @@ pub(crate) async fn handle_background_subagent_command(
         depth: 0,
         workspace_gated: true,
         exec_sessions,
+        output_reader: None,
         pty_manager: pty_sessions.manager().clone(),
         managed_background_runtime: true,
     })

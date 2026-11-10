@@ -81,11 +81,14 @@ management requests return only tasks owned by the requested ACP session.
   The requirement to keep the ownership expansion additive and both repair
   rounds were directed by the user, so the deviation is recorded rather than
   treated as a live stop condition. The documentation share is excluded from
-  that count, but the generated configuration reference alone changes 928 added
-  and 926 removed lines: a generator run that restored truncated JSON defaults,
-  followed by mdtablefix's canonical re-padding of the widened table (see the
-  Decision log). A diff of that size is expected for this one generated table
-  and is not separate feature work.
+  that count. An earlier regeneration of the generated configuration reference
+  changed 928 added and 926 removed lines: a generator run that restored
+  truncated JSON defaults, followed by mdtablefix's canonical re-padding of the
+  widened table (see the Decision log); a diff of that size is expected for
+  this one generated table and is not separate feature work. That regeneration
+  was historical and its unrelated pre-existing drift was excluded, so against
+  the current base `dfcc4ccfd` the file changes two added and zero removed
+  lines.
 
 ## Risks
 
@@ -508,6 +511,20 @@ management requests return only tasks owned by the requested ACP session.
   - `docs/development/acp-runtime.md` now records that lifecycle forwarding is
     best effort: the bounded channel drops an update when full or closed and
     counts it, and clients reconcile through `_lody/subagents/list`.
+- [x] (2026-11-10) EP-M6 assessment follow-through: close the four items the
+  assessment of `d1bf8d273` left open, plus the ExecPlan framing corrections.
+  - `BackgroundOutputReader` is a new injectable port in
+    `subagents/background_output.rs` with `ExecSessionOutputReader` as its
+    default adapter; `SubagentControllerConfig.output_reader` lets a caller
+    substitute storage access while tail bounds and error mapping stay in the
+    adapter.
+  - The ACP read boundary compares full records, exact ledger bytes, child
+    liveness and the notification count across a `_lody/subagents/output` read.
+  - A new prompt regression covers an absent session controller while a shared
+    workspace controller stays attached.
+  - The Context passage and the Tolerances paragraph now mark the pre-rename
+    notification and the large regeneration as historical, and record the
+    current two-addition configuration-reference diff.
 
 ## Surprises & discoveries
 
@@ -724,11 +741,12 @@ management requests return only tasks owned by the requested ACP session.
   JSON defaults the checked-in reference had truncated
   (`agent.onboarding.recommended_actions`, `commands.extra_path_entries`,
   `permissions.auto.block_rules` and peers), and the formatting pass re-laid
-  the widened table at mdtablefix's canonical column widths. Keeping only the
-  two new rows would have reverted those deliberate corrections and left the
-  reference disagreeing with the schema, so the file is carried in full and its
-  cost is recorded under Tolerances rather than hidden. Date/Author: 2026-08-28
-  / Codex; revised 2026-10-31 / Claude Code.
+  the widened table at mdtablefix's canonical column widths. That regeneration
+  was historical: its unrelated pre-existing drift was excluded, so only the
+  two new schema rows were retained. Against
+  `dfcc4ccfdd881abf833f265ed7ad44760af26d4e` the current diff is two additions
+  and no deletions. Date/Author: 2026-08-28 / Codex; revised 2026-10-31 /
+  Claude Code.
 - Decision: derive nested-task visibility from the existing controller tree
   instead of introducing a session-to-controller registry. Rationale: the tree
   is already the authority for which controller spawned which child, it is
@@ -778,9 +796,11 @@ standard session notifications are sent through `src/zed/agent/updates.rs` and
 `src/zed/connection.rs`. Per-session runtime state is in `src/zed/types.rs`.
 
 `src/zed/agent/task_lifecycle.rs` subscribes to
-`vtcode_core::subagents::SubagentProgressEvent`, filters events by parent ACP
-session and currently emits the ignored `_vtcode/taskLifecycle` notification.
-The controller that owns those events is in
+`vtcode_core::subagents::SubagentProgressEvent` and filters events by parent
+ACP session. Before this change, it emitted the ignored `_vtcode/taskLifecycle`
+notification; the branch replaced that with the standard ACP tool-call
+projection carrying `_meta.lody.task`, so the custom notification is no longer
+emitted. The controller that owns those events is in
 `crates/codegen/vtcode-core/src/subagents`. It already provides status lists,
 child shutdown, child transcript snapshots, background shutdown and background
 output previews.
@@ -1698,3 +1718,57 @@ consequences worth keeping: a future change that re-derives the registry in the
 execution path reintroduces the ownership escape, and the fail-closed case must
 assert on the *scoped* registry rather than on the launch registry, because the
 launch registry legitimately keeps its own controller.
+
+### Revision note (2026-11-10, r26 round: assessment follow-through)
+
+Review `5820620441`'s requested changes were repaired in r25, but the
+assessment of `d1bf8d273` graded five rows resolved and five only partially
+resolved, with four concrete items. This round closes them.
+
+- **ExecPlan framing.** The Context passage described the ignored
+  `_vtcode/taskLifecycle` notification as the current behaviour; it now reads
+  as history and states that the branch replaced it with the standard ACP
+  tool-call projection. The Tolerances paragraph kept the historical
+  regeneration figures (928 added, 926 removed) as the reason that one
+  generated table is exempt from the changed-line budget, and now adds the
+  diff-scoped fact: against `dfcc4ccfd` the file changes two added lines and no
+  removed lines.
+- **Prompt fail-closed regression.** `lody_prompt_delegation` clears the launch
+  registry itself, so it cannot show an absent *session* controller failing
+  closed while a shared workspace controller stays able to spawn. The new
+  `lody_prompt_delegation_shared_controller` test attaches a launch controller
+  with `owner_session_id: None`, clears `agent.vt_config`, and asserts the
+  session shares the launch runtime, owns no controller, and that the shared
+  registry keeps one. The prompt then fails the tool call with the bounded
+  fail-closed message and leaves the shared controller's record list empty,
+  with no pid and no persisted ledger.
+- **Read-only output boundary.** `lody_management` now samples an
+  `ObservableBackgroundSnapshot` before and after every
+  `_lody/subagents/output` read, after draining queued notifications so only
+  the read's own effects remain. The snapshot compares every serialised record
+  keyed by task id (not a subset of fields), the exact persisted ledger bytes,
+  and OS liveness of each recorded child from `/proc`, and the test asserts
+  zero notifications and full snapshot equality. The existing output assertions
+  are retained.
+- **Injectable output reader.** `subagents::BackgroundOutputReader` is a new
+  domain port with `read_live_output` and `read_archived_output`;
+  `ExecSessionOutputReader` is its default adapter over the workspace exec
+  sessions and the session archive. `SubagentControllerConfig` gains an
+  optional reader and the controller resolves one at construction, so ACP tests
+  can substitute a fake while tail bounds, transport limits, validation and
+  error mapping stay in the adapter. Precedence and fallback are preserved:
+  live output wins, `Ok(None)` falls back with `live_output_not_ready`, only a
+  typed `ExecSessionNotFound` falls back with `live_session_missing`, and any
+  other read error propagates with `read background output for {target}`
+  context. Focused tests cover each of those four paths plus an unbounded
+  archived transcript.
+
+#### Lesson: an injectable reader makes a side-effect assertion measurable
+
+The read-only boundary is only provable if the read has one observable input.
+Splitting storage access out of the controller behind `BackgroundOutputReader`
+turned the old "did the cached record change?" check into a comparison over
+records, ledger bytes, child liveness and notifications, because a fake reader
+can no longer refresh, respawn or persist anything by accident. The same split
+also settles the domain-architecture row: ACP keeps its tail policy and its
+error mapping, and core owns only the storage seam.

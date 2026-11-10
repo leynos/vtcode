@@ -43,6 +43,7 @@ fn test_controller_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> Su
         depth: 0,
         workspace_gated: false,
         exec_sessions,
+        output_reader: None,
         pty_manager: pty_sessions.manager().clone(),
         managed_background_runtime: false,
     }
