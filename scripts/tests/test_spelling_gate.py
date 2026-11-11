@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from spelling_gate_test_support import (
     prepare_make_repository,
