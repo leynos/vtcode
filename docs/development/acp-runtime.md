@@ -351,11 +351,26 @@ adding one is tracked as
 ### Usage publication
 
 After each provider response, ACP sends `_lody/session/usage_update` with
-`sessionId`, a per-response `usage` delta (`inputTokens`, `outputTokens`,
-`cacheReadInputTokens`, and optional `cacheCreationInputTokens`), and
-`modelUsage` keyed by the responding model. The notification is omitted when
-the response carries no usage. The delta covers that response, not a running
-session total.
+`sessionId`, a per-response `usage` delta, and `modelUsage` keyed by the
+responding model. The notification is omitted when the response carries no
+usage. The delta covers that response, not a running session total.
+
+`publish_lody_usage` resolves the effective model first: the model named by the
+response wins, and the session model is the fallback. That single model then
+selects the usage profile: for a configured custom provider, `resolved_profile`
+layers the exact model profile over the provider defaults for context window,
+pricing, and API format; otherwise the built-in model catalogue supplies what it
+knows.
+
+The delta carries `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and,
+when the provider reports it, `cacheCreationInputTokens`. `inputTokens` is the
+full prompt count and already contains the cached tokens counted separately.
+Reasoning tokens are reported in `reasoningOutputTokens` and subtracted from
+`outputTokens`, so the two fields describe disjoint token sets. `contextWindow`
+comes from the resolved profile. Cost is published as `costUSD` only when the
+profile supplies both input and output rates. For the user-facing contract, see
+[ACP usage, compaction, and subagents](../users-guide.md#acp-usage-compaction-and-subagents);
+the wire shape is in the [ACP integration guide](../acp/ACP_INTEGRATION.md).
 
 Custom providers opt in to streamed usage with `supports_stream_usage` in their
 provider defaults or model profile. The OpenAI-compatible provider requests
@@ -430,7 +445,7 @@ attempt with no confirmation that the client applied the update. Local send
 failures are measurable, but the counters do not confirm client receipt, and a
 client that stops reading can remain undetected.
 
-## Retry notices and usage publication
+## Retry notices
 
 Provider retry orchestration reports attempt failures through the narrow
 `AttemptFailureSink` port rather than through ACP types. The buffered
@@ -449,19 +464,6 @@ SHA-256 digest of that rendering. The rendering itself and the raw session
 identifier stay out of the log; the digest correlates repeated failures and is
 not a secrecy boundary. It is a presentation adapter, not the JSON-RPC
 transport: it neither retries the request nor changes retry policy.
-
-`publish_lody_usage` emits the `_lody/session/usage_update` extension
-notification for each provider response that includes usage. It resolves the
-effective model first: the model named by the response wins, and the session
-model is the fallback. That single model then selects the usage profile: for a
-configured custom provider, `resolved_profile` layers the exact model profile
-over the provider defaults for context window, pricing, and API format;
-otherwise the built-in model catalogue supplies what it knows. Reasoning tokens
-are reported in `reasoningOutputTokens` and subtracted from `outputTokens`, so
-the two fields describe disjoint token sets. Cost is omitted when the profile
-supplies no pricing. For the user-facing contract, see
-[ACP usage, compaction, and subagents](../users-guide.md#acp-usage-compaction-and-subagents);
-the wire shape is in the [ACP integration guide](../acp/ACP_INTEGRATION.md).
 
 ## Focused verification
 

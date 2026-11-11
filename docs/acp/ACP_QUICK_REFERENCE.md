@@ -124,7 +124,6 @@ notification `_lody/session/usage_update`. Its parameters contain:
     "inputTokens": 123,
     "outputTokens": 45,
     "cacheReadInputTokens": 0,
-    "cacheCreationInputTokens": 0,
     "reasoningOutputTokens": 12,
     "contextWindow": 524288,
     "costUSD": 0.0000123
@@ -133,15 +132,23 @@ notification `_lody/session/usage_update`. Its parameters contain:
     "model-name": {
       "inputTokens": 123,
       "outputTokens": 45,
-      "cacheReadInputTokens": 0
+      "cacheReadInputTokens": 0,
+      "reasoningOutputTokens": 12,
+      "contextWindow": 524288,
+      "costUSD": 0.0000123
     }
   }
 }
 ```
 
-`modelUsage` is keyed by the response model. The values are deltas for one
-provider response, and no notification is emitted when the provider supplies no
-usage data.
+`modelUsage` is keyed by the response model, and each entry repeats the same
+delta as `usage`. The values are deltas for one provider response, and no
+notification is emitted when the provider supplies no usage data.
+
+`inputTokens` is the full prompt count and already includes the tokens also
+reported separately as `cacheReadInputTokens` and `cacheCreationInputTokens`,
+whether the backend reports an inclusive or an exclusive prompt count. Adding
+the three fields together double-counts the cached tokens.
 
 `reasoningOutputTokens`, `contextWindow`, and `costUSD` are optional. The
 visible `outputTokens` value excludes reasoning tokens when the provider
