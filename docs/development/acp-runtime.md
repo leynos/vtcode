@@ -359,8 +359,8 @@ usage. The delta covers that response, not a running session total.
 response wins, and the session model is the fallback. That single model then
 selects the usage profile: for a configured custom provider, `resolved_profile`
 layers the exact model profile over the provider defaults for context window,
-pricing, and API format; otherwise the built-in model catalogue supplies what it
-knows.
+pricing, and API format; otherwise the built-in model catalogue supplies what
+it knows.
 
 The delta carries `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and,
 when the provider reports it, `cacheCreationInputTokens`. `inputTokens` is the

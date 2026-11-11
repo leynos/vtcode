@@ -142,8 +142,9 @@ response, not a running total. The normalized usage object may contain:
 
 - `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and
   `cacheCreationInputTokens`; `inputTokens` is the full prompt count and
-  already includes the cache-read and cache-creation tokens reported separately,
-  whether the backend reports an inclusive or an exclusive prompt count;
+  already includes the cache-read and cache-creation tokens reported
+  separately, whether the backend reports an inclusive or an exclusive prompt
+  count;
 - `reasoningOutputTokens`, when the provider reports reasoning usage (including
   the nested `completion_tokens_details.reasoning_tokens` field used by
   Baseten's OpenAI-compatible responses). `outputTokens` is the visible output
