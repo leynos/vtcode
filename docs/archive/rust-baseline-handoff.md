@@ -556,7 +556,7 @@ and 67 harness tests. Logs use `restack-1` on
 `harden-lint-spelling-foundation`; final handoff checks use
 `handoff-restack-1`. The optional ast-grep scan was skipped because the tool is
 unavailable. The push uses an explicit lease against the original published PR
-#32 head.
+head (#32).
 
 ## PR 32 after PR #31 merged
 
