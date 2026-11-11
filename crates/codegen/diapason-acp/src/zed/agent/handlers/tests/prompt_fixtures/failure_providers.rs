@@ -53,6 +53,22 @@ impl RetryableRateLimitThenAnswerProvider {
     }
 }
 
+/// Buffered counterpart of [`RetryableRateLimitThenAnswerProvider`]: the first
+/// `generate` call fails with a retryable 429, and the scheduled retry answers.
+///
+/// Buffered prompts take a different code path from streams, so this fixture
+/// proves the same notice and retry reach the client without a stream opening.
+pub(in crate::zed::agent::handlers) struct BufferedRetryableRateLimitProvider {
+    calls: AtomicUsize,
+}
+
+impl BufferedRetryableRateLimitProvider {
+    /// Create a provider that rate-limits one buffered attempt before answering.
+    pub(in crate::zed::agent::handlers) fn new() -> Self {
+        Self { calls: AtomicUsize::new(0) }
+    }
+}
+
 #[async_trait]
 impl LLMProvider for FailingCompactionProvider {
     /// Return the provider name used by prompt-routing tests.
@@ -252,5 +268,46 @@ impl LLMProvider for RetryableRateLimitThenAnswerProvider {
     /// Panic, because this fixture is only used for streaming.
     async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
         panic!("scheduled-retry stream test must not use buffered generation")
+    }
+}
+
+#[async_trait]
+impl LLMProvider for BufferedRetryableRateLimitProvider {
+    /// Return the provider name used by prompt-routing tests.
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    /// Return the models this fixture serves.
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    /// Report that this fixture answers without streaming.
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    /// Accept every request.
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    /// Fail the first buffered attempt with a retryable 429, then answer.
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(LLMError::RateLimit {
+                metadata: Some(LLMErrorMetadata::new(
+                    "wire-test",
+                    Some(429),
+                    Some("rate_limit_error".to_string()),
+                    None,
+                    None,
+                    Some("0.5".to_string()),
+                    None,
+                )),
+            });
+        }
+        Ok(LLMResponse::new("wire-model", "retried answer"))
     }
 }

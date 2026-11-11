@@ -206,12 +206,12 @@ async fn superseded_task_update_logs_a_bounded_correlation() {
     let mut duplex = ForwarderDuplex::start("diapason-task-correlation-test", |progress_tx, queue| {
         queue
             .try_send(&progress_tx, with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"))
-            .unwrap();
+            .expect("enqueue the settled task update");
         // The same revision instant, but not terminal: a replay artefact
         // rather than a recorded transition, so the forwarder drops it.
         queue
             .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z"))
-            .unwrap();
+            .expect("enqueue the superseded task update");
     });
 
     let settled = duplex.next(Duration::from_secs(2)).await.expect("settled task update");
