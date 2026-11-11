@@ -465,7 +465,7 @@ mod tests {
                 prompt_cache_model_changes: 1,
                 prompt_cache_unchanged: 1,
                 prompt_cache_stable_prefix_changes: 2,
-                prompt_cache_tool_catalogue_changes: 0,
+                prompt_cache_tool_catalogue_changes: 3,
                 prompt_cache_combined_changes: 1,
                 last_prompt_cache_change_reason: Some("stable_prefix".to_string()),
                 source: TIMELINE_SOURCE_THREAD_EVENTS.to_string(),
@@ -482,7 +482,8 @@ mod tests {
         assert!(html.contains("Cache churn"));
         assert!(html.contains("Last cache change"));
         assert!(html.contains("stable_prefix"));
-        assert!(html.contains("tool_catalog"));
+        assert!(html.contains("tool_catalogue:"));
+        assert!(html.contains("\"prompt_cache_tool_catalog_changes\":3"));
     }
 
     #[test]

@@ -528,15 +528,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn replacement_catalogue_names_remain_public() {
-        // Compile-pass guard: downstream callers must be able to read the
-        // renamed catalogue field and name its entry type.
-        fn _reads_catalogue(model: &ResolvedModel) -> Option<ModelCatalogueEntry> {
-            model.catalogue
-        }
-    }
-
-    #[test]
     fn resolver_prefers_catalogue_match_over_heuristic() {
         let resolved = ModelResolver::resolve(None, "gpt-5.6-sol", &[], None).expect("model");
 

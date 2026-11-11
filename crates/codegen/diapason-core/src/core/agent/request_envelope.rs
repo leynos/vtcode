@@ -100,8 +100,8 @@ impl SessionRequestEnvelope {
         self.prefix_hash
     }
 
-    #[must_use]
     /// Hash of the tool catalogue used for this request, when one was present.
+    #[must_use]
     pub fn catalogue_hash(&self) -> Option<u64> {
         self.catalogue_hash
     }

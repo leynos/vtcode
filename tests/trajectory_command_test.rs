@@ -1,3 +1,8 @@
+//! Trajectory command checks for the rendered catalogue labels and counts.
+//!
+//! The report renders `tool_catalogue` labels while trajectory log records keep
+//! their historical `catalog` spelling.
+
 #![allow(
     missing_docs,
     clippy::expect_used,

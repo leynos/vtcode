@@ -60,7 +60,7 @@ Every other external contract keeps its existing spelling.
 - External contracts are unchanged apart from the runtime prompt header
   described above, so configuration files, dashboards, ACP clients and existing
   pod stores keep working without migration. A legacy `[Runtime Tool Catalog]`
-  section is still recognised and removed on refresh, and prompt-cache hashing
+  section is still recognized and removed on refresh, and prompt-cache hashing
   ignores metadata under either spelling.
 - The rename is mechanical and reviewable: a diff that changes a serialized
   name, a metric name or a persisted filename is a defect, not a rename.
