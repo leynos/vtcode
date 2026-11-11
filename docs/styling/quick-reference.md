@@ -217,6 +217,10 @@ ______________________________________________________________________
 "01;31"                 // Bold (01) + red (31)
 
 // In Diapason
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
+
 let error_style = parser.parse_git_style("bold red")?;
 ```
 
@@ -230,6 +234,10 @@ let error_style = parser.parse_git_style("bold red")?;
 "32"                    // Green foreground
 
 // In Diapason
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
+
 let success_style = parser.parse_git_style("green")?;
 ```
 
@@ -243,6 +251,10 @@ let success_style = parser.parse_git_style("green")?;
 "02;37"                 // Dim (02) + white (37)
 
 // In Diapason
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
+
 let dim_style = parser.parse_git_style("dim white")?;
 ```
 
@@ -250,6 +262,10 @@ let dim_style = parser.parse_git_style("dim white")?;
 
 ```rust
 // From environment LS_COLORS
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
+
 let dir_style = parser.parse_ls_colours("01;34")?;  // bold blue
 
 let sym_style = parser.parse_ls_colours("01;36")?;  // bold cyan
@@ -261,6 +277,10 @@ let exec_style = parser.parse_ls_colours("01;32")?; // bold green
 
 ```rust
 // From .git/config [colour "diff"]
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
+
 let added_style = parser.parse_git_style("green")?;
 
 let removed_style = parser.parse_git_style("red")?;
