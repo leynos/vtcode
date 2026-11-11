@@ -601,6 +601,12 @@ impl SubagentController {
         // write v2 before v1, leaving the older snapshot as the file. The lock
         // must cover the read so the last write is always the newest state.
         let _guard = background_state_persistence_lock().lock().await;
+        // The in-process mutex cannot serialise another Diapason process that
+        // shares this workspace. Hold the ledger's inter-process lock across
+        // the reload, merge and write so two processes cannot each read the
+        // old ledger and then have the later rename discard the other's
+        // record.
+        let _file_guard = lock_background_state(&self.config.workspace_root).await?;
         let records = {
             let state = self.state.read().await;
             state

@@ -26,6 +26,59 @@ fn background_state_path(workspace_root: &Path) -> PathBuf {
         .join("background_subagents.json")
 }
 
+fn background_state_lock_path(workspace_root: &Path) -> PathBuf {
+    workspace_root
+        .join(diapason_commons::workspace_dir_name())
+        .join("state")
+        .join("background_subagents.lock")
+}
+
+/// Holds the workspace ledger's inter-process lock until it is dropped.
+///
+/// The lock is advisory and process-wide: it serialises the reload, merge and
+/// write of the shared ledger across every Diapason process that shares the
+/// workspace, which the in-process mutex cannot do.
+pub(crate) struct BackgroundStateLock {
+    file: std::fs::File,
+}
+
+impl Drop for BackgroundStateLock {
+    fn drop(&mut self) {
+        // `flock(LOCK_UN)` never blocks, so releasing here cannot stall the
+        // async runtime. A failure leaves the lock to be released when the
+        // descriptor closes, which is the same outcome.
+        let _ = fs2::FileExt::unlock(&self.file);
+    }
+}
+
+/// Acquires the workspace ledger's inter-process exclusive lock.
+///
+/// Two processes that each read the ledger before either writes can lose a
+/// record: the later atomic rename replaces the file with a snapshot that
+/// never saw the other's record. Callers must hold this guard across the
+/// reload, merge and write of one save.
+pub(crate) async fn lock_background_state(workspace_root: &Path) -> Result<BackgroundStateLock> {
+    let path = background_state_lock_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    tokio::task::spawn_blocking(move || {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .with_context(|| format!("Failed to open {}", path.display()))?;
+        fs2::FileExt::lock_exclusive(&file).with_context(|| format!("Failed to lock {}", path.display()))?;
+        Ok::<_, anyhow::Error>(BackgroundStateLock { file })
+    })
+    .await
+    .context("Failed to join the background state lock task")?
+}
+
 pub(crate) async fn load_background_state(workspace_root: &Path) -> Result<PersistedBackgroundState> {
     let path = background_state_path(workspace_root);
     let raw = match fs::read_to_string(&path).await {

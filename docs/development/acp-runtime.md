@@ -330,8 +330,9 @@ session total.
 
 Custom providers opt in to streamed usage with `supports_stream_usage` in their
 provider defaults or model profile. The OpenAI-compatible provider requests
-usage from the stream only for native OpenAI or when the resolved profile sets
-it, so a provider that does not declare support is never asked.
+usage from the stream only for native OpenAI (with no provider key override) or
+when the resolved profile sets it, so a provider that does not declare support
+is never asked.
 
 ### Task tracker plans
 

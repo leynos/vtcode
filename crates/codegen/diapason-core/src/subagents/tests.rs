@@ -166,6 +166,37 @@ Run the managed background demo.
     }
 }
 
+/// The ledger lock must exclude a second opener, not only a second task in
+/// this process.
+///
+/// `flock` locks are held per open file description, so a fresh handle that
+/// cannot take the lock proves the operating-system lock is held rather than
+/// only the in-process mutex. Two Diapason processes sharing a workspace rely
+/// on exactly that exclusion.
+#[tokio::test]
+async fn background_state_lock_excludes_a_second_opener() {
+    let temp = TempDir::new().expect("tempdir");
+    let guard = lock_background_state(temp.path())
+        .await
+        .expect("acquire the workspace ledger lock");
+    let path = temp
+        .path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("state")
+        .join("background_subagents.lock");
+    let second_opener = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .expect("open the ledger lock file a second time");
+    assert!(
+        fs2::FileExt::try_lock_exclusive(&second_opener).is_err(),
+        "a second opener must not acquire the ledger lock while the guard holds it"
+    );
+    drop(guard);
+    fs2::FileExt::try_lock_exclusive(&second_opener).expect("the guard must release the ledger lock when it drops");
+}
+
 /// Reading a background output tail is a query. It must not refresh process
 /// state, republish lifecycle updates, or rewrite the persisted ledger, even
 /// when the recorded exec session is gone and a refresh would settle the

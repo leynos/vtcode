@@ -67,10 +67,15 @@ pub enum BackgroundOutputError {
 }
 
 impl std::fmt::Display for BackgroundOutputError {
+    /// Renders only this error's own context.
+    ///
+    /// The underlying cause is exposed through [`std::error::Error::source`],
+    /// so a chain-aware renderer such as `format!("{error:#}")` prints it
+    /// exactly once instead of repeating it.
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Live(error) => write!(formatter, "read live background output: {error}"),
-            Self::Archived(error) => write!(formatter, "read archived background output: {error}"),
+            Self::Live(_) => formatter.write_str("read live background output"),
+            Self::Archived(_) => formatter.write_str("read archived background output"),
         }
     }
 }
