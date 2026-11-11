@@ -1,10 +1,10 @@
 //! Exercises the Lody subagent-management extensions over the official ACP duplex.
 
 use super::lody_support::{
-    LODY_BACKGROUND_SCRIPT, LODY_EXITING_BACKGROUND_SCRIPT, drain_notifications, expected_epoch_seconds,
-    lifecycle_task_id, lifecycle_task_meta, lody_cancel_with_reason, lody_ext, lody_list, lody_output_error,
-    lody_output_tail, observable_background_snapshot, runtime_active_sessions, write_lody_background_fixture,
-    write_lody_background_script,
+    LODY_BACKGROUND_SCRIPT, LODY_EXITING_BACKGROUND_SCRIPT, RecordingBackgroundObserver, drain_notifications,
+    expected_epoch_seconds, lifecycle_task_id, lifecycle_task_meta, lody_cancel_with_reason, lody_ext, lody_list,
+    lody_output_error, lody_output_tail, observable_background_snapshot, runtime_active_sessions,
+    write_lody_background_fixture, write_lody_background_script,
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
@@ -407,15 +407,26 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 .await,
             );
             let _ = drain_notifications(&mut notification_rx);
+            // The lifecycle forwarder delivers asynchronously, so draining the
+            // client channel after the response would race its delivery. The
+            // controller calls its progress observers synchronously from the
+            // publication site, so a recording observer proves the read
+            // published nothing without depending on delivery timing.
+            let observer = Arc::new(RecordingBackgroundObserver::default());
+            let _observer_registration = controller.register_progress_observer(
+                session.session_id.0.to_string(),
+                Arc::clone(&observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
+            );
+            let _ = observer.take();
             let before = observable_background_snapshot(&controller, &workspace_path, 0).await;
             let stale_output = lody_output_tail(&cx, &session.session_id, &stale.id, 20).await?;
-            let delivered = drain_notifications(&mut notification_rx);
-            let after = observable_background_snapshot(&controller, &workspace_path, delivered).await;
+            let published = observer.take();
+            let after = observable_background_snapshot(&controller, &workspace_path, 0).await;
             assert_eq!(
                 after, before,
                 "an output read of an active record with an exited child must not refresh, settle, respawn, or persist"
             );
-            assert_eq!(delivered, 0, "an output read must not publish session notifications");
+            assert!(published.is_empty(), "an output read must not publish a background status update: {published:?}");
             let still_cached = controller
                 .background_status_entries()
                 .await
