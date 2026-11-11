@@ -85,7 +85,7 @@ allocator research project.
 - [ ] 3.1.1. Apply and verify the minimal winning selection, only on go.
   - Limit the change to validated Linux packaging/configuration and necessary
     identity/selection tests; preserve other platforms and profiling behaviour.
-  - Retest the final artifact and document the exact rollback to the deployed
+  - Retest the final artefact and document the exact rollback to the deployed
     allocator and settings.
   - Success: the packaged candidate still clears the gates and fits the total
     time box. Otherwise retain defaults and record a recommendation only.
