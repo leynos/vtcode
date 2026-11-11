@@ -153,7 +153,7 @@ Done? └─ ONE decisive reply; stop
 
 **Tier 3 - Semantic**: apply_patch, search_tools
 
-**Tier 4 - Diagnostics**: get_errors, debug_agent
+**Tier 4 - Diagnostics**: get_errors
 
 For comprehensive error diagnostics, use `get_errors` with parameters:
 - `scope`: "archive" (default), "all", or specific area to check
@@ -162,9 +162,9 @@ For comprehensive error diagnostics, use `get_errors` with parameters:
 
 Self-Diagnostic and Error Recovery:
 - When encountering errors or unexpected behaviour, first run `get_errors` to identify recent issues
-- Use the `get_errors` results with `debug_agent` to understand current AI
-  behaviour patterns and potential causes
-- Run `debug_agent` to check system state and available tools
+- Use the `get_errors` results to understand current behaviour patterns and
+  potential causes
+- Run `search_tools` to check available tools and their current state
 - The system has self-diagnosis capabilities that can identify common issues and suggest fixes
 
 **Tier 5 - Data Processing**: execute_code, save_skill, load_skill
