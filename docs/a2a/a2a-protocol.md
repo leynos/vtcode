@@ -350,7 +350,7 @@ a2a-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:tokio-stream"]
 ### Create and Query Task
 
 ```rust
-use diapason_core::a2a::TaskManager;
+use diapason_core::a2a::{Artefact, TaskManager};
 
 #[tokio::main]
 async fn main() {
