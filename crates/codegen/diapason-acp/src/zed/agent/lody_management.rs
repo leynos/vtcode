@@ -128,8 +128,9 @@ pub(super) async fn handle_lody_subagent_management(
         elapsed_ms = field::Empty,
         error_category = field::Empty
     );
-    let metrics = agent.local_tool_registry.metrics_collector();
-    metrics.record_acp_management_started();
+    // The guard owns the in-flight gauge, so a request dropped while it awaits
+    // is still recorded as a failure instead of leaving the gauge elevated.
+    let management = agent.local_tool_registry.metrics_collector().begin_acp_management();
     let started_at = Instant::now();
     let result = async {
         match method {
@@ -157,7 +158,7 @@ pub(super) async fn handle_lody_subagent_management(
             "Lody subagent management request failed"
         );
     }
-    metrics.record_acp_management_finished(result.is_ok(), elapsed_ms);
+    management.finish(result.is_ok());
     result
 }
 
@@ -381,10 +382,15 @@ fn unknown_task_error() -> SdkError {
     SdkError::invalid_params().data(serde_json::json!({ "reason": "unknown_task" }))
 }
 
+/// Maps a management failure to an ACP error, keeping its whole cause chain.
+///
+/// Domain errors expose their cause through [`std::error::Error::source`]
+/// rather than in their own `Display`, so the alternate selector is required
+/// for the client to see why a request failed.
 fn internal_management_error(error: anyhow::Error) -> SdkError {
     SdkError::internal_error().data(serde_json::json!({
         "reason": "subagent_management_failed",
-        "detail": error.to_string(),
+        "detail": format!("{error:#}"),
     }))
 }
 
