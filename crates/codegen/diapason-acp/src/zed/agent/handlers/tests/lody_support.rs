@@ -339,6 +339,35 @@ pub(super) fn drain_notifications(notifications: &mut mpsc::UnboundedReceiver<ac
     count
 }
 
+/// Records every background status publication the controller delivers.
+///
+/// The controller calls its progress observers synchronously from the
+/// publication site, so this observer sees a publication without the
+/// asynchronous lifecycle forwarder's delivery delay. A test can therefore
+/// assert that a request published nothing without racing the forwarder.
+#[derive(Default)]
+pub(super) struct RecordingBackgroundObserver {
+    entries: Mutex<Vec<diapason_core::subagents::BackgroundSubprocessEntry>>,
+}
+
+impl RecordingBackgroundObserver {
+    /// Returns the publications recorded since the last call and clears them.
+    pub(super) fn take(&self) -> Vec<diapason_core::subagents::BackgroundSubprocessEntry> {
+        std::mem::take(&mut *self.entries.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
+    }
+}
+
+impl diapason_core::subagents::SubagentProgressObserver for RecordingBackgroundObserver {
+    fn subagent_status_changed(&self, _entry: diapason_core::subagents::SubagentStatusEntry) {}
+
+    fn background_status_changed(&self, entry: diapason_core::subagents::BackgroundSubprocessEntry) {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(entry);
+    }
+}
+
 /// The demo background script: two lines of output, then a long sleep.
 pub(super) const LODY_BACKGROUND_SCRIPT: &str = "#!/bin/sh\nprintf 'lody-output-one\\nlody-output-two\\n'\nsleep 30\n";
 

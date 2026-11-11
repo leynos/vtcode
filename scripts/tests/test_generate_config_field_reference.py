@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 from pathlib import Path
+import random
 import re
 import sys
-
-from hypothesis import given, strategies as st
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -60,60 +60,114 @@ def _split_rendered_code_span(rendered: str) -> tuple[int, str]:
     return delimiter_length, rendered[delimiter_length : len(rendered) - delimiter_length]
 
 
-# Fragments bias the strategy towards backtick runs at both boundaries and in
-# the middle, alongside pipes and spaces. Values are non-empty because GFM
-# cannot express an empty inline code span (a lone backtick string has no
-# matching closer), and every caller passes a field path, type name, or
-# JSON-rendered default.
-_SPAN_FRAGMENTS = st.lists(
-    st.sampled_from(["`", "``", "```", "````", "text", "|", " "]),
-    min_size=1,
-    max_size=12,
-).map("".join)
-_SPAN_TEXT = st.one_of(
-    _SPAN_FRAGMENTS,
-    st.text(alphabet=st.characters(blacklist_characters="\n\r"), min_size=1, max_size=40),
-)
+# The characters that matter to the renderer: backticks (delimiter and
+# boundary padding), pipes (table-cell escaping), spaces (padding) and ordinary
+# text. Values are non-empty because GFM cannot express an empty inline code
+# span, and every caller passes a field path, type name, or JSON-rendered
+# default.
+_SPAN_ALPHABET = ("`", "|", " ", "a")
 
 
-@given(_SPAN_TEXT)
-def test_format_code_span_round_trips_and_cannot_close_early(value: str) -> None:
+def _span_cases() -> list[str]:
+    """Return a deterministic corpus of code-span values.
+
+    Short strings are enumerated exhaustively over the characters that matter
+    to the renderer, so every combination of boundary backticks, pipes and
+    padding up to length four is covered. Longer strings come from a seeded
+    generator, so run length and position vary without an external dependency.
+    """
+    cases = [
+        "".join(combination)
+        for length in range(1, 5)
+        for combination in itertools.product(_SPAN_ALPHABET, repeat=length)
+    ]
+    rng = random.Random(0x5EED)
+    for _ in range(200):
+        length = rng.randint(1, 40)
+        cases.append("".join(rng.choice(_SPAN_ALPHABET) for _ in range(length)))
+    return cases
+
+
+def test_format_code_span_round_trips_and_cannot_close_early() -> None:
     """A rendered span must enclose its value without closing early.
 
     The oracle reads the rendered string the way a Markdown parser does, so a
     delimiter that appears inside the content, or padding that changes the
     value, fails the test.
     """
-    rendered = generator.format_code_span(value)
-    delimiter_length, content = _split_rendered_code_span(rendered)
+    for value in _span_cases():
+        rendered = generator.format_code_span(value)
+        delimiter_length, content = _split_rendered_code_span(rendered)
 
-    assert "`" * delimiter_length not in content, (
-        "the delimiter must be longer than every backtick run it encloses, or "
-        f"the span closes early: {value!r} -> {rendered!r}"
-    )
+        assert "`" * delimiter_length not in content, (
+            "the delimiter must be longer than every backtick run it encloses, or "
+            f"the span closes early: {value!r} -> {rendered!r}"
+        )
 
-    expected_content = f" {value} " if value.startswith("`") or value.endswith("`") else value
-    assert content == expected_content, (
-        "a boundary backtick must be padded so it cannot extend the delimiter, "
-        f"and every other value must survive unchanged: {value!r} -> {rendered!r}"
-    )
+        expected_content = f" {value} " if value.startswith("`") or value.endswith("`") else value
+        assert content == expected_content, (
+            "a boundary backtick must be padded so it cannot extend the delimiter, "
+            f"and every other value must survive unchanged: {value!r} -> {rendered!r}"
+        )
 
 
-@given(_SPAN_TEXT)
-def test_format_code_span_uses_the_shortest_safe_delimiter(value: str) -> None:
+def test_format_code_span_uses_the_shortest_safe_delimiter() -> None:
     """The delimiter must be exactly one backtick longer than the longest run.
 
     A shorter delimiter would close early; a longer one would render more
     backticks than the value needs.
     """
-    rendered = generator.format_code_span(value)
-    delimiter_length, _content = _split_rendered_code_span(rendered)
-    longest_run = max((len(match) for match in re.findall(r"`+", value)), default=0)
+    for value in _span_cases():
+        rendered = generator.format_code_span(value)
+        delimiter_length, _content = _split_rendered_code_span(rendered)
+        longest_run = max((len(match) for match in re.findall(r"`+", value)), default=0)
 
-    assert delimiter_length == longest_run + 1, (
-        "the delimiter must be exactly one backtick longer than the longest run "
-        f"in the value: {value!r} -> {rendered!r}"
-    )
+        assert delimiter_length == longest_run + 1, (
+            "the delimiter must be exactly one backtick longer than the longest run "
+            f"in the value: {value!r} -> {rendered!r}"
+        )
+
+
+def test_generated_table_cells_preserve_pipes_and_backticks() -> None:
+    """A generated row must keep its five columns and its default value.
+
+    The row is split on unescaped pipes, so a default containing a pipe must
+    stay inside its cell. The default cell is then read with the same
+    parser-style oracle, so a delimiter that closes early or padding that
+    changes the value fails the test.
+    """
+    for value in _span_cases():
+        escaped = generator.escape_cell(value)
+        if not escaped:
+            # A whitespace-only default strips to nothing, which GFM cannot
+            # express as an inline code span; that case is out of scope here.
+            continue
+        entry = generator.FieldEntry(
+            path="example.path",
+            type_name="string",
+            required=False,
+            default=value,
+            description="Example value.",
+        )
+        row = next(
+            line
+            for line in generator.render_markdown([entry]).splitlines()
+            if line.startswith("| `example.path`")
+        )
+        cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", row)[1:-1]]
+
+        assert len(cells) == 5, f"a pipe in the default must not add a column: {value!r} -> {row!r}"
+
+        delimiter_length, content = _split_rendered_code_span(cells[3])
+        expected_content = f" {escaped} " if escaped.startswith("`") or escaped.endswith("`") else escaped
+        assert content == expected_content, (
+            "a generated table cell must render the escaped default it was given: "
+            f"{value!r} -> {row!r}"
+        )
+        assert "`" * delimiter_length not in content, (
+            "the default cell's delimiter must not appear inside its content: "
+            f"{value!r} -> {row!r}"
+        )
 
 
 def test_long_default_remains_parseable_json() -> None:
