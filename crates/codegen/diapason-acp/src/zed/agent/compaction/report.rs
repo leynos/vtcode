@@ -85,7 +85,7 @@ pub(super) struct CompactionReport<'a> {
 /// operator warning two different correlations for the same failure. Both
 /// callers instead share the one bounded [`FailureDetail`], and a failure with
 /// no retained detail records none rather than inventing a digest.
-fn log_suppressed_compaction_failure(detail: Option<&FailureDetail>, category: &'static str) {
+pub(super) fn log_suppressed_compaction_failure(detail: Option<&FailureDetail>, category: &'static str) {
     // Both records format the digest through `Display`, so an operator sees the
     // identical text in the debug record and the warning rather than one value
     // quoted and the other bare.
