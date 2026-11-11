@@ -65,14 +65,32 @@ fn resolver_reads_workspace_dotenv_for_custom_provider_key() {
 
 #[test]
 fn resolver_does_not_reuse_legacy_storage_for_non_default_key() {
-    with_override("MIMO_TOKEN_PLAN_KEY", None, || {
-        let resolved = resolve_credential_with_mode(
-            "mimo",
-            "MIMO_TOKEN_PLAN_KEY",
-            None,
-            crate::auth::AuthCredentialsStoreMode::File,
-        )
-        .expect("resolve credential");
-        assert!(resolved.is_none());
-    });
+    // Isolate the auth directory so the seeded legacy entry and the resolver
+    // share a private temporary store instead of the developer's home. The
+    // override map cannot be used here: it short-circuits the storage lookup
+    // that this test exists to exercise.
+    let home = tempdir().expect("home");
+    let config_home = home.path().join("config");
+    let env = diapason_commons::env_lock::lock();
+    let previous_home = std::env::var_os("HOME");
+    let previous_config_home = std::env::var_os("XDG_CONFIG_HOME");
+    let previous_key = std::env::var_os("MIMO_TOKEN_PLAN_KEY");
+    env.set_var("HOME", home.path());
+    env.set_var("XDG_CONFIG_HOME", &config_home);
+    env.remove_var("MIMO_TOKEN_PLAN_KEY");
+
+    // Seed the provider-only entry that a default-key lookup would reuse.
+    crate::auth::CustomApiKeyStorage::new("mimo")
+        .store("legacy-provider-key", crate::auth::AuthCredentialsStoreMode::File)
+        .expect("seed legacy credential");
+
+    let resolved =
+        resolve_credential_with_mode("mimo", "MIMO_TOKEN_PLAN_KEY", None, crate::auth::AuthCredentialsStoreMode::File)
+            .expect("resolve credential");
+
+    env.restore_var("HOME", previous_home);
+    env.restore_var("XDG_CONFIG_HOME", previous_config_home);
+    env.restore_var("MIMO_TOKEN_PLAN_KEY", previous_key);
+
+    assert!(resolved.is_none());
 }
