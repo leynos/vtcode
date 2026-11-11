@@ -431,11 +431,13 @@ Additional rules:
 - Omitting `api_format` preserves legacy autodetection behavior; explicitly
   setting `api_format` to a value instructs Diapason to use this API shape and
   not silently fall back.
-- `supports_stream_usage` follows the same precedence: a profile value
-  overrides the provider default. When `true`, only custom OpenAI-chat streams
-  request `stream_options.include_usage = true`; the endpoint should return
-  usage in the terminal empty-choices chunk. When omitted or `false`, Diapason
-  does not request streamed usage. Native OpenAI requests are unaffected.
+- `supports_stream_usage` follows the same precedence: an unset profile value
+  inherits the provider setting, and an explicit profile value overrides it.
+  When the resolved value is `true`, only custom OpenAI-chat streams request
+  `stream_options.include_usage = true`; the endpoint should return usage in
+  the terminal empty-choices chunk. Only a resolved `false` — or a value that
+  never resolves, because neither the profile nor the provider sets it —
+  disables streamed usage. Native OpenAI requests are unaffected.
 - `pricing` follows the same precedence and is opt-in. Rates are configured as
   USD per million tokens with separate input, output, cache-read, and
   cache-write fields. ACP `costUSD` is omitted unless both input and output
