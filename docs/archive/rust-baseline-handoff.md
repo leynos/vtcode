@@ -1002,5 +1002,5 @@ it with `git rebase --onto f2c7e5b4d e4b5b2b73`. The only conflict was this
 handoff file, which now keeps every earlier record. The earlier record above
 names the unmerged parent for the spelling-history stack; the replay moved the
 layer's own six commits onto `f2c7e5b4d` without changing their content. The
-gate evidence recorded above describes earlier replays onto unmerged parents and
-is not evidence for this head.
+gate evidence recorded above describes earlier replays onto unmerged parents
+and is not evidence for this head.

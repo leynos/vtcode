@@ -212,6 +212,8 @@ extend-ignore-re = [
     '(?:header|aGVhZGVy)\.eyJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNj(?:LTEyMy|XzEyMy)IsImNoYXRncHRfcGxhbl90eXBlIjoicGx1cyJ9fQ\.sig',
     'normalize_terminal_output_lines\("abc\\x08d\\n"\), vec!\["abd"\]',
     '\[Ee\]rror',
+    # The pre-rename tooling directories are literal ignore targets.
+    '(?m)^(?:test|build)_artifacts/$',
 ]
 
 [default.extend-identifiers]
