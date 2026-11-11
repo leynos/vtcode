@@ -8,7 +8,7 @@ styling across CLI and TUI components.
 Diapason uses `anstyle` as the core styling library for ANSI terminal output,
 providing a generic, crate-agnostic way to define colours and text effects. The
 `anstyle-crossterm` adapter bridge integrates this with `crossterm` (used by
-our TUI), and our custom `ratatui_styles` module further bridges to `ratatui`
+the TUI), and the custom `ratatui_styles` module further bridges to `ratatui`
 components.
 
 ## Architecture

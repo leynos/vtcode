@@ -79,14 +79,16 @@ let ratatui_style = anstyle_to_ratatui(anstyle);
 ```rust
 use diapason_core::ui::tui::ThemeConfigParser;
 
-// Parse Git colour syntax
-let git_style = ThemeConfigParser::parse_git_style("bold red #ff0000")?;
+let parser = ThemeConfigParser::default();
 
-// Parse LS_COLORS syntax
-let ls_style = ThemeConfigParser::parse_ls_colours("01;34")?;
+// Git colour syntax
+let git_style = parser.parse_flexible("bold red #ff0000")?;
 
-// Parse flexibly (tries Git first, then LS)
-let style = ThemeConfigParser::parse_flexible("green")?;
+// LS_COLORS syntax
+let ls_style = parser.parse_flexible("01;34")?;
+
+// Plain colour names
+let style = parser.parse_flexible("green")?;
 ```
 
 ## Key Crates

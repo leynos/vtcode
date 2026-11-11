@@ -187,7 +187,7 @@ normal colours, but with an additional `;1` in their codes:
 
 Terminals that support the
 [aixterm specification](https://sites.ualberta.ca/dept/chemeng/AIX-43/share/man/info/C/a_doc_lib/cmds/aixcmds1/aixterm.htm)
-provides bright versions of the ISO colours, without the need to use the bold
+provide bright versions of the ISO colours, without the need to use the bold
 modifier:
 
 | Colour Name    | Foreground Colour Code | Background Colour Code |
@@ -203,7 +203,7 @@ modifier:
 
 #### 256 Colours
 
-The following escape codes tells the terminal to use the given colour ID:
+The following escape codes tell the terminal to use the given colour ID:
 
 | ESC Code Sequence | Description            |
 | :---------------- | :--------------------- |
@@ -225,7 +225,7 @@ following colour table:
 
 #### RGB Colours
 
-More modern terminals supports
+More modern terminals support
 [Truecolor](https://en.wikipedia.org/wiki/Color_depth#True_color_.2824-bit.29)
 (24-bit RGB), which allows you to set foreground and background colours using
 RGB.
@@ -237,9 +237,9 @@ These escape sequences are usually not well documented.
 | `ESC[38;2;{r};{g};{b}m` | Set foreground colour as RGB. |
 | `ESC[48;2;{r};{g};{b}m` | Set background colour as RGB. |
 
-> Note that `;38` and `;48` corresponds to the 16 colour sequence and is
+> Note that `;38` and `;48` correspond to the 16 colour sequence and are
 > interpreted by the terminal to set the foreground and background colour
-> respectively. Where as `;2` and `;5` sets the colour format.
+> respectively. Whereas `;2` and `;5` set the colour format.
 
 ## Screen Modes
 

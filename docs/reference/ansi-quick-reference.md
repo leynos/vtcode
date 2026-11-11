@@ -151,10 +151,10 @@ r"\x1b(\[[0-9;?]*[a-zA-Z]|\][^\x07]*\x07|[=>])"
 ### Extract Colour Codes
 
 ```rust
-// Match foreground color: ESC[3Xm or ESC[9Xm
+// Match foreground colour: ESC[3Xm or ESC[9Xm
 r"\x1b\[(3[0-7]|9[0-7])m"
 
-// Match 256-color: ESC[38;5;{ID}m
+// Match 256-colour: ESC[38;5;{ID}m
 r"\x1b\[38;5;(\d+)m"
 
 // Match RGB: ESC[38;2;{r};{g};{b}m
