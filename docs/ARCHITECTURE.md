@@ -359,7 +359,7 @@ pub trait CacheableTool: Tool {
    state, start with explicit handles/IDs and an owning context. Reach for
    self-referential layouts, raw pointers, lifetime-branding tricks, or custom
    `Send`/`Sync` only when a simpler handle-based design is demonstrably
-   insufficient, and document the invariant at the boundary
+   insufficient, and document the invariant at the boundary.
 
 ## Adding New Tools
 

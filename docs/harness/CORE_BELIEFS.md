@@ -180,7 +180,7 @@ make wrong assumptions. Every session should begin by reading external
 artefacts to understand the current state.
 
 - **Read the Artefacts**: Progress ledger, harness artefacts, loop memory, git
-  log, and handoff context exist so the agent can orient without re-exploring
+  log, and handoff context exist, so the agent can orient without re-exploring
   from scratch.
 - **Just-in-Time Context**: Load references (paths, commit hashes, summaries)
   rather than full content. The orient phase gathers what's needed; the agent
