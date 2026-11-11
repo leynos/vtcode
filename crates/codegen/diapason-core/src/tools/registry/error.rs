@@ -341,7 +341,7 @@ impl ToolExecutionError {
         self.debug_context.as_ref().and_then(|context| context.attempt)
     }
 
-    /// Summarises prior retries and any recommended wait for the user.
+    /// Summarizes prior retries and any recommended wait for the user.
     #[must_use]
     pub fn retry_summary(&self) -> Option<String> {
         let retry_count = self.attempts_made().map(|attempts| attempts.saturating_sub(1)).unwrap_or(0);
