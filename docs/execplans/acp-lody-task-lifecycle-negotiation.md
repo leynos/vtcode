@@ -1881,3 +1881,30 @@ closes or rebuts each one.
 - **Docstring Coverage.** The `background_owner_tests` module docstring and the
   two new Python property-test docstrings are added; the diff-scoped percentage
   is recomputed by the next review.
+
+### Revision note (2026-11-11, r29 round: review reply 6782675348)
+
+- **Testing (Overall).** The post-response notification drain is replaced by a
+  deterministic observer. The test registers a `RecordingBackgroundObserver`
+  through `SubagentController::register_progress_observer`, which the
+  controller calls synchronously from the publication site, so the assertion
+  that the read published nothing no longer depends on the asynchronous
+  forwarder's delivery timing. A FIFO-barrier variant was rejected: lifecycle
+  task ids are deterministic (`background-{agent}@{session}`), so a second
+  spawn of the same agent cannot be told apart from the task under test.
+- **User-facing documentation.** The paragraph now states the serialization
+  split precisely. Five of the seven structs are serialized payloads whose new
+  field is optional or `#[serde(default)]`; `SubagentControllerConfig` and
+  `ResolvedCustomProviderProfile` are not serialized at all.
+- **Testing (Property / Proof).** The properties now also assert generated
+  table-cell rendering. The rendered row is split on unescaped pipes, so a
+  default containing `|` cannot add a column, and the default cell is read with
+  the same parser-style oracle. The generator is dependency-free, an exhaustive
+  enumeration over backticks, pipes, spaces and text to length four plus a
+  seeded corpus, because the repository declares no Python dependency manifest
+  from which to provision Hypothesis.
+- **Observability.** Filed #199 for a production export surface for the live
+  collector. The gap predates this branch and no binary surface renders
+  Prometheus output for any metric family.
+- **Docstring Coverage.** Measured over the base-to-head change rather than by
+  inspection: 22 added public items, 22 documented, 100%.
