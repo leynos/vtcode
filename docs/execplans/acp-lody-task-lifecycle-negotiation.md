@@ -1165,11 +1165,11 @@ controller's cancellation semantics or read an arbitrary transcript path.
 
 Focused tests, gates and binary installation are idempotent. Extension
 notifications are observational and do not change durable session history in
-VTCode. List is a pure query. Output for a foreground child task is a pure
-snapshot read, but output for a background task refreshes the controller before
-reading the tail, so it may persist state or restart an exited process when
-auto-restore is enabled. Cancel is intentionally idempotent for a terminal
-owned task and never automatically replays work.
+VTCode. List and output are pure queries for both task kinds: neither refreshes
+the controller, persists state, publishes a lifecycle update, nor restarts a
+process. A background task whose exec session has exited is served from its
+recorded transcript or archive. Cancel is intentionally idempotent for a
+terminal owned task and never automatically replays work.
 
 If a rebase or stack operation conflicts, stop, inspect both intents and use
 `gh stack rebase`/`gh stack push`; do not use `git push --force`. If a test
@@ -1369,9 +1369,10 @@ to build `acp::AgentCapabilities.meta`. `task_lifecycle` will construct
 existing standard session-notification connection.
 
 The extension dispatcher will accept `acp::ExtRequest` and respond with
-`acp::ExtResponse`. It will call only existing `SubagentController` methods:
-`status_entries`, `background_status_entries`, `close`,
-`force_cancel_background`, `snapshot_for_thread` and `background_snapshot`.
+`acp::ExtResponse`. It calls only existing `SubagentController` methods:
+`status_entries`, `background_status_entries`,
+`background_status_entries_with_liveness`, `background_output_tail`, `close`,
+`force_cancel_background` and `snapshot_for_thread`.
 
 Add `supports_stream_usage: Option<bool>` to
 `vtcode_config::core::CustomProviderProfileConfig` and
@@ -1861,12 +1862,15 @@ closes or rebuts each one.
 - **Developer documentation.** The `677c32f15` progress entry marks the 922-line
   reflow as historical and states that the current base-to-head diff is the two
   added rows with no deletions.
-- **Testing (Property / Proof).**
-  `scripts/tests/test_generate_config_field_reference.py` gains two Hypothesis
-  properties over backtick runs, boundary backticks, pipes and spaces. An
-  independent parser-style oracle recovers the delimiter length and content, so
-  the tests check round-tripping, early closure, padding and
-  shortest-safe-delimiter selection rather than restating the implementation.
+- **Testing (Property / Proof).** Superseded by the r29 round, which replaced
+  the planned Hypothesis properties with a dependency-free corpus: the
+  repository declares no Python dependency manifest from which to provision
+  Hypothesis. `scripts/tests/test_generate_config_field_reference.py` now
+  enumerates backticks, pipes, spaces and text exhaustively to length four,
+  plus a seeded corpus, and an independent parser-style oracle recovers the
+  delimiter length and content. The tests check round-tripping, early closure,
+  padding, shortest-safe-delimiter selection and rendered table cells rather
+  than restating the implementation.
 - **Domain Architecture.** Rebutted with evidence. The reader is a storage port:
   the controller has already resolved the task id and validated ownership, so
   the port receives the resolved storage identity. A task-id-keyed reader would
@@ -1908,3 +1912,60 @@ closes or rebuts each one.
   Prometheus output for any metric family.
 - **Docstring Coverage.** Measured over the base-to-head change rather than by
   inspection: 22 added public items, 22 documented, 100%.
+
+### Revision note (2026-11-11, r30 round: inline review threads)
+
+- **Ledger serialisation (Major, `controller_spawn_run.rs`).**
+  `save_background_state` now holds an inter-process advisory lock
+  (`background_subagents.lock`, `fs2::FileExt::lock_exclusive`) across the
+  reload, merge and write in both save branches, in addition to the existing
+  in-process mutex. Two processes sharing a workspace can no longer each read
+  the old ledger and have the later atomic rename discard the other's record. A
+  regression test proves the exclusion is the operating-system lock: a second
+  opener cannot take it while the guard is held, and can once the guard drops.
+- **Preview fallback (Minor).** Already resolved before this round. The
+  preview no longer matches `Err(_)`: the reader port classifies a live fault as
+  `BackgroundOutputError::Live`, which propagates with the target in context,
+  and only an unreadable archive yields an empty preview, which is the
+  documented preview policy. The explicit tail read propagates every fault.
+- **Stale current-state prose (Minor).** The idempotence section now states
+  that list and output are pure reads for both task kinds, and the dispatcher
+  method list names `background_status_entries_with_liveness` and
+  `background_output_tail` instead of the older `background_snapshot` path. The
+  `task_lifecycle.rs` passage already described the custom notification in the
+  past tense, so no edit was needed there.
+
+### Revision note (2026-11-11, r31 round: review `5852321844`)
+
+- **Error display duplication (Minor, `background_output.rs`).** `Display` for
+  `BackgroundOutputError` now renders only its own context, and the cause stays
+  available through `Error::source`. The ACP management error mapping renders
+  the chain with `format!("{error:#}")`, so a client still receives the cause
+  exactly once instead of twice.
+- **Contrast assertion (Trivial, `tree_routing_tests.rs`).** The unfiltered
+  restore now asserts that the error chain names the owned record's agent
+  (`Failed to resolve background subagent 'watcher'`), so an unrelated fault
+  can no longer satisfy the assertion.
+- **Release-note counts (Trivial, `docs/releases/0.157.0.md`).** The paragraph
+  now states seven structs and eight fields explicitly, notes that
+  `MetricsSummary` gained two, and says "five of the seven structs" so the two
+  counts cannot be read as a mismatch.
+- **Buffered usage (Testing / Overall).** Two ACP tests now drive the buffered
+  prompt path with a provider that does not support streaming:
+  `buffered_response_usage_reaches_the_acp_client` asserts one usage delta with
+  the provider's token counts, and
+  `buffered_response_without_usage_publishes_no_delta` asserts that a response
+  with no usage publishes nothing.
+- **In-flight gauge (Trivial, `metrics/mod.rs`).** The paired
+  `record_acp_management_started`/`finished` calls are replaced by
+  `MetricsCollector::begin_acp_management`, which returns an
+  `AcpManagementGuard`. The guard lowers the gauge exactly once; a request
+  dropped before `finish` is recorded as a failure, so `started` always equals
+  `succeeded + failed`. Two unit tests cover the completed and dropped paths,
+  and the Prometheus snapshot no longer pins a wall-clock duration value.
+- **Streamed-usage documentation (Trivial, `acp-runtime.md`).** The
+  native-OpenAI condition is qualified with "with no provider key override",
+  matching `is_native_openai_api`.
+- **Developer documentation.** The r28 note claimed Hypothesis properties that
+  the r29 round replaced with a dependency-free corpus; it now says so, so the
+  plan no longer describes two different implementations as current.

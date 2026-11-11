@@ -220,6 +220,39 @@ pub enum RuntimeCacheKind {
     Workspace,
 }
 
+/// Tracks one Lody ACP management RPC from entry to completion.
+///
+/// The guard raises the in-flight gauge when it is created and lowers it
+/// exactly once. Dropping it without calling [`finish`](Self::finish) records
+/// a failure, so a cancelled or disconnected request cannot leave the gauge
+/// elevated.
+#[derive(Debug)]
+pub struct AcpManagementGuard {
+    metrics: MetricsCollector,
+    started_at: Instant,
+    finished: bool,
+}
+
+impl AcpManagementGuard {
+    /// Records the request outcome and elapsed time, then releases the gauge.
+    pub fn finish(mut self, succeeded: bool) {
+        self.finished = true;
+        self.metrics.record_acp_management_outcome(succeeded, self.elapsed_ms());
+    }
+
+    fn elapsed_ms(&self) -> u64 {
+        u64::try_from(self.started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+}
+
+impl Drop for AcpManagementGuard {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.metrics.record_acp_management_outcome(false, self.elapsed_ms());
+        }
+    }
+}
+
 /// Central metrics collector for all MCP execution activities
 #[derive(Debug, Clone)]
 pub struct MetricsCollector {
@@ -386,15 +419,28 @@ impl MetricsCollector {
         self.task_lifecycle_notification_queue.lock().clone()
     }
 
-    /// Record a Lody ACP management RPC entering its handler.
-    pub fn record_acp_management_started(&self) {
+    /// Begin tracking one Lody ACP management RPC.
+    ///
+    /// The returned guard raises the in-flight gauge and lowers it exactly
+    /// once. A request that is dropped before
+    /// [`AcpManagementGuard::finish`] — for example because the client
+    /// disconnected while the handler awaited — is recorded as a failure, so
+    /// the gauge cannot stay elevated and `management_requests_started` always
+    /// equals the sum of the succeeded and failed counters.
+    pub fn begin_acp_management(&self) -> AcpManagementGuard {
         let mut metrics = self.acp_extension.lock();
         metrics.management_requests_started = metrics.management_requests_started.saturating_add(1);
         metrics.management_requests_in_flight = metrics.management_requests_in_flight.saturating_add(1);
+        drop(metrics);
+        AcpManagementGuard {
+            metrics: self.clone(),
+            started_at: Instant::now(),
+            finished: false,
+        }
     }
 
-    /// Record a Lody ACP management RPC leaving its handler.
-    pub fn record_acp_management_finished(&self, succeeded: bool, duration_ms: u64) {
+    /// Record one Lody ACP management RPC outcome and release its gauge slot.
+    fn record_acp_management_outcome(&self, succeeded: bool, duration_ms: u64) {
         let mut metrics = self.acp_extension.lock();
         if succeeded {
             metrics.management_requests_succeeded = metrics.management_requests_succeeded.saturating_add(1);
@@ -1614,10 +1660,8 @@ mod tests {
     #[test]
     fn acp_extension_prometheus_series_is_stable() {
         let collector = MetricsCollector::new();
-        collector.record_acp_management_started();
-        collector.record_acp_management_finished(true, 12);
-        collector.record_acp_management_started();
-        collector.record_acp_management_finished(false, 3);
+        collector.begin_acp_management().finish(true);
+        collector.begin_acp_management().finish(false);
         collector.record_acp_usage_notification(true);
         collector.record_acp_usage_notification(false);
         collector.record_acp_initial_snapshots_published(2);
@@ -1627,9 +1671,12 @@ mod tests {
             .export_prometheus()
             .lines()
             .filter(|line| {
-                line.starts_with("# HELP diapason_acp_")
-                    || line.starts_with("# TYPE diapason_acp_")
-                    || line.starts_with("diapason_acp_")
+                // The guard measures real elapsed time, so the duration value
+                // is asserted separately rather than pinned in the snapshot.
+                !line.starts_with("diapason_acp_management_duration_ms_total ")
+                    && (line.starts_with("# HELP diapason_acp_")
+                        || line.starts_with("# TYPE diapason_acp_")
+                        || line.starts_with("diapason_acp_"))
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -1648,7 +1695,6 @@ mod tests {
         diapason_acp_management_requests_in_flight 0
         # HELP diapason_acp_management_duration_ms_total Total time spent serving Lody ACP management requests
         # TYPE diapason_acp_management_duration_ms_total counter
-        diapason_acp_management_duration_ms_total 15
         # HELP diapason_acp_usage_notifications_sent_total Lody ACP usage notifications sent
         # TYPE diapason_acp_usage_notifications_sent_total counter
         diapason_acp_usage_notifications_sent_total 1
@@ -1662,6 +1708,22 @@ mod tests {
         # TYPE diapason_acp_initial_snapshot_publish_failures_total counter
         diapason_acp_initial_snapshot_publish_failures_total 1
         "###);
+
+        // The guard measures real elapsed time, so the duration value is not
+        // part of the fixed snapshot. Two immediate requests must still render
+        // the series with a small, parseable total.
+        let duration_line = collector
+            .export_prometheus()
+            .lines()
+            .find(|line| line.starts_with("diapason_acp_management_duration_ms_total "))
+            .expect("the ACP management duration series must be rendered")
+            .to_string();
+        let total_ms: u64 = duration_line
+            .rsplit(' ')
+            .next()
+            .and_then(|value| value.parse().ok())
+            .expect("the ACP management duration value must be a number");
+        assert!(total_ms < 1_000, "two immediate requests must not accumulate a large duration: {duration_line}");
     }
 
     #[test]
@@ -1997,5 +2059,44 @@ mod tests {
         let json = collector.export_json().unwrap();
         assert!(json.get("timestamp").is_some());
         assert!(json.get("discovery").is_some());
+    }
+
+    #[test]
+    fn acp_management_guard_records_a_completed_outcome_once() {
+        let collector = MetricsCollector::new();
+        let guard = collector.begin_acp_management();
+        assert_eq!(
+            collector.get_acp_extension_metrics().management_requests_in_flight,
+            1,
+            "a guard must raise the in-flight gauge when it is created"
+        );
+
+        guard.finish(true);
+        let metrics = collector.get_acp_extension_metrics();
+        assert_eq!(metrics.management_requests_in_flight, 0, "finishing must release the gauge exactly once");
+        assert_eq!(metrics.management_requests_started, 1);
+        assert_eq!(metrics.management_requests_succeeded, 1);
+        assert_eq!(metrics.management_requests_failed, 0);
+    }
+
+    #[test]
+    fn acp_management_guard_records_a_dropped_request_as_a_failure() {
+        let collector = MetricsCollector::new();
+        drop(collector.begin_acp_management());
+
+        let metrics = collector.get_acp_extension_metrics();
+        assert_eq!(
+            metrics.management_requests_in_flight, 0,
+            "a dropped guard must not leave the in-flight gauge elevated"
+        );
+        assert_eq!(
+            metrics.management_requests_failed, 1,
+            "a cancelled request must be counted as a failure rather than vanish"
+        );
+        assert_eq!(
+            metrics.management_requests_succeeded + metrics.management_requests_failed,
+            metrics.management_requests_started,
+            "every started request must record exactly one outcome"
+        );
     }
 }

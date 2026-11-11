@@ -262,6 +262,40 @@ impl LLMProvider for FailThenSucceedProvider {
     }
 }
 
+/// Answers through buffered generation only, reporting the configured usage.
+///
+/// `supports_streaming` is false, so the prompt handler takes the buffered
+/// path and `generate` supplies the response whose usage must reach the ACP
+/// client. A `None` usage models a provider that reports no token counts.
+pub(super) struct BufferedUsageProvider {
+    pub(super) usage: Option<diapason_core::llm::Usage>,
+}
+
+#[async_trait]
+impl LLMProvider for BufferedUsageProvider {
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        let mut response = LLMResponse::new("wire-model", "buffered answer");
+        response.usage = self.usage.clone();
+        Ok(response)
+    }
+}
+
 pub(super) async fn build_wire_test_agent(workspace: &std::path::Path) -> ZedAgent {
     build_wire_test_agent_with_options(workspace, None, None).await
 }

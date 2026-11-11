@@ -38,10 +38,12 @@ def test_override_requires_every_configured_schema_field() -> None:
 
 
 def test_format_code_span_pads_a_leading_backtick() -> None:
+    """A value that opens with a backtick must be padded inside the span."""
     assert generator.format_code_span("`value") == "`` `value ``", "a leading backtick must be padded"
 
 
 def test_format_code_span_pads_a_trailing_backtick() -> None:
+    """A value that closes with a backtick must be padded inside the span."""
     assert generator.format_code_span("value`") == "`` value` ``", "a trailing backtick must be padded"
 
 
@@ -58,6 +60,17 @@ def _split_rendered_code_span(rendered: str) -> tuple[int, str]:
         f"a code span must close with the delimiter run it opened: {rendered!r}"
     )
     return delimiter_length, rendered[delimiter_length : len(rendered) - delimiter_length]
+
+
+def _expected_cell_text(value: str) -> str:
+    """Escape a table cell by the GFM rule, independently of the generator.
+
+    A literal pipe inside a cell must be backslash-escaped, and a newline
+    cannot appear in a cell. Stating the rule here rather than calling
+    ``escape_cell`` means a helper that dropped a pipe instead of escaping it
+    fails the test instead of changing the expectation along with the output.
+    """
+    return value.replace("|", "\\|").replace("\n", " ").strip()
 
 
 # The characters that matter to the renderer: backticks (delimiter and
@@ -134,10 +147,13 @@ def test_generated_table_cells_preserve_pipes_and_backticks() -> None:
     The row is split on unescaped pipes, so a default containing a pipe must
     stay inside its cell. The default cell is then read with the same
     parser-style oracle, so a delimiter that closes early or padding that
-    changes the value fails the test.
+    changes the value fails the test. The expected cell text comes from
+    ``_expected_cell_text`` rather than ``escape_cell``, so a helper that
+    dropped a pipe cannot satisfy the assertion by dropping it from the
+    expectation too.
     """
     for value in _span_cases():
-        escaped = generator.escape_cell(value)
+        escaped = _expected_cell_text(value)
         if not escaped:
             # A whitespace-only default strips to nothing, which GFM cannot
             # express as an inline code span; that case is out of scope here.
@@ -157,6 +173,14 @@ def test_generated_table_cells_preserve_pipes_and_backticks() -> None:
         cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", row)[1:-1]]
 
         assert len(cells) == 5, f"a pipe in the default must not add a column: {value!r} -> {row!r}"
+        assert cells[3].count("|") == value.count("|"), (
+            "a generated cell must keep every pipe in the default: "
+            f"{value!r} -> {row!r}"
+        )
+        assert cells[3].count("\\|") == value.count("|"), (
+            "every pipe in a generated cell must be backslash-escaped: "
+            f"{value!r} -> {row!r}"
+        )
 
         delimiter_length, content = _split_rendered_code_span(cells[3])
         expected_content = f" {escaped} " if escaped.startswith("`") or escaped.endswith("`") else escaped
@@ -171,6 +195,7 @@ def test_generated_table_cells_preserve_pipes_and_backticks() -> None:
 
 
 def test_long_default_remains_parseable_json() -> None:
+    """A default too long for one line must still parse as JSON."""
     value = [f"entry-{index}-with-enough-text-to-exceed-the-old-limit" for index in range(4)]
 
     rendered = generator.format_default(value)
@@ -179,6 +204,7 @@ def test_long_default_remains_parseable_json() -> None:
 
 
 def test_render_markdown_escapes_pipes_inside_backtick_safe_code_span() -> None:
+    """A pipe stays escaped even when the value also needs a wider delimiter."""
     entry = generator.FieldEntry(
         path="example.path",
         type_name="string",

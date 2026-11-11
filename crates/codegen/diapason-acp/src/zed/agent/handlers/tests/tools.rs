@@ -3,6 +3,7 @@ use super::*;
 
 mod apply_patch;
 mod baseten_usage;
+mod buffered_usage;
 mod command_arguments;
 mod exec_command_wire;
 mod observability;

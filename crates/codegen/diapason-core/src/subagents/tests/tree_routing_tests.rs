@@ -449,10 +449,16 @@ async fn legacy_restore_ignores_records_owned_by_a_session() {
 
     // Contrast: the unfiltered restore does select the same record, so the
     // exclusion above comes from the owner filter rather than an empty ledger.
-    controller
+    // The assertion names the record, because any other fault would also be an
+    // error and would not prove the record was selected.
+    let error = controller
         .restore_background_subagents()
         .await
         .expect_err("the unfiltered restore selects the owned record");
+    assert!(
+        format!("{error:#}").contains("Failed to resolve background subagent 'watcher'"),
+        "the unfiltered restore must fail on the owned record, not on another fault: {error:#}"
+    );
 
     controller.signal_shutdown().await;
 }
