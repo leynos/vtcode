@@ -347,11 +347,12 @@ fix: "$NUM.checked_ilog10().unwrap_or(0) + 1"
 
 - Unsafe function without unsafe block: the Rust catalogue’s `function_item`
   rule that requires `unsafe` modifiers but rejects bodies containing
-  `unsafe_block` is a good review rule for redundant `unsafe` markers. It is
-  diagnostic-oriented and should usually stay a scan rule, not an automatic
-  rewrite. The rule uses `kind: function_item` with `has` checking
-  `function_modifiers` via `regex: "^unsafe"` and `not` rejecting bodies
-  containing `unsafe_block`:
+  `unsafe_block` identifies `unsafe fn` items for manual review; it does not
+  prove that the marker is redundant, because the qualifier can still carry a
+  caller safety contract. It is diagnostic-oriented and should usually stay a
+  scan rule, not an automatic rewrite. The rule uses `kind: function_item` with
+  `has` checking `function_modifiers` via `regex: "^unsafe"` and `not`
+  rejecting bodies containing `unsafe_block`:
 
 ```yaml
 id: no-unsafe-fn-without-unsafe
@@ -419,7 +420,7 @@ rule:
   `indoc! { r#"..."# }` wrappers is a rewrite-oriented example. Keep it on the
   CLI skill path because the replacement is formatting-sensitive and should be
   reviewed interactively before broad apply. The CLI pattern is
-  `ast-grep --pattern ‘indoc! { r#"$$$A"# }’ --rewrite ‘`$$$A`’`.
+  ``ast-grep --pattern 'indoc! { r#"$$$A"# }' --rewrite '`$$$A`'``.
 - Adapt these rules to the repository’s Rust style before using them directly.
   In Diapason, preserve existing lint policy, public API conventions, and the
   project’s bias against unnecessary rewrites.
