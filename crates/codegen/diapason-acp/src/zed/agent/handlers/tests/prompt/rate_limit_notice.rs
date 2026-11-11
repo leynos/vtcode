@@ -1,5 +1,6 @@
-//! Covers the rate-limit notices a streaming provider failure publishes over
-//! ACP: a terminal 429 and a 429 the retry budget can resume from.
+//! Covers the rate-limit notices a provider failure publishes over ACP: a
+//! terminal streamed 429, a streamed 429 the retry budget can resume from, and
+//! a buffered 429 that is retried before the turn answers.
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 
@@ -134,6 +135,29 @@ async fn retryable_stream_rate_limit_publishes_a_notice_announcing_the_retry() {
         update["sessionUpdate"] == "agent_message_chunk" && update["content"]["text"] == "retried answer"
     });
     assert!(retried_answer, "the scheduled retry must deliver the follow-up answer: {updates:?}");
+}
+
+/// Assert a buffered 429 publishes the notice and the scheduled retry answers.
+///
+/// The buffered path retries through `generate_with_retry` rather than a
+/// stream, so the notice must still reach the client and the retry must still
+/// deliver the answer without a stream ever opening.
+#[tokio::test]
+async fn buffered_rate_limit_publishes_a_notice_and_the_retry_answers() {
+    let updates = prompt_updates(Arc::new(|| Box::new(BufferedRetryableRateLimitProvider::new()))).await;
+    let notice = rate_limit_notice(&updates);
+    let message = notice_message(notice);
+
+    assert!(message.contains("HTTP 429"), "the provider status must be reported: {message}");
+    assert!(message.contains("Retry-After: 0.5"), "the provider hint must be reported: {message}");
+    assert!(
+        message.contains("Diapason will retry in 0.5s"),
+        "a retryable failure must advertise the delay it scheduled: {message}"
+    );
+    let retried_answer = updates.iter().any(|update| {
+        update["sessionUpdate"] == "agent_message_chunk" && update["content"]["text"] == "retried answer"
+    });
+    assert!(retried_answer, "the buffered retry must deliver the follow-up answer: {updates:?}");
 }
 
 /// Interval the injected publication clock reports, in milliseconds.
