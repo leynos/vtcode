@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
+import yaml
 from workflow_validation_test_support import (
     CI_WORKFLOW_PATH,
     MAKEFILE_PATH,
@@ -25,16 +27,29 @@ class WorkflowPolicyTests(unittest.TestCase):
     """Keep the repository YAML policy and workflow documents aligned."""
 
     def test_policy_keeps_github_actions_compatible_defaults(self) -> None:
-        policy = YAMLLINT_POLICY_PATH.read_text(encoding="utf-8")
-        for required in (
-            "extends: default",
-            "present: true",
-            "max: 120",
-            "allowed-values: ['true', 'false']",
-            "check-keys: false",
-        ):
-            with self.subTest(required=required):
-                self.assertIn(required, policy)
+        policy = yaml.safe_load(YAMLLINT_POLICY_PATH.read_text(encoding="utf-8"))
+        rules = policy["rules"]
+        self.assertEqual(
+            policy["extends"], "default", "policy must extend the yamllint defaults"
+        )
+        self.assertTrue(
+            rules["document-start"]["present"],
+            "workflows must declare a document start",
+        )
+        self.assertEqual(
+            rules["line-length"]["max"],
+            120,
+            "line-length policy must stay at 120 columns",
+        )
+        self.assertEqual(
+            rules["truthy"]["allowed-values"],
+            ["true", "false"],
+            "only quoted booleans are allowed",
+        )
+        self.assertFalse(
+            rules["truthy"]["check-keys"],
+            "the GitHub Actions 'on' key must not be checked",
+        )
 
     def test_every_workflow_starts_and_parses_as_a_mapping(self) -> None:
         workflow_paths = sorted(
@@ -103,7 +118,9 @@ class MakefileProcessTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def run_target(self, yamllint_status: int, actionlint_status: int):
+    def run_target(
+        self, yamllint_status: int, actionlint_status: int
+    ) -> subprocess.CompletedProcess[str]:
         self.call_log.unlink(missing_ok=True)
         environment = {
             "FAKE_LINTER_CALL_LOG": str(self.call_log),
@@ -151,6 +168,9 @@ class MakefileProcessTests(unittest.TestCase):
                 self.assertEqual(result.returncode, expected, result.stderr)
                 self.assertEqual(read_call_log(self.call_log), ["yamllint", "actionlint"])
 
+class ActionlintDownloadTests(unittest.TestCase):
+    """Exercise the verified actionlint download boundary in the CI script."""
+
     def actionlint_download_script(self) -> str:
         """Return the parsed verified-installer script from the CI workflow."""
         workflow = load_workflow(CI_WORKFLOW_PATH)
@@ -177,7 +197,7 @@ class MakefileProcessTests(unittest.TestCase):
         *,
         checksum_status: int = 0,
         installer_download_status: int = 0,
-    ):
+    ) -> tuple[subprocess.CompletedProcess[str], Path, Path, Path]:
         """Execute the CI script with strict controlled download fixtures."""
         _curl, _sha256sum, call_log, installer_log = write_actionlint_download_fixtures(
             directory,
@@ -208,11 +228,15 @@ class MakefileProcessTests(unittest.TestCase):
             self.assertEqual(
                 read_call_log(call_log),
                 [
-                    "https://raw.githubusercontent.com/rhysd/actionlint/"
-                    "914e7df21a07ef503a81201c76d2b11c789d3fca/"
-                    "scripts/download-actionlint.bash",
-                    "https://github.com/rhysd/actionlint/releases/download/"
-                    "v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+                    (
+                        "https://raw.githubusercontent.com/rhysd/actionlint/"
+                        "914e7df21a07ef503a81201c76d2b11c789d3fca/"
+                        "scripts/download-actionlint.bash"
+                    ),
+                    (
+                        "https://github.com/rhysd/actionlint/releases/download/"
+                        "v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+                    ),
                 ],
             )
 
