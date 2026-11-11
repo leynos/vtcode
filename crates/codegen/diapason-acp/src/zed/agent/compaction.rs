@@ -4,9 +4,9 @@
 //! automatic, provider-native, and hook-assisted compaction.
 
 use super::super::types::SessionHandle;
+use super::redaction::{identifier_correlation, session_correlation};
 use super::{ZedAgent, warn_hook_message};
 use crate::zed::agent::session_state::checkpoint_failure_label;
-use super::redaction::{identifier_correlation, session_correlation};
 use crate::zed::provider_runtime::{ProviderAdmissionError, ProviderRequestRuntime};
 use anyhow::{Context, Result};
 use diapason_core::compaction::auto::{AutoCompactionInput, AutoCompactionOutcome, auto_compact_messages};

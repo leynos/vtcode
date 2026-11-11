@@ -31,8 +31,6 @@ pub(super) use tool_round::{
     validate_tool_call_ids,
 };
 
-
-pub(super) use buffered::response_reasoning_update;
 pub(super) use output::ProviderOutput;
 pub(super) use rate_limit_sink::RateLimitNoticeSink;
 pub(super) use tool_state::PromptToolState;
@@ -95,10 +93,6 @@ impl Drop for TurnGuard {
         self.thread.finish_turn();
     }
 }
-
-
-
-
 
 pub(super) struct PromptInput {
     agent: Arc<ZedAgent>,

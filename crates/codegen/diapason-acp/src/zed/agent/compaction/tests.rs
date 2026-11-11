@@ -84,7 +84,7 @@ fn pre_compact_hook_failure_logs_fixed_fields_without_hook_text() {
 
     let (_, events) =
         crate::zed::agent::test_log_capture::capturing_at(tracing_subscriber::filter::LevelFilter::DEBUG, || {
-            log_suppressed_error(&failure.into_error(), "context_compaction", category)
+            report::log_suppressed_compaction_failure(failure.detail(), category)
         });
     let output = events.join("\n");
 

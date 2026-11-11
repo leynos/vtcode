@@ -10,7 +10,6 @@ mod compaction_failure;
 
 mod duplicate_tool_call_ids;
 
-
 mod interrupted_tool;
 
 mod partial_stream;
@@ -49,9 +48,6 @@ fn assistant_tool_call_continuation_preserves_signed_reasoning_details() {
     assert_eq!(archived["reasoning_details"][1], array_reasoning);
     assert_eq!(archived["reasoning_details"][2], serde_json::json!(raw_reasoning));
 }
-
-
-
 
 /// Assert reasoning still produces an ACP thought chunk when tools are requested.
 #[test]
