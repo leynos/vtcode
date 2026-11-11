@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
 import subprocess
 import sys
-from typing import Mapping
+from collections.abc import Mapping
+from pathlib import Path
 
 import yaml
 
@@ -44,25 +44,34 @@ def load_workflow(path: Path) -> dict[str, object]:
         document = loader.get_single_data()
     finally:
         loader.dispose()
-    if not isinstance(document, dict):
-        raise AssertionError(f"{path} must parse to a mapping")
-    if not all(isinstance(key, str) for key in document):
-        raise AssertionError(f"{path} must use string keys")
-    return document
+    match document:
+        case dict() as mapping:
+            if not all(isinstance(key, str) for key in mapping):
+                raise AssertionError(f"{path} must use string keys")
+            return mapping
+        case _:
+            raise AssertionError(f"{path} must parse to a mapping")
 
 
 def job_steps(workflow: dict[str, object], name: str) -> list[dict[str, object]]:
     """Return the named job's mapping steps in declared order."""
-    jobs = workflow.get("jobs")
-    if not isinstance(jobs, dict):
-        raise AssertionError("workflow jobs must be a mapping")
-    job = jobs.get(name)
-    if not isinstance(job, dict):
-        raise AssertionError(f"jobs.{name} must be a mapping")
-    steps = job.get("steps")
-    if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
-        raise AssertionError(f"jobs.{name}.steps must be a list of mappings")
-    return steps
+    match workflow.get("jobs"):
+        case dict() as jobs:
+            match jobs.get(name):
+                case dict() as job:
+                    match job.get("steps"):
+                        case list() as steps if all(
+                            isinstance(step, dict) for step in steps
+                        ):
+                            return steps
+                        case _:
+                            raise AssertionError(
+                                f"jobs.{name}.steps must be a list of mappings"
+                            )
+                case _:
+                    raise AssertionError(f"jobs.{name} must be a mapping")
+        case _:
+            raise AssertionError("workflow jobs must be a mapping")
 
 
 def named_step(steps: list[dict[str, object]], name: str) -> dict[str, object]:

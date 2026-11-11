@@ -946,5 +946,5 @@ it with `git rebase --onto 4213ed12f 26c5d93df`. The only conflict was this
 handoff file, which now keeps every earlier record. The earlier record above
 names the unmerged parent for the workflow-sources stack; the replay moved the
 layer's own three commits onto `4213ed12f` without changing their content. The
-gate evidence recorded above describes earlier replays onto unmerged parents and
-is not evidence for this head.
+gate evidence recorded above describes earlier replays onto unmerged parents
+and is not evidence for this head.

@@ -163,9 +163,10 @@ then runs `make github-actions-lint`. The focused target runs yamllint with the
 repository `.yamllint.yml` policy before actionlint, so malformed YAML fails
 before GitHub Actions-specific validation runs.
 
-CI pins yamllint 1.38.0 through `uv tool install`. It caches only the uv tool
-directories needed for that tool. CI downloads actionlint 1.7.12 from its
-pinned release URL, verifies archive SHA-256
+CI pins yamllint 1.38.0 through `uv tool install`. It caches only the uv
+download cache and recreates the tool environment on every run, so a runner
+Python update cannot leave a stale interpreter path behind. CI downloads
+actionlint 1.7.12 from its pinned release URL, verifies archive SHA-256
 `8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`, then passes
 that verified archive to the reviewed installer revision
 `914e7df21a07ef503a81201c76d2b11c789d3fca`. The CI lint invocation uses
