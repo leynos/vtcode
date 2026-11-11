@@ -1,4 +1,5 @@
 use crate::skills::SkillMetadata;
+use crate::skills::SkillScope;
 use crate::skills::command_skills::command_skill_id_alias;
 #[cfg(test)]
 use crate::skills::loader::discover_skill_metadata_lightweight_hermetic;
@@ -346,13 +347,29 @@ impl SkillsManager {
     }
 }
 
-/// Find a skill by its requested name while preserving discovery order for the
-/// `cmd-analyse`/`cmd-analyze` persisted-name compatibility pair.
+/// Discovery precedence of a skill scope, lowest first.
+///
+/// `load_skills` searches repository roots before user, admin, and bundled
+/// system roots, but `dedup_and_sort` then sorts by name. Rank by scope so an
+/// alias lookup still selects the higher-precedence skill when the spellings
+/// sort the other way.
+fn skill_scope_rank(scope: SkillScope) -> u8 {
+    match scope {
+        SkillScope::Repo => 0,
+        SkillScope::User => 1,
+        SkillScope::Admin => 2,
+        SkillScope::System => 3,
+    }
+}
+
+/// Find a skill by its requested name, preferring the highest-precedence scope
+/// for the `cmd-analyse`/`cmd-analyze` persisted-name compatibility pair.
 fn skill_metadata_by_name<'a>(skills: &'a [SkillMetadata], name: &str) -> Option<&'a SkillMetadata> {
     let alias = command_skill_id_alias(name);
     skills
         .iter()
-        .find(|skill| skill.name == name || alias.is_some_and(|alias| skill.name == alias))
+        .filter(|skill| skill.name == name || alias.is_some_and(|alias| skill.name == alias))
+        .min_by_key(|skill| skill_scope_rank(skill.scope))
 }
 
 /// Resolve metadata for persisted preload configuration without changing the
@@ -396,7 +413,7 @@ mod tests {
             description: "test skill".to_owned(),
             short_description: None,
             path: PathBuf::from(path),
-            scope: crate::skills::SkillScope::User,
+            scope: SkillScope::User,
             manifest: None,
         }
     }
@@ -416,6 +433,25 @@ mod tests {
             selected.path,
             PathBuf::from("/higher-priority/cmd-analyze"),
             "canonical requests must not bypass a higher-priority legacy skill",
+        );
+    }
+
+    #[test]
+    fn skill_metadata_lookup_prefers_higher_scope_over_sorted_order() {
+        // `skills_for_cwd` returns a name-sorted list, so the bundled canonical
+        // spelling sorts before a user legacy override.
+        let mut bundled = skill_metadata("cmd-analyse", "/system/cmd-analyse");
+        bundled.scope = SkillScope::System;
+        let mut user_override = skill_metadata("cmd-analyze", "/user/cmd-analyze");
+        user_override.scope = SkillScope::User;
+        let skills = vec![bundled, user_override];
+
+        let selected = skill_metadata_by_name(&skills, "cmd-analyse").expect("alias match");
+
+        assert_eq!(
+            selected.path,
+            PathBuf::from("/user/cmd-analyze"),
+            "a sorted list must not let the bundled skill bypass the user override",
         );
     }
 
