@@ -108,8 +108,8 @@ Choose one of the supported LLM providers:
     configure `provider = "merge-gateway"`.
   - Default model: `default_routing`; curated routes include `openai/gpt-5.5`,
     `anthropic/claude-opus-5`, and `google/gemini-3.6-flash`.
-  - Native Requests API and authenticated `/v1/models` catalogue discovery are
-    used by default; see the
+  - The native Merge Responses API and authenticated `/v1/models` catalogue
+    discovery are used by default; see the
     [Merge Gateway provider guide](../providers/merge-gateway.md) for legacy
     `/v1/openai` compatibility.
 

@@ -13,7 +13,7 @@ checkout, install the CLI with:
 cargo install --path . --locked
 ```
 
-The CLI must be available on your `PATH` before an editor extension can launch
+The CLI must be available on the `PATH` before an editor extension can launch
 it.
 
 ## Visual Studio Code, Cursor, and Windsurf

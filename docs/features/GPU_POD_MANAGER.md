@@ -12,7 +12,10 @@ The pod manager keeps a small amount of state under the user state directory's
 - `state.json` stores the active pod, running model names, ports, PIDs, and GPU
   assignments.
 - `catalog.json` stores the model/profile catalogue used by `pods known-models`
-  and `pods start`.
+  and `pods start`. The file lives at
+  `DiapasonPaths::state_path("pods").join("catalog.json")`, and the embedded
+  catalogue seeds it only when the file does not exist. Edits apply when a new
+  `PodManager` loads the catalogue, because an existing manager caches it.
 
 The current implementation is SSH-only. Diapason uploads a run script and a
 wrapper script to the remote host, starts the model in a detached session, and
@@ -44,8 +47,8 @@ Launches a model on the active pod.
 - `--ssh` provides the SSH target used for all remote operations.
 - `--gpu` entries define the visible GPU inventory as `ID:NAME`.
 - `--gpus` requests a specific GPU count when matching a profile.
-- `--profile` forces a catalogue profile when you do not want automatic
-  selection.
+- `--profile` forces a catalogue profile when automatic selection is not
+  required.
 - `--memory` and `--context` override the profile's default vLLM arguments.
 
 ### `list`
