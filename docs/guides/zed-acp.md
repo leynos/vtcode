@@ -532,9 +532,12 @@ and `[history]` settings do not control ACP audit output.
   repaired boundaries the error's rendering is never written to a log at any
   level, so debug logs do not restore the workspace paths, provider detail, or
   prompt and tool payload text that the fixed messages omit. A DEBUG record
-  keeps the same fixed fields plus `error_bytes`, the outer message size, and
-  `detail_correlation`, a deterministic truncated SHA-256 digest that groups
-  repeated identical failures without retaining their content.
+  keeps the same fixed fields; when the failure retains a bounded detail it also
+  carries `error_bytes`, the outer message size, and `detail_correlation`, a
+  deterministic truncated SHA-256 digest that groups repeated identical failures
+  without retaining their content. A failure raised as a bare category keeps
+  only `operation` and `error_category`, because there is no error rendering to
+  measure or digest.
 - **Tool-call budgets** – ACP applies `agent.harness.max_tool_calls_per_turn`
   and the optional `agent.harness.max_tool_calls_per_session` to local tool
   execution. Set either value to `0` to disable that cap. The separate
