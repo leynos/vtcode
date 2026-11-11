@@ -31,5 +31,7 @@ if [[ -s "$existing_paths" ]]; then
     echo "$(basename "$0"): '$TYPOS' is not installed or not on PATH." >&2
     exit 127
   fi
-  xargs -0 --no-run-if-empty "$TYPOS" --config typos.toml --force-exclude -- < "$existing_paths"
+  # The `-s` guard above keeps the argument list non-empty, so the BSD and GNU
+  # xargs implementations behave identically without a GNU-only option.
+  xargs -0 "$TYPOS" --config typos.toml --force-exclude -- < "$existing_paths"
 fi

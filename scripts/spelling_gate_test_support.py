@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import textwrap
-from typing import Mapping
-
+from collections.abc import Mapping
+from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CHECKER = REPOSITORY_ROOT / "scripts" / "check-spelling.sh"
