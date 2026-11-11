@@ -59,7 +59,7 @@ class WorkflowValidationCiTests(unittest.TestCase):
         self.assertEqual(
             cache_yamllint.get("with"),
             {
-                "path": ".uv-cache\n.uv-tools\n.uv-bin\n",
+                "path": ".uv-cache",
                 "key": "yamllint-${{ runner.os }}-${{ runner.arch }}-${{ env.YAMLLINT_VERSION }}",
             },
         )
