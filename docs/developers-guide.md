@@ -28,14 +28,18 @@ Rust APIs use the native `catalogue` spelling: `ToolCatalogue`,
 `ToolCatalogueEntry`, `ToolCatalogueSource`, `CatalogueToolKind`,
 `SessionToolCatalogue`, `SessionToolCatalogueSnapshot`,
 `SessionToolCatalogueState`, `PodCatalogue`, `ModelCatalogueEntry`,
-`MergeCatalogue*`, `MergeGatewayCatalogueClient`, `PodsStore::catalogue_path`,
-`PodsStore::load_catalogue`, `PodsStore::save_catalogue`, `catalogue_tools`,
-`model_catalogue_entry`, `catalogue_provider_keys`,
-`ToolRegistry::tool_catalogue_state`, `ToolRegistration::with_catalogue_source`,
-`ToolRegistration::catalogue_source`, `ResolvedModel::catalogue`, and the
-`tool_catalogue_facade` and `pods::catalogue` modules. The old spellings are
-removed rather than deprecated, so in-repository callers must use the new
-names; the full removed/replacement list is in the
+`MergeCatalogue*`, `MergeGatewayCatalogueClient`, `MergeModelCatalogueResponse`,
+`PodsStore::catalogue_path`, `PodsStore::load_catalogue`,
+`PodsStore::save_catalogue`, `catalogue_tools`, `model_catalogue_entry`,
+`catalogue_provider_keys`, `is_model_catalogue_eligible`,
+`validate_prompt_catalogue_alignment`, `ToolRegistry::tool_catalogue_state`,
+`ToolRegistration::with_catalogue_source`, `ToolRegistration::catalogue_source`,
+`SessionRequestEnvelope::catalogue_hash`, `ResolvedModel::catalogue`, and the
+`agent::tool_catalogue`, `handlers::session_tool_catalogue`,
+`providers::merge_gateway_catalogue`, `tool_catalogue_facade` and
+`pods::catalogue` modules. The old spellings are removed rather than
+deprecated, so in-repository callers must use the new names; the full
+removed/replacement list is in the
 [0.157.0 release notes](./releases/0.157.0.md#catalogue-spelling-renames).
 
 Compatibility applies only to spellings that leave the Rust API:
