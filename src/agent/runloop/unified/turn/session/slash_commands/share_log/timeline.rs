@@ -482,8 +482,54 @@ mod tests {
         assert!(html.contains("Cache churn"));
         assert!(html.contains("Last cache change"));
         assert!(html.contains("stable_prefix"));
-        assert!(html.contains("tool_catalogue:"));
+        assert!(html.contains("tool_catalogue: ${formatNumber(overview.prompt_cache_tool_catalog_changes)}"));
         assert!(html.contains("\"prompt_cache_tool_catalog_changes\":3"));
+    }
+
+    #[test]
+    fn timeline_export_end_to_end_reports_catalogue_change_count() {
+        let records = vec![sample_event_record(
+            1,
+            ThreadEvent::TurnCompleted(TurnCompletedEvent {
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 4,
+                    cached_input_tokens: 2,
+                    cache_creation_tokens: 0,
+                },
+            }),
+        )];
+        let diagnostics = crate::agent::runloop::unified::state::PromptCacheDiagnostics {
+            observations: 5,
+            tool_catalogue_changes: 3,
+            ..Default::default()
+        };
+
+        let export = build_timeline_export(
+            "2026-04-04T00:00:00Z",
+            "openai",
+            "gpt-test",
+            std::path::Path::new("/tmp/workspace"),
+            "thread-1",
+            &records,
+            &[],
+            Some(&diagnostics),
+        );
+
+        assert_eq!(export.overview.prompt_cache_tool_catalogue_changes, 3);
+
+        let serialized = serde_json::to_value(&export).expect("serialize export");
+        assert_eq!(serialized["overview"]["prompt_cache_tool_catalog_changes"], json!(3));
+
+        let html = render_session_timeline_html(&export, &json!({"messages": []})).expect("html");
+        assert!(
+            html.contains("tool_catalogue: ${formatNumber(overview.prompt_cache_tool_catalog_changes)}"),
+            "cache churn line does not render the catalogue-change count"
+        );
+        assert!(
+            html.contains("\"prompt_cache_tool_catalog_changes\":3"),
+            "embedded export JSON lost the wire field name or count"
+        );
     }
 
     #[test]
