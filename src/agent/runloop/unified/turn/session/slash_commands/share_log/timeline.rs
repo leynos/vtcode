@@ -487,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn timeline_export_end_to_end_reports_catalogue_change_count() {
+    fn timeline_export_carries_catalogue_change_count() {
         let records = vec![sample_event_record(
             1,
             ThreadEvent::TurnCompleted(TurnCompletedEvent {
@@ -529,6 +529,52 @@ mod tests {
         assert!(
             html.contains("\"prompt_cache_tool_catalog_changes\":3"),
             "embedded export JSON lost the wire field name or count"
+        );
+    }
+
+    #[test]
+    fn share_log_export_writes_catalogue_change_count() {
+        let records = vec![sample_event_record(
+            1,
+            ThreadEvent::TurnCompleted(TurnCompletedEvent {
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 4,
+                    cached_input_tokens: 2,
+                    cache_creation_tokens: 0,
+                },
+            }),
+        )];
+        let diagnostics = crate::agent::runloop::unified::state::PromptCacheDiagnostics {
+            observations: 5,
+            tool_catalogue_changes: 3,
+            ..Default::default()
+        };
+        let export = redact_timeline_export(&build_timeline_export(
+            "2026-04-04T00:00:00Z",
+            "openai",
+            "gpt-test",
+            std::path::Path::new("/tmp/workspace"),
+            "thread-1",
+            &records,
+            &[],
+            Some(&diagnostics),
+        ));
+        let html = render_session_timeline_html(&export, &json!({"messages": []})).expect("html");
+
+        let directory = tempfile::tempdir().expect("create temp dir");
+        let path = directory.path().join("diapason-session-timeline-test.html");
+        std::fs::write(&path, &html).expect("write session timeline");
+        let written = std::fs::read_to_string(&path).expect("read session timeline");
+
+        assert_eq!(export.overview.prompt_cache_tool_catalogue_changes, 3);
+        assert!(
+            written.contains("tool_catalogue: ${formatNumber(overview.prompt_cache_tool_catalog_changes)}"),
+            "exported timeline does not bind the catalogue label to its count"
+        );
+        assert!(
+            written.contains("\"prompt_cache_tool_catalog_changes\":3"),
+            "redacted export lost the wire field name or count"
         );
     }
 

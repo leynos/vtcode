@@ -32,10 +32,10 @@ Rust APIs use the native `catalogue` spelling: `ToolCatalogue`,
 `PodsStore::load_catalogue`, `PodsStore::save_catalogue`, `catalogue_tools`,
 `model_catalogue_entry`, `catalogue_provider_keys`,
 `ToolRegistry::tool_catalogue_state`, `ToolRegistration::with_catalogue_source`,
-`ResolvedModel::catalogue`, and the `tool_catalogue_facade` and
-`pods::catalogue` modules. The old spellings are removed rather than
-deprecated, so in-repository callers must use the new names; the full
-removed/replacement list is in the
+`ToolRegistration::catalogue_source`, `ResolvedModel::catalogue`, and the
+`tool_catalogue_facade` and `pods::catalogue` modules. The old spellings are
+removed rather than deprecated, so in-repository callers must use the new
+names; the full removed/replacement list is in the
 [0.157.0 release notes](./releases/0.157.0.md#catalogue-spelling-renames).
 
 Compatibility applies only to spellings that leave the Rust API:
