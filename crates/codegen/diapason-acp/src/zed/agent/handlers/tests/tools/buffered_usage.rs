@@ -9,13 +9,18 @@ use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use serde_json::Value;
 
 /// Collects the usage-update extension notifications from a client channel.
+///
+/// The SDK strips the single leading underscore of a custom method when it
+/// decodes a notification, so the client sees `lody/session/usage_update`.
+/// Comparing against that literal rather than the producer's constant keeps
+/// this assertion independent of the name the agent registers, and matching it
+/// exactly rejects a method carrying an extra underscore.
 fn usage_updates(notifications: &[acp::AgentNotification]) -> Vec<Value> {
     notifications
         .iter()
         .filter_map(|notification| match notification {
             acp::AgentNotification::ExtNotification(notification)
-                if notification.method.as_ref().trim_start_matches('_')
-                    == crate::zed::agent::lody_usage::LODY_SESSION_USAGE_UPDATE_METHOD.trim_start_matches('_') =>
+                if notification.method.as_ref() == "lody/session/usage_update" =>
             {
                 serde_json::from_str::<Value>(notification.params.get()).ok()
             }

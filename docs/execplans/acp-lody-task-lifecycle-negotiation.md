@@ -1960,9 +1960,12 @@ closes or rebuts each one.
   `record_acp_management_started`/`finished` calls are replaced by
   `MetricsCollector::begin_acp_management`, which returns an
   `AcpManagementGuard`. The guard lowers the gauge exactly once; a request
-  dropped before `finish` is recorded as a failure, so `started` always equals
-  `succeeded + failed`. Two unit tests cover the completed and dropped paths,
-  and the Prometheus snapshot no longer pins a wall-clock duration value.
+  dropped before `finish` is recorded as a failure, so the gauge cannot stay
+  elevated. Because `started` is incremented before any outcome is recorded,
+  the counters relate as `started = succeeded + failed + in_flight`, and the
+  equality `started = succeeded + failed` holds only once every started request
+  has recorded an outcome. Two unit tests cover the completed and dropped
+  paths, and the Prometheus snapshot no longer pins a wall-clock duration value.
 - **Streamed-usage documentation (Trivial, `acp-runtime.md`).** The
   native-OpenAI condition is qualified with "with no provider key override",
   matching `is_native_openai_api`.

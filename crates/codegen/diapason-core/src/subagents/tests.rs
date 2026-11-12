@@ -197,6 +197,33 @@ async fn background_state_lock_excludes_a_second_opener() {
     fs2::FileExt::try_lock_exclusive(&second_opener).expect("the guard must release the ledger lock when it drops");
 }
 
+/// A contended ledger lock must fail with a contextual error at its deadline.
+///
+/// A blocking acquisition would park the save, and the in-process mutex it
+/// holds, for as long as the holder lives; a stalled process would therefore
+/// block every later save in this one. The deadline is shortened so the test
+/// observes the expiry without waiting for the production timeout.
+#[tokio::test]
+async fn background_state_lock_times_out_instead_of_blocking() {
+    let temp = TempDir::new().expect("tempdir");
+    let guard = lock_background_state(temp.path())
+        .await
+        .expect("acquire the workspace ledger lock");
+    let error = match lock_background_state_within(temp.path(), Duration::from_millis(50)).await {
+        Ok(_) => panic!("a lock held by another opener must not be acquired"),
+        Err(error) => error,
+    };
+    let rendered = format!("{error:#}");
+    assert!(
+        rendered.contains("Timed out") && rendered.contains("background_subagents.lock"),
+        "the deadline error must name the wait and the lock file, got: {rendered}"
+    );
+    drop(guard);
+    let _reacquired = lock_background_state(temp.path())
+        .await
+        .expect("the released lock must be acquirable");
+}
+
 /// Reading a background output tail is a query. It must not refresh process
 /// state, republish lifecycle updates, or rewrite the persisted ledger, even
 /// when the recorded exec session is gone and a refresh would settle the
