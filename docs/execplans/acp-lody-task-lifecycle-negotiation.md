@@ -1972,3 +1972,29 @@ closes or rebuts each one.
 - **Developer documentation.** The r28 note claimed Hypothesis properties that
   the r29 round replaced with a dependency-free corpus; it now says so, so the
   plan no longer describes two different implementations as current.
+
+### Revision note (2026-11-12, r32 round: review `5858944379`)
+
+- **Usage-method assertion (Trivial, `buffered_usage.rs`).** The buffered-path
+  helper now compares the decoded notification method with the literal
+  `lody/session/usage_update` instead of normalising the producer's constant,
+  so an extra underscore or a producer rename fails the assertion. The SDK
+  strips exactly one leading underscore when it decodes a custom notification,
+  which is why the literal is the exact decoded name.
+- **Bounded ledger lock (Major, `background.rs`).** `lock_background_state`
+  opens the lock file in `spawn_blocking` and retries `try_lock_exclusive` with
+  async backoff (5 ms doubling to a 250 ms cap) under a 10 s deadline. On
+  expiry the save fails with a contextual error naming the wait and the lock
+  path, and never writes without the lock.
+  `background_state_lock_times_out_instead_of_blocking` covers the expiry and
+  the release.
+- **Persistence-task guard ownership (Major, `controller_spawn_run.rs`).** Both
+  persistence guards move into a `tokio::spawn`ed task that performs the
+  reload, merge, write and rename through the extracted
+  `persist_background_records`. Cancelling the caller detaches that task, so
+  the locks are released only after the write and rename finish. The in-memory
+  snapshot is still taken under the mutex, preserving last-write-is-newest.
+- **Metric invariant wording.** The `begin_acp_management` documentation and
+  the r31 note above now state `started = succeeded + failed + in_flight`, with
+  `started = succeeded + failed` holding only once every started request has
+  recorded an outcome.
