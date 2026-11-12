@@ -318,10 +318,10 @@ and configuration
 ### Usage Notes
 
 **Trajectory Logs:** Logs for trajectory: check
-`$XDG_STATE_HOME/diapason/logs/trajectory.jsonl`. `diapason trajectory`
-summarizes them; from 0.157.0 its report labels use `tool_catalogue`, as does
-the shared session timeline's cache-churn line. Log records themselves keep
-their existing `tool_catalog` names. See the
+`$XDG_STATE_HOME/diapason/workspaces/<workspace-hash>/logs/trajectory.jsonl`.
+`diapason trajectory` summarizes them; from 0.157.0 its report labels use
+`tool_catalogue`, as does the shared session timeline's cache-churn line. Log
+records themselves keep their existing `tool_catalog` names. See the
 [0.157.0 release notes](./releases/0.157.0.md#catalogue-spelling-renames).
 
 ### Workspace-First Operations

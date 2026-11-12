@@ -5,12 +5,6 @@
 //! downstream crate through its public path rather than only from the
 //! defining crate's own tests.
 
-#![allow(
-    missing_docs,
-    clippy::expect_used,
-    reason = "Intentional compatibility, platform, test, or API-shape suppression."
-)]
-
 use diapason_config::models::ModelCatalogueEntry;
 use diapason_core::ToolCatalogue;
 use diapason_core::llm::ResolvedModel;

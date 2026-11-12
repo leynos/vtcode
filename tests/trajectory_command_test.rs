@@ -3,11 +3,6 @@
 //! The report renders `tool_catalogue` labels while trajectory log records keep
 //! their historical `catalog` spelling.
 
-#![allow(
-    missing_docs,
-    clippy::expect_used,
-    reason = "Intentional compatibility, platform, test, or API-shape suppression."
-)]
 use assert_cmd::Command;
 use std::path::Path;
 
