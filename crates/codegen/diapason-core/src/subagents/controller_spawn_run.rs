@@ -600,13 +600,13 @@ impl SubagentController {
         // Reading first lets two concurrent saves snapshot v1 and v2, then
         // write v2 before v1, leaving the older snapshot as the file. The lock
         // must cover the read so the last write is always the newest state.
-        let _guard = background_state_persistence_lock().lock().await;
+        let guard = background_state_persistence_lock().lock().await;
         // The in-process mutex cannot serialise another Diapason process that
         // shares this workspace. Hold the ledger's inter-process lock across
         // the reload, merge and write so two processes cannot each read the
         // old ledger and then have the later rename discard the other's
         // record.
-        let _file_guard = lock_background_state(&self.config.workspace_root).await?;
+        let file_guard = lock_background_state(&self.config.workspace_root).await?;
         let records = {
             let state = self.state.read().await;
             state
@@ -616,25 +616,20 @@ impl SubagentController {
                 .map(BackgroundRecord::into_persisted)
                 .collect()
         };
-        if let Some(owner_session_id) = self.background_owner_session_id.as_deref() {
-            let mut persisted_records = load_background_state(&self.config.workspace_root).await?.records;
-            persisted_records.retain(|record| record.owner_session_id.as_deref() != Some(owner_session_id));
-            persisted_records.extend(records);
-            persist_background_state(&self.config.workspace_root, persisted_records).await
-        } else {
-            // An unscoped controller shares this ledger with the owner-scoped
-            // controllers of other sessions and processes, and it loads their
-            // records so it can list and route them. Replacing the file with
-            // its own snapshot would delete a record another owner created
-            // after this controller loaded, or restore that owner's record
-            // from the stale copy it holds.
-            let persisted_records = load_background_state(&self.config.workspace_root).await?.records;
-            persist_background_state(
-                &self.config.workspace_root,
-                merge_unscoped_background_records(persisted_records, records),
-            )
-            .await
-        }
+        let workspace_root = self.config.workspace_root.clone();
+        let owner_session_id = self.background_owner_session_id.clone();
+        // Both guards move into the persistence task. Cancelling this caller
+        // only detaches that task, so neither lock is released until the
+        // reload, merge, write and rename have finished; dropping them here
+        // instead would let a second writer start from the same stale ledger
+        // while this write was still in flight.
+        tokio::spawn(async move {
+            let _persistence_guard = guard;
+            let _ledger_guard = file_guard;
+            persist_background_records(&workspace_root, owner_session_id.as_deref(), records).await
+        })
+        .await
+        .context("Failed to join the background state persistence task")?
     }
 
     pub(super) async fn find_spec(&self, candidate: &str) -> Option<SubagentSpec> {
@@ -995,6 +990,32 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
 static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 fn background_state_persistence_lock() -> &'static Mutex<()> {
     BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Reloads the shared ledger, merges one controller's snapshot and writes it.
+///
+/// The caller holds both persistence locks; this function owns the reload,
+/// merge and write so they complete as one critical section.
+async fn persist_background_records(
+    workspace_root: &std::path::Path,
+    owner_session_id: Option<&str>,
+    records: Vec<PersistedBackgroundRecord>,
+) -> Result<()> {
+    if let Some(owner_session_id) = owner_session_id {
+        let mut persisted_records = load_background_state(workspace_root).await?.records;
+        persisted_records.retain(|record| record.owner_session_id.as_deref() != Some(owner_session_id));
+        persisted_records.extend(records);
+        persist_background_state(workspace_root, persisted_records).await
+    } else {
+        // An unscoped controller shares this ledger with the owner-scoped
+        // controllers of other sessions and processes, and it loads their
+        // records so it can list and route them. Replacing the file with its
+        // own snapshot would delete a record another owner created after this
+        // controller loaded, or restore that owner's record from the stale
+        // copy it holds.
+        let persisted_records = load_background_state(workspace_root).await?.records;
+        persist_background_state(workspace_root, merge_unscoped_background_records(persisted_records, records)).await
+    }
 }
 
 /// Merges an unscoped controller's snapshot into the persisted ledger.

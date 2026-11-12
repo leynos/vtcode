@@ -425,8 +425,14 @@ impl MetricsCollector {
     /// once. A request that is dropped before
     /// [`AcpManagementGuard::finish`] — for example because the client
     /// disconnected while the handler awaited — is recorded as a failure, so
-    /// the gauge cannot stay elevated and `management_requests_started` always
-    /// equals the sum of the succeeded and failed counters.
+    /// the gauge cannot stay elevated.
+    ///
+    /// `management_requests_started` is incremented before any outcome is
+    /// recorded, so the counters relate as
+    /// `started = succeeded + failed + in_flight`: the equality
+    /// `started = succeeded + failed` holds only at rest, once every request
+    /// that was started has recorded its outcome. A gap between them with
+    /// `in_flight` at zero therefore means a request has no recorded outcome.
     pub fn begin_acp_management(&self) -> AcpManagementGuard {
         let mut metrics = self.acp_extension.lock();
         metrics.management_requests_started = metrics.management_requests_started.saturating_add(1);
