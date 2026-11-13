@@ -1,6 +1,11 @@
+//! Renders user-facing titles for ACP tool calls.
+//!
+//! Titles summarise the salient argument (path, pattern, or command) so client
+//! timelines can show compact, readable entries.
+
 use serde_json::Value;
 
-use super::catalog::{SupportedTool, ToolDescriptor};
+use super::catalogue::{SupportedTool, ToolDescriptor};
 use super::schemas::{
     TOOL_LIST_FILES_CONTENT_PATTERN_ARG, TOOL_LIST_FILES_NAME_PATTERN_ARG, TOOL_LIST_FILES_PATH_ARG,
     TOOL_READ_FILE_PATH_ARG, TOOL_READ_FILE_URI_ARG,

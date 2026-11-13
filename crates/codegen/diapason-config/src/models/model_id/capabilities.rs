@@ -1,3 +1,8 @@
+//! Catalogue metadata for models, generated from `docs/models.json`.
+//!
+//! Exposes lookup helpers and the `ModelCatalogueEntry` fields used by model
+//! pickers, provider validation, and pricing display.
+
 use crate::models::{Provider, ProviderModelSupport};
 
 use super::ModelId;
@@ -7,7 +12,7 @@ mod capability_generated {
     include!(concat!(env!("OUT_DIR"), "/model_capabilities.rs"));
 }
 
-/// Catalog metadata generated from `docs/models.json`.
+/// Catalogue metadata generated from `docs/models.json`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ModelPricing {
     pub input: Option<f64>,
@@ -17,7 +22,7 @@ pub struct ModelPricing {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ModelCatalogEntry {
+pub struct ModelCatalogueEntry {
     pub(crate) provider: &'static str,
     id: &'static str,
     pub display_name: &'static str,
@@ -33,7 +38,10 @@ pub struct ModelCatalogEntry {
     pub pricing: ModelPricing,
 }
 
-fn catalog_provider_key(provider: &str) -> &str {
+/// Maps a provider name to its canonical model-catalogue key, comparing case
+/// insensitively and folding aliases such as `google`/`gemini` and
+/// `meta-ai`/`meta`. Unrecognised names are returned unchanged.
+fn catalogue_provider_key(provider: &str) -> &str {
     if provider.eq_ignore_ascii_case("google") || provider.eq_ignore_ascii_case("gemini") {
         "gemini"
     } else if provider.eq_ignore_ascii_case("openai") {
@@ -77,6 +85,7 @@ fn catalog_provider_key(provider: &str) -> &str {
     }
 }
 
+/// Return the stable catalogue key used for a provider's capability entry.
 fn capability_provider_key(provider: Provider) -> &'static str {
     match provider {
         Provider::Gemini => "gemini",
@@ -108,8 +117,10 @@ fn capability_provider_key(provider: Provider) -> &'static str {
     }
 }
 
-fn generated_catalog_entry(provider: &str, id: &str) -> Option<ModelCatalogEntry> {
-    capability_generated::metadata_for(catalog_provider_key(provider), id).map(|entry| ModelCatalogEntry {
+/// Looks up generated catalogue metadata for a provider and model id. Returns
+/// `None` when the model is not present in the catalogue.
+fn generated_catalogue_entry(provider: &str, id: &str) -> Option<ModelCatalogueEntry> {
+    capability_generated::metadata_for(catalogue_provider_key(provider), id).map(|entry| ModelCatalogueEntry {
         provider: entry.provider,
         id: entry.id,
         display_name: entry.display_name,
@@ -131,21 +142,26 @@ fn generated_catalog_entry(provider: &str, id: &str) -> Option<ModelCatalogEntry
     })
 }
 
-pub fn model_catalog_entry(provider: &str, id: &str) -> Option<ModelCatalogEntry> {
-    generated_catalog_entry(provider, id)
+/// Returns the generated catalogue entry for a provider and model id, if any.
+pub fn model_catalogue_entry(provider: &str, id: &str) -> Option<ModelCatalogueEntry> {
+    generated_catalogue_entry(provider, id)
 }
 
+/// Returns the catalogue model ids for a provider, or `None` when the provider
+/// has no generated catalogue.
 pub fn supported_models_for_provider(provider: &str) -> Option<&'static [&'static str]> {
-    capability_generated::models_for_provider(catalog_provider_key(provider))
+    capability_generated::models_for_provider(catalogue_provider_key(provider))
 }
 
-pub fn catalog_provider_keys() -> &'static [&'static str] {
+/// Returns the provider keys present in the generated model catalogue.
+pub fn catalogue_provider_keys() -> &'static [&'static str] {
     capability_generated::PROVIDERS
 }
 
 impl ModelId {
-    fn generated_capabilities(&self) -> Option<ModelCatalogEntry> {
-        generated_catalog_entry(capability_provider_key(self.provider()), &self.as_str())
+    /// Catalogue entry for this model in the generated metadata, when present.
+    fn generated_capabilities(&self) -> Option<ModelCatalogueEntry> {
+        generated_catalogue_entry(capability_provider_key(self.provider()), &self.as_str())
     }
 
     /// Preferred built-in lightweight sibling or lower-tier fallback for this model.

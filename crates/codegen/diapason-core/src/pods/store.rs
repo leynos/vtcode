@@ -1,4 +1,9 @@
-use super::catalog::PodCatalog;
+//! Persistence for pod state and deployment profiles.
+//!
+//! Reads and writes the private JSON store under the user state directory,
+//! seeding the embedded default catalogue on first use.
+
+use super::catalogue::PodCatalogue;
 use super::state::PodsState;
 use anyhow::{Context, Result};
 use diapason_commons::DiapasonPaths;
@@ -28,8 +33,12 @@ impl PodsStore {
         self.base_dir.join("state.json")
     }
 
-    /// Return the path to the `catalog.json` file.
-    pub fn catalog_path(&self) -> PathBuf {
+    /// Return the path to the persisted `catalog.json` file.
+    ///
+    /// The on-disk filename keeps its original spelling so existing
+    /// installations retain their customised deployment profiles. Only the
+    /// Rust API uses the native `catalogue` spelling.
+    pub fn catalogue_path(&self) -> PathBuf {
         self.base_dir.join("catalog.json")
     }
 
@@ -37,8 +46,8 @@ impl PodsStore {
     pub async fn ensure_initialized(&self) -> Result<()> {
         ensure_user_dir(&self.base_dir)?;
 
-        if !tokio::fs::try_exists(&self.catalog_path()).await.unwrap_or(false) {
-            self.save_catalog(&PodCatalog::embedded_default()).await?;
+        if !tokio::fs::try_exists(&self.catalogue_path()).await.unwrap_or(false) {
+            self.save_catalogue(&PodCatalogue::embedded_default()).await?;
         }
 
         if !tokio::fs::try_exists(&self.state_path()).await.unwrap_or(false) {
@@ -64,23 +73,40 @@ impl PodsStore {
             .with_context(|| format!("failed to write pod state at {}", self.state_path().display()))
     }
 
-    /// Load the deployment catalog from disk.
-    pub async fn load_catalog(&self) -> Result<PodCatalog> {
+    /// Load the deployment catalogue from disk.
+    pub async fn load_catalogue(&self) -> Result<PodCatalogue> {
         self.ensure_initialized().await?;
-        read_private_json_file(&self.catalog_path())
+        read_private_json_file(&self.catalogue_path())
             .await
-            .with_context(|| format!("failed to read pod catalog at {}", self.catalog_path().display()))
+            .with_context(|| format!("failed to read pod catalogue at {}", self.catalogue_path().display()))
     }
 
-    pub async fn save_catalog(&self, catalog: &PodCatalog) -> Result<()> {
+    /// Persist the deployment catalogue to the private store, creating the
+    /// store directory when needed.
+    pub async fn save_catalogue(&self, catalogue: &PodCatalogue) -> Result<()> {
         ensure_user_dir(&self.base_dir)?;
-        write_private_json_file(&self.catalog_path(), catalog)
+        write_private_json_file(&self.catalogue_path(), catalogue)
             .await
-            .with_context(|| format!("failed to write pod catalog at {}", self.catalog_path().display()))
+            .with_context(|| format!("failed to write pod catalogue at {}", self.catalogue_path().display()))
     }
 }
 
 fn ensure_user_dir(path: &std::path::Path) -> Result<()> {
     DiapasonPaths::ensure_user_dir(path).context("failed to create private pod state directory")?;
     Ok(())
+}
+
+/// Regression tests for `PodsStore` path resolution.
+///
+/// These tests pin the persisted filenames independently of the Rust API
+/// spelling so a mechanical rename cannot silently orphan user data.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalogue_path_keeps_the_persisted_filename() {
+        let store = PodsStore::new("/tmp/diapason-pods");
+        assert_eq!(store.catalogue_path(), PathBuf::from("/tmp/diapason-pods/catalog.json"));
+    }
 }

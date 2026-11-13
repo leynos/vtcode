@@ -2,6 +2,10 @@
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+//! Generates OpenRouter constants and model capability metadata at build time.
+//!
+//! Sources come from `docs/models.json` with an embedded fallback, and docs.rs
+//! builds receive empty placeholders so rustdoc can still compile the crate.
 
 use anyhow::{Context as _, Result};
 use indexmap::IndexMap;
@@ -278,7 +282,7 @@ struct EntryData {
 }
 
 #[derive(Deserialize)]
-struct ProviderCatalog {
+struct ProviderCatalogue {
     #[serde(default)]
     models: IndexMap<String, CapabilityModelSpec>,
 }
@@ -388,6 +392,9 @@ impl Provider {
     }
 }
 
+/// Loads model capability entries from the workspace `docs/models.json`, sorted
+/// by provider then model id. Returns an empty vector when the file is absent
+/// and registers the file as a build rerun dependency.
 fn load_model_capability_entries(manifest_dir: &Path) -> Result<Vec<CapabilityEntry>> {
     let docs_path = manifest_dir.join("../../../docs/models.json");
     if !docs_path.exists() {
@@ -397,7 +404,7 @@ fn load_model_capability_entries(manifest_dir: &Path) -> Result<Vec<CapabilityEn
     println!("cargo:rerun-if-changed={}", docs_path.display());
     let models_source =
         fs::read_to_string(&docs_path).with_context(|| format!("Failed to read {}", docs_path.display()))?;
-    let providers: IndexMap<String, ProviderCatalog> =
+    let providers: IndexMap<String, ProviderCatalogue> =
         serde_json::from_str(&models_source).context("Failed to deserialize docs/models.json providers")?;
 
     let mut entries = Vec::new();

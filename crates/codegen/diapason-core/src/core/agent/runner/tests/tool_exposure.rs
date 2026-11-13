@@ -2,6 +2,10 @@
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+//! Tests for which tools the runner exposes to the model.
+//!
+//! Covers full-auto allowlists, tool policy and category denies, planning-mode
+//! masking, and the public tool resolution used during validation.
 
 use super::*;
 
@@ -616,7 +620,7 @@ async fn review_tool_allowlist_expands_wildcard_read_only() {
 }
 
 fn assert_task_tracker_snapshot_schema(
-    snapshot: &SessionToolCatalogSnapshot,
+    snapshot: &SessionToolCatalogueSnapshot,
     expected_minimum: u64,
     expected_pattern: &str,
 ) {

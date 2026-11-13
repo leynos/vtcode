@@ -1,3 +1,8 @@
+//! Registration and execution of skills as tools.
+//!
+//! Loads skill metadata, exposes skills to the model, performs activation state
+//! transitions, and refreshes the session tool catalogue when skills change.
+
 use crate::config::ConfigManager;
 use crate::config::ToolDocumentationMode;
 use crate::config::types::CapabilityLevel;
@@ -334,7 +339,11 @@ fn log_discovery_warnings(operation: &'static str, errors: &[SkillErrorInfo]) {
     );
 }
 
-fn discover_skill_catalog(
+/// Discover session skills and return the resolved Codex home with the outcome.
+///
+/// Discovery warnings are logged rather than returned; only resolving the
+/// Codex home can fail.
+fn discover_skill_catalogue(
     workspace_root: &Path,
     explicit_codex_home: Option<&Path>,
     operation: &'static str,
@@ -532,7 +541,7 @@ impl Tool for LoadSkillTool {
         }
 
         let (codex_home, metadata) =
-            discover_skill_catalog(&self.workspace_root, self.codex_home.as_deref(), "load_skill")?;
+            discover_skill_catalogue(&self.workspace_root, self.codex_home.as_deref(), "load_skill")?;
 
         let mut loader = EnhancedSkillLoader::with_codex_home(self.workspace_root.clone(), codex_home.clone());
         let skill = match loader.get_skill(name).await {
@@ -631,7 +640,7 @@ impl Tool for ListSkillsTool {
 
         let active_names: HashSet<String> = self.active_skills.read().await.keys().cloned().collect();
         let (codex_home, discovery) =
-            discover_skill_catalog(&self.workspace_root, self.codex_home.as_deref(), "list_skills")?;
+            discover_skill_catalogue(&self.workspace_root, self.codex_home.as_deref(), "list_skills")?;
 
         let mut skill_list = Vec::new();
 
@@ -1268,6 +1277,7 @@ Use `/rust-skills`.
 
         assert_eq!(result["count"].as_u64(), Some(1));
         let groups = result["groups"]["agent_skill"].as_array().expect("agent skill group");
+        assert_eq!(groups.len(), 1);
         assert_eq!(groups[0]["name"].as_str(), Some("ast-grep"));
     }
 
@@ -1333,7 +1343,8 @@ Use `/rust-skills`.
         list_skills_discovers_bundled_ast_grep_by_python_api_query => "python api",
         list_skills_discovers_bundled_ast_grep_by_meta_variable_query => "meta variables",
         list_skills_discovers_bundled_ast_grep_by_optional_chaining_query => "optional chaining",
-        list_skills_discovers_bundled_ast_grep_by_rule_catalog_query => "rule catalog",
+        list_skills_discovers_bundled_ast_grep_by_rule_catalogue_query => "rule catalogue",
+        list_skills_discovers_bundled_ast_grep_by_rule_catalogue_legacy_spelling_query => "rule catalog",
         list_skills_discovers_bundled_ast_grep_by_walrus_operator_query => "walrus operator",
         list_skills_discovers_bundled_ast_grep_by_list_comprehension_query => "list comprehension",
         list_skills_discovers_bundled_ast_grep_by_isinstance_tuple_query => "isinstance tuple",

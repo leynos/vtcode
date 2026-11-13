@@ -1,3 +1,6 @@
+//! `/share-log` export handling: builds, redacts and writes the session log
+//! JSON, Markdown and self-contained timeline HTML artefacts.
+
 use std::fmt::Write;
 use std::sync::LazyLock;
 
@@ -247,4 +250,153 @@ pub(crate) async fn handle_share_log(
     }
 
     Ok(SlashCommandControl::Continue)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diapason_core::config::loader::DiapasonConfig;
+    use diapason_core::core::threads::{ThreadBootstrap, ThreadManager};
+    use diapason_core::exec::events::{ThreadEvent, TurnCompletedEvent, Usage};
+    use diapason_ui::tui::app::InlineHeaderContext;
+    use hashbrown::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    use crate::agent::runloop::model_picker::ModelPickerState;
+    use crate::agent::runloop::unified::palettes::ActivePalette;
+    use crate::agent::runloop::unified::session_setup::IdeContextBridge;
+    use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
+    use crate::agent::runloop::unified::workspace_links::LinkedDirectory;
+    use crate::agent::runloop::welcome::SessionBootstrap;
+    use diapason_core::skills::types::Skill;
+
+    /// Drive the real slash-command handler, not just the timeline helpers, so
+    /// the wiring from `SessionStats` through the export writer is covered.
+    ///
+    /// Executing the page's JavaScript is out of scope for a unit test (this
+    /// workspace has no JS runtime or DOM harness), so the assertions read the
+    /// written artefact and target the renderer's binding plus the data blob
+    /// the page renders from.
+    #[tokio::test]
+    async fn handle_share_log_html_export_renders_catalogue_change_count() {
+        let mut backing = TestTurnProcessingBacking::new(4).await;
+        let workspace = backing.workspace_path().to_path_buf();
+
+        let thread_handle = Box::leak(Box::new(
+            ThreadManager::new().start_thread_with_identifier("test-thread", ThreadBootstrap::new(None)),
+        ));
+        thread_handle.record_event(
+            None,
+            Some("turn-1".to_string()),
+            ThreadEvent::TurnCompleted(TurnCompletedEvent {
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 4,
+                    cached_input_tokens: 2,
+                    cache_creation_tokens: 0,
+                },
+            }),
+        );
+
+        let turn = backing.turn_loop_context();
+
+        // Five fingerprint observations across four distinct catalogue hashes
+        // produce `observations: 5` and `tool_catalogue_changes: 3`.
+        for catalogue_hash in [10_u64, 11, 12, 13] {
+            let _ = turn
+                .session_stats
+                .record_prompt_cache_fingerprint("noop-model", 1, Some(catalogue_hash));
+        }
+        let _ = turn.session_stats.record_prompt_cache_fingerprint("noop-model", 1, Some(13));
+        let diagnostics = turn.session_stats.prompt_cache_diagnostics();
+        assert_eq!(diagnostics.observations, 5);
+        assert_eq!(diagnostics.tool_catalogue_changes, 3);
+
+        let header_context = Box::leak(Box::new(InlineHeaderContext::default()));
+        let ide_context_bridge = Box::leak(Box::new(None::<IdeContextBridge>));
+        let model_picker_state = Box::leak(Box::new(None::<ModelPickerState>));
+        let palette_state = Box::leak(Box::new(None::<ActivePalette>));
+        let conversation_history = Box::leak(Box::new(Vec::<uni::Message>::new()));
+        let loaded_skills = Box::leak(Box::new(Arc::new(RwLock::new(HashMap::<String, Skill>::new()))));
+        let linked_directories = Box::leak(Box::new(Vec::<LinkedDirectory>::new()));
+        let session_bootstrap = Box::leak(Box::new(SessionBootstrap::default()));
+        let vt_cfg = Box::leak(Box::new(None::<DiapasonConfig>));
+        let async_mcp_manager = None;
+        let checkpoint_manager = None;
+        let lifecycle_hooks = None;
+        let harness_emitter = None;
+        let (webmcp_prompt_sender, _webmcp_prompt_receiver) = crate::agent::runloop::unified::webmcp::prompt_channel();
+        let webmcp_bridge = Box::leak(Box::new(None));
+        let active_primary_agent =
+            Box::leak(Box::new(diapason_core::primary_agent::ActivePrimaryAgentState::default()));
+        let plan_session = Box::leak(Box::new(
+            crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState::default(),
+        ));
+
+        let ctx = SlashCommandContext {
+            thread_id: "test-thread",
+            active_thread_label: "main",
+            thread_handle,
+            renderer: turn.renderer,
+            handle: turn.handle,
+            session: turn.session,
+            header_context,
+            ide_context_bridge,
+            config: turn.config,
+            vt_cfg,
+            provider_client: turn.provider_client,
+            session_bootstrap,
+            model_picker_state,
+            palette_state,
+            tool_registry: turn.tool_registry,
+            conversation_history,
+            decision_ledger: turn.decision_ledger,
+            context_manager: turn.context_manager,
+            active_primary_agent,
+            session_stats: turn.session_stats,
+            plan_session,
+            input_status_state: turn.input_status_state,
+            tools: turn.tools,
+            tool_catalogue: turn.tool_catalogue,
+            async_mcp_manager,
+            mcp_panel_state: turn.mcp_panel_state,
+            linked_directories,
+            ctrl_c_state: turn.ctrl_c_state,
+            ctrl_c_notify: turn.ctrl_c_notify,
+            full_auto: turn.full_auto,
+            webmcp_prompt_sender: &webmcp_prompt_sender,
+            webmcp_bridge,
+            loaded_skills,
+            checkpoint_manager,
+            lifecycle_hooks,
+            harness_emitter,
+        };
+
+        let control = handle_share_log(ctx, SessionLogExportFormat::Html)
+            .await
+            .expect("share-log html export should succeed");
+        assert!(matches!(control, SlashCommandControl::Continue));
+
+        let html_path = std::fs::read_dir(&workspace)
+            .expect("read export workspace")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("diapason-session-timeline-") && name.ends_with(".html"))
+            })
+            .expect("share-log handler should write a timeline HTML artefact");
+        let html = std::fs::read_to_string(&html_path).expect("read exported timeline html");
+
+        assert!(
+            html.contains("tool_catalogue: ${formatNumber(overview.prompt_cache_tool_catalog_changes)}"),
+            "exported HTML does not bind the catalogue label to its count"
+        );
+        assert!(
+            html.contains("\"prompt_cache_tool_catalog_changes\":3"),
+            "exported HTML data blob lost the wire field name or count"
+        );
+    }
 }

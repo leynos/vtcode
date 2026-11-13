@@ -3,7 +3,7 @@
 //! This module implements the handler pattern from OpenAI's Codex project,
 //! providing compatibility helpers around tool execution.
 //!
-//! The authoritative public tool surface, name resolution, and catalog assembly
+//! The authoritative public tool surface, name resolution, and catalogue assembly
 //! live in `crate::tools::registry`. Keep router/adapter changes here scoped to
 //! compatibility and handler composition, not public registry policy.
 //!
@@ -63,7 +63,7 @@ pub mod list_dir_handler;
 pub mod planning_task_tracker;
 pub mod planning_workflow;
 pub mod read_file;
-pub mod session_tool_catalog;
+pub mod session_tool_catalogue;
 mod session_tool_projection;
 pub mod shell_handler;
 pub mod task_tracker;
@@ -109,9 +109,9 @@ pub use turn_diff_tracker::{
 };
 
 // Shell handler
-pub use session_tool_catalog::{
-    CatalogToolKind, DeferredToolPolicy, DeferredToolSearchKind, SessionSurface, SessionToolCatalog,
-    SessionToolsConfig, ToolCatalogEntry, ToolCatalogSource, ToolModelCapabilities, ToolProfile, ToolSchemaEntry,
+pub use session_tool_catalogue::{
+    CatalogueToolKind, DeferredToolPolicy, DeferredToolSearchKind, SessionSurface, SessionToolCatalogue,
+    SessionToolsConfig, ToolCatalogueEntry, ToolCatalogueSource, ToolModelCapabilities, ToolProfile, ToolSchemaEntry,
     anthropic_native_memory_enabled_for_runtime, deferred_tool_policy_for_runtime,
 };
 pub use shell_handler::{ShellHandler, create_shell_tool};

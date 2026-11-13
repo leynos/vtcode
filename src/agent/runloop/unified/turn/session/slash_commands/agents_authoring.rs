@@ -1,3 +1,8 @@
+//! Authoring flow for subagent definitions.
+//!
+//! Collects frontmatter such as name, description, tools, and model through
+//! wizard modals, then saves the definition to the chosen scope.
+
 use anyhow::{Result, anyhow, bail};
 use serde_json::Value as YamlValue;
 type YamlMapping = serde_json::Map<String, YamlValue>;
@@ -83,7 +88,7 @@ const TOOL_OPTIONS: &[ToolOption] = &[
     },
     ToolOption {
         id: tools::SEARCH_TOOLS,
-        description: "Search the tool catalog for available capabilities.",
+        description: "Search the tool catalogue for available capabilities.",
         badge: "Meta",
     },
     ToolOption {
@@ -856,6 +861,9 @@ async fn prompt_text_value(
     }
 }
 
+/// Run the interactive tool-selection checklist, letting the user toggle tools,
+/// add custom ids, and save or cancel. Returns the ordered selection on save and
+/// `None` when cancelled or dismissed.
 async fn edit_tools_checklist(
     ctx: &mut SlashCommandContext<'_>,
     current_tools: &[String],
@@ -867,8 +875,8 @@ async fn edit_tools_checklist(
     });
 
     loop {
-        let catalog = tool_catalog(current_tools, &selected);
-        let mut items = catalog
+        let catalogue = tool_catalogue(current_tools, &selected);
+        let mut items = catalogue
             .iter()
             .map(|(tool_id, subtitle, badge)| InlineListItem {
                 title: format!("[{}] {}", if selected.contains(tool_id) { "x" } else { " " }, tool_id),
@@ -957,7 +965,9 @@ async fn edit_tools_checklist(
     }
 }
 
-fn tool_catalog(initial_tools: &[String], selected: &BTreeSet<String>) -> Vec<(String, String, String)> {
+/// Build the checklist catalogue of default tools plus any extra ids from the
+/// initial or current selection. Default entries are ordered first.
+fn tool_catalogue(initial_tools: &[String], selected: &BTreeSet<String>) -> Vec<(String, String, String)> {
     let extra_tools = initial_tools
         .iter()
         .chain(selected.iter())
@@ -965,16 +975,16 @@ fn tool_catalog(initial_tools: &[String], selected: &BTreeSet<String>) -> Vec<(S
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    let mut catalog = TOOL_OPTIONS
+    let mut catalogue = TOOL_OPTIONS
         .iter()
         .map(|entry| (entry.id.to_string(), entry.description.to_string(), entry.badge.to_string()))
         .collect::<Vec<_>>();
-    catalog.extend(
+    catalogue.extend(
         extra_tools
             .into_iter()
             .map(|tool_id| (tool_id, "Existing custom tool id.".to_string(), "Custom".to_string())),
     );
-    catalog
+    catalogue
 }
 
 async fn select_native_agent_name(ctx: &mut SlashCommandContext<'_>) -> Result<Option<String>> {

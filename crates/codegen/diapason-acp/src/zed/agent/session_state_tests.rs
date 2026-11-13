@@ -2,7 +2,7 @@
 use super::super::ZedAgentSetup;
 use super::*;
 use crate::zed::AcpWorkspacePolicy;
-use crate::zed::helpers::PrimaryAgentCatalog;
+use crate::zed::helpers::PrimaryAgentCatalogue;
 use chrono::Utc;
 use diapason_config::codex::HistoryPersistence;
 use diapason_config::{SubagentDiscoveryInput, discover_subagents};
@@ -90,7 +90,7 @@ async fn build_agent_with_vt_config(
     let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
     discovery_input.include_user_agents = false;
     let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
-    let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent);
+    let primary_agents = PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, default_primary_agent);
 
     let mut zed_config = AgentClientProtocolZedConfig::default();
     zed_config.allowed_workspace_roots.push(std::env::temp_dir());
@@ -162,15 +162,21 @@ fn session_listing(
 
 #[path = "session_state_tests/archive.rs"]
 mod archive;
+
 #[path = "session_state_tests/checkpoint_categories.rs"]
 mod checkpoint_categories;
+
 #[path = "session_state_tests/configuration.rs"]
 mod configuration;
+
 #[path = "session_state_tests/metadata.rs"]
 mod metadata;
+
 #[path = "session_state_tests/retention_properties.rs"]
 mod retention_properties;
+
 #[path = "session_state_tests/tool_recovery.rs"]
 mod tool_recovery;
+
 #[path = "session_state_tests/workspace.rs"]
 mod workspace;

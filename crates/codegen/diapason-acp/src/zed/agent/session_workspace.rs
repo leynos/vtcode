@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 
-use super::super::helpers::PrimaryAgentCatalog;
+use super::super::helpers::PrimaryAgentCatalogue;
 use super::super::session::AcpSessionWorkspace;
 use super::{
     AcpMcpClientAttacher, AcpSubagentControllerAttacher, AcpSubagentControllerSetup, DefaultAcpMcpClientAttacher,
@@ -53,7 +53,7 @@ struct PreparedWorkspace<'a> {
     runtime_config: &'a SessionWorkspaceRuntimeConfig,
     vt_config: Option<&'a DiapasonConfig>,
     system_prompt: String,
-    primary_agents: PrimaryAgentCatalog,
+    primary_agents: PrimaryAgentCatalogue,
     workspace_hooks_gated: bool,
     file_ops_tool: Option<FileOpsTool>,
 }
@@ -83,7 +83,7 @@ pub(super) trait WorkspaceAgentDiscovery: Send + Sync {
         &self,
         input: &SubagentDiscoveryInput,
         default_primary_agent: &str,
-    ) -> anyhow::Result<PrimaryAgentCatalog>;
+    ) -> anyhow::Result<PrimaryAgentCatalogue>;
 }
 
 /// Port for creating and configuring a workspace's core tool registry.
@@ -171,9 +171,9 @@ impl WorkspaceAgentDiscovery for DefaultWorkspaceAgentDiscovery {
         &self,
         input: &SubagentDiscoveryInput,
         default_primary_agent: &str,
-    ) -> anyhow::Result<PrimaryAgentCatalog> {
+    ) -> anyhow::Result<PrimaryAgentCatalogue> {
         let discovered = discover_subagents(input)?;
-        Ok(PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, default_primary_agent))
+        Ok(PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, default_primary_agent))
     }
 }
 
@@ -423,19 +423,23 @@ async fn prepare_session_workspace<'a>(
     })
 }
 
+/// Discovers primary agents for a session using the default workspace
+/// discovery backend. Available only in tests.
 #[cfg(test)]
 fn discover_session_primary_agents(
     input: &SubagentDiscoveryInput,
     default_primary_agent: &str,
-) -> anyhow::Result<PrimaryAgentCatalog> {
+) -> anyhow::Result<PrimaryAgentCatalogue> {
     discover_session_primary_agents_with(&DefaultWorkspaceAgentDiscovery, input, default_primary_agent)
 }
 
+/// Discovers primary agents for a session through the supplied discovery port,
+/// adding context to discovery errors.
 fn discover_session_primary_agents_with(
     agent_discovery: &dyn WorkspaceAgentDiscovery,
     input: &SubagentDiscoveryInput,
     default_primary_agent: &str,
-) -> anyhow::Result<PrimaryAgentCatalog> {
+) -> anyhow::Result<PrimaryAgentCatalogue> {
     agent_discovery
         .discover(input, default_primary_agent)
         .context("discovering ACP workspace agents")
@@ -577,5 +581,6 @@ async fn build_acp_tool_surface(
 
 #[cfg(test)]
 mod setup_tests;
+
 #[cfg(test)]
 mod tests;

@@ -1,24 +1,27 @@
 //! Active-agent runtime-state rendering.
 //!
 //! This module is deliberately kept separate from prompt assembly: runtime
-//! state is appended by the request builder after the catalog has been
+//! state is appended by the request builder after the catalogue has been
 //! validated, while the assembly module owns section ordering and recovery.
 
 use std::fmt::Write as _;
 
 use diapason_core::ActivePrimaryAgent;
 use diapason_core::config::types::ReasoningEffortLevel;
-use diapason_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use diapason_core::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 use diapason_core::prompts::PromptContext;
 use diapason_core::subagents::load_primary_memory_appendix_async;
 
 use super::snapshot::TurnRequestSnapshot;
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 
+/// Renders the active primary-agent runtime-state block appended to the system
+/// prompt. Includes the agent identity, model and reasoning settings, effective
+/// tools, instructions, and any memory appendix.
 pub(super) async fn render_primary_agent_runtime_context(
     ctx: &TurnProcessingContext<'_>,
     turn_snapshot: &TurnRequestSnapshot,
-    tool_snapshot: &SessionToolCatalogSnapshot,
+    tool_snapshot: &SessionToolCatalogueSnapshot,
     agent: &ActivePrimaryAgent,
     reasoning_effort: Option<ReasoningEffortLevel>,
     agent_prompt_context: Option<&PromptContext>,
@@ -80,6 +83,7 @@ pub(super) async fn render_primary_agent_runtime_context(
     buf
 }
 
+/// Load the memory appendix for the active primary agent, if it has one.
 async fn active_primary_agent_memory_appendix(
     ctx: &TurnProcessingContext<'_>,
     agent: &ActivePrimaryAgent,
@@ -99,7 +103,10 @@ async fn active_primary_agent_memory_appendix(
     }
 }
 
-fn render_tool_names(tool_snapshot: &SessionToolCatalogSnapshot) -> String {
+/// Renders the snapshot's tool names as a comma-separated list, falling back to
+/// each tool's type when it has no function name. Returns `none` when the
+/// snapshot carries no tools.
+fn render_tool_names(tool_snapshot: &SessionToolCatalogueSnapshot) -> String {
     let Some(tools) = tool_snapshot.snapshot.as_deref() else {
         return "none".to_string();
     };

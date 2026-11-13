@@ -1,9 +1,9 @@
 //! System-prompt / message assembly.
 //!
 //! Builds the per-turn system prompt (base prompt, primary-agent skills,
-//! harness limits, runtime tool catalog section, deferred-tools summary,
+//! harness limits, runtime tool catalogue section, deferred-tools summary,
 //! Copilot out-of-band guidance, few-shot examples, and active
-//! primary-agent runtime-state block) and the tool-catalog snapshot that
+//! primary-agent runtime-state block) and the tool-catalogue snapshot that
 //! goes with it, then validates that the two stay in alignment before
 //! handing them to the request-builder orchestrator. Invariant: the
 //! returned [`PromptAssemblyOutput`] is always alignment-checked against
@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use diapason_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use diapason_core::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 use diapason_core::core::agent::runner::prompt_alignment;
 use diapason_core::prompts::{
     PromptContext, append_deferred_tools_prompt_section, append_runtime_tool_prompt_sections,
@@ -36,7 +36,7 @@ pub(super) struct PromptAssemblyInput<'a> {
 
 pub(super) struct PromptAssemblyOutput {
     pub(super) system_prompt: String,
-    pub(super) tool_snapshot: SessionToolCatalogSnapshot,
+    pub(super) tool_snapshot: SessionToolCatalogueSnapshot,
     pub(super) agent_prompt_context: Option<PromptContext>,
     pub(super) few_shot_context: Option<String>,
 }
@@ -51,6 +51,10 @@ pub(super) async fn assemble_prompt(
     validate_prompt_output_with_rebuild(ctx, input.turn, prompt_output).await
 }
 
+/// Builds the per-turn system prompt and tool-catalogue snapshot from the turn
+/// snapshot. Appends primary-agent skills, harness limits, runtime tool
+/// sections, deferred-tool guidance, and few-shot examples, skipping tools and
+/// examples during tool-free recovery.
 async fn build_prompt_output(
     ctx: &mut TurnProcessingContext<'_>,
     input: PromptAssemblyInput<'_>,
@@ -106,25 +110,25 @@ async fn build_prompt_output(
             if let Some(reason) = input.turn.recovery_reason.as_deref() {
                 let _ = writeln!(system_prompt, "- recovery_reason: {reason}");
             }
-            SessionToolCatalogSnapshot::new(
-                ctx.tool_catalog.current_version(),
-                ctx.tool_catalog.current_epoch(),
+            SessionToolCatalogueSnapshot::new(
+                ctx.tool_catalogue.current_version(),
+                ctx.tool_catalogue.current_epoch(),
                 input.turn.planning_active,
                 input.turn.request_user_input_enabled,
                 None,
                 false,
             )
         } else if !input.turn.capabilities.tools {
-            SessionToolCatalogSnapshot::new(
-                ctx.tool_catalog.current_version(),
-                ctx.tool_catalog.current_epoch(),
+            SessionToolCatalogueSnapshot::new(
+                ctx.tool_catalogue.current_version(),
+                ctx.tool_catalogue.current_epoch(),
                 input.turn.planning_active,
                 input.turn.request_user_input_enabled,
                 None,
                 false,
             )
         } else {
-            let base_snapshot_future = ctx.tool_catalog.filtered_snapshot_with_stats(
+            let base_snapshot_future = ctx.tool_catalogue.filtered_snapshot_with_stats(
                 ctx.tools,
                 input.turn.planning_active,
                 input.turn.request_user_input_enabled,
@@ -208,11 +212,14 @@ async fn build_prompt_output(
     })
 }
 
+/// Checks that the assembled system prompt's runtime tool-catalogue metadata
+/// matches the accompanying tool snapshot. Returns an alignment error when the
+/// two disagree.
 fn validate_prompt_output_alignment(
     prompt_output: &PromptAssemblyOutput,
     turn: &TurnRequestSnapshot,
 ) -> Result<(), prompt_alignment::AlignmentError> {
-    prompt_alignment::validate_prompt_catalog_alignment(
+    prompt_alignment::validate_prompt_catalogue_alignment(
         &prompt_output.system_prompt,
         &prompt_output.tool_snapshot,
         turn.planning_active,
@@ -220,6 +227,9 @@ fn validate_prompt_output_alignment(
     )
 }
 
+/// Validates prompt/catalogue alignment and rebuilds the prompt once if it is
+/// misaligned. Returns the aligned output, or an error if the mismatch persists
+/// after the rebuild.
 async fn validate_prompt_output_with_rebuild(
     ctx: &mut TurnProcessingContext<'_>,
     turn: &TurnRequestSnapshot,
@@ -234,8 +244,8 @@ async fn validate_prompt_output_with_rebuild(
             Box::pin(async move { build_prompt_output(ctx, PromptAssemblyInput { turn: &arc_for_call }).await })
         },
         |_, prompt_output| validate_prompt_output_alignment(prompt_output, turn),
-        "prompt/catalog alignment mismatch during unified request assembly; rebuilding prompt",
-        "prompt/catalog alignment mismatch persisted after unified prompt rebuild",
+        "prompt/catalogue alignment mismatch during unified request assembly; rebuilding prompt",
+        "prompt/catalogue alignment mismatch persisted after unified prompt rebuild",
     )
     .await
 }
@@ -244,7 +254,7 @@ async fn validate_prompt_output_with_rebuild(
 mod tests {
     use std::sync::Arc;
 
-    use diapason_core::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+    use diapason_core::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
     use diapason_core::prompts::append_runtime_tool_prompt_sections;
 
     use super::{PromptAssemblyOutput, validate_prompt_output_alignment};
@@ -252,13 +262,13 @@ mod tests {
     use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
 
     #[tokio::test]
-    async fn prompt_alignment_detects_stale_runtime_tool_catalog_metadata() {
+    async fn prompt_alignment_detects_stale_runtime_tool_catalogue_metadata() {
         let mut backing = TestTurnProcessingBacking::new(4).await;
         let mut ctx = backing.turn_processing_context();
         let turn = capture_turn_request_snapshot(&mut ctx, "noop-model", false);
 
         let make_snapshot = || {
-            SessionToolCatalogSnapshot::new(
+            SessionToolCatalogueSnapshot::new(
                 7,
                 11,
                 turn.planning_active,
@@ -269,7 +279,7 @@ mod tests {
         };
 
         let misaligned_prompt = format!(
-            "Base prompt\n[Runtime Tool Catalog]\n- version: 1\n- epoch: 11\n- available_tools: 0\n- request_user_input_enabled: {}\n",
+            "Base prompt\n[Runtime Tool Catalogue]\n- version: 1\n- epoch: 11\n- available_tools: 0\n- request_user_input_enabled: {}\n",
             turn.request_user_input_enabled
         );
         let misaligned_output = PromptAssemblyOutput {

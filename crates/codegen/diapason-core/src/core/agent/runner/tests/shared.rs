@@ -2,6 +2,10 @@
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+//! Shared imports and helpers for the agent runner tests.
+//!
+//! Re-exports the fixtures, event types, and tool types that the runner test
+//! modules use so each test file can start from the same prelude.
 
 pub use crate::AgentRunner;
 pub use crate::config::DiapasonConfig;
@@ -9,7 +13,7 @@ pub use crate::config::constants::tools;
 pub use crate::config::models::ModelId;
 pub use crate::config::types::CapabilityLevel;
 pub use crate::core::agent::events::ExecEventRecorder;
-pub use crate::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+pub use crate::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 pub use crate::core::agent::runner::RunnerSettings;
 pub use crate::core::agent::runtime::AgentRuntime;
 pub use crate::core::agent::session::AgentSessionState;
@@ -38,7 +42,7 @@ pub use std::sync::Arc;
 pub use std::time::{Duration, Instant};
 pub use tempfile::TempDir;
 
-pub fn provider_tool_names(snapshot: &SessionToolCatalogSnapshot) -> Vec<&str> {
+pub fn provider_tool_names(snapshot: &SessionToolCatalogueSnapshot) -> Vec<&str> {
     snapshot
         .snapshot
         .as_ref()
@@ -46,7 +50,7 @@ pub fn provider_tool_names(snapshot: &SessionToolCatalogSnapshot) -> Vec<&str> {
         .unwrap_or_default()
 }
 
-pub fn assert_provider_exposes_tool(snapshot: &SessionToolCatalogSnapshot, tool_name: &str) {
+pub fn assert_provider_exposes_tool(snapshot: &SessionToolCatalogueSnapshot, tool_name: &str) {
     let names = provider_tool_names(snapshot);
     assert!(names.contains(&tool_name), "provider-facing snapshot should include {tool_name}; got {names:?}");
     assert!(
@@ -55,7 +59,7 @@ pub fn assert_provider_exposes_tool(snapshot: &SessionToolCatalogSnapshot, tool_
     );
 }
 
-pub fn assert_provider_hides_tool(snapshot: &SessionToolCatalogSnapshot, tool_name: &str) {
+pub fn assert_provider_hides_tool(snapshot: &SessionToolCatalogueSnapshot, tool_name: &str) {
     let names = provider_tool_names(snapshot);
     assert!(!names.contains(&tool_name), "provider-facing snapshot should hide {tool_name}; got {names:?}");
     assert!(
@@ -64,7 +68,7 @@ pub fn assert_provider_hides_tool(snapshot: &SessionToolCatalogSnapshot, tool_na
     );
 }
 
-pub fn assert_provider_catalogues_inactive_tool(snapshot: &SessionToolCatalogSnapshot, tool_name: &str) {
+pub fn assert_provider_catalogues_inactive_tool(snapshot: &SessionToolCatalogueSnapshot, tool_name: &str) {
     let names = provider_tool_names(snapshot);
     assert!(names.contains(&tool_name), "stable provider catalogue should include {tool_name}; got {names:?}");
     assert!(

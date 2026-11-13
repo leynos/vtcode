@@ -21,7 +21,7 @@ use tokio::sync::RwLock;
 
 use crate::agent::runloop::unified::async_mcp_manager::AsyncMcpManager;
 use crate::agent::runloop::unified::session_setup::{active_deferred_tool_policy, refresh_tool_snapshot};
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use diapason_core::config::loader::DiapasonConfig;
 
 pub(crate) struct PrimaryAgentRuntimeSyncContext<'a> {
@@ -33,8 +33,8 @@ pub(crate) struct PrimaryAgentRuntimeSyncContext<'a> {
     pub(crate) async_mcp_manager: Option<&'a Arc<AsyncMcpManager>>,
     pub(crate) tool_registry: &'a mut ToolRegistry,
     pub(crate) tools: &'a Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    pub(crate) tool_catalog: &'a ToolCatalogState,
-    pub(crate) mcp_catalog_initialized: &'a mut bool,
+    pub(crate) tool_catalogue: &'a ToolCatalogueState,
+    pub(crate) mcp_catalogue_initialized: &'a mut bool,
     pub(crate) pending_mcp_refresh: &'a mut bool,
     pub(crate) provider_client: &'a dyn uni::LLMProvider,
 }
@@ -52,6 +52,9 @@ pub(crate) fn sync_primary_agent_permissions(
     }
 }
 
+/// Rebuild the lifecycle hooks, notification hook engine, MCP runtime, and tool
+/// snapshot for the active primary agent. When no configuration is available the
+/// hooks are cleared.
 pub(crate) async fn sync_primary_agent_runtime(ctx: &mut PrimaryAgentRuntimeSyncContext<'_>) -> Result<()> {
     let Some(cfg) = ctx.vt_cfg else {
         *ctx.lifecycle_hooks = None;
@@ -95,21 +98,21 @@ pub(crate) async fn sync_primary_agent_runtime(ctx: &mut PrimaryAgentRuntimeSync
         let merged_mcp = build_primary_agent_runtime_config(cfg, ctx.active_primary_agent).mcp;
         let restarted_mcp_runtime = manager.reconfigure_active_runtime(merged_mcp).await?;
         ctx.tool_registry.clear_mcp_client().await;
-        *ctx.mcp_catalog_initialized = false;
+        *ctx.mcp_catalogue_initialized = false;
         *ctx.pending_mcp_refresh = true;
 
         let deferred_tool_policy = active_deferred_tool_policy(ctx.config, Some(cfg), ctx.provider_client);
         refresh_tool_snapshot(
             ctx.tool_registry,
             ctx.tools,
-            ctx.tool_catalog,
+            ctx.tool_catalogue,
             ctx.config,
             Some(cfg),
             cfg.agent.tool_documentation_mode,
             &deferred_tool_policy,
         )
         .await;
-        ctx.tool_catalog.mark_pending_refresh("primary_agent_mcp_reconfigure");
+        ctx.tool_catalogue.mark_pending_refresh("primary_agent_mcp_reconfigure");
 
         if restarted_mcp_runtime {
             tracing::debug!("Restarted active MCP runtime after primary agent switch");

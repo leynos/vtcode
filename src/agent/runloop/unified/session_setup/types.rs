@@ -1,3 +1,8 @@
+//! Session state types for the unified run loop.
+//!
+//! Groups the conversation, tool execution context, and UI handles used during
+//! setup, plus a guard that keeps background tasks tied to the session.
+
 use crate::agent::runloop::ResumeSession;
 use crate::agent::runloop::mcp_events;
 use crate::agent::runloop::unified::async_mcp_manager::AsyncMcpManager;
@@ -5,7 +10,7 @@ use crate::agent::runloop::unified::context_manager::ContextManager;
 use crate::agent::runloop::unified::session_setup::IdeContextBridge;
 use crate::agent::runloop::unified::state::CtrlCState;
 use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use crate::agent::runloop::welcome::SessionBootstrap;
 use diapason_core::acp::ToolPermissionCache;
 use diapason_core::config::PermissionsConfig;
@@ -70,7 +75,7 @@ pub(crate) struct SessionState {
     pub provider_client: Box<dyn uni::LLMProvider>,
     pub tool_registry: ToolRegistry,
     pub tools: Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    pub tool_catalog: Arc<ToolCatalogState>,
+    pub tool_catalogue: Arc<ToolCatalogueState>,
     pub conversation_history: Vec<uni::Message>,
     pub execution: ToolExecutionContext,
     pub metadata: SessionMetadataContext,

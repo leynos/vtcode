@@ -1,3 +1,6 @@
+//! Session tool-catalogue facade: namespace-derived groups, cached filtered
+//! snapshots, and client-side tool-search access.
+
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -5,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::sync::RwLock;
 
-use crate::core::agent::harness_kernel::{SessionToolCatalogSnapshot, filter_tool_definitions_for_mode};
+use crate::core::agent::harness_kernel::{SessionToolCatalogueSnapshot, filter_tool_definitions_for_mode};
 use crate::llm::provider::ToolDefinition;
 use crate::prompts::sort_tool_definitions;
 
@@ -82,11 +85,11 @@ struct FilteredCacheEntry {
     version: u64,
     planning_active: bool,
     request_user_input_enabled: bool,
-    snapshot: SessionToolCatalogSnapshot,
+    snapshot: SessionToolCatalogueSnapshot,
 }
 
 #[derive(Debug, Default)]
-pub struct SessionToolCatalogState {
+pub struct SessionToolCatalogueState {
     version: AtomicU64,
     cache_epoch: AtomicU64,
     pending_refresh_reasons: Mutex<BTreeSet<String>>,
@@ -94,11 +97,11 @@ pub struct SessionToolCatalogState {
     cached_sorted: RwLock<Option<(u64, Arc<Vec<ToolDefinition>>)>>,
     cached_filtered: RwLock<Vec<FilteredCacheEntry>>,
     /// Client-side embedding index for tool search. Rebuilt when the tool
-    /// catalog epoch changes (tools added/removed, deferred tools expanded).
+    /// catalogue epoch changes (tools added/removed, deferred tools expanded).
     embedding_index: RwLock<Option<ToolEmbeddingIndex>>,
 }
 
-impl SessionToolCatalogState {
+impl SessionToolCatalogueState {
     pub fn new() -> Self {
         Self::default()
     }
@@ -119,6 +122,8 @@ impl SessionToolCatalogState {
         pending.insert(reason.to_string());
     }
 
+    /// Advance the cache epoch and catalogue version for an explicit
+    /// refresh, drain the recorded refresh reasons, and return the new epoch.
     pub fn note_explicit_refresh(&self, reason: &str) -> u64 {
         let cache_epoch = self.cache_epoch.fetch_add(1, Ordering::AcqRel) + 1;
         let version = self.version.fetch_add(1, Ordering::AcqRel) + 1;
@@ -133,7 +138,7 @@ impl SessionToolCatalogState {
             version,
             reason,
             pending_refreshes = ?pending_refreshes,
-            "tool catalog cache epoch bumped"
+            "tool catalogue cache epoch bumped"
         );
         cache_epoch
     }
@@ -145,6 +150,8 @@ impl SessionToolCatalogState {
         })
     }
 
+    /// Expand deferred definitions named by the model's tool references and
+    /// return the new cache epoch when anything became newly visible.
     pub async fn note_tool_references(
         &self,
         tools: &Arc<RwLock<Vec<ToolDefinition>>>,
@@ -191,7 +198,7 @@ impl SessionToolCatalogState {
 
     /// Get or build the client-side tool embedding index.
     ///
-    /// The index is rebuilt when the catalog epoch changes (tools added/removed,
+    /// The index is rebuilt when the catalogue epoch changes (tools added/removed,
     /// deferred tools expanded). This is the infrastructure for client-side
     /// embedding-guided tool search described in the Microsoft article.
     pub async fn embedding_index(&self, tools: &Arc<RwLock<Vec<ToolDefinition>>>) -> Arc<ToolEmbeddingIndex> {
@@ -238,12 +245,14 @@ impl SessionToolCatalogState {
         index.search(query, max_results)
     }
 
+    /// Filtered catalogue snapshot for the current version and mode,
+    /// reusing a cached snapshot when one matches.
     pub async fn filtered_snapshot_with_stats(
         &self,
         tools: &Arc<RwLock<Vec<ToolDefinition>>>,
         planning_active: bool,
         request_user_input_enabled: bool,
-    ) -> SessionToolCatalogSnapshot {
+    ) -> SessionToolCatalogueSnapshot {
         let version = self.current_version();
 
         if let Some(entry) = {
@@ -265,7 +274,7 @@ impl SessionToolCatalogState {
             planning_active,
             request_user_input_enabled,
         );
-        let snapshot = SessionToolCatalogSnapshot::new(
+        let snapshot = SessionToolCatalogueSnapshot::new(
             version,
             self.current_epoch(),
             planning_active,
@@ -285,19 +294,21 @@ impl SessionToolCatalogState {
         snapshot
     }
 
+    /// Build a catalogue snapshot from an explicit definition list, with no
+    /// cached active-name projection.
     pub fn snapshot_for_defs(
         &self,
         defs: Vec<ToolDefinition>,
         planning_active: bool,
         request_user_input_enabled: bool,
-    ) -> SessionToolCatalogSnapshot {
+    ) -> SessionToolCatalogueSnapshot {
         let defs = sort_snapshot_definitions(defs);
         let filtered = filter_tool_definitions_for_mode(
             (!defs.is_empty()).then(|| Arc::new(defs)),
             planning_active,
             request_user_input_enabled,
         );
-        SessionToolCatalogSnapshot::new(
+        SessionToolCatalogueSnapshot::new(
             self.current_version(),
             self.current_epoch(),
             planning_active,
@@ -307,13 +318,15 @@ impl SessionToolCatalogState {
         )
     }
 
+    /// Build a snapshot from an explicit definition list, retaining only
+    /// requested active names that still exist among the definitions.
     pub fn snapshot_for_stable_defs_with_active_names(
         &self,
         defs: Vec<ToolDefinition>,
         active_tool_names: Vec<String>,
         planning_active: bool,
         request_user_input_enabled: bool,
-    ) -> SessionToolCatalogSnapshot {
+    ) -> SessionToolCatalogueSnapshot {
         let defs = sort_snapshot_definitions(defs);
         let requested_active_tool_names: BTreeSet<String> = active_tool_names.into_iter().collect();
         let active_tool_names = defs
@@ -324,7 +337,7 @@ impl SessionToolCatalogState {
             })
             .collect();
         let active_tool_names = Arc::new(active_tool_names);
-        SessionToolCatalogSnapshot::with_active_tool_names(
+        SessionToolCatalogueSnapshot::with_active_tool_names(
             self.current_version(),
             self.current_epoch(),
             planning_active,
@@ -335,6 +348,8 @@ impl SessionToolCatalogState {
         )
     }
 
+    /// Sorted definition list for the current version, reusing the cached
+    /// ordering when the version is unchanged.
     async fn sorted_snapshot(&self, tools: &Arc<RwLock<Vec<ToolDefinition>>>) -> Option<Arc<Vec<ToolDefinition>>> {
         let version = self.current_version();
         if let Some(snapshot) = {
@@ -380,8 +395,8 @@ fn sort_snapshot_definitions(defs: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
 }
 
 impl super::ToolRegistry {
-    pub fn tool_catalog_state(&self) -> Arc<SessionToolCatalogState> {
-        Arc::clone(&self.tool_catalog_state)
+    pub fn tool_catalogue_state(&self) -> Arc<SessionToolCatalogueState> {
+        Arc::clone(&self.tool_catalogue_state)
     }
 
     /// Attach the session's live model-facing tool definitions so registry
@@ -423,7 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn filtered_snapshot_reuses_cached_projection_until_refresh() {
-        let state = SessionToolCatalogState::new();
+        let state = SessionToolCatalogueState::new();
         let tools = Arc::new(RwLock::new(vec![
             function_tool(tools::CODE_SEARCH),
             function_tool(tools::REQUEST_USER_INPUT),
@@ -434,7 +449,7 @@ mod tests {
 
         assert!(!first.cache_hit);
         assert!(second.cache_hit);
-        assert_eq!(first.tool_catalog_hash, second.tool_catalog_hash);
+        assert_eq!(first.tool_catalogue_hash, second.tool_catalogue_hash);
         assert_eq!(first.available_tools(), second.available_tools());
 
         state.note_explicit_refresh("test");
@@ -444,7 +459,7 @@ mod tests {
 
     #[tokio::test]
     async fn local_search_expands_ranked_deferred_tools_at_next_epoch() {
-        let state = SessionToolCatalogState::new();
+        let state = SessionToolCatalogueState::new();
         let deferred = ToolDefinition::function(
             "remote_issue_search".to_string(),
             "Search remote issue trackers".to_string(),
@@ -473,7 +488,7 @@ mod tests {
 
     #[test]
     fn snapshot_for_defs_sorts_tool_order_for_stable_projections() {
-        let state = SessionToolCatalogState::new();
+        let state = SessionToolCatalogueState::new();
         let snapshot = state.snapshot_for_defs(
             vec![
                 function_tool("z_tool"),
@@ -497,7 +512,7 @@ mod tests {
 
     #[test]
     fn snapshot_for_stable_defs_preserves_full_order_with_normalized_active_subset() {
-        let state = SessionToolCatalogState::new();
+        let state = SessionToolCatalogueState::new();
         let snapshot = state.snapshot_for_stable_defs_with_active_names(
             vec![
                 function_tool("z_tool"),
@@ -524,7 +539,7 @@ mod tests {
 
         assert_eq!(names, vec!["a_tool", tools::UNIFIED_EXEC, "z_tool"]);
         assert_eq!(snapshot.active_tool_names.as_ref(), &vec!["a_tool".to_string(), "z_tool".to_string()]);
-        assert_eq!(snapshot.catalog_tools(), 3);
+        assert_eq!(snapshot.catalogue_tools(), 3);
         assert_eq!(snapshot.available_tools(), 2);
     }
 

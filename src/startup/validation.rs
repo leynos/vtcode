@@ -1,3 +1,8 @@
+//! Startup configuration validation.
+//!
+//! Applies CLI permission overrides, checks provider and model compatibility,
+//! and enforces the full-auto permission-review requirements.
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -169,6 +174,9 @@ pub(super) fn resolve_workspace_path(workspace_arg: Option<PathBuf>) -> Result<P
     Ok(canonicalize_workspace(&resolved))
 }
 
+/// Validates the loaded configuration at startup, reporting catalogue problems
+/// as warnings without aborting. Also emits token-overhead warnings and, unless
+/// deferred, checks the system-prompt size.
 pub(super) async fn validate_startup_configuration(
     config: &DiapasonConfig,
     workspace: &Path,
@@ -200,7 +208,7 @@ pub(super) async fn validate_startup_configuration(
         }
         Ok(_) => {}
         Err(e) if !quiet => {
-            eprintln!("could not validate configured model catalog: {e}");
+            eprintln!("could not validate configured model catalogue: {e}");
         }
         Err(_) => {}
     }

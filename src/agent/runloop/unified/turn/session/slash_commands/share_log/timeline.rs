@@ -60,7 +60,9 @@ struct SessionOverview {
     prompt_cache_model_changes: usize,
     prompt_cache_unchanged: usize,
     prompt_cache_stable_prefix_changes: usize,
-    prompt_cache_tool_catalog_changes: usize,
+    /// Wire name remains `prompt_cache_tool_catalog_changes`; fixed by the timeline schema.
+    #[serde(rename = "prompt_cache_tool_catalog_changes")]
+    prompt_cache_tool_catalogue_changes: usize,
     prompt_cache_combined_changes: usize,
     last_prompt_cache_change_reason: Option<String>,
     source: String,
@@ -131,6 +133,9 @@ pub(super) fn redact_timeline_export(export: &TimelineExport) -> TimelineExport 
     presentation::redact_timeline_export(export)
 }
 
+/// Aggregate thread events into a session overview of turns, token usage, file
+/// changes, and prompt-cache diagnostics. The row count and prompt-cache
+/// diagnostics are supplied by the caller.
 fn build_session_overview(
     provider: &str,
     model: &str,
@@ -214,7 +219,7 @@ fn build_session_overview(
         prompt_cache_model_changes: prompt_cache_diagnostics.model_changes,
         prompt_cache_unchanged: prompt_cache_diagnostics.unchanged,
         prompt_cache_stable_prefix_changes: prompt_cache_diagnostics.stable_prefix_changes,
-        prompt_cache_tool_catalog_changes: prompt_cache_diagnostics.tool_catalog_changes,
+        prompt_cache_tool_catalogue_changes: prompt_cache_diagnostics.tool_catalogue_changes,
         prompt_cache_combined_changes: prompt_cache_diagnostics.combined_changes,
         last_prompt_cache_change_reason: prompt_cache_diagnostics.last_change_reason,
         source: source.to_string(),
@@ -408,7 +413,7 @@ mod tests {
                 prompt_cache_model_changes: 0,
                 prompt_cache_unchanged: 0,
                 prompt_cache_stable_prefix_changes: 0,
-                prompt_cache_tool_catalog_changes: 0,
+                prompt_cache_tool_catalogue_changes: 0,
                 prompt_cache_combined_changes: 0,
                 last_prompt_cache_change_reason: None,
                 source: TIMELINE_SOURCE_THREAD_EVENTS.to_string(),
@@ -460,7 +465,7 @@ mod tests {
                 prompt_cache_model_changes: 1,
                 prompt_cache_unchanged: 1,
                 prompt_cache_stable_prefix_changes: 2,
-                prompt_cache_tool_catalog_changes: 0,
+                prompt_cache_tool_catalogue_changes: 3,
                 prompt_cache_combined_changes: 1,
                 last_prompt_cache_change_reason: Some("stable_prefix".to_string()),
                 source: TIMELINE_SOURCE_THREAD_EVENTS.to_string(),
@@ -477,7 +482,100 @@ mod tests {
         assert!(html.contains("Cache churn"));
         assert!(html.contains("Last cache change"));
         assert!(html.contains("stable_prefix"));
-        assert!(html.contains("tool_catalog"));
+        assert!(html.contains("tool_catalogue: ${formatNumber(overview.prompt_cache_tool_catalog_changes)}"));
+        assert!(html.contains("\"prompt_cache_tool_catalog_changes\":3"));
+    }
+
+    #[test]
+    fn timeline_export_carries_catalogue_change_count() {
+        let records = vec![sample_event_record(
+            1,
+            ThreadEvent::TurnCompleted(TurnCompletedEvent {
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 4,
+                    cached_input_tokens: 2,
+                    cache_creation_tokens: 0,
+                },
+            }),
+        )];
+        let diagnostics = crate::agent::runloop::unified::state::PromptCacheDiagnostics {
+            observations: 5,
+            tool_catalogue_changes: 3,
+            ..Default::default()
+        };
+
+        let export = build_timeline_export(
+            "2026-04-04T00:00:00Z",
+            "openai",
+            "gpt-test",
+            std::path::Path::new("/tmp/workspace"),
+            "thread-1",
+            &records,
+            &[],
+            Some(&diagnostics),
+        );
+
+        assert_eq!(export.overview.prompt_cache_tool_catalogue_changes, 3);
+
+        let serialized = serde_json::to_value(&export).expect("serialize export");
+        assert_eq!(serialized["overview"]["prompt_cache_tool_catalog_changes"], json!(3));
+
+        let html = render_session_timeline_html(&export, &json!({"messages": []})).expect("html");
+        assert!(
+            html.contains("tool_catalogue: ${formatNumber(overview.prompt_cache_tool_catalog_changes)}"),
+            "cache churn line does not render the catalogue-change count"
+        );
+        assert!(
+            html.contains("\"prompt_cache_tool_catalog_changes\":3"),
+            "embedded export JSON lost the wire field name or count"
+        );
+    }
+
+    #[test]
+    fn share_log_export_writes_catalogue_change_count() {
+        let records = vec![sample_event_record(
+            1,
+            ThreadEvent::TurnCompleted(TurnCompletedEvent {
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 4,
+                    cached_input_tokens: 2,
+                    cache_creation_tokens: 0,
+                },
+            }),
+        )];
+        let diagnostics = crate::agent::runloop::unified::state::PromptCacheDiagnostics {
+            observations: 5,
+            tool_catalogue_changes: 3,
+            ..Default::default()
+        };
+        let export = redact_timeline_export(&build_timeline_export(
+            "2026-04-04T00:00:00Z",
+            "openai",
+            "gpt-test",
+            std::path::Path::new("/tmp/workspace"),
+            "thread-1",
+            &records,
+            &[],
+            Some(&diagnostics),
+        ));
+        let html = render_session_timeline_html(&export, &json!({"messages": []})).expect("html");
+
+        let directory = tempfile::tempdir().expect("create temp dir");
+        let path = directory.path().join("diapason-session-timeline-test.html");
+        std::fs::write(&path, &html).expect("write session timeline");
+        let written = std::fs::read_to_string(&path).expect("read session timeline");
+
+        assert_eq!(export.overview.prompt_cache_tool_catalogue_changes, 3);
+        assert!(
+            written.contains("tool_catalogue: ${formatNumber(overview.prompt_cache_tool_catalog_changes)}"),
+            "exported timeline does not bind the catalogue label to its count"
+        );
+        assert!(
+            written.contains("\"prompt_cache_tool_catalog_changes\":3"),
+            "redacted export lost the wire field name or count"
+        );
     }
 
     #[test]
@@ -509,7 +607,7 @@ mod tests {
                 prompt_cache_model_changes: 0,
                 prompt_cache_unchanged: 0,
                 prompt_cache_stable_prefix_changes: 0,
-                prompt_cache_tool_catalog_changes: 0,
+                prompt_cache_tool_catalogue_changes: 0,
                 prompt_cache_combined_changes: 0,
                 last_prompt_cache_change_reason: None,
                 source: TIMELINE_SOURCE_CONVERSATION_FALLBACK.to_string(),

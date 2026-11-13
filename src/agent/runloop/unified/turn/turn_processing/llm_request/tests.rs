@@ -1,3 +1,8 @@
+//! Tests for LLM request preparation and retry handling.
+//!
+//! Uses scripted providers to cover runtime catalogue metadata, previous-response
+//! chains, unmatched tool results, and retryable error classification.
+
 use super::*;
 use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
 use std::collections::VecDeque;
@@ -86,6 +91,94 @@ impl uni::LLMProvider for ScriptedProvider {
     fn validate_request(&self, _request: &uni::LLMRequest) -> std::result::Result<(), uni::LLMError> {
         Ok(())
     }
+}
+
+/// Provider that records the exact request it is handed, so tests can assert
+/// on the payload that would reach a real endpoint.
+struct CapturingProvider {
+    recorded_requests: Arc<Mutex<Vec<uni::LLMRequest>>>,
+}
+
+impl CapturingProvider {
+    fn new(recorded_requests: Arc<Mutex<Vec<uni::LLMRequest>>>) -> Self {
+        Self { recorded_requests }
+    }
+}
+
+#[async_trait::async_trait]
+impl uni::LLMProvider for CapturingProvider {
+    /// A provider without prompt-cache shaping, so the runtime catalogue
+    /// metadata stays in the system prompt instead of being dropped for a
+    /// cache-shaped provider.
+    fn name(&self) -> &str {
+        "mycorp"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    async fn generate(&self, request: uni::LLMRequest) -> std::result::Result<uni::LLMResponse, uni::LLMError> {
+        self.recorded_requests.lock().expect("recorded requests").push(request);
+
+        Ok(uni::LLMResponse {
+            content: Some("done".to_string()),
+            model: "noop-model".to_string(),
+            tool_calls: None,
+            usage: None,
+            finish_reason: uni::FinishReason::Stop,
+            reasoning: None,
+            reasoning_details: None,
+            organization_id: None,
+            request_id: None,
+            tool_references: Vec::new(),
+            compaction: None,
+        })
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["noop-model".to_string()]
+    }
+
+    fn validate_request(&self, _request: &uni::LLMRequest) -> std::result::Result<(), uni::LLMError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn provider_request_uses_renamed_runtime_catalogue_metadata() {
+    let base_prompt =
+        "You are Diapason.\n\n[Runtime Tool Catalog]\n- version: 1\n- epoch: 2\n\n[Runtime Notice]\nKeep me";
+    let mut backing = TestTurnProcessingBacking::new_with_base_prompt(4, base_prompt.to_string()).await;
+    backing
+        .add_tool_definition(uni::ToolDefinition::function(
+            "read_file".to_string(),
+            "Read a file".to_string(),
+            serde_json::json!({"type": "object", "properties": {}}),
+        ))
+        .await;
+
+    let recorded_requests = Arc::new(Mutex::new(Vec::new()));
+    let mut ctx = backing.turn_processing_context();
+    *ctx.provider_client = Box::new(CapturingProvider::new(Arc::clone(&recorded_requests)));
+    ctx.working_history.push(uni::Message::user("hello".to_string()));
+
+    let result = execute_llm_request(&mut ctx, 1, "noop-model", Some(320), false, None).await;
+    assert!(result.is_ok(), "request should reach the provider: {result:?}");
+
+    let requests = recorded_requests.lock().expect("recorded requests");
+    assert_eq!(requests.len(), 1, "exactly one provider request");
+    let system_prompt = requests[0]
+        .system_prompt
+        .as_ref()
+        .expect("provider request carries a system prompt")
+        .as_ref();
+
+    assert_eq!(system_prompt.matches("[Runtime Tool Catalogue]").count(), 1);
+    assert!(!system_prompt.contains("[Runtime Tool Catalog]"));
+    assert!(system_prompt.contains("[Runtime Notice]\nKeep me"));
+    assert!(system_prompt.contains("- catalogue_tools: 1"));
+    assert!(system_prompt.contains("- available_tools: 1"));
 }
 
 #[test]

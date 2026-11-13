@@ -1,3 +1,8 @@
+//! Emission of harness thread events during interactive sessions.
+//!
+//! Translates in-process activity into `ThreadEvent` values and fans them out
+//! to the canonical sink, legacy writer, and export formats.
+
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -528,6 +533,9 @@ pub(crate) fn thread_completed_event(
     })
 }
 
+/// Build a thread compaction-boundary event, copying segment identities from the
+/// optional transition. The resulting event leaves the new prefix and catalogue
+/// hashes unset.
 pub(crate) fn compact_boundary_event(
     thread_id: impl Into<String>,
     trigger: CompactionTrigger,
@@ -548,7 +556,7 @@ pub(crate) fn compact_boundary_event(
         new_segment_id: segment_transition.map(|transition| transition.new_segment_id.clone()),
         previous_prefix_hash: segment_transition.and_then(|transition| transition.previous_prefix_hash.clone()),
         new_prefix_hash: None,
-        previous_catalog_hash: segment_transition.and_then(|transition| transition.previous_catalog_hash.clone()),
+        previous_catalog_hash: segment_transition.and_then(|transition| transition.previous_catalogue_hash.clone()),
         new_catalog_hash: None,
     })
 }

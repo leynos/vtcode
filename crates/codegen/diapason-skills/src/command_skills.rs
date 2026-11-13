@@ -1,3 +1,8 @@
+//! Built-in command skills exposed as slash commands.
+//!
+//! Defines each command's canonical name, aliases, usage text, and backend, and
+//! exposes the metadata used by `/skills` and prompt rendering.
+
 use crate::model::{SkillMetadata, SkillScope};
 use crate::types::{SkillContext, SkillManifest, SkillManifestMetadata, SkillVariety};
 use hashbrown::HashMap;
@@ -445,7 +450,9 @@ fn is_command_skill_name(name: &str) -> bool {
     find_command_skill_by_skill_name(name).is_some()
 }
 
-pub fn is_model_catalog_eligible(skill: &SkillMetadata) -> bool {
+/// Returns whether a skill may be advertised to the model. Skills that disable
+/// model invocation and command skills are excluded.
+pub fn is_model_catalogue_eligible(skill: &SkillMetadata) -> bool {
     if skill
         .manifest
         .as_ref()

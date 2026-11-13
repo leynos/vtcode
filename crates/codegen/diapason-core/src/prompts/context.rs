@@ -1,7 +1,12 @@
+//! Prompt context assembled from the workspace, skills, and editor state.
+//!
+//! `PromptContext` gathers the facts prompt builders need before rendering the
+//! system prompt and tool guidance.
+
 use crate::config::ConfigManager;
 use crate::config::types::CapabilityLevel;
 use crate::ide_context::EditorContextSnapshot;
-use crate::skills::command_skills::is_model_catalog_eligible;
+use crate::skills::command_skills::is_model_catalogue_eligible;
 use crate::skills::manager::SkillsManager;
 use crate::skills::model::SkillMetadata;
 use crate::tools::search_runtime::snapshot_for_workspace;
@@ -191,7 +196,7 @@ impl PromptContext {
             outcome
                 .skills
                 .into_iter()
-                .filter(is_model_catalog_eligible)
+                .filter(is_model_catalogue_eligible)
                 .filter(|skill| requested.contains(&skill.name.to_ascii_lowercase()))
                 .collect(),
         );
@@ -231,6 +236,10 @@ impl PromptContext {
     }
 }
 
+/// Collect lightweight metadata for skills eligible for the model catalogue.
+///
+/// Bundled skills are enabled unless the workspace configuration says
+/// otherwise, and configuration load failures fall back to enabled.
 fn collect_available_skill_metadata(workspace: &Path, home_dir: &Path) -> Vec<SkillMetadata> {
     let bundled_skills_enabled = ConfigManager::load_from_workspace(workspace)
         .map(|manager| manager.config().skills.bundled.enabled)
@@ -240,7 +249,7 @@ fn collect_available_skill_metadata(workspace: &Path, home_dir: &Path) -> Vec<Sk
         .skills_metadata_lightweight(workspace)
         .skills
         .into_iter()
-        .filter(is_model_catalog_eligible)
+        .filter(is_model_catalogue_eligible)
         .collect()
 }
 

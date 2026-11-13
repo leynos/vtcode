@@ -1,3 +1,8 @@
+//! Handover from planning to approved-plan execution.
+//!
+//! Builds the synthetic execution prompt, appends it to the runtime state, and
+//! selects the agent that carries out the approved plan.
+
 use anyhow::Result;
 use diapason_core::core::agent::runtime::AgentRuntime;
 use diapason_core::primary_agent::{ActivePrimaryAgent, ActivePrimaryAgentState};
@@ -59,7 +64,7 @@ pub(super) async fn apply_primary_agent_tool_policy_overrides(
 /// Select the write-capable agent that must own an approved-plan execution.
 ///
 /// Approval is a hard runtime boundary. If discovery returns a stale or
-/// read-only catalog, falling back to the built-in `build` spec is safer than
+/// read-only catalogue, falling back to the built-in `build` spec is safer than
 /// continuing with the planning agent and letting the first mutation fail
 /// under the planning policy.
 pub(super) async fn select_approved_plan_execution_agent(

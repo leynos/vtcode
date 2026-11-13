@@ -1,3 +1,8 @@
+//! Model identifiers and capability flags for the Evolink gateway.
+//!
+//! Entries feed the curated `ModelId` catalogue and the provider's
+//! Anthropic-versus-OpenAI wire-format routing.
+
 // Evolink models (OpenAI-compatible multi-model gateway)
 // https://docs.evolink.ai/llms.txt
 //
@@ -5,7 +10,7 @@
 // gateway. GPT/DeepSeek/Doubao models use the OpenAI Chat Completions format
 // at `/v1/chat/completions`; Claude models use the Anthropic Messages format
 // at `/v1/messages`. Bare model names collide with Diapason's first-class
-// providers, so curated `ModelId` catalog entries are namespaced with an
+// providers, so curated `ModelId` catalogue entries are namespaced with an
 // `evolink/` prefix; the provider strips that prefix before sending upstream.
 
 // --- OpenAI-compatible models (Chat Completions API) ---

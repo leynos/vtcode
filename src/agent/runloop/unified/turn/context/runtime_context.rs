@@ -1,3 +1,8 @@
+//! Turn-processing context and outcome types.
+//!
+//! Defines the borrowed context bundles, the result of processing one turn, and
+//! the outcomes that tell the interaction loop how to continue.
+
 use super::*;
 use crate::agent::runloop::unified::planning_workflow::PlanExecutionContext;
 
@@ -66,7 +71,7 @@ pub(crate) struct ToolContext<'a> {
     pub approval_recorder: &'a Arc<diapason_core::tools::ApprovalRecorder>,
     pub tool_registry: &'a mut diapason_core::tools::registry::ToolRegistry,
     pub tools: &'a Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    pub tool_catalog: &'a Arc<ToolCatalogState>,
+    pub tool_catalogue: &'a Arc<ToolCatalogueState>,
     pub tool_permission_cache: &'a Arc<RwLock<diapason_core::acp::ToolPermissionCache>>,
     pub permissions_state: &'a Arc<RwLock<diapason_core::config::PermissionsConfig>>,
     pub safety_validator: &'a Arc<crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator>,
@@ -137,7 +142,7 @@ pub(crate) struct TurnProcessingContext<'a> {
     pub turn_metadata_cache: &'a mut Option<Option<serde_json::Value>>,
     pub tool_registry: &'a mut diapason_core::tools::registry::ToolRegistry,
     pub tools: &'a Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    pub tool_catalog: &'a Arc<ToolCatalogState>,
+    pub tool_catalogue: &'a Arc<ToolCatalogueState>,
     pub ctrl_c_state: &'a Arc<CtrlCState>,
     pub ctrl_c_notify: &'a Arc<Notify>,
     pub active_thread_label: &'a str,
@@ -187,7 +192,7 @@ impl<'a> TurnProcessingContext<'a> {
             turn_metadata_cache: state.turn_metadata_cache,
             tool_registry: tool.tool_registry,
             tools: tool.tools,
-            tool_catalog: tool.tool_catalog,
+            tool_catalogue: tool.tool_catalogue,
             ctrl_c_state: ui.ctrl_c_state,
             ctrl_c_notify: ui.ctrl_c_notify,
             active_thread_label: ui.active_thread_label,
@@ -225,7 +230,7 @@ impl<'a> TurnProcessingContext<'a> {
             approval_recorder: self.approval_recorder,
             tool_registry: self.tool_registry,
             tools: self.tools,
-            tool_catalog: self.tool_catalog,
+            tool_catalogue: self.tool_catalogue,
             tool_permission_cache: self.tool_permission_cache,
             permissions_state: self.permissions_state,
             safety_validator: self.safety_validator,
@@ -294,7 +299,7 @@ impl<'a> TurnProcessingContext<'a> {
             llm_ctx.decision_ledger,
             tool_ctx.tool_registry,
             tool_ctx.tools,
-            tool_ctx.tool_catalog,
+            tool_ctx.tool_catalogue,
             ui_ctx.ctrl_c_state,
             ui_ctx.ctrl_c_notify,
             llm_ctx.context_manager,

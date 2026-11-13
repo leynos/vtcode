@@ -1,3 +1,8 @@
+//! The `/agents` command surface.
+//!
+//! Lists and inspects agents, threads, and background subprocesses, and routes
+//! agent management actions including authoring.
+
 use anyhow::{Result, anyhow, bail};
 use diapason_commons::DiapasonPaths;
 use diapason_commons::fs::write_private_file_atomic;
@@ -166,6 +171,9 @@ fn render_missing_subagent_controller(ctx: &mut SlashCommandContext<'_>) -> Resu
     Ok(SlashCommandControl::Continue)
 }
 
+/// Show the agents manager modal and dispatch the selected management action.
+/// Returns the control flow produced by that action, or `Continue` when the
+/// modal is dismissed.
 async fn show_agents_manager(mut ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
     ctx.handle.show_list_modal(
         "Agents".to_string(),
@@ -232,7 +240,7 @@ async fn show_agents_manager(mut ctx: SlashCommandContext<'_>) -> Result<SlashCo
     };
 
     match action.as_str() {
-        value if value == format!("{AGENT_ACTION_PREFIX}browse") => show_agent_catalog(ctx).await,
+        value if value == format!("{AGENT_ACTION_PREFIX}browse") => show_agent_catalogue(ctx).await,
         value if value == format!("{AGENT_ACTION_PREFIX}threads") => show_threads_modal(ctx).await,
         value if value == format!("{AGENT_ACTION_PREFIX}create-project") => {
             authoring::handle_create_agent(ctx, Some(AgentDefinitionScope::Project), None).await
@@ -255,7 +263,9 @@ async fn show_agents_manager(mut ctx: SlashCommandContext<'_>) -> Result<SlashCo
     }
 }
 
-async fn show_agent_catalog(mut ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
+/// List effective and shadowed agent definitions in a modal, then render details
+/// for the selected agent. Returns `Continue` when dismissed or after inspection.
+async fn show_agent_catalogue(mut ctx: SlashCommandContext<'_>) -> Result<SlashCommandControl> {
     let Some(controller) = ctx.tool_registry.subagent_controller() else {
         return render_missing_subagent_controller(&mut ctx);
     };

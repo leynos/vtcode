@@ -1,9 +1,14 @@
+//! Tool guidance rendered into the system prompt.
+//!
+//! Generates compact usage guidance for the tool set exposed in a session,
+//! including shell profile and capability-specific hints.
+
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use crate::config::constants::tools;
 use crate::config::types::{CapabilityLevel, ResolvedShellPromptProfile, ShellPromptProfile};
-use crate::core::agent::harness_kernel::SessionToolCatalogSnapshot;
+use crate::core::agent::harness_kernel::SessionToolCatalogueSnapshot;
 use crate::llm::provider::ToolDefinition;
 use crate::prompts::sections::SectionBoundaryMode;
 use crate::tools::registry::tool_groups;
@@ -87,26 +92,42 @@ pub fn generate_tool_guidelines_for_profile(
     format!("\n\n## Active Tools\n{}", lines.join("\n"))
 }
 
+/// Append refreshed runtime tool guidance using the platform-resolved shell profile.
+///
+/// Removes any existing `## Active Tools`, `[Runtime Tool Catalogue]` and
+/// pre-rename `[Runtime Tool Catalog]` sections before appending the refreshed
+/// guidance. The catalogue metadata block is appended only when
+/// `include_catalogue_metadata` is true and the snapshot carries tool
+/// definitions.
 pub fn append_runtime_tool_prompt_sections(
     prompt: &mut String,
-    tool_snapshot: &SessionToolCatalogSnapshot,
-    include_catalog_metadata: bool,
+    tool_snapshot: &SessionToolCatalogueSnapshot,
+    include_catalogue_metadata: bool,
 ) {
     append_runtime_tool_prompt_sections_for_profile(
         prompt,
         tool_snapshot,
-        include_catalog_metadata,
+        include_catalogue_metadata,
         ShellPromptProfile::Auto.resolve_for_current_platform(),
     );
 }
 
+/// Append refreshed runtime tool guidance for an explicit shell profile.
+///
+/// Removes any existing `## Active Tools`, `[Runtime Tool Catalogue]` and
+/// pre-rename `[Runtime Tool Catalog]` sections before appending the refreshed
+/// guidance. The catalogue metadata block is appended only when
+/// `include_catalogue_metadata` is true and the snapshot carries tool
+/// definitions.
 pub fn append_runtime_tool_prompt_sections_for_profile(
     prompt: &mut String,
-    tool_snapshot: &SessionToolCatalogSnapshot,
-    include_catalog_metadata: bool,
+    tool_snapshot: &SessionToolCatalogueSnapshot,
+    include_catalogue_metadata: bool,
     shell_profile: ResolvedShellPromptProfile,
 ) {
     remove_prompt_section(prompt, "## Active Tools");
+    remove_prompt_section(prompt, "[Runtime Tool Catalogue]");
+    // Prompts supplied by embedders may still carry the pre-rename section.
     remove_prompt_section(prompt, "[Runtime Tool Catalog]");
     while prompt.ends_with('\n') {
         prompt.pop();
@@ -119,22 +140,22 @@ pub fn append_runtime_tool_prompt_sections_for_profile(
         append_prompt_block(prompt, guidelines.trim_start_matches('\n'));
     }
 
-    if include_catalog_metadata && tool_snapshot.snapshot.is_some() {
+    if include_catalogue_metadata && tool_snapshot.snapshot.is_some() {
         let active_tools = if tool_snapshot.active_tool_names.is_empty() {
             "none".to_string()
         } else {
             tool_snapshot.active_tool_names.join(", ")
         };
-        let catalog_metadata = format!(
-            "[Runtime Tool Catalog]\n- version: {}\n- epoch: {}\n- catalog_tools: {}\n- available_tools: {}\n- currently_available_tools: {}\n- request_user_input_enabled: {}",
+        let catalogue_metadata = format!(
+            "[Runtime Tool Catalogue]\n- version: {}\n- epoch: {}\n- catalogue_tools: {}\n- available_tools: {}\n- currently_available_tools: {}\n- request_user_input_enabled: {}",
             tool_snapshot.version,
             tool_snapshot.epoch,
-            tool_snapshot.catalog_tools(),
+            tool_snapshot.catalogue_tools(),
             tool_snapshot.available_tools(),
             active_tools,
             tool_snapshot.request_user_input_enabled,
         );
-        append_prompt_block(prompt, &catalog_metadata);
+        append_prompt_block(prompt, &catalogue_metadata);
     }
 }
 
@@ -187,10 +208,13 @@ fn remove_prompt_section(prompt: &mut String, section_header: &str) {
     }
 }
 
+/// Locate a runtime prompt section under either its bracket or Markdown form.
 fn find_prompt_section_bounds(prompt: &str, section_header: &str) -> Option<(usize, usize)> {
     crate::prompts::sections::find_prompt_section_bounds(prompt, section_header, SectionBoundaryMode::BracketOrMarkdown)
 }
 
+/// Render the runtime tool guidance for a shell profile, adding planning-phase
+/// browse and edit guidance when planning is active.
 fn generate_runtime_tool_guidelines_for_profile(
     available_tools: &[String],
     planning_active: bool,
@@ -243,7 +267,8 @@ fn generate_runtime_tool_guidelines_for_profile(
     format!("\n\n## Active Tools\n{}", lines.join("\n"))
 }
 
-fn snapshot_tool_names(tool_snapshot: &SessionToolCatalogSnapshot) -> Vec<String> {
+/// Return the snapshot's active tool names, deduplicated and sorted.
+fn snapshot_tool_names(tool_snapshot: &SessionToolCatalogueSnapshot) -> Vec<String> {
     tool_snapshot
         .active_tool_names
         .iter()
@@ -368,466 +393,5 @@ pub fn infer_capability_level(available_tools: &[String]) -> CapabilityLevel {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_read_only_capability_detection() {
-        let tools = vec![TOOL_CODE_SEARCH.to_string()];
-        let guidelines = generate_tool_guidelines(&tools, None);
-        assert!(guidelines.contains("Capabilities: read-only"));
-        assert!(guidelines.contains("do not modify files"));
-    }
-
-    #[test]
-    fn test_tool_preference_guidance() {
-        let tools = vec![TOOL_EXEC_COMMAND.to_string(), TOOL_CODE_SEARCH.to_string()];
-        let guidelines = generate_tool_guidelines_for_profile(&tools, None, ResolvedShellPromptProfile::UnixLike);
-        assert!(guidelines.contains("Advanced `code_search` takes `query`"));
-        assert!(guidelines.contains("literal smart-case"));
-        assert!(guidelines.contains("exact syntactic usages"));
-        assert!(guidelines.contains("\"result_types\":[\"definition\"]"));
-        assert!(guidelines.contains("Do not JSON-encode arrays or integers as strings"));
-        assert!(guidelines.contains("omit unused filters"));
-        assert!(guidelines.contains("path: \"\""));
-        assert!(guidelines.contains("git diff -- <path>"));
-        assert!(guidelines.contains("build tools"));
-        assert!(guidelines.contains("test tools"));
-        assert!(guidelines.contains("Completion is a checkpoint"));
-    }
-
-    #[test]
-    fn test_edit_workflow_guidance() {
-        let tools = vec![TOOL_APPLY_PATCH.to_string()];
-        let guidelines = generate_tool_guidelines(&tools, None);
-        assert!(guidelines.contains("Use `apply_patch`"));
-        assert!(guidelines.contains("patches small"));
-        assert!(guidelines.contains("verification resolved"));
-    }
-
-    #[test]
-    fn test_diapason_guidance_omits_task_tracker() {
-        let tools = vec![
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_WRITE_STDIN.to_string(),
-            TOOL_APPLY_PATCH.to_string(),
-        ];
-        let guidelines = generate_tool_guidelines_for_profile(&tools, None, ResolvedShellPromptProfile::UnixLike);
-
-        assert!(guidelines.contains("exec_command.cmd"));
-        for command in ["ls", "rg", "find", "cat", "sed", "awk"] {
-            assert!(
-                guidelines.contains(&format!("`{command}`")),
-                "{command} should be shown as an exec_command.cmd example"
-            );
-        }
-        assert!(guidelines.contains("`write_stdin`"));
-        assert!(guidelines.contains("`apply_patch`"));
-        assert!(!guidelines.contains("task_tracker"));
-        assert!(!guidelines.contains("list_files"));
-        assert!(!guidelines.contains("read_file"));
-    }
-
-    #[test]
-    fn task_tracker_guidance_explains_action_aware_indices() {
-        let guidelines = generate_runtime_tool_guidelines_for_profile(
-            &[TOOL_TASK_TRACKER.to_string()],
-            true,
-            ResolvedShellPromptProfile::UnixLike,
-        );
-
-        assert!(guidelines.contains("positive flat indices"));
-        assert!(guidelines.contains("index: 0"));
-        assert!(guidelines.contains("items"));
-    }
-
-    #[test]
-    fn unix_like_guidance_makes_command_reuse_explicit() {
-        let tools = vec![TOOL_EXEC_COMMAND.to_string(), TOOL_WRITE_STDIN.to_string()];
-        let guidelines = generate_tool_guidelines_for_profile(&tools, None, ResolvedShellPromptProfile::UnixLike);
-
-        assert!(guidelines.contains("One-shot `exec_command` calls"));
-        assert!(guidelines.contains("`!!`, `!$`, `!ssh`, or `fc`"));
-        assert!(guidelines.contains("write full command arguments explicitly"));
-        assert!(guidelines.contains("conversation or tool results"));
-        assert!(guidelines.contains("existing `session_id`"));
-        assert!(guidelines.contains("Bash `histverify`"));
-        assert!(guidelines.contains("zsh `HIST_VERIFY`"));
-    }
-
-    #[test]
-    fn powershell_guidance_uses_native_command_examples() {
-        let tools = vec![
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_CODE_SEARCH.to_string(),
-            TOOL_APPLY_PATCH.to_string(),
-        ];
-        let guidelines = generate_tool_guidelines_for_profile(&tools, None, ResolvedShellPromptProfile::PowerShell);
-
-        assert!(guidelines.contains("native PowerShell commands"));
-        assert!(guidelines.contains("`Get-ChildItem`"));
-        assert!(guidelines.contains("`Select-String`"));
-        assert!(guidelines.contains("native PowerShell syntax"));
-        assert!(guidelines.contains("Advanced `code_search` takes `query`"));
-        assert!(guidelines.contains("literal smart-case"));
-        assert!(guidelines.contains("omit unused filters"));
-        assert!(!guidelines.contains("`ls`, `rg`, `find`, `cat`, `sed`, and `awk`"));
-        assert!(!guidelines.contains("shell history expansion"));
-        assert!(!guidelines.contains("histverify"));
-        assert!(!guidelines.contains("HIST_VERIFY"));
-    }
-
-    #[test]
-    fn shell_profile_prompt_keeps_policy_and_syntax_separate() {
-        let unix = render_shell_profile_guidance(ResolvedShellPromptProfile::UnixLike);
-        assert!(unix.contains("Active shell profile: `unix_like`"));
-        assert!(unix.contains("does not rewrite GNU flags for macOS BSD tools"));
-        assert!(unix.contains("controls prompt examples and expected command syntax only"));
-        assert!(unix.contains("does not translate GNU-to-BSD"));
-
-        let powershell = render_shell_profile_guidance(ResolvedShellPromptProfile::PowerShell);
-        assert!(powershell.contains("Active shell profile: `powershell`"));
-        assert!(powershell.contains("WSL"));
-        assert!(powershell.contains("Unix-like workflows"));
-        assert!(powershell.contains("PowerShell-to-Unix"));
-    }
-
-    #[test]
-    fn test_harness_browse_tool_guidance() {
-        let tools = vec![TOOL_LIST_FILES.to_string(), TOOL_READ_FILE.to_string()];
-        let guidelines = generate_tool_guidelines(&tools, None);
-        assert!(guidelines.contains("available read-only repository tools"));
-        assert!(guidelines.contains("bound `read_file` ranges"));
-        assert!(!guidelines.contains("list_files"));
-        assert!(!guidelines.contains("offset"));
-        assert!(!guidelines.contains("per_page"));
-    }
-
-    #[test]
-    fn test_canonical_browse_tool_guidance_prefers_public_tools() {
-        let tools = vec![
-            TOOL_CODE_SEARCH.to_string(),
-            TOOL_LIST_FILES.to_string(),
-            "read_file".to_string(),
-        ];
-        let guidelines = generate_tool_guidelines(&tools, None);
-        assert!(guidelines.contains("available read-only repository tools"));
-        assert!(guidelines.contains("code_search"));
-        assert!(guidelines.contains("bound `read_file` ranges"));
-    }
-
-    #[test]
-    fn test_capability_basic_guidance() {
-        let tools = vec![];
-        let guidelines = generate_tool_guidelines(&tools, Some(CapabilityLevel::Basic));
-        assert!(guidelines.contains("Capabilities: limited"));
-        assert!(guidelines.contains("enable more capabilities"));
-    }
-
-    #[test]
-    fn test_capability_file_reading_guidance() {
-        let tools = vec![TOOL_APPLY_PATCH.to_string()];
-        let guidelines = generate_tool_guidelines(&tools, Some(CapabilityLevel::FileReading));
-        assert!(guidelines.contains("Capabilities: read-only"));
-        assert!(guidelines.contains("do not modify"));
-    }
-
-    #[test]
-    fn test_full_capabilities_no_special_guidance() {
-        let tools = vec![
-            TOOL_APPLY_PATCH.to_string(),
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_CODE_SEARCH.to_string(),
-        ];
-        let guidelines = generate_tool_guidelines_for_profile(
-            &tools,
-            Some(CapabilityLevel::Editing),
-            ResolvedShellPromptProfile::UnixLike,
-        );
-
-        assert!(!guidelines.contains("Capabilities: limited"));
-        assert!(!guidelines.contains("Capabilities: read-only"));
-    }
-
-    #[test]
-    fn test_empty_tools_shows_read_only_capabilities() {
-        let tools = vec![];
-        let guidelines = generate_tool_guidelines(&tools, None);
-        assert!(guidelines.contains("Capabilities: read-only"));
-    }
-
-    #[test]
-    fn test_planning_workflow_guidance_keeps_verification_open() {
-        let tools = vec![
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_TASK_TRACKER.to_string(),
-            TOOL_CODE_SEARCH.to_string(),
-        ];
-        let guidelines =
-            generate_runtime_tool_guidelines_for_profile(&tools, true, ResolvedShellPromptProfile::UnixLike);
-        assert!(guidelines.contains("Keep `task_tracker` updated"));
-        assert!(guidelines.contains("blockers and verification open"));
-    }
-
-    #[test]
-    fn test_capability_inference_precedence() {
-        let tools = vec![TOOL_APPLY_PATCH.to_string(), TOOL_CODE_SEARCH.to_string()];
-        assert_eq!(infer_capability_level(&tools), CapabilityLevel::CodeSearch);
-
-        let tools = vec![TOOL_EXEC_COMMAND.to_string(), TOOL_APPLY_PATCH.to_string()];
-        assert_eq!(infer_capability_level(&tools), CapabilityLevel::Editing);
-    }
-
-    #[test]
-    fn test_capability_inference_variants() {
-        let tools = vec![TOOL_APPLY_PATCH.to_string()];
-        assert_eq!(infer_capability_level(&tools), CapabilityLevel::Editing);
-
-        let tools = vec![TOOL_EXEC_COMMAND.to_string()];
-        assert_eq!(infer_capability_level(&tools), CapabilityLevel::Bash);
-
-        let tools = vec![TOOL_CODE_SEARCH.to_string()];
-        assert_eq!(infer_capability_level(&tools), CapabilityLevel::CodeSearch);
-
-        let tools = vec![TOOL_LIST_FILES.to_string()];
-        assert_eq!(infer_capability_level(&tools), CapabilityLevel::FileListing);
-
-        let tools = vec!["read_file".to_string()];
-        assert_eq!(infer_capability_level(&tools), CapabilityLevel::FileReading);
-
-        let tools = vec!["unknown_tool".to_string()];
-        assert_eq!(infer_capability_level(&tools), CapabilityLevel::Basic);
-    }
-
-    #[test]
-    fn test_guidelines_stay_compact() {
-        let tools = vec![
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_CODE_SEARCH.to_string(),
-            "read_file".to_string(),
-            TOOL_LIST_FILES.to_string(),
-            "apply_patch".to_string(),
-        ];
-        let guidelines = generate_tool_guidelines_for_profile(&tools, None, ResolvedShellPromptProfile::UnixLike);
-        assert!(guidelines.contains("Batch independent read-only calls"));
-        assert!(guidelines.contains("code_search"));
-        let approx_tokens = guidelines.len() / 4;
-        // The batching and bounded-diff guardrails are intentionally part of
-        // the compact shared prompt; keep the budget below 400 tokens.
-        assert!(approx_tokens < 400, "got ~{approx_tokens} tokens");
-    }
-
-    #[test]
-    fn test_parallel_tool_call_guidance() {
-        let tools = vec![
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_CODE_SEARCH.to_string(),
-            TOOL_APPLY_PATCH.to_string(),
-        ];
-        let guidelines = generate_tool_guidelines_for_profile(&tools, None, ResolvedShellPromptProfile::UnixLike);
-        assert!(guidelines.contains("parallel"), "Should include parallel tool call guidance");
-        assert!(guidelines.contains("inputs do not depend"), "Should mention independent inputs");
-    }
-
-    #[test]
-    fn test_read_only_batching_guidance_is_explicit() {
-        let tools = vec![
-            TOOL_CODE_SEARCH.to_string(),
-            TOOL_READ_FILE.to_string(),
-            TOOL_LIST_FILES.to_string(),
-        ];
-        let guidelines = generate_tool_guidelines_for_profile(&tools, None, ResolvedShellPromptProfile::UnixLike);
-
-        assert!(guidelines.contains("Batch independent read-only calls"));
-        assert!(guidelines.contains("`read_file` ranges"));
-        assert!(guidelines.contains("serialize mutations"));
-    }
-
-    #[test]
-    fn execution_agents_can_suggest_planning_for_demanding_tasks() {
-        let tools = vec![TOOL_START_PLANNING.to_string(), TOOL_EXEC_COMMAND.to_string()];
-        let guidelines = generate_tool_guidelines_for_profile(&tools, None, ResolvedShellPromptProfile::UnixLike);
-
-        assert!(guidelines.contains("call `start_planning`"));
-        assert!(guidelines.contains("do not use it for straightforward changes"));
-    }
-
-    #[test]
-    fn planning_workflow_runtime_guidance_keeps_exec_read_only() {
-        let tools = vec![
-            TOOL_APPLY_PATCH.to_string(),
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_CODE_SEARCH.to_string(),
-        ];
-        let guidelines =
-            generate_runtime_tool_guidelines_for_profile(&tools, true, ResolvedShellPromptProfile::UnixLike);
-
-        assert!(guidelines.contains("Planning workflow active"));
-        assert!(guidelines.contains("`exec_command` only for read-only verification"));
-        assert!(guidelines.contains("concrete repository target"));
-        assert!(guidelines.contains("emit only one `<proposed_plan>` block"));
-        assert!(guidelines.contains("omit unused filters"));
-        assert!(!guidelines.contains("Inspect before edit"));
-    }
-
-    #[test]
-    fn runtime_tool_guidance_uses_explicit_powershell_profile() {
-        let tools = vec![
-            TOOL_APPLY_PATCH.to_string(),
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_CODE_SEARCH.to_string(),
-        ];
-        let guidelines =
-            generate_runtime_tool_guidelines_for_profile(&tools, false, ResolvedShellPromptProfile::PowerShell);
-
-        assert!(guidelines.contains("native PowerShell commands"));
-        assert!(guidelines.contains("`Get-ChildItem`"));
-        assert!(guidelines.contains("`Select-String`"));
-        assert!(guidelines.contains("native PowerShell syntax"));
-        assert!(!guidelines.contains("`ls`, `rg`, `find`, `cat`, `sed`, and `awk`"));
-    }
-
-    #[test]
-    fn runtime_tool_guidance_uses_explicit_unix_like_profile() {
-        let tools = vec![
-            TOOL_APPLY_PATCH.to_string(),
-            TOOL_EXEC_COMMAND.to_string(),
-            TOOL_CODE_SEARCH.to_string(),
-        ];
-        let guidelines =
-            generate_runtime_tool_guidelines_for_profile(&tools, false, ResolvedShellPromptProfile::UnixLike);
-
-        assert!(guidelines.contains("Browse: `exec_command.cmd`"));
-        for command in ["ls", "rg", "find", "cat", "sed", "awk"] {
-            assert!(guidelines.contains(&format!("`{command}`")), "Unix browse guidance should include {command}");
-        }
-        assert!(guidelines.contains("Advanced `code_search` takes `query`"));
-        assert!(guidelines.contains("literal smart-case"));
-        assert!(guidelines.contains("shell tasks"));
-        assert!(!guidelines.contains("native PowerShell commands"));
-        assert!(!guidelines.contains("`Get-ChildItem`"));
-    }
-
-    #[test]
-    fn runtime_tool_prompt_sections_use_explicit_profile_for_active_tools() {
-        let mut powershell_prompt = "Base prompt".to_string();
-        let mut unix_prompt = "Base prompt".to_string();
-        let snapshot = SessionToolCatalogSnapshot::new(
-            7,
-            9,
-            false,
-            false,
-            Some(std::sync::Arc::new(vec![
-                ToolDefinition::function(
-                    TOOL_EXEC_COMMAND.to_string(),
-                    "Shell".to_string(),
-                    serde_json::json!({"type": "object"}),
-                ),
-                ToolDefinition::function(
-                    TOOL_CODE_SEARCH.to_string(),
-                    "Bounded source search".to_string(),
-                    serde_json::json!({"type": "object"}),
-                ),
-            ])),
-            false,
-        );
-
-        append_runtime_tool_prompt_sections_for_profile(
-            &mut powershell_prompt,
-            &snapshot,
-            false,
-            ResolvedShellPromptProfile::PowerShell,
-        );
-        append_runtime_tool_prompt_sections_for_profile(
-            &mut unix_prompt,
-            &snapshot,
-            false,
-            ResolvedShellPromptProfile::UnixLike,
-        );
-
-        assert!(powershell_prompt.contains("## Active Tools"));
-        assert!(powershell_prompt.contains("`Get-ChildItem`"));
-        assert!(powershell_prompt.contains("`Select-String`"));
-        assert!(!powershell_prompt.contains("`ls`, `rg`, `find`, `cat`, `sed`, and `awk`"));
-
-        assert!(unix_prompt.contains("## Active Tools"));
-        assert!(unix_prompt.contains("Browse: `exec_command.cmd`"));
-        for command in ["ls", "rg", "find", "cat", "sed", "awk"] {
-            assert!(unix_prompt.contains(&format!("`{command}`")), "Unix browse guidance should include {command}");
-        }
-        assert!(unix_prompt.contains("Advanced `code_search` takes `query`"));
-        assert!(unix_prompt.contains("literal smart-case"));
-        assert!(!unix_prompt.contains("`Get-ChildItem`"));
-    }
-
-    #[test]
-    fn runtime_tool_prompt_sections_include_catalog_metadata() {
-        let mut prompt = "Base prompt".to_string();
-        let snapshot = SessionToolCatalogSnapshot::new(
-            7,
-            9,
-            true,
-            false,
-            Some(std::sync::Arc::new(vec![
-                ToolDefinition::function(
-                    TOOL_EXEC_COMMAND.to_string(),
-                    "Search".to_string(),
-                    serde_json::json!({"type": "object"}),
-                ),
-                ToolDefinition::function(
-                    TOOL_APPLY_PATCH.to_string(),
-                    "File".to_string(),
-                    serde_json::json!({"type": "object"}),
-                ),
-            ])),
-            false,
-        );
-
-        append_runtime_tool_prompt_sections(&mut prompt, &snapshot, true);
-
-        assert!(prompt.contains("## Active Tools"));
-        assert!(prompt.contains("[Runtime Tool Catalog]"));
-        assert!(prompt.contains("catalog_tools: 2"));
-        assert!(prompt.contains("currently_available_tools: exec_command, apply_patch"));
-        assert!(prompt.contains("request_user_input_enabled: false"));
-    }
-
-    #[test]
-    fn runtime_tool_prompt_sections_replace_existing_runtime_sections() {
-        let mut prompt = "Base prompt".to_string();
-        let first = SessionToolCatalogSnapshot::new(
-            1,
-            2,
-            false,
-            false,
-            Some(std::sync::Arc::new(vec![ToolDefinition::function(
-                TOOL_EXEC_COMMAND.to_string(),
-                "Search".to_string(),
-                serde_json::json!({"type": "object"}),
-            )])),
-            false,
-        );
-        let second = SessionToolCatalogSnapshot::new(
-            7,
-            9,
-            true,
-            true,
-            Some(std::sync::Arc::new(vec![ToolDefinition::function(
-                TOOL_APPLY_PATCH.to_string(),
-                "File".to_string(),
-                serde_json::json!({"type": "object"}),
-            )])),
-            false,
-        );
-
-        append_runtime_tool_prompt_sections(&mut prompt, &first, true);
-        append_runtime_tool_prompt_sections(&mut prompt, &second, true);
-
-        assert_eq!(prompt.matches("## Active Tools").count(), 1);
-        assert_eq!(prompt.matches("[Runtime Tool Catalog]").count(), 1);
-        assert!(prompt.contains("version: 7"));
-        assert!(!prompt.contains("version: 1"));
-        assert!(prompt.contains("request_user_input_enabled: true"));
-        assert!(!prompt.contains("request_user_input_enabled: false"));
-    }
-}
+#[path = "guidelines_tests.rs"]
+mod tests;

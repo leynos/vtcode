@@ -1,3 +1,8 @@
+//! Drives the interactive loop across turns.
+//!
+//! Coordinates inline events, model selection, MCP lifecycle, and status
+//! refresh, and applies the outcome of each submitted prompt.
+
 mod status_refresh;
 mod support;
 
@@ -40,6 +45,10 @@ const REPEATED_FOLLOW_UP_STALLED_DIRECTIVE: &str = "Previous turn stalled or abo
 const SCHEDULED_PROMPT_INACTIVITY_GRACE: Duration = Duration::from_secs(2);
 const DURABLE_SCHEDULER_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Run the interactive input loop, applying live config reloads and dispatching
+/// model-picker input, direct tools, memory prompts, and slash commands. Returns
+/// an exit outcome, a direct-tool outcome, or a `Continue` outcome carrying the
+/// submitted prompt for the next turn.
 #[cfg_attr(feature = "profiling", hotpath::measure)]
 pub(super) async fn run_interaction_loop_impl(
     ctx: &mut InteractionLoopContext<'_>,
@@ -135,7 +144,7 @@ pub(super) async fn run_interaction_loop_impl(
                     mcp_manager,
                     ctx.tool_registry,
                     ctx.tools,
-                    ctx.tool_catalog,
+                    ctx.tool_catalogue,
                     ctx.config,
                     ctx.vt_cfg.as_ref(),
                     &**ctx.provider_client,
@@ -144,7 +153,7 @@ pub(super) async fn run_interaction_loop_impl(
                         .map(|cfg| cfg.agent.tool_documentation_mode)
                         .unwrap_or_default(),
                     ctx.renderer,
-                    state.mcp_catalog_initialized,
+                    state.mcp_catalogue_initialized,
                     state.last_mcp_refresh,
                     state.last_known_mcp_tools,
                     state.pending_mcp_refresh,

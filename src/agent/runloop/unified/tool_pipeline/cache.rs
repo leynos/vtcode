@@ -1,3 +1,8 @@
+//! Cacheability checks for tool results.
+//!
+//! Decides whether a call may reuse a cached result, covering read-only
+//! browsing, stable catalogue lookups, and path-scoped git diffs.
+
 use std::borrow::Cow;
 use std::path::Path;
 
@@ -14,7 +19,7 @@ pub(super) fn is_tool_cacheable(tool_name: &str, args: &Value) -> bool {
         return true;
     }
 
-    if is_stable_tool_catalog_lookup(tool_name, args) {
+    if is_stable_tool_catalogue_lookup(tool_name, args) {
         return true;
     }
 
@@ -39,7 +44,9 @@ fn is_readonly_repo_browsing_tool(tool_name: &str, args: &Value) -> bool {
         || (tool_name == tools::UNIFIED_FILE && tool_intent::file_operation_action_is(args, "read"))
 }
 
-fn is_stable_tool_catalog_lookup(tool_name: &str, args: &Value) -> bool {
+/// Report whether a tool call is a stable catalogue lookup whose result can be
+/// cached regardless of its arguments.
+fn is_stable_tool_catalogue_lookup(tool_name: &str, args: &Value) -> bool {
     let _ = args;
     matches!(tool_name, "search_tools" | "get_errors" | "agent_info")
 }
