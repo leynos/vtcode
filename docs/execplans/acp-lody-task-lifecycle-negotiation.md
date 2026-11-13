@@ -2141,3 +2141,43 @@ closes or rebuts each one.
   test remains the end-to-end witness for listing, output and cancellation, but
   it cannot force a same-millisecond spawn, which is why the deterministic core
   regression is the guard.
+
+### Revision note (2026-11-13, r39 round: attachment adopts the tree scope)
+
+- **Defect.** `attach_child_controller`, the public seam that grafts a
+  controller a caller created itself into a tracked child, stored the
+  controller as-is. Such a controller kept the allocator it was constructed
+  with, so two independently created controllers attached to one tree could
+  still propose the same task id; the adapter would list that id twice and route
+  `output`/`cancel` to the first match. A controller that arrived after
+  spawning children also brought ids the new tree did not know were taken.
+- **Correction.** The allocator pointer is now a redirectable handle
+  (`ChildIdScopeHandle`, an `RwLock<Arc<ChildIdScope>>`) that a controller
+  shares with its own descendants. `inherit_child_id_scope` takes `&self`,
+  absorbs the ids already allocated in the joining subtree into the parent's
+  scope, then redirects the handle, so attaching a populated controller moves
+  its whole existing subtree onto the tree's allocator at once instead of
+  leaving older descendants on a stale one. `attach_child_controller` adopts
+  the tree's scope for every controller it attaches, and only after the tracked
+  child is known, so a rejected attachment leaves the controller untouched.
+  `insert_queued_child` holds the handle's read guard for the allocation, so a
+  concurrent adoption cannot swap the allocator out from under an id being
+  reserved.
+- **Regression check.** Two new deterministic regressions, both falsified by
+  removing the adoption:
+  `tree_routing_tests::attached_controllers_allocate_from_the_tree_scope`
+  attaches two independently created controllers to one root and expects the
+  second candidate to take `-2`; without the fix both keep the bare candidate.
+  `tree_routing_tests::attaching_a_populated_controller_reserves_its_existing_ids`
+  attaches a controller that already spawned a child and expects the tree to
+  allocate `-2` rather than reuse that id; without the fix the tree reuses it.
+- **ACP coverage boundary.** The collision itself cannot be constructed
+  through the ACP surface any more: identifiers reach a controller only from
+  the generator in `prepare_queued_child`, and every controller the adapter can
+  see now allocates from one tree-wide scope, so forcing a duplicate would
+  require a production hook that writes a caller-chosen task id into the
+  controller — the allocator bypass this work exists to remove. The nested ACP
+  management test remains the surface-level witness: it asserts the tree lists
+  each of the root's child and two grandchildren exactly once and that `output`
+  and `cancel` for a grandchild resolve through the child-scoped controller
+  that owns it, while a sibling session sees none of them.
