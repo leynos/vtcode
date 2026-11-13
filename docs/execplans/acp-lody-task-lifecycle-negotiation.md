@@ -2088,3 +2088,23 @@ closes or rebuts each one.
   storage-shaped input is the accepted design.
 - **Observability (deferral accepted by the reviewer).** No change beyond the
   documentation already in place and issue #199.
+
+### Revision note (2026-11-13, r35 round: subagent id collision)
+
+- **Hosted `Code coverage` failure fixed.**
+  `lody_nested_management::nested_subagent_management_is_owned_by_the_root_session`
+  failed on head `4536ca7f2`. Two grandchild spawns of the same kind landed in
+  the same millisecond, so `prepare_queued_child` proposed one id for both, and
+  `insert_queued_child`'s `BTreeMap::insert` replaced the first record with the
+  second. The root session then listed two ids where three children existed.
+- **Systemic correction.** `insert_queued_child` now allocates the id *under
+  the write lock* through `unique_child_id`, which suffixes a colliding
+  generated id with `-2`, `-3`, … and rewrites the record's `id` and
+  `session_id` before insertion. It returns the id it stored, and
+  `spawn_with_spec` launches and reports that returned id, so the launch can
+  never address the pre-insertion name. Only generated ids go through this
+  path, so no caller-supplied naming scheme gains a suffix.
+- **Regression check.**
+  `controller_spawn_run::tests::a_colliding_child_id_is_suffixed_instead_of_replacing_the_record`
+  pins the suffix ladder; the ACP nested-management test is the integration
+  witness that all three children survive.

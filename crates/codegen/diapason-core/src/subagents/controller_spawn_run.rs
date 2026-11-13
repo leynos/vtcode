@@ -766,15 +766,21 @@ impl SubagentController {
             let worktree_path = self.create_spawn_worktree(&launch.spec).await?;
             let worktree_path_for_cleanup = worktree_path.clone();
             let child = self.prepare_queued_child(launch, worktree_path, runtime);
-            let id = child.id.clone();
-            if let Err(error) = Box::pin(self.insert_queued_child(child)).await {
-                // The record never became visible, so nothing owns the
-                // worktree; reclaim it rather than leaking the checkout.
-                if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
-                    self.remove_unused_spawn_worktree(worktree_path).await;
+            // The stored id is authoritative: insertion may have to
+            // disambiguate it against a child registered in the same
+            // millisecond, so launching the pre-insertion id would address the
+            // wrong record, or none at all.
+            let id = match Box::pin(self.insert_queued_child(child)).await {
+                Ok(id) => id,
+                Err(error) => {
+                    // The record never became visible, so nothing owns the
+                    // worktree; reclaim it rather than leaking the checkout.
+                    if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
+                        self.remove_unused_spawn_worktree(worktree_path).await;
+                    }
+                    return Err(error);
                 }
-                return Err(error);
-            }
+            };
             self.launch_child(&id).await?;
             self.status_for(&id).await
         })
@@ -945,7 +951,15 @@ impl SubagentController {
         QueuedChildRecord { id, record }
     }
 
-    async fn insert_queued_child(&self, child: QueuedChildRecord) -> Result<()> {
+    /// Inserts a prepared child and returns the id it was stored under.
+    ///
+    /// Generated ids carry millisecond precision, so two spawns of the same
+    /// kind in one millisecond propose the same id. `BTreeMap::insert` would
+    /// then replace the earlier record, silently dropping a subagent that has
+    /// already been admitted and may already own a worktree. Allocating the
+    /// unique id inside the write lock is what makes the check race-free, so
+    /// the record's id and session id are both rewritten before insertion.
+    async fn insert_queued_child(&self, mut child: QueuedChildRecord) -> Result<String> {
         let mut state = self.state.write().await;
         // Re-check the close gates while the write lock is held. The earlier
         // check can race with a concurrent `close_tree` that snapshots and
@@ -954,8 +968,19 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
             bail!("Subagent controller is shutting down; cannot spawn new subagents");
         }
+        let unique_id = unique_child_id(|id| state.children.contains_key(id), child.id.as_str());
+        if unique_id != child.id {
+            child.record.session_id = format!(
+                "{}-{}",
+                sanitize_component(child.record.parent_thread_id.as_str()),
+                sanitize_component(unique_id.as_str())
+            );
+            child.record.id = unique_id.clone();
+            child.id = unique_id;
+        }
+        let id = child.id.clone();
         state.children.insert(child.id, child.record);
-        Ok(())
+        Ok(id)
     }
 
     async fn restart_child(&self, target: &str) -> Result<()> {
@@ -1018,6 +1043,29 @@ async fn persist_background_records(
     }
 }
 
+/// Returns `candidate`, or the first `-<n>` suffix of it that `is_taken` does
+/// not already hold.
+///
+/// A generated id is `<kind>-<millisecond timestamp>`, so the only collision
+/// it can suffer is a second spawn of the same kind in the same millisecond.
+/// Suffixing keeps both records addressable instead of letting the second
+/// insert replace the first. Ids reach this function only from the generator
+/// in `prepare_queued_child`, so no caller-supplied naming scheme gains an
+/// unexpected suffix.
+fn unique_child_id(is_taken: impl Fn(&str) -> bool, candidate: &str) -> String {
+    if !is_taken(candidate) {
+        return candidate.to_owned();
+    }
+    let mut suffix = 2_u32;
+    loop {
+        let id = format!("{candidate}-{suffix}");
+        if !is_taken(&id) {
+            return id;
+        }
+        suffix = suffix.saturating_add(1);
+    }
+}
+
 /// Merges an unscoped controller's snapshot into the persisted ledger.
 ///
 /// The unscoped controller is not the owner of the owner-scoped records it
@@ -1058,7 +1106,35 @@ fn merge_unscoped_background_records(
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use std::collections::BTreeSet;
     use std::time::Duration;
+
+    /// Generated ids carry millisecond precision, so two spawns of the same
+    /// kind in one millisecond propose the same id. The second must receive a
+    /// distinct id: `BTreeMap::insert` on the shared key would replace the
+    /// first child's record and silently lose a subagent that had already been
+    /// admitted.
+    #[test]
+    fn a_colliding_child_id_is_suffixed_instead_of_replacing_the_record() {
+        let mut taken: BTreeSet<String> = BTreeSet::new();
+
+        let first = unique_child_id(|id| taken.contains(id), "agent-explorer-20261113T060819731Z");
+        taken.insert(first.clone());
+        let second = unique_child_id(|id| taken.contains(id), "agent-explorer-20261113T060819731Z");
+        taken.insert(second.clone());
+        let third = unique_child_id(|id| taken.contains(id), "agent-explorer-20261113T060819731Z");
+
+        assert_eq!(
+            [first.as_str(), second.as_str(), third.as_str()],
+            [
+                "agent-explorer-20261113T060819731Z",
+                "agent-explorer-20261113T060819731Z-2",
+                "agent-explorer-20261113T060819731Z-3",
+            ],
+            "each collision must take the next free suffix"
+        );
+        assert!(!taken.contains(&third), "the third id must still be free");
+    }
 
     #[tokio::test]
     async fn registered_waiter_observes_notify_waiters_before_first_wait_poll() {
