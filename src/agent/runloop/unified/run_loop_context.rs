@@ -440,7 +440,7 @@ pub(crate) struct HarnessTurnState {
     post_tool_tool_enabled_retry_used: bool,
     /// Counts how many times the post-tool follow-up failure path has
     /// scheduled a tool-free recovery pass within a single turn. Bounded by
-    /// `MAX_POST_TOOL_RECOVERY_CYCLES` in the turn loop as a defense-in-depth
+    /// `MAX_POST_TOOL_RECOVERY_CYCLES` in the turn loop as a defence-in-depth
     /// backstop against any regression that re-triggers recovery cyclically.
     /// Resets naturally per turn because each turn constructs a fresh
     /// `HarnessTurnState`.

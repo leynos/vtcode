@@ -552,7 +552,7 @@ pub(super) fn process_key_with_clipboard_image_reader(
     }
 
     // Legacy reverse search handling (kept for backward compatibility)
-    // Handle reverse search (Ctrl+R) - disabled in favor of history picker
+    // Handle reverse search (Ctrl+R) - disabled in favour of history picker
     // if has_control && matches!(key.code, KeyCode::Char('r') | KeyCode::Char('R')) {
     //     if !session.core.reverse_search_state.active {
     //         session.core.reverse_search_state.start_search(

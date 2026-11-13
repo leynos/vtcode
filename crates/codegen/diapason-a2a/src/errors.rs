@@ -32,8 +32,8 @@ const INTERNAL_ERROR: i32 = -32603;
 /// Task not found - The specified task does not exist
 const TASK_NOT_FOUND_ERROR: i32 = -32001;
 
-/// Task not cancelable - The task cannot be canceled in its current state
-const TASK_NOT_CANCELABLE_ERROR: i32 = -32002;
+/// Task not cancellable - The task cannot be cancelled in its current state
+const TASK_NOT_CANCELLABLE_ERROR: i32 = -32002;
 
 /// Push notifications not supported - The agent does not support push notifications
 const PUSH_NOTIFICATION_NOT_SUPPORTED_ERROR: i32 = -32003;
@@ -65,7 +65,7 @@ pub enum A2aErrorCode {
     InternalError,
     // A2A-specific errors
     TaskNotFound,
-    TaskNotCancelable,
+    TaskNotCancellable,
     PushNotificationNotSupported,
     UnsupportedOperation,
     ContentTypeNotSupported,
@@ -84,7 +84,7 @@ impl From<A2aErrorCode> for i32 {
             A2aErrorCode::InvalidParams => INVALID_PARAMS_ERROR,
             A2aErrorCode::InternalError => INTERNAL_ERROR,
             A2aErrorCode::TaskNotFound => TASK_NOT_FOUND_ERROR,
-            A2aErrorCode::TaskNotCancelable => TASK_NOT_CANCELABLE_ERROR,
+            A2aErrorCode::TaskNotCancellable => TASK_NOT_CANCELLABLE_ERROR,
             A2aErrorCode::PushNotificationNotSupported => PUSH_NOTIFICATION_NOT_SUPPORTED_ERROR,
             A2aErrorCode::UnsupportedOperation => UNSUPPORTED_OPERATION_ERROR,
             A2aErrorCode::ContentTypeNotSupported => CONTENT_TYPE_NOT_SUPPORTED_ERROR,
@@ -104,7 +104,7 @@ impl From<i32> for A2aErrorCode {
             INVALID_PARAMS_ERROR => A2aErrorCode::InvalidParams,
             INTERNAL_ERROR => A2aErrorCode::InternalError,
             TASK_NOT_FOUND_ERROR => A2aErrorCode::TaskNotFound,
-            TASK_NOT_CANCELABLE_ERROR => A2aErrorCode::TaskNotCancelable,
+            TASK_NOT_CANCELLABLE_ERROR => A2aErrorCode::TaskNotCancellable,
             PUSH_NOTIFICATION_NOT_SUPPORTED_ERROR => A2aErrorCode::PushNotificationNotSupported,
             UNSUPPORTED_OPERATION_ERROR => A2aErrorCode::UnsupportedOperation,
             CONTENT_TYPE_NOT_SUPPORTED_ERROR => A2aErrorCode::ContentTypeNotSupported,
@@ -124,7 +124,7 @@ impl fmt::Display for A2aErrorCode {
             A2aErrorCode::InvalidParams => write!(f, "Invalid params"),
             A2aErrorCode::InternalError => write!(f, "Internal error"),
             A2aErrorCode::TaskNotFound => write!(f, "Task not found"),
-            A2aErrorCode::TaskNotCancelable => write!(f, "Task not cancelable"),
+            A2aErrorCode::TaskNotCancellable => write!(f, "Task not cancellable"),
             A2aErrorCode::PushNotificationNotSupported => {
                 write!(f, "Push notifications not supported")
             }
@@ -153,8 +153,8 @@ pub enum A2aError {
     #[error("Task not found: {0}")]
     TaskNotFound(String),
 
-    #[error("Task not cancelable: {0}")]
-    TaskNotCancelable(String),
+    #[error("Task not cancellable: {0}")]
+    TaskNotCancellable(String),
 
     #[error("Invalid task state transition: {from:?} -> {to:?}")]
     InvalidStateTransition {
@@ -181,7 +181,7 @@ impl A2aError {
         match self {
             A2aError::RpcError { code, .. } => *code,
             A2aError::TaskNotFound(_) => A2aErrorCode::TaskNotFound,
-            A2aError::TaskNotCancelable(_) => A2aErrorCode::TaskNotCancelable,
+            A2aError::TaskNotCancellable(_) => A2aErrorCode::TaskNotCancellable,
             A2aError::InvalidStateTransition { .. } => A2aErrorCode::InvalidParams,
             A2aError::UnsupportedOperation(_) => A2aErrorCode::UnsupportedOperation,
             A2aError::ContentTypeNotSupported(_) => A2aErrorCode::ContentTypeNotSupported,

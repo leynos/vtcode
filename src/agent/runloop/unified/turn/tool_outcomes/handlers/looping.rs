@@ -78,7 +78,7 @@ fn read_file_limit_value(args: &Value) -> Option<usize> {
     })
 }
 
-/// Read-only flag. `unified_file`/`read_file` honor `raw` (bypass LLM
+/// Read-only flag. `unified_file`/`read_file` honour `raw` (bypass LLM
 /// summarization). Two reads of the same path + same slice but different `raw`
 /// modes return *different* payloads, so they must not be treated as the same
 /// family call. `true`/`false`/absent are all distinct suffixes.
