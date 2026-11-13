@@ -519,3 +519,124 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
     restored.signal_shutdown().await;
     root.signal_shutdown().await;
 }
+
+/// Sibling controllers of one session must not allocate the same task id.
+///
+/// A task id is generated from the agent kind and a millisecond clock, so two
+/// controllers that spawn the same kind in the same millisecond propose the
+/// same id. The adapter lists the whole controller tree and routes a bare id
+/// to the first controller that claims it, so a duplicate would list one task
+/// twice and could resolve an output read or a cancel to the wrong controller.
+/// Each controller's own `children` map cannot see the other's allocation, so
+/// the check has to be tree-wide.
+#[tokio::test]
+async fn colliding_child_ids_stay_distinct_across_sibling_controllers() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let root = SubagentController::new(test_controller_config(workspace_root.clone(), DiapasonConfig::default()))
+        .await
+        .expect("root controller");
+
+    // Build the siblings the way `child_controller_for` does, including the
+    // scope inheritance that gives them one shared allocator.
+    let mut first = SubagentController::new({
+        let mut config = test_controller_config(workspace_root.clone(), DiapasonConfig::default());
+        config.parent_session_id = "first-child-session".to_string();
+        config.depth = 1;
+        config.managed_background_runtime = true;
+        config
+    })
+    .await
+    .expect("first sibling controller");
+    first.inherit_child_id_scope(&root);
+    let mut second = SubagentController::new({
+        let mut config = test_controller_config(workspace_root, DiapasonConfig::default());
+        config.parent_session_id = "second-child-session".to_string();
+        config.depth = 1;
+        config.managed_background_runtime = true;
+        config
+    })
+    .await
+    .expect("second sibling controller");
+    second.inherit_child_id_scope(&root);
+
+    let spec = explorer_spec();
+    let candidate = "agent-explorer-20261113T060819731Z";
+    let first_id = first
+        .insert_child_with_candidate_id(
+            candidate,
+            test_child_record(
+                candidate,
+                "first-session-candidate",
+                "first-child-session",
+                &spec,
+                SubagentStatus::Queued,
+                2,
+                None,
+            ),
+        )
+        .await
+        .expect("first insertion");
+    let second_id = second
+        .insert_child_with_candidate_id(
+            candidate,
+            test_child_record(
+                candidate,
+                "second-session-candidate",
+                "second-child-session",
+                &spec,
+                SubagentStatus::Queued,
+                2,
+                None,
+            ),
+        )
+        .await
+        .expect("second insertion");
+
+    assert_eq!(first_id, candidate, "the first allocation keeps the candidate id");
+    assert_eq!(second_id, format!("{candidate}-2"), "the second takes the next free suffix");
+
+    // The flattened listing is what the adapter serves: every task must appear
+    // once, under the id its own controller stores.
+    let mut entries = Vec::new();
+    for controller in [&first, &second] {
+        entries.extend(controller.status_entries().await);
+    }
+    let mut listed = entries.iter().map(|entry| entry.id.clone()).collect::<Vec<_>>();
+    let flat_len = listed.len();
+    listed.sort_unstable();
+    listed.dedup();
+    assert_eq!(flat_len, 2, "both siblings must be listed");
+    assert_eq!(flat_len, listed.len(), "no task id may be listed twice");
+
+    // Lifecycle identity follows the id, so the two records stay separable in
+    // the event stream rather than sharing one session key.
+    let second_entry = second
+        .status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == second_id)
+        .expect("the suffixed id must be listed by its own controller");
+    assert_eq!(second_entry.session_id, format!("second-child-session-{second_id}"));
+    assert!(
+        !second_entry.session_id.contains("second-session-candidate"),
+        "the rewritten session id must not keep the pre-allocation name"
+    );
+
+    // Routing: a bare id now resolves in exactly one controller, which is what
+    // the adapter's first-match lookup depends on for output and cancellation.
+    for (id, owner, other) in [(&first_id, &first, &second), (&second_id, &second, &first)] {
+        assert!(
+            owner.status_entries().await.iter().any(|entry| entry.id == *id),
+            "{id} must resolve in the controller that allocated it"
+        );
+        assert!(
+            !other.status_entries().await.iter().any(|entry| entry.id == *id),
+            "{id} must not also resolve in a sibling controller"
+        );
+    }
+
+    first.signal_shutdown().await;
+    second.signal_shutdown().await;
+    root.signal_shutdown().await;
+}
