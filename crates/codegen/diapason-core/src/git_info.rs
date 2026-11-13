@@ -163,72 +163,189 @@ pub async fn get_head_commit_hash_async(cwd: std::path::PathBuf) -> Result<Optio
 }
 
 #[cfg(test)]
+#[path = "git_info_test_support.rs"]
+pub(crate) mod test_support;
+
+#[cfg(test)]
 mod tests {
+    //! Verifies Git information collection against hermetic local repositories.
+
+    use super::test_support::{
+        CLEAN_TEST_CHILD_ENV, FIXTURE_REMOTE_URL, isolated_git_repository, isolated_git_repository_with,
+        no_command_configuration, run_in_clean_test_process,
+    };
     use super::*;
-    use diapason_commons::canonicalize;
+    use anyhow::{Context, Result};
     use std::path::PathBuf;
+    use tempfile::TempDir;
 
     #[test]
     fn test_is_git_repo() {
-        // The diapason repo itself should be a git repo
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        assert!(is_git_repo(&repo_root));
+        run_in_clean_test_process("git_info::tests::test_is_git_repo", no_command_configuration, test_is_git_repo_body)
+            .expect("run isolated Git repository test");
+    }
+
+    fn test_is_git_repo_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        assert!(is_git_repo(&fixture.repo_root), "fixture repository must be recognized as Git");
+        Ok(())
     }
 
     #[test]
     fn test_get_git_repo_root() {
-        let manifest_dir = canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR"))).unwrap();
-        let root = get_git_repo_root(&manifest_dir).unwrap();
-        assert!(root.is_some());
-        let root = canonicalize(PathBuf::from(root.unwrap())).unwrap();
-        assert!(
-            manifest_dir == root || manifest_dir.starts_with(&root),
-            "repo root {} should be an ancestor of manifest dir {}",
-            root.display(),
-            manifest_dir.display()
-        );
+        run_in_clean_test_process(
+            "git_info::tests::test_get_git_repo_root",
+            no_command_configuration,
+            test_get_git_repo_root_body,
+        )
+        .expect("run isolated Git repository test");
+    }
+
+    fn test_get_git_repo_root_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        let root = get_git_repo_root(&fixture.repo_root)?.context("fixture repository must have a Git root")?;
+        assert_eq!(PathBuf::from(root), fixture.repo_root, "Git top-level path must equal the created fixture root");
+        Ok(())
     }
 
     #[test]
     fn test_get_head_commit_hash() {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let hash = get_head_commit_hash(&repo_root).unwrap();
-        assert!(hash.is_some());
-        // Short hash should be 7-12 characters
-        let hash_str = hash.unwrap();
-        assert!(hash_str.len() >= 7 && hash_str.len() <= 12);
-        // Should only contain hex characters
-        assert!(hash_str.chars().all(|c| c.is_ascii_hexdigit()));
+        run_in_clean_test_process(
+            "git_info::tests::test_get_head_commit_hash",
+            no_command_configuration,
+            test_get_head_commit_hash_body,
+        )
+        .expect("run isolated Git repository test");
+    }
+
+    fn test_get_head_commit_hash_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        let hash = get_head_commit_hash(&fixture.repo_root)?.context("fixture repository must have a short HEAD")?;
+        assert_eq!(hash, fixture.short_head, "short HEAD must match the fixture commit");
+        assert!(
+            hash.len() >= 7 && hash.len() <= 12,
+            "fixture short HEAD must use Git's 7-to-12-character abbreviation"
+        );
+        assert!(
+            hash.chars().all(|character| character.is_ascii_hexdigit()),
+            "fixture short HEAD must contain only hexadecimal characters"
+        );
+        Ok(())
     }
 
     #[test]
     fn test_collect_git_info() {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let info = collect_git_info(&repo_root).unwrap();
+        run_in_clean_test_process(
+            "git_info::tests::test_collect_git_info",
+            no_command_configuration,
+            test_collect_git_info_body,
+        )
+        .expect("run isolated Git repository test");
+    }
 
-        // Should have a HEAD commit
-        assert!(info.head_commit.is_some());
+    fn test_collect_git_info_body() -> Result<()> {
+        let fixture = isolated_git_repository()?;
+        let info = collect_git_info(&fixture.repo_root)?;
 
-        // Should have a repo root
-        assert!(info.repo_root.is_some());
+        assert_eq!(
+            info.head_commit.as_deref(),
+            Some(fixture.short_head.as_str()),
+            "collected short HEAD must match the fixture commit"
+        );
+        assert_eq!(
+            info.repo_root.as_deref(),
+            fixture.repo_root.to_str(),
+            "collected repository root must match the fixture root"
+        );
+        assert_eq!(
+            info.remotes.get("origin").map(String::as_str),
+            Some(FIXTURE_REMOTE_URL),
+            "collected fetch remote must match the configured fixture URL"
+        );
+        Ok(())
+    }
 
-        // Remotes may or may not be present depending on git config
-        // but the function should not error
+    const ADVERSARIAL_TARGET_ROOT_ENV: &str = "VTCODE_GIT_INFO_ADVERSARIAL_TARGET_ROOT";
+    const ADVERSARIAL_TARGET_HEAD_ENV: &str = "VTCODE_GIT_INFO_ADVERSARIAL_TARGET_HEAD";
+    const ADVERSARIAL_FOREIGN_REMOTE_URL: &str = "https://example.invalid/foreign.git";
+    const ADVERSARIAL_FOREIGN_COMMIT_MESSAGE: &str = "git-info foreign fixture commit";
+
+    #[test]
+    fn test_clean_reexec_ignores_git_overrides() {
+        const TEST_NAME: &str = "git_info::tests::test_clean_reexec_ignores_git_overrides";
+
+        if std::env::var_os(CLEAN_TEST_CHILD_ENV).is_some() {
+            run_in_clean_test_process(
+                TEST_NAME,
+                no_command_configuration,
+                test_clean_reexec_ignores_git_overrides_body,
+            )
+            .expect("run isolated Git environment test");
+            return;
+        }
+
+        let target = isolated_git_repository().expect("create target Git fixture");
+        let foreign = isolated_git_repository_with(ADVERSARIAL_FOREIGN_REMOTE_URL, ADVERSARIAL_FOREIGN_COMMIT_MESSAGE)
+            .expect("create foreign Git fixture");
+        assert_ne!(target.repo_root, foreign.repo_root, "target and foreign fixture roots must differ");
+        assert_ne!(target.short_head, foreign.short_head, "target and foreign fixture HEADs must differ");
+        assert_ne!(FIXTURE_REMOTE_URL, ADVERSARIAL_FOREIGN_REMOTE_URL, "target and foreign origins must differ");
+
+        let target_root = target.repo_root.clone();
+        let target_head = target.short_head.clone();
+        let foreign_root = foreign.repo_root.clone();
+        run_in_clean_test_process(
+            TEST_NAME,
+            move |command| {
+                command
+                    .env(ADVERSARIAL_TARGET_ROOT_ENV, target_root)
+                    .env(ADVERSARIAL_TARGET_HEAD_ENV, target_head)
+                    .env("GIT_DIR", foreign_root.join(".git"))
+                    .env("GIT_WORK_TREE", foreign_root);
+            },
+            test_clean_reexec_ignores_git_overrides_body,
+        )
+        .expect("run isolated Git environment test");
+    }
+
+    fn test_clean_reexec_ignores_git_overrides_body() -> Result<()> {
+        let target_root = std::env::var_os(ADVERSARIAL_TARGET_ROOT_ENV)
+            .map(PathBuf::from)
+            .context("adversarial child is missing the target fixture root")?;
+        let target_head =
+            std::env::var(ADVERSARIAL_TARGET_HEAD_ENV).context("adversarial child is missing the target short HEAD")?;
+        let target_root_string = target_root.to_str().context("target fixture root is not UTF-8")?;
+        let info = collect_git_info(&target_root)?;
+
+        assert_eq!(
+            info.repo_root.as_deref(),
+            Some(target_root_string),
+            "clean re-exec must query the target fixture root"
+        );
+        assert_eq!(
+            info.head_commit.as_deref(),
+            Some(target_head.as_str()),
+            "clean re-exec must query the target fixture short HEAD"
+        );
+        assert_eq!(
+            info.remotes.get("origin").map(String::as_str),
+            Some(FIXTURE_REMOTE_URL),
+            "clean re-exec must query the target fixture origin"
+        );
+        Ok(())
     }
 
     #[test]
     fn test_non_git_directory() {
-        use std::fs;
-        use tempfile::TempDir;
+        let temp_dir = TempDir::new().expect("create isolated non-Git directory");
+        let non_git_path = temp_dir.path();
 
-        let temp_dir = TempDir::new().unwrap();
-        let non_git_path = temp_dir.path().join("not_a_repo");
-        fs::create_dir(&non_git_path).unwrap();
-
-        // Should return empty results without error
-        assert!(!is_git_repo(&non_git_path));
-        assert!(get_git_remote_urls(&non_git_path).unwrap().is_empty());
-        assert!(get_head_commit_hash(&non_git_path).unwrap().is_none());
-        assert!(get_git_repo_root(&non_git_path).unwrap().is_none());
+        assert!(!is_git_repo(non_git_path), "new temporary directory must not be a Git repository");
+        let remotes = get_git_remote_urls(non_git_path).expect("query remotes in non-Git directory");
+        assert!(remotes.is_empty(), "non-Git directory must have no remotes");
+        let head = get_head_commit_hash(non_git_path).expect("query HEAD in non-Git directory");
+        assert!(head.is_none(), "non-Git directory must have no HEAD commit");
+        let root = get_git_repo_root(non_git_path).expect("query root in non-Git directory");
+        assert!(root.is_none(), "non-Git directory must have no Git root");
     }
 }
