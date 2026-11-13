@@ -1,4 +1,4 @@
-//! Diff theme configuration and color palettes
+//! Diff theme configuration and colour palettes
 //!
 //! Uses subtle red/green tints for diff line backgrounds.
 
@@ -27,7 +27,7 @@ impl DiffTheme {
     }
 }
 
-/// Terminal color capability level for palette selection.
+/// Terminal colour capability level for palette selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiffColourLevel {
     TrueColour,
@@ -36,7 +36,7 @@ pub enum DiffColourLevel {
 }
 
 impl DiffColourLevel {
-    /// Detect color level from terminal capabilities.
+    /// Detect colour level from terminal capabilities.
     pub fn detect() -> Self {
         let colourterm = std::env::var("COLORTERM").unwrap_or_default();
         let term = std::env::var("TERM").unwrap_or_default();
@@ -94,7 +94,7 @@ fn is_windows_terminal(term_program: Option<&str>) -> bool {
 
 // ── Standard ANSI red/green backgrounds ────────────────────────────────────
 
-/// Get background color for addition lines based on theme and color level.
+/// Get background colour for addition lines based on theme and colour level.
 pub fn diff_add_bg(theme: DiffTheme, _level: DiffColourLevel) -> Color {
     match theme {
         DiffTheme::Dark => Color::Rgb(anstyle::RgbColor(20, 58, 45)),
@@ -102,7 +102,7 @@ pub fn diff_add_bg(theme: DiffTheme, _level: DiffColourLevel) -> Color {
     }
 }
 
-/// Get background color for deletion lines based on theme and color level.
+/// Get background colour for deletion lines based on theme and colour level.
 pub fn diff_del_bg(theme: DiffTheme, _level: DiffColourLevel) -> Color {
     match theme {
         DiffTheme::Dark => Color::Rgb(anstyle::RgbColor(70, 38, 42)),
@@ -110,17 +110,17 @@ pub fn diff_del_bg(theme: DiffTheme, _level: DiffColourLevel) -> Color {
     }
 }
 
-/// Get gutter foreground color for light theme (dark theme uses dimmed default).
+/// Get gutter foreground colour for light theme (dark theme uses dimmed default).
 pub fn diff_gutter_fg_light(_level: DiffColourLevel) -> Color {
     Color::Ansi(AnsiColor::Black)
 }
 
-/// Get gutter background color for addition lines in light theme.
+/// Get gutter background colour for addition lines in light theme.
 pub fn diff_gutter_bg_add_light(_level: DiffColourLevel) -> Color {
     Color::Ansi(AnsiColor::BrightGreen)
 }
 
-/// Get gutter background color for deletion lines in light theme.
+/// Get gutter background colour for deletion lines in light theme.
 pub fn diff_gutter_bg_del_light(_level: DiffColourLevel) -> Color {
     Color::Ansi(AnsiColor::BrightRed)
 }

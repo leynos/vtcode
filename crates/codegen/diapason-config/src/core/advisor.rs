@@ -2,7 +2,7 @@
 //!
 //! The advisor pairs a faster executor model with a higher-intelligence advisor
 //! model that provides strategic guidance mid-generation. The advisor runs as an
-//! Anthropic server-side tool and is therefore only honored for Anthropic models
+//! Anthropic server-side tool and is therefore only honoured for Anthropic models
 //! and providers.
 
 use serde::{Deserialize, Serialize};

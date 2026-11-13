@@ -25,7 +25,7 @@ pub struct CompactActivityMetadata {
     pub command: Option<CompactStr>,
     /// Number of complete output lines hidden behind the review affordance.
     pub hidden_line_count: usize,
-    /// Optional status or artifact text that remains visible in the row.
+    /// Optional status or artefact text that remains visible in the row.
     pub suffix: Option<CompactStr>,
     /// First complete capture represented by the row, used as the review focus.
     pub review_anchor: Option<ToolOutputId>,

@@ -102,7 +102,7 @@ pub enum LayoutModeOverride {
     Wide,
 }
 
-/// Reasoning visibility behavior in the transcript.
+/// Reasoning visibility behaviour in the transcript.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReasoningDisplayMode {
@@ -124,12 +124,12 @@ pub enum ThinkingBlockState {
     Extended,
 }
 
-/// Wizard modal behavior variant.
+/// Wizard modal behaviour variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WizardModalMode {
-    /// Traditional multi-step wizard behavior (Enter advances/collects answers).
+    /// Traditional multi-step wizard behaviour (Enter advances/collects answers).
     MultiStep,
-    /// Tabbed list behavior (tabs switch categories; Enter submits immediately).
+    /// Tabbed list behaviour (tabs switch categories; Enter submits immediately).
     TabbedList,
 }
 
