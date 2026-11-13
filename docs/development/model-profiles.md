@@ -68,8 +68,10 @@ terminal usage chunk instead.
 - Explicit boolean `false` is honored and may override an implicit `true` from
   a lower-precedence layer.
 - `supports_stream_usage` uses the same profile-over-provider precedence.
-  When enabled, Diapason requests usage for custom OpenAI-chat streams; when
-  omitted or `false`, it leaves `stream_options.include_usage` disabled.
+  When enabled, Diapason requests usage for custom OpenAI-chat streams. An
+  unset profile value inherits the provider setting; only a resolved `false` —
+  or a value that never resolves because neither the profile nor the provider
+  sets it — leaves `stream_options.include_usage` disabled.
 - Omitting `api_format` preserves legacy behavior. Setting `api_format`
   explicitly instructs Diapason to treat the model with that API shape; it does
   not cause silent fallbacks.
