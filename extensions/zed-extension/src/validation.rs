@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn test_validate_workspace_config_zero_tokens() {
         let config = WorkspaceConfig {
-            analyze_on_startup: false,
+            analyse_on_startup: false,
             max_context_tokens: 0,
             ignore_patterns: vec![],
         };
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn test_validate_workspace_config_high_tokens() {
         let config = WorkspaceConfig {
-            analyze_on_startup: false,
+            analyse_on_startup: false,
             max_context_tokens: 200000,
             ignore_patterns: vec![],
         };

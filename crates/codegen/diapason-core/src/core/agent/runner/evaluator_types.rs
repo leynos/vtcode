@@ -261,7 +261,7 @@ pub(super) struct ScepticPanelEntry {
 /// Aggregated result of the sceptic panel.
 ///
 /// The panel passes only when every sceptic verdict is "pass" and every
-/// scorecard dimension meets the threshold across all panelists.
+/// scorecard dimension meets the threshold across all panellists.
 #[derive(Debug, Clone)]
 pub(super) struct ScepticPanelAggregate {
     pub(super) verdict: String,

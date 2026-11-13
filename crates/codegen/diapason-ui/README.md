@@ -6,7 +6,7 @@ Unified UI crate for Diapason: design system, theme registry, and TUI framework.
 
 This crate consolidates the UI layer for Diapason, providing:
 
-- **Design system** -- shared color tokens, typography, and spacing primitives
+- **Design system** -- shared colour tokens, typography, and spacing primitives
 - **Theme registry** -- runtime theme switching with built-in palettes
   (Catppuccin, custom)
 - **TUI framework** -- terminal rendering, input handling, and widget
@@ -33,7 +33,7 @@ backward-compatibility with callers that previously imported from the standalone
 
 ```
 src/
-  design/     -- design tokens, color system, typography
+  design/     -- design tokens, colour system, typography
   theme/      -- theme registry and built-in palettes
   tui/        -- terminal backend, input handling, rendering loop
   widgets/    -- reusable TUI widgets (markdown, fuzzy picker, status bar, etc.)

@@ -20,11 +20,11 @@ pub(crate) static ALTERNATE_SCREEN_ACTIVE: AtomicBool = AtomicBool::new(false);
 pub(crate) static RESTORE_DONE: AtomicBool = AtomicBool::new(false);
 static TERMINAL_OPERATION_LOCK: Mutex<()> = Mutex::new(());
 static DEBUG_MODE: AtomicBool = AtomicBool::new(cfg!(debug_assertions));
-pub(crate) static COLOR_EYRE_ENABLED: AtomicBool = AtomicBool::new(cfg!(debug_assertions));
+pub(crate) static COLOUR_EYRE_ENABLED: AtomicBool = AtomicBool::new(cfg!(debug_assertions));
 static SHOW_DIAGNOSTICS: AtomicBool = AtomicBool::new(false);
-pub(crate) static COLOR_EYRE_SETUP_ONCE: Once = Once::new();
+pub(crate) static COLOUR_EYRE_SETUP_ONCE: Once = Once::new();
 #[cfg(debug_assertions)]
-pub(crate) static COLOR_EYRE_PANIC_HOOK: OnceLock<color_eyre::config::PanicHook> = OnceLock::new();
+pub(crate) static COLOUR_EYRE_PANIC_HOOK: OnceLock<color_eyre::config::PanicHook> = OnceLock::new();
 pub(crate) static APP_METADATA: OnceLock<AppMetadata> = OnceLock::new();
 
 #[derive(Clone, Debug)]
@@ -55,11 +55,11 @@ pub(crate) fn is_debug_mode() -> bool {
 }
 
 pub fn set_colour_eyre_enabled(enabled: bool) {
-    COLOR_EYRE_ENABLED.store(enabled, Ordering::SeqCst);
+    COLOUR_EYRE_ENABLED.store(enabled, Ordering::SeqCst);
 }
 
 pub(crate) fn is_colour_eyre_enabled() -> bool {
-    COLOR_EYRE_ENABLED.load(Ordering::SeqCst)
+    COLOUR_EYRE_ENABLED.load(Ordering::SeqCst)
 }
 
 pub fn set_show_diagnostics(enabled: bool) {
@@ -172,11 +172,11 @@ pub(crate) fn maybe_prepare_colour_eyre_hooks() {
         return;
     }
 
-    COLOR_EYRE_SETUP_ONCE.call_once(|| {
+    COLOUR_EYRE_SETUP_ONCE.call_once(|| {
         let hooks = color_eyre::config::HookBuilder::default().try_into_hooks();
         match hooks {
             Ok((panic_hook, eyre_hook)) => {
-                let _ = COLOR_EYRE_PANIC_HOOK.set(panic_hook);
+                let _ = COLOUR_EYRE_PANIC_HOOK.set(panic_hook);
                 if let Err(error) = eyre_hook.install() {
                     eprintln!("warning: failed to install color-eyre hook: {error}");
                 }
@@ -197,13 +197,13 @@ mod tests {
 
     #[test]
     fn test_colour_eyre_toggle() {
-        COLOR_EYRE_ENABLED.store(false, Ordering::SeqCst);
+        COLOUR_EYRE_ENABLED.store(false, Ordering::SeqCst);
         assert!(!is_colour_eyre_enabled());
 
         set_colour_eyre_enabled(true);
         assert!(is_colour_eyre_enabled());
 
-        COLOR_EYRE_ENABLED.store(false, Ordering::SeqCst);
+        COLOUR_EYRE_ENABLED.store(false, Ordering::SeqCst);
     }
 
     #[test]

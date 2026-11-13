@@ -51,7 +51,7 @@ redraw helpers, and terminal notification helpers.
 
 - Exit summary rendering (`src/agent/runloop/unified/postamble.rs`)
 - Terminal palette probing
-    (`crates/codegen/diapason-core/src/utils/terminal_color_probe.rs`)
+    (`crates/codegen/diapason-core/src/utils/terminal_colour_probe.rs`)
 - Tool risk colouring
     (`crates/codegen/diapason-core/src/tools/registry/risk_scorer.rs`)
 - Syntax highlight reset emission
@@ -63,16 +63,15 @@ redraw helpers, and terminal notification helpers.
 implementation so downstream crates use one canonical source of escape
 sequences.
 
-### 3. ANSI Style Utilities (`crates/codegen/diapason-core/src/utils/anstyle_utils.rs`)
+### 3. ANSI Style Utilities (`crates/codegen/diapason-ui/src/design/`)
 
 **Purpose**: Convert ANSI styles to Ratatui styles for TUI rendering
 
 **Key Functions**:
 
 ```rust
-pub fn ansi_color_to_ratatui_color(color: &AnsiColorType) -> Color
-pub fn ansi_effects_to_ratatui_modifiers(effects: Effects) -> Modifier
-pub fn ansi_style_to_ratatui_style(style: AnsiStyle) -> Style
+pub(crate) fn anstyle_to_ratatui_colour(colour: AnstyleColour) -> Color
+pub(crate) fn anstyle_to_ratatui_style(style: AnstyleStyle) -> Style
 ```
 
 **Colour Support**:
@@ -215,15 +214,15 @@ BrightBlue=94    → Ratatui::LightBlue
 **256 Colours** (`ESC[38;5;{ID}m`):
 
 ```rust
-// Converted via ansi_color_to_ratatui_color()
-// Supports full 256-color palette
+// Converted via anstyle_to_ratatui_colour()
+// Supports full 256-colour palette
 ```
 
 **RGB Colours** (`ESC[38;2;{r};{g};{b}m`):
 
 ```rust
-AnsiColorType::Rgb(rgb_color) =>
-    Color::Rgb(rgb_color.r(), rgb_color.g(), rgb_color.b())
+AnstyleColour::Rgb(RgbColor(red, green, blue)) =>
+    Color::Rgb(red, green, blue)
 ```
 
 ### Effects Mapping
@@ -254,13 +253,14 @@ let clean = strip_ansi(raw_output);
 ### 2. Converting ANSI to Ratatui Style
 
 ```rust
-use diapason_core::utils::anstyle_utils::ansi_style_to_ratatui_style;
-use anstyle::Style as AnsiStyle;
+use anstyle::{AnsiColor, Color, Style as AnsiStyle};
 
+// Inside the `diapason-ui` crate:
+//   use crate::design::style::anstyle_to_ratatui_style;
 let ansi_style = AnsiStyle::new()
-    .fg_color(Some(AnsiColor::Red))
+    .fg_color(Some(Color::Ansi(AnsiColor::Red)))
     .bold();
-let ratatui_style = ansi_style_to_ratatui_style(ansi_style);
+let ratatui_style = anstyle_to_ratatui_style(ansi_style);
 ```
 
 ### 3. Rendering Styled Text
@@ -299,25 +299,24 @@ fn test_strip_ansi_multiple() {
 
 ### Style Conversion Tests
 
-**Location**: `crates/codegen/diapason-core/src/utils/anstyle_utils.rs`
+**Location**: `crates/codegen/diapason-ui/src/design/{colour,style}.rs`
 
 ```rust
 #[test]
-fn test_ansi_color_conversion() {
+fn standard_ansi_colours() {
     assert_eq!(
-        ansi_color_to_ratatui_color(&AnsiColourEnum::Ansi(AnsiColor::Red)),
+        anstyle_to_ratatui_colour(AnstyleColour::Ansi(AnsiColor::Red)),
         Color::Red
     );
 }
 
 #[test]
-fn test_ansi_style_to_ratatui_style() {
+fn anstyle_style_with_fg() {
     let ansi_style = anstyle::Style::new()
-        .fg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Green)))
-        .bg_color(Some(AnsiColourEnum::Ansi(AnsiColor::Blue)))
+        .fg_color(Some(AnstyleColour::Ansi(AnsiColor::Green)))
         .bold();
-    let ratatui_style = ansi_style_to_ratatui_style(ansi_style);
-    // Verify colors and modifiers
+    let ratatui_style = anstyle_to_ratatui_style(ansi_style);
+    assert_eq!(ratatui_style.fg, Some(Color::Green));
 }
 ```
 
@@ -420,9 +419,9 @@ let s = String::from_utf8(chunk).unwrap(); // May panic
 | Set title         | `OSC 2 ;`       | `OSC_SET_TITLE_PREFIX`          |
 | Set icon name     | `OSC 1 ;`       | `OSC_SET_ICON_PREFIX`           |
 | Set icon+title    | `OSC 0 ;`       | `OSC_SET_ICON_AND_TITLE_PREFIX` |
-| Foreground colour | `OSC 10 ;`      | `OSC_FG_COLOR_PREFIX`           |
-| Background colour | `OSC 11 ;`      | `OSC_BG_COLOR_PREFIX`           |
-| Cursor colour     | `OSC 12 ;`      | `OSC_CURSOR_COLOR_PREFIX`       |
+| Foreground colour | `OSC 10 ;`      | `OSC_FG_COLOUR_PREFIX`          |
+| Background colour | `OSC 11 ;`      | `OSC_BG_COLOUR_PREFIX`          |
+| Cursor colour     | `OSC 12 ;`      | `OSC_CURSOR_COLOUR_PREFIX`      |
 | Hyperlink         | `OSC 8 ;`       | `OSC_HYPERLINK_PREFIX`          |
 | Clipboard         | `OSC 52 ;`      | `OSC_CLIPBOARD_PREFIX`          |
 
@@ -463,7 +462,7 @@ For complete ANSI sequence reference, see:
 - `crates/codegen/diapason-core/src/utils/ansi_codes.rs` — Backward-compatible
     re-export used by runtime callers
 - `crates/common/diapason-commons/src/ansi.rs` — ECMA-48 parser and stripper
-- `crates/codegen/diapason-core/src/utils/anstyle_utils.rs` — Style conversion
+- `crates/codegen/diapason-ui/src/design/` — Style conversion
 - `crates/codegen/diapason-core/src/utils/ansi.rs` — Rendering utilities
 
 ## Future Enhancements

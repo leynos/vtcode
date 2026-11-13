@@ -155,7 +155,7 @@ events are not silently dropped for a slow client.
 
 The server rejects malformed JSON, binary frames, oversized frames, requests
 over the in-flight limit, disallowed origins, expired/revoked sessions,
-unsupported adapter operations, and unauthorised mutation requests. Mutation
+unsupported adapter operations, and unauthorized mutation requests. Mutation
 responses remain pending until the adapter reports a result so a transport
 timeout cannot be mistaken for a failed write. Adapter errors are returned as a
 generic runtime failure so filesystem details do not become a transport side
