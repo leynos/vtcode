@@ -167,7 +167,7 @@ brew uninstall diapason
 ### 1. Create GitHub Release
 
 1. Create release on GitHub with tag `v{VERSION}`
-2. Upload binary artifacts for all platforms
+2. Upload binary artefacts for all platforms
 3. Note the SHA256 hashes
 
 ### 2. Update Homebrew Formula

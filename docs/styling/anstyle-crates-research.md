@@ -3,7 +3,7 @@
 ## Overview
 
 **anstyle-git** and **anstyle-ls** are complementary Rust crates that parse
-domain-specific color configuration syntaxes into standardized ANSI styles via
+domain-specific colour configuration syntaxes into standardized ANSI styles via
 the `anstyle` crate. This research explores how their parsing approaches can
 improve diapason's styling system.
 
@@ -11,17 +11,17 @@ improve diapason's styling system.
 
 ### anstyle-git (v1.1.3)
 
-**Purpose**: Parses Git's color configuration syntax
+**Purpose**: Parses Git's colour configuration syntax
 
 **Key Features**:
 
 - Parses Git style descriptions (e.g., `"bold red blue"`)
 - Supports keywords: `bold`, `dim`, `italic`, `underline`, `reverse`,
   `strikethrough`
-- Supports named colors: `black`, `red`, `green`, `yellow`, `blue`, `magenta`,
+- Supports named colours: `black`, `red`, `green`, `yellow`, `blue`, `magenta`,
   `cyan`, `white`
-- Supports hex colors: `#RRGGBB` (e.g., `#0000ee`)
-- Supports foreground and background colors in single declaration
+- Supports hex colours: `#RRGGBB` (e.g., `#0000ee`)
+- Supports foreground and background colours in single declaration
 - Returns `anstyle::Style` (composable style objects)
 
 **Example**:
@@ -37,10 +37,10 @@ let hyperlink_style = anstyle_git::parse("#0000ee ul").unwrap();
 **Syntax Grammar**:
 
 - Words separated by whitespace
-- First color term is foreground
-- Second color term is background
+- First colour term is foreground
+- Second colour term is background
 - Effect keywords can appear anywhere
-- Hex colors allowed for both foreground and background
+- Hex colours allowed for both foreground and background
 
 ### anstyle-ls (v1.0.5)
 
@@ -67,8 +67,8 @@ let style = anstyle_ls::parse("34;03").unwrap();
 
 **Syntax Grammar**:
 
-- ANSI codes: `01` (bold), `03` (italic), `04` (underline), `30-37` (colors),
-  `90-97` (bright colors), `40-47` (bg colors)
+- ANSI codes: `01` (bold), `03` (italic), `04` (underline), `30-37` (colours),
+  `90-97` (bright colours), `40-47` (bg colours)
 - Semicolon-separated sequence of codes
 - File type pattern keys precede the colon (e.g., `di=01;34:ln=36`)
 
@@ -85,14 +85,14 @@ let style = anstyle_ls::parse("34;03").unwrap();
 2. **anstyle-parse** (v0.2) - Parses ANSI escape sequences from terminal output
 3. **anstyle-crossterm** (v4.0) - Bridge to crossterm TUI library
 4. **ratatui** (v0.30) - TUI rendering
-5. **catppuccin** (v2.5) - Theme color palettes
+5. **catppuccin** (v2.5) - Theme colour palettes
 
 **Styling Pipeline**:
 
 ```
 anstyle::Style (abstract)
   ↓
-convert_style() → InlineTextStyle (limited: color, bold, italic only)
+convert_style() → InlineTextStyle (limited: colour, bold, italic only)
   ↓
 ratatui_style_from_inline() → ratatui::style::Style
   ↓
@@ -105,10 +105,10 @@ TUI rendering
    `dim`, `underline`, `strikethrough`, `reverse`
 2. **No Config String Parsing**: Hard-coded theme palettes; no support for
    Git-style or LS_COLORS-style configuration strings
-3. **Manual Color Mixing**: Uses custom functions (`mix()`, `lighten()`,
+3. **Manual Colour Mixing**: Uses custom functions (`mix()`, `lighten()`,
    `ensure_contrast()`) instead of leveraging ecosystem tools
 4. **Limited Background Support**: `InlineTextStyle` doesn't properly model
-   background colors
+   background colours
 5. **Cargo.toml**: Missing `anstyle-git` and `anstyle-ls` dependencies
 
 ## Recommended Improvements
@@ -129,8 +129,8 @@ anstyle-query = "1.0"
 
 **Benefits**:
 
-- Parse Git config colors from `.git/config`
-- Parse file listing colors from `LS_COLORS` env var
+- Parse Git config colours from `.git/config`
+- Parse file listing colours from `LS_COLORS` env var
 - Reduce custom parsing code
 
 ### 2. Expand InlineTextStyle to Support Full Effects
@@ -139,7 +139,7 @@ anstyle-query = "1.0"
 
 ```rust
 pub struct InlineTextStyle {
-    pub color: Option<AnsiColorEnum>,
+    pub colour: Option<AnsiColourEnum>,
     pub bold: bool,
     pub italic: bool,
 }
@@ -151,8 +151,8 @@ pub struct InlineTextStyle {
 use anstyle::Effects;
 
 pub struct InlineTextStyle {
-    pub color: Option<AnsiColorEnum>,
-    pub bg_color: Option<AnsiColorEnum>,
+    pub colour: Option<AnsiColourEnum>,
+    pub bg_colour: Option<AnsiColourEnum>,
     pub effects: Effects,  // Replaces bold, italic
 }
 
@@ -199,8 +199,8 @@ impl ThemeConfigParser {
         })
     }
     
-    /// Parse LS_COLORS style codes for file colorization
-    pub fn parse_ls_colors(input: &str) -> anyhow::Result<Style> {
+    /// Parse LS_COLORS style codes for file colourization
+    pub fn parse_ls_colours(input: &str) -> anyhow::Result<Style> {
         anstyle_ls::parse(input).map_err(|e| {
             anyhow::anyhow!("Failed to parse LS_COLORS: {}", e)
         })
@@ -210,7 +210,7 @@ impl ThemeConfigParser {
     pub fn parse_style(input: &str, dialect: StyleDialect) -> anyhow::Result<Style> {
         match dialect {
             StyleDialect::Git => Self::parse_git_style(input),
-            StyleDialect::LS => Self::parse_ls_colors(input),
+            StyleDialect::LS => Self::parse_ls_colours(input),
         }
     }
 }
@@ -221,7 +221,7 @@ pub enum StyleDialect {
 }
 ```
 
-### 4. Add LS_COLORS File Coloring Support
+### 4. Add LS_COLORS File Colouring Support
 
 **Use Case**: When displaying files in the file picker modal, respect system
 `LS_COLORS` preferences
@@ -232,11 +232,11 @@ pub enum StyleDialect {
 use anstyle_ls;
 use std::env;
 
-pub struct FileColorizer {
+pub struct FileColourizer {
     ls_colors: Option<String>,
 }
 
-impl FileColorizer {
+impl FileColourizer {
     pub fn new() -> Self {
         Self {
             ls_colors: env::var("LS_COLORS").ok(),
@@ -267,34 +267,34 @@ impl FileColorizer {
 }
 ```
 
-### 5. Support Git Config Color Parsing
+### 5. Support Git Config Colour Parsing
 
-**Use Case**: Parse `.git/config` color settings for diff/status visualization
+**Use Case**: Parse `.git/config` colour settings for diff/status visualization
 
 **Location**: `crates/codegen/diapason-core/src/ui/diff_renderer.rs`
 
 ```rust
 use anstyle_git;
 
-pub struct GitColorConfig {
+pub struct GitColourConfig {
     diff_new: anstyle::Style,
     diff_old: anstyle::Style,
     diff_context: anstyle::Style,
 }
 
-impl GitColorConfig {
+impl GitColourConfig {
     pub fn from_git_config(config_path: &Path) -> anyhow::Result<Self> {
         // Read .git/config
         let content = std::fs::read_to_string(config_path)?;
         
-        // Parse color sections
-        // [color "diff"] new = green
-        // [color "diff"] old = red
-        // [color "diff"] context = default
+        // Parse colour sections
+        // [colour "diff"] new = green
+        // [colour "diff"] old = red
+        // [colour "diff"] context = default
         
-        let diff_new = Self::extract_color_style(&content, "diff", "new")?;
-        let diff_old = Self::extract_color_style(&content, "diff", "old")?;
-        let diff_context = Self::extract_color_style(&content, "diff", "context")?;
+        let diff_new = Self::extract_git_colour(&content, "diff", "new")?;
+        let diff_old = Self::extract_git_colour(&content, "diff", "old")?;
+        let diff_context = Self::extract_git_colour(&content, "diff", "context")?;
         
         Ok(Self {
             diff_new,
@@ -303,12 +303,12 @@ impl GitColorConfig {
         })
     }
     
-    fn extract_color_style(
+    fn extract_git_colour(
         content: &str,
         section: &str,
         key: &str,
     ) -> anyhow::Result<anstyle::Style> {
-        // Find pattern: [color "section"] key = value
+        // Find pattern: [colour "section"] key = value
         // Parse value with anstyle_git::parse()
         todo!()
     }
@@ -320,22 +320,22 @@ impl GitColorConfig {
 **Location**: `crates/codegen/diapason-core/src/ui/tui/style.rs`
 
 ```rust
-use anstyle::{AnsiColor, Color as AnsiColorEnum, Effects, RgbColor, Style as AnsiStyle};
+use anstyle::{AnsiColor, Colour as AnsiColourEnum, Effects, RgbColor, Style as AnsiStyle};
 
-fn convert_style_color(style: &AnsiStyle) -> Option<AnsiColorEnum> {
-    style.get_fg_color().and_then(convert_ansi_color)
+fn convert_style_colour(style: &AnsiStyle) -> Option<AnsiColourEnum> {
+    style.get_fg_color().and_then(convert_ansi_colour)
 }
 
-fn convert_style_bg_color(style: &AnsiStyle) -> Option<AnsiColorEnum> {
-    style.get_bg_color().and_then(convert_ansi_color)
+fn convert_style_bg_colour(style: &AnsiStyle) -> Option<AnsiColourEnum> {
+    style.get_bg_color().and_then(convert_ansi_colour)
 }
 
 pub fn convert_style(style: AnsiStyle) -> InlineTextStyle {
     let effects = style.get_effects();
     
     InlineTextStyle {
-        color: convert_style_color(&style),
-        bg_color: convert_style_bg_color(&style),
+        colour: convert_style_colour(&style),
+        bg_colour: convert_style_bg_colour(&style),
         effects,  // Now uses full Effects bitmask
     }
 }
@@ -347,22 +347,22 @@ pub fn convert_style(style: AnsiStyle) -> InlineTextStyle {
 
 ```rust
 use anstyle::Effects;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Colour, Modifier, Style};
 
 pub fn ratatui_style_from_inline(
     style: &InlineTextStyle,
-    fallback: Option<AnsiColorEnum>,
+    fallback: Option<AnsiColourEnum>,
 ) -> Style {
     let mut resolved = Style::default();
     
-    // Foreground color
-    if let Some(color) = style.color.or(fallback) {
-        resolved = resolved.fg(ratatui_color_from_ansi(color));
+    // Foreground colour
+    if let Some(colour) = style.colour.or(fallback) {
+        resolved = resolved.fg(ratatui_colour_from_ansi(colour));
     }
     
-    // Background color (NEW)
-    if let Some(color) = style.bg_color {
-        resolved = resolved.bg(ratatui_color_from_ansi(color));
+    // Background colour (NEW)
+    if let Some(colour) = style.bg_colour {
+        resolved = resolved.bg(ratatui_colour_from_ansi(colour));
     }
     
     // Effects
@@ -394,18 +394,18 @@ pub fn ratatui_style_from_inline(
 
 1. Add `anstyle-git` and `anstyle-ls` to Cargo.toml
 2. Create `theme_parser.rs` module with basic parsing functions
-3. Update `InlineTextStyle` to include `bg_color` and `effects`
+3. Update `InlineTextStyle` to include `bg_colour` and `effects`
 
 ### Phase 2: Integration (Medium Risk)
 
 1. Update `convert_style()` and `ratatui_style_from_inline()` for full effects
-2. Add Git config color parsing to diff renderer
+2. Add Git config colour parsing to diff renderer
 3. Update tests for new styling capabilities
 
 ### Phase 3: Features (Lower Risk, High Value)
 
-1. Implement `FileColorizer` for LS_COLORS support
-2. Add environment variable parsing for system colors
+1. Implement `FileColourizer` for LS_COLORS support
+2. Add environment variable parsing for system colours
 3. Support custom theme files with Git/LS syntax
 
 ## Benefits Summary
@@ -414,7 +414,7 @@ pub fn ratatui_style_from_inline(
 | ---------------------- | --------------------------- | ---------------------------------------------------- |
 | **Effect Support**     | bold, italic only           | bold, dim, italic, underline, strikethrough, reverse |
 | **Configuration**      | Hard-coded palettes         | Parse Git/LS configs + custom files                  |
-| **Background Colors**  | Not supported               | Full support via `bg_color`                          |
+| **Background Colours** | Not supported               | Full support via `bg_colour`                         |
 | **System Integration** | None                        | Read LS_COLORS, .git/config, custom configs          |
 | **Code Reuse**         | Custom parsing              | Leverage `anstyle-git`, `anstyle-ls`                 |
 | **WCAG Compliance**    | Partial (contrast checking) | Enhanced with full effect control                    |
@@ -444,5 +444,5 @@ pub fn ratatui_style_from_inline(
 - [anstyle-git docs](https://docs.rs/anstyle-git/latest/anstyle_git/)
 - [anstyle-ls docs](https://docs.rs/anstyle-ls/latest/anstyle_ls/)
 - [anstyle crate](https://docs.rs/anstyle/latest/anstyle/)
-- [Git Color Configuration](https://git-scm.com/book/en/v2/Git-Customization-Git-Configuration#Colors)
+- [Git Colour Configuration](https://git-scm.com/book/en/v2/Git-Customization-Git-Configuration#Colors)
 - [LS_COLORS Format](https://linux.die.net/man/5/dir_colors)

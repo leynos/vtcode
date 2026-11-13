@@ -2,7 +2,7 @@
 
 This document serves as an index of all Diapason documentation. When users ask
 questions about Diapason itself (capabilities, features, configuration, etc.),
-this file provides the complete catalog of available documentation sources.
+this file provides the complete catalogue of available documentation sources.
 
 ## Quick Reference
 
@@ -90,17 +90,17 @@ relevant sections from the files listed below based on the topic area.
     Diapason?", "How does Overview work?", "How does Quick Checklist work?"
 
 - **File**: `docs/development/ALLOCATOR_MEMORY.md`
-  - **Content**: Allocator & Memory Behavior
+  - **Content**: Allocator & Memory Behaviour
   - **Topics**: The problem, Allocator selection, Allocation throughput
     trade-off (measured), Measuring it, Implementation
   - **User Questions**: "What can you tell me about Allocator & Memory
-    Behavior?", "How does The problem work?", "How does Allocator selection
+    Behaviour?", "How does The problem work?", "How does Allocator selection
     work?"
 
 - **File**: `docs/development/EXTENDED_THINKING.md`
   - **Content**: Anthropic Thinking in Diapason
   - **Topics**: Compact Runtime Matrix, Configuration, Adaptive Thinking
-    Behavior, Budgeted Thinking Behavior, Feature Compatibility
+    Behaviour, Budgeted Thinking Behaviour, Feature Compatibility
   - **User Questions**: "What can you tell me about Anthropic Thinking in
     Diapason?", "How does Compact Runtime Matrix work?", "How does
     Configuration work?"
@@ -575,7 +575,7 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/guides/full-automation.md`
   - **Content**: Full Automation
-  - **Topics**: Activation Checklist, Runtime Behaviour, Customising The
+  - **Topics**: Activation Checklist, Runtime Behaviour, Customizing The
     Allow-List, Propose/Verify Sub-agent, Orchestrated Harness
   - **User Questions**: "What can you tell me about Full Automation?", "How
     does Activation Checklist work?", "How does Runtime Behaviour work?"
@@ -767,7 +767,7 @@ relevant sections from the files listed below based on the topic area.
 - **File**: `docs/providers/merge-gateway.md`
   - **Content**: Merge Gateway Integration
   - **Topics**: Setup, Curated models, Configuration examples, Responses and
-    catalog behavior, Troubleshooting
+    catalogue behaviour, Troubleshooting
   - **User Questions**: "What can you tell me about Merge Gateway
     Integration?", "How does Setup work?", "How does Curated models work?"
 
@@ -821,7 +821,7 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/providers/omniroute.md`
   - **Content**: OmniRoute Integration Guide
-  - **Topics**: Configuration, Model Selection, Protocol Behavior, Remote and
+  - **Topics**: Configuration, Model Selection, Protocol Behaviour, Remote and
     Container Setups, Troubleshooting
   - **User Questions**: "What can you tell me about OmniRoute Integration
     Guide?", "How does Configuration work?", "How does Model Selection work?"
@@ -1015,7 +1015,7 @@ relevant sections from the files listed below based on the topic area.
 - **File**: `docs/reference/ansi-escape-sequences.md`
   - **Content**: ANSI Escape Sequences Reference
   - **Topics**: Sequences, General ASCII Codes, Cursor Controls, Erase
-    Functions, Colors / Graphics Mode
+    Functions, Colours / Graphics Mode
   - **User Questions**: "What can you tell me about ANSI Escape Sequences
     Reference?", "How does Sequences work?", "How does General ASCII Codes
     work?"
@@ -1044,17 +1044,17 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/skills/SKILLS_GUIDE.md`
   - **Content**: Agent Skills Guide
-  - **Topics**: Discovery, Skill Structure, SKILL.md, Prompting Behavior,
+  - **Topics**: Discovery, Skill Structure, SKILL.md, Prompting Behaviour,
     Commands
   - **User Questions**: "What can you tell me about Agent Skills Guide?", "How
     does Discovery work?", "How does Skill Structure work?"
 
 - **File**: `docs/skills/AGENT_SKILLS_SPEC_IMPLEMENTATION.md`
   - **Content**: Agent Skills Spec Implementation
-  - **Topics**: Implemented Behavior, Supported `SKILL.md` Fields, Validation
+  - **Topics**: Implemented Behaviour, Supported `SKILL.md` Fields, Validation
     Rules, Discovery Precedence, Deliberate Non-Support
   - **User Questions**: "What can you tell me about Agent Skills Spec
-    Implementation?", "How does Implemented Behavior work?", "How does Supported
+    Implementation?", "How does Implemented Behaviour work?", "How does Supported
     `SKILL.md` Fields work?"
 
 - **File**: `docs/protocols/ATIF_TRAJECTORY_FORMAT.md`
@@ -1127,9 +1127,9 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/releases/0.157.0.md`
   - **Content**: Diapason 0.157.0
-  - **Topics**: Configuration and migration, ACP behavior
+  - **Topics**: Configuration and migration, ACP behaviour
   - **User Questions**: "What can you tell me about Diapason 0.157.0?", "How
-    does Configuration and migration work?", "How does ACP behavior work?"
+    does Configuration and migration work?", "How does ACP behaviour work?"
 
 - **File**: `docs/environment/ALLOWED_COMMANDS_REFERENCE.md`
   - **Content**: Diapason Allowed Commands Reference
@@ -1231,7 +1231,7 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/features/GPU_POD_MANAGER.md`
   - **Content**: GPU Pod Manager
-  - **Topics**: Overview, Commands, Behavior Notes, Testing
+  - **Topics**: Overview, Commands, Behaviour Notes, Testing
   - **User Questions**: "What can you tell me about GPU Pod Manager?", "How
     does Overview work?", "How does Commands work?"
 
@@ -1342,7 +1342,7 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/styling/quick-reference.md`
   - **Content**: Quick Reference: Anstyle Crates
-  - **Topics**: anstyle-git Syntax, anstyle-ls Syntax, Git Config Color Syntax,
+  - **Topics**: anstyle-git Syntax, anstyle-ls Syntax, Git Config Colour Syntax,
     Diapason Integration Points, Cheat Sheet: Common Patterns
   - **User Questions**: "What can you tell me about Quick Reference: Anstyle
     Crates?", "How does anstyle-git Syntax work?", "How does anstyle-ls Syntax
@@ -1359,13 +1359,13 @@ relevant sections from the files listed below based on the topic area.
 - **File**: `docs/harness/SESSION_LOG_REVIEW.md`
   - **Content**: Session Log Review
   - **Topics**: 2026-08-16 | Checkpoints 912–917 diagnostics audit, 2026-08-12
-    | Planning wire-catalog collapse (turns 912–913), 2026-08-12 | Checkpoints
+    | Planning wire-catalogue collapse (turns 912–913), 2026-08-12 | Checkpoints
     862–911 stabilization, 2026-08-11 | Harness token-waste and startup-noise
     audit, 2026-08-11 | Harness core logic audit (DRY/KISS, brittleness,
     long-running stability)
   - **User Questions**: "What can you tell me about Session Log Review?", "How
     does 2026-08-16 | Checkpoints 912–917 diagnostics audit work?", "How does
-    2026-08-12 | Planning wire-catalog collapse (turns 912–913) work?"
+    2026-08-12 | Planning wire-catalogue collapse (turns 912–913) work?"
 
 - **File**: `docs/features/SHELL_SNAPSHOT.md`
   - **Content**: Shell Environment Snapshot
@@ -1403,7 +1403,7 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/styling/STYLING_QUICK_START.md`
   - **Content**: Styling Quick Start Guide
-  - **Topics**: For CLI Output, For TUI Widgets, Unified Theme, Color
+  - **Topics**: For CLI Output, For TUI Widgets, Unified Theme, Colour
     Reference, Common Patterns
   - **User Questions**: "What can you tell me about Styling Quick Start
     Guide?", "How does For CLI Output work?", "How does For TUI Widgets work?"
@@ -1439,7 +1439,7 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/ansi/ANSTYLE_CROSSTERM_IMPROVEMENTS.md`
   - **Content**: anstyle-crossterm Integration Improvements
-  - **Topics**: Overview, Key Improvements, Color Mapping Behavior,
+  - **Topics**: Overview, Key Improvements, Colour Mapping Behaviour,
     Architecture Flow, Usage Patterns
   - **User Questions**: "What can you tell me about anstyle-crossterm
     Integration Improvements?", "How does Overview work?", "How does Key
@@ -1514,7 +1514,7 @@ relevant sections from the files listed below based on the topic area.
     `docs/models.json`; the build script handles the rest. **Non-OpenRouter**
     (manual): add the constant, `ModelId` variant and match arms, defaults if
     needed, preset, optional resolver update, and `docs/models.json`; gateway
-    providers may intentionally accept explicit catalog-missing route IDs. See
+    providers may intentionally accept explicit catalogue-missing route IDs. See
     `adding-llm-providers` skill for the checklist, Gotchas
   - **User Questions**: "What can you tell me about diapason-config?", "How
     does Modules work?", "How does Rules work?"

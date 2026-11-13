@@ -21,7 +21,7 @@ Achievements:
 
 - Upgraded `anstyle-git` and `anstyle-ls` crates
 - Modernized `InlineTextStyle` with Effects support
-- Added background color support
+- Added background colour support
 - Created `ThemeConfigParser` module
 - Updated all call sites (20+ locations)
 - Comprehensive test coverage (14+ tests)
@@ -33,7 +33,7 @@ Achievements:
   functions
 - `crates/codegen/diapason-core/src/ui/tui/theme_parser.rs` - Config parsing
 - `crates/codegen/diapason-core/src/utils/style_helpers.rs` - Style factories
-- `crates/codegen/diapason-core/src/utils/diff_styles.rs` - Diff color palettes
+- `crates/codegen/diapason-core/src/utils/diff_styles.rs` - Diff colour palettes
 
 ## Document Guide
 
@@ -51,16 +51,16 @@ Achievements:
 ### Using Styled Output
 
 ```rust
-// CLI output with colors
-use diapason_core::utils::colors::style;
+// CLI output with colours
+use diapason_core::utils::colours::style;
 println!("{}", style("Success").green());
 println!("{}", style("Error").red().bold());
 
 // TUI widgets
-use diapason_core::utils::style_helpers::{ColorPalette, render_styled};
+use diapason_core::utils::style_helpers::{ColourPalette, render_styled};
 use ratatui::text::Span;
 
-let palette = ColorPalette::default();
+let palette = ColourPalette::default();
 let span = Span::styled("Text", palette.success);
 ```
 
@@ -79,27 +79,29 @@ let ratatui_style = anstyle_to_ratatui(anstyle);
 ```rust
 use diapason_core::ui::tui::ThemeConfigParser;
 
-// Parse Git color syntax
-let git_style = ThemeConfigParser::parse_git_style("bold red #ff0000")?;
+let parser = ThemeConfigParser::default();
 
-// Parse LS_COLORS syntax
-let ls_style = ThemeConfigParser::parse_ls_colors("01;34")?;
+// Git colour syntax
+let git_style = parser.parse_flexible("bold red #ff0000")?;
 
-// Parse flexibly (tries Git first, then LS)
-let style = ThemeConfigParser::parse_flexible("green")?;
+// LS_COLORS syntax
+let ls_style = parser.parse_flexible("01;34")?;
+
+// Plain colour names
+let style = parser.parse_flexible("green")?;
 ```
 
 ## Key Crates
 
-| Crate           | Version | Purpose                             |
-| --------------- | ------- | ----------------------------------- |
-| `anstyle`       | 1.0     | ANSI style abstraction              |
-| `anstyle-git`   | 1.1     | Git color config parsing            |
-| `anstyle-ls`    | 1.0     | LS_COLORS parsing                   |
-| `anstyle-parse` | 0.2     | ANSI escape sequence parsing        |
-| `anstyle-query` | 1.0     | Terminal color capability detection |
-| `ratatui`       | 0.30    | TUI rendering                       |
-| `catppuccin`    | 2.5     | Theme color palettes                |
+| Crate           | Version | Purpose                              |
+| --------------- | ------- | ------------------------------------ |
+| `anstyle`       | 1.0     | ANSI style abstraction               |
+| `anstyle-git`   | 1.1     | Git colour config parsing            |
+| `anstyle-ls`    | 1.0     | LS_COLORS parsing                    |
+| `anstyle-parse` | 0.2     | ANSI escape sequence parsing         |
+| `anstyle-query` | 1.0     | Terminal colour capability detection |
+| `ratatui`       | 0.30    | TUI rendering                        |
+| `catppuccin`    | 2.5     | Theme colour palettes                |
 
 All crates are in `diapason-core/Cargo.toml`
 
@@ -140,9 +142,9 @@ cargo check                   # Compile check
 
 When adding new styling features:
 
-1. **Follow the pattern**: Use `ColorPalette`, `style_from_color_name()`,
+1. **Follow the pattern**: Use `ColourPalette`, `style_from_colour_name()`,
    `render_styled()`
-2. **No hardcoded colors**: All colors go through helpers
+2. **No hardcoded colours**: All colours go through helpers
 3. **Add tests**: Unit tests for new functions
 4. **Update docs**: Add to relevant doc files
 5. **Run checks**: clippy, fmt, test must pass
