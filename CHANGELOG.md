@@ -62,7 +62,7 @@ All notable changes to vtcode will be documented in this file.
 - Accept in-workspace absolute paths (415b9047)
 - Harden recovery state and replay handling (0856cc1e)
 - Retain final diagnostics and harden handoff writes (0942e281)
-- Use pipe gutter and solid prose colors for readable diffs (82086129)
+- Use pipe gutter and solid prose colours for readable diffs (82086129)
 
 #### Documentation
 
@@ -97,7 +97,7 @@ All notable changes to vtcode will be documented in this file.
 - Guard against truncated print_info -> nfo typo (90106841)
 - Harden crate publish against crates.io 5xx and dirty-tree failures (9e22a20f)
 - Clean up grouped tool call previews and wording (8d7ff085)
-- Realign stale expectations after model catalog and path changes (4b5b3b62)
+- Realign stale expectations after model catalogue and path changes (4b5b3b62)
 - Exclude root-level benches from structured logging scan (b28490bf)
 
 #### Documentation
@@ -127,7 +127,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Features
 
-- Improve coloring of grouped tool call commands and wording highlight
+- Improve colouring of grouped tool call commands and wording highlight
   (2cf79d89)
 - Add Gemini 3.8 Flash (0ef681e7)
 - Refine transcript gutter and wrapping layout (cbab27e5)
@@ -222,7 +222,7 @@ All notable changes to vtcode will be documented in this file.
   (@7jrxt42BxFZo4iAnN4CX)
 - Run arg guards after rewrite, tolerate render errors (bb51164f)
   (@7jrxt42BxFZo4iAnN4CX)
-- Honor CodeRabbit review on guards, denial UX, subagent gating (bb1eb625)
+- Honour CodeRabbit review on guards, denial UX, subagent gating (bb1eb625)
   (@7jrxt42BxFZo4iAnN4CX)
 - Re-validate rewritten args and cover review findings (fdabc335)
   (@7jrxt42BxFZo4iAnN4CX)
@@ -232,7 +232,7 @@ All notable changes to vtcode will be documented in this file.
   (@7jrxt42BxFZo4iAnN4CX)
 - Re-run safety on PermissionRequest rewritten args (7518ad3d)
   (@7jrxt42BxFZo4iAnN4CX)
-- Honor explicit config file across session reloads (42e68bce)
+- Honour explicit config file across session reloads (42e68bce)
   (@7jrxt42BxFZo4iAnN4CX)
 - Apply explicit config path to startup and binary consumers (ea8409ca)
   (@7jrxt42BxFZo4iAnN4CX)
@@ -481,7 +481,7 @@ All notable changes to vtcode will be documented in this file.
 #### Chores
 
 - remove generated plan index entry (40556cad2) (@vinhnx)
-- clean task artifacts (0a422ac26) (@vinhnx)
+- clean task artefacts (0a422ac26) (@vinhnx)
 
 ### Contributors
 
@@ -495,7 +495,8 @@ All notable changes to vtcode will be documented in this file.
 
 - Serialize f32 sampling params without binary tails  (cc875d39)
   (@7jrxt42BxFZo4iAnN4CX)
-- Guard against stale full_auto allowlist collapsing the tool catalog (545104b4)
+- Guard against stale full_auto allowlist collapsing the tool catalogue
+  (545104b4)
 
 ### Other Changes
 
@@ -571,7 +572,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Features
 
-- Sync catalog to upstream OpenCode Go 20-model list  (49aa6c14) (@xcrong)
+- Sync catalogue to upstream OpenCode Go 20-model list  (49aa6c14) (@xcrong)
 
 ### Other Changes
 
@@ -663,7 +664,7 @@ All notable changes to vtcode will be documented in this file.
 #### Bug Fixes
 
 - Recognize native object stream frames (46021049)
-- Honor SSE event framing (776580ff)
+- Honour SSE event framing (776580ff)
 - Sanitize Gemini tool schemas (e57f07be)
 - Emit native response snapshots incrementally (589b3b60)
 - Avoid double safety admission for prevalidated tool calls (36c1ed22)
@@ -678,7 +679,7 @@ All notable changes to vtcode will be documented in this file.
 
 - Default to native /v1/responses API (7163aeef)
 - Add DSML markup detection and stripping (80044ab3)
-- Allow shell env assignments in plan artifact validation (8353cd3a)
+- Allow shell env assignments in plan artefact validation (8353cd3a)
 
 ### Other Changes
 
@@ -697,7 +698,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Features
 
-- Add native responses and catalog integration (b6f6e533)
+- Add native responses and catalogue integration (b6f6e533)
 
 ### Other Changes
 
@@ -805,7 +806,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Features
 
-- Add privacy-preserving trace analyzer (c48122b6)
+- Add privacy-preserving trace analyser (c48122b6)
 - Add OpenRouter Gemini 3.7 Flash model (fc93cd96)
 - Add OpenRouter Qwen3.8 27B model (a5841ce3)
 - Add new Merge Gateway model support (fa633606)
@@ -1113,7 +1114,7 @@ All notable changes to vtcode will be documented in this file.
 
 - Add branded Agent Plugins badge to README (d4139ddd)
 - Add official logo to Agent Skills badge and link agentskills.io (6f37cf35)
-- Keep original color on Agent Skills badge (a9a4e926)
+- Keep original colour on Agent Skills badge (a9a4e926)
 
 ### Other Changes
 
@@ -1270,7 +1271,7 @@ All notable changes to vtcode will be documented in this file.
 #### Bug Fixes
 
 - Add <tools:call> marker to prevent plan mode text leak (2f3e2152)
-- Client-local policy exposes small builtin catalogs directly to avoid zero
+- Client-local policy exposes small builtin catalogues directly to avoid zero
   tools on wire (03d4d784)
 - Clear pending follow-up inputs on context reset (3d2f71ec)
 - Restrict planning profile to exec, search, and input tools (7b27e1ce)
@@ -1715,7 +1716,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Refactors
 
-- Remove anstyle-query dependency by inlining terminal color detection
+- Remove anstyle-query dependency by inlining terminal colour detection
   (fd350b03)
 
 ## 0.136.6 - 2026-07-21
@@ -2294,7 +2295,7 @@ All notable changes to vtcode will be documented in this file.
 #### Features
 
 - Add nord and nord-light themes with syntax highlighting support (2385d63c)
-- Update theme colors for improved WCAG AA contrast compliance (cddb8f1b)
+- Update theme colours for improved WCAG AA contrast compliance (cddb8f1b)
 - Enhance diff rendering styles for better accessibility and theme support
   (50152ddf)
 - Increase codegen units for improved parallelism during check/clippy (9d57197a)
@@ -2314,7 +2315,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Refactors
 
-- Improve input rendering style handling and add ANSI color support (73a715b7)
+- Improve input rendering style handling and add ANSI colour support (73a715b7)
 
 ## 0.134.13 - 2026-07-06
 
@@ -2640,7 +2641,7 @@ All notable changes to vtcode will be documented in this file.
   operations (ae9a8a81)
 - Clarify description for 'follow' parameter in unified search schema (e86300cc)
 - Enhance skill availability messages to include instructions for listing full
-  catalog (5512d9df)
+  catalogue (5512d9df)
 - Refactor tool outcome handling and improve skill overflow messages for
   clarity (782b8fc7)
 - Refactor model ID matching and clean up import statements for clarity
@@ -2705,7 +2706,7 @@ All notable changes to vtcode will be documented in this file.
 #### Other
 
 - Update TODO (bde8fd7e)
-- Revert "chore: enhance build scripts for parallel processing and artifact
+- Revert "chore: enhance build scripts for parallel processing and artefact
   management" (d6421236)
 - Revert "Fix release script" (6ec480e3)
 - Add new models and update configurations for OpenCode Go (b8e3282e)
@@ -2759,7 +2760,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Chores
 
-- enhance build scripts for parallel processing and artifact management
+- enhance build scripts for parallel processing and artefact management
   (452221875) (@vinhnx)
 
 #### Other
@@ -3087,7 +3088,7 @@ All notable changes to vtcode will be documented in this file.
 - Enhance planning workflow with real-time header updates and tool output
   handling (16c55cfc)
 - Improve planning confirmation flow and enhance tool output handling (49d64115)
-- Enhance planning workflow with trust checks and tool behavior adjustments
+- Enhance planning workflow with trust checks and tool behaviour adjustments
   (be0b38e9)
 - Implement tool policy overrides and enhance denial diagnostics in planning
   workflow (0cf67cf7)
@@ -3508,7 +3509,7 @@ All notable changes to vtcode will be documented in this file.
   individual sha256 files, and improve error handling (5abd7c60) (@vinhnx)
 - Enforce tools_policy prompts, refactor workspace trust application, and
   enhance command safety checks (394aa59b) (@vinhnx)
-- Adjust color mappings, enhance markdown rendering logic, and add tests for
+- Adjust colour mappings, enhance markdown rendering logic, and add tests for
   new edge cases in tool policies and UI interactions (8309ffc1) (@vinhnx)
 - Adjust tool policies, refactor text styling logic, and optimize message
   rendering indentation (8123ac34) (@vinhnx)
@@ -3531,7 +3532,7 @@ All notable changes to vtcode will be documented in this file.
 - Refine markdown styling logic for strong, heading, and inline code elements,
   and enhance theme-based accent application (04278e00) (@vinhnx)
 - Enable `unified_file` tool in the sandbox and refactor diff preview styling
-  to use a color palette. (15715b9e) (@vinhnx)
+  to use a colour palette. (15715b9e) (@vinhnx)
 - Preserve tool_exists when MCP tool check returns false (999f4a85) (@vinhnx)
 - Replace println with tracing debug for git repository check (c6c11053)
   (@vinhnx)
@@ -3542,7 +3543,7 @@ All notable changes to vtcode will be documented in this file.
 - Rename directory with colon to be Windows-compatible (f533addc) (@vinhnx)
 - Resolve duplicate model entries and correct legacy model references
   (a712a191) (@vinhnx)
-- Update spinner finish behavior for cancellation handling (73a7d72f) (@vinhnx)
+- Update spinner finish behaviour for cancellation handling (73a7d72f) (@vinhnx)
 - Handle empty changelog updates gracefully (2d9ccac2) (@vinhnx)
 - Resolve tool call ID mapping issue and update JSON handling in messages
   (9af9d34b) (@vinhnx)
@@ -3603,11 +3604,11 @@ All notable changes to vtcode will be documented in this file.
   (@vinhnx)
 - Stabilize Zed ACP startup and transcripts (72f91134) (@vinhnx)
 - Preserve compaction context in prompts and summaries (b38f1877) (@vinhnx)
-- Update external editor instructions to reflect single-click behavior
+- Update external editor instructions to reflect single-click behaviour
   (7f9f0557) (@vinhnx)
 - Unify external URL guardrails across VT Code flows (a6444c4b) (@vinhnx)
 - Suppress loading UI for spool chunk reads (1635a52f) (@vinhnx)
-- Pass model behavior to anthropic api provider (70944e75) (@vinhnx)
+- Pass model behaviour to anthropic api provider (70944e75) (@vinhnx)
 - Correct post-release regressions (3cd9dde3) (@vinhnx)
 - Encode SHA256 digest as hex manually (db7768f8) (@vinhnx)
 - Encode config fingerprint digest as lowercase hex (4d470c5e) (@vinhnx)
@@ -3699,7 +3700,7 @@ All notable changes to vtcode will be documented in this file.
 - Resolve 3 critical harness robustness bugs from session turn_364 (ebdbafb1)
   (@vinhnx)
 - Resolve docs.rs build failure for vtcode-config (5f722204) (@vinhnx)
-- Handle parameterised close tags in collect_pseudo_marker_regions (dac7afa0)
+- Handle parameterized close tags in collect_pseudo_marker_regions (dac7afa0)
   (@vinhnx)
 - Apply PR review fixes (d530f6c7) (@vinhnx)
 - Restore harness robustness plan section in TODO.md (84a652ea) (@vinhnx)
@@ -3779,7 +3780,7 @@ All notable changes to vtcode will be documented in this file.
 - Add release readiness confirmation document (b14740db) (@vinhnx)
 - Update STATUS with improvements session results (8365c391) (@vinhnx)
 - Add comprehensive final improvements summary (ae04b9d1) (@vinhnx)
-- Add file listing output behavior pattern to AGENTS.md (7d27dec7) (@vinhnx)
+- Add file listing output behaviour pattern to AGENTS.md (7d27dec7) (@vinhnx)
 - Update installation guides with CDN caching troubleshooting and fix details
   (2d421f67) (@vinhnx)
 - Add styling implementation completion status (c59e6869) (@vinhnx)
@@ -3890,11 +3891,11 @@ All notable changes to vtcode will be documented in this file.
   link it from the Anthropic API overview. (01803299) (@vinhnx)
 - Add note to check amp in vscode session (2eff5bdb) (@vinhnx)
 - Add comprehensive AgentSkills support section to README (db13439f) (@vinhnx)
-- Center align VT Code GIF in README (a09348eb) (@vinhnx)
+- Centre align VT Code GIF in README (a09348eb) (@vinhnx)
 - Update AGENTS.md for improved clarity and formatting (775a0db7) (@vinhnx)
 - Add compliance testing section and request object for Open Responses
   (ee2bcf14) (@vinhnx)
-- Add behavioral guidelines to reduce common LLM coding mistakes (75ca745d)
+- Add behavioural guidelines to reduce common LLM coding mistakes (75ca745d)
   (@vinhnx)
 - Update skills documentation and add migration script for legacy skills
   (3742aa8b) (@vinhnx)
@@ -3971,7 +3972,7 @@ All notable changes to vtcode will be documented in this file.
 - Drive chat runloop through iocraft tui (b2c21c27) (@vinhnx)
 - Render spinners via iocraft placeholder (5e683d52) (@vinhnx)
 - Overhaul ratatui layout and input (16ba8497) (@vinhnx)
-- Improve scrolling and spinner behavior (81d763af) (@vinhnx)
+- Improve scrolling and spinner behaviour (81d763af) (@vinhnx)
 - Add npm package support and update README for installation instructions
   (f55851f9) (@vinhnx)
 - Add demo GIF and update demo settings for improved display (01b29273)
@@ -3996,7 +3997,7 @@ All notable changes to vtcode will be documented in this file.
 - Surface controls in onboarding (0bd8f410) (@vinhnx)
 - Polish onboarding hints (8e92b1e7) (@vinhnx)
 - Support gpt-5-codex tool handling (0a171b75) (@vinhnx)
-- Add Moonshot provider and refresh model catalog (95973d8a) (@vinhnx)
+- Add Moonshot provider and refresh model catalogue (95973d8a) (@vinhnx)
 - Add new tools and update policies in tool-policy.json; enhance argument
   parsing in text_tools.rs; update Cargo.toml for documentation (de6df449)
   (@vinhnx)
@@ -4097,16 +4098,16 @@ All notable changes to vtcode will be documented in this file.
 - Implement tool approval dialog with enhanced UX and risk assessment
   (f8c648bf) (@vinhnx)
 - Implement Agent Communication Protocol (ACP) integration (e8171ae5) (@vinhnx)
-- Implement styling refactor - centralize color palettes and style helpers
+- Implement styling refactor - centralize colour palettes and style helpers
   (81fb334a) (@vinhnx)
 - Integrate anstyle-parse for ANSI escape sequence handling (e3131002) (@vinhnx)
-- Complete phase 1 anstyle integration - effects and background colors
+- Complete phase 1 anstyle integration - effects and background colours
   (dc399246) (@vinhnx)
 - Add theme_parser module for Git/LS_COLORS configuration parsing (a7dd9657)
   (@vinhnx)
 - Add Styling Quick Start Guide and Refactor Completion Report (7d343f5d)
   (@vinhnx)
-- Add Git color configuration support and theme management (e9eb73e2) (@vinhnx)
+- Add Git colour configuration support and theme management (e9eb73e2) (@vinhnx)
 - Implement permission system with command resolution, audit logging, and
   caching (ebfd8da6) (@vinhnx)
 - Enhance command execution with additional PATH entries and environment
@@ -4216,7 +4217,7 @@ All notable changes to vtcode will be documented in this file.
   auto-acceptance, and feedback capabilities. (8eda995d) (@vinhnx)
 - Implement Agent Skills specification by adding `compatibility` and `metadata`
   fields to skill manifests, updating `allowed-tools` to a space-delimited
-  string, and clarifying skill loading behavior. (26fd647b) (@vinhnx)
+  string, and clarifying skill loading behaviour. (26fd647b) (@vinhnx)
 - Enhance skill validation and file reference checks for Agent Skills
   compliance (bedb8cea) (@vinhnx)
 - Implement agent task retry with exponential backoff and render tool follow-up
@@ -4292,7 +4293,7 @@ All notable changes to vtcode will be documented in this file.
   include git and cargo commands while removing some mcp time-related tools.
   (28b0965e) (@vinhnx)
 - Reimplement HuggingFace LLM provider with dedicated logic to handle its
-  unique API behaviors and compatibility. (bb973323) (@vinhnx)
+  unique API behaviours and compatibility. (bb973323) (@vinhnx)
 - Add new Z.AI GLM models, refine reasoning support, and update Hugging Face
   model naming conventions. (d5957215) (@vinhnx)
 - Add code intelligence tool with LSP-like navigation features (936abcb4)
@@ -4430,7 +4431,7 @@ All notable changes to vtcode will be documented in this file.
 - Add marketplace and plugin management commands (2bfb2412) (@vinhnx)
 - Add lifecycle hooks for file protection, command logging, code formatting,
   markdown formatting, and notifications (6a0fdc94) (@vinhnx)
-- Implement output styles feature with customizable behavior and response
+- Implement output styles feature with customizable behaviour and response
   formats (e2429e50) (@vinhnx)
 - Add reverse search and background operation handling in TUI (a8d2bcdb)
   (@vinhnx)
@@ -4501,7 +4502,7 @@ All notable changes to vtcode will be documented in this file.
   (@vinhnx)
 - Add GPT-5.2 Codex model and improve code formatting across multiple files
   (d85983d5) (@vinhnx)
-- Enhance agent behavior configuration with Codex-inspired patterns and update
+- Enhance agent behaviour configuration with Codex-inspired patterns and update
   tool response truncation settings (817ec823) (@vinhnx)
 - Update tool policies and agent configuration for improved execution control
   and user confirmation (bea42960) (@vinhnx)
@@ -4527,7 +4528,7 @@ All notable changes to vtcode will be documented in this file.
 - Add prefill and character reinforcement options to LLMRequest, implement
   Anthropic-specific handling, safety screening, and leak protection.
   (23339341) (@vinhnx)
-- Introduce coding agent settings to LLM requests to refine model behavior,
+- Introduce coding agent settings to LLM requests to refine model behaviour,
   implementing their application in the Anthropic provider for system prompt
   adjustments, prefill, message reordering, and XML document handling.
   (b75d3d0e) (@vinhnx)
@@ -4547,7 +4548,7 @@ All notable changes to vtcode will be documented in this file.
   telemetry for tool usage tracking. (544e1ac8) (@vinhnx)
 - Dynamically configure conversation message and session turn limits, and
   remove telemetry from interaction loop parameters. (e6b687e9) (@vinhnx)
-- Update session limit messages to recommend persisting progress via artifacts
+- Update session limit messages to recommend persisting progress via artefacts
   like task.md/docs. (0a5a3a00) (@vinhnx)
 - Implement priority-based adaptive rate limiting, tiered cache eviction, and
   sliding window tool health tracking. (24d02051) (@vinhnx)
@@ -4578,7 +4579,7 @@ All notable changes to vtcode will be documented in this file.
   highlighting and configuration (61a1a350) (@vinhnx)
 - Implement batch file reading with token-efficient command transformation
   (a00fa4d3) (@vinhnx)
-- Add adaptive logo SVGs for different color schemes (0ed49c50) (@vinhnx)
+- Add adaptive logo SVGs for different colour schemes (0ed49c50) (@vinhnx)
 - Add harness event emitter and session persistence for enhanced logging and
   state management (03b65cef) (@vinhnx)
 - Add subagent system with optional enablement, commands, and configuration
@@ -4715,7 +4716,7 @@ All notable changes to vtcode will be documented in this file.
 - Display a scroll indicator in the TUI footer and adjust status height
   calculation based on layout mode. (6c5efc03) (@vinhnx)
 - Add delete_word_forward method to InputManager and update LayoutMode footer
-  behavior (29e2dd09) (@vinhnx)
+  behaviour (29e2dd09) (@vinhnx)
 - Implement delete_word_forward method in Session (5936d8bc) (@vinhnx)
 - Enhance crate publishing process with reliable version parsing and no-verify
   option (4fb5612c) (@vinhnx)
@@ -4770,7 +4771,7 @@ All notable changes to vtcode will be documented in this file.
 - Implement mouse text selection in the TUI and add a new `vtcode.toml`
   configuration file. (83567152) (@vinhnx)
 - Add Claude Sonnet 4.6 model support and integrate it across model
-  definitions, parsing, catalog, and documentation. (d460c56d) (@vinhnx)
+  definitions, parsing, catalogue, and documentation. (d460c56d) (@vinhnx)
 - Implement Gemini 3.1 Pro Preview models with updated token limits and system
   prompt handling. (dc0742c0) (@vinhnx)
 - Implement Gemini prompt caching with TTL using a new `CacheControl` part and
@@ -4831,7 +4832,7 @@ All notable changes to vtcode will be documented in this file.
   (@vinhnx)
 - Implement TUI log capture feature and enhance panic hook handling (89813122)
   (@vinhnx)
-- Integrate color-eyre for enhanced error reporting in debug mode (05591670)
+- Integrate colour-eyre for enhanced error reporting in debug mode (05591670)
   (@vinhnx)
 - Implement automatic context compaction and update related configurations
   (724af2c3) (@vinhnx)
@@ -4870,7 +4871,7 @@ All notable changes to vtcode will be documented in this file.
 - Optimize tool execution tracking, file path parsing, and grep result
   handling, while preventing memory leaks in stats. (c319aebe) (@vinhnx)
 - Add Miri check to the `check.sh` script and update documentation for
-  detecting undefined behavior. (15f3d5c1) (@vinhnx)
+  detecting undefined behaviour. (15f3d5c1) (@vinhnx)
 - Add NVIDIA Nemotron 3 Super (free) model support (c3c203a0) (@vinhnx)
 - Add live editor context and transcript file links (c330e4b3) (@vinhnx)
 - Add Nemotron-3-Super model support in Ollama provider and constants
@@ -5025,7 +5026,7 @@ All notable changes to vtcode will be documented in this file.
 - Update tool policies and enhance DeepSeek provider handling (afaad984)
   (@vinhnx)
 - Add new tools and update policies in tool-policy.json; refactor diff
-  rendering to use standard ANSI colors (991d1590) (@vinhnx)
+  rendering to use standard ANSI colours (991d1590) (@vinhnx)
 - Enhance tool output handling and add command summary recording (66d2691d)
   (@vinhnx)
 - Add DSML parsing functionality and update reasoning effort configuration
@@ -5161,7 +5162,7 @@ All notable changes to vtcode will be documented in this file.
 - Add agent identity labels and apply them to system prompts (3ee26a3d)
 - Update chat input placeholders and footer hints to include agent switching
   (4af057cb)
-- Add primary agent color field to header context and update related tests
+- Add primary agent colour field to header context and update related tests
   (15354220)
 
 ### Other Changes
@@ -5311,7 +5312,7 @@ All notable changes to vtcode will be documented in this file.
 - Updates (9ddbab43) (@vinhnx)
 - Add session archiving and listing commands (3cdd2eb9) (@vinhnx)
 - Enhance session archive summaries with message previews (75cad42b) (@vinhnx)
-- Add labeled chat panels and left-aligned agent messages (964ff9cf) (@vinhnx)
+- Add labelled chat panels and left-aligned agent messages (964ff9cf) (@vinhnx)
 - Enhance terminal experience description in README (f46d67b9) (@vinhnx)
 - Enhance README with updated links and descriptions (828e427b) (@vinhnx)
 - Enhance VT Code description and link formatting (e90dbd07) (@vinhnx)
@@ -5379,7 +5380,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor inline TUI to crossterm backend (fa66bdf3) (@vinhnx)
 - Handle MCP tool aliases when hyphens are stripped (5d8dbdf9) (@vinhnx)
 - Stabilize banner logo and unblock inline redraw (e17b7d2d) (@vinhnx)
-- Remove inline TUI background color (ae429c96) (@vinhnx)
+- Remove inline TUI background colour (ae429c96) (@vinhnx)
 - Simplify session banner text (0f6c54cc) (@vinhnx)
 - Improve welcome spacing and animate thinking spinner (374c826b) (@vinhnx)
 - Updates (28b97bb5) (@vinhnx)
@@ -5625,7 +5626,7 @@ All notable changes to vtcode will be documented in this file.
 - Allow string plan steps and default statuses (7a69bbf9) (@vinhnx)
 - Sanitize OpenRouter requests for tool-ineligible models (46d9e4e1) (@vinhnx)
 - Fix OpenRouter tool filters for OpenAI minis (b6cf934b) (@vinhnx)
-- Refresh OpenRouter model catalog (92c227da) (@vinhnx)
+- Refresh OpenRouter model catalogue (92c227da) (@vinhnx)
 - Make OpenRouter model match arms exhaustive (5e156c5c) (@vinhnx)
 - Add OpenRouter GLM 4.5 Air free constant (ffd0c8e2) (@vinhnx)
 - Simplify welcome overview and slash command hints (f0762542) (@vinhnx)
@@ -5923,7 +5924,7 @@ All notable changes to vtcode will be documented in this file.
   (34934158) (@vinhnguyenxuan-ct)
 - Add cancellation messages and support in agent loop and streaming response
   (dccf80eb) (@vinhnguyenxuan-ct)
-- Refactor terminal command panel rendering to simplify color handling and
+- Refactor terminal command panel rendering to simplify colour handling and
   improve stdout/stderr processing (1b30ed82) (@vinhnx)
 - Add sandbox runtime integration for bash tool (be3c3b6a) (@vinhnx)
 - Allow network commands when sandboxing bash tool (477e8d34) (@vinhnx)
@@ -6050,14 +6051,14 @@ All notable changes to vtcode will be documented in this file.
 - Fix syntax error in release.sh script (eb9a4347) (@vinhnx)
 - Revise README.md for improved clarity and structure (c209687e) (@vinhnx)
 - Add LM Studio provider integration (c4ef825c) (@vinhnx)
-- Expand LM Studio catalog entries (7c942e16) (@vinhnx)
+- Expand LM Studio catalogue entries (7c942e16) (@vinhnx)
 - Add configurable sandbox runtime and filesystem allowlist (d622fb55) (@vinhnx)
 - Replace VS Code Marketplace badge with custom icon (9bc057b0) (@vinhnx)
 - Align system prompt with TigerStyle principles (00c1f4de) (@vinhnx)
 - Refine core system prompt and remove 'TigerStyle' references (8cee7a1b)
   (@vinhnx)
 - Refactor model picker module (51e7473a) (@vinhnx)
-- Honor pre-tool hook ask decisions (5f917448) (@vinhnx)
+- Honour pre-tool hook ask decisions (5f917448) (@vinhnx)
 - Ensure pre-tool hook allow respects deny policies (bf3b0a93) (@vinhnx)
 - Add lifecycle hooks support and example configurations (aa822026) (@vinhnx)
 - Update documentation for configuration precedence and getting started guide
@@ -6114,7 +6115,7 @@ All notable changes to vtcode will be documented in this file.
   (@vinhnx)
 - Update tool policy to allow sending pty input and remove unused
   tui-scrollview package (75c5199e) (@vinhnx)
-- Add environment variables to disable color output and implement test for ANSI
+- Add environment variables to disable colour output and implement test for ANSI
   code stripping (047a9483) (@vinhnx)
 - Refactor ANSI code checks in pty output test for clarity (eedefe08) (@vinhnx)
 - Update Zed extension manifest and release script for checksum automation
@@ -6245,7 +6246,7 @@ All notable changes to vtcode will be documented in this file.
   (@vinhnx)
 - Update Homebrew formula to version 0.43.2 (c295fd42) (@vinhnx)
 - Remove vtcode installation instructions from README (73c3eb07) (@vinhnx)
-- Refactor color parsing and styling utilities (4ba30733) (@vinhnx)
+- Refactor colour parsing and styling utilities (4ba30733) (@vinhnx)
 - Update Homebrew formula to version 0.43.3 (0d8ba62b) (@vinhnx)
 - Update README.md (0dffa251) (@vinhnx)
 - Implement LRU Cache and Performance Optimizations (65c5e4db) (@vinhnx)
@@ -6281,7 +6282,7 @@ All notable changes to vtcode will be documented in this file.
 - Add support for anstyle-git and enhance diff rendering; update LLM provider
   settings (7afacc13) (@vinhnx)
 - Update Homebrew formula to version 0.43.15 (e7427129) (@vinhnx)
-- Update BuyMeACoffee badge color in README (430b4bd1) (@vinhnx)
+- Update BuyMeACoffee badge colour in README (430b4bd1) (@vinhnx)
 - Add verbosity control and enhance reasoning effort levels in LLM
   configuration (f0c1d021) (@vinhnx)
 - Refactor function handling across providers to ensure safe access and improve
@@ -6322,7 +6323,7 @@ All notable changes to vtcode will be documented in this file.
 - Update Homebrew formula to version 0.45.4 (dbb655f3) (@vinhnx)
 - Add better diagnostics for 'command not found' errors (exit code 127)
   (4e6b2336) (@vinhnx)
-- Deprecate RUN_COMMAND in favor of RUN_PTY_CMD and remove related code; update
+- Deprecate RUN_COMMAND in favour of RUN_PTY_CMD and remove related code; update
   dependencies and clean up unused imports. (3c572956) (@vinhnx)
 - Phase 1: Implement context engineering & output curation in system prompt
   (87de9fe1) (@vinhnx)
@@ -6362,7 +6363,7 @@ All notable changes to vtcode will be documented in this file.
 - Replace static spinner icon with contextual agent message (3ad1edd9) (@vinhnx)
 - Change reasoning prefix from 'Thinking:' to 'I'm thinking:' for first-person
   consistency (280c3177) (@vinhnx)
-- Disable ANSI color codes in PTY command output (8ede8406) (@vinhnx)
+- Disable ANSI colour codes in PTY command output (8ede8406) (@vinhnx)
 - Add PTY ANSI handling tests and documentation (49fee678) (@vinhnx)
 - Refactor code for improved readability and consistency; remove unnecessary
   whitespace and streamline function signatures across multiple files.
@@ -6452,7 +6453,7 @@ All notable changes to vtcode will be documented in this file.
 - Update documentation for Phase 2.3 and Phase 3 completion; adjust status
   indicators and formatting (c14a4976) (@vinhnx)
 - Enhance output filtering and logging configuration; add tests for ANSI
-  background colors (9f6c659a) (@vinhnx)
+  background colours (9f6c659a) (@vinhnx)
 - Remove production-ready implementation of VT Code Agent Skills (2876f86a)
   (@vinhnx)
 - Implement enhanced file tracking and verification for skills execution
@@ -6655,7 +6656,7 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO (eab58c20) (@vinhnx)
 - Update TODO (eb09e382) (@vinhnx)
 - Fix build error (5939b210) (@vinhnx)
-- Update badge colors in README.md (e32a1e68) (@vinhnx)
+- Update badge colours in README.md (e32a1e68) (@vinhnx)
 - Fix build error (7d167ac2) (@vinhnx)
 - Fix build error (ce058db4) (@vinhnx)
 - Fix build docs.rs (d86f9de4) (@vinhnx)
@@ -6666,8 +6667,8 @@ All notable changes to vtcode will be documented in this file.
 - Refactor badge links in README.md (5ec8128c) (@vinhnx)
 - Update README with VT Code description (2b34f5f3) (@vinhnx)
 - Update VHS script (2d9bf2b0) (@vinhnx)
-- Change badge colors in README.md (16be2daf) (@vinhnx)
-- Change badge colors in README.md (692edebf) (@vinhnx)
+- Change badge colours in README.md (16be2daf) (@vinhnx)
+- Change badge colours in README.md (692edebf) (@vinhnx)
 - Update TODO (b5c9f45b) (@vinhnx)
 - Remove blank lines (da04cee6) (@vinhnx)
 - Update loading (2d5aaea4) (@vinhnx)
@@ -6750,7 +6751,7 @@ All notable changes to vtcode will be documented in this file.
 - Update TODO (fb065df0) (@vinhnx)
 - Refactor diff handling and rendering for improved clarity and summary display
   (f8dbf9e1) (@vinhnx)
-- Implement no_spool functionality for tool output and enhance cursor behavior
+- Implement no_spool functionality for tool output and enhance cursor behaviour
   during scrolling and shimmer states (477209fd) (@vinhnx)
 - Refactor MCP integration and update dependencies (b31b5407) (@vinhnx)
 - Improve CI CD (79589790) (@vinhnx)
@@ -6761,7 +6762,7 @@ All notable changes to vtcode will be documented in this file.
   async logging and performance tracking (e464ee31) (@vinhnx)
 - Refactor test assertion for compact_title method in MCP event (4f44b68a)
   (@vinhnx)
-- Refactor spinner implementation and enhance cursor behavior during status
+- Refactor spinner implementation and enhance cursor behaviour during status
   updates (0b6828ac) (@vinhnx)
 - Cleanup TODO.md by removing outdated tasks and enhancing UI transition notes
   (21d1d5c6) (@vinhnx)
@@ -6810,8 +6811,8 @@ All notable changes to vtcode will be documented in this file.
 - Add prompt assembly mode and enhance tool validation (480ed33a) (@vinhnx)
 - Enhance plan mode handling and tool safety validation; refactor prompt
   management and session loop logic (63a40249) (@vinhnx)
-- Implement tool catalog state management and integrate into MCP tool lifecycle
-  (18c73b54) (@vinhnx)
+- Implement tool catalogue state management and integrate into MCP tool
+  lifecycle (18c73b54) (@vinhnx)
 - Add GLM-5 model support and remove deprecated GLM-4.5/4.6 models (29d0992a)
   (@vinhnx)
 - Update models and configurations for Gemini 3 and GLM-5; adjust tool
@@ -6861,7 +6862,7 @@ All notable changes to vtcode will be documented in this file.
   consistency (e024a48d) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Update TODO.md (3391d6b9) (@vinhnx)
 - Add spool chunk read tracking and enforce limits per turn (c09ef6d3) (@vinhnx)
 - Increase max tool calls per turn to 48 and implement budget warning system in
@@ -6886,7 +6887,7 @@ All notable changes to vtcode will be documented in this file.
   (f8505ba9) (@vinhnx)
 - Refactor run command output handling and improve command summary rendering
   (59e8fab8) (@vinhnx)
-- Implement plan artifact write handling and adjust LLM timeout logic
+- Implement plan artefact write handling and adjust LLM timeout logic
   (5edb5d66) (@vinhnx)
 - Enhance timeout messages to include "continue" nudge for stalled turns in
   plan mode (03cd0a65) (@vinhnx)
@@ -6935,7 +6936,7 @@ All notable changes to vtcode will be documented in this file.
   (7b069620) (@vinhnx)
 - Enhance file reference extraction to handle npm scoped packages and improve
   path validation (00646152) (@vinhnx)
-- Enhance UI styling for PTY output and improve color handling across
+- Enhance UI styling for PTY output and improve colour handling across
   components (36cc1ca0) (@vinhnx)
 - Add sidebar, slash command palette, and transcript widgets; implement session
   options and host adapter traits (fdc70374) (@vinhnx)
@@ -7017,7 +7018,7 @@ All notable changes to vtcode will be documented in this file.
   handling and improve cache retrieval methods (76c1789f) (@vinhnx)
 - Add support for "show diff" command and improve tool call validation
   (62051691) (@vinhnx)
-- Update color scheme for unified diff background and gutter colors; change
+- Update colour scheme for unified diff background and gutter colours; change
   terminal theme to improve readability (525653e9) (@vinhnx)
 - Add diff theme configuration and improve styling for terminal output
   (501634f1) (@vinhnx)
@@ -7038,7 +7039,7 @@ All notable changes to vtcode will be documented in this file.
   modules (b5081d89) (@vinhnx)
 - Add websocket connection limit error handling and update API versioning
   (6f76cfb7) (@vinhnx)
-- Add installation scripts to release artifacts and update installation
+- Add installation scripts to release artefacts and update installation
   documentation (816c6d41) (@vinhnx)
 - Refactor error log collector to use a bounded buffer and enhance link
   rendering in markdown (c7ef605b) (@vinhnx)
@@ -7065,7 +7066,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor TODO.md to improve formatting and clarify implementation
   instructions (265c835a) (@vinhnx)
 - Enhance file palette key handling to manage selection and normal submit
-  behavior (309e8b22) (@vinhnx)
+  behaviour (309e8b22) (@vinhnx)
 - Refactor process group termination logic for robust child process cleanup
   (bb1ab07f) (@vinhnx)
 - Refactor WebSocket session handling and enhance incremental input validation
@@ -7090,7 +7091,7 @@ All notable changes to vtcode will be documented in this file.
   (@vinhnx)
 - Implement theme synchronization for Alacritty, Ghostty, and Kitty terminals;
   remove CachedStyleParser and replace with LrMap for improved performance; add
-  terminal color probe for enhanced theme detection; update Cargo.toml files
+  terminal colour probe for enhanced theme detection; update Cargo.toml files
   for Rust 1.85 compatibility. (c7dd0f28) (@vinhnx)
 - Refactor code to use `parking_lot::RwLock` instead of `std::sync::RwLock` for
   improved performance; update various imports and method calls across multiple
@@ -7100,7 +7101,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor command processing, improve output handling, and enhance telemetry
   reporting (ec20b546) (@vinhnx)
 - Refactor tests and improve code readability (2c2ade2b) (@vinhnx)
-- Add color policy module and integrate into styling and error display
+- Add colour policy module and integrate into styling and error display
   (3287a044) (@vinhnx)
 - Add fuzzing adoption plan for security parsers and initial setup (4b4d8d8f)
   (@vinhnx)
@@ -7364,7 +7365,7 @@ All notable changes to vtcode will be documented in this file.
 - Add search tools status badge and enhance language detection (7150057d)
   (@vinhnx)
 - Fix install script (25a0e060) (@vinhnx)
-- Update badge colors and links in README.md (99175a26) (@vinhnx)
+- Update badge colours and links in README.md (99175a26) (@vinhnx)
 - Update README.md (b433aefb) (@vinhnx)
 - Update TODO (163e9716) (@vinhnx)
 - Refactor API key handling and update model reasoning capabilities (db0bdf03)
@@ -7513,7 +7514,7 @@ All notable changes to vtcode will be documented in this file.
 - Add plan confirmation prompt after draft persistence and enhance error
   classification (ccd75a8f) (@vinhnx)
 - Enhance modal list state management to retain last selection and improve
-  overlay behavior (22f813ce) (@vinhnx)
+  overlay behaviour (22f813ce) (@vinhnx)
 - Refactor plan mode context handling and update configuration values for
   consistency (cc191c1d) (@vinhnx)
 - Refactor plan validation logic to prefer more complete candidates and enhance
@@ -7601,7 +7602,7 @@ All notable changes to vtcode will be documented in this file.
   (541eac42) (@vinhnx)
 - Enhance RejectConfig documentation and update permission rejection logic
   (d7eb68f0) (@vinhnx)
-- Add pod management functionality with model catalog and state handling
+- Add pod management functionality with model catalogue and state handling
   (c029e115) (@vinhnx)
 - Implement normalized streaming for OpenRouter provider and update response
   handling (b01aeb2f) (@vinhnx)
@@ -7634,8 +7635,8 @@ All notable changes to vtcode will be documented in this file.
 - Implement prompt cache lineage management and enhance runtime context
   handling (9e26d8de) (@vinhnx)
 - Update session ID and timestamps in current_blocked.md; modify GPU type
-  matching logic and add tests in catalog.rs; change API key and model settings
-  in vtcode.toml (b5a2f974) (@vinhnx)
+  matching logic and add tests in catalogue.rs; change API key and model
+  settings in vtcode.toml (b5a2f974) (@vinhnx)
 - Enhance system prompt handling by adding history directives and runtime
   context checks; add tests for new functionality (c406e88b) (@vinhnx)
 - Refactor tool policies and update configuration for Ollama provider
@@ -7673,7 +7674,7 @@ All notable changes to vtcode will be documented in this file.
   metrics (48af5696) (@vinhnx)
 - Add streaming support OpenAI models with normalized event handling (ff76d3af)
   (@vinhnx)
-- Add orchestration for plan-build-evaluate workflow with harness artifacts
+- Add orchestration for plan-build-evaluate workflow with harness artefacts
   (6968408b) (@vinhnx)
 - Refactor skills system: update documentation, remove version and author
   fields, streamline validation, and enhance template structure. (e6821250)
@@ -7758,10 +7759,10 @@ All notable changes to vtcode will be documented in this file.
   normalize exit codes for no matches and findings in structural search.
   (29867cdc) (@vinhnx)
 - Enhance documentation for Rust, TypeScript, TSX, YAML, Ruby, Python, Kotlin,
-  Java, HTML, Go, Cpp, and C catalog examples; provide guidelines for adapting
-  rules to repository-specific conventions. (819298a2) (@vinhnx)
+  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for
+  adapting rules to repository-specific conventions. (819298a2) (@vinhnx)
 - Enhance documentation for ast-grep project workflows and APIs; clarify
-  project discovery behavior, scan vs run requirements, and performance
+  project discovery behaviour, scan vs run requirements, and performance
   optimizations (3db5c5e5) (@vinhnx)
 - Fix typo in comments for line truncation functions (32ccac09) (@vinhnx)
 - Add persistent memory support and enhance instruction appendix functionality
@@ -7931,7 +7932,8 @@ All notable changes to vtcode will be documented in this file.
   components, and skills modules (b2cc57e0) (@vinhnx)
 - Add tests for structural search functionality and request validation
   (f4649c89) (@vinhnx)
-- Add tests for tool execution and sandbox runtime behavior (cbf7effb) (@vinhnx)
+- Add tests for tool execution and sandbox runtime behaviour (cbf7effb)
+  (@vinhnx)
 - Refactor UI command item creation for improved readability and
   maintainability (0db3b4d4) (@vinhnx)
 - Update tool policies, fix keyboard shortcuts, and enhance documentation
@@ -8160,7 +8162,7 @@ All notable changes to vtcode will be documented in this file.
 - Fable (8781f2a4) (@vinhnx)
 - Update README (7565cbac) (@vinhnx)
 - Update README (7f4186dd) (@vinhnx)
-- Ignore vtcode plan artifact (20736d87) (@vinhnx)
+- Ignore vtcode plan artefact (20736d87) (@vinhnx)
 - Feat/merge modes & agents  (3e743390) (@kernitus)
 - Fix/671 chatgpt OpenAI requests  (071c9e64) (@kernitus)
 - Update TODO (d54a296f) (@vinhnx)
@@ -8331,12 +8333,12 @@ All notable changes to vtcode will be documented in this file.
   handling and caching (a7e86de3) (@vinhnx)
 - Integrate CommandBuilder throughout commands module (f07a82bd) (@vinhnx)
 - Remove AST-grep tool and related components (aefcd24d) (@vinhnx)
-- Implement styling refactor from guide - centralize color/style management
+- Implement styling refactor from guide - centralize colour/style management
   (d271d6a3) (@vinhnx)
 - Implement styling suggestions from STYLING_REFACTOR_GUIDE (94fdbf3b) (@vinhnx)
 - Improve styling consistency with bold_color() and ColorPalette (9155223f)
   (@vinhnx)
-- Implement central style helpers and diff color palette (d2cdfe2f) (@vinhnx)
+- Implement central style helpers and diff colour palette (d2cdfe2f) (@vinhnx)
 - Extract input history navigation logic fix in InputManager (a65242f5)
   (@vinhnx)
 - Phase 2 Step 1 - add manager fields to Session struct (6bdb3649) (@vinhnx)
@@ -8361,7 +8363,7 @@ All notable changes to vtcode will be documented in this file.
 - Extract tool pipeline into  and add  — reduce run loop complexity (b4c5ceb4)
   (@vinhnx)
 - Organize documentation into docs/phases and docs/scroll subdirectories;
-  consolidate PHASE5 and SCROLL artifacts for better maintainability (7361dd72)
+  consolidate PHASE5 and SCROLL artefacts for better maintainability (7361dd72)
   (@vinhnx)
 - Replace dissimilar with optimized Myers diff algorithm (899884d3) (@vinhnx)
 - Streamline loop detection logic and improve non-interactive handling
@@ -8512,7 +8514,7 @@ All notable changes to vtcode will be documented in this file.
 - Streamline code by simplifying conditional checks and improving output
   handling (1047a0bb) (@vinhnx)
 - Remove unused LLM provider implementations (85df715a) (@vinhnx)
-- Update reasoning color and style for improved readability and placeholder
+- Update reasoning colour and style for improved readability and placeholder
   effect (232fe666) (@vinhnx)
 - Inline table row rendering logic, remove duplicate parameters, and clean up
   the TODO list. (16e46b4f) (@vinhnx)
@@ -8620,7 +8622,7 @@ All notable changes to vtcode will be documented in this file.
   language detection, and improve (dbf227de) (@vinhnx)
 - Improve reasoning rendering logic, add deferred rendering support, and
   optimize duplicate content handling (21f794ef) (@vinhnx)
-- Standardize color palette, update UI feedback styles, and improve markdown
+- Standardize colour palette, update UI feedback styles, and improve markdown
   spacing configuration (e4aeee1b) (@vinhnx)
 - Add cargo command serialization to prevent file lock contention, improve PTY
   tool timeout handling, and enhance error recovery logic (b310eabc) (@vinhnx)
@@ -8660,14 +8662,14 @@ All notable changes to vtcode will be documented in this file.
   (3393f2e0) (@vinhnx)
 - Enhance local build process for macOS and Linux in release scripts (98cb01fb)
   (@vinhnx)
-- Improve malloc warning suppression and enhance spinner behavior in UI
+- Improve malloc warning suppression and enhance spinner behaviour in UI
   interactions (241c53fe) (@vinhnx)
 - Update malloc warning suppression in debug script (839dbd68) (@vinhnx)
 - Enhance cursor visibility logic by adding status spinner check (910506f9)
   (@vinhnx)
-- Implement color accessibility features and update configuration options
+- Implement colour accessibility features and update configuration options
   (6422c103) (@vinhnx)
-- Improve table formatting in color guidelines documentation (d33b7afa)
+- Improve table formatting in colour guidelines documentation (d33b7afa)
   (@vinhnx)
 - Add Kimi K2.5 model support and update related configurations (6e83202d)
   (@vinhnx)
@@ -8802,7 +8804,7 @@ All notable changes to vtcode will be documented in this file.
   (5aac5ca2) (@vinhnx)
 - Add support for Linux x86_64 musl binaries in build and release workflows
   (137992e8) (@vinhnx)
-- Update CI workflows for Linux and Windows builds with optional artifact
+- Update CI workflows for Linux and Windows builds with optional artefact
   downloads (d72fb2d0) (@vinhnx)
 - Enhance plan approval process with context clearing option and update
   confirmation modal (dd522f15) (@vinhnx)
@@ -8820,13 +8822,13 @@ All notable changes to vtcode will be documented in this file.
 - Remove unnecessary Clear widget calls in header and input rendering
   (fb1c8de7) (@vinhnx)
 - Streamline architecture documentation and enhance clarity (565ea315) (@vinhnx)
-- Rename color-eyre hook functions for clarity and consistency (3c555a86)
+- Rename colour-eyre hook functions for clarity and consistency (3c555a86)
   (@vinhnx)
 - Update approval policy handling to use Arc<RwLock> for thread safety
   (3b91595f) (@vinhnx)
 - Create sync_mcp_approval_policy_for_context function for improved clarity
   (92a6cf82) (@vinhnx)
-- Improve error handling and simplify string conversion in terminal color probe
+- Improve error handling and simplify string conversion in terminal colour probe
   and LM Studio client (e41acb42) (@vinhnx)
 - Update exit summary formatting and remove unused functions (7c58ff16)
   (@vinhnx)
@@ -8841,9 +8843,9 @@ All notable changes to vtcode will be documented in this file.
   (@vinhnx)
 - Simplify function output handling in HuggingFace and OpenAI providers
   (71381dd3) (@vinhnx)
-- Enhance diff rendering styles and streamline background color handling
+- Enhance diff rendering styles and streamline background colour handling
   (c85edbcf) (@vinhnx)
-- Enhance color detection logic for terminal compatibility (af35cbf6) (@vinhnx)
+- Enhance colour detection logic for terminal compatibility (af35cbf6) (@vinhnx)
 - Update configuration section markers and adjust merging logic for user
   settings (79bce0e0) (@vinhnx)
 - Enhance settings search functionality and improve nested key handling
@@ -8966,7 +8968,7 @@ All notable changes to vtcode will be documented in this file.
 - Unify tool execution kernel and align harness safety limits (5fbfc7a8)
   (@vinhnx)
 - Clean up tool policies and improve CLI help output (b32129ff) (@vinhnx)
-- Enhance scrolling behavior and selection adjustment in session management
+- Enhance scrolling behaviour and selection adjustment in session management
   (34060deb) (@vinhnx)
 - Convert async functions to return Future for improved performance (38fc4722)
   (@vinhnx)
@@ -9260,7 +9262,7 @@ All notable changes to vtcode will be documented in this file.
 - Fable (8781f2a4) (@vinhnx)
 - Update README (7565cbac) (@vinhnx)
 - Update README (7f4186dd) (@vinhnx)
-- Ignore vtcode plan artifact (20736d87) (@vinhnx)
+- Ignore vtcode plan artefact (20736d87) (@vinhnx)
 - Feat/merge modes & agents  (3e743390) (@kernitus)
 
 #### Refactors
@@ -9286,7 +9288,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Bug Fixes
 
-- Handle parameterised close tags in collect_pseudo_marker_regions (dac7afa0)
+- Handle parameterized close tags in collect_pseudo_marker_regions (dac7afa0)
 - Apply PR review fixes (d530f6c7)
 - Restore harness robustness plan section in TODO.md (84a652ea)
 - Update tool call region collection to use pseudo marker (c67d347c)
@@ -10120,7 +10122,7 @@ All notable changes to vtcode will be documented in this file.
 - Add 'file' alias for file path parameters across tools (381be8e5)
 - Update tool policies and enhance DeepSeek provider handling (afaad984)
 - Add new tools and update policies in tool-policy.json; refactor diff
-  rendering to use standard ANSI colors (991d1590)
+  rendering to use standard ANSI colours (991d1590)
 - Enhance tool output handling and add command summary recording (66d2691d)
 - Add DSML parsing functionality and update reasoning effort configuration
   (fd749d7c)
@@ -10734,7 +10736,7 @@ All notable changes to vtcode will be documented in this file.
   components, and skills modules (b2cc57e0)
 - Add tests for structural search functionality and request validation
   (f4649c89)
-- Add tests for tool execution and sandbox runtime behavior (cbf7effb)
+- Add tests for tool execution and sandbox runtime behaviour (cbf7effb)
 - Refactor UI command item creation for improved readability and
   maintainability (0db3b4d4)
 - Update tool policies, fix keyboard shortcuts, and enhance documentation
@@ -10763,7 +10765,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Refactors
 
-- Enhance scrolling behavior and selection adjustment in session management
+- Enhance scrolling behaviour and selection adjustment in session management
   (34060deb)
 
 #### Tests
@@ -11153,7 +11155,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Bug Fixes
 
-- Pass model behavior to anthropic api provider (70944e75)
+- Pass model behaviour to anthropic api provider (70944e75)
 
 ### Other Changes
 
@@ -11246,7 +11248,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Bug Fixes
 
-- Update external editor instructions to reflect single-click behavior
+- Update external editor instructions to reflect single-click behaviour
   (7f9f0557)
 
 #### Features
@@ -11303,10 +11305,10 @@ All notable changes to vtcode will be documented in this file.
   normalize exit codes for no matches and findings in structural search.
   (29867cdc)
 - Enhance documentation for Rust, TypeScript, TSX, YAML, Ruby, Python, Kotlin,
-  Java, HTML, Go, Cpp, and C catalog examples; provide guidelines for adapting
-  rules to repository-specific conventions. (819298a2)
+  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for
+  adapting rules to repository-specific conventions. (819298a2)
 - Enhance documentation for ast-grep project workflows and APIs; clarify
-  project discovery behavior, scan vs run requirements, and performance
+  project discovery behaviour, scan vs run requirements, and performance
   optimizations (3db5c5e5)
 - Fix typo in comments for line truncation functions (32ccac09)
 - Add persistent memory support and enhance instruction appendix functionality
@@ -11328,7 +11330,7 @@ All notable changes to vtcode will be documented in this file.
 
 #### Bug Fixes
 
-- Update external editor instructions to reflect single-click behavior
+- Update external editor instructions to reflect single-click behaviour
   (7f9f0557)
 
 #### Features
@@ -11385,10 +11387,10 @@ All notable changes to vtcode will be documented in this file.
   normalize exit codes for no matches and findings in structural search.
   (29867cdc)
 - Enhance documentation for Rust, TypeScript, TSX, YAML, Ruby, Python, Kotlin,
-  Java, HTML, Go, Cpp, and C catalog examples; provide guidelines for adapting
-  rules to repository-specific conventions. (819298a2)
+  Java, HTML, Go, Cpp, and C catalogue examples; provide guidelines for
+  adapting rules to repository-specific conventions. (819298a2)
 - Enhance documentation for ast-grep project workflows and APIs; clarify
-  project discovery behavior, scan vs run requirements, and performance
+  project discovery behaviour, scan vs run requirements, and performance
   optimizations (3db5c5e5)
 - Fix typo in comments for line truncation functions (32ccac09)
 - Add persistent memory support and enhance instruction appendix functionality
@@ -11497,7 +11499,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor error handling, optimize token usage, and enhance performance
   metrics (48af5696)
 - Add streaming support OpenAI models with normalized event handling (ff76d3af)
-- Add orchestration for plan-build-evaluate workflow with harness artifacts
+- Add orchestration for plan-build-evaluate workflow with harness artefacts
   (6968408b)
 
 #### Refactors
@@ -11588,7 +11590,7 @@ All notable changes to vtcode will be documented in this file.
   (541eac42)
 - Enhance RejectConfig documentation and update permission rejection logic
   (d7eb68f0)
-- Add pod management functionality with model catalog and state handling
+- Add pod management functionality with model catalogue and state handling
   (c029e115)
 - Implement normalized streaming for OpenRouter provider and update response
   handling (b01aeb2f)
@@ -11617,8 +11619,8 @@ All notable changes to vtcode will be documented in this file.
 - Implement prompt cache lineage management and enhance runtime context
   handling (9e26d8de)
 - Update session ID and timestamps in current_blocked.md; modify GPU type
-  matching logic and add tests in catalog.rs; change API key and model settings
-  in vtcode.toml (b5a2f974)
+  matching logic and add tests in catalogue.rs; change API key and model
+  settings in vtcode.toml (b5a2f974)
 - Enhance system prompt handling by adding history directives and runtime
   context checks; add tests for new functionality (c406e88b)
 - Refactor tool policies and update configuration for Ollama provider (eaaa2b83)
@@ -11670,7 +11672,7 @@ All notable changes to vtcode will be documented in this file.
   (541eac42)
 - Enhance RejectConfig documentation and update permission rejection logic
   (d7eb68f0)
-- Add pod management functionality with model catalog and state handling
+- Add pod management functionality with model catalogue and state handling
   (c029e115)
 - Implement normalized streaming for OpenRouter provider and update response
   handling (b01aeb2f)
@@ -11699,8 +11701,8 @@ All notable changes to vtcode will be documented in this file.
 - Implement prompt cache lineage management and enhance runtime context
   handling (9e26d8de)
 - Update session ID and timestamps in current_blocked.md; modify GPU type
-  matching logic and add tests in catalog.rs; change API key and model settings
-  in vtcode.toml (b5a2f974)
+  matching logic and add tests in catalogue.rs; change API key and model
+  settings in vtcode.toml (b5a2f974)
 - Enhance system prompt handling by adding history directives and runtime
   context checks; add tests for new functionality (c406e88b)
 - Refactor tool policies and update configuration for Ollama provider (eaaa2b83)
@@ -11944,7 +11946,7 @@ All notable changes to vtcode will be documented in this file.
 - Add plan confirmation prompt after draft persistence and enhance error
   classification (ccd75a8f)
 - Enhance modal list state management to retain last selection and improve
-  overlay behavior (22f813ce)
+  overlay behaviour (22f813ce)
 - Refactor planning workflow context handling and update configuration values
   for consistency (cc191c1d)
 - Refactor plan validation logic to prefer more complete candidates and enhance
@@ -12223,7 +12225,7 @@ All notable changes to vtcode will be documented in this file.
 #### Other
 
 - Fix install script (25a0e060) (@vinhnx)
-- Update badge colors and links in README.md (99175a26) (@vinhnx)
+- Update badge colours and links in README.md (99175a26) (@vinhnx)
 - Update README.md (b433aefb) (@vinhnx)
 - Update TODO (163e9716)
 - Refactor API key handling and update model reasoning capabilities (db0bdf03)
@@ -12270,7 +12272,7 @@ All notable changes to vtcode will be documented in this file.
 - Optimize tool execution tracking, file path parsing, and grep result
   handling, while preventing memory leaks in stats. (c319aebe)
 - Add Miri check to the `check.sh` script and update documentation for
-  detecting undefined behavior. (15f3d5c1)
+  detecting undefined behaviour. (15f3d5c1)
 
 ### Other Changes
 
@@ -12621,9 +12623,9 @@ All notable changes to vtcode will be documented in this file.
 - Streamline response handling and output printing in AgentRunner (d98a5e55)
 - Simplify function output handling in HuggingFace and OpenAI providers
   (71381dd3)
-- Enhance diff rendering styles and streamline background color handling
+- Enhance diff rendering styles and streamline background colour handling
   (c85edbcf)
-- Enhance color detection logic for terminal compatibility (af35cbf6)
+- Enhance colour detection logic for terminal compatibility (af35cbf6)
 - Update configuration section markers and adjust merging logic for user
   settings (79bce0e0)
 - Enhance settings search functionality and improve nested key handling
@@ -13118,7 +13120,7 @@ All notable changes to vtcode will be documented in this file.
 - Include git version info in long_version and add tests (8a1fe108)
 - Add snapshot files for history picker and slash widget tests (b397909d)
 - Implement TUI log capture feature and enhance panic hook handling (89813122)
-- Integrate color-eyre for enhanced error reporting in debug mode (05591670)
+- Integrate colour-eyre for enhanced error reporting in debug mode (05591670)
 
 ### Other Changes
 
@@ -13130,7 +13132,7 @@ All notable changes to vtcode will be documented in this file.
   modules (b5081d89)
 - Add websocket connection limit error handling and update API versioning
   (6f76cfb7)
-- Add installation scripts to release artifacts and update installation
+- Add installation scripts to release artefacts and update installation
   documentation (816c6d41)
 - Refactor error log collector to use a bounded buffer and enhance link
   rendering in markdown (c7ef605b)
@@ -13155,7 +13157,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor TODO.md to improve formatting and clarify implementation
   instructions (265c835a)
 - Enhance file palette key handling to manage selection and normal submit
-  behavior (309e8b22)
+  behaviour (309e8b22)
 - Refactor process group termination logic for robust child process cleanup
   (bb1ab07f)
 - Refactor WebSocket session handling and enhance incremental input validation
@@ -13178,7 +13180,7 @@ All notable changes to vtcode will be documented in this file.
 - Add Clippy configuration for vtcode with custom lint settings (fac8a298)
 - Implement theme synchronization for Alacritty, Ghostty, and Kitty terminals;
   remove CachedStyleParser and replace with LrMap for improved performance; add
-  terminal color probe for enhanced theme detection; update Cargo.toml files
+  terminal colour probe for enhanced theme detection; update Cargo.toml files
   for Rust 1.85 compatibility. (c7dd0f28)
 - Refactor code to use `parking_lot::RwLock` instead of `std::sync::RwLock` for
   improved performance; update various imports and method calls across multiple
@@ -13188,7 +13190,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor command processing, improve output handling, and enhance telemetry
   reporting (ec20b546)
 - Refactor tests and improve code readability (2c2ade2b)
-- Add color policy module and integrate into styling and error display
+- Add colour policy module and integrate into styling and error display
   (3287a044)
 - Add fuzzing adoption plan for security parsers and initial setup (4b4d8d8f)
 - Refactor code for consistency and readability across multiple modules
@@ -13205,12 +13207,12 @@ All notable changes to vtcode will be documented in this file.
 
 - Remove unnecessary Clear widget calls in header and input rendering (fb1c8de7)
 - Streamline architecture documentation and enhance clarity (565ea315)
-- Rename color-eyre hook functions for clarity and consistency (3c555a86)
+- Rename colour-eyre hook functions for clarity and consistency (3c555a86)
 - Update approval policy handling to use Arc<RwLock> for thread safety
   (3b91595f)
 - Create sync_mcp_approval_policy_for_context function for improved clarity
   (92a6cf82)
-- Improve error handling and simplify string conversion in terminal color probe
+- Improve error handling and simplify string conversion in terminal colour probe
   and LM Studio client (e41acb42)
 - Update exit summary formatting and remove unused functions (7c58ff16)
 - Streamline lint configuration and enhance exit summary output (eaca32a6)
@@ -13234,7 +13236,7 @@ All notable changes to vtcode will be documented in this file.
   modules (b5081d89)
 - Add websocket connection limit error handling and update API versioning
   (6f76cfb7)
-- Add installation scripts to release artifacts and update installation
+- Add installation scripts to release artefacts and update installation
   documentation (816c6d41)
 - Refactor error log collector to use a bounded buffer and enhance link
   rendering in markdown (c7ef605b)
@@ -13259,7 +13261,7 @@ All notable changes to vtcode will be documented in this file.
 - Refactor TODO.md to improve formatting and clarify implementation
   instructions (265c835a)
 - Enhance file palette key handling to manage selection and normal submit
-  behavior (309e8b22)
+  behaviour (309e8b22)
 - Refactor process group termination logic for robust child process cleanup
   (bb1ab07f)
 - Refactor WebSocket session handling and enhance incremental input validation
@@ -13312,7 +13314,7 @@ All notable changes to vtcode will be documented in this file.
   handling and improve cache retrieval methods (76c1789f)
 - Add support for "show diff" command and improve tool call validation
   (62051691)
-- Update color scheme for unified diff background and gutter colors; change
+- Update colour scheme for unified diff background and gutter colours; change
   terminal theme to improve readability (525653e9)
 - Add diff theme configuration and improve styling for terminal output
   (501634f1)
@@ -13413,7 +13415,7 @@ All notable changes to vtcode will be documented in this file.
 - Remove xAI Grok models and related configurations from the codebase (7b069620)
 - Enhance file reference extraction to handle npm scoped packages and improve
   path validation (00646152)
-- Enhance UI styling for PTY output and improve color handling across
+- Enhance UI styling for PTY output and improve colour handling across
   components (36cc1ca0)
 - Add sidebar, slash command palette, and transcript widgets; implement session
   options and host adapter traits (fdc70374)
@@ -13593,7 +13595,7 @@ All notable changes to vtcode will be documented in this file.
 - Implement mouse text selection in the TUI and add a new `vtcode.toml`
   configuration file. (83567152) (@vinhnx)
 - Add Claude Sonnet 4.6 model support and integrate it across model
-  definitions, parsing, catalog, and documentation. (d460c56d) (@vinhnx)
+  definitions, parsing, catalogue, and documentation. (d460c56d) (@vinhnx)
 - Implement Gemini 3.1 Pro Preview models with updated token limits and system
   prompt handling. (dc0742c0) (@vinhnx)
 - Implement Gemini prompt caching with TTL using a new `CacheControl` part and
@@ -13692,7 +13694,7 @@ All notable changes to vtcode will be documented in this file.
   consistency (e024a48d) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Update TODO.md (3391d6b9) (@vinhnx)
 - Add spool chunk read tracking and enforce limits per turn (c09ef6d3) (@vinhnx)
 - Increase max tool calls per turn to 48 and implement budget warning system in
@@ -13717,7 +13719,7 @@ All notable changes to vtcode will be documented in this file.
   (f8505ba9) (@vinhnx)
 - Refactor run command output handling and improve command summary rendering
   (59e8fab8) (@vinhnx)
-- Implement plan artifact write handling and adjust LLM timeout logic
+- Implement plan artefact write handling and adjust LLM timeout logic
   (5edb5d66) (@vinhnx)
 - Enhance timeout messages to include "continue" nudge for stalled turns in
   planning workflow (03cd0a65) (@vinhnx)
@@ -13902,7 +13904,7 @@ All notable changes to vtcode will be documented in this file.
   configuration file. (@vinhnx)
 
 - Add Claude Sonnet 4.6 model support and integrate it across model
-  definitions, parsing, catalog, and documentation. (@vinhnx)
+  definitions, parsing, catalogue, and documentation. (@vinhnx)
 
 - Implement Gemini 3.1 Pro Preview models with updated token limits and system
   prompt handling. (@vinhnx)
@@ -14122,7 +14124,7 @@ All notable changes to vtcode will be documented in this file.
 - Implement Gemini 3.1 Pro Preview models with updated token limits and system
   prompt handling. (dc0742c0) (@vinhnx)
 - add Claude Sonnet 4.6 model support and integrate it across model
-  definitions, parsing, catalog, and documentation. (d460c56d) (@vinhnx)
+  definitions, parsing, catalogue, and documentation. (d460c56d) (@vinhnx)
 - Implement mouse text selection in the TUI and add a new `vtcode.toml`
   configuration file. (83567152) (@vinhnx)
 - Render GFM tables inside markdown code blocks as tables and prevent
@@ -14243,7 +14245,7 @@ All notable changes to vtcode will be documented in this file.
   `&Path`, and optimize sidebar string truncation. (59525d4b) (@vinhnx)
 - Update TODO.md (3391d6b9) (@1097578+vinhnx)
 - Update commit (9d05e9de) (@vinhnx)
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for
@@ -14307,7 +14309,7 @@ All notable changes to vtcode will be documented in this file.
 - Implement Gemini 3.1 Pro Preview models with updated token limits and system
   prompt handling. (dc0742c0) (@vinhnx)
 - add Claude Sonnet 4.6 model support and integrate it across model
-  definitions, parsing, catalog, and documentation. (d460c56d) (@vinhnx)
+  definitions, parsing, catalogue, and documentation. (d460c56d) (@vinhnx)
 - Implement mouse text selection in the TUI and add a new `vtcode.toml`
   configuration file. (83567152) (@vinhnx)
 - Render GFM tables inside markdown code blocks as tables and prevent
@@ -14416,7 +14418,7 @@ All notable changes to vtcode will be documented in this file.
 ### Other
 
 - Update commit (9d05e9de) (@vinhnx)
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for
@@ -14472,7 +14474,7 @@ All notable changes to vtcode will be documented in this file.
 - Implement Gemini 3.1 Pro Preview models with updated token limits and system
   prompt handling. (dc0742c0) (@vinhnx)
 - add Claude Sonnet 4.6 model support and integrate it across model
-  definitions, parsing, catalog, and documentation. (d460c56d) (@vinhnx)
+  definitions, parsing, catalogue, and documentation. (d460c56d) (@vinhnx)
 - Implement mouse text selection in the TUI and add a new `vtcode.toml`
   configuration file. (83567152) (@vinhnx)
 - Render GFM tables inside markdown code blocks as tables and prevent
@@ -14578,7 +14580,7 @@ All notable changes to vtcode will be documented in this file.
 ### Other
 
 - Update commit (9d05e9de) (@vinhnx)
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for
@@ -14725,7 +14727,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Other
 
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for
@@ -14869,7 +14871,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Other
 
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for
@@ -15009,7 +15011,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Other
 
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for
@@ -15144,7 +15146,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Other
 
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for
@@ -15276,7 +15278,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Other
 
-- Enhance model behavior configuration for LLM providers (0fa12334) (@vinhnx)
+- Enhance model behaviour configuration for LLM providers (0fa12334) (@vinhnx)
 - Add scripts for documentation link validation and markdown location checks
   (7290fc5b) (@vinhnx)
 - Update default model in vtcode.toml to minimax-m2:cloud; format code for
@@ -15548,8 +15550,8 @@ All notable changes to vtcode will be documented in this file.
   capabilities and user confirmations (7f05b778) (@vinhnx)
 - Add GLM-5 model support and remove deprecated GLM-4.5/4.6 models (29d0992a)
   (@vinhnx)
-- Implement tool catalog state management and integrate into MCP tool lifecycle
-  (18c73b54) (@vinhnx)
+- Implement tool catalogue state management and integrate into MCP tool
+  lifecycle (18c73b54) (@vinhnx)
 - Enhance planning workflow handling and tool safety validation; refactor
   prompt management and session loop logic (63a40249) (@vinhnx)
 - Add prompt assembly mode and enhance tool validation (480ed33a) (@vinhnx)
@@ -15624,8 +15626,8 @@ All notable changes to vtcode will be documented in this file.
   capabilities and user confirmations (7f05b778) (@vinhnx)
 - Add GLM-5 model support and remove deprecated GLM-4.5/4.6 models (29d0992a)
   (@vinhnx)
-- Implement tool catalog state management and integrate into MCP tool lifecycle
-  (18c73b54) (@vinhnx)
+- Implement tool catalogue state management and integrate into MCP tool
+  lifecycle (18c73b54) (@vinhnx)
 - Enhance planning workflow handling and tool safety validation; refactor
   prompt management and session loop logic (63a40249) (@vinhnx)
 - Add prompt assembly mode and enhance tool validation (480ed33a) (@vinhnx)
@@ -15676,7 +15678,7 @@ All notable changes to vtcode will be documented in this file.
   option (4fb5612c) (@vinhnx)
 - implement delete_word_forward method in Session (5936d8bc) (@vinhnx)
 - add delete_word_forward method to InputManager and update LayoutMode footer
-  behavior (29e2dd09) (@vinhnx)
+  behaviour (29e2dd09) (@vinhnx)
 
 ### Other
 
@@ -15795,7 +15797,7 @@ All notable changes to vtcode will be documented in this file.
   configuration theme and editing state (958f7c38) (@vinhnx)
 - Cleanup TODO.md by removing outdated tasks and enhancing UI transition notes
   (21d1d5c6) (@vinhnx)
-- Refactor spinner implementation and enhance cursor behavior during status
+- Refactor spinner implementation and enhance cursor behaviour during status
   updates (0b6828ac) (@vinhnx)
 - Refactor test assertion for compact_title method in MCP event (4f44b68a)
   (@vinhnx)
@@ -15829,7 +15831,7 @@ All notable changes to vtcode will be documented in this file.
   configuration theme and editing state (958f7c38) (@vinhnx)
 - Cleanup TODO.md by removing outdated tasks and enhancing UI transition notes
   (21d1d5c6) (@vinhnx)
-- Refactor spinner implementation and enhance cursor behavior during status
+- Refactor spinner implementation and enhance cursor behaviour during status
   updates (0b6828ac) (@vinhnx)
 - Refactor test assertion for compact_title method in MCP event (4f44b68a)
   (@vinhnx)
@@ -15879,7 +15881,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Other
 
-- Implement no_spool functionality for tool output and enhance cursor behavior
+- Implement no_spool functionality for tool output and enhance cursor behaviour
   during scrolling and shimmer states (477209fd) (@vinhnx)
 - Refactor diff handling and rendering for improved clarity and summary display
   (f8dbf9e1) (@vinhnx)
@@ -15951,7 +15953,7 @@ All notable changes to vtcode will be documented in this file.
   logic; update Anthropic provider tests and configuration (0dece6ac) (@vinhnx)
 - refactor: enhance base URL resolution and improve JSON handling in request
   builder (584a82ca) (@vinhnx)
-- docs: add behavioral guidelines to reduce common LLM coding mistakes
+- docs: add behavioural guidelines to reduce common LLM coding mistakes
   (75ca745d) (@vinhnx)
 - refactor: simplify conditional checks and remove unused imports (2602cbc8)
   (@vinhnx)
@@ -15966,7 +15968,7 @@ All notable changes to vtcode will be documented in this file.
   logic; update Anthropic provider tests and configuration (0dece6ac) (@vinhnx)
 - refactor: enhance base URL resolution and improve JSON handling in request
   builder (584a82ca) (@vinhnx)
-- docs: add behavioral guidelines to reduce common LLM coding mistakes
+- docs: add behavioural guidelines to reduce common LLM coding mistakes
   (75ca745d) (@vinhnx)
 - refactor: simplify conditional checks and remove unused imports (2602cbc8)
   (@vinhnx)
@@ -15981,7 +15983,7 @@ All notable changes to vtcode will be documented in this file.
   (ee2bcf14) (@vinhnx)
 - chore(release): bump version to 0.74.11 [skip ci] (528d8846) (@vinhnx)
 - docs: update changelog for v0.74.11 [skip ci] (dcdaef82) (@vtcode-release-bot)
-- fix: update spinner finish behavior for cancellation handling (73a7d72f)
+- fix: update spinner finish behaviour for cancellation handling (73a7d72f)
   (@vinhnx)
 - refactor: remove unused set_defer_rendering method from
   StreamingReasoningState (e429daf0) (@vinhnx)
@@ -16010,7 +16012,7 @@ All notable changes to vtcode will be documented in this file.
 
 ## v0.74.11 - 2026-02-02
 
-- fix: update spinner finish behavior for cancellation handling (36d1f577)
+- fix: update spinner finish behaviour for cancellation handling (36d1f577)
   (@vinhnx)
 - refactor: remove unused set_defer_rendering method from
   StreamingReasoningState (756c86ba) (@vinhnx)
@@ -16198,14 +16200,14 @@ All notable changes to vtcode will be documented in this file.
   and tests (84b6c722)
 - refactor: add Kimi K2.5 model support and update related configurations
   (6e83202d)
-- refactor: improve table formatting in color guidelines documentation
+- refactor: improve table formatting in colour guidelines documentation
   (d33b7afa)
-- refactor: implement color accessibility features and update configuration
+- refactor: implement colour accessibility features and update configuration
   options (6422c103)
 - refactor: enhance cursor visibility logic by adding status spinner check
   (910506f9)
 - refactor: update malloc warning suppression in debug script (839dbd68)
-- refactor: improve malloc warning suppression and enhance spinner behavior in
+- refactor: improve malloc warning suppression and enhance spinner behaviour in
   UI interactions (241c53fe)
 - refactor: enhance local build process for macOS and Linux in release scripts
   (98cb01fb)
@@ -16250,7 +16252,7 @@ All notable changes to vtcode will be documented in this file.
   handlers, and updating tool repetition tracking to only count successful
   calls. (33a9b664)
 - fix: enable `unified_file` tool in the sandbox and refactor diff preview
-  styling to use a color palette. (15715b9e)
+  styling to use a colour palette. (15715b9e)
 - feat: prevent duplicate LLM reasoning output and prioritize visible alias
   targets for hidden tools during lookup. (c434de61)
 - feat: Implement dotfile protection with audit, backup, and guardian modules,
@@ -16287,7 +16289,7 @@ All notable changes to vtcode will be documented in this file.
   enhance status rendering logic (0a40ad46)
 - fix: adjust tool policies, refactor text styling logic, and optimize message
   rendering indentation (8123ac34)
-- fix: adjust color mappings, enhance markdown rendering logic, and add tests
+- fix: adjust colour mappings, enhance markdown rendering logic, and add tests
   for new edge cases in tool policies and UI interactions (8309ffc1)
 - fix: enforce tools_policy prompts, refactor workspace trust application, and
   enhance command safety checks (394aa59b)
@@ -16354,7 +16356,7 @@ All notable changes to vtcode will be documented in this file.
 
     - docs: update changelog for v0.72.3 [skip ci]
     - docs: update changelog for v0.73.0 [skip ci]
-    - docs: center align VT Code GIF in README
+    - docs: centre align VT Code GIF in README
 
 ### Chores
 
@@ -16380,7 +16382,7 @@ All notable changes to vtcode will be documented in this file.
 ### Documentation
 
     - docs: update changelog for v0.73.0 [skip ci]
-    - docs: center align VT Code GIF in README
+    - docs: centre align VT Code GIF in README
 
 ### Chores
 
@@ -16402,7 +16404,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Documentation
 
-    - docs: center align VT Code GIF in README
+    - docs: centre align VT Code GIF in README
 
 ### Chores
 
@@ -16443,7 +16445,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor: enhance rendering logic with dimming style, standardize long-running command locks, and update tooling policies for improved usability
     - refactor: add cargo command serialization to prevent file lock contention, improve PTY tool timeout handling, and enhance error recovery logic
     - refactor: add cargo command serialization to prevent file lock contention, improve PTY tool timeout handling, and enhance error recovery logic
-    - refactor: standardize color palette, update UI feedback styles, and improve markdown spacing configuration
+    - refactor: standardize colour palette, update UI feedback styles, and improve markdown spacing configuration
     - refactor: improve reasoning rendering logic, add deferred rendering support, and optimize duplicate content handling
     - refactor: optimize markdown rendering with conditional line numbering, add diff language detection, and improve
     - refactor: enhance line numbering in markdown code blocks, improve text trimming logic, and add support for "Reasoning" style rendering
@@ -16476,7 +16478,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor: enhance rendering logic with dimming style, standardize long-running command locks, and update tooling policies for improved usability
     - refactor: add cargo command serialization to prevent file lock contention, improve PTY tool timeout handling, and enhance error recovery logic
     - refactor: add cargo command serialization to prevent file lock contention, improve PTY tool timeout handling, and enhance error recovery logic
-    - refactor: standardize color palette, update UI feedback styles, and improve markdown spacing configuration
+    - refactor: standardize colour palette, update UI feedback styles, and improve markdown spacing configuration
     - refactor: improve reasoning rendering logic, add deferred rendering support, and optimize duplicate content handling
     - refactor: optimize markdown rendering with conditional line numbering, add diff language detection, and improve
     - refactor: enhance line numbering in markdown code blocks, improve text trimming logic, and add support for "Reasoning" style rendering
@@ -16812,7 +16814,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: add nested discovery for Claude skills, enhance SKILL.md parsing with default values, and update validation rules
     - feat: add subagent system with optional enablement, commands, and configuration updates
     - feat: add harness event emitter and session persistence for enhanced logging and state management
-    - feat: add adaptive logo SVGs for different color schemes
+    - feat: add adaptive logo SVGs for different colour schemes
 
 ### Bug Fixes
 
@@ -16845,7 +16847,7 @@ All notable changes to vtcode will be documented in this file.
 ### Features
 
     - feat: add harness event emitter and session persistence for enhanced logging and state management
-    - feat: add adaptive logo SVGs for different color schemes
+    - feat: add adaptive logo SVGs for different colour schemes
     - feat: implement batch file reading with token-efficient command transformation
     - feat: add support for additional programming languages including swift in syntax highlighting and configuration
 
@@ -16878,7 +16880,7 @@ All notable changes to vtcode will be documented in this file.
 ### Features
 
     - feat: add harness event emitter and session persistence for enhanced logging and state management
-    - feat: add adaptive logo SVGs for different color schemes
+    - feat: add adaptive logo SVGs for different colour schemes
     - feat: implement batch file reading with token-efficient command transformation
     - feat: add support for additional programming languages including swift in syntax highlighting and configuration
 
@@ -17334,7 +17336,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement autonomous loop detection with TUI warnings, integrate into agent runloop, and add project TODO documentation.
     - feat: Enhance agent robustness with exponential backoff for circuit breakers, custom tool loop limits, and conversation turn limits.
     - feat: Implement priority-based adaptive rate limiting, tiered cache eviction, and sliding window tool health tracking.
-    - feat: Update session limit messages to recommend persisting progress via artifacts like task.md/docs.
+    - feat: Update session limit messages to recommend persisting progress via artefacts like task.md/docs.
     - feat: Dynamically configure conversation message and session turn limits, and remove telemetry from interaction loop parameters.
     - feat: Implement adaptive rate limiting with priority-based scaling and integrate telemetry for tool usage tracking.
     - feat: Enhance tool execution with circuit breakers, adaptive rate limiting, and health-based delegation, and introduce session telemetry and dynamic cache capacity management.
@@ -17370,7 +17372,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Implement autonomous loop detection with TUI warnings, integrate into agent runloop, and add project TODO documentation.
     - feat: Enhance agent robustness with exponential backoff for circuit breakers, custom tool loop limits, and conversation turn limits.
     - feat: Implement priority-based adaptive rate limiting, tiered cache eviction, and sliding window tool health tracking.
-    - feat: Update session limit messages to recommend persisting progress via artifacts like task.md/docs.
+    - feat: Update session limit messages to recommend persisting progress via artefacts like task.md/docs.
     - feat: Dynamically configure conversation message and session turn limits, and remove telemetry from interaction loop parameters.
     - feat: Implement adaptive rate limiting with priority-based scaling and integrate telemetry for tool usage tracking.
     - feat: Enhance tool execution with circuit breakers, adaptive rate limiting, and health-based delegation, and introduce session telemetry and dynamic cache capacity management.
@@ -17378,7 +17380,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: improve code block indentation normalization to handle mixed whitespace and refine markdown table rendering separators.
     - feat: Add an empirical evaluation framework for measuring LLM performance and link it in the main README.
     - feat: implement a new evaluation framework with test cases, metrics, and report generation, and update LLM provider integrations to support it.
-    - feat: Introduce coding agent settings to LLM requests to refine model behavior, implementing their application in the Anthropic provider for system prompt adjustments, prefill, message reordering, and XML document handling.
+    - feat: Introduce coding agent settings to LLM requests to refine model behaviour, implementing their application in the Anthropic provider for system prompt adjustments, prefill, message reordering, and XML document handling.
     - feat: Add prefill and character reinforcement options to LLMRequest, implement Anthropic-specific handling, safety screening, and leak protection.
     - feat: Add `thinking_budget` to `LLMRequest` and implement Anthropic extended thinking logic and validation.
     - feat: Implement request and organization IDs for LLM responses and error metadata, enhance Anthropic error handling, and add `Refusal` finish reason.
@@ -17391,7 +17393,7 @@ All notable changes to vtcode will be documented in this file.
     - refactor: Replace map_or with is_none_or for improved clarity in MCP tool filtering
     - refactor: Remove unnecessary cloning and assignment of `_updated_snapshot`.
     - refactor: Inline table row rendering logic, remove duplicate parameters, and clean up the TODO list.
-    - refactor: update reasoning color and style for improved readability and placeholder effect
+    - refactor: update reasoning colour and style for improved readability and placeholder effect
 
 ### Documentation
 
@@ -17410,7 +17412,7 @@ All notable changes to vtcode will be documented in this file.
 
     - feat: Add an empirical evaluation framework for measuring LLM performance and link it in the main README.
     - feat: implement a new evaluation framework with test cases, metrics, and report generation, and update LLM provider integrations to support it.
-    - feat: Introduce coding agent settings to LLM requests to refine model behavior, implementing their application in the Anthropic provider for system prompt adjustments, prefill, message reordering, and XML document handling.
+    - feat: Introduce coding agent settings to LLM requests to refine model behaviour, implementing their application in the Anthropic provider for system prompt adjustments, prefill, message reordering, and XML document handling.
     - feat: Add prefill and character reinforcement options to LLMRequest, implement Anthropic-specific handling, safety screening, and leak protection.
     - feat: Add `thinking_budget` to `LLMRequest` and implement Anthropic extended thinking logic and validation.
     - feat: Implement request and organization IDs for LLM responses and error metadata, enhance Anthropic error handling, and add `Refusal` finish reason.
@@ -17420,7 +17422,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Refactors
 
-    - refactor: update reasoning color and style for improved readability and placeholder effect
+    - refactor: update reasoning colour and style for improved readability and placeholder effect
 
 ### Documentation
 
@@ -17782,7 +17784,7 @@ All notable changes to vtcode will be documented in this file.
 
     - feat: update tool policies, enhance file handling, and modify agent configuration for improved functionality
     - feat: update tool policies and agent configuration for improved execution control and user confirmation
-    - feat: enhance agent behavior configuration with Codex-inspired patterns and update tool response truncation settings
+    - feat: enhance agent behaviour configuration with Codex-inspired patterns and update tool response truncation settings
     - feat: add GPT-5.2 Codex model and improve code formatting across multiple files
 
 ### Documentation
@@ -17800,7 +17802,7 @@ All notable changes to vtcode will be documented in this file.
 ### Features
 
     - feat: update tool policies and agent configuration for improved execution control and user confirmation
-    - feat: enhance agent behavior configuration with Codex-inspired patterns and update tool response truncation settings
+    - feat: enhance agent behaviour configuration with Codex-inspired patterns and update tool response truncation settings
     - feat: add GPT-5.2 Codex model and improve code formatting across multiple files
     - feat: enhance sandboxing with new documentation and environment handling
 
@@ -18611,7 +18613,7 @@ All notable changes to vtcode will be documented in this file.
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
-    - feat(output-styles): implement output styles feature with customizable behavior and response formats
+    - feat(output-styles): implement output styles feature with customizable behaviour and response formats
     - feat(hooks): add lifecycle hooks for file protection, command logging, code formatting, markdown formatting, and notifications
     - feat(marketplace): add marketplace and plugin management commands
 
@@ -18666,7 +18668,7 @@ All notable changes to vtcode will be documented in this file.
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
-    - feat(output-styles): implement output styles feature with customizable behavior and response formats
+    - feat(output-styles): implement output styles feature with customizable behaviour and response formats
     - feat(hooks): add lifecycle hooks for file protection, command logging, code formatting, markdown formatting, and notifications
     - feat(marketplace): add marketplace and plugin management commands
 
@@ -18719,7 +18721,7 @@ All notable changes to vtcode will be documented in this file.
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
-    - feat(output-styles): implement output styles feature with customizable behavior and response formats
+    - feat(output-styles): implement output styles feature with customizable behaviour and response formats
     - feat(hooks): add lifecycle hooks for file protection, command logging, code formatting, markdown formatting, and notifications
     - feat(marketplace): add marketplace and plugin management commands
 
@@ -18770,7 +18772,7 @@ All notable changes to vtcode will be documented in this file.
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
-    - feat(output-styles): implement output styles feature with customizable behavior and response formats
+    - feat(output-styles): implement output styles feature with customizable behaviour and response formats
     - feat(hooks): add lifecycle hooks for file protection, command logging, code formatting, markdown formatting, and notifications
     - feat(marketplace): add marketplace and plugin management commands
 
@@ -18820,7 +18822,7 @@ All notable changes to vtcode will be documented in this file.
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
-    - feat(output-styles): implement output styles feature with customizable behavior and response formats
+    - feat(output-styles): implement output styles feature with customizable behaviour and response formats
     - feat(hooks): add lifecycle hooks for file protection, command logging, code formatting, markdown formatting, and notifications
     - feat(marketplace): add marketplace and plugin management commands
 
@@ -18857,7 +18859,7 @@ All notable changes to vtcode will be documented in this file.
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
-    - feat(output-styles): implement output styles feature with customizable behavior and response formats
+    - feat(output-styles): implement output styles feature with customizable behaviour and response formats
     - feat(hooks): add lifecycle hooks for file protection, command logging, code formatting, markdown formatting, and notifications
     - feat(marketplace): add marketplace and plugin management commands
     - feat(notifications): add toggle for terminal notifications in config
@@ -18889,7 +18891,7 @@ All notable changes to vtcode will be documented in this file.
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
-    - feat(output-styles): implement output styles feature with customizable behavior and response formats
+    - feat(output-styles): implement output styles feature with customizable behaviour and response formats
     - feat(hooks): add lifecycle hooks for file protection, command logging, code formatting, markdown formatting, and notifications
     - feat(marketplace): add marketplace and plugin management commands
     - feat(notifications): add toggle for terminal notifications in config
@@ -18919,7 +18921,7 @@ All notable changes to vtcode will be documented in this file.
     - feat(subagents): document subagent system and built-in agents; update README and changelog
     - feat(statusline): add custom status line scripts and JSON input handling
     - feat: add reverse search and background operation handling in TUI
-    - feat(output-styles): implement output styles feature with customizable behavior and response formats
+    - feat(output-styles): implement output styles feature with customizable behaviour and response formats
     - feat(hooks): add lifecycle hooks for file protection, command logging, code formatting, markdown formatting, and notifications
     - feat(marketplace): add marketplace and plugin management commands
     - feat(notifications): add toggle for terminal notifications in config
@@ -19257,7 +19259,7 @@ All notable changes to vtcode will be documented in this file.
     - chore(deps): bump the all-rust-deps group with 21 updates
     - chore(deps): bump DavidAnson/markdownlint-cli2-action from 21 to 22
     - chore(deps): bump actions/cache from 4 to 5
-    - chore(deps): bump actions/upload-artifact from 5 to 6
+    - chore(deps): bump actions/upload-artefact from 5 to 6
 
 # [Version 0.53.0] - 2025-12-25
 
@@ -19306,7 +19308,7 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.52.7
     - chore(deps): bump DavidAnson/markdownlint-cli2-action from 21 to 22
     - chore(deps): bump actions/cache from 4 to 5
-    - chore(deps): bump actions/upload-artifact from 5 to 6
+    - chore(deps): bump actions/upload-artefact from 5 to 6
 
 # [Version 0.52.10] - 2025-12-25
 
@@ -19337,7 +19339,7 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.52.7
     - chore(deps): bump DavidAnson/markdownlint-cli2-action from 21 to 22
     - chore(deps): bump actions/cache from 4 to 5
-    - chore(deps): bump actions/upload-artifact from 5 to 6
+    - chore(deps): bump actions/upload-artefact from 5 to 6
 
 # [Version 0.52.9] - 2025-12-25
 
@@ -19365,7 +19367,7 @@ All notable changes to vtcode will be documented in this file.
     - chore: release v0.52.7
     - chore(deps): bump DavidAnson/markdownlint-cli2-action from 21 to 22
     - chore(deps): bump actions/cache from 4 to 5
-    - chore(deps): bump actions/upload-artifact from 5 to 6
+    - chore(deps): bump actions/upload-artefact from 5 to 6
 
 # [Version 0.52.5] - 2025-12-24
 
@@ -19389,7 +19391,7 @@ All notable changes to vtcode will be documented in this file.
 ### Features
 
     - feat: Add new Z.AI GLM models, refine reasoning support, and update Hugging Face model naming conventions.
-    - feat: reimplement HuggingFace LLM provider with dedicated logic to handle its unique API behaviors and compatibility.
+    - feat: reimplement HuggingFace LLM provider with dedicated logic to handle its unique API behaviours and compatibility.
     - feat: Add Hugging Face integration documentation and update tool policies to include git and cargo commands while removing some mcp time-related tools.
 
 ### Bug Fixes
@@ -19411,7 +19413,7 @@ All notable changes to vtcode will be documented in this file.
 ### Features
 
     - feat: Add new Z.AI GLM models, refine reasoning support, and update Hugging Face model naming conventions.
-    - feat: reimplement HuggingFace LLM provider with dedicated logic to handle its unique API behaviors and compatibility.
+    - feat: reimplement HuggingFace LLM provider with dedicated logic to handle its unique API behaviours and compatibility.
     - feat: Add Hugging Face integration documentation and update tool policies to include git and cargo commands while removing some mcp time-related tools.
     - feat: Add MiniMax model support to the Anthropic provider and adjust its API base URL.
     - feat: Reorganize Hugging Face model identifiers and enhance Anthropic model validation
@@ -19733,7 +19735,7 @@ All notable changes to vtcode will be documented in this file.
     - feat: Enable manual versioned builds in the release workflow and significantly enhance the install script with improved dependency/platform detection, asset verification, and a cargo fallback.
     - feat: Implement agent task retry with exponential backoff and render tool follow-up prompts.
     - feat: Enhance skill validation and file reference checks for Agent Skills compliance
-    - feat: Implement Agent Skills specification by adding `compatibility` and `metadata` fields to skill manifests, updating `allowed-tools` to a space-delimited string, and clarifying skill loading behavior.
+    - feat: Implement Agent Skills specification by adding `compatibility` and `metadata` fields to skill manifests, updating `allowed-tools` to a space-delimited string, and clarifying skill loading behaviour.
     - feat: Enhance tool execution policy with granular user confirmation, auto-acceptance, and feedback capabilities.
     - feat: extract anthropic config, reduce configuration complexity, document experimental features
     - feat: remove reinforcement learning and optimization modules and configurations.
@@ -19775,7 +19777,7 @@ All notable changes to vtcode will be documented in this file.
 
     - feat: Implement agent task retry with exponential backoff and render tool follow-up prompts.
     - feat: Enhance skill validation and file reference checks for Agent Skills compliance
-    - feat: Implement Agent Skills specification by adding `compatibility` and `metadata` fields to skill manifests, updating `allowed-tools` to a space-delimited string, and clarifying skill loading behavior.
+    - feat: Implement Agent Skills specification by adding `compatibility` and `metadata` fields to skill manifests, updating `allowed-tools` to a space-delimited string, and clarifying skill loading behaviour.
     - feat: Enhance tool execution policy with granular user confirmation, auto-acceptance, and feedback capabilities.
     - feat: extract anthropic config, reduce configuration complexity, document experimental features
     - feat: remove reinforcement learning and optimization modules and configurations.
@@ -19816,7 +19818,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Features
 
-    - feat: Implement Agent Skills specification by adding `compatibility` and `metadata` fields to skill manifests, updating `allowed-tools` to a space-delimited string, and clarifying skill loading behavior.
+    - feat: Implement Agent Skills specification by adding `compatibility` and `metadata` fields to skill manifests, updating `allowed-tools` to a space-delimited string, and clarifying skill loading behaviour.
     - feat: Enhance tool execution policy with granular user confirmation, auto-acceptance, and feedback capabilities.
     - feat: extract anthropic config, reduce configuration complexity, document experimental features
     - feat: remove reinforcement learning and optimization modules and configurations.
@@ -21249,7 +21251,7 @@ All notable changes to vtcode will be documented in this file.
 ### Refactors
 
     - refactor: replace dissimilar with optimized Myers diff algorithm
-    - refactor: organize documentation into docs/phases and docs/scroll subdirectories; consolidate PHASE5 and SCROLL artifacts for better maintainability
+    - refactor: organize documentation into docs/phases and docs/scroll subdirectories; consolidate PHASE5 and SCROLL artefacts for better maintainability
 
 ### Documentation
 
@@ -21284,7 +21286,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Refactors
 
-    - refactor: organize documentation into docs/phases and docs/scroll subdirectories; consolidate PHASE5 and SCROLL artifacts for better maintainability
+    - refactor: organize documentation into docs/phases and docs/scroll subdirectories; consolidate PHASE5 and SCROLL artefacts for better maintainability
 
 ### Documentation
 
@@ -21764,12 +21766,12 @@ All notable changes to vtcode will be documented in this file.
 ### Features
 
     - feat: Implement permission system with command resolution, audit logging, and caching
-    - feat: Add Git color configuration support and theme management
+    - feat: Add Git colour configuration support and theme management
     - feat: Add Styling Quick Start Guide and Refactor Completion Report
     - feat: add theme_parser module for Git/LS_COLORS configuration parsing
-    - feat: complete phase 1 anstyle integration - effects and background colors
+    - feat: complete phase 1 anstyle integration - effects and background colours
     - feat: Integrate anstyle-parse for ANSI escape sequence handling
-    - feat: implement styling refactor - centralize color palettes and style helpers
+    - feat: implement styling refactor - centralize colour palettes and style helpers
 
 ### Bug Fixes
 
@@ -21784,10 +21786,10 @@ All notable changes to vtcode will be documented in this file.
     - refactor: Phase 2 Step 2 - add manager sync helper methods
     - refactor: Phase 2 Step 1 - add manager fields to Session struct
     - refactor: extract input history navigation logic fix in InputManager
-    - refactor(styling): implement central style helpers and diff color palette
+    - refactor(styling): implement central style helpers and diff colour palette
     - refactor: improve styling consistency with bold_color() and ColorPalette
     - refactor: implement styling suggestions from STYLING_REFACTOR_GUIDE
-    - refactor: implement styling refactor from guide - centralize color/style management
+    - refactor: implement styling refactor from guide - centralize colour/style management
 
 ### Documentation
 
@@ -21813,12 +21815,12 @@ All notable changes to vtcode will be documented in this file.
 
 ### Features
 
-    - feat: Add Git color configuration support and theme management
+    - feat: Add Git colour configuration support and theme management
     - feat: Add Styling Quick Start Guide and Refactor Completion Report
     - feat: add theme_parser module for Git/LS_COLORS configuration parsing
-    - feat: complete phase 1 anstyle integration - effects and background colors
+    - feat: complete phase 1 anstyle integration - effects and background colours
     - feat: Integrate anstyle-parse for ANSI escape sequence handling
-    - feat: implement styling refactor - centralize color palettes and style helpers
+    - feat: implement styling refactor - centralize colour palettes and style helpers
 
 ### Bug Fixes
 
@@ -21829,10 +21831,10 @@ All notable changes to vtcode will be documented in this file.
 
 ### Refactors
 
-    - refactor(styling): implement central style helpers and diff color palette
+    - refactor(styling): implement central style helpers and diff colour palette
     - refactor: improve styling consistency with bold_color() and ColorPalette
     - refactor: implement styling suggestions from STYLING_REFACTOR_GUIDE
-    - refactor: implement styling refactor from guide - centralize color/style management
+    - refactor: implement styling refactor from guide - centralize colour/style management
     - refactor: integrate CommandBuilder throughout commands module
     - refactor: restructure zed-extension to modular architecture with comprehensive error handling and caching
 
@@ -21846,7 +21848,7 @@ All notable changes to vtcode will be documented in this file.
     - docs: add styling implementation completion status
     - docs: update installation guides with CDN caching troubleshooting and fix details
     - docs: update changelog for v0.43.2 [skip ci]
-    - docs: add file listing output behavior pattern to AGENTS.md
+    - docs: add file listing output behaviour pattern to AGENTS.md
     - docs: add comprehensive final improvements summary
     - docs: update STATUS with improvements session results
 
@@ -21872,7 +21874,7 @@ All notable changes to vtcode will be documented in this file.
 
 ### Documentation
 
-    - docs: add file listing output behavior pattern to AGENTS.md
+    - docs: add file listing output behaviour pattern to AGENTS.md
     - docs: add comprehensive final improvements summary
     - docs: update STATUS with improvements session results
     - docs: update changelog for v0.43.1 [skip ci]
@@ -23508,7 +23510,7 @@ embedded assets in vtcode-core
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23572,7 +23574,7 @@ file paths$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23632,7 +23634,7 @@ file paths$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23688,7 +23690,7 @@ file paths$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23738,7 +23740,7 @@ Code session initiation$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23785,7 +23787,7 @@ Code session initiation$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23826,7 +23828,7 @@ Code session initiation$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23864,7 +23866,7 @@ Code session initiation$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23899,7 +23901,7 @@ Code session initiation$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23931,7 +23933,7 @@ Code session initiation$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23960,7 +23962,7 @@ Code session initiation$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -23986,7 +23988,7 @@ Code session initiation$'
     - chore(deps: bump thiserror from 1.0.69 to 2.0.16
     - chore(deps: bump actions/checkout from 4 to 5
     - chore(deps: bump DavidAnson/markdownlint-cli2-action from 17 to 20
-    - chore(deps: bump actions/upload-pages-artifact from 3 to 4$'
+    - chore(deps: bump actions/upload-pages-artefact from 3 to 4$'
 
 '
 
@@ -24184,7 +24186,7 @@ access shortcuts and enhancements
     - chore(deps): bump tree-sitter-go from 0.23.4 to 0.25.0
     - chore(deps-dev): bump glob from 10.4.5 to 11.0.3 in /vscode-extension
     - chore(deps): bump actions/cache from 3 to 4
-    - chore(deps): bump actions/upload-artifact from 4 to 5
+    - chore(deps): bump actions/upload-artefact from 4 to 5
     - chore(deps-dev): bump @typescript-eslint/parser in /vscode-extension
     - chore(deps): bump codecov/codecov-action from 3 to 5
     - chore(deps): bump actions/checkout from 3 to 5
@@ -24236,7 +24238,7 @@ access shortcuts and enhancements
     - chore(deps): bump tree-sitter-go from 0.23.4 to 0.25.0
     - chore(deps-dev): bump glob from 10.4.5 to 11.0.3 in /vscode-extension
     - chore(deps): bump actions/cache from 3 to 4
-    - chore(deps): bump actions/upload-artifact from 4 to 5
+    - chore(deps): bump actions/upload-artefact from 4 to 5
     - chore(deps-dev): bump @typescript-eslint/parser in /vscode-extension
     - chore(deps): bump codecov/codecov-action from 3 to 5
     - chore(deps): bump actions/checkout from 3 to 5
@@ -24495,7 +24497,7 @@ detailed_tracking = false
 
 - Clear, unambiguous purposes with minimal overlap
 - Token efficiency guidance (e.g., `max_results` limits)
-- Auto-chunking behavior documented
+- Auto-chunking behaviour documented
 - Metadata-first approach emphasized
 
 #### Context Engineering Documentation
