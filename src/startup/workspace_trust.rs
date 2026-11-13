@@ -333,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_env_trust_value_recognises_grant_aliases() {
+    fn classify_env_trust_value_recognizes_grant_aliases() {
         for value in [
             "full-auto",
             "Full_Auto",
@@ -353,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_env_trust_value_recognises_deny_aliases() {
+    fn classify_env_trust_value_recognizes_deny_aliases() {
         for value in ["deny", "DENIED", "0", "no", "off"] {
             assert_eq!(
                 classify_env_trust_value(value).expect("deny alias should parse"),
