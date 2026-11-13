@@ -449,3 +449,12 @@ harness tests. Logs use `restack-1` on `harden-lint-spelling-fulfilment`; final
 handoff checks use `handoff-restack-1`. The optional ast-grep scan was skipped
 because the tool is unavailable. The push uses an explicit lease against the
 original published PR #29 head.
+
+## PR 29 after PR #28 landed
+
+PR #28 squash-merged as `2f7a9c3e2`, and the stack service replayed the three
+layer commits onto it unchanged; `git range-diff` over the old and new ranges
+reports every commit identical. The layer also records its public renames in
+`docs/releases/0.157.0.md` under "Fulfilment, sceptic and cancellation spelling
+renames", including the wire values that stay `canceled`, `skeptic_panel`,
+`intent_fulfillment` and `FULFILLMENT_ASSESSED`.
