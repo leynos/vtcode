@@ -24,8 +24,8 @@ diapason-core/src/utils/at_pattern.rs:371 | hardcoded absolute image regex liter
 # Static regex compilation (infallible string literals, compiled at module load)
 src/agent/runloop/unified/config_section_headings.rs:12 | static regex for array index parsing
 src/agent/runloop/unified/settings_interactive/docs.rs:32 | static regex for config-doc key extraction
-src/agent/runloop/unified/turn/session/slash_commands/share_log.rs:22 | static regex for email validation in share-log
-src/agent/runloop/unified/turn/session/slash_commands/share_log.rs:25 | static regex for user path sanitization in share-log
+src/agent/runloop/unified/turn/session/slash_commands/share_log.rs:25 | static regex for email validation in share-log
+src/agent/runloop/unified/turn/session/slash_commands/share_log.rs:27 | static regex for user path sanitization in share-log
 src/updater/release_notes.rs:75 | static regex for changelog commit hash stripping
 diapason-commons/src/tokens.rs:19 | tiktoken encoding load at startup; infallible with bundled BPE
 diapason-commons/src/diapasongitignore.rs:55 | gitignore builder with empty input; always succeeds
@@ -107,7 +107,7 @@ diapason-core/src/core/agent/session/mod.rs:439 | delta >= 0 checked above
 diapason-core/src/core/agent/session/mod.rs:561 | serde_json::to_string on Value; infallible
 diapason-core/src/core/loop_detector/normalization.rs:79 | tokens.len() >= 2 checked above
 diapason-core/src/exec/code_executor.rs:312 | builtin_names implies a builtin executor
-diapason-core/src/pods/manager.rs:453 | pod manager home directory; default impl
+diapason-core/src/pods/manager.rs:458 | pod manager home directory; default impl
 diapason-core/src/tools/registry/distributed.rs:47 | OnceCell initialized after first set() call
 diapason-core/src/tools/search_runtime.rs:86 | cache capacity is a non-zero constant
 diapason-core/src/tools/skills/mod.rs:635 | filtered to skills with manifests
@@ -145,7 +145,6 @@ diapason-ui/src/tui/core_tui/session/wrapping.rs | static URL/path token regex
 diapason-ui/src/tui/ui/markdown/links.rs:10 | static hash location regex
 diapason-ui/src/tui/ui/markdown/parsing.rs | static transcript token regexes
 src/agent/runloop/unified/settings_interactive/docs.rs:30 | static quoted-value regex
-src/agent/runloop/unified/turn/session/slash_commands/share_log.rs:24 | static user path regex
 
 # from_utf8 on validated SSE buffer segments.
 diapason-llm/src/providers/anthropic/stream_decoder.rs | from_utf8 on validated SSE buffer segments
@@ -167,5 +166,5 @@ diapason-llm/src/providers/openai/responses_api.rs:252 | tool_call_id present wh
 
 # Binary invariants.
 src/agent/runloop/model_picker/rendering.rs:54 | rendering rows are laid out before draw
-src/agent/runloop/unified/session_setup/init.rs:521 | MCP config requires a loaded DiapasonConfig
+src/agent/runloop/unified/session_setup/init.rs:526 | MCP config requires a loaded DiapasonConfig
 
