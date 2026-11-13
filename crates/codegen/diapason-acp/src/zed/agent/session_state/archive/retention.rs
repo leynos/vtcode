@@ -301,7 +301,7 @@ pub(in crate::zed::agent::session_state) fn required_staged_batch_violation(
 /// failure or read-only behaviour is observable at the checkpoint boundary
 /// without touching the real session store. The method returns a boxed future
 /// so the checkpoint boundary can accept either implementation without
-/// monomorphising its async state machine.
+/// monomorphizing its async state machine.
 pub(in crate::zed::agent::session_state) trait CheckpointReader: Sync {
     /// Reads back the messages stored at the path the checkpoint wrote.
     fn read_persisted_messages<'a>(

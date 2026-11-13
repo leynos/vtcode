@@ -1,7 +1,7 @@
 //! `apply_patch` planning, precondition checking, and mutation ordering.
 //!
 //! The applicator replays a patch's operations in order against live file state.
-//! This module mirrors that order: it canonicalises the touched paths, acquires
+//! This module mirrors that order: it canonicalizes the touched paths, acquires
 //! mutation leases, snapshots each path, and then plans every write from the
 //! preceding operation's *result* rather than from the pre-patch snapshot. That
 //! carry-forward is what keeps the no-op guard honest when a patch updates the
@@ -241,7 +241,7 @@ impl ToolRegistry {
         }
     }
 
-    /// Canonicalise and deduplicate every path the patch can touch.
+    /// Canonicalize and deduplicate every path the patch can touch.
     ///
     /// Includes move and copy destinations, so leases and snapshots cover the
     /// destination of a rename as well as its source.

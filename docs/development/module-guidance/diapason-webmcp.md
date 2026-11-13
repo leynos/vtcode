@@ -41,7 +41,7 @@ workspace adapter.
 - Remote MCP accepts only proxy-injected internal bearer tokens; redact token
   values, keep its Origin policy separate, and never add a file-serving route.
 - Multi-file mutations use serialized compare-and-rollback; preserve
-  fail-closed behavior when rollback itself fails. Keep proposal count/byte
+  fail-closed behaviour when rollback itself fails. Keep proposal count/byte
   budgets and subscriber count/byte budgets bounded.
 - Active turn requests may carry a proposal identity; revalidate its stored
   snapshots and hand off the adapter-generated authoritative diff. Never trust

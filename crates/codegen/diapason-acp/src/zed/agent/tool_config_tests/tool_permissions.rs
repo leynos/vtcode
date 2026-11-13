@@ -1,4 +1,4 @@
-//! Tests primary-agent permissions as filters over the ACP local tool catalog.
+//! Tests primary-agent permissions as filters over the ACP local tool catalogue.
 use super::support::{build_agent, definition_names};
 use crate::zed::helpers::PrimaryAgentCatalogue;
 use crate::zed::types::ToolRuntime;
@@ -73,13 +73,13 @@ async fn allows_tool_gates_deny_default_agent_by_tool_category() {
     // This exercises `allows_tool` for every local tool name so name drift that
     // would silently over-permit (an unrecognized name falling through to an
     // always-permitted `Other` request) is caught.
-    let catalog =
+    let catalogue =
         PrimaryAgentCatalogue::from_specs_with_default(&[deny_default_agent_allowing("exec_command")], "sheller");
     let workspace = temp.path();
 
     for name in &local_names {
         let canonical = canonical_tool_name(name).to_ascii_lowercase();
-        let allowed = catalog.allows_tool("sheller", &canonical, workspace);
+        let allowed = catalogue.allows_tool("sheller", &canonical, workspace);
         if canonical == tools::EXEC_COMMAND {
             assert!(allowed, "explicitly allowed exec_command must be permitted");
         } else if canonical == tools::CODE_SEARCH || canonical == tools::WRITE_STDIN {

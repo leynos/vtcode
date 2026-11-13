@@ -600,7 +600,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn subagent_status_entry_accepts_colour_and_serializes_color() {
+    fn subagent_status_entry_accepts_colour_and_serializes_the_fixed_key() {
         let now = DateTime::<Utc>::UNIX_EPOCH;
         let entry = SubagentStatusEntry {
             id: "child-1".to_string(),
@@ -624,12 +624,12 @@ mod tests {
         };
 
         let mut canonical = serde_json::to_value(&entry).expect("the status entry should serialize");
-        assert_eq!(canonical.get("color"), Some(&json!("orchid")), "status output should use the canonical color key");
+        assert_eq!(canonical.get("color"), Some(&json!("orchid")), "status output should use the fixed wire key");
         let canonical_value = canonical
             .as_object_mut()
             .expect("a serialized status entry should be an object")
             .remove("color")
-            .expect("the canonical color key should be present");
+            .expect("the fixed wire key should be present");
         let previous_british_alias = canonical
             .as_object_mut()
             .expect("a serialized status entry should remain an object")
@@ -655,7 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn background_subprocess_entry_accepts_colour_and_serializes_color() {
+    fn background_subprocess_entry_accepts_colour_and_serializes_the_fixed_key() {
         let now = DateTime::<Utc>::UNIX_EPOCH;
         let entry = BackgroundSubprocessEntry {
             id: "background-1".to_string(),
@@ -680,16 +680,12 @@ mod tests {
         };
 
         let mut canonical = serde_json::to_value(&entry).expect("the background entry should serialize");
-        assert_eq!(
-            canonical.get("color"),
-            Some(&json!("orchid")),
-            "background output should use the canonical color key"
-        );
+        assert_eq!(canonical.get("color"), Some(&json!("orchid")), "background output should use the fixed wire key");
         let canonical_value = canonical
             .as_object_mut()
             .expect("a serialized background entry should be an object")
             .remove("color")
-            .expect("the canonical color key should be present");
+            .expect("the fixed wire key should be present");
         let previous_british_alias = canonical
             .as_object_mut()
             .expect("a serialized background entry should remain an object")
@@ -706,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn persisted_background_record_accepts_colour_and_serializes_color() {
+    fn persisted_background_record_accepts_colour_and_serializes_the_fixed_key() {
         let now = DateTime::<Utc>::UNIX_EPOCH;
         let record = PersistedBackgroundRecord {
             id: "background-1".to_string(),
@@ -737,16 +733,12 @@ mod tests {
         };
 
         let mut canonical = serde_json::to_value(&record).expect("the persisted record should serialize");
-        assert_eq!(
-            canonical.get("color"),
-            Some(&json!("orchid")),
-            "persisted state should use the canonical color key"
-        );
+        assert_eq!(canonical.get("color"), Some(&json!("orchid")), "persisted state should use the fixed wire key");
         let canonical_value = canonical
             .as_object_mut()
             .expect("a serialized persisted record should be an object")
             .remove("color")
-            .expect("the canonical color key should be present");
+            .expect("the fixed wire key should be present");
         let previous_british_alias = canonical
             .as_object_mut()
             .expect("a serialized persisted record should remain an object")

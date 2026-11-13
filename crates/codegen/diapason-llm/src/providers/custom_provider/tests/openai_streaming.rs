@@ -12,7 +12,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
-async fn openai_chat_custom_profile_preserves_reasoning_and_serialises_controls() {
+async fn openai_chat_custom_profile_preserves_reasoning_and_serializes_controls() {
     let server = MockServer::start().await;
     let captured: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
     let captured_for_mock = Arc::clone(&captured);

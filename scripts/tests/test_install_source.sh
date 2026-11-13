@@ -18,7 +18,7 @@ help_home="$test_root/help home"
 powershell_home="$test_root/powershell home"
 test_tmp="$test_root/tmp with spaces"
 mock_bin="$test_root/mock bin"
-artifact="$test_root/diapason-test-binary"
+artefact="$test_root/diapason-test-binary"
 global_sentinel=""
 original_path="$PATH"
 
@@ -27,7 +27,7 @@ cleanup_test_files() {
     if (( status == 0 )); then
         rm -rf -- "$test_root"
     else
-        printf 'Installer test artifacts retained at %s\n' "$test_root" >&2
+        printf 'Installer test artefacts retained at %s\n' "$test_root" >&2
     fi
     if [[ -n "$global_sentinel" ]]; then
         rm -f -- "$global_sentinel"
@@ -41,7 +41,7 @@ global_sentinel="$(mktemp /tmp/diapason-installer-sentinel.XXXXXX)"
 printf 'preserve this unrelated temporary file\n' > "$global_sentinel"
 printf 'preserve this PowerShell temporary file\n' > "$test_tmp/diapason-unrelated-sentinel"
 
-cat > "$artifact" <<'EOF'
+cat > "$artefact" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = "--version" ]; then
     printf '%s\n' 'diapason-test-version'
@@ -49,7 +49,7 @@ if [ "${1:-}" = "--version" ]; then
 fi
 exit 0
 EOF
-chmod +x "$artifact"
+chmod +x "$artefact"
 
 cat > "$mock_bin/cargo" <<'EOF'
 #!/usr/bin/env bash
@@ -68,11 +68,11 @@ mkdir -p "$cargo_root"
 printf '%s\n' "$cargo_root" > "$CARGO_TEST_ROOT_RECORD"
 case "$CARGO_TEST_MODE" in
     failure) exit 42 ;;
-    missing-artifact) exit 0 ;;
+    missing-artefact) exit 0 ;;
     success)
         mkdir -p "$cargo_root/bin"
-        cp "$CARGO_TEST_ARTIFACT" "$cargo_root/bin/diapason"
-        cp "$CARGO_TEST_ARTIFACT" "$cargo_root/bin/diapason.exe"
+        cp "$CARGO_TEST_ARTEFACT" "$cargo_root/bin/diapason"
+        cp "$CARGO_TEST_ARTEFACT" "$cargo_root/bin/diapason.exe"
         chmod +x "$cargo_root/bin/diapason" "$cargo_root/bin/diapason.exe"
         ;;
     *) printf 'unknown mock Cargo mode: %s\n' "$CARGO_TEST_MODE" >&2; exit 91 ;;
@@ -82,8 +82,8 @@ chmod +x "$mock_bin/cargo"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
-assert_artifact_matches() {
-    cmp -s "$artifact" "$1" || fail "artifact bytes differ at $1"
+assert_artefact_matches() {
+    cmp -s "$artefact" "$1" || fail "artefact bytes differ at $1"
 }
 
 assert_version_probe() {
@@ -113,7 +113,7 @@ run_bash_installer() {
     env HOME="$test_home" TMPDIR="$test_tmp" TEMP="$test_tmp" \
         PATH="$target_dir:$mock_bin:$original_path" INSTALL_DIR= DIAPASON_BIN= \
         CARGO_TEST_MODE="$mode" CARGO_TEST_ROOT_RECORD="$case_dir/cargo-root" \
-        CARGO_TEST_ARTIFACT="$artifact" \
+        CARGO_TEST_ARTEFACT="$artefact" \
         bash "$BASH_INSTALLER" "$@" > "$case_dir/output.log" 2>&1
 }
 
@@ -130,7 +130,7 @@ test_bash_success() {
     local case_dir="$1" mode="$2" target_dir="$3" expected="$4"
     shift 4
     run_bash_installer "$case_dir" "$mode" "$target_dir" "$@"
-    assert_artifact_matches "$expected"
+    assert_artefact_matches "$expected"
     assert_cargo_root_removed "$case_dir/cargo-root"
     if [[ "$expected" == "$target_dir/diapason" ]]; then
         assert_version_probe "$case_dir/output.log"
@@ -143,14 +143,14 @@ test_bash_help
 test_bash_success "$test_root/bash-default" success "$test_home/.local/bin" \
     "$test_home/.local/bin/diapason" --source-build --without-search-tools
 
-for mode in failure missing-artifact; do
+for mode in failure missing-artefact; do
     case_dir="$test_root/bash-$mode"
     target_dir="$test_root/bash $mode target"
     if run_bash_installer "$case_dir" "$mode" "$target_dir" \
         --dir "$target_dir" --source-build --without-search-tools; then
         fail "Bash accepted Cargo mode $mode"
     fi
-    [[ ! -e "$target_dir/diapason" ]] || fail "Bash installed an artifact after Cargo mode $mode"
+    [[ ! -e "$target_dir/diapason" ]] || fail "Bash installed an artefact after Cargo mode $mode"
     assert_cargo_root_removed "$case_dir/cargo-root"
 done
 
@@ -158,8 +158,8 @@ local_case="$test_root/bash-local-binary"
 local_target="$test_root/local binary target"
 mkdir -p "$local_case"
 run_bash_installer "$local_case" failure "$local_target" \
-    --dir "$local_target" --binary "$artifact" --without-search-tools
-assert_artifact_matches "$local_target/diapason"
+    --dir "$local_target" --binary "$artefact" --without-search-tools
+assert_artefact_matches "$local_target/diapason"
 [[ ! -e "$local_case/cargo-root" ]] || fail 'Bash invoked Cargo for a local binary install'
 [[ -f "$global_sentinel" ]] || fail 'Bash removed an unrelated /tmp/diapason-* file'
 printf 'Bash installer source-build checks passed.\n'
@@ -173,7 +173,7 @@ if command -v pwsh >/dev/null 2>&1; then
         env HOME="$powershell_home" USERPROFILE="$powershell_home" TMPDIR="$test_tmp" \
             TEMP="$test_tmp" TMP="$test_tmp" PATH="$mock_bin:$original_path;$target_dir" \
             CARGO_TEST_MODE="$mode" CARGO_TEST_ROOT_RECORD="$case_dir/cargo-root" \
-            CARGO_TEST_ARTIFACT="$artifact" \
+            CARGO_TEST_ARTEFACT="$artefact" \
             "$POWERSHELL_BIN" -NoLogo -NoProfile -File "$POWERSHELL_INSTALLER" "$@" \
             > "$case_dir/output.log" 2>&1
     }
@@ -182,7 +182,7 @@ if command -v pwsh >/dev/null 2>&1; then
         local case_dir="$1" mode="$2" target_dir="$3" expected="$4"
         shift 4
         run_powershell_installer "$case_dir" "$mode" "$target_dir" "$@"
-        assert_artifact_matches "$expected"
+        assert_artefact_matches "$expected"
         assert_cargo_root_removed "$case_dir/cargo-root"
         if [[ "$expected" == "$target_dir/diapason.exe" ]]; then
             assert_version_probe "$case_dir/output.log"
@@ -195,14 +195,14 @@ if command -v pwsh >/dev/null 2>&1; then
     test_powershell_success "$test_root/powershell-default" success "$powershell_home/.local/bin" \
         "$powershell_home/.local/bin/diapason.exe" -SourceBuild
 
-    for mode in failure missing-artifact; do
+    for mode in failure missing-artefact; do
         case_dir="$test_root/powershell-$mode"
         target_dir="$test_root/powershell $mode target"
         if run_powershell_installer "$case_dir" "$mode" "$target_dir" \
             -InstallDir "$target_dir" -SourceBuild; then
             fail "PowerShell accepted Cargo mode $mode"
         fi
-        [[ ! -e "$target_dir/diapason.exe" ]] || fail "PowerShell installed an artifact after Cargo mode $mode"
+        [[ ! -e "$target_dir/diapason.exe" ]] || fail "PowerShell installed an artefact after Cargo mode $mode"
         assert_cargo_root_removed "$case_dir/cargo-root"
     done
 
@@ -210,8 +210,8 @@ if command -v pwsh >/dev/null 2>&1; then
     local_target="$test_root/powershell local binary target"
     mkdir -p "$local_case"
     run_powershell_installer "$local_case" failure "$local_target" \
-        -InstallDir "$local_target" -BinaryPath "$artifact"
-    assert_artifact_matches "$local_target/diapason.exe"
+        -InstallDir "$local_target" -BinaryPath "$artefact"
+    assert_artefact_matches "$local_target/diapason.exe"
     [[ ! -e "$local_case/cargo-root" ]] || fail 'PowerShell invoked Cargo for a local binary install'
     [[ -f "$test_tmp/diapason-unrelated-sentinel" ]] \
         || fail 'PowerShell removed an unrelated temporary file'
