@@ -1,3 +1,8 @@
+//! Model identifiers and capability flags for the Evolink gateway.
+//!
+//! Entries feed the curated `ModelId` catalogue and the provider's
+//! Anthropic-versus-OpenAI wire-format routing.
+
 // Evolink models (OpenAI-compatible multi-model gateway)
 // https://docs.evolink.ai/llms.txt
 //

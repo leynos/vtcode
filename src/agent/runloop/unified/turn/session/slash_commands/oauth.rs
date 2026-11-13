@@ -1,3 +1,8 @@
+//! OAuth authentication commands.
+//!
+//! Walks users through provider login, logout, and token refresh, including the
+//! Copilot, OpenAI, and OpenRouter flows and manual callback prompts.
+
 use anstyle::{AnsiColor, Color, Effects, Style as AnsiStyle};
 use anyhow::Result;
 use diapason_auth::{

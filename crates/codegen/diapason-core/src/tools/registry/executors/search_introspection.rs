@@ -1,3 +1,8 @@
+//! Executor for the `search_tools` introspection tool.
+//!
+//! Searches the session catalogue, renders results at the requested detail
+//! level, and records referenced tools for later catalogue epochs.
+
 use super::ToolRegistry;
 use crate::mcp::{DetailLevel, ToolDiscovery};
 use crate::tools::mcp::model_visible_mcp_tool_name;

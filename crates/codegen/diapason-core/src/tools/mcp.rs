@@ -1,3 +1,8 @@
+//! Registration of remote MCP tools in the session tool catalogue.
+//!
+//! Builds proxy tool registrations with canonical `mcp::` names, model-visible
+//! aliases, and the metadata needed to dispatch calls to the MCP client.
+
 use std::borrow::Cow;
 use std::sync::Arc;
 

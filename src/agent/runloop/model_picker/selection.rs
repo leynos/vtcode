@@ -1,3 +1,8 @@
+//! Model picker selection helpers.
+//!
+//! Parses model selections, derives provider and reasoning details, and renders
+//! the labels and descriptions shown in the picker UI.
+
 use anyhow::{Result, anyhow};
 use std::str::FromStr;
 

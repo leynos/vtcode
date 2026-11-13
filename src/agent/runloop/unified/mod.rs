@@ -1,3 +1,8 @@
+//! The interactive unified run loop for the terminal UI.
+//!
+//! Owns session setup, turn processing, slash commands, palettes, inline
+//! events, and the supporting MCP and tool-catalogue state.
+
 pub(crate) mod async_mcp_manager;
 pub(crate) mod auto_permission;
 

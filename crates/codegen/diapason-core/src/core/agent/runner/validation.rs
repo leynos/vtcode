@@ -1,3 +1,8 @@
+//! Tool snapshot construction for the agent runner.
+//!
+//! Assembles the session tool configuration and builds the exposed tool
+//! definitions passed to the provider, keeping mode projections stable.
+
 use super::AgentRunner;
 use crate::config::types::CapabilityLevel;
 use crate::core::agent::harness_kernel::SessionToolCatalogueSnapshot;

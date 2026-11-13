@@ -1,3 +1,8 @@
+//! Cacheability checks for tool results.
+//!
+//! Decides whether a call may reuse a cached result, covering read-only
+//! browsing, stable catalogue lookups, and path-scoped git diffs.
+
 use std::borrow::Cow;
 use std::path::Path;
 

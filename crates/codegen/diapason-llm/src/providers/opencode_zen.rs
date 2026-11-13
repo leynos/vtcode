@@ -1,3 +1,8 @@
+//! The OpenCode Zen provider.
+//!
+//! Selects between Anthropic and OpenAI-compatible protocols per model and
+//! normalises the curated `opencode/` and `opencode-zen/` prefixes.
+
 use crate::client::LLMClient;
 use crate::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStream};
 use async_trait::async_trait;

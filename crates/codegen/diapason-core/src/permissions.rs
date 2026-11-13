@@ -1,3 +1,8 @@
+//! Permission rule matching for tool calls.
+//!
+//! Evaluates allow, ask, auto, and deny rules using deny > ask > auto > allow
+//! precedence, including MCP-qualified names and workspace path scoping.
+
 use glob::Pattern;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde_json::{Value, json};

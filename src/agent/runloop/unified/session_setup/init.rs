@@ -1,3 +1,8 @@
+//! Session initialisation for the unified run loop.
+//!
+//! Builds provider clients, restores resume state, wires MCP and subagent
+//! controllers, and exposes the tool snapshot refresh used on setup.
+
 use super::skill_setup::{discover_skills, register_skill_tools};
 use super::types::{
     SessionMetadataContext, SessionState, ToolExecutionContext, build_conversation_history_from_resume,

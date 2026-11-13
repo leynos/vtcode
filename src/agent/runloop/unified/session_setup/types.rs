@@ -1,3 +1,8 @@
+//! Session state types for the unified run loop.
+//!
+//! Groups the conversation, tool execution context, and UI handles used during
+//! setup, plus a guard that keeps background tasks tied to the session.
+
 use crate::agent::runloop::ResumeSession;
 use crate::agent::runloop::mcp_events;
 use crate::agent::runloop::unified::async_mcp_manager::AsyncMcpManager;

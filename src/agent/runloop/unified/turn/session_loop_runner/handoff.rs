@@ -1,3 +1,8 @@
+//! Handover from planning to approved-plan execution.
+//!
+//! Builds the synthetic execution prompt, appends it to the runtime state, and
+//! selects the agent that carries out the approved plan.
+
 use anyhow::Result;
 use diapason_core::core::agent::runtime::AgentRuntime;
 use diapason_core::primary_agent::{ActivePrimaryAgent, ActivePrimaryAgentState};

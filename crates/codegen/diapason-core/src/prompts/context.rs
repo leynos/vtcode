@@ -1,3 +1,8 @@
+//! Prompt context assembled from the workspace, skills, and editor state.
+//!
+//! `PromptContext` gathers the facts prompt builders need before rendering the
+//! system prompt and tool guidance.
+
 use crate::config::ConfigManager;
 use crate::config::types::CapabilityLevel;
 use crate::ide_context::EditorContextSnapshot;

@@ -1,3 +1,8 @@
+//! Tool catalogue cache metrics for LLM requests.
+//!
+//! Emits tracing metrics and trajectory records describing cache hits, prefix
+//! hashes, and catalogue, wire, and deferred tool counts.
+
 use crate::agent::runloop::unified::turn::context::TurnProcessingContext;
 use diapason_core::llm::provider::{Message, ToolDefinition};
 

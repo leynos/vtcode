@@ -1,3 +1,8 @@
+//! Drives the interactive loop across turns.
+//!
+//! Coordinates inline events, model selection, MCP lifecycle, and status
+//! refresh, and applies the outcome of each submitted prompt.
+
 mod status_refresh;
 mod support;
 

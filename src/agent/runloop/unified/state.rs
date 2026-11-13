@@ -1,3 +1,8 @@
+//! Shared session state for the unified run loop.
+//!
+//! Tracks statistics, prompt-cache diagnostics, follow-up prompt actions, and
+//! interrupt handling shared between the loop and its handlers.
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};

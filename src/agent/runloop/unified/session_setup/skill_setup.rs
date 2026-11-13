@@ -1,3 +1,8 @@
+//! Skill discovery and registration at session start.
+//!
+//! Defers discovery until an explicit skills command and refreshes the model
+//! tool snapshot when skill tools are registered.
+
 use crate::agent::runloop::ResumeSession;
 use crate::agent::runloop::unified::session_setup::init::refresh_tool_snapshot;
 use crate::agent::runloop::unified::tool_catalogue::{ToolCatalogueState, tool_catalogue_change_notifier};

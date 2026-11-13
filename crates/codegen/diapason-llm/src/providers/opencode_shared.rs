@@ -1,3 +1,8 @@
+//! Shared OpenAI-compatible shell for the OpenCode providers.
+//!
+//! Holds the wire-dialect specs and the request and streaming plumbing reused
+//! by OpenCode Go and OpenCode Zen.
+
 use diapason_config::constants::{env_vars, models, urls};
 use diapason_config::models::model_catalogue_entry;
 

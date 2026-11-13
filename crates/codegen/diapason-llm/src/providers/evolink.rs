@@ -1,3 +1,8 @@
+//! The Evolink OpenAI-compatible provider.
+//!
+//! Sends chat and streaming requests, normalises the curated `evolink/` model
+//! prefix, and extracts reasoning traces and token usage.
+
 use serde_json::{Map, Value};
 
 use crate::client::LLMClient;

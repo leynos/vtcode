@@ -1,3 +1,8 @@
+//! Helpers used by the interactive loop runner.
+//!
+//! Covers user-message construction, image capability checks, editor and theme
+//! updates, scheduler setup, and primary-agent switching.
+
 use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;

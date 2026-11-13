@@ -1,3 +1,8 @@
+//! Collection helpers on `ModelId`.
+//!
+//! Builds the full model list, filters it per provider, and applies custom
+//! provider overrides when config defines additional models.
+
 use std::collections::BTreeMap;
 use std::str::FromStr;
 

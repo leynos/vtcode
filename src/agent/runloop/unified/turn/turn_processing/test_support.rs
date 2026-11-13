@@ -1,3 +1,8 @@
+//! Test fixtures for turn processing.
+//!
+//! Builds `TurnProcessingContext` values backed by a no-op provider so tests can
+//! exercise turn logic without network access.
+
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;

@@ -1,3 +1,8 @@
+//! Authoring flow for subagent definitions.
+//!
+//! Collects frontmatter such as name, description, tools, and model through
+//! wizard modals, then saves the definition to the chosen scope.
+
 use anyhow::{Result, anyhow, bail};
 use serde_json::Value as YamlValue;
 type YamlMapping = serde_json::Map<String, YamlValue>;

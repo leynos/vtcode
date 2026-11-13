@@ -1,3 +1,8 @@
+//! Tool guidance rendered into the system prompt.
+//!
+//! Generates compact usage guidance for the tool set exposed in a session,
+//! including shell profile and capability-specific hints.
+
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 

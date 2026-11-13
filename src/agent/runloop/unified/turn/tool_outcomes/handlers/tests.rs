@@ -1,3 +1,8 @@
+//! Tests for tool outcome handling.
+//!
+//! Covers permission caching, validation fallbacks, loop guards, and the runtime
+//! behaviour of prepared tool calls.
+
 use super::fallbacks::{
     build_validation_error_content_with_fallback, preflight_validation_fallback, recovery_fallback_for_tool,
 };

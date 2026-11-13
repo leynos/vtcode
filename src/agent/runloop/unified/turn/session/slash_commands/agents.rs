@@ -1,3 +1,8 @@
+//! The `/agents` command surface.
+//!
+//! Lists and inspects agents, threads, and background subprocesses, and routes
+//! agent management actions including authoring.
+
 use anyhow::{Result, anyhow, bail};
 use diapason_commons::DiapasonPaths;
 use diapason_commons::fs::write_private_file_atomic;

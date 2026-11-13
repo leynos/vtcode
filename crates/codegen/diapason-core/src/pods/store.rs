@@ -1,3 +1,8 @@
+//! Persistence for pod state and deployment profiles.
+//!
+//! Reads and writes the private JSON store under the user state directory,
+//! seeding the embedded default catalogue on first use.
+
 use super::catalogue::PodCatalogue;
 use super::state::PodsState;
 use anyhow::{Context, Result};

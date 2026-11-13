@@ -1,3 +1,8 @@
+//! Prompt rendering for the skills catalogue.
+//!
+//! Formats discovered skills into the compact index used in the system prompt,
+//! including usage rules and overflow notices.
+
 use crate::command_skills::is_model_catalogue_eligible;
 use crate::model::SkillMetadata;
 

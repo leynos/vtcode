@@ -1,3 +1,8 @@
+//! Resolution of configured and dynamic models into provider-ready selections.
+//!
+//! Reports credential availability, merges catalogue and dynamic metadata, and
+//! exposes the pricing and context-window facts used by model pickers.
+
 use std::borrow::Cow;
 use std::str::FromStr;
 

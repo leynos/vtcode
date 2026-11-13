@@ -1,3 +1,8 @@
+//! Model resolution for subagents.
+//!
+//! Maps requested aliases such as `inherit` and `small` onto concrete `ModelId`
+//! values, honouring provider and override configuration.
+
 use anyhow::{Context, Result};
 use diapason_config::SubagentSpec;
 use diapason_config::core::{CustomProviderConfig, ProviderOverrideConfig};

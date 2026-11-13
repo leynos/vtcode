@@ -1,3 +1,8 @@
+//! Lazy activation of skills and MCP for slash commands.
+//!
+//! Starts MCP initialisation on demand, attaches ready clients, and ensures the
+//! dynamic skills context is available before commands run.
+
 use anyhow::Result;
 use diapason_core::utils::ansi::MessageStyle;
 use std::sync::Arc;

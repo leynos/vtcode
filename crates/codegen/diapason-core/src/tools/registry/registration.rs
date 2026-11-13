@@ -1,3 +1,8 @@
+//! Tool registration types and catalogue sources.
+//!
+//! Defines `ToolRegistrationSpec` with its builder, the catalogue source marker,
+//! and the executor and factory types used to wire tools into the registry.
+
 use super::ToolRegistry;
 use crate::config::types::CapabilityLevel;
 use crate::tool_policy::ToolPolicy;

@@ -1,3 +1,8 @@
+//! Interactive prompts for persistent memory commands.
+//!
+//! Plans remember, forget, and cleanup operations, gathers missing details
+//! through wizard modals, and confirms the resulting changes with the user.
+
 use anyhow::{Context, Result};
 use diapason_core::llm::provider as uni;
 use diapason_core::persistent_memory::{

@@ -1,3 +1,8 @@
+//! Startup orchestration for the binary.
+//!
+//! Loads configuration, resolves resume and theme state, checks workspace trust
+//! and dependency advisories, and assembles the runtime agent config.
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};

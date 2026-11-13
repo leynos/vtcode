@@ -1,3 +1,8 @@
+//! Tests for the merge-gateway catalogue client.
+//!
+//! Exercises snapshot pagination, cursor validation, vendor capability
+//! aggregation, and ETag handling against a mocked HTTP server.
+
 use super::*;
 use serde_json::json;
 use wiremock::{

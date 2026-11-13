@@ -1,3 +1,8 @@
+//! The `read_file` tool handler.
+//!
+//! Reads bounded line ranges or byte ranges, renders line numbers, and supports
+//! batched multi-path reads with concurrency limits.
+
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 

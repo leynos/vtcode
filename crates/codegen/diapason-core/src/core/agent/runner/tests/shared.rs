@@ -2,6 +2,10 @@
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+//! Shared imports and helpers for the agent runner tests.
+//!
+//! Re-exports the fixtures, event types, and tool types that the runner test
+//! modules use so each test file can start from the same prelude.
 
 pub use crate::AgentRunner;
 pub use crate::config::DiapasonConfig;

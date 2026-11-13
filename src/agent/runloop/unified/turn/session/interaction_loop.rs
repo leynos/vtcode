@@ -1,3 +1,8 @@
+//! The interactive prompt loop.
+//!
+//! Defines the loop context, mutable state, and outcome, and runs the loop that
+//! reads input and hands turns to processing.
+
 use anyhow::Result;
 use std::collections::VecDeque;
 use std::future::Future;

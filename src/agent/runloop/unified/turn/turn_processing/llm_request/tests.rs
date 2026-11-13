@@ -1,3 +1,8 @@
+//! Tests for LLM request preparation and retry handling.
+//!
+//! Uses scripted providers to cover runtime catalogue metadata, previous-response
+//! chains, unmatched tool results, and retryable error classification.
+
 use super::*;
 use crate::agent::runloop::unified::turn::turn_processing::test_support::TestTurnProcessingBacking;
 use std::collections::VecDeque;

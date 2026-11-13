@@ -3,6 +3,10 @@
     clippy::expect_used,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+//! Criterion benchmarks for the agent harness request path.
+//!
+//! Measures request-plan construction, tool catalogue projection, prompt
+//! resource caching, few-shot selection, and indexed file search.
 
 use std::hint::black_box;
 use std::num::NonZero;

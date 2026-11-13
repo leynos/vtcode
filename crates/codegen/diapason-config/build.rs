@@ -2,6 +2,10 @@
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+//! Generates OpenRouter constants and model capability metadata at build time.
+//!
+//! Sources come from `docs/models.json` with an embedded fallback, and docs.rs
+//! builds receive empty placeholders so rustdoc can still compile the crate.
 
 use anyhow::{Context as _, Result};
 use indexmap::IndexMap;

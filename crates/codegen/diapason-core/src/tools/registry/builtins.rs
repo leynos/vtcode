@@ -5,6 +5,10 @@
     unsafe_code,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+//! Registrations for the built-in tool set.
+//!
+//! Each tool self-registers through a distributed slice; this module turns the
+//! collected factories into the builtin registration list.
 
 use std::path::PathBuf;
 

@@ -1,3 +1,8 @@
+//! Assembly of the session tool catalogue from registrations.
+//!
+//! Merges registrations, routes public tool names to their canonical owners,
+//! and seeds policy metadata for permission checks.
+
 use rustc_hash::FxHashMap;
 
 use crate::config::constants::tools;

@@ -1,3 +1,8 @@
+//! The `/mcp` command surface.
+//!
+//! Runs the interactive MCP manager and dispatches status, tool-listing,
+//! refresh, repair, and configuration actions.
+
 use anyhow::Result;
 use diapason_core::utils::ansi::MessageStyle;
 use diapason_ui::tui::app::{InlineListItem, InlineListSelection};

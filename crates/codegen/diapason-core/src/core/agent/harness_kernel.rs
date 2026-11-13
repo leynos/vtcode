@@ -1,3 +1,8 @@
+//! Harness request planning shared by the agent runner.
+//!
+//! Builds prepared tool batches, filters and masks tool definitions per mode,
+//! and classifies execution failures into recovery directives.
+
 use std::sync::Arc;
 use std::time::Duration;
 

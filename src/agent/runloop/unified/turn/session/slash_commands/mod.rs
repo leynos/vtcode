@@ -1,3 +1,8 @@
+//! Slash command context and control flow.
+//!
+//! Supplies handlers with session state and reports back whether to continue,
+//! submit a prompt, replace the input, or end the session.
+
 use std::sync::Arc;
 
 use anyhow::Result;

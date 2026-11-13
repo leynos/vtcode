@@ -1,3 +1,8 @@
+//! MCP tool enumeration and snapshot refresh.
+//!
+//! Detects tools added after an MCP refresh, updates the tool registry, and
+//! rebuilds the model-facing tool snapshot.
+
 use diapason_core::config::ToolDocumentationMode;
 use diapason_core::config::types::AgentConfig as CoreAgentConfig;
 use diapason_core::llm::provider as uni;

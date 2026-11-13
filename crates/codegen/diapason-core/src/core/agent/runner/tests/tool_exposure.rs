@@ -2,6 +2,10 @@
     missing_docs,
     reason = "Intentional compatibility, platform, or test-only suppression."
 )]
+//! Tests for which tools the runner exposes to the model.
+//!
+//! Covers full-auto allowlists, tool policy and category denies, planning-mode
+//! masking, and the public tool resolution used during validation.
 
 use super::*;
 

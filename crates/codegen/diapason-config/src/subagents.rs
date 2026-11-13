@@ -1,3 +1,8 @@
+//! Subagent discovery, parsing, and built-in definitions.
+//!
+//! Loads subagent specs from files and CLI JSON, and supplies the built-in
+//! primary, build, auto, plan, and read-only agent defaults.
+
 use anyhow::{Context, Result, anyhow, bail};
 use diapason_commons::DiapasonPaths;
 use diapason_commons::reasoning::ReasoningEffortLevel;

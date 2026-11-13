@@ -1,3 +1,8 @@
+//! Rendering of the MCP status overview.
+//!
+//! Groups discovered MCP tools by provider and prints transport, connection, and
+//! tool counts alongside initialisation state.
+
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use hashbrown::HashSet;

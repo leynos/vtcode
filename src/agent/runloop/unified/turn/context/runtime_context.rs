@@ -1,3 +1,8 @@
+//! Turn-processing context and outcome types.
+//!
+//! Defines the borrowed context bundles, the result of processing one turn, and
+//! the outcomes that tell the interaction loop how to continue.
+
 use super::*;
 use crate::agent::runloop::unified::planning_workflow::PlanExecutionContext;
 

@@ -1,3 +1,8 @@
+//! Registration and execution of skills as tools.
+//!
+//! Loads skill metadata, exposes skills to the model, performs activation state
+//! transitions, and refreshes the session tool catalogue when skills change.
+
 use crate::config::ConfigManager;
 use crate::config::ToolDocumentationMode;
 use crate::config::types::CapabilityLevel;

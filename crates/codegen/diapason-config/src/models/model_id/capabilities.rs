@@ -1,3 +1,8 @@
+//! Catalogue metadata for models, generated from `docs/models.json`.
+//!
+//! Exposes lookup helpers and the `ModelCatalogueEntry` fields used by model
+//! pickers, provider validation, and pricing display.
+
 use crate::models::{Provider, ProviderModelSupport};
 
 use super::ModelId;

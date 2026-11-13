@@ -1,3 +1,8 @@
+//! Emission of harness thread events during interactive sessions.
+//!
+//! Translates in-process activity into `ThreadEvent` values and fans them out
+//! to the canonical sink, legacy writer, and export formats.
+
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::path::{Path, PathBuf};

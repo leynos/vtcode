@@ -1,3 +1,8 @@
+//! `ModelId` enumerates every model Diapason can select.
+//!
+//! Submodules supply parsing, formatting, display names, and catalogue metadata
+//! shared by model pickers and provider validation.
+
 use serde::{Deserialize, Serialize};
 
 mod as_str;

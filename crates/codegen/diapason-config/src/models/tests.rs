@@ -1,3 +1,8 @@
+//! Tests for `ModelId` string conversion and catalogue lookups.
+//!
+//! Covers parsing, formatting, provider filtering, capability lookup, and
+//! parity between the enum variants and the collection.
+
 use super::*;
 use crate::constants::{model_helpers, models};
 use std::str::FromStr;

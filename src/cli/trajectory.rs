@@ -1,3 +1,8 @@
+//! The trajectory CLI command.
+//!
+//! Reads a trajectory JSONL log and prints a summary of model routing, tool
+//! usage, and prompt-cache behaviour.
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use diapason_core::config::types::AgentConfig as CoreAgentConfig;

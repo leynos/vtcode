@@ -1,3 +1,8 @@
+//! Pod lifecycle management for remote vLLM inference hosts.
+//!
+//! Starts and stops models over SSH, allocates GPUs and ports, and reports pod
+//! health and running-model status.
+
 use super::catalogue::{PodCatalogue, PodProfile};
 use super::state::{PodGpu, PodHealth, PodState, PodsState, RunningModel};
 use super::store::PodsStore;

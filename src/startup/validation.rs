@@ -1,3 +1,8 @@
+//! Startup configuration validation.
+//!
+//! Applies CLI permission overrides, checks provider and model compatibility,
+//! and enforces the full-auto permission-review requirements.
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};

@@ -1,3 +1,8 @@
+//! Startup validation of the loaded configuration.
+//!
+//! Checks model and provider compatibility, tool policy, and full-auto
+//! settings, collecting errors and warnings before the session starts.
+
 /// Configuration validation module
 ///
 /// Provides comprehensive validation of DiapasonConfig at startup to catch

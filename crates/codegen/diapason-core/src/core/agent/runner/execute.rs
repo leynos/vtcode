@@ -1,3 +1,8 @@
+//! The agent runner's turn execution loop.
+//!
+//! Prepares provider requests, applies completion and verification gates, and
+//! records request plans and harness events for each turn.
+
 use super::AgentRunner;
 use super::continuation::{CompletionAssessment, VerificationResult};
 use super::escalation::{EscalationDecision, EscalationGate};

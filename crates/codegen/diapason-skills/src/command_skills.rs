@@ -1,3 +1,8 @@
+//! Built-in command skills exposed as slash commands.
+//!
+//! Defines each command's canonical name, aliases, usage text, and backend, and
+//! exposes the metadata used by `/skills` and prompt rendering.
+
 use crate::model::{SkillMetadata, SkillScope};
 use crate::types::{SkillContext, SkillManifest, SkillManifestMetadata, SkillVariety};
 use hashbrown::HashMap;

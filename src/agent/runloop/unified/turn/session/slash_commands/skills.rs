@@ -1,3 +1,8 @@
+//! The `/skills` command surface.
+//!
+//! Browses, enables, disables, validates, and packages skills, and refreshes the
+//! tool catalogue after activation changes.
+
 use std::sync::Arc;
 
 use anyhow::Result;

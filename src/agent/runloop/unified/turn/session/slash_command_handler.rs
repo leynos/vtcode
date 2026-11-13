@@ -1,3 +1,8 @@
+//! Input dispatch for slash commands and built-in control input.
+//!
+//! Recognises exit and scheduled-task input, routes slash commands, and decides
+//! whether the loop continues, exits, or replaces the pending input.
+
 use anyhow::Result;
 use regex::Regex;
 use std::path::{Path, PathBuf};
