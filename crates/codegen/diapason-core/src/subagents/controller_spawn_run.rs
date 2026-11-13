@@ -9,9 +9,9 @@ use futures::future::{BoxFuture, select_all};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Notify, RwLock};
+use std::sync::{Arc, OnceLock};
+use tokio::sync::{Mutex, Notify, RwLock};
 
 use crate::config::DiapasonConfig;
 use crate::config::types::ReasoningEffortLevel;
@@ -498,7 +498,12 @@ impl SubagentController {
             .children
             .get_mut(target)
             .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
-        if record.status == SubagentStatus::Closed {
+        // Cancellation must not rewrite a settled outcome. `Completed` and
+        // `Failed` children already stopped running, and a transport projects
+        // `Closed` as a failure, so closing them again would turn a
+        // successful task into a visibly failed one and overwrite its
+        // completion timestamp.
+        if record.status.is_terminal() {
             return Ok(record.build_status_entry());
         }
         if let Some(handle) = record.handle.take() {
@@ -585,6 +590,23 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) {
             return Ok(());
         }
+        if self.config.managed_background_runtime {
+            // Nested scopes never own background records. Persisting their
+            // always-empty view would erase the ledger owned by the root
+            // controller.
+            return Ok(());
+        }
+        // Take the persistence lock before snapshotting in-memory state.
+        // Reading first lets two concurrent saves snapshot v1 and v2, then
+        // write v2 before v1, leaving the older snapshot as the file. The lock
+        // must cover the read so the last write is always the newest state.
+        let guard = background_state_persistence_lock().lock().await;
+        // The in-process mutex cannot serialise another Diapason process that
+        // shares this workspace. Hold the ledger's inter-process lock across
+        // the reload, merge and write so two processes cannot each read the
+        // old ledger and then have the later rename discard the other's
+        // record.
+        let file_guard = lock_background_state(&self.config.workspace_root).await?;
         let records = {
             let state = self.state.read().await;
             state
@@ -594,7 +616,20 @@ impl SubagentController {
                 .map(BackgroundRecord::into_persisted)
                 .collect()
         };
-        persist_background_state(&self.config.workspace_root, records).await
+        let workspace_root = self.config.workspace_root.clone();
+        let owner_session_id = self.background_owner_session_id.clone();
+        // Both guards move into the persistence task. Cancelling this caller
+        // only detaches that task, so neither lock is released until the
+        // reload, merge, write and rename have finished; dropping them here
+        // instead would let a second writer start from the same stale ledger
+        // while this write was still in flight.
+        tokio::spawn(async move {
+            let _persistence_guard = guard;
+            let _ledger_guard = file_guard;
+            persist_background_records(&workspace_root, owner_session_id.as_deref(), records).await
+        })
+        .await
+        .context("Failed to join the background state persistence task")?
     }
 
     pub(super) async fn find_spec(&self, candidate: &str) -> Option<SubagentSpec> {
@@ -731,15 +766,21 @@ impl SubagentController {
             let worktree_path = self.create_spawn_worktree(&launch.spec).await?;
             let worktree_path_for_cleanup = worktree_path.clone();
             let child = self.prepare_queued_child(launch, worktree_path, runtime);
-            let id = child.id.clone();
-            if let Err(error) = Box::pin(self.insert_queued_child(child)).await {
-                // The record never became visible, so nothing owns the
-                // worktree; reclaim it rather than leaking the checkout.
-                if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
-                    self.remove_unused_spawn_worktree(worktree_path).await;
+            // The stored id is authoritative: insertion may have to
+            // disambiguate it against a child registered in the same
+            // millisecond, so launching the pre-insertion id would address the
+            // wrong record, or none at all.
+            let id = match Box::pin(self.insert_queued_child(child)).await {
+                Ok(id) => id,
+                Err(error) => {
+                    // The record never became visible, so nothing owns the
+                    // worktree; reclaim it rather than leaking the checkout.
+                    if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
+                        self.remove_unused_spawn_worktree(worktree_path).await;
+                    }
+                    return Err(error);
                 }
-                return Err(error);
-            }
+            };
             self.launch_child(&id).await?;
             self.status_for(&id).await
         })
@@ -910,7 +951,18 @@ impl SubagentController {
         QueuedChildRecord { id, record }
     }
 
-    async fn insert_queued_child(&self, child: QueuedChildRecord) -> Result<()> {
+    /// Inserts a prepared child and returns the id it was stored under.
+    ///
+    /// Generated ids carry millisecond precision, so two spawns of the same
+    /// kind in one millisecond propose the same id, and the colliding pair need
+    /// not even belong to the same controller: a session exposes its whole
+    /// controller tree and routes an id to the first match. `BTreeMap::insert`
+    /// would replace the earlier record, silently dropping a subagent that has
+    /// already been admitted and may already own a worktree. Allocating the
+    /// unique id inside the write lock, against the tree-wide scope, is what
+    /// makes the check race-free, so the record's id and session id are both
+    /// rewritten before insertion.
+    async fn insert_queued_child(&self, mut child: QueuedChildRecord) -> Result<String> {
         let mut state = self.state.write().await;
         // Re-check the close gates while the write lock is held. The earlier
         // check can race with a concurrent `close_tree` that snapshots and
@@ -919,8 +971,40 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
             bail!("Subagent controller is shutting down; cannot spawn new subagents");
         }
+        let unique_id = self
+            .child_id_scope
+            .allocate(|id| state.children.contains_key(id), child.id.as_str());
+        if unique_id != child.id {
+            child.record.session_id = format!(
+                "{}-{}",
+                sanitize_component(child.record.parent_thread_id.as_str()),
+                sanitize_component(unique_id.as_str())
+            );
+            child.record.id = unique_id.clone();
+            child.id = unique_id;
+        }
+        let id = child.id.clone();
         state.children.insert(child.id, child.record);
-        Ok(())
+        Ok(id)
+    }
+
+    /// Inserts a prepared record under a caller-chosen candidate id.
+    ///
+    /// Test seam only: a real spawn derives its id from the agent kind and a
+    /// millisecond clock, so two controllers can only be forced to propose the
+    /// same id by supplying the candidate directly. Everything else about the
+    /// insertion — the close-gate recheck, the tree-wide allocation, and the
+    /// returned id — is the production path.
+    #[cfg(test)]
+    pub(super) async fn insert_child_with_candidate_id(
+        &self,
+        candidate_id: &str,
+        record: ChildRecord,
+    ) -> Result<String> {
+        // The insertion future carries the whole record, and a test future that
+        // large trips `clippy::large_futures`; boxing it here keeps the seam's
+        // own future small without changing the production path.
+        Box::pin(self.insert_queued_child(QueuedChildRecord { id: candidate_id.to_owned(), record })).await
     }
 
     async fn restart_child(&self, target: &str) -> Result<()> {
@@ -952,10 +1036,157 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
     waiters
 }
 
+static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+fn background_state_persistence_lock() -> &'static Mutex<()> {
+    BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Reloads the shared ledger, merges one controller's snapshot and writes it.
+///
+/// The caller holds both persistence locks; this function owns the reload,
+/// merge and write so they complete as one critical section.
+async fn persist_background_records(
+    workspace_root: &std::path::Path,
+    owner_session_id: Option<&str>,
+    records: Vec<PersistedBackgroundRecord>,
+) -> Result<()> {
+    if let Some(owner_session_id) = owner_session_id {
+        let mut persisted_records = load_background_state(workspace_root).await?.records;
+        persisted_records.retain(|record| record.owner_session_id.as_deref() != Some(owner_session_id));
+        persisted_records.extend(records);
+        persist_background_state(workspace_root, persisted_records).await
+    } else {
+        // An unscoped controller shares this ledger with the owner-scoped
+        // controllers of other sessions and processes, and it loads their
+        // records so it can list and route them. Replacing the file with its
+        // own snapshot would delete a record another owner created after this
+        // controller loaded, or restore that owner's record from the stale
+        // copy it holds.
+        let persisted_records = load_background_state(workspace_root).await?.records;
+        persist_background_state(workspace_root, merge_unscoped_background_records(persisted_records, records)).await
+    }
+}
+
+/// Returns `candidate`, or the first `-<n>` suffix of it that `is_taken` does
+/// not already hold.
+///
+/// A generated id is `<kind>-<millisecond timestamp>`, so the only collision
+/// it can suffer is a second spawn of the same kind in the same millisecond.
+/// Suffixing keeps both records addressable instead of letting the second
+/// insert replace the first. Ids reach this function only from the generator
+/// in `prepare_queued_child`, so no caller-supplied naming scheme gains an
+/// unexpected suffix.
+fn unique_child_id(is_taken: impl Fn(&str) -> bool, candidate: &str) -> String {
+    if !is_taken(candidate) {
+        return candidate.to_owned();
+    }
+    let mut suffix = 2_u32;
+    loop {
+        let id = format!("{candidate}-{suffix}");
+        if !is_taken(&id) {
+            return id;
+        }
+        suffix = suffix.saturating_add(1);
+    }
+}
+
+/// The child task ids allocated anywhere in one controller tree.
+///
+/// A controller only holds its own children, so checking that map alone cannot
+/// see an id a sibling controller already allocated. The owning session
+/// exposes the whole tree at once and routes a task id to the first controller
+/// that matches, so a duplicate id would list one task twice and send an
+/// output read or a cancel to whichever controller happened to come first.
+/// The root controller owns one scope and every descendant inherits the same
+/// `Arc`; ids are recorded for the lifetime of the tree.
+#[derive(Default)]
+pub(super) struct ChildIdScope {
+    taken: std::sync::Mutex<std::collections::BTreeSet<String>>,
+}
+
+impl ChildIdScope {
+    /// Allocates `candidate` or its first free suffix, and records the result.
+    ///
+    /// The caller supplies the controller-local collision check; this scope
+    /// adds the tree-wide one and remembers the allocated id so a later
+    /// allocation in any controller of the tree cannot repeat it.
+    pub(super) fn allocate(&self, is_taken: impl Fn(&str) -> bool, candidate: &str) -> String {
+        let mut taken = self.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let id = unique_child_id(|id| taken.contains(id) || is_taken(id), candidate);
+        taken.insert(id.clone());
+        id
+    }
+}
+
+/// Merges an unscoped controller's snapshot into the persisted ledger.
+///
+/// The unscoped controller is not the owner of the owner-scoped records it
+/// loads, so it must not replace them with its own copy. Records it does not
+/// track are kept exactly as another process last wrote them, and a record
+/// both sides hold keeps the copy with the newest `updated_at`: an untouched
+/// snapshot equals the copy this controller loaded, while a local refresh or
+/// cancellation is newer than it.
+fn merge_unscoped_background_records(
+    persisted: Vec<PersistedBackgroundRecord>,
+    snapshot: Vec<PersistedBackgroundRecord>,
+) -> Vec<PersistedBackgroundRecord> {
+    // Key on the canonical id: a ledger written by an older build can hold a
+    // legacy id for the same owner-scoped record, and the load path
+    // canonicalizes in memory. Keying on the raw id would let one record
+    // appear twice, or let two owners' records collapse into one entry.
+    let mut merged: BTreeMap<String, PersistedBackgroundRecord> = persisted
+        .into_iter()
+        .map(|mut record| {
+            record.canonicalize_id();
+            (record.id.clone(), record)
+        })
+        .collect();
+    for mut record in snapshot {
+        record.canonicalize_id();
+        match merged.get_mut(&record.id) {
+            Some(current) if record.is_at_least_as_new_as(current) => *current = record,
+            Some(_) => {}
+            None => {
+                merged.insert(record.id.clone(), record);
+            }
+        }
+    }
+    merged.into_values().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+    use std::collections::BTreeSet;
     use std::time::Duration;
+
+    /// Generated ids carry millisecond precision, so two spawns of the same
+    /// kind in one millisecond propose the same id. The second must receive a
+    /// distinct id: `BTreeMap::insert` on the shared key would replace the
+    /// first child's record and silently lose a subagent that had already been
+    /// admitted.
+    #[test]
+    fn a_colliding_child_id_is_suffixed_instead_of_replacing_the_record() {
+        let mut taken: BTreeSet<String> = BTreeSet::new();
+
+        let first = unique_child_id(|id| taken.contains(id), "agent-explorer-20261113T060819731Z");
+        taken.insert(first.clone());
+        let second = unique_child_id(|id| taken.contains(id), "agent-explorer-20261113T060819731Z");
+        taken.insert(second.clone());
+        let third = unique_child_id(|id| taken.contains(id), "agent-explorer-20261113T060819731Z");
+
+        assert_eq!(
+            [first.as_str(), second.as_str(), third.as_str()],
+            [
+                "agent-explorer-20261113T060819731Z",
+                "agent-explorer-20261113T060819731Z-2",
+                "agent-explorer-20261113T060819731Z-3",
+            ],
+            "each collision must take the next free suffix"
+        );
+        assert!(!taken.contains(&third), "the third id must still be free");
+    }
 
     #[tokio::test]
     async fn registered_waiter_observes_notify_waiters_before_first_wait_poll() {
@@ -969,5 +1200,168 @@ mod tests {
 
         let outcome = tokio::time::timeout(Duration::from_millis(50), select_all(waiters)).await;
         assert!(outcome.is_ok(), "registered waiter should retain the wakeup");
+    }
+
+    /// The owner/agent shapes whose records must stay distinct after a merge.
+    ///
+    /// Entries 0 and 1 share an agent name but not an owner, and entry 2 is the
+    /// same agent with no owner at all. A legacy (unscoped) id therefore
+    /// collides across them, which is exactly what canonicalization must
+    /// separate rather than collapse.
+    const MERGE_SHAPES: [(&str, Option<&str>); 4] = [
+        ("worker", Some("session-a")),
+        ("worker", Some("session-b")),
+        ("worker", None),
+        ("reviewer", Some("session-a")),
+    ];
+
+    /// One generated merge input.
+    #[derive(Debug, Clone, Copy)]
+    struct MergeRecord {
+        /// Index into [`MERGE_SHAPES`], selecting the agent and owner.
+        shape: usize,
+        /// Seconds past the fixture epoch at which the record was updated.
+        updated_offset: u8,
+        /// Whether the record still carries the pre-canonicalization id.
+        legacy_id: bool,
+    }
+
+    /// Generates a record with an arbitrary shape, freshness and id form.
+    fn merge_record() -> impl Strategy<Value = MergeRecord> {
+        (0usize..MERGE_SHAPES.len(), 0u8..3u8, any::<bool>())
+            .prop_map(|(shape, updated_offset, legacy_id)| MergeRecord { shape, updated_offset, legacy_id })
+    }
+
+    /// The canonical key, recomputed from the agent and owner alone.
+    ///
+    /// The generated names contain only characters that survive sanitization,
+    /// so this is the documented id format rather than a call back into the
+    /// production helper the merge uses.
+    fn merge_canonical_id(shape: usize) -> String {
+        let (agent, owner) = MERGE_SHAPES[shape];
+        match owner {
+            Some(owner) => format!("background-{agent}@{owner}"),
+            None => format!("background-{agent}"),
+        }
+    }
+
+    /// Renders one persisted record, tagging it so its provenance survives.
+    fn merge_record_json(record: &MergeRecord, tag: &str) -> serde_json::Value {
+        let (agent, owner) = MERGE_SHAPES[record.shape];
+        let id = if record.legacy_id {
+            format!("background-{agent}")
+        } else {
+            merge_canonical_id(record.shape)
+        };
+        serde_json::json!({
+            "id": id,
+            "owner_session_id": owner,
+            "agent_name": agent,
+            "display_label": agent,
+            "description": "merge fixture",
+            "source": "builtin",
+            "color": null,
+            "session_id": "child-session",
+            "exec_session_id": "exec-session",
+            "desired_enabled": true,
+            "status": "running",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": format!("2026-08-28T00:00:0{}Z", record.updated_offset),
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": tag,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        })
+    }
+
+    /// Deserializes generated records and records each tag's own timestamp.
+    ///
+    /// The ledger keeps the tags so the property can compare the winning
+    /// record's timestamp with the input it came from.
+    fn merge_input(
+        records: &[MergeRecord],
+        prefix: &str,
+        updated_by_tag: &mut BTreeMap<String, i64>,
+    ) -> Vec<PersistedBackgroundRecord> {
+        records
+            .iter()
+            .enumerate()
+            .map(|(index, record)| {
+                let tag = format!("{prefix}{index}");
+                let value = merge_record_json(record, &tag);
+                updated_by_tag.insert(tag, merge_timestamp_millis(&value["updated_at"]));
+                serde_json::from_value(value).expect("generated persisted record")
+            })
+            .collect()
+    }
+
+    /// Parses a serialized timestamp so comparisons do not depend on format.
+    fn merge_timestamp_millis(value: &serde_json::Value) -> i64 {
+        chrono::DateTime::parse_from_rfc3339(value.as_str().expect("serialized timestamp"))
+            .expect("parse serialized timestamp")
+            .timestamp_millis()
+    }
+
+    proptest! {
+        /// The unscoped merge is a per-key join against an independent model.
+        ///
+        /// The model canonicalizes each generated id from its agent and owner,
+        /// keeps the last copy a ledger repeats, prefers the snapshot on a tie,
+        /// and keeps every record only one side holds. It never calls the
+        /// production id or freshness helpers, so a change to either contract
+        /// shows up as a disagreement rather than being mirrored by the test.
+        #[test]
+        fn unscoped_merge_joins_records_by_canonical_key(
+            persisted in prop::collection::vec(merge_record(), 0..=5),
+            snapshot in prop::collection::vec(merge_record(), 0..=5),
+        ) {
+            let mut updated_by_tag = BTreeMap::new();
+            let persisted_records = merge_input(&persisted, "p", &mut updated_by_tag);
+            let snapshot_records = merge_input(&snapshot, "s", &mut updated_by_tag);
+
+            let mut expected: BTreeMap<String, (u8, String)> = BTreeMap::new();
+            for (index, record) in persisted.iter().enumerate() {
+                expected.insert(merge_canonical_id(record.shape), (record.updated_offset, format!("p{index}")));
+            }
+            for (index, record) in snapshot.iter().enumerate() {
+                let key = merge_canonical_id(record.shape);
+                let tag = format!("s{index}");
+                match expected.get_mut(&key) {
+                    Some(current) if record.updated_offset >= current.0 => *current = (record.updated_offset, tag),
+                    Some(_) => {}
+                    None => {
+                        expected.insert(key, (record.updated_offset, tag));
+                    }
+                }
+            }
+
+            let merged = merge_unscoped_background_records(persisted_records, snapshot_records);
+            let observed = merged
+                .iter()
+                .map(|record| {
+                    let value = serde_json::to_value(record).expect("serialize merged record");
+                    (
+                        value["id"].as_str().expect("merged id").to_owned(),
+                        value["summary"].as_str().expect("provenance tag").to_owned(),
+                        merge_timestamp_millis(&value["updated_at"]),
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            prop_assert_eq!(observed.len(), expected.len());
+            for (entry, (key, (_, tag))) in observed.iter().zip(expected.iter()) {
+                prop_assert_eq!(&entry.0, key, "records are canonicalized and ordered by key");
+                prop_assert_eq!(&entry.1, tag, "the newest copy wins and a tie keeps the snapshot");
+                prop_assert_eq!(Some(&entry.2), updated_by_tag.get(tag), "the winner keeps its own timestamp");
+            }
+        }
     }
 }

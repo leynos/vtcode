@@ -13,6 +13,7 @@ use diapason_config::{
     HookCommandConfig, HookGroupConfig, HooksConfig, IsolationMode, SubagentMcpServer, SubagentMemoryScope,
     SubagentSource, SubagentSpec,
 };
+use proptest::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -42,9 +43,44 @@ fn test_controller_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> Su
         depth: 0,
         workspace_gated: false,
         exec_sessions,
+        output_reader: None,
         pty_manager: pty_sessions.manager().clone(),
         managed_background_runtime: false,
     }
+}
+
+pub(super) fn persisted_background_record_for_owner(
+    id: &str,
+    owner_session_id: Option<&str>,
+) -> PersistedBackgroundRecord {
+    serde_json::from_value(serde_json::json!({
+        "id": id,
+        "agent_name": "worker",
+        "display_label": "worker",
+        "description": "worker",
+        "source": "builtin",
+        "color": null,
+        "owner_session_id": owner_session_id,
+        "session_id": format!("session-{id}"),
+        "exec_session_id": format!("exec-{id}"),
+        "desired_enabled": false,
+        "status": "stopped",
+        "created_at": "2026-08-28T00:00:00Z",
+        "updated_at": "2026-08-28T00:00:00Z",
+        "started_at": null,
+        "ended_at": "2026-08-28T00:00:00Z",
+        "pid": null,
+        "prompt": "work",
+        "summary": null,
+        "error": null,
+        "archive_path": null,
+        "transcript_path": null,
+        "max_turns": null,
+        "model_override": null,
+        "reasoning_override": null,
+        "restart_attempts": 0
+    }))
+    .expect("persisted background record")
 }
 
 fn test_child_record(
@@ -88,9 +124,12 @@ fn test_child_record(
     }
 }
 
+mod background_liveness_tests;
 mod invocation_context_tests;
+mod owner_scope_tests;
 mod progress_observer_tests;
 mod spawn_custom_tests;
+mod tree_routing_tests;
 
 fn write_test_background_subagent(workspace_root: &std::path::Path) {
     let agent_dir = workspace_root.join(diapason_commons::workspace_dir_name()).join("agents");
@@ -111,6 +150,201 @@ Run the managed background demo.
 "#,
     )
     .expect("write background agent");
+
+    let scripts_dir = workspace_root.join("scripts");
+    std::fs::create_dir_all(&scripts_dir).expect("scripts dir");
+    let script_path = scripts_dir.join("demo-background-subagent.sh");
+    std::fs::write(&script_path, "#!/bin/sh\nexit 0\n").expect("write background script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&script_path)
+            .expect("background script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&script_path, permissions).expect("background script permissions");
+    }
+}
+
+/// The ledger lock must exclude a second opener, not only a second task in
+/// this process.
+///
+/// `flock` locks are held per open file description, so a fresh handle that
+/// cannot take the lock proves the operating-system lock is held rather than
+/// only the in-process mutex. Two Diapason processes sharing a workspace rely
+/// on exactly that exclusion.
+#[tokio::test]
+async fn background_state_lock_excludes_a_second_opener() {
+    let temp = TempDir::new().expect("tempdir");
+    let guard = lock_background_state(temp.path())
+        .await
+        .expect("acquire the workspace ledger lock");
+    let path = temp
+        .path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("state")
+        .join("background_subagents.lock");
+    let second_opener = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .expect("open the ledger lock file a second time");
+    assert!(
+        fs2::FileExt::try_lock_exclusive(&second_opener).is_err(),
+        "a second opener must not acquire the ledger lock while the guard holds it"
+    );
+    drop(guard);
+    fs2::FileExt::try_lock_exclusive(&second_opener).expect("the guard must release the ledger lock when it drops");
+}
+
+/// A contended ledger lock must fail with a contextual error at its deadline.
+///
+/// A blocking acquisition would park the save, and the in-process mutex it
+/// holds, for as long as the holder lives; a stalled process would therefore
+/// block every later save in this one. The deadline is shortened so the test
+/// observes the expiry without waiting for the production timeout.
+#[tokio::test]
+async fn background_state_lock_times_out_instead_of_blocking() {
+    let temp = TempDir::new().expect("tempdir");
+    let guard = lock_background_state(temp.path())
+        .await
+        .expect("acquire the workspace ledger lock");
+    let error = match lock_background_state_within(temp.path(), Duration::from_millis(50)).await {
+        Ok(_) => panic!("a lock held by another opener must not be acquired"),
+        Err(error) => error,
+    };
+    let rendered = format!("{error:#}");
+    assert!(
+        rendered.contains("Timed out") && rendered.contains("background_subagents.lock"),
+        "the deadline error must name the wait and the lock file, got: {rendered}"
+    );
+    drop(guard);
+    let _reacquired = lock_background_state(temp.path())
+        .await
+        .expect("the released lock must be acquirable");
+}
+
+/// Reading a background output tail is a query. It must not refresh process
+/// state, republish lifecycle updates, or rewrite the persisted ledger, even
+/// when the recorded exec session is gone and a refresh would settle the
+/// record.
+#[tokio::test]
+async fn background_output_tail_reads_without_refreshing_background_state() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let record: PersistedBackgroundRecord = serde_json::from_value(serde_json::json!({
+        "id": "background-worker",
+        "agent_name": "worker",
+        "display_label": "worker",
+        "description": "worker",
+        "source": "builtin",
+        "color": null,
+        "owner_session_id": "session-a",
+        "session_id": "session-background-worker",
+        "exec_session_id": "exec-background-worker",
+        "desired_enabled": false,
+        "status": "running",
+        "created_at": "2026-08-28T00:00:00Z",
+        "updated_at": "2026-08-28T00:00:00Z",
+        "started_at": "2026-08-28T00:00:00Z",
+        "ended_at": null,
+        "pid": null,
+        "prompt": "work",
+        "summary": null,
+        "error": null,
+        "archive_path": null,
+        "transcript_path": null,
+        "max_turns": null,
+        "model_override": null,
+        "reasoning_override": null,
+        "restart_attempts": 0
+    }))
+    .expect("persisted background record");
+    let state_path = state_dir.join("background_subagents.json");
+    std::fs::write(
+        &state_path,
+        serde_json::to_string(&PersistedBackgroundState { records: vec![record] }).expect("serialize state"),
+    )
+    .expect("write state");
+    let persisted_before = std::fs::read(&state_path).expect("read persisted state");
+
+    let controller = SubagentController::new_with_background_owner(
+        test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()),
+        Some("session-a"),
+    )
+    .await
+    .expect("controller");
+    let task_id = "background-worker@session-a";
+    let before = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == task_id)
+        .expect("owned background record");
+
+    let output = controller.background_output_tail(task_id, 10).await.expect("output tail");
+
+    assert_eq!(output, "");
+    let after = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == task_id)
+        .expect("owned background record");
+    assert_eq!(
+        after.status,
+        BackgroundSubprocessStatus::Running,
+        "the output query must not settle a record whose exec session is gone"
+    );
+    assert_eq!(after.updated_at, before.updated_at, "the output query must not touch record timestamps");
+    assert_eq!(
+        std::fs::read(&state_path).expect("reread persisted state"),
+        persisted_before,
+        "the output query must not rewrite persisted background state"
+    );
+}
+
+proptest! {
+    #[test]
+    fn owner_round_trip_and_output_tail_respects_requested_bound(
+        owner_session_id in prop::option::of("[a-z0-9-]{1,32}"),
+        line_count in 0usize..=20_000,
+        requested in 0usize..=20_000,
+    ) {
+        let record: PersistedBackgroundRecord = serde_json::from_value(serde_json::json!({
+            "id": "background-worker",
+            "agent_name": "worker",
+            "display_label": "worker",
+            "description": "worker",
+            "source": "builtin",
+            "color": null,
+            "owner_session_id": owner_session_id.clone(),
+            "session_id": "child-session",
+            "exec_session_id": "exec-session",
+            "desired_enabled": true,
+            "status": "running",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        })).expect("generated persisted record");
+        let runtime = BackgroundRecord::from_persisted(record);
+        prop_assert_eq!(runtime.build_status_entry().owner_session_id, owner_session_id);
+
+        let content = (0..line_count).map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
+        prop_assert!(extract_tail_lines(&content, requested).lines().count() <= requested);
+    }
 }
 
 fn write_test_primary_agent(workspace_root: &std::path::Path) {
@@ -1411,6 +1645,7 @@ async fn spawn_background_subprocess_returns_active_record_when_settings_match()
                 description: spec.description.clone(),
                 source: spec.source.label(),
                 colour: spec.colour.clone(),
+                owner_session_id: None,
                 session_id: "session-background-demo".to_string(),
                 parent_session_id: "parent-session".to_string(),
                 exec_session_id: "exec-session-background-demo".to_string(),
@@ -1473,6 +1708,7 @@ async fn spawn_background_subprocess_rejects_conflicting_active_record_settings(
                 description: spec.description.clone(),
                 source: spec.source.label(),
                 colour: spec.colour.clone(),
+                owner_session_id: None,
                 session_id: "session-background-demo".to_string(),
                 parent_session_id: "parent-session".to_string(),
                 exec_session_id: "exec-session-background-demo".to_string(),

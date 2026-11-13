@@ -1,4 +1,9 @@
 //! Coordinates subagent discovery, execution, background work, and the public controller API.
+//!
+//! Storage access for live and archived background output is injectable through
+//! [`BackgroundOutputReader`]. A reader is keyed by one task's storage identity
+//! and returns a domain result, so the controller keeps line bounds, transport
+//! limits, validation, and error mapping.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -6,6 +11,7 @@
 // ─── Module Structure ───────────────────────────────────────────────────────
 
 mod background;
+mod background_output;
 mod config;
 mod constants;
 mod discovery;
@@ -16,8 +22,11 @@ mod types;
 // ─── Re-exports ─────────────────────────────────────────────────────────────
 
 pub use background::{
-    background_record_id, build_background_subagent_command, extract_tail_lines, load_archive_preview,
-    subagent_display_label,
+    background_record_id, background_record_id_for_owner, build_background_subagent_command, extract_tail_lines,
+    load_archive_preview, subagent_display_label,
+};
+pub use background_output::{
+    BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource, ExecSessionOutputReader,
 };
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
@@ -159,6 +168,8 @@ pub struct SubagentControllerConfig {
     pub workspace_gated: bool,
     /// Manager for exec sessions (PTY and pipe).
     pub exec_sessions: ExecSessionManager,
+    /// Reader for live and archived background output; `None` uses the exec-session default.
+    pub output_reader: Option<Arc<dyn BackgroundOutputReader>>,
     /// PTY session manager.
     pub pty_manager: PtyManager,
     /// Whether this controller manages a background runtime subprocess.
@@ -199,6 +210,10 @@ impl Drop for SubagentProgressObserverRegistration {
 #[derive(Clone)]
 pub struct SubagentController {
     config: Arc<SubagentControllerConfig>,
+    /// Reads live and archived background output. Resolved once at construction
+    /// so every read path shares the same injectable storage access.
+    output_reader: Arc<dyn BackgroundOutputReader>,
+    background_owner_session_id: Option<String>,
     parent_session_id: Arc<RwLock<String>>,
     lifecycle_hooks: Option<LifecycleHookEngine>,
     state: Arc<RwLock<ControllerState>>,
@@ -210,11 +225,34 @@ pub struct SubagentController {
     /// subtree down.
     closing: Arc<AtomicBool>,
     progress_observers: Arc<ProgressObserverRegistry>,
+    /// Observer key inherited from the owning controller. Child-scoped
+    /// controllers serve exactly one parent session, so their lifecycle
+    /// events are published under that session's observer key even though the
+    /// tasks' immediate `parent_thread_id` is the child's own session.
+    progress_observer_scope: Option<String>,
+    /// Child task ids allocated anywhere in this controller's tree. A
+    /// controller-local check cannot see an id a sibling allocated, so the
+    /// root owns one scope and descendants inherit the same `Arc`.
+    child_id_scope: Arc<controller_spawn_run::ChildIdScope>,
 }
 
 impl SubagentController {
     /// Creates a new controller, discovering subagent specs and loading persisted background state.
     pub fn new(config: SubagentControllerConfig) -> impl Future<Output = Result<Self>> + Send {
+        Self::new_with_background_owner(config, None)
+    }
+
+    /// Creates a controller scoped to one persisted background owner.
+    ///
+    /// Interactive sessions use this constructor so a per-session
+    /// controller cannot load or restore another session's background records.
+    /// Callers such as the CLI use [`Self::new`] to retain restore-all
+    /// behaviour.
+    pub fn new_with_background_owner(
+        config: SubagentControllerConfig,
+        owner_session_id: Option<&str>,
+    ) -> impl Future<Output = Result<Self>> + Send {
+        let background_owner_session_id = owner_session_id.map(str::to_owned);
         Box::pin(async move {
             let discovered = discover_controller_subagents(&config.workspace_root).await?;
             let workspace_gated = config.workspace_gated;
@@ -228,16 +266,41 @@ impl SubagentController {
             if let Some(engine) = lifecycle_hooks.as_ref() {
                 crate::hooks::lifecycle::restore_workspace_hook_approval(engine, &config.workspace_root).await;
             }
-            let background_children = load_background_state(&config.workspace_root)
-                .await?
-                .records
-                .into_iter()
-                .map(|record| (record.id.clone(), BackgroundRecord::from_persisted(record)))
-                .collect();
+            // A nested scope never owns background work:
+            // `ensure_background_subprocess_enabled` refuses to launch one.
+            // Loading the workspace ledger here would give the nested scope a
+            // second copy of records another controller already owns, so a
+            // list/cancel routed to either scope could report a stale copy
+            // (for example `Running` after the owner cancelled it).
+            let background_children = if config.managed_background_runtime {
+                BTreeMap::new()
+            } else {
+                load_background_state(&config.workspace_root)
+                    .await?
+                    .records
+                    .into_iter()
+                    .filter(|record| {
+                        background_owner_session_id
+                            .as_deref()
+                            .is_none_or(|owner| record.owner_session_id.as_deref() == Some(owner))
+                    })
+                    .map(|mut record| {
+                        record.canonicalize_id();
+                        (record.id.clone(), BackgroundRecord::from_persisted(record))
+                    })
+                    .collect()
+            };
+            let parent_session_id = Arc::new(RwLock::new(config.parent_session_id.clone()));
+            let output_reader = config
+                .output_reader
+                .clone()
+                .unwrap_or_else(|| Arc::new(ExecSessionOutputReader::new(config.exec_sessions.clone())));
             Ok(Self {
-                parent_session_id: Arc::new(RwLock::new(config.parent_session_id.clone())),
-                lifecycle_hooks,
                 config: Arc::new(config),
+                output_reader,
+                background_owner_session_id,
+                parent_session_id,
+                lifecycle_hooks,
                 state: Arc::new(RwLock::new(ControllerState {
                     discovered,
                     parent_messages: Vec::new(),
@@ -248,6 +311,8 @@ impl SubagentController {
                 shutdown_requested: Arc::new(AtomicBool::new(false)),
                 closing: Arc::new(AtomicBool::new(false)),
                 progress_observers: Arc::default(),
+                progress_observer_scope: None,
+                child_id_scope: Arc::default(),
             })
         })
     }
@@ -310,6 +375,103 @@ impl SubagentController {
             .collect()
     }
 
+    /// Returns every child-scoped controller reachable from this controller's
+    /// tracked children, recursively.
+    ///
+    /// Grandchildren spawned by a child run inside that child's own
+    /// [`SubagentController`], so a caller that only reads `status_entries`
+    /// sees direct children but not the rest of the owned tree. Management and
+    /// lifecycle adapters walk this list to reach the whole subtree.
+    ///
+    /// Controllers are deduplicated by allocation so a re-parented or
+    /// re-attached controller cannot produce a cycle, and the returned order
+    /// is breadth-first from the nearest children outwards.
+    pub async fn descendant_controllers(&self) -> Vec<Arc<SubagentController>> {
+        let mut descendants = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut frontier = {
+            let state = self.state.read().await;
+            state
+                .children
+                .values()
+                .filter_map(|record| record.child_controller.clone())
+                .collect::<Vec<_>>()
+        };
+        while !frontier.is_empty() {
+            let mut next = Vec::new();
+            for controller in frontier.drain(..) {
+                if !visited.insert(Arc::as_ptr(&controller) as usize) {
+                    continue;
+                }
+                let nested = {
+                    let state = controller.state.read().await;
+                    state
+                        .children
+                        .values()
+                        .filter_map(|record| record.child_controller.clone())
+                        .collect::<Vec<_>>()
+                };
+                next.extend(nested);
+                descendants.push(controller);
+            }
+            frontier = next;
+        }
+        descendants
+    }
+
+    /// Shares lifecycle observation with the controller that owns this one.
+    ///
+    /// The nested-delegation loop creates a child-scoped controller per child
+    /// run. That controller must publish its progress through the parent's
+    /// observer registry, under the parent's observer key, so an adapter that
+    /// registered for the root session still receives grandchild snapshots.
+    /// Child-scoped controllers only ever serve their parent's session, so the
+    /// inherited key cannot widen the observer's session boundary.
+    pub(crate) async fn inherit_progress_observers(&mut self, parent: &SubagentController) {
+        self.progress_observers = Arc::clone(&parent.progress_observers);
+        self.progress_observer_scope = Some(match parent.progress_observer_scope.clone() {
+            Some(scope) => scope,
+            None => parent.parent_session_id.read().await.clone(),
+        });
+    }
+
+    /// Shares child-id allocation with the controller that owns this one.
+    ///
+    /// Task ids are generated from the agent kind and a millisecond clock, so
+    /// two controllers in one tree can propose the same id at the same instant.
+    /// Each controller only holds its own children, but the adapter flattens
+    /// the tree and routes a task id to the first controller that claims it, so
+    /// a duplicate would list one task twice and could send an output read or a
+    /// cancel to the wrong task. Every controller in a tree therefore allocates
+    /// from the root's scope.
+    pub(crate) fn inherit_child_id_scope(&mut self, parent: &SubagentController) {
+        self.child_id_scope = Arc::clone(&parent.child_id_scope);
+    }
+
+    /// Attaches an already-created child-scoped controller to a tracked child.
+    ///
+    /// The nested-delegation loop attaches the controller as soon as the child
+    /// run creates it so grandchildren stay reachable across resumes. Fails
+    /// closed for an unknown child so a controller can never be grafted onto a
+    /// record this controller does not track.
+    pub async fn attach_child_controller(&self, child_id: &str, controller: Arc<SubagentController>) -> Result<()> {
+        let mut state = self.state.write().await;
+        Self::attach_child_controller_to_state(&mut state, child_id, controller)
+    }
+
+    pub(super) fn attach_child_controller_to_state(
+        state: &mut ControllerState,
+        child_id: &str,
+        controller: Arc<SubagentController>,
+    ) -> Result<()> {
+        let record = state
+            .children
+            .get_mut(child_id)
+            .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+        record.child_controller = Some(controller);
+        Ok(())
+    }
+
     pub(super) async fn ensure_child_owned_by_invocation(&self, target: &str) -> Result<()> {
         let Some(context) = current_subagent_invocation_context() else {
             return Ok(());
@@ -353,6 +515,10 @@ impl SubagentController {
     }
 
     fn with_progress_observers(&self, parent_session_id: &str, notify: impl Fn(&dyn SubagentProgressObserver)) {
+        // A child-scoped controller inherits its owner's observer key, so
+        // grandchild events reach the adapter registered for the root session
+        // instead of being dropped for an unknown intermediate session.
+        let observer_key = self.progress_observer_scope.as_deref().unwrap_or(parent_session_id);
         let observers = {
             let observers = self
                 .progress_observers
@@ -361,7 +527,7 @@ impl SubagentController {
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             observers
                 .values()
-                .filter(|registration| registration.parent_session_id == parent_session_id)
+                .filter(|registration| registration.parent_session_id == observer_key)
                 .map(|registration| Arc::clone(&registration.observer))
                 .collect::<Vec<_>>()
         };

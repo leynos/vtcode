@@ -1,5 +1,8 @@
+//! Persists and loads background subagent state, and provides the launch
+//! specifications and bounded output-tail helpers the controller uses.
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tokio::fs;
 
 use super::constants::SUBAGENT_PREVIEW_LINES;
@@ -22,6 +25,110 @@ fn background_state_path(workspace_root: &Path) -> PathBuf {
         .join(diapason_commons::workspace_dir_name())
         .join("state")
         .join("background_subagents.json")
+}
+
+fn background_state_lock_path(workspace_root: &Path) -> PathBuf {
+    workspace_root
+        .join(diapason_commons::workspace_dir_name())
+        .join("state")
+        .join("background_subagents.lock")
+}
+
+/// Holds the workspace ledger's inter-process lock until it is dropped.
+///
+/// The lock is advisory and process-wide: it serialises the reload, merge and
+/// write of the shared ledger across every Diapason process that shares the
+/// workspace, which the in-process mutex cannot do.
+pub(crate) struct BackgroundStateLock {
+    file: std::fs::File,
+}
+
+impl Drop for BackgroundStateLock {
+    fn drop(&mut self) {
+        // `flock(LOCK_UN)` never blocks, so releasing here cannot stall the
+        // async runtime. A failure leaves the lock to be released when the
+        // descriptor closes, which is the same outcome.
+        let _ = fs2::FileExt::unlock(&self.file);
+    }
+}
+
+/// How long one save waits for another process to release the ledger lock.
+///
+/// The wait is bounded because the holder may be a suspended or stalled
+/// process: a blocking acquisition would then park the save, and the shared
+/// in-process persistence mutex it holds, for as long as that process lives.
+const BACKGROUND_STATE_LOCK_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The delay before the first lock retry; each further retry doubles it.
+const BACKGROUND_STATE_LOCK_INITIAL_BACKOFF: Duration = Duration::from_millis(5);
+
+/// The largest delay between two lock retries.
+const BACKGROUND_STATE_LOCK_MAX_BACKOFF: Duration = Duration::from_millis(250);
+
+/// Acquires the workspace ledger's inter-process exclusive lock.
+///
+/// Two processes that each read the ledger before either writes can lose a
+/// record: the later atomic rename replaces the file with a snapshot that
+/// never saw the other's record. Callers must hold this guard across the
+/// reload, merge and write of one save.
+///
+/// Contention is retried without blocking the runtime until
+/// [`BACKGROUND_STATE_LOCK_TIMEOUT`] expires, so a lock held by a stalled
+/// process fails the save with a contextual error instead of parking it. A
+/// caller that never acquires the lock must not write the ledger.
+pub(crate) async fn lock_background_state(workspace_root: &Path) -> Result<BackgroundStateLock> {
+    lock_background_state_within(workspace_root, BACKGROUND_STATE_LOCK_TIMEOUT).await
+}
+
+/// Acquires the ledger lock, giving up after `timeout`.
+///
+/// Production saves use [`BACKGROUND_STATE_LOCK_TIMEOUT`]. A test supplies a
+/// short deadline so it can observe the expiry without waiting in real time.
+pub(crate) async fn lock_background_state_within(
+    workspace_root: &Path,
+    timeout: Duration,
+) -> Result<BackgroundStateLock> {
+    let path = background_state_lock_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    let opened_path = path.clone();
+    let file = tokio::task::spawn_blocking(move || {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&opened_path)
+            .with_context(|| format!("Failed to open {}", opened_path.display()))
+    })
+    .await
+    .context("Failed to join the background state lock task")??;
+    let deadline = tokio::time::Instant::now() + timeout;
+    let mut backoff = BACKGROUND_STATE_LOCK_INITIAL_BACKOFF;
+    loop {
+        match fs2::FileExt::try_lock_exclusive(&file) {
+            Ok(()) => return Ok(BackgroundStateLock { file }),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(error).with_context(|| {
+                        format!(
+                            "Timed out after {}ms waiting for the background state lock {}",
+                            timeout.as_millis(),
+                            path.display()
+                        )
+                    });
+                }
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(BACKGROUND_STATE_LOCK_MAX_BACKOFF);
+            }
+            Err(error) => {
+                return Err(error).with_context(|| format!("Failed to lock {}", path.display()));
+            }
+        }
+    }
 }
 
 pub(crate) async fn load_background_state(workspace_root: &Path) -> Result<PersistedBackgroundState> {
@@ -156,6 +263,24 @@ pub fn background_record_id(agent_name: &str) -> String {
     format!("background-{}", sanitize_component(agent_name))
 }
 
+/// Returns the record id of a background subagent, scoped to its owner.
+///
+/// Owner-scoped controllers persist their records side by side, so two
+/// sessions in one workspace can each run the same agent. The owner suffix
+/// keeps those records distinct both in the in-memory map and in the shared
+/// ledger; an unscoped controller keeps the workspace-global id.
+pub fn background_record_id_for_owner(agent_name: &str, owner_session_id: Option<&str>) -> String {
+    let base = background_record_id(agent_name);
+    let Some(owner_session_id) = owner_session_id else {
+        return base;
+    };
+    let owner = sanitize_component(owner_session_id);
+    if owner.is_empty() {
+        return base;
+    }
+    format!("{base}@{owner}")
+}
+
 fn sanitize_component(value: &str) -> String {
     value
         .chars()
@@ -180,8 +305,21 @@ pub fn extract_tail_lines(content: &str, max_lines: usize) -> String {
 }
 
 pub async fn load_archive_preview(path: &Path) -> Result<String> {
+    load_archive_output_tail(path, SUBAGENT_PREVIEW_LINES).await
+}
+
+pub(crate) async fn load_archive_output_tail(path: &Path, max_lines: usize) -> Result<String> {
+    let transcript = load_archive_transcript(path).await?;
+    Ok(extract_tail_lines(&transcript, max_lines))
+}
+
+/// Loads the full archived transcript, without applying a line bound.
+///
+/// Callers own any bounding; the controller keeps its preview and requested
+/// tail limits when it reads through an injected output reader.
+pub(crate) async fn load_archive_transcript(path: &Path) -> Result<String> {
     let listing = load_session_listing(path).await?;
-    Ok(extract_tail_lines(&listing.snapshot.transcript.join("\n"), SUBAGENT_PREVIEW_LINES))
+    Ok(listing.snapshot.transcript.join("\n"))
 }
 
 async fn load_session_listing(path: &Path) -> Result<SessionListing> {

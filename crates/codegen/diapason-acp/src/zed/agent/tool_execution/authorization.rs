@@ -37,9 +37,21 @@ impl ZedAgent {
         let permission_prompter = workspace_runtime
             .as_ref()
             .map_or(self.permission_prompter.as_ref(), |runtime| runtime.permission_prompter.as_ref());
+        let scoped_registry;
         let local_tool_registry = workspace_runtime
             .as_ref()
             .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
+        let local_tool_registry = if workspace_runtime.is_some() {
+            scoped_registry = local_tool_registry.with_subagent_controller(
+                self.session_subagent_controller(invocation.session).map_err(|error| {
+                    log_suppressed_error(&error, "session_subagent_controller_read", "session_lock_unavailable");
+                    SdkError::internal_error()
+                })?,
+            );
+            &scoped_registry
+        } else {
+            local_tool_registry
+        };
         let Some(func_ref) = invocation.call.function.as_ref() else {
             return Ok(Self::tool_call_result_from_report(
                 invocation.call,
@@ -66,7 +78,7 @@ impl ZedAgent {
         let authorization = self
             .authorize_tool_call(&context, &resolved, ToolAuthorizationInput { pre_tool_decision, audit_arguments })
             .await?;
-        let execution = self.execute_authorized_tool(&context, &resolved, authorization).await?;
+        let execution = Box::pin(self.execute_authorized_tool(&context, &resolved, authorization)).await?;
         self.finish_tool_call(&context, &resolved, execution).await
     }
 
