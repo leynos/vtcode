@@ -6,7 +6,7 @@ the workflows in the extension, the participant system, and the tool approval
 mechanisms available in the application.
 
 Diapason uses a configuration file named `config.toml` that can be placed at
-the root of your project workspace to customize behavior. Interactive sessions
+the root of your project workspace to customize behaviour. Interactive sessions
 poll the active workspace, project, user, and explicit config layers and apply
 safe changes without restarting.
 
@@ -93,7 +93,7 @@ file and does not remove secure credentials or any other layer.
 
 While a session is running, changes to watched configuration files are
 debounced and reloaded through the normal layered configuration service. Safe
-runtime settings such as UI appearance and theme, status-line behavior,
+runtime settings such as UI appearance and theme, status-line behaviour,
 permissions, sandbox and timeout policy, MCP approval policy, and custom
 provider definitions are applied without restarting. A provider/model identity
 selected for the current session remains stable until a later turn or session
@@ -111,7 +111,7 @@ back to the first available item.
 ## Feature flags
 
 Optional and experimental capabilities are toggled via the `[features]` table in
-`config.toml`. These allow you to customize the behavior of various Diapason
+`config.toml`. These allow you to customize the behaviour of various Diapason
 features.
 
 ```toml
@@ -255,7 +255,7 @@ experimental_features = false
 - In the interactive UI you can open this section directly with `/config codex`
   or `/config agent.codex_app_server`.
 
-You can also enable the experimental Codex behavior for a single run:
+You can also enable the experimental Codex behaviour for a single run:
 
 ```bash
 diapason --codex-experimental
@@ -312,8 +312,8 @@ Notes:
 - `api_format` is a hint to Diapason about how this provider / endpoint expects
   model traffic. Accepted values are: `auto`, `openai-chat`,
   `openai-responses`, and `anthropic-messages`. When omitted Diapason preserves
-  legacy behavior and will try to autodetect; an explicit value is honored and
-  Diapason will not silently fallback to a different format.
+  legacy behaviour and will try to autodetect; an explicit value is honoured
+  and Diapason will not silently fallback to a different format.
 - `request_policy` controls admission and transient retries for this provider.
   The defaults are `queue_timeout_seconds = 600`, `max_retries = 2`,
   `retry_initial_backoff_ms = 10000`, `retry_max_backoff_ms = 160000`, and
@@ -391,7 +391,7 @@ following order (highest wins):
 Sampling values resolve on the same chain, with one extra global layer beneath
 the provider: profile → provider default → `agent.temperature` /
 `agent.reasoning_effort` globals → built-in per-task limits (`max_tokens`
-only). Two built-in behaviors sit above the profile chain: simple sub-tasks
+only). Two built-in behaviours sit above the profile chain: simple sub-tasks
 force `reasoning_effort = "minimal"` regardless of a profile pin, and backends
 that reject sampling during reasoning (native Anthropic/MiniMax, or custom
 profiles with `api_format = "anthropic-messages"`) drop `temperature` while
@@ -399,9 +399,9 @@ reasoning is active.
 
 Additional rules:
 
-- An explicit boolean `false` in any overriding layer is honored and prevents a
+- An explicit boolean `false` in any overriding layer is honoured and prevents a
   higher-level implicit `true` from taking effect.
-- Omitting `api_format` preserves legacy autodetection behavior; explicitly
+- Omitting `api_format` preserves legacy autodetection behaviour; explicitly
   setting `api_format` to a value instructs Diapason to use this API shape and
   not silently fall back.
 - Profiles do not make a model available in the picker — use `model` or
@@ -522,7 +522,7 @@ Matching is case-insensitive.
 
 ### Model-specific settings
 
-You can also configure model-specific behavior:
+You can also configure model-specific behaviour:
 
 ```toml
 [agent.model_settings]
@@ -705,7 +705,7 @@ Notes:
   `container_auto`.
 - `type = "allowlist"` requires at least one `allowed_domains` entry. Each
   `domain_secrets[*].domain` must also appear in `allowed_domains`.
-- `version` may be omitted for the default `"latest"` behavior, or set to a
+- `version` may be omitted for the default `"latest"` behaviour, or set to a
   pinned integer/string version when your hosted skill deployment requires it.
 
 ## External editor
@@ -741,13 +741,13 @@ You can manage this feature without editing TOML directly:
 - The guided flow can also take you to `/config file_opener` when you want to
   tune ANSI hyperlink URI handling separately.
 
-For full editor detection, launcher behavior, and examples, see
+For full editor detection, launcher behaviour, and examples, see
 [External Editor Configuration](../tools/EDITOR_CONFIG.md).
 
 ## Fullscreen interaction
 
 When Diapason is using alternate-screen rendering, you can tune
-fullscreen-specific mouse and transcript behavior with the `ui.fullscreen`
+fullscreen-specific mouse and transcript behaviour with the `ui.fullscreen`
 table.
 
 ```toml
@@ -766,8 +766,8 @@ scroll_speed = 3
 - `scroll_speed` multiplies mouse-wheel scrolling from `1` to `20`. It only
   affects wheel accumulation; page-based keyboard navigation is unchanged.
 
-Diapason also honors these environment variables for default fullscreen
-behavior:
+Diapason also honours these environment variables for default fullscreen
+behaviour:
 
 - `DIAPASON_FULLSCREEN_MOUSE_CAPTURE=0|1`
 - `DIAPASON_FULLSCREEN_COPY_ON_SELECT=0|1`
@@ -935,16 +935,16 @@ Notes:
 - `context.max_context_tokens = 0` preserves provider-only threshold resolution
   for compatibility; a known provider capacity is still a hard upper bound.
 - `context.dynamic.enabled = true` and `context.dynamic.persist_history = true`
-  let Diapason persist compaction artifacts and the session memory envelope for
-  summarization and working-memory recovery. These artifacts are distinct from
+  let Diapason persist compaction artefacts and the session memory envelope for
+  summarization and working-memory recovery. These artefacts are distinct from
   the durable session archive used for ACP resume; see
   [ACP storage boundaries](../guides/zed-acp.md#storage-boundaries).
 - `context.dynamic.retained_user_messages` controls how many recent real user
   messages Diapason preserves verbatim on the local fallback compaction path
   and in summarized forks. The default is `4`.
-- The session memory envelope is Diapason's durable working-memory artifact. It
+- The session memory envelope is Diapason's durable working-memory artefact. It
   is refreshed at turn boundaries and after completed child-agent results, then
-  persisted beside history artifacts as `.memory.json`.
+  persisted beside history artefacts as `.memory.json`.
 - A soft compaction threshold at 90% of the effective hard threshold defers
   compaction to the next outer turn boundary; the hard threshold compacts
   before the next model request. Compaction does not issue a hidden summary
@@ -967,7 +967,7 @@ With `persistence = "file"`, ACP `session/list` discovers the saved archives
 for a requested workspace, and `session/load` and `session/resume` restore an
 archive by its exact session ID. `persistence = "none"` disables archive
 discovery and cross-process resume. These settings do not control
-`context.dynamic` compaction artifacts or the opt-in `[acp.audit]` JSONL audit.
+`context.dynamic` compaction artefacts or the opt-in `[acp.audit]` JSONL audit.
 
 ## MCP integration
 
@@ -1105,7 +1105,7 @@ custom_tool_example = "deny"
 
 ### automation
 
-Control automation behavior in Diapason:
+Control automation behaviour in Diapason:
 
 ```toml
 [automation]
@@ -1140,7 +1140,7 @@ config.
 
 ### participants
 
-Controls the behavior of the participant system that provides context
+Controls the behaviour of the participant system that provides context
 augmentation:
 
 ```toml
@@ -1319,7 +1319,7 @@ level = "minimal"
 
 ### logging
 
-Configure logging behavior in Diapason:
+Configure logging behaviour in Diapason:
 
 ```toml
 [logging]
@@ -1444,7 +1444,7 @@ settings:
 # Whether to enable the ask agent command
 ask_agent_enabled = true
 
-# Whether to enable the analyze workspace command
+# Whether to enable the analyse workspace command
 analyze_enabled = true
 
 # Timeout for command execution (in seconds)
@@ -1518,7 +1518,7 @@ If Diapason is not behaving as expected with your configuration:
 For complete field coverage generated from the live `diapason-config` schema,
 use [`docs/config/CONFIG_FIELD_REFERENCE.md`](./CONFIG_FIELD_REFERENCE.md).
 
-For harness behavior, read `agent.harness`, `automation.full_auto`, and
+For harness behaviour, read `agent.harness`, `automation.full_auto`, and
 `context.dynamic` together: they jointly define continuation, turn limits, and
 context reuse for long-running exec sessions.
 
@@ -1564,7 +1564,7 @@ context reuse for long-running exec sessions.
 | `auth.secure_storage`                   | boolean                                                                | Store credentials securely (default: true).                                                                                                                                                                         |
 | `auth.validate_keys`                    | boolean                                                                | Validate API keys on startup.                                                                                                                                                                                       |
 | `commands.ask_agent_enabled`            | boolean                                                                | Enable the ask agent command.                                                                                                                                                                                       |
-| `commands.analyze_enabled`              | boolean                                                                | Enable the analyze command.                                                                                                                                                                                         |
+| `commands.analyze_enabled`              | boolean                                                                | Enable the analyse command.                                                                                                                                                                                         |
 | `commands.command_timeout`              | number                                                                 | Command execution timeout (seconds).                                                                                                                                                                                |
 | `profiles.*.agent.provider`             | string                                                                 | Provider override for a profile.                                                                                                                                                                                    |
 | `profiles.*.security.human_in_the_loop` | boolean                                                                | Security setting override for a profile.                                                                                                                                                                            |

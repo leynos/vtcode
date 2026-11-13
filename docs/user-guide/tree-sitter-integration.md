@@ -25,7 +25,7 @@ parse the command into an Abstract Syntax Tree (AST).
 
 ## Architecture
 
-The integration is centered around the following components:
+The integration is centred around the following components:
 
 - **`tree-sitter` core**: The underlying incremental parsing library.
 - **`tree-sitter-bash`**: The grammar used for parsing shell commands.
@@ -51,6 +51,6 @@ does not require manual configuration.
 ______________________________________________________________________
 
 *Note: Previous versions of Diapason included broader language support (Rust,
-Python, JavaScript, etc.) via tree-sitter. This was removed in favor of
+Python, JavaScript, etc.) via tree-sitter. This was removed in favour of
 simpler, more efficient text-based analysis which proved equally effective for
 LLM-assisted coding while significantly reducing the binary size.*

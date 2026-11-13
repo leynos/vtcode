@@ -95,7 +95,7 @@ Claude Fable 5 is generally available. Claude Mythos 5 is the same model
 without safety classifiers, available through
 [Project Glasswing](https://anthropic.com/glasswing).
 
-### Baseline behavior in Diapason
+### Baseline behaviour in Diapason
 
 Both models map to adaptive-only thinking in Diapason's `AnthropicProvider`:
 
@@ -263,7 +263,7 @@ thinking_display = "summarized"
    On Fable/Mythos 5, the request builder omits `thinking` entirely and the API
    runs adaptive thinking by default. Requests without a `thinking` field that
    previously ran without thinking now run with adaptive thinking. Revisit
-   `max_tokens` for workloads that relied on no-thinking behavior.
+   `max_tokens` for workloads that relied on no-thinking behaviour.
 
 **Recommended:**
 
@@ -330,7 +330,7 @@ and sends adaptive thinking instead.
 1. **Thinking on by default.** On Opus 4.8, Diapason sent no `thinking` field
    when `extended_thinking_enabled = false`, and the API ran without thinking.
    On Opus 5, the same config runs with adaptive thinking. If you had workloads
-   that relied on no-thinking behavior, either:
+   that relied on no-thinking behaviour, either:
    - Revisit `max_tokens` (it remains a hard limit on thinking + response
      text), or
    - Set `effort = "high"` (or `medium`/`low`) and Diapason will send
@@ -859,7 +859,7 @@ ______________________________________________________________________
 | `LLMResponse`          | `diapason-commons/src/llm.rs`                      | Universal response struct                                          |
 | `FinishReason`         | `diapason-commons/src/llm.rs`                      | Stop reason enum                                                   |
 | `AnthropicProvider`    | `diapason-llm/src/providers/anthropic/provider.rs` | Request building, HTTP, response parsing                           |
-| `ModelResolver`        | `diapason-llm/src/model_resolver.rs`               | Resolves model string → provider + catalog                         |
+| `ModelResolver`        | `diapason-llm/src/model_resolver.rs`               | Resolves model string → provider + catalogue                       |
 | `ThinkingDisplayMode`  | `diapason-config/src/core/provider.rs`             | `Summarized` / `Omitted` / `Unknown`                               |
 
 ### How Diapason translates config to API

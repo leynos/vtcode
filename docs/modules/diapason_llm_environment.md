@@ -19,19 +19,19 @@ Each provider feature corresponds to one or more environment variables. Keys
 should be populated before constructing a client so the `ProviderConfig` trait
 can surface the secret values.
 
-| Feature flag    | Primary variable        | Aliases          | Notes                                                                                                                                       |
-| --------------- | ----------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `google`        | `GEMINI_API_KEY`        | `GOOGLE_API_KEY` | Gemini clients accept either variable; the first non-empty value wins.                                                                      |
-| `openai`        | `OPENAI_API_KEY`        | –                | Required for GPT models served by OpenAI.                                                                                                   |
-| `anthropic`     | `ANTHROPIC_API_KEY`     | –                | Required for Claude models.                                                                                                                 |
-| `deepseek`      | `DEEPSEEK_API_KEY`      | –                | Required for DeepSeek models.                                                                                                               |
-| `meta`          | `META_API_KEY`          | `MODEL_API_KEY`  | Required for official Meta AI Muse models; both variable names are accepted.                                                                |
-| `openrouter`    | `OPENROUTER_API_KEY`    | –                | Required for OpenRouter routing.                                                                                                            |
-| `merge-gateway` | `MERGE_GATEWAY_API_KEY` | –                | Required for native Merge Responses/catalog access; set `MERGE_GATEWAY_BASE_URL` for a proxy or explicit `/v1/openai` legacy compatibility. |
-| `zai`           | `ZAI_API_KEY`           | –                | Required for Zhipu AI (Z.AI) models.                                                                                                        |
-| `moonshot`      | `MOONSHOT_API_KEY`      | –                | Required for Moonshot AI models.                                                                                                            |
-| `lmstudio`      | `LMSTUDIO_API_KEY`      | –                | Optional; provide when the LM Studio developer server enforces auth. Override host/port with `LMSTUDIO_BASE_URL`.                           |
-| `ollama`        | _N/A_                   | –                | Ollama uses a local runtime and does not require an API key.                                                                                |
+| Feature flag    | Primary variable        | Aliases          | Notes                                                                                                                                         |
+| --------------- | ----------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `google`        | `GEMINI_API_KEY`        | `GOOGLE_API_KEY` | Gemini clients accept either variable; the first non-empty value wins.                                                                        |
+| `openai`        | `OPENAI_API_KEY`        | –                | Required for GPT models served by OpenAI.                                                                                                     |
+| `anthropic`     | `ANTHROPIC_API_KEY`     | –                | Required for Claude models.                                                                                                                   |
+| `deepseek`      | `DEEPSEEK_API_KEY`      | –                | Required for DeepSeek models.                                                                                                                 |
+| `meta`          | `META_API_KEY`          | `MODEL_API_KEY`  | Required for official Meta AI Muse models; both variable names are accepted.                                                                  |
+| `openrouter`    | `OPENROUTER_API_KEY`    | –                | Required for OpenRouter routing.                                                                                                              |
+| `merge-gateway` | `MERGE_GATEWAY_API_KEY` | –                | Required for native Merge Responses/catalogue access; set `MERGE_GATEWAY_BASE_URL` for a proxy or explicit `/v1/openai` legacy compatibility. |
+| `zai`           | `ZAI_API_KEY`           | –                | Required for Zhipu AI (Z.AI) models.                                                                                                          |
+| `moonshot`      | `MOONSHOT_API_KEY`      | –                | Required for Moonshot AI models.                                                                                                              |
+| `lmstudio`      | `LMSTUDIO_API_KEY`      | –                | Optional; provide when the LM Studio developer server enforces auth. Override host/port with `LMSTUDIO_BASE_URL`.                             |
+| `ollama`        | _N/A_                   | –                | Ollama uses a local runtime and does not require an API key.                                                                                  |
 
 When multiple providers are enabled, populate the variables you plan to use.
 Downstream applications can surface their own configuration UX but should
@@ -71,7 +71,7 @@ canonical external surface. Both
 and
 [`config::as_factory_config_with_hooks`](../../crates/codegen/diapason-core/src/llm/config_adapter.rs)
 now flow through the same projection layer, so plain and hook-enriched
-conversions stay behaviorally aligned.
+conversions stay behaviourally aligned.
 
 ## Wiring workspace paths and telemetry
 

@@ -6,7 +6,7 @@ under a root `plugin.json` manifest, following the
 its skills and MCP servers become available to Diapason immediately.
 
 For the full reference — plugin layout, manifest fields, MCP transports, and
-security behavior — see the [Agent Plugins Guide](../guides/agent-plugins.md).
+security behaviour — see the [Agent Plugins Guide](../guides/agent-plugins.md).
 
 ## What a plugin gives you
 
@@ -74,7 +74,7 @@ Inside an interactive session the same management is available through the
 
 Once installed, no further setup is needed:
 
-- **Plugin skills** are loaded into the agent's skill catalog at session start
+- **Plugin skills** are loaded into the agent's skill catalogue at session start
   and are available to the agent like any other skill (ask it to use one by
   name).
 - **Plugin MCP servers** appear in `/mcp` as `<plugin>.<server>` and connect
@@ -99,7 +99,7 @@ diapason plugins info vtcode-plugins
 # e.g. "Use the rust-skills skill"
 ```
 
-## Configure plugin behavior
+## Configure plugin behaviour
 
 The `tools.plugins` section of `config.toml` governs the separate **marketplace
 tool plugin** runtime (TOML manifests registered via the `manifests` list):

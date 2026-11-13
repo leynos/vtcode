@@ -4,7 +4,7 @@ Fast lookup for `anstyle-git` and `anstyle-ls` syntax and usage.
 
 ## anstyle-git Syntax
 
-Parse Git color configuration strings.
+Parse Git colour configuration strings.
 
 ### Supported Keywords
 
@@ -12,13 +12,13 @@ Parse Git color configuration strings.
 bold, dim, italic, underline, reverse, strikethrough
 ```
 
-### Supported Colors (Named)
+### Supported Colours (Named)
 
 ```
 black, red, green, yellow, blue, magenta, cyan, white
 ```
 
-### Supported Colors (Hex)
+### Supported Colours (Hex)
 
 ```
 #RRGGBB (e.g., #0000ee for blue)
@@ -27,7 +27,7 @@ black, red, green, yellow, blue, magenta, cyan, white
 ### Syntax Rules
 
 - Whitespace-separated words
-- First color = foreground, second color = background
+- First colour = foreground, second colour = background
 - Effects can appear anywhere
 - Effect keywords: `bold`, `dim`, `italic`, `underline`, `reverse`,
   `strikethrough`
@@ -37,12 +37,12 @@ black, red, green, yellow, blue, magenta, cyan, white
 ```rust
 use anstyle_git::parse;
 
-// Named colors
+// Named colours
 parse("bold red").unwrap()              // bold red text
 parse("red blue").unwrap()              // red text on blue bg
 parse("green").unwrap()                 // green text
 
-// Hex colors
+// Hex colours
 parse("#0000ee").unwrap()               // RGB blue text
 parse("#ff0000 #00ff00").unwrap()       // RGB red text on RGB green bg
 
@@ -51,7 +51,7 @@ parse("bold #0000ee ul").unwrap()       // bold, blue, underlined
 parse("italic yellow black").unwrap()   // italic yellow on black
 
 // Invalid (these will error)
-parse("unknown-color").unwrap()         //  unknown-color not recognized
+parse("unknown-color").unwrap()         //  unknown-color not recognised
 parse("#gg0000").unwrap()               //  invalid hex
 ```
 
@@ -72,10 +72,10 @@ Parse LS_COLORS environment variable format.
 07 = reverse
 09 = strikethrough
 
-30-37 = foreground colors (black, red, green, yellow, blue, magenta, cyan, white)
-90-97 = bright foreground colors
-40-47 = background colors (same order)
-100-107 = bright background colors
+30-37 = foreground colours (black, red, green, yellow, blue, magenta, cyan, white)
+90-97 = bright foreground colours
+40-47 = background colours (same order)
+100-107 = bright background colours
 ```
 
 ### File Type Keys (from LS_COLORS env var)
@@ -107,7 +107,7 @@ KEY=CODE:KEY=CODE:...
 ```rust
 use anstyle_ls::parse;
 
-// Basic colors
+// Basic colours
 parse("34").unwrap()                    // blue foreground (34)
 parse("01;34").unwrap()                 // bold blue (01=bold, 34=blue)
 parse("01;31").unwrap()                 // bold red
@@ -117,7 +117,7 @@ parse("03;36").unwrap()                 // italic cyan
 parse("30;47").unwrap()                 // black text on white bg
 
 // Full LS_COLORS example
-let colors = "di=01;34:ln=01;36:ex=01;32:*.tar=01;31:*.zip=01;31";
+let colours = "di=01;34:ln=01;36:ex=01;32:*.tar=01;31:*.zip=01;31";
 // Parse individual entries
 parse("01;34").unwrap()                 // from di=...
 
@@ -128,20 +128,20 @@ parse("invalid").unwrap()               //  not numeric
 
 ______________________________________________________________________
 
-## Git Config Color Syntax
+## Git Config Colour Syntax
 
 From `.git/config`:
 
 ```ini
-[color "diff"]
+[colour "diff"]
     new = green
     old = red
     context = default
 
-[color "diff"]
+[colour "diff"]
     meta = bold yellow
     
-[color "branch"]
+[colour "branch"]
     current = green bold
     local = green
     remote = red
@@ -150,9 +150,10 @@ From `.git/config`:
 Supported style values:
 
 - `bold`, `dim`, `italic`, `underline`, `reverse`, `strikethrough` (modifiers)
-- `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` (colors)
-- `bright` prefix for bright colors
-- `default` for terminal default color
+- `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`
+  (colours)
+- `bright` prefix for bright colours
+- `default` for terminal default colour
 
 ______________________________________________________________________
 
@@ -167,7 +168,7 @@ use diapason_core::ui::tui::ThemeConfigParser;
 let style = ThemeConfigParser::parse_git_style("bold red")?;
 
 // Parse LS_COLORS style
-let style = ThemeConfigParser::parse_ls_colors("01;34")?;
+let style = ThemeConfigParser::parse_ls_colours("01;34")?;
 
 // Flexible parsing (try both)
 let style = ThemeConfigParser::parse_flexible("bold red")?;
@@ -179,8 +180,8 @@ let style = ThemeConfigParser::parse_flexible("bold red")?;
 use anstyle::Effects;
 
 let style = InlineTextStyle {
-    color: Some(color),
-    bg_color: Some(bg),
+    colour: Some(colour),
+    bg_colour: Some(bg),
     effects: Effects::BOLD | Effects::UNDERLINE,
 };
 
@@ -188,16 +189,16 @@ let style = InlineTextStyle {
 let style = InlineTextStyle::default()
     .bold()
     .underline()
-    .with_color(color);
+    .with_colour(colour);
 ```
 
-### 3. File Colorizer (Phase 3 Future)
+### 3. File Colourizer (Phase 3 Future)
 
 ```rust
-use diapason_core::ui::tui::FileColorizer;
+use diapason_core::ui::tui::FileColourizer;
 
-let colorizer = FileColorizer::new();  // Reads LS_COLORS
-let style = colorizer.style_for_file(&path)?;
+let colourizer = FileColourizer::new();  // Reads LS_COLORS
+let style = colourizer.style_for_file(&path)?;
 ```
 
 ______________________________________________________________________
@@ -243,21 +244,21 @@ let success_style = ThemeConfigParser::parse_git_style("green")?;
 let dim_style = ThemeConfigParser::parse_git_style("dim white")?;
 ```
 
-### Directory Listing Colors
+### Directory Listing Colours
 
 ```rust
 // From environment LS_COLORS
-let dir_style = ThemeConfigParser::parse_ls_colors("01;34")?;  // bold blue
+let dir_style = ThemeConfigParser::parse_ls_colours("01;34")?;  // bold blue
 
-let sym_style = ThemeConfigParser::parse_ls_colors("01;36")?;  // bold cyan
+let sym_style = ThemeConfigParser::parse_ls_colours("01;36")?;  // bold cyan
 
-let exec_style = ThemeConfigParser::parse_ls_colors("01;32")?; // bold green
+let exec_style = ThemeConfigParser::parse_ls_colours("01;32")?; // bold green
 ```
 
-### Git Diff Colors
+### Git Diff Colours
 
 ```rust
-// From .git/config [color "diff"]
+// From .git/config [colour "diff"]
 let added_style = ThemeConfigParser::parse_git_style("green")?;
 
 let removed_style = ThemeConfigParser::parse_git_style("red")?;
@@ -276,13 +277,13 @@ echo $LS_COLORS
 # Output: di=01;34:ln=01;36:so=01;32:pi=40;33:...
 ```
 
-### Check Git Colors
+### Check Git Colours
 
 ```bash
-git config --list | grep color
-# color.ui=auto
-# color.diff.new=green
-# color.diff.old=red
+git config --list | grep colour
+# colour.ui=auto
+# colour.diff.new=green
+# colour.diff.old=red
 ```
 
 ### Test Parsing in Rust
@@ -314,7 +315,7 @@ ______________________________________________________________________
 
 - **Linux/macOS**: Full LS_COLORS support
 - **Windows**: LS_COLORS support optional (may not be set)
-- **Git**: Color config available on all platforms
+- **Git**: Colour config available on all platforms
 
 ### Terminal Support
 
@@ -337,5 +338,5 @@ ______________________________________________________________________
 - [anstyle-git crate](https://docs.rs/anstyle-git/latest/anstyle_git/)
 - [anstyle-ls crate](https://docs.rs/anstyle-ls/latest/anstyle_ls/)
 - [anstyle crate](https://docs.rs/anstyle/latest/anstyle/)
-- [Git Color Config](https://git-scm.com/docs/git-config#color.ui)
+- [Git Colour Config](https://git-scm.com/docs/git-config#color.ui)
 - [DIRCOLORS man page](https://linux.die.net/man/5/dir_colors)

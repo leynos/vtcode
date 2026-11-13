@@ -48,7 +48,7 @@ Opens file browser showing all available files.
 
 ### Modal Approach (Recommended)
 
-The file browser appears as a centered modal overlay that:
+The file browser appears as a centred modal overlay that:
 
 - Provides focused interaction without blocking chat history
 - Shows clear visual separation from the main interface

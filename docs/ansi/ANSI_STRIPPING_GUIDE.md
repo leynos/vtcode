@@ -2,13 +2,13 @@
 
 ## Overview
 
-ANSI escape sequences (color codes, text styling) in tool command output are
+ANSI escape sequences (colour codes, text styling) in tool command output are
 automatically stripped to prevent rendering issues in the terminal UI. This
 feature is **enabled by default**.
 
 ## Configuration
 
-### Default Behavior
+### Default Behaviour
 
 - **Status**: Enabled
 - **Config Option**: `ui.allow_tool_ansi`
@@ -24,7 +24,7 @@ In `config.toml`:
 allow_tool_ansi = false  # Default - strips all ANSI escape sequences
 
 # Enable ANSI codes in tool output (may cause display issues)
-# allow_tool_ansi = true   # Not recommended - preserves colors but can break layout
+# allow_tool_ansi = true   # Not recommended - preserves colours but can break layout
 ```
 
 ## What Gets Stripped
@@ -61,7 +61,8 @@ warning: function check_prompt_reference_trigger is never used
 --> crates/codegen/diapason-core/src/ui/tui/session/command.rs:321:15
 ```
 
-(The function name and path would be colored yellow/orange and red respectively)
+(The function name and path would be coloured yellow/orange and red
+respectively)
 
 ### After (stripped)
 
@@ -70,7 +71,7 @@ warning: function check_prompt_reference_trigger is never used
 --> crates/codegen/diapason-core/src/ui/tui/session/command.rs:321:15
 ```
 
-(Plain text, no colors)
+(Plain text, no colours)
 
 ## Affected Tools
 
@@ -111,9 +112,9 @@ After ANSI stripping, tool output is subject to token-based truncation:
 
 ## Troubleshooting
 
-### Colors Still Appearing
+### Colours Still Appearing
 
-If colors are still visible despite `allow_tool_ansi = false`:
+If colours are still visible despite `allow_tool_ansi = false`:
 
 1. Verify config is loaded:
 
@@ -136,7 +137,7 @@ If colors are still visible despite `allow_tool_ansi = false`:
     cargo build --release
     ```
 
-### Want Colors Back?
+### Want Colours Back?
 
 Set in `config.toml`:
 
@@ -148,8 +149,8 @@ allow_tool_ansi = true
 **Warning**: This may cause rendering issues in the inline UI, including:
 
 - Misaligned text
-- Layout artifacts
-- Color codes appearing in output
+- Layout artefacts
+- Colour codes appearing in output
 - Broken terminal wrapping
 
 Only enable if using Diapason in a context that properly handles ANSI codes.
@@ -162,7 +163,7 @@ covering:
 **Basic Cases**
 
 - No ANSI codes (zero-copy fast path)
-- Simple color codes (most common)
+- Simple colour codes (most common)
 - Multiple sequential codes
 
     **Real-World Scenarios**
@@ -170,12 +171,12 @@ covering:
 - `cargo check` output patterns
 - Rust compiler warnings/errors
 - Unicode + ANSI combination
-- Git/ls colored output
+- Git/ls coloured output
 
     **Edge Cases**
 
-- 256-color mode (38;5;N)
-- True color/24-bit RGB (38;2;R;G;B)
+- 256-colour mode (38;5;N)
+- True colour/24-bit RGB (38;2;R;G;B)
 - Cursor movement (CUU, CUD, etc.)
 - Clear screen commands
 - OSC hyperlinks
