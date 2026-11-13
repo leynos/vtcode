@@ -214,7 +214,7 @@ fn build_repeated_file_read_family_error_content(target: &str) -> String {
     .to_string()
 }
 
-/// Returns the path if this is a read of a planning artifact (a plan file or
+/// Returns the path if this is a read of a planning artefact (a plan file or
 /// directory) while planning mode is active.
 fn is_plan_artefact_read(canonical_tool_name: &str, args: &Value) -> Option<String> {
     if !is_read_action(canonical_tool_name, args) {

@@ -8,7 +8,7 @@ use crate::tui::ui::tui::session::modal::{
     ModalBodyContext, ModalListState, ModalRenderStyles, render_modal_body, render_wizard_modal_body,
 };
 use crate::tui::ui::tui::types::InlineListSelection;
-use anstyle::{Ansi256Color, Color as AnsiColorEnum};
+use anstyle::{Ansi256Color, Color as AnsiColourEnum};
 use ratatui::widgets::{Block, Clear, Fill, Paragraph, Wrap};
 use tracing::warn;
 
@@ -59,13 +59,13 @@ fn modal_has_title(session: &Session) -> bool {
     !modal_title_text(session).trim().is_empty()
 }
 
-fn resolve_modal_chrome_ansi_colour(session: &Session) -> AnsiColorEnum {
+fn resolve_modal_chrome_ansi_colour(session: &Session) -> AnsiColourEnum {
     session
         .theme
         .tool_accent
         .or(session.theme.primary)
         .or(session.theme.secondary)
-        .unwrap_or(AnsiColorEnum::Ansi256(Ansi256Color(ui::SAFE_ANSI_BRIGHT_CYAN)))
+        .unwrap_or(AnsiColourEnum::Ansi256(Ansi256Color(ui::SAFE_ANSI_BRIGHT_CYAN)))
 }
 
 fn modal_chrome_style(session: &Session) -> Style {
@@ -515,9 +515,9 @@ mod tests {
     #[test]
     fn modal_section_headers_use_chrome_colour_on_base_background() {
         let theme = InlineTheme {
-            foreground: Some(AnsiColorEnum::Ansi256(Ansi256Color(16))),
-            background: Some(AnsiColorEnum::Ansi256(Ansi256Color(231))),
-            primary: Some(AnsiColorEnum::Ansi256(Ansi256Color(117))),
+            foreground: Some(AnsiColourEnum::Ansi256(Ansi256Color(16))),
+            background: Some(AnsiColourEnum::Ansi256(Ansi256Color(231))),
+            primary: Some(AnsiColourEnum::Ansi256(Ansi256Color(117))),
             ..InlineTheme::default()
         };
         let session = Session::new(theme, None, 20);

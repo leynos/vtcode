@@ -16,8 +16,8 @@
 //! - **Input Validation**: User input sanitization
 //!
 //! ### ANSI and Colors (`ansi`, `colours`)
-//! - **Terminal Colors**: ANSI color codes and styling
-//! - **Color Management**: Theme support and color schemes
+//! - **Terminal Colours**: ANSI colour codes and styling
+//! - **Colour Management**: Theme support and colour schemes
 //! - **Cross-platform**: Works on different terminal types
 //!
 //! ### Git Integration (`diapasongitignore`)
@@ -66,7 +66,7 @@
 //! }
 //! ```
 //!
-//! ### ANSI Colors
+//! ### ANSI Colours
 //! ```rust,ignore
 //! use diapason_core::utils::ansi::{colorize, Color};
 //!

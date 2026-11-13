@@ -361,7 +361,7 @@ where
     }
 
     /// Invalidate cache entries matching a key prefix (selective eviction)
-    /// This replaces the old "clear entire cache" behavior with granular eviction
+    /// This replaces the old "clear entire cache" behaviour with granular eviction
     ///
     /// # Example
     /// ```ignore

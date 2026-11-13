@@ -76,7 +76,7 @@ const DEFAULT_SNAPSHOT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 /// Maximum age before considering refresh (5 minutes for development).
 const REFRESH_CHECK_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
-/// Detected shell kind for platform-specific behavior.
+/// Detected shell kind for platform-specific behaviour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellKind {
     Bash,

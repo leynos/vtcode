@@ -7,7 +7,7 @@
 //! mid-turn compaction, or truncated/edited history regardless of route.
 //!
 //! All four passes are unconditionally safe: they only ever repair requests
-//! that would otherwise 400, never change behavior for an already-valid
+//! that would otherwise 400, never change behaviour for an already-valid
 //! request. They run last, directly on the assembled `AnthropicMessage`
 //! list, after cache_control anchors have already been placed.
 

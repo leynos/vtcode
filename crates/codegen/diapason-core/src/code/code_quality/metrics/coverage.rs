@@ -12,7 +12,7 @@ pub struct CoverageResult {
     pub covered_lines: usize,
 }
 
-/// Coverage analyzer for test coverage metrics
+/// Coverage analyser for test coverage metrics
 pub struct CoverageAnalyser;
 
 impl CoverageAnalyser {
@@ -20,7 +20,7 @@ impl CoverageAnalyser {
         Self
     }
 
-    /// Analyze test coverage for a project
+    /// Analyse test coverage for a project
     pub fn analyse_project(&self, project_path: &Path) -> CoverageResult {
         let report_path = std::env::var("COVERAGE_REPORT_PATH")
             .map(|p| project_path.join(p))

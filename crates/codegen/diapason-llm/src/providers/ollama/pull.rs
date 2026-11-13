@@ -130,7 +130,7 @@ impl OllamaPullProgressReporter for CliPullProgressReporter {
 }
 
 /// For now the TUI reporter delegates to the CLI reporter. This keeps UI and
-/// CLI behavior aligned until a dedicated TUI integration is implemented.
+/// CLI behaviour aligned until a dedicated TUI integration is implemented.
 #[derive(Default)]
 pub struct TuiPullProgressReporter(CliPullProgressReporter);
 

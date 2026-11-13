@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, sync::Arc, time::Instant};
 
 #[cfg(test)]
-use anstyle::Color as AnsiColorEnum;
+use anstyle::Color as AnsiColourEnum;
 use anstyle::RgbColor;
 use ratatui::crossterm::event::{
     Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,

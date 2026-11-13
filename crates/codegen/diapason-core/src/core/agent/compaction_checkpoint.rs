@@ -1,13 +1,13 @@
-//! Compaction checkpoint: writes compaction summaries to persistent artifacts.
+//! Compaction checkpoint: writes compaction summaries to persistent artefacts.
 //!
 //! Following the context engineering principle: "the summary should be written
-//! into a persistent artifact, such as progress.md, so that later sessions can
+//! into a persistent artefact, such as progress.md, so that later sessions can
 //! read it." This module ensures that when compaction happens, the summary is
 //! written to `memories/progress.md` and `memories/compaction_summary.md` so
-//! that later sessions can orient from these artifacts.
+//! that later sessions can orient from these artefacts.
 //!
 //! This bridges the gap between compaction (which compresses conversation history)
-//! and the orient phase (which reads external artifacts at session start).
+//! and the orient phase (which reads external artefacts at session start).
 
 use std::path::Path;
 
@@ -16,7 +16,7 @@ use tracing::warn;
 
 use crate::compaction::memory_envelope::SessionMemoryEnvelope;
 
-/// Write compaction summary to persistent artifacts for later sessions.
+/// Write compaction summary to persistent artefacts for later sessions.
 ///
 /// This is called after compaction completes to ensure the summary survives
 /// across sessions. It writes to:
