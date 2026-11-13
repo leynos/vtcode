@@ -971,9 +971,13 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
             bail!("Subagent controller is shutting down; cannot spawn new subagents");
         }
-        let unique_id = self
-            .child_id_scope
-            .allocate(|id| state.children.contains_key(id), child.id.as_str());
+        // The read guard stays held for the allocation, so joining a controller
+        // to another tree cannot swap the allocator out from under an id that
+        // is being reserved here.
+        let unique_id = {
+            let scope = self.child_id_scope.read().unwrap_or_else(|poisoned| poisoned.into_inner());
+            scope.allocate(|id| state.children.contains_key(id), child.id.as_str())
+        };
         if unique_id != child.id {
             child.record.session_id = format!(
                 "{}-{}",
@@ -1097,12 +1101,22 @@ fn unique_child_id(is_taken: impl Fn(&str) -> bool, candidate: &str) -> String {
 /// exposes the whole tree at once and routes a task id to the first controller
 /// that matches, so a duplicate id would list one task twice and send an
 /// output read or a cancel to whichever controller happened to come first.
-/// The root controller owns one scope and every descendant inherits the same
-/// `Arc`; ids are recorded for the lifetime of the tree.
+/// The root controller owns one scope and the whole tree points at it through
+/// [`ChildIdScopeHandle`]; ids are recorded for the lifetime of the tree.
 #[derive(Default)]
 pub(super) struct ChildIdScope {
     taken: std::sync::Mutex<std::collections::BTreeSet<String>>,
 }
+
+/// A redirectable pointer to the allocator a controller currently uses.
+///
+/// The descendants of one controller share this cell, so joining a controller
+/// that has already spawned children to another tree - which is what attaching
+/// an independently created controller does - moves that controller's whole
+/// existing subtree onto the new tree's allocator at once. Replacing a plain
+/// `Arc` field could only redirect the controller itself and would leave every
+/// descendant it had already created allocating from the stale scope.
+pub(super) type ChildIdScopeHandle = std::sync::RwLock<Arc<ChildIdScope>>;
 
 impl ChildIdScope {
     /// Allocates `candidate` or its first free suffix, and records the result.
@@ -1115,6 +1129,24 @@ impl ChildIdScope {
         let id = unique_child_id(|id| taken.contains(id) || is_taken(id), candidate);
         taken.insert(id.clone());
         id
+    }
+
+    /// Reserves every id `self` has already allocated in `target`.
+    ///
+    /// A controller that is attached after it has spawned children brings
+    /// ids that live tasks already answer to. Carrying them into the tree's
+    /// allocator keeps them reserved there, so the tree cannot hand one out
+    /// again and make the adapter's first-match routing ambiguous.
+    pub(super) fn absorb_into(&self, target: &ChildIdScope) {
+        let reserved = {
+            let taken = self.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            taken.iter().cloned().collect::<Vec<_>>()
+        };
+        if reserved.is_empty() {
+            return;
+        }
+        let mut taken = target.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        taken.extend(reserved);
     }
 }
 
