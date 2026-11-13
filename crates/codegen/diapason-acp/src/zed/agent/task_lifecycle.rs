@@ -4,6 +4,7 @@
 //! as Diapason task-lifecycle notifications.
 
 mod messages;
+
 #[cfg(test)]
 mod tests;
 
@@ -13,14 +14,18 @@ use super::lody::{lody_task_id, owned_child_ids};
 use hashbrown::HashSet;
 #[cfg(test)]
 mod forwarder_duplex_tests;
+
 #[cfg(test)]
 mod projection_metadata_tests;
+
 #[cfg(test)]
 mod projection_tests;
+
 #[cfg(test)]
 mod queue_accounting_tests;
 use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
+use super::redaction::CORRELATION_HEX_LENGTH;
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
 use chrono::{DateTime, Utc};
@@ -35,14 +40,10 @@ use tokio::task::JoinHandle;
 use tracing::Instrument;
 use tracing::{Span, debug, field, info_span, warn};
 
-const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
 const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
 pub(super) fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
-    diapason_commons::utils::calculate_sha256(session_id.to_string().as_bytes())
-        .chars()
-        .take(SESSION_CORRELATION_HEX_LENGTH)
-        .collect()
+    super::redaction::session_correlation(&session_id.to_string())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -547,10 +548,10 @@ fn spawn_task_lifecycle_forwarder(
                     continue;
                 }
                 if !ordering.admit(&update) {
-                    // Task ids are client-supplied and unbounded, so the
-                    // forwarder logs carry no per-task field; the enclosing
-                    // span's bounded session correlation identifies the stream.
-                    debug!("Dropped superseded ACP task lifecycle update");
+                    debug!(
+                        task_correlation = %super::redaction::identifier_correlation(lody_task_id(&update)),
+                        "Dropped superseded ACP task lifecycle update"
+                    );
                     continue;
                 }
                 let task_id = lody_task_id(&update).to_string();

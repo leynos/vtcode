@@ -1,3 +1,5 @@
+//! OpenAI Harmony-encoded client used for Harmony-format chat models.
+
 use super::super::errors::format_openai_error;
 use super::super::harmony;
 use super::super::headers;
@@ -302,6 +304,7 @@ impl OpenAIProvider {
             usage: Some(provider::Usage {
                 prompt_tokens: prompt_tokens.len().try_into().unwrap_or(u32::MAX),
                 completion_tokens: completion_tokens.len().try_into().unwrap_or(u32::MAX),
+                reasoning_output_tokens: None,
                 total_tokens: (prompt_tokens.len() + completion_tokens.len()).try_into().unwrap_or(u32::MAX),
                 cached_prompt_tokens: None,
                 cache_creation_tokens: None,

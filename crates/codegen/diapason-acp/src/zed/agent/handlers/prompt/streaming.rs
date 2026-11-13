@@ -8,7 +8,7 @@ use event_collection::classify_stream_failure;
 
 enum StreamAttemptOutcome {
     Completed(Box<LLMResponse>),
-    Retry(Duration),
+    Retry { delay: Duration, error: LLMError },
     Failed(LLMError),
     Cancelled,
 }
@@ -52,6 +52,11 @@ enum StreamingTurnOutcome {
     Finished(ProviderTurnOutcome),
 }
 
+/// Drive a streaming provider turn, including tool rounds and retries.
+///
+/// The attempt counter resets after a tool round because a fresh provider call
+/// follows tool output. Output is only stored back on the turn when the turn
+/// ends, so a retried attempt cannot leak a partial answer into history.
 pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> Result<ProviderTurnOutcome, SdkError> {
     let mut output = ProviderOutput::take_from(turn);
     let mut tool_loop_count = 0usize;
@@ -74,6 +79,7 @@ pub(super) async fn run_streaming_provider_turn(turn: &mut PromptExecution) -> R
     }
 }
 
+/// Store streamed output on the turn when the turn ends with a stop reason.
 fn preserve_streaming_output(
     turn: &mut PromptExecution,
     output: ProviderOutput,
@@ -85,6 +91,10 @@ fn preserve_streaming_output(
     outcome
 }
 
+/// Turn one collected stream attempt into the next loop step.
+///
+/// A completed attempt either starts a tool round, finishes the turn, or asks
+/// for a retry after publishing the provider's rate-limit notice.
 async fn handle_streaming_attempt(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -101,8 +111,21 @@ async fn handle_streaming_attempt(
                 }
             }
         }
-        StreamAttemptOutcome::Retry(delay) => retry_stream_attempt(turn, output, delay, attempt_index).await,
+        StreamAttemptOutcome::Retry { delay, error } => {
+            turn.agent
+                .publish_rate_limit_notice(
+                    &turn.args.session_id,
+                    turn.provider_runtime.provider_name(),
+                    &error,
+                    Some(delay),
+                )
+                .await;
+            retry_stream_attempt(turn, output, delay, attempt_index).await
+        }
         StreamAttemptOutcome::Failed(error) => {
+            turn.agent
+                .publish_rate_limit_notice(&turn.args.session_id, turn.provider_runtime.provider_name(), &error, None)
+                .await;
             let response =
                 finish_failed_output(turn, std::mem::replace(output, ProviderOutput::empty()), &error.to_string())
                     .await?;
@@ -114,6 +137,10 @@ async fn handle_streaming_attempt(
     }
 }
 
+/// Wait out the scheduled retry delay, honouring cancellation.
+///
+/// A cancelled backoff finishes the turn as cancelled; a failed backoff ends
+/// it with the partial output recorded so far.
 async fn retry_stream_attempt(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -142,6 +169,7 @@ async fn retry_stream_attempt(
     }
 }
 
+/// Build a streaming request from the turn's current state.
 fn streaming_request(turn: &PromptExecution) -> LLMRequest {
     LLMRequest {
         messages: Arc::new(turn.tool_state.messages.clone()),
@@ -154,6 +182,7 @@ fn streaming_request(turn: &PromptExecution) -> LLMRequest {
     }
 }
 
+/// Run one provider stream attempt under admission and deadline control.
 async fn collect_streaming_attempt(
     turn: &PromptExecution,
     request: &LLMRequest,
@@ -224,6 +253,7 @@ async fn collect_streaming_attempt(
     Ok(outcome)
 }
 
+/// Execute tool calls from a completed stream response, or finish the turn.
 async fn process_stream_response(
     turn: &mut PromptExecution,
     output: &mut ProviderOutput,
@@ -264,6 +294,7 @@ async fn process_stream_response(
     Ok(StreamResponseOutcome::StopReason(ZedAgent::stop_reason_from_finish(response.finish_reason)))
 }
 
+/// Refresh messages and tools after a streamed tool round, compacting if needed.
 async fn refresh_stream_tool_state(turn: &mut PromptExecution) -> Result<(), SdkError> {
     refresh_resolved_tool_state(turn)?;
     if turn

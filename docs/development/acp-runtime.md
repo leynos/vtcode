@@ -157,6 +157,11 @@ admission router records current queue depth, in-flight permits, cumulative
 queue wait time, and timeout count across ACP and child-agent requests, so user
 configured provider names cannot create unbounded metric series.
 
+`provider_error_code` is likewise bounded. `LLMErrorMetadata` is deserializable
+and its `code` is free-form, so the warning records a code only when it appears
+in the fixed allowlist, and reports `other` for anything else. ACP timeout
+codes are reported through `provider_timeout_phase` instead.
+
 ## MCP, tools and audit
 
 ACP initializes the session's enabled MCP providers before the first prompt, so
@@ -193,12 +198,17 @@ include the provider error text so the caller can see what failed, and the
 notice strips ANSI escape codes as presentation hygiene rather than privacy
 redaction.
 
-At the repaired boundaries the originating `anyhow` chain is retained at
-`debug` for local diagnosis. That is a diagnostic aid, not redaction: debug
-logs can contain workspace paths, provider detail, and prompt or tool payloads.
-Treat them as sensitive and collect or share them deliberately. Severity
-suppression alone is not redaction; where detail must never surface, remove it
-from the value that carries it rather than lowering the level it is logged at.
+At every repaired ACP failure boundary the originating error never reaches the
+operator-visible record at any level. `log_suppressed_error` emits the fixed
+`operation` and `error_category`, the outer message size as `error_bytes`, and
+`detail_correlation`, a deterministic, truncated SHA-256 digest of the source
+chain. No part of the error's rendering is written to a log, because no
+redaction of free text can be shown to remove provider payloads, hook output,
+workspace paths, transport URLs, secrets, or personal data. Operators keep the
+closed-set category, the byte count, and a stable key that groups repeated
+identical failures across sessions and restarts. Severity suppression is not
+redaction, so untrusted detail is absent from the values each record renders at
+every level, not merely from the `warn`/`info` line.
 
 ## Property-model limits
 
@@ -288,9 +298,12 @@ update for a task is a tool call with id `task:<taskId>`; later updates are
 tool-call updates for that same id. The standard `title`, `kind` (`think`),
 `status`, and `content` fields carry the task state, and `_meta.lody.task`
 carries the Lody snapshot: `version`, `taskId`, `kind`, `status`, `description`,
-`actor`, start and end times, and optional `summary` or `error`. The adapter
-filters updates by parent session, drops superseded revisions by `updated_at`,
-and replays still-active tasks when the observer is registered.
+`actor`, start and end times, and optional `summary` or `error`. Queued
+sub-agents and starting background processes report `pending`; running work
+reports `in_progress`; completion, failure, closure, stop, or error reports the
+corresponding terminal status. The adapter filters updates by parent session,
+drops superseded revisions by `updated_at`, and replays still-active tasks when
+the observer is registered.
 
 Forwarding is best-effort. Live observers publish with a bounded, non-blocking
 send, so if the lifecycle queue is full the snapshot is dropped rather than
@@ -338,11 +351,26 @@ adding one is tracked as
 ### Usage publication
 
 After each provider response, ACP sends `_lody/session/usage_update` with
-`sessionId`, a per-response `usage` delta (`inputTokens`, `outputTokens`,
-`cacheReadInputTokens`, and optional `cacheCreationInputTokens`), and
-`modelUsage` keyed by the responding model. The notification is omitted when
-the response carries no usage. The delta covers that response, not a running
-session total.
+`sessionId`, a per-response `usage` delta, and `modelUsage` keyed by the
+responding model. The notification is omitted when the response carries no
+usage. The delta covers that response, not a running session total.
+
+`publish_lody_usage` resolves the effective model first: the model named by the
+response wins, and the session model is the fallback. That single model then
+selects the usage profile: for a configured custom provider, `resolved_profile`
+layers the exact model profile over the provider defaults for context window,
+pricing, and API format; otherwise the built-in model catalogue supplies what
+it knows.
+
+The delta carries `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and,
+when the provider reports it, `cacheCreationInputTokens`. `inputTokens` is the
+full prompt count and already contains the cached tokens counted separately.
+Reasoning tokens are reported in `reasoningOutputTokens` and subtracted from
+`outputTokens`, so the two fields describe disjoint token sets. `contextWindow`
+comes from the resolved profile. Cost is published as `costUSD` only when the
+profile supplies both input and output rates. For the user-facing contract, see
+[ACP usage, compaction, and subagents](../users-guide.md#acp-usage-compaction-and-subagents);
+the wire shape is in the [ACP integration guide](../acp/ACP_INTEGRATION.md).
 
 Custom providers opt in to streamed usage with `supports_stream_usage` in their
 provider defaults or model profile. The OpenAI-compatible provider requests
@@ -360,6 +388,82 @@ blocked items are pending and marked `[blocked]`. On `session/load`,
 `session/resume`, and a later prompt, ACP reads the persisted tracker state and
 re-emits the plan. Replay sends a plan update only: it does not fabricate a
 model-visible tool call or repeat a tool side effect.
+
+## Compaction activity and failure reporting
+
+Automatic compaction publishes a paired activity over standard ACP session
+updates. `lody_activity::CompactionActivity` projects a started `tool_call` and
+a terminal `tool_call_update`, both carrying `_meta.lody.activity` with
+`kind = "context_compaction"`. The terminal update sets `status = failed` when
+a failure category is present; otherwise it reports `completed`, with
+`compacted` distinguishing a reduction from a no-op. Failures carry a
+`failureReason` drawn from a closed set: `cancelled`, `timeout`,
+`admission_budget`, `pre_compact_hook`, or `provider`.
+
+`diapason-exec-events::ThreadEvent` remains the authoritative runtime event
+contract, including its compaction boundary events. The ACP activity is a
+client projection of that runtime outcome, not a parallel event type: keep new
+compaction facts in the core event contract and translate them at the adapter.
+
+`compaction::failure::CompactionFailure` keeps the closed-set category separate
+from any untrusted provider or hook detail, and deliberately does not retain
+that detail at all: provider, hook, and admission errors are reduced to their
+category before they reach a client or a log. Its `Display` and its error chain
+both render only a fixed, client-safe message, so neither `failureReason` nor
+`log_suppressed_error` can leak a provider payload, workspace path, hook
+script, or archive name. Provider and model span and log fields are recorded as
+`provider_correlation`/`model_correlation` digests with their byte lengths,
+because those identifiers come from provider implementations and configuration
+and their content is not bounded or trusted.
+
+Bounded, process-local counters accumulate across compaction attempts:
+`started`, `compacted`, `no_change`, `failed`, `cancelled`, `elapsed_ms_total`,
+and `elapsed_ms_max`. Read them with
+`diapason_acp::metrics::compaction_metrics()`; the snapshot is cumulative and
+never reset, and `cancelled` is a subset of `failed`. The fields are loaded
+from separate atomics, so a snapshot can reflect slightly different instants;
+the snapshot loads `cancelled` first and clamps `failed` to at least
+`cancelled`, so the subset relationship holds in every snapshot. Cardinality is
+fixed by construction: no session, provider, model, or path value is recorded.
+Spans and logs correlate attempts with `session_correlation`, a deterministic,
+truncated SHA-256 digest, never the raw session identifier.
+
+The two ACP send boundaries that publish activity to a client are counted the
+same way. `diapason_acp::metrics::notice_metrics()` reports `attempts` and
+`failures` for provider rate-limit notices, and
+`diapason_acp::metrics::compaction_update_metrics()` reports them for
+compaction activity updates. `failures` is a subset of `attempts`. A notice
+that is never built, and a serialization failure that never reaches the
+transport, are not attempts and move neither counter. The two counters are
+loaded independently, so a snapshot can reflect slightly different instants;
+`attempts` is clamped to at least `failures` so the subset claim holds in every
+snapshot. Each send runs inside a span carrying the fixed `operation` and
+`stage`, the bounded `session_correlation`, and the `outcome` and `elapsed_ms`
+recorded when the send returns. The span and the counters describe the local
+send outcome only: a rejected send is a failure, while an accepted send is an
+attempt with no confirmation that the client applied the update. Local send
+failures are measurable, but the counters do not confirm client receipt, and a
+client that stops reading can remain undetected.
+
+## Retry notices
+
+Provider retry orchestration reports attempt failures through the narrow
+`AttemptFailureSink` port rather than through ACP types. The buffered
+generation path constructs a `RateLimitNoticeSink`, the ACP adapter that
+implements the port, and passes it into `generate_with_retry`; the streaming
+path calls the same `publish_rate_limit_notice` helper directly. The adapter
+turns a classified retryable or terminal rate limit into a session-info notice
+carrying `_meta.lody.notice`. The HTTP status and the `Retry-After` value are
+reported only when the provider supplied them. The retry delay is a separate
+fact: it is reported only when `RetryPolicy::decision_for_category` chose to
+schedule another attempt, and the notice says when no further automatic retry
+is scheduled. A delivery failure logs the fixed `operation`, `stage`, and
+`error_category`, the session correlation key, the error rendering's byte
+length as `error_bytes`, and `detail_correlation`, a deterministic truncated
+SHA-256 digest of that rendering. The rendering itself and the raw session
+identifier stay out of the log; the digest correlates repeated failures and is
+not a secrecy boundary. It is a presentation adapter, not the JSON-RPC
+transport: it neither retries the request nor changes retry policy.
 
 ## Focused verification
 

@@ -787,8 +787,9 @@ or management, cancelling a settled task rewrote its terminal outcome, and a
 forwarder attached after restoration never published already-active work. EP-M5
 repaired all three through the existing controller tree and added the boundary
 coverage those gaps implied. The scope deviation recorded under Tolerances is
-the honest cost of the approved ownership expansion plus that repair round.
-Provider limits, compaction metadata, notices, final-answer phase metadata and
+the honest cost of the approved ownership expansion plus that repair round. The
+follow-on layer, PR #17, then delivered compaction activity metadata and
+provider rate-limit notices. Provider limits, final-answer phase metadata and
 scheduled tasks remain explicitly independent follow-ups.
 
 ## Context and orientation
@@ -1093,8 +1094,9 @@ commit and a user-level binary installation before the next milestone begins.
   SHA, PR base and draft state. Conformance check: reconcile every discovery
   and trace link before marking COMPLETE. Recovery: use `gh stack push` after
   corrections; never force-push manually. Remaining gaps: provider limits,
-  compaction metadata, notices, final-answer phase metadata and scheduled tasks
-  remain independent follow-ups. Compatibility decision: none.
+  final-answer phase metadata and scheduled tasks remain independent
+  follow-ups; compaction activity metadata and provider rate-limit notices were
+  delivered by the follow-on PR #17 layer. Compatibility decision: none.
 
 ## Concrete steps
 
@@ -1591,6 +1593,53 @@ Its check run on `f52e811c9` concluded `skipped` with the title
 `@coderabbitai review` through `comenq` is the applicable route; that request
 is queued as `9640d4c9`. The base branch `fix/acp-unresolved-tool-recovery` is
 not protected, so no required approval gates the merge.
+
+### Revision note (2026-11-02, r20 restack onto `957b4bb37` and `f52e811c9`)
+
+The base recorded in r17 above (`f837738e3`, replayed against tip `6df4620f5`)
+was itself rewritten: `origin/fix/acp-lody-task-lifecycle-negotiation` now
+points at `957b4bb37`, adding 34 commits of interrupted-tool-recovery work —
+write-ahead placeholder staging, `tool_recovery`, strict checkpoints, and the
+`tool_recovery` metrics counters. The r17 target commit is therefore orphaned,
+and the 15-commit series `6df4620f5..HEAD` was replayed onto `957b4bb37`.
+
+Conflict and repair decisions:
+
+- `handlers/prompt.rs`: the only textual conflicts were doc comments on
+  `TurnGuard::begin`, `execute_tool_round`, and `assistant_tool_call_message`.
+  All three resolved in favour of the new base, which documents the write-ahead
+  and recovery-join-key behaviour the replay predates. Losing the child's older
+  wording is intended: the child's code is unchanged and the base text
+  describes it more accurately.
+- `task_lifecycle.rs` carried a duplicated module-level `use` block from the
+  replay (25 × `E0252`). The second copy was removed.
+- Weave advisory comments left by the merge driver were removed from
+  `session_state/archive.rs` and `handlers/prompt.rs`, and a stray
+  blank-line-at-EOF was trimmed from `handlers/tests/session.rs`.
+
+Shared-helper decision: the base's
+`task_lifecycle::bounded_session_correlation` is the same scheme as this
+branch's `redaction::session_correlation` — the wrapper delegates to it. The
+wrapper is adopted rather than duplicated, and `redaction::redact_detail` is
+applied to the usage-failure log detail so retained error text is bounded and
+secret-masked. No second correlation or redaction implementation exists.
+
+Semantic audit on the new head: no file deletions, no removed
+`tool_recovery`/`CheckpointFailure`/`require_session_checkpoint` lines, no
+duplicate `use` statements in changed Rust files, and `git diff --check` is
+clean.
+
+The series was then replayed onto `f52e811c9`, which added the unscoped
+subagent-ledger merge, the large-file invariant repair, and their regressions.
+Those base changes are independent of this layer and needed no conflict
+resolution outside this file.
+
+Finally the series was replayed onto `271a5cebf`, which adds the r19
+publication and queue-wait note above. That note and the r20 note here occupy
+the same position at the end of this document, so the replay conflicted in this
+file only; both notes are retained, with the base's r19 paragraph first. The
+later r21 review-repairs note that the base added at the same position is
+retained after this note.
 
 **Review repairs (r21).** Four items CodeRabbit left open in its ExecPlan
 assessment reply (2026-11-02T00:15:39Z) are now closed:

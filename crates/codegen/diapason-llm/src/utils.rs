@@ -65,6 +65,7 @@ pub(crate) fn parse_response_openai_format(
         usage: Some(crate::provider::Usage {
             prompt_tokens: u32::try_from(input_tokens).unwrap_or(u32::MAX),
             completion_tokens: u32::try_from(output_tokens).unwrap_or(u32::MAX),
+            reasoning_output_tokens: usage.and_then(crate::providers::common::parse_reasoning_tokens_from_usage),
             total_tokens: u32::try_from(input_tokens.saturating_add(output_tokens)).unwrap_or(u32::MAX),
             cached_prompt_tokens: if include_cache {
                 response.get("cache_hit").and_then(|c| c.as_bool()).map(|_| 0)
@@ -315,7 +316,10 @@ mod tests {
             }],
             "usage": {
                 "prompt_tokens": 10,
-                "completion_tokens": 5
+                "completion_tokens": 5,
+                "completion_tokens_details": {
+                    "reasoning_tokens": 3
+                }
             },
             "model": "gpt-5"
         });
@@ -325,6 +329,7 @@ mod tests {
         let usage = result.usage.expect("usage should be present");
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.completion_tokens, 5);
+        assert_eq!(usage.reasoning_output_tokens, Some(3), "a reported reasoning count must survive response parsing");
     }
 
     #[test]

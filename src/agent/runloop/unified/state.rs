@@ -16,8 +16,8 @@ use diapason_core::exec::events::Usage as HarnessUsage;
 use diapason_core::llm::provider::{
     Message, PromptCacheProfile, ResponsesContinuationState, ToolDefinition, responses_continuation_key,
 };
+use diapason_core::llm::provider_usage;
 use diapason_core::llm::request_gap::RequestGapTracker;
-use diapason_core::llm::usage_cost;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AutoPermissionDenial {
@@ -52,6 +52,7 @@ impl FollowUpPromptAction {
 }
 
 const FOLLOW_UP_STALLED_THRESHOLD: usize = 1;
+
 const FOLLOW_UP_DEFAULT_THRESHOLD: usize = 3;
 
 #[derive(Default)]
@@ -327,7 +328,7 @@ impl SessionStats {
         let Some(usage) = usage else {
             return;
         };
-        self.total_usage.add(&usage_cost::normalized_turn_usage(provider, usage));
+        self.total_usage.add(&provider_usage::normalized_turn_usage(provider, usage));
     }
 
     pub(crate) fn total_usage(&self) -> HarnessUsage {

@@ -6,7 +6,9 @@ use crate::provider::{
 pub use crate::providers::ReasoningBuffer;
 use crate::providers::common::{extract_reasoning_text_from_serialized_details, map_finish_reason_common};
 mod responses_adapter;
+
 mod responses_stream;
+
 mod tag_sanitizer;
 use crate::providers::split_reasoning_from_text;
 pub(crate) use responses_stream::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
@@ -23,18 +25,24 @@ pub(crate) fn parse_cached_prompt_tokens_from_usage(
         return None;
     }
 
-    let cached_prompt_tokens = usage_value
-        .get("input_tokens_details")
-        .and_then(|details| details.get("cached_tokens"))
-        .or_else(|| {
-            usage_value
-                .get("prompt_tokens_details")
-                .and_then(|details| details.get("cached_tokens"))
-        })
-        .or_else(|| usage_value.get("prompt_cache_hit_tokens"))
-        .or_else(|| usage_value.get("cached_tokens"))
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok());
+    // Select the first candidate that converts to `u32`. Providers can send an
+    // explicit `null` for one shape while reporting a count in another, and a
+    // value that is absent, null, non-numeric or too large must not mask a
+    // later usable count.
+    let cached_prompt_tokens = [
+        usage_value
+            .get("input_tokens_details")
+            .and_then(|details| details.get("cached_tokens")),
+        usage_value
+            .get("prompt_tokens_details")
+            .and_then(|details| details.get("cached_tokens")),
+        usage_value.get("prompt_cache_hit_tokens"),
+        usage_value.get("cached_tokens"),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(Value::as_u64)
+    .find_map(|value| u32::try_from(value).ok());
 
     if let Some(cached_prompt_tokens) = cached_prompt_tokens {
         tracing::debug!(
@@ -61,16 +69,21 @@ pub(crate) fn parse_cache_write_tokens_from_usage(
         return None;
     }
 
-    let cache_write_tokens = usage_value
-        .get("input_tokens_details")
-        .and_then(|details| details.get("cache_write_tokens"))
-        .or_else(|| {
-            usage_value
-                .get("prompt_tokens_details")
-                .and_then(|details| details.get("cache_write_tokens"))
-        })
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok());
+    // Same rule as [`parse_cached_prompt_tokens_from_usage`]: the first
+    // candidate that converts to `u32` wins, so an unusable shape never masks
+    // a later reported count.
+    let cache_write_tokens = [
+        usage_value
+            .get("input_tokens_details")
+            .and_then(|details| details.get("cache_write_tokens")),
+        usage_value
+            .get("prompt_tokens_details")
+            .and_then(|details| details.get("cache_write_tokens")),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(Value::as_u64)
+    .find_map(|value| u32::try_from(value).ok());
 
     if let Some(cache_write_tokens) = cache_write_tokens {
         tracing::debug!(
@@ -1678,6 +1691,7 @@ mod tests {
                 "prompt_tokens": 100,
                 "completion_tokens": 50,
                 "total_tokens": 150,
+                "completion_tokens_details": {"reasoning_tokens": 30},
                 "prompt_cache_hit_tokens": 30,
                 "prompt_cache_miss_tokens": 70
             }
@@ -1691,6 +1705,7 @@ mod tests {
         assert_eq!(usage.prompt_tokens, 100);
         assert_eq!(usage.cached_prompt_tokens, None);
         assert_eq!(usage.cache_creation_tokens, None);
+        assert_eq!(usage.reasoning_output_tokens, Some(30));
 
         // With include_cache_metrics = true (DeepSeek behaviour)
         let mut aggregator2 = StreamAggregator::new("test-model".to_string());
@@ -1701,5 +1716,164 @@ mod tests {
         assert_eq!(usage2.prompt_tokens, 100);
         assert_eq!(usage2.cached_prompt_tokens, Some(30));
         assert_eq!(usage2.cache_creation_tokens, Some(70));
+        assert_eq!(usage2.reasoning_output_tokens, Some(30));
+    }
+
+    #[test]
+    fn nested_null_cached_tokens_falls_back_to_a_reported_count() {
+        let usage = json!({
+            "prompt_tokens_details": {"cached_tokens": null},
+            "prompt_cache_hit_tokens": 42
+        });
+
+        assert_eq!(parse_cached_prompt_tokens_from_usage(&usage, true), Some(42));
+    }
+
+    #[test]
+    fn nested_null_cache_write_tokens_falls_back_to_a_reported_count() {
+        let usage = json!({
+            "input_tokens_details": {"cache_write_tokens": null},
+            "prompt_tokens_details": {"cache_write_tokens": 17}
+        });
+
+        assert_eq!(parse_cache_write_tokens_from_usage(&usage, true), Some(17));
+    }
+
+    #[test]
+    fn null_stream_usage_never_replaces_reported_counts() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut aggregator = StreamAggregator::new("test-model".to_string());
+        let populated =
+            json!({"choices": [], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}});
+
+        handle_openai_compatible_chunk(&populated, &mut aggregator, &tx, &[], OpenAiDeltaOrder::ContentFirst, true);
+        handle_openai_compatible_chunk(
+            &json!({"choices": [], "usage": null}),
+            &mut aggregator,
+            &tx,
+            &[],
+            OpenAiDeltaOrder::ContentFirst,
+            true,
+        );
+
+        let usage = aggregator.finalize().usage.expect("reported usage should survive a null frame");
+        assert_eq!(usage.total_tokens, 10);
+    }
+
+    #[test]
+    fn stream_without_populated_usage_reports_unknown_usage() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut aggregator = StreamAggregator::new("test-model".to_string());
+
+        handle_openai_compatible_chunk(
+            &json!({"choices": [], "usage": null}),
+            &mut aggregator,
+            &tx,
+            &[],
+            OpenAiDeltaOrder::ContentFirst,
+            true,
+        );
+
+        assert_eq!(aggregator.finalize().usage, None);
+    }
+
+    /// Generate a value a provider might place in a cache-token field.
+    ///
+    /// Covered shapes: absent (by wrapping in `option::of`), explicit `null`,
+    /// in-range counts, counts above `u32::MAX`, negative and fractional
+    /// numbers, text, and booleans. Only the in-range counts are usable, so a
+    /// later usable candidate must survive every unusable earlier shape.
+    fn candidate_token_value() -> impl Strategy<Value = Value> {
+        prop_oneof![
+            Just(Value::Null),
+            any::<u32>().prop_map(|count| json!(count)),
+            any::<u64>().prop_map(|count| json!(count)),
+            any::<i64>().prop_map(|count| json!(count)),
+            (-1_000_000.0f64..1_000_000.0).prop_map(|count| json!(count)),
+            "[a-z]{0,8}".prop_map(Value::String),
+            Just(json!(true)),
+        ]
+    }
+
+    /// The documented precedence: the first candidate that fits `u32`.
+    ///
+    /// Computed here rather than by the production parser, so a regression
+    /// that stops the search at an unusable value, or reorders the shapes,
+    /// fails the property instead of agreeing with itself.
+    fn expected_token_count(candidates: &[Option<Value>], include: bool) -> Option<u32> {
+        if !include {
+            return None;
+        }
+        candidates
+            .iter()
+            .flatten()
+            .find_map(|value| value.as_u64().and_then(|count| u32::try_from(count).ok()))
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        /// Assert cached-prompt parsing follows the precedence rule for every
+        /// mix of absent, null, invalid, oversized and usable candidates.
+        #[test]
+        fn cached_prompt_token_fallback_matches_an_independent_precedence_model(
+            input_details in proptest::option::of(candidate_token_value()),
+            prompt_details in proptest::option::of(candidate_token_value()),
+            prompt_cache_hit in proptest::option::of(candidate_token_value()),
+            top_level in proptest::option::of(candidate_token_value()),
+            include in any::<bool>(),
+        ) {
+            let mut usage = Map::new();
+            if let Some(value) = &input_details {
+                usage.insert("input_tokens_details".to_string(), json!({"cached_tokens": value}));
+            }
+            if let Some(value) = &prompt_details {
+                usage.insert("prompt_tokens_details".to_string(), json!({"cached_tokens": value}));
+            }
+            if let Some(value) = &prompt_cache_hit {
+                usage.insert("prompt_cache_hit_tokens".to_string(), value.clone());
+            }
+            if let Some(value) = &top_level {
+                usage.insert("cached_tokens".to_string(), value.clone());
+            }
+            let usage = Value::Object(usage);
+
+            let candidates = [input_details, prompt_details, prompt_cache_hit, top_level];
+            prop_assert_eq!(
+                parse_cached_prompt_tokens_from_usage(&usage, include),
+                expected_token_count(&candidates, include)
+            );
+        }
+
+        /// Assert cache-write parsing follows the same precedence rule.
+        #[test]
+        fn cache_write_token_fallback_matches_an_independent_precedence_model(
+            input_details in proptest::option::of(candidate_token_value()),
+            prompt_details in proptest::option::of(candidate_token_value()),
+            include in any::<bool>(),
+        ) {
+            let mut usage = Map::new();
+            if let Some(value) = &input_details {
+                usage.insert("input_tokens_details".to_string(), json!({"cache_write_tokens": value}));
+            }
+            if let Some(value) = &prompt_details {
+                usage.insert("prompt_tokens_details".to_string(), json!({"cache_write_tokens": value}));
+            }
+            let usage = Value::Object(usage);
+
+            let candidates = [input_details, prompt_details];
+            prop_assert_eq!(
+                parse_cache_write_tokens_from_usage(&usage, include),
+                expected_token_count(&candidates, include)
+            );
+        }
+    }
+
+    #[test]
+    fn cache_metrics_are_absent_when_disabled() {
+        let usage = json!({"prompt_tokens_details": {"cached_tokens": 9}});
+
+        assert_eq!(parse_cached_prompt_tokens_from_usage(&usage, false), None);
+        assert_eq!(parse_cache_write_tokens_from_usage(&usage, false), None);
     }
 }

@@ -1,13 +1,17 @@
 //! Provider-normalized usage accumulation and cache-aware session cost estimation.
 //!
-//! Different providers report `prompt_tokens` with different cache semantics:
-//! Anthropic and Minimax report `prompt_tokens` *exclusive* of cache-read and
-//! cache-creation tokens, while every other supported provider (OpenAI, Gemini,
-//! etc.) reports `prompt_tokens` as a total that already includes cached
-//! tokens. This module normalizes per-turn provider usage into the canonical
-//! harness `Usage` shape, where `input_tokens` always means the total prompt
-//! tokens (uncached + cached + cache-creation), and provides a shared cost
-//! estimator used by both the interactive and headless runloops.
+//! Providers report `prompt_tokens` with different cache semantics: some
+//! exclude cache-read and cache-creation tokens, others include them. This
+//! module is the vendor-neutral half of that accounting: it normalizes per-turn
+//! provider usage into the canonical harness `Usage` shape once the
+//! input-token semantics are known, and prices a turn or session from a
+//! resolved [`ModelPricing`](diapason_config::models::ModelPricing).
+//!
+//! It deliberately knows nothing about provider names, configuration, or wire
+//! formats. [`crate::llm::provider_usage`] is the adapter that translates a
+//! provider's configuration and backend into a
+//! [`UsageProfile`](crate::llm::usage_cost::UsageProfile) for this module to
+//! price.
 
 use diapason_config::models::ModelPricing;
 
@@ -38,27 +42,22 @@ pub fn estimate_tool_definition_tokens(tools: &[ToolDefinition]) -> u64 {
     total_bytes.div_ceil(4)
 }
 
-/// Returns true when `provider` reports `prompt_tokens` exclusive of
-/// cache-read and cache-creation tokens.
+/// Build a per-turn harness `Usage` sample from raw provider usage using an
+/// explicit input-semantics decision.
 ///
-/// Anthropic and Minimax (which wraps the Anthropic provider) report
-/// `prompt_tokens` as the count of tokens billed at the full input rate,
-/// separate from cache-read and cache-creation tokens. All other providers
-/// report `prompt_tokens` as a total that already includes cached tokens, so
-/// no adjustment is needed for them.
-pub fn provider_reports_exclusive_input(provider: &str) -> bool {
-    matches!(provider.trim().to_ascii_lowercase().as_str(), "anthropic" | "minimax")
-}
-
-/// Build a per-turn harness `Usage` sample from raw provider usage, applying
-/// the provider-specific normalization documented on
-/// [`provider_reports_exclusive_input`] so `input_tokens` always represents
-/// the total prompt token count across every provider.
-pub fn normalized_turn_usage(provider: &str, usage: &ProviderUsage) -> diapason_exec_events::Usage {
+/// Callers that select a wire backend rather than a provider name — a custom
+/// provider routed to the Anthropic Messages API reports cache counts
+/// separately even though its name is not `anthropic` — pass
+/// `exclusive_input` directly. [`crate::llm::provider_usage`] resolves that
+/// decision from provider configuration.
+pub fn normalized_turn_usage_with_input_semantics(
+    exclusive_input: bool,
+    usage: &ProviderUsage,
+) -> diapason_exec_events::Usage {
     let cached = u64::from(usage.cache_read_tokens_or_fallback());
     let creation = u64::from(usage.cache_creation_tokens_or_zero());
     let mut input = u64::from(usage.prompt_tokens);
-    if provider_reports_exclusive_input(provider) {
+    if exclusive_input {
         input = input.saturating_add(cached).saturating_add(creation);
     }
     let output = u64::from(usage.completion_tokens);
@@ -135,9 +134,85 @@ pub fn estimate_session_costs_with_pricing(
     Some(SessionCostEstimate { raw_usd, effective_usd })
 }
 
+/// Reporting profile resolved for one provider/model pair.
+///
+/// Adapters that publish usage metadata need the same three facts for every
+/// wire protocol: whether `prompt_tokens` excludes cached tokens, the context
+/// window to advertise, and the rates to price the turn with. Resolving them
+/// here keeps that policy independent of any one adapter's projection.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct UsageProfile {
+    /// Advertised context window, absent when no profile declares one.
+    pub context_window: Option<usize>,
+    /// Rates used for cost reporting, absent when none are declared.
+    pub pricing: Option<ModelPricing>,
+    /// Whether `prompt_tokens` excludes cached prompt tokens, so both the
+    /// reported total and the cost must add them back.
+    pub exclusive_input: bool,
+}
+
+/// One turn's provider usage resolved into the shared reporting vocabulary.
+///
+/// Reasoning tokens are reported separately and subtracted from
+/// `output_tokens`, so the two fields describe disjoint token sets. Every
+/// optional field is present only when the provider or profile supplied it:
+/// none of them is invented to make a payload look complete.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TurnUsage {
+    /// Total prompt tokens (uncached + cached + cache-creation).
+    pub input_tokens: u32,
+    /// Completion tokens excluding reasoning tokens.
+    pub output_tokens: u32,
+    /// Tokens served from the provider's prompt cache.
+    pub cache_read_input_tokens: u32,
+    /// Tokens written to the provider's prompt cache, when reported.
+    pub cache_creation_input_tokens: Option<u32>,
+    /// Reasoning tokens included in the provider's completion count, when
+    /// reported.
+    pub reasoning_output_tokens: Option<u32>,
+    /// Cache-aware cost of the turn in USD, when both rates are known.
+    pub cost_usd: Option<f64>,
+    /// Context window to advertise, when the resolved profile declares one.
+    pub context_window: Option<usize>,
+}
+
+/// Resolve one turn's provider usage against its reporting profile.
+///
+/// The provider's own input-token semantics are applied once, so the reported
+/// [`TurnUsage::input_tokens`] total and the cost describe the same token set.
+/// An inclusive and an exclusive representation of the same tokens therefore
+/// report the same total and price identically.
+#[must_use]
+pub fn resolve_turn_usage(usage: &ProviderUsage, profile: UsageProfile) -> TurnUsage {
+    let reasoning_output_tokens = usage
+        .reasoning_output_tokens
+        .map(|reasoning| reasoning.min(usage.completion_tokens));
+    let output_tokens = usage
+        .completion_tokens
+        .saturating_sub(reasoning_output_tokens.unwrap_or_default());
+    let normalized = normalized_turn_usage_with_input_semantics(profile.exclusive_input, usage);
+    let cost_usd = profile.pricing.and_then(|pricing| {
+        estimate_session_costs_with_pricing(pricing, &normalized).map(|estimate| estimate.effective_usd)
+    });
+
+    TurnUsage {
+        // The normalized total is a `u64`; a turn that overflows `u32` is
+        // reported at the ceiling rather than wrapped.
+        input_tokens: u32::try_from(normalized.input_tokens).unwrap_or(u32::MAX),
+        output_tokens,
+        cache_read_input_tokens: usage.cache_read_tokens_or_fallback(),
+        cache_creation_input_tokens: usage.cache_creation_tokens,
+        reasoning_output_tokens,
+        cost_usd,
+        context_window: profile.context_window,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use proptest::prelude::*;
     use serde_json::json;
 
     fn approx_eq(a: f64, b: f64) {
@@ -170,10 +245,11 @@ mod tests {
     }
 
     #[test]
-    fn normalized_turn_usage_adds_cache_tokens_for_anthropic() {
+    fn explicit_input_semantics_select_the_cache_accounting() {
         let usage = ProviderUsage {
             prompt_tokens: 100,
             completion_tokens: 20,
+            reasoning_output_tokens: None,
             total_tokens: 120,
             cached_prompt_tokens: None,
             cache_creation_tokens: Some(50),
@@ -181,56 +257,177 @@ mod tests {
             iterations: None,
         };
 
-        let normalized = normalized_turn_usage("anthropic", &usage);
-        assert_eq!(normalized.input_tokens, 550);
-        assert_eq!(normalized.cached_input_tokens, 400);
-        assert_eq!(normalized.cache_creation_tokens, 50);
-        assert_eq!(normalized.output_tokens, 20);
+        let exclusive = normalized_turn_usage_with_input_semantics(true, &usage);
+        assert_eq!(exclusive.input_tokens, 550);
+        let inclusive = normalized_turn_usage_with_input_semantics(false, &usage);
+        assert_eq!(inclusive.input_tokens, 100);
     }
 
     #[test]
-    fn normalized_turn_usage_treats_minimax_like_anthropic() {
+    fn cost_normalization_follows_the_selected_backend_not_the_provider_name() {
+        // `baseten` is a custom name either way; only the backend decides
+        // whether `prompt_tokens` already includes the cached tokens.
+        let usage = ProviderUsage {
+            prompt_tokens: 100,
+            completion_tokens: 0,
+            cached_prompt_tokens: Some(50),
+            ..ProviderUsage::default()
+        };
+        let pricing = Some(ModelPricing {
+            input: Some(1.0 / 1_000_000.0),
+            output: Some(0.0),
+            cache_read: Some(0.0),
+            cache_write: Some(0.0),
+        });
+        let cost = |exclusive_input| {
+            resolve_turn_usage(
+                &usage,
+                UsageProfile {
+                    pricing,
+                    exclusive_input,
+                    ..UsageProfile::default()
+                },
+            )
+            .cost_usd
+            .expect("costUSD")
+        };
+
+        assert!((cost(false) - 50.0 / 1_000_000.0).abs() < f64::EPSILON);
+        assert!((cost(true) - 100.0 / 1_000_000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn resolved_turn_usage_reports_reasoning_separately_from_output() {
+        let usage = ProviderUsage {
+            prompt_tokens: 21,
+            completion_tokens: 8,
+            reasoning_output_tokens: Some(3),
+            cached_prompt_tokens: Some(5),
+            cache_creation_tokens: Some(3),
+            ..ProviderUsage::default()
+        };
+
+        let resolved = resolve_turn_usage(&usage, UsageProfile::default());
+
+        assert_eq!(resolved.input_tokens, 21);
+        assert_eq!(resolved.output_tokens, 5);
+        assert_eq!(resolved.reasoning_output_tokens, Some(3));
+        assert_eq!(resolved.cache_read_input_tokens, 5);
+        assert_eq!(resolved.cache_creation_input_tokens, Some(3));
+        assert_eq!(resolved.cost_usd, None, "no pricing must not invent a cost");
+        assert_eq!(resolved.context_window, None);
+    }
+
+    #[test]
+    fn resolved_turn_usage_clamps_reasoning_to_the_completion_count() {
+        let usage = ProviderUsage {
+            prompt_tokens: 4,
+            completion_tokens: 2,
+            reasoning_output_tokens: Some(9),
+            ..ProviderUsage::default()
+        };
+
+        let resolved = resolve_turn_usage(&usage, UsageProfile::default());
+
+        assert_eq!(resolved.reasoning_output_tokens, Some(2));
+        assert_eq!(resolved.output_tokens, 0, "reasoning must never exceed the completion count");
+    }
+
+    #[test]
+    fn resolved_turn_usage_reports_the_total_prompt_tokens_for_exclusive_input() {
         let usage = ProviderUsage {
             prompt_tokens: 100,
             completion_tokens: 20,
-            total_tokens: 120,
-            cached_prompt_tokens: None,
-            cache_creation_tokens: Some(50),
             cache_read_tokens: Some(400),
-            iterations: None,
+            cache_creation_tokens: Some(50),
+            ..ProviderUsage::default()
         };
 
-        let normalized = normalized_turn_usage("minimax", &usage);
-        assert_eq!(normalized.input_tokens, 550);
-        assert_eq!(normalized.cached_input_tokens, 400);
-        assert_eq!(normalized.cache_creation_tokens, 50);
-        assert_eq!(normalized.output_tokens, 20);
+        let resolved = resolve_turn_usage(&usage, UsageProfile { exclusive_input: true, ..UsageProfile::default() });
+
+        assert_eq!(
+            resolved.input_tokens, 550,
+            "an exclusive prompt count must be reported as the total the contract documents"
+        );
+        assert_eq!(resolved.cache_read_input_tokens, 400);
+        assert_eq!(resolved.cache_creation_input_tokens, Some(50));
     }
 
     #[test]
-    fn normalized_turn_usage_keeps_openai_prompt_tokens_as_total() {
+    fn resolved_turn_usage_keeps_inclusive_prompt_tokens_as_reported() {
         let usage = ProviderUsage {
             prompt_tokens: 500,
-            completion_tokens: 30,
-            total_tokens: 530,
+            completion_tokens: 20,
             cached_prompt_tokens: Some(400),
-            cache_creation_tokens: None,
-            cache_read_tokens: None,
-            iterations: None,
+            ..ProviderUsage::default()
         };
 
-        let normalized = normalized_turn_usage("openai", &usage);
-        assert_eq!(normalized.input_tokens, 500);
-        assert_eq!(normalized.cached_input_tokens, 400);
-        assert_eq!(normalized.cache_creation_tokens, 0);
+        let resolved = resolve_turn_usage(&usage, UsageProfile::default());
+
+        assert_eq!(resolved.input_tokens, 500, "an inclusive prompt count already contains the cached tokens");
+        assert_eq!(resolved.cache_read_input_tokens, 400);
     }
 
     #[test]
-    fn provider_reports_exclusive_input_is_case_insensitive() {
-        assert!(provider_reports_exclusive_input("Anthropic"));
-        assert!(provider_reports_exclusive_input("ANTHROPIC"));
-        assert!(!provider_reports_exclusive_input("OpenAI"));
-        assert!(!provider_reports_exclusive_input("openai"));
+    fn resolved_turn_usage_saturates_an_input_total_that_overflows_u32() {
+        let usage = ProviderUsage {
+            prompt_tokens: u32::MAX,
+            cache_read_tokens: Some(u32::MAX),
+            ..ProviderUsage::default()
+        };
+
+        let resolved = resolve_turn_usage(&usage, UsageProfile { exclusive_input: true, ..UsageProfile::default() });
+
+        assert_eq!(resolved.input_tokens, u32::MAX, "an overflowing total is reported at the ceiling");
+    }
+
+    proptest! {
+        /// The reported total is the provider's own count, plus the cache
+        /// counts only when the backend excludes them, saturating at `u32::MAX`.
+        ///
+        /// Both representations are generated, the cache counts are optional,
+        /// and the boundary values `0` and `u32::MAX` are drawn deliberately
+        /// rather than left to chance, so overflow and absence are exercised.
+        #[test]
+        fn resolved_input_tokens_follow_the_selected_semantics(
+            prompt in token_count(),
+            cache_read in proptest::option::of(token_count()),
+            cached_prompt in proptest::option::of(token_count()),
+            cache_creation in proptest::option::of(token_count()),
+            exclusive_input in any::<bool>(),
+        ) {
+            let usage = ProviderUsage {
+                prompt_tokens: prompt,
+                cache_read_tokens: cache_read,
+                cached_prompt_tokens: cached_prompt,
+                cache_creation_tokens: cache_creation,
+                ..ProviderUsage::default()
+            };
+            // The documented contract: a cache-read count falls back to the
+            // provider's older cached-prompt field, and an absent count is zero.
+            let cached = cache_read.or(cached_prompt).unwrap_or(0);
+            let creation = cache_creation.unwrap_or(0);
+            let total = if exclusive_input {
+                u64::from(prompt) + u64::from(cached) + u64::from(creation)
+            } else {
+                u64::from(prompt)
+            };
+            let expected = u32::try_from(total).unwrap_or(u32::MAX);
+
+            let resolved = resolve_turn_usage(
+                &usage,
+                UsageProfile { exclusive_input, ..UsageProfile::default() },
+            );
+
+            prop_assert_eq!(resolved.input_tokens, expected);
+            prop_assert_eq!(resolved.cache_read_input_tokens, cached);
+            prop_assert_eq!(resolved.cache_creation_input_tokens, cache_creation);
+        }
+    }
+
+    /// A token count that reaches the boundaries of the released range.
+    fn token_count() -> impl Strategy<Value = u32> {
+        prop_oneof![Just(0u32), Just(u32::MAX), Just(u32::MAX - 1), 1u32..=u32::MAX - 2]
     }
 
     #[test]

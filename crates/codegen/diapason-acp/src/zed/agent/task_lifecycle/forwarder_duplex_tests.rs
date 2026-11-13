@@ -1,5 +1,5 @@
 //! Duplex transport regressions for the lifecycle forwarder.
-use super::projection_tests::{subagent_event, subagent_event_for, with_updated_at};
+use super::projection_tests::{background_event, subagent_event, subagent_event_for, with_updated_at};
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use std::time::Duration;
@@ -152,4 +152,125 @@ async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
     assert!(duplex.received.try_recv().is_err(), "foreign-session events must remain filtered");
 
     duplex.finish().await;
+}
+
+/// Log sink that retains formatted records so a test can inspect them.
+#[derive(Clone, Default)]
+struct CapturedLogs(Arc<Mutex<Vec<u8>>>);
+
+impl CapturedLogs {
+    /// The captured output as text.
+    fn text(&self) -> String {
+        let bytes = self.0.lock().expect("captured log mutex").clone();
+        String::from_utf8(bytes).expect("captured logs are UTF-8")
+    }
+}
+
+impl std::io::Write for CapturedLogs {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("captured log mutex").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for CapturedLogs {
+    type Writer = Self;
+
+    fn make_writer(&'writer self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// A superseded snapshot is dropped without logging its identifiers.
+///
+/// The forwarder orders task revisions, so a late snapshot that cannot
+/// supersede the forwarded one is discarded rather than rolling the client's
+/// task back. That diagnostic is the only place the dropped task is reported,
+/// and the task and session identifiers are client-visible values: the record
+/// must carry a bounded correlation instead of either one.
+/// A background task whose identifiers embed the session id it belongs to.
+///
+/// A dropped-update diagnostic must not leak either identifier, so the fixture
+/// makes the task id contain the session id: a correlation derived from the
+/// task id would still hide it, and logging the raw id would reveal both.
+fn background_event_with_session_in_id(status: &str) -> LifecycleUpdate {
+    let mut event = background_event(status);
+    if let LifecycleUpdate::BackgroundProcess { task, .. } = &mut event {
+        task.id = "bg-parent-session-watcher".to_string();
+        task.session_id = "parent-session".to_string();
+        task.exec_session_id = "exec-parent-session-watcher".to_string();
+    }
+    event
+}
+
+#[tokio::test]
+async fn superseded_task_update_logs_a_bounded_correlation() {
+    let logs = CapturedLogs::default();
+    let _guard = tracing::subscriber::set_default(
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .with_writer(logs.clone())
+            .finish(),
+    );
+
+    let mut duplex = ForwarderDuplex::start("diapason-task-correlation-test", |progress_tx, queue| {
+        queue
+            .try_send(&progress_tx, with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"))
+            .expect("enqueue the settled task update");
+        // The same revision instant, but not terminal: a replay artefact
+        // rather than a recorded transition, so the forwarder drops it.
+        queue
+            .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z"))
+            .expect("enqueue the superseded task update");
+        queue
+            .try_send(
+                &progress_tx,
+                with_updated_at(background_event_with_session_in_id("running"), "2026-08-14T12:05:00Z"),
+            )
+            .expect("enqueue the settled background update");
+        // The background task id embeds its session id, so a raw id in the
+        // dropped-update record would leak the session as well.
+        queue
+            .try_send(
+                &progress_tx,
+                with_updated_at(background_event_with_session_in_id("running"), "2026-08-14T12:01:00Z"),
+            )
+            .expect("enqueue the superseded background update");
+    });
+
+    let settled = duplex.next(Duration::from_secs(2)).await.expect("settled task update");
+    assert!(
+        matches!(settled, acp::AgentNotification::SessionNotification(_)),
+        "task lifecycle stays on session updates"
+    );
+    let background = duplex.next(Duration::from_secs(2)).await.expect("settled background update");
+    assert!(
+        matches!(background, acp::AgentNotification::SessionNotification(_)),
+        "background lifecycle stays on session updates"
+    );
+    let stale = duplex.next(Duration::from_millis(250)).await;
+    assert!(stale.is_none(), "a superseded snapshot must not be forwarded");
+
+    duplex.finish().await;
+
+    let captured = logs.text();
+    let records: Vec<&str> = captured
+        .lines()
+        .filter(|line| line.contains("Dropped superseded ACP task lifecycle update"))
+        .collect();
+    assert_eq!(records.len(), 2, "the forwarder must report each dropped update: {captured}");
+    for record in records {
+        assert!(record.contains("task_correlation="), "the diagnostic must carry a bounded correlation: {record}");
+        assert!(!record.contains("child-1"), "the task id must not reach the log: {record}");
+        assert!(
+            !record.contains("bg-parent-session-watcher"),
+            "the background task id must not reach the log: {record}"
+        );
+        assert!(!record.contains("parent-session"), "the session id must not reach the log: {record}");
+    }
 }

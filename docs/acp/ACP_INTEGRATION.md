@@ -136,10 +136,43 @@ tail is served from the recorded transcript or archive instead, so an exited
 process still reports its last output.
 
 Usage is reported with the `_lody/session/usage_update` extension notification.
-Its parameters contain `sessionId`, a `usage` object with normalized input,
-output, and cache token counts, and `modelUsage`, keyed by model name. The
-notification represents the usage delta for one provider response, not a
-running total.
+Its parameters contain `sessionId`, a `usage` object, and `modelUsage`, keyed
+by model name. The notification represents the usage delta for one provider
+response, not a running total. The normalized usage object may contain:
+
+- `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and
+  `cacheCreationInputTokens`; `inputTokens` is the full prompt count and
+  already includes the cache-read and cache-creation tokens reported
+  separately, whether the backend reports an inclusive or an exclusive prompt
+  count;
+- `reasoningOutputTokens`, when the provider reports reasoning usage (including
+  the nested `completion_tokens_details.reasoning_tokens` field used by
+  Baseten's OpenAI-compatible responses). `outputTokens` is the visible output
+  portion after reasoning tokens are split out;
+- `contextWindow`, from the resolved provider/model profile; and
+- `costUSD`, when the resolved profile supplies both input and output rates:
+  catalogue pricing for catalogue models, or opt-in custom-provider pricing.
+  Pricing is expressed in USD per million tokens, with optional cache-read and
+  cache-write rates. Cost normalization uses the input-token semantics of the
+  backend the request was routed to, so a custom provider on the Anthropic
+  Messages API is priced with cache reads reported separately.
+
+Automatic context compaction is advertised as
+`_meta.lody.compaction = { "version": 1 }`. Each compaction is represented by
+standard ACP `tool_call`/`tool_call_update` session updates. The updates use a
+stable tool call ID and carry `_meta.lody.activity` with the activity kind, the
+terminal `compacted` outcome, token counts, and duration. A failed attempt adds
+`failureReason` as a closed-set category — `cancelled`, `timeout`,
+`admission_budget`, `pre_compact_hook`, or `provider` — and never a raw
+provider or filesystem diagnostic. A completed activity with `compacted: false`
+reports that the attempt made no change, and it omits `usedTokensAfter` because
+no token count was reduced. No private ACP update type is required.
+
+Diapason does not advertise `_meta.lody.rateLimits` unless it has trustworthy
+quota state. A Baseten HTTP 429 is not treated as a quota window: the response
+and any `Retry-After` value are surfaced through warning notices and provider
+telemetry instead. This avoids presenting fabricated reset times or usage
+percentages.
 
 The current server is launched with `diapason acp` and communicates over stdio;
 it does not expose the legacy `/messages`, `/metadata`, or `/health` HTTP

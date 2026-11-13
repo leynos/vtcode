@@ -1,6 +1,10 @@
 //! Collects provider stream events and records their user-visible outcomes.
 use super::*;
 
+/// Collect events from one stream attempt until it finishes or fails.
+///
+/// Cancellation and deadline expiry are classified here; an event error is
+/// passed to the retry policy so a transient failure can be retried.
 pub(super) async fn collect_stream_events(
     stream: &mut LLMStream,
     request: StreamCollectionRequest<'_>,
@@ -25,7 +29,9 @@ pub(super) async fn collect_stream_events(
                 };
                 return classify_stream_poll_failure(&mut request, error);
             }
-            StreamPollOutcome::Item(Some(Err(error))) => return classify_stream_poll_failure(&mut request, error),
+            StreamPollOutcome::Item(Some(Err(error))) => {
+                return classify_stream_poll_failure(&mut request, error);
+            }
             StreamPollOutcome::Item(Some(Ok(event))) => {
                 if let Some(outcome) = process_stream_event(event, &mut request).await {
                     return outcome;
@@ -41,6 +47,7 @@ enum StreamPollOutcome {
     Item(Option<Result<LLMStreamEvent, LLMError>>),
 }
 
+/// Poll the stream until an event, cancellation, or deadline wins.
 async fn poll_next_stream_event(stream: &mut LLMStream, request: &StreamCollectionRequest<'_>) -> StreamPollOutcome {
     let next_deadline = request.deadlines.next();
     tokio::select! {
@@ -50,6 +57,7 @@ async fn poll_next_stream_event(stream: &mut LLMStream, request: &StreamCollecti
     }
 }
 
+/// Record the failed attempt and classify it for retry or terminal failure.
 fn classify_stream_poll_failure(request: &mut StreamCollectionRequest<'_>, error: LLMError) -> StreamAttemptOutcome {
     record_stream_attempt(request.span, request.started_at, "failure");
     classify_stream_failure(StreamFailureRequest {
@@ -61,6 +69,7 @@ fn classify_stream_poll_failure(request: &mut StreamCollectionRequest<'_>, error
     })
 }
 
+/// Apply one stream event, returning an outcome when the attempt finishes.
 async fn process_stream_event(
     event: LLMStreamEvent,
     request: &mut StreamCollectionRequest<'_>,
@@ -97,6 +106,7 @@ async fn process_stream_event(
     }
 }
 
+/// Record completion, publish usage, and emit any missing final output.
 async fn complete_stream_response(
     request: &mut StreamCollectionRequest<'_>,
     response: LLMResponse,
@@ -108,14 +118,17 @@ async fn complete_stream_response(
     request
         .telemetry
         .complete(&request.turn.provider_runtime, &response, request.attempt_index, false);
-    request
-        .turn
-        .agent
-        .publish_lody_usage(&request.turn.args.session_id, &request.turn.session_model, &response);
+    request.turn.agent.publish_lody_usage(
+        &request.turn.args.session_id,
+        request.turn.provider_runtime.provider_name(),
+        &request.turn.session_model,
+        &response,
+    );
     emit_response_fallback(request.turn, request.output, &response).await;
     StreamAttemptOutcome::Completed(Box::new(response))
 }
 
+/// Observe final content and reasoning as output for telemetry.
 fn observe_response_output(request: &mut StreamCollectionRequest<'_>, response: &LLMResponse) {
     if let Some(content) = response.content.as_deref() {
         request
@@ -129,6 +142,10 @@ fn observe_response_output(request: &mut StreamCollectionRequest<'_>, response: 
     }
 }
 
+/// Decide whether a failed stream attempt may be retried.
+///
+/// Visible partial output makes the failure terminal regardless of the retry
+/// policy, because the user has already seen text that a retry would replace.
 pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> StreamAttemptOutcome {
     let StreamFailureRequest { turn, telemetry, output, attempt_index, error } = request;
     let policy = turn.provider_runtime.retry_policy();
@@ -143,10 +160,11 @@ pub(super) fn classify_stream_failure(request: StreamFailureRequest<'_>) -> Stre
         StreamAttemptOutcome::Failed(error)
     } else {
         let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
-        StreamAttemptOutcome::Retry(delay)
+        StreamAttemptOutcome::Retry { delay, error }
     }
 }
 
+/// Append a streamed text or reasoning delta and forward it to the client.
 async fn append_stream_delta(request: StreamDeltaRequest<'_>) {
     let StreamDeltaRequest {
         turn,
@@ -173,6 +191,7 @@ async fn append_stream_delta(request: StreamDeltaRequest<'_>) {
     drop(turn.agent.send_update(&turn.args.session_id, update).await);
 }
 
+/// Emit content or reasoning the stream did not deliver as deltas.
 async fn emit_response_fallback(turn: &PromptExecution, output: &mut ProviderOutput, response: &LLMResponse) {
     if output.assistant_message.is_empty()
         && let Some(content) = response.content.as_deref().filter(|content| !content.is_empty())

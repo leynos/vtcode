@@ -529,10 +529,15 @@ and `[history]` settings do not control ACP audit output.
   values, or tool payloads. That guarantee is scoped to those boundaries, not
   to every ACP response: provider incomplete-turn notices deliberately include
   provider error text, and stripping ANSI codes is not redaction. At the
-  repaired boundaries the full error chain is kept at `debug`, so debug logs
-  can contain workspace paths, provider detail, and prompt or tool payload
-  text. That is a diagnostic aid rather than redaction: collect and share debug
-  logs deliberately.
+  repaired boundaries the error's rendering is never written to a log at any
+  level, so debug logs do not restore the workspace paths, provider detail, or
+  prompt and tool payload text that the fixed messages omit. A DEBUG record
+  keeps the same fixed fields; when the failure retains a bounded detail it
+  also carries `error_bytes`, the outer message size, and `detail_correlation`,
+  a deterministic truncated SHA-256 digest that groups repeated identical
+  failures without retaining their content. A failure raised as a bare category
+  keeps only `operation` and `error_category`, because there is no error
+  rendering to measure or digest.
 - **Tool-call budgets** – ACP applies `agent.harness.max_tool_calls_per_turn`
   and the optional `agent.harness.max_tool_calls_per_session` to local tool
   execution. Set either value to `0` to disable that cap. The separate

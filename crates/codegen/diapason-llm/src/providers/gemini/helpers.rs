@@ -1,3 +1,6 @@
+//! Conversions between Diapason request types and the Gemini wire format,
+//! including streaming response parsing.
+
 use super::wire::{GenerationConfig, InlineData, StreamingError, ThinkingConfig};
 use super::*;
 use crate::error_display;
@@ -631,6 +634,7 @@ impl GeminiProvider {
             usage: response.usage.map(|usage| diapason_commons::llm::Usage {
                 prompt_tokens: usage.total_input_tokens.unwrap_or_default(),
                 completion_tokens: usage.total_output_tokens.unwrap_or_default(),
+                reasoning_output_tokens: None,
                 total_tokens: usage.total_tokens.unwrap_or_default(),
                 cached_prompt_tokens: usage.total_cached_tokens,
                 cache_creation_tokens: None,
