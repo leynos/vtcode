@@ -23,7 +23,7 @@ downgrading or broadening the request.
 
 ## Overview
 
-Diapason implements a comprehensive, defense-in-depth command security system
+Diapason implements a comprehensive, defence-in-depth command security system
 that enables non-powered users to run safe commands by default while protecting
 against dangerous operations. This system helps the agent use system and build
 tools properly via environment PATH configuration.
@@ -45,7 +45,7 @@ consent.
 **Safe-by-default**: All known safe commands for development and system
 utilities are enabled without requiring user confirmation or configuration.
 
-**Layered Defense**: Multiple validation layers (allow_list, allow_glob,
+**Layered Defence**: Multiple validation layers (allow_list, allow_glob,
 deny_list, deny_glob, allow_regex, deny_regex) work together to prevent
 dangerous commands from executing.
 
@@ -360,7 +360,7 @@ stderr use the bounded provider diagnostic sanitizer. HTTP error streams are
 capped at 16 KiB before parsing; the sanitizer is UTF-8-safe, caps exposed
 diagnostics at 8 KiB, and redacts API keys, bearer tokens, cloud credentials,
 and generic secret assignments. Status codes, request IDs, retry metadata,
-classification, and 401 refresh behavior are preserved separately from the
+classification, and 401 refresh behaviour are preserved separately from the
 diagnostic text.
 
 Provider-owned child processes also receive a filtered inherited environment.
@@ -412,7 +412,7 @@ cache_ttl_seconds = 300
 
 ## Usage with the Diapason Agent
 
-### Default Behavior (Non-Powered Users)
+### Default Behaviour (Non-Powered Users)
 
 Out of the box:
 

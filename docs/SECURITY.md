@@ -28,12 +28,12 @@ information:
 
 ### What to Expect
 
-- **Acknowledgment**: We will acknowledge your report within 48 hours
-- **Updates**: We will provide regular updates on the status of the
+- **Acknowledgement**: A report is acknowledged within 48 hours
+- **Updates**: Regular updates are provided on the status of the
   vulnerability and fix progress
-- **Resolution**: We will work to fix the vulnerability as quickly as possible
+- **Resolution**: The vulnerability is fixed as quickly as possible
   and coordinate the release of the fix with you
-- **Credit**: We will publicly acknowledge your responsible disclosure (unless
+- **Credit**: Responsible disclosure is publicly acknowledged (unless
   you prefer to remain anonymous)
 
 ## Security Best Practices for Users

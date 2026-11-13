@@ -97,7 +97,7 @@ The following environment variables are set for every hook command:
 - `DIAPASON_TRANSCRIPT_PATH` / `CLAUDE_TRANSCRIPT_PATH` – current transcript
   path when available.
 
-Use these variables to locate scripts, persist artifacts, or provide additional
+Use these variables to locate scripts, persist artefacts, or provide additional
 context to other tooling.
 
 ## Event Reference
@@ -143,7 +143,7 @@ Runs before Diapason records a compaction boundary. Payload:
 }
 ```
 
-Use this hook to archive transcripts, copy compaction artifacts, or attach
+Use this hook to archive transcripts, copy compaction artefacts, or attach
 external metadata before Diapason emits `thread.compact_boundary`.
 
 ### UserPromptSubmit
@@ -285,7 +285,7 @@ optional JSON output.
 
 - `0` – success. Stdout becomes user-visible for most events (and is injected as
 context for `UserPromptSubmit`).
-- `2` – blocking error. The event-specific behavior matches Claude Code's
+- `2` – blocking error. The event-specific behaviour matches Claude Code's
 lifecycle semantics: for example, `PreToolUse` blocks tool execution and
 provides stderr back to the agent.
 - Any other code – non-blocking failure. Stderr is surfaced to the user, but the

@@ -113,19 +113,19 @@ cargo unmaintained --save-token
 
 ## Common Options
 
-| Option                 | Description                                                  |
-| ---------------------- | ------------------------------------------------------------ |
-| `--color <WHEN>`       | Color output: `always`, `auto`, or `never` (default: `auto`) |
-| `--fail-fast`          | Exit as soon as an unmaintained package is found             |
-| `--json`               | Output JSON (experimental)                                   |
-| `--max-age <DAYS>`     | Max age for repository commits (default: 365)                |
-| `--no-cache`           | Disable disk caching                                         |
-| `--no-exit-code`       | Don't set exit code on unmaintained packages                 |
-| `--no-warnings`        | Suppress warnings                                            |
-| `-p, --package <NAME>` | Check only a specific package                                |
-| `--purge`              | Remove cached data and exit                                  |
-| `--tree`               | Show dependency paths to unmaintained packages               |
-| `--verbose`            | Show detailed progress information                           |
+| Option                 | Description                                                   |
+| ---------------------- | ------------------------------------------------------------- |
+| `--color <WHEN>`       | Colour output: `always`, `auto`, or `never` (default: `auto`) |
+| `--fail-fast`          | Exit as soon as an unmaintained package is found              |
+| `--json`               | Output JSON (experimental)                                    |
+| `--max-age <DAYS>`     | Max age for repository commits (default: 365)                 |
+| `--no-cache`           | Disable disk caching                                          |
+| `--no-exit-code`       | Don't set exit code on unmaintained packages                  |
+| `--no-warnings`        | Suppress warnings                                             |
+| `-p, --package <NAME>` | Check only a specific package                                 |
+| `--purge`              | Remove cached data and exit                                   |
+| `--tree`               | Show dependency paths to unmaintained packages                |
+| `--verbose`            | Show detailed progress information                            |
 
 ## Integration with Diapason Development
 

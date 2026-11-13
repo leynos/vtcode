@@ -136,7 +136,7 @@ root.
 
 ## Config
 
-Plugin behavior is controlled by the existing `tools.plugins` section in the
+Plugin behaviour is controlled by the existing `tools.plugins` section in the
 canonical user `config.toml` or a workspace `config.toml`:
 
 ```toml
