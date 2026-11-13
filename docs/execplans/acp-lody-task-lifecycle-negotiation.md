@@ -832,9 +832,11 @@ Provider responses carry `diapason_commons::llm::Usage` with prompt,
 completion, cache-read and cache-creation counts. OpenAI-compatible streams
 expose usage in a terminal SSE chunk only when requested.
 `requests_stream_usage` adds `stream_options.include_usage` for native OpenAI
-and for a custom OpenAI-chat profile only when that profile sets
-`supports_stream_usage = true`; a profile that does not declare support is
-never asked.
+and for a custom OpenAI-chat provider only when its **resolved profile** reports
+`supports_stream_usage = true`. The resolved value is layered: an explicit
+`profiles.<model>.supports_stream_usage` overrides the provider-level
+`supports_stream_usage`, and a profile that sets neither inherits the provider
+default. Native OpenAI and Responses requests are unchanged.
 
 ## Conformance basis
 
@@ -2059,3 +2061,30 @@ closes or rebuts each one.
   `docs/development/acp-runtime.md` now say so explicitly: the snapshots are
   reachable through `ToolRegistry::metrics_collector()`, and no process-level
   endpoint or metrics command exists yet.
+
+### Revision note (2026-11-13, r34 round: reply to review `5885704235`)
+
+- **Developer Documentation (remaining item fixed).** The provider paragraph
+  said a profile that does not declare support is never asked for streamed
+  usage. That was too strong: `CustomProviderConfig::resolved_profile` layers
+  the profile over the provider defaults with
+  `profile.supports_stream_usage.or(defaults.supports_stream_usage)`, so a
+  profile that sets nothing inherits the provider-level opt-in and an explicit
+  profile value overrides it. The plan now says that the **resolved profile**
+  controls the request, names the layering, and keeps the statement that native
+  OpenAI and Responses requests are unchanged.
+- **Unit Architecture (focused metrics verification added).** The duplex round
+  trip only asserted aggregate totals, so
+  `lody_management_tests.rs::management_metrics_belong_to_the_dispatch_boundary`
+  now observes the collector around one call at a time. It calls
+  `list_subagents` and `subagent_output` directly and asserts both started and
+  succeeded counters are unchanged, proving the query helpers are unobserved.
+  It then dispatches `list` (one started, one succeeded), `output` for an
+  unknown task (one started, one failed, reason `unknown_task`), and `cancel`
+  for an unknown task (one started, one failed, reason `unknown_task`, and the
+  in-flight gauge back to zero). The test builds its agent through
+  `zed::tests::build_agent`, which is now `pub(crate)` for that reuse.
+- **Domain Architecture (rebuttal accepted by the reviewer).** No change; the
+  storage-shaped input is the accepted design.
+- **Observability (deferral accepted by the reviewer).** No change beyond the
+  documentation already in place and issue #199.
