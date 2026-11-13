@@ -82,7 +82,7 @@ pub fn usage_profile(custom_providers: &[CustomProviderConfig], provider: &str, 
         };
     }
 
-    ModelResolver::catalog_entry(provider, model).map_or_else(
+    ModelResolver::catalogue_entry(provider, model).map_or_else(
         || UsageProfile {
             exclusive_input: exclusive_input_semantics(None, provider),
             ..UsageProfile::default()
@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn built_in_provider_falls_back_to_the_model_catalogue() {
         let profile = usage_profile(&[], "anthropic", "claude-fable-5");
-        let catalog = diapason_config::models::model_catalog_entry("anthropic", "claude-fable-5")
+        let catalog = diapason_config::models::model_catalogue_entry("anthropic", "claude-fable-5")
             .expect("catalogue entry for a shipped model");
 
         assert_eq!(profile.context_window, Some(catalog.context_window));
