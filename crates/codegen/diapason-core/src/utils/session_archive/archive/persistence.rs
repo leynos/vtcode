@@ -200,7 +200,7 @@ impl SessionArchive {
     /// Persist progress immediately, bypassing the normal progress throttle.
     ///
     /// This is intended for terminal handoff checkpoints where the latest
-    /// conversation must be durable before an external artifact is written.
+    /// conversation must be durable before an external artefact is written.
     pub async fn persist_progress_async_with_status_forced(
         &self,
         args: SessionProgressArgs,

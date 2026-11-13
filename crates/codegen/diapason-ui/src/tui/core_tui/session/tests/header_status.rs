@@ -644,7 +644,7 @@ fn header_height_expands_when_wrapping_required() {
 
 #[test]
 fn agent_label_uses_accent_colour_without_border() {
-    let accent = AnsiColorEnum::Rgb(RgbColor(0x12, 0x34, 0x56));
+    let accent = AnsiColourEnum::Rgb(RgbColor(0x12, 0x34, 0x56));
     let theme = InlineTheme { primary: Some(accent), ..Default::default() };
 
     let mut session = Session::new(theme, None, VIEW_ROWS);

@@ -128,7 +128,7 @@ fn matching_declarations(file: &OutlineFile, query: &str, candidate_cap: usize) 
     (records.into_iter().take(candidate_cap).collect(), complete)
 }
 
-/// Stream recognised declarations using only an already installed outline
+/// Stream recognized declarations using only an already installed outline
 /// executable. No installation or cache mutation is attempted.
 pub(crate) async fn search_declarations_bounded(
     workspace_root: &Path,

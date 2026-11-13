@@ -79,7 +79,7 @@ These cases must not assert exact repository-wide match totals.
   correct (supports `python`).
 - `llm_grader`: Uses the LLM itself to grade the response based on a `rubric`.
 
-## Analyzing Reports
+## Analysing Reports
 
 Reports are saved in the `reports/` directory with a timestamp. They include:
 

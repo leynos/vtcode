@@ -5,7 +5,7 @@
 
 /// Unified diff rendering with ANSI styling and suppression logic.
 pub mod diff_renderer;
-/// Git color configuration parsing.
+/// Git colour configuration parsing.
 pub mod git_config;
 /// Markdown-to-ANSI rendering for chat output.
 pub mod markdown;

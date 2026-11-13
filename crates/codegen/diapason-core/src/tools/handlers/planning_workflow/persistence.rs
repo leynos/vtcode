@@ -1,4 +1,4 @@
-//! Plan artifact I/O: persisting drafts, syncing the embedded tracker,
+//! Plan artefact I/O: persisting drafts, syncing the embedded tracker,
 //! and detecting workspace validation commands.
 //!
 //! Depends on `artefacts` for pure content shaping and on `state` for the

@@ -300,7 +300,7 @@ fn gather_files_read_this_turn(working_history: &[uni::Message]) -> Vec<String> 
 /// "salvaged" text is usually just a rambling recovery monologue with tool-call
 /// markup stripped out — not a plan. Injecting that as the plan the user sees is
 /// worse than the structured plan-mode message. Keep salvage only when its
-/// extracted artifact passes the same readiness gate used by approval.
+/// extracted artefact passes the same readiness gate used by approval.
 fn plan_mode_recovery_fallback(
     salvaged_text: Option<String>,
     structured_message: &str,
