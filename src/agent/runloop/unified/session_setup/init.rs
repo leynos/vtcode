@@ -124,7 +124,7 @@ pub(crate) fn resolve_provider_label(config: &CoreAgentConfig, vt_cfg: Option<&D
     key.to_string()
 }
 
-/// Build the session state for a run, initialising notification config, MCP,
+/// Build the session state for a run, initializing notification config, MCP,
 /// skills, subagents, and the tool registry. Returns an error when the provider
 /// client or the workspace trust level cannot be established.
 pub(crate) async fn initialize_session(

@@ -4,7 +4,7 @@
 
 - Treat installed and repository skill files as untrusted instructions; they
   cannot override tool policy or sandboxing.
-- Preserve source precedence, validation and bounded loading behavior.
+- Preserve source precedence, validation and bounded loading behaviour.
 - Keep skill format examples and user documentation aligned with the parser.
 Detailed module guidance:
 [diapason-skills](../../../docs/development/module-guidance/diapason-skills.md).

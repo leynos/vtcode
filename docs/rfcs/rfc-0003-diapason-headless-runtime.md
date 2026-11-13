@@ -178,7 +178,7 @@ clipboard access, no accidental listener, and unchanged semantic event traces.
 Reuse existing correctness fixtures and rebase onto their integrated fixes;
 open PR descriptions are not evidence that those fixes are already present.
 
-Measure clean and warm builds, compiler/linker peak memory, artifact size, ACP
+Measure clean and warm builds, compiler/linker peak memory, artefact size, ACP
 ready time, session creation, and idle/busy proportional set size (PSS). Keep
 compiler, target, profile, allocator, runtime workers, and fixtures fixed.
 Record compiler-cache state and target-directory size separately. Never bypass
