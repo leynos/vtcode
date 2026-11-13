@@ -19,13 +19,6 @@ use diapason_core::llm::provider::{
 use diapason_core::llm::provider_usage;
 use diapason_core::llm::request_gap::RequestGapTracker;
 
-
-//! Shared session state for the unified run loop.
-//!
-//! Tracks statistics, prompt-cache diagnostics, follow-up prompt actions, and
-//! interrupt handling shared between the loop and its handlers.
-};
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AutoPermissionDenial {
     pub stage: &'static str,
@@ -1580,4 +1573,3 @@ mod tests {
         assert!(state.is_cancel_requested() || state.is_exit_requested());
     }
 }
-// weave: run 'weave explain src/agent/runloop/unified/state.rs' for per-hunk detail, 'weave check' to verify your resolution

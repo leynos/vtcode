@@ -578,4 +578,3 @@ fn spawn_task_lifecycle_forwarder(
         .instrument(span),
     )
 }
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/task_lifecycle.rs' for per-hunk detail, 'weave check' to verify your resolution
