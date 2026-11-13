@@ -837,7 +837,7 @@ mod tests {
             Some(McpRendererProfile::SequentialThinking)
         );
         assert_eq!(
-            config.renderer_for_identifier("sequential-thinking-analyze"),
+            config.renderer_for_identifier("sequential-thinking-analyse"),
             Some(McpRendererProfile::SequentialThinking)
         );
         assert_eq!(config.renderer_for_tool("mcp_unknown"), None);
