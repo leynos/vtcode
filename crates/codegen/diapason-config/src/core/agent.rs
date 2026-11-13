@@ -1905,6 +1905,24 @@ mod tests {
     }
 
     #[test]
+    fn test_sceptic_panel_keeps_historical_wire_key() {
+        let parsed: AgentHarnessConfig = toml::from_str(
+            r#"
+                [skeptic_panel]
+                enabled = true
+                models = ["evaluator-a"]
+            "#,
+        )
+        .expect("skeptic_panel wire key should deserialize");
+
+        assert!(parsed.sceptic_panel.enabled);
+        assert_eq!(parsed.sceptic_panel.models, vec!["evaluator-a".to_owned()]);
+
+        let encoded = toml::to_string(&parsed).expect("harness config should serialize");
+        assert!(encoded.contains("[skeptic_panel]"), "historical key must survive serialization: {encoded}");
+    }
+
+    #[test]
     fn test_harness_config_tool_call_budget_defaults_to_120() {
         assert_eq!(AgentHarnessConfig::default().max_tool_calls_per_turn, tool_limits::DEFAULT_MAX_TOOL_CALLS_PER_TURN);
         assert_eq!(AgentHarnessConfig::default().max_tool_calls_per_session, None);

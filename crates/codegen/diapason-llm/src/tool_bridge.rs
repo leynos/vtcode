@@ -467,7 +467,28 @@ mod tests {
 mod wire_compatibility_tests {
     //! Protect intent spelling migration and persisted `ToolIntent` wire names.
 
-    use super::ToolIntent;
+    use super::{MessageToolCorrelation, ToolIntent};
+
+    #[test]
+    fn test_message_correlation_keeps_intent_fulfillment_wire_key() {
+        let correlation = MessageToolCorrelation::new(
+            "msg-1".to_owned(),
+            "Let me grep for errors".to_owned(),
+            ToolIntent::Search("errors".to_owned()),
+        );
+
+        let encoded = serde_json::to_value(&correlation).expect("MessageToolCorrelation serialization should succeed");
+        let object = encoded.as_object().expect("correlation should serialize as an object");
+
+        assert!(
+            object.contains_key("intent_fulfillment"),
+            "renamed field should keep the historical intent_fulfillment wire key: {encoded}"
+        );
+        assert!(
+            !object.contains_key("intent_fulfilment"),
+            "native spelling must not leak into the wire format: {encoded}"
+        );
+    }
 
     #[test]
     fn test_tool_intent_serialization_preserves_historical_name() {
