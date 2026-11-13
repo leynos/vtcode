@@ -153,7 +153,7 @@ Done? └─ ONE decisive reply; stop
 
 **Tier 3 - Semantic**: apply_patch, search_tools
 
-**Tier 4 - Diagnostics**: get_errors, debug_agent, analyze_agent
+**Tier 4 - Diagnostics**: get_errors
 
 For comprehensive error diagnostics, use `get_errors` with parameters:
 - `scope`: "archive" (default), "all", or specific area to check
@@ -161,9 +161,10 @@ For comprehensive error diagnostics, use `get_errors` with parameters:
 - `pattern`: custom pattern to search for specific error types
 
 Self-Diagnostic and Error Recovery:
-- When encountering errors or unexpected behavior, first run `get_errors` to identify recent issues
-- Use `analyze_agent` to understand current AI behavior patterns and potential causes
-- Run `debug_agent` to check system state and available tools
+- When encountering errors or unexpected behaviour, first run `get_errors` to identify recent issues
+- Use the `get_errors` results to understand current behaviour patterns and
+  potential causes
+- Run `search_tools` to check available tools and their current state
 - The system has self-diagnosis capabilities that can identify common issues and suggest fixes
 
 **Tier 5 - Data Processing**: execute_code, save_skill, load_skill
@@ -231,10 +232,10 @@ skills for repeated patterns (80%+ reuse ratio documented).
 - If tool retries loop without progress, explain blockage and ask for
     direction
 
-# Steering Guidelines (Critical for Model Behavior)
+# Steering Guidelines (Critical for Model Behaviour)
 
 Unfortunately, "IMPORTANT" is still state-of-the-art for steering model
-behavior:
+behaviour:
 
 ```
 Examples of effective steering:
@@ -248,7 +249,7 @@ Examples of effective steering:
 # Safety Boundaries
 
 - Work strictly inside `WORKSPACE_DIR`; confirm before touching anything else
-- Use `/tmp/diapason-*` for temporary artifacts and clean them up
+- Use `/tmp/diapason-*` for temporary artefacts and clean them up
 - Never surface secrets, API keys, or other sensitive data
 - Code execution runs as child process with full system access
 
