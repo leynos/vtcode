@@ -38,7 +38,7 @@ pub struct AnthropicRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) thinking: Option<ThinkingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) reasoning: Option<Value>, // Deprecated in favor of thinking, but kept for backward compat or direct effort passing
+    pub(crate) reasoning: Option<Value>, // Deprecated in favour of thinking, but kept for backward compat or direct effort passing
     #[serde(
         default,
         deserialize_with = "deserialize_boxed_output_config_opt",

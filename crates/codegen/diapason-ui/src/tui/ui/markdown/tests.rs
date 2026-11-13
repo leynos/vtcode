@@ -174,7 +174,7 @@ fn test_markdown_table_renders_header_separator_and_rows() {
 }
 
 #[test]
-fn test_narrow_markdown_table_renders_labeled_blocks() {
+fn test_narrow_markdown_table_renders_labelled_blocks() {
     let markdown = "| Was | Now |\n|-----|-----|\n| old | [new](https://example.com/new) |\n| one | two |\n";
     let lines = render_markdown_with_table_width(markdown, 8);
     let output = lines_to_text(&lines).join("\n");
@@ -248,7 +248,7 @@ fn test_table_inside_md_code_block_renders_as_table() {
 }
 
 #[test]
-fn test_narrow_markdown_and_md_fenced_tables_use_labeled_blocks() {
+fn test_narrow_markdown_and_md_fenced_tables_use_labelled_blocks() {
     for language in ["markdown", "md"] {
         let markdown = format!(
             "```{language}\n| Name | Description |\n|------|-------------|\n| item | a long description that needs wrapping |\n```\n"
@@ -271,12 +271,12 @@ fn test_non_markdown_fenced_table_remains_code() {
 }
 
 #[test]
-fn test_unlabeled_fenced_table_remains_code() {
+fn test_unlabelled_fenced_table_remains_code() {
     let markdown = "```\n| Name | Value |\n|------|-------|\n| item | value |\n```\n";
     let output = lines_to_text(&render_markdown_with_table_width(markdown, 8)).join("\n");
 
-    assert!(output.contains("| Name |"), "unlabeled fence should retain source pipes: {output}");
-    assert!(!output.contains("│"), "unlabeled fence should not be reparsed as a table: {output}");
+    assert!(output.contains("| Name |"), "unlabelled fence should retain source pipes: {output}");
+    assert!(!output.contains("│"), "unlabelled fence should not be reparsed as a table: {output}");
 }
 
 #[test]
@@ -461,7 +461,7 @@ fn test_markdown_diff_code_block_strips_backgrounds() {
 }
 
 #[test]
-fn test_markdown_unlabeled_diff_code_block_detects_diff() {
+fn test_markdown_unlabelled_diff_code_block_detects_diff() {
     let markdown = "```\n@@ -1 +1 @@\n- old\n+ new\n```\n";
     let lines = render_markdown_to_lines(markdown, Style::default(), &theme::active_styles(), None);
     let expected_added_fg = DiffColourPalette::default().added_style().get_fg_color();
@@ -562,7 +562,7 @@ fn test_diff_prose_content_skips_syntax_highlighting() {
 }
 
 #[test]
-fn test_markdown_unlabeled_minimal_hunk_detects_diff() {
+fn test_markdown_unlabelled_minimal_hunk_detects_diff() {
     let markdown = "```\n@@\n pub fn demo() {\n  -    old();\n  +    new();\n }\n```\n";
     let lines = render_markdown_to_lines(markdown, Style::default(), &theme::active_styles(), None);
     let palette = DiffColourPalette::default();

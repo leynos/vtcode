@@ -177,7 +177,9 @@ pub enum EventType {
 
     // Correlation events
     IntentExtracted,
-    FulfillmentAssessed,
+    /// The wire name `FULFILLMENT_ASSESSED` is fixed by the schema.
+    #[serde(rename = "FULFILLMENT_ASSESSED")]
+    FulfilmentAssessed,
 
     // Error events
     ErrorOccurred,
