@@ -1,7 +1,7 @@
 //! Terminal capability detection for optimal rendering
 //!
 //! This module provides utilities to detect terminal capabilities such as
-//! Unicode support, color support, and other features to ensure optimal
+//! Unicode support, colour support, and other features to ensure optimal
 //! rendering across different terminal environments.
 
 use std::env;

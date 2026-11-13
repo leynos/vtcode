@@ -175,7 +175,7 @@ fn advance_matching(old: &[char], new: &[char], mut x: usize, mut y: usize) -> (
 
 /// Erase the trailing equal run during backtracking. Same rationale as
 /// `advance_matching` — a focused leaf function that the compiler can
-/// optimise in isolation.
+/// optimize in isolation.
 /// Returns the final `(x, y)` position after removing equal edits.
 #[inline]
 fn backtrack_equal_run(

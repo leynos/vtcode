@@ -24,7 +24,7 @@ pub struct ShellLineStyles {
     pub option: Arc<InlineTextStyle>,
     pub truncation: Arc<InlineTextStyle>,
     /// Structural tokens (`|`, `;`, `&&`, redirections) — muted so command
-    /// words and args carry the color hierarchy.
+    /// words and args carry the colour hierarchy.
     pub separator: Arc<InlineTextStyle>,
     /// Grouped `N commands` counts — subtle accent, one step below the verb.
     pub count: Arc<InlineTextStyle>,

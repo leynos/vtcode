@@ -2,7 +2,7 @@
 //! turn is actively processing.
 //!
 //! The app session and the inline session each implement [`ModeSwitchGuardSession`]
-//! so the lock behavior lives in exactly one place behind a strict per-session
+//! so the lock behaviour lives in exactly one place behind a strict per-session
 //! interface. The only legitimate per-session difference is how a warning is flushed
 //! to the transcript, which is isolated in [`ModeSwitchGuardSession::notify_mode_switch_busy`].
 
