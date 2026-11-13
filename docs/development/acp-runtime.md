@@ -319,6 +319,22 @@ once that session is gone. The handler never refreshes the controller, so a
 read cannot advance lifecycle state, respawn an exited process, or fail because
 of an unrelated record. Each request re-resolves the session's controller tree.
 
+All three requests are counted under `diapason_acp_management_requests_*`,
+including the `list` and `output` queries, because the counters measure use of
+the management surface rather than state mutation. The counting belongs to the
+single dispatch boundary, `handle_lody_subagent_management`, which also owns the
+`acp_lody_subagent_management` span and the bounded failure log; the query
+helpers `list_subagents` and `subagent_output` carry no telemetry of their own
+and record nothing when called directly. Purity of the query path is therefore
+a property of where the instrumentation sits, not of the counters being
+excluded.
+
+The counters are readable through `ToolRegistry::metrics_collector()` and
+render through `MetricsCollector::export_prometheus()`. The running
+`diapason acp` process has no scrapeable endpoint or metrics command yet;
+adding one is tracked as
+[issue #199](https://github.com/leynos/vtcode/issues/199).
+
 ### Usage publication
 
 After each provider response, ACP sends `_lody/session/usage_update` with
