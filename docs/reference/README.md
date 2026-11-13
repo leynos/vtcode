@@ -92,7 +92,7 @@ while coding.
 
 - Flow diagram:
     [ansi-in-diapason.md#pty-output-processing](./ansi-in-diapason.md#pty-output-processing)
-- Implementation: `crates/codegen/diapason-core/src/tools/pty.rs`
+- Implementation: `crates/codegen/diapason-core/src/tools/pty/mod.rs`
 
 **TUI rendering**:
 

@@ -417,4 +417,4 @@ If you discover environment-related issues or improvements:
 - Check the examples in this directory
 - Review test cases in `tests/integration_path_env.rs`
 - Look at actual source in `crates/codegen/diapason-core/src/tools/command.rs`
-    and `crates/codegen/diapason-core/src/tools/pty.rs`
+    and `crates/codegen/diapason-core/src/tools/pty/mod.rs`

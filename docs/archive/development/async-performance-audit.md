@@ -205,7 +205,7 @@ Updated `src/agent/runloop/unified/turn/utils.rs`:
 Updated:
 
 - `src/agent/runloop/unified/session_setup/types.rs`
-- `src/agent/runloop/unified/session_setup/ui.rs`
+- `src/agent/runloop/unified/session_setup/ui/mod.rs`
 - `src/agent/runloop/unified/turn/session_loop_runner.rs`
 
 Changes:
@@ -332,7 +332,7 @@ inner `.await`, free or inherent fn, not a trait impl) cluster in:
   — `get_user_instructions`, `build_instruction_appendix`.
 - [crates/codegen/diapason-core/src/tools/file_ops/path_policy.rs][path_policy-rs]
   — `normalize_user_path`.
-- [crates/codegen/diapason-core/src/tools/file_ops/write.rs][write-rs]
+- [crates/codegen/diapason-core/src/tools/file_ops/write/mod.rs][write-rs]
   — `write_file` wrapper around `write_file_internal`.
 
 Pattern 4 ("Collapsing states") yielded one match in
@@ -443,7 +443,7 @@ Executed:
 - `rustfmt --check src/agent/runloop/unified/turn/utils.rs`
 - `rustfmt --check src/agent/runloop/unified/session_setup/signal.rs src/agent/runloop/unified/progress.rs`
 - `rustfmt --check src/agent/runloop/unified/session_setup/types.rs`
-- `rustfmt --check src/agent/runloop/unified/session_setup/ui.rs`
+- `rustfmt --check src/agent/runloop/unified/session_setup/ui/mod.rs`
 - `rustfmt --check src/agent/runloop/unified/async_mcp_manager.rs`
 - `rustfmt --check src/agent/runloop/unified/tool_routing.rs`
 - `rustfmt --check src/agent/runloop/unified/tool_pipeline/pty_stream.rs`
@@ -478,13 +478,13 @@ sample; interpret as directional only).
    - run `./scripts/perf/baseline.sh` before/after targeted lock-path changes in
      cache-heavy flows
 
-[builder-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/builder.rs
-[pty_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/pty_facade.rs#L43-L49
-[harness_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/harness_facade.rs#L82-L88
-[file_helpers-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/file_helpers.rs
-[execution_facade-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/registry/execution_facade.rs#L266
-[cache-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/cache.rs
-[provider_impl-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/llm/providers/openai/provider/provider_impl.rs#L101-L115
-[project_doc-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/project_doc.rs#L112-L125
-[path_policy-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/file_ops/path_policy.rs#L267
-[write-rs]: file:///Users/vinhnguyenxuan/Developer/learn-by-doing/diapason/crates/codegen/diapason-core/src/tools/file_ops/write.rs#L48
+[builder-rs]: ../../../crates/codegen/diapason-core/src/tools/registry/builder.rs
+[pty_facade-rs]: ../../../crates/codegen/diapason-core/src/tools/registry/pty_facade.rs#L43-L49
+[harness_facade-rs]: ../../../crates/codegen/diapason-core/src/tools/registry/harness_facade.rs#L82-L88
+[file_helpers-rs]: ../../../crates/codegen/diapason-core/src/tools/registry/file_helpers.rs
+[execution_facade-rs]: ../../../crates/codegen/diapason-core/src/tools/registry/execution_facade.rs#L266
+[cache-rs]: ../../../crates/codegen/diapason-core/src/tools/cache.rs
+[provider_impl-rs]: ../../../crates/codegen/diapason-core/src/llm/providers/openai/provider/provider_impl.rs#L101-L115
+[project_doc-rs]: ../../../crates/codegen/diapason-core/src/project_doc.rs#L112-L125
+[path_policy-rs]: ../../../crates/codegen/diapason-core/src/tools/file_ops/path_policy.rs#L267
+[write-rs]: ../../../crates/codegen/diapason-core/src/tools/file_ops/write/mod.rs#L48
