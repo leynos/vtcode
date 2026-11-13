@@ -154,8 +154,15 @@ event with `MetricsCollector::record_tool_recovery`, or a batch with
 ACP extension activity is counted separately in the `acp_extension` object of
 the same summary: management requests started, succeeded, failed and in flight,
 their total duration, usage notifications sent and failed, and initial snapshot
-publications and failures. The same counters are exported as `diapason_acp_*`
-series in the Prometheus snapshot.
+publications and failures. `list`, `cancel` and `output` are all counted,
+because the counters measure use of the management surface rather than state
+mutation. The same counters are exported as `diapason_acp_*` series in the
+Prometheus snapshot.
+
+Both snapshot families are read from a `MetricsCollector` through
+`ToolRegistry::metrics_collector()`. The running `diapason acp` process does
+not yet expose a scrapeable endpoint or a metrics command; adding one is
+tracked as [issue #199](https://github.com/leynos/vtcode/issues/199).
 
 A host that builds more than one `ToolRegistry` can install one shared
 collector with `ToolRegistry::set_metrics_collector`. The replacement affects

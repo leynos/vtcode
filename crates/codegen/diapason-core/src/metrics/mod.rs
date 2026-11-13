@@ -421,6 +421,12 @@ impl MetricsCollector {
 
     /// Begin tracking one Lody ACP management RPC.
     ///
+    /// All three management RPCs are counted, including the `list` and
+    /// `output` queries: the counters measure how often a session uses the
+    /// management surface, not how many requests mutate state. The counting
+    /// happens at the adapter's dispatch boundary, so a query helper called
+    /// directly records nothing.
+    ///
     /// The returned guard raises the in-flight gauge and lowers it exactly
     /// once. A request that is dropped before
     /// [`AcpManagementGuard::finish`] — for example because the client
@@ -1207,7 +1213,7 @@ impl PrometheusMetricsSnapshot {
 fn append_acp_extension_prometheus(output: &mut String, metrics: &AcpExtensionMetrics) {
     let _ = write!(
         output,
-        "# HELP diapason_acp_management_requests_started_total Lody ACP management requests started\n\
+        "# HELP diapason_acp_management_requests_started_total Lody ACP management requests started (list, cancel and output)\n\
          # TYPE diapason_acp_management_requests_started_total counter\n\
          diapason_acp_management_requests_started_total {}\n\n\
          # HELP diapason_acp_management_requests_succeeded_total Lody ACP management requests that succeeded\n\
@@ -1687,7 +1693,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         insta::assert_snapshot!(series, @r###"
-        # HELP diapason_acp_management_requests_started_total Lody ACP management requests started
+        # HELP diapason_acp_management_requests_started_total Lody ACP management requests started (list, cancel and output)
         # TYPE diapason_acp_management_requests_started_total counter
         diapason_acp_management_requests_started_total 2
         # HELP diapason_acp_management_requests_succeeded_total Lody ACP management requests that succeeded

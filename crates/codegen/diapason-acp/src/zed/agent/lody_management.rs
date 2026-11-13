@@ -113,6 +113,13 @@ pub(super) fn is_lody_subagent_management_method(method: &str) -> bool {
     )
 }
 
+/// Serves one Lody management RPC at the adapter's dispatch boundary.
+///
+/// This is the only place a management request is observed: the metrics guard,
+/// the `acp_lody_subagent_management` span and the bounded failure log all live
+/// here, so the query helpers below stay pure. All three operations are
+/// counted, including `list` and `output`, because the counters describe use of
+/// the management surface rather than state mutation.
 pub(super) async fn handle_lody_subagent_management(
     agent: &ZedAgent,
     method: &str,

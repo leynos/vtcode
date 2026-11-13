@@ -30,11 +30,12 @@ management requests return only tasks owned by the requested ACP session.
 - Preserve ACP 1.x interoperability. Lody-specific data must live under the
   `_meta.lody` namespace or `_lody/*` extension methods; other ACP clients must
   continue to work when they ignore those extensions.
-- Use `vtcode-exec-events::ThreadEvent` and the existing
-  `vtcode_core::subagents::SubagentController`; do not introduce a parallel
+- Use `diapason-exec-events::ThreadEvent` and the existing
+  `diapason_core::subagents::SubagentController`; do not introduce a parallel
   runtime event or task registry.
-- Keep VTCode's `task_tracker` output on the standard ACP `Plan` path. Lody's
-  `tasks` capability describes background or scheduled work, not plan entries.
+- Keep the model-facing `task_tracker` output on the standard ACP `Plan` path.
+  Lody's `tasks` capability describes background or scheduled work, not plan
+  entries.
 - Advertise only implemented operations. Omit `scheduled`, and omit any
   `subagents` management flag whose request handler is not present and tested.
 - Do not send `stream_options.include_usage` to every OpenAI-compatible proxy.
@@ -194,7 +195,7 @@ management requests return only tasks owned by the requested ACP session.
     duplex assertion that an already-running background task is published when
     the forwarder attaches. Assembled provider-stream usage was already covered
     end to end by `streamed_audit.rs`; the Baseten parser and opt-in paths stay
-    covered by `vtcode-llm/tests/vidaimock_streaming.rs`.
+    covered by `diapason-llm/tests/vidaimock_streaming.rs`.
 - [x] (2026-11-01) EP-M5 second review repair: close the findings from
   Assessment-ID ACP-LODY-EP-20261031-2.
   - Attach-time snapshots now share the live path's queue accounting.
@@ -792,18 +793,25 @@ scheduled tasks remain explicitly independent follow-ups.
 
 ## Context and orientation
 
-VTCode's ACP server lives in `crates/codegen/vtcode-acp`. The SACP handler
+Naming convention for this plan: every current crate path and identifier uses
+the `diapason-*` / `diapason_core` / `diapason_commons` naming adopted by
+`70d92ddde`. `vtcode-*` names survive only where they are historical records:
+the rename paragraph in Progress, the Progress and Surprises entries written
+before that port, `/tmp` gate-log filenames, installed-binary version strings,
+and the pre-rename `_vtcode/taskLifecycle` wire name that this branch removed.
+
+The ACP server lives in `crates/codegen/diapason-acp`. The SACP handler
 registration and initialization response are in `src/zed/agent/handlers.rs`;
 standard session notifications are sent through `src/zed/agent/updates.rs` and
 `src/zed/connection.rs`. Per-session runtime state is in `src/zed/types.rs`.
 
 `src/zed/agent/task_lifecycle.rs` subscribes to
-`vtcode_core::subagents::SubagentProgressEvent` and filters events by parent
-ACP session. Before this change, it emitted the ignored `_vtcode/taskLifecycle`
-notification; the branch replaced that with the standard ACP tool-call
-projection carrying `_meta.lody.task`, so the custom notification is no longer
-emitted. The controller that owns those events is in
-`crates/codegen/vtcode-core/src/subagents`. It already provides status lists,
+`diapason_core::subagents::SubagentProgressEvent` and filters events by parent
+ACP session. Before this change, it emitted the ignored pre-rename
+`_vtcode/taskLifecycle` notification; the branch replaced that with the
+standard ACP tool-call projection carrying `_meta.lody.task`, so the custom
+notification is no longer emitted. The controller that owns those events is in
+`crates/codegen/diapason-core/src/subagents`. It already provides status lists,
 child shutdown, child transcript snapshots, background shutdown and background
 output previews.
 
@@ -814,17 +822,19 @@ through `_lody/session/usage_update`. Management uses `_lody/subagents/list`,
 not use a custom method: it is a standard ACP tool call whose `_meta.lody.task`
 value is a complete task snapshot.
 
-The word "task" has three distinct meanings here. VTCode's model-facing
+The word "task" has three distinct meanings here. The model-facing
 `task_tracker` is an ACP `Plan`. Lody's `tasks` capability says whether the
 agent supports managed background or scheduled work. Lody task metadata is the
 UI/history representation for subagents, background work or scheduled work.
 Only the latter two are changed by this plan.
 
-Provider responses carry `vtcode_commons::llm::Usage` with prompt, completion,
-cache-read and cache-creation counts. OpenAI-compatible streams expose usage in
-a terminal SSE chunk only when requested. The custom-provider OpenAI router
-already parses a received usage chunk, but it does not request one from Baseten
-today.
+Provider responses carry `diapason_commons::llm::Usage` with prompt,
+completion, cache-read and cache-creation counts. OpenAI-compatible streams
+expose usage in a terminal SSE chunk only when requested.
+`requests_stream_usage` adds `stream_options.include_usage` for native OpenAI
+and for a custom OpenAI-chat profile only when that profile sets
+`supports_stream_usage = true`; a profile that does not declare support is
+never asked.
 
 ## Conformance basis
 
@@ -972,11 +982,11 @@ EP-M5 evidence addendum (2026-10-31):
   task which was already running is published when the forwarder attaches,
   closing the observation gap that allowed a running task to stay invisible.
 - Attach-time publication accounting:
-  `task_lifecycle/projection_tests.rs::initial_snapshot_enqueue_shares_accounting_with_live_updates`
+  `task_lifecycle/queue_accounting_tests.rs::initial_snapshot_enqueue_shares_accounting_with_live_updates`
   mixes an awaited initial snapshot with a live `try_send`, checks depth
   before and after each dequeue, and covers the closed-channel and full-channel
   paths, so neither enqueue source can cancel the other's tracked depth.
-  `task_lifecycle/projection_tests.rs::the_forwarder_never_observes_an_unaccounted_item`
+  `task_lifecycle/queue_accounting_tests.rs::the_forwarder_never_observes_an_unaccounted_item`
   exercises the concurrency boundary over 256 rounds on a multi-threaded
   runtime: publication and counting share one critical section, so the receiver
   sees depth one before it dequeues and an empty channel leaves depth, the
@@ -987,15 +997,15 @@ EP-M5 evidence addendum (2026-10-31):
   statuses and assert status, completion/end timestamps and error text survive
   a cancel.
 - `USAGE-DELTA` assembled coverage is
-  `crates/codegen/vtcode-acp/src/zed/agent/handlers/tests/tools/baseten_usage.rs`,
+  `crates/codegen/diapason-acp/src/zed/agent/handlers/tests/tools/baseten_usage.rs`,
   which starts a real custom-provider profile against a wiremock
   OpenAI-compatible origin, drives the ACP prompt pipeline, and asserts the
   terminal-usage chunk produces exactly one `_lody/session/usage_update` while
   a usage-free stream publishes no delta; the same test also asserts the opt-in
   `stream_options.include_usage` request shape.
-  `crates/codegen/vtcode-acp/src/zed/agent/tests/streamed_audit.rs` remains the
-  synthetic-provider projection check, and
-  `crates/codegen/vtcode-llm/tests/vidaimock_streaming.rs` remains the parser
+  `crates/codegen/diapason-acp/src/zed/agent/handlers/tests/tools/streamed_audit.rs`
+  remains the synthetic-provider projection check, and
+  `crates/codegen/diapason-llm/tests/vidaimock_streaming.rs` remains the parser
   boundary check.
 
 ## Plan of work
@@ -1357,11 +1367,12 @@ terminal delta this plan consumes.
 
 ## Interfaces and dependencies
 
-Define private Serde DTOs in `crates/codegen/vtcode-acp/src/zed/agent/lody.rs`
-for the version-1 capability map, task metadata, session usage update and three
-management request/response shapes. The serialized field names must match Lody
-Core revision `23c792b9` exactly. These types are an adapter boundary, not a
-new public crate API.
+Define private Serde DTOs in
+`crates/codegen/diapason-acp/src/zed/agent/lody.rs` for the version-1
+capability map, task metadata, session usage update and three management
+request/response shapes. The serialized field names must match Lody Core
+revision `23c792b9` exactly. These types are an adapter boundary, not a new
+public crate API.
 
 `advertised_agent_capabilities` will accept the agent/controller state needed
 to build `acp::AgentCapabilities.meta`. `task_lifecycle` will construct
@@ -1375,7 +1386,7 @@ The extension dispatcher will accept `acp::ExtRequest` and respond with
 `force_cancel_background` and `snapshot_for_thread`.
 
 Add `supports_stream_usage: Option<bool>` to
-`vtcode_config::core::CustomProviderProfileConfig` and
+`diapason_config::core::CustomProviderProfileConfig` and
 `ResolvedCustomProviderProfile`. The custom OpenAI-chat provider will consult
 the resolved profile for the request model before adding
 `stream_options.include_usage`; native OpenAI keeps its existing behaviour.
@@ -1418,7 +1429,7 @@ three warnings, and this revision repairs each one:
   `background_output_tail_reads_without_refreshing_background_state` pins the
   query's non-mutating contract, including unchanged persisted bytes.
 - User-Facing and Developer Documentation: a users-guide section covers
-  `vtcode acp`, capability negotiation, standard lifecycle projection,
+  `diapason acp`, capability negotiation, standard lifecycle projection,
   `_lody/subagents/*`, and usage deltas; the developers guide gains an ACP/Lody
   pointer; `docs/development/acp-runtime.md` replaces the stale
   `_vtcode/taskLifecycle` text with controller resolution, lifecycle
@@ -1426,7 +1437,7 @@ three warnings, and this revision repairs each one:
   `docs/releases/0.157.0.md` are corrected to match.
 - Observability: management RPCs carry an `acp_lody_subagent_management` span
   (bounded operation, session correlation hash, outcome, elapsed time, error
-  category) and feed a new `AcpExtensionMetrics` snapshot in `vtcode-core`
+  category) and feed a new `AcpExtensionMetrics` snapshot in `diapason-core`
   (management started/succeeded/failed/in-flight/total duration, usage
   notification sent/failed, initial snapshots published/failed). Usage
   publication has its own span and no longer logs the raw session ID.
@@ -1436,7 +1447,7 @@ three warnings, and this revision repairs each one:
   bounded task kind and reason.
 - Docstring Coverage (inconclusive): disposition is a rebuttal. `-D warnings`
   does not enforce documentation for public items in this workspace: both
-  `vtcode-core/src/lib.rs` and `vtcode-acp/src/lib.rs` allow `missing_docs`
+  `diapason-core/src/lib.rs` and `diapason-acp/src/lib.rs` allow `missing_docs`
   explicitly, overriding the workspace `rust.missing_docs = "warn"` setting.
   Documentation adequacy is therefore assessed separately from the 80% coverage
   metric, which counts every diff-touched function, including private ones, and
@@ -1467,7 +1478,7 @@ batch:
 
 Lesson: compile the working tree before dispatching gates or crossing a context
 boundary, and never batch unvalidated repairs.
-`cargo check -p vtcode-acp --all-targets --locked` reports 0 errors on the
+`cargo check -p diapason-acp --all-targets --locked` reports 0 errors on the
 corrected tree.
 
 Release-gate evidence for this candidate, run sequentially by the scrutineer on
@@ -1998,3 +2009,53 @@ closes or rebuts each one.
   the r31 note above now state `started = succeeded + failed + in_flight`, with
   `started = succeeded + failed` holding only once every started request has
   recorded an outcome.
+
+### Revision note (2026-11-13, r33 round: review `5885704235`)
+
+- **Developer Documentation (fixed).** The Context and orientation section now
+  uses `crates/codegen/diapason-acp`, `crates/codegen/diapason-core`,
+  `diapason_core::subagents::SubagentProgressEvent` and
+  `diapason_commons::llm::Usage`. The provider paragraph states what
+  `requests_stream_usage` actually does: it adds `stream_options.include_usage`
+  for native OpenAI, and for a custom OpenAI-chat profile only when that
+  profile sets `supports_stream_usage = true`. The Verification plan now names
+  `task_lifecycle/queue_accounting_tests.rs` for both attach-time accounting
+  tests and uses the real `diapason-acp` and `diapason-llm` test paths,
+  including `handlers/tests/tools/streamed_audit.rs`. The same sweep corrected
+  the Constraints, Interfaces and dependencies, and Validation sections. A
+  naming-convention paragraph at the top of Context and orientation records
+  where pre-rename `vtcode-*` names legitimately remain: the rename paragraph,
+  the pre-port Progress and Surprises entries, `/tmp` gate-log filenames,
+  installed-binary version strings, and the removed `_vtcode/taskLifecycle`
+  wire name.
+- **Unit Architecture (actioned as a documented contract).** The reviewer's
+  third item offers this alternative, and the code already has the structure
+  the first two items describe: `handle_lody_subagent_management` is the single
+  dispatch boundary that owns the metrics guard, the span and the bounded
+  failure log, while `list_subagents` and `subagent_output` are pure query
+  helpers with no telemetry. The contract is now explicit in
+  `docs/development/acp-runtime.md`, in the `begin_acp_management`
+  documentation, in the Prometheus `started_total` help text, and in the
+  dispatch function's own doc comment: all three RPCs, queries included, are
+  counted because the counters describe use of the management surface, and a
+  query helper called directly records nothing. The existing duplex test
+  already asserts the counter accounting, the in-flight gauge returning to
+  zero, and the rendered Prometheus series.
+- **Domain Architecture (rebutted, third occurrence).** The port is keyed by
+  the resolved storage identity by design: the controller has already resolved
+  the task id and validated ownership, so `BackgroundOutputSource` carries only
+  what a storage adapter needs. A task-id-keyed reader would have to read the
+  background ledger to resolve that identity, making the port a second
+  controller and reintroducing the coupling it removes; it would also break the
+  documented embedder extension point
+  (`SubagentControllerConfig.output_reader`), whose implementations do not own
+  the ledger. `BackgroundOutput` is task-shaped; only the input is
+  storage-shaped. The ACP defaults and limits already live in
+  `lody_management.rs`.
+- **Observability (tracked, not deferred silently).** The export surface is the
+  subject of open issue #199, raised during this PR's review. It needs a
+  process-level scrape path plus documentation, which is a separate feature
+  rather than a repair to this branch. The user guide, the release notes and
+  `docs/development/acp-runtime.md` now say so explicitly: the snapshots are
+  reachable through `ToolRegistry::metrics_collector()`, and no process-level
+  endpoint or metrics command exists yet.
