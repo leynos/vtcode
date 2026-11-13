@@ -954,11 +954,14 @@ impl SubagentController {
     /// Inserts a prepared child and returns the id it was stored under.
     ///
     /// Generated ids carry millisecond precision, so two spawns of the same
-    /// kind in one millisecond propose the same id. `BTreeMap::insert` would
-    /// then replace the earlier record, silently dropping a subagent that has
+    /// kind in one millisecond propose the same id, and the colliding pair need
+    /// not even belong to the same controller: a session exposes its whole
+    /// controller tree and routes an id to the first match. `BTreeMap::insert`
+    /// would replace the earlier record, silently dropping a subagent that has
     /// already been admitted and may already own a worktree. Allocating the
-    /// unique id inside the write lock is what makes the check race-free, so
-    /// the record's id and session id are both rewritten before insertion.
+    /// unique id inside the write lock, against the tree-wide scope, is what
+    /// makes the check race-free, so the record's id and session id are both
+    /// rewritten before insertion.
     async fn insert_queued_child(&self, mut child: QueuedChildRecord) -> Result<String> {
         let mut state = self.state.write().await;
         // Re-check the close gates while the write lock is held. The earlier
@@ -968,7 +971,9 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
             bail!("Subagent controller is shutting down; cannot spawn new subagents");
         }
-        let unique_id = unique_child_id(|id| state.children.contains_key(id), child.id.as_str());
+        let unique_id = self
+            .child_id_scope
+            .allocate(|id| state.children.contains_key(id), child.id.as_str());
         if unique_id != child.id {
             child.record.session_id = format!(
                 "{}-{}",
@@ -981,6 +986,25 @@ impl SubagentController {
         let id = child.id.clone();
         state.children.insert(child.id, child.record);
         Ok(id)
+    }
+
+    /// Inserts a prepared record under a caller-chosen candidate id.
+    ///
+    /// Test seam only: a real spawn derives its id from the agent kind and a
+    /// millisecond clock, so two controllers can only be forced to propose the
+    /// same id by supplying the candidate directly. Everything else about the
+    /// insertion — the close-gate recheck, the tree-wide allocation, and the
+    /// returned id — is the production path.
+    #[cfg(test)]
+    pub(super) async fn insert_child_with_candidate_id(
+        &self,
+        candidate_id: &str,
+        record: ChildRecord,
+    ) -> Result<String> {
+        // The insertion future carries the whole record, and a test future that
+        // large trips `clippy::large_futures`; boxing it here keeps the seam's
+        // own future small without changing the production path.
+        Box::pin(self.insert_queued_child(QueuedChildRecord { id: candidate_id.to_owned(), record })).await
     }
 
     async fn restart_child(&self, target: &str) -> Result<()> {
@@ -1063,6 +1087,34 @@ fn unique_child_id(is_taken: impl Fn(&str) -> bool, candidate: &str) -> String {
             return id;
         }
         suffix = suffix.saturating_add(1);
+    }
+}
+
+/// The child task ids allocated anywhere in one controller tree.
+///
+/// A controller only holds its own children, so checking that map alone cannot
+/// see an id a sibling controller already allocated. The owning session
+/// exposes the whole tree at once and routes a task id to the first controller
+/// that matches, so a duplicate id would list one task twice and send an
+/// output read or a cancel to whichever controller happened to come first.
+/// The root controller owns one scope and every descendant inherits the same
+/// `Arc`; ids are recorded for the lifetime of the tree.
+#[derive(Default)]
+pub(super) struct ChildIdScope {
+    taken: std::sync::Mutex<std::collections::BTreeSet<String>>,
+}
+
+impl ChildIdScope {
+    /// Allocates `candidate` or its first free suffix, and records the result.
+    ///
+    /// The caller supplies the controller-local collision check; this scope
+    /// adds the tree-wide one and remembers the allocated id so a later
+    /// allocation in any controller of the tree cannot repeat it.
+    pub(super) fn allocate(&self, is_taken: impl Fn(&str) -> bool, candidate: &str) -> String {
+        let mut taken = self.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let id = unique_child_id(|id| taken.contains(id) || is_taken(id), candidate);
+        taken.insert(id.clone());
+        id
     }
 }
 
