@@ -66,6 +66,24 @@ The complete PR train is not yet delivered.
   unavailable. Logs use the remaining-colour branch suffix. The two module
   guidance files retain 46 inherited Markdownlint findings, with no added or
   removed diagnostics; the handoff, Nixie, and cached diff checks passed.
+- [Draft PR #28](https://github.com/leynos/vtcode/pull/28) publishes
+  `harden-lint-spelling-catalogue` at
+  `b06ef5e694d222c0ad273d681180b78ef3df75f6`, based on #27. It renames native
+  catalogue APIs, modules, provider adapters, and callers, preserving
+  serialized and persisted names. Formatting, lint, and build passed initially,
+  but the full suite found a missing native skill-discovery keyword. Both
+  `rule-catalogue` and legacy `rule-catalog` are now retained, with query
+  regressions. The original full retry passed: 10,081 tests, 17 skipped, and 67
+  harness tests. Formatting, lint, build, advisory, and changed Python
+  compilation passed. Optional ast-grep remained unavailable.
+- `harden-lint-spelling-fulfilment` is the active branch, based on #28.
+  It adopts native fulfilment, sceptic, and cancelled names with callers,
+  preserving established wire values and adding an A2A serialization check. Its
+  original full gates passed: formatting, lint, build, 10,081 workspace tests
+  with 17 skipped, and all 67 harness tests. Changed shell syntax and advisory
+  checks passed; optional ast-grep remained unavailable. Formatting and lint
+  logs use the unnumbered fulfilment suffix; build, test, test-harness, shell,
+  and advisory logs use `ACTION-2` with that suffix.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -419,3 +437,24 @@ Regression coverage sits at both layers: `instructions.rs` proves that an
 unresolvable include does not suppress workspace sources while an unresolvable
 exclude still fails, and `project_doc.rs` proves the same through the appendix
 entry point.
+
+## PR 29 review restack
+
+The fulfilment, sceptic and cancelled spelling layer is rebased onto PR #28
+`b06ef5e69`. The replay completed without conflicts; all 57 non-handoff paths
+are byte-identical to the original layer. Fixed configuration keys, event
+values and A2A cancellation protocol names remain intact. All eight sequential
+gates passed, including typecheck, 10,085 workspace tests, 17 skips and 67
+harness tests. Logs use `restack-1` on `harden-lint-spelling-fulfilment`; final
+handoff checks use `handoff-restack-1`. The optional ast-grep scan was skipped
+because the tool is unavailable. The push uses an explicit lease against the
+original published PR #29 head.
+
+## PR 29 after PR #28 landed
+
+PR #28 squash-merged as `2f7a9c3e2`, and the stack service replayed the three
+layer commits onto it unchanged; `git range-diff` over the old and new ranges
+reports every commit identical. The layer also records its public renames in
+`docs/releases/0.157.0.md` under "Fulfilment, sceptic and cancellation spelling
+renames", including the wire values that stay `canceled`, `skeptic_panel`,
+`intent_fulfillment` and `FULFILLMENT_ASSESSED`.

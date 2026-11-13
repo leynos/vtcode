@@ -177,7 +177,9 @@ pub enum EventType {
 
     // Correlation events
     IntentExtracted,
-    FulfillmentAssessed,
+    /// The wire name `FULFILLMENT_ASSESSED` is fixed by the schema.
+    #[serde(rename = "FULFILLMENT_ASSESSED")]
+    FulfilmentAssessed,
 
     // Error events
     ErrorOccurred,
@@ -308,6 +310,14 @@ impl Default for ObservabilityContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_fulfilment_assessed_keeps_historical_wire_name() {
+        let encoded =
+            serde_json::to_string(&EventType::FulfilmentAssessed).expect("EventType serialization should succeed");
+
+        assert_eq!(encoded, "\"FULFILLMENT_ASSESSED\"", "renamed variant should keep the historical event value");
+    }
 
     #[test]
     fn test_error_creation() {

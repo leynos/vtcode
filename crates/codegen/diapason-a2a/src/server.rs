@@ -544,7 +544,7 @@ impl A2aErrorResponse {
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             },
             A2aError::TaskNotFound(_) => StatusCode::NOT_FOUND,
-            A2aError::TaskNotCancelable(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            A2aError::TaskNotCancellable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             A2aError::InvalidStateTransition { .. } => StatusCode::UNPROCESSABLE_ENTITY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -591,9 +591,9 @@ mod tests {
     }
 
     #[test]
-    fn test_error_response_task_not_cancelable() {
+    fn test_error_response_task_not_cancellable() {
         use serde_json::json;
-        let err = A2aError::TaskNotCancelable("Cannot cancel completed task".to_string());
+        let err = A2aError::TaskNotCancellable("Cannot cancel completed task".to_string());
         let err_response = A2aErrorResponse::from_error(err, json!(1));
         assert_eq!(err_response.status_code, StatusCode::UNPROCESSABLE_ENTITY);
     }
@@ -906,5 +906,48 @@ mod tests {
             .expect("receive response");
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_tasks_cancel_rpc_returns_historical_canceled_state() {
+        let state = A2aServerState::diapason_default("http://localhost:8080");
+        let task = state.task_manager.create_task(None).await;
+
+        let request = JsonRpcRequest::with_numeric_id(METHOD_TASKS_CANCEL, Some(serde_json::json!({"id": task.id})), 7);
+        let Ok(Json(response)) = handle_rpc(State(state), Json(request)).await else {
+            panic!("tasks/cancel should succeed");
+        };
+
+        assert!(response.error.is_none(), "unexpected error: {:?}", response.error);
+        assert_eq!(
+            response
+                .result
+                .as_ref()
+                .and_then(|r| r.get("status"))
+                .and_then(|s| s.get("state"))
+                .and_then(Value::as_str),
+            Some("canceled")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tasks_cancel_rpc_rejects_terminal_task() {
+        let state = A2aServerState::diapason_default("http://localhost:8080");
+        let task = state.task_manager.create_task(None).await;
+        drop(
+            state
+                .task_manager
+                .update_status(&task.id, TaskState::Completed, None)
+                .await
+                .expect("complete"),
+        );
+
+        let request = JsonRpcRequest::with_numeric_id(METHOD_TASKS_CANCEL, Some(serde_json::json!({"id": task.id})), 7);
+        let Err(error_response) = handle_rpc(State(state), Json(request)).await else {
+            panic!("terminal task should not be cancelled");
+        };
+
+        assert_eq!(error_response.status_code, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error_response.response.error.as_ref().expect("error body").code, -32002);
     }
 }
