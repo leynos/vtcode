@@ -50,7 +50,7 @@ valid, decisions depend on context, or heuristics guide the approach.
 
 **Medium freedom (pseudocode or scripts with parameters)**: Use when a
 preferred pattern exists, some variation is acceptable, or configuration
-affects behavior.
+affects behaviour.
 
 **Low freedom (specific scripts, few parameters)**: Use when operations are
 fragile and error-prone, consistency is critical, or a specific sequence must
@@ -315,7 +315,7 @@ should support.
 
 ### Step 2: Planning the Reusable Skill Contents
 
-To turn concrete examples into an effective skill, analyze each example by:
+To turn concrete examples into an effective skill, analyse each example by:
 
 1. Considering how to execute on the example from scratch
 2. Identifying what scripts, references, and assets would be helpful when
@@ -343,7 +343,7 @@ users have logged in today?" the analysis shows:
 2. A `references/schema.md` file documenting the table schemas would be helpful
    to store in the skill
 
-To establish the skill's contents, analyze each concrete example to create a
+To establish the skill's contents, analyse each concrete example to create a
 list of the reusable resources to include: scripts, references, and assets.
 
 ### Step 3: Initializing the Skill

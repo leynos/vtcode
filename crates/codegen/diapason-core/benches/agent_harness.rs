@@ -53,7 +53,7 @@ fn benchmark_tool_catalogue_registrations() -> Vec<ToolRegistration> {
     (0..128)
         .map(|index| {
             ToolRegistration::new(
-                format!("catalog_projection_{index:03}"),
+                format!("catalogue_projection_{index:03}"),
                 CapabilityLevel::CodeSearch,
                 false,
                 |_, _| Box::pin(async { Ok(serde_json::Value::Null) }),
@@ -148,7 +148,7 @@ fn tool_catalogue_projection_benchmark(c: &mut Criterion) {
         let _ = state.filtered_snapshot_with_stats(&tools, true, false).await;
     });
 
-    let _benchmark = c.bench_function("agent_harness_tool_catalog_cache_hit", |b| {
+    let _benchmark = c.bench_function("agent_harness_tool_catalogue_cache_hit", |b| {
         b.iter(|| {
             let state = Arc::clone(&state);
             let tools = Arc::clone(&tools);
@@ -156,7 +156,7 @@ fn tool_catalogue_projection_benchmark(c: &mut Criterion) {
         })
     });
 
-    let _benchmark = c.bench_function("agent_harness_tool_catalog_cache_miss", |b| {
+    let _benchmark = c.bench_function("agent_harness_tool_catalogue_cache_miss", |b| {
         b.iter(|| {
             let state = Arc::clone(&state);
             let tools = Arc::clone(&tools);
@@ -171,7 +171,7 @@ fn tool_catalogue_projection_benchmark(c: &mut Criterion) {
     let catalogue_config = benchmark_tool_catalogue_config();
     let _ = catalogue.schema_entries(catalogue_config.clone());
     let _ = catalogue.model_tools(catalogue_config.clone());
-    let _benchmark = c.bench_function("agent_harness_tool_catalog_projection_repeat", |b| {
+    let _benchmark = c.bench_function("agent_harness_tool_catalogue_projection_repeat", |b| {
         b.iter(|| {
             let schemas = catalogue.schema_entries(catalogue_config.clone());
             let definitions = catalogue.model_tools(catalogue_config.clone());
@@ -187,7 +187,7 @@ fn tool_catalogue_deferred_policy_benchmark(c: &mut Criterion) {
         ("client_local", DeferredToolPolicy::client_local(Vec::new())),
         ("disabled", DeferredToolPolicy::default()),
     ];
-    let mut group = c.benchmark_group("agent_harness_tool_catalog_deferred_policy");
+    let mut group = c.benchmark_group("agent_harness_tool_catalogue_deferred_policy");
 
     for (policy_name, deferred_tool_policy) in policies {
         let config = benchmark_tool_catalogue_config().with_deferred_tool_policy(deferred_tool_policy);
@@ -257,10 +257,10 @@ fn few_shot_selection_benchmark(c: &mut Criterion) {
 fn tool_definition_sorting_benchmark(c: &mut Criterion) {
     let tools = (0..96)
         .rev()
-        .map(|index| sample_tool(&format!("catalog_tool_{index:03}")))
+        .map(|index| sample_tool(&format!("catalogue_tool_{index:03}")))
         .collect::<Vec<_>>();
 
-    let _benchmark = c.bench_function("tool_definition_sorting_catalog_refresh", |b| {
+    let _benchmark = c.bench_function("tool_definition_sorting_catalogue_refresh", |b| {
         b.iter(|| black_box(sort_tool_definitions(tools.clone())))
     });
 }

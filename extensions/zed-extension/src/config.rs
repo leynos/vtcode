@@ -29,8 +29,11 @@ pub struct AiConfig {
 /// Workspace Settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceConfig {
-    #[serde(default)]
-    pub analyze_on_startup: bool,
+    /// Whether to analyse the workspace on startup.
+    ///
+    /// Serialized as `analyze_on_startup` for configuration compatibility.
+    #[serde(default, rename = "analyze_on_startup")]
+    pub analyse_on_startup: bool,
     #[serde(default = "default_max_tokens")]
     pub max_context_tokens: usize,
     #[serde(default)]
@@ -70,7 +73,7 @@ impl Default for Config {
                 model: default_model(),
             },
             workspace: WorkspaceConfig {
-                analyze_on_startup: false,
+                analyse_on_startup: false,
                 max_context_tokens: default_max_tokens(),
                 ignore_patterns: vec![],
             },
@@ -94,7 +97,7 @@ impl Default for AiConfig {
 impl Default for WorkspaceConfig {
     fn default() -> Self {
         Self {
-            analyze_on_startup: false,
+            analyse_on_startup: false,
             max_context_tokens: default_max_tokens(),
             ignore_patterns: vec![],
         }
@@ -159,7 +162,7 @@ mod tests {
         assert_eq!(config.ai.provider, "anthropic");
         assert_eq!(config.ai.model, "claude-sonnet-5");
         assert_eq!(config.workspace.max_context_tokens, 8000);
-        assert!(!config.workspace.analyze_on_startup);
+        assert!(!config.workspace.analyse_on_startup);
         assert!(config.security.human_in_the_loop);
     }
 
@@ -173,7 +176,7 @@ mod tests {
     #[test]
     fn test_workspace_config_defaults() {
         let config = WorkspaceConfig::default();
-        assert!(!config.analyze_on_startup);
+        assert!(!config.analyse_on_startup);
         assert_eq!(config.max_context_tokens, 8000);
         assert!(config.ignore_patterns.is_empty());
     }

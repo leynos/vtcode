@@ -25,7 +25,7 @@ pub struct ThemeConfig {
     #[serde(default)]
     pub status: StatusColours,
 
-    /// Colors for file types (LS_COLORS-style)
+    /// Colours for file types (LS_COLORS-style)
     #[serde(default)]
     pub files: FileColours,
 }
@@ -470,7 +470,7 @@ executable = "bold cyan"
         assert!(cli_styles.success.get_effects().contains(anstyle::Effects::UNDERLINE));
 
         let diff_styles = config.parse_diff_styles().expect("Failed to parse diff styles");
-        // The green color should be set
+        // The green colour should be set
         assert_ne!(diff_styles.new.get_fg_color(), None);
 
         let file_styles = config.parse_file_styles().expect("Failed to parse file styles");

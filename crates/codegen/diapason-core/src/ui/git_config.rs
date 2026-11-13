@@ -174,8 +174,8 @@ impl GitColourConfig {
 
         let value = key_re.captures(section_content)?.get(1)?.as_str().trim();
 
-        // Parse color name but ignore effects (bold, dim, etc.) for consistent styling
-        // Extract just the color name, ignoring any effects like "bold", "dim", etc.
+        // Parse colour name but ignore effects (bold, dim, etc.) for consistent styling
+        // Extract just the colour name, ignoring any effects like "bold", "dim", etc.
         let colour_name = value.split_whitespace().find(|word| {
             matches!(
                 word.to_lowercase().as_str(),

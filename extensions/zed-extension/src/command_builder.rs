@@ -121,9 +121,9 @@ impl CommandBuilder {
         Self::new("ask").with_option("query", query)
     }
 
-    /// Create an "analyze" command
-    pub fn analyze() -> Self {
-        Self::new("analyze")
+    /// Create an "analyse" command.
+    pub fn analyse() -> Self {
+        Self::new("analyse")
     }
 
     /// Create a "chat" command
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_timeout_setting() {
-        let builder = CommandBuilder::new("analyze").timeout(Duration::from_secs(60));
+        let builder = CommandBuilder::new("analyse").timeout(Duration::from_secs(60));
         assert!(builder.timeout.is_some());
     }
 
@@ -241,9 +241,9 @@ mod tests {
     }
 
     #[test]
-    fn test_shortcut_analyze() {
-        let builder = CommandBuilder::analyze();
-        assert_eq!(builder.get_command(), "analyze");
+    fn test_shortcut_analyse() {
+        let builder = CommandBuilder::analyse();
+        assert_eq!(builder.get_command(), "analyse");
     }
 
     #[test]

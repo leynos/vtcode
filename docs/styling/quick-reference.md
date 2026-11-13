@@ -51,7 +51,7 @@ parse("bold #0000ee ul").unwrap()       // bold, blue, underlined
 parse("italic yellow black").unwrap()   // italic yellow on black
 
 // Invalid (these will error)
-parse("unknown-color").unwrap()         //  unknown-color not recognised
+parse("unknown-color").unwrap()         //  unknown-color not recognized
 parse("#gg0000").unwrap()               //  invalid hex
 ```
 
@@ -162,16 +162,18 @@ ______________________________________________________________________
 ### 1. Theme Parser (Phase 1)
 
 ```rust
-use diapason_core::ui::tui::ThemeConfigParser;
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
 
 // Parse Git style
-let style = ThemeConfigParser::parse_git_style("bold red")?;
+let style = parser.parse_git_style("bold red")?;
 
 // Parse LS_COLORS style
-let style = ThemeConfigParser::parse_ls_colours("01;34")?;
+let style = parser.parse_ls_colours("01;34")?;
 
 // Flexible parsing (try both)
-let style = ThemeConfigParser::parse_flexible("bold red")?;
+let style = parser.parse_flexible("bold red")?;
 ```
 
 ### 2. InlineTextStyle (Phase 1 - After Update)
@@ -181,7 +183,7 @@ use anstyle::Effects;
 
 let style = InlineTextStyle {
     colour: Some(colour),
-    bg_colour: Some(bg),
+    bg_colour: Some(background),
     effects: Effects::BOLD | Effects::UNDERLINE,
 };
 
@@ -192,13 +194,13 @@ let style = InlineTextStyle::default()
     .with_colour(colour);
 ```
 
-### 3. File Colourizer (Phase 3 Future)
+### 3. File Colourizer
 
 ```rust
 use diapason_core::ui::tui::FileColourizer;
 
 let colourizer = FileColourizer::new();  // Reads LS_COLORS
-let style = colourizer.style_for_file(&path)?;
+let style = colourizer.style_for_path(&path);
 ```
 
 ______________________________________________________________________
@@ -215,7 +217,11 @@ ______________________________________________________________________
 "01;31"                 // Bold (01) + red (31)
 
 // In Diapason
-let error_style = ThemeConfigParser::parse_git_style("bold red")?;
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
+
+let error_style = parser.parse_git_style("bold red")?;
 ```
 
 ### Highlighting Success Messages
@@ -228,7 +234,11 @@ let error_style = ThemeConfigParser::parse_git_style("bold red")?;
 "32"                    // Green foreground
 
 // In Diapason
-let success_style = ThemeConfigParser::parse_git_style("green")?;
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
+
+let success_style = parser.parse_git_style("green")?;
 ```
 
 ### Dim/Secondary Text
@@ -241,29 +251,41 @@ let success_style = ThemeConfigParser::parse_git_style("green")?;
 "02;37"                 // Dim (02) + white (37)
 
 // In Diapason
-let dim_style = ThemeConfigParser::parse_git_style("dim white")?;
+use diapason_core::utils::CachedStyleParser;
+
+let parser = CachedStyleParser::new();
+
+let dim_style = parser.parse_git_style("dim white")?;
 ```
 
 ### Directory Listing Colours
 
 ```rust
 // From environment LS_COLORS
-let dir_style = ThemeConfigParser::parse_ls_colours("01;34")?;  // bold blue
+use diapason_core::utils::CachedStyleParser;
 
-let sym_style = ThemeConfigParser::parse_ls_colours("01;36")?;  // bold cyan
+let parser = CachedStyleParser::new();
 
-let exec_style = ThemeConfigParser::parse_ls_colours("01;32")?; // bold green
+let dir_style = parser.parse_ls_colours("01;34")?;  // bold blue
+
+let sym_style = parser.parse_ls_colours("01;36")?;  // bold cyan
+
+let exec_style = parser.parse_ls_colours("01;32")?; // bold green
 ```
 
 ### Git Diff Colours
 
 ```rust
 // From .git/config [colour "diff"]
-let added_style = ThemeConfigParser::parse_git_style("green")?;
+use diapason_core::utils::CachedStyleParser;
 
-let removed_style = ThemeConfigParser::parse_git_style("red")?;
+let parser = CachedStyleParser::new();
 
-let context_style = ThemeConfigParser::parse_git_style("default")?;
+let added_style = parser.parse_git_style("green")?;
+
+let removed_style = parser.parse_git_style("red")?;
+
+let context_style = parser.parse_git_style("default")?;
 ```
 
 ______________________________________________________________________
