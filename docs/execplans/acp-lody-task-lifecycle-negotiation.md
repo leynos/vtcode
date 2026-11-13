@@ -2108,3 +2108,36 @@ closes or rebuts each one.
   `controller_spawn_run::tests::a_colliding_child_id_is_suffixed_instead_of_replacing_the_record`
   pins the suffix ladder; the ACP nested-management test is the integration
   witness that all three children survive.
+
+### Revision note (2026-11-13, r36 round: cross-controller child ids)
+
+- **Defect.** The r35 fix made id allocation race-free, but only *within* one
+  controller: it checked that controller's `children` map. A session exposes
+  its whole controller tree — `session_controllers` flattens
+  `root.descendant_controllers()` and `controller_tracking_child` returns the
+  first controller whose entries contain the id — so two descendant controllers
+  that spawned the same kind in the same millisecond could still allocate one
+  id. The listing would then contain that id twice, and an output read or a
+  cancel would resolve to whichever controller happened to come first.
+- **Correction.** `ChildIdScope` holds the ids allocated anywhere in one
+  controller tree (`BTreeSet` behind a `Mutex`, poisoned-lock tolerant). The
+  root controller owns one scope, `inherit_child_id_scope` shares the same
+  `Arc` with every child-scoped controller next to `inherit_progress_observers`
+  in `child_controller_for`, and `insert_queued_child` allocates through
+  `ChildIdScope::allocate`, which combines the scope's set with the
+  controller-local `children` check under the same write lock. Ids are retained
+  for the lifetime of the tree, so a finished child's id is never handed out
+  again.
+- **Regression check.**
+  `subagents::tests::tree_routing_tests::colliding_child_ids_stay_distinct_across_sibling_controllers`
+  builds a root and two sibling child-scoped controllers that inherit its
+  scope, then forces both to insert under one candidate id through the
+  production insertion path (`insert_child_with_candidate_id`, a `#[cfg(test)]`
+  seam that only supplies the candidate). It asserts the first keeps the
+  candidate, the second takes `-2`, the flattened tree lists both ids exactly
+  once, the suffixed record's `session_id` is rewritten with its own id, and
+  each id resolves in exactly one controller — the property the adapter's
+  first-match output and cancel routing depends on. The ACP nested-management
+  test remains the end-to-end witness for listing, output and cancellation, but
+  it cannot force a same-millisecond spawn, which is why the deterministic core
+  regression is the guard.

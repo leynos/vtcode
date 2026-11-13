@@ -230,6 +230,10 @@ pub struct SubagentController {
     /// events are published under that session's observer key even though the
     /// tasks' immediate `parent_thread_id` is the child's own session.
     progress_observer_scope: Option<String>,
+    /// Child task ids allocated anywhere in this controller's tree. A
+    /// controller-local check cannot see an id a sibling allocated, so the
+    /// root owns one scope and descendants inherit the same `Arc`.
+    child_id_scope: Arc<controller_spawn_run::ChildIdScope>,
 }
 
 impl SubagentController {
@@ -308,6 +312,7 @@ impl SubagentController {
                 closing: Arc::new(AtomicBool::new(false)),
                 progress_observers: Arc::default(),
                 progress_observer_scope: None,
+                child_id_scope: Arc::default(),
             })
         })
     }
@@ -428,6 +433,19 @@ impl SubagentController {
             Some(scope) => scope,
             None => parent.parent_session_id.read().await.clone(),
         });
+    }
+
+    /// Shares child-id allocation with the controller that owns this one.
+    ///
+    /// Task ids are generated from the agent kind and a millisecond clock, so
+    /// two controllers in one tree can propose the same id at the same instant.
+    /// Each controller only holds its own children, but the adapter flattens
+    /// the tree and routes a task id to the first controller that claims it, so
+    /// a duplicate would list one task twice and could send an output read or a
+    /// cancel to the wrong task. Every controller in a tree therefore allocates
+    /// from the root's scope.
+    pub(crate) fn inherit_child_id_scope(&mut self, parent: &SubagentController) {
+        self.child_id_scope = Arc::clone(&parent.child_id_scope);
     }
 
     /// Attaches an already-created child-scoped controller to a tracked child.
