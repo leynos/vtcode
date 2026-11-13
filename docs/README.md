@@ -319,9 +319,8 @@ and configuration
 
 **Trajectory Logs:** Logs for trajectory: check
 `$XDG_STATE_HOME/diapason/workspaces/<workspace-hash>/logs/trajectory.jsonl`.
-`diapason trajectory` summarizes them. See the
-[0.157.0 release notes](./releases/0.157.0.md#catalogue-spelling-renames) for
-the catalogue-label changes in its report and the shared session timeline.
+See the
+[0.157.0 release notes](./releases/0.157.0.md#catalogue-spelling-renames).
 
 ### Workspace-First Operations
 
