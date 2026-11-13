@@ -1,5 +1,5 @@
 //! Duplex transport regressions for the lifecycle forwarder.
-use super::projection_tests::{subagent_event, subagent_event_for, with_updated_at};
+use super::projection_tests::{background_event, subagent_event, subagent_event_for, with_updated_at};
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use std::time::Duration;
@@ -192,6 +192,21 @@ impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for CapturedLogs {
 /// task back. That diagnostic is the only place the dropped task is reported,
 /// and the task and session identifiers are client-visible values: the record
 /// must carry a bounded correlation instead of either one.
+/// A background task whose identifiers embed the session id it belongs to.
+///
+/// A dropped-update diagnostic must not leak either identifier, so the fixture
+/// makes the task id contain the session id: a correlation derived from the
+/// task id would still hide it, and logging the raw id would reveal both.
+fn background_event_with_session_in_id(status: &str) -> LifecycleUpdate {
+    let mut event = background_event(status);
+    if let LifecycleUpdate::BackgroundProcess { task, .. } = &mut event {
+        task.id = "bg-parent-session-watcher".to_string();
+        task.session_id = "parent-session".to_string();
+        task.exec_session_id = "exec-parent-session-watcher".to_string();
+    }
+    event
+}
+
 #[tokio::test]
 async fn superseded_task_update_logs_a_bounded_correlation() {
     let logs = CapturedLogs::default();
@@ -212,6 +227,20 @@ async fn superseded_task_update_logs_a_bounded_correlation() {
         queue
             .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z"))
             .expect("enqueue the superseded task update");
+        queue
+            .try_send(
+                &progress_tx,
+                with_updated_at(background_event_with_session_in_id("running"), "2026-08-14T12:05:00Z"),
+            )
+            .expect("enqueue the settled background update");
+        // The background task id embeds its session id, so a raw id in the
+        // dropped-update record would leak the session as well.
+        queue
+            .try_send(
+                &progress_tx,
+                with_updated_at(background_event_with_session_in_id("running"), "2026-08-14T12:01:00Z"),
+            )
+            .expect("enqueue the superseded background update");
     });
 
     let settled = duplex.next(Duration::from_secs(2)).await.expect("settled task update");
@@ -219,17 +248,29 @@ async fn superseded_task_update_logs_a_bounded_correlation() {
         matches!(settled, acp::AgentNotification::SessionNotification(_)),
         "task lifecycle stays on session updates"
     );
+    let background = duplex.next(Duration::from_secs(2)).await.expect("settled background update");
+    assert!(
+        matches!(background, acp::AgentNotification::SessionNotification(_)),
+        "background lifecycle stays on session updates"
+    );
     let stale = duplex.next(Duration::from_millis(250)).await;
     assert!(stale.is_none(), "a superseded snapshot must not be forwarded");
 
     duplex.finish().await;
 
     let captured = logs.text();
-    let record = captured
+    let records: Vec<&str> = captured
         .lines()
-        .find(|line| line.contains("Dropped superseded ACP task lifecycle update"))
-        .expect("the forwarder must report the dropped update");
-    assert!(record.contains("task_correlation="), "the diagnostic must carry a bounded correlation: {record}");
-    assert!(!record.contains("child-1"), "the task id must not reach the log: {record}");
-    assert!(!record.contains("parent-session"), "the session id must not reach the log: {record}");
+        .filter(|line| line.contains("Dropped superseded ACP task lifecycle update"))
+        .collect();
+    assert_eq!(records.len(), 2, "the forwarder must report each dropped update: {captured}");
+    for record in records {
+        assert!(record.contains("task_correlation="), "the diagnostic must carry a bounded correlation: {record}");
+        assert!(!record.contains("child-1"), "the task id must not reach the log: {record}");
+        assert!(
+            !record.contains("bg-parent-session-watcher"),
+            "the background task id must not reach the log: {record}"
+        );
+        assert!(!record.contains("parent-session"), "the session id must not reach the log: {record}");
+    }
 }

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::{field, info_span, warn};
 
-use super::redaction::detail_correlation;
+use super::redaction::{detail_correlation, elapsed_millis};
 use super::task_lifecycle::bounded_session_correlation;
 use super::{ZedAgent, lody::lody_capabilities_mut};
 
@@ -120,25 +120,26 @@ fn send_usage_update(
         .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
 
-fn usage_elapsed_ms(started_at: Instant) -> u64 {
-    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
-}
-
 /// Records a failed usage publication on its span and in the bounded metrics.
 ///
 /// The session is identified only by its bounded correlation hash. The
 /// transport or serialization error may embed provider payload, paths, URLs or
 /// personal data, so the warning carries fixed fields and a bounded digest
 /// rather than the error's rendering.
+///
+/// Both instants come from the agent's publication clock, so the reported
+/// elapsed time is a function of explicit inputs rather than the ambient
+/// process clock.
 fn record_usage_failure(
     span: &tracing::Span,
     started_at: Instant,
+    finished_at: Instant,
     metrics: &diapason_core::metrics::MetricsCollector,
     error_category: &'static str,
     session_correlation: &str,
     error: &dyn std::fmt::Display,
 ) {
-    let elapsed_ms = usage_elapsed_ms(started_at);
+    let elapsed_ms = elapsed_millis(started_at, finished_at);
     let detail = error.to_string();
     let _outcome_recorded = span.record("outcome", "failed");
     let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
@@ -175,27 +176,47 @@ impl ZedAgent {
             error_category = field::Empty
         );
         let _span_entered = span.enter();
-        let started_at = Instant::now();
+        let started_at = self.publication_clock.now();
         let model = effective_model(fallback_model, response);
         let profile = usage_profile(&self.workspace_runtime_config.custom_providers, provider, model);
         let notification = match response_usage_notification(session_id, model, response, profile) {
             Ok(Some(notification)) => notification,
             Ok(None) => {
+                let finished_at = self.publication_clock.now();
                 let _outcome_recorded = span.record("outcome", "no_usage");
-                let _elapsed_ms_recorded = span.record("elapsed_ms", usage_elapsed_ms(started_at));
+                let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at, finished_at));
                 return;
             }
             Err(error) => {
-                record_usage_failure(&span, started_at, &metrics, "serialization_failed", &session_correlation, &error);
+                let finished_at = self.publication_clock.now();
+                record_usage_failure(
+                    &span,
+                    started_at,
+                    finished_at,
+                    &metrics,
+                    "serialization_failed",
+                    &session_correlation,
+                    &error,
+                );
                 return;
             }
         };
-        if let Err(error) = client.send_ext_notification(notification) {
-            record_usage_failure(&span, started_at, &metrics, "notification_send_failed", &session_correlation, &error);
+        let send_result = client.send_ext_notification(notification);
+        let finished_at = self.publication_clock.now();
+        if let Err(error) = send_result {
+            record_usage_failure(
+                &span,
+                started_at,
+                finished_at,
+                &metrics,
+                "notification_send_failed",
+                &session_correlation,
+                &error,
+            );
             return;
         }
         let _outcome_recorded = span.record("outcome", "sent");
-        let _elapsed_ms_recorded = span.record("elapsed_ms", usage_elapsed_ms(started_at));
+        let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at, finished_at));
         metrics.record_acp_usage_notification(true);
     }
 }
