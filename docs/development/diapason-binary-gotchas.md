@@ -66,7 +66,7 @@ allocator, or request assembly.
   granted, schedule one tool-free synthesis request before ending the turn. The
   loop allowance becomes unlimited only for that recovery control pass; the
   provider request still has tools disabled. The absolute hard cap and its
-  terminal behavior remain unchanged.
+  terminal behaviour remain unchanged.
 - `tool_budget_exhausted_emitted` participates in the plan-mode
   `mark_recovery_exhausted` gates. The preflight circuit breaker in
   `turn/tool_outcomes/handlers/mod.rs` follows the same `Continue` plus

@@ -680,11 +680,11 @@ relevant sections from the files listed below based on the topic area.
   - **User Questions**: "What can you tell me about TUI Library Guide?", "How
     does What It Provides work?", "How does Current Architecture work?"
 
-- **File**: `docs/guides/COLOR_GUIDELINES.md`
-  - **Content**: Terminal Color Guidelines
+- **File**: `docs/guides/COLOUR_GUIDELINES.md`
+  - **Content**: Terminal Colour Guidelines
   - **Topics**: Standards Implemented, Configuration Reference, Light/Dark Mode
     Detection, Bold-is-Bright Compatibility, Available Themes
-  - **User Questions**: "What can you tell me about Terminal Color
+  - **User Questions**: "What can you tell me about Terminal Colour
     Guidelines?", "How does Standards Implemented work?", "How does
     Configuration Reference work?"
 

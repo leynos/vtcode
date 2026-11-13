@@ -28,7 +28,7 @@ When adding a new extension point, prefer these seams in order:
 1. `config.toml` configuration for routing or provider selection
 2. `[[custom_providers]]` for OpenAI-compatible model endpoints
 3. MCP for external tools, resources, and prompts
-4. Skills or plugin manifests for packaged behavior and discovery
+4. Skills or plugin manifests for packaged behaviour and discovery
 5. New Rust traits only when the integration is internal to Diapason runtime
    code
 
@@ -61,7 +61,7 @@ These should stay protocol- or data-driven:
 - Connecting a new hosted model endpoint
 - Exposing external tools or resources
 - Packaging reusable skills or plugins
-- Shipping org-specific behavior without recompiling Diapason
+- Shipping org-specific behaviour without recompiling Diapason
 
 Current paved paths:
 
@@ -92,6 +92,6 @@ boundary. If the fourth is "yes", stop and redesign.
 - Prefer schema-carrying registrations and manifests over compile-time wiring
   for third-party capabilities.
 - Keep adding built-in providers and tools when Diapason must own the runtime
-  behavior, but avoid making that the only path for extension.
+  behaviour, but avoid making that the only path for extension.
 - Treat new public traits as a review burden: the proposer should explain why a
   manifest, config schema, MCP server, or plugin surface is insufficient.

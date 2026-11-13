@@ -53,7 +53,7 @@ featuring:
 | Local inference | Ollama, LM Studio, llama.cpp                                                                                |
 
 See the complete [Provider Guides](./providers/PROVIDER_GUIDES.md) index for
-authentication, endpoints, model catalogs, and setup details.
+authentication, endpoints, model catalogues, and setup details.
 
 ## Documentation Overview
 
@@ -246,7 +246,7 @@ Deploying Diapason in production? Focus on enterprise features:
 ### Comprehensive Tool Suite
 
 - **File Operations** - Safe, validated file system operations
-- **Terminal Integration** - Enhanced PTY support with color-coded tool/MCP
+- **Terminal Integration** - Enhanced PTY support with colour-coded tool/MCP
   status banners and interactive commands
 - **Search & Analysis** - Fast shell search through `rg`, plus advanced bounded
   code search through `code_search`
@@ -344,7 +344,7 @@ the catalogue-label changes in its report and the shared session timeline.
 ./run.sh chat "Implement user authentication system"
 
 # Codebase analysis
-./run.sh analyze
+./run.sh analyse
 ```
 
 ### Configuration Management

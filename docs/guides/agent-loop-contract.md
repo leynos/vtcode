@@ -69,7 +69,7 @@ Failure-like tool results include hard failures, timeouts, and successful
 process responses with a non-zero exit status. Non-zero results retain their
 stdout, stderr, exit status, partial output, and spool evidence, but count as
 failures for metrics, batch summaries, and recovery diagnosis; they do not
-create a successful read-only signature. Low-signal grep/no-match behavior
+create a successful read-only signature. Low-signal grep/no-match behaviour
 remains unchanged. The existing model-facing tool response may include a bounded
 `diagnosis` object:
 
@@ -140,7 +140,7 @@ Interactive and exec runs share one authoritative persistence contract:
 | Concern          | Contract                                                                                                                                                   |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Event type       | `diapason_exec_events::ThreadEvent` is the only runtime event contract.                                                                                    |
-| Canonical path   | `<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`, with `manifest.json` and derived artifacts beside it.                            |
+| Canonical path   | `<state>/workspaces/<workspace-hash>/sessions/<session_id>/events.jsonl`, with `manifest.json` and derived artefacts beside it.                            |
 | Ordering         | One dispatch gate feeds canonical persistence and optional exporters in the same order.                                                                    |
 | Backpressure     | Canonical events use bounded non-blocking handoffs to a blocking I/O drain; queue saturation fails closed, and accepted events are never silently dropped. |
 | Shutdown         | The terminal `thread.completed` event is emitted first, then exporters finish and canonical persistence drains before success is reported.                 |
@@ -149,9 +149,9 @@ Interactive and exec runs share one authoritative persistence contract:
 
 `agent.harness.event_log_path` and exec `--events` are explicit compatibility
 exports. They do not replace the canonical store, and no global The user state
-directory's `sessions` harness artifact is created by default. ATIF and Open
+directory's `sessions` harness artefact is created by default. ATIF and Open
 Responses files, when enabled by the interactive harness, are derived under the
-canonical session's `derived/` directory. Historical global artifacts are left
+canonical session's `derived/` directory. Historical global artefacts are left
 untouched.
 
 ## Compaction Boundary
@@ -166,16 +166,16 @@ Fields:
 - `mode`: `local` or `provider`
 - `original_message_count`
 - `compacted_message_count`
-- `history_artifact_path`: optional archived history path
+- `history_artefact_path`: optional archived history path
 - `previous_segment_id` and `new_segment_id`: optional cache segment transition
 - `previous_prefix_hash` and `new_prefix_hash`: optional immutable
   prompt-prefix hashes
-- `previous_catalog_hash` and `new_catalog_hash`: optional ordered tool-catalog
-  hashes
+- `previous_catalogue_hash` and `new_catalogue_hash`: optional ordered
+  tool-catalogue hashes
 
 Each request segment freezes one system prompt, instruction digest, and
-deterministically ordered tool catalog. Ordinary turns only append messages.
-Compaction, instruction changes, catalog expansion, or primary
+deterministically ordered tool catalogue. Ordinary turns only append messages.
+Compaction, instruction changes, catalogue expansion, or primary
 model/provider/mode changes start one new segment; the immutable event archive
 is retained and local compaction seeds the new segment with its summary and
 continuity tail.
@@ -268,7 +268,7 @@ replaces the live thread and persists a durable checkpoint before rebuilding
 the provider request.
 
 The fork/branch history builder (`build_summarized_fork_history`) deliberately
-omits the continuity tail and produces a minimal resume artifact (envelope +
+omits the continuity tail and produces a minimal resume artefact (envelope +
 summary + retained users only).
 
 ### Long-running command waits and durable steering
@@ -308,7 +308,7 @@ Workspace-aware tool responses and execution summaries render paths inside the
 active workspace relative to that workspace (for example,
 `.diapason/tasks/current_task.md`). Paths outside the workspace keep their
 absolute form so diagnostics do not hide external locations. The same display
-rule is used for generated planning artifacts and handles canonical workspace
+rule is used for generated planning artefacts and handles canonical workspace
 paths reached through symlinks; planning lifecycle events reuse the same
 display value, and it does not change the path used for I/O.
 
@@ -345,7 +345,7 @@ includes:
 - `mode`
 - `original_message_count`
 - `compacted_message_count`
-- `history_artifact_path`
+- `history_artefact_path`
 - `transcript_path`
 
 `session_start` with source `compact` remains supported for compatibility, but
@@ -354,15 +354,15 @@ includes:
 ## Orient Phase
 
 Every session should begin by gathering orientation context from external
-artifacts. This follows the long-running harness pattern: the agent reads the
-progress ledger, harness artifacts, loop memory, and git log to understand the
+artefacts. This follows the long-running harness pattern: the agent reads the
+progress ledger, harness artefacts, loop memory, and git log to understand the
 current state before acting.
 
 The orient phase produces an `OrientationContext` (see
 `crates/codegen/diapason-core/src/core/agent/bootstrap.rs`) that includes:
 
 - Progress ledger summary (goal, completion ratio, confidence, stall status)
-- Harness artifact summaries (spec, contract, sprint contract, evaluation,
+- Harness artefact summaries (spec, contract, sprint contract, evaluation,
   outcome verification)
 - Recent git log (last 5 commits)
 - Loop memory notes and decisions from previous iterations
@@ -401,7 +401,7 @@ These Diapason settings line up with common agent-loop controls:
 - Permission policy: workspace trust, human-in-the-loop settings, granular
   agent rules, and full automation allow-lists
 - Effort: provider/model reasoning settings
-- Tool discovery: MCP and tool catalog flows
+- Tool discovery: MCP and tool catalogue flows
 - Resume and fork continuity: session archives, thread bootstrap, and
   compaction envelopes
 
@@ -410,7 +410,7 @@ These Diapason settings line up with common agent-loop controls:
 Context reset is a context engineering technique **distinct from compaction**.
 While compaction preserves conversational continuity within the same task,
 context reset deliberately discards conversation history so a fresh agent can
-reorient from durable artifacts only.
+reorient from durable artefacts only.
 
 ### When It Triggers
 
@@ -433,19 +433,19 @@ When a reset triggers:
    history is carried forward.
 3. The orient phase reads the manifest and prepends a `### Context Reset`
    banner: "This session starts from a clean context. Reorient from the
-   artifacts below."
+   artefacts below."
 
-### Artifacts That Survive a Reset
+### Artefacts That Survive a Reset
 
-All durable artifacts persist across a reset:
+All durable artefacts persist across a reset:
 
 - Progress ledger (`crates/codegen/diapason-memory/src/progress.rs`)
-- Harness artifacts (spec, contract, feature list, evaluation, sprint contract)
+- Harness artefacts (spec, contract, feature list, evaluation, sprint contract)
 - Loop memory (notes, decisions)
 - Git log and working tree state
 - Compaction summary
 
-The comparison with compaction is summarised in [Context Reset](#context-reset).
+The comparison with compaction is summarized in [Context Reset](#context-reset).
 
 ## Loop Engineering Additions
 

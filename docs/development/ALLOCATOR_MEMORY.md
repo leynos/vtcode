@@ -1,4 +1,4 @@
-# Allocator & Memory Behavior
+# Allocator & Memory Behaviour
 
 Diapason runs a bursty, sparse workload: `Semaphore`-capped concurrency with
 `JoinSet` fans-out of many short-lived Tokio tasks, then workers go idle
@@ -45,8 +45,8 @@ cargo run --release --bin diapason --features allocator-jemalloc -- bench-alloca
 
 ## Allocation throughput trade-off (measured)
 
-`jemalloc` trades allocation speed for better memory behavior. Measured on macOS
-(`cargo bench --bench allocator_throughput`, `release-fast`):
+`jemalloc` trades allocation speed for better memory behaviour. Measured on
+macOS (`cargo bench --bench allocator_throughput`, `release-fast`):
 
 | Benchmark                     | mimalloc | jemalloc | Delta                 |
 | ----------------------------- | -------- | -------- | --------------------- |

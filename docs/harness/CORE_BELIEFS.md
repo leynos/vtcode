@@ -149,7 +149,7 @@ Agents should recognize when they are uncertain and surface it early.
 
 ## 11. Post-Deployment Observability
 
-Pre-deployment evaluations are necessary but insufficient. Agent behavior is
+Pre-deployment evaluations are necessary but insufficient. Agent behaviour is
 co-constructed by model capability, product design, and user trust.
 
 - **Systematic Monitoring**: Build privacy-preserving infrastructure to monitor
@@ -166,7 +166,7 @@ pass. An agent saying "feature complete" is meaningless; what matters is
 whether the feature works in the environment.
 
 - **Verification Proof**: Every completion claim must be backed by actual
-  command output (test results, build output, runtime behavior).
+  command output (test results, build output, runtime behaviour).
 - **Outcome Over Assertion**: The harness records what verification commands
   were run and what their actual output was, not what the agent claims happened.
 - **Sprint Contracts**: Before implementation begins, generator and evaluator
@@ -177,10 +177,10 @@ whether the feature works in the environment.
 
 An agent that acts without orienting is likely to repeat work, miss context, or
 make wrong assumptions. Every session should begin by reading external
-artifacts to understand the current state.
+artefacts to understand the current state.
 
-- **Read the Artifacts**: Progress ledger, harness artifacts, loop memory, git
-  log, and handoff context exist so the agent can orient without re-exploring
+- **Read the Artefacts**: Progress ledger, harness artefacts, loop memory, git
+  log, and handoff context exist, so the agent can orient without re-exploring
   from scratch.
 - **Just-in-Time Context**: Load references (paths, commit hashes, summaries)
   rather than full content. The orient phase gathers what's needed; the agent
