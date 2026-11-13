@@ -1,4 +1,8 @@
 CARGO ?= cargo
+PYTHON ?= python3
+YAMLLINT ?= yamllint
+ACTIONLINT ?= actionlint
+UV ?= uv
 BUILD_JOBS ?= --jobs 6
 NEXTEST_PROFILE ?= default
 
@@ -15,8 +19,9 @@ MDLINT ?= $(shell command -v markdownlint-cli2 2>/dev/null || printf '%s' "$$HOM
 
 .NOTPARALLEL:
 
-.PHONY: check check-fmt fmt lint lint-clippy lint-docs lint-policies lint-shell \
-	advisory build typecheck test test-harness check-ast-grep
+.PHONY: check check-fmt fmt test-github-actions-validation lint lint-clippy \
+	lint-docs lint-policies lint-shell github-actions-lint advisory build \
+	typecheck test test-harness check-ast-grep
 
 # Run the complete local release/PR gate in the same sequential order as the
 # existing scripts/check.sh checks.
@@ -32,7 +37,15 @@ fmt:
 	$(MDTABLEFIX) --in-place $(MDTABLEFIX_SELECT) $(MDTABLEFIX_RULES)
 	$(MDLINT) --fix "**/*.md"
 
-lint: lint-shell lint-policies lint-clippy lint-docs
+test-github-actions-validation:
+	PYTHONPATH=scripts $(UV) run --no-project --with 'PyYAML==6.0.3' $(PYTHON) -m unittest \
+		discover -s scripts/tests -p 'test_github_actions_validation*.py'
+
+lint: lint-shell lint-policies github-actions-lint lint-clippy lint-docs
+
+github-actions-lint:
+	$(YAMLLINT) --config-file .yamllint.yml .github/workflows
+	$(ACTIONLINT)
 
 lint-shell:
 	for script in scripts/*.sh scripts/**/*.sh; do \
