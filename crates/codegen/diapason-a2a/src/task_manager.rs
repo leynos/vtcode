@@ -444,7 +444,10 @@ mod tests {
         );
 
         let result = manager.cancel_task(&task.id).await;
-        drop(result.unwrap_err());
+        let err = result.expect_err("cancelling a completed task must fail");
+        assert!(matches!(err, A2aError::TaskNotCancellable(_)), "unexpected error variant: {err:?}");
+        assert_eq!(i32::from(err.code()), -32002);
+        assert!(err.to_string().contains(&task.id), "error should name the task: {err}");
     }
 
     #[tokio::test]

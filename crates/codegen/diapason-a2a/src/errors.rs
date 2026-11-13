@@ -228,8 +228,8 @@ mod tests {
 
     #[test]
     fn test_task_not_cancellable_code_and_display() {
-        assert_eq!(i32::from(A2aErrorCode::TaskNotCancellable), TASK_NOT_CANCELLABLE_ERROR);
-        assert_eq!(A2aErrorCode::from(TASK_NOT_CANCELLABLE_ERROR), A2aErrorCode::TaskNotCancellable);
+        assert_eq!(i32::from(A2aErrorCode::TaskNotCancellable), -32002);
+        assert_eq!(A2aErrorCode::from(-32002), A2aErrorCode::TaskNotCancellable);
         assert_eq!(A2aErrorCode::TaskNotCancellable.to_string(), "Task not cancellable");
 
         let err = A2aError::TaskNotCancellable("task-123".to_string());

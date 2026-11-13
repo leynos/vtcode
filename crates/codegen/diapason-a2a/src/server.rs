@@ -907,4 +907,47 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn test_tasks_cancel_rpc_returns_historical_canceled_state() {
+        let state = A2aServerState::diapason_default("http://localhost:8080");
+        let task = state.task_manager.create_task(None).await;
+
+        let request = JsonRpcRequest::with_numeric_id(METHOD_TASKS_CANCEL, Some(serde_json::json!({"id": task.id})), 7);
+        let Ok(Json(response)) = handle_rpc(State(state), Json(request)).await else {
+            panic!("tasks/cancel should succeed");
+        };
+
+        assert!(response.error.is_none(), "unexpected error: {:?}", response.error);
+        assert_eq!(
+            response
+                .result
+                .as_ref()
+                .and_then(|r| r.get("status"))
+                .and_then(|s| s.get("state"))
+                .and_then(Value::as_str),
+            Some("canceled")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tasks_cancel_rpc_rejects_terminal_task() {
+        let state = A2aServerState::diapason_default("http://localhost:8080");
+        let task = state.task_manager.create_task(None).await;
+        drop(
+            state
+                .task_manager
+                .update_status(&task.id, TaskState::Completed, None)
+                .await
+                .expect("complete"),
+        );
+
+        let request = JsonRpcRequest::with_numeric_id(METHOD_TASKS_CANCEL, Some(serde_json::json!({"id": task.id})), 7);
+        let Err(error_response) = handle_rpc(State(state), Json(request)).await else {
+            panic!("terminal task should not be cancelled");
+        };
+
+        assert_eq!(error_response.status_code, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error_response.response.error.as_ref().expect("error body").code, -32002);
+    }
 }
