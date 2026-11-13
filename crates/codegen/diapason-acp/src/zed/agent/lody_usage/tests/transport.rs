@@ -50,7 +50,7 @@ async fn sends_usage_through_the_official_acp_extension_channel() {
         )
         .connect_with(client_channel, async move |_cx: ConnectionTo<Agent>| {
             client_ready.notify_one();
-            let notification = tokio::time::timeout(std::time::Duration::from_secs(2), received_rx.recv())
+            let notification = tokio::time::timeout(Duration::from_secs(2), received_rx.recv())
                 .await
                 .expect("usage notification deadline")
                 .expect("usage notification");
@@ -71,7 +71,7 @@ async fn sends_usage_through_the_official_acp_extension_channel() {
             Ok(())
         });
 
-    tokio::time::timeout(std::time::Duration::from_secs(3), client_connection)
+    tokio::time::timeout(Duration::from_secs(3), client_connection)
         .await
         .expect("client connection deadline")
         .expect("client connection");
