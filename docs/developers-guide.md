@@ -34,7 +34,10 @@ Rust APIs use the native `catalogue` spelling: `ToolCatalogue`,
 `catalogue_provider_keys`, `is_model_catalogue_eligible`,
 `validate_prompt_catalogue_alignment`, `ToolRegistry::tool_catalogue_state`,
 `ToolRegistration::with_catalogue_source`, `ToolRegistration::catalogue_source`,
-`SessionRequestEnvelope::catalogue_hash`, `ResolvedModel::catalogue`, and the
+`SessionRequestEnvelope::catalogue_hash`,
+`HarnessRequestPlan::tool_catalogue_hash`,
+`HarnessRequestPlanInput::tool_catalogue_hash`,
+`SegmentBoundaryReason::ToolCatalogueEpoch`, `ResolvedModel::catalogue`, and the
 `agent::tool_catalogue`, `handlers::session_tool_catalogue`,
 `providers::merge_gateway_catalogue`, `tool_catalogue_facade` and
 `pods::catalogue` modules. The old spellings are removed rather than
