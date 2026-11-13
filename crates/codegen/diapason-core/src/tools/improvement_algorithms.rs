@@ -218,11 +218,11 @@ impl MLScoreComponents {
         self
     }
 
-    /// Return a 7-element feature vector, normalised for ML consumption.
+    /// Return a 7-element feature vector, normalized for ML consumption.
     ///
     /// # Dimension key
     ///
-    /// | Index | Name              | Meaning                          | Normalisation      |
+    /// | Index | Name              | Meaning                          | Normalization      |
     /// |-------|-------------------|----------------------------------|--------------------|
     /// | 0     | `success_rate`    | Fraction of successful calls     | `[0, 1]`           |
     /// | 1     | `avg_exec_time`   | Mean execution time (ms)         | `/ 10_000`         |

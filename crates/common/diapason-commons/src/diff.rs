@@ -34,7 +34,7 @@ pub fn compute_diff_chunks<'a>(old: &'a str, new: &'a str) -> Vec<Chunk<'a>> {
         return vec![Chunk::Delete(old)];
     }
 
-    // Strip common prefix first (optimisation).
+    // Strip common prefix first (optimization).
     let prefix_byte_len: usize = old
         .chars()
         .zip(new.chars())

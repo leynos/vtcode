@@ -104,7 +104,7 @@ impl RetryManager {
         // Primary model retry loop — structure kept inline because the
         // orchestrator's `operation: Fn` cannot be passed to
         // `run_with_retry` (which requires `FnMut` + `Send` futures).
-        // The `RetryObserver` centralises the bookkeeping so the loop
+        // The `RetryObserver` centralizes the bookkeeping so the loop
         // stays DRY at the observability layer.
         for attempt in 0..policy.max_attempts {
             observer.observe(RetryEvent::AttemptStart { attempt, max_attempts: policy.max_attempts });
