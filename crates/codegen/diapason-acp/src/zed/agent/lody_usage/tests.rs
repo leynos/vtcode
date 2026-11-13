@@ -11,6 +11,7 @@ use diapason_config::{
     CustomProviderApiFormat, CustomProviderConfig, CustomProviderPricingConfig, CustomProviderProfileConfig,
 };
 use proptest::prelude::*;
+use std::time::Duration;
 use tokio::sync::{Notify, mpsc};
 
 #[path = "tests/transport.rs"]
@@ -305,12 +306,18 @@ impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for CapturedWarn {
     }
 }
 
+/// Interval between the two publication-clock reads in the failure case.
+const FAILURE_STEP_MS: u64 = 275;
+
 /// A usage-publication failure logs fixed fields and bounded values only.
 ///
 /// The send error can embed provider payload, archive paths, or credentials,
 /// so the warning records its size and a digest rather than its rendering. The
 /// session is client-visible too, so the record carries a bounded correlation
 /// instead of the identifier the client supplied.
+///
+/// The two instants are the publication clock's own reads, so the reported
+/// duration is a function of explicit inputs rather than of the wall clock.
 #[test]
 fn usage_publication_failure_logs_a_bounded_diagnostic() {
     let logs = CapturedWarn::new();
@@ -324,12 +331,14 @@ fn usage_publication_failure_logs_a_bounded_diagnostic() {
     let session_correlation = bounded_session_correlation(&acp::SessionId::new(Arc::from(session_id)));
     let detail = "transport rejected /home/user/private/session.json while forwarding sk-live-secret";
 
+    let started_at = Instant::now();
     tracing::subscriber::with_default(subscriber, || {
         let span = info_span!("acp_lody_usage_notification");
         let _entered = span.enter();
         record_usage_failure(
             &span,
-            Instant::now(),
+            started_at,
+            started_at + Duration::from_millis(FAILURE_STEP_MS),
             &metrics,
             "notification_send_failed",
             &session_correlation,
@@ -353,6 +362,10 @@ fn usage_publication_failure_logs_a_bounded_diagnostic() {
     assert!(
         captured.contains(&format!("error_bytes={}", detail.len())),
         "the error size must be measured rather than rendered: {captured}"
+    );
+    assert!(
+        captured.contains(&format!("elapsed_ms={FAILURE_STEP_MS}")),
+        "the failure duration must be the injected interval, not the wall clock: {captured}"
     );
     assert!(
         captured.contains(&detail_correlation(detail)),
