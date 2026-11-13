@@ -93,8 +93,8 @@ about 4,000 tokens.
 
 ### When are tools deferred?
 
-Deferral is decided per-catalog by `SessionToolCatalog::model_tools`. A tool is
-flagged `defer_loading = true` when **all** of the following hold:
+Deferral is decided per-catalogue by `SessionToolCatalogue::model_tools`. A
+tool is flagged `defer_loading = true` when **all** of the following hold:
 
 1. The tool is not a core builtin (e.g. `exec_command`, `write_stdin`, or the
    active discovery tools) and is not listed in `always_available_tools`.

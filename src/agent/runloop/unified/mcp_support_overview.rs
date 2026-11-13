@@ -280,6 +280,9 @@ pub(crate) async fn display_mcp_tools(renderer: &mut AnsiRenderer, tool_registry
     Ok(())
 }
 
+/// Refresh the MCP tool index and report how many tools were indexed. Returns
+/// `true` when the refresh succeeded and `false` when it failed, in which case
+/// an error is rendered.
 pub(crate) async fn refresh_mcp_tools(renderer: &mut AnsiRenderer, tool_registry: &mut ToolRegistry) -> Result<bool> {
     renderer.line(MessageStyle::Status, "Refreshing MCP tool index…")?;
     match tool_registry.refresh_mcp_tools().await {
@@ -292,7 +295,7 @@ pub(crate) async fn refresh_mcp_tools(renderer: &mut AnsiRenderer, tool_registry
                     renderer.line(MessageStyle::Error, &format!("Refreshed but failed to list tools: {err}"))?;
                 }
             }
-            renderer.line(MessageStyle::Info, "Use /mcp tools to inspect the refreshed catalog.")?;
+            renderer.line(MessageStyle::Info, "Use /mcp tools to inspect the refreshed catalogue.")?;
             Ok(true)
         }
         Err(err) => {

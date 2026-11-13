@@ -1,4 +1,4 @@
-//! Hash utilities for tool catalog and system prompt caching.
+//! Hash utilities for tool catalogue and system prompt caching.
 //!
 //! Provides hashing functions for tool definitions, system prompts, and
 //! low-signal attempt deduplication keys.
@@ -34,13 +34,17 @@ pub fn hash_tool_definitions(tools: Option<&[ToolDefinition]>) -> Option<u64> {
 
 /// Compute a stable hash of the system prompt prefix.
 ///
-/// Strips runtime sections (tool catalog, context, active tools) so the hash
+/// Strips runtime sections (tool catalogue, context, active tools) so the hash
 /// remains stable across turns even as runtime context changes.
 pub fn stable_system_prefix_hash(system_prompt: &str) -> u64 {
     let stable_prefix = system_prompt
         .split("\n## Active Tools\n")
         .next()
         .unwrap_or(system_prompt)
+        .split("\n[Runtime Tool Catalogue]\n")
+        .next()
+        .unwrap_or(system_prompt)
+        // Prompts supplied by embedders may still carry the pre-rename section.
         .split("\n[Runtime Tool Catalog]\n")
         .next()
         .unwrap_or(system_prompt)
@@ -113,5 +117,54 @@ impl<H: Hasher> std::io::Write for HasherWriter<'_, H> {
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+/// Tests for the stable system-prefix hash contract.
+///
+/// The hash must ignore runtime catalogue metadata, including the pre-rename
+/// section, while still changing when the stable prompt prefix changes.
+#[cfg(test)]
+mod tests {
+    use super::stable_system_prefix_hash;
+
+    #[test]
+    fn stable_prefix_hash_ignores_runtime_catalogue_metadata() {
+        let earlier = "Stable guidance.\n[Runtime Tool Catalogue]\n- version: 1\n- epoch: 2\n";
+        let later = "Stable guidance.\n[Runtime Tool Catalogue]\n- version: 9\n- epoch: 42\n";
+
+        assert_eq!(stable_system_prefix_hash(earlier), stable_system_prefix_hash(later));
+    }
+
+    #[test]
+    fn stable_prefix_hash_ignores_legacy_runtime_catalogue_metadata() {
+        let earlier = "Stable guidance.\n[Runtime Tool Catalog]\n- version: 1\n";
+        let later = "Stable guidance.\n[Runtime Tool Catalog]\n- version: 2\n";
+
+        assert_eq!(stable_system_prefix_hash(earlier), stable_system_prefix_hash(later));
+    }
+
+    #[test]
+    fn stable_prefix_hash_changes_with_the_stable_prefix() {
+        assert_ne!(
+            stable_system_prefix_hash("Stable guidance for a reviewer."),
+            stable_system_prefix_hash("Stable guidance for an implementer.")
+        );
+    }
+
+    #[test]
+    fn stable_prefix_hash_ignores_appended_catalogue_metadata() {
+        let prefix = "Stable guidance.";
+        let with_metadata = "Stable guidance.\n[Runtime Tool Catalogue]\n- version: 3\n- epoch: 4\n";
+
+        assert_eq!(stable_system_prefix_hash(prefix), stable_system_prefix_hash(with_metadata));
+    }
+
+    #[test]
+    fn stable_prefix_hash_distinguishes_prefixes_with_catalogue_header() {
+        let reviewer = "Stable guidance for a reviewer.\n[Runtime Tool Catalogue]\n- version: 1\n";
+        let implementer = "Stable guidance for an implementer.\n[Runtime Tool Catalogue]\n- version: 1\n";
+
+        assert_ne!(stable_system_prefix_hash(reviewer), stable_system_prefix_hash(implementer));
     }
 }

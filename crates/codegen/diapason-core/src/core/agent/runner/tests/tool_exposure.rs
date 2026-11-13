@@ -616,7 +616,7 @@ async fn review_tool_allowlist_expands_wildcard_read_only() {
 }
 
 fn assert_task_tracker_snapshot_schema(
-    snapshot: &SessionToolCatalogSnapshot,
+    snapshot: &SessionToolCatalogueSnapshot,
     expected_minimum: u64,
     expected_pattern: &str,
 ) {

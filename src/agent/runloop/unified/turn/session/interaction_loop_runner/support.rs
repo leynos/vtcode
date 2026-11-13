@@ -1024,6 +1024,8 @@ pub(crate) async fn handle_select_primary_agent(
     Ok(())
 }
 
+/// Forward the interaction-loop context into the shared primary-agent runtime
+/// synchronisation so both handoff paths apply identical updates.
 async fn sync_primary_agent_runtime(
     ctx: &mut InteractionLoopContext<'_>,
     state: &mut InteractionState<'_>,
@@ -1037,8 +1039,8 @@ async fn sync_primary_agent_runtime(
         async_mcp_manager: ctx.async_mcp_manager.as_ref(),
         tool_registry: ctx.tool_registry,
         tools: ctx.tools,
-        tool_catalog: ctx.tool_catalog,
-        mcp_catalog_initialized: state.mcp_catalog_initialized,
+        tool_catalogue: ctx.tool_catalogue,
+        mcp_catalogue_initialized: state.mcp_catalogue_initialized,
         pending_mcp_refresh: state.pending_mcp_refresh,
         provider_client: &**ctx.provider_client,
     };

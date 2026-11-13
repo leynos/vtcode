@@ -107,7 +107,7 @@ diapason-core/src/core/agent/session/mod.rs:439 | delta >= 0 checked above
 diapason-core/src/core/agent/session/mod.rs:561 | serde_json::to_string on Value; infallible
 diapason-core/src/core/loop_detector/normalization.rs:79 | tokens.len() >= 2 checked above
 diapason-core/src/exec/code_executor.rs:312 | builtin_names implies a builtin executor
-diapason-core/src/pods/manager.rs:446 | pod manager home directory; default impl
+diapason-core/src/pods/manager.rs:453 | pod manager home directory; default impl
 diapason-core/src/tools/registry/distributed.rs:47 | OnceCell initialized after first set() call
 diapason-core/src/tools/search_runtime.rs:86 | cache capacity is a non-zero constant
 diapason-core/src/tools/skills/mod.rs:635 | filtered to skills with manifests
@@ -167,5 +167,5 @@ diapason-llm/src/providers/openai/responses_api.rs:252 | tool_call_id present wh
 
 # Binary invariants.
 src/agent/runloop/model_picker/rendering.rs:54 | rendering rows are laid out before draw
-src/agent/runloop/unified/session_setup/init.rs:518 | MCP config requires a loaded DiapasonConfig
+src/agent/runloop/unified/session_setup/init.rs:521 | MCP config requires a loaded DiapasonConfig
 

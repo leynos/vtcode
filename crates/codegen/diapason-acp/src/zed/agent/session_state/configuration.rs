@@ -4,7 +4,7 @@ mod update;
 
 use super::super::ZedAgent;
 use crate::acp;
-use crate::zed::helpers::{PrimaryAgentCatalog, session_config_options};
+use crate::zed::helpers::{PrimaryAgentCatalogue, session_config_options};
 use crate::zed::types::{SessionHandle, lock_poison_error};
 use anyhow::Context;
 use diapason_core::config::models::{ModelId, Provider};
@@ -57,7 +57,7 @@ impl ZedAgent {
     pub(super) fn session_primary_agent_for_thread(
         &self,
         thread: &diapason_core::core::threads::ThreadRuntimeHandle,
-        primary_agents: &PrimaryAgentCatalog,
+        primary_agents: &PrimaryAgentCatalogue,
     ) -> String {
         thread
             .metadata()

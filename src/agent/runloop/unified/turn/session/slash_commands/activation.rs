@@ -33,6 +33,9 @@ pub(super) async fn ensure_mcp_activated(ctx: &mut SlashCommandContext<'_>) -> R
     Ok(())
 }
 
+/// Attach the MCP client and refresh the tool snapshot if MCP initialisation has
+/// completed. Returns `true` when a client is attached, and renders an error
+/// when initialisation failed.
 pub(super) async fn try_attach_ready_mcp(ctx: &mut SlashCommandContext<'_>) -> Result<bool> {
     let Some(manager) = ctx.async_mcp_manager else {
         return Ok(false);
@@ -56,14 +59,14 @@ pub(super) async fn try_attach_ready_mcp(ctx: &mut SlashCommandContext<'_>) -> R
                     refresh_tool_snapshot(
                         ctx.tool_registry,
                         ctx.tools,
-                        ctx.tool_catalog,
+                        ctx.tool_catalogue,
                         ctx.config,
                         ctx.vt_cfg.as_ref(),
                         tool_documentation_mode,
                         &deferred_tool_policy,
                     )
                     .await;
-                    ctx.tool_catalog.mark_pending_refresh("mcp_background_refresh");
+                    ctx.tool_catalogue.mark_pending_refresh("mcp_background_refresh");
                 }
                 sync_mcp_context_files(ctx, &client).await?;
             }

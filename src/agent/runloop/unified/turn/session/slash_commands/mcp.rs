@@ -95,6 +95,8 @@ async fn execute_mcp_action(ctx: &mut SlashCommandContext<'_>, action: McpComman
     Ok(())
 }
 
+/// Refresh the model tool snapshot after a manual MCP refresh and note the
+/// explicit refresh in the tool catalogue with the given reason.
 pub(super) async fn apply_manual_mcp_refresh(ctx: &mut SlashCommandContext<'_>, reason: &'static str) {
     let tool_documentation_mode = ctx
         .vt_cfg
@@ -106,14 +108,14 @@ pub(super) async fn apply_manual_mcp_refresh(ctx: &mut SlashCommandContext<'_>, 
     refresh_tool_snapshot(
         ctx.tool_registry,
         ctx.tools,
-        ctx.tool_catalog,
+        ctx.tool_catalogue,
         ctx.config,
         ctx.vt_cfg.as_ref(),
         tool_documentation_mode,
         &deferred_tool_policy,
     )
     .await;
-    ctx.tool_catalog.note_explicit_refresh(reason);
+    ctx.tool_catalogue.note_explicit_refresh(reason);
 }
 
 async fn run_interactive_mcp_manager(ctx: &mut SlashCommandContext<'_>) -> Result<()> {

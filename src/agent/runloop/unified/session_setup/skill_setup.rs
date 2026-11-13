@@ -1,6 +1,6 @@
 use crate::agent::runloop::ResumeSession;
 use crate::agent::runloop::unified::session_setup::init::refresh_tool_snapshot;
-use crate::agent::runloop::unified::tool_catalog::{ToolCatalogState, tool_catalog_change_notifier};
+use crate::agent::runloop::unified::tool_catalogue::{ToolCatalogueState, tool_catalogue_change_notifier};
 use anyhow::{Context, Result};
 use diapason_config::constants::tools as tool_constants;
 use diapason_core::config::loader::DiapasonConfig;
@@ -9,7 +9,7 @@ use diapason_core::llm::provider as uni;
 use diapason_core::tools::ToolRegistry;
 use diapason_core::tools::handlers::{DeferredToolPolicy, ToolModelCapabilities};
 use diapason_core::tools::native_cgp_tool_factory;
-use diapason_core::tools::registry::ToolCatalogSource;
+use diapason_core::tools::registry::ToolCatalogueSource;
 use hashbrown::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -36,10 +36,13 @@ pub(crate) async fn discover_skills(config: &CoreAgentConfig, resume: Option<&Re
     SkillSetupState { active_skills_map }
 }
 
+/// Register the skill tools and refresh the model tool snapshot. The skill
+/// runtime shares the registry, tool catalogue, and fork executor with the
+/// session.
 pub(crate) async fn register_skill_tools(
     tool_registry: &mut ToolRegistry,
     tools: &Arc<RwLock<Vec<uni::ToolDefinition>>>,
-    tool_catalog: &Arc<ToolCatalogState>,
+    tool_catalogue: &Arc<ToolCatalogueState>,
     config: &CoreAgentConfig,
     vt_cfg: Option<&DiapasonConfig>,
     tool_documentation_mode: diapason_core::config::ToolDocumentationMode,
@@ -52,7 +55,7 @@ pub(crate) async fn register_skill_tools(
         Some(Arc::clone(tools)),
         tool_documentation_mode,
         ToolModelCapabilities::for_model_name(&config.model),
-        Some(tool_catalog_change_notifier(tool_catalog)),
+        Some(tool_catalogue_change_notifier(tool_catalogue)),
     )
     .with_tool_profile(vt_cfg.map(|cfg| cfg.tools.profile).unwrap_or_default())
     .with_fork_executor(Arc::new(diapason_core::skills::executor::ChildAgentSkillExecutor::new(
@@ -82,7 +85,7 @@ pub(crate) async fn register_skill_tools(
     refresh_tool_snapshot(
         tool_registry,
         tools,
-        tool_catalog,
+        tool_catalogue,
         config,
         vt_cfg,
         tool_documentation_mode,
@@ -92,6 +95,8 @@ pub(crate) async fn register_skill_tools(
     Ok(())
 }
 
+/// Register the `list_skills` tool, wiring both the built-in registration and
+/// its native per-call factory.
 async fn register_list_skills_tool(
     tool_registry: &mut ToolRegistry,
     workspace_root: std::path::PathBuf,
@@ -104,7 +109,7 @@ async fn register_list_skills_tool(
         diapason_core::config::types::CapabilityLevel::Basic,
         list_skills_tool,
     )
-    .with_catalog_source(ToolCatalogSource::Builtin)
+    .with_catalogue_source(ToolCatalogueSource::Builtin)
     .with_native_cgp_factory(native_cgp_tool_factory({
         let workspace_root = workspace_root.clone();
         let active_skills_map = Arc::clone(&active_skills_map);
@@ -119,6 +124,7 @@ async fn register_list_skills_tool(
     Ok(())
 }
 
+/// Register the `load_skill_resource` tool against the shared active-skills map.
 async fn register_load_skill_resource_tool(
     tool_registry: &mut ToolRegistry,
     active_skills_map: Arc<RwLock<HashMap<String, diapason_core::skills::types::Skill>>>,
@@ -129,7 +135,7 @@ async fn register_load_skill_resource_tool(
         diapason_core::config::types::CapabilityLevel::Basic,
         load_resource_tool,
     )
-    .with_catalog_source(ToolCatalogSource::Builtin)
+    .with_catalogue_source(ToolCatalogueSource::Builtin)
     .with_native_cgp_factory(native_cgp_tool_factory({
         let active_skills_map = Arc::clone(&active_skills_map);
         move || diapason_core::tools::skills::LoadSkillResourceTool::new(Arc::clone(&active_skills_map))
@@ -141,6 +147,8 @@ async fn register_load_skill_resource_tool(
     Ok(())
 }
 
+/// Register the `load_skill` tool, passing the skill session runtime into both
+/// the built-in registration and its native factory.
 async fn register_load_skill_tool(
     tool_registry: &mut ToolRegistry,
     workspace_root: std::path::PathBuf,
@@ -157,7 +165,7 @@ async fn register_load_skill_tool(
         diapason_core::config::types::CapabilityLevel::Basic,
         load_skill_tool,
     )
-    .with_catalog_source(ToolCatalogSource::Builtin)
+    .with_catalogue_source(ToolCatalogueSource::Builtin)
     .with_native_cgp_factory(native_cgp_tool_factory({
         let workspace_root = workspace_root.clone();
         let active_skills_map = Arc::clone(&active_skills_map);

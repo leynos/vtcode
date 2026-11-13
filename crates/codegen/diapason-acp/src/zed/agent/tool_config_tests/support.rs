@@ -1,6 +1,6 @@
 //! Shared setup helpers for Zed ACP tool configuration tests.
 use super::super::{ZedAgent, ZedAgentSetup};
-use crate::zed::helpers::PrimaryAgentCatalog;
+use crate::zed::helpers::PrimaryAgentCatalogue;
 use diapason_config::auth::AuthCredentialsStoreMode;
 use diapason_config::{SubagentDiscoveryInput, discover_subagents};
 use diapason_core::config::core::PromptCachingConfig;
@@ -35,7 +35,7 @@ pub(super) async fn build_agent_with_config(
     let mut discovery_input = SubagentDiscoveryInput::new(workspace.to_path_buf());
     discovery_input.include_user_agents = false;
     let discovered = discover_subagents(&discovery_input).expect("discover primary agents");
-    let primary_agents = PrimaryAgentCatalog::from_specs_with_default(&discovered.effective, "duck");
+    let primary_agents = PrimaryAgentCatalogue::from_specs_with_default(&discovered.effective, "duck");
 
     Box::pin(ZedAgent::new(ZedAgentSetup {
         config: core_config,

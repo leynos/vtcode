@@ -6,7 +6,7 @@
 //!
 //! # Design Principles
 //!
-//! - **One trait per concern**: security, PTY, MCP, resilience, catalog, metrics.
+//! - **One trait per concern**: security, PTY, MCP, resilience, catalogue, metrics.
 //! - **Async where needed**: methods that touch I/O or locks are `async`.
 //! - **Send + Sync bounds**: all traits require thread-safety for `Arc<dyn Trait>` usage.
 //! - **Return owned types**: avoid lifetime entanglement with the implementor.
@@ -162,16 +162,16 @@ pub trait ToolResilience: Send + Sync {
 }
 
 // ============================================================================
-// Tool Catalog (Registration, Lookup, Schema)
+// Tool Catalogue (Registration, Lookup, Schema)
 // ============================================================================
 
-/// Tool catalog: registration, lookup, and schema access.
+/// Tool catalogue: registration, lookup, and schema access.
 ///
-/// The catalog is the source of truth for which tools are available and how
+/// The catalogue is the source of truth for which tools are available and how
 /// to invoke them. It supports dynamic registration (e.g., MCP tools added
 /// at runtime) and provides schema information for LLM tool-calling.
 #[async_trait::async_trait]
-pub trait ToolCatalog: Send + Sync {
+pub trait ToolCatalogue: Send + Sync {
     /// Register a tool. Replaces any existing registration with the same name.
     async fn register_tool(&self, registration: ToolRegistration) -> Result<()>;
 
@@ -229,7 +229,7 @@ pub trait ToolMetrics: Send + Sync {
 ///
 /// Use this as a bound when a consumer needs access to the complete registry
 /// surface. For narrower needs, prefer the individual traits
-/// (`ToolCatalog`, `ToolSecurity`, etc.) to reduce coupling.
+/// (`ToolCatalogue`, `ToolSecurity`, etc.) to reduce coupling.
 ///
 /// # Migration Guide
 ///
@@ -243,7 +243,7 @@ pub trait ToolMetrics: Send + Sync {
 ///
 /// `ToolRegistry` implements this supertrait automatically.
 pub trait ToolRegistryApi:
-    ToolSecurity + PtySessionControl + McpBridge + ToolResilience + ToolCatalog + ToolMetrics + Send + Sync + 'static
+    ToolSecurity + PtySessionControl + McpBridge + ToolResilience + ToolCatalogue + ToolMetrics + Send + Sync + 'static
 {
 }
 
@@ -254,7 +254,7 @@ impl<T> ToolRegistryApi for T where
         + PtySessionControl
         + McpBridge
         + ToolResilience
-        + ToolCatalog
+        + ToolCatalogue
         + ToolMetrics
         + Send
         + Sync

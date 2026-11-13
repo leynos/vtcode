@@ -79,6 +79,9 @@ pub(super) struct TurnRequestSnapshot {
     pub client_local_tool_deferral: bool,
 }
 
+/// Captures the immutable per-turn request snapshot from the current context,
+/// resolving the effective model, provider capabilities, and deferred-tool
+/// policy. The snapshot is reused for prompt assembly and request building.
 pub(super) fn capture_turn_request_snapshot(
     ctx: &mut TurnProcessingContext<'_>,
     active_model: &str,
@@ -96,7 +99,7 @@ pub(super) fn capture_turn_request_snapshot(
     let request_user_input_enabled = FeatureSet::from_config(ctx.vt_cfg)
         .request_user_input_enabled(planning_active, ctx.renderer.supports_inline_ui())
         // After a permanent `request_user_input` denial (e.g. non-interactive
-        // runtime), suppress the tool from the catalog so the model stops
+        // runtime), suppress the tool from the catalogue so the model stops
         // seeing and retrying it. `mark_interview_denied()` is set from both
         // `handle_failure` and the permission-flow denial path.
         && !ctx.plan_session.is_interview_denied();

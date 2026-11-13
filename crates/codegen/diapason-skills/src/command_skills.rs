@@ -445,7 +445,9 @@ fn is_command_skill_name(name: &str) -> bool {
     find_command_skill_by_skill_name(name).is_some()
 }
 
-pub fn is_model_catalog_eligible(skill: &SkillMetadata) -> bool {
+/// Returns whether a skill may be advertised to the model. Skills that disable
+/// model invocation and command skills are excluded.
+pub fn is_model_catalogue_eligible(skill: &SkillMetadata) -> bool {
     if skill
         .manifest
         .as_ref()

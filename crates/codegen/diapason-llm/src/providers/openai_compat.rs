@@ -191,20 +191,20 @@ pub(crate) struct OpenAiCompatCore<S: OpenAiCompatSpec> {
     pub(crate) prompt_cache_enabled: bool,
     pub(crate) model_behaviour: Option<ModelConfig>,
     spec: PhantomData<S>,
-    /// Memoizes the serialized `tools` wire payload per stable tool catalog.
+    /// Memoizes the serialized `tools` wire payload per stable tool catalogue.
     ///
     /// The `tools` array in `convert_request` depends only on the tool
     /// definitions and the provider spec `S` (both fixed for the lifetime of
-    /// this core). Re-serializing a large catalog every turn is wasted work,
-    /// so we key the cached `Value` array by the `Arc` identity of the catalog
+    /// this core). Re-serializing a large catalogue every turn is wasted work,
+    /// so we key the cached `Value` array by the `Arc` identity of the catalogue
     /// (plus its length for collision tolerance). The `Arc` itself is retained
     /// in the entry, guaranteeing the pointer key stays valid while cached.
     tools_cache: Mutex<ToolsCache>,
 }
 
-/// Maps a stable tool catalog (by `Arc` identity) to its serialized wire
-/// payload. The retained `Arc` keeps the catalog alive so the raw-pointer key
-/// cannot be reused for an unrelated catalog while the entry is live.
+/// Maps a stable tool catalogue (by `Arc` identity) to its serialized wire
+/// payload. The retained `Arc` keeps the catalogue alive so the raw-pointer key
+/// cannot be reused for an unrelated catalogue while the entry is live.
 type ToolsCache = HashMap<usize, (Arc<Vec<ToolDefinition>>, Arc<Vec<Value>>)>;
 
 impl<S: OpenAiCompatSpec> OpenAiCompatCore<S> {

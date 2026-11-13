@@ -28,7 +28,7 @@ use crate::agent::runloop::unified::run_loop_context::{HarnessTurnState, Recover
 use crate::agent::runloop::unified::state::{CtrlCState, SessionStats};
 use crate::agent::runloop::unified::status_line::InputStatusState;
 use crate::agent::runloop::unified::tool_call_safety::ToolCallSafetyValidator;
-use crate::agent::runloop::unified::tool_catalog::ToolCatalogState;
+use crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState;
 use crate::agent::runloop::unified::turn::context::{
     LLMContext, ToolContext, TurnProcessingContext, TurnProcessingContextParts, TurnProcessingState, UIContext,
 };
@@ -117,7 +117,7 @@ pub(crate) struct TestTurnProcessingBacking {
     harness_emitter: Option<HarnessEventEmitter>,
     auto_finish_planning_attempted: bool,
     working_history: Vec<uni::Message>,
-    tool_catalog: Arc<ToolCatalogState>,
+    tool_catalogue: Arc<ToolCatalogueState>,
     default_placeholder: Option<String>,
     active_primary_agent: ActivePrimaryAgentState,
     runtime_steering: RuntimeSteering,
@@ -129,6 +129,14 @@ pub(crate) struct TestTurnProcessingBacking {
 
 impl TestTurnProcessingBacking {
     pub(crate) async fn new(max_tool_calls: usize) -> Self {
+        Self::new_with_base_prompt(max_tool_calls, "You are Diapason.".to_string()).await
+    }
+
+    /// Build a backing whose base system prompt is supplied by the caller.
+    ///
+    /// Prompt-assembly tests use this to seed sections an embedder could still
+    /// provide, such as a pre-rename runtime catalogue header.
+    pub(crate) async fn new_with_base_prompt(max_tool_calls: usize, base_system_prompt: String) -> Self {
         let temp = tempfile::TempDir::new().expect("temp workspace");
         let workspace = temp.path().to_path_buf();
 
@@ -144,7 +152,7 @@ impl TestTurnProcessingBacking {
             crate::agent::runloop::unified::planning_workflow_state::PlanningWorkflowSessionState::default();
         let mcp_panel_state = McpPanelState::default();
         let loaded_skills = Arc::new(RwLock::new(HashMap::new()));
-        let context_manager = ContextManager::new("You are Diapason.".to_string(), (), loaded_skills, None);
+        let context_manager = ContextManager::new(base_system_prompt, (), loaded_skills, None);
         let last_forced_redraw = Instant::now();
         let input_status_state = InputStatusState::default();
         let (mut session, command_receiver) = create_headless_session();
@@ -169,7 +177,7 @@ impl TestTurnProcessingBacking {
             60,
             0,
         );
-        let tool_catalog = Arc::new(ToolCatalogState::new());
+        let tool_catalogue = Arc::new(ToolCatalogueState::new());
         let config = AgentConfig {
             model: "noop-model".to_string(),
             api_key: "test-key".to_string(),
@@ -225,7 +233,7 @@ impl TestTurnProcessingBacking {
             harness_emitter: None,
             auto_finish_planning_attempted: false,
             working_history: Vec::new(),
-            tool_catalog,
+            tool_catalogue,
             default_placeholder: None,
             active_primary_agent: ActivePrimaryAgentState::default(),
             runtime_steering: RuntimeSteering::default(),
@@ -356,7 +364,7 @@ impl TestTurnProcessingBacking {
             &self.decision_ledger,
             &mut self.tool_registry,
             &self.tools,
-            &self.tool_catalog,
+            &self.tool_catalogue,
             &self.ctrl_c_state,
             &self.ctrl_c_notify,
             &mut self.context_manager,
@@ -393,7 +401,7 @@ impl TestTurnProcessingBacking {
             approval_recorder: &self.approval_recorder,
             tool_registry: &mut self.tool_registry,
             tools: &self.tools,
-            tool_catalog: &self.tool_catalog,
+            tool_catalogue: &self.tool_catalogue,
             tool_permission_cache: &self.tool_permission_cache,
             permissions_state: &self.permissions_state,
             safety_validator: &self.safety_validator,

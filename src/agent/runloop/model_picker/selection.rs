@@ -199,6 +199,9 @@ pub(super) fn selection_from_option(option: &ModelOption) -> SelectionDetail {
     selection_from_option_with_mode(option, AuthCredentialsStoreMode::default())
 }
 
+/// Resolve a static model option into selection detail using the given
+/// credential storage mode. Options that fail to resolve fall back to a
+/// missing-credential entry so the picker still prompts for an API key.
 pub(super) fn selection_from_option_with_mode(
     option: &ModelOption,
     storage_mode: AuthCredentialsStoreMode,
@@ -219,7 +222,7 @@ pub(super) fn selection_from_option_with_mode(
             provider: option.provider,
             model_id: option.id.clone(),
             api_key_env: option.api_key_env.clone(),
-            catalog: None,
+            catalogue: None,
             dynamic: None,
             availability: ModelAvailability::MissingCredential,
         }
@@ -274,6 +277,9 @@ fn selection_from_dynamic_with_mode(
     )
 }
 
+/// Resolve a dynamically discovered model into selection detail, preferring the
+/// supplied API-key environment variable over the provider default. Unresolved
+/// models fall back to a missing-credential entry so the picker prompts for a key.
 pub(super) fn selection_from_dynamic_with_api_key_env(
     provider: Provider,
     model_id: &str,
@@ -308,7 +314,7 @@ pub(super) fn selection_from_dynamic_with_api_key_env(
             provider,
             model_id: model_id.to_string(),
             api_key_env: env_key.clone(),
-            catalog: None,
+            catalogue: None,
             dynamic: Some(DynamicModelMeta {
                 display_name: display_name.to_string(),
                 description: description.map(ToOwned::to_owned),

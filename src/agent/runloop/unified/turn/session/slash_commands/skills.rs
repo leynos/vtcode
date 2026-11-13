@@ -8,7 +8,7 @@ use diapason_core::tools::handlers::ToolModelCapabilities;
 use diapason_core::utils::ansi::MessageStyle;
 use diapason_ui::tui::app::{InlineListItem, InlineListSearchConfig, InlineListSelection, WizardModalMode, WizardStep};
 
-use crate::agent::runloop::unified::tool_catalog::tool_catalog_change_notifier;
+use crate::agent::runloop::unified::tool_catalogue::tool_catalogue_change_notifier;
 use crate::agent::runloop::unified::turn::utils::{enforce_history_limits, truncate_message_content};
 use crate::agent::runloop::unified::ui_interaction::start_loading_status;
 use crate::agent::runloop::unified::wizard_modal::{WizardModalOutcome, show_wizard_modal_and_wait};
@@ -223,14 +223,17 @@ fn skill_invocation_status_message(skill_name: &str) -> String {
     format!("Running {invocation_target}...")
 }
 
+/// Build a skill session runtime from the current slash-command context.
 fn skill_runtime(ctx: &SlashCommandContext<'_>) -> diapason_core::tools::skills::SkillToolSessionRuntime {
-    skill_runtime_for_session(ctx.tool_registry, ctx.tools, ctx.tool_catalog, ctx.config, ctx.vt_cfg.as_ref())
+    skill_runtime_for_session(ctx.tool_registry, ctx.tools, ctx.tool_catalogue, ctx.config, ctx.vt_cfg.as_ref())
 }
 
+/// Build a skill session runtime bound to the given registry, tool snapshot, and
+/// catalogue, with the configured tool profile and child-agent fork executor.
 fn skill_runtime_for_session(
     tool_registry: &diapason_core::tools::ToolRegistry,
     tools: &Arc<tokio::sync::RwLock<Vec<uni::ToolDefinition>>>,
-    tool_catalog: &Arc<crate::agent::runloop::unified::tool_catalog::ToolCatalogState>,
+    tool_catalogue: &Arc<crate::agent::runloop::unified::tool_catalogue::ToolCatalogueState>,
     config: &diapason_core::config::types::AgentConfig,
     vt_cfg: Option<&diapason_core::config::loader::DiapasonConfig>,
 ) -> diapason_core::tools::skills::SkillToolSessionRuntime {
@@ -241,7 +244,7 @@ fn skill_runtime_for_session(
         Some(Arc::clone(tools)),
         tool_documentation_mode,
         ToolModelCapabilities::for_model_name(&config.model),
-        Some(tool_catalog_change_notifier(tool_catalog)),
+        Some(tool_catalogue_change_notifier(tool_catalogue)),
     )
     .with_tool_profile(configured_tool_profile(vt_cfg))
     .with_fork_executor(Arc::new(diapason_core::skills::executor::ChildAgentSkillExecutor::new(
@@ -681,15 +684,16 @@ async fn prompt_text(
     Ok(Some(trimmed))
 }
 
+/// Show the skills manager action list without waiting for a selection.
 fn show_skills_manager_actions_modal(ctx: &mut SlashCommandContext<'_>) {
     let items = vec![
         InlineListItem {
             title: "Browse skills".to_string(),
-            subtitle: Some("Open the skills catalog and per-skill actions".to_string()),
+            subtitle: Some("Open the skills catalogue and per-skill actions".to_string()),
             badge: Some("Recommended".to_string()),
             indent: 0,
             selection: Some(InlineListSelection::ConfigAction(format!("{SKILL_ACTION_PREFIX}browse"))),
-            search_value: Some("browse catalog skills".to_string()),
+            search_value: Some("browse catalogue skills".to_string()),
         },
         InlineListItem {
             title: "List skills".to_string(),
@@ -993,7 +997,7 @@ mod tests {
     async fn slash_skill_activation_retains_advanced_catalogue() {
         let temp = TempDir::new().expect("temp dir");
         let registry = ToolRegistry::new(temp.path().to_path_buf()).await;
-        let tool_catalog = registry.tool_catalog_state();
+        let tool_catalogue = registry.tool_catalogue_state();
         let active_tools = Arc::new(RwLock::new(Vec::new()));
         let active_skills = Arc::new(RwLock::new(HashMap::new()));
         let mut vt_cfg = DiapasonConfig::default();
@@ -1011,7 +1015,7 @@ mod tests {
             "test-key".to_string(),
             diapason_core::ui::theme::DEFAULT_THEME_ID.to_string(),
         );
-        let runtime = skill_runtime_for_session(&registry, &active_tools, &tool_catalog, &config, Some(&vt_cfg));
+        let runtime = skill_runtime_for_session(&registry, &active_tools, &tool_catalogue, &config, Some(&vt_cfg));
         let skill = Skill::new(
             SkillManifest {
                 name: "slash-profile-skill".to_string(),

@@ -148,7 +148,7 @@ pub use crate::core::agent::tool_batching::{
     FallbackRecommendation, FallbackStep, PreparedToolBatch, PreparedToolBatchKind, PreparedToolCall,
     is_parallel_safe_tool_batch,
 };
-pub use crate::core::agent::tool_catalog::SessionToolCatalogSnapshot;
+pub use crate::core::agent::tool_catalogue::SessionToolCatalogueSnapshot;
 
 pub fn looks_like_grep_style_command(command: &str) -> bool {
     let lower = command.trim().to_ascii_lowercase();
@@ -192,17 +192,17 @@ mod tests {
             previous_response_id: None,
             prompt_cache_key: None,
             prompt_cache_profile: None,
-            tool_catalog_hash: None,
+            tool_catalogue_hash: None,
             system_prompt_prefix_hash: None,
         });
 
         assert!(plan.has_tools);
-        assert!(plan.tool_catalog_hash.is_some());
+        assert!(plan.tool_catalogue_hash.is_some());
         assert_eq!(plan.stable_prefix_hash, stable_system_prefix_hash("base\n[Runtime Context]\n- turns: 1"));
     }
 
     #[test]
-    fn request_plan_drops_empty_tool_catalog() {
+    fn request_plan_drops_empty_tool_catalogue() {
         let plan = build_harness_request_plan(HarnessRequestPlanInput {
             messages: Arc::new(vec![Message::user("hello".to_string())]),
             system_prompt: Arc::from("base"),
@@ -224,13 +224,13 @@ mod tests {
             previous_response_id: None,
             prompt_cache_key: None,
             prompt_cache_profile: None,
-            tool_catalog_hash: None,
+            tool_catalogue_hash: None,
             system_prompt_prefix_hash: None,
         });
 
         assert!(!plan.has_tools);
         assert!(plan.request.tools.is_none());
-        assert!(plan.tool_catalog_hash.is_none());
+        assert!(plan.tool_catalogue_hash.is_none());
     }
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
             previous_response_id: None,
             prompt_cache_key: None,
             prompt_cache_profile: None,
-            tool_catalog_hash: None,
+            tool_catalogue_hash: None,
             system_prompt_prefix_hash: None,
         });
 
@@ -385,14 +385,14 @@ mod tests {
     fn stable_prefix_hash_ignores_runtime_tool_sections() {
         let base = "Base prompt\n[Harness Limits]\n- max_tool_calls_per_turn: 5";
         let with_runtime_sections = format!(
-            "{base}\n\n## Active Tools\n- Capabilities: read-only.\n[Runtime Tool Catalog]\n- version: 1\n- epoch: 2\n- available_tools: 3\n- request_user_input_enabled: false"
+            "{base}\n\n## Active Tools\n- Capabilities: read-only.\n[Runtime Tool Catalogue]\n- version: 1\n- epoch: 2\n- available_tools: 3\n- request_user_input_enabled: false"
         );
 
         assert_eq!(stable_system_prefix_hash(base), stable_system_prefix_hash(&with_runtime_sections));
     }
 
     #[test]
-    fn tool_catalog_hash_matches_legacy_json_string_hash() {
+    fn tool_catalogue_hash_matches_legacy_json_string_hash() {
         let tools = vec![
             function_tool(tools::CODE_SEARCH),
             ToolDefinition::function(

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use diapason_config::TimeoutsConfig;
 use diapason_config::constants::{env_vars, models, urls};
 use diapason_config::core::{AnthropicConfig, ModelConfig, PromptCachingConfig};
-use diapason_config::models::model_catalog_entry;
+use diapason_config::models::model_catalogue_entry;
 use reqwest::Client as HttpClient;
 
 use super::AnthropicProvider;
@@ -101,8 +101,8 @@ impl OpenCodeZenProvider {
         }
     }
 
-    fn catalog_entry(&self, model: &str) -> Option<diapason_config::models::ModelCatalogEntry> {
-        model_catalog_entry(PROVIDER_KEY, self.requested_model(model))
+    fn catalogue_entry(&self, model: &str) -> Option<diapason_config::models::ModelCatalogueEntry> {
+        model_catalogue_entry(PROVIDER_KEY, self.requested_model(model))
     }
 
     fn protocol_for_model(model: &str) -> ZenProtocol {
@@ -159,7 +159,7 @@ impl LLMProvider for OpenCodeZenProvider {
     }
 
     fn supports_reasoning(&self, model: &str) -> bool {
-        self.catalog_entry(model)
+        self.catalogue_entry(model)
             .map(|entry| entry.reasoning)
             .unwrap_or_else(|| self.delegate_for_model(model).supports_reasoning(self.requested_model(model)))
     }
@@ -174,23 +174,25 @@ impl LLMProvider for OpenCodeZenProvider {
     }
 
     fn supports_tools(&self, model: &str) -> bool {
-        self.catalog_entry(model).map(|entry| entry.tool_call).unwrap_or(true)
+        self.catalogue_entry(model).map(|entry| entry.tool_call).unwrap_or(true)
     }
 
     fn supports_structured_output(&self, model: &str) -> bool {
-        self.catalog_entry(model).map(|entry| entry.structured_output).unwrap_or(false)
+        self.catalogue_entry(model)
+            .map(|entry| entry.structured_output)
+            .unwrap_or(false)
     }
 
     fn supports_context_caching(&self, model: &str) -> bool {
-        self.catalog_entry(model).map(|entry| entry.caching).unwrap_or(false)
+        self.catalogue_entry(model).map(|entry| entry.caching).unwrap_or(false)
     }
 
     fn supports_vision(&self, model: &str) -> bool {
-        self.catalog_entry(model).map(|entry| entry.vision).unwrap_or(false)
+        self.catalogue_entry(model).map(|entry| entry.vision).unwrap_or(false)
     }
 
     fn effective_context_size(&self, model: &str) -> usize {
-        self.catalog_entry(model)
+        self.catalogue_entry(model)
             .map(|entry| entry.context_window)
             .filter(|value| *value > 0)
             .unwrap_or(128_000)

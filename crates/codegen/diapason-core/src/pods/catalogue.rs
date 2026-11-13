@@ -1,16 +1,20 @@
+//! Pod deployment-profile catalogue: embedded defaults, profile lookup, and
+//! hardware matching.
+
 use super::state::PodState;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Root catalog describing known deployment profiles.
+/// Root catalogue describing known deployment profiles.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PodCatalog {
+pub struct PodCatalogue {
     pub version: String,
     #[serde(default)]
     pub profiles: Vec<PodProfile>,
 }
 
-impl Default for PodCatalog {
+impl Default for PodCatalogue {
+    /// Start from the embedded default catalogue shipped with the binary.
     fn default() -> Self {
         Self::embedded_default()
     }
@@ -39,11 +43,11 @@ pub struct PodProfile {
     pub env: BTreeMap<String, String>,
 }
 
-impl PodCatalog {
-    /// Return the built-in catalog compiled into the binary.
+impl PodCatalogue {
+    /// Return the built-in catalogue compiled into the binary.
     pub fn embedded_default() -> Self {
-        match serde_json::from_str(include_str!("default_catalog.json")) {
-            Ok(catalog) => catalog,
+        match serde_json::from_str(include_str!("default_catalogue.json")) {
+            Ok(catalogue) => catalogue,
             Err(_) => Self {
                 version: "2".to_string(),
                 profiles: vec![PodProfile {
@@ -126,6 +130,7 @@ impl PodProfile {
     }
 }
 
+/// Default vLLM launch command template used when a profile omits one.
 fn default_command_template() -> String {
     "vllm serve {{MODEL_ID}} --served-model-name {{NAME}} --port {{PORT}} {{VLLM_ARGS}}".to_string()
 }

@@ -21,7 +21,7 @@ use diapason_config::workspace_env::read_workspace_env_value;
 use diapason_config::{OpenAIPreferredMethod, PromptCacheRetention};
 use diapason_core::cli::args::{Cli, Commands};
 use diapason_core::config::loader::DiapasonConfig;
-use diapason_core::config::models::{Provider, ProviderModelSupport, model_catalog_entry};
+use diapason_core::config::models::{Provider, ProviderModelSupport, model_catalogue_entry};
 use diapason_core::config::types::AgentConfig as CoreAgentConfig;
 use diapason_core::config::validator::{check_openai_hosted_shell_compat, check_prompt_cache_retention_compat};
 use diapason_core::copilot::{CopilotAuthStatusKind, probe_auth_status};
@@ -575,8 +575,10 @@ async fn resolve_codex_fallback_selection(
     );
 }
 
+/// Returns `model` when it exists in the OpenAI catalogue, otherwise the
+/// default OpenAI model.
 fn openai_fallback_model(model: &str) -> String {
-    if model_catalog_entry("openai", model).is_some() {
+    if model_catalogue_entry("openai", model).is_some() {
         return model.to_string();
     }
 
