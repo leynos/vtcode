@@ -263,7 +263,7 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
                 .push(serde_json::from_slice(&request.body).expect("valid request JSON"));
             ResponseTemplate::new(200)
                 .insert_header("content-type", "text/event-stream")
-// The finish frame arrives before the usage frame, matching the
+                // The finish frame arrives before the usage frame, matching the
                 // order OpenAI sends in production. The decoder must keep
                 // reading after `finish_reason` so the trailing usage chunk is
                 // still captured; finalising on the finish frame would lose
@@ -312,7 +312,7 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
     let response = collect_completed_response(&router, OPTED_IN_MODEL).await;
     let usage = response.usage.expect("terminal Baseten usage should be retained");
     assert_eq!((usage.prompt_tokens, usage.completion_tokens, usage.total_tokens), (13, 5, 18));
-// The finish reason was recorded by the frame that preceded the usage
+    // The finish reason was recorded by the frame that preceded the usage
     // chunk, so a decoder that finalised on that frame would fail here.
     assert_eq!(response.finish_reason, FinishReason::Stop);
     assert_eq!(usage.reasoning_output_tokens, Some(3));
@@ -385,4 +385,3 @@ async fn auto_api_format_routes_to_chat_and_requests_stream_usage() {
     let payload = captured.lock().expect("capture mutex").clone().expect("request captured");
     assert_eq!(payload["stream_options"]["include_usage"], true);
 }
-// weave: run 'weave explain crates/codegen/diapason-llm/src/providers/custom_provider/tests/openai_streaming.rs' for per-hunk detail, 'weave check' to verify your resolution

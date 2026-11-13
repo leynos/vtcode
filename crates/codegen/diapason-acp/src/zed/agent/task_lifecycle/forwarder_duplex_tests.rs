@@ -1,6 +1,6 @@
 //! Duplex transport regressions for the lifecycle forwarder.
-use super::projection_tests::{live, subagent_event, subagent_event_for, with_updated_at};
-use super::projection_tests::{background_event, subagent_event, subagent_event_for, with_updated_at};
+
+use super::projection_tests::{background_event, live, subagent_event, subagent_event_for, with_updated_at};
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use std::time::Duration;
@@ -221,17 +221,17 @@ async fn superseded_task_update_logs_a_bounded_correlation() {
 
     let mut duplex = ForwarderDuplex::start("diapason-task-correlation-test", |progress_tx, queue| {
         queue
-            .try_send(&progress_tx, with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"))
+            .try_send(&progress_tx, live(with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z")))
             .expect("enqueue the settled task update");
         // The same revision instant, but not terminal: a replay artefact
         // rather than a recorded transition, so the forwarder drops it.
         queue
-            .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z"))
+            .try_send(&progress_tx, live(with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z")))
             .expect("enqueue the superseded task update");
         queue
             .try_send(
                 &progress_tx,
-                with_updated_at(background_event_with_session_in_id("running"), "2026-08-14T12:05:00Z"),
+                live(with_updated_at(background_event_with_session_in_id("running"), "2026-08-14T12:05:00Z")),
             )
             .expect("enqueue the settled background update");
         // The background task id embeds its session id, so a raw id in the
@@ -239,7 +239,7 @@ async fn superseded_task_update_logs_a_bounded_correlation() {
         queue
             .try_send(
                 &progress_tx,
-                with_updated_at(background_event_with_session_in_id("running"), "2026-08-14T12:01:00Z"),
+                live(with_updated_at(background_event_with_session_in_id("running"), "2026-08-14T12:01:00Z")),
             )
             .expect("enqueue the superseded background update");
     });

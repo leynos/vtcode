@@ -35,8 +35,7 @@ mod projection_tests;
 
 #[cfg(test)]
 mod queue_accounting_tests;
-use diapason_core::metrics::TaskLifecycleNotificationQueueMetricsObserver;
-use std::sync::Arc;
+
 use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
 use super::redaction::CORRELATION_HEX_LENGTH;
@@ -349,7 +348,7 @@ fn spawn_task_lifecycle_forwarder(
                 }
                 if !ordering.admit(&queued) {
                     debug!(
-                        task_correlation = %super::redaction::identifier_correlation(lody_task_id(&update)),
+                        task_correlation = %super::redaction::identifier_correlation(lody_task_id(&queued.update)),
                         "Dropped superseded ACP task lifecycle update"
                     );
                     continue;
@@ -378,4 +377,3 @@ fn spawn_task_lifecycle_forwarder(
         .instrument(span),
     )
 }
-// weave: run 'weave explain crates/codegen/diapason-acp/src/zed/agent/task_lifecycle.rs' for per-hunk detail, 'weave check' to verify your resolution
