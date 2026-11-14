@@ -141,6 +141,7 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task() {
             vt_config: Some(&vt_config),
             owner_session_id: None,
             workspace_gated: false,
+            defer_background_restore: false,
         },
     )
     .await;

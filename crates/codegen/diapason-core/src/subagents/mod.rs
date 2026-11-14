@@ -232,10 +232,11 @@ pub struct SubagentController {
     progress_observer_scope: Option<String>,
     /// Child task ids allocated anywhere in this controller's tree. A
     /// controller-local check cannot see an id a sibling allocated, so the
-    /// root owns one scope and the whole tree shares a handle to it. The
-    /// handle is redirectable so attaching a controller that has already
-    /// spawned children moves its existing subtree onto the tree's scope.
-    child_id_scope: Arc<controller_spawn_run::ChildIdScopeHandle>,
+    /// root owns one scope and the whole tree shares one slot pointing at it.
+    /// A child adopts its parent's slot object, so the slot is also the
+    /// redirectable handle that attaching a controller with existing children
+    /// rewrites: every descendant follows the redirect at once.
+    child_id_scope: Arc<std::sync::RwLock<Arc<controller_spawn_run::ChildIdScopeSlot>>>,
 }
 
 impl SubagentController {
@@ -314,7 +315,7 @@ impl SubagentController {
                 closing: Arc::new(AtomicBool::new(false)),
                 progress_observers: Arc::default(),
                 progress_observer_scope: None,
-                child_id_scope: Arc::default(),
+                child_id_scope: Arc::new(std::sync::RwLock::new(Arc::default())),
             })
         })
     }
@@ -447,18 +448,26 @@ impl SubagentController {
     /// cancel to the wrong task. Every controller in a tree therefore allocates
     /// from the root's scope.
     ///
-    /// Ids this controller has already allocated are carried into the parent's
-    /// scope first, so joining a tree that already holds children cannot make
-    /// one of their ids available again.
+    /// Ids this controller has already allocated travel with its slot, because
+    /// attaching a controller that has children adopts the slot rather than
+    /// replacing it. Callers must therefore inherit only a controller that has
+    /// not been published: this replaces an unallocated controller's own slot
+    /// with the parent's.
     pub(crate) fn inherit_child_id_scope(&self, parent: &SubagentController) {
-        let parent_scope = Self::child_id_scope_of(parent);
-        let mut handle = self.child_id_scope.write().unwrap_or_else(|poisoned| poisoned.into_inner());
-        Arc::clone(&*handle).absorb_into(&parent_scope);
-        *handle = parent_scope;
+        let parent_slot = Self::child_id_slot_of(parent);
+        *self.child_id_scope.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = parent_slot;
     }
 
-    /// Reads the allocator a controller currently shares with its subtree.
-    fn child_id_scope_of(controller: &SubagentController) -> Arc<controller_spawn_run::ChildIdScope> {
+    /// Reads the slot a controller shares with its whole subtree.
+    ///
+    /// The slot object, not the scope inside it, is what a child adopts, so
+    /// writing the tree scope into one slot redirects every controller that
+    /// already shares it.
+    fn child_id_slot(&self) -> Arc<controller_spawn_run::ChildIdScopeSlot> {
+        Self::child_id_slot_of(self)
+    }
+
+    fn child_id_slot_of(controller: &SubagentController) -> Arc<controller_spawn_run::ChildIdScopeSlot> {
         Arc::clone(
             &controller
                 .child_id_scope
@@ -474,16 +483,27 @@ impl SubagentController {
     /// closed for an unknown child so a controller can never be grafted onto a
     /// record this controller does not track.
     ///
-    /// The attached controller joins this tree's child-id allocation before
-    /// its record is published, so a caller that built it independently cannot
-    /// introduce an id the tree already holds. Ids it had already allocated
-    /// stay reserved tree-wide; see `inherit_child_id_scope`.
+    /// The attached controller's whole subtree joins this tree's child-id
+    /// allocation before its record is published, so a caller that built it
+    /// independently cannot introduce an id the tree already holds. Ids it had
+    /// already allocated stay reserved tree-wide and every descendant it has
+    /// already created follows it onto this tree's allocator.
+    ///
+    /// An id already held on both sides is rejected rather than absorbed: it
+    /// has been published by the joining subtree and the tree, so no suffix
+    /// can separate them, and the adapter's first-match routing would resolve
+    /// it to one controller only. Rejection leaves the controller, this tree
+    /// and the child record unchanged.
     pub async fn attach_child_controller(&self, child_id: &str, controller: Arc<SubagentController>) -> Result<()> {
         let mut state = self.state.write().await;
         if !state.children.contains_key(child_id) {
             bail!("Unknown subagent id {child_id}");
         }
-        controller.inherit_child_id_scope(self);
+        if let Err(duplicate) = controller.child_id_slot().adopt_into(&self.child_id_slot()) {
+            bail!(
+                "Subagent {child_id} cannot join the tree allocator: task id {duplicate} is already allocated on both sides"
+            );
+        }
         Self::attach_child_controller_to_state(&mut state, child_id, controller)
     }
 

@@ -6,6 +6,7 @@ use std::time::Duration;
 use tokio::fs;
 
 use super::constants::SUBAGENT_PREVIEW_LINES;
+use super::controller_helpers::sanitize_component;
 use super::types::{PersistedBackgroundRecord, PersistedBackgroundState};
 use crate::utils::file_utils::write_file_atomic_with_context;
 use crate::utils::session_archive::{SessionListing, SessionSnapshot};
@@ -269,31 +270,46 @@ pub fn background_record_id(agent_name: &str) -> String {
 /// sessions in one workspace can each run the same agent. The owner suffix
 /// keeps those records distinct both in the in-memory map and in the shared
 /// ledger; an unscoped controller keeps the workspace-global id.
+///
+/// The owner component is encoded injectively (see `encode_owner_component`),
+/// so two distinct owners can never collapse into one record id. Owners made
+/// only of `[A-Za-z0-9_-]` such as `session-a` are unchanged; any other owner,
+/// including one with leading or trailing hyphens, maps to a different id. The
+/// controller canonicalises persisted ids on load and on save, so no migration
+/// file is needed, although a mixed-version deployment can briefly hold both
+/// forms.
 pub fn background_record_id_for_owner(agent_name: &str, owner_session_id: Option<&str>) -> String {
     let base = background_record_id(agent_name);
     let Some(owner_session_id) = owner_session_id else {
         return base;
     };
-    let owner = sanitize_component(owner_session_id);
-    if owner.is_empty() {
+    if owner_session_id.is_empty() {
         return base;
     }
+    let owner = encode_owner_component(owner_session_id);
     format!("{base}@{owner}")
 }
 
-fn sanitize_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string()
+/// Percent-encodes an owner id into an injective record-id component.
+///
+/// `[A-Za-z0-9_-]` bytes are kept verbatim and every other UTF-8 byte,
+/// including `%` and `@`, is emitted as `%XX` with uppercase hex digits. Unlike
+/// the session and exec-id sanitizer, this encoding never collapses distinct
+/// characters into one or trims hyphens, so it cannot map two owners onto the
+/// same id.
+fn encode_owner_component(owner_session_id: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(owner_session_id.len());
+    for byte in owner_session_id.bytes() {
+        if byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_' {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0F)]));
+        }
+    }
+    encoded
 }
 
 // ─── Preview Utilities ─────────────────────────────────────────────────────

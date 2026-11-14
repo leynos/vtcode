@@ -62,6 +62,19 @@ def _split_rendered_code_span(rendered: str) -> tuple[int, str]:
     return delimiter_length, rendered[delimiter_length : len(rendered) - delimiter_length]
 
 
+def _gfm_decode_code_span(content: str) -> str:
+    """Apply GFM's whitespace normalisation to a code span's raw content.
+
+    GFM removes exactly one space from each end when the content both begins
+    and ends with a space, but is not made only of spaces. Modelling that rule
+    here lets the round-trip assertions compare the value a renderer would
+    show, rather than the padding the generator emitted.
+    """
+    if content.startswith(" ") and content.endswith(" ") and content.strip(" ") != "":
+        return content[1:-1]
+    return content
+
+
 def _expected_cell_text(value: str) -> str:
     """Escape a table cell by the GFM rule, independently of the generator.
 
@@ -117,10 +130,9 @@ def test_format_code_span_round_trips_and_cannot_close_early() -> None:
             f"the span closes early: {value!r} -> {rendered!r}"
         )
 
-        expected_content = f" {value} " if value.startswith("`") or value.endswith("`") else value
-        assert content == expected_content, (
-            "a boundary backtick must be padded so it cannot extend the delimiter, "
-            f"and every other value must survive unchanged: {value!r} -> {rendered!r}"
+        assert _gfm_decode_code_span(content) == value, (
+            "the rendered span must decode back to the value it was given: "
+            f"{value!r} -> {rendered!r}"
         )
 
 
@@ -138,6 +150,37 @@ def test_format_code_span_uses_the_shortest_safe_delimiter() -> None:
         assert delimiter_length == longest_run + 1, (
             "the delimiter must be exactly one backtick longer than the longest run "
             f"in the value: {value!r} -> {rendered!r}"
+        )
+
+
+def test_format_code_span_survives_gfm_whitespace_normalisation() -> None:
+    """A boundary-space value must decode back to itself under GFM's rule.
+
+    The generator adds one space on each side of a value that both starts and
+    ends with a space, so GFM's single-space strip leaves the value intact. A
+    body made only of spaces is exempt from that strip and must not be padded.
+    Boundary backticks and internal backtick runs must still survive.
+    """
+    rendered = generator.format_code_span(" a ")
+    _delimiter_length, content = _split_rendered_code_span(rendered)
+    assert content == "  a  ", f"a boundary-space value needs a space at each end: {rendered!r}"
+    assert _gfm_decode_code_span(content) == " a ", (
+        f"a boundary-space value must survive the GFM strip: {rendered!r}"
+    )
+
+    for value in (" ", "   "):
+        rendered = generator.format_code_span(value)
+        _delimiter_length, content = _split_rendered_code_span(rendered)
+        assert content == value, (
+            "GFM does not strip an all-space body, so it must not be padded: "
+            f"{value!r} -> {rendered!r}"
+        )
+
+    for value in ("|", "`", "a``b"):
+        rendered = generator.format_code_span(value)
+        _delimiter_length, content = _split_rendered_code_span(rendered)
+        assert _gfm_decode_code_span(content) == value, (
+            f"{value!r} must round trip through the GFM code-span decode: {rendered!r}"
         )
 
 
@@ -183,9 +226,8 @@ def test_generated_table_cells_preserve_pipes_and_backticks() -> None:
         )
 
         delimiter_length, content = _split_rendered_code_span(cells[3])
-        expected_content = f" {escaped} " if escaped.startswith("`") or escaped.endswith("`") else escaped
-        assert content == expected_content, (
-            "a generated table cell must render the escaped default it was given: "
+        assert _gfm_decode_code_span(content) == escaped, (
+            "a generated table cell must decode to the escaped default it was given: "
             f"{value!r} -> {row!r}"
         )
         assert "`" * delimiter_length not in content, (

@@ -212,6 +212,152 @@ async fn repaired_archive_is_not_registered_when_repair_checkpoint_fails() {
     );
 }
 
+/// A failed attach must not restore the background sub-agents it will own.
+///
+/// Restoring eagerly would launch a child before the required history
+/// checkpoint. The fail-closed path releases the workspace lease, but shutdown
+/// aborts only tracked children, never restored background children, so a
+/// child launched before the failure would survive it. The persisted ledger is
+/// the observable that proves no launch happened.
+#[tokio::test]
+async fn failed_attach_does_not_restore_background_subagents() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("create temporary workspace for the background-restore test");
+    write_background_restore_fixture(temp.path());
+    let session_id = acp::SessionId::new("background-restore-checkpoint-failure-session");
+    let ledger_path = temp
+        .path()
+        .join(diapason_commons::workspace_dir_name())
+        .join("state")
+        .join("background_subagents.json");
+    fs::create_dir_all(ledger_path.parent().expect("background ledger parent"))
+        .expect("create the background state directory");
+    let seeded_ledger = serde_json::json!({
+        "records": [{
+            "id": "background-background-demo",
+            "agent_name": "background-demo",
+            "display_label": "background-demo",
+            "description": "background demo",
+            "source": "builtin",
+            "color": null,
+            "owner_session_id": session_id.0.as_ref(),
+            "session_id": "session-background-demo-restore",
+            "exec_session_id": "exec-missing",
+            "desired_enabled": true,
+            "status": "stopped",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": "2026-08-28T00:00:00Z",
+            "pid": null,
+            "prompt": "restore me",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }]
+    });
+    let seeded_bytes = serde_json::to_vec(&seeded_ledger).expect("serialize the seeded background ledger");
+    fs::write(&ledger_path, &seeded_bytes).expect("seed the background ledger");
+    let mut vt_config = diapason_core::config::DiapasonConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    vt_config.subagents.background.auto_restore = true;
+    let agent = build_agent_with_vt_config(temp.path(), "duck", Some(&vt_config)).await;
+    let mut listing = archived_listing("background-restore-failure", temp.path(), "continue");
+    listing.snapshot.messages = vec![SessionMessage::from(&Message::assistant_with_tools(
+        String::new(),
+        vec![ToolCall::function(
+            "restore-call".to_string(),
+            "apply_patch".to_string(),
+            "{}".to_string(),
+        )],
+    ))];
+    listing.snapshot.total_messages = 1;
+    fs::create_dir(&listing.path).expect("occupy the archive path with a directory");
+
+    let error = match agent
+        .attach_thread_from_listing(
+            &session_id,
+            &AcpSessionWorkspace::from_client_cwd(temp.path())
+                .await
+                .expect("build the ACP session workspace from the temporary directory"),
+            listing,
+        )
+        .await
+    {
+        Ok(_) => panic!("a directory at the archive path must make the required checkpoint fail"),
+        Err(error) => error,
+    };
+
+    assert_eq!(
+        error.to_string(),
+        "Failed to persist repaired ACP tool-call history: archive_write_failed",
+        "the deadline must fail at the required checkpoint"
+    );
+    assert_eq!(
+        fs::read(&ledger_path).expect("read the background ledger after the failed attach"),
+        seeded_bytes,
+        "a failed attach must not restore a background sub-agent before its checkpoint succeeds"
+    );
+    let persisted: serde_json::Value =
+        serde_json::from_slice(&seeded_bytes).expect("parse the seeded background ledger");
+    assert!(
+        persisted["records"][0]["pid"].is_null(),
+        "the restored record must keep its stopped state: {persisted}"
+    );
+    assert!(
+        agent
+            .session_handle(&session_id)
+            .expect("query the session registry after the failed attach")
+            .is_none(),
+        "a failed attach must not register the session"
+    );
+}
+
+/// Writes the `background-demo` spec and a script that exits at once.
+///
+/// The demo agent launches its script directly, so a restore attempt needs both
+/// a discoverable spec and an executable. The script must not sleep: the
+/// regression proves a failed attach never launches it, and it must leave no
+/// child behind if it ever does.
+fn write_background_restore_fixture(workspace: &Path) {
+    let agent_dir = workspace.join(".diapason/agents");
+    fs::create_dir_all(&agent_dir).expect("create background fixture agent directory");
+    fs::write(
+        agent_dir.join("background-demo.md"),
+        r#"---
+name: background-demo
+description: Background restore checkpoint fixture.
+tools:
+  - command_session
+background: true
+maxTurns: 2
+initialPrompt: Report readiness once.
+---
+
+Run the managed background fixture.
+"#,
+    )
+    .expect("write background fixture agent");
+    let scripts_dir = workspace.join("scripts");
+    fs::create_dir_all(&scripts_dir).expect("create background fixture scripts directory");
+    let script = scripts_dir.join("demo-background-subagent.sh");
+    fs::write(&script, "#!/bin/sh\nprintf 'background-restored\\n'\n").expect("write background fixture script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&script).expect("background fixture script metadata").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).expect("make background fixture script executable");
+    }
+}
+
 /// A repair checkpoint fails when compaction drops its repaired evidence.
 ///
 /// The staged batch alone is not enough: this archive's last batch survives

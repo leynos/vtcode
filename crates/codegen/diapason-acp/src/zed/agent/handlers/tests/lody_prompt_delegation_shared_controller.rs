@@ -41,6 +41,7 @@ async fn prompt_driven_agent_tool_fails_closed_when_only_the_workspace_has_a_con
             vt_config: Some(&vt_config),
             owner_session_id: None,
             workspace_gated: false,
+            defer_background_restore: false,
         },
     )
     .await;

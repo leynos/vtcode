@@ -29,6 +29,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             vt_config: Some(&vt_config),
             owner_session_id: None,
             workspace_gated: false,
+            defer_background_restore: false,
         },
     )
     .await;
@@ -178,19 +179,45 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             );
 
             let mut output = serde_json::Value::Null;
+            // The spawn published its run-started transition asynchronously.
+            // Settle that traffic before the probe window so the comparison
+            // below attributes every difference to the read under test. A
+            // quiet window is the goal, so either outcome is acceptable: a
+            // delivered notification restarts the window, and the outer
+            // timeout ends it.
+            drop(
+                tokio::time::timeout(Duration::from_secs(2), async {
+                    while tokio::time::timeout(Duration::from_millis(100), notification_rx.recv())
+                        .await
+                        .is_ok()
+                    {}
+                })
+                .await,
+            );
+            // The lifecycle forwarder delivers asynchronously, so draining the
+            // client channel after the response would race its delivery. The
+            // controller calls its progress observers synchronously from the
+            // publication site, so a recording observer proves the read
+            // published nothing without depending on delivery timing.
+            let observer = Arc::new(RecordingBackgroundObserver::default());
+            let _observer_registration = controller.register_progress_observer(
+                session.session_id.0.to_string(),
+                Arc::clone(&observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
+            );
             for _ in 0..20 {
-                // Async lifecycle updates are not part of the read boundary;
-                // clear them so only notifications caused by the read remain.
-                let _ = drain_notifications(&mut notification_rx);
+                let _ = observer.take();
                 let before = observable_background_snapshot(&controller, &workspace_path, 0).await;
                 output = lody_output_tail(&cx, &session.session_id, &background.id, 1).await?;
-                let delivered = drain_notifications(&mut notification_rx);
-                let after = observable_background_snapshot(&controller, &workspace_path, delivered).await;
+                let published = observer.take();
+                let after = observable_background_snapshot(&controller, &workspace_path, 0).await;
                 assert_eq!(
                     after, before,
                     "an output read must not change records, timestamps, ledger bytes, or process state"
                 );
-                assert_eq!(delivered, 0, "an output read must not publish session notifications");
+                assert!(
+                    published.is_empty(),
+                    "an output read must not publish a background status update: {published:?}"
+                );
                 if output["output"] == "lody-output-two" {
                     break;
                 }
@@ -315,16 +342,44 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             // inert as a live read. The exec session is gone, so the reader
             // falls back to the archive; the request must not settle, respawn,
             // persist, or publish anything.
-            let _ = drain_notifications(&mut notification_rx);
+            // Cancelling the task published its terminal transition
+            // asynchronously. Settle that traffic before the probe window so
+            // the comparison below attributes every difference to the read
+            // under test. A quiet window is the goal, so either outcome is
+            // acceptable: a delivered notification restarts the window, and
+            // the outer timeout ends it.
+            drop(
+                tokio::time::timeout(Duration::from_secs(2), async {
+                    while tokio::time::timeout(Duration::from_millis(100), notification_rx.recv())
+                        .await
+                        .is_ok()
+                    {}
+                })
+                .await,
+            );
+            // The lifecycle forwarder delivers asynchronously, so draining the
+            // client channel after the response would race its delivery. The
+            // controller calls its progress observers synchronously from the
+            // publication site, so a recording observer proves the read
+            // published nothing without depending on delivery timing.
+            let exited_observer = Arc::new(RecordingBackgroundObserver::default());
+            let _exited_observer_registration = controller.register_progress_observer(
+                session.session_id.0.to_string(),
+                Arc::clone(&exited_observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
+            );
+            let _ = exited_observer.take();
             let before = observable_background_snapshot(&controller, &workspace_path, 0).await;
             let exited_output = lody_output_tail(&cx, &session.session_id, &background.id, 20).await?;
-            let delivered = drain_notifications(&mut notification_rx);
-            let after = observable_background_snapshot(&controller, &workspace_path, delivered).await;
+            let published = exited_observer.take();
+            let after = observable_background_snapshot(&controller, &workspace_path, 0).await;
             assert_eq!(
                 after, before,
                 "an output read of an exited task must not change records, timestamps, ledger bytes, or process state"
             );
-            assert_eq!(delivered, 0, "an output read of an exited task must not publish session notifications");
+            assert!(
+                published.is_empty(),
+                "an output read of an exited task must not publish a background status update: {published:?}"
+            );
             assert!(
                 exited_output["output"].as_str().is_some(),
                 "an exited task must still answer with a bounded output string: {exited_output}"
