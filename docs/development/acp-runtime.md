@@ -213,21 +213,144 @@ Notification regressions need a waiter that is registered before the final
 departure. A waiter created afterwards completes from the counter alone and
 therefore does not detect a missing final-guard notification.
 
-## Task updates
+## Subagent controller and task updates
 
 `diapason-core` publishes protocol-neutral sub-agent and background-process
-status snapshots through its progress observer. The ACP adapter forwards those
-snapshots as extension notifications using the method
-`_diapason/taskLifecycle`. Notification parameters have `sessionId`,
-`acpSessionId`, and `message` fields. `message` uses `task_started`,
-`task_progress`, or `task_updated` with `task_id`, `task_type`,
-`subagent_type`, and the status/details for that snapshot. Terminal updates
-place status and details under `patch`; non-terminal updates place them at the
-message top level. A queued task or starting background process maps to
-`task_started`; active work maps to `task_progress`; completion, failure,
-closure, stop, or error maps to `task_updated` with its terminal status in the
-patch. This is a Diapason extension notification rather than a standard ACP
-session update.
+status snapshots through `SubagentProgressObserver`. The ACP adapter owns all
+protocol projection.
+
+### Session-scoped controller resolution
+
+A session resolves its own `SubagentController` from its `SessionHandle`. If
+none is available, management requests return
+`subagent_management_unavailable`. Management operations walk the root
+controller and every reachable descendant controller, so a session can list,
+cancel, or read output for any task it owns, including grandchildren. A session
+lists and manipulates only tasks it owns: child agents are selected through
+their `parent_thread_id` chain, while managed background records are selected
+by their explicit `owner_session_id`. A task id outside that owned set and an
+id that does not exist both return the same `unknown_task` error, so the
+boundary does not disclose another session's tasks.
+
+The pieces that carry that contract:
+
+- `SubagentController::new_with_background_owner` scopes a controller to one
+  persisted background owner, so a session cannot load or restore another
+  session's background records. The CLI keeps `new` and its restore-all
+  behaviour.
+- `SubagentController::attach_child_controller` attaches a child run's
+  controller so grandchildren stay reachable across resumes; it fails closed
+  for a child this controller does not track. `descendant_controllers` walks
+  that attached tree, deduplicated by allocation so a re-parented controller
+  cannot form a cycle.
+- `SubagentController::background_output_tail` is the domain-shaped output
+  reader. It serves the live exec session while it exists and falls back to the
+  recorded transcript or archive once that session is gone, taking an
+  already-validated line bound rather than a transport default.
+- `ToolRegistry::with_subagent_controller` hands a session's own controller to
+  the `agent` tool. A detached view with `None` fails closed, so a session
+  without a controller cannot execute through a shared, ownerless controller.
+
+### Background output reader
+
+`diapason_core::subagents::BackgroundOutputReader` is the injection point for
+background output storage access. It is keyed by one task's storage identity,
+`BackgroundOutputSource`, which carries the exec-session id and the recorded
+transcript and archive paths. `read_output` returns a domain result:
+`BackgroundOutput::Live`, `BackgroundOutput::Archived`, or
+`BackgroundOutput::NotReady`. The reader owns storage access, exec-session
+error classification and archive-path selection. It does not bound output,
+enforce a transport limit, or validate, because those are the caller's policy.
+The default adapter, `ExecSessionOutputReader`, reads through the workspace
+`ExecSessionManager` and the session archive loader.
+
+A controller receives the reader through
+`SubagentControllerConfig.output_reader: Option<Arc<dyn BackgroundOutputReader>>`
+and resolves it once at construction. `None` keeps the default adapter, so a
+caller that does not care about storage leaves the field `None`. An embedder
+that serves background output from another store injects its own reader
+instead. The default adapter treats a not-ready live session and a missing exec
+session, identified by the typed `ExecSessionNotFound` cause, as archive
+fallback. Any other live-read fault is returned as
+`BackgroundOutputError::Live` rather than masked, so an environmental fault is
+not reported as an exited process. A failed archive read is returned as
+`BackgroundOutputError::Archived`.
+
+`background_output_tail` applies the line bound to whichever output the reader
+returns and fails with the target in its context on any read fault. The bounded
+preview in a background snapshot uses the same rule, except that an unreadable
+archive yields an empty preview rather than failing the snapshot.
+
+### Lifecycle projection
+
+Each snapshot is projected into a standard ACP `session/update`. The first
+update for a task is a tool call with id `task:<taskId>`; later updates are
+tool-call updates for that same id. The standard `title`, `kind` (`think`),
+`status`, and `content` fields carry the task state, and `_meta.lody.task`
+carries the Lody snapshot: `version`, `taskId`, `kind`, `status`, `description`,
+`actor`, start and end times, and optional `summary` or `error`. The adapter
+filters updates by parent session, drops superseded revisions by `updated_at`,
+and replays still-active tasks when the observer is registered.
+
+Forwarding is best-effort. Live observers publish with a bounded, non-blocking
+send, so if the lifecycle queue is full the snapshot is dropped rather than
+delaying the producer. A drop is counted under the `full` queue-drop category,
+alongside the `closed` category used once the receiver is gone, so the loss is
+visible in metrics but not retried. A client therefore cannot treat the update
+stream as a complete log: after a gap, or on first attach, it reconciles by
+listing its tasks with `_lody/subagents/list` and treating that response as the
+authoritative snapshot.
+
+### Management RPCs
+
+When management is advertised, `_lody/subagents/list`,
+`_lody/subagents/cancel`, and `_lody/subagents/output` accept a `sessionId`
+plus their operation fields. `list` accepts `activeOnly` and reports each
+active background record's liveness from the exec-session manager. Listing is a
+pure query: it overlays liveness on the returned projection only, so it never
+reconciles, respawns, publishes a lifecycle update, or persists state, and a
+read cannot restart work. `cancel` closes a child agent or force-cancels a
+background record. `output` returns a bounded tail: `tail` defaults to 200
+lines, and the ACP adapter rejects values above its 10,000-line transport bound
+with `invalid_tail`. Output is a pure read for both task kinds: a foreground
+child is served from its in-memory snapshot, and a background task is served
+from its live exec session, falling back to the recorded transcript or archive
+once that session is gone. The handler never refreshes the controller, so a
+read cannot advance lifecycle state, respawn an exited process, or fail because
+of an unrelated record. Each request re-resolves the session's controller tree.
+
+All three requests are counted under `diapason_acp_management_requests_*`,
+including the `list` and `output` queries, because the counters measure use of
+the management surface rather than state mutation. The counting belongs to the
+single dispatch boundary, `handle_lody_subagent_management`, which also owns the
+`acp_lody_subagent_management` span and the bounded failure log; the query
+helpers `list_subagents` and `subagent_output` carry no telemetry of their own
+and record nothing when called directly. Purity of the query path is therefore
+a property of where the instrumentation sits, not of the counters being
+excluded.
+
+The counters are readable through `ToolRegistry::metrics_collector()` and
+render through `MetricsCollector::export_prometheus()`. The running
+`diapason acp` process has no scrapeable endpoint or metrics command yet;
+adding one is tracked as
+[issue #199](https://github.com/leynos/vtcode/issues/199).
+
+### Usage publication
+
+After each provider response, ACP sends `_lody/session/usage_update` with
+`sessionId`, a per-response `usage` delta (`inputTokens`, `outputTokens`,
+`cacheReadInputTokens`, and optional `cacheCreationInputTokens`), and
+`modelUsage` keyed by the responding model. The notification is omitted when
+the response carries no usage. The delta covers that response, not a running
+session total.
+
+Custom providers opt in to streamed usage with `supports_stream_usage` in their
+provider defaults or model profile. The OpenAI-compatible provider requests
+usage from the stream only for native OpenAI (with no provider key override) or
+when the resolved profile sets it, so a provider that does not declare support
+is never asked.
+
+### Task tracker plans
 
 The model-facing `task_tracker` tool remains implemented by core. The ACP
 adapter converts each successful checklist result to a standard ACP plan

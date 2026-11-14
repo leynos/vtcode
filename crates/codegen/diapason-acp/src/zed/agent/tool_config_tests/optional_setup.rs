@@ -17,11 +17,13 @@ async fn optional_setup_reports_configuration_disabled_components() {
     vt_cfg.mcp.enabled = false;
 
     let subagent_outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        owner_session_id: None,
         registry: &registry,
         agent_config: &core_config,
         custom_providers: &[],
         vt_config: Some(&vt_cfg),
         workspace_gated: false,
+        defer_background_restore: false,
     })
     .await;
     let mcp_outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;
@@ -42,11 +44,13 @@ async fn optional_setup_reports_successfully_attached_components() {
     let core_config = core_agent_config(temp.path());
 
     let subagent_outcome = attach_acp_subagent_controller(AcpSubagentControllerSetup {
+        owner_session_id: None,
         registry: &registry,
         agent_config: &core_config,
         custom_providers: &[],
         vt_config: Some(&vt_cfg),
         workspace_gated: false,
+        defer_background_restore: false,
     })
     .await;
     let mcp_outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;

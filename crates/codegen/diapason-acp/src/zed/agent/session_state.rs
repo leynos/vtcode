@@ -61,6 +61,7 @@ pub(super) fn safe_invalid_params_error(
 }
 
 struct SessionHandleBootstrap {
+    subagent_controller: Option<Arc<diapason_core::subagents::SubagentController>>,
     session_id: acp::SessionId,
     archive: Option<SessionArchive>,
     trigger: SessionStartTrigger,
@@ -69,6 +70,33 @@ struct SessionHandleBootstrap {
 }
 
 impl ZedAgent {
+    async fn build_session_subagent_controller(
+        &self,
+        runtime: &SessionWorkspaceRuntime,
+        session_id: &acp::SessionId,
+        defer_background_restore: bool,
+    ) -> Option<Arc<diapason_core::subagents::SubagentController>> {
+        let registry = runtime.local_tool_registry.with_subagent_controller(None);
+        let mut config = self.config.clone();
+        config.workspace = runtime.workspace_root.clone();
+        let outcome = self
+            .workspace_setup_ports
+            .attach_session_subagent_controller(super::AcpSubagentControllerSetup {
+                registry: &registry,
+                agent_config: &config,
+                custom_providers: &self.workspace_runtime_config.custom_providers,
+                vt_config: self.vt_config.as_deref(),
+                owner_session_id: Some(session_id.0.as_ref()),
+                workspace_gated: runtime.workspace_hooks_gated,
+                defer_background_restore,
+            })
+            .await;
+        super::report_optional_workspace_setup_outcomes(&super::OptionalWorkspaceSetupOutcomes {
+            subagent_controller: outcome,
+            mcp_client: super::OptionalSetupOutcome::DisabledByConfiguration,
+        });
+        registry.subagent_controller()
+    }
     const SESSION_LIST_PAGE_SIZE: usize = 100;
 
     pub(super) fn merge_session_acp_meta(
@@ -110,6 +138,7 @@ impl ZedAgent {
         bootstrap: SessionHandleBootstrap,
     ) -> SessionHandle {
         let SessionHandleBootstrap {
+            subagent_controller,
             session_id,
             mut archive,
             trigger,
@@ -162,6 +191,7 @@ impl ZedAgent {
         });
         SessionHandle {
             data: Arc::new(Mutex::new(SessionData {
+                subagent_controller,
                 session_id,
                 thread,
                 archive,
@@ -205,6 +235,7 @@ impl ZedAgent {
                 archive: None,
                 trigger: SessionStartTrigger::NewSession,
                 workspace_runtime: None,
+                subagent_controller: None,
                 workspace_lease: None,
             },
         );
@@ -224,6 +255,9 @@ impl ZedAgent {
     ) -> anyhow::Result<acp::SessionId> {
         let workspace_runtime = Arc::clone(workspace_lease.runtime());
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
+        let subagent_controller = self
+            .build_session_subagent_controller(&workspace_runtime, &session_id, false)
+            .await;
         let mut metadata = build_thread_archive_metadata(
             workspace_runtime.workspace_root.as_path(),
             &self.config.model,
@@ -243,6 +277,7 @@ impl ZedAgent {
                 archive: None,
                 trigger: SessionStartTrigger::NewSession,
                 workspace_runtime: Some(workspace_runtime),
+                subagent_controller,
                 workspace_lease: Some(workspace_lease),
             },
         );

@@ -25,6 +25,7 @@ pub(super) struct FailThenSucceedProvider {
 }
 
 pub(super) struct StreamToolThenAnswerProvider {
+    pub(super) emit_usage: bool,
     pub(super) calls: Arc<AtomicUsize>,
     pub(super) requests: Arc<Mutex<Vec<LLMRequest>>>,
     pub(super) tool_name: &'static str,
@@ -88,6 +89,11 @@ impl LLMProvider for StreamToolThenAnswerProvider {
                 tool_calls: Some(tool_calls),
                 finish_reason: diapason_core::llm::provider::FinishReason::ToolCalls,
                 model: "wire-model".to_string(),
+                usage: self.emit_usage.then(|| diapason_core::llm::Usage {
+                    prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
+                    completion_tokens: if response_index == 0 { 11 } else { 12 },
+                    ..Default::default()
+                }),
                 ..LLMResponse::default()
             };
             vec![
@@ -100,6 +106,11 @@ impl LLMProvider for StreamToolThenAnswerProvider {
                 content: Some("Tool complete.".to_string()),
                 finish_reason: diapason_core::llm::provider::FinishReason::Stop,
                 model: "wire-model".to_string(),
+                usage: self.emit_usage.then(|| diapason_core::llm::Usage {
+                    prompt_tokens: u32::try_from(100 + response_index).expect("fixture usage fits u32"),
+                    completion_tokens: if response_index == 0 { 11 } else { 12 },
+                    ..Default::default()
+                }),
                 ..LLMResponse::default()
             };
             vec![
@@ -248,6 +259,40 @@ impl LLMProvider for FailThenSucceedProvider {
         } else {
             Ok(LLMResponse::new("wire-model", "second turn succeeded"))
         }
+    }
+}
+
+/// Answers through buffered generation only, reporting the configured usage.
+///
+/// `supports_streaming` is false, so the prompt handler takes the buffered
+/// path and `generate` supplies the response whose usage must reach the ACP
+/// client. A `None` usage models a provider that reports no token counts.
+pub(super) struct BufferedUsageProvider {
+    pub(super) usage: Option<diapason_core::llm::Usage>,
+}
+
+#[async_trait]
+impl LLMProvider for BufferedUsageProvider {
+    fn name(&self) -> &str {
+        "wire-test"
+    }
+
+    fn supported_models(&self) -> Vec<String> {
+        vec!["wire-model".to_string()]
+    }
+
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    fn validate_request(&self, _request: &LLMRequest) -> Result<(), LLMError> {
+        Ok(())
+    }
+
+    async fn generate(&self, _request: LLMRequest) -> Result<LLMResponse, LLMError> {
+        let mut response = LLMResponse::new("wire-model", "buffered answer");
+        response.usage = self.usage.clone();
+        Ok(response)
     }
 }
 

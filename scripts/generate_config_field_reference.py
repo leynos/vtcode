@@ -156,8 +156,6 @@ def format_default(value: Any, float_format: str | None = None) -> str:
             text = json.dumps(value, ensure_ascii=True)
     else:
         text = json.dumps(value, ensure_ascii=True)
-    if len(text) > 120:
-        return f"{text[:117]}..."
     return text
 
 
@@ -401,6 +399,47 @@ def escape_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
 
+def format_code_span(value: str) -> str:
+    """Render ``value`` as an inline Markdown code span.
+
+    Parameters
+    ----------
+    value : str
+        Text to render. It may contain backtick runs, so the delimiter is one
+        backtick longer than the longest run in ``value`` to avoid closing the
+        span early.
+
+    Returns
+    -------
+    str
+        An inline code span delimited by the chosen backtick run. Values that
+        start or end with a backtick are padded with one space inside the
+        delimiters; otherwise that boundary backtick would extend the
+        adjacent delimiter run and stop it matching its partner. A value that
+        both starts and ends with a space, but is not entirely spaces, is
+        padded the same way so its boundary spaces survive GFM's one-space
+        strip. Values made only of spaces are left alone because GFM does not
+        strip them. GFM removes the padding when it renders the span.
+    """
+    longest_backtick_run = 0
+    current_backtick_run = 0
+    for character in value:
+        if character == "`":
+            current_backtick_run += 1
+            longest_backtick_run = max(longest_backtick_run, current_backtick_run)
+        else:
+            current_backtick_run = 0
+    delimiter = "`" * (longest_backtick_run + 1)
+    needs_boundary_padding = value.startswith("`") or value.endswith("`")
+    needs_space_padding = (
+        value.startswith(" ")
+        and value.endswith(" ")
+        and value.strip(" ") != ""
+    )
+    content = f" {value} " if needs_boundary_padding or needs_space_padding else value
+    return f"{delimiter}{content}{delimiter}"
+
+
 def render_markdown(entries: list[FieldEntry]) -> str:
     lines = [
         "# Config Field Reference",
@@ -422,8 +461,10 @@ def render_markdown(entries: list[FieldEntry]) -> str:
         default = entry.default or "-"
         description = entry.description or "-"
         lines.append(
-            f"| `{escape_cell(entry.path)}` | `{escape_cell(entry.type_name)}` | "
-            f"{required} | `{escape_cell(default)}` | {escape_cell(description)} |"
+            f"| {format_code_span(escape_cell(entry.path))} | "
+            f"{format_code_span(escape_cell(entry.type_name))} | "
+            f"{required} | {format_code_span(escape_cell(default))} | "
+            f"{escape_cell(description)} |"
         )
     lines.append("")
     return "\n".join(lines)
