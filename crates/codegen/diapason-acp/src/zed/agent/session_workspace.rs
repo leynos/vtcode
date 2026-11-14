@@ -530,6 +530,7 @@ async fn attach_optional_workspace_components(
             custom_providers: setup.custom_providers,
             vt_config: setup.vt_config,
             workspace_gated: setup.workspace_gated,
+            defer_background_restore: false,
         })
         .await;
     let mcp_outcome = ports

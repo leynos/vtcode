@@ -178,13 +178,14 @@ impl SubagentController {
             }
             // A refresh settles an exited process as `Error` once its single
             // restart allowance is spent. A cached `Starting` status means the
-            // counter has already been incremented but the replacement exec
-            // session is not registered yet, so that restart is still in
-            // progress and must stay `Starting` rather than be projected as a
-            // failure.
+            // process is still coming up: either its first exec session is not
+            // registered yet, or the restart counter has been incremented but
+            // the replacement exec session is not registered yet. It must stay
+            // `Starting` rather than be projected as a failure, even when
+            // `auto_restore` is disabled, because nothing has failed yet.
             entry.status = if *desired_enabled
-                && self.config.vt_cfg.subagents.background.auto_restore
-                && (*restart_attempts < 1 || entry.status == BackgroundSubprocessStatus::Starting)
+                && (entry.status == BackgroundSubprocessStatus::Starting
+                    || (self.config.vt_cfg.subagents.background.auto_restore && *restart_attempts < 1))
             {
                 BackgroundSubprocessStatus::Starting
             } else if *desired_enabled {

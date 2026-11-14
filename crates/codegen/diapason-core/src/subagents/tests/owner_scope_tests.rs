@@ -372,3 +372,24 @@ fn owner_scoped_record_ids_distinguish_owners_and_keep_the_global_id() {
         "an empty owner cannot produce a distinct scope"
     );
 }
+
+/// The owner component must be injective: a display-oriented sanitizer mapped
+/// `:`, `/`, `.`, spaces and surrounding hyphens all onto `-`, so distinct
+/// owners collapsed into one record id. The unscoped load path keys a
+/// `BTreeMap` by that id, so the collision dropped a record and the next save
+/// rewrote the ledger without it.
+#[test]
+fn owner_record_ids_are_injective_for_unsafe_owner_characters() {
+    let unsafe_owners = ["session:a", "session/a", "session.a", "session a", "-session-a-"];
+    let ids = unsafe_owners
+        .iter()
+        .map(|owner| background_record_id_for_owner("agent", Some(owner)))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(ids.len(), unsafe_owners.len(), "distinct owners must produce distinct record ids: {ids:?}");
+
+    assert_eq!(
+        background_record_id_for_owner("agent", Some("session-a")),
+        "background-agent@session-a",
+        "an owner made only of safe characters maps to itself"
+    );
+}

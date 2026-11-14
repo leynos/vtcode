@@ -23,6 +23,7 @@ async fn optional_setup_reports_configuration_disabled_components() {
         custom_providers: &[],
         vt_config: Some(&vt_cfg),
         workspace_gated: false,
+        defer_background_restore: false,
     })
     .await;
     let mcp_outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;
@@ -49,6 +50,7 @@ async fn optional_setup_reports_successfully_attached_components() {
         custom_providers: &[],
         vt_config: Some(&vt_cfg),
         workspace_gated: false,
+        defer_background_restore: false,
     })
     .await;
     let mcp_outcome = attach_acp_mcp_client(&registry, Some(&vt_cfg), temp.path()).await;

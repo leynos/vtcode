@@ -86,6 +86,7 @@ async fn optional_setup_reports_subagents_disabled_by_provider_concurrency_polic
         custom_providers: &[provider],
         vt_config: Some(&vt_cfg),
         workspace_gated: false,
+        defer_background_restore: false,
     })
     .await;
 
@@ -113,6 +114,7 @@ async fn optional_setup_reports_subagent_initialization_failure() {
         custom_providers: &[],
         vt_config: Some(&vt_cfg),
         workspace_gated: false,
+        defer_background_restore: false,
     })
     .await;
 

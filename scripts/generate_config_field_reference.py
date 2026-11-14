@@ -415,8 +415,11 @@ def format_code_span(value: str) -> str:
         An inline code span delimited by the chosen backtick run. Values that
         start or end with a backtick are padded with one space inside the
         delimiters; otherwise that boundary backtick would extend the
-        adjacent delimiter run and stop it matching its partner. GFM removes
-        the padding when it renders the span.
+        adjacent delimiter run and stop it matching its partner. A value that
+        both starts and ends with a space, but is not entirely spaces, is
+        padded the same way so its boundary spaces survive GFM's one-space
+        strip. Values made only of spaces are left alone because GFM does not
+        strip them. GFM removes the padding when it renders the span.
     """
     longest_backtick_run = 0
     current_backtick_run = 0
@@ -427,7 +430,13 @@ def format_code_span(value: str) -> str:
         else:
             current_backtick_run = 0
     delimiter = "`" * (longest_backtick_run + 1)
-    content = f" {value} " if value.startswith("`") or value.endswith("`") else value
+    needs_boundary_padding = value.startswith("`") or value.endswith("`")
+    needs_space_padding = (
+        value.startswith(" ")
+        and value.endswith(" ")
+        and value.strip(" ") != ""
+    )
+    content = f" {value} " if needs_boundary_padding or needs_space_padding else value
     return f"{delimiter}{content}{delimiter}"
 
 

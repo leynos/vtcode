@@ -131,6 +131,7 @@ async fn management_metrics_belong_to_the_dispatch_boundary() {
             vt_config: Some(&vt_config),
             owner_session_id: None,
             workspace_gated: false,
+            defer_background_restore: false,
         },
     )
     .await;

@@ -2181,3 +2181,133 @@ closes or rebuts each one.
   each of the root's child and two grandchildren exactly once and that `output`
   and `cancel` for a grandchild resolve through the child-scoped controller
   that owns it, while a sibling session sees none of them.
+- **Superseded by the r41 round.** The handle described above was shared only
+  by a controller and its *future* children: a child copied the parent's inner
+  scope into its own cell, so an existing descendant did not follow a later
+  redirect, and the absorption silently unioned overlapping ids. See below.
+
+### Revision note (2026-11-14, r41 round: full review `5902825175`)
+
+The first full review since the review base went stale (`5902825175`, head
+`3708d3b06`) returned eleven inline findings and a refreshed pre-merge table.
+Two of them target the r39 attachment work, and both are accepted.
+
+- **Defect: descendants did not follow a redirect.** Each controller owned a
+  separate `ChildIdScopeHandle` cell and `inherit_child_id_scope` copied the
+  parent's inner scope into it. A controller `B` with descendant `C`, attached
+  beneath `A`, therefore redirected `B` only; `C` kept allocating from the old
+  scope and could hand out an id `A` had already issued. The r39 note's claim
+  that the handle was "shared with its own descendants" was wrong: only the
+  value was copied, not the cell.
+- **Defect: overlap was absorbed, not rejected.** `absorb_into` silently
+  unioned the joining subtree's ids into the tree, which hides an id both sides
+  already hold. The adapter lists the whole tree and routes a bare id to the
+  first controller that claims it, so such a duplicate double-lists and
+  mis-routes.
+- **Correction.** `ChildIdScopeSlot` is now one object per subtree — an
+  `RwLock<Arc<ChildIdScope>>` — and a controller holds
+  `Arc<std::sync::RwLock<Arc<ChildIdScopeSlot>>>`. A child adopts its parent's
+  slot *object*, so the slot is shared by the controller that owns it and every
+  descendant it has already created. Adoption runs under the joining slot's
+  write guard (allocation holds the same guard for reading through
+  `with_scope`), takes one process-wide adoption mutex so two opposing joins
+  cannot deadlock on the symmetric guard pair, computes the intersection of the
+  two allocation maps under both of their locks, and fails closed with the
+  duplicate id and no mutation. Only when the sets are disjoint does it reserve
+  them in the tree and swap the slot's content to the tree scope; every
+  existing descendant then allocates from the tree. `attach_child_controller`
+  turns the duplicate into an error naming the child and the id, and does so
+  before publishing the controller, so the record, both scopes and reachability
+  are unchanged on rejection. `inherit_child_id_scope` now only replaces an
+  unallocated controller's slot object with its parent's, and its doc comment
+  states that precondition. The public attachment doc comment states the
+  rejection contract.
+- **Production reach.** No production path attaches an already-populated
+  controller: `record_child_runtime` attaches controllers that inherited their
+  slot in `child_controller_for` (adoption is then a no-op), so the overlap
+  error is a contract for callers outside that loop and for future use.
+- **Regressions.**
+  `tree_routing_tests::attaching_a_nested_controller_redirects_its_descendants`
+  builds `middle` with a live `deepest` child, has `deepest` allocate the
+  candidate before the graft, attaches `middle` to the root, and expects the
+  root to take `-2` and `deepest` to take `-3`; without the descendant redirect
+  the stale scope lets `deepest` take `-2` and collide with the root.
+  `tree_routing_tests::attaching_controllers_that_share_an_id_is_rejected_without_mutation`
+  makes both sides hold the same id, expects an error naming it, and asserts
+  the tracked record keeps `child_controller: None`, the subtree stays
+  unreachable from `descendant_controllers()`, and the rejected controller
+  still allocates `-2` from its own scope.
+- **Self-join deadlock, found by the new regression.** The first version of
+  `adopt_into` took this slot's write guard and then read the target slot. A
+  child inherits its parent's slot object before it is attached, so the parent
+  attaching that child passes one slot object twice and the read waited on the
+  write guard the same thread already held. The regression hung for ten minutes
+  until `nextest` killed it; no assertion could report the problem. The fix
+  reads both scopes before taking either guard — they cannot change in between,
+  because only an adoption writes a slot and the process-wide adoption mutex
+  excludes every other one — and only then takes the write guard for the swap.
+  This is the common production path (`record_child_runtime` attaches a child
+  whose slot is the parent's own), not an edge case, so the deadlock would have
+  hung the first nested delegation.
+- **Graft listing.** The redirect regression asserts the flattened listing has
+  five entries, one per task in the grafted tree (the root's two, the link into
+  the subtree, the id the subtree brought in, and its post-graft allocation),
+  and that no id is listed twice. The first draft asserted four, miscounting
+  the root's second task.
+
+The remaining nine findings are test-robustness, ordering and encoding defects
+raised against code this PR adds or changes. All nine are accepted and repaired
+in the same commit:
+
+- `4572339683` (`handlers/tests/lody_management.rs`) — the two read-purity
+  probes now settle in-flight transitions in the existing bounded quiet window,
+  then register a `RecordingBackgroundObserver` and assert an empty publication
+  list across the read. Client notification delivery is no longer part of a
+  read-purity assertion, so a slow lifecycle forwarder cannot fail it.
+- `4572339685` (`handlers/tests/session_prompt_race.rs`) — takes
+  `lock_history_test_guard()` before `PROMPT_PROVIDER_TEST_LOCK`, matching
+  every other test in the module and removing the opposing lock order.
+- `4572339694` (`attach_child_controller` overlap) — covered by the fail-closed
+  adoption above; the rejection names the id and leaves the record, both scopes
+  and reachability unchanged.
+- `4572339698` (`session_state/archive/attach.rs`) — the archive attach path
+  builds the session controller with background restore deferred, runs the
+  required repaired-history checkpoint, and only then restores before
+  `register_resumed_session`. `AcpSubagentControllerSetup` carries a
+  crate-internal `defer_background_restore` flag, and
+  `restore_acp_session_background_subagents` keeps the previous bounded error
+  reporting. New regression
+  `failed_attach_does_not_restore_background_subagents` fails the required
+  checkpoint and asserts the ledger bytes, the pid and the registration are
+  unchanged; it fails against the eager path.
+- `4572339700` (`metrics/mod.rs`) — the exported duration series is compared
+  with the collector's recorded aggregate instead of a wall-clock bound.
+- `4572339703` (`subagents/background.rs`) — the owner component is now
+  percent-encoded injectively (`[A-Za-z0-9_-]` verbatim, every other byte as
+  uppercase `%XX`), so owners that the display sanitizer collapsed onto `-` no
+  longer share a record id. New regression covers five formerly colliding
+  owners.
+- `4572339708` (`subagents/controller_background_ops.rs`) — a cached `Starting`
+  record stays `Starting` regardless of `auto_restore`; only a non-starting
+  record depends on the restart allowance. New rstest case
+  `starting_without_auto_restore`.
+- `4572339714` (`tests/tree_routing_tests.rs`) — the module is now a 61-line
+  parent holding the shared fixtures plus `observer_routing.rs` (218),
+  `background_restoration.rs` (251), `task_id_allocation.rs` (294) and
+  `task_id_adoption.rs` (245), all under the 400-line limit, with all fifteen
+  tests moved verbatim.
+- `4572339720` (`custom_provider/tests/openai_streaming.rs`) — the fixture now
+  sends `finish_reason: "stop"` before the usage chunk, in production order,
+  and asserts the decoded `FinishReason::Stop` alongside the retained usage
+  totals.
+- `4572339724` (`scripts/tests/test_generate_config_field_reference.py`) — the
+  round-trip tests decode GFM code spans (one space stripped at each end when
+  both ends are spaces and the body is not all spaces), and `format_code_span`
+  pads a value whose own leading and trailing spaces are significant, so the
+  value survives rendering.
+
+The refreshed pre-merge table moved Developer Documentation and Observability
+to PASS, kept the Unit Architecture error as the intentional request-level
+telemetry accepted at 09:46, and repeated the Domain Architecture warning that
+the 09:46 rebuttal addresses; Testing (Overall) fails on the attachment
+regression this round adds.

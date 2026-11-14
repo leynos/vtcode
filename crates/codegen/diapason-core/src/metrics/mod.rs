@@ -1722,8 +1722,8 @@ mod tests {
         "###);
 
         // The guard measures real elapsed time, so the duration value is not
-        // part of the fixed snapshot. Two immediate requests must still render
-        // the series with a small, parseable total.
+        // part of the fixed snapshot. The rendered series must still carry the
+        // aggregate the collector recorded, and parse as a number.
         let duration_line = collector
             .export_prometheus()
             .lines()
@@ -1735,7 +1735,11 @@ mod tests {
             .next()
             .and_then(|value| value.parse().ok())
             .expect("the ACP management duration value must be a number");
-        assert!(total_ms < 1_000, "two immediate requests must not accumulate a large duration: {duration_line}");
+        assert_eq!(
+            total_ms,
+            collector.get_acp_extension_metrics().management_total_duration_ms,
+            "the exported duration series must match the recorded aggregate: {duration_line}"
+        );
     }
 
     #[test]

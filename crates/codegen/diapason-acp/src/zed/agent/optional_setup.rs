@@ -24,6 +24,10 @@ pub(super) struct AcpSubagentControllerSetup<'a> {
     pub(super) custom_providers: &'a [CustomProviderConfig],
     pub(super) vt_config: Option<&'a DiapasonConfig>,
     pub(super) workspace_gated: bool,
+    /// Builds the controller without restoring its background sub-agents, so
+    /// a caller can run a durability checkpoint before any child is launched.
+    /// Only meaningful for an owner-scoped controller.
+    pub(super) defer_background_restore: bool,
 }
 
 /// Driven boundary for attaching the optional ACP sub-agent controller.
@@ -208,6 +212,7 @@ pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerS
         custom_providers,
         vt_config,
         workspace_gated,
+        defer_background_restore,
     } = setup;
     let controller_vt_cfg = match configure_acp_subagents(vt_config, agent_config, custom_providers) {
         AcpSubagentConfiguration::DisabledByConfiguration => return OptionalSetupOutcome::DisabledByConfiguration,
@@ -238,14 +243,36 @@ pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerS
             return OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable);
         }
     };
-    let failures = match owner_session_id {
-        Some(_) => restore_configured_background_subagents(&controller, &controller_vt_cfg).await,
-        // A legacy record has no owner, so no session controller may adopt it.
-        // The workspace controller is therefore the only scope that can bring
-        // it back, and it restores only those ownerless records.
-        None => restore_legacy_background_subagents(&controller, &controller_vt_cfg).await,
+    let failures = if defer_background_restore {
+        Vec::new()
+    } else {
+        match owner_session_id {
+            Some(_) => restore_configured_background_subagents(&controller, &controller_vt_cfg).await,
+            // A legacy record has no owner, so no session controller may adopt
+            // it. The workspace controller is therefore the only scope that
+            // can bring it back, and it restores only those ownerless records.
+            None => restore_legacy_background_subagents(&controller, &controller_vt_cfg).await,
+        }
     };
     registry.set_subagent_controller(controller);
+    OptionalSetupOutcome::attached_with_degradation(failures)
+}
+
+/// Restores the background sub-agents an already-built session controller
+/// owns.
+///
+/// A resumed session defers this until its required history checkpoint has
+/// succeeded, because a restored child can outlive a failed attach: the
+/// fail-closed path releases the workspace lease, but shutdown aborts only
+/// tracked children, never restored background children.
+pub(super) async fn restore_acp_session_background_subagents(
+    controller: &SubagentController,
+    vt_config: Option<&DiapasonConfig>,
+) -> OptionalSetupOutcome {
+    let Some(config) = vt_config.filter(|config| config.subagents.enabled) else {
+        return OptionalSetupOutcome::DisabledByConfiguration;
+    };
+    let failures = restore_configured_background_subagents(controller, config).await;
     OptionalSetupOutcome::attached_with_degradation(failures)
 }
 

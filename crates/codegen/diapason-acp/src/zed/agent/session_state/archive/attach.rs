@@ -106,12 +106,12 @@ impl ZedAgent {
             .await
             .context("Failed to initialize archived ACP session workspace")?;
         let subagent_controller = self
-            .build_session_subagent_controller(workspace_lease.runtime(), session_id)
+            .build_session_subagent_controller(workspace_lease.runtime(), session_id, true)
             .await;
         let handle = self.build_session_handle(
             thread,
             SessionHandleBootstrap {
-                subagent_controller,
+                subagent_controller: subagent_controller.clone(),
                 session_id: session_id.clone(),
                 archive: Some(archive),
                 trigger: SessionStartTrigger::Resume,
@@ -184,6 +184,21 @@ impl ZedAgent {
                 relocated_calls = recovery.relocated_calls,
                 "Repaired unresolved tool calls while loading durable ACP session"
             );
+        }
+        // Restoring background sub-agents must stay after the required
+        // checkpoint above and before registration. A restored child can
+        // outlive a failed attach, because the fail-closed path releases the
+        // workspace lease but shutdown aborts only tracked children, never
+        // restored background children. It must also precede registration:
+        // registration's concurrent-existing branch releases this handle's
+        // lease, after which the restored controller must already own its work.
+        if let Some(controller) = subagent_controller.as_deref() {
+            let outcome = crate::zed::agent::optional_setup::restore_acp_session_background_subagents(
+                controller,
+                self.vt_config.as_deref(),
+            )
+            .await;
+            crate::zed::agent::optional_setup::report_optional_setup_outcome("background subagent restore", &outcome);
         }
         if let Some(existing) = self.register_resumed_session(session_id, &handle).await? {
             return Ok(existing);

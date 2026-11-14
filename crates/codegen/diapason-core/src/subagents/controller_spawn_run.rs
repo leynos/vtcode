@@ -971,13 +971,12 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
             bail!("Subagent controller is shutting down; cannot spawn new subagents");
         }
-        // The read guard stays held for the allocation, so joining a controller
-        // to another tree cannot swap the allocator out from under an id that
-        // is being reserved here.
-        let unique_id = {
-            let scope = self.child_id_scope.read().unwrap_or_else(|poisoned| poisoned.into_inner());
-            scope.allocate(|id| state.children.contains_key(id), child.id.as_str())
-        };
+        // The scope's read guard stays held for the allocation, so joining a
+        // controller to another tree cannot swap the allocator out from under
+        // an id that is being reserved here.
+        let unique_id = self
+            .child_id_slot()
+            .with_scope(|scope| scope.allocate(|id| state.children.contains_key(id), child.id.as_str()));
         if unique_id != child.id {
             child.record.session_id = format!(
                 "{}-{}",
@@ -1101,22 +1100,92 @@ fn unique_child_id(is_taken: impl Fn(&str) -> bool, candidate: &str) -> String {
 /// exposes the whole tree at once and routes a task id to the first controller
 /// that matches, so a duplicate id would list one task twice and send an
 /// output read or a cancel to whichever controller happened to come first.
-/// The root controller owns one scope and the whole tree points at it through
-/// [`ChildIdScopeHandle`]; ids are recorded for the lifetime of the tree.
+/// The root controller owns one scope and the whole tree shares it through
+/// one [`ChildIdScopeSlot`]; ids are recorded for the lifetime of the tree.
 #[derive(Default)]
 pub(super) struct ChildIdScope {
     taken: std::sync::Mutex<std::collections::BTreeSet<String>>,
 }
 
-/// A redirectable pointer to the allocator a controller currently uses.
+/// The redirectable allocator pointer every controller in one subtree shares.
 ///
-/// The descendants of one controller share this cell, so joining a controller
-/// that has already spawned children to another tree - which is what attaching
-/// an independently created controller does - moves that controller's whole
-/// existing subtree onto the new tree's allocator at once. Replacing a plain
-/// `Arc` field could only redirect the controller itself and would leave every
-/// descendant it had already created allocating from the stale scope.
-pub(super) type ChildIdScopeHandle = std::sync::RwLock<Arc<ChildIdScope>>;
+/// A child controller adopts its parent's slot object rather than a copy of
+/// the scope inside it, so the slot is shared by the controller that owns it
+/// and by every descendant it has already created. Writing a scope into the
+/// slot therefore redirects that whole existing subtree at once, which is what
+/// attaching an independently created controller that already has children
+/// must do; redirecting only the attached controller would leave its
+/// descendants allocating from the stale scope, free to repeat an id the tree
+/// has already issued.
+#[derive(Default)]
+pub(super) struct ChildIdScopeSlot {
+    scope: std::sync::RwLock<Arc<ChildIdScope>>,
+}
+
+/// Serialises subtree adoption across the process.
+///
+/// Adopting takes the joining slot's write guard and the target's read guard,
+/// a symmetric pair that would deadlock if two controllers were attached in
+/// opposing directions at once. Joins are rare, so making them exclusive costs
+/// nothing measurable and removes the possibility.
+fn adoption_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
+impl ChildIdScopeSlot {
+    /// Runs `allocate` while this subtree cannot be redirected.
+    ///
+    /// The read guard is held for the whole allocation, so an adoption cannot
+    /// swap the allocator out from under an id that is being reserved.
+    pub(super) fn with_scope<R>(&self, allocate: impl FnOnce(&ChildIdScope) -> R) -> R {
+        let scope = self.scope.read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        allocate(&scope)
+    }
+
+    /// Moves this whole subtree onto `target`'s allocator.
+    ///
+    /// Returns the id both scopes already hold, if there is one, without
+    /// changing either side. An id that both sides have already published
+    /// cannot be separated by a suffix, and silently merging the sets would
+    /// leave the adapter listing one task twice and routing an output read or
+    /// a cancel to whichever controller it reached first.
+    ///
+    /// The redirect runs under this slot's write guard, which `with_scope`
+    /// takes for reading, so no id can be reserved in this subtree while it
+    /// moves. Both allocation maps stay locked until the swap is complete, so
+    /// the ids this subtree holds are exactly the ones the target now re-uses
+    /// through its new pointer.
+    ///
+    /// Joining a controller to the tree it already belongs to passes the same
+    /// slot object twice, and that is the common case: a child inherits its
+    /// parent's slot before it is attached, so the parent attaches a child
+    /// whose slot is the parent's own. Both scopes are therefore read before
+    /// either guard is taken, because taking this slot's write guard and then
+    /// reading `target` would deadlock on one `RwLock`.
+    pub(super) fn adopt_into(&self, target: &Self) -> Result<(), String> {
+        let _exclusive = adoption_lock().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let source = Arc::clone(&*self.scope.read().unwrap_or_else(|poisoned| poisoned.into_inner()));
+        let target_scope = Arc::clone(&*target.scope.read().unwrap_or_else(|poisoned| poisoned.into_inner()));
+        if Arc::ptr_eq(&source, &target_scope) {
+            return Ok(());
+        }
+        // The scope cannot have changed since it was read: only an adoption
+        // writes a slot, and the process-wide lock above excludes every other
+        // one.
+        let mut slot = self.scope.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let source_taken = source.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut target_taken = target_scope.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(duplicate) = source_taken.intersection(&target_taken).next() {
+            return Err(duplicate.clone());
+        }
+        target_taken.extend(source_taken.iter().cloned());
+        drop(target_taken);
+        drop(source_taken);
+        *slot = target_scope;
+        Ok(())
+    }
+}
 
 impl ChildIdScope {
     /// Allocates `candidate` or its first free suffix, and records the result.
@@ -1129,24 +1198,6 @@ impl ChildIdScope {
         let id = unique_child_id(|id| taken.contains(id) || is_taken(id), candidate);
         taken.insert(id.clone());
         id
-    }
-
-    /// Reserves every id `self` has already allocated in `target`.
-    ///
-    /// A controller that is attached after it has spawned children brings
-    /// ids that live tasks already answer to. Carrying them into the tree's
-    /// allocator keeps them reserved there, so the tree cannot hand one out
-    /// again and make the adapter's first-match routing ambiguous.
-    pub(super) fn absorb_into(&self, target: &ChildIdScope) {
-        let reserved = {
-            let taken = self.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            taken.iter().cloned().collect::<Vec<_>>()
-        };
-        if reserved.is_empty() {
-            return;
-        }
-        let mut taken = target.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        taken.extend(reserved);
     }
 }
 

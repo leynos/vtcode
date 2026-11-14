@@ -74,6 +74,7 @@ impl ZedAgent {
         &self,
         runtime: &SessionWorkspaceRuntime,
         session_id: &acp::SessionId,
+        defer_background_restore: bool,
     ) -> Option<Arc<diapason_core::subagents::SubagentController>> {
         let registry = runtime.local_tool_registry.with_subagent_controller(None);
         let mut config = self.config.clone();
@@ -87,6 +88,7 @@ impl ZedAgent {
                 vt_config: self.vt_config.as_deref(),
                 owner_session_id: Some(session_id.0.as_ref()),
                 workspace_gated: runtime.workspace_hooks_gated,
+                defer_background_restore,
             })
             .await;
         super::report_optional_workspace_setup_outcomes(&super::OptionalWorkspaceSetupOutcomes {
@@ -253,7 +255,9 @@ impl ZedAgent {
     ) -> anyhow::Result<acp::SessionId> {
         let workspace_runtime = Arc::clone(workspace_lease.runtime());
         let session_id = acp::SessionId::new(Arc::from(format!("{SESSION_PREFIX}-{}", Uuid::new_v4())));
-        let subagent_controller = self.build_session_subagent_controller(&workspace_runtime, &session_id).await;
+        let subagent_controller = self
+            .build_session_subagent_controller(&workspace_runtime, &session_id, false)
+            .await;
         let mut metadata = build_thread_archive_metadata(
             workspace_runtime.workspace_root.as_path(),
             &self.config.model,
