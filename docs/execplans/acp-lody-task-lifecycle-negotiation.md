@@ -2405,3 +2405,33 @@ persisted ledger copy can lag the running task, and re-reading it per poll
 would add exactly the I/O that finding `4575326079` asks to remove. The port
 therefore still takes no storage identity, which is the row's actual
 requirement.
+
+### Revision note (2026-11-15, post-gate CI: `Check Unmaintained Dependencies`)
+
+**Symptom.** Head `73f1914b8` failed `Check Unmaintained Dependencies` in run
+`43727632430` (job `132852928252`) with six `unreviewed or changed finding`
+errors: `bytecount@0.6.9`, `lab@0.11.0`, `miow@0.6.1`, `qoi@0.4.1`,
+`subtle@2.6.1` and `web-time@1.1.0`. A bounded rerun reproduced the identical
+failure, so it is not a transient infrastructure result.
+
+**Cause.** `_finding_identity` in `scripts/check_unmaintained_baseline.py`
+includes each dependency's `version_latest` in the ratchet identity. crates.io
+published `rand` 0.10.4 after the baseline recorded 0.10.3, so every finding
+whose stale dependency is `rand ^0.8` used at `0.8.7` acquired a new identity.
+This PR does not touch `Cargo.lock` or any manifest, and the same failure
+applies to any branch scanned after that release.
+
+**Remedy.** Follow step 4 of `docs/guides/cargo-unmaintained.md`: re-record the
+six baseline entries' `rand` `version_latest` as `0.10.4`. No package name,
+package version, requirement, classification, rationale or issue changed, and
+no finding was removed, ignored or suppressed. Verified with
+`python3 scripts/check_unmaintained_baseline.py`, which exits 0 against a live
+scan and accepts all 32 current findings. The recorded `redox_users@0.5.2` and
+`mac_address@1.1.8` entries are absent from that scan and print as eligible for
+manual removal, which the checker reports without failing.
+
+**Follow-up for #108, not actioned here.** Because `version_latest` contributes
+to the identity, every upstream release of an already-stale dependency turns
+the estate red until the baseline is re-recorded. Narrowing the identity to the
+requirement and the used version is a change to a debt ratchet owned by #108,
+so it is left to that issue rather than folded into this PR.
