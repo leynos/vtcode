@@ -1,8 +1,10 @@
 //! Regression coverage for lifecycle queueing, mapping, and ACP forwarding.
 
+use super::queue_accounting::{LifecycleQueueDropKind, lifecycle_queue_drop_kind};
 use super::*;
 use diapason_core::metrics::MetricsCollector;
 use std::fmt::Write as FmtWrite;
+use std::sync::Mutex;
 use tokio::sync::mpsc;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, SubscriberExt};

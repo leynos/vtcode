@@ -6,6 +6,7 @@ use super::*;
 
 mod archive_test_support;
 mod client;
+mod lody_background_fixtures;
 mod lody_management;
 mod lody_management_errors;
 mod lody_nested_management;

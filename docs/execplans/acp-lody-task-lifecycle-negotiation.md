@@ -45,7 +45,7 @@ management requests return only tasks owned by the requested ACP session.
   different ACP session must be indistinguishable from an unknown task.
 - Do not add an external Rust dependency. Use the pinned ACP SDK, Serde, the
   existing subagent controller and existing provider response types.
-- Keep changes compatible with Rust 1.88 and the repository's formatting,
+- Keep changes compatible with Rust 1.93.0 and the repository's formatting,
   Clippy, Whitaker and nextest policies.
 - Follow Red-Green-Refactor for every runtime milestone. Commit and gate each
   coherent change, and install the user-level binary after each code commit.
@@ -2311,3 +2311,97 @@ to PASS, kept the Unit Architecture error as the intentional request-level
 telemetry accepted at 09:46, and repeated the Domain Architecture warning that
 the 09:46 rebuttal addresses; Testing (Overall) fails on the attachment
 regression this round adds.
+
+### Revision note (2026-11-15, r42 round: review `5906713948`)
+
+The next full review (`5906713948`, head `ef3e9c600`) returned seven inline
+findings and two failed pre-merge rows. All seven findings are accepted and
+repaired in one commit; one row is factually stale, and the other is remedied
+with one deliberate deviation recorded below.
+
+- `4575326072` (`handlers/tests/lody_support.rs`, 418 lines) — the executable
+  fixtures moved to `handlers/tests/lody_background_fixtures.rs` (54 lines):
+  both script constants and both writers. `lody_support.rs` keeps the
+  connection and request helpers and is 372 lines; it re-exports the fixtures
+  so no call site changed.
+- `4575326079` (`lody_management.rs`, whole-transcript join per poll) — new
+  `lody_management/output_tail.rs` (142 lines) walks messages newest to oldest
+  and stops once the collected suffix covers the requested tail, so the
+  allocation is bounded by the tail rather than the transcript. It counts lines
+  exactly (a message's own `lines()` count, plus one when a prepended text ends
+  in a newline) rather than over-estimating by one per separator, because the
+  over-estimate stops a message early and breaks the required equivalence. A
+  table-driven test asserts equality with `join("\n") + extract_tail_lines` for
+  seven transcripts across `max_lines` 0 to 8, and a zero-line request returns
+  before any walk.
+- `4575326081` (`task_lifecycle.rs`, equal-timestamp initial snapshot) — the
+  channel item is now `QueuedLifecycleUpdate { update, initial_snapshot }`,
+  `LifecycleRevision` carries the flag, and `supersedes` refuses an initial
+  snapshot at an equal timestamp, lets a live revision supersede an initial
+  one, and keeps the terminal-wins rule between two live revisions.
+  `task_lifecycle/ordering_tests.rs` delivers live `running` before an initial
+  `queued` at the same `updated_at` and asserts the snapshot is refused.
+  `forwarder_duplex_tests::stale_initial_task_snapshot_is_not_forwarded_after_settlement`
+  now enqueues its fixtures as live transitions, since the case it pins is an
+  older timestamp; the equal-timestamp case is the new unit regression.
+- `4575326084` (`task_lifecycle.rs`, 579 lines) — split into
+  `task_lifecycle/snapshot_publication.rs` (125 lines) and
+  `task_lifecycle/queue_accounting.rs` (140 lines). The parent keeps forwarder
+  setup, the observer and transport coordination and is 370 lines. Only
+  `pub(super)` visibility was widened, so nothing became visible outside
+  `zed::agent`.
+- `4575326086` (`controller_spawn_run.rs`, 1450 lines) — the allocator moved to
+  `controller_child_ids.rs` (218 lines) and ledger merging with its generated
+  fixtures to `controller_persistence.rs` (239 lines), each with its tests
+  beside the implementation, exactly as the finding directed. Controller
+  execution stays in `controller_spawn_run.rs`, which is 1068 lines; that
+  module was 973 lines on `main` before this PR, so the file's remaining size
+  is pre-existing rather than an addition of this change.
+- `4575326087` (`attach_child_controller`, descendants kept a stale scope) —
+  confirmed as a real defect against the r41 design and repaired as the
+  finding's first suggestion: `ChildIdScope` now carries a forwarding link
+  (`redirect: Mutex<Option<Arc<ChildIdScope>>>`) and allocation resolves the
+  chain to its terminal before allocating. Adoption resolves both sides to
+  their terminals under the process-wide adoption lock, so an edge always
+  targets a node with no redirect and the chain stays acyclic; it then merges
+  the `taken` sets, fails closed on a duplicate, and rewrites the source's
+  `redirect` plus the joining slot. Regression
+  `tree_routing_tests::a_grafted_subtree_keeps_allocating_from_the_tree_it_joined`
+  builds `R`, `P` and `D` independently, attaches `D` beneath `P` and `P`
+  beneath `R`, then expects `R` to take the free candidate and `D` to take
+  `-2`. Its falsification is recorded: with `ef3e9c600`'s allocator restored,
+  the test fails with `left: "agent-explorer-20261113T061900000Z"` and
+  `right: "agent-explorer-20261113T061900000Z-2"`, which is the duplicate id
+  the finding predicted.
+- `4575326088` (plan versus manifest compiler) — constraint 48 of this plan now
+  requires Rust 1.93.0, matching `package.rust-version` in the workspace
+  manifest.
+
+**Unit Architecture row is stale.** The row states that "the current head does
+not change `lody_management.rs:116-170`". That premise is false:
+`crates/codegen/diapason-acp/src/zed/agent/lody_management.rs` does not exist
+at the review base `3ff3befbd`; it is added by `24bac6622` in this PR. The
+dispatch boundary itself is `begin_acp_management()`, called unconditionally
+before dispatch, and
+`lody_management_tests::management_metrics_belong_to_the_dispatch_boundary`
+pins that a successful `list` counts as started and succeeded, a failing
+`output` counts as started and failed, and direct helper calls publish nothing.
+The all-operations counter contract is therefore documented in the handler, in
+`diapason-core`'s metrics module, and pinned by a test.
+
+**Domain Architecture row is remedied, with the ledger read declined.**
+`BackgroundOutputReader::read_output` now takes `&BackgroundSubprocessEntry`
+and keys on its `id`; `BackgroundOutputSource` is private to the adapter and no
+longer re-exported from `subagents/mod.rs`; `ExecSessionOutputReader`, the
+archive fallback and the `ExecSessionNotFound` classification moved to
+`subagents/background_output/exec_session.rs`; `read_preview` and
+`read_output_tail` pass the entry, so no exec-session or path type crosses the
+port; the ACP line defaults are untouched; and the fake reader keys by task id
+with a new regression showing two tasks resolving independently. The one
+deviation is the row's step 3 instruction that the adapter resolve its handles
+"from the ledger record". The adapter does resolve the exec-session id and the
+recorded paths, but from the live record the controller already holds. The
+persisted ledger copy can lag the running task, and re-reading it per poll
+would add exactly the I/O that finding `4575326079` asks to remove. The port
+therefore still takes no storage identity, which is the row's actual
+requirement.

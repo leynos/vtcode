@@ -254,10 +254,13 @@ The pieces that carry that contract:
 ### Background output reader
 
 `diapason_core::subagents::BackgroundOutputReader` is the injection point for
-background output storage access. It is keyed by one task's storage identity,
-`BackgroundOutputSource`, which carries the exec-session id and the recorded
-transcript and archive paths. `read_output` returns a domain result:
-`BackgroundOutput::Live`, `BackgroundOutput::Archived`, or
+background output storage access. It is keyed by a live
+`BackgroundSubprocessEntry`, whose `id` names the task; the controller passes
+the record it already holds, so the reader derives the exec-session and
+recorded-path handles itself instead of receiving them. The persisted ledger
+copy can lag the running task, which is why the adapter is not handed a ledger
+lookup and does not re-read the ledger per poll. `read_output` returns a domain
+result: `BackgroundOutput::Live`, `BackgroundOutput::Archived`, or
 `BackgroundOutput::NotReady`. The reader owns storage access, exec-session
 error classification and archive-path selection. It does not bound output,
 enforce a transport limit, or validate, because those are the caller's policy.

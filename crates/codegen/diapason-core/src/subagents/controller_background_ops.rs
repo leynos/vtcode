@@ -30,7 +30,7 @@ use self::config::*;
 use self::constants::*;
 use self::discovery::discover_controller_subagents;
 use self::model::*;
-use super::{BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource};
+use super::{BackgroundOutput, BackgroundOutputError, BackgroundOutputReader};
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
 struct CapturedSubagentThread {
@@ -1186,7 +1186,10 @@ impl SubagentController {
     }
 }
 
-/// Reads the bounded preview through the task-shaped reader.
+/// Reads the bounded preview through the task-keyed reader.
+///
+/// The entry is the controller's live record, and its task id is the key the
+/// reader resolves; no exec-session or path handle crosses this boundary.
 ///
 /// A preview is best effort: a task without output, or one whose transcript is
 /// unreadable, yields an empty preview. A live-read fault is not masked,
@@ -1197,7 +1200,7 @@ async fn read_preview(
     entry: &BackgroundSubprocessEntry,
     target: &str,
 ) -> Result<String> {
-    match reader.read_output(BackgroundOutputSource::from_entry(entry)).await {
+    match reader.read_output(entry).await {
         Ok(BackgroundOutput::Live(output) | BackgroundOutput::Archived(output)) => {
             Ok(extract_tail_lines(&output, SUBAGENT_PREVIEW_LINES))
         }
@@ -1209,18 +1212,20 @@ async fn read_preview(
     }
 }
 
-/// Reads the bounded output tail through the task-shaped reader.
+/// Reads the bounded output tail through the task-keyed reader.
 ///
-/// The reader owns storage access and fallback selection; the controller keeps
-/// the line bound. Any read fault is propagated with the caller's target in the
-/// context.
+/// The entry is the controller's live record, and its task id is the key the
+/// reader resolves; no exec-session or path handle crosses this boundary. The
+/// reader owns storage access and fallback selection, while the controller
+/// keeps the line bound. Any read fault is propagated with the caller's target
+/// in the context.
 async fn read_output_tail(
     reader: &dyn BackgroundOutputReader,
     entry: &BackgroundSubprocessEntry,
     target: &str,
     max_lines: usize,
 ) -> Result<String> {
-    match reader.read_output(BackgroundOutputSource::from_entry(entry)).await {
+    match reader.read_output(entry).await {
         Ok(BackgroundOutput::Live(output) | BackgroundOutput::Archived(output)) => {
             Ok(extract_tail_lines(&output, max_lines))
         }
@@ -1238,11 +1243,11 @@ mod background_owner_tests {
     //! bound, a not-ready or archived task serves the recorded output, a
     //! live-read fault is reported against its target instead of being masked
     //! by an empty result, the preview applies its fixed bound, an unreadable
-    //! archive yields an empty preview, and an empty legacy owner falls back to
-    //! the current session.
+    //! archive yields an empty preview, an empty legacy owner falls back to the
+    //! current session, and the reader resolves each task by task id.
     use super::{
-        BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource,
-        BackgroundSubprocessEntry, read_output_tail, read_preview, usable_background_parent_session_id,
+        BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundSubprocessEntry, read_output_tail,
+        read_preview, usable_background_parent_session_id,
     };
     use futures::future::BoxFuture;
 
@@ -1250,6 +1255,7 @@ mod background_owner_tests {
 
     const TARGET: &str = "background-worker";
 
+    #[derive(Clone, Copy)]
     enum FakeOutput {
         Live(&'static str),
         Archived(&'static str),
@@ -1258,22 +1264,42 @@ mod background_owner_tests {
         ArchiveFailure(&'static str),
     }
 
+    /// Scripts one outcome per task id, so the fake is keyed like the real
+    /// reader rather than by any storage handle.
     struct FakeOutputReader {
-        output: FakeOutput,
+        outputs: Vec<(&'static str, FakeOutput)>,
+    }
+
+    impl FakeOutputReader {
+        /// Scripts one outcome for a single task id.
+        fn for_task(task_id: &'static str, output: FakeOutput) -> Self {
+            Self { outputs: vec![(task_id, output)] }
+        }
+
+        /// Scripts one outcome for each task id.
+        fn with_outputs(outputs: Vec<(&'static str, FakeOutput)>) -> Self {
+            Self { outputs }
+        }
     }
 
     impl BackgroundOutputReader for FakeOutputReader {
         fn read_output<'a>(
             &'a self,
-            _source: BackgroundOutputSource<'a>,
+            entry: &'a BackgroundSubprocessEntry,
         ) -> BoxFuture<'a, Result<BackgroundOutput, BackgroundOutputError>> {
+            let output = self
+                .outputs
+                .iter()
+                .find_map(|(task_id, output)| (entry.id.as_str() == *task_id).then_some(*output));
             Box::pin(async move {
-                match self.output {
-                    FakeOutput::Live(output) => Ok(BackgroundOutput::Live(output.to_string())),
-                    FakeOutput::Archived(output) => Ok(BackgroundOutput::Archived(output.to_string())),
-                    FakeOutput::NotReady => Ok(BackgroundOutput::NotReady),
-                    FakeOutput::LiveFailure(message) => Err(BackgroundOutputError::Live(anyhow::anyhow!("{message}"))),
-                    FakeOutput::ArchiveFailure(message) => {
+                match output {
+                    Some(FakeOutput::Live(output)) => Ok(BackgroundOutput::Live(output.to_string())),
+                    Some(FakeOutput::Archived(output)) => Ok(BackgroundOutput::Archived(output.to_string())),
+                    Some(FakeOutput::NotReady) | None => Ok(BackgroundOutput::NotReady),
+                    Some(FakeOutput::LiveFailure(message)) => {
+                        Err(BackgroundOutputError::Live(anyhow::anyhow!("{message}")))
+                    }
+                    Some(FakeOutput::ArchiveFailure(message)) => {
                         Err(BackgroundOutputError::Archived(anyhow::anyhow!("{message}")))
                     }
                 }
@@ -1281,9 +1307,9 @@ mod background_owner_tests {
         }
     }
 
-    fn entry_with_transcript(transcript_path: Option<&str>) -> BackgroundSubprocessEntry {
+    fn entry_with_id(id: &str, transcript_path: Option<&str>) -> BackgroundSubprocessEntry {
         serde_json::from_value(serde_json::json!({
-            "id": TARGET,
+            "id": id,
             "session_id": "session-background-worker",
             "exec_session_id": "exec-background-worker",
             "agent_name": "worker",
@@ -1310,8 +1336,8 @@ mod background_owner_tests {
     #[tokio::test]
     /// Live output is bounded by the caller's line count.
     async fn live_output_keeps_the_requested_bound() {
-        let reader = FakeOutputReader { output: FakeOutput::Live("one\ntwo\nthree") };
-        let entry = entry_with_transcript(Some("/tmp/session.json"));
+        let reader = FakeOutputReader::for_task(TARGET, FakeOutput::Live("one\ntwo\nthree"));
+        let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
         let output = read_output_tail(&reader, &entry, TARGET, 2).await.expect("live output tail");
 
@@ -1321,8 +1347,8 @@ mod background_owner_tests {
     #[tokio::test]
     /// Archived output is bounded by the caller's line count.
     async fn archived_output_keeps_the_requested_bound() {
-        let reader = FakeOutputReader { output: FakeOutput::Archived("old\narchived") };
-        let entry = entry_with_transcript(Some("/tmp/session.json"));
+        let reader = FakeOutputReader::for_task(TARGET, FakeOutput::Archived("old\narchived"));
+        let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
         let output = read_output_tail(&reader, &entry, TARGET, 1).await.expect("archived tail");
 
@@ -1330,10 +1356,35 @@ mod background_owner_tests {
     }
 
     #[tokio::test]
+    /// Two tasks with different outcomes resolve independently by task id.
+    async fn each_task_resolves_independently_by_task_id() {
+        let reader = FakeOutputReader::with_outputs(vec![
+            ("first-task", FakeOutput::Live("first live")),
+            ("second-task", FakeOutput::Archived("second archived")),
+        ]);
+        let first = entry_with_id("first-task", Some("/tmp/first.json"));
+        let second = entry_with_id("second-task", Some("/tmp/second.json"));
+
+        let first_tail = read_output_tail(&reader, &first, "first-task", 10)
+            .await
+            .expect("first task tail");
+        let second_tail = read_output_tail(&reader, &second, "second-task", 10)
+            .await
+            .expect("second task tail");
+        let second_preview = read_preview(&reader, &second, "second-task")
+            .await
+            .expect("second task preview");
+
+        assert_eq!(first_tail, "first live");
+        assert_eq!(second_tail, "second archived");
+        assert_eq!(second_preview, "second archived");
+    }
+
+    #[tokio::test]
     /// A task with no output yet reads as an empty tail.
     async fn not_ready_output_is_empty() {
-        let reader = FakeOutputReader { output: FakeOutput::NotReady };
-        let entry = entry_with_transcript(None);
+        let reader = FakeOutputReader::for_task(TARGET, FakeOutput::NotReady);
+        let entry = entry_with_id(TARGET, None);
 
         let output = read_output_tail(&reader, &entry, TARGET, 10).await.expect("empty tail");
 
@@ -1343,10 +1394,8 @@ mod background_owner_tests {
     #[tokio::test]
     /// A read fault names the task it was reading.
     async fn read_errors_are_reported_with_the_target() {
-        let reader = FakeOutputReader {
-            output: FakeOutput::LiveFailure("permission denied"),
-        };
-        let entry = entry_with_transcript(Some("/tmp/session.json"));
+        let reader = FakeOutputReader::for_task(TARGET, FakeOutput::LiveFailure("permission denied"));
+        let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
         let error = read_output_tail(&reader, &entry, TARGET, 10)
             .await
@@ -1361,8 +1410,8 @@ mod background_owner_tests {
     /// A preview applies the fixed preview bound.
     async fn preview_keeps_the_preview_bound() {
         let archived = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26";
-        let reader = FakeOutputReader { output: FakeOutput::Archived(archived) };
-        let entry = entry_with_transcript(Some("/tmp/session.json"));
+        let reader = FakeOutputReader::for_task(TARGET, FakeOutput::Archived(archived));
+        let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
         let preview = read_preview(&reader, &entry, TARGET).await.expect("archived preview");
 
@@ -1375,10 +1424,8 @@ mod background_owner_tests {
     #[tokio::test]
     /// A preview is best effort when the archive cannot be read.
     async fn preview_is_empty_when_the_archive_is_unreadable() {
-        let reader = FakeOutputReader {
-            output: FakeOutput::ArchiveFailure("archive is corrupt"),
-        };
-        let entry = entry_with_transcript(Some("/tmp/session.json"));
+        let reader = FakeOutputReader::for_task(TARGET, FakeOutput::ArchiveFailure("archive is corrupt"));
+        let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
         let preview = read_preview(&reader, &entry, TARGET).await.expect("a preview is best effort");
 
@@ -1388,10 +1435,8 @@ mod background_owner_tests {
     #[tokio::test]
     /// A preview does not mask a live-read fault.
     async fn preview_propagates_a_live_read_fault() {
-        let reader = FakeOutputReader {
-            output: FakeOutput::LiveFailure("permission denied"),
-        };
-        let entry = entry_with_transcript(Some("/tmp/session.json"));
+        let reader = FakeOutputReader::for_task(TARGET, FakeOutput::LiveFailure("permission denied"));
+        let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
         let error = read_preview(&reader, &entry, TARGET)
             .await

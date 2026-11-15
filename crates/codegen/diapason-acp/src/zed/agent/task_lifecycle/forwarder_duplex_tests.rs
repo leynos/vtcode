@@ -1,5 +1,5 @@
 //! Duplex transport regressions for the lifecycle forwarder.
-use super::projection_tests::{subagent_event, subagent_event_for, with_updated_at};
+use super::projection_tests::{live, subagent_event, subagent_event_for, with_updated_at};
 use super::*;
 use agent_client_protocol::{Agent, Builder, Client, ConnectionTo, RunWithConnectionTo, on_receive_notification};
 use std::time::Duration;
@@ -19,7 +19,7 @@ impl ForwarderDuplex {
     /// recorded stream and then calls [`Self::finish`].
     fn start(
         agent_name: &'static str,
-        publish: impl FnOnce(mpsc::Sender<LifecycleUpdate>, Arc<LifecycleQueueTracker>) + Send + 'static,
+        publish: impl FnOnce(mpsc::Sender<QueuedLifecycleUpdate>, Arc<LifecycleQueueTracker>) + Send + 'static,
     ) -> Self {
         let (agent_channel, client_channel) = agent_client_protocol::Channel::duplex();
         let (progress_tx, progress_rx) = mpsc::channel(8);
@@ -85,13 +85,13 @@ async fn stale_initial_task_snapshot_is_not_forwarded_after_settlement() {
         // Live delivery first, then the older snapshot the initial
         // publisher captured before the terminal transition.
         queue
-            .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"))
+            .try_send(&progress_tx, live(with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z")))
             .unwrap();
         queue
-            .try_send(&progress_tx, with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"))
+            .try_send(&progress_tx, live(with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z")))
             .unwrap();
         queue
-            .try_send(&progress_tx, with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"))
+            .try_send(&progress_tx, live(with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z")))
             .unwrap();
     });
 
@@ -123,10 +123,10 @@ async fn stale_initial_task_snapshot_is_not_forwarded_after_settlement() {
 async fn forwards_lifecycle_events_through_the_official_acp_duplex() {
     let mut duplex = ForwarderDuplex::start("diapason-task-lifecycle-test", |progress_tx, queue| {
         queue
-            .try_send(&progress_tx, subagent_event_for("other-session", "running"))
+            .try_send(&progress_tx, live(subagent_event_for("other-session", "running")))
             .unwrap();
-        queue.try_send(&progress_tx, subagent_event("running")).unwrap();
-        queue.try_send(&progress_tx, subagent_event("completed")).unwrap();
+        queue.try_send(&progress_tx, live(subagent_event("running"))).unwrap();
+        queue.try_send(&progress_tx, live(subagent_event("completed"))).unwrap();
     });
 
     let first = duplex.next(Duration::from_secs(2)).await.expect("initial task update");
