@@ -1,6 +1,8 @@
 //! Queue-accounting invariants for lifecycle notification publication.
 use super::projection_tests::{background_event, subagent_event};
+use super::queue_accounting::LifecycleQueueDropKind;
 use super::*;
+use diapason_core::metrics::TaskLifecycleNotificationQueueDrop;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::mpsc;
 

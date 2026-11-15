@@ -80,6 +80,11 @@ pub(super) fn with_task_id(mut event: LifecycleUpdate, task_id: String) -> Lifec
     event
 }
 
+/// Wraps a live observer transition for the ordering tests.
+pub(super) fn live(update: LifecycleUpdate) -> QueuedLifecycleUpdate {
+    QueuedLifecycleUpdate { update, initial_snapshot: false }
+}
+
 #[test]
 fn maps_worker_and_background_states_to_lody_task_metadata() {
     let cases = [
@@ -225,37 +230,37 @@ fn stale_initial_snapshot_is_rejected_after_a_terminal_transition() {
     let running = with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z");
     let completed = with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z");
 
-    assert!(ordering.admit(&running), "the first snapshot must be forwarded");
-    assert!(ordering.admit(&completed), "a newer terminal transition must be forwarded");
+    assert!(ordering.admit(&live(running.clone())), "the first snapshot must be forwarded");
+    assert!(ordering.admit(&live(completed)), "a newer terminal transition must be forwarded");
     assert!(
-        !ordering.admit(&running),
+        !ordering.admit(&live(running)),
         "an initial snapshot captured before the terminal transition must not roll the task back"
     );
 
     // A transition the controller really recorded after settlement still wins.
     let resumed = with_updated_at(subagent_event("running"), "2026-08-14T12:06:00Z");
-    assert!(ordering.admit(&resumed), "newer lifecycle transitions must still be forwarded");
+    assert!(ordering.admit(&live(resumed)), "newer lifecycle transitions must still be forwarded");
 }
 
 #[test]
 fn equal_timestamp_revisions_never_regress_terminality() {
     let mut ordering = LifecycleOrdering::default();
     let completed = with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z");
-    assert!(ordering.admit(&completed));
+    assert!(ordering.admit(&live(completed)));
 
     let same_instant_running = with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z");
     assert!(
-        !ordering.admit(&same_instant_running),
+        !ordering.admit(&live(same_instant_running)),
         "a coarsened clock must not let a terminal task regress to running"
     );
 
     let mut background = LifecycleOrdering::default();
     let running = with_updated_at(background_event("running"), "2026-08-14T12:01:00Z");
     let stopped = with_updated_at(background_event("stopped"), "2026-08-14T12:05:00Z");
-    assert!(background.admit(&running));
-    assert!(background.admit(&stopped));
+    assert!(background.admit(&live(running)));
+    assert!(background.admit(&live(stopped)));
     assert!(
-        !background.admit(&with_updated_at(background_event("running"), "2026-08-14T12:01:00Z")),
+        !background.admit(&live(with_updated_at(background_event("running"), "2026-08-14T12:01:00Z"))),
         "a stale background snapshot must not revive a stopped task"
     );
 }

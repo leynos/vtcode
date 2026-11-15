@@ -4,9 +4,7 @@ use crate::acp;
 use agent_client_protocol::Error as SdkError;
 #[cfg(test)]
 use diapason_core::subagents::BackgroundSubprocessStatus;
-use diapason_core::subagents::{
-    BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry, extract_tail_lines,
-};
+use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -20,8 +18,10 @@ use super::{
     task_lifecycle::bounded_session_correlation,
 };
 
+mod output_tail;
 mod projection;
 
+use self::output_tail::{foreground_output_tail, normalize_output_tail_lines};
 use self::projection::{managed_background_task, managed_child_task};
 
 /// The bounded set of Lody subagent management RPCs.
@@ -316,31 +316,6 @@ async fn cancel_subagent(agent: &ZedAgent, request: CancelSubagentRequest) -> Re
     Err(unknown_task_error())
 }
 
-/// Default number of output lines returned when a client omits `tail`.
-///
-/// This is a transport-contract default: it belongs to the ACP adapter, not to
-/// the domain controller that only applies a caller-supplied bound.
-const DEFAULT_TASK_OUTPUT_TAIL_LINES: usize = 200;
-
-/// Hard upper bound on a client-requested output tail.
-///
-/// The bound keeps a single ACP response bounded; the domain controller has no
-/// opinion about it.
-const MAX_TASK_OUTPUT_TAIL_LINES: usize = 10_000;
-
-/// Resolves a requested output-tail size against the ACP transport contract.
-///
-/// `None` selects [`DEFAULT_TASK_OUTPUT_TAIL_LINES`]; values above
-/// [`MAX_TASK_OUTPUT_TAIL_LINES`] are rejected so one response cannot grow
-/// without bound.
-fn normalize_output_tail_lines(max_lines: Option<usize>) -> Result<usize, String> {
-    let max_lines = max_lines.unwrap_or(DEFAULT_TASK_OUTPUT_TAIL_LINES);
-    if max_lines > MAX_TASK_OUTPUT_TAIL_LINES {
-        return Err(format!("output tail exceeds the hard maximum of {MAX_TASK_OUTPUT_TAIL_LINES} lines"));
-    }
-    Ok(max_lines)
-}
-
 async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Result<Value, SdkError> {
     let (_session, controllers) = session_controllers(agent, &request.session_id).await?;
     let tail = normalize_output_tail_lines(request.tail).map_err(|error| {
@@ -358,15 +333,7 @@ async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Re
             .snapshot_for_thread(&request.task_id)
             .await
             .map_err(internal_management_error)?;
-        let transcript = snapshot
-            .snapshot
-            .messages
-            .iter()
-            .map(|message| message.content.as_text())
-            .filter(|text| !text.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        extract_tail_lines(&transcript, tail)
+        foreground_output_tail(&snapshot.snapshot.messages, tail)
     } else {
         let Some(controller) =
             controller_tracking_background(&controllers, &request.session_id, &request.task_id).await

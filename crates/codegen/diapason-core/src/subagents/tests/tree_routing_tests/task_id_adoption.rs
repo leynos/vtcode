@@ -122,6 +122,101 @@ async fn attaching_a_nested_controller_redirects_its_descendants() {
     root.signal_shutdown().await;
 }
 
+/// A subtree grafted through an intermediate scope still reaches the tree.
+///
+/// Three independently created controllers are joined in two steps: the leaf
+/// is attached beneath the middle controller, so the leaf's slot now names the
+/// middle controller's scope, and the middle controller is then attached
+/// beneath the root. Redirecting only the slot the middle controller itself
+/// holds would leave the leaf pointing at the middle controller's former
+/// scope, free to repeat an id the root has issued since. The leaf must
+/// therefore allocate from the root's scope through the middle scope's
+/// forwarding link.
+#[tokio::test]
+async fn a_grafted_subtree_keeps_allocating_from_the_tree_it_joined() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let root = SubagentController::new(test_controller_config(workspace_root.clone(), DiapasonConfig::default()))
+        .await
+        .expect("root controller");
+    let spec = explorer_spec();
+
+    let middle = nested_child_controller(workspace_root.clone(), "middle-session").await;
+    let leaf = nested_child_controller(workspace_root, "leaf-session").await;
+
+    // First graft: the leaf joins the middle controller while the pair is
+    // still independent of the root.
+    middle.state.write().await.children.insert(
+        "leaf".to_string(),
+        test_child_record("leaf", "leaf-session", "middle-session", &spec, SubagentStatus::Running, 2, None),
+    );
+    middle
+        .attach_child_controller("leaf", Arc::clone(&leaf))
+        .await
+        .expect("the leaf joins the middle controller before the graft");
+
+    // Second graft: the middle controller, and with it the leaf, joins the
+    // root.
+    root.state.write().await.children.insert(
+        "middle".to_string(),
+        test_child_record("middle", "middle-session", "parent-session", &spec, SubagentStatus::Running, 1, None),
+    );
+    root.attach_child_controller("middle", Arc::clone(&middle))
+        .await
+        .expect("attach the middle controller");
+
+    let shared = "agent-explorer-20261113T061900000Z";
+    let root_id = root
+        .insert_child_with_candidate_id(
+            shared,
+            test_child_record(
+                shared,
+                "parent-session-candidate",
+                "parent-session",
+                &spec,
+                SubagentStatus::Queued,
+                1,
+                None,
+            ),
+        )
+        .await
+        .expect("insert into the tree");
+    assert_eq!(root_id, shared, "the tree takes the free candidate");
+
+    let leaf_id = leaf
+        .insert_child_with_candidate_id(
+            shared,
+            test_child_record(shared, "leaf-session-candidate", "leaf-session", &spec, SubagentStatus::Queued, 3, None),
+        )
+        .await
+        .expect("insert into the grafted leaf");
+    assert_eq!(leaf_id, format!("{shared}-2"), "the grafted leaf must observe the id the root already issued");
+
+    // The flattened listing is what the adapter serves from the grafted tree.
+    let mut listed = root
+        .status_entries()
+        .await
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect::<Vec<_>>();
+    for controller in root.descendant_controllers().await {
+        listed.extend(controller.status_entries().await.into_iter().map(|entry| entry.id));
+    }
+    listed.sort_unstable();
+    let flat_len = listed.len();
+    listed.dedup();
+    assert_eq!(
+        flat_len, 4,
+        "the grafted tree holds the root's two tasks, the link into the middle controller and the leaf's \
+         allocation; each must be listed once: {listed:?}"
+    );
+    assert_eq!(flat_len, listed.len(), "no task id may be listed twice");
+
+    leaf.signal_shutdown().await;
+    middle.signal_shutdown().await;
+    root.signal_shutdown().await;
+}
+
 /// An id held by both the tree and a joining controller is rejected whole.
 ///
 /// Suffixing cannot separate two ids that have already been published on both
