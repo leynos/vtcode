@@ -2536,11 +2536,11 @@ and `docs/development/acp-runtime.md` state the same contract.
 
 ### Revision note (2026-11-16, unmaintained baseline for `aligned-vec`)
 
-`Check Unmaintained Dependencies` failed on `91c512cf4` with
-`error: unreviewed or changed finding aligned-vec@0.6.4 (repository status Age, 2 outdated dependencies)`,
-reproduced locally against a live scan. The change is upstream drift, not a
-regression in this PR: `aligned-vec 0.6.4` is already in this branch's base
-lockfile at the same version, its only dependants (`rav1e 0.8.1`,
+`Check Unmaintained Dependencies` failed on `91c512cf4` with an unreviewed
+finding for `aligned-vec@0.6.4` (repository status `Age`, two outdated
+dependencies), reproduced locally against a live scan. The change is upstream
+drift, not a regression in this PR: `aligned-vec 0.6.4` is already in this
+branch's base lockfile at the same version, its only dependants (`rav1e 0.8.1`,
 `v_frame 0.3.9`) are untouched, and the single `Cargo.lock` delta on this
 branch adds the root package's `wiremock` dev-dependency. The scanner's
 stale-dependency heuristic only reports a package once its repository has gone
