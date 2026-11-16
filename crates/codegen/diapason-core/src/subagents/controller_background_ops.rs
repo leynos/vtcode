@@ -193,6 +193,14 @@ impl SubagentController {
             } else {
                 BackgroundSubprocessStatus::Stopped
             };
+            // The ACP wire contract requires a number for a terminal task's
+            // end timestamp and allows null only while the task is active. A
+            // record that never observed an end instant therefore gets its own
+            // last observed instant, not the query time, so repeated polls of
+            // one unchanged record report the same end.
+            if !entry.status.is_active() {
+                entry.ended_at.get_or_insert(entry.updated_at);
+            }
         }
 
         entries.into_iter().map(|(entry, ..)| entry).collect()
@@ -907,10 +915,54 @@ impl SubagentController {
     ) -> Result<BackgroundSubprocessEntry> {
         let plan = self.prepare_background_run(request).await?;
         self.record_background_run_starting(&plan).await;
-        let metadata = self.spawn_background_exec_session(&plan).await?;
+        let metadata = match self.spawn_background_exec_session(&plan).await {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                self.settle_failed_background_run(&plan, &error).await;
+                return Err(error);
+            }
+        };
         self.record_background_run_started(&plan, metadata).await?;
         self.save_background_state().await?;
         self.background_status_for(&plan.record_id).await
+    }
+
+    /// Settles a background record whose exec session could not be spawned
+    /// once no automatic restart remains.
+    ///
+    /// A record left at `Starting` is reported as an active process forever:
+    /// refresh treats `Starting` as active, and the read-only liveness overlay
+    /// preserves it while the launch is still desired. Settling it here makes
+    /// the failure visible to a management list and keeps the default toggle
+    /// from routing a graceful stop to a process that never started. A launch
+    /// that still has its restart allowance is left `Starting`, matching the
+    /// overlay's restart budget, and the original spawn error is returned
+    /// either way.
+    async fn settle_failed_background_run(&self, plan: &BackgroundRunPlan, error: &anyhow::Error) {
+        {
+            let mut state = self.state.write().await;
+            let Some(record) = state.background_children.get_mut(&plan.record_id) else {
+                return;
+            };
+            if self.config.vt_cfg.subagents.background.auto_restore && record.restart_attempts < 1 {
+                return;
+            }
+            record.status = BackgroundSubprocessStatus::Error;
+            record.error = Some(format!("Failed to start background subagent '{}': {error:#}", record.agent_name));
+            record.summary = Some("Background subagent failed to start".to_string());
+            record.updated_at = Utc::now();
+            record.ended_at.get_or_insert(Utc::now());
+        }
+        self.publish_background_status(&plan.record_id).await;
+        // The caller receives the original spawn error, so a persistence
+        // failure must not replace it; the ledger catches up on the next save.
+        if let Err(save_error) = self.save_background_state().await {
+            tracing::warn!(
+                record_id = plan.record_id.as_str(),
+                error = %save_error,
+                "Failed to persist the settled background launch failure"
+            );
+        }
     }
 
     async fn resolve_background_run_identity(&self, request: &BackgroundRunRequest) -> Result<BackgroundRunIdentity> {

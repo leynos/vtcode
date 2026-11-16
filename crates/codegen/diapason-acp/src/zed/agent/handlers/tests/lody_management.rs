@@ -569,8 +569,11 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
 
             // Request accounting is adapter telemetry recorded at the ACP
             // transport boundary, not domain state, so it is asserted here
-            // rather than folded into the controller snapshot. The collector's
-            // public export is the production path an embedder reads.
+            // rather than folded into the controller snapshot. The chosen
+            // contract counts every operation of the management surface, so
+            // the `list` and `output` reads above are included in the totals
+            // alongside the `cancel` commands. The collector's public export is
+            // the production path an embedder reads.
             let metrics = inspected_agent
                 .local_tool_registry
                 .metrics_collector()

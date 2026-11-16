@@ -1,3 +1,20 @@
+//! The hidden `background-subagent` CLI command and its `background-demo` subprocess path.
+//!
+//! The command launches one background subagent and reports it. It builds a `SubagentController`
+//! over a `PtySessionManager` and an `ExecSessionManager`, spawns the requested agent type with
+//! `background: true`, and waits up to five minutes for a terminal status. It reports
+//! `background-subagent-summary:`, `background-subagent-error:` and `background-subagent-ready:`
+//! marker lines, fails when the task ends in a non-completed terminal state, and otherwise idles
+//! so the parent keeps a live process.
+//!
+//! Selecting the `background-demo` agent name takes the subprocess path instead: the command runs
+//! `scripts/demo-background-subagent.sh` from the workspace root, waits for its readiness line,
+//! relays the remaining output, and exits cleanly on SIGTERM or Ctrl-C. The demo path returns
+//! before any controller is built, so it exercises process supervision only.
+//!
+//! The controller and session managers come from `diapason-core`; the workspace, model and
+//! provider settings come from the CLI `StartupContext` built during startup.
+
 use std::process::Stdio;
 use std::time::Duration;
 

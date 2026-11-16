@@ -1,7 +1,10 @@
 //! Forward sub-agent and background-process lifecycle events to ACP clients.
 //!
-//! A session-scoped observer receives domain status snapshots and sends them
-//! as Diapason task-lifecycle notifications.
+//! A session-scoped observer receives domain status snapshots and forwards each
+//! as a standard ACP `session/update` tool call or tool-call update carrying
+//! the Lody task snapshot in `_meta.lody.task`; the `_lody/subagents/list`,
+//! `_lody/subagents/cancel` and `_lody/subagents/output` management
+//! requests are handled by the sibling `lody_management` module.
 
 mod messages;
 mod queue_accounting;

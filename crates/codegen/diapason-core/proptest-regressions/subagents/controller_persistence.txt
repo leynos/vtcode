@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc c16568849d66053eee8173af23fd7eabc93bf9ba09ef37632ce79277c0baf589 # shrinks to persisted = [MergeRecord { shape: 2, updated_offset: 0, legacy_id: false }, MergeRecord { shape: 2, updated_offset: 0, legacy_id: false }], snapshot = []
