@@ -2533,3 +2533,25 @@ outcome/elapsed recording and the bounded failure log, taking the
 `dispatch_management_request` that only parses parameters and routes. All
 three operations remain counted, and the handler docs, the Prometheus help text
 and `docs/development/acp-runtime.md` state the same contract.
+
+### Revision note (2026-11-16, unmaintained baseline for `aligned-vec`)
+
+`Check Unmaintained Dependencies` failed on `91c512cf4` with
+`error: unreviewed or changed finding aligned-vec@0.6.4 (repository status Age, 2 outdated dependencies)`,
+reproduced locally against a live scan. The change is upstream drift, not a
+regression in this PR: `aligned-vec 0.6.4` is already in this branch's base
+lockfile at the same version, its only dependants (`rav1e 0.8.1`,
+`v_frame 0.3.9`) are untouched, and the single `Cargo.lock` delta on this
+branch adds the root package's `wiremock` dev-dependency. The scanner's
+stale-dependency heuristic only reports a package once its repository has gone
+a year without a commit, and the finding now carries `Age: 365`, so
+`aligned-vec` crossed that threshold after `main`'s last CI run on 2026-11-13.
+
+Following `docs/guides/cargo-unmaintained.md`, the finding is recorded as
+reviewed debt for issue #108 rather than ignored: one entry with the scanner's
+exact identity (`equator ^0.4.1` at 0.4.2 against 0.6.0, `bincode ^1` at 1.3.3
+against 3.0.0), classified `transitive-stale-dependency-requirement` because
+the AVIF encoder chain reaches it through `rav1e` and `v_frame`. No package is
+ignored, no existing entry changes, and the baseline is not refreshed
+automatically: `python3 scripts/check_unmaintained_baseline.py` exits 0 against
+a live scan, accepting all 33 current findings.
