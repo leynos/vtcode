@@ -254,3 +254,32 @@ async fn vidaimock_provider_drop_surfaces_before_completion() -> Result<()> {
     assert!(observation.error.is_some(), "provider drop should surface as an error: {observation:?}");
     Ok(())
 }
+
+/// VidaiMock prefixes only the first line of a rendered `on_stop` payload with
+/// `data:`, so every later event has to carry its own prefix or the SSE
+/// extractor drops it.
+///
+/// The adapter's finish reason defaults to `Stop`, so an assertion on the
+/// streamed response cannot tell a delivered finish chunk from a dropped one.
+/// This checks the template itself: the finish chunk leads, the usage chunk is
+/// framed explicitly, and `[DONE]` still terminates the payload.
+#[test]
+fn arli_stop_template_frames_every_event_after_the_first() {
+    let template =
+        std::fs::read_to_string(fixture_root().join("templates").join("arli").join("physics_stream_stop.j2"))
+            .expect("read the Arli stop template");
+    let mut lines = template.lines().map(str::trim).filter(|line| !line.is_empty());
+
+    let finish = lines.next().expect("the stop payload opens with the finish chunk");
+    assert!(
+        finish.starts_with('{') && finish.contains(r#""finish_reason":"stop""#),
+        "the first line is the unprefixed finish chunk VidaiMock delivers: {finish}"
+    );
+
+    let framed = lines.collect::<Vec<_>>();
+    assert_eq!(framed.last().copied(), Some("data: [DONE]"), "the payload still terminates with [DONE]");
+    for line in &framed[..framed.len() - 1] {
+        assert!(line.starts_with("data: {"), "a later event needs its own data: prefix: {line}");
+        assert!(line.contains(r#""usage""#), "the only framed event is the usage chunk: {line}");
+    }
+}

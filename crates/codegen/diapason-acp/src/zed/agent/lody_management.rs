@@ -8,8 +8,6 @@ use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentController, Su
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
-use std::time::Instant;
-use tracing::{Instrument, field, info_span, warn};
 
 use super::super::types::SessionHandle;
 use super::{
@@ -18,9 +16,11 @@ use super::{
     task_lifecycle::bounded_session_correlation,
 };
 
+mod observability;
 mod output_tail;
 mod projection;
 
+use self::observability::observe_management_request;
 use self::output_tail::{foreground_output_tail, normalize_output_tail_lines};
 use self::projection::{managed_background_task, managed_child_task};
 
@@ -115,58 +115,40 @@ pub(super) fn is_lody_subagent_management_method(method: &str) -> bool {
 
 /// Serves one Lody management RPC at the adapter's dispatch boundary.
 ///
-/// This is the only place a management request is observed: the metrics guard,
-/// the `acp_lody_subagent_management` span and the bounded failure log all live
-/// here, so the query helpers below stay pure. All three operations are
-/// counted, including `list` and `output`, because the counters describe use of
-/// the management surface rather than state mutation.
+/// This function resolves the collector and the span correlation, then
+/// delegates to the observation boundary in [`observability`], which owns the
+/// metrics guard, the `acp_lody_subagent_management` span and the bounded
+/// failure log. Routing and parameter parsing stay in
+/// `dispatch_management_request`, and the query helpers below stay pure. All
+/// three operations are counted, including `list` and `output`, because the
+/// counters describe use of the management surface rather than state mutation.
 pub(super) async fn handle_lody_subagent_management(
     agent: &ZedAgent,
     method: &str,
     params: Value,
 ) -> Result<Value, SdkError> {
-    let operation = ManagementOperation::of(method);
     let session_correlation = request_session_correlation(&params);
-    let span = info_span!(
-        "acp_lody_subagent_management",
-        operation = operation.as_str(),
-        session_correlation = %session_correlation,
-        outcome = field::Empty,
-        elapsed_ms = field::Empty,
-        error_category = field::Empty
-    );
-    // The guard owns the in-flight gauge, so a request dropped while it awaits
-    // is still recorded as a failure instead of leaving the gauge elevated.
-    let management = agent.local_tool_registry.metrics_collector().begin_acp_management();
-    let started_at = Instant::now();
-    let result = async {
-        match method {
-            super::lody::LODY_SUBAGENTS_LIST_METHOD => list_subagents(agent, parse_params(params)?).await,
-            super::lody::LODY_SUBAGENTS_CANCEL_METHOD => cancel_subagent(agent, parse_params(params)?).await,
-            super::lody::LODY_SUBAGENTS_OUTPUT_METHOD => subagent_output(agent, parse_params(params)?).await,
-            _ => Err(SdkError::method_not_found()),
-        }
+    let metrics = agent.local_tool_registry.metrics_collector();
+    observe_management_request(
+        metrics.as_ref(),
+        method,
+        &session_correlation,
+        dispatch_management_request(agent, method, params),
+    )
+    .await
+}
+
+/// Routes a management method to its query or command helper.
+///
+/// The request payloads and the bounded error reasons belong to the helpers;
+/// this function only parses parameters once and selects the method.
+async fn dispatch_management_request(agent: &ZedAgent, method: &str, params: Value) -> Result<Value, SdkError> {
+    match method {
+        super::lody::LODY_SUBAGENTS_LIST_METHOD => list_subagents(agent, parse_params(params)?).await,
+        super::lody::LODY_SUBAGENTS_CANCEL_METHOD => cancel_subagent(agent, parse_params(params)?).await,
+        super::lody::LODY_SUBAGENTS_OUTPUT_METHOD => subagent_output(agent, parse_params(params)?).await,
+        _ => Err(SdkError::method_not_found()),
     }
-    .instrument(span.clone())
-    .await;
-    let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let _outcome_recorded = span.record("outcome", if result.is_ok() { "succeeded" } else { "failed" });
-    let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
-    if let Err(error) = &result {
-        let error_category = management_error_reason(error);
-        let _error_category_recorded = span.record("error_category", error_category);
-        // The span has already exited by the time the failure is logged, so
-        // the bounded correlation is repeated here rather than inherited.
-        warn!(
-            operation = operation.as_str(),
-            session_correlation = %session_correlation,
-            error_category,
-            elapsed_ms,
-            "Lody subagent management request failed"
-        );
-    }
-    management.finish(result.is_ok());
-    result
 }
 
 fn parse_params<T: for<'de> Deserialize<'de>>(params: Value) -> Result<T, SdkError> {
@@ -178,6 +160,10 @@ fn parse_params<T: for<'de> Deserialize<'de>>(params: Value) -> Result<T, SdkErr
     })
 }
 
+fn unknown_session_error() -> SdkError {
+    SdkError::invalid_params().data(serde_json::json!({ "reason": "unknown_session" }))
+}
+
 fn session_controller(
     agent: &ZedAgent,
     session_id: &str,
@@ -186,7 +172,16 @@ fn session_controller(
     let session = agent
         .session_handle(&session_id)
         .map_err(internal_management_error)?
-        .ok_or_else(|| SdkError::invalid_params().data(serde_json::json!({ "reason": "unknown_session" })))?;
+        .ok_or_else(unknown_session_error)?;
+    // A session that has begun closing releases its workspace runtime, so the
+    // resolver below falls back to the launch-scope controller. Serving the
+    // request there would expose launch-scope tasks through a closed durable
+    // session, so a closing session is reported exactly like an unknown one.
+    // The check precedes resolution so a closing session reports the same
+    // reason whether or not a controller is still reachable.
+    if session.is_closing() {
+        return Err(unknown_session_error());
+    }
     let controller = agent
         .session_subagent_controller(&session)
         .map_err(internal_management_error)?

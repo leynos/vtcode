@@ -2403,8 +2403,10 @@ deviation is the row's step 3 instruction that the adapter resolve its handles
 recorded paths, but from the live record the controller already holds. The
 persisted ledger copy can lag the running task, and re-reading it per poll
 would add exactly the I/O that finding `4575326079` asks to remove. The port
-therefore still takes no storage identity, which is the row's actual
-requirement.
+therefore receives the live `BackgroundSubprocessEntry` and derives the
+exec-session id and the recorded paths from that entry's own fields. What it
+does not receive is a separate storage handle, and what it does not do is
+re-read the ledger per poll, which is the row's actual requirement.
 
 ### Revision note (2026-11-15, post-gate CI: `Check Unmaintained Dependencies`)
 
@@ -2435,3 +2437,99 @@ to the identity, every upstream release of an already-stale dependency turns
 the estate red until the baseline is re-recorded. Narrowing the identity to the
 requirement and the used version is a change to a debt ratchet owned by #108,
 so it is left to that issue rather than folded into this PR.
+
+### Revision note (2026-11-16, review `5913102843` on `52daaec6a`)
+
+**Context.** The mandated full review of `52daaec6a` (the head that turned the
+unmaintained scan green) returned seven inline findings and two failed
+pre-merge rows. Each finding was re-checked against the tree before repair; all
+seven were still valid at that head, so all seven were repaired rather than
+rebutted, and both pre-merge rows were implemented.
+
+**Repairs, by finding.**
+
+1. *Terminal end instant for liveness-detected tasks* (`projection.rs:59`). The
+   read-only liveness overlay rewrote `entry.status` but left a terminal record
+   with `ended_at: null`, so the wire contract's "a number, or `null` while the
+   task is active" was violated. `background_status_entries_with_liveness` now
+   fills `ended_at` with the record's own `updated_at` once the projected
+   status is not active, so repeated polls of one unchanged record report the
+   same instant and the mutating refresh is still not called. Regressions:
+   `terminal_liveness_projection_reports_the_last_observed_instant`,
+   `stopped_liveness_projection_carries_the_terminal_instant` and
+   `active_liveness_projection_leaves_the_end_timestamp_unset`.
+2. *Closing sessions must not serve management requests* (`types.rs:265`). A
+   session that has begun closing releases its workspace runtime, and
+   `session_subagent_controller` then falls back to the launch-scope
+   controller, which would expose launch-scope tasks through a closed durable
+   session. `SessionActivity::is_closing` is now the single implementation of
+   the flag, `SessionHandle::is_closing` exposes it, and `session_controller`
+   rejects a closing session with the existing bounded `unknown_session`
+   reason. The check precedes controller resolution, so the reason does not
+   depend on whether a controller is still reachable. Regression:
+   `closing_session_rejects_management_requests_as_unknown_sessions`.
+3. *ACP metrics family extraction* (`metrics/mod.rs:154`). The aggregate, its
+   guard, the recorders, the Prometheus renderer and their tests now live in
+   the private child module `metrics/acp_metrics.rs` (305 lines);
+   `metrics/mod.rs` fell from 2118 to 1838 lines (base `3ff3befbd`: 1825).
+   Public import paths are preserved through
+   `pub use acp_metrics::{AcpExtensionMetrics, AcpManagementGuard}`, and every
+   `MetricsCollector` method stays an inherent `pub` method, so no caller
+   changed. No counter, help string or lock discipline changed.
+4. *A failed launch settles when no restart remains*
+   (`controller_background_ops.rs:190`). `spawn_background_exec_session`
+   failing left the record `Starting` with `desired_enabled` set and no error,
+   which the overlay reports as active forever when `auto_restore` is off. The
+   new `settle_failed_background_run` sets `Error`, an explanatory `error`
+   naming the spawn failure's full chain, a summary and an end instant, then
+   publishes and persists; a persistence failure is logged rather than
+   replacing the spawn error the caller receives. A launch that still holds its
+   restart allowance stays `Starting`, matching the overlay's restart budget.
+   Regression: `failed_background_spawn_settles_the_record_as_an_error`, which
+   makes the demo script's launch command fail before any process exists.
+5. *Owner-scoped saves must respect freshness*
+   (`controller_persistence.rs:22`). The owner branch replaced the owner's
+   persisted records with its in-memory snapshot, so a stale owner save could
+   resurrect a task an unscoped controller had already cancelled and persisted.
+   Both branches now share
+   `merge_background_records(persisted, snapshot, removed_owner)`: a `BTreeMap`
+   join on the canonical id that keeps the copy with the newest `updated_at`
+   and the snapshot on a tie, plus an owner-side retention rule that removes
+   the owner's records the snapshot dropped while never removing another
+   session's or an unscoped record. An owner-scoped save canonicalizes only the
+   records that session owns and carries every other persisted record verbatim,
+   because another session's record, and an ownerless legacy record, belong to
+   a writer that is not this controller. `merge_unscoped_background_records`
+   remains the `None` wrapper, so its existing proptest still exercises the
+   unscoped contract. Regressions: `owner_merge_keeps_a_newer_cancellation`,
+   `owner_merge_removes_a_record_the_snapshot_dropped` and
+   `owner_merge_keeps_another_sessions_record`, alongside the existing
+   `owner_scoped_controller_loads_only_exact_owner_and_cli_remains_unscoped`,
+   which pins that foreign-owner and legacy ids are left as the ledger stores
+   them.
+6. *Storage-identity claim corrected* (this document, Domain Architecture). The
+   paragraph described the port as taking no storage identity, which misstated
+   the boundary under review; it now says what the port does and does not
+   receive, and why re-reading the ledger per poll would re-add the I/O that
+   finding `4575326079` asks to remove.
+7. *Arli stop payload framing* (`physics_stream_stop.j2:2`). VidaiMock prefixes
+   only the first line of a rendered stop payload, so the usage line consumed
+   the prefix and the finish chunk lost its `data:` framing. The finish chunk
+   is first again, the usage chunk is framed explicitly, and `[DONE]` still
+   terminates the payload. Because the adapter's finish reason defaults to
+   `Stop`, a streamed-response assertion cannot detect the loss, so the
+   template itself is pinned by
+   `arli_stop_template_frames_every_event_after_the_first`.
+
+**Pre-merge rows.** *Module-Level Documentation* is satisfied by the new module
+documentation on `src/cli/background_subagent.rs` (hidden command, demo
+subprocess path, terminal wait and markers, and where its collaborators come
+from) and by the widened docs on `task_lifecycle.rs`. *Unit Architecture* is
+satisfied by `lody_management/observability.rs`: `observe_management_request`
+owns the `acp_lody_subagent_management` span, the in-flight guard, the
+outcome/elapsed recording and the bounded failure log, taking the
+`MetricsCollector` as an explicit parameter, while
+`handle_lody_subagent_management` resolves the collector and delegates a private
+`dispatch_management_request` that only parses parameters and routes. All
+three operations remain counted, and the handler docs, the Prometheus help text
+and `docs/development/acp-runtime.md` state the same contract.

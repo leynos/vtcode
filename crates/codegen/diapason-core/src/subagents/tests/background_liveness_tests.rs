@@ -1,5 +1,7 @@
 //! The read-only liveness projection of a background listing must follow the
-//! record's restart budget and never mutate the persisted ledger.
+//! record's restart budget, report a terminal instant, and never mutate the
+//! persisted ledger. A launch that never started must settle as the failure it
+//! is rather than remain `Starting` forever.
 use super::*;
 use rstest::rstest;
 
@@ -20,6 +22,24 @@ fn record_with_restart_state(
     serde_json::from_value(value).expect("deserialize record")
 }
 
+/// Overrides the projection's terminal-time inputs on the fixture record:
+/// whether the owner still desires the process, and whether a terminal instant
+/// was ever observed.
+fn record_with_terminal_state(
+    id: &str,
+    owner_session_id: Option<&str>,
+    status: &str,
+    restart_attempts: u8,
+    desired_enabled: bool,
+    ended_at: Option<&str>,
+) -> PersistedBackgroundRecord {
+    let mut value = serde_json::to_value(record_with_restart_state(id, owner_session_id, status, restart_attempts))
+        .expect("serialize fixture record");
+    value["desired_enabled"] = serde_json::json!(desired_enabled);
+    value["ended_at"] = serde_json::json!(ended_at);
+    serde_json::from_value(value).expect("deserialize record")
+}
+
 fn write_ledger(path: &std::path::Path, records: Vec<PersistedBackgroundRecord>) {
     std::fs::write(path, serde_json::to_string(&PersistedBackgroundState { records }).expect("serialize state"))
         .expect("write state");
@@ -32,12 +52,12 @@ fn auto_restore_config(workspace_root: PathBuf, auto_restore: bool) -> SubagentC
 }
 
 /// Projects one persisted record through the liveness query and returns the
-/// status the caller would observe.
-async fn projected_liveness_status(
+/// entry the caller would observe.
+async fn projected_liveness_entry(
     temp: &TempDir,
     record: PersistedBackgroundRecord,
     auto_restore: bool,
-) -> BackgroundSubprocessStatus {
+) -> BackgroundSubprocessEntry {
     let state_dir = temp.path().join(".diapason/state");
     std::fs::create_dir_all(&state_dir).expect("state dir");
     write_ledger(&state_dir.join("background_subagents.json"), vec![record]);
@@ -54,7 +74,16 @@ async fn projected_liveness_status(
         .into_iter()
         .find(|entry| entry.id == "background-worker@session-a")
         .expect("owned background record")
-        .status
+}
+
+/// Projects one persisted record through the liveness query and returns the
+/// status the caller would observe.
+async fn projected_liveness_status(
+    temp: &TempDir,
+    record: PersistedBackgroundRecord,
+    auto_restore: bool,
+) -> BackgroundSubprocessStatus {
+    projected_liveness_entry(temp, record, auto_restore).await.status
 }
 
 /// The liveness overlay follows the record's restart budget.
@@ -91,6 +120,76 @@ async fn liveness_projection_follows_the_restart_budget(
     assert_eq!(
         status, expected,
         "cached {cached_status} record with {restart_attempts} restart(s) already spent and auto_restore {auto_restore}"
+    );
+}
+
+/// A projection that settles a terminal status must report a terminal instant.
+///
+/// The ACP wire contract numbers `endedAtEpochSeconds` for a terminal task and
+/// leaves it null only while the task is active. A record whose process exited
+/// before any end instant was observed is projected as the error a refresh
+/// would settle it as, so the projection supplies the record's own last
+/// observed instant. Using that stored instant, rather than the query time,
+/// keeps repeated polls of one unchanged record in agreement.
+#[tokio::test]
+async fn terminal_liveness_projection_reports_the_last_observed_instant() {
+    let temp = TempDir::new().expect("tempdir");
+    let last_observed: chrono::DateTime<Utc> = "2026-08-28T00:00:00Z".parse().expect("fixture instant");
+    let entry = projected_liveness_entry(
+        &temp,
+        record_with_terminal_state("background-worker", Some("session-a"), "running", 1, true, None),
+        false,
+    )
+    .await;
+
+    assert_eq!(
+        entry.status,
+        BackgroundSubprocessStatus::Error,
+        "an exited process with a spent restart budget is a failure"
+    );
+    assert_eq!(entry.updated_at, last_observed);
+    assert_eq!(
+        entry.ended_at,
+        Some(last_observed),
+        "a terminal projection must report the record's last observed instant as its end"
+    );
+}
+
+/// A projection that keeps a task active leaves its end timestamp unset, so a
+/// client never reports an active task as already terminal.
+#[tokio::test]
+async fn active_liveness_projection_leaves_the_end_timestamp_unset() {
+    let temp = TempDir::new().expect("tempdir");
+    let entry = projected_liveness_entry(
+        &temp,
+        record_with_terminal_state("background-worker", Some("session-a"), "running", 0, true, None),
+        true,
+    )
+    .await;
+
+    assert_eq!(entry.status, BackgroundSubprocessStatus::Starting);
+    assert_eq!(entry.ended_at, None, "an active task has no terminal instant");
+}
+
+/// A stopped projection also carries the terminal instant: the owner cleared
+/// `desired_enabled`, so the exited process is a completed task rather than a
+/// failure.
+#[tokio::test]
+async fn stopped_liveness_projection_carries_the_terminal_instant() {
+    let temp = TempDir::new().expect("tempdir");
+    let last_observed: chrono::DateTime<Utc> = "2026-08-28T00:00:00Z".parse().expect("fixture instant");
+    let entry = projected_liveness_entry(
+        &temp,
+        record_with_terminal_state("background-worker", Some("session-a"), "running", 0, false, None),
+        false,
+    )
+    .await;
+
+    assert_eq!(entry.status, BackgroundSubprocessStatus::Stopped);
+    assert_eq!(
+        entry.ended_at,
+        Some(last_observed),
+        "a stopped projection must report the record's last observed instant as its end"
     );
 }
 
@@ -138,4 +237,61 @@ async fn liveness_projection_does_not_mutate_the_ledger() {
         ledger_before,
         "the liveness query must not rewrite the persisted ledger"
     );
+}
+
+/// A launch whose exec session never started must settle as an error.
+///
+/// Refresh treats a `Starting` record as active, and the liveness overlay
+/// preserves `Starting` while the launch is desired, so an unsettled failure
+/// that no restart will retry would be reported as a running process forever.
+/// The default toggle would then route a graceful stop to a process that never
+/// started. The spawn failure is deterministic: the demo agent's launch command
+/// is a workspace script, and spawning a missing program fails before any
+/// process exists.
+#[tokio::test]
+async fn failed_background_spawn_settles_the_record_as_an_error() {
+    let temp = TempDir::new().expect("tempdir");
+    write_test_background_subagent(temp.path());
+    std::fs::remove_file(temp.path().join("scripts").join("demo-background-subagent.sh"))
+        .expect("remove the launch script so the spawn fails");
+    let mut cfg = DiapasonConfig::default();
+    cfg.subagents.background.enabled = true;
+    cfg.subagents.background.auto_restore = false;
+    let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf(), cfg))
+        .await
+        .expect("controller");
+    controller.set_turn_delegation_hints_from_input("delegate this task").await;
+
+    let error = controller
+        .spawn_background_subprocess(SpawnBackgroundSubprocessRequest {
+            agent_type: Some("background-demo".to_string()),
+            ..SpawnBackgroundSubprocessRequest::default()
+        })
+        .await
+        .expect_err("a missing launch script must fail the spawn");
+    let rendered = format!("{error:#}");
+    assert!(
+        rendered.contains("Failed to spawn background subprocess"),
+        "the caller keeps the contextual spawn failure, got: {rendered}"
+    );
+
+    let entry = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.agent_name == "background-demo")
+        .expect("the failed launch leaves a record");
+    assert_eq!(
+        entry.status,
+        BackgroundSubprocessStatus::Error,
+        "a failed launch with no restart left must not stay Starting"
+    );
+    let message = entry.error.expect("a settled failure must be explained");
+    assert!(message.contains("background-demo"), "the failure must name the agent, got: {message}");
+    assert!(
+        message.contains("failed to spawn pipe session") || message.contains("No such file"),
+        "the failure must include the spawn error, got: {message}"
+    );
+    assert!(entry.ended_at.is_some(), "a settled failure carries a terminal instant");
+    assert!(entry.desired_enabled, "settling a failed launch must not clear the desired state");
 }

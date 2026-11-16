@@ -108,6 +108,133 @@ async fn listing_projects_liveness_without_mutating_records() {
     assert_eq!(ledger_before, ledger_after, "the read-only query must not rewrite the persisted ledger");
 }
 
+/// Builds an agent whose launch scope has a subagent controller.
+///
+/// A session without a workspace runtime resolves to that controller, which is
+/// the controller a closing session would otherwise reach.
+///
+/// The setup future is boxed: it holds a whole default configuration and the
+/// attach path's own future, so leaving it inline would make every awaiting
+/// test's future large enough to trip `clippy::large_futures`.
+fn agent_with_launch_subagent_controller(workspace: &std::path::Path) -> impl Future<Output = ZedAgent> + '_ {
+    Box::pin(async move {
+        let mut agent = crate::zed::tests::build_agent(workspace).await;
+        let mut vt_config = DiapasonConfig::default();
+        vt_config.subagents.enabled = true;
+        vt_config.subagents.background.enabled = true;
+        agent.vt_config = Some(Box::new(vt_config.clone()));
+        let outcome = crate::zed::agent::optional_setup::attach_acp_subagent_controller(
+            crate::zed::agent::AcpSubagentControllerSetup {
+                registry: &agent.local_tool_registry,
+                agent_config: &agent.config,
+                custom_providers: &[],
+                vt_config: Some(&vt_config),
+                owner_session_id: None,
+                workspace_gated: false,
+                defer_background_restore: false,
+            },
+        )
+        .await;
+        assert_eq!(
+            outcome,
+            crate::zed::agent::OptionalSetupOutcome::Attached,
+            "the test needs a launch-scope subagent controller"
+        );
+        agent
+    })
+}
+
+/// A closing session's workspace runtime is released while it is still
+/// resolvable, so controller resolution falls back to launch scope. Management
+/// must not serve that scope for it: the request is rejected exactly like an
+/// unknown session.
+#[tokio::test]
+async fn closing_session_rejects_management_requests_as_unknown_sessions() {
+    let workspace = TempDir::new().expect("closing session workspace");
+    let agent = agent_with_launch_subagent_controller(workspace.path()).await;
+    let session_id = agent.register_session().expect("register session");
+    let raw_id = session_id.0.to_string();
+    // An open session still resolves: the launch scope is a legitimate
+    // fallback while the session is live.
+    assert!(session_controller(&agent, &raw_id).is_ok(), "an open session must still resolve its controller");
+
+    agent
+        .session_handle(&session_id)
+        .expect("look up the session")
+        .expect("registered session")
+        .begin_close();
+
+    let resolve_error = match session_controller(&agent, &raw_id) {
+        Ok(_) => panic!("a closing session must not resolve a controller"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        resolve_error.data.as_ref(),
+        Some(&serde_json::json!({ "reason": "unknown_session" })),
+        "a closing session must be reported as unknown: {resolve_error:?}"
+    );
+    // The dispatch boundary reports the same bounded reason and counts the
+    // rejected request as a failure rather than a success.
+    let before = acp_extension_metrics(&agent);
+    let error = handle_lody_subagent_management(
+        &agent,
+        crate::zed::agent::lody::LODY_SUBAGENTS_LIST_METHOD,
+        serde_json::json!({ "sessionId": raw_id }),
+    )
+    .await
+    .expect_err("a closing session cannot list tasks");
+    assert_eq!(
+        error.data.as_ref(),
+        Some(&serde_json::json!({ "reason": "unknown_session" })),
+        "the dispatch boundary must not expose launch-scope tasks: {error:?}"
+    );
+    let after = acp_extension_metrics(&agent);
+    assert_eq!(
+        after.management_requests_started,
+        before.management_requests_started + 1,
+        "a rejected request is still a management request: {after:?}"
+    );
+    assert_eq!(
+        after.management_requests_failed,
+        before.management_requests_failed + 1,
+        "a rejected request is recorded as a failure: {after:?}"
+    );
+}
+
+/// The observation boundary takes its collector explicitly, so it can be
+/// exercised without an agent, and it counts every operation of the surface.
+#[tokio::test]
+async fn observation_boundary_counts_every_operation_with_an_explicit_collector() {
+    let workspace = TempDir::new().expect("observation boundary workspace");
+    let agent = crate::zed::tests::build_agent(workspace.path()).await;
+    let metrics = agent.local_tool_registry.metrics_collector();
+    for method in [
+        crate::zed::agent::lody::LODY_SUBAGENTS_LIST_METHOD,
+        crate::zed::agent::lody::LODY_SUBAGENTS_CANCEL_METHOD,
+        crate::zed::agent::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
+    ] {
+        let before = metrics.get_acp_extension_metrics();
+        let observed = observe_management_request(metrics.as_ref(), method, "bounded-correlation", async {
+            Ok(serde_json::json!({ "tasks": [] }))
+        })
+        .await
+        .expect("the observation boundary passes a successful result through");
+        assert_eq!(observed, serde_json::json!({ "tasks": [] }), "the boundary must not rewrite the result");
+        let after = metrics.get_acp_extension_metrics();
+        assert_eq!(
+            after.management_requests_started,
+            before.management_requests_started + 1,
+            "{method} must be counted as a management request: {after:?}"
+        );
+        assert_eq!(
+            after.management_requests_succeeded,
+            before.management_requests_succeeded + 1,
+            "{method} must record exactly one success: {after:?}"
+        );
+        assert_eq!(after.management_requests_in_flight, 0, "{method} must release its in-flight slot: {after:?}");
+    }
+}
+
 /// Request accounting belongs to the dispatch boundary alone.
 ///
 /// The query helpers are pure: calling `list_subagents` or `subagent_output`
@@ -118,29 +245,7 @@ async fn listing_projects_liveness_without_mutating_records() {
 #[tokio::test]
 async fn management_metrics_belong_to_the_dispatch_boundary() {
     let workspace = TempDir::new().expect("management metrics workspace");
-    let mut agent = crate::zed::tests::build_agent(workspace.path()).await;
-    let mut vt_config = DiapasonConfig::default();
-    vt_config.subagents.enabled = true;
-    vt_config.subagents.background.enabled = true;
-    agent.vt_config = Some(Box::new(vt_config.clone()));
-    let outcome = crate::zed::agent::optional_setup::attach_acp_subagent_controller(
-        crate::zed::agent::AcpSubagentControllerSetup {
-            registry: &agent.local_tool_registry,
-            agent_config: &agent.config,
-            custom_providers: &[],
-            vt_config: Some(&vt_config),
-            owner_session_id: None,
-            workspace_gated: false,
-            defer_background_restore: false,
-        },
-    )
-    .await;
-    assert_eq!(
-        outcome,
-        crate::zed::agent::OptionalSetupOutcome::Attached,
-        "the dispatch-boundary test needs a session subagent controller"
-    );
-
+    let agent = agent_with_launch_subagent_controller(workspace.path()).await;
     let session_id = agent.register_session().expect("register session").0.to_string();
     let baseline = acp_extension_metrics(&agent);
 
