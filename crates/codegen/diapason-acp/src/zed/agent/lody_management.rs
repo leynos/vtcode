@@ -164,6 +164,34 @@ fn unknown_session_error() -> SdkError {
     SdkError::invalid_params().data(serde_json::json!({ "reason": "unknown_session" }))
 }
 
+/// Resolves a controller only while the session stays open.
+///
+/// A session that has begun closing releases its workspace runtime, so the
+/// resolver falls back to the launch-scope controller. Serving the request
+/// there would expose launch-scope tasks through a closed durable session, so a
+/// closing session is reported exactly like an unknown one.
+///
+/// The check brackets `resolve` for that reason. A request can pass the first
+/// check, then wait while the session closes and releases its runtime; the
+/// resolution that follows can still return a controller. Checking again before
+/// the result is interpreted rejects that interleaving, and the first check
+/// keeps the reason stable whether or not a controller is still reachable.
+fn resolve_open_session_controller(
+    session: &SessionHandle,
+    resolve: impl FnOnce() -> Result<Option<Arc<SubagentController>>, SdkError>,
+) -> Result<Arc<SubagentController>, SdkError> {
+    if session.is_closing() {
+        return Err(unknown_session_error());
+    }
+    let controller = resolve()?.ok_or_else(|| {
+        SdkError::invalid_params().data(serde_json::json!({ "reason": "subagent_management_unavailable" }))
+    })?;
+    if session.is_closing() {
+        return Err(unknown_session_error());
+    }
+    Ok(controller)
+}
+
 fn session_controller(
     agent: &ZedAgent,
     session_id: &str,
@@ -173,21 +201,9 @@ fn session_controller(
         .session_handle(&session_id)
         .map_err(internal_management_error)?
         .ok_or_else(unknown_session_error)?;
-    // A session that has begun closing releases its workspace runtime, so the
-    // resolver below falls back to the launch-scope controller. Serving the
-    // request there would expose launch-scope tasks through a closed durable
-    // session, so a closing session is reported exactly like an unknown one.
-    // The check precedes resolution so a closing session reports the same
-    // reason whether or not a controller is still reachable.
-    if session.is_closing() {
-        return Err(unknown_session_error());
-    }
-    let controller = agent
-        .session_subagent_controller(&session)
-        .map_err(internal_management_error)?
-        .ok_or_else(|| {
-            SdkError::invalid_params().data(serde_json::json!({ "reason": "subagent_management_unavailable" }))
-        })?;
+    let controller = resolve_open_session_controller(&session, || {
+        agent.session_subagent_controller(&session).map_err(internal_management_error)
+    })?;
     Ok((session, controller))
 }
 
