@@ -651,5 +651,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-# weave: run 'weave explain scripts/generate_config_field_reference.py' for per-hunk detail, 'weave check' to verify your resolution
-# weave: run 'weave explain scripts/generate_config_field_reference.py' for per-hunk detail, 'weave check' to verify your resolution
