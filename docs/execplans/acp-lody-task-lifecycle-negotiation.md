@@ -2555,3 +2555,116 @@ the AVIF encoder chain reaches it through `rav1e` and `v_frame`. No package is
 ignored, no existing entry changes, and the baseline is not refreshed
 automatically: `python3 scripts/check_unmaintained_baseline.py` exits 0 against
 a live scan, accepting all 33 current findings.
+
+### Revision note (2026-11-17, review round: reference, modules, close race)
+
+Review `5921518001` on `555941c1e` left seven inline findings, two carried
+threads and four failed pre-merge rows. Every finding was re-verified against
+the current tree first; the dispositions below record what actually changed.
+
+1. *Configuration reference regenerated, losslessly* (finding
+   `4586902392`). A restack had restored the pre-r18 reference to
+   `docs/config/CONFIG_FIELD_REFERENCE.md`, whose default column still carried
+   120-character `....` previews, while the 1,800,000-byte allowlist entry
+   stayed. Splicing the two new schema rows in was rejected: `mdtablefix` pads
+   every row of a table to its widest cell, so un-truncating one long default
+   rewrites the whole table anyway and the splice would not survive the format
+   gate. The file is therefore regenerated from the schema as r18 decided. The
+   hand-written "Configuration and state locations" section had been appended
+   by hand and was silently dropped by an earlier regeneration, so the
+   generator now owns it: `STATE_LOCATIONS_SECTION` is emitted by
+   `render_markdown`, and
+   `test_render_markdown_keeps_the_state_locations_section` fails if a
+   regeneration loses it again. The result is 953 lines, 926 field rows and
+   1,689,287 bytes, under the 1,800,000 cap, with
+   `test_long_default_remains_parseable_json` still guarding every default.
+2. *Controller modules split* (`subagents/mod.rs`, findings `4586902362` and
+   `4580392624`). `mod.rs` is now 379 lines; the tree walk and the child-id
+   graft moved verbatim to `controller_tree.rs` (188 lines) and the observer
+   registry with its publish path to `controller_observers.rs` (185 lines).
+   Bodies are unchanged, so the two carried test contracts still hold: the
+   interleaving regression and the second `is_closing` check. Privacy follows
+   the move rather than widening it: `child_id_slot`,
+   `attach_child_controller_to_state` and `ensure_child_owned_by_invocation`
+   became `pub(super)` because a private sibling-module `fn` is invisible to
+   the modules that call them, and `SubagentProgressObserverRegistration` stays
+   a public path through
+   `pub use controller_observers::SubagentProgressObserverRegistration;`.
+3. *Close during resolution rejected* (carried `4580392619`,
+   `lody_management.rs`). The single `is_closing` check ran before resolution,
+   but a request can pass it, wait while the session closes and releases its
+   workspace runtime, and then resolve to the launch-scope controller. Both
+   checks now live in `resolve_open_session_controller`, which brackets
+   `resolve` so the second check rejects that interleaving with the same bounded
+   `unknown_session` reason. Regression:
+   `close_during_resolution_rejects_the_resolved_controller`, which closes the
+   session exactly where the release happens.
+4. *Ledger duplicates resolved by freshness* (finding `4586902353`,
+   `controller_persistence.rs`). Two persisted ids can canonicalize to one key
+   when a legacy ledger holds both a pre-canonicalization id and its current
+   form. The previous merge kept the later file entry, which let a stale legacy
+   copy written last overwrite the newer canonical record.
+   `collect_by_canonical_id` now keeps the freshest `updated_at` and the later
+   entry on a tie, so neither file order nor map-rebuild order decides the
+   survivor, and the load path and the save merge share it. The property model
+   in `unscoped_merge_joins_records_by_canonical_key` implements the same rule
+   independently, and `colliding_persisted_ids_keep_the_newest_record` pins the
+   case the model cannot express with a single id per shape.
+5. *Property coverage for the two id contracts*. A generated child id is
+   `agent-name` plus a millisecond clock, so two controllers in one tree can
+   propose the same id at the same instant.
+   `grafting_joins_every_descendant_onto_one_id_space` grafts a random sequence
+   of independently-built controllers and asserts that every slot in one joined
+   tree suffixes a candidate rather than repeating it; a descendant left on its
+   old allocator returns the bare candidate and fails. Owner-scoped background
+   ids are percent-encoded, so `owner_scoped_record_ids_stay_injective` pins
+   that an owner containing `@`, `%`, a path separator or a space cannot
+   collapse into another owner's id, and that an absent or empty owner keeps
+   the workspace-global id.
+6. *Usage example tested through the serializer* (finding `4586902326`). The
+   published usage notification was compared against a hand-written shape.
+   `response_usage_notification` is now `pub(super)` and
+   `published_usage_update_matches_the_serialised_notification` compares the
+   guide's own counts and model name against the bytes the adapter serializes,
+   so a field rename or a changed optional-count rule fails the test instead of
+   leaving both sides internally consistent.
+7. *VidaiMock stop framing pinned* (finding `4586902373`). The template test now
+   asserts exactly two framed lines before `[DONE]` — the finish chunk and one
+   usage event — instead of allowing an arbitrary run of usage lines.
+8. *Model-profile precedence stated precisely* (finding `4586902382`). The guide
+   said `supports_stream_usage` "defaults to `false`" and then that an omitted
+   profile field inherits the provider value, which read as a contradiction. It
+   now says the switch is opt-in: streamed usage stays off unless some layer
+   supplies `true`, an omitted profile field inherits a provider-level `true`,
+   and an explicit profile `false` disables that inherited opt-in.
+9. *Release-note evidence, no code change* (finding `4586902343`). The
+   `supports_stream_usage` source-compatibility break is already documented in
+   `docs/releases/0.157.0.md` under "Breaking Rust API changes", with all three
+   structs and their migration. The finding predates that commit, so it is
+   answered with the path and line evidence rather than a further edit.
+
+10. *Metrics parent module decomposed* (carried `4580392624`). The ACP family
+    had already moved to `acp_metrics.rs` (305 lines), but `metrics/mod.rs` was
+    still 1,838 lines. It is now 148: record types in `types.rs`, the
+    collector's construction and query surface in `collector_core.rs`,
+    recording in `collector_recording.rs`, Prometheus collection and rendering
+    in `prometheus.rs` (383 lines, the largest file) with the three append
+    helpers in `prometheus_helpers.rs`, and the observer adapters in
+    `observers.rs`. The test module split into `tests.rs` and
+    `tests_provider_admission.rs` with the shared fake in `test_support.rs`.
+    Every file in the tree is under 400 lines.
+    `MetricsCollector`, `MetricsSummary` and `PrometheusMetricsSnapshot` stay in
+    `mod.rs` so their private fields remain in scope for the sibling `impl`
+    blocks, and `mod.rs` re-exports every public type, so `crate::metrics::*`
+    paths are unchanged: 15 public types and 58 public methods before and
+    after. Only the three private `append_*_prometheus` helpers changed
+    visibility, to `pub(super)`. `PrometheusMetricsSnapshot::collect` and
+    `render` stayed private by keeping `export_prometheus` in `prometheus.rs`.
+    Test paths change (`metrics::tests`, `metrics::tests_provider_admission`);
+    no API does.
+
+Mechanical repairs in the same round: both new proptests pass their message
+arguments positionally, because `prop_assert_eq!` expands through `concat!` and
+cannot use implicit format captures; and the usage doc test now names
+`acp::SessionId` and `Arc` unqualified, because CI lints with
+`-W unused-qualifications`.
