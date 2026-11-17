@@ -95,6 +95,28 @@ fn effective_model<'a>(session_model: &'a str, response: &'a diapason_core::llm:
     }
 }
 
+/// Resolve the usage profile for one turn, separating the two questions a
+/// profile answers.
+///
+/// Pricing and the context window describe the model that produced the
+/// response, so they follow the served model the provider reported. Input-token
+/// semantics describe how that provider shaped the counts, which the request's
+/// routing decided: a gateway can answer with a dated snapshot or alias that is
+/// not a configured profile key, and looking semantics up by the served name
+/// would then fall back to the provider default and misreport whether cache
+/// tokens are already inside `prompt_tokens`. The routed profile supplies the
+/// semantics; the served profile supplies everything else.
+fn publication_profile(
+    custom_providers: &[diapason_config::core::CustomProviderConfig],
+    provider: &str,
+    routed_model: &str,
+    served_model: &str,
+) -> UsageProfile {
+    let served = usage_profile(custom_providers, provider, served_model);
+    let routed = usage_profile(custom_providers, provider, routed_model);
+    UsageProfile { exclusive_input: routed.exclusive_input, ..served }
+}
+
 pub(super) fn response_usage_notification(
     session_id: &acp::SessionId,
     model: &str,
@@ -178,7 +200,8 @@ impl ZedAgent {
         let _span_entered = span.enter();
         let started_at = self.publication_clock.now();
         let model = effective_model(fallback_model, response);
-        let profile = usage_profile(&self.workspace_runtime_config.custom_providers, provider, model);
+        let profile =
+            publication_profile(&self.workspace_runtime_config.custom_providers, provider, fallback_model, model);
         let notification = match response_usage_notification(session_id, model, response, profile) {
             Ok(Some(notification)) => notification,
             Ok(None) => {
