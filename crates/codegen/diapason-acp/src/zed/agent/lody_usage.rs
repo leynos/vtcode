@@ -119,14 +119,15 @@ fn publication_profile(
 
 pub(super) fn response_usage_notification(
     session_id: &acp::SessionId,
-    model: &str,
+    fallback_model: &str,
     response: &diapason_core::llm::provider::LLMResponse,
     profile: UsageProfile,
 ) -> anyhow::Result<Option<acp::ExtNotification>> {
     let Some(usage) = response.usage.as_ref() else {
         return Ok(None);
     };
-    usage_notification(session_id, model, resolve_turn_usage(usage, profile)).map(Some)
+    usage_notification(session_id, effective_model(fallback_model, response), resolve_turn_usage(usage, profile))
+        .map(Some)
 }
 
 #[cfg(test)]
