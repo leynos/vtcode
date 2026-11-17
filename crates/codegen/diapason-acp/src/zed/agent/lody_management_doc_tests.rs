@@ -107,29 +107,44 @@ fn published_list_response_matches_the_management_projection() {
     }
 }
 
-/// The usage example carries the notification's camelCase delta for each model.
+/// The published usage example is what the adapter actually serializes.
+///
+/// The response below repeats the guide's own counts and model name, and the
+/// comparison runs through `response_usage_notification`, so this test fails
+/// when the serializer's field names, optional-count handling, or model key
+/// diverge from the documented notification. Asserting the example's shape by
+/// hand would let the two drift apart while both stayed internally consistent.
 #[test]
-fn published_usage_update_matches_the_notification_shape() {
+fn published_usage_update_matches_the_serialised_notification() {
     let example = load_example("docs/acp/ACP_QUICK_REFERENCE.md", "acp-quick-reference-usage-update")
         .expect("the quick reference must publish a marked usage example");
     assert_eq!(example.language, "json", "the usage example must stay a JSON notification body");
-    let update: Value = serde_json::from_str(&example.body).expect("the usage example must be valid JSON");
+    let published: Value = serde_json::from_str(&example.body).expect("the usage example must be valid JSON");
 
-    assert_eq!(update["sessionId"], "session-id");
-    let usage = &update["usage"];
-    for field in ["inputTokens", "outputTokens", "cacheReadInputTokens"] {
-        assert!(usage[field].is_u64(), "usage must publish a {field} count: {update}");
-    }
-    assert!(
-        usage.get("cacheCreationInputTokens").is_none(),
-        "the optional cache-creation count stays omitted when the provider reports none: {update}"
+    let response = diapason_core::llm::provider::LLMResponse {
+        usage: Some(diapason_core::llm::Usage {
+            prompt_tokens: 123,
+            completion_tokens: 45,
+            total_tokens: 168,
+            cache_read_tokens: Some(0),
+            ..diapason_core::llm::Usage::default()
+        }),
+        ..diapason_core::llm::provider::LLMResponse::new("model-name", "answer")
+    };
+    let notification = crate::zed::agent::lody_usage::response_usage_notification(
+        &acp::SessionId::new(Arc::from("session-id")),
+        "fallback-model",
+        &response,
+    )
+    .expect("serializing the published counts must succeed")
+    .expect("a response carrying usage must publish a notification");
+
+    assert_eq!(
+        notification.method.as_ref(),
+        crate::zed::agent::lody_usage::LODY_SESSION_USAGE_UPDATE_METHOD,
+        "the published example must use the adapter's extension method"
     );
-
-    let models = update["modelUsage"]
-        .as_object()
-        .expect("modelUsage must be an object keyed by model");
-    assert!(!models.is_empty(), "modelUsage must name the responding model: {update}");
-    for (model, delta) in models {
-        assert_eq!(delta, usage, "model {model} must repeat the response delta: {update}");
-    }
+    let serialized: Value =
+        serde_json::from_str(notification.params.get()).expect("the serialized notification must be JSON");
+    assert_eq!(serialized, published, "the quick reference must publish exactly what the adapter serializes");
 }
