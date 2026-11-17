@@ -358,10 +358,55 @@ pub fn subagent_display_label(spec: &diapason_config::SubagentSpec) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_background_launch_spec, resolve_background_subagent_executable_for_workspace};
+    use super::{
+        background_record_id, background_record_id_for_owner, build_background_launch_spec,
+        resolve_background_subagent_executable_for_workspace,
+    };
+    use proptest::prelude::*;
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;
+
+    proptest! {
+        /// Owner-scoped ids stay injective for arbitrary owner strings.
+        ///
+        /// The owner component is percent-encoded, so an owner that contains the
+        /// `@` separator, the `%` escape character, a path separator or a space
+        /// cannot collapse into another owner's id. An absent or empty owner
+        /// keeps the workspace-global id, so unscoped controllers are unaffected.
+        #[test]
+        fn owner_scoped_record_ids_stay_injective(
+            owners in prop::collection::vec("[A-Za-z0-9_:/. @%-]{0,24}", 0..=8),
+            agent_name in "[A-Za-z0-9_-]{1,16}",
+        ) {
+            let mut seen: BTreeMap<String, String> = BTreeMap::new();
+            for owner in &owners {
+                if owner.is_empty() {
+                    prop_assert_eq!(
+                        background_record_id_for_owner(&agent_name, Some(owner)),
+                        background_record_id(&agent_name),
+                        "an empty owner must keep the workspace-global id",
+                    );
+                    continue;
+                }
+                let id = background_record_id_for_owner(&agent_name, Some(owner));
+                if let Some(existing) = seen.insert(id.clone(), owner.clone()) {
+                    prop_assert_eq!(
+                        existing,
+                        owner.clone(),
+                        "distinct owners must not share a record id: {}",
+                        id,
+                    );
+                }
+            }
+            prop_assert_eq!(
+                background_record_id_for_owner(&agent_name, None),
+                background_record_id(&agent_name),
+                "an absent owner must keep the workspace-global id",
+            );
+        }
+    }
 
     #[test]
     fn prefers_workspace_built_binary_when_current_exe_is_external() {
