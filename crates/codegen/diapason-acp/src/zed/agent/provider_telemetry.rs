@@ -3,9 +3,9 @@
 
 use std::time::Duration;
 
-use hashbrown::HashMap;
 use diapason_commons::ErrorCategory;
 use diapason_core::llm::provider::{LLMError, LLMErrorMetadata};
+use hashbrown::HashMap;
 
 use crate::zed::provider_runtime::ProviderClass;
 

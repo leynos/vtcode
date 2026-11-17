@@ -12,7 +12,9 @@ use crate::providers::error_handling::{ProviderFailure, ProviderHttpError, forma
 use diapason_commons::sanitizer::sanitize_provider_diagnostic;
 use diapason_config::TimeoutsConfig;
 use diapason_config::constants::{env_vars, models, urls};
-use diapason_config::core::{AnthropicConfig, ModelConfig, OpenRouterPromptCacheSettings, PromptCachingConfig, RateLimitHeaderConfig};
+use diapason_config::core::{
+    AnthropicConfig, ModelConfig, OpenRouterPromptCacheSettings, PromptCachingConfig, RateLimitHeaderConfig,
+};
 use diapason_config::models::ModelId;
 use reqwest::{Client as HttpClient, Response, StatusCode};
 use serde_json::Value;

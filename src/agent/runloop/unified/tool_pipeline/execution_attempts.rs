@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use anyhow::Error;
 use diapason_core::retry::RetryPolicy;
 #[cfg(test)]
-use diapason_core::retry::RetryPolicyCoreExt;
+use diapason_core::retry::{AttemptIndex, RetryPolicyCoreExt};
 use diapason_core::tools::registry::ToolTimeoutCategory;
 use diapason_core::tools::registry::{
     ExecSettlementMode, ExecutionPolicySnapshot, ToolExecutionError, ToolExecutionRequest, ToolRegistry,
@@ -12,13 +12,6 @@ use diapason_core::tools::registry::{
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
-use diapason_core::retry::RetryPolicy;
-#[cfg(test)]
-use diapason_core::retry::{AttemptIndex, RetryPolicyCoreExt};
-use diapason_core::tools::registry::ToolTimeoutCategory;
-use diapason_core::tools::registry::{
-    ExecSettlementMode, ExecutionPolicySnapshot, ToolExecutionError, ToolExecutionRequest, ToolRegistry,
-};
 
 use crate::agent::runloop::unified::progress::ProgressReporter;
 use crate::agent::runloop::unified::state::CtrlCState;

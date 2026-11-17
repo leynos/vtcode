@@ -4,9 +4,9 @@ use super::super::types::ResponsesApiState;
 use super::tests::{start_mock_server_or_skip, test_provider};
 use super::*;
 use crate::provider::LLMProvider;
+use diapason_config::core::CustomProviderApiFormat;
 use rstest::rstest;
 use serde_json::Value;
-use diapason_config::core::CustomProviderApiFormat;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

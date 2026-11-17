@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use serde::Serialize;
 use diapason_commons::llm::RateLimitMetadata;
+use serde::Serialize;
 
 use super::{
     ZedAgent,

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::config::constants::tools;
-use crate::error::{ErrorCode, DiapasonError};
+use crate::error::{DiapasonError, ErrorCode};
 
 #[test]
 fn non_retryable_categories_stop_immediately() {

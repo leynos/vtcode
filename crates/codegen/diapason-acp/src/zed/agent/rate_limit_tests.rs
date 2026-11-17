@@ -12,12 +12,12 @@ use crate::zed::agent::lody_notice::ObservedRateLimitNotice;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use agent_client_protocol::{Agent, Channel, Client, ConnectionTo, on_receive_notification};
 use assert_fs::TempDir;
+use diapason_commons::llm::RateLimitMetadata;
+use diapason_core::llm::provider::{LLMError, LLMErrorMetadata};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration as StdDuration, UNIX_EPOCH};
 use tokio::sync::Notify;
-use diapason_commons::llm::RateLimitMetadata;
-use diapason_core::llm::provider::{LLMError, LLMErrorMetadata};
 
 const FIXED_OBSERVED_EPOCH_SECONDS: u64 = 1_735_689_600;
 

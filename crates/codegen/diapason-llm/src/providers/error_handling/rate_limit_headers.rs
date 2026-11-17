@@ -3,9 +3,9 @@
 
 use super::ApiResponseMetadata;
 use crate::providers::common::extract_header;
-use reqwest::header::{HeaderMap, HeaderName};
 use diapason_commons::llm::RateLimitMetadata;
 use diapason_config::core::RateLimitHeaderConfig;
+use reqwest::header::{HeaderMap, HeaderName};
 
 const MAX_RESET_AFTER_MILLIS: u64 = 86_400_000;
 

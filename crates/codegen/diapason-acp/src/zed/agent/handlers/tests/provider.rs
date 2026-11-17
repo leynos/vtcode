@@ -341,6 +341,34 @@ async fn invalid_request_is_not_retried() {
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 1);
 }
 
+/// Assert every allowlisted code survives unchanged.
+#[test]
+fn provider_error_telemetry_preserves_allowlisted_codes() {
+    for code in KNOWN_ERROR_CODES {
+        let error = LLMError::Network {
+            message: "request failed".to_string(),
+            metadata: Some(LLMErrorMetadata::new(
+                "Arli AI",
+                Some(503),
+                Some((*code).to_string()),
+                None,
+                None,
+                None,
+                None,
+            )),
+        };
+
+        let telemetry = provider_error_telemetry(&error);
+        if code.starts_with("acp_timeout_") {
+            assert!(telemetry.timeout_phase.is_some(), "{code} must be reported as its timeout phase");
+            assert_eq!(telemetry.code, None, "a timeout code must not also be reported as a code");
+        } else {
+            assert_eq!(telemetry.code, Some(*code), "{code} must be recognised");
+        }
+    }
+}
+
+
 
 struct RetryMetricWitness<'a> {
     expected_names: &'a [&'a str],

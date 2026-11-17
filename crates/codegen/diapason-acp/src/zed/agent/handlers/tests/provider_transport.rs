@@ -44,14 +44,17 @@ async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
     let (agent_channel, client_channel) = Channel::duplex();
     let (notice_tx, mut notice_rx) = mpsc::unbounded_channel();
 
-    let agent_connection = install_handlers(Agent.builder().name("diapason-rate-limit-notice-test"), Arc::clone(&agent))
-        .connect_with(agent_channel, {
-            let agent = Arc::clone(&agent);
-            async move |cx: ConnectionTo<Client>| {
-                agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
-                std::future::pending::<agent_client_protocol::Result<()>>().await
-            }
-        });
+    let agent_connection = install_handlers(
+        Agent.builder().name("diapason-rate-limit-notice-test"),
+        Arc::clone(&agent),
+    )
+    .connect_with(agent_channel, {
+        let agent = Arc::clone(&agent);
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        }
+    });
     let agent_task = tokio::spawn(agent_connection);
 
     let notice_agent = Arc::clone(&agent);
