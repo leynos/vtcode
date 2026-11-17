@@ -278,8 +278,8 @@ fn arli_stop_template_frames_every_event_after_the_first() {
 
     let framed = lines.collect::<Vec<_>>();
     assert_eq!(framed.last().copied(), Some("data: [DONE]"), "the payload still terminates with [DONE]");
-    for line in &framed[..framed.len() - 1] {
-        assert!(line.starts_with("data: {"), "a later event needs its own data: prefix: {line}");
-        assert!(line.contains(r#""usage""#), "the only framed event is the usage chunk: {line}");
-    }
+    assert_eq!(framed.len(), 2, "the finish chunk and exactly one framed usage event precede [DONE]: {framed:?}");
+    let usage = framed[0];
+    assert!(usage.starts_with("data: {"), "the usage event carries its own data: prefix: {usage}");
+    assert!(usage.contains(r#""usage""#), "the framed event is the usage chunk: {usage}");
 }
