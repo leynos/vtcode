@@ -41,6 +41,30 @@ pub(super) async fn persist_background_records(
     persist_background_state(workspace_root, merged).await
 }
 
+/// Collects persisted records by canonical id, keeping the freshest copy.
+///
+/// Several entries can canonicalize to one key when a legacy ledger holds both
+/// a pre-canonicalization id and its current form. The newest `updated_at`
+/// wins and a tie keeps the later entry, so neither the ledger's file order nor
+/// the order a controller happens to rebuild its map in decides which copy of a
+/// record survives. The load path and the save merge share this rule.
+pub(super) fn collect_by_canonical_id(
+    records: impl IntoIterator<Item = PersistedBackgroundRecord>,
+) -> BTreeMap<String, PersistedBackgroundRecord> {
+    let mut collected: BTreeMap<String, PersistedBackgroundRecord> = BTreeMap::new();
+    for mut record in records {
+        record.canonicalize_id();
+        match collected.get_mut(&record.id) {
+            Some(current) if record.is_at_least_as_new_as(current) => *current = record,
+            Some(_) => {}
+            None => {
+                collected.insert(record.id.clone(), record);
+            }
+        }
+    }
+    collected
+}
+
 /// Merges an unscoped controller's snapshot into the persisted ledger.
 ///
 /// The unscoped controller is not the owner of the owner-scoped records it
@@ -80,18 +104,14 @@ fn merge_background_records(
     removed_owner: Option<&str>,
 ) -> Vec<PersistedBackgroundRecord> {
     let mut carried_verbatim: Vec<PersistedBackgroundRecord> = Vec::new();
-    let mut merged: BTreeMap<String, PersistedBackgroundRecord> = BTreeMap::new();
-    for mut record in persisted {
+    let mut owned: Vec<PersistedBackgroundRecord> = Vec::new();
+    for record in persisted {
         match removed_owner {
             Some(owner) if record.owner_session_id.as_deref() != Some(owner) => carried_verbatim.push(record),
-            _ => {
-                record.canonicalize_id();
-                // Two persisted ids can canonicalize to one key; the later
-                // entry wins, as the previous `BTreeMap` collection did.
-                merged.insert(record.id.clone(), record);
-            }
+            _ => owned.push(record),
         }
     }
+    let mut merged = collect_by_canonical_id(owned);
     let mut snapshot_ids: BTreeSet<String> = BTreeSet::new();
     for mut record in snapshot {
         record.canonicalize_id();
@@ -259,10 +279,11 @@ mod tests {
         /// The unscoped merge is a per-key join against an independent model.
         ///
         /// The model canonicalizes each generated id from its agent and owner,
-        /// keeps the last copy a ledger repeats, prefers the snapshot on a tie,
-        /// and keeps every record only one side holds. It never calls the
-        /// production id or freshness helpers, so a change to either contract
-        /// shows up as a disagreement rather than being mirrored by the test.
+        /// keeps the freshest copy a ledger repeats (the later entry on a tie),
+        /// prefers the snapshot on a tie with the persisted side, and keeps
+        /// every record only one side holds. It never calls the production id or
+        /// freshness helpers, so a change to either contract shows up as a
+        /// disagreement rather than being mirrored by the test.
         #[test]
         fn unscoped_merge_joins_records_by_canonical_key(
             persisted in prop::collection::vec(merge_record(), 0..=5),
@@ -274,7 +295,15 @@ mod tests {
 
             let mut expected: BTreeMap<String, (u8, String)> = BTreeMap::new();
             for (index, record) in persisted.iter().enumerate() {
-                expected.insert(merge_canonical_id(record.shape), (record.updated_offset, format!("p{index}")));
+                let key = merge_canonical_id(record.shape);
+                let tag = format!("p{index}");
+                match expected.get_mut(&key) {
+                    Some(current) if record.updated_offset >= current.0 => *current = (record.updated_offset, tag),
+                    Some(_) => {}
+                    None => {
+                        expected.insert(key, (record.updated_offset, tag));
+                    }
+                }
             }
             for (index, record) in snapshot.iter().enumerate() {
                 let key = merge_canonical_id(record.shape);
@@ -326,6 +355,29 @@ mod tests {
 
         assert_eq!(merged.len(), 1);
         assert_eq!(merge_state(&merged[0]), ("cancelled".to_owned(), false, "stopped".to_owned()));
+    }
+
+    /// Colliding persisted ids are resolved by `updated_at`, not file order.
+    ///
+    /// A legacy ledger can hold `background-worker` and
+    /// `background-worker@session-a` for one record once both canonicalize. The
+    /// stale legacy copy is written last here, as a ledger rewritten by an
+    /// older build leaves it, and must still lose to the newer canonical copy.
+    #[test]
+    fn colliding_persisted_ids_keep_the_newest_record() {
+        // Shape 0 is `worker` owned by `session-a`.
+        let fresh = MergeRecord { shape: 0, updated_offset: 2, legacy_id: false };
+        let stale = MergeRecord { shape: 0, updated_offset: 1, legacy_id: true };
+        let persisted = vec![
+            serde_json::from_value(merge_record_json(&fresh, "fresh")).expect("fresh record"),
+            serde_json::from_value(merge_record_json(&stale, "stale")).expect("stale record"),
+        ];
+
+        let merged = collect_by_canonical_id(persisted);
+
+        assert_eq!(merged.len(), 1, "both ids name one record after canonicalization");
+        let record = merged.values().next().expect("the merged record");
+        assert_eq!(merge_state(record).0, "fresh", "file order must not discard the newer copy");
     }
 
     /// A record the owner no longer tracks is still removed from the ledger.
