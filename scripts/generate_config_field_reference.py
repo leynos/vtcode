@@ -28,6 +28,31 @@ CARGO_SCHEMA_CMD = [
     "schema_dump",
 ]
 
+# Hand-written guidance that belongs in the reference but not in the schema.
+#
+# It is emitted here, rather than appended to the generated file, so that
+# regenerating the reference cannot delete it. A previous regeneration dropped
+# the section while leaving the table intact, and the loss was only noticed in
+# review.
+STATE_LOCATIONS_SECTION = [
+    "## Configuration and state locations",
+    "",
+    "| Data | Location |",
+    "|------|----------|",
+    "| Main user configuration | "
+    "`$XDG_CONFIG_HOME/diapason/config.toml` (default: `~/.config/diapason/config.toml`) |",
+    "| User agent instructions | `$XDG_CONFIG_HOME/diapason/AGENTS.md` |",
+    "| Logs, audit records and global sessions | "
+    "`$XDG_STATE_HOME/diapason/` (default: `~/.local/state/diapason/`) |",
+    "| Repository-local agent data | "
+    "`.diapason/` by default; set `DIAPASON_WORKSPACE_DIR` to another relative directory name |",
+    "",
+    "Diapason does not read or migrate legacy `.vtcode/` directories. See the",
+    "[user data directories guide](../guides/user-data-directories.md) for the",
+    "complete path and environment-variable contract.",
+    "",
+]
+
 
 @dataclass
 class FieldEntry:
@@ -453,6 +478,7 @@ def render_markdown(entries: list[FieldEntry]) -> str:
         "make fmt",
         "```",
         "",
+        *STATE_LOCATIONS_SECTION,
         "| Field | Type | Required | Default | Description |",
         "|-------|------|----------|---------|-------------|",
     ]

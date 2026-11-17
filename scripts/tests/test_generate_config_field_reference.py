@@ -245,6 +245,21 @@ def test_long_default_remains_parseable_json() -> None:
     assert json.loads(rendered) == value, "a long default must stay parseable as JSON"
 
 
+def test_render_markdown_keeps_the_state_locations_section() -> None:
+    """Regenerating must not delete the hand-written state-location guidance.
+
+    The section is not derivable from the schema, so the generator has to emit
+    it. A regeneration that dropped it would leave the reference table intact
+    and the loss would only surface in review.
+    """
+    rendered_lines = generator.render_markdown([]).splitlines()
+
+    missing = [
+        line for line in generator.STATE_LOCATIONS_SECTION if line not in rendered_lines
+    ]
+    assert not missing, f"the generated reference dropped its hand-written section: {missing!r}"
+
+
 def test_render_markdown_escapes_pipes_inside_backtick_safe_code_span() -> None:
     """A pipe stays escaped even when the value also needs a wider delimiter."""
     entry = generator.FieldEntry(
