@@ -128,15 +128,20 @@ fn provider_failure_warning_bounds_untrusted_codes() {
         )),
     };
 
-    let capture = TraceCapture::default();
-    let subscriber = Registry::default().with(capture.clone());
-    tracing::subscriber::with_default(subscriber, || {
+    let captured = capture_trace(async {
         let runtime = retry_runtime();
-        let mut telemetry = GenerationTelemetry::start(&runtime);
-        telemetry.failed(&runtime, 0, "non_retryable", &error);
+        let metric_sink = ProviderMetricSink::test(Arc::new(TestPerfRecorder::new()));
+        let mut telemetry = GenerationTelemetry::start(&runtime, metric_sink, ProviderMode::Buffered);
+        telemetry
+            .failed(GenerationFailure {
+                runtime: &runtime,
+                retry_count: 0,
+                retry_disposition: RetryDisposition::NonRetryable,
+                retry_delay: None,
+                error: &error,
+            })
+            .await;
     });
-
-    let captured = capture.0.lock().expect("trace capture lock").join("\n");
     assert!(
         captured.contains("ACP provider generation attempt failed"),
         "the warning must be emitted: {captured}"

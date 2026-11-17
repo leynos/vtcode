@@ -341,6 +341,7 @@ async fn invalid_request_is_not_retried() {
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 1);
 }
 
+
 /// Assert every allowlisted code survives unchanged.
 #[test]
 fn provider_error_telemetry_preserves_allowlisted_codes() {
