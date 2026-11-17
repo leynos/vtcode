@@ -300,3 +300,57 @@ selectors.
   conflict. `git range-diff` matches all 37 commits, and the parent-to-child
   diff is byte-identical to the previous replay, so no code, test, or
   documentation content changed. The new head is `99e96d923`.
+
+## Rebase onto the Diapason-renamed parent head
+
+- 2026-11-17: The parent branch advanced again, from `cfe0c6bbe` to
+  `b8db4ab7b`. The new head is a descendant and carries 94 commits, dominated
+  by a workspace-wide rename to Diapason: the root package is `diapason`, the
+  crates are `diapason-*`, Rust paths use `diapason_core::` /
+  `diapason_config::` / `diapason_commons::`, the config type is
+  `DiapasonConfig`, the error type is `DiapasonError`, ACP metric names use the
+  `diapason.acp.*` prefix, and the product name in new prose is "Diapason".
+- The exclusive replay boundary is unchanged at `cfe0c6bbe`; all 39 layer
+  commits were replayed onto `b8db4ab7b` with `zdiff3` and the built-in merge
+  backend (`core.attributesFile=/dev/null`). Recovery refs are
+  `refs/agent-recovery/pr103/{old-base,old-head,target,new-head}`. The new head
+  is `b557ef3d6`.
+- Rename adaptation decision: the parent renamed every module path, so every
+  replayed commit that touched a Rust item was resolved to the Diapason name
+  rather than restoring the pre-rename identifiers. In particular
+  `vtcode_core` / `vtcode_config` / `vtcode_commons` became `diapason_*`,
+  `VTCodeConfig` became `DiapasonConfig`, `VtCodeError` became `DiapasonError`,
+  `vtcode.acp.*` metric names became `diapason.acp.*`, test connection labels
+  `vtcode-...` became `diapason-...`, and the notice sentence "VTCode will
+  retry" became "Diapason will retry". Legacy references are retained
+  deliberately: the repository slug `github.com/leynos/vtcode`, the legacy
+  `.vtcode` configuration directory and its `vtcode.toml` fixtures, and
+  historical CHANGELOG entries.
+- Files the parent moved were resolved at their new `diapason-*` paths. The
+  replayed `rate_limit_notice.rs` module was applied to the parent's split test
+  layout, and this layer's `retryable_rate_limit_publishes_a_notice_over_the_acp_transport`
+  regression moved into the new `handlers/tests/provider_transport.rs` module
+  that commit 33 introduces.
+- Two commits replayed as empty, with their content verified present in the
+  resulting tree:
+  - `cd27b2697 docs(acp): document provider telemetry projection`: the module
+    header it adds is already carried by `provider_telemetry.rs` after the
+    replay.
+  - `2ceee9565 chore(acp,llm): drop weave resolution footers`: every Weave
+    footer was already removed while resolving the earlier conflicts, so the
+    cleanup has nothing left to delete.
+- Conflict resolutions of note:
+  - `zed/agent/lody_notice.rs`: the parent's publication span, correlation
+    digest, and recorder are kept together with this layer's metric sink; the
+    bundled `ObservedRateLimitNotice` input from commit 33 is adopted while the
+    convenience `publish_rate_limit_notice` wrapper stays for the prompt-path
+    caller.
+  - `diapason-core/src/error.rs`: the parent's clock-free `From<LLMError>`
+    adapter and the explicit `DiapasonError::from_llm_error_at` constructor are
+    kept; the deterministic conversion core is the parent's `from_llm_error`.
+  - `handlers/prompt.rs`: the parent moved `require_session_checkpoint` into
+    the `checkpoint` module, so the replayed copy of that function was dropped.
+  - `handlers/tests/provider.rs`: the parent's bounded-code telemetry tests
+    are kept alongside this layer's metric-recorder tests.
+- `Cargo.lock` is taken from the parent unchanged; `cargo metadata --locked`
+  accepts it, so no lock regeneration was required.
