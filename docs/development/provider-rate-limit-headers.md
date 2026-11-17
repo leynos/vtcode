@@ -1,9 +1,9 @@
 # Provider rate-limit headers in ACP
 
 When a provider returns HTTP 429, Diapason includes recognized quota headers in
-the ACP back-off notice. Missing or malformed optional values are ignored;
-they do not prevent the normal retry policy from running. Zero remaining
-requests or tokens is a meaningful value and is shown.
+the ACP back-off notice. Missing or malformed optional values are ignored; they
+do not prevent the normal retry policy from running. Zero remaining requests or
+tokens is a meaningful value and is shown.
 
 Each custom provider can map response header names to specific metrics under
 `[custom_providers.rate_limit_headers]`. Header matching is case-insensitive.

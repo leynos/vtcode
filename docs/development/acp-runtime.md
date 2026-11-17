@@ -164,10 +164,10 @@ codes are reported through `provider_timeout_phase` instead.
 
 ### Provider rate limits and retry floors
 
-Provider quota headers become typed `RateLimitMetadata` in `diapason-llm` rather
-than free-form diagnostics. Custom providers map response header names under
-`[custom_providers.rate_limit_headers]`, and known provider names supply their
-provider-specific defaults. Mapping precedence, provider vocabulary, and
+Provider quota headers become typed `RateLimitMetadata` in `diapason-llm`
+rather than free-form diagnostics. Custom providers map response header names
+under `[custom_providers.rate_limit_headers]`, and known provider names supply
+their provider-specific defaults. Mapping precedence, provider vocabulary, and
 malformed-value handling are in the
 [provider rate-limit header reference](./provider-rate-limit-headers.md); the
 user-facing configuration is in the
@@ -185,8 +185,8 @@ Absolute `Retry-After` HTTP dates are meaningful only relative to the instant
 the failure was observed, so retry decisions take an explicit observation time.
 `RetryPolicyCoreExt::decision_for_llm_error_at` and
 `decision_for_llm_error_with_backoff_at` accept a `SystemTime` or
-`LlmRetryAttempt`, and `DiapasonError::from_llm_error_at` converts with the same
-instant. The clock-free compatibility adapters (`decision_for_llm_error`,
+`LlmRetryAttempt`, and `DiapasonError::from_llm_error_at` converts with the
+same instant. The clock-free compatibility adapters (`decision_for_llm_error`,
 `decision_for_anyhow`, and `From<LLMError> for DiapasonError`) honour numeric
 deltas and configured reset intervals but ignore absolute dates: reading the
 wall clock inside a decision would classify the same error differently across
@@ -499,13 +499,13 @@ Provider retry orchestration reports attempt failures through the narrow
 generation path constructs a `RateLimitNoticeSink`, the ACP adapter that
 implements the port, and attaches it to the `RetryRequest` that
 `generate_with_retry` consumes; the streaming path calls
-`publish_rate_limit_notice_with_context` directly. The adapter
-turns a classified retryable or terminal rate limit into a session-info notice
-carrying `_meta.lody.notice`. The HTTP status and the `Retry-After` value are
-reported only when the provider supplied them. The retry delay is a separate
-fact: it is reported only when `RetryPolicy::decision_for_category` chose to
-schedule another attempt, and the notice says when no further automatic retry
-is scheduled. A delivery failure logs the fixed `operation`, `stage`, and
+`publish_rate_limit_notice_with_context` directly. The adapter turns a
+classified retryable or terminal rate limit into a session-info notice carrying
+`_meta.lody.notice`. The HTTP status and the `Retry-After` value are reported
+only when the provider supplied them. The retry delay is a separate fact: it is
+reported only when `RetryPolicy::decision_for_category` chose to schedule
+another attempt, and the notice says when no further automatic retry is
+scheduled. A delivery failure logs the fixed `operation`, `stage`, and
 `error_category`, the session correlation key, the error rendering's byte
 length as `error_bytes`, and `detail_correlation`, a deterministic truncated
 SHA-256 digest of that rendering. The rendering itself and the raw session

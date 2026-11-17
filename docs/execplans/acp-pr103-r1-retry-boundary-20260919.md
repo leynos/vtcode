@@ -317,20 +317,21 @@ selectors.
   is `b557ef3d6`.
 - Rename adaptation decision: the parent renamed every module path, so every
   replayed commit that touched a Rust item was resolved to the Diapason name
-  rather than restoring the pre-rename identifiers. In particular
-  `vtcode_core` / `vtcode_config` / `vtcode_commons` became `diapason_*`,
-  `VTCodeConfig` became `DiapasonConfig`, `VtCodeError` became `DiapasonError`,
-  `vtcode.acp.*` metric names became `diapason.acp.*`, test connection labels
-  `vtcode-...` became `diapason-...`, and the notice sentence "VTCode will
-  retry" became "Diapason will retry". Legacy references are retained
-  deliberately: the repository slug `github.com/leynos/vtcode`, the legacy
-  `.vtcode` configuration directory and its `vtcode.toml` fixtures, and
-  historical CHANGELOG entries.
+  rather than restoring the pre-rename identifiers. In particular `vtcode_core`
+  / `vtcode_config` / `vtcode_commons` became `diapason_*`, `VTCodeConfig`
+  became `DiapasonConfig`, `VtCodeError` became `DiapasonError`, `vtcode.acp.*`
+  metric names became `diapason.acp.*`, test connection labels `vtcode-...`
+  became `diapason-...`, and the notice sentence "VTCode will retry" became
+  "Diapason will retry". Legacy references are retained deliberately: the
+  repository slug `github.com/leynos/vtcode`, the legacy `.vtcode`
+  configuration directory and its `vtcode.toml` fixtures, and historical
+  CHANGELOG entries.
 - Files the parent moved were resolved at their new `diapason-*` paths. The
   replayed `rate_limit_notice.rs` module was applied to the parent's split test
-  layout, and this layer's `retryable_rate_limit_publishes_a_notice_over_the_acp_transport`
-  regression moved into the new `handlers/tests/provider_transport.rs` module
-  that commit 33 introduces.
+  layout, and this layer's
+  `retryable_rate_limit_publishes_a_notice_over_the_acp_transport` regression
+  moved into the new `handlers/tests/provider_transport.rs` module that commit
+  33 introduces.
 - Two commits replayed as empty, with their content verified present in the
   resulting tree:
   - `cd27b2697 docs(acp): document provider telemetry projection`: the module
@@ -354,3 +355,71 @@ selectors.
     are kept alongside this layer's metric-recorder tests.
 - `Cargo.lock` is taken from the parent unchanged; `cargo metadata --locked`
   accepts it, so no lock regeneration was required.
+
+## Second restack onto the advanced parent head
+
+The parent advanced again on 2026-11-17:
+`feat/acp-lody-usage-activity-metadata` moved from `b8db4ab7b` to `4a00f6264`,
+a rewrite onto a newer main that keeps the same subject series and adds nine
+commits, so the old target is no longer an ancestor. The base delta spans 114
+files and overlaps this layer in six paths (`handlers/tests/mod.rs`,
+`CONFIG_FIELD_REFERENCE.md`, `acp-runtime.md`, both generator scripts, and
+`execution_attempts.rs`).
+
+The replay boundary was `OLD_BASE` `b8db4ab7b`, `OLD_HEAD` `a88cd75df`, target
+`4a00f6264`, with 40 linear commits and no merges. Recovery refs are
+`refs/agent-recovery/pr103/r2-{old-base,old-head,target}`.
+
+All three conflicts landed in `scripts/generate_config_field_reference.py`,
+because this layer simplifies that generator while the parent hardened its
+code-span rendering:
+
+- `Reduce config reference generator complexity` deleted `format_code_span`.
+  The parent had improved the same helper to pad a value that both starts and
+  ends with a space, so the GFM one-space strip cannot eat it. The resolution
+  keeps the parent's helper and restores its use in the refactored
+  `render_markdown`; dropping it would have regressed backtick and
+  boundary-space safety for the sake of the complexity target.
+- `fix(scripts): keep backtick-bearing config values inside code spans`
+  re-added the helper under a second name, `code_span`, alongside the surviving
+  `format_code_span`. Keeping both would leave two implementations of one rule,
+  so `code_span` is dropped and its escaping call sites keep the
+  `format_code_span(escape_cell(..))` shape.
+- The docstring expansion in
+  `address review findings for rate-limit projection` already exists on the
+  parent's numpydoc-style helper, so that hunk resolves to nothing.
+
+`git range-diff b8db4ab7b..a88cd75df 4a00f6264..HEAD` reports 37 identical
+commits, the three generator commits above as changed, and no added or dropped
+commit. `git diff --check` is clean and no conflict marker or Weave footer
+survives. The generator suite passes
+(`python3 -m pytest scripts/tests/test_generate_config_field_reference.py`, 12
+tests), and `docs/config/CONFIG_FIELD_REFERENCE.md` still carries the three
+hand-maintained rows the generator cannot emit.
+
+### What the first gate run on the restacked head found
+
+The four gates were run on the restacked head before it was trusted, and they
+were red for three reasons, all in the replay rather than in the feature:
+
+- A conflict resolution dropped the closing brace of
+  `provider_error_telemetry_preserves_allowlisted_codes` and spliced a second,
+  partial copy of the tool-pipeline imports into `execution_attempts.rs`, so
+  `handlers/tests/provider.rs` no longer parsed and `make check-fmt` could not
+  reach `cargo fmt`'s own diffs.
+- `Cargo.lock` was taken from the parent unchanged, which was wrong for this
+  layer's manifests. `cargo metadata --locked` without `--all-features` accepts
+  that lock because the missing edges are dev-dependency edges; `make test`,
+  `make typecheck`, and `make lint` all pass `--locked` with the full feature
+  set and rejected it. The lock now records the `axum`, `proptest`, and
+  `httpdate` edges, and the check to trust is
+  `cargo metadata --all-features --locked`.
+- The replay also restored `VtCodeError` in `diapason-core`'s retry code and
+  tests. An earlier scan looked for `vtcode_core` and `VTCodeConfig` but not
+  the bare error type; the compiler found it. Every reference is now
+  `DiapasonError`, and the scan for the branch diff covers `VtCode` and
+  `VTCode` spellings too.
+
+Three Markdown files also needed a `mdtablefix` reflow after the hand-resolved
+paragraphs; `make check-fmt` runs that check after `cargo fmt`, and the earlier
+red run never reached it.
