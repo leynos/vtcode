@@ -29,10 +29,10 @@ should prefer the higher-level guidance in the Configuration guide.
   `supports_stream_usage` (optional booleans)
   - Provider-level conservative defaults applied when per-model metadata is
     unavailable.
-  - `supports_stream_usage` defaults to `false`. Set it to `true` only when a
-    custom OpenAI-chat endpoint accepts `stream_options.include_usage = true`
-    and sends usage in the terminal streamed chunk; native OpenAI requests are
-    unchanged.
+  - `supports_stream_usage` is opt-in: streamed usage stays off unless a layer
+    supplies `true`. Set it to `true` only when a custom OpenAI-chat endpoint
+    accepts `stream_options.include_usage = true` and sends usage in the
+    terminal streamed chunk; native OpenAI requests are unchanged.
 
 ## Per-model profiles (sparse overrides)
 
@@ -61,9 +61,12 @@ Notes and semantics
   autodetect > conservative fallback.
 - Explicit boolean `false` is honored and may override an implicit `true` from
   a lower-precedence layer.
-- `supports_stream_usage` uses the same profile-over-provider precedence.
-  When enabled, Diapason requests usage for custom OpenAI-chat streams; when
-  omitted or `false`, it leaves `stream_options.include_usage` disabled.
+- `supports_stream_usage` uses the same profile-over-provider precedence. An
+  omitted profile field inherits the provider's value, so a provider-level
+  `true` still requests streamed usage; an explicit profile `false` disables
+  that inherited opt-in. Streamed usage stays disabled only when neither layer
+  supplies `true`. When enabled, Diapason requests usage for custom OpenAI-chat
+  streams by setting `stream_options.include_usage`.
 - Omitting `api_format` preserves legacy behavior. Setting `api_format`
   explicitly instructs Diapason to treat the model with that API shape; it does
   not cause silent fallbacks.
