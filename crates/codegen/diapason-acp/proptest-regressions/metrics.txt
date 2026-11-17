@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 63323e293bd6be43363658ffa7b40ab579a3cce655b7f8272a43aec64058c967 # shrinks to attempts = [Attempt { started: false, outcome: Failed, cancelled: false, elapsed_ms: 15028192224081223477 }, Attempt { started: false, outcome: Failed, cancelled: false, elapsed_ms: 1514264616624782498 }, Attempt { started: false, outcome: Failed, cancelled: false, elapsed_ms: 1904287233003545641 }]

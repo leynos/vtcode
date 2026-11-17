@@ -499,4 +499,160 @@ mod tests {
         saturating_add(&counter, 1);
         assert_eq!(counter.load(Ordering::Relaxed), u64::MAX);
     }
+
+    /// Assert a recorder seeded near the ceiling saturates rather than wrapping.
+    ///
+    /// A process that has been running long enough to reach these values must
+    /// keep reporting a usable snapshot, and the outcome it did not record must
+    /// stay where it was.
+    #[test]
+    fn counters_seeded_near_the_ceiling_saturate() {
+        let counters = CompactionCounters::new();
+        let start = u64::MAX - 1;
+        counters.started.store(start, Ordering::Relaxed);
+        counters.compacted.store(start, Ordering::Relaxed);
+        counters.failed.store(start, Ordering::Relaxed);
+        counters.cancelled.store(start, Ordering::Relaxed);
+        counters.elapsed_ms_total.store(start, Ordering::Relaxed);
+        counters.elapsed_ms_max.store(start, Ordering::Relaxed);
+
+        counters.record_started();
+        counters.record_finished(CompactionOutcome::Failed, true, 5);
+
+        let snapshot = counters.snapshot();
+        assert_eq!(snapshot.started, u64::MAX);
+        assert_eq!(snapshot.compacted, start, "an unrecorded outcome leaves its counter alone");
+        assert_eq!(snapshot.failed, u64::MAX);
+        assert_eq!(snapshot.cancelled, u64::MAX);
+        assert_eq!(snapshot.elapsed_ms_total, u64::MAX);
+        assert_eq!(snapshot.elapsed_ms_max, start, "a short attempt cannot raise a saturated maximum");
+    }
+}
+
+#[cfg(test)]
+mod property_tests {
+    //! Sequenced-input properties for the counter arithmetic.
+    //!
+    //! The fixed examples in the parent module document each rule once. These
+    //! properties drive the same recorders through arbitrary event sequences
+    //! and compare every snapshot with a reference model that shares no
+    //! arithmetic with the implementation, so an accumulation or clamping
+    //! mistake shows up for some sequence rather than only for a chosen one.
+
+    use super::*;
+    use proptest::prelude::*;
+
+    /// One recorded compaction attempt, as the command boundary reports it.
+    #[derive(Clone, Copy, Debug)]
+    struct Attempt {
+        started: bool,
+        outcome: CompactionOutcome,
+        cancelled: bool,
+        elapsed_ms: u64,
+    }
+
+    fn attempt_strategy() -> impl Strategy<Value = Attempt> {
+        (any::<bool>(), 0_u8..3, any::<bool>(), any::<u64>()).prop_map(|(started, outcome, cancelled, elapsed_ms)| {
+            let outcome = match outcome {
+                0 => CompactionOutcome::Failed,
+                1 => CompactionOutcome::Compacted,
+                _ => CompactionOutcome::NoChange,
+            };
+            // A cancelled flag only accompanies a failure; any other pairing
+            // is not reachable at the command boundary.
+            let cancelled = cancelled && outcome == CompactionOutcome::Failed;
+            Attempt { started, outcome, cancelled, elapsed_ms }
+        })
+    }
+
+    /// Reference model for the compaction counters.
+    #[derive(Debug, Default)]
+    struct CompactionModel {
+        started: u64,
+        compacted: u64,
+        no_change: u64,
+        failed: u64,
+        cancelled: u64,
+        elapsed_total: u128,
+        elapsed_max: u64,
+    }
+
+    impl CompactionModel {
+        fn record(&mut self, attempt: Attempt) {
+            if attempt.started {
+                self.started += 1;
+            }
+            match attempt.outcome {
+                CompactionOutcome::Compacted => self.compacted += 1,
+                CompactionOutcome::NoChange => self.no_change += 1,
+                CompactionOutcome::Failed => self.failed += 1,
+            }
+            if attempt.cancelled {
+                self.cancelled += 1;
+            }
+            self.elapsed_total += u128::from(attempt.elapsed_ms);
+            self.elapsed_max = self.elapsed_max.max(attempt.elapsed_ms);
+        }
+
+        /// Every finished attempt lands in exactly one outcome bucket.
+        fn finished(&self) -> u64 {
+            self.compacted + self.no_change + self.failed
+        }
+    }
+
+    proptest! {
+        /// Assert the published compaction snapshot equals an independent model.
+        #[test]
+        fn compaction_counters_match_an_independent_model(attempts in prop::collection::vec(attempt_strategy(), 0..32)) {
+            let counters = CompactionCounters::new();
+            let mut model = CompactionModel::default();
+
+            for attempt in attempts {
+                if attempt.started {
+                    counters.record_started();
+                }
+                counters.record_finished(attempt.outcome, attempt.cancelled, attempt.elapsed_ms);
+                model.record(attempt);
+            }
+
+            let snapshot = counters.snapshot();
+            prop_assert_eq!(snapshot.started, model.started);
+            prop_assert_eq!(snapshot.compacted, model.compacted);
+            prop_assert_eq!(snapshot.no_change, model.no_change);
+            prop_assert_eq!(snapshot.cancelled, model.cancelled);
+            prop_assert_eq!(snapshot.failed, model.failed.max(model.cancelled));
+            prop_assert_eq!(
+                u128::from(snapshot.elapsed_ms_total),
+                model.elapsed_total.min(u128::from(u64::MAX)),
+                "the published total saturates at the ceiling rather than wrapping"
+            );
+            prop_assert_eq!(snapshot.elapsed_ms_max, model.elapsed_max);
+
+            // The documented invariants, checked against the model rather than
+            // against the snapshot alone.
+            prop_assert!(snapshot.failed >= snapshot.cancelled, "cancelled is a subset of failed");
+            prop_assert_eq!(snapshot.compacted + snapshot.no_change + snapshot.failed, model.finished());
+        }
+
+        /// Assert publication counters match an independent model.
+        #[test]
+        fn publication_counters_match_an_independent_model(sends in prop::collection::vec(any::<bool>(), 0..64)) {
+            let counters = PublicationCounters::new();
+            let mut attempts = 0_u64;
+            let mut failures = 0_u64;
+
+            for sent in sends {
+                counters.record(sent);
+                attempts += 1;
+                if !sent {
+                    failures += 1;
+                }
+            }
+
+            let snapshot = counters.snapshot();
+            prop_assert_eq!(snapshot.attempts, attempts);
+            prop_assert_eq!(snapshot.failures, failures);
+            prop_assert!(snapshot.attempts >= snapshot.failures, "failures are a subset of attempts");
+        }
+    }
 }
