@@ -59,7 +59,7 @@ fn usage_notification(session_id: &acp::SessionId, model: &str, usage: &Usage) -
     Ok(acp::ExtNotification::new(LODY_SESSION_USAGE_UPDATE_METHOD, Arc::from(params)))
 }
 
-fn response_usage_notification(
+pub(super) fn response_usage_notification(
     session_id: &acp::SessionId,
     fallback_model: &str,
     response: &diapason_core::llm::provider::LLMResponse,
