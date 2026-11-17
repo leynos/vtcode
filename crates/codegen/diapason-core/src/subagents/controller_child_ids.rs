@@ -188,6 +188,89 @@ fn unique_child_id(is_taken: impl Fn(&str) -> bool, candidate: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    /// Resolves which slot indices a sequence of grafts joined.
+    ///
+    /// The test needs the resulting trees, not the graft order, so a small
+    /// union-find models the joins the production code applied.
+    fn joined_components(count: usize, grafts: &[(usize, usize)]) -> Vec<usize> {
+        fn root(parent: &mut [usize], mut index: usize) -> usize {
+            while parent[index] != index {
+                index = parent[index];
+            }
+            index
+        }
+        let mut parent: Vec<usize> = (0..count).collect();
+        for &(left, right) in grafts {
+            let (left, right) = (root(&mut parent, left), root(&mut parent, right));
+            if left != right {
+                parent[left] = right;
+            }
+        }
+        (0..count).map(|index| root(&mut parent, index)).collect()
+    }
+
+    proptest! {
+        /// A grafted tree allocates from one id space.
+        ///
+        /// Each controller starts with its own allocator and a namespace of ids
+        /// that cannot collide, so every graft succeeds. After a random sequence
+        /// of grafts, every slot in one tree must draw from the same allocator:
+        /// the same candidate proposed from all of them has to come back
+        /// suffixed rather than repeated. A descendant that kept its old
+        /// allocator would return the bare candidate too, and the tree would
+        /// hold one id twice.
+        #[test]
+        fn grafting_joins_every_descendant_onto_one_id_space(
+            existing in prop::collection::vec(0usize..3, 1..=5),
+            raw_grafts in prop::collection::vec((0usize..5, 0usize..5), 0..=8),
+            candidates in prop::collection::vec("[a-z]{1,8}", 1..=4),
+        ) {
+            let slots = existing.iter().map(|_| ChildIdScopeSlot::default()).collect::<Vec<_>>();
+            for (index, count) in existing.iter().enumerate() {
+                for ordinal in 0..*count {
+                    let candidate = format!("pre-{index}-{ordinal}");
+                    let allocated = slots[index].with_scope(|scope| scope.allocate(|_| false, &candidate));
+                    prop_assert_eq!(allocated, candidate, "a namespaced id must be issued verbatim");
+                }
+            }
+
+            let mut applied: Vec<(usize, usize)> = Vec::new();
+            for &(start, end) in &raw_grafts {
+                let start = start % slots.len();
+                let end = end % slots.len();
+                if start == end {
+                    continue;
+                }
+                slots[start].adopt_into(&slots[end]).map_err(|duplicate| {
+                    TestCaseError::fail(format!("namespaced pre-ids must not collide: {duplicate}"))
+                })?;
+                applied.push((start, end));
+            }
+
+            let component = joined_components(slots.len(), &applied);
+            for candidate in &candidates {
+                let mut issued: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+                for (index, slot) in slots.iter().enumerate() {
+                    let allocated = slot.with_scope(|scope| scope.allocate(|_| false, candidate));
+                    issued.entry(component[index]).or_default().push(allocated);
+                }
+                for (tree, ids) in issued {
+                    let unique = ids.iter().collect::<BTreeSet<_>>();
+                    prop_assert_eq!(
+                        unique.len(),
+                        ids.len(),
+                        "tree {} issued {} twice: {:?}",
+                        tree,
+                        candidate,
+                        ids,
+                    );
+                }
+            }
+        }
+    }
 
     /// Generated ids carry millisecond precision, so two spawns of the same
     /// kind in one millisecond propose the same id. The second must receive a
