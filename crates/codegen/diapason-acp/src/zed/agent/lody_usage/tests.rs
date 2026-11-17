@@ -195,6 +195,52 @@ fn response_pricing_follows_the_model_the_provider_served() {
     );
 }
 
+/// Assert a served alias keeps the routed backend's input semantics.
+///
+/// A gateway can answer with a dated snapshot or alias that is not a
+/// configured profile key, so looking the semantics up by the served name would
+/// fall back to the provider-wide format. The request was routed through the
+/// Anthropic Messages profile, whose counts exclude cache tokens from
+/// `prompt_tokens`, so the published total must still include them while the
+/// served name keeps its own pricing and window.
+#[test]
+fn served_alias_keeps_the_routed_profile_input_semantics() {
+    let providers = vec![CustomProviderConfig {
+        profiles: BTreeMap::from([(
+            "claude-routed".to_string(),
+            CustomProviderProfileConfig {
+                api_format: CustomProviderApiFormat::AnthropicMessages,
+                context_window: Some(200_000),
+                pricing: per_million(3.0, 15.0),
+                ..CustomProviderProfileConfig::default()
+            },
+        )]),
+        ..custom_provider("acme", CustomProviderApiFormat::OpenAIChat, None, CustomProviderPricingConfig::default())
+    }];
+
+    let profile = publication_profile(&providers, "acme", "claude-routed", "claude-routed-2026-01-01");
+    assert!(profile.exclusive_input, "the routed Anthropic profile decides the input semantics");
+
+    let usage = Usage {
+        prompt_tokens: 21,
+        completion_tokens: 4,
+        cache_read_tokens: Some(5),
+        cache_creation_tokens: Some(3),
+        ..Usage::default()
+    };
+    let value = resolved_notification(&usage, profile);
+
+    assert_eq!(
+        value["usage"]["inputTokens"], 29,
+        "published input must carry cache read and creation tokens: {value}"
+    );
+    assert_eq!(value["usage"]["cacheReadInputTokens"], 5);
+    assert_eq!(value["usage"]["cacheCreationInputTokens"], 3);
+
+    let served = publication_profile(&providers, "acme", "claude-routed", "claude-routed");
+    assert_eq!(served.context_window, Some(200_000), "served profile keeps its window");
+}
+
 /// Assert a custom provider profile drives the notification window and cost.
 #[test]
 fn custom_provider_profile_drives_the_notification_context_window_and_cost() {
