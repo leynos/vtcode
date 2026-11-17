@@ -1,6 +1,6 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
 use super::super::tool_config::SessionToolDefinitionRequest;
-use super::provider::{AttemptFailureFuture, AttemptFailureSink, IncompleteProviderTurn};
+use super::provider::{AttemptFailure, AttemptFailureFuture, AttemptFailureSink, IncompleteProviderTurn};
 use super::*;
 use checkpoint::require_session_checkpoint;
 
