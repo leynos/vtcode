@@ -201,6 +201,43 @@ async fn closing_session_rejects_management_requests_as_unknown_sessions() {
     );
 }
 
+/// A close that starts during resolution is rejected as well.
+///
+/// The request can pass the first closing check and then wait while the session
+/// closes and releases its workspace runtime. Resolution then falls back to the
+/// launch-scope controller, so the second check has to reject the interleaving
+/// before that controller is used. The closure closes the session exactly where
+/// the release would happen.
+#[tokio::test]
+async fn close_during_resolution_rejects_the_resolved_controller() {
+    let workspace = TempDir::new().expect("close-during-resolution workspace");
+    let agent = agent_with_launch_subagent_controller(workspace.path()).await;
+    let session_id = agent.register_session().expect("register session");
+    let session = agent
+        .session_handle(&session_id)
+        .expect("look up the session")
+        .expect("registered session");
+    let launch_scope = agent
+        .session_subagent_controller(&session)
+        .expect("resolve the launch scope before closing")
+        .expect("the launch scope is configured");
+
+    let resolved = resolve_open_session_controller(&session, || {
+        session.begin_close();
+        Ok(Some(launch_scope))
+    });
+
+    let error = match resolved {
+        Ok(_) => panic!("a close during resolution must not yield a controller"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.data.as_ref(),
+        Some(&serde_json::json!({ "reason": "unknown_session" })),
+        "the interleaving must report the same bounded reason: {error:?}"
+    );
+}
+
 /// The observation boundary takes its collector explicitly, so it can be
 /// exercised without an agent, and it counts every operation of the surface.
 #[tokio::test]
