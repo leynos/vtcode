@@ -124,9 +124,10 @@ fn published_usage_update_matches_the_serialised_notification() {
     let response = diapason_core::llm::provider::LLMResponse {
         usage: Some(diapason_core::llm::Usage {
             prompt_tokens: 123,
-            completion_tokens: 45,
-            total_tokens: 168,
+            completion_tokens: 57,
+            total_tokens: 180,
             cache_read_tokens: Some(0),
+            reasoning_output_tokens: Some(12),
             ..diapason_core::llm::Usage::default()
         }),
         ..diapason_core::llm::provider::LLMResponse::new("model-name", "answer")
@@ -135,6 +136,10 @@ fn published_usage_update_matches_the_serialised_notification() {
         &acp::SessionId::new(Arc::from("session-id")),
         "fallback-model",
         &response,
+        diapason_core::llm::usage_cost::UsageProfile {
+            context_window: Some(524_288),
+            ..diapason_core::llm::usage_cost::UsageProfile::default()
+        },
     )
     .expect("serializing the published counts must succeed")
     .expect("a response carrying usage must publish a notification");
