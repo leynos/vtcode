@@ -166,8 +166,8 @@ impl RetryPolicyCoreExt for RetryPolicy {
     }
 
     fn is_retryable_anyhow(&self, error: &anyhow::Error, attempt_index: u32, tool_name: Option<&str>) -> bool {
-        if let Some(vtcode_error) = error.downcast_ref::<VtCodeError>() {
-            return decision_for_category_with_tool(self, vtcode_error.category, attempt_index, None, tool_name)
+        if let Some(diapason_error) = error.downcast_ref::<DiapasonError>() {
+            return decision_for_category_with_tool(self, diapason_error.category, attempt_index, None, tool_name)
                 .retryable;
         }
         if let Some(llm_error) = error.downcast_ref::<LLMError>() {

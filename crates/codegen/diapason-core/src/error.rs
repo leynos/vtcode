@@ -537,7 +537,7 @@ mod tests {
     fn explicit_llm_conversion_interprets_http_date_at_its_observation_time() {
         let observed_at = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_445_412_420);
 
-        let converted = VtCodeError::from_llm_error_at(llm_error_with_http_retry_after(observed_at), observed_at);
+        let converted = DiapasonError::from_llm_error_at(llm_error_with_http_retry_after(observed_at), observed_at);
 
         assert_eq!(converted.retry_after(), Some(std::time::Duration::from_secs(60)));
     }
@@ -546,7 +546,7 @@ mod tests {
     fn llm_conversion_ignores_http_dates_without_an_observation_time() {
         let observed_at = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_445_412_420);
 
-        let converted = VtCodeError::from(llm_error_with_http_retry_after(observed_at));
+        let converted = DiapasonError::from(llm_error_with_http_retry_after(observed_at));
 
         assert_eq!(converted.retry_after(), None);
     }

@@ -161,11 +161,11 @@ fn clock_free_retry_eligibility_matches_anyhow_decisions() {
         );
     }
 
-    let typed_vtcode = anyhow::Error::new(VtCodeError::network(ErrorCode::ConnectionFailed, "transient"));
-    assert!(policy.is_retryable_anyhow(&typed_vtcode, 0, None));
+    let typed_diapason = anyhow::Error::new(DiapasonError::network(ErrorCode::ConnectionFailed, "transient"));
+    assert!(policy.is_retryable_anyhow(&typed_diapason, 0, None));
     assert_eq!(
-        policy.is_retryable_anyhow(&typed_vtcode, 0, None),
-        policy.decision_for_anyhow(&typed_vtcode, 0, None).retryable
+        policy.is_retryable_anyhow(&typed_diapason, 0, None),
+        policy.decision_for_anyhow(&typed_diapason, 0, None).retryable
     );
 }
 
