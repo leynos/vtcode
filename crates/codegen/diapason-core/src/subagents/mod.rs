@@ -15,6 +15,7 @@ mod background_output;
 mod config;
 mod constants;
 mod controller_child_ids;
+mod controller_locks;
 mod controller_persistence;
 mod discovery;
 mod model;
@@ -32,6 +33,7 @@ pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
     normalize_background_child_max_turns, normalize_child_max_turns, prepare_child_runtime_config,
 };
+pub use controller_locks::SubagentLockScope;
 pub use model::{
     agent_type_for_spec, load_memory_appendix, load_memory_appendix_async, load_primary_memory_appendix,
     load_primary_memory_appendix_async,
@@ -41,11 +43,11 @@ pub use prompt::{
     extract_explicit_agent_mentions, normalize_requested_model_override, request_prompt, sanitize_subagent_input_items,
 };
 pub use types::{
-    BackgroundRecord, BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord,
-    ChildRunResult, ControllerState, PersistedBackgroundRecord, PersistedBackgroundState, SendInputRequest,
-    SpawnAgentRequest, SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem,
-    SubagentInvocationContext, SubagentProgressObserver, SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot,
-    TurnDelegationHints,
+    BackgroundLiveness, BackgroundLivenessEntry, BackgroundRecord, BackgroundSubprocessEntry,
+    BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord, ChildRunResult, ControllerState,
+    PersistedBackgroundRecord, PersistedBackgroundState, SendInputRequest, SpawnAgentRequest,
+    SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem, SubagentInvocationContext,
+    SubagentProgressObserver, SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot, TurnDelegationHints,
 };
 
 // VerificationResult is defined in this module (below) and re-exported at the
@@ -174,6 +176,14 @@ pub struct SubagentControllerConfig {
     pub pty_manager: PtyManager,
     /// Whether this controller manages a background runtime subprocess.
     pub managed_background_runtime: bool,
+    /// Adoption and persistence locks shared by this controller tree.
+    ///
+    /// `None` resolves to the process-global default, so controllers created
+    /// without one still exclude each other exactly as the former static locks
+    /// did. Supply a distinct scope to give a tree its own locks for
+    /// injection or isolated tests; a child-scoped controller inherits its
+    /// parent's scope.
+    pub lock_scope: Option<Arc<SubagentLockScope>>,
 }
 
 /// Central controller that manages spawning, lifecycle, and state of all subagents.
@@ -207,6 +217,10 @@ pub struct SubagentController {
     /// redirectable handle that attaching a controller with existing children
     /// rewrites: every descendant follows the redirect at once.
     child_id_scope: Arc<std::sync::RwLock<Arc<controller_spawn_run::ChildIdScopeSlot>>>,
+    /// Adoption and persistence locks shared by this controller tree. Resolved
+    /// once at construction from the config, so a child inherits its parent's
+    /// tree and an injected scope is observable at every call site.
+    lock_scope: Arc<SubagentLockScope>,
 }
 
 impl SubagentController {
@@ -274,6 +288,10 @@ impl SubagentController {
                 .output_reader
                 .clone()
                 .unwrap_or_else(|| Arc::new(ExecSessionOutputReader::new(config.exec_sessions.clone())));
+            // Resolve the tree's locks before the state is built: the child-id
+            // slot needs the same adoption lock as the controller, and a
+            // configured scope must keep the two identities together.
+            let lock_scope = config.lock_scope.clone().unwrap_or_else(controller_locks::default_lock_scope);
             Ok(Self {
                 config: Arc::new(config),
                 output_reader,
@@ -291,9 +309,17 @@ impl SubagentController {
                 closing: Arc::new(AtomicBool::new(false)),
                 progress_observers: Arc::default(),
                 progress_observer_scope: None,
-                child_id_scope: Arc::new(std::sync::RwLock::new(Arc::default())),
+                child_id_scope: Arc::new(std::sync::RwLock::new(Arc::new(
+                    controller_spawn_run::ChildIdScopeSlot::with_lock_scope(Arc::clone(&lock_scope)),
+                ))),
+                lock_scope,
             })
         })
+    }
+
+    /// Returns the adoption and persistence locks this controller tree holds.
+    pub(crate) fn lock_scope(&self) -> &Arc<SubagentLockScope> {
+        &self.lock_scope
     }
 
     /// Re-discovers subagent specs from the workspace.

@@ -240,6 +240,7 @@ pub(crate) async fn initialize_session(
             output_reader: None,
             pty_manager: tool_registry.pty_manager().clone(),
             managed_background_runtime: false,
+            lock_scope: None,
         })
         .await
         {

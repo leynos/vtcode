@@ -4,46 +4,11 @@
 //! about the whole owned tree lives here: the breadth-first traversal adapters
 //! use, and the graft that gives every controller in one tree a single child-id
 //! allocator.
-#![allow(
-    unused_imports,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-use anyhow::{Context, Result, anyhow, bail};
-use chrono::Utc;
-use futures::future::select_all;
-use std::collections::{BTreeMap, VecDeque};
-use std::future::Future;
-use std::path::PathBuf;
+use anyhow::{Result, anyhow, bail};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Mutex, Weak};
-use tokio::sync::{Notify, RwLock};
 
-use crate::config::DiapasonConfig;
-use crate::config::types::ReasoningEffortLevel;
-use crate::core::agent::runner::{AgentRunner, RunnerSettings};
-use crate::core::agent::task::Task;
-use crate::core::threads::{ThreadBootstrap, ThreadId, ThreadRuntimeHandle, ThreadSnapshot};
-use crate::hooks::{LifecycleHookEngine, SessionStartTrigger};
-use crate::llm::provider::Message;
-use crate::tools::exec_session::ExecSessionManager;
-use crate::tools::pty::{PtyManager, PtySize};
-use crate::utils::session_archive::{SessionArchive, find_session_by_identifier};
-use diapason_config::SubagentSpec;
-use diapason_config::auth::OpenAIChatGptAuthHandle;
-
-use self::background::*;
-use self::config::*;
-use self::constants::*;
-use self::discovery::discover_controller_subagents;
-use self::model::*;
-use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
-
-#[allow(
-    unused_imports,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-use super::*;
+use super::controller_spawn_run;
+use super::{ControllerState, SubagentController, current_subagent_invocation_context};
 
 impl SubagentController {
     /// Returns every child-scoped controller reachable from this controller's
@@ -108,6 +73,16 @@ impl SubagentController {
     pub(crate) fn inherit_child_id_scope(&self, parent: &SubagentController) {
         let parent_slot = Self::child_id_slot_of(parent);
         *self.child_id_scope.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = parent_slot;
+    }
+
+    /// Joins the parent tree's adoption and persistence locks.
+    ///
+    /// A child-scoped controller starts from a config that names no scope,
+    /// exactly as it starts with its own child-id slot and observer registry.
+    /// It must join the parent's tree for both, so grafting and ledger saves
+    /// exclude siblings the way a root controller excludes itself.
+    pub(crate) fn inherit_lock_scope(&mut self, parent: &SubagentController) {
+        self.lock_scope = Arc::clone(parent.lock_scope());
     }
 
     /// Reads the slot a controller shares with its whole subtree.
