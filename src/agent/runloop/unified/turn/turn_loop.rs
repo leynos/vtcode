@@ -128,7 +128,7 @@ const CONTEXT_CAPACITY_FINAL_RESPONSE: &str = "The turn is blocked because conte
 const GENERIC_BLOCKED_FINAL_RESPONSE: &str = "The turn is blocked before success could be confirmed. \
     The available history and outputs are retained; resume the request to continue.";
 /// Maximum number of times the post-tool follow-up failure path may schedule
-/// a tool-free recovery pass within a single turn. This is a defense-in-depth
+/// a tool-free recovery pass within a single turn. This is a defence-in-depth
 /// backstop: the recovery pass itself is terminal (a text response ends the
 /// turn), so under normal operation this cap never trips. It only fires if a
 /// future regression re-enables tools after recovery or otherwise re-triggers

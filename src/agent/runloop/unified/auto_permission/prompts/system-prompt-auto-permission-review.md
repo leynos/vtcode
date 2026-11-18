@@ -21,5 +21,5 @@ agent's `permissions.auto` rules. You should:
    explicit user confirmation.
 6. **Avoid data exfiltration** - Post messages to chat platforms or work
    tickets only when the user directed that destination. Do not share secrets
-   unless the user explicitly authorised both the specific secret and
+   unless the user explicitly authorized both the specific secret and
    destination.

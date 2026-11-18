@@ -1,6 +1,6 @@
 //! Terminal palette probe coordination.
 //!
-//! The OSC color probe ([`probe_and_cache_terminal_palette_harmony`]) does
+//! The OSC colour probe ([`probe_and_cache_terminal_palette_harmony`]) does
 //! blocking I/O on `/dev/tty` with up to a 200 ms timeout.  Starting it
 //! synchronously in `run_single_agent_loop` delays the first TUI render by
 //! that full duration.

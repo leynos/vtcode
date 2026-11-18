@@ -70,7 +70,7 @@ const DEFAULT_RETAINED_USER_MESSAGE_TOKENS: usize = 20_000;
 const DEFAULT_RETAINED_USER_MESSAGES: usize = 6;
 /// Internal continuity budget. This is deliberately not configuration: changing
 /// it changes the shape of every compacted request and therefore provider cache
-/// behavior.
+/// behaviour.
 const CONTINUITY_TAIL_TARGET_TOKENS: usize = 20_000;
 /// Keep history below the model window after reserving space for the system
 /// prompt, memory envelope, summary framing, and the next response.

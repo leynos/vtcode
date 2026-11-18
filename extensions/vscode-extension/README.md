@@ -1,6 +1,6 @@
 # Diapason
 
-**Diapason** is an AI coding assistant available for your favorite IDEs. This
+**Diapason** is an AI coding assistant available for your favourite IDEs. This
 repository contains the Visual Studio Code extension, providing deep
 integration with [Diapason](https://github.com/leynos/vtcode), a Rust-based
 terminal coding agent with semantic code intelligence.
@@ -13,7 +13,7 @@ published.
 - **AI Coding Assistant**: Access the Diapason agent directly from VS Code
 - **Quick Actions**: Easily send questions and get responses without leaving
     your editor
-- **Code Analysis**: Analyze your workspace with semantic code intelligence
+- **Code Analysis**: Analyse your workspace with semantic code intelligence
 - **Configuration Management**: Edit your `config.toml` configuration files
     with syntax highlighting
 - **Context Awareness**: Leverages Tree-sitter for deep code understanding
@@ -55,7 +55,7 @@ The extension contributes the following commands:
 - `Diapason: Ask About Selection` - Ask about highlighted code
 - `Diapason: Launch Agent Terminal` - Open an integrated terminal session
     running `diapason chat`
-- `Diapason: Analyze Workspace` - Run `diapason analyze` on your workspace
+- `Diapason: Analyse Workspace` - Run `diapason analyse` on your workspace
 - `Diapason: Open Configuration` - Edit your `config.toml` configuration file
 - `Diapason: Open Documentation` - Access Diapason documentation
 - `Diapason: Toggle Human-in-the-Loop` - Control human approval for sensitive

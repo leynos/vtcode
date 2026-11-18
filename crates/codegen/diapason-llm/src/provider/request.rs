@@ -268,7 +268,7 @@ pub struct ResponsesCompactionOptions {
     pub prompt_cache_key: Option<String>,
 }
 
-/// Settings to refine model behavior for coding agent tasks
+/// Settings to refine model behaviour for coding agent tasks
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CodingAgentSettings {
     /// Encourage the model to use XML tags for structured responses
@@ -299,7 +299,7 @@ pub struct CodingAgentSettings {
 #[derive(Default)]
 pub enum ToolChoice {
     /// Let the model decide whether to call tools ("auto")
-    /// Default behavior - allows model to use tools when appropriate
+    /// Default behaviour - allows model to use tools when appropriate
     #[default]
     Auto,
 
@@ -376,7 +376,7 @@ pub struct SpecificFunctionChoice {
 }
 
 impl ToolChoice {
-    /// Create auto tool choice (default behavior)
+    /// Create auto tool choice (default behaviour)
     pub fn auto() -> Self {
         Self::Auto
     }
@@ -419,7 +419,7 @@ impl ToolChoice {
         }
     }
 
-    /// Get human-readable description of tool choice behavior
+    /// Get human-readable description of tool choice behaviour
     pub fn description(&self) -> &'static str {
         match self {
             Self::Auto => "Model decides when to use tools (allows parallel)",
@@ -496,7 +496,7 @@ impl ToolChoice {
     }
 }
 
-/// Configuration for parallel tool use behavior
+/// Configuration for parallel tool use behaviour
 /// Based on Anthropic's parallel tool use guidelines
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParallelToolConfig {

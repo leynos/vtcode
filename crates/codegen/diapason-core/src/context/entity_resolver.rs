@@ -71,7 +71,7 @@ pub struct EntityIndex {
     /// Classes and structs
     pub classes: HashMap<String, Vec<FileLocation>>,
 
-    /// Style properties (padding, color, etc.)
+    /// Style properties (padding, colour, etc.)
     pub style_properties: HashMap<String, Vec<StyleValue>>,
 
     /// Config keys

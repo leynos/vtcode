@@ -207,7 +207,7 @@ pub fn default_code_rubric() -> EvaluationRubric {
     ])
 }
 
-/// Render an EvaluationResult as a markdown report suitable for harness artifacts.
+/// Render an EvaluationResult as a markdown report suitable for harness artefacts.
 pub fn evaluation_to_markdown(result: &EvaluationResult) -> String {
     let mut out = String::new();
     out.push_str("# Evaluation Report\n\n");

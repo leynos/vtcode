@@ -17,7 +17,7 @@ const INVALID_CHOICE_MESSAGE: &str = "Invalid selection. Please enter 'a' or 'q'
 
 /// Environment variable that allows non-interactive (CI / scripted) callers
 /// to grant or deny workspace trust without launching the interactive
-/// Diapason shell. Recognised values (case-insensitive):
+/// Diapason shell. Recognized values (case-insensitive):
 ///
 /// * `full-auto`, `full_auto`, `fullauto`, `trust`, `trusted`, `1`, `yes`,
 ///   `on` — grant full-auto trust for this workspace.

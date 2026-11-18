@@ -28,7 +28,7 @@ files are user-controlled context, not a security boundary.
   `CARGO_INCREMENTAL=1` only when intentionally overriding that profile.
 - Treat shell execution as an adversarial boundary. Use sandbox-aware launch
   paths and cover injection, path/symlink escape, environment leakage and
-  fail-closed behavior.
+  fail-closed behaviour.
 - Built-in theme foreground and accent colours must meet WCAG AA 4.5:1 against
   their background. Run `cargo nextest run -p diapason-ui -E 'test(theme)'`.
 - Every major feature updates relevant user docs and quick references, agent

@@ -6,9 +6,9 @@ the workflows in the extension, the participant system, and the tool approval
 mechanisms available in the application.
 
 Diapason uses a configuration file named `config.toml` that can be placed at
-the root of your project workspace to customize behavior. The extension watches
-for changes to this file and will automatically update settings when it's
-modified.
+the root of your project workspace to customize behaviour. The extension
+watches for changes to this file and will automatically update settings when
+it's modified.
 
 ## Getting Started with Configuration
 
@@ -49,7 +49,7 @@ following options:
 ## Feature flags
 
 Optional and experimental capabilities are toggled via the `[features]` table in
-`config.toml`. These allow you to customize the behavior of various Diapason
+`config.toml`. These allow you to customize the behaviour of various Diapason
 features.
 
 ```toml
@@ -149,7 +149,7 @@ env_http_headers = { "X-Example-Features" = "EXAMPLE_FEATURES" }
 
 ### Model-specific settings
 
-You can also configure model-specific behavior:
+You can also configure model-specific behaviour:
 
 ```toml
 [agent.model_settings]
@@ -286,7 +286,7 @@ custom_tool_example = "deny"
 
 ### automation
 
-Control automation behavior in Diapason:
+Control automation behaviour in Diapason:
 
 ```toml
 [automation]
@@ -304,7 +304,7 @@ allowed_tools = ["read_file", "web_search", "shell_exec"]
 
 ### participants
 
-Controls the behavior of the participant system that provides context
+Controls the behaviour of the participant system that provides context
 augmentation:
 
 ```toml
@@ -476,7 +476,7 @@ settings:
 # Whether to enable the ask agent command
 ask_agent_enabled = true
 
-# Whether to enable the analyze workspace command
+# Whether to enable the analyse workspace command
 analyze_enabled = true
 
 # Timeout for command execution (in seconds)
@@ -613,7 +613,7 @@ If Diapason is not behaving as expected with your configuration:
 | `auth.secure_storage`                   | boolean                                           | Store credentials securely (default: true).                                  |
 | `auth.validate_keys`                    | boolean                                           | Validate API keys on startup.                                                |
 | `commands.ask_agent_enabled`            | boolean                                           | Enable the ask agent command.                                                |
-| `commands.analyze_enabled`              | boolean                                           | Enable the analyze command.                                                  |
+| `commands.analyze_enabled`              | boolean                                           | Enable the analyse command.                                                  |
 | `commands.command_timeout`              | number                                            | Command execution timeout (seconds).                                         |
 | `profiles.*.agent.provider`             | string                                            | Provider override for a profile.                                             |
 | `profiles.*.security.human_in_the_loop` | boolean                                           | Security setting override for a profile.                                     |

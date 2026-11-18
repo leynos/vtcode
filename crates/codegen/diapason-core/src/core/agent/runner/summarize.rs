@@ -14,8 +14,8 @@ impl AgentRunner {
     ///
     /// Delegates to the shared compaction orchestrator (the same path the
     /// binary unified runloop uses) so both runloops keep identical
-    /// continuity behavior: the provider-native or local-LLM summary is built,
-    /// a recoverable full-history artifact is written, and a session memory
+    /// continuity behaviour: the provider-native or local-LLM summary is built,
+    /// a recoverable full-history artefact is written, and a session memory
     /// envelope is injected so the model retains what it was doing. A
     /// `thread.compact_boundary` event is emitted and the Gemini `conversation`
     /// view is rebuilt from the compacted universal `messages`.
