@@ -1,6 +1,7 @@
 //! Wire-level test for the Lody usage extension notification.
 
 use super::*;
+use std::time::Duration;
 
 /// Assert usage travels over the official ACP extension channel.
 #[tokio::test]
