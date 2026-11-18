@@ -126,6 +126,7 @@ fn test_child_record(
 }
 
 mod background_liveness_tests;
+mod child_lifecycle_tests;
 mod invocation_context_tests;
 mod lock_scope_tests;
 mod owner_scope_tests;

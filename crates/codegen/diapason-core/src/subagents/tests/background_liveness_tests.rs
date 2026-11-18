@@ -3,6 +3,7 @@
 //! persisted ledger. A launch that never started must settle as the failure it
 //! is rather than remain `Starting` forever.
 use super::*;
+use crate::subagents::controller_background_ops::BackgroundRunPlan;
 use rstest::rstest;
 
 /// Builds a persisted record whose exec session is not registered with the
@@ -38,6 +39,31 @@ fn record_with_terminal_state(
     value["desired_enabled"] = serde_json::json!(desired_enabled);
     value["ended_at"] = serde_json::json!(ended_at);
     serde_json::from_value(value).expect("deserialize record")
+}
+
+/// Builds the plan of a launch that has already been replaced or cancelled.
+///
+/// The plan names an exec session the stored record no longer carries, which
+/// is exactly the state an older launch is in when it fails after a
+/// cancellation settled the record or a replacement took its id.
+fn stale_launch_plan(exec_session_id: &str) -> BackgroundRunPlan {
+    BackgroundRunPlan {
+        owner_session_id: Some("session-a".to_string()),
+        spec: diapason_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == "explorer")
+            .expect("explorer spec"),
+        record_id: "background-worker@session-a".to_string(),
+        parent_session_id: "parent-session".to_string(),
+        session_id: "child-session".to_string(),
+        exec_session_id: exec_session_id.to_string(),
+        created_at: Utc::now(),
+        prompt: "work".to_string(),
+        max_turns: None,
+        model_override: None,
+        reasoning_override: None,
+        restart_attempts: 0,
+    }
 }
 
 fn write_ledger(path: &std::path::Path, records: Vec<PersistedBackgroundRecord>) {
@@ -459,4 +485,108 @@ async fn failed_background_spawn_settles_the_record_as_an_error() {
     );
     assert!(entry.ended_at.is_some(), "a settled failure carries a terminal instant");
     assert!(entry.desired_enabled, "settling a failed launch must not clear the desired state");
+}
+
+/// Rewrites one persisted record with an explicit exec session.
+fn with_exec_session(record: PersistedBackgroundRecord, exec_session_id: &str) -> PersistedBackgroundRecord {
+    let mut value = serde_json::to_value(record).expect("serialize fixture record");
+    value["exec_session_id"] = serde_json::json!(exec_session_id);
+    serde_json::from_value(value).expect("deserialize record")
+}
+
+/// An older launch's failure must not settle a record a replacement owns.
+///
+/// A record id is stable across restarts and shared with the workspace ledger,
+/// so the record an older launch wrote at `Starting` can already name the
+/// exec session of a replacement launch. Marking the replacement `Error` would
+/// also make a later cancellation take the already-terminal branch and skip
+/// process termination, so only the launch that still owns the record may
+/// settle it.
+#[tokio::test]
+async fn a_failed_launch_does_not_settle_the_record_a_replacement_owns() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    write_ledger(
+        &state_dir.join("background_subagents.json"),
+        vec![with_exec_session(
+            record_with_restart_state("background-worker", Some("session-a"), "starting", 0),
+            "exec-replacement",
+        )],
+    );
+    let controller = SubagentController::new_with_background_owner(
+        auto_restore_config(temp.path().to_path_buf(), false),
+        Some("session-a"),
+    )
+    .await
+    .expect("controller");
+
+    controller
+        .settle_failed_background_run(&stale_launch_plan("exec-replaced-launch"), &anyhow::anyhow!("spawn failed"))
+        .await;
+
+    let entry = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == "background-worker@session-a")
+        .expect("owned background record");
+    assert_eq!(
+        entry.status,
+        BackgroundSubprocessStatus::Starting,
+        "a replaced launch's failure must not settle the replacement as failed"
+    );
+    assert!(entry.error.is_none(), "the replacement must not inherit another launch's error");
+    assert!(entry.desired_enabled, "settling must not clear the replacement's intent");
+}
+
+/// A cancelled record is not settled again by the launch that was stopped.
+///
+/// Cancellation settles the record while its exec session may still be
+/// starting. The stopped launch then fails and reaches the same settlement
+/// path; rewriting the terminal outcome to `Error` would relabel a deliberate
+/// stop as a failure and discard the instant it ended.
+#[tokio::test]
+async fn a_failed_launch_does_not_settle_a_cancelled_record() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let ended_at = "2026-08-28T00:00:00Z";
+    write_ledger(
+        &state_dir.join("background_subagents.json"),
+        vec![with_exec_session(
+            record_with_terminal_state("background-worker", Some("session-a"), "stopped", 0, false, Some(ended_at)),
+            "exec-cancelled-launch",
+        )],
+    );
+    let controller = SubagentController::new_with_background_owner(
+        auto_restore_config(temp.path().to_path_buf(), false),
+        Some("session-a"),
+    )
+    .await
+    .expect("controller");
+    let before = std::fs::read(state_dir.join("background_subagents.json")).expect("read ledger before settlement");
+
+    controller
+        .settle_failed_background_run(&stale_launch_plan("exec-cancelled-launch"), &anyhow::anyhow!("spawn failed"))
+        .await;
+
+    let entry = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == "background-worker@session-a")
+        .expect("owned background record");
+    assert_eq!(entry.status, BackgroundSubprocessStatus::Stopped, "a cancelled record keeps its terminal outcome");
+    assert!(entry.error.is_none(), "a cancelled record must not acquire a failure message");
+    assert_eq!(
+        entry.ended_at,
+        Some(ended_at.parse().expect("fixture instant")),
+        "the stop keeps the instant it ended"
+    );
+    assert_eq!(
+        std::fs::read(state_dir.join("background_subagents.json")).expect("read ledger after settlement"),
+        before,
+        "a settlement that does not own the record must not write the ledger"
+    );
 }

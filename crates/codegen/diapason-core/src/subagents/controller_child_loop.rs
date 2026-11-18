@@ -477,7 +477,9 @@ impl SubagentController {
         };
         match SubagentController::new(nested_config).await {
             Ok(mut controller) => {
-                controller.inherit_progress_observers(self).await;
+                controller
+                    .inherit_progress_observers(self, execution.parent_session_id.as_str())
+                    .await;
                 controller.inherit_child_id_scope(self);
                 controller.inherit_lock_scope(self);
                 Some(Arc::new(controller))
