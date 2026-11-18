@@ -1635,6 +1635,35 @@ mod tests {
         assert_eq!(r.buffer, "hello");
     }
 
+    #[cfg(feature = "tui")]
+    #[test]
+    fn ansi_from_ratatui_colour_maps_every_ratatui_colour() {
+        let cases = [
+            (RatColour::Reset, None),
+            (RatColour::Black, Some(AnsiColourEnum::Ansi(AnsiColor::Black))),
+            (RatColour::Red, Some(AnsiColourEnum::Ansi(AnsiColor::Red))),
+            (RatColour::Green, Some(AnsiColourEnum::Ansi(AnsiColor::Green))),
+            (RatColour::Yellow, Some(AnsiColourEnum::Ansi(AnsiColor::Yellow))),
+            (RatColour::Blue, Some(AnsiColourEnum::Ansi(AnsiColor::Blue))),
+            (RatColour::Magenta, Some(AnsiColourEnum::Ansi(AnsiColor::Magenta))),
+            (RatColour::Cyan, Some(AnsiColourEnum::Ansi(AnsiColor::Cyan))),
+            (RatColour::Gray, Some(AnsiColourEnum::Rgb(RgbColor(0x88, 0x88, 0x88)))),
+            (RatColour::DarkGray, Some(AnsiColourEnum::Rgb(RgbColor(0x66, 0x66, 0x66)))),
+            (RatColour::LightRed, Some(AnsiColourEnum::Ansi(AnsiColor::Red))),
+            (RatColour::LightGreen, Some(AnsiColourEnum::Ansi(AnsiColor::Green))),
+            (RatColour::LightYellow, Some(AnsiColourEnum::Ansi(AnsiColor::Yellow))),
+            (RatColour::LightBlue, Some(AnsiColourEnum::Ansi(AnsiColor::Blue))),
+            (RatColour::LightMagenta, Some(AnsiColourEnum::Ansi(AnsiColor::Magenta))),
+            (RatColour::LightCyan, Some(AnsiColourEnum::Ansi(AnsiColor::Cyan))),
+            (RatColour::White, Some(AnsiColourEnum::Ansi(AnsiColor::White))),
+            (RatColour::Rgb(1, 2, 3), Some(AnsiColourEnum::Rgb(RgbColor(1, 2, 3)))),
+            (RatColour::Indexed(42), Some(AnsiColourEnum::Ansi256(Ansi256Color(42)))),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(InlineSink::ansi_from_ratatui_colour(input), expected, "unexpected mapping for {input:?}");
+        }
+    }
+
     #[test]
     fn convert_plain_lines_preserves_ansi_styles() {
         let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
