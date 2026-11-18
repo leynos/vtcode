@@ -64,8 +64,8 @@ Notes and semantics
 - `supports_stream_usage` uses the same profile-over-provider precedence. An
   omitted profile field inherits the provider's value, so a provider-level
   `true` still requests streamed usage; an explicit profile `false` disables
-  that inherited opt-in. Streamed usage stays disabled only when neither layer
-  supplies `true`. When enabled, Diapason requests usage for custom OpenAI-chat
+  that inherited opt-in. When neither layer supplies `true`, streamed usage
+  stays disabled. When enabled, Diapason requests usage for custom OpenAI-chat
   streams by setting `stream_options.include_usage`.
 - Omitting `api_format` preserves legacy behavior. Setting `api_format`
   explicitly instructs Diapason to treat the model with that API shape; it does
