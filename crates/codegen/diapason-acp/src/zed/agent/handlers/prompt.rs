@@ -119,6 +119,15 @@ pub(super) struct PromptExecution {
     _turn_guard: TurnGuard,
     provider: Box<dyn LLMProvider>,
     provider_runtime: ProviderRequestRuntime,
+    /// The provider key the session selected, such as `anthropic` or a custom
+    /// provider's configured name.
+    ///
+    /// This is not [`ProviderRequestRuntime::provider_name`]: a built-in
+    /// provider shares the fallback runtime, whose name is `default`. Usage
+    /// reporting resolves configuration by the selected key, so keeping the two
+    /// apart stops a built-in response from inheriting the fallback label's
+    /// input semantics or an unrelated custom provider's pricing.
+    provider_key: String,
     session_model: String,
     reasoning_effort: Option<ReasoningEffortLevel>,
     provider_supports_tools: bool,
@@ -148,6 +157,7 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
         _turn_guard,
         provider: provider.provider,
         provider_runtime: provider.runtime,
+        provider_key: provider.provider_key,
         session_model: provider.model,
         reasoning_effort: provider.reasoning_effort,
         provider_supports_tools: provider.supports_tools,
@@ -163,6 +173,9 @@ async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecuti
 pub(super) struct PromptProviderContext {
     provider: Box<dyn LLMProvider>,
     runtime: ProviderRequestRuntime,
+    /// The session's selected provider key, which names the configuration a
+    /// usage profile must be resolved against.
+    provider_key: String,
     model: String,
     reasoning_effort: Option<ReasoningEffortLevel>,
     supports_streaming: bool,

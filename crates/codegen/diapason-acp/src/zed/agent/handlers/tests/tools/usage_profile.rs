@@ -79,6 +79,32 @@ fn wire_core_config(workspace: &std::path::Path) -> CoreAgentConfig {
     }
 }
 
+/// Wait for the agent to attach while watching for its connection task to die.
+///
+/// The connection future normally stays pending for the test's lifetime, so a
+/// completed task means the transport failed before the client attached. The
+/// deadline keeps the wait bounded if neither happens.
+async fn wait_for_agent_attachment(
+    agent_ready: &Notify,
+    agent_task: &mut tokio::task::JoinHandle<agent_client_protocol::Result<()>>,
+) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::select! {
+            () = agent_ready.notified() => (),
+            result = &mut *agent_task => {
+                let message = match result {
+                    Ok(Ok(())) => "the agent connection exited before the client attached".to_string(),
+                    Ok(Err(error)) => format!("the agent connection failed before the client attached: {error}"),
+                    Err(error) => format!("the agent connection task failed before the client attached: {error}"),
+                };
+                panic!("{message}");
+            }
+        }
+    })
+    .await
+    .expect("the agent should attach the client before the deadline");
+}
+
 /// Publish one usage delta through a real ACP connection and return the
 /// extension notifications the client received.
 async fn published_usage_updates(session_model: &str, response: LLMResponse) -> Vec<acp::AgentNotification> {
@@ -119,7 +145,7 @@ async fn published_usage_updates(session_model: &str, response: LLMResponse) -> 
                 std::future::pending::<agent_client_protocol::Result<()>>().await
             }
         });
-    let agent_task = tokio::spawn(agent_connection);
+    let mut agent_task = tokio::spawn(agent_connection);
 
     let client_connection = Client
         .builder()
@@ -138,7 +164,7 @@ async fn published_usage_updates(session_model: &str, response: LLMResponse) -> 
             }
         });
     let client_task = tokio::spawn(client_connection);
-    agent_ready.notified().await;
+    wait_for_agent_attachment(&agent_ready, &mut agent_task).await;
 
     agent.publish_lody_usage(
         &acp::SessionId::new(Arc::from("session-usage-profile")),
@@ -225,7 +251,7 @@ async fn clocked_publication(response: LLMResponse, outcome: ClockedOutcome) -> 
                 std::future::pending::<agent_client_protocol::Result<()>>().await
             }
         });
-    let agent_task = tokio::spawn(agent_connection);
+    let mut agent_task = tokio::spawn(agent_connection);
 
     let client_connection = Client
         .builder()
@@ -244,7 +270,7 @@ async fn clocked_publication(response: LLMResponse, outcome: ClockedOutcome) -> 
             }
         });
     let client_task = tokio::spawn(client_connection);
-    agent_ready.notified().await;
+    wait_for_agent_attachment(&agent_ready, &mut agent_task).await;
 
     let trace = TraceCapture::default();
     {

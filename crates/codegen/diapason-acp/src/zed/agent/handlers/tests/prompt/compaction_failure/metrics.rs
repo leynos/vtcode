@@ -1,6 +1,7 @@
 //! Metrics recorded for a compaction attempt, including the injected clock.
 
 use super::*;
+use rstest::rstest;
 
 /// A compaction activity source with a fixed identity and a stepped clock.
 ///
@@ -43,15 +44,15 @@ impl CompactionActivitySource for FixedCompactionActivitySource {
 /// The published tool call ID and the terminal duration are the observable
 /// contract here: both must be the injected values, so the projection stays a
 /// function of explicit inputs.
+#[rstest]
 #[tokio::test]
-async fn compaction_activity_uses_the_injected_identity_and_clock() {
+async fn compaction_activity_uses_the_injected_identity_and_clock(
+    #[future] compaction_failure_guards: CompactionFailureGuards,
+) {
     const STEP_MS: u64 = 1_500;
     const ACTIVITY_UUID: u128 = 0x0123_4567_89ab_cdef_0123_4567_89ab_cdef;
 
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    use assert_fs::TempDir;
+    let _guards = compaction_failure_guards.await;
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
@@ -107,12 +108,12 @@ async fn compaction_activity_uses_the_injected_identity_and_clock() {
 /// process-wide recorder, so `compaction_metrics()` must reflect the attempt.
 /// Another test may compact concurrently, so every assertion is a monotonic
 /// lower bound on the shared counters rather than an exact delta.
+#[rstest]
 #[tokio::test]
-async fn production_recorder_publishes_an_attempt_through_the_public_metrics() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    use assert_fs::TempDir;
+async fn production_recorder_publishes_an_attempt_through_the_public_metrics(
+    #[future] compaction_failure_guards: CompactionFailureGuards,
+) {
+    let _guards = compaction_failure_guards.await;
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);

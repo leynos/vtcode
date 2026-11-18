@@ -189,11 +189,13 @@ impl ZedAgent {
 
     /// Publish one compaction activity update, logging fixed fields on failure.
     ///
-    /// A serialization failure and a transport failure keep distinct stage
-    /// labels so an operator can tell which half of the publish failed. The
-    /// send is observed by a span and by the publication counters, so a
-    /// client that stops accepting activity updates is measurable rather than
-    /// merely logged.
+    /// A serialization failure and a send failure keep distinct stage labels
+    /// so an operator can tell which half of the publish failed. The span's
+    /// outcome and the publication counters describe local send outcomes
+    /// only: a successful send does not prove the client received the update,
+    /// and a client that stops reading can remain undetected. A send error,
+    /// including the error returned when no client is attached, counts as a
+    /// local send failure.
     pub(in crate::zed::agent) async fn publish_compaction_update(
         &self,
         session_id: &crate::acp::SessionId,
@@ -220,13 +222,16 @@ impl ZedAgent {
             elapsed_ms = field::Empty,
         );
         let started_at = self.publication_clock.now();
-        async {
+        // Record on this span's own handle: `Span::current()` would fall back
+        // to an enclosing span when a filter disables this one, overwriting
+        // that span's fields.
+        let publish_span = span.clone();
+        async move {
             let result = self.send_update(session_id, update).await;
             let finished_at = self.publication_clock.now();
-            let span = tracing::Span::current();
             let sent = result.is_ok();
-            let _outcome_recorded = span.record("outcome", if sent { "sent" } else { "failed" });
-            let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at, finished_at));
+            let _outcome_recorded = publish_span.record("outcome", if sent { "sent" } else { "failed" });
+            let _elapsed_ms_recorded = publish_span.record("elapsed_ms", elapsed_millis(started_at, finished_at));
             self.compaction_update_recorder.record(sent);
             if let Err(error) = &result {
                 log_compaction_update_failure(error, session_key, publish_stage);

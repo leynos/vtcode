@@ -5,8 +5,8 @@ use crate::acp;
 #[cfg(test)]
 use crate::zed::connection::ConnectionHandle;
 use diapason_core::llm::Usage;
-use diapason_core::llm::provider_usage::usage_profile;
 use diapason_core::llm::usage_cost::{TurnUsage, UsageProfile, resolve_turn_usage};
+use diapason_core::usage_profile;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -17,7 +17,14 @@ use super::redaction::{detail_correlation, elapsed_millis};
 use super::task_lifecycle::bounded_session_correlation;
 use super::{ZedAgent, lody::lody_capabilities_mut};
 
-const LODY_EXTENSION_VERSION: u8 = 1;
+/// Version of the Lody usage extension this adapter advertises.
+///
+/// Version 2 changed what `outputTokens` counts: it carries the visible
+/// completion tokens only, and `reasoningOutputTokens` reports the reasoning
+/// tokens separately, so the two never double count. Version 1 reported the
+/// whole completion total in `outputTokens`. The increment is the signal a
+/// client needs before it reinterprets the field.
+const LODY_EXTENSION_VERSION: u8 = 2;
 
 pub(super) const LODY_SESSION_USAGE_UPDATE_METHOD: &str = "_lody/session/usage_update";
 
@@ -179,10 +186,18 @@ fn record_usage_failure(
 }
 
 impl ZedAgent {
+    /// Publish one response's usage delta to the connected client.
+    ///
+    /// `provider_key` is the provider the session selected — `anthropic`, a
+    /// custom provider's configured name, and so on. It is deliberately not the
+    /// telemetry label from [`ProviderRequestRuntime::provider_name`], which is
+    /// `default` for every built-in provider: a usage profile resolved against
+    /// that label would take the wrong input-token semantics and could attach a
+    /// custom provider's pricing to an unrelated response.
     pub(super) fn publish_lody_usage(
         &self,
         session_id: &acp::SessionId,
-        provider: &str,
+        provider_key: &str,
         fallback_model: &str,
         response: &diapason_core::llm::provider::LLMResponse,
     ) {
@@ -202,7 +217,7 @@ impl ZedAgent {
         let started_at = self.publication_clock.now();
         let model = effective_model(fallback_model, response);
         let profile =
-            publication_profile(&self.workspace_runtime_config.custom_providers, provider, fallback_model, model);
+            publication_profile(&self.workspace_runtime_config.custom_providers, provider_key, fallback_model, model);
         let notification = match response_usage_notification(session_id, model, response, profile) {
             Ok(Some(notification)) => notification,
             Ok(None) => {

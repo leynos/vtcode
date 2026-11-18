@@ -1,6 +1,7 @@
 //! Assembled usage for the Anthropic Messages wire format.
 
 use super::*;
+use rstest::rstest;
 
 /// An exclusive-input backend that also reports cache activity must publish a
 /// prompt total that includes the cached tokens, alongside both cache counts.
@@ -9,12 +10,12 @@ use super::*;
 /// `normalized_turn_usage`: the OpenAI-chat fixture proves inclusive semantics,
 /// this one proves exclusive semantics are added back. Asserting on both
 /// `usage` and `modelUsage` keeps the two projections from drifting apart.
+#[rstest]
 #[tokio::test]
-async fn exclusive_anthropic_cache_usage_reaches_both_usage_fields() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+async fn exclusive_anthropic_cache_usage_reaches_both_usage_fields(
+    #[future] assembled_usage_guards: AssembledUsageGuards,
+) {
+    let _guards = assembled_usage_guards.await;
 
     let server = MockServer::start().await;
     let requests = mount_stream(&server, ANTHROPIC_CACHE_USAGE_STREAM, "/v1/messages").await;

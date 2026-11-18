@@ -67,6 +67,7 @@ pub(super) fn create_prompt_provider_context(input: &PromptInput) -> Result<Prom
         supports_tools: provider.supports_tools(&model),
         provider,
         runtime,
+        provider_key: provider_name,
         model,
         reasoning_effort,
     })

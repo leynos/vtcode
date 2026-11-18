@@ -186,11 +186,16 @@ async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
         "the terminal compaction update must keep the started tool call ID"
     );
     assert_eq!(finished["_meta"]["lody"]["activity"]["compacted"], true);
+    let used_tokens_before = started["_meta"]["lody"]["activity"]["usedTokensBefore"]
+        .as_u64()
+        .expect("a started compaction must report the pre-compaction prompt size");
+    let used_tokens_after = finished["_meta"]["lody"]["activity"]["usedTokensAfter"]
+        .as_u64()
+        .expect("a completed compaction must report the reduced prompt size");
     assert!(
-        finished["_meta"]["lody"]["activity"]["usedTokensAfter"]
-            .as_u64()
-            .is_some_and(|tokens| tokens > 0),
-        "a completed compaction must report the reduced prompt size"
+        used_tokens_after > 0 && used_tokens_after < used_tokens_before,
+        "a completed compaction must report a positive prompt size below the starting estimate: \
+         before={used_tokens_before}, after={used_tokens_after}"
     );
 
     {

@@ -39,13 +39,16 @@ impl ZedAgent {
             elapsed_ms = field::Empty,
         );
         let started_at = self.publication_clock.now();
-        async {
+        // Record on this span's own handle: `Span::current()` would fall back
+        // to an enclosing span when a filter disables this one, overwriting
+        // that span's fields.
+        let publish_span = span.clone();
+        async move {
             let result = self.send_update(session_id, update).await;
             let finished_at = self.publication_clock.now();
-            let span = tracing::Span::current();
             let sent = result.is_ok();
-            let _outcome_recorded = span.record("outcome", if sent { "sent" } else { "failed" });
-            let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_millis(started_at, finished_at));
+            let _outcome_recorded = publish_span.record("outcome", if sent { "sent" } else { "failed" });
+            let _elapsed_ms_recorded = publish_span.record("elapsed_ms", elapsed_millis(started_at, finished_at));
             self.notice_recorder.record(sent);
             if let Err(error) = &result {
                 // The transport error and the raw session id are both
@@ -98,8 +101,31 @@ fn rate_limit_notice_update(
 const RETRY_AFTER_MAX_BYTES: usize = 64;
 
 /// Report whether a provider `Retry-After` hint is safe to echo.
+///
+/// RFC 9110 defines the header as either `delay-seconds` or an HTTP-date, so
+/// anything else - free text such as `not available`, a signed number, or an
+/// exponent - is omitted rather than presented to the client as a retry hint.
+/// Fractional seconds are accepted as an explicit extension to the HTTP
+/// grammar because the providers wired into this bridge report them.
 fn is_safe_retry_after(value: &str) -> bool {
-    value.len() <= RETRY_AFTER_MAX_BYTES && !value.chars().any(char::is_control)
+    value.len() <= RETRY_AFTER_MAX_BYTES
+        && !value.chars().any(char::is_control)
+        && (is_retry_after_delay(value) || chrono::DateTime::parse_from_rfc2822(value).is_ok())
+}
+
+/// Report whether `value` is a non-negative delay in seconds.
+///
+/// The integer part must be present and numeric. The optional fractional part
+/// must also be present and numeric, which rejects signs, exponents, and the
+/// special values a plain float parse would accept.
+fn is_retry_after_delay(value: &str) -> bool {
+    let (whole, fraction) = match value.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (value, None),
+    };
+    !whole.is_empty()
+        && whole.bytes().all(|byte| byte.is_ascii_digit())
+        && fraction.is_none_or(|fraction| !fraction.is_empty() && fraction.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// Classify `error` as a rate limit.
@@ -167,6 +193,7 @@ mod tests {
         let cases = [
             ("x".repeat(RETRY_AFTER_MAX_BYTES + 1), "over-long hint"),
             ("17\r\nforged: yes".to_string(), "control characters"),
+            ("not available".to_string(), "free text that is not a delay or date"),
         ];
 
         for (hint, label) in cases {
@@ -188,6 +215,17 @@ mod tests {
             assert!(!message.contains("Retry-After"), "{label} must be omitted: {message}");
             assert!(!message.contains(&hint), "{label} must not be echoed: {message}");
             assert!(message.contains("no further automatic retry is scheduled"));
+        }
+    }
+
+    /// Assert only HTTP-grammar retry hints are safe to echo.
+    #[test]
+    fn retry_after_hint_accepts_delays_and_http_dates_only() {
+        for hint in ["17", "0.5", "0.2", "Sun, 06 Nov 1994 08:49:37 GMT"] {
+            assert!(is_safe_retry_after(hint), "{hint} must be a valid retry hint");
+        }
+        for hint in ["not available", "1e5", "-1", "+1", ".5", "1.", "", "17 30"] {
+            assert!(!is_safe_retry_after(hint), "{hint} must not be echoed as a retry hint");
         }
     }
 

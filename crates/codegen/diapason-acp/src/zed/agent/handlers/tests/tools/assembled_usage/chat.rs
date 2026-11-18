@@ -1,13 +1,12 @@
 //! Assembled usage for the OpenAI Chat wire format.
 
 use super::*;
+use rstest::rstest;
 
+#[rstest]
 #[tokio::test]
-async fn terminal_only_baseten_usage_reaches_the_acp_client() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+async fn terminal_only_baseten_usage_reaches_the_acp_client(#[future] assembled_usage_guards: AssembledUsageGuards) {
+    let _guards = assembled_usage_guards.await;
 
     let server = MockServer::start().await;
     let requests = mount_stream(&server, TERMINAL_USAGE_STREAM, "/chat/completions").await;
@@ -61,12 +60,12 @@ async fn terminal_only_baseten_usage_reaches_the_acp_client() {
 /// The OpenAI-chat parser only lifts `prompt_tokens_details.cached_tokens` when
 /// cache metrics are enabled, so this is also the end-to-end check that the
 /// default configuration surfaces them.
+#[rstest]
 #[tokio::test]
-async fn inclusive_openai_cache_usage_reaches_both_usage_fields() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+async fn inclusive_openai_cache_usage_reaches_both_usage_fields(
+    #[future] assembled_usage_guards: AssembledUsageGuards,
+) {
+    let _guards = assembled_usage_guards.await;
 
     let server = MockServer::start().await;
     let requests = mount_stream(&server, OPENAI_CACHE_USAGE_STREAM, "/chat/completions").await;
@@ -116,12 +115,10 @@ async fn inclusive_openai_cache_usage_reaches_both_usage_fields() {
 /// merely echoed the provider's JSON would still report five cached tokens.
 /// The published count must instead be zero, and the turn is then priced as if
 /// every prompt token were uncached.
+#[rstest]
 #[tokio::test]
-async fn disabled_cache_metrics_suppress_the_cache_count() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+async fn disabled_cache_metrics_suppress_the_cache_count(#[future] assembled_usage_guards: AssembledUsageGuards) {
+    let _guards = assembled_usage_guards.await;
 
     let server = MockServer::start().await;
     let requests = mount_stream(&server, OPENAI_CACHE_USAGE_STREAM, "/chat/completions").await;
@@ -155,12 +152,10 @@ async fn disabled_cache_metrics_suppress_the_cache_count() {
     assert!(!requests.is_empty(), "the prompt must reach the mock origin");
 }
 
+#[rstest]
 #[tokio::test]
-async fn baseten_stream_without_usage_publishes_no_delta() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+async fn baseten_stream_without_usage_publishes_no_delta(#[future] assembled_usage_guards: AssembledUsageGuards) {
+    let _guards = assembled_usage_guards.await;
 
     let server = MockServer::start().await;
     let requests = mount_stream(&server, USAGE_FREE_STREAM, "/chat/completions").await;

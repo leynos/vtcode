@@ -1,19 +1,21 @@
 //! Publication of a compaction activity update across the ACP send boundary.
 
 use super::*;
+use rstest::rstest;
 
 /// Assert a failed activity-update send is counted and observed by a span.
 ///
-/// The send boundary is the only place that can tell a delivered update from
-/// a rejected one, so it owns both the counters and the span. A client that
-/// disconnects must therefore show up as a failure, and the span must carry
-/// the fixed operation and stage rather than any session or transport detail.
+/// The send boundary is the only place that can tell a failed local send from
+/// a successful local enqueue, so it owns both the counters and the span. With
+/// no client attached every send fails, which must therefore show up as a
+/// failure, and the span must carry the fixed operation and stage rather than
+/// any session or transport detail.
+#[rstest]
 #[tokio::test]
-async fn failed_compaction_update_publication_is_observed_by_a_bounded_span() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    use assert_fs::TempDir;
+async fn failed_compaction_update_publication_is_observed_by_a_bounded_span(
+    #[future] compaction_failure_guards: CompactionFailureGuards,
+) {
+    let _guards = compaction_failure_guards.await;
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
@@ -59,7 +61,7 @@ async fn failed_compaction_update_publication_is_observed_by_a_bounded_span() {
     assert_eq!(
         after.failures,
         before.failures + 2,
-        "a disconnected client must fail both sends: {before:?} -> {after:?}"
+        "a missing client must fail both local sends: {before:?} -> {after:?}"
     );
 
     let captured = trace.0.lock().expect("trace capture lock").join("\n");
@@ -86,18 +88,18 @@ async fn failed_compaction_update_publication_is_observed_by_a_bounded_span() {
     }
 }
 
-/// A disconnected client must not replace the compaction result.
+/// A missing client must not replace the compaction result.
 ///
 /// With no client attached every activity update fails to publish. The
 /// attempt must still adopt the compacted history, record a positive duration
 /// for its started and terminal states, and log the delivery failure through
 /// fixed fields instead of the transport detail or the raw session identifier.
+#[rstest]
 #[tokio::test]
-async fn disconnected_client_keeps_the_compaction_result_and_logs_fixed_fields() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    use assert_fs::TempDir;
+async fn missing_client_keeps_the_compaction_result_and_logs_fixed_fields(
+    #[future] compaction_failure_guards: CompactionFailureGuards,
+) {
+    let _guards = compaction_failure_guards.await;
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
@@ -228,7 +230,7 @@ fn compaction_update_reports_the_injected_send_duration() {
 
         let metrics = update_counts.metrics();
         assert_eq!(metrics.attempts, 1, "a send that reached the transport is one attempt: {metrics:?}");
-        assert_eq!(metrics.failures, 1, "a disconnected client must fail the send: {metrics:?}");
+        assert_eq!(metrics.failures, 1, "a missing client must fail the local send: {metrics:?}");
 
         let captured = trace.0.lock().expect("trace capture lock").join("\n");
         for expected in [
@@ -240,9 +242,14 @@ fn compaction_update_reports_the_injected_send_duration() {
         ] {
             assert!(captured.contains(expected), "missing {expected} in: {captured}");
         }
-        let expected_elapsed = format!("elapsed_ms={COMPACTION_UPDATE_STEP_MS}");
-        assert!(
-            captured.contains(&expected_elapsed),
+        let elapsed_ms = captured
+            .lines()
+            .find_map(|line| line.split_once("elapsed_ms="))
+            .map(|(_prefix, value)| value.trim())
+            .expect("the publication span must record elapsed_ms");
+        assert_eq!(
+            elapsed_ms,
+            COMPACTION_UPDATE_STEP_MS.to_string(),
             "the send duration must be the injected interval, not the wall clock: {captured}"
         );
         assert!(

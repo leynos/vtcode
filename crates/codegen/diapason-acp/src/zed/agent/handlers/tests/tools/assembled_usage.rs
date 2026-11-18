@@ -14,9 +14,48 @@ use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 use diapason_config::CustomProviderPricingConfig;
 use diapason_config::core::{CustomProviderApiFormat, CustomProviderConfig};
+use rstest::fixture;
 use serde_json::Value;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+/// The ACP extension method carrying a session usage delta.
+///
+/// The client receives extension methods with the leading underscore stripped,
+/// so this asserts the documented wire name independently of the publisher's
+/// constant.
+const USAGE_UPDATE_METHOD: &str = "lody/session/usage_update";
+
+/// The archive, provider-lock and history guards every assembled-usage test
+/// needs.
+///
+/// Fields are declared in drop order: the provider lock is released before the
+/// `SESSION_DIR_ENV` override is restored, which happens before the temporary
+/// directory is removed and the history guard released.
+pub(super) struct AssembledUsageGuards {
+    _provider_lock: tokio::sync::MutexGuard<'static, ()>,
+    _session_dir_guard: EnvGuard,
+    _session_dir: TempDir,
+    _history_test_guard: tokio::sync::MutexGuard<'static, ()>,
+}
+
+/// Acquire the shared guards for one assembled-usage test body.
+///
+/// The guards are taken in one fixed order so every test serialises
+/// identically against the other ACP handler tests.
+#[fixture]
+pub(super) async fn assembled_usage_guards() -> AssembledUsageGuards {
+    let history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    let provider_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+    AssembledUsageGuards {
+        _provider_lock: provider_lock,
+        _session_dir_guard: session_dir_guard,
+        _session_dir: session_dir,
+        _history_test_guard: history_test_guard,
+    }
+}
 
 const BASETEN_MODEL: &str = "baseten/usage";
 
@@ -274,8 +313,7 @@ fn usage_updates(notifications: &[acp::AgentNotification]) -> Vec<Value> {
         .iter()
         .filter_map(|notification| match notification {
             acp::AgentNotification::ExtNotification(notification)
-                if notification.method.as_ref().trim_start_matches('_')
-                    == crate::zed::agent::lody_usage::LODY_SESSION_USAGE_UPDATE_METHOD.trim_start_matches('_') =>
+                if notification.method.as_ref().trim_start_matches('_') == USAGE_UPDATE_METHOD =>
             {
                 serde_json::from_str::<Value>(notification.params.get()).ok()
             }

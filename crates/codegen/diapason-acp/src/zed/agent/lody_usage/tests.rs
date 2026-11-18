@@ -31,6 +31,11 @@ fn resolved_notification(usage: &Usage, profile: UsageProfile) -> serde_json::Va
 }
 
 /// Assert resolved usage maps to the Lody delta contract.
+///
+/// `inputTokens` is the full prompt total, and the cache-read and
+/// cache-creation fields are its breakdown: both describe tokens the provider
+/// already counted inside the prompt, so a client must read `inputTokens` as
+/// the total rather than adding the three fields together.
 #[test]
 fn maps_resolved_usage_to_the_lody_delta_contract() {
     let usage = Usage {
@@ -70,8 +75,10 @@ fn maps_resolved_usage_to_the_lody_delta_contract() {
 ///
 /// Anthropic-style backends report `prompt_tokens` without the cache-read and
 /// cache-creation tokens. The delta must publish the full prompt total in
-/// `inputTokens` and keep the cached counts in their own fields, so a client
-/// that adds the three fields together does not double-count.
+/// `inputTokens` — 21 uncached plus 5 cache-read plus 3 cache-creation — and
+/// report the cached counts in their own fields as a breakdown of that total.
+/// The cache fields are subsets, not additional counts: adding all three
+/// fields would describe 37 tokens when the prompt held 29.
 #[test]
 fn exclusive_prompt_count_reaches_the_delta_as_the_total() {
     let usage = Usage {
@@ -120,6 +127,53 @@ fn inclusive_and_exclusive_representations_publish_the_same_input_total() {
     assert_eq!(inclusive_value["usage"]["inputTokens"], 29, "an inclusive count already contains the cached tokens");
     assert_eq!(inclusive_value["usage"]["cacheReadInputTokens"], 5);
     assert_eq!(exclusive_value["usage"]["cacheReadInputTokens"], 5);
+}
+
+/// Assert a built-in provider's runtime label cannot stand in for its key.
+///
+/// `ProviderRequestRuntime::for_provider` serves every built-in provider from
+/// the shared fallback runtime, whose telemetry label is `default`, so
+/// resolving the profile from that label would take the inclusive branch and
+/// publish 21 prompt tokens for a turn that billed 29. This exercises the
+/// runtime the prompt path actually holds rather than passing the provider key
+/// to the profile helper directly, which is what made the distinction
+/// invisible.
+#[test]
+fn built_in_fallback_runtime_label_does_not_decide_input_semantics() {
+    let registry = crate::zed::provider_runtime::ProviderRuntimeRegistry::new(
+        &[],
+        &diapason_config::TimeoutsConfig::default(),
+        Arc::new(diapason_core::metrics::MetricsCollector::new()),
+    );
+    let runtime = registry.for_provider("anthropic");
+    assert_eq!(
+        runtime.provider_name(),
+        "default",
+        "the fallback runtime's label is shared by every built-in provider"
+    );
+
+    let usage = Usage {
+        prompt_tokens: 21,
+        completion_tokens: 4,
+        cache_read_tokens: Some(5),
+        cache_creation_tokens: Some(3),
+        ..Usage::default()
+    };
+    let from_label = publication_profile(&[], runtime.provider_name(), "claude-fable-5", "claude-fable-5");
+    let from_key = publication_profile(&[], "anthropic", "claude-fable-5", "claude-fable-5");
+
+    assert!(!from_label.exclusive_input, "the `default` label takes the inclusive branch");
+    assert!(from_key.exclusive_input, "the selected Anthropic key keeps exclusive semantics");
+    assert_eq!(
+        resolved_notification(&usage, from_label)["usage"]["inputTokens"],
+        21,
+        "the runtime label under-reports the prompt total"
+    );
+    assert_eq!(
+        resolved_notification(&usage, from_key)["usage"]["inputTokens"],
+        29,
+        "the selected key publishes the documented total"
+    );
 }
 
 /// Assert optional fields stay absent when the profile supplies none.
@@ -189,11 +243,22 @@ fn response_pricing_follows_the_model_the_provider_served() {
     };
 
     let profile = usage_profile(&providers, "acme", effective_model("session-model", &response));
+    let usage = Usage {
+        prompt_tokens: 1_000_000,
+        completion_tokens: 1_000_000,
+        ..Usage::default()
+    };
+
+    let value = resolved_notification(&usage, profile);
 
     assert_eq!(
-        profile.context_window,
-        Some(32_768),
-        "pricing must describe the served model, not the session's requested model"
+        value["usage"]["contextWindow"], 32_768,
+        "the window must describe the served model, not the provider's default"
+    );
+    let cost = value["usage"]["costUSD"].as_f64().expect("costUSD");
+    assert!(
+        (cost - 1.25).abs() < 1e-9,
+        "1M input at $0.25/M plus 1M output at $1/M must price at $1.25, not the provider's $3/M and $15/M: got {cost}"
     );
 }
 

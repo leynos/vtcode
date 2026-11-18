@@ -346,7 +346,10 @@ pub(super) async fn generate_with_retry(
                     .retryable
                     .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
                 if let Some(sink) = failure_sink {
-                    sink.announce(runtime.provider_name(), &error, retry_delay).await;
+                    // The runtime label is shared by every built-in provider,
+                    // so the notice must name the provider that returned the
+                    // error rather than the runtime that hosts it.
+                    sink.announce(provider.name(), &error, retry_delay).await;
                 }
                 if !decision.retryable {
                     return Err(ProviderCallError::Failed(error.to_string()));

@@ -16,7 +16,7 @@ fn advertised_capabilities_include_lody_subagent_management_with_subagents() {
     assert_eq!(lody["subagents"]["cancel"], true);
     assert_eq!(lody["subagents"]["output"], true);
     assert!(lody.get("tasks").is_none());
-    assert_eq!(lody["usage"]["version"], 1);
+    assert_eq!(lody["usage"]["version"], 2);
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn advertised_capabilities_omit_lody_subagent_management_without_a_controller() 
         lody.get("tasks").is_none(),
         "an agent with no subagent controller must not advertise background tasks: {lody}"
     );
-    assert_eq!(lody["usage"]["version"], 1, "usage reporting is independent of subagent management");
+    assert_eq!(lody["usage"]["version"], 2, "usage reporting is independent of subagent management");
 }
 
 #[test]

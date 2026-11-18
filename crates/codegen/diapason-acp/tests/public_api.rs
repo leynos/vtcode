@@ -6,7 +6,9 @@ use diapason_core::config::DiapasonConfig;
 use diapason_core::config::core::PromptCachingConfig;
 use diapason_core::config::types::{AgentConfig, ModelSelectionSource, ReasoningEffortLevel, UiSurfacePreference};
 use diapason_core::core::interfaces::AcpLaunchParams;
-use diapason_core::llm::usage_cost::normalized_turn_usage_with_input_semantics;
+use diapason_core::llm::usage_cost::{
+    normalized_turn_usage, normalized_turn_usage_with_input_semantics, provider_reports_exclusive_input,
+};
 use diapason_llm::providers::{CustomProviderAdmissionMetrics, custom_provider_admission_metrics};
 use diapason_safety::audit_log::{ToolAuditInvocation, ToolAuditStatus};
 use std::collections::BTreeMap;
@@ -85,4 +87,22 @@ fn usage_and_pricing_apis_are_usable_from_an_external_crate() {
     let normalized = normalized_turn_usage_with_input_semantics(true, &usage);
     assert_eq!(normalized.input_tokens, 13);
     assert_eq!(normalized.output_tokens, 5);
+
+    // The legacy entry points remain callable through `usage_cost` and apply
+    // the provider's own input-token semantics, so a nonzero cache count is
+    // added back for an exclusive provider.
+    assert!(provider_reports_exclusive_input("anthropic"));
+    assert!(!provider_reports_exclusive_input("openai"));
+
+    let legacy_usage = Usage {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        cache_read_tokens: Some(400),
+        cache_creation_tokens: Some(50),
+        ..Usage::default()
+    };
+    let legacy = normalized_turn_usage("anthropic", &legacy_usage);
+    assert_eq!(legacy.input_tokens, 550);
+    assert_eq!(legacy.cached_input_tokens, 400);
+    assert_eq!(legacy.cache_creation_tokens, 50);
 }

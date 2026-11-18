@@ -208,7 +208,12 @@ impl ZedAgent {
             .await
         {
             Ok(adopted) => adopted,
-            Err(error) => return CompactionAttemptResult::failed(error),
+            // The history is replaced before the only fallible step, the
+            // prompt estimate, so this error still leaves a committed
+            // compaction. Reporting it as uncommitted would misstate the
+            // history installed in the session; keep the failure category and
+            // mark the replacement.
+            Err(error) => return committed_without_estimate(error),
         };
         info!(
             provider_correlation = %identifier_correlation(provider.name()),
@@ -341,6 +346,21 @@ impl ZedAgent {
             prompt_tokens,
             over_budget: decision.is_over_admission_budget(prompt_tokens),
         })
+    }
+}
+
+/// Report an attempt that replaced the history but could not estimate it.
+///
+/// [`ZedAgent::commit_compacted_history`] replaces the thread history before
+/// its only fallible step, so an error from it still leaves a committed
+/// compaction. The failure category is retained so the terminal activity names
+/// the closed-set cause, and `compacted` stays true because the replacement is
+/// installed in the session.
+fn committed_without_estimate(error: anyhow::Error) -> CompactionAttemptResult {
+    CompactionAttemptResult {
+        compacted: true,
+        used_tokens_after: None,
+        failure: Some(error),
     }
 }
 

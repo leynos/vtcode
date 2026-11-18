@@ -165,11 +165,23 @@ fn provider_error_telemetry_preserves_allowlisted_codes() {
         };
 
         let telemetry = provider_error_telemetry(&error);
-        if code.starts_with("acp_timeout_") {
-            assert!(telemetry.timeout_phase.is_some(), "{code} must be reported as its timeout phase");
-            assert_eq!(telemetry.code, None, "a timeout code must not also be reported as a code");
-        } else {
-            assert_eq!(telemetry.code, Some(*code), "{code} must be recognised");
+        // Each timeout code must map to its own phase: asserting only that a
+        // phase is present would accept any of the three.
+        let expected_phase = match *code {
+            "acp_timeout_first_token" => Some("first_token"),
+            "acp_timeout_inter_token_idle" => Some("inter_token_idle"),
+            "acp_timeout_total_generation" => Some("total_generation"),
+            _ => None,
+        };
+        match expected_phase {
+            Some(phase) => {
+                assert_eq!(telemetry.timeout_phase, Some(phase), "{code} must be reported as its own timeout phase");
+                assert_eq!(telemetry.code, None, "a timeout code must not also be reported as a code");
+            }
+            None => {
+                assert_eq!(telemetry.code, Some(*code), "{code} must be recognised");
+                assert_eq!(telemetry.timeout_phase, None, "a non-timeout code must not report a phase");
+            }
         }
     }
 }

@@ -81,6 +81,28 @@ impl CompactionModel {
     }
 }
 
+/// Saved regression: accumulated durations saturate the published total.
+///
+/// The checked-in seed for this case predates the `Event` strategy and no
+/// longer reaches this property, so the original failing input is pinned here
+/// instead. Three finishes with no preceding start add up to `u64::MAX + 1`;
+/// the published total must saturate rather than wrap.
+#[test]
+fn elapsed_total_saturates_across_the_saved_finishes() {
+    let counters = CompactionCounters::new();
+    for elapsed_ms in [
+        15_028_192_224_081_223_477,
+        1_514_264_616_624_782_498,
+        1_904_287_233_003_545_641,
+    ] {
+        counters.record_finished(CompactionOutcome::Failed, false, elapsed_ms);
+    }
+
+    let snapshot = counters.snapshot();
+    assert_eq!(snapshot.failed, 3);
+    assert_eq!(snapshot.elapsed_ms_total, u64::MAX, "the published total must saturate at the ceiling");
+}
+
 proptest! {
     /// Assert the published compaction snapshot equals an independent model.
     ///

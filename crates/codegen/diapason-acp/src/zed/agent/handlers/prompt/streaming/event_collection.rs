@@ -120,7 +120,7 @@ async fn complete_stream_response(
         .complete(&request.turn.provider_runtime, &response, request.attempt_index, false);
     request.turn.agent.publish_lody_usage(
         &request.turn.args.session_id,
-        request.turn.provider_runtime.provider_name(),
+        &request.turn.provider_key,
         &request.turn.session_model,
         &response,
     );

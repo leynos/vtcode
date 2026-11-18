@@ -214,14 +214,14 @@ mod tests {
         );
         let update = serde_json::to_value(
             activity
-                .finished_update(Instant::now(), false, None, Some("provider timed out"))
+                .finished_update(Instant::now(), false, None, Some("timeout"))
                 .expect("failed update"),
         )
         .expect("failed JSON");
 
         assert_eq!(update["status"], "failed");
         assert_eq!(update["_meta"]["lody"]["activity"]["compacted"], false);
-        assert_eq!(update["_meta"]["lody"]["activity"]["failureReason"], "provider timed out");
+        assert_eq!(update["_meta"]["lody"]["activity"]["failureReason"], "timeout");
     }
 
     /// Assert the compaction activity pair round-trips over the ACP duplex.

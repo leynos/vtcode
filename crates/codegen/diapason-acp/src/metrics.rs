@@ -13,7 +13,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub enum CompactionOutcome {
     /// The attempt failed; the reason is a separate closed-set category.
     Failed,
-    /// The attempt reduced the history and committed the result.
+    /// The attempt reduced the history, committed the result, and finished
+    /// without a failure.
     Compacted,
     /// The attempt finished inside the admission budget without compacting.
     NoChange,
@@ -22,8 +23,10 @@ pub enum CompactionOutcome {
 impl CompactionOutcome {
     /// Classify a finished attempt from its failure and compaction state.
     ///
-    /// A failure takes precedence: a partially compacted history that was not
-    /// committed is still a failed attempt.
+    /// A failure takes precedence: a committed replacement that still failed
+    /// the admission budget, and a partially compacted history that was never
+    /// committed, are both failed attempts. Only an attempt that finished
+    /// without a failure is reported as [`Self::Compacted`].
     pub(crate) const fn for_result(failed: bool, compacted: bool) -> Self {
         match (failed, compacted) {
             (true, _) => Self::Failed,
@@ -53,7 +56,8 @@ impl CompactionOutcome {
 pub struct CompactionMetrics {
     /// Attempts that passed the admission decision and started.
     pub started: u64,
-    /// Attempts that committed a compacted history.
+    /// Successful terminal outcomes: attempts that committed a compacted
+    /// history and finished without a failure.
     pub compacted: u64,
     /// Attempts that finished without compacting.
     pub no_change: u64,

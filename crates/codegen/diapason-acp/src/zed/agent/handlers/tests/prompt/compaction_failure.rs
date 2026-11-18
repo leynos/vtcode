@@ -8,9 +8,37 @@ use super::compaction::{CaptureWriter, capture_subscriber};
 use super::*;
 use crate::zed::agent::compaction::CompactionActivitySource;
 use agent_client_protocol::schema::v1::InitializeRequest;
+use rstest::fixture;
 
 /// Provider stall the duration assertions are bounded by, in milliseconds.
 const PROVIDER_DELAY_MS: u64 = 20;
+
+/// The archive and history guards every compaction-failure test needs.
+///
+/// The fields are declared in drop order, so the `SESSION_DIR_ENV` override is
+/// restored before the temporary archive directory is removed, and the
+/// process-global history lock is released last.
+pub(super) struct CompactionFailureGuards {
+    _session_dir_guard: EnvGuard,
+    _session_dir: TempDir,
+    _history_test_guard: tokio::sync::MutexGuard<'static, ()>,
+}
+
+/// Acquire the shared archive and history guards for one test body.
+///
+/// The guards are taken in one fixed order so every compaction-failure test
+/// serialises identically against the other ACP handler tests.
+#[fixture]
+pub(super) async fn compaction_failure_guards() -> CompactionFailureGuards {
+    let history_test_guard = lock_history_test_guard().await;
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    CompactionFailureGuards {
+        _session_dir_guard: session_dir_guard,
+        _session_dir: session_dir,
+        _history_test_guard: history_test_guard,
+    }
+}
 
 /// Assert the started/terminal activity pair a failed compaction publishes.
 fn assert_failed_terminal_activity(updates: &[serde_json::Value], expected_category: &str) {

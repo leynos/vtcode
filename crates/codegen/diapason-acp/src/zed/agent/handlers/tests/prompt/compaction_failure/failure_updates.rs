@@ -1,13 +1,14 @@
 //! Terminal activity published when a compaction attempt fails or is cancelled.
 
 use super::*;
+use rstest::rstest;
 
+#[rstest]
 #[tokio::test]
-async fn cancelled_acp_compaction_publishes_a_cancelled_terminal_update() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    use assert_fs::TempDir;
+async fn cancelled_acp_compaction_publishes_a_cancelled_terminal_update(
+    #[future] compaction_failure_guards: CompactionFailureGuards,
+) {
+    let _guards = compaction_failure_guards.await;
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
@@ -31,12 +32,12 @@ async fn cancelled_acp_compaction_publishes_a_cancelled_terminal_update() {
     assert_eq!(metrics.failed, 1, "cancellation is a subset of failed attempts: {metrics:?}");
 }
 
+#[rstest]
 #[tokio::test]
-async fn failed_acp_compaction_publishes_a_provider_terminal_update() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    use assert_fs::TempDir;
+async fn failed_acp_compaction_publishes_a_provider_terminal_update(
+    #[future] compaction_failure_guards: CompactionFailureGuards,
+) {
+    let _guards = compaction_failure_guards.await;
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
@@ -109,12 +110,12 @@ async fn failed_acp_compaction_publishes_a_provider_terminal_update() {
 /// terminal update must say `compacted: true` and carry the post-compaction
 /// estimate while still failing with the closed-set `admission_budget`
 /// category. Reporting only the failure would hide that the session changed.
+#[rstest]
 #[tokio::test]
-async fn over_budget_acp_compaction_reports_the_adopted_history_and_failure() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    use assert_fs::TempDir;
+async fn over_budget_acp_compaction_reports_the_adopted_history_and_failure(
+    #[future] compaction_failure_guards: CompactionFailureGuards,
+) {
+    let _guards = compaction_failure_guards.await;
 
     let workspace = TempDir::new().expect("temporary compaction workspace");
     let config = compaction_config(true);
