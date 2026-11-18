@@ -72,6 +72,7 @@ async fn listing_projects_liveness_without_mutating_records() {
                 output_reader: None,
                 pty_manager: pty_sessions.manager().clone(),
                 managed_background_runtime: false,
+                lock_scope: None,
             },
             Some("session-a"),
         )
@@ -235,6 +236,69 @@ async fn close_during_resolution_rejects_the_resolved_controller() {
         error.data.as_ref(),
         Some(&serde_json::json!({ "reason": "unknown_session" })),
         "the interleaving must report the same bounded reason: {error:?}"
+    );
+}
+
+/// A close during resolution also outranks a resolution that found nothing.
+///
+/// Releasing the workspace runtime can leave the resolver with no controller,
+/// and reporting that as unavailable would tell the client to retry a session
+/// that is already gone. The closing check therefore has to run before the
+/// resolver's empty result is interpreted.
+#[tokio::test]
+async fn close_during_resolution_outranks_an_empty_resolution() {
+    let workspace = TempDir::new().expect("close-during-resolution workspace");
+    let agent = agent_with_launch_subagent_controller(workspace.path()).await;
+    let session_id = agent.register_session().expect("register session");
+    let session = agent
+        .session_handle(&session_id)
+        .expect("look up the session")
+        .expect("registered session");
+
+    let resolved = resolve_open_session_controller(&session, || {
+        session.begin_close();
+        Ok(None)
+    });
+
+    let error = match resolved {
+        Ok(_) => panic!("a close during resolution must not yield a controller"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.data.as_ref(),
+        Some(&serde_json::json!({ "reason": "unknown_session" })),
+        "an empty resolution during a close must not be reported as unavailable: {error:?}"
+    );
+}
+
+/// A close during resolution likewise outranks the resolver's own failure.
+///
+/// The resolver can surface an internal error while the session is closing.
+/// The client cannot act on that error, and retrying the session would be
+/// wrong, so the bounded `unknown_session` reason wins over it.
+#[tokio::test]
+async fn close_during_resolution_outranks_a_resolver_error() {
+    let workspace = TempDir::new().expect("close-during-resolution workspace");
+    let agent = agent_with_launch_subagent_controller(workspace.path()).await;
+    let session_id = agent.register_session().expect("register session");
+    let session = agent
+        .session_handle(&session_id)
+        .expect("look up the session")
+        .expect("registered session");
+
+    let resolved = resolve_open_session_controller(&session, || {
+        session.begin_close();
+        Err(internal_management_error(anyhow::anyhow!("controller unavailable during close")))
+    });
+
+    let error = match resolved {
+        Ok(_) => panic!("a close during resolution must not yield a controller"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.data.as_ref(),
+        Some(&serde_json::json!({ "reason": "unknown_session" })),
+        "a resolver failure during a close must not leak an internal error: {error:?}"
     );
 }
 

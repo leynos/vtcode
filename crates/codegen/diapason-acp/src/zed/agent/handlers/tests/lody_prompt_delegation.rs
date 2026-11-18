@@ -200,7 +200,7 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task() {
                         if entry.started_at.is_some() {
                             break entry;
                         }
-                        if let Ok(snapshot) = controller.background_snapshot(&entry.id).await {
+                        if let Ok(snapshot) = controller.refresh_then_background_snapshot(&entry.id).await {
                             if snapshot.entry.started_at.is_some() {
                                 break snapshot.entry;
                             }

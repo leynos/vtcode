@@ -235,6 +235,7 @@ pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerS
         output_reader: None,
         pty_manager: registry.pty_manager().clone(),
         managed_background_runtime: false,
+        lock_scope: None,
     };
     let controller = match SubagentController::new_with_background_owner(controller_config, owner_session_id).await {
         Ok(controller) => Arc::new(controller),

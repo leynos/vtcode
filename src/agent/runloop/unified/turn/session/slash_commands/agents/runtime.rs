@@ -381,7 +381,7 @@ pub(super) async fn show_background_subprocess_inspector(
     let record_id = entry.id.clone();
     let mut selected_override = None;
     loop {
-        let snapshot = controller.background_snapshot(&record_id).await?;
+        let snapshot = controller.refresh_then_background_snapshot(&record_id).await?;
         let current_entry = &snapshot.entry;
         let refresh_after = background_subprocess_refresh_after(
             current_entry,

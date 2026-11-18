@@ -4,7 +4,9 @@ use crate::acp;
 use agent_client_protocol::Error as SdkError;
 #[cfg(test)]
 use diapason_core::subagents::BackgroundSubprocessStatus;
-use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry};
+use diapason_core::subagents::{
+    BackgroundLiveness, BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry,
+};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -175,7 +177,10 @@ fn unknown_session_error() -> SdkError {
 /// check, then wait while the session closes and releases its runtime; the
 /// resolution that follows can still return a controller. Checking again before
 /// the result is interpreted rejects that interleaving, and the first check
-/// keeps the reason stable whether or not a controller is still reachable.
+/// keeps the reason stable whether or not a controller is still reachable. The
+/// second check also outranks the resolver's own outcome, so a resolution that
+/// fails, or finds nothing, because the session closed is still reported as
+/// unknown rather than as an internal or unavailable error.
 fn resolve_open_session_controller(
     session: &SessionHandle,
     resolve: impl FnOnce() -> Result<Option<Arc<SubagentController>>, SdkError>,
@@ -183,12 +188,17 @@ fn resolve_open_session_controller(
     if session.is_closing() {
         return Err(unknown_session_error());
     }
-    let controller = resolve()?.ok_or_else(|| {
-        SdkError::invalid_params().data(serde_json::json!({ "reason": "subagent_management_unavailable" }))
-    })?;
+    // The resolver's outcome is captured before the second check so that a
+    // close outranks it: a resolution that failed, or that found nothing,
+    // because the session closed must still report `unknown_session` rather
+    // than an internal or unavailable error the caller cannot act on.
+    let resolved = resolve();
     if session.is_closing() {
         return Err(unknown_session_error());
     }
+    let controller = resolved?.ok_or_else(|| {
+        SdkError::invalid_params().data(serde_json::json!({ "reason": "subagent_management_unavailable" }))
+    })?;
     Ok(controller)
 }
 
@@ -249,7 +259,19 @@ async fn background_status_entries(controllers: &[Arc<SubagentController>]) -> V
 async fn observed_background_entries(controllers: &[Arc<SubagentController>]) -> Vec<BackgroundSubprocessEntry> {
     let mut entries = Vec::new();
     for controller in controllers {
-        entries.extend(controller.background_status_entries_with_liveness().await);
+        for observed in controller.background_status_entries_with_liveness().await {
+            if let BackgroundLiveness::Unobserved { reason } = &observed.liveness {
+                // The task keeps its cached status, but the operator needs to
+                // know the liveness read failed. The task id and reason are
+                // bounded; no exec-session handle, path or secret is logged.
+                tracing::debug!(
+                    task_id = observed.entry.id.as_str(),
+                    reason = reason.as_str(),
+                    "Background liveness read failed; keeping the cached status"
+                );
+            }
+            entries.push(observed.entry);
+        }
     }
     entries
 }

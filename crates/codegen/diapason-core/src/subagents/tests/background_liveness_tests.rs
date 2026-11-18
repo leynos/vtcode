@@ -72,8 +72,9 @@ async fn projected_liveness_entry(
         .background_status_entries_with_liveness()
         .await
         .into_iter()
-        .find(|entry| entry.id == "background-worker@session-a")
+        .find(|observed| observed.entry.id == "background-worker@session-a")
         .expect("owned background record")
+        .entry
 }
 
 /// Projects one persisted record through the liveness query and returns the
@@ -221,7 +222,7 @@ async fn liveness_projection_does_not_mutate_the_ledger() {
 
     let projected = controller.background_status_entries_with_liveness().await;
     assert_eq!(
-        projected.iter().map(|entry| entry.status).collect::<Vec<_>>(),
+        projected.iter().map(|observed| observed.entry.status).collect::<Vec<_>>(),
         [BackgroundSubprocessStatus::Error],
         "the projection reports the settled outcome of an exhausted restart budget"
     );
@@ -237,6 +238,119 @@ async fn liveness_projection_does_not_mutate_the_ledger() {
         ledger_before,
         "the liveness query must not rewrite the persisted ledger"
     );
+}
+
+/// A liveness read that fails for any reason other than a missing session must
+/// not be reported as an exited process.
+///
+/// "The process exited" and "the read failed" are different facts. The record
+/// keeps its cached status, the caller can see the entry was unobserved with a
+/// bounded reason, and one bad entry does not drop the rest of the list.
+#[tokio::test]
+async fn liveness_read_failure_keeps_the_cached_status_and_is_unobserved() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    write_ledger(
+        &state_dir.join("background_subagents.json"),
+        vec![record_with_terminal_state(
+            "background-worker",
+            Some("session-a"),
+            "running",
+            1,
+            true,
+            None,
+        )],
+    );
+    let config = auto_restore_config(temp.path().to_path_buf(), true);
+    config.exec_sessions.fail_snapshot_reads("exec session store is unavailable");
+    let controller = SubagentController::new_with_background_owner(config, Some("session-a"))
+        .await
+        .expect("controller");
+
+    let observed = controller.background_status_entries_with_liveness().await;
+    assert_eq!(observed.len(), 1, "one unobserved record must not abort the list");
+    let entry = observed
+        .iter()
+        .find(|observed| observed.entry.id == "background-worker@session-a")
+        .expect("owned background record");
+
+    assert_eq!(
+        entry.entry.status,
+        BackgroundSubprocessStatus::Running,
+        "a failed liveness read must not fabricate a terminal status"
+    );
+    assert!(entry.entry.ended_at.is_none(), "an unobserved record keeps its active terminal state");
+    match &entry.liveness {
+        BackgroundLiveness::Unobserved { reason } => {
+            assert!(
+                reason.contains("exec session store is unavailable"),
+                "the reason must name the failed read, got: {reason}"
+            );
+            assert!(!reason.contains('/'), "the bounded reason must not carry a path, got: {reason}");
+        }
+        BackgroundLiveness::Observed => panic!("a failed liveness read must be reported as unobserved"),
+    }
+}
+
+/// A snapshot read is a pure query; only the explicitly named refresh settles
+/// or persists a record.
+///
+/// The record is cached as `Running` and its exec session is gone, so a
+/// refresh settles it as `Error`. The pure read must report the cached status
+/// and leave the ledger untouched, while the refresh form must produce the
+/// settled outcome.
+#[tokio::test]
+async fn background_snapshot_is_pure_and_refresh_is_explicit() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let ledger_path = state_dir.join("background_subagents.json");
+    write_ledger(
+        &ledger_path,
+        vec![record_with_terminal_state(
+            "background-worker",
+            Some("session-a"),
+            "running",
+            1,
+            true,
+            None,
+        )],
+    );
+    let controller = SubagentController::new_with_background_owner(
+        auto_restore_config(temp.path().to_path_buf(), true),
+        Some("session-a"),
+    )
+    .await
+    .expect("controller");
+    let ledger_before = std::fs::read(&ledger_path).expect("read ledger before snapshot");
+
+    let cached = controller
+        .background_snapshot("background-worker@session-a")
+        .await
+        .expect("cached snapshot");
+    assert_eq!(
+        cached.entry.status,
+        BackgroundSubprocessStatus::Running,
+        "the pure snapshot must not settle a record"
+    );
+    assert_eq!(cached.entry.ended_at, None, "a pure read records no terminal instant");
+    assert_eq!(
+        std::fs::read(&ledger_path).expect("read ledger after snapshot"),
+        ledger_before,
+        "the pure snapshot must not persist the ledger"
+    );
+
+    let refreshed = controller
+        .refresh_then_background_snapshot("background-worker@session-a")
+        .await
+        .expect("refreshed snapshot");
+    assert_eq!(
+        refreshed.entry.status,
+        BackgroundSubprocessStatus::Error,
+        "the refresh form must settle an exited process"
+    );
+    assert!(refreshed.entry.ended_at.is_some(), "a settled record carries a terminal instant");
 }
 
 /// A launch whose exec session never started must settle as an error.
