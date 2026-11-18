@@ -410,3 +410,153 @@ async fn attaching_a_controller_with_another_lock_scope_is_rejected() {
     foreign.signal_shutdown().await;
     root.signal_shutdown().await;
 }
+
+/// A graft and an allocation that run at the same time never repeat a task id.
+///
+/// The graft copies the joining subtree's reserved ids into the tree's
+/// allocator and then rewrites the subtree's slot to point at it. An allocation
+/// that resolves the subtree's allocator before that rewrite but records its id
+/// after the copy would leave the tree without that id, so the tree would issue
+/// it again and the adapter would list one task twice. The shared adoption lock
+/// must therefore cover the whole reconciliation on both sides.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_graft_and_allocation_never_repeat_a_task_id() {
+    const ROUNDS: usize = 8;
+    const PRE_GRAFT_IDS: usize = 400;
+    const RACING_ALLOCATIONS: usize = 200;
+    const POST_GRAFT_ALLOCATIONS: usize = 200;
+
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let candidate = "agent-explorer-20261118T053000000Z";
+
+    for round in 0..ROUNDS {
+        // A real nested tree shares one lock scope; giving both controllers the
+        // same scope is what lets the graft be accepted while still binding the
+        // test's own allocators rather than the process-global ones.
+        let scope = Arc::new(SubagentLockScope::new());
+        let mut root_config = test_controller_config(workspace_root.clone(), DiapasonConfig::default());
+        root_config.lock_scope = Some(Arc::clone(&scope));
+        let root = Arc::new(SubagentController::new(root_config).await.expect("root controller"));
+
+        let joining_session = format!("joining-session-{round}");
+        let mut joining_config = test_controller_config(workspace_root.clone(), DiapasonConfig::default());
+        joining_config.parent_session_id = joining_session.clone();
+        joining_config.depth = 1;
+        joining_config.managed_background_runtime = true;
+        joining_config.lock_scope = Some(Arc::clone(&scope));
+        let joining = Arc::new(SubagentController::new(joining_config).await.expect("joining controller"));
+        let spec = Arc::new(explorer_spec());
+
+        // Pre-fill the joining subtree so the graft's merge has real work to do
+        // while the other thread reserves ids.
+        for ordinal in 0..PRE_GRAFT_IDS {
+            let id = format!("pre-graft-{round}-{ordinal}");
+            let issued = joining
+                .insert_child_with_candidate_id(
+                    &id,
+                    test_child_record(
+                        &id,
+                        &format!("{id}-session"),
+                        &joining_session,
+                        spec.as_ref(),
+                        SubagentStatus::Queued,
+                        2,
+                        None,
+                    ),
+                )
+                .await
+                .expect("pre-fill the joining subtree");
+            assert_eq!(issued, id, "a distinct pre-graft id must be issued verbatim");
+        }
+
+        root.state.write().await.children.insert(
+            "joining".to_string(),
+            test_child_record(
+                "joining",
+                "joining-session",
+                "parent-session",
+                spec.as_ref(),
+                SubagentStatus::Running,
+                1,
+                None,
+            ),
+        );
+
+        // A second worker thread reserves ids from the joining subtree while the
+        // graft reconciles the two allocators.
+        let racing = {
+            let joining = Arc::clone(&joining);
+            let spec = Arc::clone(&spec);
+            let joining_session = joining_session.clone();
+            tokio::spawn(async move {
+                let mut issued = Vec::with_capacity(RACING_ALLOCATIONS);
+                for ordinal in 0..RACING_ALLOCATIONS {
+                    let session = format!("{joining_session}-racing-{ordinal}");
+                    issued.push(
+                        joining
+                            .insert_child_with_candidate_id(
+                                candidate,
+                                test_child_record(
+                                    candidate,
+                                    &session,
+                                    &joining_session,
+                                    spec.as_ref(),
+                                    SubagentStatus::Queued,
+                                    2,
+                                    None,
+                                ),
+                            )
+                            .await
+                            .expect("allocate while the graft runs"),
+                    );
+                }
+                issued
+            })
+        };
+
+        root.attach_child_controller("joining", Arc::clone(&joining))
+            .await
+            .expect("the joining subtree shares the tree's adoption lock");
+        let mut issued = racing.await.expect("the racing allocator must finish");
+
+        // Every id the subtree reserved during the graft is now known to the
+        // tree, so proposing the same candidate again must not repeat any of
+        // them. Sweeping the whole suffix range re-issues any id the tree
+        // failed to learn.
+        for ordinal in 0..POST_GRAFT_ALLOCATIONS {
+            let session = format!("{joining_session}-after-{ordinal}");
+            issued.push(
+                joining
+                    .insert_child_with_candidate_id(
+                        candidate,
+                        test_child_record(
+                            candidate,
+                            &session,
+                            &joining_session,
+                            spec.as_ref(),
+                            SubagentStatus::Queued,
+                            2,
+                            None,
+                        ),
+                    )
+                    .await
+                    .expect("allocate after the graft"),
+            );
+        }
+
+        let mut seen = std::collections::BTreeSet::new();
+        let repeated = issued
+            .iter()
+            .filter(|id| !seen.insert((*id).clone()))
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(
+            repeated.is_empty(),
+            "round {round} issued these task ids more than once across the graft: {repeated:?}"
+        );
+
+        joining.signal_shutdown().await;
+        root.signal_shutdown().await;
+    }
+}

@@ -36,6 +36,9 @@ diapason-commons = { workspace = true }
 diapason-safety = { workspace = true }
 
 [dev-dependencies]
+# The liveness privacy regression scripts an exec-session read fault, which the
+# core crate exposes only through this test-only feature.
+diapason-core = { workspace = true, features = ["test-support"] }
 assert_fs = { workspace = true }
 insta = { version = "1.39", features = ["json"] }
 proptest = "1.11"

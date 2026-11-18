@@ -11,10 +11,12 @@
 // ─── Module Structure ───────────────────────────────────────────────────────
 
 mod background;
+mod background_lock;
 mod background_output;
 mod config;
 mod constants;
 mod controller_child_ids;
+mod controller_config;
 mod controller_locks;
 mod controller_persistence;
 mod discovery;
@@ -28,11 +30,14 @@ pub use background::{
     background_record_id, background_record_id_for_owner, build_background_subagent_command, extract_tail_lines,
     load_archive_preview, subagent_display_label,
 };
-pub use background_output::{BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, ExecSessionOutputReader};
+pub use background_output::{
+    BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundTaskRef, ExecSessionOutputReader,
+};
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
     normalize_background_child_max_turns, normalize_child_max_turns, prepare_child_runtime_config,
 };
+pub use controller_config::SubagentControllerConfig;
 pub use controller_locks::SubagentLockScope;
 pub use model::{
     agent_type_for_spec, load_memory_appendix, load_memory_appendix_async, load_primary_memory_appendix,
@@ -136,54 +141,6 @@ pub async fn with_subagent_invocation_context<F: Future>(context: SubagentInvoca
 
 fn current_subagent_invocation_context() -> Option<SubagentInvocationContext> {
     SUBAGENT_INVOCATION_CONTEXT.try_with(Clone::clone).ok()
-}
-
-// ─── Controller Config ─────────────────────────────────────────────────────
-
-/// Configuration required to construct a [`SubagentController`].
-#[derive(Clone)]
-pub struct SubagentControllerConfig {
-    /// Workspace root directory for the session.
-    pub workspace_root: PathBuf,
-    /// Session identifier of the parent agent.
-    pub parent_session_id: String,
-    /// Model identifier used by the parent agent.
-    pub parent_model: String,
-    /// Provider name used by the parent agent.
-    pub parent_provider: String,
-    /// Reasoning effort level of the parent agent.
-    pub parent_reasoning_effort: ReasoningEffortLevel,
-    /// API key for LLM provider access.
-    pub api_key: String,
-    /// Full Diapason configuration.
-    pub vt_cfg: DiapasonConfig,
-    /// Optional OpenAI ChatGPT authentication handle.
-    pub openai_chatgpt_auth: Option<OpenAIChatGptAuthHandle>,
-    /// Current nesting depth of the subagent hierarchy.
-    pub depth: usize,
-    /// Whether the subagent lifecycle engine must be workspace-gated. Mirrors
-    /// the main-session rule: pass `true` whenever workspace-controlled hook
-    /// content is present (workspace config.toml/.diapason layers OR a primary
-    /// agent spec contributing workspace-controlled hooks). Failing to gate
-    /// here would let workspace hooks run without user approval in a
-    /// subagent context.
-    pub workspace_gated: bool,
-    /// Manager for exec sessions (PTY and pipe).
-    pub exec_sessions: ExecSessionManager,
-    /// Reader for live and archived background output; `None` uses the exec-session default.
-    pub output_reader: Option<Arc<dyn BackgroundOutputReader>>,
-    /// PTY session manager.
-    pub pty_manager: PtyManager,
-    /// Whether this controller manages a background runtime subprocess.
-    pub managed_background_runtime: bool,
-    /// Adoption and persistence locks shared by this controller tree.
-    ///
-    /// `None` resolves to the process-global default, so controllers created
-    /// without one still exclude each other exactly as the former static locks
-    /// did. Supply a distinct scope to give a tree its own locks for
-    /// injection or isolated tests; a child-scoped controller inherits its
-    /// parent's scope.
-    pub lock_scope: Option<Arc<SubagentLockScope>>,
 }
 
 /// Central controller that manages spawning, lifecycle, and state of all subagents.

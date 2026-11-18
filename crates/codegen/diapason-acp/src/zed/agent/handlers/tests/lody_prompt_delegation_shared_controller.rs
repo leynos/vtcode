@@ -5,25 +5,28 @@
 //! controller itself, so it cannot show that an absent *session* controller
 //! fails closed while a shared workspace controller remains able to spawn.
 
+use super::lody_delegation_fixtures::{DelegationTestGuards, delegation_test_guards};
 use super::lody_prompt_delegation::{
     FAIL_CLOSED_MESSAGE, assert_tool_reached_the_model, assert_tool_response_contains, delegation_prompt,
-    install_agent_tool_provider, terminal_tool_update, tool_update_text,
+    terminal_tool_update, tool_update_text,
 };
 use super::lody_support::{
     background_ledger_path, close_session, open_build_session, spawn_agent_connection, write_lody_background_fixture,
 };
 use super::*;
+use rstest::rstest;
 use std::time::Duration;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+#[rstest]
 #[tokio::test]
-async fn prompt_driven_agent_tool_fails_closed_when_only_the_workspace_has_a_controller() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-    let (provider_calls, provider_requests, _factory_guard) = install_agent_tool_provider();
+async fn prompt_driven_agent_tool_fails_closed_when_only_the_workspace_has_a_controller(
+    #[future] delegation_test_guards: DelegationTestGuards,
+) {
+    let guards = delegation_test_guards.await;
+    let provider_calls = Arc::clone(&guards.provider_calls);
+    let provider_requests = Arc::clone(&guards.provider_requests);
     let workspace = TempDir::new().expect("Lody shared-controller workspace");
     write_lody_background_fixture(workspace.path());
     let mut vt_config = DiapasonConfig::default();
