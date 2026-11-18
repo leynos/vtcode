@@ -522,3 +522,12 @@ and published as `dcc396738`. This layer was then replayed onto it with
 `git rebase --onto dcc396738 872a4601f`. The only conflict was this handoff
 file, which now keeps every earlier record. The gate evidence recorded above
 describes earlier replays and is not evidence for this head.
+
+## PR 31 after PR #30 merged
+
+PR #30 squash-merged into `main` as `5f8d9e58f`. This layer was then replayed
+onto it with `git rebase --onto 5f8d9e58f dcc396738`. The replay completed
+without conflicts and the resulting tree is identical to the previous head,
+`fa234bbe8`, so only the commit identities changed. The gate evidence recorded
+above describes earlier replays onto unmerged parents and is not evidence for
+this head.
