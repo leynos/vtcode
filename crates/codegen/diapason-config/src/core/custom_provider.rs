@@ -1477,11 +1477,14 @@ model = "gpt-5-mini"
         assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
     }
 
-    /// Assert the default backoffs cover five exponential retry delays.
+    /// Assert the default retry policy bounds its backoff at the initial and
+    /// maximum values. The two defaults describe the range the backoff may
+    /// occupy, not the number of retries the policy grants.
     #[test]
-    fn request_policy_defaults_allow_five_exponential_retry_delays() {
+    fn request_policy_defaults_bound_the_retry_backoff() {
         let policy = CustomProviderRequestPolicyConfig::default();
 
+        assert_eq!(policy.max_retries, 2);
         assert_eq!(policy.retry_initial_backoff_ms, 10_000);
         assert_eq!(policy.retry_max_backoff_ms, 160_000);
     }
