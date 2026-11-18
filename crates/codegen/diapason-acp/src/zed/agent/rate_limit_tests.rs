@@ -91,7 +91,7 @@ async fn baseten_headers_publish_notices_and_lody_snapshots_across_retained_retr
 #[tokio::test]
 async fn fireworks_mappings_publish_throughput_limits_but_keep_request_counters_in_the_notice() {
     let mut config = provider_config();
-    config.rate_limit_headers = diapason_config::core::RateLimitHeaderConfig::for_provider_name("fireworks");
+    config.rate_limit_headers = Some(diapason_config::core::RateLimitHeaderConfig::for_provider_name("fireworks"));
     let run = run_scripted_prompt(
         config,
         vec![
@@ -142,7 +142,7 @@ async fn fireworks_mappings_publish_throughput_limits_but_keep_request_counters_
 #[tokio::test]
 async fn together_fractional_reset_sets_retry_floor_and_one_second_lody_windows() {
     let mut config = provider_config();
-    config.rate_limit_headers = diapason_config::core::RateLimitHeaderConfig::for_provider_name("together");
+    config.rate_limit_headers = Some(diapason_config::core::RateLimitHeaderConfig::for_provider_name("together"));
     let run = run_scripted_prompt(
         config,
         vec![

@@ -452,6 +452,82 @@ fn log_retry_scheduled(runtime: &ProviderRequestRuntime, policy: &RetryPolicy, a
     );
 }
 
+/// One failed attempt, with the context it needs to record and decide itself.
+///
+/// Grouping the retry policy, backoff, observation instant and sinks keeps the
+/// retry loop's failure arm to a single decision instead of threading seven
+/// values through it.
+struct FailedAttempt<'a> {
+    error: LLMError,
+    runtime: &'a ProviderRequestRuntime,
+    failure_sink: Option<&'a dyn AttemptFailureSink>,
+    metric_sink: &'a ProviderMetricSink,
+    policy: &'a RetryPolicy,
+    backoff: &'a mut RetryBackoff,
+    attempt_index: u32,
+    observed_at: SystemTime,
+}
+
+impl FailedAttempt<'_> {
+    /// Record the failure and return the delay before the next attempt.
+    ///
+    /// A failure the policy will not retry returns the terminal error instead,
+    /// so the caller's control flow stays one decision. The permit is released
+    /// before the announcement, and the delay is computed once from the
+    /// decision's own delay or the policy's backoff for this attempt.
+    async fn record_and_decide(
+        self,
+        telemetry: &mut GenerationTelemetry,
+        permit: crate::zed::provider_runtime::ProviderPermit,
+    ) -> Result<Duration, ProviderCallError> {
+        let Self {
+            error,
+            runtime,
+            failure_sink,
+            metric_sink,
+            policy,
+            backoff,
+            attempt_index,
+            observed_at,
+        } = self;
+        let decision = policy.decision_for_llm_error_with_backoff_at(
+            &error,
+            LlmRetryAttempt::new(attempt_index, observed_at),
+            backoff,
+        );
+        let retry_delay = decision.retryable.then(|| {
+            decision
+                .delay
+                .unwrap_or_else(|| policy.delay_for_attempt(AttemptIndex::new(attempt_index)))
+        });
+        telemetry
+            .failed(GenerationFailure {
+                runtime,
+                retry_count: attempt_index,
+                retry_disposition: retry_disposition(&decision),
+                retry_delay,
+                error: &error,
+            })
+            .await;
+        drop(permit);
+        if let Some(sink) = failure_sink {
+            sink.announce(AttemptFailure {
+                provider: runtime.provider_name(),
+                error: &error,
+                retry_delay,
+                observed_at,
+                metric_sink,
+                provider_class: runtime.provider_class(),
+            })
+            .await;
+        }
+        let Some(delay) = retry_delay else {
+            return Err(ProviderCallError::Failed(SafeProviderProjection::from_llm_error(&error)));
+        };
+        Ok(delay)
+    }
+}
+
 pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
     retry_request: RetryRequest<'_>,
     retry_observed_at: &RetryObservationClock<'_>,
@@ -477,42 +553,18 @@ pub(super) async fn generate_with_retry_with_observer_and_metric_sink(
                 return Ok(*response);
             }
             GenerateOutcome::Failed(error) => {
-                let observed_at = retry_observed_at();
-                let decision = policy.decision_for_llm_error_with_backoff_at(
-                    &error,
-                    LlmRetryAttempt::new(attempt_index, observed_at),
-                    &mut backoff,
-                );
-                let retry_delay = decision.retryable.then(|| {
-                    decision
-                        .delay
-                        .unwrap_or_else(|| policy.delay_for_attempt(AttemptIndex::new(attempt_index)))
-                });
-                telemetry
-                    .failed(GenerationFailure {
-                        runtime,
-                        retry_count: attempt_index,
-                        retry_disposition: retry_disposition(&decision),
-                        retry_delay,
-                        error: &error,
-                    })
-                    .await;
-                drop(permit);
-                if let Some(sink) = failure_sink {
-                    sink.announce(AttemptFailure {
-                        provider: runtime.provider_name(),
-                        error: &error,
-                        retry_delay,
-                        observed_at,
-                        metric_sink,
-                        provider_class: runtime.provider_class(),
-                    })
-                    .await;
+                let delay = FailedAttempt {
+                    error,
+                    runtime,
+                    failure_sink,
+                    metric_sink,
+                    policy: &policy,
+                    backoff: &mut backoff,
+                    attempt_index,
+                    observed_at: retry_observed_at(),
                 }
-                if !decision.retryable {
-                    return Err(ProviderCallError::Failed(SafeProviderProjection::from_llm_error(&error)));
-                }
-                let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(AttemptIndex::new(attempt_index)));
+                .record_and_decide(&mut telemetry, permit)
+                .await?;
                 log_retry_scheduled(runtime, &policy, attempt_index, delay);
                 cancellable_backoff(delay, cancellation, runtime.provider_class()).await?;
                 attempt_index = attempt_index.saturating_add(1);

@@ -32,6 +32,7 @@ async fn expect_rate_limit_notice(notice_rx: &mut mpsc::UnboundedReceiver<acp::S
 /// Assert a retryable rate limit publishes a notice and recovers.
 #[tokio::test]
 async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
+    let _history_test_guard = lock_history_test_guard().await;
     let session_dir = TempDir::new().expect("temporary ACP session archive directory");
     let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
     let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
