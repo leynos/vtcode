@@ -595,3 +595,52 @@ module-split commit removes the duplicate along with the rest of the moved
 tests, and every commit from that point to the head is clean. Nothing in the
 delivered diff is affected; a bisect that lands inside that nine-commit window
 would be.
+
+## Review round after the fifth restack
+
+The 2026-11-18 review round produced twelve findings across two review
+submissions, plus a walkthrough with one error and four warnings. The pre-merge
+reconciliation was posted as issue comment 6974589393 from a comment-pool
+identity, and every inline thread received a disposition.
+
+Thirteen of the fourteen unanswered inline threads were already satisfied in
+the tree and were answered with the file and line that carries the fix: the
+projection-based incomplete-turn docs, the extracted `FailedAttempt` helper,
+the unmapped-header assertion, the `-ize` spelling, the OpenRouter quota
+routing with its 403 regression test, the documented 10% cache-read fallback,
+the exponential provider-floor text, the two execplan corrections, the
+history-lock guard, and the 340-line and 240-line modules.
+
+One finding was rebutted with evidence rather than repaired. It claimed that an
+omitted `rate_limit_headers` falls back to `RateLimitHeaderConfig::default()`;
+the field is `Option<RateLimitHeaderConfig>` and `effective_rate_limit_headers`
+returns `for_provider_name` when it is absent, which
+`omitted_header_mapping_uses_provider_specific_defaults` pins.
+
+Two findings are inherited: `diapason-core/src/core/agent/session/mod.rs` and
+`diapason-llm/src/providers/openai/stream_decoder.rs` are outside this layer's
+diff and identical to the parent head, so their dispositions belong to PR #17.
+The session-thread remains open for that reason; the other 62 threads are
+resolved.
+
+Two documentation defects were real and were corrected in `d662cc208`: the
+`custom_providers[].rate_limit_headers.reset_after_seconds` row claimed the
+field was required although it is an `Option<String>` with a serde default, and
+the marker in `docs/user-guide/provider-rate-limits.md` was separated from its
+fence by a blank line that the shared loader contract forbids. The remaining
+`sanitised` spellings in the provider error-path plan were corrected in
+`8111e7303`.
+
+The generator was checked rather than trusted. Running it to
+`/tmp/pr103-config-ref.md` produced 951 fields; all twelve committed rows under
+the pricing and header prefixes are present, the two pricing parents and their
+eight priced fields match exactly, and the generated output adds thirteen
+`rate_limit_headers` child rows the hand-maintained table does not list. The
+committed reference was not regenerated.
+
+At `8111e7303` the two Markdown commits pass `make fmt`, `make check-fmt`,
+`pytest -q scripts/tests/test_generate_config_field_reference.py` (15 tests)
+and the `documented_examples` suite (8 of 8). CodeRabbit had auto-paused on the
+head, so a full review was queued through `comenq` as request `a2fa0cfd`; the
+queue ETA is several hours and the request is observed rather than assumed
+complete.
