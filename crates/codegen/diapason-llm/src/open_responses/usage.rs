@@ -175,6 +175,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn test_usage_new() {
@@ -217,37 +218,33 @@ mod tests {
         assert_eq!(usage.input_tokens_details.and_then(|details| details.cached_tokens), Some(400));
     }
 
-    #[test]
-    fn test_from_llm_usage_preserves_reasoning_output_tokens() {
+    /// A reasoning count inside the completion total is preserved; one that
+    /// exceeds it is clamped, and the details report the count actually kept.
+    #[rstest]
+    #[case::preserved(80, 35, 80, 35)]
+    #[case::clamped_to_the_completion_total(5, 10, 5, 5)]
+    fn from_llm_usage_reports_the_preserved_reasoning_tokens(
+        #[case] completion_tokens: u32,
+        #[case] reasoning_output_tokens: u32,
+        #[case] expected_output_tokens: u64,
+        #[case] expected_reasoning_tokens: u64,
+    ) {
         let usage = OpenUsage::from_llm_usage(&crate::provider::Usage {
             prompt_tokens: 100,
-            completion_tokens: 80,
-            reasoning_output_tokens: Some(35),
-            total_tokens: 180,
+            completion_tokens,
+            reasoning_output_tokens: Some(reasoning_output_tokens),
+            total_tokens: 100 + completion_tokens,
             cached_prompt_tokens: None,
             cache_creation_tokens: None,
             cache_read_tokens: None,
             iterations: None,
         });
 
-        assert_eq!(usage.output_tokens_details.and_then(|details| details.reasoning_tokens), Some(35));
-    }
-
-    #[test]
-    fn test_from_llm_usage_clamps_reasoning_tokens_to_completion_tokens() {
-        let usage = OpenUsage::from_llm_usage(&crate::provider::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 5,
-            reasoning_output_tokens: Some(10),
-            total_tokens: 105,
-            cached_prompt_tokens: None,
-            cache_creation_tokens: None,
-            cache_read_tokens: None,
-            iterations: None,
-        });
-
-        assert_eq!(usage.output_tokens, 5);
-        assert_eq!(usage.output_tokens_details.and_then(|details| details.reasoning_tokens), Some(5));
+        assert_eq!(usage.output_tokens, expected_output_tokens);
+        assert_eq!(
+            usage.output_tokens_details.and_then(|details| details.reasoning_tokens),
+            Some(expected_reasoning_tokens)
+        );
     }
 
     #[test]
