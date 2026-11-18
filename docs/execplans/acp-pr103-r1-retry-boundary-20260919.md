@@ -496,3 +496,24 @@ with the parent's decision retained rather than overridden.
 commits and the dropped one; `git diff --check` is clean, no conflict marker or
 Weave footer survives, and the stale-identifier scan finds only prose that
 describes the rename.
+
+### Gates on the fourth restack
+
+The four gates ran sequentially against the frozen candidate `07f492655`, which
+is the head published with this record:
+
+- `make check-fmt` passed: `cargo fmt --all -- --check` reported no diffs and
+  `mdtablefix` left 390 files unchanged.
+- `make lint` passed through the shell, policy and documentation lints,
+  `cargo clippy` with `-D warnings`, and `cargo doc`.
+- `make typecheck` passed; the compiler finished the
+  `cargo check --locked --workspace --all-targets --all-features` run after 15m
+  31s in the shared compile queue.
+- `make test` passed: 11,015 tests run, 11,015 passed, 24 skipped, 0 failed.
+- `python3 -m pytest scripts/tests/test_generate_config_field_reference.py`
+  passed with 13 tests, which keeps the hand-maintained config reference honest
+  without regenerating it.
+
+Compile admission stayed healthy throughout; the managed sccache server was not
+serving compilations for part of the test build, so that build ran uncached,
+which is slower rather than failed.
