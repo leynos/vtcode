@@ -208,6 +208,12 @@ fn background_event_with_session_in_id(status: &str) -> LifecycleUpdate {
     event
 }
 
+/// Read the bounded correlation a dropped-update record carries.
+fn correlation_of(record: &str) -> &str {
+    let (_, value) = record.split_once("task_correlation=").expect("correlation field");
+    value.split_whitespace().next().expect("correlation value")
+}
+
 #[tokio::test]
 async fn superseded_task_update_logs_a_bounded_correlation() {
     let logs = CapturedLogs::default();
@@ -265,8 +271,19 @@ async fn superseded_task_update_logs_a_bounded_correlation() {
         .filter(|line| line.contains("Dropped superseded ACP task lifecycle update"))
         .collect();
     assert_eq!(records.len(), 2, "the forwarder must report each dropped update: {captured}");
+    // Each record must name its own task by correlation. A field that is
+    // present but empty, or one that repeats a single correlation for both
+    // tasks, would satisfy a bare presence check while making the diagnostic
+    // useless for telling the two drops apart.
+    let mut observed: Vec<&str> = records.iter().map(|record| correlation_of(record)).collect();
+    observed.sort_unstable();
+    let mut expected = vec![
+        super::super::redaction::identifier_correlation("child-1"),
+        super::super::redaction::identifier_correlation("bg-parent-session-watcher"),
+    ];
+    expected.sort_unstable();
+    assert_eq!(observed, expected, "each dropped task must carry its own 12-character correlation: {captured}");
     for record in records {
-        assert!(record.contains("task_correlation="), "the diagnostic must carry a bounded correlation: {record}");
         assert!(!record.contains("child-1"), "the task id must not reach the log: {record}");
         assert!(
             !record.contains("bg-parent-session-watcher"),
