@@ -299,6 +299,7 @@ pub use exec::events::{
 };
 pub use exec::{CodeExecutor, ExecutionConfig, ExecutionResult, Language};
 pub use llm::admission_metrics::ProcessProviderAdmissionMetricsSource;
+pub use llm::provider_usage::{normalized_turn_usage, usage_profile};
 pub use llm::providers::gemini::wire::{Content, FunctionDeclaration, Part};
 pub use llm::{AnyClient, make_client};
 pub use mcp::{

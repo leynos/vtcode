@@ -55,13 +55,47 @@ pub fn normalized_turn_usage(provider: &str, usage: &ProviderUsage) -> diapason_
     normalized_turn_usage_with_input_semantics(provider_reports_exclusive_input(provider), usage)
 }
 
+/// Select the input-token semantics of a built-in provider's routed backend.
+///
+/// A gateway can route different models to different wire protocols. Evolink,
+/// OpenCode Zen, and OpenCode Go send their Anthropic-format models through the
+/// Messages API, whose `input_tokens` excludes cache reads and cache creation,
+/// and everything else through an OpenAI-compatible API, whose `prompt_tokens`
+/// already includes them. Each provider decides the protocol per request from
+/// the normalised model name, so reporting consults the same routing data
+/// instead of classifying the whole gateway as inclusive. Model aliases keep
+/// the gateway's namespaced prefix, which the provider strips before routing.
+#[must_use]
+fn built_in_exclusive_input(provider: &str, model: &str) -> bool {
+    use diapason_config::constants::models::{evolink, opencode_go, opencode_zen};
+
+    let provider = provider.trim();
+    let model = model.trim();
+    if provider.eq_ignore_ascii_case("evolink") {
+        let model = model.strip_prefix("evolink/").unwrap_or(model);
+        return evolink::is_anthropic_format(model);
+    }
+    if provider.eq_ignore_ascii_case("opencode-zen") {
+        let model = model
+            .strip_prefix("opencode/")
+            .or_else(|| model.strip_prefix("opencode-zen/"))
+            .unwrap_or(model);
+        return !opencode_zen::OPENAI_MODELS.contains(&model) && opencode_zen::ANTHROPIC_MODELS.contains(&model);
+    }
+    if provider.eq_ignore_ascii_case("opencode-go") {
+        let model = model.strip_prefix("opencode-go/").unwrap_or(model);
+        return opencode_go::MESSAGES_API_MODELS.contains(&model);
+    }
+    exclusive_input_semantics(None, provider)
+}
+
 /// Resolve the usage profile of the backend that served `provider`.
 ///
 /// A configured custom provider wins over the built-in catalogue: its resolved
 /// profile carries the context window and pricing the operator declared, and
 /// its `api_format` names the backend that produced the usage. Otherwise the
-/// built-in model catalogue supplies what it knows, and the provider name alone
-/// decides the input-token semantics.
+/// built-in model catalogue supplies what it knows, and the backend its
+/// provider routes the model to decides the input-token semantics.
 ///
 /// Both branches are pure functions of already-loaded configuration. The
 /// catalogue lookup deliberately does not resolve credentials: reading
@@ -82,15 +116,13 @@ pub fn usage_profile(custom_providers: &[CustomProviderConfig], provider: &str, 
         };
     }
 
+    let exclusive_input = built_in_exclusive_input(provider, model);
     ModelResolver::catalogue_entry(provider, model).map_or_else(
-        || UsageProfile {
-            exclusive_input: exclusive_input_semantics(None, provider),
-            ..UsageProfile::default()
-        },
+        || UsageProfile { exclusive_input, ..UsageProfile::default() },
         |entry| UsageProfile {
             context_window: Some(entry.context_window).filter(|window| *window > 0),
             pricing: declared_pricing(entry.pricing),
-            exclusive_input: exclusive_input_semantics(None, provider),
+            exclusive_input,
         },
     )
 }
@@ -115,8 +147,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use diapason_config::{CustomProviderPricingConfig, CustomProviderProfileConfig};
+    use rstest::rstest;
 
     use crate::llm::provider::Usage;
+    use crate::llm::usage_cost::resolve_turn_usage;
 
     fn usage_with_cache_counts() -> Usage {
         Usage {
@@ -159,18 +193,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn normalized_turn_usage_adds_cache_tokens_for_anthropic() {
-        let normalized = normalized_turn_usage("anthropic", &usage_with_cache_counts());
-        assert_eq!(normalized.input_tokens, 550);
-        assert_eq!(normalized.cached_input_tokens, 400);
-        assert_eq!(normalized.cache_creation_tokens, 50);
-        assert_eq!(normalized.output_tokens, 20);
-    }
-
-    #[test]
-    fn normalized_turn_usage_treats_minimax_like_anthropic() {
-        let normalized = normalized_turn_usage("minimax", &usage_with_cache_counts());
+    #[rstest]
+    #[case("anthropic")]
+    #[case("minimax")]
+    fn normalized_turn_usage_adds_cache_tokens_for_exclusive_backends(#[case] provider: &str) {
+        let normalized = normalized_turn_usage(provider, &usage_with_cache_counts());
         assert_eq!(normalized.input_tokens, 550);
         assert_eq!(normalized.cached_input_tokens, 400);
         assert_eq!(normalized.cache_creation_tokens, 50);
@@ -281,5 +308,64 @@ mod tests {
 
         assert_eq!(profile.context_window, Some(catalog.context_window));
         assert!(profile.exclusive_input);
+    }
+
+    #[test]
+    fn built_in_evolink_anthropic_models_report_the_full_prompt_total() {
+        for model in ["claude-sonnet-5", "evolink/claude-sonnet-5"] {
+            let profile = usage_profile(&[], "evolink", model);
+            assert!(
+                profile.exclusive_input,
+                "Evolink routes {model} through Anthropic Messages, which excludes cached tokens"
+            );
+
+            let resolved = resolve_turn_usage(&usage_with_cache_counts(), profile);
+            assert_eq!(resolved.input_tokens, 550, "cache reads and creation must be added back for {model}");
+            assert_eq!(resolved.cache_read_input_tokens, 400);
+            assert_eq!(resolved.cache_creation_input_tokens, Some(50));
+        }
+    }
+
+    #[test]
+    fn built_in_evolink_openai_chat_models_keep_inclusive_input() {
+        let profile = usage_profile(&[], "evolink", "gpt-5.6");
+        assert!(
+            !profile.exclusive_input,
+            "Evolink OpenAI Chat routes already include cached tokens in prompt_tokens"
+        );
+    }
+
+    #[test]
+    fn built_in_opencode_zen_follows_its_per_model_protocol() {
+        for model in [
+            "claude-sonnet-5",
+            "opencode/claude-sonnet-5",
+            "opencode-zen/claude-sonnet-5",
+        ] {
+            let profile = usage_profile(&[], "opencode-zen", model);
+            assert!(
+                profile.exclusive_input,
+                "OpenCode Zen routes {model} through Anthropic Messages, which excludes cached tokens"
+            );
+        }
+        assert!(
+            !usage_profile(&[], "opencode-zen", "gpt-5.6").exclusive_input,
+            "OpenCode Zen OpenAI Chat routes already include cached tokens in prompt_tokens"
+        );
+    }
+
+    #[test]
+    fn built_in_opencode_go_follows_its_per_model_protocol() {
+        for model in ["qwen3.8-max", "opencode-go/qwen3.8-max"] {
+            let profile = usage_profile(&[], "opencode-go", model);
+            assert!(
+                profile.exclusive_input,
+                "OpenCode Go routes {model} through Anthropic Messages, which excludes cached tokens"
+            );
+        }
+        assert!(
+            !usage_profile(&[], "opencode-go", "deepseek-v4-pro").exclusive_input,
+            "OpenCode Go Chat Completions routes already include cached tokens in prompt_tokens"
+        );
     }
 }

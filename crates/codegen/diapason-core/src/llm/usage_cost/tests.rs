@@ -6,6 +6,7 @@
 use super::*;
 
 use proptest::prelude::*;
+use rstest::rstest;
 use serde_json::json;
 
 fn approx_eq(a: f64, b: f64) {
@@ -109,6 +110,34 @@ fn resolved_turn_usage_reports_reasoning_separately_from_output() {
     assert_eq!(resolved.cache_creation_input_tokens, Some(3));
     assert_eq!(resolved.cost_usd, None, "no pricing must not invent a cost");
     assert_eq!(resolved.context_window, None);
+}
+
+/// Reasoning tokens are hidden from the reported output count but remain
+/// billable completion tokens, so the cost must charge for all eight tokens
+/// even though only five are visible.
+#[test]
+fn resolved_turn_usage_prices_reasoning_tokens_hidden_from_the_output_count() {
+    let usage = ProviderUsage {
+        prompt_tokens: 0,
+        completion_tokens: 8,
+        reasoning_output_tokens: Some(3),
+        ..ProviderUsage::default()
+    };
+    let profile = UsageProfile {
+        pricing: Some(ModelPricing {
+            input: Some(0.0),
+            output: Some(1.0 / 1_000_000.0),
+            cache_read: None,
+            cache_write: None,
+        }),
+        ..UsageProfile::default()
+    };
+
+    let resolved = resolve_turn_usage(&usage, profile);
+
+    assert_eq!(resolved.output_tokens, 5, "reasoning is reported separately from the visible output");
+    assert_eq!(resolved.reasoning_output_tokens, Some(3));
+    approx_eq(resolved.cost_usd.expect("priced turn should report its cost"), 8.0 / 1_000_000.0);
 }
 
 #[test]
@@ -336,16 +365,25 @@ fn session_budget_unlimited_is_always_ok() {
     assert_eq!(budget.remaining_usd(), None);
 }
 
+/// The warning threshold is inclusive, and reaching the cap is still a
+/// warning: only spending strictly above the cap is `Exceeded`.
+#[rstest]
+#[case(0.75)]
+#[case(1.0)]
+fn budget_status_classify_reports_the_full_warning_status_at_the_boundaries(#[case] spent: f64) {
+    assert_eq!(
+        BudgetStatus::classify(spent, Some(1.0), 0.75),
+        BudgetStatus::Warning { spent, max: 1.0 },
+        "spend {spent} at the warning threshold or cap must classify as Warning"
+    );
+}
+
 #[test]
 fn budget_status_classify_matches_harness_semantics() {
     // Unlimited.
     assert_eq!(BudgetStatus::classify(999.0, None, 0.75), BudgetStatus::Ok);
     // Under warning.
     assert_eq!(BudgetStatus::classify(0.5, Some(1.0), 0.75), BudgetStatus::Ok);
-    // At/above warning, within cap.
-    assert_eq!(BudgetStatus::classify(0.8, Some(1.0), 0.75), BudgetStatus::Warning { spent: 0.8, max: 1.0 });
-    // Exactly at cap is NOT exceeded (strict `>`), matching runner semantics.
-    assert!(!BudgetStatus::classify(1.0, Some(1.0), 0.75).is_exceeded());
     // Over cap.
     assert!(BudgetStatus::classify(1.01, Some(1.0), 0.75).is_exceeded());
     // Configurable threshold.

@@ -125,8 +125,7 @@ pub struct SessionStats {
 
 impl SessionStats {
     pub fn merge_usage(&mut self, usage: &crate::llm::provider::Usage) {
-        self.total_usage
-            .add(&crate::llm::provider_usage::normalized_turn_usage(&self.provider_name, usage));
+        self.total_usage.add(&crate::normalized_turn_usage(&self.provider_name, usage));
     }
 }
 

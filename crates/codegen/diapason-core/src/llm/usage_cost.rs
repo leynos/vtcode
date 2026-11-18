@@ -175,7 +175,8 @@ pub struct TurnUsage {
     /// Reasoning tokens included in the provider's completion count, when
     /// reported.
     pub reasoning_output_tokens: Option<u32>,
-    /// Cache-aware cost of the turn in USD, when both rates are known.
+    /// Cache-aware cost of the turn in USD, when both rates are known and the
+    /// estimate is finite.
     pub cost_usd: Option<f64>,
     /// Context window to advertise, when the resolved profile declares one.
     pub context_window: Option<usize>,
@@ -197,7 +198,13 @@ pub fn resolve_turn_usage(usage: &ProviderUsage, profile: UsageProfile) -> TurnU
         .saturating_sub(reasoning_output_tokens.unwrap_or_default());
     let normalized = normalized_turn_usage_with_input_semantics(profile.exclusive_input, usage);
     let cost_usd = profile.pricing.and_then(|pricing| {
-        estimate_session_costs_with_pricing(pricing, &normalized).map(|estimate| estimate.effective_usd)
+        estimate_session_costs_with_pricing(pricing, &normalized)
+            .map(|estimate| estimate.effective_usd)
+            // An estimate that overflows `f64` is not representable on the
+            // wire, where it would serialize as `null` rather than being
+            // omitted. Drop only the cost; the rest of the usage still
+            // publishes.
+            .filter(|cost_usd| cost_usd.is_finite())
     });
 
     TurnUsage {
