@@ -1,3 +1,8 @@
+//! The Gemini `LLMProvider` implementation: generation and streaming.
+//!
+//! Reports model capabilities, performs one-shot generation, and assembles
+//! streamed responses, using the constructors and fields in `provider.rs`.
+
 use super::helpers::InteractionStreamState;
 use super::*;
 use crate::providers::shared::{StreamAssemblyError, extract_data_payload, find_sse_boundary_bytes};

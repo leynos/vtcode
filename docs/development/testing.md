@@ -111,6 +111,19 @@ prevent the checks from running. `check-dev.sh --changed` performs its own
 changed-package filtering because Nextest does not provide Cargo's
 `--changed --since` selection flags.
 
+### Test and build requirements
+
+`diapason-core` exposes a non-default `telemetry-test-support` feature that
+publishes the `#[doc(hidden)]` `TestPerfRecorder`. `diapason-acp` enables that
+feature from its dev-dependencies, so recorder-backed metric assertions compile
+only when the feature is on. The same dev-dependencies enable Tokio's
+`test-util` feature for paused-clock tests of rate-limit timing.
+
+Repository gate order is formatting, format check, lint, then tests.
+`make check` runs the format check, lint, build, and test gates, and
+`./scripts/check-dev.sh` covers the faster iteration subset. Tests run with
+`cargo nextest run`, never `cargo test`.
+
 ### Hermetic workspace fixtures
 
 Tests that load workspace configuration should install the test-only

@@ -16,7 +16,9 @@
   for the architecture; the
   [roadmap](./project/diapason-shell-policy-roadmap.md) tracks feasibility and
   delivery.
-- [Testing](./development/testing.md)
+- [Testing](./development/testing.md), including the
+  [build requirements](./development/testing.md#test-and-build-requirements)
+  for feature-gated recorders and paused-clock timing.
 - [Instruction discovery boundary](./development/instruction-discovery.md)
 - [Configuration field reference](./config/CONFIG_FIELD_REFERENCE.md)
 - [Documentation style guide](./documentation-style-guide.md)

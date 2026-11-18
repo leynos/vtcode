@@ -1,3 +1,8 @@
+//! Tool-execution attempts and their retry loop.
+//!
+//! Runs one tool call under its timeout, decides retry safety, and records
+//! outcome metrics; the module's tests cover the backoff and safety gates.
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 

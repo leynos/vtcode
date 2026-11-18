@@ -104,6 +104,29 @@ pub(super) fn log_notice_publish_failure(error: &impl std::fmt::Display, session
     );
 }
 
+/// Report a Lody rate-limit snapshot that could not be serialized or sent.
+///
+/// A snapshot failure never fails the provider attempt, but the serialization
+/// or transport error may embed workspace, provider, or session detail, so the
+/// warning carries fixed fields and a bounded digest instead of the error's
+/// rendering or the raw session identifier.
+pub(super) fn log_rate_limit_snapshot_failure(
+    error: &impl std::fmt::Display,
+    session_correlation: &str,
+    stage: &'static str,
+) {
+    let detail = error.to_string();
+    tracing::warn!(
+        session_correlation = %session_correlation,
+        stage,
+        operation = "lody_rate_limits_publish",
+        error_category = "rate_limit_snapshot_publish_failed",
+        error_bytes = detail.len(),
+        detail_correlation = %detail_correlation(&detail),
+        "Failed to publish a Lody rate-limit snapshot"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     //! Covers the fixed-field records that keep operator-sensitive detail out
@@ -212,6 +235,27 @@ mod tests {
         assert!(output.contains("operation=\"provider_rate_limit_notice\""), "{output}");
         assert!(output.contains("error_category=\"rate_limit_notice_publish_failed\""), "{output}");
         assert!(output.contains("stage=\"publish_rate_limit_notice\""), "{output}");
+        assert!(output.contains(&format!("session_correlation={correlation}")), "{output}");
+        assert!(output.contains(&format!("error_bytes={}", ADVERSARIAL_DETAIL.len())), "{output}");
+        assert!(output.contains("detail_correlation="), "the bounded digest must remain: {output}");
+        assert_detail_is_absent(&output);
+    }
+
+    /// Assert the rate-limit snapshot warning carries fixed fields only.
+    #[test]
+    fn rate_limit_snapshot_failure_logs_fixed_fields_only() {
+        let correlation = session_correlation("raw-session-identifier");
+        let output = capture(|| {
+            log_rate_limit_snapshot_failure(
+                &std::io::Error::other(ADVERSARIAL_DETAIL),
+                &correlation,
+                "send_snapshot_notification",
+            );
+        });
+
+        assert!(output.contains("operation=\"lody_rate_limits_publish\""), "{output}");
+        assert!(output.contains("error_category=\"rate_limit_snapshot_publish_failed\""), "{output}");
+        assert!(output.contains("stage=\"send_snapshot_notification\""), "{output}");
         assert!(output.contains(&format!("session_correlation={correlation}")), "{output}");
         assert!(output.contains(&format!("error_bytes={}", ADVERSARIAL_DETAIL.len())), "{output}");
         assert!(output.contains("detail_correlation="), "the bounded digest must remain: {output}");

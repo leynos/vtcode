@@ -1,3 +1,8 @@
+//! Parse `Retry-After` values into bounded retry floors.
+//!
+//! Relative seconds and HTTP dates are accepted without I/O or an HTTP client,
+//! and the result is the minimum wait the retry policy applies to an attempt.
+
 use std::time::{Duration, SystemTime};
 
 use diapason_commons::llm::LLMErrorMetadata;

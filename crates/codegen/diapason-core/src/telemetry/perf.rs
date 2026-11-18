@@ -1,3 +1,8 @@
+//! Process-global performance telemetry recorder.
+//!
+//! `PerfSpan` and `record_duration` feed the shared `TelemetryPipeline`; the
+//! `telemetry-test-support` feature adds `TestPerfRecorder` for crate tests.
+
 use hashbrown::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

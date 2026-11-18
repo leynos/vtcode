@@ -1,3 +1,7 @@
+//! OpenRouter provider.
+//!
+//! Declares the client, parsing, and implementation submodules, and owns
+//! provider construction, model capability gating, and fallback dispatch.
 #![allow(
     clippy::collapsible_if,
     reason = "Intentional compatibility, platform, or test-only suppression."

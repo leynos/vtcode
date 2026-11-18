@@ -1,3 +1,8 @@
+//! Gemini provider construction.
+//!
+//! Defines `GeminiProvider` and its constructors, resolving the base URL,
+//! prompt-cache settings, and HTTP client used by `llm_provider.rs`.
+
 use super::*;
 use diapason_config::core::ModelConfig;
 

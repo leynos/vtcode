@@ -51,7 +51,13 @@ falls back cleanly when a client ignores them. The
   `Retry-After` value only when the provider supplied them, and the retry delay
   only when Diapason scheduled a further attempt. When no further attempt is
   scheduled the notice says so. Diapason does not invent quota windows, reset
-  times, or statuses.
+  times, or statuses. It also advertises the push-only `_meta.lody.rateLimits`
+  capability (version 1) and publishes optional snapshots as
+  `_lody/rate_limits/update` extension notifications; missing, zero, or
+  inconsistent counts produce no fabricated quota window. Custom providers can
+  map response headers in a `[custom_providers.rate_limit_headers]` table after
+  their `[[custom_providers]]` entry. See the
+  [provider rate-limit guide](./user-guide/provider-rate-limits.md).
 - **Custom-provider pricing.** Opt in per provider or per profile under
   `custom_providers.*.pricing`; rates are USD per million tokens. See the
   [configuration guide](./config/config.md).
@@ -269,11 +275,11 @@ session archive. See the
 
 `diapason acp` serves the Agent Client Protocol over stdio. During
 `initialize`, Diapason advertises Lody extensions under `_meta.lody`: `usage`
-is always present, and subagent `lifecycle`, `list`, `cancel`, and `output` are
-advertised when a subagent controller exists for the launch workspace.
-`_meta.lody.tasks.background` appears only when background subagents are
-enabled. These capabilities describe the launch workspace. Management is
-session-scoped, so a request can still fail with
+and `rateLimits` are always present, and subagent `lifecycle`, `list`,
+`cancel`, and `output` are advertised when a subagent controller exists for the
+launch workspace. `_meta.lody.tasks.background` appears only when background
+subagents are enabled. These capabilities describe the launch workspace.
+Management is session-scoped, so a request can still fail with
 `subagent_management_unavailable`.
 
 Subagent and background-process lifecycle is published as standard ACP
@@ -285,7 +291,9 @@ tool call and tool-call updates instead. When management is available, the
 requests operate only on tasks owned by the calling session. Provider usage is
 reported through `_lody/session/usage_update` as a per-response delta. Custom
 providers opt in to streamed usage with `supports_stream_usage`; Diapason only
-requests it when the provider declares that support.
+requests it when the provider declares that support. Recognized provider quota
+headers are published as `_lody/rate_limits/update` snapshots scoped to the
+provider and model; the extension is push-only and has no query request.
 
 For the full contract, see
 [ACP capability negotiation and Lody extensions](./guides/zed-acp.md#acp-capability-negotiation-and-lody-extensions)

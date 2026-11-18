@@ -1,3 +1,8 @@
+//! Tests for the OpenRouter provider.
+//!
+//! Cover the tool fallback, rate-limit metadata retention, and stream decoding
+//! exercised against WireMock servers.
+
 use super::super::stream_decoder::parse_usage_value;
 use super::*;
 use crate::provider::{LLMProvider, NormalizedStreamEvent};

@@ -9,6 +9,7 @@ use super::{
     ZedAgent,
     lody::lody_capabilities_mut,
     provider_telemetry::{ProviderMetricContext, ProviderMetricObservation, ProviderMetricSink},
+    redaction::{log_rate_limit_snapshot_failure, session_correlation},
 };
 use crate::acp;
 use crate::zed::provider_runtime::ProviderClass;
@@ -222,13 +223,21 @@ impl ZedAgent {
         let params = match serde_json::value::to_raw_value(&snapshot) {
             Ok(params) => params,
             Err(error) => {
-                tracing::warn!(%error, "Failed to serialize Lody rate-limit observations");
+                log_rate_limit_snapshot_failure(
+                    &error,
+                    &session_correlation(&session_id.to_string()),
+                    "serialize_snapshot",
+                );
                 record_snapshot_failure(metric_sink, provider_class).await;
                 return;
             }
         };
         if let Err(error) = client.send_ext_notification(acp::ExtNotification::new(UPDATE_METHOD, Arc::from(params))) {
-            tracing::warn!(%error, %session_id, "Failed to publish Lody rate-limit observations");
+            log_rate_limit_snapshot_failure(
+                &error,
+                &session_correlation(&session_id.to_string()),
+                "send_snapshot_notification",
+            );
             record_snapshot_failure(metric_sink, provider_class).await;
         }
     }

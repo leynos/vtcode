@@ -1,3 +1,7 @@
+//! Gemini provider module root.
+//!
+//! Declares the wire-format, client, and generation submodules and re-exports
+//! `GeminiProvider`; the submodules share its imports through `use super::*`.
 #![allow(
     clippy::collapsible_if,
     reason = "Intentional compatibility, platform, or test-only suppression."

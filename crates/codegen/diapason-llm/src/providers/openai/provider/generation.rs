@@ -1,3 +1,8 @@
+//! OpenAI generation over the Responses and Chat Completions backends.
+//!
+//! `generate_request` prefers Responses, falls back to Chat Completions when
+//! the API is unsupported, and returns a parsed `LLMResponse`.
+
 use super::super::errors::{
     fallback_model_if_not_found, format_openai_error, is_flex_service_tier_unsupported, is_model_not_found,
     is_responses_api_unsupported,
