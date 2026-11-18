@@ -10,7 +10,6 @@ Add `rate_limit_headers` immediately after the associated
 provider actually sends:
 
 <!-- tested-example: provider-rate-limits-custom-mapping -->
-
 ```toml
 [[custom_providers]]
 name = "my-gateway"
