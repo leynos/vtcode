@@ -1178,14 +1178,15 @@ pub(crate) fn parse_usage_openai_format(
             usage_value,
             include_cache_metrics,
         ),
-        cache_creation_tokens: if include_cache_metrics {
-            usage_value
-                .get("prompt_cache_miss_tokens")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u32)
-        } else {
-            None
-        },
+        // Only a separately priced cache write belongs here.
+        // `prompt_cache_miss_tokens` (DeepSeek-style) is not one: it is the part
+        // of `prompt_tokens` that was not served from cache, already counted in
+        // the prompt total and billed at the ordinary input rate, so treating it
+        // as a write would surcharge tokens that are merely uncached.
+        cache_creation_tokens: crate::providers::shared::parse_cache_write_tokens_from_usage(
+            usage_value,
+            include_cache_metrics,
+        ),
         cache_read_tokens: None,
         iterations: None,
     })
@@ -1729,7 +1730,35 @@ mod tests {
         assert_eq!(usage.completion_tokens, 50);
         assert_eq!(usage.total_tokens, 150);
         assert_eq!(usage.cached_prompt_tokens, Some(30));
-        assert_eq!(usage.cache_creation_tokens, Some(70));
+        // A miss is an uncached input token, not a priced cache write. Counting
+        // it as creation charged it at the write rate while the prompt total
+        // already carried it at the input rate.
+        assert_eq!(usage.cache_creation_tokens, None);
+    }
+
+    #[test]
+    fn parse_usage_openai_format_reports_a_separately_priced_cache_write() {
+        let response = json!({
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "prompt_tokens_details": {
+                    "cached_tokens": 30,
+                    "cache_write_tokens": 12
+                }
+            }
+        });
+        let usage = parse_usage_openai_format(&response, true).expect("usage expected");
+        assert_eq!(usage.cached_prompt_tokens, Some(30));
+        assert_eq!(usage.cache_creation_tokens, Some(12));
+        assert_eq!(
+            parse_usage_openai_format(&response, false)
+                .expect("usage expected")
+                .cache_creation_tokens,
+            None,
+            "cache metrics stay suppressed when the caller opts out"
+        );
     }
 
     #[test]
