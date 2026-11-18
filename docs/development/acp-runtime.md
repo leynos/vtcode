@@ -361,6 +361,11 @@ After each provider response, ACP sends `_lody/session/usage_update` with
 responding model. The notification is omitted when the response carries no
 usage. The delta covers that response, not a running session total.
 
+The capability is advertised as `_meta.lody.usage = { "version": 2 }`. Under
+version 2, `outputTokens` is the visible completion count and
+`reasoningOutputTokens` is disjoint from it, so the two never double count.
+Version 1 carried the full completion total in `outputTokens`.
+
 `publish_lody_usage` answers two different questions with two different models,
 and `publication_profile` keeps them apart. The **served** model — named by the
 response, falling back to the session model when the response names none —
@@ -376,10 +381,9 @@ Keep the two lookups separate. A router may answer with a dated snapshot or an
 alias that is not a configured profile key, so the served lookup can fall back
 to the provider default. Resolving input semantics from that fallback would
 misreport whether `inputTokens` already includes the cached tokens: an
-Anthropic Messages backend reports them separately, while an
-OpenAI-compatible one does not. Do not infer cache accounting from the served
-alias, and do not price the routed name when the response says another model
-answered.
+Anthropic Messages backend reports them separately, while an OpenAI-compatible
+one does not. Do not infer cache accounting from the served alias, and do not
+price the routed name when the response says another model answered.
 
 The delta carries `inputTokens`, `outputTokens`, `cacheReadInputTokens`, and,
 when the provider reports it, `cacheCreationInputTokens`. `inputTokens` is the
@@ -439,11 +443,12 @@ has one, and omits both when it does not. A provider or `PreCompact` hook
 failure carries one, because it discarded a source error; a bare-category
 failure — `cancelled`, `timeout`, `admission_budget`, or provider admission
 that never started — reports its category alone. The omitted fields are absent,
-not zero: a record with no `error_bytes` says the category needed no correlation
-aid, not that the discarded error was empty. Provider and model span and log
-fields are likewise recorded as `provider_correlation`/`model_correlation`
-digests with their byte lengths, because those identifiers come from provider
-implementations and configuration and their content is not bounded or trusted.
+not zero: a record with no `error_bytes` says the category needed no
+correlation aid, not that the discarded error was empty. Provider and model
+span and log fields are likewise recorded as
+`provider_correlation`/`model_correlation` digests with their byte lengths,
+because those identifiers come from provider implementations and configuration
+and their content is not bounded or trusted.
 
 Bounded, process-local counters accumulate across compaction attempts:
 `started`, `compacted`, `no_change`, `failed`, `cancelled`, `elapsed_ms_total`,

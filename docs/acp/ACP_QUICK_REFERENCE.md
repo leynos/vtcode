@@ -13,7 +13,7 @@ diapason acp
 ```
 
 The server negotiates protocol version 1 during `initialize`. Its Lody usage
-capability is always advertised as `_meta.lody.usage = { "version": 1 }`. When
+capability is always advertised as `_meta.lody.usage = { "version": 2 }`. When
 a subagent controller is configured, the handshake also advertises
 `_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and
 `output` operations. The
@@ -139,25 +139,31 @@ notification `_lody/session/usage_update`. Its parameters contain:
 }
 ```
 
-`modelUsage` is keyed by the response model, and each entry repeats the same
-delta as `usage`. The values are deltas for one provider response, and no
-notification is emitted when the provider supplies no usage data.
+`modelUsage` is keyed by the response model. When the provider supplies usage
+but the response names no model, the session model is used as the key instead.
+Each entry repeats the same delta as `usage`. The values are deltas for one
+provider response, and no notification is emitted when the provider supplies no
+usage data.
 
 `inputTokens` is the full prompt count and already includes the tokens also
 reported separately as `cacheReadInputTokens` and `cacheCreationInputTokens`,
 whether the backend reports an inclusive or an exclusive prompt count. Adding
 the three fields together double-counts the cached tokens.
 
-`reasoningOutputTokens`, `contextWindow`, and `costUSD` are optional. The
-visible `outputTokens` value excludes reasoning tokens when the provider
-reports them; Baseten's nested `completion_tokens_details.reasoning_tokens`
-field is preserved during normalization. `costUSD` is emitted when the resolved
-model profile supplies both input and output rates (USD per million tokens):
-catalogue pricing for catalogue models, or explicitly configured custom
-provider pricing. The example above shows a profile that declares a window but
-no rates, so it carries no cost. Cache pricing is optional, and normalization
-follows the selected backend's input-token semantics rather than the provider
-name.
+`reasoningOutputTokens`, `contextWindow`, and `costUSD` are optional. Under
+usage version 2, `outputTokens` is the visible completion count and
+`reasoningOutputTokens` is disjoint from it, so the two never double count;
+version 1 carried the full completion total in `outputTokens`. Baseten's nested
+`completion_tokens_details.reasoning_tokens` field is preserved during
+normalization. `costUSD` is emitted when the resolved model profile supplies
+both input and output rates (USD per million tokens): catalogue pricing for
+catalogue models, or explicitly configured custom provider pricing. The example
+above shows a profile that declares a window but no rates, so it carries no
+cost. Cache pricing is optional; when a cache rate is omitted, cache reads are
+estimated at 10% of the input rate and cache writes at 125% of the input rate,
+and `costUSD` remains an estimate to reconcile against provider billing.
+Normalization follows the selected backend's input-token semantics rather than
+the provider name.
 
 Automatic context compaction is advertised as `_meta.lody.compaction` version 1
 and is emitted through standard `tool_call` and `tool_call_update` updates. The
@@ -165,8 +171,12 @@ updates carry `_meta.lody.activity` for the `compacted` outcome, token counts,
 and duration; a failed attempt adds a closed-set `failureReason` category
 (`cancelled`, `timeout`, `admission_budget`, `pre_compact_hook`, `provider`)
 rather than a raw diagnostic. Diapason does not advertise
-`_meta.lody.rateLimits` without trustworthy quota state; HTTP 429 and
-`Retry-After` are instead reported in warning notices and provider telemetry.
+`_meta.lody.rateLimits` without trustworthy quota state. A warning notice
+reports the rate limit, the provider's HTTP status when supplied, a
+`Retry-After` hint when supplied, and whether another attempt is scheduled; a
+hint longer than 64 bytes, containing control characters, or not an HTTP delay
+in seconds or a date is omitted. Provider failure telemetry records the HTTP
+status, a bounded error code, and the retry disposition, not the retry hint.
 
 ## Legacy REST ACP client reference
 

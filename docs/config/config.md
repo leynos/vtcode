@@ -442,7 +442,15 @@ Additional rules:
   USD per million tokens with separate input, output, cache-read, and
   cache-write fields. ACP `costUSD` is omitted unless both input and output
   rates resolve; cache rates are used when the provider reports cache token
-  counts.
+  counts. When a cache rate is omitted, cache reads are estimated at 10% of the
+  input rate and cache writes at 125% of the input rate, and `costUSD` is an
+  estimate to reconcile against provider billing. For OpenAI Chat Completions
+  and Responses backends, cached prompt tokens are parsed only when prompt
+  caching is enabled (`prompt_cache.enabled` and
+  `prompt_cache.providers.openai.enabled`) and
+  `prompt_cache.providers.openai.surface_metrics` is `true`. When either is
+  disabled, cache hits are not reported and their tokens are priced at the
+  input rate.
 - Profiles do not make a model available in the picker — use `model` or
   `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends

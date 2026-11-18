@@ -26,7 +26,7 @@ ACP server; its sections are explicitly marked below.
 
 The server responds to ACP `initialize` with protocol version 1 and advertises
 the standard session capabilities it implements. It always includes the Lody
-extension capability `_meta.lody.usage = { "version": 1 }`. Usage notifications
+extension capability `_meta.lody.usage = { "version": 2 }`. Usage notifications
 are sent only when the provider response includes usage data.
 
 When the launch workspace has a subagent controller, the response additionally
@@ -147,15 +147,21 @@ response, not a running total. The normalized usage object may contain:
   count;
 - `reasoningOutputTokens`, when the provider reports reasoning usage (including
   the nested `completion_tokens_details.reasoning_tokens` field used by
-  Baseten's OpenAI-compatible responses). `outputTokens` is the visible output
-  portion after reasoning tokens are split out;
+  Baseten's OpenAI-compatible responses). Under usage version 2, `outputTokens`
+  is the visible completion count and `reasoningOutputTokens` is disjoint from
+  it, so the two never double count. Version 1 carried the full completion
+  total in `outputTokens`, so a client that treats `outputTokens` as the total
+  must add the two fields under version 2;
 - `contextWindow`, from the resolved provider/model profile; and
 - `costUSD`, when the resolved profile supplies both input and output rates:
   catalogue pricing for catalogue models, or opt-in custom-provider pricing.
   Pricing is expressed in USD per million tokens, with optional cache-read and
-  cache-write rates. Cost normalization uses the input-token semantics of the
-  backend the request was routed to, so a custom provider on the Anthropic
-  Messages API is priced with cache reads reported separately.
+  cache-write rates. When a cache rate is omitted, cache reads are estimated at
+  10% of the input rate and cache writes at 125% of the input rate. `costUSD`
+  is an estimate to reconcile against provider billing, not a reproduction of
+  the invoice. Cost normalization uses the input-token semantics of the backend
+  the request was routed to, so a custom provider on the Anthropic Messages API
+  is priced with cache reads reported separately.
 
 Automatic context compaction is advertised as
 `_meta.lody.compaction = { "version": 1 }`. Each compaction is represented by
@@ -169,10 +175,14 @@ reports that the attempt made no change, and it omits `usedTokensAfter` because
 no token count was reduced. No private ACP update type is required.
 
 Diapason does not advertise `_meta.lody.rateLimits` unless it has trustworthy
-quota state. A Baseten HTTP 429 is not treated as a quota window: the response
-and any `Retry-After` value are surfaced through warning notices and provider
-telemetry instead. This avoids presenting fabricated reset times or usage
-percentages.
+quota state. A Baseten HTTP 429 is not treated as a quota window. A warning
+notice reports the HTTP status when the provider supplied one, a `Retry-After`
+hint when it supplied one, and whether Diapason scheduled another attempt. The
+notice omits a hint longer than 64 bytes, one containing control characters, or
+one that is not an HTTP delay in seconds or a date. Provider failure telemetry
+instead records the HTTP status, a bounded error code, and the retry
+disposition; it does not carry the `Retry-After` header. This avoids presenting
+fabricated reset times or usage percentages.
 
 The current server is launched with `diapason acp` and communicates over stdio;
 it does not expose the legacy `/messages`, `/metadata`, or `/health` HTTP
