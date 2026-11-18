@@ -46,6 +46,7 @@ fn test_controller_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> Su
         output_reader: None,
         pty_manager: pty_sessions.manager().clone(),
         managed_background_runtime: false,
+        lock_scope: None,
     }
 }
 
@@ -126,6 +127,7 @@ fn test_child_record(
 
 mod background_liveness_tests;
 mod invocation_context_tests;
+mod lock_scope_tests;
 mod owner_scope_tests;
 mod progress_observer_tests;
 mod spawn_custom_tests;

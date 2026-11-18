@@ -58,7 +58,7 @@ async fn build_local_agent_entries(
     }
 
     for entry in visible_background_local_agents(background_entries) {
-        let snapshot = match controller.background_snapshot(&entry.id).await {
+        let snapshot = match controller.refresh_then_background_snapshot(&entry.id).await {
             Ok(snapshot) => Some(snapshot),
             Err(err) => {
                 tracing::debug!(

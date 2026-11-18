@@ -133,7 +133,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let active_entry = tokio::time::timeout(Duration::from_secs(10), async {
                 loop {
                     let entry = controller
-                        .background_snapshot(&background.id)
+                        .refresh_then_background_snapshot(&background.id)
                         .await
                         .expect("read the owned background snapshot")
                         .entry;
@@ -280,7 +280,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             assert_eq!(foreign_cancel.data, Some(serde_json::json!({ "reason": "unknown_task" })));
             assert!(
                 controller
-                    .background_snapshot(&background.id)
+                    .refresh_then_background_snapshot(&background.id)
                     .await
                     .expect("read the owned background snapshot")
                     .entry
@@ -301,7 +301,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let ended_entry = tokio::time::timeout(Duration::from_secs(10), async {
                 loop {
                     let entry = controller
-                        .background_snapshot(&background.id)
+                        .refresh_then_background_snapshot(&background.id)
                         .await
                         .expect("read the owned background snapshot")
                         .entry;
@@ -425,9 +425,9 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                         .background_status_entries_with_liveness()
                         .await
                         .into_iter()
-                        .find(|entry| entry.id == stale.id)
+                        .find(|observed| observed.entry.id == stale.id)
                         .expect("the second background record must be cached");
-                    if !projected.status.is_active() {
+                    if !projected.entry.status.is_active() {
                         break;
                     }
                     tokio::time::sleep(Duration::from_millis(25)).await;
@@ -615,7 +615,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             );
             assert!(
                 foreign_controller
-                    .background_snapshot(&sibling.id)
+                    .refresh_then_background_snapshot(&sibling.id)
                     .await
                     .expect("read the sibling background snapshot")
                     .entry

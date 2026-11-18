@@ -141,7 +141,14 @@ impl SubagentController {
     /// respawns, never publishes a lifecycle update and never persists. A
     /// management list uses it so a read cannot restart work, while still
     /// reporting a process whose exec session has already ended.
-    pub async fn background_status_entries_with_liveness(&self) -> Vec<BackgroundSubprocessEntry> {
+    ///
+    /// The read distinguishes a session that is genuinely absent from a read
+    /// that failed for another reason. An absent session is the expected exit
+    /// and is projected exactly as before. Any other fault keeps the record's
+    /// cached status and marks the entry [`BackgroundLiveness::Unobserved`], so
+    /// a listing never fabricates a terminal outcome it did not observe. One
+    /// unobserved record does not abort the list.
+    pub async fn background_status_entries_with_liveness(&self) -> Vec<BackgroundLivenessEntry> {
         let mut entries = {
             let state = self.state.read().await;
             let invocation_owner = current_subagent_invocation_context().map(|context| context.parent_session_id);
@@ -156,23 +163,33 @@ impl SubagentController {
                         record.exec_session_id.clone(),
                         record.desired_enabled,
                         record.restart_attempts,
+                        BackgroundLiveness::Observed,
                     )
                 })
                 .collect::<Vec<_>>()
         };
 
-        for (entry, active, exec_session_id, desired_enabled, restart_attempts) in &mut entries {
+        for (entry, active, exec_session_id, desired_enabled, restart_attempts, liveness) in &mut entries {
             if !*active {
                 continue;
             }
-            let snapshot = if exec_session_id.is_empty() {
-                None
+            let alive = if exec_session_id.is_empty() {
+                false
             } else {
-                self.config.exec_sessions.snapshot_session(exec_session_id).await.ok()
+                match self.config.exec_sessions.snapshot_session(exec_session_id).await {
+                    Ok(snapshot) => matches!(
+                        snapshot.lifecycle_state,
+                        Some(crate::tools::types::DiapasonSessionLifecycleState::Running)
+                    ),
+                    Err(error) if exec_session_is_missing(&error) => false,
+                    Err(error) => {
+                        // Nothing is known about the process, so keep the
+                        // cached status instead of projecting an exit.
+                        *liveness = BackgroundLiveness::Unobserved { reason: bounded_liveness_reason(&error) };
+                        continue;
+                    }
+                }
             };
-            let alive = snapshot.as_ref().is_some_and(|snapshot| {
-                matches!(snapshot.lifecycle_state, Some(crate::tools::types::DiapasonSessionLifecycleState::Running))
-            });
             if alive {
                 continue;
             }
@@ -203,13 +220,21 @@ impl SubagentController {
             }
         }
 
-        entries.into_iter().map(|(entry, ..)| entry).collect()
+        entries
+            .into_iter()
+            .map(|(entry, _, _, _, _, liveness)| BackgroundLivenessEntry { entry, liveness })
+            .collect()
     }
 
-    /// Returns a snapshot of a background subprocess including its preview output.
+    /// Returns a cached snapshot of a background subprocess including its
+    /// preview output.
+    ///
+    /// This is a pure query over cached state: it never refreshes, so it never
+    /// respawns a process, settles a record, publishes a lifecycle update or
+    /// persists the ledger. Callers that need exit detection must call
+    /// [`Self::refresh_then_background_snapshot`] or
+    /// [`Self::refresh_background_processes`] explicitly.
     pub async fn background_snapshot(&self, target: &str) -> Result<BackgroundSubprocessSnapshot> {
-        let _ = self.refresh_background_processes().await?;
-
         let entry = {
             let state = self.state.read().await;
             let record = state
@@ -227,6 +252,18 @@ impl SubagentController {
         let preview = read_preview(self.output_reader.as_ref(), &entry, target).await?;
 
         Ok(BackgroundSubprocessSnapshot { entry, preview })
+    }
+
+    /// Refreshes background state, then returns the snapshot.
+    ///
+    /// The name states the side effect: [`Self::refresh_background_processes`]
+    /// may settle a record, publish a lifecycle update, persist the ledger and
+    /// respawn a process whose restart budget allows it. Use this when the
+    /// caller needs the current exit state; use [`Self::background_snapshot`]
+    /// when a cached read is enough.
+    pub async fn refresh_then_background_snapshot(&self, target: &str) -> Result<BackgroundSubprocessSnapshot> {
+        let _ = self.refresh_background_processes().await?;
+        self.background_snapshot(target).await
     }
 
     /// Returns a caller-selected tail of background output.
@@ -1235,6 +1272,33 @@ impl SubagentController {
             conflicts.push("reasoning_effort");
         }
         conflicts
+    }
+}
+
+/// Reports whether a liveness read failed because the session is genuinely gone.
+///
+/// Only the typed not-found cause counts. Any other fault — a backend lookup
+/// inconsistency or a future I/O failure — is a read that told the caller
+/// nothing about the process, so the projection must not treat it as an exit.
+fn exec_session_is_missing(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.is::<crate::tools::exec_session::ExecSessionNotFound>())
+}
+
+/// Renders a bounded diagnostic reason for an unobserved entry.
+///
+/// Only the outermost error text is used, which is the operation that failed
+/// rather than its source chain, and it is truncated to a fixed character
+/// budget. This keeps the log context short and free of the paths a deeper
+/// storage cause could carry.
+fn bounded_liveness_reason(error: &anyhow::Error) -> String {
+    const MAX_REASON_CHARS: usize = 160;
+    let rendered = error.to_string();
+    if rendered.chars().count() <= MAX_REASON_CHARS {
+        rendered
+    } else {
+        rendered.chars().take(MAX_REASON_CHARS).collect()
     }
 }
 

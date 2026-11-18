@@ -145,7 +145,7 @@ pub(crate) async fn handle_manage_subprocesses(
             handle_list_subprocesses_text(&mut ctx).await
         }
         SubprocessManagerAction::Inspect { id } => {
-            let entry = controller.background_snapshot(&id).await?;
+            let entry = controller.refresh_then_background_snapshot(&id).await?;
             if ctx.renderer.supports_inline_ui() {
                 show_background_subprocess_inspector(&mut ctx, entry.entry).await
             } else {
