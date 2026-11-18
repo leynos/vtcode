@@ -752,3 +752,27 @@ pub fn highlight_code_to_ansi(code: &str, language: Option<&str>, theme_name: &s
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{code_block_style, line_number_style};
+    use crate::tui::ui::theme;
+    use anstyle::Style;
+
+    #[test]
+    fn line_number_style_falls_back_to_the_theme_foreground() {
+        let mut styles = theme::active_styles();
+        styles.tool_detail = Style::new();
+        styles.tool_output = Style::new();
+        let styled = line_number_style(&styles, Style::new());
+        assert_eq!(styled.get_fg_color(), Some(styles.foreground));
+    }
+
+    #[test]
+    fn code_block_style_falls_back_to_the_theme_foreground() {
+        let mut styles = theme::active_styles();
+        styles.output = Style::new();
+        let styled = code_block_style(&styles, Style::new());
+        assert_eq!(styled.get_fg_color(), Some(styles.foreground));
+    }
+}
