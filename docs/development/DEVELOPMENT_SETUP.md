@@ -128,6 +128,31 @@ cargo doc --workspace --no-deps
 cargo doc --workspace --no-deps --document-private-items
 ```
 
+## Configuration field reference
+
+`docs/config/CONFIG_FIELD_REFERENCE.md` is generated from the `diapason-config`
+schema. Regenerate it, then reformat the result:
+
+```bash
+python3 scripts/generate_config_field_reference.py
+make fmt
+```
+
+`--output <path>` writes somewhere other than the committed reference.
+`--schema <snapshot>` reads a previously captured schema JSON instead of
+invoking Cargo, and `--home-dir <path>` normalises absolute defaults against
+the snapshot host's home, for reviewing a change without running the schema
+example locally.
+
+The schema walk emits a row per leaf and per union branch, never for an object
+that has properties. `REFERENCE_SUPPLEMENT_ROWS` therefore supplies the
+`custom_providers[].pricing` and `custom_providers[].profiles.*.pricing` parent
+rows, and `scripts/tests/test_generate_config_field_reference.py` pins them and
+their no-duplicate behaviour. Regeneration can still add rows the committed
+table does not list yet, such as most `custom_providers[].rate_limit_headers`
+children, so review the custom-provider rows as a diff before committing, and
+never delete a supplement to quiet one.
+
 ## Troubleshooting
 
 - `cargo nextest` missing:

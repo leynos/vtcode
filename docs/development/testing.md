@@ -119,6 +119,17 @@ feature from its dev-dependencies, so recorder-backed metric assertions compile
 only when the feature is on. The same dev-dependencies enable Tokio's
 `test-util` feature for paused-clock tests of rate-limit timing.
 
+`diapason-core` parses absolute `Retry-After` dates with `httpdate`, a normal
+dependency rather than a dev-dependency. The `retry_after_*` cases in
+`crates/codegen/diapason-core/src/retry_after.rs` cover integer, fractional,
+HTTP-date, capped, past-date, and malformed values. `proptest` is a
+dev-dependency of both `diapason-commons` and `diapason-acp`;
+`provider_floor_curve_is_monotonic_and_never_undercut` in
+`crates/common/diapason-commons/src/retry/tests.rs` and
+`valid_counts_produce_bounded_finite_utilization` in
+`crates/codegen/diapason-acp/src/zed/agent/lody_rate_limits.rs` are the
+properties this layer adds.
+
 Repository gate order is formatting, format check, lint, then tests.
 `make check` runs the format check, lint, build, and test gates, and
 `./scripts/check-dev.sh` covers the faster iteration subset. Tests run with

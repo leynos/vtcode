@@ -197,7 +197,11 @@ same instant. The clock-free compatibility adapters (`decision_for_llm_error`,
 deltas and configured reset intervals but ignore absolute dates: reading the
 wall clock inside a decision would classify the same error differently across
 calls. New code at a boundary that knows the observation time must use the
-explicit-time method.
+explicit-time method. In the ACP provider path that instant arrives through
+`RetryObservationClock`, a `Fn() -> SystemTime` seam threaded through
+`RetryRequest` and the buffered and streaming attempt helpers, so a retry
+decision and the failure telemetry recorded for it read the same observation
+time, and tests can supply a fixed one.
 
 ACP projects the same metadata twice. The warning notice carries the retry
 instruction and configured quota values in `_meta.lody.notice`; the optional
@@ -207,7 +211,9 @@ infers an account identity, a quota query API, or a reset time from
 `Retry-After`. Failures to deliver either notification are counted by the
 bounded `diapason.acp.rate_limit_notification_failure_total` metric, tagged by
 provider class and notification operation, and never logged with a provider
-name or response body.
+name or response body. The class tag is `ProviderClass` — `Builtin`, `Custom`,
+or `Unknown`, resolved once from the configured provider name — so an arbitrary
+provider name never becomes an open metric tag.
 
 ## MCP, tools and audit
 

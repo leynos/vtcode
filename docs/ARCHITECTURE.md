@@ -70,7 +70,9 @@ policy stays transport-agnostic. Buffered generation reports through
 sink. Compaction activity is a derived client projection:
 `diapason-exec-events::ThreadEvent` remains the authoritative runtime event
 contract, and ACP compaction diagnostics are redacted and bounded before they
-reach clients or logs.
+reach clients or logs. Rate-limit notices and the retry floor they report are
+described in
+[ACP runtime: provider rate limits and retry floors](./development/acp-runtime.md#provider-rate-limits-and-retry-floors).
 
 ## Model + Harness
 

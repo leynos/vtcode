@@ -52,12 +52,15 @@ falls back cleanly when a client ignores them. The
   only when Diapason scheduled a further attempt. When no further attempt is
   scheduled the notice says so. Diapason does not invent quota windows, reset
   times, or statuses. It also advertises the push-only `_meta.lody.rateLimits`
-  capability (version 1) and publishes optional snapshots as
-  `_lody/rate_limits/update` extension notifications; missing, zero, or
-  inconsistent counts produce no fabricated quota window. Custom providers can
-  map response headers in a `[custom_providers.rate_limit_headers]` table after
-  their `[[custom_providers]]` entry. See the
-  [provider rate-limit guide](./user-guide/provider-rate-limits.md).
+  capability (version 1) and publishes optional snapshots carrying bounded
+  utilization as `_lody/rate_limits/update` extension notifications; missing,
+  zero, or inconsistent counts produce no fabricated quota window. Custom
+  providers may map response headers in an optional
+  `[custom_providers.rate_limit_headers]` table after their
+  `[[custom_providers]]` entry; without it the provider's documented header
+  names apply, and missing or malformed values are ignored. See the
+  [provider rate-limit guide](./user-guide/provider-rate-limits.md) and the
+  [header mapping reference](./development/provider-rate-limit-headers.md).
 - **Custom-provider pricing.** Opt in per provider or per profile under
   `custom_providers.*.pricing`; rates are USD per million tokens. See the
   [configuration guide](./config/config.md).
