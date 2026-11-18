@@ -446,7 +446,10 @@ Additional rules:
   USD per million tokens with separate input, output, cache-read, and
   cache-write fields. ACP `costUSD` is omitted unless both input and output
   rates resolve; cache rates are used when the provider reports cache token
-  counts.
+  counts. When a model's entry omits a cache rate, the estimate falls back to a
+  heuristic fraction of the input rate: cache reads cost 10% and cache writes
+  125% of the input rate. Set both cache fields explicitly when a provider's
+  real cache prices differ from those assumptions.
 - Profiles do not make a model available in the picker — use `model` or
   `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends

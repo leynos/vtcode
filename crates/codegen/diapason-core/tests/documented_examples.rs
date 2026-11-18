@@ -15,6 +15,7 @@
 #[path = "support/doc_examples.rs"]
 mod doc_examples;
 
+use diapason_core::config::DiapasonConfig;
 use diapason_core::config::constants::tools;
 use diapason_core::metrics::{MetricsCollector, ToolRecoveryEvent, ToolRecoveryMetrics};
 use diapason_core::tools::ToolRegistry;
@@ -62,6 +63,44 @@ async fn versioned_patch_example_applies_to_its_fixture() {
     assert_eq!(
         fs::read_to_string(workspace.path().join("src/app.rs")).expect("read patched file"),
         "fn main() {\nnew\n}\n"
+    );
+}
+
+/// The published custom-provider mapping parses into the documented headers.
+///
+/// The guide's TOML is the user-visible contract for rate-limit header
+/// mapping, so the shipped text is loaded and parsed here rather than copied
+/// into a fixture. A renamed field or a table that no longer attaches to its
+/// `[[custom_providers]]` entry fails this test instead of leaving readers
+/// with configuration that does not load.
+#[test]
+fn provider_rate_limit_mapping_example_parses_into_the_documented_headers() {
+    let example = load_example("docs/user-guide/provider-rate-limits.md", "provider-rate-limits-custom-mapping")
+        .expect("the rate-limit guide must publish a marked mapping example");
+    assert_eq!(example.language, "toml", "the example must stay a TOML configuration fragment");
+
+    let config: DiapasonConfig = toml::from_str(&example.body).expect("the published example must parse");
+    let provider = config
+        .custom_providers
+        .first()
+        .expect("the example defines one custom provider");
+    assert_eq!(provider.name, "my-gateway", "the example must keep the provider name it documents");
+
+    let headers = provider.effective_rate_limit_headers();
+    assert_eq!(
+        (
+            headers.requests_limit_per_minute.as_deref(),
+            headers.requests_remaining_per_minute.as_deref(),
+            headers.tokens_limit_per_minute.as_deref(),
+            headers.tokens_remaining_per_minute.as_deref(),
+        ),
+        (
+            Some("X-RateLimit-Limit-Requests"),
+            Some("X-RateLimit-Remaining-Requests"),
+            Some("X-RateLimit-Limit-Tokens"),
+            Some("X-RateLimit-Remaining-Tokens"),
+        ),
+        "the published mapping must survive into the effective header configuration"
     );
 }
 

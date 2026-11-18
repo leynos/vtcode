@@ -526,9 +526,11 @@ and `[history]` settings do not control ACP audit output.
   fields: `operation`, `component`, `outcome`, `error_category`, and
   `error_chain_depth`. Failures from those boundaries returned to Zed use short
   fixed messages that do not embed workspace paths, command text, environment
-  values, or tool payloads. That guarantee is scoped to those boundaries, not
-  to every ACP response: provider incomplete-turn notices deliberately include
-  provider error text, and stripping ANSI codes is not redaction. At the
+  values, or tool payloads. Provider incomplete-turn notices use the same
+  bounded projection: they report a fixed failure category and, when the
+  provider supplied one, the HTTP status, never the provider's message or
+  response body, so they do not depend on ANSI stripping as a privacy control.
+  That guarantee is scoped to those surfaces, not to every ACP response. At the
   repaired boundaries the error's rendering is never written to a log at any
   level, so debug logs do not restore the workspace paths, provider detail, or
   prompt and tool payload text that the fixed messages omit. A DEBUG record

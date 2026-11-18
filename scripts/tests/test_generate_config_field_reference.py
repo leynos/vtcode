@@ -267,6 +267,54 @@ def test_render_markdown_keeps_the_state_locations_section() -> None:
     assert not missing, f"the generated reference dropped its hand-written section: {missing!r}"
 
 
+def test_reference_supplements_survive_regeneration() -> None:
+    """Rows the schema walk cannot emit must still reach the reference.
+
+    The walker emits a row for each leaf and for each union branch, never for
+    an object that has properties, so the custom-provider pricing parents are
+    absent from the collected fields. Without the supplement they would vanish
+    from every regeneration.
+    """
+    rendered = generator.render_markdown(generator.apply_reference_supplements([])).splitlines()
+
+    for supplement in generator.REFERENCE_SUPPLEMENT_ROWS:
+        row = (
+            f"| {generator.format_code_span(supplement.path)} | "
+            f"{generator.format_code_span(supplement.type_name)} | no | "
+            f"{generator.format_code_span(supplement.default or '-')} | "
+            f"{generator.escape_cell(supplement.description)} |"
+        )
+        assert row in rendered, f"the generated reference dropped {supplement.path}"
+
+
+def test_reference_supplement_replaces_a_collected_row() -> None:
+    """A supplement must never duplicate a row the walk starts producing."""
+    collected = [
+        generator.FieldEntry(
+            path="custom_providers[].pricing",
+            type_name="object",
+            required=False,
+            default="",
+            description="From the schema walk.",
+        ),
+        generator.FieldEntry(
+            path="agent.default_model",
+            type_name="string",
+            required=False,
+            default="",
+            description="",
+        ),
+    ]
+
+    merged = generator.apply_reference_supplements(collected)
+    paths = [entry.path for entry in merged]
+
+    assert paths.count("custom_providers[].pricing") == 1, "a supplement must not duplicate a row"
+    assert paths == sorted(paths), "supplements must keep the table sorted"
+    pricing = next(entry for entry in merged if entry.path == "custom_providers[].pricing")
+    assert pricing.type_name == "CustomProviderPricingConfig", "the supplement must win over the walk"
+
+
 def test_snapshot_host_home_normalises_absolute_defaults() -> None:
     schema = {
         "type": "object",

@@ -67,6 +67,45 @@ class FieldEntry:
 
 _MAX_WALK_DEPTH = 32
 
+# Field rows the schema walk cannot produce.
+#
+# The walker emits a row for every leaf and for each branch of a union, but not
+# for an object that has properties: those contribute only their children. The
+# custom-provider pricing objects are exactly that shape, so their parent rows
+# exist only because they are hand-written in the reference. Emitting them here
+# keeps the reference complete across regeneration, for the same reason
+# ``STATE_LOCATIONS_SECTION`` is emitted rather than appended.
+#
+# The type names, defaults and descriptions mirror the committed reference so a
+# regeneration reproduces those rows unchanged. The description of
+# `custom_providers[].pricing` is the one the reference has carried since the
+# field was introduced, which is why it differs from the shorter Rust doc
+# comment on the field itself.
+REFERENCE_SUPPLEMENT_ROWS = [
+    FieldEntry(
+        path="custom_providers[].pricing",
+        type_name="CustomProviderPricingConfig",
+        required=False,
+        default="",
+        description=(
+            "Optional explicit pricing for ACP usage cost reporting. Rates are "
+            "USD per million tokens; `costUSD` is emitted only when both input "
+            "and output rates resolve."
+        ),
+    ),
+    FieldEntry(
+        path="custom_providers[].profiles.*.pricing",
+        type_name="CustomProviderPricingConfig",
+        required=False,
+        default="",
+        description=(
+            "Optional per-model pricing override in USD per million tokens. It "
+            "is merged field-by-field over provider pricing; ACP `costUSD` "
+            "requires resolved input and output rates."
+        ),
+    ),
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -539,6 +578,32 @@ def apply_reference_overrides(entries: list[FieldEntry]) -> None:
         raise RuntimeError(f"Configuration reference overrides do not match schema fields: {paths}")
 
 
+def apply_reference_supplements(entries: list[FieldEntry]) -> list[FieldEntry]:
+    """Add the rows in :data:`REFERENCE_SUPPLEMENT_ROWS` to collected fields.
+
+    A supplement replaces any schema-derived entry for the same path, so the
+    rendered table always holds exactly one authoritative row there. That
+    matters if the walk later learns to emit these parent objects: the
+    reference keeps the documented row instead of gaining a duplicate or
+    silently changing shape.
+
+    Parameters
+    ----------
+    entries : list[FieldEntry]
+        Collected configuration fields, already carrying reference overrides.
+
+    Returns
+    -------
+    list[FieldEntry]
+        The entries plus the supplements, sorted by configuration path.
+    """
+    supplemented = {entry.path for entry in REFERENCE_SUPPLEMENT_ROWS}
+    merged = [entry for entry in entries if entry.path not in supplemented]
+    merged.extend(REFERENCE_SUPPLEMENT_ROWS)
+    merged.sort(key=lambda item: item.path)
+    return merged
+
+
 def escape_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ").strip()
 
@@ -634,6 +699,7 @@ def main() -> int:
         home_dir = str(args.home_dir.expanduser()) if args.home_dir else None
         entries = collect_fields(schema, home_dir=home_dir)
         apply_reference_overrides(entries)
+        entries = apply_reference_supplements(entries)
         markdown = render_markdown(entries)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)

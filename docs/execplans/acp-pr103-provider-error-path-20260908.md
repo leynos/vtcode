@@ -75,9 +75,11 @@ error contract, and `ThreadEvent` is untouched.
    the five production error-helper inputs explicit: they describe the provider
    error boundary and must not be wrapped solely for a metric.
 6. **Keep custom-provider tests navigable.** Split the extracted test suite
-   into authentication, error-metadata, sampling, and streaming modules. The
-   repository warns at 500 Rust lines; it does not impose a 400-line rule.
-   Parameterized transport cases retain both buffered and streaming calls.
+   into authentication, error-metadata, sampling, and streaming modules. Two
+   line budgets apply: the repository's own Rust length check warns at 500
+   lines, while CodeRabbit's hosted path guidance asks for 400. Decompose each
+   module below both, so the stricter review budget is met rather than argued
+   with. Parameterized transport cases retain both buffered and streaming calls.
 
 ## Verification plan
 
@@ -140,15 +142,17 @@ and spelling; immutable CodeScene; then CodeRabbit CLI.
   an unrelated provider path, stop and obtain a new scope decision.
 - Do not hand-wave Anthropic execution coverage. Inspect a real native path; if
   absent, report the exact missing owner before changing additional files.
-- The custom-provider suite follows the repository's 500-line Rust warning
-  threshold. The four domain modules are smaller through cohesive ownership,
-  not an invented 400-line rule.
+- The custom-provider suite is decomposed below both applicable budgets: the
+  repository's 500-line Rust warning threshold and CodeRabbit's 400-line path
+  guidance. The four domain modules are small because ownership is cohesive,
+  and they satisfy the stricter number too.
 
 ## Outcomes and retrospective
 
 Completed. The provider error-path repairs landed on the PR #103 rate-limit
 branch with deterministic and review evidence: the shared serial gate runner
 passed format, lint, typecheck, and test gates, and the focused OpenAI and
-OpenRouter 429 regression cases remain part of the committed suite. Provider
-response bodies stay out of exported metadata, and the retry helper keeps its
+OpenRouter 429 regression cases remain part of the committed suite. Non-rate
+OpenAI error metadata excludes provider response bodies, OpenRouter 429
+metadata keeps its sanitised diagnostic message, and the retry helper keeps its
 explicit observation-time argument.

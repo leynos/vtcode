@@ -39,20 +39,30 @@ existing timing test module, approved to test actual ACP call paths.
 
 ## Design and invariants
 
-`RetryPolicyCoreExt` gains additive explicit-time methods. Its existing methods
-remain compatibility wrappers that call `SystemTime::now()`. ACP captures
+`RetryPolicyCoreExt` gains additive explicit-time methods. ACP captures
 `SystemTime` when each provider error reaches its retry decision and passes
 that value to the explicit-time method.
+
+**Superseded.** An earlier draft made the compatibility wrappers read
+`SystemTime::now()`. The accepted contract is clock-free:
+`decision_for_llm_error` and `decision_for_anyhow` honour numeric deltas and
+configured reset intervals but ignore absolute `Retry-After` dates entirely,
+because a decision that reads the wall clock classifies the same error
+differently across calls. Only the explicit-time methods interpret absolute
+dates, and `RetryPolicy` overrides them to honour the supplied instant.
 
 The default explicit-time methods keep downstream trait implementations source
 compatible by delegating to their existing methods and therefore cannot impose
 time injection on them. `RetryPolicy` overrides those defaults and honours the
 supplied observation time, which is the implementation ACP uses.
 
-The retry-after conversion helper receives its observation time from its caller.
-`From<LLMError> for DiapasonError` remains a compatibility conversion boundary
-and captures the current time once before calling a private explicit-time
-conversion helper.
+The retry-after conversion helper receives its observation time from its
+caller. **Superseded:** an earlier draft had `From<LLMError> for DiapasonError`
+capture the current time once. The accepted conversion boundary is clock-free;
+it uses the clock-free retry-after helper and leaves absolute dates unresolved,
+matching the compatibility retry methods. `DiapasonError::from_llm_error_at` is
+the explicit-time conversion for callers that know when the failure was
+observed.
 
 The following invariants must hold:
 
@@ -438,15 +448,27 @@ The replay boundary was `OLD_BASE` `4a00f6264`, `OLD_HEAD` `62b966d95`, target
 head was `1bf897975`.
 
 One conflict appeared, in `docs/config/CONFIG_FIELD_REFERENCE.md`, because the
-parent regenerated the whole table. The file is hand-maintained here: the
-generator cannot emit `custom_providers[].pricing`,
-`custom_providers[].profiles.*.pricing` or the two
-`custom_providers[].rate_limit_headers` rows. The resolution takes the parent's
-table and re-inserts exactly those four rows at their alphabetical anchors, so
-the net document delta against the parent is four insertions. Weave resolved
-the generator conflicts it was given; commit 27 briefly reintroduced one of its
-footers, and the existing `chore(scripts): drop the weave resolution footers`
-commit removes it, leaving none in the final tree.
+parent regenerated the whole table. Regenerating dropped rows the schema walk
+cannot produce: `custom_providers[].pricing`,
+`custom_providers[].profiles.*.pricing`, and — at the time — both
+`custom_providers[].rate_limit_headers` rows. The committed reference carries
+twelve rows under those prefixes, not the four an earlier draft of this record
+named, because the parent pricing rows each have four nested rate fields. The
+resolution took the parent's table and re-inserted the twelve rows at their
+alphabetical anchors.
+
+The generator now closes the gap rather than relying on that manual repair.
+`apply_reference_supplements` emits the two object-parent rows the walker
+cannot reach: it emits a row per leaf and per union branch, never for an object
+that has properties. `rate_limit_headers` became
+`Option<RateLimitHeaderConfig>`, which the walker treats as a union, so it now
+emits that row together with its fourteen child header rows. Regenerating
+against the current schema reproduces every committed row under these prefixes,
+and `scripts/tests/test_generate_config_field_reference.py` pins both the
+supplement rows and their no-duplicate behaviour. Weave resolved the generator
+conflicts it was given; commit 27 briefly reintroduced one of its footers, and
+the existing `chore(scripts): drop the weave resolution footers` commit removes
+it, leaving none in the final tree.
 
 The audit reports 43 identical commits and two changed: the documentation
 resolution above, and the footer add/remove pair. `git diff --check` is clean,

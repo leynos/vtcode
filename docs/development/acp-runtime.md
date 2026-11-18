@@ -174,12 +174,18 @@ user-facing configuration is in the
 [rate-limit guide](../user-guide/provider-rate-limits.md).
 
 `Retry-After` and a configured reset interval produce a retry floor: the
-decision delay is the larger of the ordinary exponential backoff and the
-provider minimum. `RetryBackoff` owns that floor for one logical retry
-generation. It retains the largest provider minimum seen so far across later
-failures that omit the header, and resets at the start of the next generation,
-including the next tool-loop segment. Jitter can lengthen a wait but never
-shorten the floor, and the local maximum backoff cannot undercut it.
+decision delay is the larger of the ordinary exponential backoff and a second
+exponential curve whose base is the larger of the provider minimum and the
+policy's initial delay. The provider curve grows with the same multiplier and
+is not reduced by the local maximum backoff, so it is a floor that keeps
+climbing rather than a fixed wait. With a one-second initial delay, a
+ten-second local cap, and a fifteen-second provider minimum, the first retry
+waits fifteen seconds and the second waits thirty. `RetryBackoff` owns that
+floor for one logical retry generation. It retains the largest provider minimum
+seen so far across later failures that omit the header, and resets at the start
+of the next generation, including the next tool-loop segment. Jitter can
+lengthen a wait but never shorten the floor, and the local maximum backoff
+cannot undercut it.
 
 Absolute `Retry-After` HTTP dates are meaningful only relative to the instant
 the failure was observed, so retry decisions take an explicit observation time.
@@ -234,10 +240,12 @@ repository-wide claim that every ACP client response is detail-free. Any
 surface that turns a failure into a client error — REST error bodies as well as
 logs — needs the same treatment; sanitizing only the log line still leaks.
 
-Provider incomplete-turn notices are outside that scope. They deliberately
-include the provider error text so the caller can see what failed, and the
-notice strips ANSI escape codes as presentation hygiene rather than privacy
-redaction.
+Provider incomplete-turn notices use the same bounded projection. The notice
+and the incomplete assistant message carry a fixed failure category and, when
+the provider supplied one, the HTTP status; the provider's message, response
+body, and request identifiers are never rendered into the client-visible text.
+There is no provider text to strip, so the notice does not rely on ANSI
+stripping as a privacy control.
 
 At every repaired ACP failure boundary the originating error never reaches the
 operator-visible record at any level. `log_suppressed_error` emits the fixed

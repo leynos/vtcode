@@ -9,6 +9,8 @@ Add `rate_limit_headers` immediately after the associated
 `[[custom_providers]]` entry. Map each field to the response header that the
 provider actually sends:
 
+<!-- tested-example: provider-rate-limits-custom-mapping -->
+
 ```toml
 [[custom_providers]]
 name = "my-gateway"
@@ -29,11 +31,15 @@ recognizes that header independently as a retry instruction.
 
 ## Defaults and provider-specific mappings
 
-Custom providers start with four standard mappings for per-minute request and
-token limits. Provider names that identify Fireworks or Together also receive
-their provider-specific defaults. Values set in `rate_limit_headers` take
-precedence for those fields, while other fields can continue to use the
-effective provider defaults.
+Omitting `rate_limit_headers` entirely selects the defaults for that provider:
+four standard per-minute request and token mappings, replaced by the
+provider-specific `anthropic-ratelimit-*`, Fireworks, or Together header names
+when the provider name identifies one of them. That is why an
+Anthropic-compatible proxy needs no header table at all.
+
+A table you do write stays authoritative. Values set in `rate_limit_headers`
+take precedence for those fields, while fields it leaves unset continue to use
+the effective provider defaults.
 
 For the complete field list and provider mapping tables, see the
 [provider rate-limit header developer reference](../development/provider-rate-limit-headers.md).
