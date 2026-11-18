@@ -235,9 +235,7 @@ impl PtyManager {
         // Remove session from global map first
         let handle = {
             let mut sessions = self.inner.sessions.lock();
-            sessions
-                .remove(session_id)
-                .ok_or_else(|| anyhow!("PTY session '{session_id}' not found"))?
+            sessions.remove(session_id).ok_or_else(|| missing_pty_session(session_id))?
         };
 
         // Lock order: writer -> child -> reader_thread (follow documented order)
@@ -283,9 +281,15 @@ impl PtyManager {
 
     fn session_handle(&self, session_id: &str) -> Result<Arc<PtySessionHandle>> {
         let sessions = self.inner.sessions.lock();
-        sessions
-            .get(session_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("PTY session '{session_id}' not found"))
+        sessions.get(session_id).cloned().ok_or_else(|| missing_pty_session(session_id))
     }
+}
+
+/// Builds the typed cause for a handle the backend no longer holds.
+///
+/// The message keeps the session id for a human reading a log, and the type is
+/// what callers classify so an expected absence stays distinguishable from a
+/// backend fault.
+fn missing_pty_session(session_id: &str) -> anyhow::Error {
+    anyhow::Error::new(super::super::PtySessionNotFound { session_id: session_id.to_owned() })
 }

@@ -185,7 +185,9 @@ impl SubagentController {
                     Err(error) => {
                         // Nothing is known about the process, so keep the
                         // cached status instead of projecting an exit.
-                        *liveness = BackgroundLiveness::Unobserved { reason: bounded_liveness_reason(&error) };
+                        *liveness = BackgroundLiveness::Unobserved {
+                            reason: bounded_liveness_reason(&error, exec_session_id),
+                        };
                         continue;
                     }
                 }
@@ -1277,24 +1279,38 @@ impl SubagentController {
 
 /// Reports whether a liveness read failed because the session is genuinely gone.
 ///
-/// Only the typed not-found cause counts. Any other fault — a backend lookup
-/// inconsistency or a future I/O failure — is a read that told the caller
-/// nothing about the process, so the projection must not treat it as an exit.
+/// Only a typed not-found cause counts, from either storage layer. The
+/// exec-session record is removed before its PTY handle is released, so a read
+/// that races the close finds the record and misses the handle; that is the
+/// same expected exit as a read that misses the record, and classifying it as
+/// a fault would report an unobserved entry for a session that has simply
+/// ended. Any other fault — a backend inconsistency or an I/O failure — is a
+/// read that told the caller nothing about the process, so the projection must
+/// not treat it as an exit.
 fn exec_session_is_missing(error: &anyhow::Error) -> bool {
-    error
-        .chain()
-        .any(|cause| cause.is::<crate::tools::exec_session::ExecSessionNotFound>())
+    error.chain().any(|cause| {
+        cause.is::<crate::tools::exec_session::ExecSessionNotFound>()
+            || cause.is::<crate::tools::pty::PtySessionNotFound>()
+    })
 }
 
-/// Renders a bounded diagnostic reason for an unobserved entry.
+/// Renders a bounded, non-sensitive reason for an unobserved entry.
 ///
 /// Only the outermost error text is used, which is the operation that failed
 /// rather than its source chain, and it is truncated to a fixed character
-/// budget. This keeps the log context short and free of the paths a deeper
-/// storage cause could carry.
-fn bounded_liveness_reason(error: &anyhow::Error) -> String {
+/// budget. The session id is replaced first: a storage backend quotes the
+/// record it was asked for in its own message, and this reason reaches a debug
+/// log next to a task id, so the identifier must not travel with it. Redaction
+/// precedes truncation so a long id cannot be cut in half and survive.
+fn bounded_liveness_reason(error: &anyhow::Error, session_id: &str) -> String {
     const MAX_REASON_CHARS: usize = 160;
+    const REDACTED_SESSION: &str = "<session>";
     let rendered = error.to_string();
+    let rendered = if session_id.is_empty() {
+        rendered
+    } else {
+        rendered.replace(session_id, REDACTED_SESSION)
+    };
     if rendered.chars().count() <= MAX_REASON_CHARS {
         rendered
     } else {
@@ -1362,8 +1378,8 @@ mod background_owner_tests {
     //! archive yields an empty preview, an empty legacy owner falls back to the
     //! current session, and the reader resolves each task by task id.
     use super::{
-        BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundSubprocessEntry, read_output_tail,
-        read_preview, usable_background_parent_session_id,
+        BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundSubprocessEntry,
+        exec_session_is_missing, read_output_tail, read_preview, usable_background_parent_session_id,
     };
     use futures::future::BoxFuture;
 
@@ -1561,5 +1577,29 @@ mod background_owner_tests {
         let rendered = format!("{error:#}");
         assert!(rendered.contains("read background output for background-worker"), "{rendered}");
         assert!(rendered.contains("permission denied"), "{rendered}");
+    }
+
+    /// Both storage layers report a vanished session as the expected exit.
+    ///
+    /// The record is removed before the PTY handle is released, so a read that
+    /// races the close sees either cause depending on where it lands. Both are
+    /// the same fact — the session is gone — and neither is an observation
+    /// failure. A plain fault stays a fault, including when a caller wraps it
+    /// in context.
+    #[test]
+    fn liveness_classifier_treats_a_missing_backend_as_an_expected_exit() {
+        let handle_gone = anyhow::Error::new(crate::tools::pty::PtySessionNotFound {
+            session_id: "exec-background-worker".to_owned(),
+        });
+        assert!(exec_session_is_missing(&handle_gone), "a backend that dropped the handle is the expected exit");
+
+        let record_gone = anyhow::Error::new(crate::tools::exec_session::ExecSessionNotFound {
+            session_id: "exec-background-worker".to_owned(),
+        })
+        .context("read background liveness");
+        assert!(exec_session_is_missing(&record_gone), "the typed cause must be found through a context wrapper");
+
+        let fault = anyhow::anyhow!("exec session store is unavailable");
+        assert!(!exec_session_is_missing(&fault), "an untyped fault told the caller nothing about the process");
     }
 }
