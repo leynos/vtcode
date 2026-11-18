@@ -473,11 +473,13 @@ impl SubagentController {
             output_reader: None,
             pty_manager: self.config.pty_manager.clone(),
             managed_background_runtime: true,
+            lock_scope: None,
         };
         match SubagentController::new(nested_config).await {
             Ok(mut controller) => {
                 controller.inherit_progress_observers(self).await;
                 controller.inherit_child_id_scope(self);
+                controller.inherit_lock_scope(self);
                 Some(Arc::new(controller))
             }
             Err(err) => {

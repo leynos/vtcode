@@ -8,7 +8,9 @@
 //! The root controller owns one scope and the whole tree shares it through one
 //! [`ChildIdScopeSlot`]; ids are recorded for the lifetime of the tree.
 use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+
+use super::controller_locks::{SubagentLockScope, default_lock_scope};
 
 /// The child task ids allocated anywhere in one controller tree.
 ///
@@ -25,7 +27,7 @@ pub(super) struct ChildIdScope {
     ///
     /// `None` marks a terminal scope, which is the one accepting ids. The chain
     /// cannot cycle: [`ChildIdScopeSlot::adopt_into`] resolves both sides to
-    /// their terminals under the process-wide adoption lock, so an edge it
+    /// their terminals under the tree's adoption lock, so an edge it
     /// writes always points at a scope that had no redirect at the time it was
     /// written, and no redirect is ever written out of a node that already has
     /// one.
@@ -74,30 +76,36 @@ impl ChildIdScope {
 /// has already issued. A descendant that was attached before the graft points
 /// at the adopted subtree's former scope instead of this slot, and reaches the
 /// tree through that scope's forwarding link.
-#[derive(Default)]
 pub(super) struct ChildIdScopeSlot {
     scope: RwLock<Arc<ChildIdScope>>,
+    /// The tree's adoption lock, shared with every controller that adopts this
+    /// slot. Holding it for the whole resolution and allocation keeps an
+    /// adoption from redirecting the chain out from under a reserved id.
+    ///
+    /// The controller keeps its own lock order around this module rather than
+    /// the reverse: attaching takes the target controller's state write lock
+    /// before `adopt_into`, and inserting a child takes it before `with_scope`.
+    /// Nothing here takes a controller state lock, so the two orders cannot
+    /// cross.
+    lock_scope: Arc<SubagentLockScope>,
 }
 
-/// Serialises subtree adoption across the process.
+/// A default slot binds to the process-global locks, not to a fresh scope.
 ///
-/// Adopting takes the joining slot's write guard and the target's read guard,
-/// a symmetric pair that would deadlock if two controllers were attached in
-/// opposing directions at once. Joins are rare, so making them exclusive costs
-/// nothing measurable and removes the possibility. Allocation holds the same
-/// lock so a scope cannot forward to another tree between resolving the chain
-/// and reserving an id.
-///
-/// The controller keeps its own lock order around this module rather than the
-/// reverse: attaching takes the target controller's state write lock before
-/// `adopt_into`, and inserting a child takes it before `with_scope`. Nothing
-/// here takes a controller state lock, so the two orders cannot cross.
-fn adoption_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+/// Deriving `Default` would give every default slot its own `Arc` and silently
+/// drop the cross-controller exclusion the former static lock provided.
+impl Default for ChildIdScopeSlot {
+    fn default() -> Self {
+        Self::with_lock_scope(default_lock_scope())
+    }
 }
 
 impl ChildIdScopeSlot {
+    /// Builds a slot bound to the tree's adoption lock.
+    pub(super) fn with_lock_scope(lock_scope: Arc<SubagentLockScope>) -> Self {
+        Self { scope: RwLock::new(Arc::default()), lock_scope }
+    }
+
     /// Runs `allocate` against this subtree's live allocator.
     ///
     /// The slot resolves through any forwarding links first, so a controller
@@ -105,7 +113,11 @@ impl ChildIdScopeSlot {
     /// adoption lock is held for the whole resolution and allocation, so an
     /// adoption cannot redirect the chain out from under an id being reserved.
     pub(super) fn with_scope<R>(&self, allocate: impl FnOnce(&ChildIdScope) -> R) -> R {
-        let _exclusive = adoption_lock().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _exclusive = self
+            .lock_scope
+            .adoption()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let scope = self.scope.read().unwrap_or_else(|poisoned| poisoned.into_inner());
         let terminal = ChildIdScope::terminal(&scope);
         allocate(&terminal)
@@ -126,13 +138,18 @@ impl ChildIdScopeSlot {
     /// leave the adapter listing one task twice and routing an output read or
     /// a cancel to whichever controller it reached first.
     ///
-    /// The merge and the redirect run under the process-wide adoption lock, so
-    /// no id can be reserved anywhere while the two allocators are reconciled.
+    /// The merge and the redirect run under the tree's adoption lock, so no id
+    /// can be reserved anywhere in that tree while the two allocators are
+    /// reconciled.
     /// The ids this subtree holds are exactly the ones the target now re-uses
     /// through the forwarding link, and because the target is terminal when
     /// the link is written, the chain stays acyclic.
     pub(super) fn adopt_into(&self, target: &Self) -> Result<(), String> {
-        let _exclusive = adoption_lock().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _exclusive = self
+            .lock_scope
+            .adoption()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let source = {
             let slot = self.scope.read().unwrap_or_else(|poisoned| poisoned.into_inner());
             ChildIdScope::terminal(&slot)
@@ -145,8 +162,8 @@ impl ChildIdScopeSlot {
             return Ok(());
         }
         // The scopes cannot have changed since they were resolved: only an
-        // adoption writes a redirect, the process-wide lock above excludes
-        // every other one, and allocation holds it too.
+        // adoption writes a redirect, the tree's adoption lock above excludes
+        // every other one in that tree, and allocation holds it too.
         let mut slot = self.scope.write().unwrap_or_else(|poisoned| poisoned.into_inner());
         let source_taken = source.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut target_taken = target_scope.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());

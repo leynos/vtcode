@@ -4,46 +4,14 @@
 //! controller inherits its owner's registry and observer key so grandchild
 //! events still reach the adapter that registered for the root session. The
 //! registration handle detaches its observer when it is dropped.
-#![allow(
-    unused_imports,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-use anyhow::{Context, Result, anyhow, bail};
-use chrono::Utc;
-use futures::future::select_all;
-use std::collections::{BTreeMap, VecDeque};
-use std::future::Future;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Mutex, Weak};
-use tokio::sync::{Notify, RwLock};
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, Weak};
 
-use crate::config::DiapasonConfig;
-use crate::config::types::ReasoningEffortLevel;
-use crate::core::agent::runner::{AgentRunner, RunnerSettings};
-use crate::core::agent::task::Task;
-use crate::core::threads::{ThreadBootstrap, ThreadId, ThreadRuntimeHandle, ThreadSnapshot};
-use crate::hooks::{LifecycleHookEngine, SessionStartTrigger};
-use crate::llm::provider::Message;
-use crate::tools::exec_session::ExecSessionManager;
-use crate::tools::pty::{PtyManager, PtySize};
-use crate::utils::session_archive::{SessionArchive, find_session_by_identifier};
-use diapason_config::SubagentSpec;
-use diapason_config::auth::OpenAIChatGptAuthHandle;
-
-use self::background::*;
-use self::config::*;
-use self::constants::*;
-use self::discovery::discover_controller_subagents;
-use self::model::*;
-use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
-
-#[allow(
-    unused_imports,
-    reason = "Intentional compatibility, platform, or test-only suppression."
-)]
-use super::*;
+use super::{
+    BackgroundRecord, BackgroundSubprocessEntry, ChildRecord, StatusEntryBuilder, SubagentController,
+    SubagentProgressObserver, SubagentStatusEntry,
+};
 
 /// The observers registered against one controller, keyed by registration id.
 #[derive(Default)]

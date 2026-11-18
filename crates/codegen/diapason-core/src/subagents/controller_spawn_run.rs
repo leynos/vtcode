@@ -9,9 +9,9 @@ use futures::future::{BoxFuture, select_all};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
-use tokio::sync::{Mutex, Notify, RwLock};
+use tokio::sync::{Notify, RwLock};
 
 use crate::config::DiapasonConfig;
 use crate::config::types::ReasoningEffortLevel;
@@ -599,36 +599,36 @@ impl SubagentController {
             // controller.
             return Ok(());
         }
-        // Take the persistence lock before snapshotting in-memory state.
-        // Reading first lets two concurrent saves snapshot v1 and v2, then
-        // write v2 before v1, leaving the older snapshot as the file. The lock
-        // must cover the read so the last write is always the newest state.
-        let guard = background_state_persistence_lock().lock().await;
-        // The in-process mutex cannot serialise another Diapason process that
-        // shares this workspace. Hold the ledger's inter-process lock across
-        // the reload, merge and write so two processes cannot each read the
-        // old ledger and then have the later rename discard the other's
-        // record.
-        let file_guard = lock_background_state(&self.config.workspace_root).await?;
-        let records = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .values()
-                .cloned()
-                .map(BackgroundRecord::into_persisted)
-                .collect()
-        };
+        // The lock is taken inside the persistence task, before the in-memory
+        // snapshot. Reading first would let two concurrent saves snapshot v1
+        // and v2, then write v2 before v1, leaving the older snapshot as the
+        // file. Holding the lock across the read keeps the last write newest.
+        let lock_scope = Arc::clone(&self.lock_scope);
+        let state = Arc::clone(&self.state);
         let workspace_root = self.config.workspace_root.clone();
         let owner_session_id = self.background_owner_session_id.clone();
-        // Both guards move into the persistence task. Cancelling this caller
+        // Both guards live in the persistence task. Cancelling this caller
         // only detaches that task, so neither lock is released until the
         // reload, merge, write and rename have finished; dropping them here
         // instead would let a second writer start from the same stale ledger
         // while this write was still in flight.
         tokio::spawn(async move {
-            let _persistence_guard = guard;
-            let _ledger_guard = file_guard;
+            let _persistence_guard = lock_scope.persistence().lock().await;
+            // The in-process mutex cannot serialise another Diapason process
+            // that shares this workspace. Hold the ledger's inter-process lock
+            // across the reload, merge and write so two processes cannot each
+            // read the old ledger and then have the later rename discard the
+            // other's record.
+            let _ledger_guard = lock_background_state(&workspace_root).await?;
+            let records = {
+                let state = state.read().await;
+                state
+                    .background_children
+                    .values()
+                    .cloned()
+                    .map(BackgroundRecord::into_persisted)
+                    .collect()
+            };
             persist_background_records(&workspace_root, owner_session_id.as_deref(), records).await
         })
         .await
@@ -1040,11 +1040,6 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
         waiter.as_mut().enable();
     }
     waiters
-}
-
-static BACKGROUND_STATE_PERSISTENCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-fn background_state_persistence_lock() -> &'static Mutex<()> {
-    BACKGROUND_STATE_PERSISTENCE_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[cfg(test)]

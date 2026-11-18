@@ -146,6 +146,36 @@ pub struct BackgroundSubprocessSnapshot {
     pub preview: String,
 }
 
+/// How one background record's liveness was obtained.
+///
+/// A listing that overlays liveness must not invent a terminal status when the
+/// exec-session manager cannot answer: "the process exited" and "the read
+/// failed" are different facts. This outcome carries that distinction to the
+/// caller without changing the wire shape of a background entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BackgroundLiveness {
+    /// The exec-session manager answered, or no read was needed because the
+    /// record is already settled; the entry reflects the observation.
+    Observed,
+    /// The liveness read failed for a reason other than the session being
+    /// absent. The entry keeps its cached status, and `reason` is a short,
+    /// bounded diagnostic that contains no paths or secrets.
+    Unobserved { reason: String },
+}
+
+/// One background status projection paired with how it was observed.
+///
+/// The entry is exactly the projection a caller would serve; the outcome only
+/// qualifies it, so an adapter can log an unobserved record and still return
+/// the list.
+#[derive(Debug, Clone)]
+pub struct BackgroundLivenessEntry {
+    /// The status projection, with liveness overlaid only when observed.
+    pub entry: BackgroundSubprocessEntry,
+    /// Whether the projection's liveness was actually observed.
+    pub liveness: BackgroundLiveness,
+}
+
 /// Receives domain status snapshots when a delegated child or managed
 /// background process changes state.
 ///
