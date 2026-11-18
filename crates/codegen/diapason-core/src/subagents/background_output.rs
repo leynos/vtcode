@@ -72,7 +72,11 @@ impl<'a> BackgroundOutputSource<'a> {
 /// exec-session adapter, which is the only reader that has storage to resolve
 /// them against; an adapter outside this crate serves output from the task
 /// identity alone.
-#[derive(Debug, Clone, Copy)]
+///
+/// The rendering is written by hand rather than derived for the same reason: a
+/// derived one is reachable from every caller and would print the handles that
+/// the port exists to keep inside the adapter.
+#[derive(Clone, Copy)]
 pub struct BackgroundTaskRef<'a> {
     /// The record id of the task, which keys the read for every reader.
     pub id: &'a str,
@@ -81,6 +85,17 @@ pub struct BackgroundTaskRef<'a> {
     /// Deliberately not public: the handles belong to the adapter that reads
     /// them, not to the trait's contract.
     pub(crate) source: BackgroundOutputSource<'a>,
+}
+
+impl std::fmt::Debug for BackgroundTaskRef<'_> {
+    /// Renders the task identity and nothing else.
+    ///
+    /// Formatting is reachable from every caller, so the storage handles are
+    /// omitted: a reader outside this crate must not be able to print an
+    /// exec-session identifier or a recorded path it was never granted.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("BackgroundTaskRef").field("id", &self.id).finish()
+    }
 }
 
 impl<'a> BackgroundTaskRef<'a> {
@@ -153,4 +168,36 @@ pub trait BackgroundOutputReader: Send + Sync {
         &'a self,
         task: &'a BackgroundTaskRef<'a>,
     ) -> BoxFuture<'a, Result<BackgroundOutput, BackgroundOutputError>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A task reference must render its identity without its storage handles.
+    ///
+    /// A reader outside this crate can format the reference it is given, so a
+    /// rendering that included the source would publish the exec-session
+    /// identifier and the recorded paths the port exists to keep inside the
+    /// adapter.
+    #[test]
+    fn debug_rendering_names_only_the_task_id() {
+        let source = BackgroundOutputSource {
+            exec_session_id: "exec-session-that-must-not-leak",
+            transcript_path: Some(Path::new("/tmp/transcript-that-must-not-leak.jsonl")),
+            archive_path: Some(Path::new("/tmp/archive-that-must-not-leak.jsonl")),
+        };
+        let task = BackgroundTaskRef { id: "task-7", source };
+
+        let rendered = format!("{task:?}");
+
+        assert!(rendered.contains("task-7"), "the rendering must name the task identity: {rendered}");
+        for handle in [
+            source.exec_session_id,
+            "/tmp/transcript-that-must-not-leak.jsonl",
+            "/tmp/archive-that-must-not-leak.jsonl",
+        ] {
+            assert!(!rendered.contains(handle), "the rendering must not publish `{handle}`: {rendered}");
+        }
+    }
 }

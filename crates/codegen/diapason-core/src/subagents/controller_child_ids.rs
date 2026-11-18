@@ -236,6 +236,7 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use std::collections::{BTreeMap, BTreeSet};
+    use std::time::Duration;
 
     /// Resolves which slot indices a sequence of grafts joined.
     ///
@@ -343,5 +344,64 @@ mod tests {
             "each collision must take the next free suffix"
         );
         assert!(!taken.contains(&third), "the third id must still be free");
+    }
+
+    /// Allocation and adoption exclude each other through the tree lock.
+    ///
+    /// A graft reconciles the two allocators and only then rewrites the
+    /// subtree's slot. An allocation that resolved the old allocator in between
+    /// would record its id where the tree no longer reads it, and the tree would
+    /// issue that id again. Both sides therefore take one lock for the whole
+    /// step: the allocation for its resolve-and-record, the graft for its
+    /// merge-and-redirect. A concurrent run cannot show that reliably — the
+    /// window is microseconds wide — so this holds the lock itself and asserts
+    /// that neither step can finish while it is held.
+    #[test]
+    fn allocation_and_adoption_wait_for_the_tree_adoption_lock() {
+        let lock_scope = Arc::new(SubagentLockScope::new());
+        let source = Arc::new(ChildIdScopeSlot::with_lock_scope(Arc::clone(&lock_scope)));
+        let target = Arc::new(ChildIdScopeSlot::with_lock_scope(Arc::clone(&lock_scope)));
+        let candidate = "blocked-candidate";
+        let wait = Duration::from_millis(250);
+
+        let guard = lock_scope.adoption().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let (allocated_tx, allocated_rx) = std::sync::mpsc::channel();
+        let allocating_source = Arc::clone(&source);
+        let allocating = std::thread::spawn(move || {
+            let id = allocating_source.with_scope(|scope| scope.allocate(|_| false, candidate));
+            let _ = allocated_tx.send(id);
+        });
+        assert!(allocated_rx.recv_timeout(wait).is_err(), "an allocation must wait for the tree adoption lock");
+
+        let (adopted_tx, adopted_rx) = std::sync::mpsc::channel();
+        let adopting_source = Arc::clone(&source);
+        let adopting_target = Arc::clone(&target);
+        let adopting = std::thread::spawn(move || {
+            let outcome = adopting_source.adopt_into(&adopting_target);
+            let _ = adopted_tx.send(outcome.is_ok());
+        });
+        assert!(adopted_rx.recv_timeout(wait).is_err(), "a graft must wait for the tree adoption lock");
+
+        drop(guard);
+
+        assert_eq!(
+            allocated_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("the allocation resumes"),
+            candidate,
+            "the waiting allocation must still take the free candidate"
+        );
+        assert!(
+            adopted_rx.recv_timeout(Duration::from_secs(5)).expect("the graft resumes"),
+            "the waiting graft must still succeed"
+        );
+        allocating.join().expect("the allocating thread finishes");
+        adopting.join().expect("the adopting thread finishes");
+
+        // Whichever step the lock admitted first, the id it recorded is the one
+        // the grafted tree now reads, so the tree can never issue it again.
+        let repeated = target.with_scope(|scope| scope.allocate(|_| false, candidate));
+        assert_ne!(repeated, candidate, "the tree must refuse an id recorded on either side of the graft");
     }
 }
