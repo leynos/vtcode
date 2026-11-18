@@ -76,7 +76,11 @@ impl ChangingAdmissionSource {
 impl ProviderAdmissionMetricsSource for ChangingAdmissionSource {
     fn snapshot(&self) -> ProviderAdmissionSnapshot {
         let index = self.next.fetch_add(1, Ordering::SeqCst);
-        let reads = self.reads.lock().expect("admission sample lock");
+        // A poisoned lock still holds a usable sample list, and this double has
+        // no recovery path to preserve, so the guard is recovered rather than
+        // unwrapped. The unwrap/expect scan also reads this module as
+        // production code because its `cfg(test)` lives in the parent.
+        let reads = self.reads.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         reads[index.min(reads.len() - 1)]
     }
 }
