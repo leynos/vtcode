@@ -50,7 +50,7 @@ time injection on them. `RetryPolicy` overrides those defaults and honours the
 supplied observation time, which is the implementation ACP uses.
 
 The retry-after conversion helper receives its observation time from its caller.
-`From<LLMError> for VtCodeError` remains a compatibility conversion boundary
+`From<LLMError> for DiapasonError` remains a compatibility conversion boundary
 and captures the current time once before calling a private explicit-time
 conversion helper.
 
@@ -423,3 +423,76 @@ were red for three reasons, all in the replay rather than in the feature:
 Three Markdown files also needed a `mdtablefix` reflow after the hand-resolved
 paragraphs; `make check-fmt` runs that check after `cargo fmt`, and the earlier
 red run never reached it.
+
+## Third restack onto the rewritten parent head
+
+The parent was rewritten a third time on 2026-11-17:
+`feat/acp-lody-usage-activity-metadata` moved from `4a00f6264` to `47fdd430d`,
+which is not a descendant of the two bases this layer had used. The common
+ancestor fell back to `555941c1e`; the parent carried 71 commits since it and
+34 of this layer's 93 changed files also changed there.
+
+The replay boundary was `OLD_BASE` `4a00f6264`, `OLD_HEAD` `62b966d95`, target
+`47fdd430d`, with 45 linear commits and no merges. Recovery refs are
+`refs/agent-recovery/pr103/r3-{old-head,old-base,target,remote-head}`. The new
+head was `1bf897975`.
+
+One conflict appeared, in `docs/config/CONFIG_FIELD_REFERENCE.md`, because the
+parent regenerated the whole table. The file is hand-maintained here: the
+generator cannot emit `custom_providers[].pricing`,
+`custom_providers[].profiles.*.pricing` or the two
+`custom_providers[].rate_limit_headers` rows. The resolution takes the parent's
+table and re-inserts exactly those four rows at their alphabetical anchors, so
+the net document delta against the parent is four insertions. Weave resolved
+the generator conflicts it was given; commit 27 briefly reintroduced one of its
+footers, and the existing `chore(scripts): drop the weave resolution footers`
+commit removes it, leaving none in the final tree.
+
+The audit reports 43 identical commits and two changed: the documentation
+resolution above, and the footer add/remove pair. `git diff --check` is clean,
+`cargo metadata --all-features --locked` succeeds, and the stale-identifier
+scan is clean apart from the two deliberate retained-module-guidance banners.
+
+### What the r3 gate run found
+
+`lody_management_doc_tests.rs` no longer compiled: it called
+`response_usage_notification` with three arguments after the profile parameter
+was added. The file's net delta against `47fdd430d` was empty, so the break was
+inherited from the parent rewrite rather than introduced here, and repairing it
+is remediation of inherited breakage. That repair was superseded by the fourth
+restack described below.
+
+## Fourth restack onto the advanced parent head
+
+The parent advanced again on 2026-11-18, this time by fast-forward rather than
+rewrite: `47fdd430d` moved to `e2a77616c` through two commits.
+
+- `24d93208b fix(acp): attribute usage to the served model in the response path`
+  resolves the served model inside `response_usage_notification` through the
+  `effective_model` helper, so the payload is keyed by the model the provider
+  reported rather than the routed one.
+- `e2a77616c docs(acp): keep the usage example and its doc test in step`
+  repairs the same doc test this layer had just repaired, and reaches a
+  different decision: it supplies the counts and the context window but drops
+  `costUSD` from the published example, because a hand-written dollar figure
+  would have to match the estimator bit for bit. Its prose now states that the
+  example declares a window and no rates, so it carries no cost.
+
+The replay boundary was `OLD_BASE` `47fdd430d`, `OLD_HEAD` `99487daf3`, target
+`e2a77616c`, with 46 linear commits and no merges. Recovery refs are
+`refs/agent-recovery/pr103/r4-{old-head,old-base,target,remote-head}`.
+
+Only `lody_management_doc_tests.rs` conflicted, and the conflict is the whole
+of this layer's own doc-test repair against the parent's. The parent's version
+subsumes it: identical counts, the same reasoning subtraction, the same
+published window, and a served-model resolution that this layer's
+`effective_model` helper already implements. Its cost-free example also avoids
+the exactness problem this layer had just worked around. The resolution
+therefore takes the parent's file verbatim, which makes the replayed commit
+empty, and it is dropped. That leaves 45 commits and one deliberate omission,
+with the parent's decision retained rather than overridden.
+
+`git range-diff 47fdd430d..99487daf3 e2a77616c..HEAD` reports 45 identical
+commits and the dropped one; `git diff --check` is clean, no conflict marker or
+Weave footer survives, and the stale-identifier scan finds only prose that
+describes the rename.
