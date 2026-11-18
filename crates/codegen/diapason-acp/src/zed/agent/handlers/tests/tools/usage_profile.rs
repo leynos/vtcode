@@ -106,14 +106,16 @@ async fn published_usage_updates(session_model: &str, response: LLMResponse) -> 
 
     let (agent_channel, client_channel) = Channel::duplex();
     let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
-    let client_ready = Arc::new(Notify::new());
+    let agent_ready = Arc::new(Notify::new());
     let release_client = Arc::new(Notify::new());
 
     let agent_connection = install_handlers(Agent.builder().name("diapason-usage-profile-test"), Arc::clone(&agent))
         .connect_with(agent_channel, {
             let agent = Arc::clone(&agent);
+            let agent_ready = Arc::clone(&agent_ready);
             async move |cx: ConnectionTo<Client>| {
                 agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                agent_ready.notify_one();
                 std::future::pending::<agent_client_protocol::Result<()>>().await
             }
         });
@@ -129,16 +131,14 @@ async fn published_usage_updates(session_model: &str, response: LLMResponse) -> 
             on_receive_notification!(),
         )
         .connect_with(client_channel, {
-            let client_ready = Arc::clone(&client_ready);
             let release_client = Arc::clone(&release_client);
             async move |_cx: ConnectionTo<Agent>| {
-                client_ready.notify_one();
                 release_client.notified().await;
                 Ok(())
             }
         });
     let client_task = tokio::spawn(client_connection);
-    client_ready.notified().await;
+    agent_ready.notified().await;
 
     agent.publish_lody_usage(
         &acp::SessionId::new(Arc::from("session-usage-profile")),
@@ -212,14 +212,16 @@ async fn clocked_publication(response: LLMResponse, outcome: ClockedOutcome) -> 
 
     let (agent_channel, client_channel) = Channel::duplex();
     let (notifications_tx, mut notifications_rx) = mpsc::unbounded_channel();
-    let client_ready = Arc::new(Notify::new());
+    let agent_ready = Arc::new(Notify::new());
     let release_client = Arc::new(Notify::new());
 
     let agent_connection = install_handlers(Agent.builder().name("diapason-usage-clock-test"), Arc::clone(&agent))
         .connect_with(agent_channel, {
             let agent = Arc::clone(&agent);
+            let agent_ready = Arc::clone(&agent_ready);
             async move |cx: ConnectionTo<Client>| {
                 agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+                agent_ready.notify_one();
                 std::future::pending::<agent_client_protocol::Result<()>>().await
             }
         });
@@ -235,16 +237,14 @@ async fn clocked_publication(response: LLMResponse, outcome: ClockedOutcome) -> 
             on_receive_notification!(),
         )
         .connect_with(client_channel, {
-            let client_ready = Arc::clone(&client_ready);
             let release_client = Arc::clone(&release_client);
             async move |_cx: ConnectionTo<Agent>| {
-                client_ready.notify_one();
                 release_client.notified().await;
                 Ok(())
             }
         });
     let client_task = tokio::spawn(client_connection);
-    client_ready.notified().await;
+    agent_ready.notified().await;
 
     let trace = TraceCapture::default();
     {
