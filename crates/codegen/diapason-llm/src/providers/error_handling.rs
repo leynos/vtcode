@@ -182,7 +182,7 @@ impl ApiErrorKind {
     /// Diagnostic text retained in metadata for this category.
     ///
     /// Rate-limit categories keep the human-readable provider message; other
-    /// categories keep the sanitised response diagnostic.
+    /// categories keep the sanitized response diagnostic.
     const fn metadata_detail<'a>(self, detail: &'a ErrorDetail<'a>) -> &'a str {
         match self {
             Self::RateLimit | Self::QuotaExceeded => detail.message,
@@ -195,7 +195,7 @@ impl ApiErrorKind {
     }
 }
 
-/// Sanitised text derived from one provider error body.
+/// Sanitized text derived from one provider error body.
 struct ErrorDetail<'a> {
     message: &'a str,
     diagnostic: &'a str,
@@ -383,18 +383,35 @@ pub fn format_http_error(provider: &str, status: reqwest::StatusCode, error_text
 #[cold]
 pub(crate) fn parse_api_error(error: ProviderHttpError<'_>) -> LLMError {
     let metadata = extract_response_metadata(error.failure.headers, error.rate_limit_headers);
-    parse_api_error_with_metadata(error, metadata)
+    parse_api_error_with_metadata(error, metadata, ApiErrorKind::classify(error.failure))
+}
+
+/// Build a rate-limit error for a response the provider itself signalled as a
+/// quota or rate-limit failure.
+///
+/// Some providers report exhausted quota with 401 or 403, which the
+/// status-based classifier treats as a non-retryable authentication failure.
+/// Callers that have already recognised an explicit quota signal use this
+/// constructor so the retryable rate-limit category and the mapped headers
+/// survive the response status.
+#[cold]
+pub(crate) fn parse_rate_limit_error(error: ProviderHttpError<'_>) -> LLMError {
+    let metadata = extract_response_metadata(error.failure.headers, error.rate_limit_headers);
+    parse_api_error_with_metadata(error, metadata, ApiErrorKind::RateLimit)
 }
 
 #[cold]
-fn parse_api_error_with_metadata(error: ProviderHttpError<'_>, response_metadata: ApiResponseMetadata) -> LLMError {
+fn parse_api_error_with_metadata(
+    error: ProviderHttpError<'_>,
+    response_metadata: ApiResponseMetadata,
+    kind: ApiErrorKind,
+) -> LLMError {
     let ProviderHttpError { failure, provider_name, .. } = error;
     // Try to extract a meaningful error message from JSON
     let error_message = sanitize_provider_diagnostic(extract_human_error_message(failure.body).as_bytes());
     let diagnostic = sanitize_provider_diagnostic(failure.body.as_bytes());
     let detail = ErrorDetail { message: &error_message, diagnostic: &diagnostic };
     let status_code = failure.status.as_u16();
-    let kind = ApiErrorKind::classify(failure);
 
     let metadata = LLMErrorMetadata::new(
         provider_name,

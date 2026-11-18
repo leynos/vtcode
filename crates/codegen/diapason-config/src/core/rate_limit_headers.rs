@@ -79,10 +79,6 @@ macro_rules! define_rate_limit_header_config {
 rate_limit_header_fields!(define_rate_limit_header_config);
 
 impl RateLimitHeaderConfig {
-    pub(super) fn is_default(&self) -> bool {
-        self == &Self::default()
-    }
-
     fn fireworks_defaults() -> Self {
         Self {
             prompt_tokens_limit_per_second: Some("x-ratelimit-limit-tokens-prompt".to_string()),

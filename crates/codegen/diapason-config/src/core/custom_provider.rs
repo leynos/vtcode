@@ -621,8 +621,15 @@ pub struct CustomProviderConfig {
     pub profiles: BTreeMap<String, CustomProviderProfileConfig>,
 
     /// Provider response-header names carrying typed rate-limit metadata.
-    #[serde(default, skip_serializing_if = "RateLimitHeaderConfig::is_default")]
-    pub rate_limit_headers: RateLimitHeaderConfig,
+    ///
+    /// Omitting the field selects the provider-specific defaults for this
+    /// provider's name, so an Anthropic-compatible proxy reads its
+    /// `anthropic-ratelimit-*` headers without repeating the mapping. An
+    /// explicitly configured mapping stays authoritative, including one that
+    /// deliberately names the generic `x-ratelimit-*` headers; only fields it
+    /// leaves unset fall back to the provider defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit_headers: Option<RateLimitHeaderConfig>,
 
     /// Per-process request admission and transient retry policy.
     #[serde(default)]
@@ -681,11 +688,19 @@ impl CustomProviderConfig {
         ResolvedCustomProviderProfile::from_layers(&defaults, self.profile(model))
     }
 
-    /// Resolve response header mappings, preserving every explicit mapping and
-    /// filling provider-specific fields that were not configured.
+    /// Resolve response header mappings.
+    ///
+    /// An omitted mapping resolves to the provider-specific defaults for this
+    /// provider's name. An explicit mapping is preserved and only has its unset
+    /// fields filled from those defaults, so a deliberately generic header name
+    /// is never replaced.
     pub fn effective_rate_limit_headers(&self) -> RateLimitHeaderConfig {
-        let mut headers = self.rate_limit_headers.clone();
-        headers.fill_missing_from(&RateLimitHeaderConfig::for_provider_name(&self.name));
+        let provider_defaults = RateLimitHeaderConfig::for_provider_name(&self.name);
+        let Some(configured) = self.rate_limit_headers.as_ref() else {
+            return provider_defaults;
+        };
+        let mut headers = configured.clone();
+        headers.fill_missing_from(&provider_defaults);
         headers
     }
 
@@ -725,7 +740,9 @@ impl CustomProviderConfig {
         self.validate_api_key_env()?;
         self.validate_models()?;
         self.request_policy.validate(&self.name)?;
-        self.rate_limit_headers.validate(&self.name)?;
+        if let Some(rate_limit_headers) = self.rate_limit_headers.as_ref() {
+            rate_limit_headers.validate(&self.name)?;
+        }
         self.validate_profiles()?;
         self.validate_name_is_not_reserved()
     }
@@ -991,7 +1008,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1031,7 +1048,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1077,7 +1094,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1123,7 +1140,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1163,7 +1180,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: vec!["valid-model".to_string(), "   ".to_string()],
             profiles: BTreeMap::new(),
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1203,7 +1220,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1270,7 +1287,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1319,7 +1336,7 @@ mod tests {
                 "minimaxai/minimax-m3".to_string(),
             ],
             profiles: BTreeMap::new(),
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1456,7 +1473,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles,
-            rate_limit_headers: RateLimitHeaderConfig::default(),
+            rate_limit_headers: None,
             request_policy: CustomProviderRequestPolicyConfig::default(),
         };
 
@@ -1486,7 +1503,7 @@ model = "gpt-5-mini"
         assert_eq!(parsed.api_format, CustomProviderApiFormat::Auto);
         assert!(parsed.profiles.is_empty());
         assert_eq!(parsed.resolved_profile("gpt-5-mini"), ResolvedCustomProviderProfile::default());
-        assert_eq!(parsed.rate_limit_headers, RateLimitHeaderConfig::default());
+        assert_eq!(parsed.rate_limit_headers, None);
         assert_eq!(parsed.request_policy, CustomProviderRequestPolicyConfig::default());
     }
 
@@ -1495,16 +1512,58 @@ model = "gpt-5-mini"
     fn explicit_header_mapping_wins_over_provider_defaults() {
         let config = CustomProviderConfig {
             name: "together-proxy".to_string(),
-            rate_limit_headers: RateLimitHeaderConfig {
+            rate_limit_headers: Some(RateLimitHeaderConfig {
                 tokens_limit_per_second: Some("x-proxy-token-limit".to_string()),
                 ..RateLimitHeaderConfig::default()
-            },
+            }),
             ..CustomProviderConfig::default()
         };
 
         let headers = config.effective_rate_limit_headers();
         assert_eq!(headers.tokens_limit_per_second.as_deref(), Some("x-proxy-token-limit"));
         assert_eq!(headers.reset_after_seconds.as_deref(), Some("x-ratelimit-reset"));
+    }
+
+    /// Assert an omitted mapping reads the provider's own documented headers.
+    ///
+    /// The generic `x-ratelimit-*` defaults would match nothing on an
+    /// Anthropic-compatible endpoint, so omission has to resolve to the
+    /// provider-specific names rather than the type's default.
+    #[test]
+    fn omitted_header_mapping_uses_provider_specific_defaults() {
+        let config = CustomProviderConfig {
+            name: "anthropic-proxy".to_string(),
+            ..CustomProviderConfig::default()
+        };
+
+        let headers = config.effective_rate_limit_headers();
+        assert_eq!(headers.requests_limit_per_minute.as_deref(), Some("anthropic-ratelimit-requests-limit"));
+        assert_eq!(headers.requests_remaining_per_minute.as_deref(), Some("anthropic-ratelimit-requests-remaining"));
+        assert_eq!(headers.tokens_limit_per_minute.as_deref(), Some("anthropic-ratelimit-tokens-limit"));
+        assert_eq!(headers.tokens_remaining_per_minute.as_deref(), Some("anthropic-ratelimit-tokens-remaining"));
+    }
+
+    /// Assert an explicit generic mapping overrides the provider defaults.
+    ///
+    /// Only fields the explicit mapping leaves unset fall back, so a proxy that
+    /// deliberately forwards generic header names keeps them.
+    #[test]
+    fn explicit_generic_header_mapping_survives_provider_defaults() {
+        let config = CustomProviderConfig {
+            name: "anthropic-proxy".to_string(),
+            rate_limit_headers: Some(RateLimitHeaderConfig {
+                requests_limit_per_minute: Some("x-ratelimit-limit-requests".to_string()),
+                requests_remaining_per_minute: None,
+                tokens_limit_per_minute: None,
+                tokens_remaining_per_minute: None,
+                ..RateLimitHeaderConfig::default()
+            }),
+            ..CustomProviderConfig::default()
+        };
+
+        let headers = config.effective_rate_limit_headers();
+        assert_eq!(headers.requests_limit_per_minute.as_deref(), Some("x-ratelimit-limit-requests"));
+        assert_eq!(headers.tokens_limit_per_minute.as_deref(), Some("anthropic-ratelimit-tokens-limit"));
     }
 
     #[test]

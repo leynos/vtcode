@@ -8,7 +8,9 @@ use tracing::warn;
 use crate::error_display;
 use crate::provider::{LLMError, LLMRequest, Message, MessageRole, ToolChoice};
 use crate::providers::common::{chat_completions_url, extract_prompt_cache_settings, override_base_url, resolve_model};
-use crate::providers::error_handling::{ProviderFailure, ProviderHttpError, format_network_error, parse_api_error};
+use crate::providers::error_handling::{
+    ProviderFailure, ProviderHttpError, format_network_error, parse_api_error, parse_rate_limit_error,
+};
 use diapason_commons::sanitizer::sanitize_provider_diagnostic;
 use diapason_config::TimeoutsConfig;
 use diapason_config::constants::{env_vars, models, urls};
@@ -34,6 +36,19 @@ fn openrouter_rate_limit_headers() -> RateLimitHeaderConfig {
 fn openrouter_error(failure: ProviderFailure<'_>) -> LLMError {
     let rate_limit_headers = openrouter_rate_limit_headers();
     parse_api_error(ProviderHttpError::new(failure, OPENROUTER_PROVIDER_NAME, &rate_limit_headers))
+}
+
+/// Build an OpenRouter rate-limit error from a response whose body already
+/// signals exhausted quota.
+///
+/// OpenRouter reports exhausted quota with statuses other than 429, including
+/// 401 and 403. Classifying by status would turn those into a non-retryable
+/// authentication failure, so the recognised quota signal keeps the retryable
+/// rate-limit category while the mapped headers and retry metadata are still
+/// extracted.
+fn openrouter_quota_error(failure: ProviderFailure<'_>) -> LLMError {
+    let rate_limit_headers = openrouter_rate_limit_headers();
+    parse_rate_limit_error(ProviderHttpError::new(failure, OPENROUTER_PROVIDER_NAME, &rate_limit_headers))
 }
 
 mod client_impl;
@@ -244,7 +259,11 @@ impl OpenRouterProvider {
         let fallback_text = crate::providers::common::read_provider_error_body(fallback_response).await;
 
         if fallback_status.as_u16() == 429 || fallback_text.contains("quota") {
-            return Err(openrouter_error(ProviderFailure::new(fallback_status, &fallback_text, &fallback_headers)));
+            return Err(openrouter_quota_error(ProviderFailure::new(
+                fallback_status,
+                &fallback_text,
+                &fallback_headers,
+            )));
         }
 
         let combined_error = format!(
@@ -327,7 +346,7 @@ impl OpenRouterProvider {
         let error_text = crate::providers::common::read_provider_error_body(response).await;
 
         if status.as_u16() == 429 || error_text.contains("quota") {
-            return Err(openrouter_error(ProviderFailure::new(status, &error_text, &headers)));
+            return Err(openrouter_quota_error(ProviderFailure::new(status, &error_text, &headers)));
         }
 
         if let Some(resp) = self

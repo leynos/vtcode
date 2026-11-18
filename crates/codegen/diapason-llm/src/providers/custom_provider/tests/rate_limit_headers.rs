@@ -32,12 +32,12 @@ fn custom_provider_config(base_url: String, model: &str) -> CustomProviderConfig
         api_format: CustomProviderApiFormat::AnthropicMessages,
         model: model.to_string(),
         models: vec![model.to_string()],
-        rate_limit_headers: RateLimitHeaderConfig {
+        rate_limit_headers: Some(RateLimitHeaderConfig {
             requests_limit_per_minute: Some("x-proxy-request-limit".to_string()),
             requests_remaining_per_minute: Some("x-proxy-request-remaining".to_string()),
             reset_after_seconds: Some("x-proxy-reset-after".to_string()),
             ..RateLimitHeaderConfig::default()
-        },
+        }),
         ..CustomProviderConfig::default()
     }
 }

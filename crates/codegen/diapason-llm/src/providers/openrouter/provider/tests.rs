@@ -326,6 +326,59 @@ async fn generate_preserves_openrouter_rate_limit_metadata() {
     assert_openrouter_rate_limit_metadata(&error, "router_req_123");
 }
 
+/// A quota body on a non-429 status keeps the retryable rate-limit category.
+///
+/// OpenRouter reports exhausted quota with 401 and 403 as well as 429. The
+/// status-based classifier would surface those as authentication failures,
+/// which the retry policy treats as terminal, so the recognised quota signal
+/// must decide the category while the mapped headers still supply the floor.
+#[tokio::test]
+async fn quota_failure_on_forbidden_status_keeps_the_rate_limit_category() {
+    let model_id = models::openrouter::OPENAI_GPT_5;
+    let Some(server) = start_mock_server_or_skip().await else {
+        return;
+    };
+    let provider = test_provider(&server.uri(), model_id);
+
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .insert_header("x-request-id", "router_quota_req_403")
+                .insert_header("retry-after", "15")
+                .insert_header("x-ratelimit-limit-requests", "60")
+                .set_body_string("{\"error\":{\"message\":\"You exceeded your current quota\"}}"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let error = LLMProvider::generate(
+        &provider,
+        LLMRequest {
+            model: model_id.to_string(),
+            messages: vec![Message::user("hello".to_string())].into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect_err("a quota failure should surface as a retryable rate-limit error");
+
+    let LLMError::RateLimit { metadata: Some(metadata) } = &error else {
+        panic!("expected a rate-limit error for a quota body on 403: {error:?}");
+    };
+    assert_eq!(metadata.status, Some(403));
+    assert_eq!(metadata.code.as_deref(), Some("rate_limit_error"));
+    assert_eq!(metadata.retry_after.as_deref(), Some("15"));
+    assert_eq!(
+        metadata
+            .rate_limit
+            .as_ref()
+            .and_then(|rate_limit| rate_limit.requests_limit_per_minute),
+        Some(60)
+    );
+}
+
 #[tokio::test]
 async fn tool_fallback_preserves_terminal_openrouter_rate_limit_metadata() {
     let model_id = "moonshotai/kimi-latest";

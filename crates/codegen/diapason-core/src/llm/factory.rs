@@ -542,7 +542,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
-            rate_limit_headers: Default::default(),
+            rate_limit_headers: None,
             request_policy: Default::default(),
         }]);
 
@@ -602,7 +602,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: Vec::new(),
             profiles: BTreeMap::new(),
-            rate_limit_headers: Default::default(),
+            rate_limit_headers: None,
             request_policy: Default::default(),
         }]);
 
@@ -698,7 +698,7 @@ mod tests {
             model: "gpt-5-mini".to_string(),
             models: vec!["gpt-5-mini".to_string(), "claude-sonnet-5".to_string()],
             profiles,
-            rate_limit_headers: Default::default(),
+            rate_limit_headers: None,
             request_policy: Default::default(),
         }
     }
@@ -867,7 +867,7 @@ mod tests {
                 "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B".to_string(),
             ],
             profiles: BTreeMap::new(),
-            rate_limit_headers: Default::default(),
+            rate_limit_headers: None,
             request_policy: Default::default(),
         }
     }

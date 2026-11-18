@@ -13,6 +13,11 @@ fn assert_custom_rate_limit(error: LLMError) {
         panic!("expected custom provider rate-limit metadata");
     };
     assert_eq!(metadata.retry_after.as_deref(), Some("4"));
+    let serialized = serde_json::to_string(&metadata).expect("metadata should serialize");
+    assert!(
+        !serialized.contains("x-corp-private") && !serialized.contains("must-not-escape"),
+        "unmapped provider headers must not be retained: {serialized}"
+    );
     let rate_limit = metadata.rate_limit.expect("configured rate-limit headers");
     assert_eq!(rate_limit.requests_remaining_per_minute, Some(2));
     assert_eq!(rate_limit.tokens_limit_per_second, Some(900));
@@ -50,12 +55,12 @@ async fn openai_chat_rate_limit_error(transport: OpenAiChatTransport) -> LLMErro
         api_format: CustomProviderApiFormat::OpenAIChat,
         model: model.clone(),
         models: vec![model.clone()],
-        rate_limit_headers: RateLimitHeaderConfig {
+        rate_limit_headers: Some(RateLimitHeaderConfig {
             requests_remaining_per_minute: Some("x-corp-requests-remaining".to_string()),
             tokens_limit_per_second: Some("x-corp-token-limit".to_string()),
             reset_after_seconds: Some("x-corp-reset".to_string()),
             ..RateLimitHeaderConfig::default()
-        },
+        }),
         ..Default::default()
     };
     let provider = CustomProviderBackendRouter::from_config(
@@ -118,10 +123,10 @@ async fn openai_chat_retryable_provider_error_always_preserves_retry_after() {
             api_format: CustomProviderApiFormat::OpenAIChat,
             model: model.clone(),
             models: vec![model.clone()],
-            rate_limit_headers: RateLimitHeaderConfig {
+            rate_limit_headers: Some(RateLimitHeaderConfig {
                 prompt_tokens: Some("x-unrelated-counter".to_string()),
                 ..RateLimitHeaderConfig::default()
-            },
+            }),
             ..Default::default()
         },
         Some("fixture-key".to_string()),
