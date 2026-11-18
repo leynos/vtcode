@@ -539,3 +539,59 @@ is the head published with this record:
 Compile admission stayed healthy throughout; the managed sccache server was not
 serving compilations for part of the test build, so that build ran uncached,
 which is slower rather than failed.
+
+## Fifth restack onto the rewritten parent head
+
+The parent was rewritten and advanced again on 2026-11-18. Its head is now
+`d68a91b8d` (`refactor(usage): keep the touched modules inside the file
+budget`), 73 commits ahead of the shared merge base and no longer descended from
+this layer's previous target `e2a77616c`. GitHub reported the PR as `DIRTY`.
+The branch was replayed onto `d68a91b8d` with `OLD_BASE` `e2a77616c`, `OLD_HEAD`
+`bbc5b3732`, 51 linear commits and no merges. Recovery refs are
+`refs/agent-recovery/pr103/r5-{old-head,old-base,target,remote-head}`.
+
+The parent had independently moved the provider telemetry tests into
+`tests/provider/telemetry.rs`, and this layer had moved the same tests into
+`tests/provider/error_telemetry.rs`. Both extractions hold the same six cases,
+so the resolution keeps the parent's file, ports this layer's newer assertions
+into it, and drops the child module. The retry-metric split into
+`tests/provider/retry_metrics.rs` is unique to this layer and is kept.
+
+Four resolutions were needed:
+
+- `diapason-config/src/core/custom_provider.rs`: the parent dropped the
+  `CustomProviderPricingConfig` import from the test module after removing the
+  tests that used it. The merge keeps that removal and adds only this layer's
+  `RateLimitHeaderConfig` import, which the replayed rate-limit tests use.
+- `tests/provider.rs` at the projection commit: the parent moved three
+  telemetry cases out. Their child-side edits (`category` expectations) are
+  ported into `tests/provider/telemetry.rs`, and the moved copies are deleted
+  instead of duplicated.
+- `tests/provider.rs` at the telemetry-API commit: the same pattern for
+  `provider_failure_warning_bounds_untrusted_codes`. Its replayed body now runs
+  through `capture_trace`, `ProviderMetricSink`, and `GenerationFailure` inside
+  the parent's `telemetry.rs`.
+- `tests/provider.rs` at the module-split commit: the merge produced two
+  identical `proptest!` blocks and two copies of one moved test. One copy of
+  each survives, and `mod error_telemetry;` is gone because the parent's
+  `mod telemetry;` already owns those cases.
+
+`metrics.rs` needed no edit: the parent had already extracted its test modules,
+so the restack reduces the file to the same 384-line production module plus
+`metrics/tests.rs` and `metrics/property_tests.rs`. That closes the review
+finding that asked for the split without adding a commit for it.
+
+`git range-diff e2a77616c..bbc5b3732 d68a91b8d..HEAD` reports 10 commits whose
+patch differs, and every one of them is a conflict resolution listed above; the
+rest are identical. `git diff --check` is clean, no conflict marker or Weave
+footer survives, and `cargo check --locked -p diapason-acp --all-targets`
+passes on the resolved tree.
+
+One limitation is recorded rather than hidden: the merge driver inserted a
+duplicated `provider_error_telemetry_preserves_allowlisted_codes` function in
+the replayed commits between the telemetry-observation refactor and the
+module-split commit, so those nine intermediate commits do not compile. The
+module-split commit removes the duplicate along with the rest of the moved
+tests, and every commit from that point to the head is clean. Nothing in the
+delivered diff is affected; a bisect that lands inside that nine-commit window
+would be.
