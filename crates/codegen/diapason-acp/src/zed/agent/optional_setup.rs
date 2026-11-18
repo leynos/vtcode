@@ -44,30 +44,6 @@ impl AcpSubagentControllerAttacher for DefaultAcpSubagentControllerAttacher {
     }
 }
 
-/// Driven boundary for attaching the optional ACP MCP client.
-pub(super) trait AcpMcpClientAttacher: Send + Sync {
-    fn attach<'a>(
-        &'a self,
-        registry: &'a CoreToolRegistry,
-        vt_config: Option<&'a DiapasonConfig>,
-        workspace_root: &'a std::path::Path,
-    ) -> BoxFuture<'a, OptionalSetupOutcome>;
-}
-
-/// Default adapter that attaches the configured ACP MCP client.
-pub(super) struct DefaultAcpMcpClientAttacher;
-
-impl AcpMcpClientAttacher for DefaultAcpMcpClientAttacher {
-    fn attach<'a>(
-        &'a self,
-        registry: &'a CoreToolRegistry,
-        vt_config: Option<&'a DiapasonConfig>,
-        workspace_root: &'a std::path::Path,
-    ) -> BoxFuture<'a, OptionalSetupOutcome> {
-        Box::pin(attach_acp_mcp_client(registry, vt_config, workspace_root))
-    }
-}
-
 pub(super) fn effective_acp_subagent_concurrency(configured: usize, max_in_flight: Option<usize>) -> Option<usize> {
     match max_in_flight {
         Some(0 | 1) => None,
