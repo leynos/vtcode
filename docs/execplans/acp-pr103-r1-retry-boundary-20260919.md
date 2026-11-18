@@ -543,12 +543,12 @@ which is slower rather than failed.
 ## Fifth restack onto the rewritten parent head
 
 The parent was rewritten and advanced again on 2026-11-18. Its head is now
-`d68a91b8d` (`refactor(usage): keep the touched modules inside the file
-budget`), 73 commits ahead of the shared merge base and no longer descended from
-this layer's previous target `e2a77616c`. GitHub reported the PR as `DIRTY`.
-The branch was replayed onto `d68a91b8d` with `OLD_BASE` `e2a77616c`, `OLD_HEAD`
-`bbc5b3732`, 51 linear commits and no merges. Recovery refs are
-`refs/agent-recovery/pr103/r5-{old-head,old-base,target,remote-head}`.
+`d68a91b8d`, the commit "refactor(usage): keep the touched modules inside the
+file budget". It sits 73 commits ahead of the shared merge base and is no
+longer descended from this layer's previous target `e2a77616c`. GitHub reported
+the PR as `DIRTY`. The branch was replayed onto `d68a91b8d` with `OLD_BASE`
+`e2a77616c`, `OLD_HEAD` `bbc5b3732`, 51 linear commits and no merges. Recovery
+refs are `refs/agent-recovery/pr103/r5-{old-head,old-base,target,remote-head}`.
 
 The parent had independently moved the provider telemetry tests into
 `tests/provider/telemetry.rs`, and this layer had moved the same tests into
