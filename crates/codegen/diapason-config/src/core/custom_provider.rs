@@ -1651,4 +1651,3 @@ api_format = "openai-chatty"
         assert!(err.to_string().contains("openai-chatty"));
     }
 }
-// weave: run 'weave explain crates/codegen/diapason-config/src/core/custom_provider.rs' for per-hunk detail, 'weave check' to verify your resolution

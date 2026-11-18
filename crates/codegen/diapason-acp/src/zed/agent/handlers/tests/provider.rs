@@ -338,5 +338,3 @@ async fn invalid_request_is_not_retried() {
 }
 
 mod retry_metrics;
-
-
