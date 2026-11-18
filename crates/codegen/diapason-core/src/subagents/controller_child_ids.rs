@@ -140,11 +140,19 @@ impl ChildIdScopeSlot {
     ///
     /// The merge and the redirect run under the tree's adoption lock, so no id
     /// can be reserved anywhere in that tree while the two allocators are
-    /// reconciled.
+    /// reconciled. Both slots must therefore bind the same lock: an adoption
+    /// that held only the joining subtree's lock would not exclude an
+    /// allocation in the tree it is joining, and an id could be reserved in
+    /// the allocator the graft is about to redirect. Slots bound to different
+    /// locks are rejected rather than merged.
+    ///
     /// The ids this subtree holds are exactly the ones the target now re-uses
     /// through the forwarding link, and because the target is terminal when
     /// the link is written, the chain stays acyclic.
-    pub(super) fn adopt_into(&self, target: &Self) -> Result<(), String> {
+    pub(super) fn adopt_into(&self, target: &Self) -> Result<(), AdoptionRejection> {
+        if !Arc::ptr_eq(&self.lock_scope, &target.lock_scope) {
+            return Err(AdoptionRejection::LockScopeMismatch);
+        }
         let _exclusive = self
             .lock_scope
             .adoption()
@@ -168,7 +176,7 @@ impl ChildIdScopeSlot {
         let source_taken = source.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut target_taken = target_scope.taken.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(duplicate) = source_taken.intersection(&target_taken).next() {
-            return Err(duplicate.clone());
+            return Err(AdoptionRejection::Duplicate(duplicate.clone()));
         }
         target_taken.extend(source_taken.iter().cloned());
         drop(target_taken);
@@ -176,6 +184,27 @@ impl ChildIdScopeSlot {
         *source.redirect.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::clone(&target_scope));
         *slot = Arc::clone(&target_scope);
         Ok(())
+    }
+}
+
+/// Why a subtree could not join a tree's allocator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum AdoptionRejection {
+    /// Both allocators have already published the same id.
+    Duplicate(String),
+    /// The two slots do not share one adoption lock, so the merge could not be
+    /// made exclusive against the tree being joined.
+    LockScopeMismatch,
+}
+
+impl std::fmt::Display for AdoptionRejection {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Duplicate(duplicate) => {
+                write!(formatter, "task id {duplicate} is already allocated on both sides")
+            }
+            Self::LockScopeMismatch => formatter.write_str("the controllers do not share one adoption lock scope"),
+        }
     }
 }
 
@@ -261,8 +290,8 @@ mod tests {
                 if start == end {
                     continue;
                 }
-                slots[start].adopt_into(&slots[end]).map_err(|duplicate| {
-                    TestCaseError::fail(format!("namespaced pre-ids must not collide: {duplicate}"))
+                slots[start].adopt_into(&slots[end]).map_err(|rejection| {
+                    TestCaseError::fail(format!("every slot binds the default scope, so only a duplicate can reject: {rejection}"))
                 })?;
                 applied.push((start, end));
             }

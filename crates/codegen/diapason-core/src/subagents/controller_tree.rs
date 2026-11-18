@@ -121,15 +121,21 @@ impl SubagentController {
     /// can separate them, and the adapter's first-match routing would resolve
     /// it to one controller only. Rejection leaves the controller, this tree
     /// and the child record unchanged.
+    ///
+    /// The joining controller must also share this tree's lock scope. The
+    /// graft holds that scope's adoption lock to exclude concurrent
+    /// allocation, so a controller bound to a different scope cannot be
+    /// grafted safely and is rejected with the same fail-closed guarantee.
+    /// Every controller created by this tree inherits the scope, so this only
+    /// refuses an independently constructed controller with an injected
+    /// scope.
     pub async fn attach_child_controller(&self, child_id: &str, controller: Arc<SubagentController>) -> Result<()> {
         let mut state = self.state.write().await;
         if !state.children.contains_key(child_id) {
             bail!("Unknown subagent id {child_id}");
         }
-        if let Err(duplicate) = controller.child_id_slot().adopt_into(&self.child_id_slot()) {
-            bail!(
-                "Subagent {child_id} cannot join the tree allocator: task id {duplicate} is already allocated on both sides"
-            );
+        if let Err(rejection) = controller.child_id_slot().adopt_into(&self.child_id_slot()) {
+            bail!("Subagent {child_id} cannot join the tree allocator: {rejection}");
         }
         Self::attach_child_controller_to_state(&mut state, child_id, controller)
     }
