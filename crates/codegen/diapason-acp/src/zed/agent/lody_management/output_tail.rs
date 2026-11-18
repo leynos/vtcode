@@ -77,6 +77,7 @@ pub(super) fn foreground_output_tail(messages: &[Message], max_lines: usize) -> 
 mod tests {
     use super::*;
     use diapason_core::llm::provider::MessageContent;
+    use proptest::prelude::*;
 
     fn message(text: &str) -> Message {
         Message {
@@ -109,6 +110,54 @@ mod tests {
     fn a_message_ending_with_a_newline_contributes_its_empty_line() {
         let messages = transcript(&["a\nb\n", "c"]);
         assert_eq!(foreground_output_tail(&messages, 2), "\nc");
+    }
+
+    proptest! {
+        /// The bounded walk agrees with bounding the whole transcript.
+        ///
+        /// For any message sequence and line limit, the returned tail is a
+        /// suffix of the whole-transcript extraction, never carries more lines
+        /// than the limit, and an oversized limit returns the whole output.
+        #[test]
+        fn bounded_tail_is_a_suffix_within_the_limit(
+            texts in prop::collection::vec("[a-z\n]{0,12}", 0..=6),
+            max_lines in 0usize..=20,
+        ) {
+            let messages: Vec<Message> = texts.iter().map(|text| message(text)).collect();
+            let joined = texts
+                .iter()
+                .filter(|text| !text.is_empty())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n");
+            let whole = extract_tail_lines(&joined, usize::MAX);
+            // Count the source text's lines, not the whole extraction's: the
+            // extraction joins lines with `\n`, so a transcript that ended with
+            // a newline loses its final empty line and reports one line fewer
+            // than the limit has to cover to include every line.
+            let source_lines = joined.lines().count();
+            let tail = foreground_output_tail(&messages, max_lines);
+
+            prop_assert!(
+                whole.ends_with(&tail),
+                "tail {:?} must be a suffix of the whole output {:?}",
+                tail,
+                whole,
+            );
+            prop_assert!(
+                tail.lines().count() <= max_lines,
+                "tail {:?} exceeds the limit of {} lines",
+                tail,
+                max_lines,
+            );
+            if max_lines >= source_lines {
+                prop_assert_eq!(
+                    &tail,
+                    &whole,
+                    "an oversized limit must return the whole output",
+                );
+            }
+        }
     }
 
     #[test]
