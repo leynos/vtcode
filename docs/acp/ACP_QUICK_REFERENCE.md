@@ -1,5 +1,146 @@
 # ACP Quick Reference
 
+The current Diapason ACP integration is a stdio server. The REST `AcpClient`
+snippets below are retained as a legacy client reference and do not describe
+the server handshake or transport.
+
+## Current ACP server
+
+Launch the server with:
+
+```bash
+diapason acp
+```
+
+The server negotiates protocol version 1 during `initialize`. Its Lody usage
+capability is always advertised as `_meta.lody.usage = { "version": 1 }`. When
+a subagent controller is configured, the handshake also advertises
+`_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`, and
+`output` operations. The
+`_meta.lody.tasks = { "version": 1, "background": true }` capability is
+included only when background subagents are enabled.
+
+Subagent and background-process progress is sent through standard ACP
+`session/update` tool calls and tool-call updates. The standard task fields
+carry the title and status; the additional task snapshot is in
+`_meta.lody.task`.
+
+The conditional Lody management requests are:
+
+```text
+_lody/subagents/list
+_lody/subagents/cancel
+_lody/subagents/output
+```
+
+All three require `sessionId`; `cancel` and `output` also require `taskId`.
+Requests and responses use `camelCase` field names.
+
+`_lody/subagents/list` accepts an optional `activeOnly` boolean (default
+`false`) and returns the caller session's owned tasks:
+
+<!-- tested-example: acp-quick-reference-subagent-list-request -->
+```json
+{
+  "sessionId": "session-id",
+  "activeOnly": false
+}
+```
+
+<!-- tested-example: acp-quick-reference-subagent-list-response -->
+```json
+{
+  "tasks": [
+    {
+      "taskId": "task-id",
+      "description": "Review the parser",
+      "status": "running",
+      "agentId": "agent-session-id",
+      "subagentType": "reviewer",
+      "startedAtEpochSeconds": 1756339200.0,
+      "endedAtEpochSeconds": null
+    }
+  ]
+}
+```
+
+Each task carries `taskId`, `description`, `status`, `startedAtEpochSeconds`,
+and `endedAtEpochSeconds` (a number, or `null` while the task is active), plus
+optional `agentId`, `subagentType`, and `stopReason`. `status` is one of
+`running`, `completed`, `failed`, or `killed`.
+
+`_lody/subagents/cancel` requires `sessionId` and `taskId`; an optional
+`reason` is accepted and currently ignored. It returns an empty object:
+
+<!-- tested-example: acp-quick-reference-subagent-cancel-request -->
+```json
+{
+  "sessionId": "session-id",
+  "taskId": "task-id"
+}
+```
+
+<!-- tested-example: acp-quick-reference-subagent-cancel-response -->
+```json
+{}
+```
+
+A task id the session does not own fails with error data
+`{"reason": "unknown_task"}`.
+
+`_lody/subagents/output` requires `sessionId` and `taskId` and accepts an
+optional `tail` (default 200 lines, hard maximum 10,000). The response carries
+the requested lines:
+
+<!-- tested-example: acp-quick-reference-subagent-output-request -->
+```json
+{
+  "sessionId": "session-id",
+  "taskId": "task-id",
+  "tail": 200
+}
+```
+
+<!-- tested-example: acp-quick-reference-subagent-output-response -->
+```json
+{
+  "output": "last lines of task output"
+}
+```
+
+Reading output is a pure query: it sends no lifecycle update, restarts no
+background process, and cannot be failed by an unrelated task. A background
+task whose live exec session has exited is served from its recorded transcript
+or archive.
+
+The server reports per-response provider usage through the extension
+notification `_lody/session/usage_update`. Its parameters contain:
+
+<!-- tested-example: acp-quick-reference-usage-update -->
+```json
+{
+  "sessionId": "session-id",
+  "usage": {
+    "inputTokens": 123,
+    "outputTokens": 45,
+    "cacheReadInputTokens": 0
+  },
+  "modelUsage": {
+    "model-name": {
+      "inputTokens": 123,
+      "outputTokens": 45,
+      "cacheReadInputTokens": 0
+    }
+  }
+}
+```
+
+`modelUsage` is keyed by the response model. The values are deltas for one
+provider response, and no notification is emitted when the provider supplies no
+usage data.
+
+## Legacy REST ACP client reference
+
 ## Initialize ACP Client
 
 ```rust

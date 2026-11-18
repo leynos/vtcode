@@ -150,9 +150,39 @@ When the ACP connection shuts down, Diapason cancels and drains its registered
 sessions and runs their cleanup within the bounded shutdown wait. If that wait
 expires, cleanup continues in the background. Notification hooks are not
 invented for ACP protocol messages; they run only for real Diapason
-notification events. The current ACP subagent controller does not expose child
-lifecycle callbacks, so ACP does not currently emit `SubagentStart` or
-`SubagentStop`.
+notification events.
+
+### ACP capability negotiation and Lody extensions
+
+During `initialize`, Diapason always advertises the Lody usage capability at
+version 1 (`_meta.lody.usage`). If the launch workspace has a subagent
+controller, it also advertises version-1 subagent lifecycle and management
+capabilities: `lifecycle`, `list`, `cancel`, and `output`. The
+`_meta.lody.tasks.background` capability is advertised only when background
+subagents are enabled. These capabilities reflect the launch workspace
+configuration, not the workspace selected by an individual session. Diapason
+builds a session-scoped controller for the selected session workspace, and if
+that setup fails, Lody management requests for the session return
+`subagent_management_unavailable` even though the handshake advertised the
+capability. Clients should inspect the handshake before using any conditional
+extension and handle that error response.
+
+Subagent and background-process lifecycle is represented with standard ACP
+`session/update` tool calls and tool-call updates. Their standard title, kind,
+content, and status fields are accompanied by `_meta.lody.task`, which carries
+the Diapason/Lody task snapshot and its additional identifiers, actor, timing,
+summary, or error fields. Diapason does not require non-standard
+`SubagentStart` or `SubagentStop` update types.
+
+When subagent management is advertised, the following Lody requests are
+available: `_lody/subagents/list`, `_lody/subagents/cancel`, and
+`_lody/subagents/output`. They list owned tasks, request cancellation, and
+return a bounded output tail respectively.
+
+Provider usage is sent as the `_lody/session/usage_update` extension
+notification. Its parameters contain `sessionId`, a per-response `usage` delta
+(input, output, and cache token counts), and `modelUsage` keyed by model name.
+No usage notification is sent when the provider response contains no usage data.
 
 MCP connections are scoped to the session that declares them. A subagent does
 not implicitly inherit its parent's MCP connections; declare the required MCP
@@ -466,32 +496,11 @@ and `[history]` settings do not control ACP audit output.
   permissions still apply; delegation does not bypass its allowed or disallowed
   tools.
 - **Task lifecycle notifications** – When the session has an ACP sub-agent
-  controller, Diapason forwards sub-agent and background-process status changes
-  through the `_diapason/taskLifecycle` extension notification. Clients that do
-  not use this extension can ignore it. Its parameters contain the parent
-  session ID in both `sessionId` and `acpSessionId`, plus a `message` with a
-  `task_id`, `task_type` (`subagent` or `background_process`), `subagent_type`,
-  and the source status snapshot in `details`. Queued or starting tasks use
-  `task_started` with `status: "pending"`; running and waiting tasks use
-  `task_progress` with `status: "in_progress"`. Terminal changes use
-  `task_updated` with `patch.status` set to `completed`, `failed`, or `killed`
-  and the updated snapshot in `patch.details`. For example:
-
-  ```json
-  {
-    "sessionId": "parent-session-id",
-    "acpSessionId": "parent-session-id",
-    "message": {
-      "type": "task_progress",
-      "task_id": "child-task-id",
-      "task_type": "subagent",
-      "subagent_type": "worker",
-      "status": "in_progress",
-      "details": { "status": "running" }
-    }
-  }
-  ```
-
+  controller, sub-agent and background-process status changes are forwarded as
+  standard ACP `session/update` tool calls and tool-call updates carrying
+  `_meta.lody.task`, as described under
+  [ACP capability negotiation and Lody extensions](#acp-capability-negotiation-and-lody-extensions).
+  Diapason does not require a non-standard notification type for lifecycle.
   Forwarding is best-effort: queued updates may be dropped if the bounded
   notification queue is full or the connection closes.
 - **Provider request capacity** – For a custom provider with

@@ -1,128 +1,68 @@
 //! Forward sub-agent and background-process lifecycle events to ACP clients.
 //!
-//! A session-scoped observer receives domain status snapshots and sends them
-//! as Diapason task-lifecycle notifications.
+//! A session-scoped observer receives domain status snapshots and forwards each
+//! as a standard ACP `session/update` tool call or tool-call update carrying
+//! the Lody task snapshot in `_meta.lody.task`; the `_lody/subagents/list`,
+//! `_lody/subagents/cancel` and `_lody/subagents/output` management
+//! requests are handled by the sibling `lody_management` module.
 
 mod messages;
+mod queue_accounting;
+mod snapshot_publication;
 #[cfg(test)]
 mod tests;
 
-use self::messages::{LifecycleUpdate, send_task_lifecycle};
+pub(super) use self::messages::LifecycleUpdate;
+use self::messages::send_task_lifecycle;
+use self::queue_accounting::{LifecycleQueueForwarderGuard, LifecycleQueueTracker};
+use self::snapshot_publication::publish_initial_task_snapshots;
+use super::lody::lody_task_id;
+use hashbrown::HashSet;
+#[cfg(test)]
+mod forwarder_duplex_tests;
+#[cfg(test)]
+mod ordering_tests;
+#[cfg(test)]
+mod projection_metadata_tests;
+#[cfg(test)]
+mod projection_tests;
+#[cfg(test)]
+mod queue_accounting_tests;
 use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
-use diapason_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
+use chrono::{DateTime, Utc};
+use diapason_core::metrics::TaskLifecycleNotificationQueueMetricsObserver;
 use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
-use std::sync::{Arc, Mutex};
+use hashbrown::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 use tracing::{Span, debug, field, info_span, warn};
 
-pub(super) const TASK_LIFECYCLE_METHOD: &str = "_diapason/taskLifecycle";
 const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
 const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
-fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
+pub(super) fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
     diapason_commons::utils::calculate_sha256(session_id.to_string().as_bytes())
         .chars()
         .take(SESSION_CORRELATION_HEX_LENGTH)
         .collect()
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LifecycleQueueDropKind {
-    Full,
-    Closed,
-}
-
-impl LifecycleQueueDropKind {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Full => "full",
-            Self::Closed => "closed",
-        }
-    }
-}
-
-fn lifecycle_queue_drop_kind<T>(error: TrySendError<T>) -> LifecycleQueueDropKind {
-    match error {
-        TrySendError::Full(_) => LifecycleQueueDropKind::Full,
-        TrySendError::Closed(_) => LifecycleQueueDropKind::Closed,
-    }
-}
-
-#[derive(Default)]
-struct LifecycleQueueState {
-    depth: usize,
-    closed: bool,
-}
-
-struct LifecycleQueueTracker {
-    state: Mutex<LifecycleQueueState>,
-    metrics: Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>,
-}
-
-impl LifecycleQueueTracker {
-    fn new(metrics: Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>) -> Self {
-        Self {
-            state: Mutex::new(LifecycleQueueState::default()),
-            metrics,
-        }
-    }
-
-    fn try_send<T>(&self, sender: &mpsc::Sender<T>, update: T) -> Result<(), LifecycleQueueDropKind> {
-        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.closed {
-            return Err(LifecycleQueueDropKind::Closed);
-        }
-
-        match sender.try_send(update) {
-            Ok(()) => {
-                state.depth = state.depth.saturating_add(1);
-                self.metrics.queue_item_enqueued();
-                Ok(())
-            }
-            Err(error) => Err(lifecycle_queue_drop_kind(error)),
-        }
-    }
-
-    fn dequeued(&self) {
-        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.depth > 0 {
-            state.depth -= 1;
-            self.metrics.queue_item_dequeued();
-        }
-    }
-
-    fn record_drop(&self, kind: LifecycleQueueDropKind) -> u64 {
-        match kind {
-            LifecycleQueueDropKind::Full => self.metrics.queue_item_dropped(TaskLifecycleNotificationQueueDrop::Full),
-            LifecycleQueueDropKind::Closed => {
-                self.metrics.queue_item_dropped(TaskLifecycleNotificationQueueDrop::Closed)
-            }
-        }
-    }
-
-    fn close_and_drain(&self) {
-        let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.closed = true;
-        let remaining = std::mem::take(&mut state.depth);
-        if remaining > 0 {
-            self.metrics.queue_items_drained(remaining);
-        }
-    }
-}
-
-struct LifecycleQueueForwarderGuard(Arc<LifecycleQueueTracker>);
-
-impl Drop for LifecycleQueueForwarderGuard {
-    fn drop(&mut self) {
-        self.0.close_and_drain();
-    }
+/// One queued lifecycle item, tagged with the publication path that produced it.
+///
+/// The initial-snapshot publisher runs concurrently with live observer
+/// delivery, and the controller stamps both from `Utc::now()`, so a snapshot
+/// captured before a transition can share that transition's `updated_at` and
+/// still be queued after it. The flag is what tells the two apart at equal
+/// timestamps.
+struct QueuedLifecycleUpdate {
+    update: LifecycleUpdate,
+    initial_snapshot: bool,
 }
 
 struct TaskLifecycleForwarderSpan {
@@ -176,6 +116,75 @@ fn task_lifecycle_forwarder_outcome(send_failures: u64) -> &'static str {
     if send_failures == 0 { "completed" } else { "send_failed" }
 }
 
+/// Ordering key for one task snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct LifecycleRevision {
+    updated_at: DateTime<Utc>,
+    terminal: bool,
+    initial_snapshot: bool,
+}
+
+impl LifecycleRevision {
+    fn of(queued: &QueuedLifecycleUpdate) -> Self {
+        Self {
+            updated_at: queued.update.updated_at(),
+            terminal: queued.update.is_terminal(),
+            initial_snapshot: queued.initial_snapshot,
+        }
+    }
+
+    /// Whether this revision may supersede `latest` on the wire.
+    ///
+    /// The initial-snapshot publisher runs concurrently with live delivery, so
+    /// a snapshot captured before a transition can be queued after it. An
+    /// update that predates the last one forwarded is stale and must not roll
+    /// the client's task back. At an identical timestamp, a live transition
+    /// supersedes the initial snapshot it raced, and an initial snapshot never
+    /// supersedes anything already forwarded. Between two live revisions a
+    /// terminal state still wins: a terminal→non-terminal step there is a
+    /// replay artefact, not a transition the controller recorded.
+    fn supersedes(self, latest: Option<Self>) -> bool {
+        latest.is_none_or(|latest| {
+            if self.updated_at != latest.updated_at {
+                return self.updated_at > latest.updated_at;
+            }
+            if self.initial_snapshot {
+                // The controller stamps initial snapshots and live transitions
+                // from one clock, so an equal instant cannot show which came
+                // first. The snapshot was captured before the live transition
+                // it now trails, so the live one must stand.
+                return false;
+            }
+            if latest.initial_snapshot {
+                return true;
+            }
+            self.terminal || !latest.terminal
+        })
+    }
+}
+
+/// Tracks the newest revision forwarded for each task in one session.
+#[derive(Default)]
+struct LifecycleOrdering {
+    revisions: HashMap<String, LifecycleRevision>,
+}
+
+impl LifecycleOrdering {
+    /// Records `queued` and reports whether it should be forwarded.
+    fn admit(&mut self, queued: &QueuedLifecycleUpdate) -> bool {
+        let revision = LifecycleRevision::of(queued);
+        let task_id = lody_task_id(&queued.update);
+        let latest = self.revisions.get(task_id).copied();
+        if !revision.supersedes(latest) {
+            return false;
+        }
+        // The replaced revision is intentionally discarded: the new one is the
+        // only revision that may judge later updates.
+        let _ = self.revisions.insert(task_id.to_owned(), revision);
+        true
+    }
+}
+
 fn warn_task_lifecycle_notification_failure(session_correlation: &str, notification_send_elapsed_ms: u64) {
     warn!(
         session_correlation,
@@ -215,10 +224,36 @@ impl ZedAgent {
             .map(|runtime| runtime.local_tool_registry.metrics_collector())
             .unwrap_or_else(|| self.local_tool_registry.metrics_collector());
         let (sender, receiver) = mpsc::channel(128);
-        let queue = Arc::new(LifecycleQueueTracker::new(metrics));
-        let observer = Arc::new(AcpTaskLifecycleObserver { sender, queue: Arc::clone(&queue) });
+        // The tracker holds the observer as a trait object so tests can
+        // substitute a counting double, so the collector Arc is coerced here.
+        let queue_metrics = Arc::clone(&metrics) as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+        let queue = Arc::new(LifecycleQueueTracker::new(queue_metrics));
+        let observer = Arc::new(AcpTaskLifecycleObserver {
+            sender: sender.clone(),
+            queue: Arc::clone(&queue),
+            session_id: session_id.to_string(),
+        });
         let registration = controller.register_progress_observer(session_id.0.to_string(), observer);
-        let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id, client, queue);
+        let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id.clone(), client, Arc::clone(&queue));
+        // Background restoration runs before this observer is registered, so
+        // tasks that were already active at registration have no queued
+        // transition. Publish their current snapshot explicitly: otherwise a
+        // resumed task that never changes again stays invisible to the client.
+        let initial_sender = sender.clone();
+        let initial_session_id = session_id.clone();
+        let initial_controller = Arc::clone(&controller);
+        let initial_queue = queue;
+        let initial_metrics = Arc::clone(&metrics);
+        let _initial_snapshot_task = tokio::spawn(async move {
+            publish_initial_task_snapshots(
+                &initial_controller,
+                &initial_session_id,
+                &initial_sender,
+                &initial_queue,
+                &initial_metrics,
+            )
+            .await;
+        });
 
         let mut data = match session
             .data
@@ -242,23 +277,31 @@ impl ZedAgent {
 }
 
 struct AcpTaskLifecycleObserver {
-    sender: mpsc::Sender<LifecycleUpdate>,
+    session_id: String,
+    sender: mpsc::Sender<QueuedLifecycleUpdate>,
     queue: Arc<LifecycleQueueTracker>,
 }
 
 impl SubagentProgressObserver for AcpTaskLifecycleObserver {
     fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
-        self.try_send(LifecycleUpdate::Subagent(entry));
+        self.try_send(LifecycleUpdate::Subagent {
+            parent_session_id: self.session_id.clone(),
+            task: entry,
+        });
     }
 
     fn background_status_changed(&self, entry: BackgroundSubprocessEntry) {
-        self.try_send(LifecycleUpdate::BackgroundProcess(entry));
+        self.try_send(LifecycleUpdate::BackgroundProcess {
+            parent_session_id: self.session_id.clone(),
+            task: entry,
+        });
     }
 }
 
 impl AcpTaskLifecycleObserver {
     fn try_send(&self, update: LifecycleUpdate) {
-        if let Err(kind) = self.queue.try_send(&self.sender, update) {
+        let queued = QueuedLifecycleUpdate { update, initial_snapshot: false };
+        if let Err(kind) = self.queue.try_send(&self.sender, queued) {
             let cumulative_count = self.queue.record_drop(kind);
             warn!(
                 queue = "acp_task_lifecycle",
@@ -271,7 +314,7 @@ impl AcpTaskLifecycleObserver {
 }
 
 fn spawn_task_lifecycle_forwarder(
-    mut receiver: mpsc::Receiver<LifecycleUpdate>,
+    mut receiver: mpsc::Receiver<QueuedLifecycleUpdate>,
     session_id: acp::SessionId,
     client: Arc<ConnectionHandle>,
     queue: Arc<LifecycleQueueTracker>,
@@ -290,10 +333,24 @@ fn spawn_task_lifecycle_forwarder(
         async move {
             let _queue_guard = queue_guard;
             let mut forwarder_span = TaskLifecycleForwarderSpan::new(Span::current());
-            while let Some(update) = receiver.recv().await {
+            let mut emitted_task_ids = HashSet::new();
+            let mut ordering = LifecycleOrdering::default();
+            while let Some(queued) = receiver.recv().await {
                 queue.dequeued();
+                if queued.update.parent_session_id() != session_id.0.as_ref() {
+                    continue;
+                }
+                if !ordering.admit(&queued) {
+                    // Task ids are client-supplied and unbounded, so the
+                    // forwarder logs carry no per-task field; the enclosing
+                    // span's bounded session correlation identifies the stream.
+                    debug!("Dropped superseded ACP task lifecycle update");
+                    continue;
+                }
+                let task_id = lody_task_id(&queued.update).to_string();
+                let previously_emitted = emitted_task_ids.contains(&task_id);
                 let send_started_at = Instant::now();
-                let send_result = send_task_lifecycle(&client, &session_id, update);
+                let send_result = send_task_lifecycle(&client, &session_id, queued.update, previously_emitted);
                 let notification_send_elapsed_ms =
                     u64::try_from(send_started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
                 match send_result {
@@ -302,6 +359,7 @@ fn spawn_task_lifecycle_forwarder(
                         warn_task_lifecycle_notification_failure(&session_correlation, notification_send_elapsed_ms);
                     }
                     Ok(()) => {
+                        let _ = emitted_task_ids.insert(task_id);
                         forwarder_span.record_sent();
                         debug!(notification_send_elapsed_ms, "Forwarded ACP task lifecycle notification");
                     }

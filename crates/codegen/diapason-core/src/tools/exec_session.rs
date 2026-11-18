@@ -571,6 +571,14 @@ pub struct ExecSessionManager {
     pipe_sessions: PipeSessionManager,
     pty_sessions: PtySessionManager,
     sessions: Arc<RwLock<HashMap<ExecSessionId, Arc<ExecSessionRecord>>>>,
+    /// A scripted fault for the liveness read path.
+    ///
+    /// The background liveness projection must distinguish a genuinely absent
+    /// session from any other read fault, and a live manager has no natural way
+    /// to fail on demand. The seam exists only under `cfg(test)`, so production
+    /// reads are unchanged.
+    #[cfg(test)]
+    snapshot_failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl ExecSessionManager {
@@ -580,7 +588,18 @@ impl ExecSessionManager {
             pipe_sessions: PipeSessionManager::new(workspace_root),
             pty_sessions,
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(test)]
+            snapshot_failure: Arc::new(std::sync::Mutex::new(None)),
         }
+    }
+
+    /// Makes every subsequent snapshot read fail with `message`.
+    ///
+    /// Test-only: it lets a regression exercise the liveness projection's
+    /// "read failed for another reason" branch without a real storage fault.
+    #[cfg(test)]
+    pub(crate) fn fail_snapshot_reads(&self, message: impl Into<String>) {
+        *self.snapshot_failure.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.into());
     }
 
     pub(crate) async fn create_pipe_session(
@@ -654,6 +673,15 @@ impl ExecSessionManager {
     }
 
     pub(crate) async fn snapshot_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
+        #[cfg(test)]
+        if let Some(message) = self
+            .snapshot_failure
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+        {
+            return Err(anyhow!("{message}"));
+        }
         let record = self.session_record(session_id).await?;
         match record.backend {
             ExecSessionBackend::Pipe => self.pipe_sessions.session_record(session_id).await.map(|r| {
@@ -857,7 +885,7 @@ mod tests {
         ExecSessionLostAfterInput, ExecSessionManager, ExecSessionNotFound, ExecSessionWriterClosed, write_failure,
     };
     use crate::config::PtyConfig;
-    use crate::tools::pty::PtySize;
+    use crate::tools::pty::{PtySessionNotFound, PtySize};
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
 
@@ -1013,6 +1041,60 @@ mod tests {
             )
             .await?;
         manager.close_session("run-3").await?;
+
+        Ok(())
+    }
+
+    /// Classifies a backend that dropped its handle after the record was read.
+    ///
+    /// Closing a session removes its dispatch record first and releases the
+    /// PTY handle second, so a concurrent read can find the record and still
+    /// miss the handle. That race must surface as the typed missing-session
+    /// cause, so the background liveness projection treats it as an expected
+    /// exit rather than logging an unobserved fault that quotes the session
+    /// id.
+    #[tokio::test]
+    #[cfg(all(unix, feature = "tui"))]
+    async fn snapshot_after_the_backend_dropped_the_handle_reports_a_missing_session() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        let size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        manager
+            .create_pty_session(
+                "run-race".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                size,
+                HashMap::new(),
+                None,
+            )
+            .await?;
+
+        // Release only the backend handle, exactly the window `close_session`
+        // opens between removing the dispatch record and terminating the
+        // process.
+        pty_sessions.manager().close_session("run-race")?;
+
+        let error = manager
+            .snapshot_session("run-race")
+            .await
+            .expect_err("a record whose backend handle is gone must not read as alive");
+        assert!(
+            error.chain().any(|cause| cause.is::<PtySessionNotFound>()),
+            "the race must retain the typed missing-session cause: {error}"
+        );
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_none(),
+            "the dispatch record still exists, so the failure must not claim the record is missing"
+        );
 
         Ok(())
     }

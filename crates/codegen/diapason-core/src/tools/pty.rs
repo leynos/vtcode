@@ -38,6 +38,20 @@ pub use preview::PtyPreviewRenderer;
 #[cfg(feature = "tui")]
 pub use types::{PtyCommandRequest, PtyCommandResult, PtyOutputCallback};
 
+/// A PTY backend holds no live handle for the requested session.
+///
+/// The exec-session manager keeps its dispatch record for longer than the PTY
+/// backend keeps the handle: closing a session removes the record first and
+/// releases the backend second, so a concurrent read can find the record and
+/// still miss the handle. That race is an expected exit, not an observed
+/// failure, and callers need to tell it apart from a backend fault without
+/// parsing message text.
+#[derive(Debug, thiserror::Error)]
+#[error("PTY session '{session_id}' not found")]
+pub(crate) struct PtySessionNotFound {
+    pub(crate) session_id: String,
+}
+
 /// Bounded-memory metadata for a PTY session's complete output spool.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PtyOutputStats {

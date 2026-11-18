@@ -7,7 +7,7 @@ mod concurrent_prompt;
 
 #[test]
 fn advertised_capabilities_include_session_discovery_and_resume() {
-    let capabilities = advertised_agent_capabilities();
+    let capabilities = advertised_agent_capabilities(false, false);
 
     assert!(capabilities.load_session);
     assert!(capabilities.session_capabilities.list.is_some());

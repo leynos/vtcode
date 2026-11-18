@@ -27,7 +27,9 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use tokio::fs;
 
-async fn build_agent(workspace: &Path) -> ZedAgent {
+/// Builds a Zed agent for tests that only need the local registry, such as the
+/// Lody management dispatch-boundary metrics tests.
+pub(crate) async fn build_agent(workspace: &Path) -> ZedAgent {
     build_agent_with_vt_config(workspace, None).await
 }
 

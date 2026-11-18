@@ -1,4 +1,9 @@
 //! Coordinates subagent discovery, execution, background work, and the public controller API.
+//!
+//! Storage access for live and archived background output is injectable through
+//! [`BackgroundOutputReader`]. A reader is keyed by the live record of one
+//! background task and returns a domain result, so the controller keeps line
+//! bounds, transport limits, validation, and error mapping.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -6,8 +11,12 @@
 // ─── Module Structure ───────────────────────────────────────────────────────
 
 mod background;
+mod background_output;
 mod config;
 mod constants;
+mod controller_child_ids;
+mod controller_locks;
+mod controller_persistence;
 mod discovery;
 mod model;
 mod prompt;
@@ -16,13 +25,15 @@ mod types;
 // ─── Re-exports ─────────────────────────────────────────────────────────────
 
 pub use background::{
-    background_record_id, build_background_subagent_command, extract_tail_lines, load_archive_preview,
-    subagent_display_label,
+    background_record_id, background_record_id_for_owner, build_background_subagent_command, extract_tail_lines,
+    load_archive_preview, subagent_display_label,
 };
+pub use background_output::{BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, ExecSessionOutputReader};
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
     normalize_background_child_max_turns, normalize_child_max_turns, prepare_child_runtime_config,
 };
+pub use controller_locks::SubagentLockScope;
 pub use model::{
     agent_type_for_spec, load_memory_appendix, load_memory_appendix_async, load_primary_memory_appendix,
     load_primary_memory_appendix_async,
@@ -32,11 +43,11 @@ pub use prompt::{
     extract_explicit_agent_mentions, normalize_requested_model_override, request_prompt, sanitize_subagent_input_items,
 };
 pub use types::{
-    BackgroundRecord, BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord,
-    ChildRunResult, ControllerState, PersistedBackgroundRecord, PersistedBackgroundState, SendInputRequest,
-    SpawnAgentRequest, SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem,
-    SubagentInvocationContext, SubagentProgressObserver, SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot,
-    TurnDelegationHints,
+    BackgroundLiveness, BackgroundLivenessEntry, BackgroundRecord, BackgroundSubprocessEntry,
+    BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord, ChildRunResult, ControllerState,
+    PersistedBackgroundRecord, PersistedBackgroundState, SendInputRequest, SpawnAgentRequest,
+    SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem, SubagentInvocationContext,
+    SubagentProgressObserver, SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot, TurnDelegationHints,
 };
 
 // VerificationResult is defined in this module (below) and re-exported at the
@@ -159,46 +170,30 @@ pub struct SubagentControllerConfig {
     pub workspace_gated: bool,
     /// Manager for exec sessions (PTY and pipe).
     pub exec_sessions: ExecSessionManager,
+    /// Reader for live and archived background output; `None` uses the exec-session default.
+    pub output_reader: Option<Arc<dyn BackgroundOutputReader>>,
     /// PTY session manager.
     pub pty_manager: PtyManager,
     /// Whether this controller manages a background runtime subprocess.
     pub managed_background_runtime: bool,
-}
-
-#[derive(Default)]
-struct ProgressObserverRegistry {
-    next_id: AtomicU64,
-    observers: Mutex<BTreeMap<u64, RegisteredProgressObserver>>,
-}
-
-struct RegisteredProgressObserver {
-    parent_session_id: String,
-    observer: Arc<dyn SubagentProgressObserver>,
-}
-
-/// Keeps a progress observer registered with its subagent controller.
-///
-/// Dropping the registration detaches the observer. Adapters should retain it
-/// for exactly the lifetime in which they want to receive status snapshots.
-#[must_use = "dropping the registration detaches the progress observer"]
-pub struct SubagentProgressObserverRegistration {
-    registry: Weak<ProgressObserverRegistry>,
-    id: u64,
-}
-
-impl Drop for SubagentProgressObserverRegistration {
-    fn drop(&mut self) {
-        if let Some(registry) = self.registry.upgrade() {
-            let mut observers = registry.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            observers.remove(&self.id);
-        }
-    }
+    /// Adoption and persistence locks shared by this controller tree.
+    ///
+    /// `None` resolves to the process-global default, so controllers created
+    /// without one still exclude each other exactly as the former static locks
+    /// did. Supply a distinct scope to give a tree its own locks for
+    /// injection or isolated tests; a child-scoped controller inherits its
+    /// parent's scope.
+    pub lock_scope: Option<Arc<SubagentLockScope>>,
 }
 
 /// Central controller that manages spawning, lifecycle, and state of all subagents.
 #[derive(Clone)]
 pub struct SubagentController {
     config: Arc<SubagentControllerConfig>,
+    /// Reads live and archived background output. Resolved once at construction
+    /// so every read path shares the same injectable storage access.
+    output_reader: Arc<dyn BackgroundOutputReader>,
+    background_owner_session_id: Option<String>,
     parent_session_id: Arc<RwLock<String>>,
     lifecycle_hooks: Option<LifecycleHookEngine>,
     state: Arc<RwLock<ControllerState>>,
@@ -209,12 +204,42 @@ pub struct SubagentController {
     /// state. Set only while `close_tree`/`signal_shutdown` are tearing a
     /// subtree down.
     closing: Arc<AtomicBool>,
-    progress_observers: Arc<ProgressObserverRegistry>,
+    progress_observers: Arc<controller_observers::ProgressObserverRegistry>,
+    /// Observer key inherited from the owning controller. Child-scoped
+    /// controllers serve exactly one parent session, so their lifecycle
+    /// events are published under that session's observer key even though the
+    /// tasks' immediate `parent_thread_id` is the child's own session.
+    progress_observer_scope: Option<String>,
+    /// Child task ids allocated anywhere in this controller's tree. A
+    /// controller-local check cannot see an id a sibling allocated, so the
+    /// root owns one scope and the whole tree shares one slot pointing at it.
+    /// A child adopts its parent's slot object, so the slot is also the
+    /// redirectable handle that attaching a controller with existing children
+    /// rewrites: every descendant follows the redirect at once.
+    child_id_scope: Arc<std::sync::RwLock<Arc<controller_spawn_run::ChildIdScopeSlot>>>,
+    /// Adoption and persistence locks shared by this controller tree. Resolved
+    /// once at construction from the config, so a child inherits its parent's
+    /// tree and an injected scope is observable at every call site.
+    lock_scope: Arc<SubagentLockScope>,
 }
 
 impl SubagentController {
     /// Creates a new controller, discovering subagent specs and loading persisted background state.
     pub fn new(config: SubagentControllerConfig) -> impl Future<Output = Result<Self>> + Send {
+        Self::new_with_background_owner(config, None)
+    }
+
+    /// Creates a controller scoped to one persisted background owner.
+    ///
+    /// Interactive sessions use this constructor so a per-session
+    /// controller cannot load or restore another session's background records.
+    /// Callers such as the CLI use [`Self::new`] to retain restore-all
+    /// behaviour.
+    pub fn new_with_background_owner(
+        config: SubagentControllerConfig,
+        owner_session_id: Option<&str>,
+    ) -> impl Future<Output = Result<Self>> + Send {
+        let background_owner_session_id = owner_session_id.map(str::to_owned);
         Box::pin(async move {
             let discovered = discover_controller_subagents(&config.workspace_root).await?;
             let workspace_gated = config.workspace_gated;
@@ -228,16 +253,51 @@ impl SubagentController {
             if let Some(engine) = lifecycle_hooks.as_ref() {
                 crate::hooks::lifecycle::restore_workspace_hook_approval(engine, &config.workspace_root).await;
             }
-            let background_children = load_background_state(&config.workspace_root)
-                .await?
-                .records
+            // A nested scope never owns background work:
+            // `ensure_background_subprocess_enabled` refuses to launch one.
+            // Loading the workspace ledger here would give the nested scope a
+            // second copy of records another controller already owns, so a
+            // list/cancel routed to either scope could report a stale copy
+            // (for example `Running` after the owner cancelled it).
+            let background_children = if config.managed_background_runtime {
+                BTreeMap::new()
+            } else {
+                // A legacy ledger can hold two ids that canonicalize to the
+                // same key, so several entries can name one record. The load
+                // path and the save merge share `collect_by_canonical_id`, so
+                // the newest `updated_at` wins in both: file order is not a
+                // freshness signal, and letting it decide could load a
+                // cancelled copy over the cancellation.
+                controller_persistence::collect_by_canonical_id(
+                    load_background_state(&config.workspace_root)
+                        .await?
+                        .records
+                        .into_iter()
+                        .filter(|record| {
+                            background_owner_session_id
+                                .as_deref()
+                                .is_none_or(|owner| record.owner_session_id.as_deref() == Some(owner))
+                        }),
+                )
                 .into_iter()
-                .map(|record| (record.id.clone(), BackgroundRecord::from_persisted(record)))
-                .collect();
+                .map(|(id, record)| (id, BackgroundRecord::from_persisted(record)))
+                .collect()
+            };
+            let parent_session_id = Arc::new(RwLock::new(config.parent_session_id.clone()));
+            let output_reader = config
+                .output_reader
+                .clone()
+                .unwrap_or_else(|| Arc::new(ExecSessionOutputReader::new(config.exec_sessions.clone())));
+            // Resolve the tree's locks before the state is built: the child-id
+            // slot needs the same adoption lock as the controller, and a
+            // configured scope must keep the two identities together.
+            let lock_scope = config.lock_scope.clone().unwrap_or_else(controller_locks::default_lock_scope);
             Ok(Self {
-                parent_session_id: Arc::new(RwLock::new(config.parent_session_id.clone())),
-                lifecycle_hooks,
                 config: Arc::new(config),
+                output_reader,
+                background_owner_session_id,
+                parent_session_id,
+                lifecycle_hooks,
                 state: Arc::new(RwLock::new(ControllerState {
                     discovered,
                     parent_messages: Vec::new(),
@@ -248,8 +308,18 @@ impl SubagentController {
                 shutdown_requested: Arc::new(AtomicBool::new(false)),
                 closing: Arc::new(AtomicBool::new(false)),
                 progress_observers: Arc::default(),
+                progress_observer_scope: None,
+                child_id_scope: Arc::new(std::sync::RwLock::new(Arc::new(
+                    controller_spawn_run::ChildIdScopeSlot::with_lock_scope(Arc::clone(&lock_scope)),
+                ))),
+                lock_scope,
             })
         })
+    }
+
+    /// Returns the adoption and persistence locks this controller tree holds.
+    pub(crate) fn lock_scope(&self) -> &Arc<SubagentLockScope> {
+        &self.lock_scope
     }
 
     /// Re-discovers subagent specs from the workspace.
@@ -309,108 +379,6 @@ impl SubagentController {
             .map(ChildRecord::build_status_entry)
             .collect()
     }
-
-    pub(super) async fn ensure_child_owned_by_invocation(&self, target: &str) -> Result<()> {
-        let Some(context) = current_subagent_invocation_context() else {
-            return Ok(());
-        };
-        let state = self.state.read().await;
-        let record = state
-            .children
-            .get(target)
-            .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
-        if record.parent_thread_id != context.parent_session_id {
-            bail!("Unknown subagent id {target}");
-        }
-        Ok(())
-    }
-
-    /// Registers an observer for lifecycle snapshots belonging to one parent
-    /// session. Separate registrations allow multiple adapters or sessions to
-    /// observe the same controller without replacing one another.
-    pub fn register_progress_observer(
-        &self,
-        parent_session_id: impl Into<String>,
-        observer: Arc<dyn SubagentProgressObserver>,
-    ) -> SubagentProgressObserverRegistration {
-        let id = self.progress_observers.next_id.fetch_add(1, Ordering::Relaxed);
-        let mut observers = self
-            .progress_observers
-            .observers
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        observers.insert(
-            id,
-            RegisteredProgressObserver {
-                parent_session_id: parent_session_id.into(),
-                observer,
-            },
-        );
-        SubagentProgressObserverRegistration {
-            registry: Arc::downgrade(&self.progress_observers),
-            id,
-        }
-    }
-
-    fn with_progress_observers(&self, parent_session_id: &str, notify: impl Fn(&dyn SubagentProgressObserver)) {
-        let observers = {
-            let observers = self
-                .progress_observers
-                .observers
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            observers
-                .values()
-                .filter(|registration| registration.parent_session_id == parent_session_id)
-                .map(|registration| Arc::clone(&registration.observer))
-                .collect::<Vec<_>>()
-        };
-        for observer in observers {
-            notify(observer.as_ref());
-        }
-    }
-
-    pub(crate) async fn publish_subagent_progress(&self, task: SubagentStatusEntry) {
-        self.with_progress_observers(&task.parent_thread_id, |observer| observer.subagent_status_changed(task.clone()));
-    }
-
-    pub(crate) async fn publish_background_progress(&self, task: BackgroundSubprocessEntry) {
-        let parent_session_id = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .get(&task.id)
-                .map(|record| record.parent_session_id.clone())
-        };
-        if let Some(parent_session_id) = parent_session_id.filter(|owner| !owner.is_empty()) {
-            self.with_progress_observers(&parent_session_id, |observer| {
-                observer.background_status_changed(task.clone())
-            });
-        }
-    }
-
-    pub(crate) async fn publish_child_status(&self, child_id: &str) {
-        let entry = {
-            let state = self.state.read().await;
-            state.children.get(child_id).map(ChildRecord::build_status_entry)
-        };
-        if let Some(entry) = entry {
-            self.publish_subagent_progress(entry).await;
-        }
-    }
-
-    pub(crate) async fn publish_background_status(&self, record_id: &str) {
-        let entry = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .get(record_id)
-                .map(BackgroundRecord::build_status_entry)
-        };
-        if let Some(entry) = entry {
-            self.publish_background_progress(entry).await;
-        }
-    }
 }
 
 // ─── Controller submodule split ────────────────────────────────────────────
@@ -418,8 +386,12 @@ impl SubagentController {
 mod controller_background_ops;
 mod controller_child_loop;
 mod controller_helpers;
+mod controller_observers;
 mod controller_spawn_run;
+mod controller_tree;
 mod controller_verify;
+
+pub use controller_observers::SubagentProgressObserverRegistration;
 
 #[allow(
     unused_imports,

@@ -108,6 +108,8 @@ pub struct SubagentStatusEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackgroundSubprocessEntry {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_session_id: Option<String>,
     pub session_id: String,
     pub exec_session_id: String,
     pub agent_name: String,
@@ -144,6 +146,36 @@ pub struct BackgroundSubprocessSnapshot {
     pub preview: String,
 }
 
+/// How one background record's liveness was obtained.
+///
+/// A listing that overlays liveness must not invent a terminal status when the
+/// exec-session manager cannot answer: "the process exited" and "the read
+/// failed" are different facts. This outcome carries that distinction to the
+/// caller without changing the wire shape of a background entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BackgroundLiveness {
+    /// The exec-session manager answered, or no read was needed because the
+    /// record is already settled; the entry reflects the observation.
+    Observed,
+    /// The liveness read failed for a reason other than the session being
+    /// absent. The entry keeps its cached status, and `reason` is a short,
+    /// bounded diagnostic that contains no paths or secrets.
+    Unobserved { reason: String },
+}
+
+/// One background status projection paired with how it was observed.
+///
+/// The entry is exactly the projection a caller would serve; the outcome only
+/// qualifies it, so an adapter can log an unobserved record and still return
+/// the list.
+#[derive(Debug, Clone)]
+pub struct BackgroundLivenessEntry {
+    /// The status projection, with liveness overlaid only when observed.
+    pub entry: BackgroundSubprocessEntry,
+    /// Whether the projection's liveness was actually observed.
+    pub liveness: BackgroundLiveness,
+}
+
 /// Receives domain status snapshots when a delegated child or managed
 /// background process changes state.
 ///
@@ -160,7 +192,7 @@ pub trait SubagentProgressObserver: Send + Sync {
 
 /// Session-specific parent data for one model tool-execution task.
 ///
-/// ACP sessions can share a subagent controller, so this snapshot must travel
+/// Host sessions can share a subagent controller, so this snapshot must travel
 /// with the invocation rather than being stored as mutable controller state.
 #[derive(Clone)]
 pub struct SubagentInvocationContext {
@@ -306,6 +338,8 @@ pub(crate) struct ChildRunRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedBackgroundRecord {
     pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) owner_session_id: Option<String>,
     agent_name: String,
     display_label: String,
     description: String,
@@ -314,7 +348,7 @@ pub struct PersistedBackgroundRecord {
     #[serde(rename = "color", alias = "colour")]
     colour: Option<String>,
     session_id: String,
-    /// ACP/terminal parent that owns this long-lived task. Older state files
+    /// Session parent that owns this long-lived task. Older state files
     /// predate owner tracking and deserialize to an empty owner.
     #[serde(default)]
     parent_session_id: String,
@@ -346,6 +380,7 @@ pub struct PersistedBackgroundState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackgroundRecord {
     pub(crate) id: String,
+    pub(crate) owner_session_id: Option<String>,
     pub(crate) agent_name: String,
     pub(crate) display_label: String,
     pub(crate) description: String,
@@ -388,6 +423,7 @@ impl StatusEntryBuilder for BackgroundRecord {
     fn build_status_entry(&self) -> BackgroundSubprocessEntry {
         BackgroundSubprocessEntry {
             id: self.id.clone(),
+            owner_session_id: self.owner_session_id.clone(),
             session_id: self.session_id.clone(),
             exec_session_id: self.exec_session_id.clone(),
             agent_name: self.agent_name.clone(),
@@ -507,6 +543,7 @@ impl BackgroundRecord {
     pub(crate) fn into_persisted(self) -> PersistedBackgroundRecord {
         PersistedBackgroundRecord {
             id: self.id,
+            owner_session_id: self.owner_session_id,
             agent_name: self.agent_name,
             display_label: self.display_label,
             description: self.description,
@@ -537,6 +574,7 @@ impl BackgroundRecord {
     pub(crate) fn from_persisted(record: PersistedBackgroundRecord) -> Self {
         Self {
             id: record.id,
+            owner_session_id: record.owner_session_id,
             agent_name: record.agent_name,
             display_label: record.display_label,
             description: record.description,
@@ -562,6 +600,64 @@ impl BackgroundRecord {
             reasoning_override: record.reasoning_override,
             restart_attempts: record.restart_attempts,
         }
+    }
+}
+
+impl PersistedBackgroundRecord {
+    /// Rewrites the persisted id into its canonical owner-scoped form.
+    ///
+    /// State written before ids were owner-scoped stored the
+    /// workspace-global id for records that carry an owner. Canonicalizing on
+    /// load keeps a relaunch looking at the same record instead of creating a
+    /// second one, and keeps every id derivation identical to the launch path.
+    pub(crate) fn canonicalize_id(&mut self) {
+        self.id = super::background::background_record_id_for_owner(
+            self.agent_name.as_str(),
+            self.owner_session_id.as_deref(),
+        );
+    }
+
+    /// Whether this record was written at or after `other`.
+    ///
+    /// A merge of two copies of the same ledger entry keeps the newer one, so
+    /// a local refresh or cancellation is not overwritten by the stale copy
+    /// the controller loaded.
+    pub(crate) fn is_at_least_as_new_as(&self, other: &Self) -> bool {
+        self.updated_at >= other.updated_at
+    }
+
+    /// Whether this record's stop outranks `snapshot` regardless of timestamps.
+    ///
+    /// A stop is one-way until a restart replaces the launch: an explicit
+    /// restart writes a fresh exec session, whereas a controller that merely
+    /// refreshed its stale copy keeps the session this record stopped and
+    /// advances `updated_at` without changing intent. Timestamp order alone
+    /// therefore cannot decide this case, or a refresh would resurrect a
+    /// cancelled task.
+    pub(crate) fn cancellation_outranks(&self, snapshot: &Self) -> bool {
+        !self.desired_enabled && snapshot.desired_enabled && self.exec_session_id == snapshot.exec_session_id
+    }
+
+    /// Applies this record's stop to a cached copy of the same launch.
+    ///
+    /// Returns `false` when this record is not a cancellation of that launch:
+    /// it is still desired, the cached copy is already stopped, or the two
+    /// name different exec sessions, which means a restart has replaced the
+    /// session this record stopped. Adoption clears the cached desire and, for
+    /// a copy that still looks active, takes the settled outcome so refresh
+    /// cannot relaunch it.
+    pub(crate) fn adopt_cancellation_into(&self, record: &mut BackgroundRecord) -> bool {
+        if self.desired_enabled || !record.desired_enabled || self.exec_session_id != record.exec_session_id {
+            return false;
+        }
+        record.desired_enabled = false;
+        if record.status.is_active() {
+            record.status = self.status;
+            record.error = self.error.clone();
+            record.ended_at = self.ended_at.or(record.ended_at);
+            record.updated_at = record.updated_at.max(self.updated_at);
+        }
+        true
     }
 }
 
@@ -666,6 +762,7 @@ mod tests {
             description: "A background wire fixture".to_string(),
             source: "project".to_string(),
             colour: Some("orchid".to_string()),
+            owner_session_id: None,
             status: BackgroundSubprocessStatus::Running,
             desired_enabled: true,
             created_at: now,
@@ -715,6 +812,7 @@ mod tests {
             description: "A persistence wire fixture".to_string(),
             source: "project".to_string(),
             colour: Some("orchid".to_string()),
+            owner_session_id: None,
             session_id: "session-1".to_string(),
             parent_session_id: "parent-session".to_string(),
             exec_session_id: "exec-1".to_string(),

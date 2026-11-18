@@ -151,6 +151,19 @@ Agents that embed Diapason can read the same vocabulary from
 event with `MetricsCollector::record_tool_recovery`, or a batch with
 `record_tool_recovery_events`, rather than incrementing a private counter.
 
+ACP extension activity is counted separately in the `acp_extension` object of
+the same summary: management requests started, succeeded, failed and in flight,
+their total duration, usage notifications sent and failed, and initial snapshot
+publications and failures. `list`, `cancel` and `output` are all counted,
+because the counters measure use of the management surface rather than state
+mutation. The same counters are exported as `diapason_acp_*` series in the
+Prometheus snapshot.
+
+Both snapshot families are read from a `MetricsCollector` through
+`ToolRegistry::metrics_collector()`. The running `diapason acp` process does
+not yet expose a scrapeable endpoint or a metrics command; adding one is
+tracked as [issue #199](https://github.com/leynos/vtcode/issues/199).
+
 A host that builds more than one `ToolRegistry` can install one shared
 collector with `ToolRegistry::set_metrics_collector`. The replacement affects
 only the registry instance it is called on: counters already recorded in the
@@ -185,3 +198,41 @@ does not depend on the current one. Both are the supported way to stage
 incomplete tool results and replace them with terminal results. The callback
 must not call back into the handle, await, or perform I/O, because it runs with
 the history lock taken.
+
+### Embedding API changes
+
+The complete list of Rust API changes in this release, including the new
+required struct fields on `MetricsSummary`, `ToolExecutionError`, and
+`SubagentControllerConfig`, is in the
+[0.157.0 release notes](./releases/0.157.0.md#breaking-rust-api-changes).
+Embedders that serve sessions over ACP can substitute background output storage
+access with `SubagentControllerConfig.output_reader`; the default
+`ExecSessionOutputReader` reads live exec-session output and falls back to the
+session archive. See the
+[background output reader](./development/acp-runtime.md#background-output-reader).
+
+## Lody ACP extensions in brief
+
+`diapason acp` serves the Agent Client Protocol over stdio. During
+`initialize`, Diapason advertises Lody extensions under `_meta.lody`: `usage`
+is always present, and subagent `lifecycle`, `list`, `cancel`, and `output` are
+advertised when a subagent controller exists for the launch workspace.
+`_meta.lody.tasks.background` appears only when background subagents are
+enabled. These capabilities describe the launch workspace. Management is
+session-scoped, so a request can still fail with
+`subagent_management_unavailable`.
+
+Subagent and background-process lifecycle is published as standard ACP
+`session/update` tool calls and tool-call updates, with the task snapshot under
+`_meta.lody.task`. The earlier `_diapason/taskLifecycle` extension notification
+is no longer emitted, so a client that read task state from it must read the
+tool call and tool-call updates instead. When management is available, the
+`_lody/subagents/list`, `_lody/subagents/cancel`, and `_lody/subagents/output`
+requests operate only on tasks owned by the calling session. Provider usage is
+reported through `_lody/session/usage_update` as a per-response delta. Custom
+providers opt in to streamed usage with `supports_stream_usage`; Diapason only
+requests it when the provider declares that support.
+
+For the full contract, see
+[ACP capability negotiation and Lody extensions](./guides/zed-acp.md#acp-capability-negotiation-and-lody-extensions)
+and the [ACP runtime guide](./development/acp-runtime.md).

@@ -33,6 +33,9 @@ use self::discovery::discover_controller_subagents;
 use self::model::*;
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
+pub(super) use super::controller_child_ids::ChildIdScopeSlot;
+use super::controller_persistence::persist_background_records;
+
 #[allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -498,11 +501,23 @@ impl SubagentController {
             .children
             .get_mut(target)
             .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
-        if record.status == SubagentStatus::Closed {
-            return Ok(record.build_status_entry());
-        }
+        // The task is aborted before the status guard. A terminal status is
+        // written before the child loop finishes: it still has to run the stop
+        // hook and its completion bookkeeping, and the stored handle is only
+        // cleared once the loop goes idle. Closing a child during that window
+        // must still stop the task, or it would go on to close its nested
+        // subagents and reconcile its worktree after being cancelled. Aborting
+        // a finished handle is a no-op, so the settled outcome is untouched.
         if let Some(handle) = record.handle.take() {
             handle.abort();
+        }
+        // Cancellation must not rewrite a settled outcome. `Completed` and
+        // `Failed` children already stopped running, and a transport projects
+        // `Closed` as a failure, so closing them again would turn a
+        // successful task into a visibly failed one and overwrite its
+        // completion timestamp.
+        if record.status.is_terminal() {
+            return Ok(record.build_status_entry());
         }
         record.status = SubagentStatus::Closed;
         record.updated_at = Utc::now();
@@ -585,16 +600,46 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) {
             return Ok(());
         }
-        let records = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .values()
-                .cloned()
-                .map(BackgroundRecord::into_persisted)
-                .collect()
-        };
-        persist_background_state(&self.config.workspace_root, records).await
+        if self.config.managed_background_runtime {
+            // Nested scopes never own background records. Persisting their
+            // always-empty view would erase the ledger owned by the root
+            // controller.
+            return Ok(());
+        }
+        // The lock is taken inside the persistence task, before the in-memory
+        // snapshot. Reading first would let two concurrent saves snapshot v1
+        // and v2, then write v2 before v1, leaving the older snapshot as the
+        // file. Holding the lock across the read keeps the last write newest.
+        let lock_scope = Arc::clone(&self.lock_scope);
+        let state = Arc::clone(&self.state);
+        let workspace_root = self.config.workspace_root.clone();
+        let owner_session_id = self.background_owner_session_id.clone();
+        // Both guards live in the persistence task. Cancelling this caller
+        // only detaches that task, so neither lock is released until the
+        // reload, merge, write and rename have finished; dropping them here
+        // instead would let a second writer start from the same stale ledger
+        // while this write was still in flight.
+        tokio::spawn(async move {
+            let _persistence_guard = lock_scope.persistence().lock().await;
+            // The in-process mutex cannot serialise another Diapason process
+            // that shares this workspace. Hold the ledger's inter-process lock
+            // across the reload, merge and write so two processes cannot each
+            // read the old ledger and then have the later rename discard the
+            // other's record.
+            let _ledger_guard = lock_background_state(&workspace_root).await?;
+            let records = {
+                let state = state.read().await;
+                state
+                    .background_children
+                    .values()
+                    .cloned()
+                    .map(BackgroundRecord::into_persisted)
+                    .collect()
+            };
+            persist_background_records(&workspace_root, owner_session_id.as_deref(), records).await
+        })
+        .await
+        .context("Failed to join the background state persistence task")?
     }
 
     pub(super) async fn find_spec(&self, candidate: &str) -> Option<SubagentSpec> {
@@ -731,15 +776,21 @@ impl SubagentController {
             let worktree_path = self.create_spawn_worktree(&launch.spec).await?;
             let worktree_path_for_cleanup = worktree_path.clone();
             let child = self.prepare_queued_child(launch, worktree_path, runtime);
-            let id = child.id.clone();
-            if let Err(error) = Box::pin(self.insert_queued_child(child)).await {
-                // The record never became visible, so nothing owns the
-                // worktree; reclaim it rather than leaking the checkout.
-                if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
-                    self.remove_unused_spawn_worktree(worktree_path).await;
+            // The stored id is authoritative: insertion may have to
+            // disambiguate it against a child registered in the same
+            // millisecond, so launching the pre-insertion id would address the
+            // wrong record, or none at all.
+            let id = match Box::pin(self.insert_queued_child(child)).await {
+                Ok(id) => id,
+                Err(error) => {
+                    // The record never became visible, so nothing owns the
+                    // worktree; reclaim it rather than leaking the checkout.
+                    if let Some(worktree_path) = worktree_path_for_cleanup.as_deref() {
+                        self.remove_unused_spawn_worktree(worktree_path).await;
+                    }
+                    return Err(error);
                 }
-                return Err(error);
-            }
+            };
             self.launch_child(&id).await?;
             self.status_for(&id).await
         })
@@ -910,7 +961,18 @@ impl SubagentController {
         QueuedChildRecord { id, record }
     }
 
-    async fn insert_queued_child(&self, child: QueuedChildRecord) -> Result<()> {
+    /// Inserts a prepared child and returns the id it was stored under.
+    ///
+    /// Generated ids carry millisecond precision, so two spawns of the same
+    /// kind in one millisecond propose the same id, and the colliding pair need
+    /// not even belong to the same controller: a session exposes its whole
+    /// controller tree and routes an id to the first match. `BTreeMap::insert`
+    /// would replace the earlier record, silently dropping a subagent that has
+    /// already been admitted and may already own a worktree. Allocating the
+    /// unique id inside the write lock, against the tree-wide scope, is what
+    /// makes the check race-free, so the record's id and session id are both
+    /// rewritten before insertion.
+    async fn insert_queued_child(&self, mut child: QueuedChildRecord) -> Result<String> {
         let mut state = self.state.write().await;
         // Re-check the close gates while the write lock is held. The earlier
         // check can race with a concurrent `close_tree` that snapshots and
@@ -919,8 +981,43 @@ impl SubagentController {
         if self.shutdown_requested.load(Ordering::Relaxed) || self.closing.load(Ordering::Relaxed) {
             bail!("Subagent controller is shutting down; cannot spawn new subagents");
         }
+        // The scope's read guard stays held for the allocation, so joining a
+        // controller to another tree cannot swap the allocator out from under
+        // an id that is being reserved here.
+        let unique_id = self
+            .child_id_slot()
+            .with_scope(|scope| scope.allocate(|id| state.children.contains_key(id), child.id.as_str()));
+        if unique_id != child.id {
+            child.record.session_id = format!(
+                "{}-{}",
+                sanitize_component(child.record.parent_thread_id.as_str()),
+                sanitize_component(unique_id.as_str())
+            );
+            child.record.id = unique_id.clone();
+            child.id = unique_id;
+        }
+        let id = child.id.clone();
         state.children.insert(child.id, child.record);
-        Ok(())
+        Ok(id)
+    }
+
+    /// Inserts a prepared record under a caller-chosen candidate id.
+    ///
+    /// Test seam only: a real spawn derives its id from the agent kind and a
+    /// millisecond clock, so two controllers can only be forced to propose the
+    /// same id by supplying the candidate directly. Everything else about the
+    /// insertion — the close-gate recheck, the tree-wide allocation, and the
+    /// returned id — is the production path.
+    #[cfg(test)]
+    pub(super) async fn insert_child_with_candidate_id(
+        &self,
+        candidate_id: &str,
+        record: ChildRecord,
+    ) -> Result<String> {
+        // The insertion future carries the whole record, and a test future that
+        // large trips `clippy::large_futures`; boxing it here keeps the seam's
+        // own future small without changing the production path.
+        Box::pin(self.insert_queued_child(QueuedChildRecord { id: candidate_id.to_owned(), record })).await
     }
 
     async fn restart_child(&self, target: &str) -> Result<()> {

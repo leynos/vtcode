@@ -117,6 +117,14 @@ impl SessionActivity {
         self.closing.store(true, Ordering::SeqCst);
     }
 
+    /// Reports whether the session has begun closing.
+    ///
+    /// Closing is sticky, and it stays observable on the shared activity so a
+    /// clone of the handle can still tell that the session is going away.
+    fn is_closing(&self) -> bool {
+        self.closing.load(Ordering::SeqCst)
+    }
+
     async fn wait_for_prompts(&self) {
         loop {
             let notified = self.prompts_idle.notified();
@@ -138,7 +146,7 @@ impl SessionActivity {
 
 impl SessionPromptGuard {
     pub(crate) fn is_closing(&self) -> bool {
-        self.activity.closing.load(Ordering::SeqCst)
+        self.activity.is_closing()
     }
 }
 
@@ -172,9 +180,19 @@ impl SessionHandle {
     pub(crate) async fn wait_for_prompts(&self) {
         self.activity.wait_for_prompts().await;
     }
+
+    /// Reports whether the session has begun closing.
+    ///
+    /// A closing session may still be resolvable through the session map while
+    /// its cleanup runs, but its workspace runtime has been released. Callers
+    /// that would otherwise act on a released runtime must treat it as gone.
+    pub(crate) fn is_closing(&self) -> bool {
+        self.activity.is_closing()
+    }
 }
 
 pub(crate) struct SessionData {
+    pub(in crate::zed) subagent_controller: Option<Arc<diapason_core::subagents::SubagentController>>,
     pub(crate) session_id: acp::SessionId,
     pub(crate) thread: ThreadRuntimeHandle,
     pub(crate) archive: Option<diapason_core::utils::session_archive::SessionArchive>,
@@ -256,13 +274,16 @@ impl SessionHandle {
     }
 
     pub(crate) async fn release_workspace_lease(&self) -> anyhow::Result<()> {
-        let (lease, runtime) = {
+        let (lease, runtime, controller) = {
             let mut data = self
                 .data
                 .lock()
                 .map_err(|error| lock_poison_error("releasing ACP session workspace lease", error))?;
-            (data.workspace_lease.take(), data.workspace_runtime.take())
+            (data.workspace_lease.take(), data.workspace_runtime.take(), data.subagent_controller.take())
         };
+        if let Some(controller) = controller {
+            controller.signal_shutdown().await;
+        }
         drop(runtime);
         if let Some(lease) = lease {
             lease.release().await;
