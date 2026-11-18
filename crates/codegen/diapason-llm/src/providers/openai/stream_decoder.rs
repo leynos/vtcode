@@ -13,8 +13,6 @@ use super::streaming::OpenAIStreamTelemetry;
 use crate::error_display;
 use crate::provider;
 use crate::providers::shared::StreamTelemetry;
-use crate::providers::shared::parse_cache_write_tokens_from_usage;
-use crate::providers::shared::parse_cached_prompt_tokens_from_usage;
 use crate::providers::shared::{
     ResponsesStreamEventPolicy, StreamAssemblyError, extract_data_payload, response_stream_event_policy,
 };
@@ -54,12 +52,27 @@ fn parse_responses_sse_event(event: &str) -> Result<ParsedResponsesSseEvent, pro
     parse_stream_payload(trimmed_payload).map(ParsedResponsesSseEvent::Payload)
 }
 
+/// Whether a chat frame carries the complete usage sample.
+///
+/// Chat streams may repeat usage on more than one frame. A later frame that
+/// reports only `total_tokens` must not replace a complete earlier sample with
+/// zero prompt and completion counts. An explicitly reported zero is still a
+/// reported count.
+fn chat_usage_is_complete(payload: &Value) -> bool {
+    let Some(usage) = payload.get("usage") else {
+        return false;
+    };
+    ["prompt_tokens", "completion_tokens", "total_tokens"]
+        .iter()
+        .all(|key| usage.get(*key).and_then(Value::as_u64).is_some())
+}
+
 fn capture_chat_usage(
     payload: &mut Value,
     aggregator: &mut crate::providers::shared::StreamAggregator,
     include_cached_prompt_metrics: bool,
 ) {
-    if payload.get("usage").is_some()
+    if chat_usage_is_complete(payload)
         && let Some(usage) = crate::providers::common::parse_usage_openai_format(payload, include_cached_prompt_metrics)
     {
         aggregator.set_usage(usage);
@@ -113,34 +126,10 @@ fn merge_final_response_metadata(
     final_response: &Value,
     include_cached_prompt_metrics: bool,
 ) {
-    if let Some(usage_value) = final_response.get("usage") {
-        let cached_prompt_tokens = parse_cached_prompt_tokens_from_usage(usage_value, include_cached_prompt_metrics);
-        let cache_creation_tokens = parse_cache_write_tokens_from_usage(usage_value, include_cached_prompt_metrics);
-
-        response.usage = Some(provider::Usage {
-            prompt_tokens: usage_value
-                .get("input_tokens")
-                .or_else(|| usage_value.get("prompt_tokens"))
-                .and_then(Value::as_u64)
-                .and_then(|value| u32::try_from(value).ok())
-                .unwrap_or(0),
-            completion_tokens: usage_value
-                .get("output_tokens")
-                .or_else(|| usage_value.get("completion_tokens"))
-                .and_then(Value::as_u64)
-                .and_then(|value| u32::try_from(value).ok())
-                .unwrap_or(0),
-            reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage_value),
-            total_tokens: usage_value
-                .get("total_tokens")
-                .and_then(Value::as_u64)
-                .and_then(|value| u32::try_from(value).ok())
-                .unwrap_or(0),
-            cached_prompt_tokens,
-            cache_creation_tokens,
-            cache_read_tokens: None,
-            iterations: None,
-        });
+    if let Some(usage) =
+        crate::providers::common::parse_usage_openai_format(final_response, include_cached_prompt_metrics)
+    {
+        response.usage = Some(usage);
     }
 
     if let Some(request_id) = final_response
@@ -826,6 +815,44 @@ mod tests {
         capture_chat_usage(&mut payload, &mut aggregator, false);
         let usage = aggregator.finalize().usage.expect("usage should be captured");
         assert_eq!(usage.cached_prompt_tokens, None);
+    }
+
+    #[test]
+    fn chat_stream_rejects_usage_counts_that_do_not_fit_u32() {
+        let mut payload = json!({
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 4_294_967_296u64,
+                "completion_tokens": 5,
+                "total_tokens": 4_294_967_301u64
+            }
+        });
+
+        let mut aggregator = StreamAggregator::new("custom-model".to_string());
+        capture_chat_usage(&mut payload, &mut aggregator, false);
+
+        assert!(
+            aggregator.finalize().usage.is_none(),
+            "an out-of-range sample is ignored rather than published truncated"
+        );
+    }
+
+    #[test]
+    fn chat_stream_keeps_complete_usage_when_a_later_frame_is_partial() {
+        let mut aggregator = StreamAggregator::new("custom-model".to_string());
+        let mut complete = json!({
+            "choices": [],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 5, "total_tokens": 105}
+        });
+        capture_chat_usage(&mut complete, &mut aggregator, false);
+
+        let mut partial = json!({"choices": [], "usage": {"total_tokens": 105}});
+        capture_chat_usage(&mut partial, &mut aggregator, false);
+
+        let usage = aggregator.finalize().usage.expect("complete usage retained");
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.completion_tokens, 5);
+        assert_eq!(usage.total_tokens, 105);
     }
 
     #[test]

@@ -385,6 +385,29 @@ mod response_parser_tests {
         assert!(matches!(response.finish_reason, FinishReason::Stop));
     }
 
+    /// Assert the thinking breakdown is reported while `output_tokens` stays
+    /// the inclusive completion count.
+    #[test]
+    fn test_parse_usage_reports_thinking_tokens_as_a_breakdown() {
+        let usage = parse_usage(&json!({
+            "input_tokens": 36,
+            "output_tokens": 348,
+            "output_tokens_details": {"thinking_tokens": 312}
+        }));
+
+        assert_eq!(usage.completion_tokens, 348, "pricing uses the inclusive completion count");
+        assert_eq!(usage.reasoning_output_tokens, Some(312));
+    }
+
+    /// Assert a response without the thinking breakdown reports no reasoning
+    /// count rather than inventing zero.
+    #[test]
+    fn test_parse_usage_leaves_reasoning_absent_without_a_breakdown() {
+        let usage = parse_usage(&json!({"input_tokens": 10, "output_tokens": 5}));
+
+        assert_eq!(usage.reasoning_output_tokens, None);
+    }
+
     #[test]
     fn test_parse_response_with_thinking() {
         let response_json = json!({

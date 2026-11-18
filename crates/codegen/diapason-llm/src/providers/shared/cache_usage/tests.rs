@@ -122,7 +122,7 @@ proptest! {
 
 #[test]
 fn cache_metrics_are_absent_when_disabled() {
-    let usage = json!({"prompt_tokens_details": {"cached_tokens": 9}});
+    let usage = json!({"prompt_tokens_details": {"cached_tokens": 9, "cache_write_tokens": 17}});
 
     assert_eq!(parse_cached_prompt_tokens_from_usage(&usage, false), None);
     assert_eq!(parse_cache_write_tokens_from_usage(&usage, false), None);

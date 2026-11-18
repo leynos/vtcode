@@ -1845,7 +1845,7 @@ mod tests {
                 usage: crate::provider::Usage {
                     prompt_tokens: 10,
                     completion_tokens: 4,
-                    reasoning_output_tokens: None,
+                    reasoning_output_tokens: Some(2),
                     total_tokens: 14,
                     cached_prompt_tokens: None,
                     cache_creation_tokens: None,
@@ -1903,6 +1903,16 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, ResponseStreamEvent::ResponseCompleted { .. }))
         );
+
+        // `Done.usage` is absent, so completion must retain the counts from
+        // the earlier usage event, including the reasoning breakdown.
+        let completed = events
+            .iter()
+            .find(|event| matches!(event, ResponseStreamEvent::ResponseCompleted { .. }))
+            .expect("completed event");
+        let completed = serde_json::to_value(completed).expect("completed event serializes");
+        assert_eq!(completed["response"]["usage"]["output_tokens"], json!(4));
+        assert_eq!(completed["response"]["usage"]["output_tokens_details"]["reasoning_tokens"], json!(2));
     }
 
     #[test]

@@ -1165,10 +1165,12 @@ pub(crate) fn parse_usage_openai_format(
 ) -> Option<crate::provider::Usage> {
     let usage_value = response_json.get("usage").filter(|value| reports_token_counts(value))?;
     Some(crate::provider::Usage {
-        prompt_tokens: usage_value.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-        completion_tokens: usage_value.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+        // Chat Completions names the counts `prompt_tokens`/`completion_tokens`;
+        // Responses names the same facts `input_tokens`/`output_tokens`.
+        prompt_tokens: parse_token_count(usage_value, "prompt_tokens", "input_tokens")?,
+        completion_tokens: parse_token_count(usage_value, "completion_tokens", "output_tokens")?,
         reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
-        total_tokens: usage_value.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+        total_tokens: parse_token_count(usage_value, "total_tokens", "total_tokens")?,
         // OpenAI-compatible providers report cache reads in several shapes:
         // `prompt_cache_hit_tokens` (DeepSeek-style), `prompt_tokens_details.
         // cached_tokens` (Chat Completions), and `input_tokens_details.
@@ -1192,11 +1194,37 @@ pub(crate) fn parse_usage_openai_format(
     })
 }
 
+/// Reads a usage count under either wire spelling.
+///
+/// Returns `Some(0)` when the provider omits the count so an absent field
+/// keeps its historical zero default. A supplied count that does not fit
+/// `u32` returns `None`, which makes [`parse_usage_openai_format`] reject the
+/// sample instead of publishing a truncated `as u32` conversion.
+fn parse_token_count(usage_value: &Value, chat_key: &str, responses_key: &str) -> Option<u32> {
+    let count = usage_value
+        .get(chat_key)
+        .filter(|value| !value.is_null())
+        .or_else(|| usage_value.get(responses_key).filter(|value| !value.is_null()));
+    let Some(count) = count else {
+        return Some(0);
+    };
+    let Some(count) = count.as_u64() else {
+        return Some(0);
+    };
+    u32::try_from(count).ok()
+}
+
 /// Whether a usage object reports at least one token count.
 fn reports_token_counts(usage_value: &Value) -> bool {
-    ["prompt_tokens", "completion_tokens", "total_tokens"]
-        .iter()
-        .any(|key| usage_value.get(*key).and_then(Value::as_u64).is_some())
+    [
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "input_tokens",
+        "output_tokens",
+    ]
+    .iter()
+    .any(|key| usage_value.get(*key).and_then(Value::as_u64).is_some())
 }
 
 /// Extracts provider-side reasoning token usage from OpenAI-compatible usage details.
@@ -1446,13 +1474,16 @@ pub fn make_anthropic_thinking_config(config: &diapason_config::core::AnthropicC
 }
 
 #[cfg(test)]
+#[path = "common/usage_tests.rs"]
+mod usage_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{
         PROVIDER_ERROR_BODY_MAX_BYTES, assistant_interleaved_history_text, extract_reasoning_text_from_detail_values,
         extract_reasoning_text_from_serialized_details, float_to_json_number, is_interleaved_thinking_model,
         is_minimax_m2_model, normalize_reasoning_detail_object, parse_chat_request_openai_format,
-        parse_reasoning_tokens_from_usage, parse_response_openai_format, parse_usage_openai_format,
-        read_provider_error_body, sampling_param_f64,
+        parse_reasoning_tokens_from_usage, parse_response_openai_format, read_provider_error_body, sampling_param_f64,
     };
     use crate::provider::{AssistantPhase, Message};
     use serde_json::{Value, json};
@@ -1660,181 +1691,6 @@ mod tests {
         assert_eq!(request.messages[0].phase, Some(AssistantPhase::Commentary));
         assert_eq!(request.messages[1].phase, Some(AssistantPhase::FinalAnswer));
         assert_eq!(request.messages[2].phase, None);
-    }
-
-    #[test]
-    fn parse_usage_openai_format_extracts_basic_fields() {
-        let response = json!({
-            "usage": {
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150
-            }
-        });
-        let usage = parse_usage_openai_format(&response, false).expect("usage expected");
-        assert_eq!(usage.prompt_tokens, 100);
-        assert_eq!(usage.completion_tokens, 50);
-        assert_eq!(usage.total_tokens, 150);
-        assert_eq!(usage.reasoning_output_tokens, None);
-        assert_eq!(usage.cached_prompt_tokens, None);
-        assert_eq!(usage.cache_creation_tokens, None);
-    }
-
-    #[test]
-    fn parse_usage_openai_format_extracts_nested_reasoning_tokens() {
-        let response = json!({
-            "usage": {
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150,
-                "completion_tokens_details": {
-                    "reasoning_tokens": 35
-                }
-            }
-        });
-
-        let usage = parse_usage_openai_format(&response, false).expect("usage expected");
-        assert_eq!(usage.reasoning_output_tokens, Some(35));
-    }
-
-    #[test]
-    fn parse_usage_openai_format_accepts_responses_reasoning_details() {
-        let response = json!({
-            "usage": {
-                "input_tokens": 100,
-                "output_tokens": 50,
-                "total_tokens": 150,
-                "output_tokens_details": {
-                    "reasoning_tokens": 35
-                }
-            }
-        });
-
-        let usage = parse_usage_openai_format(&response, false).expect("usage expected");
-        assert_eq!(usage.reasoning_output_tokens, Some(35));
-    }
-
-    #[test]
-    fn parse_usage_openai_format_includes_cache_metrics_when_enabled() {
-        let response = json!({
-            "usage": {
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150,
-                "prompt_cache_hit_tokens": 30,
-                "prompt_cache_miss_tokens": 70
-            }
-        });
-        let usage = parse_usage_openai_format(&response, true).expect("usage expected");
-        assert_eq!(usage.prompt_tokens, 100);
-        assert_eq!(usage.completion_tokens, 50);
-        assert_eq!(usage.total_tokens, 150);
-        assert_eq!(usage.cached_prompt_tokens, Some(30));
-        // A miss is an uncached input token, not a priced cache write. Counting
-        // it as creation charged it at the write rate while the prompt total
-        // already carried it at the input rate.
-        assert_eq!(usage.cache_creation_tokens, None);
-    }
-
-    #[test]
-    fn parse_usage_openai_format_reports_a_separately_priced_cache_write() {
-        let response = json!({
-            "usage": {
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150,
-                "prompt_tokens_details": {
-                    "cached_tokens": 30,
-                    "cache_write_tokens": 12
-                }
-            }
-        });
-        let usage = parse_usage_openai_format(&response, true).expect("usage expected");
-        assert_eq!(usage.cached_prompt_tokens, Some(30));
-        assert_eq!(usage.cache_creation_tokens, Some(12));
-        assert_eq!(
-            parse_usage_openai_format(&response, false)
-                .expect("usage expected")
-                .cache_creation_tokens,
-            None,
-            "cache metrics stay suppressed when the caller opts out"
-        );
-    }
-
-    #[test]
-    fn parse_usage_openai_format_reads_nested_cached_tokens() {
-        for usage_value in [
-            json!({
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150,
-                "prompt_tokens_details": { "cached_tokens": 40 }
-            }),
-            json!({
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150,
-                "input_tokens_details": { "cached_tokens": 40 }
-            }),
-            json!({
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150,
-                "cached_tokens": 40
-            }),
-        ] {
-            let response = json!({ "usage": usage_value });
-            let usage = parse_usage_openai_format(&response, true).expect("usage expected");
-            assert_eq!(usage.cached_prompt_tokens, Some(40), "usage {usage:?}");
-            assert_eq!(
-                parse_usage_openai_format(&response, false)
-                    .expect("usage expected")
-                    .cached_prompt_tokens,
-                None
-            );
-        }
-    }
-
-    #[test]
-    fn parse_usage_openai_format_excludes_cache_metrics_when_disabled() {
-        let response = json!({
-            "usage": {
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150,
-                "prompt_cache_hit_tokens": 30,
-                "prompt_cache_miss_tokens": 70
-            }
-        });
-        let usage = parse_usage_openai_format(&response, false).expect("usage expected");
-        assert_eq!(usage.prompt_tokens, 100);
-        assert_eq!(usage.cached_prompt_tokens, None);
-        assert_eq!(usage.cache_creation_tokens, None);
-    }
-
-    #[test]
-    fn parse_usage_openai_format_handles_missing_usage() {
-        let response = json!({"choices": []});
-        assert!(parse_usage_openai_format(&response, true).is_none());
-    }
-
-    #[test]
-    fn parse_usage_openai_format_rejects_unpopulated_usage() {
-        let null_usage = json!({"choices": [], "usage": null});
-        let empty_usage = json!({"choices": [], "usage": {}});
-
-        assert!(parse_usage_openai_format(&null_usage, true).is_none());
-        assert!(parse_usage_openai_format(&empty_usage, true).is_none());
-    }
-
-    #[test]
-    fn parse_usage_openai_format_keeps_explicitly_reported_zeros() {
-        let response = json!({
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        });
-        let usage = parse_usage_openai_format(&response, true).expect("reported zero usage");
-
-        assert_eq!(usage.total_tokens, 0);
     }
 
     #[test]

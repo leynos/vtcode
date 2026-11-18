@@ -10,8 +10,7 @@ use futures::StreamExt;
 use hashbrown::{HashMap, HashSet};
 use serde_json::{Value, json};
 
-use super::{StreamAggregator, generate_tool_call_id, parse_cached_prompt_tokens_from_usage};
-use crate::providers::common::parse_reasoning_tokens_from_usage;
+use super::{StreamAggregator, generate_tool_call_id};
 
 // Retained shared Responses stream processor.
 // Rig 0.40 can consume SSE, but Diapason needs a provider-agnostic
@@ -456,7 +455,9 @@ fn merge_final_response_metadata(
     final_response: &Value,
     include_cached_prompt_metrics: bool,
 ) {
-    if let Some(usage) = parse_responses_usage(final_response, include_cached_prompt_metrics) {
+    if let Some(usage) =
+        crate::providers::common::parse_usage_openai_format(final_response, include_cached_prompt_metrics)
+    {
         response.usage = Some(usage);
     }
 
@@ -467,38 +468,6 @@ fn merge_final_response_metadata(
     {
         response.request_id = Some(request_id.to_string());
     }
-}
-
-fn parse_responses_usage(
-    final_response: &Value,
-    include_cached_prompt_metrics: bool,
-) -> Option<crate::provider::Usage> {
-    let usage_value = final_response.get("usage")?;
-    let cached_prompt_tokens = parse_cached_prompt_tokens_from_usage(usage_value, include_cached_prompt_metrics);
-    Some(crate::provider::Usage {
-        prompt_tokens: usage_value
-            .get("input_tokens")
-            .or_else(|| usage_value.get("prompt_tokens"))
-            .and_then(Value::as_u64)
-            .and_then(|value| u32::try_from(value).ok())
-            .unwrap_or(0),
-        completion_tokens: usage_value
-            .get("output_tokens")
-            .or_else(|| usage_value.get("completion_tokens"))
-            .and_then(Value::as_u64)
-            .and_then(|value| u32::try_from(value).ok())
-            .unwrap_or(0),
-        reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
-        total_tokens: usage_value
-            .get("total_tokens")
-            .and_then(Value::as_u64)
-            .and_then(|value| u32::try_from(value).ok())
-            .unwrap_or(0),
-        cached_prompt_tokens,
-        cache_creation_tokens: None,
-        cache_read_tokens: None,
-        iterations: None,
-    })
 }
 
 fn provider_error(provider_name: &str, message: impl Into<String>) -> LLMError {

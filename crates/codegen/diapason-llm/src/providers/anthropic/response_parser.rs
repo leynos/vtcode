@@ -252,10 +252,19 @@ pub fn parse_usage(usage_value: &Value) -> Usage {
             .collect::<Vec<_>>()
     });
 
+    // Claude reports thinking tokens as a breakdown of `output_tokens`, which
+    // stays the inclusive completion count used for pricing. Keep the
+    // reasoning count absent when the provider omits the breakdown.
+    let reasoning_output_tokens = usage_value
+        .get("output_tokens_details")
+        .and_then(|details| details.get("thinking_tokens"))
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok());
+
     Usage {
         prompt_tokens: usage_value.get("input_tokens").and_then(|it| it.as_u64()).unwrap_or(0) as u32,
         completion_tokens: usage_value.get("output_tokens").and_then(|ot| ot.as_u64()).unwrap_or(0) as u32,
-        reasoning_output_tokens: None,
+        reasoning_output_tokens,
         total_tokens: (usage_value.get("input_tokens").and_then(|it| it.as_u64()).unwrap_or(0)
             + usage_value.get("output_tokens").and_then(|ot| ot.as_u64()).unwrap_or(0)) as u32,
         cached_prompt_tokens: cache_read_tokens,
