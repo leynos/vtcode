@@ -172,7 +172,7 @@ impl StdioTransport {
     /// Send a JSON-RPC request and wait for its response.
     ///
     /// Assigns a monotonically increasing `id`, inserts it into the pending
-    /// table, serialises the message, and awaits the reply up to `rpc_timeout`.
+    /// table, serializes the message, and awaits the reply up to `rpc_timeout`.
     ///
     /// # Errors
     ///
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn notify_serialises_payload_to_write_channel() {
+    fn notify_serializes_payload_to_write_channel() {
         let (tx, mut rx) = mpsc::channel(WRITE_CHANNEL_CAPACITY);
         let transport = StdioTransport::new_for_testing(tx, Duration::from_secs(5));
 

@@ -923,7 +923,7 @@ mod tests {
     }
 
     #[test]
-    fn code_search_loop_fingerprint_uses_only_normalised_search_identity() {
+    fn code_search_loop_fingerprint_uses_only_normalized_search_identity() {
         let first = json!({
             "query": " Widget ",
             "path": " src ",

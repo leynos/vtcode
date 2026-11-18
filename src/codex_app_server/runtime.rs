@@ -276,7 +276,7 @@ pub(crate) async fn run_codex_noninteractive_with_instructions(
     run: CodexNonInteractiveRun,
     instructions: Option<String>,
 ) -> Result<CodexCompletedRun> {
-    run_codex_noninteractive_inner(config, vt_cfg, run, normalise_turn_instructions(instructions)).await
+    run_codex_noninteractive_inner(config, vt_cfg, run, normalize_turn_instructions(instructions)).await
 }
 
 async fn run_codex_noninteractive_inner(
@@ -349,7 +349,7 @@ async fn run_codex_noninteractive_inner(
     Ok(CodexCompletedRun { output, thread_id, messages })
 }
 
-fn normalise_turn_instructions(instructions: Option<String>) -> Option<String> {
+fn normalize_turn_instructions(instructions: Option<String>) -> Option<String> {
     instructions
         .map(|instructions| instructions.trim().to_string())
         .filter(|instructions| !instructions.is_empty())

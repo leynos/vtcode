@@ -260,7 +260,7 @@ pub(super) fn hash_normalized_args(tool_name: &str, args: &serde_json::Value) ->
 fn hash_normalized_code_search_args(args: &serde_json::Value, hasher: &mut impl std::hash::Hasher) {
     use std::hash::Hash;
 
-    crate::tools::normalised_code_search_loop_identity(args)
+    crate::tools::normalized_code_search_loop_identity(args)
         .unwrap_or_else(|| args.to_string())
         .hash(hasher);
 }

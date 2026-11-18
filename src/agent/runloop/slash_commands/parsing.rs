@@ -3,7 +3,7 @@ use diapason_core::compaction::ManualCompactionOptions;
 use diapason_core::config::{ReasoningEffortLevel, VerbosityLevel};
 use diapason_core::review::{ReviewSpec, build_review_spec};
 
-/// Iterate over whitespace-separated tokens in `args`, normalising each to
+/// Iterate over whitespace-separated tokens in `args`, normalizing each to
 /// lowercase ASCII before passing it to `f`.  Returns the first `Err` produced
 /// by `f`, or `Ok(())` once all tokens have been consumed.
 ///
