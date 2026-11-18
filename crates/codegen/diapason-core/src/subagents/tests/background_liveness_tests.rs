@@ -293,6 +293,57 @@ async fn liveness_read_failure_keeps_the_cached_status_and_is_unobserved() {
     }
 }
 
+/// A liveness reason never carries the exec-session identifier.
+///
+/// A storage backend quotes the record it was asked for in its own message, so
+/// the rendered fault can contain the exec-session id. The reason travels to a
+/// debug log beside a task id, so the identifier is replaced before the text is
+/// bounded; otherwise a log record would spread an id from another record's
+/// key space.
+#[tokio::test]
+async fn liveness_reason_redacts_the_exec_session_identifier() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    write_ledger(
+        &state_dir.join("background_subagents.json"),
+        vec![record_with_terminal_state(
+            "background-worker",
+            Some("session-a"),
+            "running",
+            1,
+            true,
+            None,
+        )],
+    );
+    let config = auto_restore_config(temp.path().to_path_buf(), true);
+    config
+        .exec_sessions
+        .fail_snapshot_reads("PTY session 'exec-background-worker' not found");
+    let controller = SubagentController::new_with_background_owner(config, Some("session-a"))
+        .await
+        .expect("controller");
+
+    let observed = controller.background_status_entries_with_liveness().await;
+    let entry = observed
+        .iter()
+        .find(|observed| observed.entry.id == "background-worker@session-a")
+        .expect("owned background record");
+    match &entry.liveness {
+        BackgroundLiveness::Unobserved { reason } => {
+            assert!(
+                !reason.contains("exec-background-worker"),
+                "the reason must not carry the exec-session id, got: {reason}"
+            );
+            assert!(
+                reason.contains("<session>"),
+                "the redaction must stay visible so the operator knows why, got: {reason}"
+            );
+        }
+        BackgroundLiveness::Observed => panic!("a failed liveness read must be reported as unobserved"),
+    }
+}
+
 /// A snapshot read is a pure query; only the explicitly named refresh settles
 /// or persists a record.
 ///
