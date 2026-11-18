@@ -115,7 +115,9 @@ async fn nested_controller_publishes_under_the_root_observer_scope() {
     })
     .await
     .expect("nested controller");
-    nested.inherit_progress_observers(&parent).await;
+    // The delegation was requested by the root session, so its events belong
+    // to the observer registered for that session, not to the child's own.
+    nested.inherit_progress_observers(&parent, "parent-session").await;
 
     let root_observer = Arc::new(RecordingObserver::default());
     let child_observer = Arc::new(RecordingObserver::default());
@@ -171,7 +173,7 @@ async fn nested_scope_is_inherited_through_more_than_one_level() {
     })
     .await
     .expect("first nested controller");
-    first.inherit_progress_observers(&parent).await;
+    first.inherit_progress_observers(&parent, "parent-session").await;
     let mut second = SubagentController::new({
         let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
         config.parent_session_id = "second-child-session".to_string();
@@ -180,7 +182,7 @@ async fn nested_scope_is_inherited_through_more_than_one_level() {
     })
     .await
     .expect("second nested controller");
-    second.inherit_progress_observers(&first).await;
+    second.inherit_progress_observers(&first, "first-child-session").await;
 
     let root_observer = Arc::new(RecordingObserver::default());
     let _registration = parent.register_progress_observer("parent-session", root_observer.clone());
@@ -215,4 +217,96 @@ async fn nested_scope_is_inherited_through_more_than_one_level() {
     parent.signal_shutdown().await;
     first.signal_shutdown().await;
     second.signal_shutdown().await;
+}
+
+/// One controller can serve several host sessions at once.
+///
+/// The ACP adapter registers one observer per ACP session and builds child
+/// controllers from a shared workspace controller. A child-scoped controller
+/// must therefore key its events by the session that requested the delegation:
+/// its own default parent session is only the controller's construction
+/// context, and using it would deliver one session's grandchild snapshots to
+/// another session's observer. Both nested controllers here carry the same
+/// default parent session, so only the requesting session can separate them.
+#[tokio::test]
+async fn a_shared_controller_routes_each_sessions_delegations_to_its_own_observer() {
+    let temp = TempDir::new().expect("tempdir");
+    let parent = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
+        .await
+        .expect("parent controller");
+    let mut for_session_a = SubagentController::new({
+        let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
+        config.parent_session_id = "controller-default-session".to_string();
+        config.depth = 1;
+        config
+    })
+    .await
+    .expect("controller for session a");
+    for_session_a.inherit_progress_observers(&parent, "session-a").await;
+    let mut for_session_b = SubagentController::new({
+        let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
+        config.parent_session_id = "controller-default-session".to_string();
+        config.depth = 1;
+        config
+    })
+    .await
+    .expect("controller for session b");
+    for_session_b.inherit_progress_observers(&parent, "session-b").await;
+
+    let observer_a = Arc::new(RecordingObserver::default());
+    let observer_b = Arc::new(RecordingObserver::default());
+    let _registration_a = parent.register_progress_observer("session-a", observer_a.clone());
+    let _registration_b = parent.register_progress_observer("session-b", observer_b.clone());
+
+    let spec = explorer_spec();
+    {
+        let mut state = for_session_a.state.write().await;
+        state.children.insert(
+            "grandchild-a".to_string(),
+            test_child_record(
+                "grandchild-a",
+                "grandchild-a-session",
+                "session-a",
+                &spec,
+                SubagentStatus::Running,
+                2,
+                None,
+            ),
+        );
+    }
+    {
+        let mut state = for_session_b.state.write().await;
+        state.children.insert(
+            "grandchild-b".to_string(),
+            test_child_record(
+                "grandchild-b",
+                "grandchild-b-session",
+                "session-b",
+                &spec,
+                SubagentStatus::Running,
+                2,
+                None,
+            ),
+        );
+    }
+
+    for_session_a.publish_child_status("grandchild-a").await;
+    for_session_b.publish_child_status("grandchild-b").await;
+
+    {
+        let updates = observer_a.children.lock().expect("children lock");
+        assert_eq!(updates.len(), 1, "session-a must receive its own grandchild only");
+        assert_eq!(updates[0].id, "grandchild-a");
+    }
+    {
+        let updates = observer_b.children.lock().expect("children lock");
+        assert_eq!(updates.len(), 1, "session-b must receive its own grandchild only");
+        assert_eq!(updates[0].id, "grandchild-b");
+    }
+
+    // Shutdown publishes a terminal snapshot into the same observers, so the
+    // assertions above must release the locks first.
+    parent.signal_shutdown().await;
+    for_session_a.signal_shutdown().await;
+    for_session_b.signal_shutdown().await;
 }

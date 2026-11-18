@@ -501,6 +501,16 @@ impl SubagentController {
             .children
             .get_mut(target)
             .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
+        // The task is aborted before the status guard. A terminal status is
+        // written before the child loop finishes: it still has to run the stop
+        // hook and its completion bookkeeping, and the stored handle is only
+        // cleared once the loop goes idle. Closing a child during that window
+        // must still stop the task, or it would go on to close its nested
+        // subagents and reconcile its worktree after being cancelled. Aborting
+        // a finished handle is a no-op, so the settled outcome is untouched.
+        if let Some(handle) = record.handle.take() {
+            handle.abort();
+        }
         // Cancellation must not rewrite a settled outcome. `Completed` and
         // `Failed` children already stopped running, and a transport projects
         // `Closed` as a failure, so closing them again would turn a
@@ -508,9 +518,6 @@ impl SubagentController {
         // completion timestamp.
         if record.status.is_terminal() {
             return Ok(record.build_status_entry());
-        }
-        if let Some(handle) = record.handle.take() {
-            handle.abort();
         }
         record.status = SubagentStatus::Closed;
         record.updated_at = Utc::now();

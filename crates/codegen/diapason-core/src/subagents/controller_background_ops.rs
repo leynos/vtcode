@@ -99,19 +99,24 @@ struct BackgroundRunIdentity {
     previous_record: Option<BackgroundRecord>,
 }
 
-struct BackgroundRunPlan {
-    owner_session_id: Option<String>,
-    spec: SubagentSpec,
-    record_id: String,
-    parent_session_id: String,
-    session_id: String,
-    exec_session_id: String,
-    created_at: chrono::DateTime<Utc>,
-    prompt: String,
-    max_turns: Option<usize>,
-    model_override: Option<String>,
-    reasoning_override: Option<String>,
-    restart_attempts: u8,
+/// The identity one background launch was prepared with.
+///
+/// `pub(super)` rather than private so the controller's tests can drive the
+/// settlement path with a launch that has already been replaced, which is the
+/// only way to exercise the ownership guard without racing a real spawn.
+pub(super) struct BackgroundRunPlan {
+    pub(super) owner_session_id: Option<String>,
+    pub(super) spec: SubagentSpec,
+    pub(super) record_id: String,
+    pub(super) parent_session_id: String,
+    pub(super) session_id: String,
+    pub(super) exec_session_id: String,
+    pub(super) created_at: chrono::DateTime<Utc>,
+    pub(super) prompt: String,
+    pub(super) max_turns: Option<usize>,
+    pub(super) model_override: Option<String>,
+    pub(super) reasoning_override: Option<String>,
+    pub(super) restart_attempts: u8,
 }
 
 #[allow(
@@ -349,8 +354,35 @@ impl SubagentController {
         }
     }
 
+    /// Reads the exec session a background record names, classifying a failure.
+    ///
+    /// Both callers act on the answer: restore respawns a record it believes
+    /// dead, and refresh settles `Error` and schedules a replacement. A read
+    /// that fails for a reason other than the session being gone therefore
+    /// cannot be reported as "not running", because that would start a second
+    /// process for a task that is still alive. Only a typed not-found cause is
+    /// an observed exit; every other fault is reported as unobserved, and the
+    /// caller leaves the record unchanged for this round.
+    async fn observe_background_exec_session(&self, exec_session_id: Option<&str>) -> BackgroundExecSessionObservation {
+        let Some(exec_session_id) = exec_session_id.filter(|id| !id.is_empty()) else {
+            return BackgroundExecSessionObservation::Missing;
+        };
+        match self.config.exec_sessions.snapshot_session(exec_session_id).await {
+            Ok(snapshot) => BackgroundExecSessionObservation::Live(snapshot),
+            Err(error) if exec_session_is_missing(&error) => BackgroundExecSessionObservation::Missing,
+            Err(error) => {
+                tracing::warn!(
+                    reason = bounded_liveness_reason(&error, exec_session_id).as_str(),
+                    "Could not read the background exec session; leaving its record unchanged"
+                );
+                BackgroundExecSessionObservation::Unobserved
+            }
+        }
+    }
+
     /// Restarts background subagents that were previously enabled but are no longer running.
     pub async fn restore_background_subagents(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
+        self.reconcile_persisted_background_cancellations().await?;
         let desired_records = {
             let state = self.state.read().await;
             state
@@ -369,16 +401,13 @@ impl SubagentController {
         };
 
         for (record_id, agent_name, exec_session_id, restart_attempts) in desired_records {
-            let is_live = !exec_session_id.is_empty()
-                && self
-                    .config
-                    .exec_sessions
-                    .snapshot_session(&exec_session_id)
-                    .await
-                    .ok()
-                    .is_some_and(|snapshot| exec_session_is_running(&snapshot));
+            let observation = self.observe_background_exec_session(Some(exec_session_id.as_str())).await;
+            let is_live = matches!(&observation, BackgroundExecSessionObservation::Live(snapshot) if exec_session_is_running(snapshot));
 
             if is_live || !self.config.vt_cfg.subagents.background.auto_restore {
+                continue;
+            }
+            if matches!(observation, BackgroundExecSessionObservation::Unobserved) {
                 continue;
             }
             tracing::info!(
@@ -430,15 +459,12 @@ impl SubagentController {
 
         let mut restored = Vec::new();
         for (record_id, agent_name, exec_session_id, restart_attempts) in desired_records {
-            let is_live = !exec_session_id.is_empty()
-                && self
-                    .config
-                    .exec_sessions
-                    .snapshot_session(&exec_session_id)
-                    .await
-                    .ok()
-                    .is_some_and(|snapshot| exec_session_is_running(&snapshot));
-            if is_live {
+            let observation = self.observe_background_exec_session(Some(exec_session_id.as_str())).await;
+            if matches!(&observation, BackgroundExecSessionObservation::Live(snapshot) if exec_session_is_running(snapshot))
+            {
+                continue;
+            }
+            if matches!(observation, BackgroundExecSessionObservation::Unobserved) {
                 continue;
             }
             tracing::info!(
@@ -459,8 +485,56 @@ impl SubagentController {
         Ok(restored)
     }
 
+    /// Adopts cancellation intent another controller persisted for this owner.
+    ///
+    /// An owner-scoped controller keeps its own copy of the ledger, and an
+    /// unscoped controller shares that ledger across sessions. When the
+    /// unscoped controller cancels one of this owner's tasks it persists
+    /// `desired_enabled = false`, but this controller's copy still says the
+    /// task is wanted. Refresh would then settle the exited process from the
+    /// stale flag and schedule a restart, and the save that follows carries a
+    /// newer `updated_at`, so the merge would keep the resurrected copy and
+    /// silently undo the stop.
+    ///
+    /// Reading the persisted cancellation back before refresh selects a
+    /// restart keeps the stop. The exec session identifies the launch: an
+    /// explicit restart writes a new one, while a stale copy still names the
+    /// session the cancellation stopped, so a restart that has already
+    /// replaced the session is never mistaken for one to cancel. A concurrent
+    /// cancellation that lands after this read is preserved by the save merge,
+    /// which also refuses to let a refreshed copy undo a stop for the same
+    /// session.
+    async fn reconcile_persisted_background_cancellations(&self) -> Result<()> {
+        if self.config.managed_background_runtime {
+            // A nested scope owns no background records, so its empty view
+            // carries no intent to reconcile.
+            return Ok(());
+        }
+        let persisted = controller_persistence::collect_by_canonical_id(
+            load_background_state(&self.config.workspace_root).await?.records,
+        );
+        if persisted.is_empty() {
+            return Ok(());
+        }
+        let mut state = self.state.write().await;
+        for (id, record) in state.background_children.iter_mut() {
+            let Some(cancelled) = persisted.get(id) else {
+                continue;
+            };
+            if cancelled.adopt_cancellation_into(record) {
+                tracing::debug!(
+                    record_id = id.as_str(),
+                    agent_name = record.agent_name.as_str(),
+                    "Adopted a background cancellation persisted by another controller"
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Refreshes the state of all background subprocesses and respawns as needed.
     pub async fn refresh_background_processes(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
+        self.reconcile_persisted_background_cancellations().await?;
         let record_ids = {
             let state = self.state.read().await;
             state.background_children.keys().cloned().collect::<Vec<_>>()
@@ -478,12 +552,13 @@ impl SubagentController {
                 )
             };
 
-            let snapshot = if let Some(exec_session_id) = snapshot_target.as_ref()
-                && !exec_session_id.is_empty()
-            {
-                self.config.exec_sessions.snapshot_session(exec_session_id).await.ok()
-            } else {
-                None
+            let snapshot = match self.observe_background_exec_session(snapshot_target.as_deref()).await {
+                BackgroundExecSessionObservation::Live(snapshot) => Some(snapshot),
+                BackgroundExecSessionObservation::Missing => None,
+                // A read fault is not an exit: settling the record or
+                // scheduling a replacement would start a second process for a
+                // task that may still be running.
+                BackgroundExecSessionObservation::Unobserved => continue,
             };
 
             let respawn = self.update_background_record_state(&record_id, snapshot).await?;
@@ -977,12 +1052,22 @@ impl SubagentController {
     /// that still has its restart allowance is left `Starting`, matching the
     /// overlay's restart budget, and the original spawn error is returned
     /// either way.
-    async fn settle_failed_background_run(&self, plan: &BackgroundRunPlan, error: &anyhow::Error) {
+    ///
+    /// Only the launch that failed may settle the record. A record id outlives
+    /// one launch: a cancellation can settle the record while its exec session
+    /// is still starting, and a replacement launch can take the same id. An
+    /// older launch that fails afterwards must not mark the replacement's live
+    /// process as failed, because a later cancellation would then take the
+    /// already-terminal branch and skip process termination.
+    pub(super) async fn settle_failed_background_run(&self, plan: &BackgroundRunPlan, error: &anyhow::Error) {
         {
             let mut state = self.state.write().await;
             let Some(record) = state.background_children.get_mut(&plan.record_id) else {
                 return;
             };
+            if !failed_launch_still_owns_record(record, plan.exec_session_id.as_str()) {
+                return;
+            }
             if self.config.vt_cfg.subagents.background.auto_restore && record.restart_attempts < 1 {
                 return;
             }
@@ -1275,6 +1360,38 @@ impl SubagentController {
         }
         conflicts
     }
+}
+
+/// Reports whether a failed launch still owns the record it wrote.
+///
+/// A background record id is stable across restarts and shared with the
+/// workspace ledger, so the record a launch wrote at `Starting` may no longer
+/// describe that launch. A cancellation settles it with `desired_enabled`
+/// cleared, and a replacement launch takes the id with a new exec session. An
+/// older launch that fails afterwards must not settle either: marking a live
+/// replacement as `Error` also makes a later cancellation take the
+/// already-terminal branch and skip process termination. The exec session
+/// identifies the launch, so only the matching, still-desired, still-starting
+/// record may be settled.
+fn failed_launch_still_owns_record(record: &BackgroundRecord, plan_exec_session_id: &str) -> bool {
+    record.exec_session_id == plan_exec_session_id
+        && matches!(record.status, BackgroundSubprocessStatus::Starting)
+        && record.desired_enabled
+}
+
+/// What one read of a background record's exec session established.
+///
+/// [`Self::Missing`] and [`Self::Unobserved`] lead to opposite actions, so the
+/// distinction is the whole point of the type: an exit is evidence that the
+/// process ended, while a read fault is only the absence of evidence, and only
+/// the former may settle or restart a record.
+enum BackgroundExecSessionObservation {
+    /// The record names no session, or the backend reports that it is gone.
+    Missing,
+    /// The backend returned the session the record names.
+    Live(crate::tools::types::DiapasonExecSession),
+    /// The backend could not be read, so nothing is known about the process.
+    Unobserved,
 }
 
 /// Reports whether a liveness read failed because the session is genuinely gone.

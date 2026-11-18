@@ -625,6 +625,40 @@ impl PersistedBackgroundRecord {
     pub(crate) fn is_at_least_as_new_as(&self, other: &Self) -> bool {
         self.updated_at >= other.updated_at
     }
+
+    /// Whether this record's stop outranks `snapshot` regardless of timestamps.
+    ///
+    /// A stop is one-way until a restart replaces the launch: an explicit
+    /// restart writes a fresh exec session, whereas a controller that merely
+    /// refreshed its stale copy keeps the session this record stopped and
+    /// advances `updated_at` without changing intent. Timestamp order alone
+    /// therefore cannot decide this case, or a refresh would resurrect a
+    /// cancelled task.
+    pub(crate) fn cancellation_outranks(&self, snapshot: &Self) -> bool {
+        !self.desired_enabled && snapshot.desired_enabled && self.exec_session_id == snapshot.exec_session_id
+    }
+
+    /// Applies this record's stop to a cached copy of the same launch.
+    ///
+    /// Returns `false` when this record is not a cancellation of that launch:
+    /// it is still desired, the cached copy is already stopped, or the two
+    /// name different exec sessions, which means a restart has replaced the
+    /// session this record stopped. Adoption clears the cached desire and, for
+    /// a copy that still looks active, takes the settled outcome so refresh
+    /// cannot relaunch it.
+    pub(crate) fn adopt_cancellation_into(&self, record: &mut BackgroundRecord) -> bool {
+        if self.desired_enabled || !record.desired_enabled || self.exec_session_id != record.exec_session_id {
+            return false;
+        }
+        record.desired_enabled = false;
+        if record.status.is_active() {
+            record.status = self.status;
+            record.error = self.error.clone();
+            record.ended_at = self.ended_at.or(record.ended_at);
+            record.updated_at = record.updated_at.max(self.updated_at);
+        }
+        true
+    }
 }
 
 // ─── Controller State ───────────────────────────────────────────────────────

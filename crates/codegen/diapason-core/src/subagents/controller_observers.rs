@@ -49,14 +49,21 @@ impl SubagentController {
     ///
     /// The nested-delegation loop creates a child-scoped controller per child
     /// run. That controller must publish its progress through the parent's
-    /// observer registry, under the parent's observer key, so an adapter that
-    /// registered for the root session still receives grandchild snapshots.
-    /// Child-scoped controllers only ever serve their parent's session, so the
-    /// inherited key cannot widen the observer's session boundary.
-    pub(crate) async fn inherit_progress_observers(&mut self, parent: &SubagentController) {
+    /// observer registry, under the key of the session that owns the run, so an
+    /// adapter that registered for that session still receives grandchild
+    /// snapshots.
+    ///
+    /// A controller can serve several host sessions at once, so the controller's
+    /// own parent session is only a default: the child record names the session
+    /// that actually requested the delegation, and that is the key an adapter
+    /// registered against. An already-inherited scope wins over it, because
+    /// every deeper run descends from the same registered session and the
+    /// intermediate child's own session has no observer of its own.
+    pub(crate) async fn inherit_progress_observers(&mut self, parent: &SubagentController, owning_session_id: &str) {
         self.progress_observers = Arc::clone(&parent.progress_observers);
         self.progress_observer_scope = Some(match parent.progress_observer_scope.clone() {
             Some(scope) => scope,
+            None if !owning_session_id.is_empty() => owning_session_id.to_owned(),
             None => parent.parent_session_id.read().await.clone(),
         });
     }

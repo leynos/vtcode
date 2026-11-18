@@ -88,6 +88,12 @@ fn merge_unscoped_background_records(
 /// one side holds is kept, so no controller discards a record another owner
 /// created after it loaded.
 ///
+/// A persisted stop outranks the snapshot when the two name the same exec
+/// session, even if the snapshot was written later: a refresh advances
+/// `updated_at` without changing intent, so timestamp order alone would let a
+/// stale copy resurrect a cancelled task. A restart replaces the exec session,
+/// so it is never mistaken for that stale copy.
+///
 /// `removed_owner` names the session whose snapshot is authoritative for its
 /// own records. When it is `Some`, only that session's persisted records are
 /// canonicalized and joined: a ledger written by an older build can hold a
@@ -117,6 +123,7 @@ fn merge_background_records(
         record.canonicalize_id();
         let id = record.id.clone();
         match merged.get_mut(&id) {
+            Some(current) if current.cancellation_outranks(&record) => {}
             Some(current) if record.is_at_least_as_new_as(current) => *current = record,
             Some(_) => {}
             None => {
@@ -265,6 +272,27 @@ mod tests {
         serde_json::from_value(value).expect("generated persisted record")
     }
 
+    /// Renders one fixture record that names a specific launch's exec session.
+    ///
+    /// The launch is what a cancellation and a restart are told apart by, so a
+    /// test that orders them needs to say which session each copy describes.
+    fn merge_launch_record(
+        shape: usize,
+        updated_offset: u8,
+        desired_enabled: bool,
+        exec_session_id: &str,
+        tag: &str,
+    ) -> PersistedBackgroundRecord {
+        let record = MergeRecord { shape, updated_offset, legacy_id: false };
+        let mut value = merge_record_json(&record, tag);
+        value["exec_session_id"] = serde_json::json!(exec_session_id);
+        value["desired_enabled"] = serde_json::json!(desired_enabled);
+        if !desired_enabled {
+            value["status"] = serde_json::json!("stopped");
+        }
+        serde_json::from_value(value).expect("generated persisted record")
+    }
+
     /// Reads back a merged record's provenance and cancellation state.
     fn merge_state(record: &PersistedBackgroundRecord) -> (String, bool, String) {
         let value = serde_json::to_value(record).expect("serialize merged record");
@@ -355,6 +383,50 @@ mod tests {
 
         assert_eq!(merged.len(), 1);
         assert_eq!(merge_state(&merged[0]), ("cancelled".to_owned(), false, "stopped".to_owned()));
+    }
+
+    /// A stop outranks a later refresh of the same launch.
+    ///
+    /// A refresh advances `updated_at` without changing intent, so the owner's
+    /// copy can look newer than the cancellation another controller wrote for
+    /// the same exec session. Timestamp order alone would then resurrect the
+    /// stopped task, so the persisted stop wins even though it is older.
+    #[test]
+    fn owner_merge_keeps_a_cancellation_a_refresh_outdates() {
+        // Shape 0 is `worker` owned by `session-a`.
+        let persisted = vec![merge_launch_record(0, 1, false, "exec-launch-1", "cancelled")];
+        let snapshot = vec![merge_launch_record(0, 2, true, "exec-launch-1", "refreshed")];
+
+        let merged = merge_background_records(persisted, snapshot, Some("session-a"));
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merge_state(&merged[0]),
+            ("cancelled".to_owned(), false, "stopped".to_owned()),
+            "a refresh of the stopped launch must not undo the cancellation"
+        );
+    }
+
+    /// A restart replaces the launch, so its snapshot is not a stale copy.
+    ///
+    /// The persisted cancellation names the exec session that was stopped. A
+    /// snapshot that names a different session is a replacement launch the
+    /// owner has since written, and it must be kept so an explicit restart
+    /// survives its own save.
+    #[test]
+    fn owner_merge_accepts_a_restart_with_a_new_exec_session() {
+        // Shape 0 is `worker` owned by `session-a`.
+        let persisted = vec![merge_launch_record(0, 2, false, "exec-launch-1", "cancelled")];
+        let snapshot = vec![merge_launch_record(0, 3, true, "exec-launch-2", "restarted")];
+
+        let merged = merge_background_records(persisted, snapshot, Some("session-a"));
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merge_state(&merged[0]),
+            ("restarted".to_owned(), true, "running".to_owned()),
+            "a restart names a new exec session and is not the stale copy a stop outranks"
+        );
     }
 
     /// Colliding persisted ids are resolved by `updated_at`, not file order.

@@ -212,6 +212,31 @@ fn record_with_state(
     serde_json::from_value(value).expect("deserialize record")
 }
 
+/// Builds a persisted record that names one launch's exec session.
+///
+/// A cancellation and a restart are told apart by the exec session they name,
+/// so a test that exercises adoption has to say which launch each copy
+/// describes.
+fn launch_record(
+    desired_enabled: bool,
+    status: &str,
+    exec_session_id: &str,
+    updated_at: &str,
+) -> PersistedBackgroundRecord {
+    let mut value = serde_json::to_value(persisted_background_record_for_owner("worker", Some("session-a")))
+        .expect("serialize fixture record");
+    value["desired_enabled"] = serde_json::json!(desired_enabled);
+    value["status"] = serde_json::json!(status);
+    value["exec_session_id"] = serde_json::json!(exec_session_id);
+    value["updated_at"] = serde_json::json!(updated_at);
+    value["ended_at"] = if status == "stopped" {
+        serde_json::json!("2026-08-29T00:00:00Z")
+    } else {
+        serde_json::json!(null)
+    };
+    serde_json::from_value(value).expect("deserialize record")
+}
+
 fn write_ledger(path: &std::path::Path, records: Vec<PersistedBackgroundRecord>) {
     std::fs::write(path, serde_json::to_string(&PersistedBackgroundState { records }).expect("serialize state"))
         .expect("write state");
@@ -319,6 +344,89 @@ async fn unscoped_save_persists_its_own_newer_state() {
         by_id["background-worker@session-a"]["status"], "stopped",
         "the controller's own newer state must survive the merge"
     );
+}
+
+/// A stop another controller persisted must survive this controller's refresh.
+///
+/// An owner-scoped controller keeps its own copy of the ledger, and an
+/// unscoped controller shares that ledger across sessions, so the unscoped one
+/// can cancel this owner's task and persist `desired_enabled = false` after
+/// this controller loaded its copy. Refresh must adopt that intent before it
+/// selects a restart: otherwise it would settle the exited process from the
+/// stale flag, schedule a replacement, and save a newer copy that undoes the
+/// stop.
+#[tokio::test]
+async fn refresh_adopts_a_cancellation_persisted_by_another_controller() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let ledger = state_dir.join("background_subagents.json");
+    write_ledger(&ledger, vec![launch_record(true, "running", "exec-launch-1", "2026-08-28T00:00:00Z")]);
+    let mut cfg = DiapasonConfig::default();
+    cfg.subagents.background.auto_restore = true;
+    let controller = SubagentController::new_with_background_owner(
+        test_controller_config(temp.path().to_path_buf(), cfg),
+        Some("session-a"),
+    )
+    .await
+    .expect("controller");
+
+    // The shared controller stops the task after this one took its snapshot.
+    write_ledger(&ledger, vec![launch_record(false, "stopped", "exec-launch-1", "2026-08-29T00:00:00Z")]);
+
+    controller
+        .refresh_background_processes()
+        .await
+        .expect("refresh must keep the persisted stop instead of respawning the task");
+
+    let entry = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == "background-worker@session-a")
+        .expect("owned background record");
+    assert!(!entry.desired_enabled, "refresh must not resurrect a task another controller stopped");
+    assert_eq!(
+        entry.status,
+        BackgroundSubprocessStatus::Stopped,
+        "the adopted stop keeps the terminal outcome the cancellation recorded"
+    );
+}
+
+/// A stop that names the previous launch must not cancel its replacement.
+///
+/// The exec session identifies the launch, so a cancellation written for the
+/// session that was stopped cannot apply to a record that already names a new
+/// session. Adopting it would silently cancel an explicit restart.
+#[tokio::test]
+async fn refresh_does_not_adopt_a_cancellation_for_an_older_launch() {
+    let temp = TempDir::new().expect("tempdir");
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let ledger = state_dir.join("background_subagents.json");
+    write_ledger(&ledger, vec![launch_record(true, "running", "exec-launch-2", "2026-08-28T00:00:00Z")]);
+    // No restart is attempted, so the refresh only reports what it observed.
+    let mut cfg = DiapasonConfig::default();
+    cfg.subagents.background.auto_restore = false;
+    let controller = SubagentController::new_with_background_owner(
+        test_controller_config(temp.path().to_path_buf(), cfg),
+        Some("session-a"),
+    )
+    .await
+    .expect("controller");
+
+    // The cancellation names the launch this record has already replaced.
+    write_ledger(&ledger, vec![launch_record(false, "stopped", "exec-launch-1", "2026-08-29T00:00:00Z")]);
+
+    controller.refresh_background_processes().await.expect("refresh");
+
+    let entry = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == "background-worker@session-a")
+        .expect("owned background record");
+    assert!(entry.desired_enabled, "a stop for the previous launch must not cancel the launch that replaced it");
 }
 
 #[cfg(unix)]
