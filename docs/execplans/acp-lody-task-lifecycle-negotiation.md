@@ -2668,3 +2668,100 @@ arguments positionally, because `prop_assert_eq!` expands through `concat!` and
 cannot use implicit format captures; and the usage doc test now names
 `acp::SessionId` and `Arc` unqualified, because CI lints with
 `-W unused-qualifications`.
+
+### Revision note (2026-11-17, second review round: locks, liveness, ordering)
+
+This round answers the two failed pre-merge rows of review `5921518001` and the
+follow-ups CodeRabbit posted to the replies on the same threads.
+
+1. *Liveness faults are classified, not discarded* (Unit Architecture 1).
+   `background_status_entries_with_liveness` no longer ends its snapshot read in
+   `.ok()`. A missing exec session is still the expected exit, but any other
+   fault keeps the record's cached status and returns
+   `BackgroundLiveness::Unobserved { reason }`, so a listing cannot fabricate a
+   terminal outcome it did not observe and one bad record cannot abort the
+   list. The ACP boundary logs the unobserved case with the task id and a
+   bounded reason and nothing else. The regression makes `snapshot_session`
+   fail with a non-not-found error and asserts the cached status survives, the
+   record stays active, and the reason names the fault without a path.
+
+2. *Controller locks are injected* (Unit Architecture 2). The two process-global
+   `OnceLock<Mutex<()>>` statics are gone. `subagents/controller_locks.rs` adds
+   `SubagentLockScope`, which owns the adoption mutex (subtree grafting and
+   child-id allocation) and the persistence mutex (background-ledger saves).
+   `SubagentController` holds an `Arc<SubagentLockScope>` through its config
+   and a child-scoped controller inherits its parent's scope, so one tree
+   serialises against itself. `default_lock_scope()` is still one
+   process-global instance, so a controller built without an explicit scope
+   excludes other such controllers exactly as the former statics did; the
+   default is the compatibility path, not a weaker guarantee.
+   `lock_scope_tests.rs` proves all three properties with `try_lock`, so no
+   assertion depends on timing: two unscoped controllers share the default and
+   exclude each other, two distinct injected scopes do not block each other
+   while a shared one does, and a child controller joins its parent's scope.
+
+3. *The output-reader port was already task-keyed* (Unit Architecture 3). The
+   port signature is `read_output(&BackgroundSubprocessEntry)`; the only key is
+   `entry.id`, and exec-session handles, transcript paths and archive paths
+   stay inside `ExecSessionOutputReader`. `read_preview` and `read_output_tail`
+   pass that same record through. A `BackgroundTaskRef` newtype would wrap one
+   field of a record the caller must hold anyway, so no change was made; the
+   disposition records the reasoning rather than editing working code.
+
+4. *Snapshot purity is split from refresh* (Unit Architecture 4).
+   `background_snapshot` is now a pure query: it reads state, builds the status
+   entry and reads the preview, and never settles a record, respawns, publishes
+   or persists. The refresh form is a separate method whose name and doc state
+   the side effects, and the management list path deliberately does not use it.
+   The regression drives a cached `Running` record whose exec session is gone
+   and asserts the pure read leaves both the status and the ledger untouched
+   while the refresh form settles the record as `Error`.
+
+5. *A close outranks the resolution outcome* (follow-up on `4580392619`).
+   `resolve_open_session_controller` captured the resolver's result only after
+   applying `?`, so a resolution that failed — or found nothing — because the
+   session closed was reported as an internal or unavailable error. The result
+   is now captured first, the closing check runs, and only then is the outcome
+   interpreted. Two regressions cover the empty resolution and the resolver
+   error; both must report `unknown_session`.
+
+6. *Model-profile precedence sentence corrected* (follow-up on `4586902382`).
+   The guide said streamed usage stays disabled "only when neither layer
+   supplies `true`", which is false when a profile `false` overrides a provider
+   `true`. It now states the one-way implication: when neither layer supplies
+   `true`, streamed usage stays disabled. CodeRabbit withdrew its own earlier
+   wording in the same reply.
+
+7. *Unused-import suppressions removed* (follow-up on `4586902362`).
+   `controller_tree.rs` and `controller_observers.rs` carried both a file-level
+   `#![allow(unused_imports)]` and an item-level `#[allow(unused_imports)]` on
+   `use super::*`. Both modules now name the items they use and carry no
+   suppression, so the split no longer reintroduces the repo's worst lint
+   escape hatch.
+
+8. *Domain Architecture is out of scope and tracked* (pre-merge row). All six
+   demands move public API: a `BackgroundLedgerStore` port with an `fs2`-owning
+   implementation in an infrastructure crate, and `AcpExtensionMetrics`,
+   `AcpManagementGuard`, `begin_acp_management` and `record_acp_*` leaving
+   `diapason-core`. This PR reuses that structure; it does not introduce it,
+   and it adds no lock file, backoff policy or `diapason_acp_*` series name.
+   The work is recorded as issue #205 with the demands as its acceptance
+   criteria rather than being widened into this feature PR.
+
+9. *CI unwrap/expect regression from the metrics split* (item 10 above). Moving
+   `tests_provider_admission.rs` into its own file hid the parent's `cfg(test)`
+   from the enforcement scan, which then read the module as production code and
+   failed on one `unwrap`. The guard now uses the repo's poison-tolerant idiom,
+   with a comment naming both reasons, and the scan reports no findings.
+
+10. *Script test rationale recorded.* The bounded-enumeration corpus in
+    `scripts/tests/test_generate_config_field_reference.py` now states why it is
+    an exhaustive enumeration over a four-character alphabet rather than a
+    property-based test: the alphabet is the whole input domain, and the script
+    suite otherwise needs only the standard library.
+
+11. *`foreground_output_tail` property test.* For any message sequence and line
+    limit, the bounded walk returns a suffix of the whole-transcript extraction,
+    never exceeds the limit, and returns the whole output once the limit covers
+    it. The property replaces the assumption that the hand-written cases cover
+    the message-boundary behaviour.
