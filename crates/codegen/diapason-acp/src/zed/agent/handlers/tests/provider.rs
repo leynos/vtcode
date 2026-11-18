@@ -1,7 +1,12 @@
 //! Covers provider attempt telemetry, deadline phases, retry policy, and failure classification.
+use super::super::prompt::RateLimitNoticeSink;
 use super::*;
 use crate::zed::types::SessionCancellation;
+use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
 
+mod telemetry;
+
+/// Assert stream polling runs in the attempt span without leaking prompt data.
 #[test]
 fn stream_poll_runs_inside_safe_attempt_span() {
     let capture = TraceCapture::default();
@@ -40,47 +45,8 @@ fn stream_poll_runs_inside_safe_attempt_span() {
     assert!(!captured.contains("/home/"));
 }
 
-#[test]
-fn provider_error_telemetry_exposes_stable_network_metadata() {
-    let error = LLMError::Network {
-        message: "request failed".to_string(),
-        metadata: Some(LLMErrorMetadata::new(
-            "Arli AI",
-            Some(504),
-            Some("reqwest_timeout_error".to_string()),
-            None,
-            None,
-            None,
-            Some("operation timed out".to_string()),
-        )),
-    };
-
-    assert_eq!(
-        provider_error_telemetry(&error),
-        ProviderErrorTelemetry {
-            code: Some("reqwest_timeout_error"),
-            status: Some(504),
-            timeout_phase: None,
-        }
-    );
-}
-
-#[test]
-fn provider_error_telemetry_exposes_acp_timeout_phase_separately() {
-    let error = provider_timeout_error("wire-test", StreamTimeoutPhase::InterTokenIdle, Some(Duration::from_secs(30)));
-
-    assert_eq!(
-        provider_error_telemetry(&error),
-        ProviderErrorTelemetry {
-            code: None,
-            status: None,
-            timeout_phase: Some("inter_token_idle"),
-        }
-    );
-    assert!(error.to_string().contains("inter-token idle timeout"));
-}
-
 proptest! {
+    /// Assert streaming depends only on provider support and Stop hooks.
     #[test]
     fn streaming_eligibility_depends_only_on_provider_support_and_stop_hooks(
         supports_streaming in any::<bool>(),
@@ -93,6 +59,7 @@ proptest! {
         );
     }
 
+    /// Assert observed output resets first-token and idle deadlines, not total.
     #[test]
     fn observing_stream_output_replaces_only_the_first_token_deadline(
         first_token_secs in prop::option::of(1u64..3_601),
@@ -119,6 +86,7 @@ proptest! {
     }
 }
 
+/// Assert buffered generation fails at its total-generation deadline.
 #[tokio::test]
 async fn buffered_generation_obeys_total_generation_timeout() {
     let result = generate_with_retry(
@@ -126,6 +94,7 @@ async fn buffered_generation_obeys_total_generation_timeout() {
         LLMRequest::default(),
         &timeout_runtime(),
         &SessionCancellation::default(),
+        None,
     )
     .await;
 
@@ -135,6 +104,7 @@ async fn buffered_generation_obeys_total_generation_timeout() {
     assert!(error.contains("total generation"));
 }
 
+/// Assert the deadline moves from first token to idle without extending total.
 #[test]
 fn stream_deadline_moves_from_first_token_to_idle_without_resetting_total() {
     let policy = ProviderDeadlinePolicy {
@@ -155,6 +125,7 @@ fn stream_deadline_moves_from_first_token_to_idle_without_resetting_total() {
     assert_eq!(tracker.total, total, "observing output must not extend the total generation deadline");
 }
 
+/// Assert a transient network failure retries once and recovers.
 #[tokio::test]
 async fn transient_network_failure_retries_and_recovers() {
     let provider = FlakyProvider {
@@ -164,7 +135,7 @@ async fn transient_network_failure_retries_and_recovers() {
     };
 
     let response =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default())
+        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
             .await
             .expect("transient request should recover");
 
@@ -172,12 +143,14 @@ async fn transient_network_failure_retries_and_recovers() {
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 2);
 }
 
+/// Assert persistent 502 responses exhaust the retry budget.
 #[tokio::test]
 async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     let provider = BadGatewayProvider { attempts: AtomicUsize::new(0) };
 
     let result =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default()).await;
+        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
+            .await;
 
     let Err(ProviderCallError::Failed(error)) = result else {
         panic!("persistent 502 response should exhaust the retry budget");
@@ -186,6 +159,7 @@ async fn bad_gateway_retries_until_the_configured_budget_is_exhausted() {
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 3);
 }
 
+/// Assert invalid requests are not retried.
 #[tokio::test]
 async fn invalid_request_is_not_retried() {
     let provider = FlakyProvider {
@@ -195,8 +169,99 @@ async fn invalid_request_is_not_retried() {
     };
 
     let result =
-        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default()).await;
+        generate_with_retry(&provider, LLMRequest::default(), &retry_runtime(), &SessionCancellation::default(), None)
+            .await;
 
     assert!(matches!(result, Err(ProviderCallError::Failed(_))));
     assert_eq!(provider.attempts.load(Ordering::SeqCst), 1);
+}
+
+/// Assert a retryable rate limit publishes a notice and recovers.
+#[tokio::test]
+async fn retryable_rate_limit_publishes_a_notice_over_the_acp_transport() {
+    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
+    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
+    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
+
+    let workspace = TempDir::new().expect("rate-limit notice workspace");
+    let agent =
+        Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&DiapasonConfig::default()), None).await);
+    let runtime = retry_runtime();
+    let provider = RateLimitedProvider { attempts: AtomicUsize::new(0) };
+    let (agent_channel, client_channel) = Channel::duplex();
+    let (notice_tx, mut notice_rx) = mpsc::unbounded_channel();
+
+    let agent_connection = install_handlers(
+        Agent.builder().name("diapason-rate-limit-notice-test"),
+        Arc::clone(&agent),
+    )
+    .connect_with(agent_channel, {
+        let agent = Arc::clone(&agent);
+        async move |cx: ConnectionTo<Client>| {
+            agent.attach_client(crate::zed::connection::ConnectionHandle::new(cx));
+            std::future::pending::<agent_client_protocol::Result<()>>().await
+        }
+    });
+    let agent_task = tokio::spawn(agent_connection);
+
+    let notice_agent = Arc::clone(&agent);
+    let client_workspace = workspace.path().to_path_buf();
+    let client_connection = Client
+        .builder()
+        .on_receive_notification(
+            async move |notification: acp::SessionNotification, _cx| {
+                drop(notice_tx.send(notification));
+                Ok(())
+            },
+            on_receive_notification!(),
+        )
+        .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
+            drop(
+                cx.send_request(InitializeRequest::new(acp::ProtocolVersion::V1))
+                    .block_task()
+                    .await?,
+            );
+            let session = cx.send_request(NewSessionRequest::new(client_workspace)).block_task().await?;
+            let notice_sink = RateLimitNoticeSink::new(notice_agent.as_ref(), &session.session_id);
+            let response = generate_with_retry(
+                &provider,
+                LLMRequest::default(),
+                &runtime,
+                &SessionCancellation::default(),
+                Some(&notice_sink),
+            )
+            .await
+            .expect("a retryable rate limit should recover");
+            assert_eq!(response.content.as_deref(), Some("recovered"));
+
+            let update = loop {
+                let notification = tokio::time::timeout(Duration::from_secs(3), notice_rx.recv())
+                    .await
+                    .expect("the rate-limit notice should reach the client")
+                    .expect("the rate-limit notice channel should stay open");
+                let update = serde_json::to_value(&notification.update).expect("rate-limit notice JSON");
+                if update["_meta"]["lody"]["notice"].is_object() {
+                    break update;
+                }
+            };
+            assert_eq!(update["sessionUpdate"], "session_info_update");
+            let notice = &update["_meta"]["lody"]["notice"];
+            assert_eq!(notice["level"], "warning");
+            assert_eq!(notice["source"], "provider_rate_limit");
+            let message = notice["message"].as_str().expect("rate-limit notice message");
+            assert!(message.contains("Retry-After: 0.2"));
+            assert!(message.contains("retry in"));
+            assert!(
+                update["_meta"]["lody"].get("rateLimits").is_none(),
+                "a retry notice must not fabricate a quota window"
+            );
+            Ok(())
+        });
+
+    tokio::time::timeout(Duration::from_secs(5), client_connection)
+        .await
+        .expect("the rate-limit notice flow should finish")
+        .expect("the rate-limit notice flow should succeed");
+    agent_task.abort();
+    drop(agent_task.await);
 }

@@ -54,9 +54,13 @@ fn parse_responses_sse_event(event: &str) -> Result<ParsedResponsesSseEvent, pro
     parse_stream_payload(trimmed_payload).map(ParsedResponsesSseEvent::Payload)
 }
 
-fn capture_chat_usage(payload: &mut Value, aggregator: &mut crate::providers::shared::StreamAggregator) {
-    if let Some(usage) = payload.get_mut("usage")
-        && let Ok(usage) = serde_json::from_value::<provider::Usage>(std::mem::take(usage))
+fn capture_chat_usage(
+    payload: &mut Value,
+    aggregator: &mut crate::providers::shared::StreamAggregator,
+    include_cached_prompt_metrics: bool,
+) {
+    if payload.get("usage").is_some()
+        && let Some(usage) = crate::providers::common::parse_usage_openai_format(payload, include_cached_prompt_metrics)
     {
         aggregator.set_usage(usage);
     }
@@ -126,6 +130,7 @@ fn merge_final_response_metadata(
                 .and_then(Value::as_u64)
                 .and_then(|value| u32::try_from(value).ok())
                 .unwrap_or(0),
+            reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage_value),
             total_tokens: usage_value
                 .get("total_tokens")
                 .and_then(Value::as_u64)
@@ -284,6 +289,7 @@ pub(crate) fn create_chat_stream(
     provider_name: String,
     model: String,
     retain_reasoning: bool,
+    include_cached_prompt_metrics: bool,
 ) -> provider::LLMStream {
     let stream = try_stream! {
         let mut body_stream = response.bytes_stream();
@@ -305,7 +311,7 @@ pub(crate) fn create_chat_stream(
                 let Some(mut payload) = parse_chat_stream_event(event, &mut termination)? else {
                     continue;
                 };
-                capture_chat_usage(&mut payload, &mut aggregator);
+                capture_chat_usage(&mut payload, &mut aggregator, include_cached_prompt_metrics);
 
                 if let Some(choice) = payload
                     .get("choices")
@@ -732,7 +738,7 @@ mod stream_transport_error_tests {
     async fn chat_stream_classifies_post_header_disconnect_for_custom_provider() {
         let response =
             response_with_truncated_body("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n").await;
-        let stream = create_chat_stream(response, CUSTOM_PROVIDER.to_owned(), "custom-model".to_owned(), false);
+        let stream = create_chat_stream(response, CUSTOM_PROVIDER.to_owned(), "custom-model".to_owned(), false, false);
 
         assert_custom_provider_body_error(stream).await;
     }
@@ -791,12 +797,36 @@ fn response_reasoning_event(
 #[cfg(test)]
 mod tests {
     use super::{
-        ResponsesToolCallState, final_response_output_is_empty, merge_final_response_metadata,
+        ResponsesToolCallState, capture_chat_usage, final_response_output_is_empty, merge_final_response_metadata,
         streamed_response_is_usable,
     };
     use crate::provider::{LLMResponse, ToolCall};
     use crate::providers::shared::StreamAggregator;
     use serde_json::json;
+
+    #[test]
+    fn chat_stream_captures_nested_cached_tokens_when_metrics_enabled() {
+        let mut payload = json!({
+            "id": "chatcmpl-stream",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 5,
+                "total_tokens": 105,
+                "prompt_tokens_details": { "cached_tokens": 40 }
+            }
+        });
+
+        let mut aggregator = StreamAggregator::new("custom-model".to_string());
+        capture_chat_usage(&mut payload, &mut aggregator, true);
+        let usage = aggregator.finalize().usage.expect("usage should be captured");
+        assert_eq!(usage.cached_prompt_tokens, Some(40));
+
+        let mut aggregator = StreamAggregator::new("custom-model".to_string());
+        capture_chat_usage(&mut payload, &mut aggregator, false);
+        let usage = aggregator.finalize().usage.expect("usage should be captured");
+        assert_eq!(usage.cached_prompt_tokens, None);
+    }
 
     #[test]
     fn responses_final_metadata_parses_cached_prompt_tokens_when_enabled() {
@@ -823,6 +853,25 @@ mod tests {
         assert_eq!(usage.completion_tokens, 5);
         assert_eq!(usage.total_tokens, 17);
         assert_eq!(usage.cached_prompt_tokens, Some(9));
+    }
+
+    #[test]
+    fn responses_final_metadata_preserves_reasoning_tokens() {
+        let mut response = LLMResponse::default();
+        merge_final_response_metadata(
+            &mut response,
+            &json!({
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 5,
+                    "total_tokens": 17,
+                    "output_tokens_details": {"reasoning_tokens": 4}
+                }
+            }),
+            false,
+        );
+
+        assert_eq!(response.usage.and_then(|usage| usage.reasoning_output_tokens), Some(4));
     }
 
     #[test]

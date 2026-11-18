@@ -69,6 +69,34 @@ fn admission_budget_scales_reservations_for_small_context_windows() {
     assert_eq!(admission_prompt_budget(&unknown_context_provider, "test"), None);
 }
 
+/// A PreCompact hook failure reaches the log with fixed fields only.
+///
+/// The hook error may embed a script path or hook output, so the client-facing
+/// message and every log level must both omit it; only the closed-set category,
+/// the message size, and a bounded correlation digest remain.
+#[test]
+fn pre_compact_hook_failure_logs_fixed_fields_without_hook_text() {
+    let detail =
+        anyhow::anyhow!("hook script /home/private/hooks/pre.sh exited 3").context("running ACP PreCompact hooks");
+    let failure = CompactionFailure::pre_compact_hook(&detail);
+    let category = failure.kind().category();
+    let client_message = failure.to_string();
+
+    let (_, events) =
+        crate::zed::agent::test_log_capture::capturing_at(tracing_subscriber::filter::LevelFilter::DEBUG, || {
+            report::log_suppressed_compaction_failure(failure.detail(), category)
+        });
+    let output = events.join("\n");
+
+    assert_eq!(client_message, "ACP PreCompact hooks failed");
+    assert_eq!(category, "pre_compact_hook");
+    assert!(output.contains("operation=\"context_compaction\""), "{output}");
+    assert!(output.contains("error_category=\"pre_compact_hook\""), "{output}");
+    assert!(output.contains("error_bytes="), "{output}");
+    assert!(!output.contains("pre.sh"), "hook text must not reach the log: {output}");
+    assert!(!output.contains("/home/private"), "hook path must not reach the log: {output}");
+}
+
 #[test]
 fn lifecycle_compaction_mode_preserves_local_and_native_strategy() {
     assert_eq!(lifecycle_compaction_mode(CompactionStrategy::Local), CompactionMode::Local);

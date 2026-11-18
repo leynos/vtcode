@@ -30,7 +30,8 @@
 - `llm/`: re-export facade; providers live in `diapason-llm`. `exec/events.rs`
   re-exports canonical `diapason-exec-events::ThreadEvent`; `prompts/` owns
   cached static profiles, compiled runtime guidance, and bounded resource
-  caches.
+  caches. `usage_cost.rs` is vendor-neutral accounting; `provider_usage.rs` is
+  the provider/configuration adapter that resolves a `UsageProfile` for it.
 - `mcp/plugin_providers.rs`: discovers Agent Plugin MCP servers and maps them to
   `McpProviderConfig`. `./`-prefixed stdio `command`/`cwd` are canonicalized at
   discovery so symlink escapes cannot bypass the plugin-root sandbox.

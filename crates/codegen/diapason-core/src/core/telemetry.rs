@@ -1,3 +1,5 @@
+//! Session-scoped telemetry counters for turns, tool calls, and model usage.
+
 use anyhow::{Context, Result};
 use diapason_config::constants::tools;
 use hashbrown::HashMap;
@@ -167,6 +169,7 @@ mod tests {
             Some(&crate::llm::provider::Usage {
                 prompt_tokens: 100,
                 completion_tokens: 200,
+                reasoning_output_tokens: None,
                 total_tokens: 300,
                 cached_prompt_tokens: Some(50),
                 cache_creation_tokens: None,
@@ -197,6 +200,7 @@ mod tests {
             Some(&crate::llm::provider::Usage {
                 prompt_tokens: 500,
                 completion_tokens: 100,
+                reasoning_output_tokens: None,
                 total_tokens: 600,
                 cached_prompt_tokens: Some(320),
                 cache_creation_tokens: Some(80),

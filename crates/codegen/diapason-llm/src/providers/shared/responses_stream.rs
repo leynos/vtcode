@@ -1,3 +1,6 @@
+//! Shared server-sent-event decoding for OpenAI-compatible Responses streams,
+//! including reasoning and cache-usage accounting.
+
 use crate::error_display;
 use crate::provider::{LLMError, LLMNormalizedStream, LLMResponse, NormalizedStreamEvent};
 use crate::providers::shared::responses_adapter::{ResponsesStreamAdapter, ResponsesStreamEvent};
@@ -8,6 +11,7 @@ use hashbrown::{HashMap, HashSet};
 use serde_json::{Value, json};
 
 use super::{StreamAggregator, generate_tool_call_id, parse_cached_prompt_tokens_from_usage};
+use crate::providers::common::parse_reasoning_tokens_from_usage;
 
 // Retained shared Responses stream processor.
 // Rig 0.40 can consume SSE, but Diapason needs a provider-agnostic
@@ -484,6 +488,7 @@ fn parse_responses_usage(
             .and_then(Value::as_u64)
             .and_then(|value| u32::try_from(value).ok())
             .unwrap_or(0),
+        reasoning_output_tokens: parse_reasoning_tokens_from_usage(usage_value),
         total_tokens: usage_value
             .get("total_tokens")
             .and_then(Value::as_u64)
@@ -652,6 +657,9 @@ mod tests {
                         "total_tokens": 18,
                         "input_tokens_details": {
                             "cached_tokens": 5
+                        },
+                        "output_tokens_details": {
+                            "reasoning_tokens": 2
                         }
                     },
                     "output": [],
@@ -672,6 +680,11 @@ mod tests {
         assert_eq!(usage.completion_tokens, 7);
         assert_eq!(usage.total_tokens, 18);
         assert_eq!(usage.cached_prompt_tokens, Some(5));
+        assert_eq!(
+            usage.reasoning_output_tokens,
+            Some(2),
+            "a reported reasoning count must survive the completed-event parse"
+        );
         assert_eq!(response.content.as_deref(), Some("streamed answer"));
         assert_eq!(response.request_id.as_deref(), Some("resp_streamed"));
     }

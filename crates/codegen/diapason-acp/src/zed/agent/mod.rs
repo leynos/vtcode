@@ -27,6 +27,8 @@ use super::types::SessionHandle;
 use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 
 mod optional_setup;
+mod publication_clock;
+mod redaction;
 mod session_workspace;
 use optional_setup::{
     AcpMcpClientAttacher, AcpSubagentControllerAttacher, AcpSubagentControllerSetup, DefaultAcpMcpClientAttacher,
@@ -52,30 +54,24 @@ fn warn_hook_block_reason(hook_event: &'static str, reason: &str) {
     tracing::warn!(hook_event, reason_bytes = reason.len(), "ACP hook blocked an operation");
 }
 
-/// Renders an error through its source chain, deferring formatting until the
-/// event is actually enabled.
-struct ErrorChain<'a>(&'a dyn std::fmt::Display);
-
-impl std::fmt::Display for ErrorChain<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{:#}", self.0)
-    }
-}
-
-/// Record the originating error for a redacted ACP failure.
+/// Record a suppressed ACP failure with fixed fields only.
 ///
 /// ACP clients only ever see the closed-set `operation`/`error_category`
 /// reason codes, because the underlying error may embed workspace paths,
-/// provider detail or archive contents. That leaves the local log as the only
-/// place the root cause can be recovered, so it is emitted here at `debug`
-/// level, where trusted diagnostics are enabled deliberately rather than by
-/// default. The client-facing payloads are unchanged.
+/// provider payloads, hook text, archive contents, transport URLs, secrets or
+/// personal data. Those values are untrusted, and no redaction of free text can
+/// be shown to remove all of them, so the error's rendering is never written to
+/// a log at any level. Operators get the fixed operation and category, the size
+/// of the outer message, and a bounded digest that groups repeated identical
+/// failures without retaining their content.
 fn log_suppressed_error(error: &impl std::fmt::Display, operation: &'static str, error_category: &'static str) {
+    let detail = format!("{error:#}");
     tracing::debug!(
         operation,
         error_category,
-        error = %ErrorChain(error),
-        "Suppressed ACP failure detail"
+        error_bytes = error.to_string().len(),
+        detail_correlation = %redaction::detail_correlation(&detail),
+        "Suppressed ACP failure"
     );
 }
 
@@ -111,7 +107,9 @@ fn report_session_runtime_failure(error: &anyhow::Error) -> String {
 mod compaction;
 pub(crate) mod handlers;
 mod lody;
+mod lody_activity;
 mod lody_management;
+mod lody_notice;
 #[cfg(test)]
 mod lody_tests;
 mod lody_usage;
@@ -205,11 +203,15 @@ mod acp_logging_tests {
     }
 
     #[test]
-    fn suppressed_error_detail_keeps_the_full_chain_at_debug() {
+    fn suppressed_error_keeps_fixed_fields_and_never_logs_untrusted_text() {
         let capture = HookLogCapture::default();
         let events = Arc::clone(&capture.0);
         let subscriber = Registry::default().with(capture);
-        let error = anyhow::anyhow!("archive write failed").context("checkpointing ACP session");
+        let error = anyhow::anyhow!(
+            "archive write failed for /home/private/archive.json after POST https://api.example.invalid/v1/chat \
+             with alice@example.com and raw-session-identifier"
+        )
+        .context("checkpointing ACP session");
 
         tracing::subscriber::with_default(subscriber, || {
             log_suppressed_error(&error, "session_checkpoint", "archive_write_failed");
@@ -220,10 +222,25 @@ mod acp_logging_tests {
         let captured = &events[0];
         assert!(captured.contains("operation=\"session_checkpoint\""));
         assert!(captured.contains("error_category=\"archive_write_failed\""));
+        let outer_message = "checkpointing ACP session";
         assert!(
-            captured.contains("error=checkpointing ACP session: archive write failed"),
-            "the debug event must retain the source chain, got {captured}"
+            captured.contains(&format!("error_bytes={}", outer_message.len())),
+            "the outer message size is retained, got {captured}"
         );
+        assert!(
+            captured.contains("detail_correlation="),
+            "the bounded correlation digest is retained, got {captured}"
+        );
+        for leaked in [
+            "checkpointing ACP session",
+            "archive write failed",
+            "/home/private",
+            "api.example.invalid",
+            "alice@example.com",
+            "raw-session-identifier",
+        ] {
+            assert!(!captured.contains(leaked), "{leaked} must never be logged, got {captured}");
+        }
     }
 
     #[test]
@@ -313,6 +330,16 @@ pub(crate) struct ZedAgent {
     launch_workspace_runtime: Arc<SessionWorkspaceRuntime>,
     workspace_runtimes: tokio::sync::Mutex<WorkspaceRuntimeCache<SessionWorkspaceRuntime>>,
     workspace_trust_synchronizer: Arc<dyn crate::workspace::WorkspaceTrustSynchronizer + Send + Sync>,
+    /// Recorder for provider rate-limit notice publication outcomes.
+    notice_recorder: Arc<dyn crate::metrics::PublicationRecorder>,
+    /// Recorder for compaction activity-update publication outcomes.
+    compaction_update_recorder: Arc<dyn crate::metrics::PublicationRecorder>,
+    /// Recorder for automatic compaction outcomes.
+    compaction_recorder: Arc<dyn crate::metrics::CompactionRecorder>,
+    /// Identity and clock source for published compaction activities.
+    compaction_activity_source: Arc<dyn compaction::CompactionActivitySource>,
+    /// Clock source for the duration of an ACP publication send.
+    publication_clock: Arc<dyn publication_clock::PublicationClock>,
 }
 
 pub(crate) struct ZedAgentSetup<'a> {
@@ -391,7 +418,64 @@ impl ZedAgent {
             launch_workspace_runtime: Arc::clone(&launch_runtime),
             workspace_runtimes: tokio::sync::Mutex::new(workspace_runtimes),
             workspace_trust_synchronizer: Arc::new(crate::workspace::DefaultWorkspaceTrustSynchronizer::new()),
+            notice_recorder: crate::metrics::notice_recorder(),
+            compaction_update_recorder: crate::metrics::compaction_update_recorder(),
+            compaction_recorder: crate::metrics::compaction_recorder(),
+            compaction_activity_source: compaction::compaction_activity_source(),
+            publication_clock: publication_clock::publication_clock(),
         })
+    }
+
+    /// Install isolated publication recorders, for tests that assert exact
+    /// deltas.
+    ///
+    /// Production wiring installs the process-wide recorders; a command test
+    /// substitutes recorders it owns so a concurrent publisher cannot perturb
+    /// the counts it observes.
+    #[cfg(test)]
+    pub(crate) fn set_publication_recorders(
+        &mut self,
+        notice: Arc<dyn crate::metrics::PublicationRecorder>,
+        compaction_update: Arc<dyn crate::metrics::PublicationRecorder>,
+    ) {
+        self.notice_recorder = notice;
+        self.compaction_update_recorder = compaction_update;
+    }
+
+    /// Install an isolated compaction recorder, for tests that assert exact
+    /// deltas rather than a shared process-wide snapshot.
+    ///
+    /// Production wiring installs the process-wide recorder; a command test
+    /// substitutes a recorder it owns so another attempt cannot satisfy or
+    /// perturb the counts it observes.
+    #[cfg(test)]
+    pub(crate) fn set_compaction_recorder(&mut self, recorder: Arc<dyn crate::metrics::CompactionRecorder>) {
+        self.compaction_recorder = recorder;
+    }
+
+    /// Install a controlled activity identity and clock, for tests that assert
+    /// the published activity and its duration exactly.
+    ///
+    /// Production wiring installs the system source; a command test substitutes
+    /// fixed values so the assertions do not depend on the wall clock or on a
+    /// randomly generated identifier.
+    #[cfg(test)]
+    pub(in crate::zed::agent) fn set_compaction_activity_source(
+        &mut self,
+        source: Arc<dyn compaction::CompactionActivitySource>,
+    ) {
+        self.compaction_activity_source = source;
+    }
+
+    /// Install a controlled publication clock, for tests that assert the
+    /// elapsed time a send reports exactly.
+    ///
+    /// Production wiring installs the system clock; a command test substitutes
+    /// a stepped clock so the span's `elapsed_ms` is the injected interval
+    /// rather than however long the transport actually took.
+    #[cfg(test)]
+    pub(in crate::zed::agent) fn set_publication_clock(&mut self, clock: Arc<dyn publication_clock::PublicationClock>) {
+        self.publication_clock = clock;
     }
 
     /// Metrics collector that receives bounded ACP recovery counters.

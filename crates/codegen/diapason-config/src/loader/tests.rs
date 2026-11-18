@@ -3,7 +3,9 @@ use super::*;
 
 use crate::constants::tool_limits;
 use crate::core::prompt_cache::PromptCacheRetention;
-use crate::core::{CustomProviderApiFormat, CustomProviderConfig, CustomProviderProfileConfig};
+use crate::core::{
+    CustomProviderApiFormat, CustomProviderConfig, CustomProviderPricingConfig, CustomProviderProfileConfig,
+};
 use crate::defaults::{self, SyntaxHighlightingDefaults, WorkspacePathsDefaults};
 use crate::ide_context::{IdeContextProviderConfig, IdeContextProviderMode, IdeContextProvidersConfig};
 use crate::loader::layers::ConfigLayerSource;

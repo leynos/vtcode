@@ -7,8 +7,11 @@
 //! requests are handled by the sibling `lody_management` module.
 
 mod messages;
+
 mod queue_accounting;
+
 mod snapshot_publication;
+
 #[cfg(test)]
 mod tests;
 
@@ -20,37 +23,40 @@ use super::lody::lody_task_id;
 use hashbrown::HashSet;
 #[cfg(test)]
 mod forwarder_duplex_tests;
+
 #[cfg(test)]
 mod ordering_tests;
+
 #[cfg(test)]
 mod projection_metadata_tests;
+
 #[cfg(test)]
 mod projection_tests;
+
 #[cfg(test)]
 mod queue_accounting_tests;
+
 use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
+use super::redaction::CORRELATION_HEX_LENGTH;
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
 use chrono::{DateTime, Utc};
-use diapason_core::metrics::TaskLifecycleNotificationQueueMetricsObserver;
+use diapason_core::metrics::{TaskLifecycleNotificationQueueDrop, TaskLifecycleNotificationQueueMetricsObserver};
 use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 use hashbrown::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 use tracing::{Span, debug, field, info_span, warn};
 
-const SESSION_CORRELATION_HEX_LENGTH: usize = 12;
 const TASK_LIFECYCLE_SEND_FAILURE_CATEGORY: &str = "notification_send_failed";
 
 pub(super) fn bounded_session_correlation(session_id: &acp::SessionId) -> String {
-    diapason_commons::utils::calculate_sha256(session_id.to_string().as_bytes())
-        .chars()
-        .take(SESSION_CORRELATION_HEX_LENGTH)
-        .collect()
+    super::redaction::session_correlation(&session_id.to_string())
 }
 
 /// One queued lifecycle item, tagged with the publication path that produced it.
@@ -341,10 +347,10 @@ fn spawn_task_lifecycle_forwarder(
                     continue;
                 }
                 if !ordering.admit(&queued) {
-                    // Task ids are client-supplied and unbounded, so the
-                    // forwarder logs carry no per-task field; the enclosing
-                    // span's bounded session correlation identifies the stream.
-                    debug!("Dropped superseded ACP task lifecycle update");
+                    debug!(
+                        task_correlation = %super::redaction::identifier_correlation(lody_task_id(&queued.update)),
+                        "Dropped superseded ACP task lifecycle update"
+                    );
                     continue;
                 }
                 let task_id = lody_task_id(&queued.update).to_string();

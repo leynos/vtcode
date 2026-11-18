@@ -1,3 +1,5 @@
+//! Unit tests for the unified runloop context manager.
+
 use super::*;
 use diapason_core::{
     EditorContextSnapshot, EditorFileContext, EditorLineRange, EditorSelectionContext, EditorSelectionRange,
@@ -354,6 +356,7 @@ fn test_update_token_usage_prefers_prompt_pressure() {
     manager.update_token_usage(&Some(uni::Usage {
         prompt_tokens: 1000,
         completion_tokens: 500,
+        reasoning_output_tokens: None,
         total_tokens: 1500,
         cached_prompt_tokens: None,
         cache_creation_tokens: None,
@@ -366,6 +369,7 @@ fn test_update_token_usage_prefers_prompt_pressure() {
     manager.update_token_usage(&Some(uni::Usage {
         prompt_tokens: 2500,
         completion_tokens: 800,
+        reasoning_output_tokens: None,
         total_tokens: 3300,
         cached_prompt_tokens: None,
         cache_creation_tokens: None,
@@ -382,6 +386,7 @@ fn test_update_token_usage_falls_back_when_prompt_missing() {
     manager.update_token_usage(&Some(uni::Usage {
         prompt_tokens: 0,
         completion_tokens: 800,
+        reasoning_output_tokens: None,
         total_tokens: 3300,
         cached_prompt_tokens: None,
         cache_creation_tokens: None,
@@ -437,6 +442,7 @@ async fn build_system_prompt_ignores_token_usage_updates() {
     manager.update_token_usage(&Some(uni::Usage {
         prompt_tokens: 180_000,
         completion_tokens: 2_000,
+        reasoning_output_tokens: None,
         total_tokens: 182_000,
         cached_prompt_tokens: None,
         cache_creation_tokens: None,

@@ -267,11 +267,11 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
                 // order OpenAI sends in production. The decoder must keep
                 // reading after `finish_reason` so the trailing usage chunk is
                 // still captured; finalising on the finish frame would lose
-                // these totals.
+                // these totals and the reasoning count carried with them.
                 .set_body_string(
                     "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n\
                      data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
-                     data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18}}\n\n\
+                     data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18,\"completion_tokens_details\":{\"reasoning_tokens\":3}}}\n\n\
                      data: [DONE]\n\n",
                 )
         })
@@ -315,6 +315,7 @@ async fn openai_chat_stream_usage_obeys_profile_precedence_and_decodes_terminal_
     // The finish reason was recorded by the frame that preceded the usage
     // chunk, so a decoder that finalised on that frame would fail here.
     assert_eq!(response.finish_reason, FinishReason::Stop);
+    assert_eq!(usage.reasoning_output_tokens, Some(3));
     drop(collect_completed_response(&router, OPTED_OUT_MODEL).await);
 
     let requests = captured.lock().expect("capture mutex");

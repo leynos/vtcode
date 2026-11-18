@@ -1,6 +1,6 @@
 //! Coordinates ACP prompt preparation, hooks, compaction, and provider-turn execution.
 use super::super::tool_config::SessionToolDefinitionRequest;
-use super::provider::IncompleteProviderTurn;
+use super::provider::{AttemptFailureFuture, AttemptFailureSink, IncompleteProviderTurn};
 use super::*;
 use checkpoint::require_session_checkpoint;
 
@@ -12,11 +12,17 @@ mod input;
 
 mod lifecycle;
 
+mod output;
+
 mod provider_context;
+
+mod rate_limit_sink;
 
 mod streaming;
 
 mod tool_round;
+
+mod tool_state;
 
 pub(super) use buffered::response_reasoning_update;
 pub(super) use checkpoint::{persist_session_checkpoint, persist_terminal_tool_results};
@@ -25,6 +31,11 @@ pub(super) use tool_round::{
     validate_tool_call_ids,
 };
 
+pub(super) use output::ProviderOutput;
+pub(super) use rate_limit_sink::RateLimitNoticeSink;
+pub(super) use tool_state::PromptToolState;
+
+/// Emit the partial answer and return an incomplete-turn response.
 pub(super) async fn finish_failed_provider_turn(
     turn: &PromptExecution,
     error: &str,
@@ -46,6 +57,7 @@ pub(super) async fn finish_failed_provider_turn(
     Ok(response)
 }
 
+/// Store partial provider output on the turn, then finish it as failed.
 pub(super) async fn finish_failed_output(
     turn: &mut PromptExecution,
     output: ProviderOutput,
@@ -76,59 +88,9 @@ impl TurnGuard {
 }
 
 impl Drop for TurnGuard {
+    /// Release the thread's turn slot.
     fn drop(&mut self) {
         self.thread.finish_turn();
-    }
-}
-
-pub(super) struct PromptToolState {
-    enabled_tools: Vec<SupportedTool>,
-    primary_agent: String,
-    has_local_tools: bool,
-    tools_allowed: bool,
-    tool_definitions: Option<Arc<Vec<ToolDefinition>>>,
-    messages: Vec<Message>,
-}
-
-impl PromptToolState {
-    pub(super) fn new(enabled_tools: Vec<SupportedTool>, primary_agent: String, provider_supports_tools: bool) -> Self {
-        Self {
-            enabled_tools,
-            primary_agent,
-            has_local_tools: false,
-            tools_allowed: provider_supports_tools,
-            tool_definitions: None,
-            messages: Vec::new(),
-        }
-    }
-
-    pub(super) fn refresh_availability(
-        &mut self,
-        agent: &ZedAgent,
-        session: &SessionHandle,
-        session_id: &acp::SessionId,
-        provider_supports_tools: bool,
-    ) -> Result<(), SdkError> {
-        self.primary_agent = session
-            .data
-            .lock()
-            .map_err(|_err| SdkError::internal_error())?
-            .primary_agent
-            .clone();
-        self.has_local_tools = agent
-            .session_local_tools_available(session, &self.primary_agent)
-            .map_err(|error| session_access_error(session_id, "checking local tool availability", error))?;
-        self.tools_allowed = provider_supports_tools && (!self.enabled_tools.is_empty() || self.has_local_tools);
-        self.tool_definitions = agent
-            .session_tool_definitions(SessionToolDefinitionRequest {
-                session,
-                provider_supports_tools,
-                enabled_tools: &self.enabled_tools,
-                primary_agent: &self.primary_agent,
-            })
-            .map_err(|error| session_access_error(session_id, "resolving tool definitions", error))?
-            .map(Arc::new);
-        Ok(())
     }
 }
 
@@ -168,6 +130,7 @@ pub(super) struct PromptExecution {
     stop_hook_checked: bool,
 }
 
+/// Build the provider and tool state that will drive the prompt.
 async fn initialize_prompt_execution(input: PromptInput) -> Result<PromptExecution, SdkError> {
     let provider = provider_context::create_prompt_provider_context(&input)?;
     let tool_state = provider_context::initialize_prompt_tool_state(&input, &provider).await?;
@@ -206,6 +169,7 @@ pub(super) struct PromptProviderContext {
     supports_tools: bool,
 }
 
+/// Prepare input, accept the user prompt, and run the provider turn.
 pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Result<PromptResponse, SdkError> {
     let input = match input::prepare_prompt_input(agent, args).await? {
         PromptInputOutcome::Response(response) => return Ok(response),
@@ -218,6 +182,7 @@ pub(super) async fn run_prompt(agent: Arc<ZedAgent>, args: PromptRequest) -> Res
 }
 
 impl PromptExecution {
+    /// Run the streaming or buffered provider turn and finish it.
     async fn run(mut self) -> Result<PromptResponse, SdkError> {
         let outcome = if self.allow_streaming {
             streaming::run_streaming_provider_turn(&mut self).await?
@@ -231,48 +196,12 @@ impl PromptExecution {
     }
 }
 
-pub(super) struct ProviderOutput {
-    assistant_message: String,
-    assistant_reasoning: String,
-    emitted_output: bool,
-}
-
-impl ProviderOutput {
-    pub(super) fn empty() -> Self {
-        Self {
-            assistant_message: String::new(),
-            assistant_reasoning: String::new(),
-            emitted_output: false,
-        }
-    }
-
-    pub(super) fn take_from(turn: &mut PromptExecution) -> Self {
-        let assistant_message = std::mem::take(&mut turn.assistant_message);
-        let assistant_reasoning = std::mem::take(&mut turn.assistant_reasoning);
-        let emitted_output = !assistant_message.is_empty() || !assistant_reasoning.is_empty();
-        Self {
-            assistant_message,
-            assistant_reasoning,
-            emitted_output,
-        }
-    }
-
-    pub(super) fn reset(&mut self) {
-        self.assistant_message.clear();
-        self.assistant_reasoning.clear();
-        self.emitted_output = false;
-    }
-
-    pub(super) fn store_in(self, turn: &mut PromptExecution) {
-        turn.assistant_message = self.assistant_message;
-        turn.assistant_reasoning = self.assistant_reasoning;
-    }
-}
-
+/// Build an internal error naming the session operation that failed.
 pub(super) fn session_access_error(session_id: &acp::SessionId, operation: &str, error: impl Display) -> SdkError {
     SdkError::internal_error().data(format!("Failed to {operation} for ACP session {session_id}: {error}"))
 }
 
+/// Append a message to the session, mapping failures to a session error.
 pub(super) fn push_session_message(
     agent: &ZedAgent,
     session: &SessionHandle,
@@ -290,6 +219,7 @@ pub(super) fn should_allow_streaming(supports_streaming: bool, _tools_allowed: b
     supports_streaming && !has_stop_hooks
 }
 
+/// Report whether the final chunk is emitted from the buffered path.
 pub(super) fn should_emit_buffered_final_chunk(allow_streaming: bool) -> bool {
     !allow_streaming
 }

@@ -2,6 +2,42 @@
 use super::*;
 use agent_client_protocol::schema::v1::{InitializeRequest, LoadSessionRequest, NewSessionRequest};
 
+/// A `tracing` writer that collects formatted output for one test only.
+#[derive(Clone, Default)]
+pub(super) struct CaptureWriter(pub(super) Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for CaptureWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut guard = self
+            .0
+            .lock()
+            .map_err(|poisoned| std::io::Error::other(format!("capture poisoned: {poisoned}")))?;
+        guard.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CaptureWriter {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// Install a per-test subscriber so parallel tests keep their own capture.
+pub(super) fn capture_subscriber(captured: &CaptureWriter) -> impl tracing::Subscriber + Send + Sync + 'static {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_ansi(false)
+        .with_writer(captured.clone())
+        .finish()
+}
+
 #[tokio::test]
 async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
     let _history_test_guard = lock_history_test_guard().await;
@@ -20,6 +56,7 @@ async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
                 requests: Arc::clone(&factory_requests),
                 context_size: 0,
                 summary: "ACP compaction summary marker".to_string(),
+                delay: Duration::ZERO,
             })
         }),
     );
@@ -46,10 +83,18 @@ async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
 
     let history_agent = Arc::clone(&agent);
     let client_requests = Arc::clone(&requests);
+    let compaction_notifications = Arc::new(Mutex::new(Vec::new()));
+    let captured_notifications = Arc::clone(&compaction_notifications);
     let client_connection = Client
         .builder()
         .on_receive_notification(
-            async move |_notification: acp::SessionNotification, _cx| Ok(()),
+            async move |notification: acp::SessionNotification, _cx| {
+                captured_notifications
+                    .lock()
+                    .expect("capture compaction notifications")
+                    .push(notification);
+                Ok(())
+            },
             on_receive_notification!(),
         )
         .connect_with(client_channel, async move |cx: ConnectionTo<Agent>| {
@@ -116,6 +161,37 @@ async fn streamed_acp_prompt_compacts_and_checkpoints_session_history() {
         .expect("ACP compaction protocol flow should succeed");
     agent_task.abort();
     drop(agent_task.await);
+
+    let activity_updates = compaction_notifications
+        .lock()
+        .expect("capture compaction notifications")
+        .iter()
+        .filter_map(|notification| serde_json::to_value(&notification.update).ok())
+        .filter(|update| update["_meta"]["lody"]["activity"].is_object())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        activity_updates.len(),
+        2,
+        "a threshold crossing must publish exactly one started and one terminal compaction activity"
+    );
+    let started = &activity_updates[0];
+    let finished = &activity_updates[1];
+    assert_eq!(started["sessionUpdate"], "tool_call");
+    assert_eq!(started["status"], "in_progress");
+    assert_eq!(started["_meta"]["lody"]["activity"]["kind"], "context_compaction");
+    assert_eq!(finished["sessionUpdate"], "tool_call_update");
+    assert_eq!(finished["status"], "completed");
+    assert_eq!(
+        started["toolCallId"], finished["toolCallId"],
+        "the terminal compaction update must keep the started tool call ID"
+    );
+    assert_eq!(finished["_meta"]["lody"]["activity"]["compacted"], true);
+    assert!(
+        finished["_meta"]["lody"]["activity"]["usedTokensAfter"]
+            .as_u64()
+            .is_some_and(|tokens| tokens > 0),
+        "a completed compaction must report the reduced prompt size"
+    );
 
     {
         let requests = requests.lock().expect("compaction provider requests");
@@ -230,6 +306,7 @@ async fn prompt_over_budget_fails_closed_when_compaction_makes_no_change() {
         requests: Arc::clone(&requests),
         context_size: 8_192,
         summary: "unused summary".to_string(),
+        delay: Duration::ZERO,
     };
     let runtime = agent.provider_runtime.for_provider("wire-test");
 
@@ -264,6 +341,7 @@ async fn prompt_over_budget_fails_closed_when_compaction_stays_over_budget() {
         requests: Arc::clone(&requests),
         context_size: 8_192,
         summary: "oversized summary ".repeat(12_000),
+        delay: Duration::ZERO,
     };
     let runtime = agent.provider_runtime.for_provider("wire-test");
 
@@ -282,48 +360,4 @@ async fn prompt_over_budget_fails_closed_when_compaction_stays_over_budget() {
     let requests = requests.lock().expect("compaction requests");
     assert_eq!(requests.len(), 1, "only the compaction request may reach the provider");
     assert!(!requests[0].stream, "the provider request must be compaction, not an answer turn");
-}
-
-#[tokio::test]
-async fn cancelled_acp_compaction_aborts_the_pending_provider_request() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    use assert_fs::TempDir;
-
-    let workspace = TempDir::new().expect("temporary compaction workspace");
-    let config = compaction_config(true);
-    let agent = Arc::new(build_wire_test_agent_with_options(workspace.path(), Some(&config), None).await);
-    let session = large_compaction_session(&agent, workspace.path()).await;
-    let started = Arc::new(tokio::sync::Notify::new());
-    let provider = Arc::new(PendingCompactionProvider::new(Arc::clone(&started)));
-    let runtime = agent.provider_runtime.for_provider("wire-test");
-    let task = {
-        let agent = Arc::clone(&agent);
-        let session = session.clone();
-        let provider = Arc::clone(&provider);
-        tokio::spawn(async move {
-            agent
-                .maybe_compact_session(CompactionRequest {
-                    session: &session,
-                    provider: provider.as_ref(),
-                    runtime: &runtime,
-                    model: "wire-model",
-                    tools: None,
-                })
-                .await
-        })
-    };
-
-    tokio::time::timeout(Duration::from_secs(5), started.notified())
-        .await
-        .expect("provider compaction request should start");
-    session.cancellation.cancel();
-    let error = tokio::time::timeout(Duration::from_secs(5), task)
-        .await
-        .expect("cancellation should stop the compaction task")
-        .expect("compaction task should not panic")
-        .expect_err("cancelled compaction must not report success");
-
-    assert!(error.to_string().contains("ACP compaction cancelled"));
 }

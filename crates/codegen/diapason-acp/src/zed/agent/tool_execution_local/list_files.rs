@@ -292,8 +292,10 @@ mod tests {
         assert!(captured.contains("error_chain_depth=2"));
     }
 
+    /// A suppressed runtime failure logs only fixed fields and a bounded
+    /// digest at debug; the chain text is never written at any level.
     #[test]
-    fn runtime_failure_keeps_the_full_chain_only_at_debug() {
+    fn runtime_failure_logs_only_fixed_fields_and_a_digest_at_debug() {
         let private_path = "/home/private/workspace/session-runtime.lock";
         let error = anyhow::anyhow!("lock poisoned while reading {private_path}")
             .context("reading the ACP session workspace runtime");
@@ -302,13 +304,24 @@ mod tests {
         let (_, events) = capturing_at(debug, || ZedAgent::report_list_files_runtime_failure(&error));
 
         let captured = events.join("\n");
-        assert!(
-            captured.contains("reading the ACP session workspace runtime"),
-            "the debug event must retain the chain for local diagnosis, got {captured}"
-        );
-        // The chain is deliberately available at debug; the warning beside it
-        // is what reaches normal operator output, and that stays path-free.
         assert!(captured.contains("operation=\"list_files\""));
+        assert!(captured.contains("error_category=\"workspace_runtime_unavailable\""));
+        assert!(captured.contains("error_bytes="));
+        assert!(captured.contains("detail_correlation="));
+        assert!(
+            !captured.contains("reading the ACP session workspace runtime"),
+            "the chain must never reach logs, got {captured}"
+        );
+        assert!(!captured.contains("lock poisoned"), "raw error text must never reach logs, got {captured}");
+        assert!(!captured.contains(private_path), "workspace paths must never reach logs, got {captured}");
+
+        let correlation = captured
+            .split("detail_correlation=")
+            .nth(1)
+            .and_then(|digest| digest.split_whitespace().next())
+            .expect("the suppressed failure must log a correlation digest");
+        assert_eq!(correlation.len(), 12, "the digest must be bounded, got {correlation}");
+        assert!(correlation.chars().all(|c| c.is_ascii_hexdigit()), "the digest must be hex, got {correlation}");
     }
 
     #[test]

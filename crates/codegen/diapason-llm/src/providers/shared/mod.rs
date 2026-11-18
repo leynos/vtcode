@@ -6,82 +6,18 @@ use crate::provider::{
 pub use crate::providers::ReasoningBuffer;
 use crate::providers::common::{extract_reasoning_text_from_serialized_details, map_finish_reason_common};
 mod responses_adapter;
+
 mod responses_stream;
+
+mod cache_usage;
 mod tag_sanitizer;
 use crate::providers::split_reasoning_from_text;
+pub(crate) use cache_usage::{parse_cache_write_tokens_from_usage, parse_cached_prompt_tokens_from_usage};
 pub(crate) use responses_stream::{ResponsesNormalizedStreamOptions, create_responses_normalized_stream};
 pub(crate) use responses_stream::{ResponsesStreamEventPolicy, response_stream_event_policy};
 use serde_json::{Map, Value};
 use std::borrow::Cow;
 pub use tag_sanitizer::TagStreamSanitizer;
-
-pub(crate) fn parse_cached_prompt_tokens_from_usage(
-    usage_value: &Value,
-    include_cached_prompt_metrics: bool,
-) -> Option<u32> {
-    if !include_cached_prompt_metrics {
-        return None;
-    }
-
-    let cached_prompt_tokens = usage_value
-        .get("input_tokens_details")
-        .and_then(|details| details.get("cached_tokens"))
-        .or_else(|| {
-            usage_value
-                .get("prompt_tokens_details")
-                .and_then(|details| details.get("cached_tokens"))
-        })
-        .or_else(|| usage_value.get("prompt_cache_hit_tokens"))
-        .or_else(|| usage_value.get("cached_tokens"))
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok());
-
-    if let Some(cached_prompt_tokens) = cached_prompt_tokens {
-        tracing::debug!(
-            target = "diapason::llm::responses::prompt_cache",
-            cached_prompt_tokens,
-            "Responses cached prompt token usage"
-        );
-    }
-
-    cached_prompt_tokens
-}
-
-/// Parse OpenAI `cache_write_tokens` from a Responses/Chat usage payload.
-///
-/// GPT-5.6 and later bill cache writes at 1.25x the input rate; downstream
-/// cost math consumes this via `Usage::cache_creation_tokens`.
-/// Mirrors [`parse_cached_prompt_tokens_from_usage`], including the metrics
-/// gate: no value is reported when cached-prompt metrics are disabled.
-pub(crate) fn parse_cache_write_tokens_from_usage(
-    usage_value: &Value,
-    include_cached_prompt_metrics: bool,
-) -> Option<u32> {
-    if !include_cached_prompt_metrics {
-        return None;
-    }
-
-    let cache_write_tokens = usage_value
-        .get("input_tokens_details")
-        .and_then(|details| details.get("cache_write_tokens"))
-        .or_else(|| {
-            usage_value
-                .get("prompt_tokens_details")
-                .and_then(|details| details.get("cache_write_tokens"))
-        })
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok());
-
-    if let Some(cache_write_tokens) = cache_write_tokens {
-        tracing::debug!(
-            target = "diapason::llm::responses::prompt_cache",
-            cache_write_tokens,
-            "Responses cache-write token usage"
-        );
-    }
-
-    cache_write_tokens
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum StreamAssemblyError {
@@ -1678,6 +1614,7 @@ mod tests {
                 "prompt_tokens": 100,
                 "completion_tokens": 50,
                 "total_tokens": 150,
+                "completion_tokens_details": {"reasoning_tokens": 30},
                 "prompt_cache_hit_tokens": 30,
                 "prompt_cache_miss_tokens": 70
             }
@@ -1691,6 +1628,7 @@ mod tests {
         assert_eq!(usage.prompt_tokens, 100);
         assert_eq!(usage.cached_prompt_tokens, None);
         assert_eq!(usage.cache_creation_tokens, None);
+        assert_eq!(usage.reasoning_output_tokens, Some(30));
 
         // With include_cache_metrics = true (DeepSeek behaviour)
         let mut aggregator2 = StreamAggregator::new("test-model".to_string());
@@ -1700,6 +1638,47 @@ mod tests {
         let usage2 = response2.usage.expect("usage expected");
         assert_eq!(usage2.prompt_tokens, 100);
         assert_eq!(usage2.cached_prompt_tokens, Some(30));
-        assert_eq!(usage2.cache_creation_tokens, Some(70));
+        // The miss count is the uncached remainder of the prompt total, not a
+        // separately priced cache write.
+        assert_eq!(usage2.cache_creation_tokens, None);
+        assert_eq!(usage2.reasoning_output_tokens, Some(30));
+    }
+
+    #[test]
+    fn null_stream_usage_never_replaces_reported_counts() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut aggregator = StreamAggregator::new("test-model".to_string());
+        let populated =
+            json!({"choices": [], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}});
+
+        handle_openai_compatible_chunk(&populated, &mut aggregator, &tx, &[], OpenAiDeltaOrder::ContentFirst, true);
+        handle_openai_compatible_chunk(
+            &json!({"choices": [], "usage": null}),
+            &mut aggregator,
+            &tx,
+            &[],
+            OpenAiDeltaOrder::ContentFirst,
+            true,
+        );
+
+        let usage = aggregator.finalize().usage.expect("reported usage should survive a null frame");
+        assert_eq!(usage.total_tokens, 10);
+    }
+
+    #[test]
+    fn stream_without_populated_usage_reports_unknown_usage() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut aggregator = StreamAggregator::new("test-model".to_string());
+
+        handle_openai_compatible_chunk(
+            &json!({"choices": [], "usage": null}),
+            &mut aggregator,
+            &tx,
+            &[],
+            OpenAiDeltaOrder::ContentFirst,
+            true,
+        );
+
+        assert_eq!(aggregator.finalize().usage, None);
     }
 }

@@ -1,3 +1,5 @@
+//! Hugging Face Inference API provider client and streaming support.
+
 #![allow(
     clippy::bind_instead_of_map,
     clippy::collapsible_if,
@@ -674,6 +676,7 @@ Enable that provider in your HuggingFace Inference Providers settings, or switch
                 .or_else(|| usage_value.get("completion_tokens"))
                 .and_then(|ct| ct.as_u64())
                 .unwrap_or(0) as u32,
+            reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage_value),
             total_tokens: usage_value.get("total_tokens").and_then(|tt| tt.as_u64()).unwrap_or(0) as u32,
             cached_prompt_tokens: None,
             cache_creation_tokens: None,
@@ -1047,6 +1050,7 @@ impl HuggingFaceProvider {
                                     aggregator.set_usage(crate::provider::Usage {
                                         prompt_tokens: usage_value.get("prompt_tokens").and_then(|pt| pt.as_u64()).unwrap_or(0) as u32,
                                         completion_tokens: usage_value.get("completion_tokens").and_then(|ct| ct.as_u64()).unwrap_or(0) as u32,
+                                        reasoning_output_tokens: crate::providers::common::parse_reasoning_tokens_from_usage(usage_value),
                                         total_tokens: usage_value.get("total_tokens").and_then(|tt| tt.as_u64()).unwrap_or(0) as u32,
                                         cached_prompt_tokens: None,
                                         cache_creation_tokens: None,
@@ -1074,10 +1078,13 @@ impl_llm_client!(HuggingFaceProvider);
 #[cfg(test)]
 mod tests {
     use super::HuggingFaceProvider;
-    use crate::provider::{LLMRequest, Message, ToolDefinition};
+    use crate::provider::{LLMProvider, LLMRequest, LLMStreamEvent, Message, ToolDefinition};
     use crate::providers::common::{is_minimax_m2_model, normalize_reasoning_detail_object};
+    use futures::StreamExt;
     use serde_json::json;
     use std::sync::Arc;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn minimax_model_detection_handles_variants() {
@@ -1163,5 +1170,91 @@ mod tests {
 
         assert_eq!(payload["tools"][0]["type"], "function");
         assert_eq!(payload["tools"][0]["function"]["name"], "apply_patch");
+    }
+
+    /// A reported reasoning count must survive the Responses-format response
+    /// parser.
+    #[test]
+    fn responses_api_usage_keeps_reported_reasoning_tokens() {
+        let payload = json!({
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": "hi"}]
+            }],
+            "usage": {
+                "input_tokens": 8,
+                "output_tokens": 6,
+                "total_tokens": 14,
+                "output_tokens_details": {"reasoning_tokens": 2}
+            }
+        });
+
+        let response = HuggingFaceProvider::parse_responses_api_format(&payload, "model-a".to_string())
+            .expect("responses format should parse");
+        let usage = response.usage.expect("usage should be present");
+        assert_eq!(usage.reasoning_output_tokens, Some(2));
+    }
+
+    /// A reported reasoning count must survive the chat-completions stream.
+    #[tokio::test]
+    async fn chat_stream_keeps_reported_reasoning_tokens() {
+        let server = MockServer::start().await;
+        let provider = HuggingFaceProvider::from_config(
+            Some("test-key".to_string()),
+            Some("deepseek-ai/DeepSeek-V3".to_string()),
+            Some(server.uri()),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let body = [
+            format!("data: {}\n\n", json!({"choices": [{"delta": {"content": "hi"}}]})),
+            format!(
+                "data: {}\n\n",
+                json!({
+                    "choices": [{"delta": {}, "finish_reason": "stop"}],
+                    "usage": {
+                        "prompt_tokens": 9,
+                        "completion_tokens": 6,
+                        "total_tokens": 15,
+                        "completion_tokens_details": {"reasoning_tokens": 4}
+                    }
+                })
+            ),
+            "data: [DONE]\n\n".to_string(),
+        ]
+        .concat();
+
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut stream = provider
+            .stream(LLMRequest {
+                model: "deepseek-ai/DeepSeek-V3".to_string(),
+                messages: vec![Message::user("hello".to_string())].into(),
+                ..Default::default()
+            })
+            .await
+            .expect("stream should start");
+
+        let mut completed = None;
+        while let Some(event) = stream.next().await {
+            if let LLMStreamEvent::Completed { response } = event.expect("stream event") {
+                completed = Some(response);
+            }
+        }
+
+        let usage = completed.expect("a completed event").usage.expect("completed usage");
+        assert_eq!(usage.reasoning_output_tokens, Some(4));
     }
 }

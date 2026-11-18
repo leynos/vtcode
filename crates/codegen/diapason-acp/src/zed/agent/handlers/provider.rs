@@ -3,7 +3,35 @@ use super::*;
 use crate::zed::types::SessionCancellation;
 
 mod telemetry;
-pub(super) use telemetry::{ProviderErrorTelemetry, duration_millis, provider_error_telemetry, retry_disposition};
+pub(super) use telemetry::{
+    KNOWN_ERROR_CODES, ProviderErrorTelemetry, duration_millis, provider_error_telemetry, retry_disposition,
+};
+
+/// A future returned when announcing a failed provider attempt.
+pub(super) type AttemptFailureFuture<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+
+/// Announces failed provider attempts to whatever observes the turn.
+///
+/// Retry orchestration depends on this narrow port rather than on the ACP
+/// transport, so retry policy stays independent of how a notice is built and
+/// delivered. The ACP adapter that implements it lives at the handler
+/// boundary.
+///
+/// The sink travels through the retry loop, which runs inside the ACP
+/// dispatch task, so it must be sharable across that task boundary: `Send`
+/// because the future owning it is spawned, and `Sync` because it is held by
+/// shared reference across the loop's awaits.
+pub(super) trait AttemptFailureSink: Send + Sync {
+    /// Announce that `provider` failed with `error`.
+    ///
+    /// `retry_delay` is `Some` when another attempt is scheduled.
+    fn announce<'a>(
+        &'a self,
+        provider: &'a str,
+        error: &'a LLMError,
+        retry_delay: Option<Duration>,
+    ) -> AttemptFailureFuture<'a>;
+}
 
 #[cfg(test)]
 pub(super) type PromptProviderFactory = dyn Fn() -> Box<dyn LLMProvider> + Send + Sync;
@@ -18,6 +46,7 @@ pub(super) struct PromptProviderOverride {
 pub(super) static PROMPT_PROVIDER_OVERRIDE: std::sync::LazyLock<std::sync::Mutex<Option<PromptProviderOverride>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
 
+/// Create the provider, honouring the test override when one is installed.
 pub(super) fn create_prompt_provider(
     provider_name: &str,
     config: ProviderConfig,
@@ -35,12 +64,14 @@ pub(super) fn create_prompt_provider(
     create_provider_with_config(provider_name, config)
 }
 
+/// Record the attempt outcome and elapsed time on its span.
 pub(super) fn record_stream_attempt(span: &Span, started_at: Instant, outcome: &'static str) {
     let _ = span.record("outcome", outcome);
     let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
     let _ = span.record("elapsed_ms", elapsed_ms);
 }
 
+/// Poll the next item from a provider stream inside the attempt span.
 pub(super) fn poll_provider_stream<S>(stream: &mut S, span: Span) -> impl Future<Output = Option<S::Item>> + '_
 where
     S: futures::Stream + Unpin,
@@ -55,6 +86,7 @@ pub(super) enum ProviderCallError {
 }
 
 impl From<ProviderAdmissionError> for ProviderCallError {
+    /// Map admission cancellation and failures into provider call errors.
     fn from(error: ProviderAdmissionError) -> Self {
         match error {
             ProviderAdmissionError::Cancelled => Self::Cancelled,
@@ -63,6 +95,7 @@ impl From<ProviderAdmissionError> for ProviderCallError {
     }
 }
 
+/// Sleep for the retry delay unless the session is cancelled.
 pub(super) async fn cancellable_backoff(
     delay: Duration,
     cancellation: &SessionCancellation,
@@ -73,6 +106,7 @@ pub(super) async fn cancellable_backoff(
     }
 }
 
+/// Sleep until an optional deadline, or forever when it is absent.
 pub(super) async fn sleep_until_optional(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline).await,
@@ -80,14 +114,17 @@ pub(super) async fn sleep_until_optional(deadline: Option<Instant>) {
     }
 }
 
+/// Compute an optional deadline from now.
 pub(super) fn deadline_after(timeout: Option<Duration>) -> Option<Instant> {
     deadline_from(Instant::now(), timeout)
 }
 
+/// Compute an optional deadline from the given start instant.
 pub(super) fn deadline_from(started_at: Instant, timeout: Option<Duration>) -> Option<Instant> {
     timeout.map(|timeout| started_at + timeout)
 }
 
+/// Build the network error describing an expired stream phase deadline.
 pub(super) fn provider_timeout_error(provider: &str, phase: StreamTimeoutPhase, timeout: Option<Duration>) -> LLMError {
     let duration = timeout.map_or_else(|| "configured deadline".to_string(), |timeout| format!("{timeout:?}"));
     LLMError::Network {
@@ -104,6 +141,7 @@ pub(super) fn provider_timeout_error(provider: &str, phase: StreamTimeoutPhase, 
     }
 }
 
+/// Return the current Unix time in milliseconds, or zero when unavailable.
 fn unix_timestamp_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -119,6 +157,7 @@ pub(super) struct IncompleteProviderTurn {
 }
 
 impl IncompleteProviderTurn {
+    /// Build an incomplete-turn message, visible notice, and response from a failure.
     pub(super) fn from_failure(content: &str, reasoning: &str, error: &str) -> Self {
         let sanitized_error = strip_ansi_codes(error).trim().to_string();
         let error_detail = if sanitized_error.is_empty() {
@@ -144,6 +183,7 @@ impl IncompleteProviderTurn {
     }
 }
 
+/// Build an assistant message marked as an incomplete response.
 fn incomplete_assistant_message(content: &str, reasoning: &str, error: &str) -> Message {
     let mut message = Message::assistant(content.to_string());
     if !reasoning.is_empty() {
@@ -164,6 +204,7 @@ pub(super) enum StreamTimeoutPhase {
     TotalGeneration,
 }
 
+/// Sleep until the next stream deadline and report which phase expired.
 pub(super) async fn sleep_until_stream_deadline(deadline: Option<(StreamTimeoutPhase, Instant)>) -> StreamTimeoutPhase {
     match deadline {
         Some((phase, deadline)) => {
@@ -175,6 +216,7 @@ pub(super) async fn sleep_until_stream_deadline(deadline: Option<(StreamTimeoutP
 }
 
 impl StreamTimeoutPhase {
+    /// Return the human-readable name of this timeout phase.
     const fn label(self) -> &'static str {
         match self {
             Self::FirstToken => "time to first token",
@@ -183,6 +225,7 @@ impl StreamTimeoutPhase {
         }
     }
 
+    /// Return the stable telemetry code for this timeout phase.
     const fn error_code(self) -> &'static str {
         match self {
             Self::FirstToken => "acp_timeout_first_token",
@@ -191,6 +234,7 @@ impl StreamTimeoutPhase {
         }
     }
 
+    /// Return the configured timeout for this phase, if any.
     pub(super) const fn timeout(self, policy: ProviderDeadlinePolicy) -> Option<Duration> {
         match self {
             Self::FirstToken => policy.first_token,
@@ -218,6 +262,7 @@ pub(super) struct GenerationTelemetry {
 }
 
 impl StreamDeadlineTracker {
+    /// Create deadline state from a policy and start instant.
     pub(super) fn new(policy: ProviderDeadlinePolicy, started_at: Instant) -> Self {
         Self {
             policy,
@@ -227,15 +272,18 @@ impl StreamDeadlineTracker {
         }
     }
 
+    /// Reset first-token and idle deadlines after output at the current time.
     pub(super) fn observe_output(&mut self) {
         self.observe_output_at(Instant::now());
     }
 
+    /// Reset first-token and idle deadlines after output observed at `observed_at`.
     pub(super) fn observe_output_at(&mut self, observed_at: Instant) {
         self.first_token = None;
         self.idle = deadline_from(observed_at, self.policy.stream_idle);
     }
 
+    /// Return the earliest pending deadline and its phase.
     pub(super) fn next(&self) -> Option<(StreamTimeoutPhase, Instant)> {
         [
             self.first_token.map(|deadline| (StreamTimeoutPhase::FirstToken, deadline)),
@@ -248,11 +296,13 @@ impl StreamDeadlineTracker {
     }
 }
 
+/// Generate a response, retrying transient failures within the policy.
 pub(super) async fn generate_with_retry(
     provider: &dyn LLMProvider,
     request: LLMRequest,
     runtime: &ProviderRequestRuntime,
     cancellation: &SessionCancellation,
+    failure_sink: Option<&dyn AttemptFailureSink>,
 ) -> Result<LLMResponse, ProviderCallError> {
     let policy = runtime.retry_policy();
     let mut attempt_index = 0;
@@ -292,10 +342,16 @@ pub(super) async fn generate_with_retry(
                 let decision = policy.decision_for_llm_error(&error, attempt_index);
                 telemetry.failed(runtime, attempt_index, retry_disposition(&decision), &error);
                 drop(permit);
+                let retry_delay = decision
+                    .retryable
+                    .then(|| decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index)));
+                if let Some(sink) = failure_sink {
+                    sink.announce(runtime.provider_name(), &error, retry_delay).await;
+                }
                 if !decision.retryable {
                     return Err(ProviderCallError::Failed(error.to_string()));
                 }
-                let delay = decision.delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
+                let delay = retry_delay.unwrap_or_else(|| policy.delay_for_attempt(attempt_index));
                 info!(
                     provider = runtime.provider_name(),
                     next_attempt = attempt_index + 2,

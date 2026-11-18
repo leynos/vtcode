@@ -42,16 +42,22 @@ Profiles live under a top-level table keyed by the literal path
 
 Example:
 
-[custom_providers.profiles."gpt-5.6-sol"] api_format = "openai-responses"
-context_window = 131072 supports_tools = true supports_vision = false
-supports_structured_output = true supports_parallel_tool_calls = true
+```toml
+[custom_providers.profiles."gpt-5.6-sol"]
+api_format = "openai-chat"
+context_window = 131072
+supports_tools = true
+supports_vision = false
+supports_structured_output = true
+supports_parallel_tool_calls = true
+```
 
 `supports_stream_usage` only affects OpenAI Chat Completions streams. In a
 Responses profile, it has no effect, so set it on an
 `api_format = "openai-chat"` profile (or provider entry) whose endpoint emits a
 terminal usage chunk instead.
 
-Notes and semantics
+## Notes and semantics
 
 - model / models remain the allowlist/defaults used to control the `/model`
   picker and what models are available. Profiles do NOT make a model available;
@@ -65,8 +71,9 @@ Notes and semantics
   omitted profile field inherits the provider's value, so a provider-level
   `true` still requests streamed usage; an explicit profile `false` disables
   that inherited opt-in. When neither layer supplies `true`, streamed usage
-  stays disabled. When enabled, Diapason requests usage for custom OpenAI-chat
-  streams by setting `stream_options.include_usage`.
+  stays disabled — the same resolution rule the configuration guide and the
+  release notes state. When enabled, Diapason requests usage for custom
+  OpenAI-chat streams by setting `stream_options.include_usage`.
 - Omitting `api_format` preserves legacy behavior. Setting `api_format`
   explicitly instructs Diapason to treat the model with that API shape; it does
   not cause silent fallbacks.

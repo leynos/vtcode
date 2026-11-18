@@ -109,6 +109,14 @@ impl OpenUsage {
             details.cached_tokens = Some(cached as u64);
         }
 
+        // Providers occasionally report reasoning counts that exceed the
+        // completion total; clamp them so the breakdown never sums to more than
+        // `output_tokens`.
+        let reasoning_tokens = usage
+            .reasoning_output_tokens
+            .map(|reasoning| u64::from(reasoning.min(usage.completion_tokens)));
+        let output_details = OutputTokensDetails { reasoning_tokens, ..OutputTokensDetails::default() };
+
         Self {
             input_tokens: usage.prompt_tokens as u64,
             output_tokens: usage.completion_tokens as u64,
@@ -118,7 +126,7 @@ impl OpenUsage {
             } else {
                 None
             },
-            output_tokens_details: None,
+            output_tokens_details: output_details.into_boxed_if_non_empty(),
         }
     }
 
@@ -167,6 +175,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     #[test]
     fn test_usage_new() {
@@ -196,6 +205,7 @@ mod tests {
         let usage = OpenUsage::from_llm_usage(&crate::provider::Usage {
             prompt_tokens: 1000,
             completion_tokens: 250,
+            reasoning_output_tokens: None,
             total_tokens: 1250,
             cached_prompt_tokens: Some(400),
             cache_creation_tokens: None,
@@ -206,6 +216,35 @@ mod tests {
         assert_eq!(usage.input_tokens, 1000);
         assert_eq!(usage.output_tokens, 250);
         assert_eq!(usage.input_tokens_details.and_then(|details| details.cached_tokens), Some(400));
+    }
+
+    /// A reasoning count inside the completion total is preserved; one that
+    /// exceeds it is clamped, and the details report the count actually kept.
+    #[rstest]
+    #[case::preserved(80, 35, 80, 35)]
+    #[case::clamped_to_the_completion_total(5, 10, 5, 5)]
+    fn from_llm_usage_reports_the_preserved_reasoning_tokens(
+        #[case] completion_tokens: u32,
+        #[case] reasoning_output_tokens: u32,
+        #[case] expected_output_tokens: u64,
+        #[case] expected_reasoning_tokens: u64,
+    ) {
+        let usage = OpenUsage::from_llm_usage(&crate::provider::Usage {
+            prompt_tokens: 100,
+            completion_tokens,
+            reasoning_output_tokens: Some(reasoning_output_tokens),
+            total_tokens: 100 + completion_tokens,
+            cached_prompt_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            iterations: None,
+        });
+
+        assert_eq!(usage.output_tokens, expected_output_tokens);
+        assert_eq!(
+            usage.output_tokens_details.and_then(|details| details.reasoning_tokens),
+            Some(expected_reasoning_tokens)
+        );
     }
 
     #[test]

@@ -21,6 +21,60 @@
   `tool_catalog_cache_metrics` kind and `tool_catalog` change reason, so
   archived logs keep working.
 
+## ACP usage, compaction, and subagents
+
+The Zed ACP integration advertises its Lody extensions during `initialize` and
+falls back cleanly when a client ignores them. The
+[Zed ACP guide](./guides/zed-acp.md) covers setup and session behaviour, and the
+[ACP integration guide](./acp/ACP_INTEGRATION.md) documents the wire contracts.
+
+- **Usage and cost.** `_lody/session/usage_update` reports per-response input,
+  output, cache, and reasoning token counts. `contextWindow` comes from the
+  resolved model profile. `costUSD` appears whenever that profile supplies both
+  input and output rates: catalogue pricing for catalogue models, or the opt-in
+  `custom_providers.*.pricing` block for custom providers. Cost normalization
+  follows the backend the request was routed to, so an Anthropic Messages
+  backend reports cache reads separately even under a custom provider name. An
+  update is published only for a response whose provider reported usage;
+  `cacheCreationInputTokens` and `reasoningOutputTokens` appear only when the
+  provider reported them, `contextWindow` only when the resolved profile
+  supplies one, and `costUSD` only when both rates are known.
+- **Automatic compaction.** `_meta.lody.compaction` announces the capability.
+  Each compaction is a standard tool call whose terminal update carries
+  `_meta.lody.activity` with the `compacted` outcome, token counts, duration,
+  and any failure reason.
+- **Subagent management.** `_lody/subagents/list`, `_lody/subagents/cancel`, and
+  `_lody/subagents/output` act only on tasks owned by the calling session.
+  Progress arrives as standard ACP tool calls with `_meta.lody.task`.
+- **Rate limits.** A provider rate limit produces a warning notice. Each part
+  is reported only when it applies: the HTTP status and the provider's
+  `Retry-After` value only when the provider supplied them, and the retry delay
+  only when Diapason scheduled a further attempt. When no further attempt is
+  scheduled the notice says so. Diapason does not invent quota windows, reset
+  times, or statuses.
+- **Custom-provider pricing.** Opt in per provider or per profile under
+  `custom_providers.*.pricing`; rates are USD per million tokens. See the
+  [configuration guide](./config/config.md).
+
+### Compaction metrics for library consumers
+
+Programs that embed the ACP bridge can read the same bounded counters the
+runtime records. `diapason_acp::metrics::compaction_metrics()` returns a
+`CompactionMetrics` snapshot with `started`, `compacted`, `no_change`, `failed`,
+`cancelled`, `elapsed_ms_total`, and `elapsed_ms_max`. The snapshot is
+cumulative for the process and never reset, and `cancelled` is a subset of
+`failed`. The fields are read from separate atomics, so one snapshot can
+reflect slightly different instants; the snapshot loads `cancelled` first and
+clamps `failed` to at least `cancelled`, so the subset relationship holds in
+every snapshot. Cardinality is fixed by construction: no session, provider,
+model, or path value is recorded, so the counters are safe to export as-is.
+
+`diapason_acp::metrics::notice_metrics()` and
+`diapason_acp::metrics::compaction_update_metrics()` report `attempts` and
+`failures` for the two ACP send boundaries that publish activity to a client.
+The full contract, including what a snapshot can and cannot prove about client
+receipt, is in the [ACP runtime guide](./development/acp-runtime.md).
+
 ## Patch safety in brief
 
 `read_file` returns a whole-file `content_hash` alongside the text, whenever

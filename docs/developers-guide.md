@@ -3,6 +3,10 @@
 - [Development setup and workflows](./development/README.md)
 - [Architecture](./ARCHITECTURE.md)
 - [ACP runtime](./development/acp-runtime.md)
+- [ACP runtime: compaction activity and failure reporting](./development/acp-runtime.md#compaction-activity-and-failure-reporting)
+- [ACP runtime: retry notices and usage publication](./development/acp-runtime.md#retry-notices-and-usage-publication)
+- [ACP protocol contracts](./acp/ACP_INTEGRATION.md)
+- [ACP quick reference](./acp/ACP_QUICK_REFERENCE.md)
 - [Custom-provider request policy](./development/CUSTOM_PROVIDER_REQUEST_POLICY.md)
 - [Apply-patch safety contract](./development/patch-safety-contract.md)
 - [Diapason shell-policy proposal](./rfcs/rfc-0001-diapason-shell-policy.md):

@@ -194,6 +194,8 @@ pub mod provider_base;
 pub mod provider_builder;
 /// Per-provider configuration types and the unified creation shim.
 pub mod provider_config;
+/// Provider/configuration adapter translating a backend into a usage profile.
+pub mod provider_usage;
 /// Re-exported provider implementations.
 pub mod providers;
 /// Shared idle-gap tracker for detecting when the provider prompt cache has
