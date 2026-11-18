@@ -4,12 +4,14 @@
 //! registry, these cases let the model emit the call and assert the ownership
 //! and fail-closed guarantees across the full prompt boundary.
 
+use super::lody_delegation_fixtures::{DelegationTestGuards, delegation_test_guards};
 use super::lody_support::{
     background_record_state, close_session, expected_epoch_seconds, lody_cancel_with_reason, lody_list,
     open_build_session, spawn_agent_connection, write_lody_background_fixture,
 };
 use super::*;
 use agent_client_protocol::schema::v1::NewSessionRequest;
+use rstest::rstest;
 use std::time::Duration;
 
 /// Arguments the mocked model emits for its single `agent` tool call.
@@ -118,13 +120,14 @@ pub(super) fn delegation_prompt(session_id: acp::SessionId) -> PromptRequest {
     )
 }
 
+#[rstest]
 #[tokio::test]
-async fn prompt_driven_agent_tool_spawns_an_owned_background_task() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-    let (provider_calls, provider_requests, _factory_guard) = install_agent_tool_provider();
+async fn prompt_driven_agent_tool_spawns_an_owned_background_task(
+    #[future] delegation_test_guards: DelegationTestGuards,
+) {
+    let guards = delegation_test_guards.await;
+    let provider_calls = Arc::clone(&guards.provider_calls);
+    let provider_requests = Arc::clone(&guards.provider_requests);
     let workspace = TempDir::new().expect("Lody prompt delegation workspace");
     write_lody_background_fixture(workspace.path());
     let launch_workspace = TempDir::new().expect("separate launch workspace");
@@ -291,13 +294,14 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task() {
     drop(agent_task.await);
 }
 
+#[rstest]
 #[tokio::test]
-async fn prompt_driven_agent_tool_fails_closed_without_a_session_controller() {
-    let _history_test_guard = lock_history_test_guard().await;
-    let session_dir = TempDir::new().expect("temporary ACP session archive directory");
-    let _session_dir_guard = EnvGuard::set(SESSION_DIR_ENV, session_dir.path());
-    let _test_lock = PROMPT_PROVIDER_TEST_LOCK.lock().await;
-    let (provider_calls, provider_requests, _factory_guard) = install_agent_tool_provider();
+async fn prompt_driven_agent_tool_fails_closed_without_a_session_controller(
+    #[future] delegation_test_guards: DelegationTestGuards,
+) {
+    let guards = delegation_test_guards.await;
+    let provider_calls = Arc::clone(&guards.provider_calls);
+    let provider_requests = Arc::clone(&guards.provider_requests);
     let workspace = TempDir::new().expect("Lody fail-closed workspace");
     write_lody_background_fixture(workspace.path());
     let mut vt_config = DiapasonConfig::default();

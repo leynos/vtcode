@@ -120,6 +120,10 @@ pub struct CustomProviderProfileConfig {
     pub supports_responses_compaction: Option<bool>,
 
     /// Whether streaming requests should ask the provider to return usage.
+    ///
+    /// The opt-in applies only to custom providers using the OpenAI Chat
+    /// Completions API format. A profile value overrides the provider default,
+    /// so an omitted value inherits it. Native OpenAI streams are unaffected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_stream_usage: Option<bool>,
 
@@ -510,6 +514,10 @@ pub struct CustomProviderConfig {
     pub supports_responses_compaction: Option<bool>,
 
     /// Optional support for streamed usage chunks.
+    ///
+    /// The opt-in applies only to custom providers using the OpenAI Chat
+    /// Completions API format. A profile value overrides this default, so an
+    /// omitted profile value inherits it. Native OpenAI streams are unaffected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_stream_usage: Option<bool>,
 

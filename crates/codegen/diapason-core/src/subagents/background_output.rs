@@ -1,12 +1,12 @@
 //! Injectable access to live and archived background subagent output.
 //!
-//! A reader is keyed by one background task's identity. The controller passes
-//! the live [`BackgroundSubprocessEntry`] it already holds, and the adapter
-//! derives the storage handles from that record. The controller passes its live
-//! record rather than the persisted ledger copy, because the ledger copy can lag
-//! the running task; the adapter must therefore not re-read the ledger on every
-//! poll. Callers still own line bounds, transport limits, validation and error
-//! mapping.
+//! A reader is keyed by one background task's identity. The controller builds a
+//! [`BackgroundTaskRef`] from the live [`BackgroundSubprocessEntry`] it already
+//! holds, and the exec-session adapter derives the storage handles from the
+//! reference's source. The controller passes its live record rather than the
+//! persisted ledger copy, because the ledger copy can lag the running task; the
+//! adapter must therefore not re-read the ledger on every poll. Callers still
+//! own line bounds, transport limits, validation and error mapping.
 use anyhow::Result;
 use futures::future::BoxFuture;
 use std::path::Path;
@@ -30,18 +30,19 @@ pub enum BackgroundOutput {
 
 /// The storage handles for one background task's output.
 ///
-/// This is private to the adapter: callers key reads by task identity through
-/// [`BackgroundOutputReader`], and only the adapter turns a task record into
-/// exec-session and path handles. A reader therefore never needs ledger access,
-/// and it decides which recorded path to read when live output is unavailable.
+/// This stays inside the crate: callers key reads by task identity through
+/// [`BackgroundOutputReader`], and only the exec-session adapter turns a task
+/// reference into exec-session and path handles. A reader therefore never needs
+/// ledger access, and it decides which recorded path to read when live output
+/// is unavailable.
 #[derive(Debug, Clone, Copy)]
-struct BackgroundOutputSource<'a> {
+pub(crate) struct BackgroundOutputSource<'a> {
     /// The exec session that records live output; empty when none was created.
-    pub exec_session_id: &'a str,
+    pub(crate) exec_session_id: &'a str,
     /// The task's own transcript, preferred over the session archive.
-    pub transcript_path: Option<&'a Path>,
+    pub(crate) transcript_path: Option<&'a Path>,
     /// The session archive, used when no transcript is recorded.
-    pub archive_path: Option<&'a Path>,
+    pub(crate) archive_path: Option<&'a Path>,
 }
 
 impl<'a> BackgroundOutputSource<'a> {
@@ -55,6 +56,44 @@ impl<'a> BackgroundOutputSource<'a> {
             exec_session_id: &entry.exec_session_id,
             transcript_path: entry.transcript_path.as_deref(),
             archive_path: entry.archive_path.as_deref(),
+        }
+    }
+}
+
+/// The background task a reader is asked to read.
+///
+/// A reader resolves one task's output from its identity and from the storage
+/// handles its live record names. Passing this reference instead of the whole
+/// [`BackgroundSubprocessEntry`] keeps a reader from depending on the record's
+/// status, ownership, labels or timings, which it has no use for.
+///
+/// Only [`id`](Self::id) is part of the public surface. The exec-session
+/// identifier and the recorded transcript and archive paths stay inside the
+/// exec-session adapter, which is the only reader that has storage to resolve
+/// them against; an adapter outside this crate serves output from the task
+/// identity alone.
+#[derive(Debug, Clone, Copy)]
+pub struct BackgroundTaskRef<'a> {
+    /// The record id of the task, which keys the read for every reader.
+    pub id: &'a str,
+    /// Where the task's output may be found, resolved from its live record.
+    ///
+    /// Deliberately not public: the handles belong to the adapter that reads
+    /// them, not to the trait's contract.
+    pub(crate) source: BackgroundOutputSource<'a>,
+}
+
+impl<'a> BackgroundTaskRef<'a> {
+    /// Builds the reference for one background task projection.
+    ///
+    /// The record is the controller's live copy, so the reference names the
+    /// exec session and paths the running task actually uses rather than the
+    /// possibly stale persisted copy.
+    #[must_use]
+    pub(crate) fn from_entry(entry: &'a BackgroundSubprocessEntry) -> Self {
+        Self {
+            id: &entry.id,
+            source: BackgroundOutputSource::from_entry(entry),
         }
     }
 }
@@ -102,8 +141,9 @@ impl std::error::Error for BackgroundOutputError {
 pub trait BackgroundOutputReader: Send + Sync {
     /// Reads the output the task can serve.
     ///
-    /// The task identity is `entry.id`: the caller passes the record it already
-    /// holds, so the adapter never re-reads the ledger to resolve the task.
+    /// The task identity is [`BackgroundTaskRef::id`]: the caller passes the
+    /// record it already holds, so the adapter never re-reads the ledger to
+    /// resolve the task.
     ///
     /// Live output wins. A not-ready live session and a missing exec session
     /// fall back to the transcript or archive. Any other live-read fault is
@@ -111,6 +151,6 @@ pub trait BackgroundOutputReader: Send + Sync {
     /// a missing session or replaced by archived output.
     fn read_output<'a>(
         &'a self,
-        entry: &'a BackgroundSubprocessEntry,
+        task: &'a BackgroundTaskRef<'a>,
     ) -> BoxFuture<'a, Result<BackgroundOutput, BackgroundOutputError>>;
 }

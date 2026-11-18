@@ -4,10 +4,11 @@ use anyhow::Result;
 use futures::future::BoxFuture;
 
 use crate::subagents::background::load_archive_transcript;
-use crate::subagents::types::BackgroundSubprocessEntry;
 use crate::tools::exec_session::{ExecSessionManager, ExecSessionNotFound};
 
-use super::{BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource};
+use super::{
+    BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundOutputSource, BackgroundTaskRef,
+};
 
 /// Default [`BackgroundOutputReader`] backed by the workspace exec sessions
 /// and the session archive.
@@ -39,9 +40,11 @@ impl ExecSessionOutputReader {
 impl BackgroundOutputReader for ExecSessionOutputReader {
     fn read_output<'a>(
         &'a self,
-        entry: &'a BackgroundSubprocessEntry,
+        task: &'a BackgroundTaskRef<'a>,
     ) -> BoxFuture<'a, Result<BackgroundOutput, BackgroundOutputError>> {
-        Box::pin(self.read_source(BackgroundOutputSource::from_entry(entry)))
+        // The exec-session id and the recorded paths are derived here, inside
+        // the adapter, from the reference the controller built.
+        Box::pin(self.read_source(task.source))
     }
 }
 

@@ -575,9 +575,9 @@ pub struct ExecSessionManager {
     ///
     /// The background liveness projection must distinguish a genuinely absent
     /// session from any other read fault, and a live manager has no natural way
-    /// to fail on demand. The seam exists only under `cfg(test)`, so production
-    /// reads are unchanged.
-    #[cfg(test)]
+    /// to fail on demand. The seam exists only for this crate's tests and for
+    /// the `test-support` feature, so production reads are unchanged.
+    #[cfg(any(test, feature = "test-support"))]
     snapshot_failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 
@@ -588,7 +588,7 @@ impl ExecSessionManager {
             pipe_sessions: PipeSessionManager::new(workspace_root),
             pty_sessions,
             sessions: Arc::new(RwLock::new(HashMap::new())),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             snapshot_failure: Arc::new(std::sync::Mutex::new(None)),
         }
     }
@@ -597,8 +597,11 @@ impl ExecSessionManager {
     ///
     /// Test-only: it lets a regression exercise the liveness projection's
     /// "read failed for another reason" branch without a real storage fault.
-    #[cfg(test)]
-    pub(crate) fn fail_snapshot_reads(&self, message: impl Into<String>) {
+    /// A dependent crate's tests reach it through the `test-support` feature;
+    /// a production build compiles neither this method nor the branch it arms.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn fail_snapshot_reads(&self, message: impl Into<String>) {
         *self.snapshot_failure.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.into());
     }
 
@@ -673,7 +676,7 @@ impl ExecSessionManager {
     }
 
     pub(crate) async fn snapshot_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(message) = self
             .snapshot_failure
             .lock()

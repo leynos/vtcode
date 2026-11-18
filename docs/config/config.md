@@ -415,10 +415,14 @@ Additional rules:
   setting `api_format` to a value instructs Diapason to use this API shape and
   not silently fall back.
 - `supports_stream_usage` follows the same precedence: a profile value
-  overrides the provider default. When `true`, only custom OpenAI-chat streams
-  request `stream_options.include_usage = true`; the endpoint should return
-  usage in the terminal empty-choices chunk. When omitted or `false`, Diapason
-  does not request streamed usage. Native OpenAI requests are unaffected.
+  overrides the provider default, so an explicit profile `false` disables
+  streamed usage even when the provider sets `true`, and an omitted profile
+  value inherits the provider's setting. Requested streamed usage is decided by
+  the resolved value: when it is `true`, only custom OpenAI-chat streams request
+  `stream_options.include_usage = true` and the endpoint should return usage
+  in the terminal empty-choices chunk. When the resolved value is absent or
+  `false`, Diapason does not request streamed usage. Native OpenAI requests are
+  unaffected.
 - Profiles do not make a model available in the picker — use `model` or
   `models` to control availability.
 - Wire delivery depends on the backend's API format. The OpenAI Chat shape sends
