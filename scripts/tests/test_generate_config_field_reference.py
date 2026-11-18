@@ -97,10 +97,17 @@ _SPAN_ALPHABET = ("`", "|", " ", "a")
 def _span_cases() -> list[str]:
     """Return a deterministic corpus of code-span values.
 
-    Short strings are enumerated exhaustively over the characters that matter
-    to the renderer, so every combination of boundary backticks, pipes and
-    padding up to length four is covered. Longer strings come from a seeded
-    generator, so run length and position vary without an external dependency.
+    The bounded enumeration is the chosen form for this test, not a stand-in
+    for a property-based library. Only four characters change what the renderer
+    does, so every combination up to length four is enumerated exhaustively and
+    the interesting boundary cases — leading and trailing backtick runs, pipes,
+    padding and their mixtures — are all reachable by construction. Hypothesis
+    would sample that same tiny alphabet without proving more, and it would add
+    a dependency to a script test suite that otherwise runs with the standard
+    library alone.
+
+    Longer strings come from a seeded generator, so run length and position
+    vary reproducibly.
     """
     cases = [
         "".join(combination)
