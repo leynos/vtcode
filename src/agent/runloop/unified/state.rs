@@ -16,8 +16,8 @@ use diapason_core::exec::events::Usage as HarnessUsage;
 use diapason_core::llm::provider::{
     Message, PromptCacheProfile, ResponsesContinuationState, ToolDefinition, responses_continuation_key,
 };
-use diapason_core::llm::provider_usage;
 use diapason_core::llm::request_gap::RequestGapTracker;
+use diapason_core::normalized_turn_usage;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AutoPermissionDenial {
@@ -328,7 +328,7 @@ impl SessionStats {
         let Some(usage) = usage else {
             return;
         };
-        self.total_usage.add(&provider_usage::normalized_turn_usage(provider, usage));
+        self.total_usage.add(&normalized_turn_usage(provider, usage));
     }
 
     pub(crate) fn total_usage(&self) -> HarnessUsage {
