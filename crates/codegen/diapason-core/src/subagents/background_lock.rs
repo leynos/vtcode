@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::fs;
 
 /// The path of the sidecar file the ledger lock is taken on.
-fn background_state_lock_path(workspace_root: &Path) -> PathBuf {
+pub(super) fn background_state_lock_path(workspace_root: &Path) -> PathBuf {
     workspace_root
         .join(diapason_commons::workspace_dir_name())
         .join("state")

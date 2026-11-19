@@ -1,6 +1,34 @@
 //! Background restoration: settled-outcome preservation and owner-scoped restore.
 use super::*;
-use crate::subagents::background::background_state_path_for_tests;
+use crate::subagents::background::{background_state_lock_path_for_tests, background_state_path_for_tests};
+
+/// A managed-runtime controller must not create the workspace ledger at all.
+///
+/// Comparing the ledger's bytes before and after a nested save only proves the
+/// save wrote the same content: a save that rewrote the file with identical
+/// bytes would still pass. In a fresh workspace there is nothing to rewrite, so
+/// the guard is checked by the absence of both files a real save creates — the
+/// ledger and its lock sidecar.
+#[tokio::test]
+async fn a_managed_controller_never_creates_the_workspace_ledger() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let mut config = test_controller_config(workspace_root.clone(), DiapasonConfig::default());
+    config.managed_background_runtime = true;
+    let controller = SubagentController::new(config).await.expect("managed controller");
+
+    controller.save_background_state().await.expect("a managed save is a no-op");
+
+    assert!(
+        !background_state_path_for_tests(&workspace_root).exists(),
+        "a managed controller must not create the workspace ledger"
+    );
+    assert!(
+        !background_state_lock_path_for_tests(&workspace_root).exists(),
+        "a managed save must not even take the ledger lock"
+    );
+    controller.signal_shutdown().await;
+}
 
 #[tokio::test]
 async fn close_preserves_settled_foreground_outcomes() {

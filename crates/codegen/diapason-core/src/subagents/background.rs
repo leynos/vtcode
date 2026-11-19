@@ -38,6 +38,16 @@ pub(crate) fn background_state_path_for_tests(workspace_root: &Path) -> PathBuf 
     background_state_path(workspace_root)
 }
 
+/// Resolves the ledger's sidecar lock path for tests.
+///
+/// A save that never runs must leave no trace of itself, and the lock sidecar
+/// is the other file such a save would create. Resolving it here keeps a test
+/// from restating the lock's filename.
+#[cfg(test)]
+pub(crate) fn background_state_lock_path_for_tests(workspace_root: &Path) -> PathBuf {
+    super::background_lock::background_state_lock_path(workspace_root)
+}
+
 // The lock lives in its own module so this one stays focused on launch
 // specifications, ledger contents and archive readers; callers keep importing
 // it from here.
