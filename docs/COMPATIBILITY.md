@@ -108,31 +108,31 @@ ______________________________________________________________________
 
 ## LLM Provider Compatibility
 
-| Provider        | Status | Feature Flag    | Notes                                                                                                |
-| --------------- | ------ | --------------- | ---------------------------------------------------------------------------------------------------- |
-| OpenAI          | Yes    | `openai`        | Full support                                                                                         |
-| Anthropic       | Yes    | `anthropic-api` | Via HTTP API                                                                                         |
-| Google (Gemini) | Yes    | `google`        | Full support                                                                                         |
-| Ollama          | Yes    | `ollama`        | Local models                                                                                         |
-| OpenRouter      | Yes    | `openrouter`    | Multi-provider gateway                                                                               |
-| LM Studio       | Yes    | `lmstudio`      | Local inference                                                                                      |
-| DeepSeek        | Yes    | `deepseek`      | Full support                                                                                         |
-| Meta AI         | Yes    | `meta`          | Official Muse models via Meta's OpenAI-compatible API                                                |
-| Moonshot        | Yes    | `moonshot`      | Full support                                                                                         |
-| Z.AI            | Yes    | `zai`           | GLM-5.3 support                                                                                      |
-| Xiaomi MiMo     | Yes    | `mimo`          | Full support                                                                                         |
-| Evolink         | Yes    | `evolink`       | Full support                                                                                         |
-| StepFun         | Yes    | `stepfun`       | Full support                                                                                         |
-| MiniMax         | Yes    | `minimax`       | Full support                                                                                         |
-| Poolside        | Yes    | `poolside`      | Full support                                                                                         |
-| Qwen            | Yes    | `qwen`          | Alibaba Cloud                                                                                        |
-| HuggingFace     | Yes    | `huggingface`   | Inference Providers                                                                                  |
-| xAI             | Yes    | `xai`           | Grok models                                                                                          |
-| NVIDIA          | Yes    | `nvidia`        | NVIDIA NIM, OpenAI compatible                                                                        |
-| Merge Gateway   | Yes    | `merge-gateway` | Native Merge Responses API and authenticated model catalog; explicit `/v1/openai` Chat compatibility |
-| OpenCode Zen    | Yes    | `opencode-zen`  | Full support                                                                                         |
-| OpenCode Go     | Yes    | `opencode-go`   | Full support                                                                                         |
-| Mistral         | Yes    | `mistral`       | Full support                                                                                         |
+| Provider        | Status | Feature Flag    | Notes                                                                                                  |
+| --------------- | ------ | --------------- | ------------------------------------------------------------------------------------------------------ |
+| OpenAI          | Yes    | `openai`        | Full support                                                                                           |
+| Anthropic       | Yes    | `anthropic-api` | Via HTTP API                                                                                           |
+| Google (Gemini) | Yes    | `google`        | Full support                                                                                           |
+| Ollama          | Yes    | `ollama`        | Local models                                                                                           |
+| OpenRouter      | Yes    | `openrouter`    | Multi-provider gateway                                                                                 |
+| LM Studio       | Yes    | `lmstudio`      | Local inference                                                                                        |
+| DeepSeek        | Yes    | `deepseek`      | Full support                                                                                           |
+| Meta AI         | Yes    | `meta`          | Official Muse models via Meta's OpenAI-compatible API                                                  |
+| Moonshot        | Yes    | `moonshot`      | Full support                                                                                           |
+| Z.AI            | Yes    | `zai`           | GLM-5.3 support                                                                                        |
+| Xiaomi MiMo     | Yes    | `mimo`          | Full support                                                                                           |
+| Evolink         | Yes    | `evolink`       | Full support                                                                                           |
+| StepFun         | Yes    | `stepfun`       | Full support                                                                                           |
+| MiniMax         | Yes    | `minimax`       | Full support                                                                                           |
+| Poolside        | Yes    | `poolside`      | Full support                                                                                           |
+| Qwen            | Yes    | `qwen`          | Alibaba Cloud                                                                                          |
+| HuggingFace     | Yes    | `huggingface`   | Inference Providers                                                                                    |
+| xAI             | Yes    | `xai`           | Grok models                                                                                            |
+| NVIDIA          | Yes    | `nvidia`        | NVIDIA NIM, OpenAI compatible                                                                          |
+| Merge Gateway   | Yes    | `merge-gateway` | Native Merge Responses API and authenticated model catalogue; explicit `/v1/openai` Chat compatibility |
+| OpenCode Zen    | Yes    | `opencode-zen`  | Full support                                                                                           |
+| OpenCode Go     | Yes    | `opencode-go`   | Full support                                                                                           |
+| Mistral         | Yes    | `mistral`       | Full support                                                                                           |
 
 ______________________________________________________________________
 
@@ -179,7 +179,7 @@ ______________________________________________________________________
 
 1. **File Permissions**: Unix permission model doesn't map cleanly to Windows
    ACLs
-2. **PTY Support**: Windows ConPTY has different behavior than Unix PTYs
+2. **PTY Support**: Windows ConPTY has different behaviour than Unix PTYs
 3. **Signal Handling**: Windows has limited signal support (Ctrl+C, Ctrl+Break
    only)
 4. **Keyring Fallback**: Auto-fallback from keyring to file storage when

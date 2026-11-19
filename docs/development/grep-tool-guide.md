@@ -284,8 +284,8 @@ Omitting `result_types` enables all four categories:
 
 | Result type  | Meaning                                                                                             |
 | ------------ | --------------------------------------------------------------------------------------------------- |
-| `definition` | A recognised declaration whose name exactly matches the query.                                      |
-| `usage`      | An exact syntactic identifier outside recognised declaration names. It is not a resolved reference. |
+| `definition` | A recognized declaration whose name exactly matches the query.                                      |
+| `usage`      | An exact syntactic identifier outside recognized declaration names. It is not a resolved reference. |
 | `text`       | A literal match in prose, configuration, comments, strings, or otherwise unclassified content.      |
 | `path`       | A matching existing filename or path.                                                               |
 
@@ -302,7 +302,7 @@ term is escaped as a literal, so `|` is the only character with special meaning.
 Each search component is bounded. `truncated: true` means further candidates
 may exist, without claiming an exact repository-wide total. Narrow `path`,
 `file_types`, or `result_types` in another independent call. Use `exec_command`
-or the specialised ast-grep skill for arbitrary structural patterns.
+or the specialized ast-grep skill for arbitrary structural patterns.
 
 ## Troubleshooting
 

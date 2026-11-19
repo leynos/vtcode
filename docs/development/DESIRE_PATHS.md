@@ -49,13 +49,13 @@ remembering full command names.
 
 Agents expect these patterns to work without explanation:
 
-| Intuitive Usage            | Behavior                         | Status           |
+| Intuitive Usage            | Behaviour                        | Status           |
 | -------------------------- | -------------------------------- | ---------------- |
 | `cargo test function_name` | Run tests matching function name | v Works natively |
 | `cargo test --lib`         | Run unit tests only              | v Works natively |
 | `cargo test --integration` | Run integration tests only       | v Works natively |
 
-These are native Cargo behaviors, but documented here for agent awareness.
+These are native Cargo behaviours, but documented here for agent awareness.
 
 ## Desire Paths to Implement
 

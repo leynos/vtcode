@@ -28,14 +28,14 @@ fn init() {
    attached by debuggers or ptrace and disables core dumps at the process level.
    - Exit code on failure: 5
 
-2. **RLIMIT_CORE**: Sets the core file size limit to 0 for defense in depth,
+2. **RLIMIT_CORE**: Sets the core file size limit to 0 for defence in depth,
    preventing core dumps even if process-level controls fail.
    - Exit code on failure: 7
 
 3. **LD_* environment variable removal**: Strips `LD_PRELOAD` and similar
    dynamic linker variables that could subvert library loading.
    - Diapason is MUSL-linked in release builds, so these are ignored anyway, but
-     removing them provides additional defense.
+     removing them provides additional defence.
 
 ### macOS
 
@@ -93,7 +93,7 @@ The `process_hardening` module includes unit tests for:
 
 - Correct filtering of environment variables by prefix
 - Handling of non-UTF-8 environment variable names
-- Correct behavior with mixed UTF-8 and non-UTF-8 entries
+- Correct behaviour with mixed UTF-8 and non-UTF-8 entries
 
 Run the tests with:
 
@@ -103,7 +103,7 @@ cargo test --package diapason process_hardening
 
 ## Security Philosophy
 
-This hardening approach follows the "defense in depth" philosophy:
+This hardening approach follows the "defence in depth" philosophy:
 
 1. **Multiple layers**: Rather than relying on a single security measure, we
    apply multiple complementary controls

@@ -287,7 +287,7 @@ brittle implementations.
 
 **Violation**: Agent declares a task complete or moves to a next major phase
 without executing a verification tool (e.g., `cargo check`, `cargo test`,
-`npx tsc`). **Remediation**: Run the appropriate verification command. Analyze
+`npx tsc`). **Remediation**: Run the appropriate verification command. Analyse
 the output. If it fails, fix and re-verify. Never rely on internal reasoning as
 proof of correctness ("hallucination of verification").
 
@@ -354,17 +354,17 @@ ______________________________________________________________________
 
 Agent output claiming success is not evidence of success. Every completion
 claim must be backed by actual verification output: test results, build output,
-runtime behavior, or environment state.
+runtime behaviour, or environment state.
 
 **Violation**: Agent declares a task complete or a sprint passes without
 showing actual tool output that proves correctness (test pass counts, build
 exit codes, command output).
 
-**Remediation**: Write an outcome verification artifact
+**Remediation**: Write an outcome verification artefact
 (`current_outcome_verification.md`) that records: (1) what verification
 commands were run, (2) what their actual output was, (3) whether tests passed
 or failed with counts, (4) whether the build succeeded. The evaluator must
-check this artifact, not the agent's claims.
+check this artefact, not the agent's claims.
 
 ______________________________________________________________________
 
@@ -377,7 +377,7 @@ testable acceptance criteria.
 **Violation**: Agent begins implementation without a sprint contract that
 specifies scope, acceptance criteria, and out-of-scope items.
 
-**Remediation**: Write a sprint contract artifact
+**Remediation**: Write a sprint contract artefact
 (`current_sprint_contract.md`) before coding. Include: (1) what this sprint
 will deliver, (2) acceptance criteria that can be verified mechanically, (3)
 what is explicitly out of scope, (4) scoring dimensions with hard thresholds.
@@ -410,7 +410,7 @@ These invariants should be enforced by:
    `[workspace.lints]`.
 2. **CI checks** — `cargo clippy`, `cargo fmt --check`, custom scripts.
 3. **Pre-commit hooks** — optional but recommended for file size and naming.
-4. **Code review** — last line of defense, not the primary enforcement
+4. **Code review** — last line of defence, not the primary enforcement
    mechanism.
 
 When adding a new invariant:

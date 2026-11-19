@@ -1,4 +1,4 @@
-//! Single source of truth for the hand-written (non-OpenRouter) model catalog.
+//! Single source of truth for the hand-written (non-OpenRouter) model catalogue.
 //!
 //! One `model_id_table!` invocation defines, per variant: provider, canonical id
 //! string, the set of strings that parse to the variant, display name, and

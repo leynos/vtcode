@@ -32,7 +32,7 @@ pub struct RenderMarkdownOptions {
     preserve_code_indentation: bool,
     disable_code_block_table_reparse: bool,
     /// Available content width for tables. Headered tables use their intrinsic
-    /// column widths when they fit; otherwise they fall back to labeled,
+    /// column widths when they fit; otherwise they fall back to labelled,
     /// wrapped blocks. Headerless tables retain their table layout. Only
     /// effective in TUI mode.
     table_max_width: Option<usize>,

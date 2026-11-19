@@ -96,16 +96,42 @@ The complete PR train is not yet delivered.
   lint, build, 10,081 workspace tests with 17 skipped, and all 67 harness
   tests. Advisory checks passed; optional ast-grep remained unavailable. Logs
   use `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-oxford.out`.
-- `harden-lint-spelling-source` is the active branch, based on #30.
-  It combines authored core/provider/source prose with the complete native
-  `AnsiColourEnum` alias caller set: 149 reviewed files plus this record.
-  External colour types, fixed wire names, and discovery aliases remain intact.
-  Its original old-config gates passed: formatting, lint, build, 10,081
-  workspace tests with 17 skipped, and all 67 harness tests. Nixie passed all
-  21 changed Markdown files. Markdownlint retains 881 inherited findings across
-  20 files; exact path, line, and rule identities match the parent, with none
-  added or removed. Advisory passed; optional ast-grep remained unavailable.
-  Logs use `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-source.out`.
+- [Draft PR #31](https://github.com/leynos/vtcode/pull/31) publishes
+  `harden-lint-spelling-source` at `20e8f952d4341a2cf50df0e65c119ff521fef80c`,
+  based on #30. It combines authored core/provider/source prose with the
+  complete native `AnsiColourEnum` alias caller set: 149 reviewed files plus
+  this record. External colour types, fixed wire names, and discovery aliases
+  remain intact. Its original old-config gates passed: formatting, lint, build,
+  10,081 workspace tests with 17 skipped, and all 67 harness tests. Nixie
+  passed all 21 changed Markdown files. Markdownlint retains 881 inherited
+  findings across 20 files; exact path, line, and rule identities match the
+  parent, with none added or removed. Advisory passed; optional ast-grep
+  remained unavailable. Logs use
+  `/tmp/ACTION-vtcode-df12-onboarding-harden-lint-spelling-source.out`.
+- [Draft PR #32](https://github.com/leynos/vtcode/pull/32) publishes
+  `harden-lint-spelling-foundation` at
+  `90858bff6edbde66bea79a9c68a91b1a903707db`, based on #31. It corrects
+  authored foundation-crate prose and preserves the newly renamed colour
+  aliases, existing wire values, and generated model metadata. Its original
+  old-config gates passed: formatting, lint, build, 10,081 workspace tests with
+  17 skipped, and all 67 harness tests. The initial runner report cited a
+  nonexistent full-test log; that claim was rejected before commit, and the
+  actual full suite subsequently passed in `test-2`. Preliminary Markdownlint
+  retains 87 inherited diagnostics with exact path, line, and rule identities
+  unchanged; Nixie passed all six changed Markdown files. Advisory passed;
+  optional ast-grep remained unavailable. Logs use the foundation branch
+  suffix, with `test-2` for the verified full-suite run.
+- `harden-lint-spelling-engineering-docs` is active, based on #32.
+  It corrects engineering, guide, and harness prose. The colour guide moves to
+  `COLOUR_GUIDELINES.md` with both documentation-map links updated together.
+  Preliminary Markdown checks found 41 new table-spacing and line-length
+  diagnostics. Those were repaired, along with a stale native catalogue path.
+  The original 3,579 diagnostics match parent path, mapped line, and rule
+  identities, with none added or removed. Nixie passed all 81 changed files.
+  All seven original ordered code gates recorded exit zero: formatting, lint,
+  build, 10,081 workspace tests with 17 skipped, 67 harness tests, the optional
+  ast-grep skip, and advisory. Logs use `ACTION-manifest` with the engineering
+  branch suffix.
 - Remaining spelling changes are preserved separately while each layer is
   validated. Later layers cover other native spelling groups, ordinary prose,
   and finally the spelling gate. Structural moves, source lint fixes, nightly
@@ -529,5 +555,60 @@ PR #30 squash-merged into `main` as `5f8d9e58f`. This layer was then replayed
 onto it with `git rebase --onto 5f8d9e58f dcc396738`. The replay completed
 without conflicts and the resulting tree is identical to the previous head,
 `fa234bbe8`, so only the commit identities changed. The gate evidence recorded
+above describes earlier replays onto unmerged parents and is not evidence for
+this head.
+
+## PR 32 review restack
+
+The foundation-prose layer is rebased onto PR #31 `20e8f952d`. The replay
+completed without conflicts; all 80 non-handoff paths are byte-identical to the
+original layer. The five crate guides and their comparison base blobs are
+unchanged, preserving the 87 inherited diagnostic identities. All eight
+sequential gates passed, including typecheck, 10,085 workspace tests, 17 skips
+and 67 harness tests. Logs use `restack-1` on
+`harden-lint-spelling-foundation`; final handoff checks use
+`handoff-restack-1`. The optional ast-grep scan was skipped because the tool is
+unavailable. The push uses an explicit lease against the original published PR
+head (#32).
+
+## PR 32 after PR #31 merged
+
+PR #31 squash-merged into `main` as `3c4a4b19`. This layer was replayed onto it
+with `git rebase --onto 3c4a4b19 030d4815c`. The only conflict was this handoff
+file, which now keeps every earlier record. The gate evidence recorded above
+describes earlier replays onto unmerged parents and is not evidence for this
+head.
+
+## PR 33 review restack
+
+The engineering-documentation layer is rebased onto PR #32 `90858bff6`. The
+replay completed without conflicts. The testing and WebMCP guides retain the
+lower hermetic-fixture and fail-closed sandbox requirements alongside their
+spelling changes; the renamed colour guide and both map links are intact. All
+eight sequential code gates passed, including 10,085 workspace tests with 17
+skipped and 67 harness tests. The optional ast-grep scan was skipped because
+the tool is unavailable. Logs use `ACTION-restack-1` with the engineering
+branch suffix.
+
+The fresh Markdown comparison found 3,103 diagnostics in both the current layer
+and its final parent, with no added or removed path, mapped-line, rule, and
+multiplicity identities. The comparison handles the renamed colour guide,
+spelling replacements, and unchanged end-of-file blank lines. Both raw logs
+confirm that 81 files were linted. Nixie validated the 81 changed files.
+
+The initial zero-diagnostic report was rejected because its logs contained no
+linter output: `--format json` selected stdin mode rather than JSON output.
+Corrected captures use `markdownlint-current-restack-2` and
+`markdownlint-parent-restack-3` with the engineering branch suffix; the
+comparison is `/tmp/vtcode-pr33-md-identity-root.json`. These fresh results
+supersede the original diagnostic count for this restack.
+
+## PR 33 after PR #32 merged
+
+PR #32 squash-merged into `main` as `279db4ed`. This layer was replayed onto it
+with `git rebase --onto 279db4ed 78aaab6a0`. The only conflict was this handoff
+file, which now keeps every earlier record. The earlier restack record above
+names the unmerged parent `90858bff6`; the replay moved those commits onto
+`279db4ed` without changing the layer's own content. The gate evidence recorded
 above describes earlier replays onto unmerged parents and is not evidence for
 this head.

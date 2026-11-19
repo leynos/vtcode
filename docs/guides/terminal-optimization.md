@@ -23,7 +23,7 @@ it does not control the terminal application's theme directly.
 - Use `/statusline` to generate a custom status-line script in the user or
   workspace config layer.
 - Use `[ui.status_line]` in `config.toml` to customize the bottom status bar.
-- Keep terminal colors and fonts in your terminal app's own settings.
+- Keep terminal colours and fonts in your terminal app's own settings.
 
 Example status-line configuration:
 
@@ -80,7 +80,7 @@ Diapason supports several multiline input paths:
 - Diapason currently supports a focused subset with `INSERT` and `NORMAL` modes
   only.
 - Diapason-specific controls such as `Enter`, `Tab`, `Ctrl+Enter`, `/`, `@`, and
-  `!` still keep their existing behavior.
+  `!` still keep their existing behaviour.
 
 ## Paste Handling
 
@@ -102,7 +102,7 @@ lifecycle hooks.
 
 - Diapason can emit terminal bell and terminal-notification escape sequences
   when supported.
-- Configure Diapason-side notification behavior in `config.toml`:
+- Configure Diapason-side notification behaviour in `config.toml`:
 
 ```toml
 [security]
@@ -118,7 +118,7 @@ completion_success = false
 
 - Some terminals surface these alerts directly:
   - `Ghostty` and `Kitty` support native alert flows well.
-  - `iTerm2` can show Notification Center alerts after enabling the relevant
+  - `iTerm2` can show Notification Centre alerts after enabling the relevant
     profile settings.
   - Other terminals may only expose bell-based notifications.
 
@@ -177,7 +177,7 @@ tool_output_spool_bytes = 200000
 `ui.tool_output_mode` controls result bodies. `ui.tool_display_mode` controls
 the transition summaries that precede them: `"compact"` is the default and
 groups only contiguous successful command calls while keeping live PTY output
-bounded. Failures, warnings, stderr, diffs, and artifacts remain inline;
+bounded. Failures, warnings, stderr, diffs, and artefacts remain inline;
 `"expanded"` keeps the existing per-call layout. `Alt+T` toggles the
 session-only display mode; `/config` persists it.
 

@@ -30,8 +30,8 @@ agent prompt.
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
 | `crates/codegen/diapason-core/src/core/agent/evaluator.rs`         | Structured evaluator with scoring dimensions and hard thresholds.           |
 | `crates/codegen/diapason-core/src/core/agent/handoff.rs`           | Enriched handoff protocol with boundary status, test results, known issues. |
-| `crates/codegen/diapason-core/src/core/agent/harness_artifacts.rs` | Sprint contract and outcome verification artifact support.                  |
-| `crates/codegen/diapason-core/src/core/agent/orient.rs`            | Orient phase: gathers orientation context from external artifacts.          |
+| `crates/codegen/diapason-core/src/core/agent/harness_artefacts.rs` | Sprint contract and outcome verification artefact support.                  |
+| `crates/codegen/diapason-core/src/core/agent/orient.rs`            | Orient phase: gathers orientation context from external artefacts.          |
 | `crates/codegen/diapason-core/src/core/agent/progress_monitor.rs`  | Monotonic progress monitoring with stall detection.                         |
 | `crates/codegen/diapason-memory/src/progress.rs`                   | Durable progress ledger with handoff metadata.                              |
 
@@ -97,7 +97,7 @@ A document is stale if:
 
 - Its "Last reviewed" date is more than 3 months old.
 - It references files, modules, or APIs that no longer exist.
-- Its content contradicts current code behavior.
+- Its content contradicts current code behaviour.
 
 When you find a stale document, either update it or add a tech debt item to
 track the update.
