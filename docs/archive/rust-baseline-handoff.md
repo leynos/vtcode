@@ -667,3 +667,13 @@ workflow tests, then `check-fmt`, `test`, `typecheck`, `lint`, `markdownlint`,
 and `nixie` sequentially. The PR #20 review loop remains a separate task under
 its own configuration. Distinct worktrees use separate Cargo target directories
 while retaining the shared default Cargo package cache.
+
+## PR 34 after PR #33 merged
+
+PR #33 squash-merged into `main` as `e9af93b`. This layer was replayed onto it
+with `git rebase --onto e9af93b 2a2873a6c`. The only conflict was this handoff
+file, which now keeps every earlier record. The earlier restack record above
+names the unmerged parent `d94310f9a`; the replay moved those commits onto
+`e9af93b` without changing the layer's own content. The gate evidence recorded
+above describes earlier replays onto unmerged parents and is not evidence for
+this head.
