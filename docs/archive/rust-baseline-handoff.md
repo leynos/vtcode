@@ -626,6 +626,7 @@ names the unmerged parent `90858bff6`; the replay moved those commits onto
 `279db4ed` without changing the layer's own content. The gate evidence recorded
 above describes earlier replays onto unmerged parents and is not evidence for
 this head.
+
 ## PR 34 review restack
 
 The user-documentation layer is rebased onto PR #33 `d94310f9a`. Its 95-path
