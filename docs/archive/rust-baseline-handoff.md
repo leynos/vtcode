@@ -602,3 +602,13 @@ Corrected captures use `markdownlint-current-restack-2` and
 `markdownlint-parent-restack-3` with the engineering branch suffix; the
 comparison is `/tmp/vtcode-pr33-md-identity-root.json`. These fresh results
 supersede the original diagnostic count for this restack.
+
+## PR 33 after PR #32 merged
+
+PR #32 squash-merged into `main` as `279db4ed`. This layer was replayed onto it
+with `git rebase --onto 279db4ed 78aaab6a0`. The only conflict was this handoff
+file, which now keeps every earlier record. The earlier restack record above
+names the unmerged parent `90858bff6`; the replay moved those commits onto
+`279db4ed` without changing the layer's own content. The gate evidence recorded
+above describes earlier replays onto unmerged parents and is not evidence for
+this head.
