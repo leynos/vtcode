@@ -102,7 +102,7 @@ impl KeyboardProtocolConfig {
     }
 }
 
-/// Configuration for UI notification behavior.
+/// Configuration for UI notification behaviour.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UiNotificationsConfig {
     pub enabled: bool,
@@ -130,7 +130,7 @@ impl Default for UiNotificationsConfig {
     }
 }
 
-/// Top-level UI configuration controlling display modes and input behavior.
+/// Top-level UI configuration controlling display modes and input behaviour.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UiConfig {
     pub tool_output_mode: ToolOutputMode,
@@ -263,7 +263,7 @@ pub struct FullAutoConfig {
     pub enabled: bool,
 }
 
-/// Automation settings controlling automatic execution behavior.
+/// Automation settings controlling automatic execution behaviour.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct AutomationConfig {
     pub full_auto: FullAutoConfig,

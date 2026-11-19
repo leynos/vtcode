@@ -60,7 +60,7 @@ impl TrustMode {
     }
 }
 
-/// Behavior mode for diff preview overlays.
+/// Behaviour mode for diff preview overlays.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiffPreviewMode {
     #[default]

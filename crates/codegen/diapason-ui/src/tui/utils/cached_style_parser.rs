@@ -26,7 +26,7 @@ impl CachedStyleParser {
         }
     }
 
-    /// Parse and cache a Git-style color string (e.g., "bold red blue")
+    /// Parse and cache a Git-style colour string (e.g., "bold red blue")
     pub(crate) fn parse_git_style(&self, input: &str) -> Result<AnsiStyle> {
         if let Some(cached) = self.git_cache.get(input) {
             return Ok(cached);

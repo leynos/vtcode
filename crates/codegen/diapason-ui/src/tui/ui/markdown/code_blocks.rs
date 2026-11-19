@@ -408,7 +408,7 @@ fn line_number_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
     } else {
         base_style
     };
-    // Blend the foreground with background at 35% for a visible but subdued gutter color.
+    // Blend the foreground with background at 35% for a visible but subdued gutter colour.
     // No DIMMED effect — keep line numbers readable without squinting.
     let blended_fg = source
         .get_fg_color()
@@ -419,7 +419,7 @@ fn line_number_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
     } else if let Some(fg) = source.get_fg_color() {
         style = style.fg_color(Some(fg));
     } else {
-        // Last resort: use the theme foreground color
+        // Last resort: use the theme foreground colour
         style = style.fg_color(Some(theme_styles.foreground));
     }
     style
@@ -538,7 +538,7 @@ fn code_block_style(theme_styles: &ThemeStyles, base_style: Style) -> Style {
     if let Some(colour) = fg {
         style = style.fg_color(Some(colour));
     } else {
-        // Ensure code text always has a visible foreground color
+        // Ensure code text always has a visible foreground colour
         style = style.fg_color(Some(theme_styles.foreground));
     }
     style
@@ -751,4 +751,28 @@ pub fn highlight_code_to_ansi(code: &str, language: Option<&str>, theme_name: &s
             ansi_line
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{code_block_style, line_number_style};
+    use crate::tui::ui::theme;
+    use anstyle::Style;
+
+    #[test]
+    fn line_number_style_falls_back_to_the_theme_foreground() {
+        let mut styles = theme::active_styles();
+        styles.tool_detail = Style::new();
+        styles.tool_output = Style::new();
+        let styled = line_number_style(&styles, Style::new());
+        assert_eq!(styled.get_fg_color(), Some(styles.foreground));
+    }
+
+    #[test]
+    fn code_block_style_falls_back_to_the_theme_foreground() {
+        let mut styles = theme::active_styles();
+        styles.output = Style::new();
+        let styled = code_block_style(&styles, Style::new());
+        assert_eq!(styled.get_fg_color(), Some(styles.foreground));
+    }
 }

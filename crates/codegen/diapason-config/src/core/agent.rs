@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 const DEFAULT_CHECKPOINTS_ENABLED: bool = true;
+
 const DEFAULT_MAX_SNAPSHOTS: usize = 50;
+
 const DEFAULT_MAX_AGE_DAYS: u64 = 30;
 
 /// Agent-wide configuration
@@ -310,12 +312,12 @@ impl<'de> Deserialize<'de> for ContinuationPolicy {
 }
 
 /// When to trigger a context reset — starting a clean session from external
-/// artifacts only, discarding conversation history to clear noise and bad
+/// artefacts only, discarding conversation history to clear noise and bad
 /// assumptions. This is distinct from compaction, which preserves
 /// conversational continuity within the same task/agent loop.
 ///
 /// Following the context engineering pattern: "Context reset uses external
-/// artifacts (files from note-taking, git logs, test results, task lists) as
+/// artefacts (files from note-taking, git logs, test results, task lists) as
 /// startup material to open a clean new context/session. It does not preserve
 /// the full conversation history, and can clear noise and bad assumptions so
 /// that a new agent can reorient itself."
@@ -331,7 +333,7 @@ pub enum ContextResetMode {
     /// `context_reset_stall_threshold` consecutive turns).
     OnStall,
     /// Reset after every automatic compaction, so the post-compaction session
-    /// starts from artifacts only rather than the compacted summary.
+    /// starts from artefacts only rather than the compacted summary.
     OnCompaction,
 }
 
@@ -485,7 +487,7 @@ pub struct AgentHarnessConfig {
     #[serde(default)]
     pub continuation_policy: ContinuationPolicy,
     /// When to trigger a context reset — starting a clean session from
-    /// external artifacts only, discarding conversation history. Distinct
+    /// external artefacts only, discarding conversation history. Distinct
     /// from compaction (which preserves conversational continuity).
     /// Default: `off` (carry forward history as before).
     #[serde(default)]
@@ -641,12 +643,15 @@ const fn default_sceptic_panel_enabled() -> bool {
 const fn default_async_approval_enabled() -> bool {
     false
 }
+
 const fn default_async_approval_timeout_secs() -> u64 {
     3600
 }
+
 const fn default_async_approval_auto_approve_below() -> f64 {
     0.10
 }
+
 ///
 /// Implements the escalation decision rule from "The Hitchhiker's Guide to Agentic AI"
 /// (Eq. 18.12):
@@ -739,24 +744,31 @@ impl Default for ConfidenceEscalationConfig {
 const fn default_escalation_enabled() -> bool {
     false
 }
+
 const fn default_escalation_confidence_threshold() -> f64 {
     0.7
 }
+
 fn default_escalation_always_escalate_tools() -> Vec<String> {
     vec!["delete_file".to_string(), "remove".to_string(), "rm".to_string()]
 }
+
 const fn default_escalation_cost_threshold() -> f64 {
     0.05
 }
+
 const fn default_escalation_llm_confidence() -> bool {
     false
 }
+
 const fn default_escalation_max_replan() -> u32 {
     3
 }
+
 const fn default_escalation_max_total() -> u32 {
     5
 }
+
 const fn default_escalation_prompt_user() -> bool {
     true
 }

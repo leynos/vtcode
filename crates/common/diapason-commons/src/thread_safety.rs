@@ -43,7 +43,7 @@
 //! Not Race Conditions" by Matthias Endler.)
 //!
 //! A data race is unsynchronized concurrent access where at least one side writes.
-//! This is Undefined Behavior and Rust's type system prevents it.
+//! This is Undefined Behaviour and Rust's type system prevents it.
 //!
 //! A **race condition** is any bug where the result depends on timing or thread
 //! interleaving. Rust does *not* prevent these.

@@ -227,7 +227,7 @@ impl MouseSelectionState {
         trimmed.to_string()
     }
 
-    /// Apply selection highlight (inverted colors) to the frame buffer.
+    /// Apply selection highlight (inverted colours) to the frame buffer.
     pub(crate) fn apply_highlight(&self, buf: &mut Buffer, area: Rect) {
         if !self.has_selection && !self.is_selecting {
             return;

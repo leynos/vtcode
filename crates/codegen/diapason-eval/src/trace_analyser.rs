@@ -21,17 +21,17 @@ const MAX_DISTINCT_TOOL_LABELS: usize = 256;
 const MAX_TRACE_LINE_BYTES: usize = 1_048_576;
 const OTHER_TOOL_LABEL: &str = "other_tool";
 
-/// Analyze JSONL text while retaining only aggregate, non-sensitive facts.
+/// Analyse JSONL text while retaining only aggregate, non-sensitive facts.
 pub fn analyse_jsonl(input: &str) -> Result<HarnessTraceSummary> {
     analyse_jsonl_reader(Cursor::new(input.as_bytes()))
 }
 
-/// Analyze a buffered JSONL source without loading the complete trace into memory.
+/// Analyse a buffered JSONL source without loading the complete trace into memory.
 pub fn analyse_jsonl_reader<R: BufRead>(reader: R) -> Result<HarnessTraceSummary> {
     stream::analyse_jsonl_reader(reader)
 }
 
-/// Analyze a JSONL trace file and add path context to filesystem errors.
+/// Analyse a JSONL trace file and add path context to filesystem errors.
 pub fn analyse_jsonl_file(path: impl AsRef<Path>) -> Result<HarnessTraceSummary> {
     let path = path.as_ref();
     let file = File::open(path).with_context(|| format!("read trace file {}", path.display()))?;
