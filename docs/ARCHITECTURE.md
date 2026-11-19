@@ -90,10 +90,10 @@ Harness primitives in Diapason map to the runtime like this:
 - **Dynamic context**: context assembly, instruction merging, task tracker
   state, history, plan sidecars, and spooled tool outputs let Diapason
   rehydrate long-running work without keeping every token in the live window.
-  The persisted `SessionMemoryEnvelope` is the harness working-memory artifact:
+  The persisted `SessionMemoryEnvelope` is the harness working-memory artefact:
   it summarizes objective, constraints, touched files, grounded facts,
   verification status, verification TODOs, and delegated findings for resume
-  and summarized-fork handoff. Compaction artifacts under `.diapason/history/`
+  and summarized-fork handoff. Compaction artefacts under `.diapason/history/`
   support summarization and working-memory recovery; they are not complete
   resumable sessions.
 - **Compaction / offloading**: split tool results, spool files, and
@@ -172,12 +172,12 @@ subsystem:
 - The planner writes `.diapason/tasks/current_spec.md` and
   `.diapason/tasks/current_contract.md`, then seeds `current_task.md`.
 - The generator still runs on the main session, but it is constrained by those
-  artifacts plus tracker completion and verification.
-- The evaluator performs a skeptical post-build pass over the spec, contract,
+  artefacts plus tracker completion and verification.
+- The evaluator performs a sceptical post-build pass over the spec, contract,
   tracker, verification results, warnings, and changed files, then writes
   `.diapason/tasks/current_evaluation.md`.
 - Failed evaluation triggers bounded revision rounds rather than silent
-  acceptance, and the artifacts survive blocked handoff, resume, and local
+  acceptance, and the artefacts survive blocked handoff, resume, and local
   compaction.
 
 Broader multi-agent orchestration, dynamic tool assembly, and harness
@@ -212,7 +212,7 @@ without delegating runtime control to `rig-core` agents.
 - The Diapason harness remains the execution engine for turns, tool routing,
   continuation, compaction, and resume flows.
 - Session continuity stays on Diapason primitives: `.diapason/history/`
-  artifacts, local/server compaction, and prompt-side memory injection.
+  artefacts, local/server compaction, and prompt-side memory injection.
 - This keeps Diapason’s existing tool registry, sandboxing, and resume semantics
   intact while still adopting Rig’s provider-facing patterns where they reduce
   duplication.
@@ -355,11 +355,11 @@ pub trait CacheableTool: Tool {
 7. **Measured Optimization** - Profile and benchmark before keeping
    performance-motivated complexity
 8. **Clear Separation** - Each module has single responsibility
-9. **Handle/Context Before Clever Ownership** - When modeling complex Rust
+9. **Handle/Context Before Clever Ownership** - When modelling complex Rust
    state, start with explicit handles/IDs and an owning context. Reach for
    self-referential layouts, raw pointers, lifetime-branding tricks, or custom
    `Send`/`Sync` only when a simpler handle-based design is demonstrably
-   insufficient, and document the invariant at the boundary
+   insufficient, and document the invariant at the boundary.
 
 ## Adding New Tools
 

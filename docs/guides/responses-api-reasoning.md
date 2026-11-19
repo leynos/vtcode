@@ -197,4 +197,4 @@ citation sensitive.
 
 Following these practices keeps Diapason aligned with current OpenAI Responses
 guidance, delivering better continuity, lower-cost cached prompts, and stronger
-long-horizon agent behavior.
+long-horizon agent behaviour.

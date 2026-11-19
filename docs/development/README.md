@@ -10,7 +10,7 @@ Entry point for Diapason contributor workflows.
   coverage, including the startup launch benchmark.
 - [C++ Core Guidelines Adoption](./CPP_CORE_GUIDELINES_ADOPTION.md) - Policy
   for any C/C++ code introduced in this repository.
-- [CI/CD](./ci-cd.md) - Pipeline behavior and verification stages.
+- [CI/CD](./ci-cd.md) - Pipeline behaviour and verification stages.
 - [Cross Compilation](./cross-compilation.md) - Multi-target build workflows.
 - [Fuzzing](./fuzzing.md) - `cargo-fuzz` usage and parser hardening.
 
@@ -31,7 +31,7 @@ Entry point for Diapason contributor workflows.
 - [Security Guide](../guides/security.md) - Process sandbox boundaries, MCP
   inheritance, and provider diagnostic redaction.
 - [Runtime Guidance](./runtime-guidance.md) - Boundary between compiled
-  universal behavior and dynamic project instructions.
+  universal behaviour and dynamic project instructions.
 - [diapason Binary Gotchas](./diapason-binary-gotchas.md) - Binary startup,
   runloop recovery, allocator, and request-assembly invariants.
 - [AI Tool Surface Migration](./ai-tool-surface-migration.md) - Breaking-change

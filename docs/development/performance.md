@@ -6,7 +6,7 @@ not guess, measure first, and only keep complexity that pays for itself.
 
 ## Goals
 
-- Keep release artifacts portable.
+- Keep release artefacts portable.
 - Improve runtime without hurting day-to-day iteration speed.
 - Optimize only measured hotspots.
 
@@ -29,7 +29,7 @@ on the optimization, not on the simpler baseline.
 ### Filter before expensive projection or normalization
 
 Establish relevance before performing expensive projection or normalization
-work. In practice, filter a catalog, request, or candidate set before
+work. In practice, filter a catalogue, request, or candidate set before
 serializing schemas, constructing derived views, or normalizing data that will
 not be used. This keeps common paths from paying for work that only matters
 after a policy or relevance check succeeds.
@@ -38,7 +38,7 @@ The default documentation gate follows the same principle:
 `cargo doc --workspace --no-deps` builds the public API documentation and
 intentionally excludes private items. Private-item documentation expands the
 work to internal implementation details that are not part of the
-contributor-facing API artifact. Maintainers who need internal API inspection
+contributor-facing API artefact. Maintainers who need internal API inspection
 can opt in with `cargo doc --workspace --no-deps --document-private-items`.
 
 ### Bounded I/O on the agent hot path
@@ -65,10 +65,10 @@ the provider requires compaction. This keeps the common no-injection path from
 allocating multiple equivalent histories while preserving the existing
 normalization and continuation boundaries.
 
-Request envelopes retain the source tool-catalog `Arc` within a request
+Request envelopes retain the source tool-catalogue `Arc` within a request
 segment. When model/provider/mode/prompt identity is unchanged, subsequent
-turns reuse the frozen ordered catalog without cloning, sorting, or re-hashing
-its schema; segment boundaries clear that marker before rebuilding.
+turns reuse the frozen ordered catalogue without cloning, sorting, or
+re-hashing its schema; segment boundaries clear that marker before rebuilding.
 
 Read-only tool calls are batched only after per-call preflight confirms that
 each call is parallel-safe; duplicate names are not a safety signal. Batch line
@@ -92,7 +92,7 @@ while completed read-only command cache hits remain reusable.
 Avoid combining `#[serde(flatten)]` with `#[serde(untagged)]` on frequent,
 discriminator-driven protocol payloads. Serde must buffer the surrounding map
 to decide which flattened shape applies; direct wire structs can decode the
-known fields once and construct the tagged payload afterward. Diapason uses
+known fields once and construct the tagged payload afterwards. Diapason uses
 this for OpenResponses and ACP streaming notifications. Keep flattening when it
 is the actual contract, such as trace metadata's vendor-extension map.
 
@@ -109,7 +109,7 @@ continues to use the canonical `VersionedThreadEvent` decoder.
 
 ### Privacy-preserving harness trace analysis
 
-Use `diapason_eval::analyze_jsonl_file` or `analyze_jsonl_reader` for offline
+Use `diapason_eval::analyse_jsonl_file` or `analyse_jsonl_reader` for offline
 DeepSeek/Diapason harness analysis. The file and reader paths process one JSONL
 record at a time (with a 1 MiB record limit), retain only aggregate counters,
 and never copy prompts, arguments, paths, file contents, output text, or
@@ -117,7 +117,7 @@ free-form error messages into the returned summary. Tool names and error values
 are mapped to bounded known labels; unknown values are grouped under
 `other_tool` or `error`.
 
-The analyzer treats `ThreadCompleted` usage as a fallback when no per-turn
+The analyser treats `ThreadCompleted` usage as a fallback when no per-turn
 usage exists, so a normal thread trace does not double-count its aggregate.
 Latency count, total, and maximum cover the complete trace; percentile queries
 use a bounded 4,096-sample reservoir to keep memory usage stable for large
@@ -139,7 +139,7 @@ cache usage, and output volume before changing the runtime.
 ./scripts/perf/compare.sh
 ```
 
-Artifacts are written to `.diapason/perf/` and include JSON metrics plus raw
+Artefacts are written to `.diapason/perf/` and include JSON metrics plus raw
 logs.
 
 The perf harness builds and measures `target/release/diapason`, not `cargo run`
@@ -187,8 +187,8 @@ registry construction while remaining standalone and provider-free.
 
 For each case and launch mode, retain the raw millisecond samples and report
 the median and p95. The median is the primary central result; p95 exposes
-startup tail behavior. Use the same binary, machine, environment, sample count,
-and isolation layout for before/after comparisons. Keep
+startup tail behaviour. Use the same binary, machine, environment, sample
+count, and isolation layout for before/after comparisons. Keep
 `DIAPASON_STARTUP_TRACE=0` (or unset) during timed runs; enable
 `DIAPASON_STARTUP_TRACE=1` only for a separate diagnostic run.
 
@@ -202,7 +202,7 @@ The broader capture remains available when its additional workloads are needed:
 ```
 
 It records separate cold fresh-copy, warm, first-user-I/O, and interactive
-first-render artifacts. Those metrics must not be treated as substitutes for
+first-render artefacts. Those metrics must not be treated as substitutes for
 the three-case standalone matrix above.
 
 For phase-level diagnostics, set the opt-in trace before launching the binary:
@@ -234,7 +234,7 @@ early startup work is observable without adding work to normal launches.
   (`cleanup_old_temp_spools`) runs in `spawn_blocking` so a cold user-cache
   `large-output/` directory never blocks first user I/O.
 
-### Release artifact assumptions
+### Release artefact assumptions
 
 The shipped `release` profile remains tuned for launch size and dead-code
 removal: `opt-level = "z"`, full LTO, `codegen-units = 1`, stripping, and an
@@ -303,15 +303,15 @@ cargo bench -p diapason-core --bench agent_harness
 ```
 
 Use benches when a hotspot is stable and repeatable. Use the baseline/profile
-scripts when the question is broader end-to-end behavior.
+scripts when the question is broader end-to-end behaviour.
 
 ### Interactive latency workloads
 
 The `agent_harness` target measures the repeated work that affects interactive
 requests: warm prompt-resource cache hits, few-shot tag selection, tool
-definition sorting during catalog refresh, scoring against a warm indexed file
-list, and cold-cache tool-catalog assembly under hosted, client-local, and
-disabled deferred-loading policies. Its fixtures are deterministic and keep
+definition sorting during catalogue refresh, scoring against a warm indexed
+file list, and cold-cache tool-catalogue assembly under hosted, client-local,
+and disabled deferred-loading policies. Its fixtures are deterministic and keep
 filesystem setup outside the timed iterations.
 
 Prompt resources use canonical source paths, a five-minute bounded cache, and a
@@ -336,13 +336,13 @@ The same target also includes uncached filesystem workloads:
 candidate aggregation, while `agent_harness_file_index_build` measures a full
 index construction per iteration.
 `agent_harness_tool_catalog_projection_repeat` measures repeated
-schema/model-tool projection after the catalog is warm; its projection cache is
-private to an immutable catalog and keyed by documentation mode. These
+schema/model-tool projection after the catalogue is warm; its projection cache
+is private to an immutable catalogue and keyed by documentation mode. These
 benchmarks expose repeated work and synchronization cost rather than serving as
 universal CI thresholds.
 
 Code-search changes should be checked for both backend overlap and blocking
-pool behavior; progress-ledger changes should be checked for bounded queue
+pool behaviour; progress-ledger changes should be checked for bounded queue
 growth and latest-snapshot semantics before comparing end-to-end medians.
 
 Compare repeated local medians rather than adding a noisy hard gate:
@@ -360,7 +360,7 @@ profile hotspot and a separate build-performance budget.
 ## Optimization Rules
 
 - Change one thing at a time.
-- Keep changes surgical and behavior-preserving.
+- Keep changes surgical and behaviour-preserving.
 - Prefer simple, safe single-pass reductions over broad refactors.
 - Revisit data structures before introducing algorithmic sophistication.
 - Keep the simplest implementation until measured workload data proves it

@@ -21,7 +21,7 @@ collapse to `• Ran 2 commands`. The review suffix includes the configured
 shortcut and a styled `click to expand` affordance. In expanded mode, running
 PTY blocks show a bounded live tail; after completion, successful bodies
 collapse to the activity row. Failures, non-zero exits, cancellations,
-warnings, stderr diagnostics, meaningful diffs, and useful artifacts retain
+warnings, stderr diagnostics, meaningful diffs, and useful artefacts retain
 bounded inline context. Complete output is available in the session-local
 Transcript Review opened with the configured review shortcut, including outside
 fullscreen, where it is ordered with user messages, assistant responses,
@@ -65,7 +65,7 @@ reasoning or replace the complete output retained by Transcript Review.
 In compact mode, PTY commands keep their complete capture and grouped
 completion row without emitting a transient live PTY block. Progress remains
 available through the active status/spinner, while warnings, failures, diffs,
-stderr, and meaningful artifacts stay inline. Expanded mode preserves the
+stderr, and meaningful artefacts stay inline. Expanded mode preserves the
 bounded live tail.
 
 Model-facing progress guidance complements these UI summaries: for non-trivial
