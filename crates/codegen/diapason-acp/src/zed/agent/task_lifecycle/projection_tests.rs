@@ -4,6 +4,7 @@ use super::*;
 use chrono::{DateTime, Utc};
 use proptest::prelude::*;
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub(super) fn subagent_event(status: &str) -> LifecycleUpdate {
     subagent_event_for("parent-session", status)
@@ -81,8 +82,19 @@ pub(super) fn with_task_id(mut event: LifecycleUpdate, task_id: String) -> Lifec
 }
 
 /// Wraps a live observer transition for the ordering tests.
+///
+/// Each call takes the next revision from one test-local counter, so tests can
+/// queue several transitions in a known order without inventing revisions by
+/// hand. Tests that need to replay an older transition use [`live_at`].
 pub(super) fn live(update: LifecycleUpdate) -> QueuedLifecycleUpdate {
-    QueuedLifecycleUpdate { update, initial_snapshot: false }
+    static NEXT_REVISION: AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let revision = NEXT_REVISION.fetch_add(1, Ordering::Relaxed);
+    live_at(revision, update)
+}
+
+/// Wraps a transition at an explicit revision, for stale-replay regressions.
+pub(super) fn live_at(revision: u64, update: LifecycleUpdate) -> QueuedLifecycleUpdate {
+    QueuedLifecycleUpdate { update, revision }
 }
 
 #[test]
@@ -227,40 +239,48 @@ proptest! {
 #[test]
 fn stale_initial_snapshot_is_rejected_after_a_terminal_transition() {
     let mut ordering = LifecycleOrdering::default();
+    // Revision 0 is the base the snapshot pass reserves before the observer is
+    // registered; live transitions start at 1 and increase.
+    let snapshot_revision = 0_u64;
     let running = with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z");
     let completed = with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z");
 
-    assert!(ordering.admit(&live(running.clone())), "the first snapshot must be forwarded");
-    assert!(ordering.admit(&live(completed)), "a newer terminal transition must be forwarded");
+    assert!(ordering.admit(&live_at(1, running.clone())), "the first transition must be forwarded");
+    assert!(ordering.admit(&live_at(2, completed)), "a newer terminal transition must be forwarded");
     assert!(
-        !ordering.admit(&live(running)),
+        !ordering.admit(&live_at(snapshot_revision, running)),
         "an initial snapshot captured before the terminal transition must not roll the task back"
     );
 
     // A transition the controller really recorded after settlement still wins.
     let resumed = with_updated_at(subagent_event("running"), "2026-08-14T12:06:00Z");
-    assert!(ordering.admit(&live(resumed)), "newer lifecycle transitions must still be forwarded");
+    assert!(ordering.admit(&live_at(3, resumed)), "newer lifecycle transitions must still be forwarded");
 }
 
 #[test]
-fn equal_timestamp_revisions_never_regress_terminality() {
+fn equal_timestamp_transitions_are_ordered_by_revision() {
     let mut ordering = LifecycleOrdering::default();
+    // Two transitions recorded in the same clock tick share `updated_at`; the
+    // adapter-assigned revision is what tells them apart.
     let completed = with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z");
-    assert!(ordering.admit(&live(completed)));
-
-    let same_instant_running = with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z");
+    let resumed = with_updated_at(subagent_event("running"), "2026-08-14T12:05:00Z");
+    assert!(ordering.admit(&live_at(1, completed.clone())));
     assert!(
-        !ordering.admit(&live(same_instant_running)),
-        "a coarsened clock must not let a terminal task regress to running"
+        ordering.admit(&live_at(2, resumed)),
+        "a transition recorded later in the same tick must still be forwarded"
+    );
+    assert!(
+        !ordering.admit(&live_at(1, completed)),
+        "a replay of an earlier revision must not overwrite a later same-tick transition"
     );
 
     let mut background = LifecycleOrdering::default();
     let running = with_updated_at(background_event("running"), "2026-08-14T12:01:00Z");
     let stopped = with_updated_at(background_event("stopped"), "2026-08-14T12:05:00Z");
-    assert!(background.admit(&live(running)));
-    assert!(background.admit(&live(stopped)));
+    assert!(background.admit(&live_at(1, running)));
+    assert!(background.admit(&live_at(2, stopped)));
     assert!(
-        !background.admit(&live(with_updated_at(background_event("running"), "2026-08-14T12:01:00Z"))),
+        !background.admit(&live_at(1, with_updated_at(background_event("running"), "2026-08-14T12:01:00Z"))),
         "a stale background snapshot must not revive a stopped task"
     );
 }

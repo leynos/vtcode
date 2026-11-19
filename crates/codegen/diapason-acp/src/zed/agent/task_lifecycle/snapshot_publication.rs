@@ -28,6 +28,7 @@ pub(super) async fn publish_initial_task_snapshots(
     sender: &mpsc::Sender<QueuedLifecycleUpdate>,
     queue: &LifecycleQueueTracker,
     metrics: &Arc<diapason_core::metrics::MetricsCollector>,
+    revision: u64,
 ) {
     let session_correlation = bounded_session_correlation(session_id);
     let span = info_span!(
@@ -39,7 +40,7 @@ pub(super) async fn publish_initial_task_snapshots(
         publish_failures = 0_u64
     );
     let started_at = Instant::now();
-    let (published, failure) = queue_initial_task_snapshots(controller, session_id, sender, queue)
+    let (published, failure) = queue_initial_task_snapshots(controller, session_id, sender, queue, revision)
         .instrument(span.clone())
         .await;
     let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -74,6 +75,7 @@ async fn queue_initial_task_snapshots(
     session_id: &acp::SessionId,
     sender: &mpsc::Sender<QueuedLifecycleUpdate>,
     queue: &LifecycleQueueTracker,
+    revision: u64,
 ) -> (usize, Option<LifecycleQueueDropKind>) {
     let mut published = 0_usize;
     let mut controllers = vec![Arc::clone(controller)];
@@ -95,7 +97,7 @@ async fn queue_initial_task_snapshots(
             parent_session_id: session_id.0.to_string(),
             task: entry,
         };
-        let queued = QueuedLifecycleUpdate { update, initial_snapshot: true };
+        let queued = QueuedLifecycleUpdate { update, revision };
         match queue.send(sender, queued).await {
             Ok(()) => {}
             Err(kind) => return (published, Some(kind)),
@@ -113,7 +115,7 @@ async fn queue_initial_task_snapshots(
                 parent_session_id: session_id.0.to_string(),
                 task: entry,
             };
-            let queued = QueuedLifecycleUpdate { update, initial_snapshot: true };
+            let queued = QueuedLifecycleUpdate { update, revision };
             match queue.send(sender, queued).await {
                 Ok(()) => {}
                 Err(kind) => return (published, Some(kind)),

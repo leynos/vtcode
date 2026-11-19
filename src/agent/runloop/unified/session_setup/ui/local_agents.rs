@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use diapason_core::subagents::{
     BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, SubagentController,
     SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot,
@@ -57,8 +58,11 @@ async fn build_local_agent_entries(
         ));
     }
 
-    for entry in visible_background_local_agents(background_entries) {
-        let snapshot = match controller.refresh_then_background_snapshot(&entry.id).await {
+    for entry in background_entries {
+        // `refresh_background_processes` already ran once above; a cached
+        // snapshot is enough for a per-row preview and avoids reloading the
+        // ledger for every background entry.
+        let snapshot = match controller.background_snapshot(&entry.id).await {
             Ok(snapshot) => Some(snapshot),
             Err(err) => {
                 tracing::debug!(
@@ -69,24 +73,9 @@ async fn build_local_agent_entries(
                 None
             }
         };
-        let preview = snapshot
-            .as_ref()
-            .map(background_local_agent_preview)
-            .unwrap_or_else(|| background_local_agent_preview_placeholder(&entry));
-        entries.push((
-            entry.updated_at,
-            LocalAgentEntry {
-                id: entry.id.clone(),
-                display_label: entry.display_label.clone(),
-                agent_name: entry.agent_name.clone(),
-                colour: entry.colour.clone(),
-                kind: LocalAgentKind::Background,
-                status: entry.status.as_str().to_string(),
-                summary: Some(background_local_agent_summary(&entry)),
-                preview,
-                transcript_path: entry.transcript_path.clone().or(entry.archive_path.clone()),
-            },
-        ));
+        if let Some(row) = background_local_agent_row(entry, snapshot.as_ref()) {
+            entries.push(row);
+        }
     }
 
     entries.sort_by(|left, right| right.0.cmp(&left.0));
@@ -102,18 +91,42 @@ pub(super) fn visible_delegated_local_agents(entries: Vec<SubagentStatusEntry>) 
     entries
 }
 
-pub(super) fn visible_background_local_agents(
-    entries: Vec<BackgroundSubprocessEntry>,
-) -> Vec<BackgroundSubprocessEntry> {
-    let mut entries = entries
-        .into_iter()
-        .filter(|entry| {
-            matches!(entry.status, BackgroundSubprocessStatus::Starting | BackgroundSubprocessStatus::Running)
-                || (entry.desired_enabled && matches!(entry.status, BackgroundSubprocessStatus::Error))
-        })
-        .collect::<Vec<_>>();
-    entries.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
-    entries
+fn background_local_agent_is_visible(entry: &BackgroundSubprocessEntry) -> bool {
+    matches!(entry.status, BackgroundSubprocessStatus::Starting | BackgroundSubprocessStatus::Running)
+        || (entry.desired_enabled && matches!(entry.status, BackgroundSubprocessStatus::Error))
+}
+
+/// Project one background subprocess into a sidebar row.
+///
+/// The refreshed entry is only a fallback: when a cached snapshot is
+/// available, the row's metadata, visibility and preview all come from that
+/// single observation so a status change cannot produce a row that describes
+/// one state while its preview describes another.
+pub(super) fn background_local_agent_row(
+    entry: BackgroundSubprocessEntry,
+    snapshot: Option<&BackgroundSubprocessSnapshot>,
+) -> Option<(DateTime<Utc>, LocalAgentEntry)> {
+    let entry = snapshot.map_or(entry, |snapshot| snapshot.entry.clone());
+    if !background_local_agent_is_visible(&entry) {
+        return None;
+    }
+    let preview = snapshot
+        .map(background_local_agent_preview)
+        .unwrap_or_else(|| background_local_agent_preview_placeholder(&entry));
+    Some((
+        entry.updated_at,
+        LocalAgentEntry {
+            id: entry.id.clone(),
+            display_label: entry.display_label.clone(),
+            agent_name: entry.agent_name.clone(),
+            colour: entry.colour.clone(),
+            kind: LocalAgentKind::Background,
+            status: entry.status.as_str().to_string(),
+            summary: Some(background_local_agent_summary(&entry)),
+            preview,
+            transcript_path: entry.transcript_path.clone().or(entry.archive_path.clone()),
+        },
+    ))
 }
 
 fn delegated_local_agent_summary(entry: &SubagentStatusEntry, snapshot: &SubagentThreadSnapshot) -> String {
@@ -325,3 +338,6 @@ fn truncate_preview_text(text: String, max_chars: usize) -> String {
     truncated.push_str("...");
     truncated
 }
+
+#[cfg(test)]
+mod tests;

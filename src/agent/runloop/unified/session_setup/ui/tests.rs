@@ -173,7 +173,10 @@ fn background_local_agent_visibility_hides_stopped_entries() {
         transcript_path: None,
     };
 
-    assert!(visible_background_local_agents(vec![entry]).is_empty());
+    assert!(
+        background_local_agent_row(entry, None).is_none(),
+        "a stopped entry the user did not enable must not be projected as a local agent row"
+    );
 }
 
 #[test]

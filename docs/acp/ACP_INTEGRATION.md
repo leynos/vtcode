@@ -30,13 +30,15 @@ extension capability `_meta.lody.usage = { "version": 1 }`. Usage notifications
 are sent only when the provider response includes usage data.
 
 When the launch workspace has a subagent controller, the response additionally
-includes `_meta.lody.subagents` version 1 with `lifecycle`, `list`, `cancel`,
-and `output` set to `true`. If background subagents are enabled, it also
-includes `_meta.lody.tasks = { "version": 1, "background": true }`. These
-extension capabilities describe the launch workspace configuration, not the
-workspace selected by an individual session. A client must not assume that
-subagent management or background tasks are available when they are absent from
-the handshake. The converse is also not guaranteed: Diapason creates a
+includes `_meta.lody.subagents` version 1, with
+`_meta.lody.subagents.lifecycle`, `_meta.lody.subagents.list`,
+`_meta.lody.subagents.cancel`, and `_meta.lody.subagents.output` set to `true`.
+If background subagents are enabled, it also includes
+`_meta.lody.tasks = { "version": 1, "background": true }`. These extension
+capabilities describe the launch workspace configuration, not the workspace
+selected by an individual session. A client must not assume that subagent
+management or background tasks are available when they are absent from the
+handshake. The converse is also not guaranteed: Diapason creates a
 session-scoped controller for the selected session workspace, and if that setup
 fails, Lody management requests for the session return
 `subagent_management_unavailable`.
@@ -53,6 +55,9 @@ was advertised:
 - `_lody/subagents/list` lists the caller session's owned tasks;
 - `_lody/subagents/cancel` requests cancellation of an owned task; and
 - `_lody/subagents/output` returns a bounded output tail for an owned task.
+
+The server also sends the `_lody/session/usage_update` extension notification,
+described under [Usage notification](#usage-notification).
 
 All three require `sessionId`; `cancel` and `output` also require `taskId`.
 Requests and responses use `camelCase` field names.
@@ -132,14 +137,41 @@ bounded output tail:
 Reading output is a pure query. It neither advances lifecycle state nor
 restarts a background process, and a failure while reading one task cannot
 affect another. When the live exec session for a background task is gone, the
-tail is served from the recorded transcript or archive instead, so an exited
-process still reports its last output.
+tail is served from the recorded transcript or archive instead. If there is no
+output to serve, the response carries an empty `output` string. If the
+transcript or archive cannot be read, the request fails with
+`subagent_management_failed` and the underlying cause in `detail`.
 
-Usage is reported with the `_lody/session/usage_update` extension notification.
-Its parameters contain `sessionId`, a `usage` object with normalized input,
-output, and cache token counts, and `modelUsage`, keyed by model name. The
-notification represents the usage delta for one provider response, not a
-running total.
+### Usage notification
+
+The server reports per-response provider usage with the
+`_lody/session/usage_update` extension notification. It is server-to-client and
+has no request or response. Its parameters contain `sessionId`, a `usage`
+object with normalized input, output, and cache token counts, and `modelUsage`,
+keyed by model name. `cacheCreationInputTokens` is omitted when the provider
+reports none.
+
+<!-- tested-example: acp-integration-usage-update -->
+```json
+{
+  "sessionId": "session-id",
+  "usage": {
+    "inputTokens": 123,
+    "outputTokens": 45,
+    "cacheReadInputTokens": 0
+  },
+  "modelUsage": {
+    "model-name": {
+      "inputTokens": 123,
+      "outputTokens": 45,
+      "cacheReadInputTokens": 0
+    }
+  }
+}
+```
+
+`modelUsage` is keyed by the response model. The values are deltas for one
+provider response, not a running total.
 
 The current server is launched with `diapason acp` and communicates over stdio;
 it does not expose the legacy `/messages`, `/metadata`, or `/health` HTTP

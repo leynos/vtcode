@@ -4,8 +4,10 @@
 //! over a `PtySessionManager` and an `ExecSessionManager`, spawns the requested agent type with
 //! `background: true`, and waits up to five minutes for a terminal status. It reports
 //! `background-subagent-summary:`, `background-subagent-error:` and `background-subagent-ready:`
-//! marker lines, fails when the task ends in a non-completed terminal state, and otherwise idles
-//! so the parent keeps a live process.
+//! marker lines. Readiness does not imply completion: the command prints the readiness line for
+//! an observed non-terminal status, for a `Completed` task, and when the wait times out. An
+//! observed terminal status other than `Completed` (`Failed` or `Closed`) fails the command;
+//! when it prints readiness, it idles so the parent keeps a live process.
 //!
 //! Selecting the `background-demo` agent name takes the subprocess path instead: the command runs
 //! `scripts/demo-background-subagent.sh` from the workspace root, waits for its readiness line,

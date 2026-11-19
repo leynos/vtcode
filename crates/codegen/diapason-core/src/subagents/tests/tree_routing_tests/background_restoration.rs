@@ -1,5 +1,6 @@
 //! Background restoration: settled-outcome preservation and owner-scoped restore.
 use super::*;
+use crate::subagents::background::background_state_path_for_tests;
 
 #[tokio::test]
 async fn close_preserves_settled_foreground_outcomes() {
@@ -149,8 +150,9 @@ async fn legacy_restore_ignores_records_owned_by_a_session() {
             .await
             .expect("workspace controller");
 
-    let owned_id = background_record_id_for_owner("watcher", Some("other-session"));
+    let owned_id = background_record_id_for_owner("owned-watcher", Some("other-session"));
     let mut owned = settled_background_record(&owned_id, "other-session", BackgroundSubprocessStatus::Running, None);
+    owned.agent_name = "owned-watcher".to_string();
     owned.desired_enabled = true;
     owned.exec_session_id = "missing-owned-session".to_string();
     let owned_updated_at = owned.updated_at;
@@ -177,17 +179,39 @@ async fn legacy_restore_ignores_records_owned_by_a_session() {
         "an owned record must not be settled, respawned, or rewritten"
     );
 
-    // Contrast: the unfiltered restore does select the same record, so the
-    // exclusion above comes from the owner filter rather than an empty ledger.
-    // The assertion names the record, because any other fault would also be an
-    // error and would not prove the record was selected.
+    // Contrast: an ownerless record naming a different agent is selected by
+    // the unfiltered restore, so the exclusion above comes from the owner
+    // filter rather than an empty ledger. The assertion names the selected
+    // record, and the two records carry different agent names, so a fault
+    // caused by the owned record would not satisfy it.
+    let legacy_id = background_record_id_for_owner("watcher", None);
+    let mut legacy = settled_background_record(&legacy_id, "legacy-session", BackgroundSubprocessStatus::Running, None);
+    legacy.owner_session_id = None;
+    legacy.desired_enabled = true;
+    legacy.exec_session_id = "missing-legacy-session".to_string();
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(legacy_id.clone(), legacy);
+    }
+
     let error = controller
         .restore_background_subagents()
         .await
-        .expect_err("the unfiltered restore selects the owned record");
+        .expect_err("the unfiltered restore selects the ownerless record");
     assert!(
         format!("{error:#}").contains("Failed to resolve background subagent 'watcher'"),
-        "the unfiltered restore must fail on the owned record, not on another fault: {error:#}"
+        "the unfiltered restore must fail on the ownerless record, not on another fault: {error:#}"
+    );
+
+    let owned_after = controller
+        .background_status_entries()
+        .await
+        .into_iter()
+        .find(|entry| entry.id == owned_id)
+        .expect("the owned record stays in the ledger");
+    assert_eq!(
+        owned_after.updated_at, owned_updated_at,
+        "the failed ownerless restore must leave the owned record untouched"
     );
 
     controller.signal_shutdown().await;
@@ -235,8 +259,17 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
     assert_eq!(root_entries[0].status, BackgroundSubprocessStatus::Stopped);
     assert!(nested.background_status_entries().await.is_empty());
 
-    // The nested scope's persistence guard must leave the ledger intact.
+    // The nested scope's persistence guard must leave the ledger intact, not
+    // merely preserve the records a round-trip would report: compare the raw
+    // bytes so a save that rewrote the file with the same values also fails.
+    let ledger_path = background_state_path_for_tests(&workspace_root);
+    let ledger_before = std::fs::read(&ledger_path).expect("read the workspace ledger before the nested save");
     nested.save_background_state().await.expect("nested save is a no-op");
+    assert_eq!(
+        std::fs::read(&ledger_path).expect("read the workspace ledger after the nested save"),
+        ledger_before,
+        "a nested save must not rewrite the workspace ledger"
+    );
     let restored = SubagentController::new(test_controller_config(workspace_root, DiapasonConfig::default()))
         .await
         .expect("restoring controller");
@@ -248,4 +281,50 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
     nested.signal_shutdown().await;
     restored.signal_shutdown().await;
     root.signal_shutdown().await;
+}
+
+/// An empty background owner names no owner.
+///
+/// `new_with_background_owner` is given the ACP session id, which is empty when
+/// no session is attached. Keeping `Some("")` as a distinct owner would filter
+/// the ledger down to records whose owner is the empty string, hiding every
+/// real record, and would make the save merge treat ownerless legacy records as
+/// foreign, while `background_record_id_for_owner` already maps an empty owner
+/// to the base id. An empty owner must therefore behave exactly like no owner.
+#[tokio::test]
+async fn an_empty_background_owner_loads_like_an_unscoped_controller() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+
+    // Persist a record owned by a real session through an unscoped controller.
+    let writer = SubagentController::new(test_controller_config(workspace_root.clone(), DiapasonConfig::default()))
+        .await
+        .expect("writer controller");
+    let record_id = background_record_id_for_owner("watcher", Some("other-session"));
+    {
+        let mut state = writer.state.write().await;
+        state.background_children.insert(
+            record_id.clone(),
+            settled_background_record(&record_id, "other-session", BackgroundSubprocessStatus::Stopped, None),
+        );
+    }
+    writer.save_background_state().await.expect("persist the ledger");
+    writer.signal_shutdown().await;
+
+    let empty_owner = SubagentController::new_with_background_owner(
+        test_controller_config(workspace_root, DiapasonConfig::default()),
+        Some(""),
+    )
+    .await
+    .expect("empty-owner controller");
+    assert!(
+        empty_owner.background_owner_session_id.is_none(),
+        "an empty owner must be dropped at construction rather than kept as a distinct owner"
+    );
+    let listed = empty_owner.background_status_entries().await;
+    assert!(
+        listed.iter().any(|entry| entry.id == record_id),
+        "an empty owner must load the ledger like an unscoped controller: {listed:?}"
+    );
+    empty_owner.signal_shutdown().await;
 }

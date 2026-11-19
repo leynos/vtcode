@@ -111,7 +111,10 @@ the requested lines:
 Reading output is a pure query: it sends no lifecycle update, restarts no
 background process, and cannot be failed by an unrelated task. A background
 task whose live exec session has exited is served from its recorded transcript
-or archive.
+or archive. A task with no output to serve yet returns an empty `output`
+string. A transcript or archive that exists but cannot be read fails the
+request with `subagent_management_failed` and the cause in `detail`, so an
+unreadable archive is never reported as an empty task.
 
 The server reports per-response provider usage through the extension
 notification `_lody/session/usage_update`. Its parameters contain:

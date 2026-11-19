@@ -765,6 +765,18 @@ management requests return only tasks owned by the requested ACP session.
   session and may attach after restoration has already completed; replaying the
   live owned-and-active snapshot is bounded, idempotent and does not resurrect
   terminal history the client never saw. Date/Author: 2026-10-31 / Claude Code.
+- Decision: inject the two controller locks as `SubagentLockScope`, keeping a
+  process-global `default_lock_scope()` for controllers that name no scope, and
+  merge owner-scoped background records rather than replacing the shared
+  ledger. A save joins records on their canonical id with the newest
+  `updated_at` winning, removes only its own owner's dropped records, and lets
+  a persisted cancellation outrank a later refresh of the same exec session.
+  Rationale: the former adoption and persistence statics could not be injected
+  or observed independently, while an unscoped controller must still exclude
+  every other such controller in the process, so the default is the
+  compatibility path; and because sessions and processes share one ledger,
+  replacement would delete another owner's record or resurrect a task cancelled
+  under a stale copy. Date/Author: 2026-11-19 / Claude Code.
 
 ## Outcomes & retrospective
 

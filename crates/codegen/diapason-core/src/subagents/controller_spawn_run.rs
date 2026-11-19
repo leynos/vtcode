@@ -6,11 +6,11 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
 use futures::future::{BoxFuture, select_all};
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tokio::sync::{Notify, RwLock};
 
 use crate::config::DiapasonConfig;
@@ -34,7 +34,7 @@ use self::model::*;
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
 pub(super) use super::controller_child_ids::ChildIdScopeSlot;
-use super::controller_persistence::persist_background_records;
+use super::controller_persistence::{persist_background_records, record_committed_owner_ids, removable_owner_ids};
 
 #[allow(
     unused_imports,
@@ -181,7 +181,12 @@ impl SubagentController {
                 .get_mut(&request.target)
                 .ok_or_else(|| anyhow!("Unknown subagent id {}", request.target))?;
 
-            if record.status == SubagentStatus::Closed {
+            // An explicit close outlives the terminal outcome. Closing a
+            // settled child keeps its `Completed`/`Failed` status so a
+            // transport does not project success as failure, so the status
+            // alone cannot tell a closed task from one that merely finished.
+            // `reopen_single` clears this flag.
+            if record.status == SubagentStatus::Closed || is_child_closed(&self.state, &request.target) {
                 bail!("Subagent {} is closed", request.target);
             }
 
@@ -474,6 +479,9 @@ impl SubagentController {
             if matches!(record.status, SubagentStatus::Running | SubagentStatus::Queued) {
                 return Ok(false);
             }
+            // Reopening releases the explicit closure, so input can reach the
+            // task again even if its last outcome was terminal.
+            clear_child_closed(&self.state, target);
             let prompt = record
                 .last_prompt
                 .clone()
@@ -511,6 +519,11 @@ impl SubagentController {
         if let Some(handle) = record.handle.take() {
             handle.abort();
         }
+        // Record the explicit closure before the terminal short-circuit below.
+        // A settled `Completed`/`Failed` child keeps its outcome, so this flag
+        // is what still makes `send_input` refuse it until the subtree is
+        // reopened.
+        mark_child_closed(&self.state, target);
         // Cancellation must not rewrite a settled outcome. `Completed` and
         // `Failed` children already stopped running, and a transport projects
         // `Closed` as a failure, so closing them again would turn a
@@ -596,6 +609,21 @@ impl SubagentController {
         }
     }
 
+    /// Persists this controller's background records into the shared ledger.
+    ///
+    /// The sidecar file lock is acquired before the in-process persistence
+    /// mutex, and both are held until the write completes. The file lock is
+    /// outer so another process holding it cannot make this save hold the
+    /// process-wide mutex for the whole acquisition deadline, stalling every
+    /// other controller tree's save; every save takes the two locks in this
+    /// order, so they cannot deadlock. The snapshot is read only after both
+    /// guards, so two saves cannot snapshot v1 and v2 and then write v2 before
+    /// v1, leaving the older snapshot as the file.
+    ///
+    /// Only records this controller has already committed may be removed from
+    /// the ledger. A record another live controller of the same owner persisted
+    /// after this snapshot is kept, because this controller never committed its
+    /// id and so has no authority to delete it.
     pub(super) async fn save_background_state(&self) -> Result<()> {
         if self.shutdown_requested.load(Ordering::Relaxed) {
             return Ok(());
@@ -606,10 +634,6 @@ impl SubagentController {
             // controller.
             return Ok(());
         }
-        // The lock is taken inside the persistence task, before the in-memory
-        // snapshot. Reading first would let two concurrent saves snapshot v1
-        // and v2, then write v2 before v1, leaving the older snapshot as the
-        // file. Holding the lock across the read keeps the last write newest.
         let lock_scope = Arc::clone(&self.lock_scope);
         let state = Arc::clone(&self.state);
         let workspace_root = self.config.workspace_root.clone();
@@ -620,23 +644,32 @@ impl SubagentController {
         // instead would let a second writer start from the same stale ledger
         // while this write was still in flight.
         tokio::spawn(async move {
-            let _persistence_guard = lock_scope.persistence().lock().await;
             // The in-process mutex cannot serialise another Diapason process
-            // that shares this workspace. Hold the ledger's inter-process lock
-            // across the reload, merge and write so two processes cannot each
-            // read the old ledger and then have the later rename discard the
-            // other's record.
+            // that shares this workspace, so the ledger's inter-process lock is
+            // taken first and held across the reload, merge and write. Taking
+            // the persistence mutex first would hold it while this save waits
+            // out another process's file lock.
             let _ledger_guard = lock_background_state(&workspace_root).await?;
-            let records = {
-                let state = state.read().await;
-                state
+            let _persistence_guard = lock_scope.persistence().lock().await;
+            let (mut records, removable) = {
+                let guard = state.read().await;
+                let records = guard
                     .background_children
                     .values()
                     .cloned()
                     .map(BackgroundRecord::into_persisted)
-                    .collect()
+                    .collect::<Vec<_>>();
+                (records, removable_owner_ids(&state))
             };
-            persist_background_records(&workspace_root, owner_session_id.as_deref(), records).await
+            // The merge rekeys legacy ids, so authority to remove a record must
+            // name the same canonical id the retained record carries.
+            for record in &mut records {
+                record.canonicalize_id();
+            }
+            let committed_ids = records.iter().map(|record| record.id.clone()).collect::<Vec<_>>();
+            persist_background_records(&workspace_root, owner_session_id.as_deref(), records, &removable).await?;
+            record_committed_owner_ids(&state, committed_ids);
+            Ok(())
         })
         .await
         .context("Failed to join the background state persistence task")?
@@ -1041,6 +1074,71 @@ impl SubagentController {
     }
 }
 
+/// Tracks the child ids this controller tree has explicitly closed.
+///
+/// [`SubagentStatus::Closed`] cannot carry this by itself: `close_single`
+/// deliberately keeps a settled `Completed` or `Failed` outcome visible, because
+/// a transport projects `Closed` as a failure and a user closure must not turn
+/// a successful task into a visible failure. The closure is therefore
+/// remembered by id, separately from the outcome, so `send_input` still refuses
+/// a task the user closed and `reopen_single` releases it again.
+///
+/// The child record shape lives in `types.rs`, which this module does not
+/// change, so the flag is kept out of band. Entries are keyed by the tree's
+/// shared state allocation, so every clone observes one history; a dropped
+/// tree's entry is pruned on the next access, and the weak key keeps a stale
+/// entry from outliving its state.
+fn closed_child_ids() -> &'static Mutex<Vec<ClosedChildIds>> {
+    static CLOSED: OnceLock<Mutex<Vec<ClosedChildIds>>> = OnceLock::new();
+    CLOSED.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// One controller tree's explicitly closed child ids.
+struct ClosedChildIds {
+    /// Keeps the key bound to a live state allocation so a dropped tree's entry
+    /// can be pruned before its address is reused.
+    state: Weak<RwLock<ControllerState>>,
+    ids: BTreeSet<String>,
+}
+
+/// Applies `update` to the closed ids of the controller tree that owns `state`.
+fn with_closed_child_ids<R>(
+    state: &Arc<RwLock<ControllerState>>,
+    update: impl FnOnce(&mut BTreeSet<String>) -> R,
+) -> R {
+    let mut registry = closed_child_ids().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    registry.retain(|entry| entry.state.strong_count() > 0);
+    if let Some(entry) = registry
+        .iter_mut()
+        .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
+    {
+        return update(&mut entry.ids);
+    }
+    let mut ids = BTreeSet::new();
+    let result = update(&mut ids);
+    registry.push(ClosedChildIds { state: Arc::downgrade(state), ids });
+    result
+}
+
+/// Marks `target` as explicitly closed until the subtree is reopened.
+fn mark_child_closed(state: &Arc<RwLock<ControllerState>>, target: &str) {
+    with_closed_child_ids(state, |ids| {
+        ids.insert(target.to_string());
+    });
+}
+
+/// Releases the explicit-closure flag on `target` when it is reopened.
+fn clear_child_closed(state: &Arc<RwLock<ControllerState>>, target: &str) {
+    with_closed_child_ids(state, |ids| {
+        ids.remove(target);
+    });
+}
+
+/// Returns whether `target` was explicitly closed and not since reopened.
+fn is_child_closed(state: &Arc<RwLock<ControllerState>>, target: &str) -> bool {
+    with_closed_child_ids(state, |ids| ids.contains(target))
+}
+
 fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync::futures::Notified<'_>>>> {
     let mut waiters = notifies.iter().map(|notify| Box::pin(notify.notified())).collect::<Vec<_>>();
     for waiter in &mut waiters {
@@ -1050,21 +1148,4 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[tokio::test]
-    async fn registered_waiter_observes_notify_waiters_before_first_wait_poll() {
-        let notify = Arc::new(Notify::new());
-        let notifies = [Arc::clone(&notify)];
-        let waiters = register_notify_waiters(&notifies);
-
-        // notify_waiters() is lossy for futures that have not registered.
-        // Deliver it after enable() but before select_all first polls a waiter.
-        notify.notify_waiters();
-
-        let outcome = tokio::time::timeout(Duration::from_millis(50), select_all(waiters)).await;
-        assert!(outcome.is_ok(), "registered waiter should retain the wakeup");
-    }
-}
+mod tests;

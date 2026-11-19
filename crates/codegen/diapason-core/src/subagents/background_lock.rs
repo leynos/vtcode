@@ -47,6 +47,23 @@ const BACKGROUND_STATE_LOCK_INITIAL_BACKOFF: Duration = Duration::from_millis(5)
 /// The largest delay between two lock retries.
 const BACKGROUND_STATE_LOCK_MAX_BACKOFF: Duration = Duration::from_millis(250);
 
+/// Returns whether `error` reports that another holder owns the ledger lock.
+///
+/// `flock(2)` signals contention with a platform-specific code, which `std`
+/// normally maps to [`std::io::ErrorKind::WouldBlock`] and `fs2` also exposes
+/// as [`fs2::lock_contended_error`]. Both forms are recognised so a contended
+/// acquisition is retried on either mapping instead of failing the save on the
+/// first attempt, which would drop a concurrent write. The raw codes are
+/// compared only when both are present, so an error without an OS code is not
+/// mistaken for contention.
+fn is_lock_contention(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::WouldBlock
+        || error
+            .raw_os_error()
+            .zip(fs2::lock_contended_error().raw_os_error())
+            .is_some_and(|(actual, contended)| actual == contended)
+}
+
 /// Acquires the workspace ledger's inter-process exclusive lock.
 ///
 /// Two processes that each read the ledger before either writes can lose a
@@ -93,7 +110,7 @@ pub(crate) async fn lock_background_state_within(
     loop {
         match fs2::FileExt::try_lock_exclusive(&file) {
             Ok(()) => return Ok(BackgroundStateLock { file }),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(error) if is_lock_contention(&error) => {
                 if tokio::time::Instant::now() >= deadline {
                     return Err(error).with_context(|| {
                         format!(
@@ -110,5 +127,77 @@ pub(crate) async fn lock_background_state_within(
                 return Err(error).with_context(|| format!("Failed to lock {}", path.display()));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every form `fs2` and `std` report contention in must be retried.
+    ///
+    /// A missed form turns a concurrent save into an immediate failure, and
+    /// the ledger loses the record that save carried. The non-contention
+    /// checks keep a real open or permission error from being retried until
+    /// the deadline hides it.
+    #[test]
+    fn lock_contention_matches_every_platform_form() {
+        assert!(is_lock_contention(&fs2::lock_contended_error()), "fs2's contention error must be retried");
+        assert!(
+            is_lock_contention(&std::io::Error::from(std::io::ErrorKind::WouldBlock)),
+            "the mapped contention kind must be retried"
+        );
+        assert!(
+            !is_lock_contention(&std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            "an unrelated error must not be retried"
+        );
+    }
+
+    /// A contended acquisition waits for the holder rather than failing.
+    ///
+    /// The sidecar lock is held by another process in production, so the
+    /// save's `try_lock` reports contention. It must retry until the holder
+    /// releases and then acquire, or a concurrent save would fail instead of
+    /// serialising behind the other writer.
+    #[tokio::test]
+    async fn lock_retries_after_the_holder_releases() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let held = lock_background_state_within(workspace.path(), Duration::from_secs(1))
+            .await
+            .expect("first lock");
+        let waiting_path = workspace.path().to_path_buf();
+        let waiter =
+            tokio::spawn(async move { lock_background_state_within(&waiting_path, Duration::from_secs(5)).await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!waiter.is_finished(), "the waiter must not acquire a held lock");
+
+        drop(held);
+        let acquired = waiter.await.expect("waiter task").expect("second lock");
+        drop(acquired);
+    }
+
+    /// A lock that never becomes available fails with the deadline error.
+    ///
+    /// The wait is bounded so a stalled holder cannot park the save, and the
+    /// shared in-process persistence mutex it holds, indefinitely. The error
+    /// must name the timeout so the caller can tell a deadline from a lock
+    /// failure it should not retry.
+    #[tokio::test]
+    async fn lock_times_out_while_the_holder_keeps_it() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let _held = lock_background_state_within(workspace.path(), Duration::from_secs(1))
+            .await
+            .expect("first lock");
+        let started = tokio::time::Instant::now();
+        let error = match lock_background_state_within(workspace.path(), Duration::from_millis(50)).await {
+            Ok(_) => panic!("a held lock must not be acquired before its deadline"),
+            Err(error) => error,
+        };
+
+        assert!(started.elapsed() >= Duration::from_millis(50));
+        assert!(
+            format!("{error:#}").contains("Timed out"),
+            "the deadline failure must be reported as a timeout: {error:#}"
+        );
     }
 }

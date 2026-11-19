@@ -4,6 +4,12 @@
 //! [`BackgroundOutputReader`]. A reader is keyed by the live record of one
 //! background task and returns a domain result, so the controller keeps line
 //! bounds, transport limits, validation, and error mapping.
+//!
+//! Background records are addressed by their canonical, owner-scoped id once a
+//! controller has loaded them: the load path rewrites a legacy
+//! workspace-global id, so a caller holding the pre-canonicalization id cannot
+//! resolve it through an exact map lookup. That id rewrite is a breaking change
+//! for such callers; reads must use the canonical id.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -27,8 +33,8 @@ mod types;
 // ─── Re-exports ─────────────────────────────────────────────────────────────
 
 pub use background::{
-    background_record_id, background_record_id_for_owner, build_background_subagent_command, extract_tail_lines,
-    load_archive_preview, subagent_display_label,
+    BackgroundLedgerGuard, background_record_id, background_record_id_for_owner, build_background_subagent_command,
+    extract_tail_lines, load_archive_preview, lock_background_ledger, subagent_display_label,
 };
 pub use background_output::{
     BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundTaskRef, ExecSessionOutputReader,
@@ -196,7 +202,11 @@ impl SubagentController {
         config: SubagentControllerConfig,
         owner_session_id: Option<&str>,
     ) -> impl Future<Output = Result<Self>> + Send {
-        let background_owner_session_id = owner_session_id.map(str::to_owned);
+        // An empty owner names no owner: `background_record_id_for_owner`
+        // already maps it to the base id, and a `Some("")` would otherwise
+        // filter the ledger as a distinct owner and merge saves under a
+        // phantom identity.
+        let background_owner_session_id = owner_session_id.filter(|owner| !owner.is_empty()).map(str::to_owned);
         Box::pin(async move {
             let discovered = discover_controller_subagents(&config.workspace_root).await?;
             let workspace_gated = config.workspace_gated;
@@ -225,6 +235,15 @@ impl SubagentController {
                 // the newest `updated_at` wins in both: file order is not a
                 // freshness signal, and letting it decide could load a
                 // cancelled copy over the cancellation.
+                //
+                // Breaking id change: this rekeys every entry to its
+                // canonical owner-scoped id, so the map below is keyed by the
+                // canonical id only. A caller that addresses a record by a
+                // legacy, pre-canonicalization id (the workspace-global
+                // `background-<agent>`) will not find it through an exact map
+                // lookup; reads must use the canonical id. Resolving a legacy
+                // id on lookup would require canonicalising the request in
+                // each query path, which lives outside this module.
                 controller_persistence::collect_by_canonical_id(
                     load_background_state(&config.workspace_root)
                         .await?

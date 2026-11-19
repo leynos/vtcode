@@ -182,6 +182,31 @@ supports_stream_usage = false
 }
 
 #[test]
+fn custom_provider_profiles_inherit_the_provider_stream_usage_default() {
+    let config: DiapasonConfig = toml::from_str(
+        r#"
+[[custom_providers]]
+name = "mycorp"
+display_name = "MyCorp"
+base_url = "https://llm.corp.example/v1"
+supports_stream_usage = true
+
+[custom_providers.profiles."inherits-usage"]
+supports_tools = true
+"#,
+    )
+    .expect("a profile that omits the stream usage flag should parse");
+
+    let provider = config.custom_providers.first().expect("provider should exist");
+    assert_eq!(provider.supports_stream_usage, Some(true));
+    assert_eq!(
+        provider.resolved_profile("inherits-usage").supports_stream_usage,
+        Some(true),
+        "an omitted profile flag must inherit the provider's streaming usage default"
+    );
+}
+
+#[test]
 fn custom_providers_profile_sampling_overrides_resolve_with_provider_defaults() {
     let config: DiapasonConfig = toml::from_str(
         r#"

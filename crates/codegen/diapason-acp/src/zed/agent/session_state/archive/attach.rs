@@ -101,6 +101,19 @@ impl ZedAgent {
         let thread = self
             .thread_manager
             .start_thread_with_identifier(identifier, ThreadBootstrap::from_listing(listing));
+        // The workspace runtime loads the background ledger for its restore,
+        // and that restore takes only ownerless rows. A row this session
+        // launched must carry its owner before that load, or it is relaunched
+        // here as workspace work instead of being adopted by this session.
+        if self.vt_config.as_deref().is_some_and(|config| config.subagents.enabled)
+            && let Err(error) = crate::zed::agent::optional_setup::migrate_resumed_session_background_owners(
+                workspace.path(),
+                session_id.0.as_ref(),
+            )
+            .await
+        {
+            log_suppressed_error(&error, "archive_attach", "background_owner_migration_failed");
+        }
         let workspace_lease = self
             .workspace_runtime_for(workspace)
             .await
@@ -196,6 +209,7 @@ impl ZedAgent {
             let outcome = crate::zed::agent::optional_setup::restore_acp_session_background_subagents(
                 controller,
                 self.vt_config.as_deref(),
+                workspace.path(),
             )
             .await;
             crate::zed::agent::optional_setup::report_optional_setup_outcome("background subagent restore", &outcome);

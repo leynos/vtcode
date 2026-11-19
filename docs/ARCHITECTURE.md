@@ -58,9 +58,14 @@ parallel event type in a consumer crate.
   `SubagentStatusEntry` and `BackgroundSubprocessEntry` snapshots without
   ACP-specific payloads. The ACP adapter filters by owning session and projects
   each snapshot into a standard ACP `session/update` tool call or tool-call
-  update, with task metadata under `_meta.lody.task`. The `_lody/*` extension
-  surface carries session-scoped subagent management requests and
-  `_lody/session/usage_update` usage deltas.
+  update, with task metadata under `_meta.lody.task`. Forwarding is
+  best-effort: live status updates enter a bounded channel through a
+  non-blocking send, so an update is dropped and counted when the channel is
+  full or closed, and a revision superseded by a newer revision for the same
+  task is discarded. A failed notification send is logged and not retried.
+  Clients reconcile by treating `_lody/subagents/list` as authoritative. The
+  `_lody/*` extension surface carries session-scoped subagent management
+  requests and `_lody/session/usage_update` usage deltas.
 
 ## Model + Harness
 

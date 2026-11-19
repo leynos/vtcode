@@ -82,16 +82,23 @@ impl ForwarderDuplex {
 #[tokio::test]
 async fn stale_initial_task_snapshot_is_not_forwarded_after_settlement() {
     let mut duplex = ForwarderDuplex::start("diapason-task-ordering-test", |progress_tx, queue| {
-        // Live delivery first, then the older snapshot the initial
-        // publisher captured before the terminal transition.
-        queue
-            .try_send(&progress_tx, live(with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z")))
-            .unwrap();
+        // Live delivery first, then a replay of the earlier transition under
+        // the revision it was queued with. It arrives after settlement but
+        // must not overwrite it.
+        let running = live(with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"));
+        let stale_revision = running.revision;
+        queue.try_send(&progress_tx, running).unwrap();
         queue
             .try_send(&progress_tx, live(with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z")))
             .unwrap();
         queue
-            .try_send(&progress_tx, live(with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z")))
+            .try_send(
+                &progress_tx,
+                QueuedLifecycleUpdate {
+                    update: with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"),
+                    revision: stale_revision,
+                },
+            )
             .unwrap();
     });
 

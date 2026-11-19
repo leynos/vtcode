@@ -66,6 +66,22 @@ impl SubagentController {
         }
     }
 
+    /// Reports whether this controller may restart a background record.
+    ///
+    /// Restarting is authority over a process, not visibility: a controller may
+    /// list every record in the shared ledger, but it may only launch the work
+    /// it owns. A scoped controller owns the records tagged with its session. An
+    /// unscoped controller — the TUI and CLI — owns the workspace's ownerless
+    /// records, including legacy ones. Another session's record belongs to that
+    /// session: its exec sessions live in that process, so this controller would
+    /// read them as missing and start a second process for the same task.
+    fn background_record_restart_is_authorised(&self, record: &BackgroundRecord) -> bool {
+        match self.background_owner_session_id.as_deref() {
+            Some(owner) => record.owner_session_id.as_deref() == Some(owner),
+            None => record.owner_session_id.is_none(),
+        }
+    }
+
     /// Restarts background subagents that were previously enabled but are no longer running.
     pub async fn restore_background_subagents(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
         self.reconcile_persisted_background_cancellations().await?;
@@ -74,7 +90,7 @@ impl SubagentController {
             state
                 .background_children
                 .values()
-                .filter(|record| record.desired_enabled)
+                .filter(|record| record.desired_enabled && self.background_record_restart_is_authorised(record))
                 .map(|record| {
                     (
                         record.id.clone(),
@@ -101,12 +117,12 @@ impl SubagentController {
                 record_id = record_id.as_str(),
                 "Restoring background subagent subprocess"
             );
-            self.ensure_background_record_running(BackgroundRunRequest {
+            self.restart_after_background_observation(
+                &record_id,
                 agent_name,
-                stable_id: Some(record_id),
                 restart_attempts,
-                overrides: None,
-            })
+                Some(exec_session_id.as_str()),
+            )
             .await?;
         }
 
@@ -202,19 +218,99 @@ impl SubagentController {
         if persisted.is_empty() {
             return Ok(());
         }
-        let mut state = self.state.write().await;
-        for (id, record) in state.background_children.iter_mut() {
-            let Some(cancelled) = persisted.get(id) else {
-                continue;
-            };
-            if cancelled.adopt_cancellation_into(record) {
-                tracing::debug!(
-                    record_id = id.as_str(),
-                    agent_name = record.agent_name.as_str(),
-                    "Adopted a background cancellation persisted by another controller"
-                );
+        let mut adopted_sessions = Vec::new();
+        {
+            let mut state = self.state.write().await;
+            for (id, record) in state.background_children.iter_mut() {
+                let Some(cancelled) = persisted.get(id) else {
+                    continue;
+                };
+                if cancelled.adopt_cancellation_into(record) {
+                    tracing::debug!(
+                        record_id = id.as_str(),
+                        agent_name = record.agent_name.as_str(),
+                        "Adopted a background cancellation persisted by another controller"
+                    );
+                    if !record.exec_session_id.is_empty() {
+                        adopted_sessions.push(record.exec_session_id.clone());
+                    }
+                }
             }
         }
+        // The controller that persisted the stop may never have seen the
+        // process, because an unscoped controller cannot reach a session in
+        // another process, so adopting the stop terminates it here. Closing runs
+        // without the state lock, and a session that already exited is expected.
+        for exec_session_id in adopted_sessions {
+            self.close_background_exec_session(&exec_session_id).await;
+        }
+        Ok(())
+    }
+
+    /// Re-reads the persisted copy of one record under the persistence lock.
+    ///
+    /// Refresh reads the ledger once, before it observes any exec session, so a
+    /// cancellation another controller persists in between would be missed:
+    /// the local copy still says the task is wanted, settlement schedules a
+    /// replacement, and the relaunch would resurrect it. Re-reading under the
+    /// in-process lock that serialises saves closes that window.
+    ///
+    /// The copy is returned unfiltered. Whether it is a stop for this launch is
+    /// decided by [`PersistedBackgroundRecord::adopt_cancellation_into`], which
+    /// already requires a cleared desired flag and the same exec session; the
+    /// session identifies the launch, so a stop for a replaced session leaves
+    /// the replacement alone.
+    async fn persisted_stop_for_launch(&self, record_id: &str) -> Result<Option<PersistedBackgroundRecord>> {
+        if self.config.managed_background_runtime {
+            return Ok(None);
+        }
+        let _persistence_guard = self.lock_scope.persistence().lock().await;
+        let mut persisted = controller_persistence::collect_by_canonical_id(
+            load_background_state(&self.config.workspace_root).await?.records,
+        );
+        Ok(persisted.remove(record_id))
+    }
+
+    /// Restarts one record after refresh observed its exec session end.
+    ///
+    /// The observation names the launch this round examined. Another controller
+    /// may persist a stop for that launch before the restart begins, so the
+    /// ledger is re-read first. A matching stop is adopted instead of
+    /// overridden: the replacement would resurrect a task its owner stopped,
+    /// and the following save would race that owner's intent.
+    pub(super) async fn restart_after_background_observation(
+        &self,
+        record_id: &str,
+        agent_name: String,
+        restart_attempts: u8,
+        observed_exec_session_id: Option<&str>,
+    ) -> Result<()> {
+        if let Some(exec_session_id) = observed_exec_session_id
+            && let Some(stop) = self.persisted_stop_for_launch(record_id).await?
+        {
+            let adopted = {
+                let mut state = self.state.write().await;
+                state
+                    .background_children
+                    .get_mut(record_id)
+                    .is_some_and(|record| stop.adopt_cancellation_into(record))
+            };
+            if adopted {
+                tracing::info!(
+                    record_id,
+                    exec_session_id,
+                    "Skipped a background restart; another controller stopped this launch"
+                );
+                return Ok(());
+            }
+        }
+        self.ensure_background_record_running(BackgroundRunRequest {
+            agent_name,
+            stable_id: Some(record_id.to_string()),
+            restart_attempts,
+            overrides: None,
+        })
+        .await?;
         Ok(())
     }
 
@@ -226,8 +322,22 @@ impl SubagentController {
             state.background_children.keys().cloned().collect::<Vec<_>>()
         };
 
-        let mut changed = false;
         for record_id in record_ids {
+            let restart_authorised = {
+                let state = self.state.read().await;
+                state
+                    .background_children
+                    .get(&record_id)
+                    .is_some_and(|record| self.background_record_restart_is_authorised(record))
+            };
+            if !restart_authorised {
+                // Another session owns this record. Its owning process drives
+                // its lifecycle, and this controller cannot even see that
+                // process's exec sessions, so settling or respawning it here
+                // would race the owner and could start a second process under
+                // the shared task id. Listing remains workspace-wide.
+                continue;
+            }
             let (snapshot_target, before_status, before_error) = {
                 let state = self.state.read().await;
                 let record = state.background_children.get(&record_id);
@@ -247,16 +357,18 @@ impl SubagentController {
                 BackgroundExecSessionObservation::Unobserved => continue,
             };
 
-            let respawn = self.update_background_record_state(&record_id, snapshot).await?;
+            let respawn = self
+                .update_background_record_state(&record_id, snapshot_target.as_deref(), snapshot)
+                .await?;
             let respawning = respawn.is_some();
 
             if let Some((agent_name, stable_id, restart_attempts)) = respawn {
-                self.ensure_background_record_running(BackgroundRunRequest {
+                self.restart_after_background_observation(
+                    &stable_id,
                     agent_name,
-                    stable_id: Some(stable_id),
                     restart_attempts,
-                    overrides: None,
-                })
+                    snapshot_target.as_deref(),
+                )
                 .await?;
             }
 
@@ -266,8 +378,6 @@ impl SubagentController {
                     r.status != before_status.unwrap_or(BackgroundSubprocessStatus::Starting) || r.error != before_error
                 })
             };
-            changed |= changed_this_record;
-
             if changed_this_record && !respawning {
                 self.publish_background_status(&record_id).await;
             }
@@ -275,9 +385,10 @@ impl SubagentController {
             self.refresh_background_archive_metadata(&record_id).await?;
         }
 
-        if changed {
-            self.save_background_state().await?;
-        }
+        // A launch can commit a live record whose save failed; reuse runs
+        // refresh first, so the owed write is retried before reuse reports
+        // that record as durable.
+        self.retry_owed_background_ledger_write().await?;
         Ok(self.background_status_entries().await)
     }
 }

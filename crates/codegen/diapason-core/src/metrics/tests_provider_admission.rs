@@ -42,9 +42,25 @@ fn provider_request_metrics_record_bounded_aggregate_counts_and_timings() {
 fn provider_request_prometheus_exports_aggregate_attempt_samples() {
     let collector = collector_with_provider_attempts();
     let prometheus = collector.export_prometheus();
-    assert!(prometheus.contains("diapason_provider_attempts_started_total 2"));
-    assert!(prometheus.contains("diapason_provider_attempts_in_flight 0"));
-    assert!(prometheus.contains("diapason_provider_time_to_first_output_ms_total 10"));
+    let samples: Vec<_> = prometheus
+        .split('\n')
+        .filter(|line| line.starts_with("diapason_provider_"))
+        .collect();
+    assert_eq!(
+        samples,
+        vec![
+            "diapason_provider_attempts_started_total 2",
+            "diapason_provider_attempts_succeeded_total 1",
+            "diapason_provider_attempts_failed_total 1",
+            "diapason_provider_attempts_cancelled_total 0",
+            "diapason_provider_retries_scheduled_total 1",
+            "diapason_provider_attempts_in_flight 0",
+            "diapason_provider_attempt_duration_ms_total 46",
+            "diapason_provider_time_to_first_output_ms_total 10",
+            "diapason_provider_time_to_first_output_observations_total 2",
+        ],
+        "{prometheus}"
+    );
 }
 
 #[test]
@@ -60,14 +76,14 @@ fn provider_request_prometheus_exports_admission_samples() {
 /// that caches the sample or ignores the injected port fails loudly.
 #[derive(Debug)]
 struct ChangingAdmissionSource {
-    reads: std::sync::Mutex<Vec<ProviderAdmissionSnapshot>>,
+    reads: [ProviderAdmissionSnapshot; 2],
     next: std::sync::atomic::AtomicUsize,
 }
 
 impl ChangingAdmissionSource {
     fn new(samples: [ProviderAdmissionSnapshot; 2]) -> Self {
         Self {
-            reads: std::sync::Mutex::new(samples.to_vec()),
+            reads: samples,
             next: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -76,12 +92,9 @@ impl ChangingAdmissionSource {
 impl ProviderAdmissionMetricsSource for ChangingAdmissionSource {
     fn snapshot(&self) -> ProviderAdmissionSnapshot {
         let index = self.next.fetch_add(1, Ordering::SeqCst);
-        // A poisoned lock still holds a usable sample list, and this double has
-        // no recovery path to preserve, so the guard is recovered rather than
-        // unwrapped. The unwrap/expect scan also reads this module as
-        // production code because its `cfg(test)` lives in the parent.
-        let reads = self.reads.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        reads[index.min(reads.len() - 1)]
+        // The samples are fixed at construction, so the last one is returned
+        // once the sequence runs out.
+        self.reads[index.min(self.reads.len() - 1)]
     }
 }
 
@@ -168,11 +181,21 @@ fn prometheus_export_carries_the_supplied_admission_values() {
     let collector = MetricsCollector::with_admission_metrics_source(source);
 
     let prometheus = collector.export_prometheus();
-    assert!(prometheus.contains("diapason_custom_provider_admission_queue_depth 7"), "{prometheus}");
-    assert!(prometheus.contains("diapason_custom_provider_admission_in_flight 4"), "{prometheus}");
-    assert!(prometheus.contains("diapason_custom_provider_admission_queue_waits_total 31"), "{prometheus}");
-    assert!(prometheus.contains("diapason_custom_provider_admission_queue_wait_ms_total 2500"), "{prometheus}");
-    assert!(prometheus.contains("diapason_custom_provider_admission_queue_timeouts_total 2"), "{prometheus}");
+    let samples: Vec<_> = prometheus
+        .split('\n')
+        .filter(|line| line.starts_with("diapason_custom_provider_admission_"))
+        .collect();
+    assert_eq!(
+        samples,
+        vec![
+            "diapason_custom_provider_admission_queue_depth 7",
+            "diapason_custom_provider_admission_in_flight 4",
+            "diapason_custom_provider_admission_queue_waits_total 31",
+            "diapason_custom_provider_admission_queue_wait_ms_total 2500",
+            "diapason_custom_provider_admission_queue_timeouts_total 2",
+        ],
+        "{prometheus}"
+    );
 }
 
 #[test]

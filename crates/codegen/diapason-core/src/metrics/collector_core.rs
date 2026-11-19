@@ -41,7 +41,7 @@ impl MetricsCollector {
             provider_requests: Arc::new(Mutex::new(ProviderRequestMetrics::default())),
             service_startup: Arc::new(Mutex::new(ServiceStartupMetrics::default())),
             task_lifecycle_notification_queue: Arc::new(Mutex::new(TaskLifecycleNotificationQueueMetrics::default())),
-            acp_extension: Arc::new(Mutex::new(AcpExtensionMetrics::default())),
+            acp_extension: Arc::new(Mutex::new(acp_metrics::AcpExtensionState::default())),
             workspace_runtime_cache_entries: Arc::new(AtomicU64::new(0)),
             admission_metrics_source: source,
             start_time: Instant::now(),

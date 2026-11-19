@@ -39,6 +39,13 @@ pub enum BackgroundOutput {
 pub(crate) struct BackgroundOutputSource<'a> {
     /// The exec session that records live output; empty when none was created.
     pub(crate) exec_session_id: &'a str,
+    /// The child session the task recorded, which names its archive.
+    ///
+    /// A record whose exec session is gone has an archive of its own even when
+    /// no path was recorded yet, because the archive metadata is only attached
+    /// once a refresh has resolved it. The reader uses this identifier to find
+    /// that archive when it has no recorded path to read.
+    pub(crate) session_id: &'a str,
     /// The task's own transcript, preferred over the session archive.
     pub(crate) transcript_path: Option<&'a Path>,
     /// The session archive, used when no transcript is recorded.
@@ -54,6 +61,7 @@ impl<'a> BackgroundOutputSource<'a> {
     fn from_entry(entry: &'a BackgroundSubprocessEntry) -> Self {
         Self {
             exec_session_id: &entry.exec_session_id,
+            session_id: &entry.session_id,
             transcript_path: entry.transcript_path.as_deref(),
             archive_path: entry.archive_path.as_deref(),
         }
@@ -184,6 +192,7 @@ mod tests {
     fn debug_rendering_names_only_the_task_id() {
         let source = BackgroundOutputSource {
             exec_session_id: "exec-session-that-must-not-leak",
+            session_id: "child-session-that-must-not-leak",
             transcript_path: Some(Path::new("/tmp/transcript-that-must-not-leak.jsonl")),
             archive_path: Some(Path::new("/tmp/archive-that-must-not-leak.jsonl")),
         };
@@ -194,6 +203,7 @@ mod tests {
         assert!(rendered.contains("task-7"), "the rendering must name the task identity: {rendered}");
         for handle in [
             source.exec_session_id,
+            source.session_id,
             "/tmp/transcript-that-must-not-leak.jsonl",
             "/tmp/archive-that-must-not-leak.jsonl",
         ] {

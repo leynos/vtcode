@@ -1,4 +1,8 @@
 //! Resolve ACP tool calls and apply lifecycle and permission authorization.
+
+mod admission;
+
+use self::admission::session_subagent_admission_error;
 use super::super::ZedAgent;
 use super::super::warn_hook_message;
 use super::cancelable_session_request;
@@ -14,7 +18,6 @@ use crate::tooling::{AcpToolRegistry, ToolDescriptor};
 use crate::zed::agent::log_suppressed_error;
 use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 use crate::zed::types::ToolCallResult;
-use diapason_core::config::constants::tools;
 use diapason_core::hooks::PreToolHookDecision;
 use diapason_core::llm::provider::ToolCall as ProviderToolCall;
 use diapason_core::permissions::build_permission_request;
@@ -37,32 +40,46 @@ impl ZedAgent {
         let permission_prompter = workspace_runtime
             .as_ref()
             .map_or(self.permission_prompter.as_ref(), |runtime| runtime.permission_prompter.as_ref());
-        let scoped_registry;
         let local_tool_registry = workspace_runtime
             .as_ref()
             .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
-        let local_tool_registry = if workspace_runtime.is_some() {
-            scoped_registry = local_tool_registry.with_subagent_controller(
-                self.session_subagent_controller(invocation.session).map_err(|error| {
-                    log_suppressed_error(&error, "session_subagent_controller_read", "session_lock_unavailable");
-                    SdkError::internal_error()
-                })?,
-            );
-            &scoped_registry
+        // Subagent work runs through the session's controller, never the
+        // workspace's ownerless one; without one, core rejects the call.
+        let session_controller = if workspace_runtime.is_some() {
+            self.session_subagent_controller(invocation.session).map_err(|error| {
+                log_suppressed_error(&error, "session_subagent_controller_read", "session_lock_unavailable");
+                SdkError::internal_error()
+            })?
         } else {
-            local_tool_registry
+            None
         };
+        let scoped_registry = local_tool_registry.with_subagent_controller(session_controller.clone());
         let Some(func_ref) = invocation.call.function.as_ref() else {
             return Ok(Self::tool_call_result_from_report(
                 invocation.call,
                 ToolExecutionReport::failure("unknown", "Malformed tool call: missing function payload"),
             ));
         };
+        let tool_name = func_ref.name.as_str();
+        let admission =
+            session_subagent_admission_error(tool_name, session_controller.as_ref(), func_ref.arguments.as_str()).await;
+        if let Some(rejection) = admission {
+            // The call is settled here rather than executed, so it must report
+            // the same terminal update a refused call reports through the
+            // authorization path; otherwise the client sees a call that never
+            // finishes even though the model received the tool failure.
+            let report = ToolExecutionReport::failure(tool_name, &rejection);
+            let call_id = acp::ToolCallId::new(Arc::from(invocation.call.id.to_owned()));
+            let update = acp::ToolCallUpdate::new(call_id, Self::update_fields_from_report(&report));
+            self.send_update(invocation.session_id, acp::SessionUpdate::ToolCallUpdate(update))
+                .await?;
+            return Ok(Self::tool_call_result_from_report(invocation.call, report));
+        }
         let context = ToolExecutionContext {
             invocation,
             acp_tool_registry,
             permission_prompter,
-            local_tool_registry,
+            local_tool_registry: &scoped_registry,
         };
         let resolved = Self::resolve_tool_call(invocation.call.id.as_str(), func_ref, context.acp_tool_registry);
         let pre_tool_decision = self.run_pre_tool_stage(&context, &resolved).await?;

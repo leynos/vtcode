@@ -5,15 +5,24 @@
 //! bound, a not-ready or archived task serves the recorded output, a
 //! live-read fault is reported against its target instead of being masked
 //! by an empty result, the preview applies its fixed bound, an unreadable
-//! archive yields an empty preview, an empty legacy owner falls back to the
+//! archive reaches the caller, an empty legacy owner falls back to the
 //! current session, and the reader resolves each task by task id.
 use super::{
     BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundSubprocessEntry, BackgroundTaskRef,
     exec_session_is_missing, read_output_tail, read_preview, usable_background_parent_session_id,
 };
 use futures::future::BoxFuture;
+use rstest::rstest;
 
 use crate::subagents::constants::SUBAGENT_PREVIEW_LINES;
+
+mod cancel_tests;
+mod lifecycle_tests;
+mod pending_write_tests;
+mod resolver_tests;
+mod run_tests;
+mod settlement_tests;
+mod support;
 
 const TARGET: &str = "background-worker";
 
@@ -95,30 +104,32 @@ fn empty_legacy_parent_owner_falls_back_to_the_current_session() {
     assert_eq!(previous_owner.unwrap_or(current_owner), "current-session");
 }
 
+/// Both output sources are bounded by the caller's line count.
+///
+/// The live tail and the archived transcript are read by different paths, so
+/// each is pinned here: a bound applied in only one of them would still let a
+/// caller receive more lines than it asked for from the other.
+#[rstest]
+#[case::live(FakeOutput::Live("one\ntwo\nthree"), 2, "two\nthree")]
+#[case::archived(FakeOutput::Archived("old\narchived"), 1, "archived")]
 #[tokio::test]
-/// Live output is bounded by the caller's line count.
-async fn live_output_keeps_the_requested_bound() {
-    let reader = FakeOutputReader::for_task(TARGET, FakeOutput::Live("one\ntwo\nthree"));
+async fn output_tail_keeps_the_requested_bound(
+    #[case] source: FakeOutput,
+    #[case] lines: usize,
+    #[case] expected: &str,
+) {
+    let reader = FakeOutputReader::for_task(TARGET, source);
     let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
-    let output = read_output_tail(&reader, &entry, TARGET, 2).await.expect("live output tail");
+    let output = read_output_tail(&reader, &entry, TARGET, lines)
+        .await
+        .expect("output tail keeps the requested bound");
 
-    assert_eq!(output, "two\nthree");
+    assert_eq!(output, expected);
 }
 
-#[tokio::test]
-/// Archived output is bounded by the caller's line count.
-async fn archived_output_keeps_the_requested_bound() {
-    let reader = FakeOutputReader::for_task(TARGET, FakeOutput::Archived("old\narchived"));
-    let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
-
-    let output = read_output_tail(&reader, &entry, TARGET, 1).await.expect("archived tail");
-
-    assert_eq!(output, "archived");
-}
-
-#[tokio::test]
 /// Two tasks with different outcomes resolve independently by task id.
+#[tokio::test]
 async fn each_task_resolves_independently_by_task_id() {
     let reader = FakeOutputReader::with_outputs(vec![
         ("first-task", FakeOutput::Live("first live")),
@@ -142,8 +153,8 @@ async fn each_task_resolves_independently_by_task_id() {
     assert_eq!(second_preview, "second archived");
 }
 
-#[tokio::test]
 /// A task with no output yet reads as an empty tail.
+#[tokio::test]
 async fn not_ready_output_is_empty() {
     let reader = FakeOutputReader::for_task(TARGET, FakeOutput::NotReady);
     let entry = entry_with_id(TARGET, None);
@@ -153,8 +164,8 @@ async fn not_ready_output_is_empty() {
     assert!(output.is_empty());
 }
 
-#[tokio::test]
 /// A read fault names the task it was reading.
+#[tokio::test]
 async fn read_errors_are_reported_with_the_target() {
     let reader = FakeOutputReader::for_task(TARGET, FakeOutput::LiveFailure("permission denied"));
     let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
@@ -168,8 +179,8 @@ async fn read_errors_are_reported_with_the_target() {
     assert!(rendered.contains("permission denied"), "{rendered}");
 }
 
-#[tokio::test]
 /// A preview applies the fixed preview bound.
+#[tokio::test]
 async fn preview_keeps_the_preview_bound() {
     let archived = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26";
     let reader = FakeOutputReader::for_task(TARGET, FakeOutput::Archived(archived));
@@ -183,19 +194,28 @@ async fn preview_keeps_the_preview_bound() {
     assert_eq!(lines.last().copied(), Some("26"));
 }
 
+/// An archive read fault reaches the caller instead of becoming an empty
+/// preview.
+///
+/// The two read paths handle the same environmental fault the same way, so a
+/// caller can never mistake an unreadable archive for a task that has not
+/// written output yet.
 #[tokio::test]
-/// A preview is best effort when the archive cannot be read.
-async fn preview_is_empty_when_the_archive_is_unreadable() {
+async fn preview_propagates_an_archive_read_fault() {
     let reader = FakeOutputReader::for_task(TARGET, FakeOutput::ArchiveFailure("archive is corrupt"));
     let entry = entry_with_id(TARGET, Some("/tmp/session.json"));
 
-    let preview = read_preview(&reader, &entry, TARGET).await.expect("a preview is best effort");
+    let error = read_preview(&reader, &entry, TARGET)
+        .await
+        .expect_err("an unreadable archive must reach the caller");
 
-    assert!(preview.is_empty());
+    let rendered = format!("{error:#}");
+    assert!(rendered.contains("read background output for background-worker"), "{rendered}");
+    assert!(rendered.contains("archive is corrupt"), "{rendered}");
 }
 
-#[tokio::test]
 /// A preview does not mask a live-read fault.
+#[tokio::test]
 async fn preview_propagates_a_live_read_fault() {
     let reader = FakeOutputReader::for_task(TARGET, FakeOutput::LiveFailure("permission denied"));
     let entry = entry_with_id(TARGET, Some("/tmp/session.json"));

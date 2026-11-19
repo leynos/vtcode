@@ -32,11 +32,11 @@ use super::super::types::{SessionHandle, lock_poison_error};
 use super::ZedAgent;
 use crate::acp;
 use crate::zed::connection::ConnectionHandle;
-use chrono::{DateTime, Utc};
 use diapason_core::metrics::TaskLifecycleNotificationQueueMetricsObserver;
 use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 use hashbrown::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -53,16 +53,20 @@ pub(super) fn bounded_session_correlation(session_id: &acp::SessionId) -> String
         .collect()
 }
 
-/// One queued lifecycle item, tagged with the publication path that produced it.
+/// One queued lifecycle item, tagged with its position in the session's
+/// transition order.
 ///
 /// The initial-snapshot publisher runs concurrently with live observer
 /// delivery, and the controller stamps both from `Utc::now()`, so a snapshot
 /// captured before a transition can share that transition's `updated_at` and
-/// still be queued after it. The flag is what tells the two apart at equal
-/// timestamps.
+/// still be queued after it. Timestamps are therefore not an ordering key. The
+/// adapter assigns a monotonic revision when the item enters the queue: the
+/// snapshot pass reserves one base revision before the observer is registered,
+/// and every live transition takes a strictly higher revision. The forwarder
+/// orders by that revision and keeps `updated_at` only for the wire contract.
 struct QueuedLifecycleUpdate {
     update: LifecycleUpdate,
-    initial_snapshot: bool,
+    revision: u64,
 }
 
 struct TaskLifecycleForwarderSpan {
@@ -117,49 +121,28 @@ fn task_lifecycle_forwarder_outcome(send_failures: u64) -> &'static str {
 }
 
 /// Ordering key for one task snapshot.
+///
+/// The adapter owns this counter, not the controller: the controller's
+/// `updated_at` is a wall-clock timestamp for the wire contract and two
+/// transitions recorded in the same tick share it, so it cannot order them.
+/// A revision taken as the item is queued is monotonic across the snapshot
+/// pass and the live observer alike.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct LifecycleRevision {
-    updated_at: DateTime<Utc>,
-    terminal: bool,
-    initial_snapshot: bool,
-}
+struct LifecycleRevision(u64);
 
 impl LifecycleRevision {
     fn of(queued: &QueuedLifecycleUpdate) -> Self {
-        Self {
-            updated_at: queued.update.updated_at(),
-            terminal: queued.update.is_terminal(),
-            initial_snapshot: queued.initial_snapshot,
-        }
+        Self(queued.revision)
     }
 
     /// Whether this revision may supersede `latest` on the wire.
     ///
-    /// The initial-snapshot publisher runs concurrently with live delivery, so
-    /// a snapshot captured before a transition can be queued after it. An
-    /// update that predates the last one forwarded is stale and must not roll
-    /// the client's task back. At an identical timestamp, a live transition
-    /// supersedes the initial snapshot it raced, and an initial snapshot never
-    /// supersedes anything already forwarded. Between two live revisions a
-    /// terminal state still wins: a terminal→non-terminal step there is a
-    /// replay artefact, not a transition the controller recorded.
+    /// Revisions are assigned strictly increasing per session, so the newer
+    /// revision always wins. The initial snapshot shares one base revision
+    /// across every task it publishes, which is safe because revisions are
+    /// compared per task id and the pass emits at most one snapshot per task.
     fn supersedes(self, latest: Option<Self>) -> bool {
-        latest.is_none_or(|latest| {
-            if self.updated_at != latest.updated_at {
-                return self.updated_at > latest.updated_at;
-            }
-            if self.initial_snapshot {
-                // The controller stamps initial snapshots and live transitions
-                // from one clock, so an equal instant cannot show which came
-                // first. The snapshot was captured before the live transition
-                // it now trails, so the live one must stand.
-                return false;
-            }
-            if latest.initial_snapshot {
-                return true;
-            }
-            self.terminal || !latest.terminal
-        })
+        latest.is_none_or(|latest| self.0 > latest.0)
     }
 }
 
@@ -228,10 +211,17 @@ impl ZedAgent {
         // substitute a counting double, so the collector Arc is coerced here.
         let queue_metrics = Arc::clone(&metrics) as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
         let queue = Arc::new(LifecycleQueueTracker::new(queue_metrics));
+        let next_revision = Arc::new(AtomicU64::new(0));
+        // Reserve the snapshot pass's revision before the observer exists, so
+        // every live transition registered from here takes a strictly newer
+        // revision than the snapshots. A snapshot captured from the same state
+        // a transition reports must not overwrite the transition.
+        let snapshot_revision = next_revision.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let observer = Arc::new(AcpTaskLifecycleObserver {
             sender: sender.clone(),
             queue: Arc::clone(&queue),
             session_id: session_id.to_string(),
+            next_revision: Arc::clone(&next_revision),
         });
         let registration = controller.register_progress_observer(session_id.0.to_string(), observer);
         let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id.clone(), client, Arc::clone(&queue));
@@ -244,13 +234,17 @@ impl ZedAgent {
         let initial_controller = Arc::clone(&controller);
         let initial_queue = queue;
         let initial_metrics = Arc::clone(&metrics);
-        let _initial_snapshot_task = tokio::spawn(async move {
+        // Keep the publisher's handle: it writes into the forwarder's queue, so
+        // aborting only the forwarder would leave it enqueueing into a queue
+        // nothing drains. It is stopped with the forwarder in every path.
+        let initial_snapshot_task = tokio::spawn(async move {
             publish_initial_task_snapshots(
                 &initial_controller,
                 &initial_session_id,
                 &initial_sender,
                 &initial_queue,
                 &initial_metrics,
+                snapshot_revision,
             )
             .await;
         });
@@ -262,13 +256,18 @@ impl ZedAgent {
         {
             Ok(data) => data,
             Err(error) => {
+                initial_snapshot_task.abort();
                 forwarder.abort();
                 return Err(error);
             }
         };
         if data.task_lifecycle_forwarder.as_ref().is_some_and(|task| !task.is_finished()) {
+            initial_snapshot_task.abort();
             forwarder.abort();
         } else {
+            if let Some(previous_publisher) = data.task_lifecycle_snapshot_publisher.replace(initial_snapshot_task) {
+                previous_publisher.abort();
+            }
             data.task_lifecycle_forwarder = Some(forwarder);
             data.task_lifecycle_registration = Some(registration);
         }
@@ -280,6 +279,9 @@ struct AcpTaskLifecycleObserver {
     session_id: String,
     sender: mpsc::Sender<QueuedLifecycleUpdate>,
     queue: Arc<LifecycleQueueTracker>,
+    /// Shared with the initial-snapshot pass: every live transition takes a
+    /// revision newer than the pass's reserved base.
+    next_revision: Arc<AtomicU64>,
 }
 
 impl SubagentProgressObserver for AcpTaskLifecycleObserver {
@@ -300,7 +302,8 @@ impl SubagentProgressObserver for AcpTaskLifecycleObserver {
 
 impl AcpTaskLifecycleObserver {
     fn try_send(&self, update: LifecycleUpdate) {
-        let queued = QueuedLifecycleUpdate { update, initial_snapshot: false };
+        let revision = self.next_revision.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let queued = QueuedLifecycleUpdate { update, revision };
         if let Err(kind) = self.queue.try_send(&self.sender, queued) {
             let cumulative_count = self.queue.record_drop(kind);
             warn!(

@@ -1,0 +1,121 @@
+//! Shared fixtures for the background-liveness test modules.
+//!
+//! The record builders, the ledger writer and the projection helpers are used
+//! by more than one of the focused modules below, so they live here instead of
+//! being copied into each of them.
+use super::*;
+use crate::subagents::controller_background_ops::BackgroundRunPlan;
+
+/// Builds a persisted record whose exec session is not registered with the
+/// controller, so the liveness overlay applies, and overrides the cached
+/// status and restart budget the projection consults.
+pub(super) fn record_with_restart_state(
+    id: &str,
+    owner_session_id: Option<&str>,
+    status: &str,
+    restart_attempts: u8,
+) -> PersistedBackgroundRecord {
+    let mut value = serde_json::to_value(persisted_background_record_for_owner(id, owner_session_id))
+        .expect("serialize fixture record");
+    value["status"] = serde_json::json!(status);
+    value["desired_enabled"] = serde_json::json!(true);
+    value["restart_attempts"] = serde_json::json!(restart_attempts);
+    serde_json::from_value(value).expect("deserialize record")
+}
+
+/// Overrides the projection's terminal-time inputs on the fixture record:
+/// whether the owner still desires the process, and whether a terminal instant
+/// was ever observed.
+pub(super) fn record_with_terminal_state(
+    id: &str,
+    owner_session_id: Option<&str>,
+    status: &str,
+    restart_attempts: u8,
+    desired_enabled: bool,
+    ended_at: Option<&str>,
+) -> PersistedBackgroundRecord {
+    let mut value = serde_json::to_value(record_with_restart_state(id, owner_session_id, status, restart_attempts))
+        .expect("serialize fixture record");
+    value["desired_enabled"] = serde_json::json!(desired_enabled);
+    value["ended_at"] = serde_json::json!(ended_at);
+    serde_json::from_value(value).expect("deserialize record")
+}
+
+/// Builds the plan of a launch that has already been replaced or cancelled.
+///
+/// The plan names an exec session the stored record no longer carries, which
+/// is exactly the state an older launch is in when it fails after a
+/// cancellation settled the record or a replacement took its id.
+pub(super) fn stale_launch_plan(exec_session_id: &str) -> BackgroundRunPlan {
+    BackgroundRunPlan {
+        owner_session_id: Some("session-a".to_string()),
+        spec: diapason_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == "explorer")
+            .expect("explorer spec"),
+        record_id: "background-worker@session-a".to_string(),
+        parent_session_id: "parent-session".to_string(),
+        session_id: "child-session".to_string(),
+        exec_session_id: exec_session_id.to_string(),
+        created_at: Utc::now(),
+        prompt: "work".to_string(),
+        max_turns: None,
+        model_override: None,
+        reasoning_override: None,
+        restart_attempts: 0,
+    }
+}
+
+pub(super) fn write_ledger(path: &std::path::Path, records: Vec<PersistedBackgroundRecord>) {
+    std::fs::write(path, serde_json::to_string(&PersistedBackgroundState { records }).expect("serialize state"))
+        .expect("write state");
+}
+
+pub(super) fn auto_restore_config(workspace_root: PathBuf, auto_restore: bool) -> SubagentControllerConfig {
+    let mut cfg = DiapasonConfig::default();
+    cfg.subagents.background.auto_restore = auto_restore;
+    test_controller_config(workspace_root, cfg)
+}
+
+/// Projects one persisted record through the liveness query and returns the
+/// entry the caller would observe.
+pub(super) async fn projected_liveness_entry(
+    temp: &TempDir,
+    record: PersistedBackgroundRecord,
+    auto_restore: bool,
+) -> BackgroundSubprocessEntry {
+    let state_dir = temp.path().join(".diapason/state");
+    std::fs::create_dir_all(&state_dir).expect("state dir");
+    write_ledger(&state_dir.join("background_subagents.json"), vec![record]);
+    let controller = SubagentController::new_with_background_owner(
+        auto_restore_config(temp.path().to_path_buf(), auto_restore),
+        Some("session-a"),
+    )
+    .await
+    .expect("controller");
+
+    controller
+        .background_status_entries_with_liveness()
+        .await
+        .into_iter()
+        .find(|observed| observed.entry.id == "background-worker@session-a")
+        .expect("owned background record")
+        .entry
+}
+
+/// Projects one persisted record through the liveness query and returns the
+/// status the caller would observe.
+pub(super) async fn projected_liveness_status(
+    temp: &TempDir,
+    record: PersistedBackgroundRecord,
+    auto_restore: bool,
+) -> BackgroundSubprocessStatus {
+    projected_liveness_entry(temp, record, auto_restore).await.status
+}
+
+/// Rewrites one persisted record with an explicit exec session.
+pub(super) fn with_exec_session(record: PersistedBackgroundRecord, exec_session_id: &str) -> PersistedBackgroundRecord {
+    let mut value = serde_json::to_value(record).expect("serialize fixture record");
+    value["exec_session_id"] = serde_json::json!(exec_session_id);
+    serde_json::from_value(value).expect("deserialize record")
+}

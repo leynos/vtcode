@@ -263,10 +263,14 @@ async fn a_shared_controller_routes_each_sessions_delegations_to_its_own_observe
         let mut state = for_session_a.state.write().await;
         state.children.insert(
             "grandchild-a".to_string(),
+            // The immediate parent is session a's own child session, not the
+            // observer key. Routing by `parent_thread_id` would find no
+            // observer here, so only the inherited observer scope reaches
+            // session-a.
             test_child_record(
                 "grandchild-a",
                 "grandchild-a-session",
-                "session-a",
+                "child-a-session",
                 &spec,
                 SubagentStatus::Running,
                 2,
@@ -281,7 +285,7 @@ async fn a_shared_controller_routes_each_sessions_delegations_to_its_own_observe
             test_child_record(
                 "grandchild-b",
                 "grandchild-b-session",
-                "session-b",
+                "child-b-session",
                 &spec,
                 SubagentStatus::Running,
                 2,

@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 use super::{
-    BackgroundRecord, BackgroundSubprocessEntry, ChildRecord, StatusEntryBuilder, SubagentController,
-    SubagentProgressObserver, SubagentStatusEntry,
+    BackgroundSubprocessEntry, ChildRecord, StatusEntryBuilder, SubagentController, SubagentProgressObserver,
+    SubagentStatusEntry,
 };
 
 /// The observers registered against one controller, keyed by registration id.
@@ -38,8 +38,14 @@ pub struct SubagentProgressObserverRegistration {
 impl Drop for SubagentProgressObserverRegistration {
     fn drop(&mut self) {
         if let Some(registry) = self.registry.upgrade() {
-            let mut observers = registry.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            observers.remove(&self.id);
+            // Bind the removed handle and release the guard before dropping
+            // it: dropping an observer may run user code, which must not
+            // happen while the registry mutex is held.
+            let removed = {
+                let mut observers = registry.observers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                observers.remove(&self.id)
+            };
+            drop(removed);
         }
     }
 }
@@ -121,18 +127,42 @@ impl SubagentController {
         self.with_progress_observers(&task.parent_thread_id, |observer| observer.subagent_status_changed(task.clone()));
     }
 
+    /// Reads one background record's owner and status projection under a
+    /// single state lock.
+    ///
+    /// Publishing needs both. Reading the projection and the owner under
+    /// separate acquisitions could pair an entry observed before an update
+    /// with an owner observed after a later one, so a status list would mix
+    /// two observations.
+    async fn observed_background_status(&self, record_id: &str) -> Option<(String, BackgroundSubprocessEntry)> {
+        let state = self.state.read().await;
+        state
+            .background_children
+            .get(record_id)
+            .map(|record| (record.parent_session_id.clone(), record.build_status_entry()))
+    }
+
+    /// Reads the session that owns one background record.
+    async fn observed_background_owner(&self, record_id: &str) -> Option<String> {
+        let state = self.state.read().await;
+        state
+            .background_children
+            .get(record_id)
+            .map(|record| record.parent_session_id.clone())
+    }
+
+    /// Notifies observers registered for one parent session of a background
+    /// status snapshot.
+    fn notify_background_observers(&self, parent_session_id: &str, task: BackgroundSubprocessEntry) {
+        if parent_session_id.is_empty() {
+            return;
+        }
+        self.with_progress_observers(parent_session_id, |observer| observer.background_status_changed(task.clone()));
+    }
+
     pub(crate) async fn publish_background_progress(&self, task: BackgroundSubprocessEntry) {
-        let parent_session_id = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .get(&task.id)
-                .map(|record| record.parent_session_id.clone())
-        };
-        if let Some(parent_session_id) = parent_session_id.filter(|owner| !owner.is_empty()) {
-            self.with_progress_observers(&parent_session_id, |observer| {
-                observer.background_status_changed(task.clone())
-            });
+        if let Some(parent_session_id) = self.observed_background_owner(&task.id).await {
+            self.notify_background_observers(&parent_session_id, task);
         }
     }
 
@@ -147,15 +177,8 @@ impl SubagentController {
     }
 
     pub(crate) async fn publish_background_status(&self, record_id: &str) {
-        let entry = {
-            let state = self.state.read().await;
-            state
-                .background_children
-                .get(record_id)
-                .map(BackgroundRecord::build_status_entry)
-        };
-        if let Some(entry) = entry {
-            self.publish_background_progress(entry).await;
+        if let Some((parent_session_id, entry)) = self.observed_background_status(record_id).await {
+            self.notify_background_observers(&parent_session_id, entry);
         }
     }
 }

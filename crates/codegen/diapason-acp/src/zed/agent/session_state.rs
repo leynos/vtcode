@@ -91,10 +91,11 @@ impl ZedAgent {
                 defer_background_restore,
             })
             .await;
-        super::report_optional_workspace_setup_outcomes(&super::OptionalWorkspaceSetupOutcomes {
-            subagent_controller: outcome,
-            mcp_client: super::OptionalSetupOutcome::DisabledByConfiguration,
-        });
+        // Only the subagent controller was set up here. Reporting through the
+        // two-component helper would invent an MCP outcome and log "MCP client
+        // disabled by configuration" for every session, whatever the MCP
+        // client's real state is.
+        super::optional_setup::report_optional_setup_outcome("subagent controller", &outcome);
         registry.subagent_controller()
     }
     const SESSION_LIST_PAGE_SIZE: usize = 100;
@@ -208,6 +209,7 @@ impl ZedAgent {
                 session_started: false,
                 session_ended: false,
                 task_lifecycle_forwarder: None,
+                task_lifecycle_snapshot_publisher: None,
                 task_lifecycle_registration: None,
             })),
             cancellation: super::super::types::SessionCancellation::default(),

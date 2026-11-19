@@ -504,10 +504,15 @@ and `[history]` settings do not control ACP audit output.
   Forwarding is best-effort: queued updates may be dropped if the bounded
   notification queue is full or the connection closes.
 - **Provider request capacity** – For a custom provider with
-  `max_in_flight_requests` configured, one request slot is reserved for the
-  parent ACP request and child concurrency is capped at the remaining slots. A
-  limit of `1` therefore disables ACP sub-agents so the parent retains its
-  slot. See
+  `max_in_flight_requests` configured, each ACP session's subagent controller
+  caps its own child concurrency at the remaining slots, so the children it
+  launches cannot occupy every permit and the session's parent request can
+  still be admitted. The cap is per controller while the permit gate is shared
+  by every request routed through that provider in the process, so concurrent
+  ACP sessions, or other in-process work using the same provider, draw from the
+  same slots; the reservation protects the session whose controller enforces
+  it, not every session at once. A limit of `1` therefore disables ACP
+  sub-agents so the parent retains its slot. See
   [custom provider request policy](../development/CUSTOM_PROVIDER_REQUEST_POLICY.md)
   for the related timeout, retry, and admission settings.
 - **Provider diagnostics** – Debug logs record queue depth, active and

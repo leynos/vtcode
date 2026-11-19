@@ -33,7 +33,14 @@ async fn controllers_without_an_injected_scope_share_the_process_default() {
         "the default must be one process-global scope, not a fresh one per controller"
     );
 
-    let guard = first.lock_scope().adoption().try_lock().expect("fresh adoption lock");
+    // The first guard must wait rather than probe: the default scope is
+    // process-global, so another test that uses it can hold the lock for a
+    // moment and a failed `try_lock` would not indicate a broken default.
+    let guard = first
+        .lock_scope()
+        .adoption()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     assert!(
         second.lock_scope().adoption().try_lock().is_err(),
         "controllers without an injected scope must still exclude each other"

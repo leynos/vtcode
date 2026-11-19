@@ -28,10 +28,38 @@ fn background_state_path(workspace_root: &Path) -> PathBuf {
         .join("background_subagents.json")
 }
 
+/// Resolves the background ledger path for tests.
+///
+/// The ledger location stays a private production detail, but tests must build
+/// fixtures through the same workspace-directory helper as the loader so a
+/// workspace-directory override cannot desynchronise them.
+#[cfg(test)]
+pub(crate) fn background_state_path_for_tests(workspace_root: &Path) -> PathBuf {
+    background_state_path(workspace_root)
+}
+
 // The lock lives in its own module so this one stays focused on launch
 // specifications, ledger contents and archive readers; callers keep importing
 // it from here.
 pub(crate) use super::background_lock::{lock_background_state, lock_background_state_within};
+
+/// Holds the background ledger's inter-process lock for one read-modify-write.
+///
+/// A caller outside this crate that must rewrite the ledger as stored JSON
+/// takes this guard for the whole operation, so its rewrite cannot race a save
+/// from any process. The ledger lock is the outer lock of the controller's
+/// lock order: do not acquire a controller persistence mutex while holding it.
+#[must_use = "the ledger lock is released when the guard is dropped"]
+pub struct BackgroundLedgerGuard {
+    _lock: super::background_lock::BackgroundStateLock,
+}
+
+/// Acquires the inter-process lock that guards the background ledger file.
+pub async fn lock_background_ledger(workspace_root: &Path) -> Result<BackgroundLedgerGuard> {
+    Ok(BackgroundLedgerGuard {
+        _lock: lock_background_state(workspace_root).await?,
+    })
+}
 
 pub(crate) async fn load_background_state(workspace_root: &Path) -> Result<PersistedBackgroundState> {
     let path = background_state_path(workspace_root);
@@ -199,18 +227,30 @@ pub fn background_record_id_for_owner(agent_name: &str, owner_session_id: Option
 /// characters into one or trims hyphens, so it cannot map two owners onto the
 /// same id.
 fn encode_owner_component(owner_session_id: &str) -> String {
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut encoded = String::with_capacity(owner_session_id.len());
     for byte in owner_session_id.bytes() {
         if byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_' {
             encoded.push(char::from(byte));
         } else {
             encoded.push('%');
-            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
-            encoded.push(char::from(HEX[usize::from(byte & 0x0F)]));
+            encoded.push(hex_digit(byte >> 4));
+            encoded.push(hex_digit(byte & 0x0F));
         }
     }
     encoded
+}
+
+/// Encodes one nibble as an uppercase hexadecimal digit.
+///
+/// The nibble is turned into a character arithmetically rather than by
+/// indexing a lookup table, keeping the encoding inside the crate's indexing
+/// policy while emitting the same uppercase `%XX` form.
+fn hex_digit(nibble: u8) -> char {
+    if nibble < 10 {
+        char::from(b'0' + nibble)
+    } else {
+        char::from(b'A' + nibble - 10)
+    }
 }
 
 // ─── Preview Utilities ─────────────────────────────────────────────────────
@@ -260,7 +300,7 @@ pub fn subagent_display_label(spec: &diapason_config::SubagentSpec) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        background_record_id, background_record_id_for_owner, build_background_launch_spec,
+        background_record_id, background_record_id_for_owner, build_background_launch_spec, encode_owner_component,
         resolve_background_subagent_executable_for_workspace,
     };
     use proptest::prelude::*;
@@ -307,6 +347,14 @@ mod tests {
                 "an absent owner must keep the workspace-global id",
             );
         }
+    }
+
+    /// The owner component keeps safe bytes verbatim and percent-encodes every
+    /// other byte as uppercase `%XX`, including a non-ASCII multi-byte value.
+    #[test]
+    fn owner_component_percent_encodes_unsafe_bytes_uppercase() {
+        assert_eq!(encode_owner_component("session-a_1"), "session-a_1");
+        assert_eq!(encode_owner_component("A1-_:. %é\u{000f}"), "A1-_%3A%2E%20%25%C3%A9%0F");
     }
 
     #[test]

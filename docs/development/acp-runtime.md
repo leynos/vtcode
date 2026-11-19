@@ -254,13 +254,16 @@ The pieces that carry that contract:
 ### Background output reader
 
 `diapason_core::subagents::BackgroundOutputReader` is the injection point for
-background output storage access. It is keyed by a live
-`BackgroundSubprocessEntry`, whose `id` names the task; the controller passes
-the record it already holds, so the reader derives the exec-session and
-recorded-path handles itself instead of receiving them. The persisted ledger
-copy can lag the running task, which is why the adapter is not handed a ledger
-lookup and does not re-read the ledger per poll. `read_output` returns a domain
-result: `BackgroundOutput::Live`, `BackgroundOutput::Archived`, or
+background output storage access. The trait's input is a `BackgroundTaskRef`,
+not the whole `BackgroundSubprocessEntry`. Only the reference's `id` is public,
+and the controller builds it from the live record it already holds with
+`BackgroundTaskRef::from_entry`. The exec-session identifier and the recorded
+transcript and archive paths travel in the reference's crate-private source, so
+the default adapter derives those handles itself while an adapter outside the
+crate serves output from the task identity alone. The persisted ledger copy can
+lag the running task, which is why the adapter is not handed a ledger lookup
+and does not re-read the ledger per poll. `read_output` returns a domain result:
+`BackgroundOutput::Live`, `BackgroundOutput::Archived`, or
 `BackgroundOutput::NotReady`. The reader owns storage access, exec-session
 error classification and archive-path selection. It does not bound output,
 enforce a transport limit, or validate, because those are the caller's policy.
@@ -283,6 +286,34 @@ not reported as an exited process. A failed archive read is returned as
 returns and fails with the target in its context on any read fault. The bounded
 preview in a background snapshot uses the same rule, except that an unreadable
 archive yields an empty preview rather than failing the snapshot.
+
+### Lock scope and ledger persistence
+
+Two controller-level exclusions are design boundaries, not incidental statics.
+`SubagentLockScope` owns the adoption mutex, which serializes subtree grafting
+and child-id allocation, and the persistence mutex, which serializes
+background-ledger saves. `SubagentControllerConfig.lock_scope` injects a scope,
+and a child controller inherits its parent's, so one tree excludes itself. An
+unscoped controller resolves to the process-global `default_lock_scope()`, so a
+production caller that leaves the field `None` keeps the former cross-tree
+exclusion. An injected scope is isolated, and an adoption that would join
+controllers bound to different scopes is rejected.
+
+Ledger persistence is a merge under two locks. A save holds the tree's
+persistence mutex and then the workspace ledger's advisory `flock` on
+`.diapason/state/background_subagents.lock`, retried with async backoff under a
+10 s deadline, so two Diapason processes sharing a workspace cannot each write
+a snapshot that discards the other's record. Record ids are owner-scoped:
+`background_record_id_for_owner` appends a percent-encoded `@owner` suffix. An
+owner-scoped save canonicalizes ids, keeps the copy with the newest
+`updated_at`, removes the records its owner dropped, and carries other owners'
+records verbatim. A persisted cancellation of an exec session outranks a later
+refresh of the same launch, so a stale copy cannot resurrect a stopped task.
+This is the deliberate merge policy, not a best-effort save.
+
+Both decisions are recorded in the
+[Decision log](../execplans/acp-lody-task-lifecycle-negotiation.md#decision-log)
+entry dated 2026-11-19.
 
 ### Lifecycle projection
 

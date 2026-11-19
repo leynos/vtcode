@@ -4,6 +4,42 @@ use self::controller_background_liveness::{bounded_liveness_reason, exec_session
 
 use super::*;
 
+/// Resolves a caller-supplied background record id to the loaded map key.
+///
+/// The map is keyed by canonical owner-scoped id, while a client can still hold
+/// the workspace-global id an older release persisted. An exact lookup then
+/// misses a running record, so the pre-owner-scoping id is tried next; an
+/// ownerless match wins, otherwise the first in key order does.
+fn resolve_background_key(state: &ControllerState, target: &str) -> Option<String> {
+    if state.background_children.contains_key(target) {
+        return Some(target.to_owned());
+    }
+    let mut owned_match = None;
+    for (key, record) in &state.background_children {
+        if background_record_id(record.agent_name.as_str()) != target {
+            continue;
+        }
+        if record.owner_session_id.is_none() {
+            return Some(key.clone());
+        }
+        owned_match.get_or_insert_with(|| key.clone());
+    }
+    owned_match
+}
+
+/// Resolves a caller-supplied id to the record it names.
+pub(super) fn resolve_background_target<'a>(state: &'a ControllerState, target: &str) -> Option<&'a BackgroundRecord> {
+    state.background_children.get(&resolve_background_key(state, target)?)
+}
+
+/// Resolves a caller-supplied id to the record it names, for mutation.
+pub(super) fn resolve_background_target_mut<'a>(
+    state: &'a mut ControllerState,
+    target: &str,
+) -> Option<&'a mut BackgroundRecord> {
+    state.background_children.get_mut(&resolve_background_key(state, target)?)
+}
+
 struct CapturedSubagentThread {
     id: String,
     session_id: String,
@@ -142,9 +178,7 @@ impl SubagentController {
     pub async fn background_snapshot(&self, target: &str) -> Result<BackgroundSubprocessSnapshot> {
         let entry = {
             let state = self.state.read().await;
-            let record = state
-                .background_children
-                .get(target)
+            let record = resolve_background_target(&state, target)
                 .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
             if current_subagent_invocation_context()
                 .is_some_and(|context| context.parent_session_id != record.parent_session_id)
@@ -190,9 +224,7 @@ impl SubagentController {
     pub async fn background_output_tail(&self, target: &str, max_lines: usize) -> Result<String> {
         let entry = {
             let state = self.state.read().await;
-            state
-                .background_children
-                .get(target)
+            resolve_background_target(&state, target)
                 .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
                 .build_status_entry()
         };
@@ -318,10 +350,13 @@ impl SubagentController {
 /// the whole record; no exec-session or path handle crosses this boundary into
 /// the caller.
 ///
-/// A preview is best effort: a task without output, or one whose transcript is
-/// unreadable, yields an empty preview. A live-read fault is not masked,
-/// because it would otherwise hide a real storage failure behind an empty
-/// preview.
+/// A task without output yet yields an empty preview, which is the absence of
+/// output rather than a fault. Every read fault is propagated with the caller's
+/// target in the context, for the live session and for the transcript or
+/// archive alike: the archive read is I/O, so reporting its failure as an empty
+/// preview would hide a real storage failure behind the same value used for "not
+/// written yet". Callers that cannot act on the fault, such as a background
+/// sidebar, handle the error at their own boundary instead.
 pub(super) async fn read_preview(
     reader: &dyn BackgroundOutputReader,
     entry: &BackgroundSubprocessEntry,
@@ -333,10 +368,7 @@ pub(super) async fn read_preview(
             Ok(extract_tail_lines(&output, SUBAGENT_PREVIEW_LINES))
         }
         Ok(BackgroundOutput::NotReady) => Ok(String::new()),
-        Err(BackgroundOutputError::Archived(_)) => Ok(String::new()),
-        Err(error @ BackgroundOutputError::Live(_)) => {
-            Err(anyhow::Error::new(error)).with_context(|| format!("read background output for {target}"))
-        }
+        Err(error) => Err(anyhow::Error::new(error)).with_context(|| format!("read background output for {target}")),
     }
 }
 

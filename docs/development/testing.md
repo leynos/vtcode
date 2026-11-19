@@ -134,6 +134,22 @@ needs deterministic file modification times; process-isolated cases can use the
 workspace's `rusty-fork` test dependency. These dependencies are for test
 fixtures and do not change the runtime dependency surface.
 
+### Test-only feature seams
+
+`diapason-core` carries a `test-support` Cargo feature that exposes the
+fault-injection seams only that crate's own unit tests would otherwise reach,
+so a dependent crate's tests can script the same faults. It adds no dependency.
+Today it gates `ExecSessionManager::fail_snapshot_reads`, a `#[doc(hidden)]`
+method that makes the next snapshot read fail with a caller-supplied message,
+so a test can drive the "read failed for another reason" branch without a real
+storage fault. The backing field and the branch that reads it are compiled only
+under `cfg(test)` or this feature, so a production build omits both.
+
+`diapason-acp` enables the feature only on its `[dev-dependencies]` entry for
+`diapason-core`; the ordinary `[dependencies]` entry does not. That is what
+lets the liveness privacy regression fail an exec-session read. Never enable
+`test-support` for a production build.
+
 ### ACP provider streaming
 
 ACP streaming changes use complementary layers rather than one oversized

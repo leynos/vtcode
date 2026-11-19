@@ -8,6 +8,17 @@ fn filtering_metrics_with_recorded_operation() -> FilteringMetrics {
     collector.get_filtering_metrics()
 }
 
+/// Assert that `prometheus` renders `expected` as one whole sample line.
+///
+/// A substring assertion such as `contains("... 1")` also matches a value of
+/// `10`, so the sample is compared as one newline-delimited line.
+fn assert_exact_sample_line(prometheus: &str, expected: &str) {
+    assert!(
+        prometheus.split('\n').any(|line| line == expected),
+        "expected the exact Prometheus sample line {expected:?} in:\n{prometheus}"
+    );
+}
+
 #[test]
 fn test_metrics_collector_creation() {
     let collector = MetricsCollector::new();
@@ -163,11 +174,11 @@ fn mcp_startup_metrics_export_fixed_outcomes_and_cumulative_durations() {
     assert_eq!(json["mcp_startup"]["total_client_duration_ms"], 47);
 
     let prometheus = collector.export_prometheus();
-    assert!(prometheus.contains("diapason_mcp_provider_startup_attempts_started_total 7"));
-    assert!(prometheus.contains("diapason_mcp_provider_startup_timeouts_total 2"));
-    assert!(prometheus.contains("diapason_mcp_active_providers 2"));
-    assert!(prometheus.contains("diapason_mcp_client_startup_duration_ms_total 47"));
-    assert!(prometheus.contains("diapason_mcp_provider_startup_duration_ms_total 35"));
+    assert_exact_sample_line(&prometheus, "diapason_mcp_provider_startup_attempts_started_total 7");
+    assert_exact_sample_line(&prometheus, "diapason_mcp_provider_startup_timeouts_total 2");
+    assert_exact_sample_line(&prometheus, "diapason_mcp_active_providers 2");
+    assert_exact_sample_line(&prometheus, "diapason_mcp_client_startup_duration_ms_total 47");
+    assert_exact_sample_line(&prometheus, "diapason_mcp_provider_startup_duration_ms_total 35");
     assert!(!prometheus.contains("provider=\""));
 }
 
@@ -195,7 +206,7 @@ fn workspace_runtime_cache_size_is_exported_as_a_gauge() {
     assert_eq!(json["workspace_runtime_cache_entries"], 3);
     assert!(json.get("acp_workspace_runtime_cache_entries").is_none());
     let prometheus = collector.export_prometheus();
-    assert!(prometheus.contains("diapason_workspace_runtime_cache_entries 3"));
+    assert_exact_sample_line(&prometheus, "diapason_workspace_runtime_cache_entries 3");
     assert!(!prometheus.contains("diapason_acp_workspace_runtime_cache_entries"));
 }
 
@@ -224,9 +235,9 @@ fn task_lifecycle_notification_queue_metrics_are_exported_without_labels() {
     assert!(json.get("acp_task_lifecycle").is_none());
 
     let prometheus = collector.export_prometheus();
-    assert!(prometheus.contains("diapason_task_lifecycle_notification_queue_depth 1"));
-    assert!(prometheus.contains("diapason_task_lifecycle_notification_queue_dropped_full_total 1"));
-    assert!(prometheus.contains("diapason_task_lifecycle_notification_queue_dropped_closed_total 1"));
+    assert_exact_sample_line(&prometheus, "diapason_task_lifecycle_notification_queue_depth 1");
+    assert_exact_sample_line(&prometheus, "diapason_task_lifecycle_notification_queue_dropped_full_total 1");
+    assert_exact_sample_line(&prometheus, "diapason_task_lifecycle_notification_queue_dropped_closed_total 1");
     assert!(!prometheus.contains("diapason_acp_task_lifecycle"));
     assert!(!prometheus.contains("session_id="));
     assert!(!prometheus.contains("task_id="));

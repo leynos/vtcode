@@ -9,8 +9,7 @@ mod controller_background_run;
 mod controller_background_settlement;
 
 #[cfg(test)]
-#[path = "controller_background_ops/tests.rs"]
-mod background_owner_tests;
+mod tests;
 
 use super::*;
 

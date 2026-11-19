@@ -99,7 +99,7 @@ pub struct MetricsCollector {
     provider_requests: Arc<Mutex<ProviderRequestMetrics>>,
     service_startup: Arc<Mutex<ServiceStartupMetrics>>,
     task_lifecycle_notification_queue: Arc<Mutex<TaskLifecycleNotificationQueueMetrics>>,
-    acp_extension: Arc<Mutex<AcpExtensionMetrics>>,
+    acp_extension: Arc<Mutex<acp_metrics::AcpExtensionState>>,
     workspace_runtime_cache_entries: Arc<AtomicU64>,
     admission_metrics_source: Arc<dyn ProviderAdmissionMetricsSource>,
     start_time: Instant,

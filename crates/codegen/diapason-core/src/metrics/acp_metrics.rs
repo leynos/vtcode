@@ -5,8 +5,8 @@
 //! keeps the `diapason_core::metrics` paths stable for callers.
 
 use serde::{Deserialize, Serialize};
-use std::fmt::Write;
-use std::time::Instant;
+use std::fmt::{self, Write};
+use std::time::{Duration, Instant};
 
 use super::{MetricsCollector, PrometheusMetricsSnapshot};
 
@@ -22,7 +22,7 @@ pub struct AcpExtensionMetrics {
     pub management_requests_failed: u64,
     pub management_requests_in_flight: u64,
     pub management_total_duration_ms: u64,
-    pub usage_notifications_sent: u64,
+    pub usage_notifications_enqueued: u64,
     pub usage_notifications_failed: u64,
     pub initial_snapshots_published: u64,
     pub initial_snapshot_publish_failures: u64,
@@ -34,29 +34,73 @@ pub struct AcpExtensionMetrics {
 /// exactly once. Dropping it without calling [`finish`](Self::finish) records
 /// a failure, so a cancelled or disconnected request cannot leave the gauge
 /// elevated.
-#[derive(Debug)]
 pub struct AcpManagementGuard {
     metrics: MetricsCollector,
     started_at: Instant,
     finished: bool,
 }
 
+impl fmt::Debug for AcpManagementGuard {
+    // `MetricsCollector`'s derived rendering walks every family, including the
+    // discovery records that hold user-supplied query keywords, so the guard
+    // renders only its own fields.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AcpManagementGuard")
+            .field("started_at", &self.started_at)
+            .field("finished", &self.finished)
+            .finish_non_exhaustive()
+    }
+}
+
 impl AcpManagementGuard {
     /// Records the request outcome and elapsed time, then releases the gauge.
     pub fn finish(mut self, succeeded: bool) {
         self.finished = true;
-        self.metrics.record_acp_management_outcome(succeeded, self.elapsed_ms());
-    }
-
-    fn elapsed_ms(&self) -> u64 {
-        u64::try_from(self.started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+        self.metrics.record_acp_management_outcome(succeeded, self.started_at.elapsed());
     }
 }
 
 impl Drop for AcpManagementGuard {
     fn drop(&mut self) {
         if !self.finished {
-            self.metrics.record_acp_management_outcome(false, self.elapsed_ms());
+            self.metrics.record_acp_management_outcome(false, self.started_at.elapsed());
+        }
+    }
+}
+
+/// Collector-local ACP extension counters.
+///
+/// The management duration is accumulated as a [`Duration`] so that
+/// sub-millisecond requests are not truncated before they are summed. The
+/// public [`AcpExtensionMetrics`] snapshot converts the total once, when it is
+/// taken.
+#[derive(Debug, Clone, Default)]
+pub(super) struct AcpExtensionState {
+    management_requests_started: u64,
+    management_requests_succeeded: u64,
+    management_requests_failed: u64,
+    management_requests_in_flight: u64,
+    management_total_duration: Duration,
+    usage_notifications_enqueued: u64,
+    usage_notifications_failed: u64,
+    initial_snapshots_published: u64,
+    initial_snapshot_publish_failures: u64,
+}
+
+impl AcpExtensionState {
+    /// Convert the accumulated counters into the bounded public snapshot.
+    fn snapshot(&self) -> AcpExtensionMetrics {
+        AcpExtensionMetrics {
+            management_requests_started: self.management_requests_started,
+            management_requests_succeeded: self.management_requests_succeeded,
+            management_requests_failed: self.management_requests_failed,
+            management_requests_in_flight: self.management_requests_in_flight,
+            management_total_duration_ms: u64::try_from(self.management_total_duration.as_millis()).unwrap_or(u64::MAX),
+            usage_notifications_enqueued: self.usage_notifications_enqueued,
+            usage_notifications_failed: self.usage_notifications_failed,
+            initial_snapshots_published: self.initial_snapshots_published,
+            initial_snapshot_publish_failures: self.initial_snapshot_publish_failures,
         }
     }
 }
@@ -95,22 +139,25 @@ impl MetricsCollector {
     }
 
     /// Record one Lody ACP management RPC outcome and release its gauge slot.
-    fn record_acp_management_outcome(&self, succeeded: bool, duration_ms: u64) {
+    fn record_acp_management_outcome(&self, succeeded: bool, duration: Duration) {
         let mut metrics = self.acp_extension.lock();
         if succeeded {
             metrics.management_requests_succeeded = metrics.management_requests_succeeded.saturating_add(1);
         } else {
             metrics.management_requests_failed = metrics.management_requests_failed.saturating_add(1);
         }
-        metrics.management_total_duration_ms = metrics.management_total_duration_ms.saturating_add(duration_ms);
+        metrics.management_total_duration = metrics.management_total_duration.saturating_add(duration);
         metrics.management_requests_in_flight = metrics.management_requests_in_flight.saturating_sub(1);
     }
 
-    /// Record the outcome of one Lody ACP usage notification publication.
+    /// Record one attempt to enqueue a Lody ACP usage notification.
+    ///
+    /// Success means the notification entered the connection's outgoing queue,
+    /// not that the client has received it.
     pub fn record_acp_usage_notification(&self, succeeded: bool) {
         let mut metrics = self.acp_extension.lock();
         if succeeded {
-            metrics.usage_notifications_sent = metrics.usage_notifications_sent.saturating_add(1);
+            metrics.usage_notifications_enqueued = metrics.usage_notifications_enqueued.saturating_add(1);
         } else {
             metrics.usage_notifications_failed = metrics.usage_notifications_failed.saturating_add(1);
         }
@@ -131,7 +178,7 @@ impl MetricsCollector {
 
     /// Get the bounded aggregate Lody ACP extension metrics snapshot.
     pub fn get_acp_extension_metrics(&self) -> AcpExtensionMetrics {
-        self.acp_extension.lock().clone()
+        self.acp_extension.lock().snapshot()
     }
 }
 
@@ -159,9 +206,9 @@ fn append_acp_extension_prometheus(output: &mut String, metrics: &AcpExtensionMe
          # HELP diapason_acp_management_duration_ms_total Total time spent serving Lody ACP management requests\n\
          # TYPE diapason_acp_management_duration_ms_total counter\n\
          diapason_acp_management_duration_ms_total {}\n\n\
-         # HELP diapason_acp_usage_notifications_sent_total Lody ACP usage notifications sent\n\
-         # TYPE diapason_acp_usage_notifications_sent_total counter\n\
-         diapason_acp_usage_notifications_sent_total {}\n\n\
+         # HELP diapason_acp_usage_notifications_enqueued_total Lody ACP usage notifications enqueued for delivery\n\
+         # TYPE diapason_acp_usage_notifications_enqueued_total counter\n\
+         diapason_acp_usage_notifications_enqueued_total {}\n\n\
          # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notifications that failed to send\n\
          # TYPE diapason_acp_usage_notifications_failed_total counter\n\
          diapason_acp_usage_notifications_failed_total {}\n\n\
@@ -176,7 +223,7 @@ fn append_acp_extension_prometheus(output: &mut String, metrics: &AcpExtensionMe
         metrics.management_requests_failed,
         metrics.management_requests_in_flight,
         metrics.management_total_duration_ms,
-        metrics.usage_notifications_sent,
+        metrics.usage_notifications_enqueued,
         metrics.usage_notifications_failed,
         metrics.initial_snapshots_published,
         metrics.initial_snapshot_publish_failures,
@@ -186,6 +233,7 @@ fn append_acp_extension_prometheus(output: &mut String, metrics: &AcpExtensionMe
 #[cfg(test)]
 mod tests {
     use crate::metrics::MetricsCollector;
+    use std::time::Duration;
 
     /// Pins the ACP extension series that dashboards consume.
     ///
@@ -229,9 +277,9 @@ mod tests {
         diapason_acp_management_requests_in_flight 0
         # HELP diapason_acp_management_duration_ms_total Total time spent serving Lody ACP management requests
         # TYPE diapason_acp_management_duration_ms_total counter
-        # HELP diapason_acp_usage_notifications_sent_total Lody ACP usage notifications sent
-        # TYPE diapason_acp_usage_notifications_sent_total counter
-        diapason_acp_usage_notifications_sent_total 1
+        # HELP diapason_acp_usage_notifications_enqueued_total Lody ACP usage notifications enqueued for delivery
+        # TYPE diapason_acp_usage_notifications_enqueued_total counter
+        diapason_acp_usage_notifications_enqueued_total 1
         # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notifications that failed to send
         # TYPE diapason_acp_usage_notifications_failed_total counter
         diapason_acp_usage_notifications_failed_total 1
@@ -300,6 +348,34 @@ mod tests {
             metrics.management_requests_succeeded + metrics.management_requests_failed,
             metrics.management_requests_started,
             "every started request must record exactly one outcome"
+        );
+    }
+
+    #[test]
+    fn acp_management_guard_debug_omits_discovery_query_keywords() {
+        let collector = MetricsCollector::new();
+        collector.record_discovery_query("private-query-keyword".to_owned(), 1, 5);
+
+        let guard = collector.begin_acp_management();
+        let rendered = format!("{guard:?}");
+        assert!(
+            !rendered.contains("private-query-keyword"),
+            "the guard's Debug rendering must not publish recorded discovery queries: {rendered}"
+        );
+        drop(guard);
+    }
+
+    #[test]
+    fn acp_management_duration_sums_sub_millisecond_requests() {
+        let collector = MetricsCollector::new();
+        for _ in 0..4 {
+            collector.record_acp_management_outcome(true, Duration::from_micros(400));
+        }
+
+        assert_eq!(
+            collector.get_acp_extension_metrics().management_total_duration_ms,
+            1,
+            "four 400 us requests total 1.6 ms, so truncation must happen once at snapshot time"
         );
     }
 }

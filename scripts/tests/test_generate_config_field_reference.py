@@ -258,13 +258,32 @@ def test_render_markdown_keeps_the_state_locations_section() -> None:
     The section is not derivable from the schema, so the generator has to emit
     it. A regeneration that dropped it would leave the reference table intact
     and the loss would only surface in review.
+
+    The expectations are written out here rather than read from
+    ``STATE_LOCATIONS_SECTION``: taking them from the constant the test exists
+    to protect would let an emptied constant satisfy the test, and an emptied
+    constant makes the generator omit the section entirely.
     """
     rendered_lines = generator.render_markdown([]).splitlines()
+    rendered = "\n".join(rendered_lines)
 
-    missing = [
-        line for line in generator.STATE_LOCATIONS_SECTION if line not in rendered_lines
-    ]
-    assert not missing, f"the generated reference dropped its hand-written section: {missing!r}"
+    heading = "## Configuration and state locations"
+    assert heading in rendered_lines, "the generated reference dropped its state-location heading"
+
+    essential_rows = (
+        "| Main user configuration |",
+        "| User agent instructions |",
+        "| Logs, audit records and global sessions |",
+        "| Repository-local agent data |",
+    )
+    missing = [row for row in essential_rows if row not in rendered]
+    assert not missing, f"the generated reference dropped hand-written location rows: {missing!r}"
+
+    field_table_header = "| Field | Type | Required | Default | Description |"
+    assert field_table_header in rendered, "the generated reference dropped its field table"
+    assert rendered.index(heading) < rendered.index(field_table_header), (
+        "the state-location guidance must precede the generated field table"
+    )
 
 
 def test_render_markdown_escapes_pipes_inside_backtick_safe_code_span() -> None:

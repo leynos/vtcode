@@ -261,6 +261,11 @@ impl PipeSessionManager {
         }
     }
 
+    /// Returns the canonical workspace root the managed sessions run in.
+    fn workspace_root(&self) -> &Path {
+        &self.workspace_root
+    }
+
     async fn create_session(
         &self,
         session_id: ExecSessionId,
@@ -582,6 +587,15 @@ pub struct ExecSessionManager {
 }
 
 impl ExecSessionManager {
+    /// Returns the canonical workspace root the managed sessions run in.
+    ///
+    /// A reader that opens a path recorded outside the session store uses this
+    /// to keep the read inside the workspace the record belongs to.
+    #[must_use]
+    pub(crate) fn workspace_root(&self) -> &Path {
+        self.pipe_sessions.workspace_root()
+    }
+
     #[must_use]
     pub fn new(workspace_root: PathBuf, pty_sessions: PtySessionManager) -> Self {
         Self {

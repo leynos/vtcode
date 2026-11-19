@@ -262,24 +262,28 @@ async fn vidaimock_provider_drop_surfaces_before_completion() -> Result<()> {
 /// The adapter's finish reason defaults to `Stop`, so an assertion on the
 /// streamed response cannot tell a delivered finish chunk from a dropped one.
 /// This checks the template itself: the finish chunk leads, the usage chunk is
-/// framed explicitly, and `[DONE]` still terminates the payload.
+/// framed explicitly, blank lines separate each SSE event, and `[DONE]` still
+/// terminates the payload.
 #[test]
 fn arli_stop_template_frames_every_event_after_the_first() {
     let template =
         std::fs::read_to_string(fixture_root().join("templates").join("arli").join("physics_stream_stop.j2"))
             .expect("read the Arli stop template");
-    let mut lines = template.lines().map(str::trim).filter(|line| !line.is_empty());
+    let lines: Vec<&str> = template.lines().collect();
 
-    let finish = lines.next().expect("the stop payload opens with the finish chunk");
+    assert_eq!(lines.len(), 5, "the payload is three events separated by blank lines: {lines:?}");
+
+    let finish = lines[0];
     assert!(
         finish.starts_with('{') && finish.contains(r#""finish_reason":"stop""#),
         "the first line is the unprefixed finish chunk VidaiMock delivers: {finish}"
     );
+    assert_eq!(lines[1], "", "the finish chunk must be followed by a blank SSE event separator");
 
-    let framed = lines.collect::<Vec<_>>();
-    assert_eq!(framed.last().copied(), Some("data: [DONE]"), "the payload still terminates with [DONE]");
-    assert_eq!(framed.len(), 2, "the finish chunk and exactly one framed usage event precede [DONE]: {framed:?}");
-    let usage = framed[0];
+    let usage = lines[2];
     assert!(usage.starts_with("data: {"), "the usage event carries its own data: prefix: {usage}");
     assert!(usage.contains(r#""usage""#), "the framed event is the usage chunk: {usage}");
+    assert_eq!(lines[3], "", "the usage event must be followed by a blank SSE event separator");
+
+    assert_eq!(lines[4], "data: [DONE]", "the payload still terminates with [DONE]");
 }

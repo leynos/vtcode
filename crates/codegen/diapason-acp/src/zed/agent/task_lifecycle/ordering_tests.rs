@@ -2,26 +2,28 @@
 use super::projection_tests::{subagent_event, with_updated_at};
 use super::*;
 
-/// The controller stamps the initial snapshot and the live transition from the
-/// same clock, so an initial `Queued` snapshot captured before a live `Running`
-/// transition can carry the same `updated_at` and arrive after it. Only the
-/// initial-snapshot flag distinguishes the two, and the stale snapshot must not
-/// be admitted.
+/// The initial snapshot pass and live observation race on the queue, and both
+/// snapshots come from one controller clock. Two transitions recorded in one
+/// tick therefore share `updated_at`, so the timestamp cannot order them. The
+/// adapter reserves one base revision for the snapshot pass and every live
+/// transition takes a higher revision; the forwarder orders by revision, and a
+/// stale snapshot must not be admitted.
 #[test]
 fn an_initial_snapshot_does_not_undo_live_progress_at_the_same_timestamp() {
     let mut ordering = LifecycleOrdering::default();
+    let snapshot_revision = 0_u64;
     let live_running = QueuedLifecycleUpdate {
         update: with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"),
-        initial_snapshot: false,
+        revision: 1,
     };
     let queued_snapshot = QueuedLifecycleUpdate {
         update: with_updated_at(subagent_event("queued"), "2026-08-14T12:01:00Z"),
-        initial_snapshot: true,
+        revision: snapshot_revision,
     };
 
     assert!(ordering.admit(&live_running), "the live transition must be forwarded");
     assert!(
         !ordering.admit(&queued_snapshot),
-        "an initial snapshot at the same instant must not undo live progress"
+        "an initial snapshot with the base revision must not undo live progress"
     );
 }

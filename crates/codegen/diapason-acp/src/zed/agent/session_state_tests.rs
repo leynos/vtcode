@@ -169,8 +169,14 @@ mod checkpoint_categories;
 #[path = "session_state_tests/configuration.rs"]
 mod configuration;
 
+#[path = "session_state_tests/lifecycle_forwarder.rs"]
+mod lifecycle_forwarder;
+
 #[path = "session_state_tests/metadata.rs"]
 mod metadata;
+
+#[path = "session_state_tests/optional_setup_reporting.rs"]
+mod optional_setup_reporting;
 
 #[path = "session_state_tests/retention_properties.rs"]
 mod retention_properties;

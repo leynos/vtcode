@@ -49,7 +49,14 @@ pub struct SubagentControllerConfig {
     pub output_reader: Option<Arc<dyn BackgroundOutputReader>>,
     /// PTY session manager.
     pub pty_manager: PtyManager,
-    /// Whether this controller manages a background runtime subprocess.
+    /// Whether this controller is forbidden to own background work.
+    ///
+    /// `true` marks a controller that must not own background subprocesses: it
+    /// neither loads nor saves the background ledger, and it rejects a
+    /// background launch. A background runtime owns the ledger instead, and a
+    /// nested controller inside one inherits that restriction through the same
+    /// flag. Set it on the controller that runs *inside* a managed runtime, not
+    /// on the controller that manages one.
     pub managed_background_runtime: bool,
     /// Adoption and persistence locks shared by this controller tree.
     ///
