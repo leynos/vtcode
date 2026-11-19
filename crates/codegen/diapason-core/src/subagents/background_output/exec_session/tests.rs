@@ -72,8 +72,8 @@ async fn wait_for_live_output(reader: &ExecSessionOutputReader, exec_session_id:
     .await?
 }
 
-#[tokio::test]
 /// Live output is returned as the `Live` variant unchanged.
+#[tokio::test]
 async fn live_output_is_returned_unchanged() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
@@ -98,8 +98,8 @@ async fn live_output_is_returned_unchanged() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
 /// A not-ready live session falls back to the archive.
+#[tokio::test]
 async fn not_ready_live_output_falls_back_to_the_archive() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
@@ -129,8 +129,8 @@ async fn not_ready_live_output_falls_back_to_the_archive() -> anyhow::Result<()>
     Ok(())
 }
 
-#[tokio::test]
 /// A missing exec session falls back to the archive.
+#[tokio::test]
 async fn missing_exec_session_falls_back_to_the_archive() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
@@ -151,8 +151,8 @@ async fn missing_exec_session_falls_back_to_the_archive() -> anyhow::Result<()> 
     Ok(())
 }
 
-#[tokio::test]
 /// A task with no recorded path has nothing to serve.
+#[tokio::test]
 async fn a_task_without_a_recorded_path_stays_not_ready() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
@@ -172,8 +172,8 @@ async fn a_task_without_a_recorded_path_stays_not_ready() -> anyhow::Result<()> 
     Ok(())
 }
 
-#[tokio::test]
 /// An empty exec session is not ready and never reads the archive.
+#[tokio::test]
 async fn an_empty_exec_session_is_not_ready_without_touching_the_archive() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
@@ -240,8 +240,8 @@ async fn a_finished_task_resolves_its_archive_without_a_recorded_path() -> anyho
     Ok(())
 }
 
-#[tokio::test]
 /// An unreadable archive is reported as an archive fault.
+#[tokio::test]
 async fn an_unreadable_archive_is_an_archive_fault() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());

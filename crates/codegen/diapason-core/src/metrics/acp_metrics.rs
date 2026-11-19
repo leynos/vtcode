@@ -209,7 +209,7 @@ fn append_acp_extension_prometheus(output: &mut String, metrics: &AcpExtensionMe
          # HELP diapason_acp_usage_notifications_enqueued_total Lody ACP usage notifications enqueued for delivery\n\
          # TYPE diapason_acp_usage_notifications_enqueued_total counter\n\
          diapason_acp_usage_notifications_enqueued_total {}\n\n\
-         # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notifications that failed to send\n\
+         # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notification publication failures, including serialization before enqueue\n\
          # TYPE diapason_acp_usage_notifications_failed_total counter\n\
          diapason_acp_usage_notifications_failed_total {}\n\n\
          # HELP diapason_acp_initial_snapshots_published_total Lody ACP initial task snapshots published\n\
@@ -280,7 +280,7 @@ mod tests {
         # HELP diapason_acp_usage_notifications_enqueued_total Lody ACP usage notifications enqueued for delivery
         # TYPE diapason_acp_usage_notifications_enqueued_total counter
         diapason_acp_usage_notifications_enqueued_total 1
-        # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notifications that failed to send
+        # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notification publication failures, including serialization before enqueue
         # TYPE diapason_acp_usage_notifications_failed_total counter
         diapason_acp_usage_notifications_failed_total 1
         # HELP diapason_acp_initial_snapshots_published_total Lody ACP initial task snapshots published

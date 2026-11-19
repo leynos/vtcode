@@ -128,6 +128,12 @@ pub(super) fn write_ledger(
 }
 
 /// Writes the demo agent and its launch script into a workspace.
+///
+/// The only fixtures that launch the demo agent drive a real child process,
+/// which the background launch path supports on Unix only, so the helper is
+/// gated with its callers. Without the gate a Windows test build compiles it
+/// unused and fails the workspace's `-D warnings` dead-code check.
+#[cfg(unix)]
 pub(super) fn write_background_demo_agent(workspace_root: &Path) {
     let agent_dir = workspace_root.join(diapason_commons::workspace_dir_name()).join("agents");
     std::fs::create_dir_all(&agent_dir).expect("agent dir");

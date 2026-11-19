@@ -142,28 +142,27 @@ impl SubagentController {
             .map(|record| (record.parent_session_id.clone(), record.build_status_entry()))
     }
 
-    /// Reads the session that owns one background record.
-    async fn observed_background_owner(&self, record_id: &str) -> Option<String> {
-        let state = self.state.read().await;
-        state
-            .background_children
-            .get(record_id)
-            .map(|record| record.parent_session_id.clone())
-    }
-
     /// Notifies observers registered for one parent session of a background
     /// status snapshot.
-    fn notify_background_observers(&self, parent_session_id: &str, task: BackgroundSubprocessEntry) {
+    pub(super) fn notify_background_observers(&self, parent_session_id: &str, task: BackgroundSubprocessEntry) {
         if parent_session_id.is_empty() {
             return;
         }
         self.with_progress_observers(parent_session_id, |observer| observer.background_status_changed(task.clone()));
     }
 
-    pub(crate) async fn publish_background_progress(&self, task: BackgroundSubprocessEntry) {
-        if let Some(parent_session_id) = self.observed_background_owner(&task.id).await {
-            self.notify_background_observers(&parent_session_id, task);
-        }
+    /// Publishes the current projection of one background record and returns
+    /// it.
+    ///
+    /// The owner that routes the snapshot and the snapshot itself come from
+    /// one state read, so a restart that changes the record's owner between
+    /// two reads cannot route an older projection to the new owner's
+    /// observers. See `settle_background_status_and_publish` for the owner
+    /// change rule.
+    pub(crate) async fn publish_background_progress(&self, record_id: &str) -> Option<BackgroundSubprocessEntry> {
+        let (parent_session_id, entry) = self.observed_background_status(record_id).await?;
+        self.notify_background_observers(&parent_session_id, entry.clone());
+        Some(entry)
     }
 
     pub(crate) async fn publish_child_status(&self, child_id: &str) {

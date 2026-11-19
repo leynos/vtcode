@@ -240,10 +240,10 @@ impl SubagentController {
                 // canonical owner-scoped id, so the map below is keyed by the
                 // canonical id only. A caller that addresses a record by a
                 // legacy, pre-canonicalization id (the workspace-global
-                // `background-<agent>`) will not find it through an exact map
-                // lookup; reads must use the canonical id. Resolving a legacy
-                // id on lookup would require canonicalising the request in
-                // each query path, which lives outside this module.
+                // `background-<agent>`) cannot rely on an exact map lookup;
+                // the query paths call `resolve_background_target`, which
+                // retries the legacy id, so retained ids still address the
+                // record they named.
                 controller_persistence::collect_by_canonical_id(
                     load_background_state(&config.workspace_root)
                         .await?

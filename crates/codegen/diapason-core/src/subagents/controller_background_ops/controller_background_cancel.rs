@@ -72,9 +72,7 @@ impl SubagentController {
             // here, leaving this retry as the only publisher of the terminal
             // state, so the snapshot is published only once it is committed.
             self.save_background_state().await?;
-            let status = self.background_status_for(&cancellation.record_id).await?;
-            self.publish_background_progress(status.clone()).await;
-            return Ok(status);
+            return self.settle_background_status_and_publish(&cancellation.record_id).await;
         }
         self.log_background_cancellation(&cancellation, &mode);
         if !cancellation.exec_session_id.is_empty() {
@@ -168,8 +166,6 @@ impl SubagentController {
     async fn finish_background_cancellation(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
         self.refresh_background_archive_metadata(target).await?;
         self.save_background_state().await?;
-        let status = self.background_status_for(target).await?;
-        self.publish_background_progress(status.clone()).await;
-        Ok(status)
+        self.settle_background_status_and_publish(target).await
     }
 }

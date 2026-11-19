@@ -40,6 +40,33 @@ impl SubagentController {
         Ok(record.build_status_entry())
     }
 
+    /// Publishes the projection of one background record and returns it.
+    ///
+    /// The snapshot and the session that routes it are read under one state
+    /// lock, so a concurrent restart that changes the record's owner cannot
+    /// deliver a stale projection to the new owner's observers.
+    ///
+    /// Ownership rule: a record whose id encodes its owner keeps that owner
+    /// for life. An owner-scoped id cannot be re-created for a different
+    /// session, so only a record addressed by a legacy or caller-supplied id
+    /// can change owner, and only when the launch supplies a parent-session
+    /// override. That case is deliberate — the caller is re-attaching the
+    /// record to the session that now drives it — and routing follows the
+    /// owner observed with the published snapshot rather than whichever
+    /// owner a later call happens to read.
+    pub(super) async fn settle_background_status_and_publish(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
+        let record_id = {
+            let state = self.state.read().await;
+            resolve_background_target(&state, target)
+                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
+                .id
+                .clone()
+        };
+        self.publish_background_progress(&record_id)
+            .await
+            .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))
+    }
+
     pub(super) async fn ensure_background_record_running(
         &self,
         request: BackgroundRunRequest,

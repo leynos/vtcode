@@ -1,5 +1,6 @@
 //! Tests attachment and availability of optional ACP subagent support.
 use super::super::optional_setup::{AcpSubagentControllerSetup, OptionalSetupOutcome, attach_acp_subagent_controller};
+use super::super::tool_config::subagent_tool_is_advertised;
 use super::support::{build_agent, build_agent_with_config, core_agent_config, definition_names};
 use assert_fs::TempDir;
 use diapason_config::WorkspaceLifecycleHooks;
@@ -129,4 +130,32 @@ async fn unavailable_subagent_controller_keeps_agent_tool_hidden() {
     assert!(!agent.local_tool_registry.has_subagent_controller());
     let names = definition_names(agent.tool_definitions(true, &[], "build").expect("build agent tools"));
     assert!(!names.iter().any(|name| name == tools::AGENT));
+}
+
+/// A session without its own controller must not offer the tools that
+/// controller admits.
+///
+/// The workspace catalogue can still hold every subagent tool, because the
+/// launch workspace has a controller of its own. Advertising from that
+/// catalogue is the fallback this filter exists to prevent, so the session
+/// flag alone decides, whatever the catalogue contains.
+#[test]
+fn session_without_a_controller_hides_every_subagent_tool() {
+    for tool in [
+        tools::AGENT,
+        tools::SPAWN_AGENT,
+        tools::SPAWN_BACKGROUND_SUBPROCESS,
+        tools::SEND_INPUT,
+        tools::WAIT_AGENT,
+        tools::RESUME_AGENT,
+        tools::CLOSE_AGENT,
+    ] {
+        assert!(
+            !subagent_tool_is_advertised(false, tool),
+            "{tool} names a session-owned controller the session does not have"
+        );
+        assert!(subagent_tool_is_advertised(true, tool), "{tool} stays available once the controller attaches");
+    }
+    assert!(subagent_tool_is_advertised(false, tools::LIST_FILES));
+    assert!(subagent_tool_is_advertised(false, tools::TASK_TRACKER));
 }

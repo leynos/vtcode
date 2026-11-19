@@ -155,17 +155,18 @@ notification events.
 ### ACP capability negotiation and Lody extensions
 
 During `initialize`, Diapason always advertises the Lody usage capability at
-version 1 (`_meta.lody.usage`). If the launch workspace has a subagent
-controller, it also advertises version-1 subagent lifecycle and management
-capabilities: `lifecycle`, `list`, `cancel`, and `output`. The
-`_meta.lody.tasks.background` capability is advertised only when background
-subagents are enabled. These capabilities reflect the launch workspace
-configuration, not the workspace selected by an individual session. Diapason
-builds a session-scoped controller for the selected session workspace, and if
-that setup fails, Lody management requests for the session return
-`subagent_management_unavailable` even though the handshake advertised the
-capability. Clients should inspect the handshake before using any conditional
-extension and handle that error response.
+version 1 (`result.agentCapabilities._meta.lody.usage`). If the launch
+workspace has a subagent controller, it also advertises version-1 subagent
+lifecycle and management capabilities under
+`result.agentCapabilities._meta.lody.subagents`: `lifecycle`, `list`, `cancel`,
+and `output`. `result.agentCapabilities._meta.lody.tasks.background` is
+advertised only when background subagents are enabled. These capabilities
+reflect the launch workspace configuration, not the workspace selected by an
+individual session. Diapason builds a session-scoped controller for the
+selected session workspace, and if that setup fails, Lody management requests
+for the session return `subagent_management_unavailable` even though the
+handshake advertised the capability. Clients should inspect the handshake
+before using any conditional extension and handle that error response.
 
 Subagent and background-process lifecycle is represented with standard ACP
 `session/update` tool calls and tool-call updates. Their standard title, kind,

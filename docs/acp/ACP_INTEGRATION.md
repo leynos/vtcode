@@ -25,23 +25,30 @@ ACP server; its sections are explicitly marked below.
 ### Initialization and capability negotiation
 
 The server responds to ACP `initialize` with protocol version 1 and advertises
-the standard session capabilities it implements. It always includes the Lody
-extension capability `_meta.lody.usage = { "version": 1 }`. Usage notifications
-are sent only when the provider response includes usage data.
+the standard session capabilities it implements. The Lody extension
+capabilities live inside the returned agent capabilities, not beside them in
+the top-level `_meta`: read them from `result.agentCapabilities._meta.lody`.
+The response always includes
+`result.agentCapabilities._meta.lody.usage = { "version": 1 }`. Usage
+notifications are sent only when the provider response includes usage data.
 
 When the launch workspace has a subagent controller, the response additionally
-includes `_meta.lody.subagents` version 1, with
-`_meta.lody.subagents.lifecycle`, `_meta.lody.subagents.list`,
-`_meta.lody.subagents.cancel`, and `_meta.lody.subagents.output` set to `true`.
-If background subagents are enabled, it also includes
-`_meta.lody.tasks = { "version": 1, "background": true }`. These extension
-capabilities describe the launch workspace configuration, not the workspace
-selected by an individual session. A client must not assume that subagent
-management or background tasks are available when they are absent from the
-handshake. The converse is also not guaranteed: Diapason creates a
-session-scoped controller for the selected session workspace, and if that setup
-fails, Lody management requests for the session return
-`subagent_management_unavailable`.
+includes `result.agentCapabilities._meta.lody.subagents` version 1, with
+`lifecycle`, `list`, `cancel`, and `output` set to `true` under that object. If
+background subagents are enabled, it also advertises the tasks capability:
+
+```json
+{ "agentCapabilities": { "_meta": { "lody": { "tasks": { "version": 1, "background": true } } } } }
+```
+
+Reading `result._meta.lody` instead finds nothing and would disable every
+extension feature a client supports. These extension capabilities describe the
+launch workspace configuration, not the workspace selected by an individual
+session. A client must not assume that subagent management or background tasks
+are available when they are absent from the handshake. The converse is also not
+guaranteed: Diapason creates a session-scoped controller for the selected
+session workspace, and if that setup fails, Lody management requests for the
+session return `subagent_management_unavailable`.
 
 Subagent and background-process progress uses ordinary ACP `session/update`
 tool calls and tool-call updates. The update carries task description and

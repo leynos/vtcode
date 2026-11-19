@@ -84,15 +84,33 @@ pub(super) fn tool_update_text(update: &agent_client_protocol::schema::v1::ToolC
         .join("\n")
 }
 
-pub(super) fn assert_tool_reached_the_model(provider_calls: &AtomicUsize, provider_requests: &Mutex<Vec<LLMRequest>>) {
+/// Asserts the mocked tool call ran, and whether the model saw the tool offered.
+///
+/// The `agent` tool is advertised from the session's own subagent controller,
+/// so a fail-closed session must not offer it even though the mocked model
+/// emits the call regardless. Pass `advertised: false` for those cases: they
+/// still require the call to reach the dispatcher and settle there, which is
+/// the guarantee the fail-closed path exists to keep.
+pub(super) fn assert_tool_reached_the_model(
+    provider_calls: &AtomicUsize,
+    provider_requests: &Mutex<Vec<LLMRequest>>,
+    advertised: bool,
+) {
     assert_eq!(provider_calls.load(Ordering::SeqCst), 2, "the tool result must return to the provider");
     let requests = provider_requests.lock().expect("read provider requests");
-    assert!(
-        requests[0]
-            .tools
-            .as_deref()
-            .is_some_and(|definitions| definitions.iter().any(|tool| tool.function_name() == "agent")),
-        "the provider request must expose the agent tool"
+    let offered = requests[0]
+        .tools
+        .as_deref()
+        .is_some_and(|definitions| definitions.iter().any(|tool| tool.function_name() == "agent"));
+    assert_eq!(
+        offered,
+        advertised,
+        "a session {} advertise the agent tool",
+        if advertised {
+            "with a subagent controller must"
+        } else {
+            "without a subagent controller must not"
+        }
     );
     assert!(
         requests[1].messages.iter().any(|message| message.is_tool_response()),
@@ -183,7 +201,7 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task(
                 .block_task()
                 .await?;
             assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
-            assert_tool_reached_the_model(&provider_calls, &provider_requests);
+            assert_tool_reached_the_model(&provider_calls, &provider_requests, true);
             let update = terminal_tool_update(&mut updates_rx).await;
             assert_eq!(
                 update.fields.status,
@@ -349,7 +367,7 @@ async fn prompt_driven_agent_tool_fails_closed_without_a_session_controller(
                 .block_task()
                 .await?;
             assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
-            assert_tool_reached_the_model(&provider_calls, &provider_requests);
+            assert_tool_reached_the_model(&provider_calls, &provider_requests, false);
             assert_tool_response_contains(&provider_requests, FAIL_CLOSED_MESSAGE);
             let update = terminal_tool_update(&mut updates_rx).await;
             assert_eq!(

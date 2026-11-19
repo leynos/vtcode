@@ -107,7 +107,7 @@ async fn prompt_driven_agent_tool_fails_closed_when_only_the_workspace_has_a_con
                 .block_task()
                 .await?;
             assert_eq!(response.stop_reason, acp::StopReason::EndTurn);
-            assert_tool_reached_the_model(&provider_calls, &provider_requests);
+            assert_tool_reached_the_model(&provider_calls, &provider_requests, false);
             assert_tool_response_contains(&provider_requests, FAIL_CLOSED_MESSAGE);
             let update = terminal_tool_update(&mut updates_rx).await;
             assert_eq!(

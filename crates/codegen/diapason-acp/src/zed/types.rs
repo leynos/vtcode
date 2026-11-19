@@ -186,10 +186,12 @@ impl SessionHandle {
     /// This flag marks the start of the close sequence, not its completion: the
     /// session's workspace runtime is still held and is released later by the
     /// cleanup path (`finish_closed_session` releases the lease after waiting
-    /// for in-flight prompts). The flag exists so a management request that
-    /// races the close can tell it has lost the race; it is not evidence that
-    /// the runtime has already been released, so callers must not reject a
-    /// management request merely because `is_closing` is set.
+    /// for in-flight prompts). The flag is the authority a management request
+    /// uses to tell that it lost the race: `resolve_open_session_controller`
+    /// checks it before and after resolving a controller and reports
+    /// `unknown_session` when it is set. It is not evidence that the runtime
+    /// has already been released, so a caller that has another use for the
+    /// runtime must not read it as one; a management request must.
     pub(crate) fn is_closing(&self) -> bool {
         self.activity.is_closing()
     }

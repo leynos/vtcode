@@ -284,3 +284,22 @@ fn equal_timestamp_transitions_are_ordered_by_revision() {
         "a stale background snapshot must not revive a stopped task"
     );
 }
+
+/// A later revision is forwarded even when its wall clock reads earlier.
+///
+/// The adapter orders transitions by the revision it assigns, never by
+/// `updated_at`, so a controller whose clock is behind, or a timestamp carried
+/// unchanged from the source event, cannot make a real later transition look
+/// stale and drop it.
+#[test]
+fn later_revision_outranks_an_earlier_timestamp() {
+    let mut ordering = LifecycleOrdering::default();
+    let completed = with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z");
+    let resumed = with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z");
+
+    assert!(ordering.admit(&live_at(1, completed)), "the first transition must be forwarded");
+    assert!(
+        ordering.admit(&live_at(2, resumed)),
+        "a later revision must be forwarded even when its timestamp is earlier"
+    );
+}
