@@ -343,7 +343,7 @@ See the
 ./run.sh chat "Implement user authentication system"
 
 # Codebase analysis
-./run.sh analyse
+diapason analyse
 ```
 
 ### Configuration Management

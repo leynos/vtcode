@@ -31,8 +31,8 @@ information:
 - **Acknowledgement**: A report is acknowledged within 48 hours
 - **Updates**: Regular updates are provided on the status of the
   vulnerability and fix progress
-- **Resolution**: The vulnerability is fixed as quickly as possible
-  and coordinate the release of the fix with you
+- **Resolution**: Vulnerabilities are fixed as quickly as possible, and the
+  release of each fix is coordinated with the reporter
 - **Credit**: Responsible disclosure is publicly acknowledged (unless
   you prefer to remain anonymous)
 

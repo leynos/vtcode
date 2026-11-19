@@ -166,11 +166,11 @@ Fields:
 - `mode`: `local` or `provider`
 - `original_message_count`
 - `compacted_message_count`
-- `history_artefact_path`: optional archived history path
+- `history_artifact_path`: optional archived history path
 - `previous_segment_id` and `new_segment_id`: optional cache segment transition
 - `previous_prefix_hash` and `new_prefix_hash`: optional immutable
   prompt-prefix hashes
-- `previous_catalogue_hash` and `new_catalogue_hash`: optional ordered
+- `previous_catalog_hash` and `new_catalog_hash`: optional ordered
   tool-catalogue hashes
 
 Each request segment freezes one system prompt, instruction digest, and
@@ -345,7 +345,7 @@ includes:
 - `mode`
 - `original_message_count`
 - `compacted_message_count`
-- `history_artefact_path`
+- `history_artifact_path`
 - `transcript_path`
 
 `session_start` with source `compact` remains supported for compatibility, but
