@@ -77,7 +77,7 @@ let ratatui_style = anstyle_to_ratatui(anstyle);
 ### Parsing Configuration
 
 ```rust
-use diapason_core::ui::tui::ThemeConfigParser;
+use diapason_ui::tui::core::ThemeConfigParser;
 
 let parser = ThemeConfigParser::default();
 

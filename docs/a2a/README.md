@@ -88,22 +88,32 @@ let card = AgentCard::diapason_default("http://localhost:8080");
 
 ### Creating and Managing Tasks
 
+`TaskManager` coordinates the task lifecycle inside the crate, and the HTTP
+server uses it; its mutating methods are crate-internal, so embedders manage a
+`Task` through its public fields and methods.
+
 ```rust
-use diapason_core::a2a::types::{Message, MessageRole};
+use diapason_core::a2a::types::{FileContent, Task, TaskState};
+use diapason_core::a2a::{Artefact, Message};
 
 // Create a task
-let task = manager.create_task(Some("conversation-id".to_string())).await;
+let mut task = Task::with_id("conversation-id");
 
 // Add a message
-let msg = Message::user_text("What should I do?");
-manager.add_message(&task.id, msg).await?;
+task.add_message(Message::user_text("What should I do?"));
 
 // Update task status
-manager.update_status(&task.id, TaskState::Working, None).await?;
+task.status.state = TaskState::Working;
 
-// Add an artifact
-let artifact = Artifact::text("output", "Generated content");
-manager.add_artifact(&task.id, artifact).await?;
+// Add an artefact
+let artefact = Artefact::file(
+    "output",
+    FileContent::Uri {
+        uri: "file:///tmp/generated.txt".to_string(),
+        mime_type: Some("text/plain".to_string()),
+    },
+);
+task.add_artefact(artefact);
 ```
 
 ### Running the HTTP Server

@@ -329,8 +329,8 @@ and sends adaptive thinking instead.
 
 1. **Thinking on by default.** On Opus 4.8, Diapason sent no `thinking` field
    when `extended_thinking_enabled = false`, and the API ran without thinking.
-   On Opus 5, the same config runs with adaptive thinking. If you had workloads
-   that relied on no-thinking behaviour, either:
+   On Opus 5, the same config runs with adaptive thinking. For workloads that
+   relied on no-thinking behaviour, either:
    - Revisit `max_tokens` (it remains a hard limit on thinking + response
      text), or
    - Set `effort = "high"` (or `medium`/`low`) and Diapason will send

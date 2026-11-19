@@ -3,7 +3,7 @@
 The Diapason terminal UI includes an interactive mode that combines
 keyboard-first navigation with quick commands for agent control. This page
 consolidates the shortcuts, input modes, and background execution behaviours
-available while you are connected to a session.
+available while connected to a session.
 
 ## Keyboard Shortcuts
 

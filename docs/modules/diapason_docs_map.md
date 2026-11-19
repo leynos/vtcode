@@ -1051,11 +1051,11 @@ relevant sections from the files listed below based on the topic area.
 
 - **File**: `docs/skills/AGENT_SKILLS_SPEC_IMPLEMENTATION.md`
   - **Content**: Agent Skills Spec Implementation
-  - **Topics**: Implemented Behaviour, Supported `SKILL.md` Fields, Validation
-    Rules, Discovery Precedence, Deliberate Non-Support
+  - **Topics**: Implemented Behaviour, Supported `SKILL.md` Field Syntax,
+    Validation Rules, Discovery Precedence, Deliberate Non-Support
   - **User Questions**: "What can you tell me about Agent Skills Spec
-    Implementation?", "How does Implemented Behaviour work?", "How does Supported
-    `SKILL.md` Fields work?"
+    Implementation?", "How does Implemented Behaviour work?", "How does
+    Supported `SKILL.md` Field Syntax work?"
 
 - **File**: `docs/protocols/ATIF_TRAJECTORY_FORMAT.md`
   - **Content**: Agent Trajectory Interchange Format (ATIF)

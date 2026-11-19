@@ -12,7 +12,7 @@ This document describes Diapason's current Agent Skills behaviour.
 - Implicit routing based on `description`
 - Disabled-skill filtering from `~/.codex/config.toml`
 
-## Supported `SKILL.md` Fields
+## Supported `SKILL.md` Field Syntax
 
 Required:
 

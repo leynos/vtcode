@@ -350,31 +350,31 @@ a2a-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:tokio-stream"]
 ### Create and Query Task
 
 ```rust
-use diapason_core::a2a::{Artefact, TaskManager};
+use diapason_core::a2a::types::FileContent;
+use diapason_core::a2a::{Artefact, Message, Task, TaskState};
 
-#[tokio::main]
-async fn main() {
-    let manager = TaskManager::new();
-
+fn main() {
     // Create task
-    let task = manager.create_task(Some("conversation-1".to_string())).await;
+    let mut task = Task::with_id("conversation-1");
     println!("Created task: {}", task.id);
 
     // Update status
-    manager.update_status(
-        &task.id,
-        TaskState::Working,
-        Some(Message::agent_text("Processing your request..."))
-    ).await.ok();
+    task.status.state = TaskState::Working;
+    task.add_message(Message::user_text("Processing the request..."));
 
     // Add artefact
-    let artefact = Artefact::text("result-1", "Refactored code");
-    manager.add_artefact(&task.id, artefact).await.ok();
+    let artefact = Artefact::file(
+        "result-1",
+        FileContent::Uri {
+            uri: "file:///tmp/refactored.rs".to_string(),
+            mime_type: Some("text/rust".to_string()),
+        },
+    );
+    task.add_artefact(artefact);
 
     // Get task
-    let updated = manager.get_task(&task.id).await.unwrap();
-    println!("Task state: {:?}", updated.state());
-    println!("Artefacts: {}", updated.artefacts.len());
+    println!("Task state: {:?}", task.status.state);
+    println!("Artefacts: {}", task.artefacts.len());
 }
 ```
 

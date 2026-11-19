@@ -216,7 +216,7 @@ BrightBlue=94    → Ratatui::LightBlue
 
 ```rust
 // Converted via ansi_color_to_ratatui_color()
-// Supports full 256-color palette
+// Supports full 256-colour palette
 ```
 
 **RGB Colours** (`ESC[38;2;{r};{g};{b}m`):
