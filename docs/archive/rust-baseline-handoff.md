@@ -750,3 +750,14 @@ names the unmerged parent `b1328dc3f`; the replay moved the layer's own three
 commits onto `e9e0e33b` without changing their content. The gate evidence
 recorded above describes that earlier replay onto an unmerged parent and is not
 evidence for this head.
+
+The self-contained-snippet commit replayed as empty, because its
+`CachedStyleParser` examples were already replaced by the public
+`ThemeConfigParser::parse_flexible`; the import that still made each
+cheat-sheet fence self-contained was added separately. All eight sequential
+code gates then passed at `cf5f4785a`: formatting, lint, build, type checking,
+10,695 workspace tests (22 skipped), 67 harness tests, the installed ast-grep
+scan, and advisory. Markdownlint over the 44 changed documents found two
+diagnostics, both introduced by the Phase 3 list edit and repaired before
+publication. Gate logs use `ACTION-pr38-restack-2` with the residual branch
+suffix.
