@@ -138,6 +138,12 @@ mod tests {
             let source_lines = joined.lines().count();
             let tail = foreground_output_tail(&messages, max_lines);
 
+            // The documented contract is an equality with bounding the whole
+            // transcript. Suffix and count checks alone pass for an empty tail
+            // whenever the limit is below the transcript's length, so the
+            // oracle is asserted directly.
+            let expected = extract_tail_lines(&joined, max_lines);
+            prop_assert_eq!(&tail, &expected, "the bounded walk must equal bounding the whole transcript");
             prop_assert!(
                 whole.ends_with(&tail),
                 "tail {:?} must be a suffix of the whole output {:?}",

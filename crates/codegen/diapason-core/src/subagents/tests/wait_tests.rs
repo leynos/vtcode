@@ -52,23 +52,45 @@ async fn wait_returns_first_terminal_child() {
         }
     }
 
-    let controller_clone = controller.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        let mut state = controller_clone.state.write().await;
+    // Drive `wait` through its first poll inside the waiter and signal only
+    // after that poll returns `Pending`. The first poll is the readiness point:
+    // it only suspends once the child notifications are registered, so
+    // completing `second` afterwards must wake the waiter through them. A
+    // regression to a delay, or to a scheduling order that lets `wait` take its
+    // initial-scan fast path, no longer produces the `Pending` first poll this
+    // test requires.
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let waiter = {
+        let controller = controller.clone();
+        tokio::spawn(async move {
+            let targets = ["first".to_string(), "second".to_string()];
+            let wait = controller.wait(&targets, Some(500));
+            let mut wait = std::pin::pin!(wait);
+            let first = futures::poll!(wait.as_mut());
+            let _ = ready_tx.send(());
+            assert!(first.is_pending(), "wait must park until a wakeup, not take the fast path");
+            wait.await
+        })
+    };
+    ready_rx.await.expect("the waiter reached its first suspension");
+
+    {
+        let mut state = controller.state.write().await;
         let record = state.children.get_mut("second").expect("second child");
         record.status = SubagentStatus::Completed;
         record.summary = Some("done".to_string());
         record.completed_at = Some(Utc::now());
         record.updated_at = Utc::now();
         record.notify.notify_waiters();
-    });
+    }
 
-    let result = controller
-        .wait(&["first".to_string(), "second".to_string()], Some(500))
+    // Joining the waiter also fails the test if it only woke on the timeout:
+    // the completion must reach it through the registered notification.
+    let result = waiter
         .await
+        .expect("waiter task")
         .expect("wait result")
-        .expect("terminal child");
+        .expect("the notification must wake the parked waiter");
     assert_eq!(result.id, "second");
     assert_eq!(result.status, SubagentStatus::Completed);
 }

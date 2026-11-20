@@ -52,14 +52,20 @@ async fn resume_restores_closed_grandchildren() {
     }
 
     // Closing the child cascades to the grandchild...
-    parent.close("child").await.expect("close child");
-    let closed_grandchild = child_controller.status_for("grandchild").await.expect("grandchild status");
+    parent.close(TaskOwner::Workspace, "child").await.expect("close child");
+    let closed_grandchild = child_controller
+        .status_for(TaskOwner::Workspace, "grandchild")
+        .await
+        .expect("grandchild status");
     assert_eq!(closed_grandchild.status, SubagentStatus::Closed, "grandchild must be closed with the child");
 
     // ...and resuming the child must reopen the grandchild too, not just clear
     // the close gate.
     parent.resume("child").await.expect("resume child");
-    let resumed_grandchild = child_controller.status_for("grandchild").await.expect("grandchild status");
+    let resumed_grandchild = child_controller
+        .status_for(TaskOwner::Workspace, "grandchild")
+        .await
+        .expect("grandchild status");
     assert!(
         matches!(resumed_grandchild.status, SubagentStatus::Queued | SubagentStatus::Running),
         "resumed grandchild must be re-queued, got {:?}",
@@ -154,18 +160,24 @@ async fn resume_does_not_affect_sibling_grandchildren() {
 
     // Close both siblings' grandchildren, then resume only "a": "b"'s
     // grandchild must stay closed (resume_tree must respect subtree isolation).
-    parent.close("a").await.expect("close a");
-    parent.close("b").await.expect("close b");
+    parent.close(TaskOwner::Workspace, "a").await.expect("close a");
+    parent.close(TaskOwner::Workspace, "b").await.expect("close b");
 
     parent.resume("a").await.expect("resume a");
 
-    let a_grandchild = controller_a.status_for("a-grandchild").await.expect("a-grandchild status");
+    let a_grandchild = controller_a
+        .status_for(TaskOwner::Workspace, "a-grandchild")
+        .await
+        .expect("a-grandchild status");
     assert!(
         matches!(a_grandchild.status, SubagentStatus::Queued | SubagentStatus::Running),
         "resumed 'a''s grandchild must be re-queued, got {:?}",
         a_grandchild.status
     );
-    let b_grandchild = controller_b.status_for("b-grandchild").await.expect("b-grandchild status");
+    let b_grandchild = controller_b
+        .status_for(TaskOwner::Workspace, "b-grandchild")
+        .await
+        .expect("b-grandchild status");
     assert_eq!(
         b_grandchild.status,
         SubagentStatus::Closed,

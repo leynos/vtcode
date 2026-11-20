@@ -33,6 +33,7 @@ use self::discovery::discover_controller_subagents;
 use self::model::*;
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
+use super::TaskOwner;
 pub(super) use super::controller_child_ids::ChildIdScopeSlot;
 use super::controller_persistence::{persist_background_records, record_committed_owner_ids, removable_owner_ids};
 
@@ -276,8 +277,12 @@ impl SubagentController {
     }
 
     /// Closes a subagent and all its descendants, aborting any in-flight work.
-    pub async fn close(&self, target: &str) -> Result<SubagentStatusEntry> {
-        self.ensure_child_owned_by_invocation(target).await?;
+    ///
+    /// `owner` is the authority the caller presents: a session may close only
+    /// a task inside its own delegation tree, while the workspace operator may
+    /// close any task the controller holds.
+    pub async fn close(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned(owner, target).await?;
         // `close_tree` walks the full nesting tree (including grandchildren
         // spawned through child-scoped controllers) and closes bottom-up.
         self.close_tree(target).await
@@ -389,10 +394,13 @@ impl SubagentController {
             return ChildWaitOutcome::TimedOut;
         }
 
-        // Register notified() futures before rechecking status. Merely
-        // constructing a Notified future does not register it; enable() is
-        // needed because notify_waiters() does not retain a permit for futures
-        // that have not yet been polled.
+        // Create the notified() futures before rechecking status. Tokio delivers
+        // notify_waiters() to a Notified future that existed when the call was
+        // made, even if it has not been polled yet: construction captures the
+        // notification counter, and polling compares against it. Creating the
+        // futures first is therefore what makes a status change between the
+        // recheck and the select observable; enable() is only an optimisation
+        // for directed notifications and is not what provides this guarantee.
         let wait_any = select_all(register_notify_waiters(&notifies));
         tokio::pin!(wait_any);
 
@@ -409,8 +417,12 @@ impl SubagentController {
     }
 
     /// Returns the current status of a tracked subagent by its target id.
-    pub async fn status_for(&self, target: &str) -> Result<SubagentStatusEntry> {
-        self.ensure_child_owned_by_invocation(target).await?;
+    ///
+    /// `owner` is the authority the caller presents: a session may read only a
+    /// task inside its own delegation tree, while the workspace operator may
+    /// read any task the controller holds.
+    pub async fn status_for(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned(owner, target).await?;
         self.status_for_unchecked(target).await
     }
 
@@ -623,7 +635,11 @@ impl SubagentController {
     /// Only records this controller has already committed may be removed from
     /// the ledger. A record another live controller of the same owner persisted
     /// after this snapshot is kept, because this controller never committed its
-    /// id and so has no authority to delete it.
+    /// id and so has no authority to delete it. This controller also never
+    /// omits an id it did commit: its `background_children` only gains entries,
+    /// so a newer launch another controller writes under a committed id stays
+    /// in the snapshot and survives the merge. See
+    /// `merge_background_records` for that invariant.
     pub(super) async fn save_background_state(&self) -> Result<()> {
         if self.shutdown_requested.load(Ordering::Relaxed) {
             return Ok(());
@@ -825,7 +841,9 @@ impl SubagentController {
                 }
             };
             self.launch_child(&id).await?;
-            self.status_for(&id).await
+            // The record was inserted by this call, so no ownership check
+            // applies to reading it back.
+            self.status_for_unchecked(&id).await
         })
     }
 

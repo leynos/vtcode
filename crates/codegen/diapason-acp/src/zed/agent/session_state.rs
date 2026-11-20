@@ -398,7 +398,7 @@ impl ZedAgent {
                     "Unable to synchronize workspace trust",
                 )
             })?;
-        let workspace_lease = self.workspace_runtime_for(&workspace).await.map_err(|error| {
+        let workspace_lease = self.workspace_runtime_for(&workspace, false).await.map_err(|error| {
             log_suppressed_error(&error, "new_session", "workspace_runtime_setup_failed");
             safe_internal_error(
                 "new_session",

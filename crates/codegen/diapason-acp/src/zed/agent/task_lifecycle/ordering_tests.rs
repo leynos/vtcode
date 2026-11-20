@@ -27,3 +27,55 @@ fn an_initial_snapshot_does_not_undo_live_progress_at_the_same_timestamp() {
         "an initial snapshot with the base revision must not undo live progress"
     );
 }
+
+/// Unwraps one delegated-child snapshot from its queued update.
+fn subagent_entry(update: LifecycleUpdate) -> SubagentStatusEntry {
+    match update {
+        LifecycleUpdate::Subagent { task, .. } => task,
+        other => panic!("expected a subagent snapshot, got {other:?}"),
+    }
+}
+
+/// An older capture delivered after a newer one must still lose.
+///
+/// The controller stamps the revision while it captures the state, so the
+/// reversed delivery order cannot change which revision each snapshot
+/// carries. Stamping as the item reached the queue instead gave the delayed
+/// older capture the higher revision, and the forwarder then admitted it over
+/// the newer state it had already sent.
+#[test]
+fn a_delayed_older_capture_is_dropped_by_its_carried_revision() {
+    let metrics = Arc::new(diapason_core::metrics::MetricsCollector::new());
+    let queue_metrics = Arc::clone(&metrics) as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
+    let (sender, mut receiver) = mpsc::channel(4);
+    let observer = AcpTaskLifecycleObserver {
+        session_id: "parent-session".to_string(),
+        sender,
+        queue: Arc::new(LifecycleQueueTracker::new(queue_metrics)),
+    };
+    let older = subagent_entry(with_updated_at(subagent_event("running"), "2026-08-14T12:01:00Z"));
+    let newer = subagent_entry(with_updated_at(subagent_event("completed"), "2026-08-14T12:05:00Z"));
+
+    // The controller captured `older` first and hands each snapshot the
+    // revision of its capture; deliver them in the opposite order.
+    let older_revision = 4_u64;
+    let newer_revision = 5_u64;
+    observer.subagent_status_published(newer, newer_revision);
+    observer.subagent_status_published(older, older_revision);
+
+    let first = receiver.try_recv().expect("the newer capture must be queued");
+    let second = receiver.try_recv().expect("the older capture must be queued");
+    assert_eq!(first.revision, newer_revision);
+    assert_eq!(second.revision, older_revision);
+    assert!(
+        first.revision > second.revision,
+        "the delayed older capture must not take a newer revision than the state already sent"
+    );
+
+    let mut ordering = LifecycleOrdering::default();
+    assert!(ordering.admit(&first), "the newer state must be forwarded");
+    assert!(
+        !ordering.admit(&second),
+        "a capture taken before the newer state must not overwrite it when it arrives late"
+    );
+}

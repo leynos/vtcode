@@ -74,10 +74,8 @@ async fn failed_background_spawn_settles_the_record_as_an_error() {
 #[tokio::test]
 async fn a_failed_launch_does_not_settle_the_record_a_replacement_owns() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
     write_ledger(
-        &state_dir.join("background_subagents.json"),
+        &background_ledger_path(temp.path()),
         vec![with_exec_session(
             record_with_restart_state("background-worker", Some("session-a"), "starting", 0),
             "exec-replacement",
@@ -118,11 +116,10 @@ async fn a_failed_launch_does_not_settle_the_record_a_replacement_owns() {
 #[tokio::test]
 async fn a_failed_launch_does_not_settle_a_cancelled_record() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
+    let ledger_path = background_ledger_path(temp.path());
     let ended_at = "2026-08-28T00:00:00Z";
     write_ledger(
-        &state_dir.join("background_subagents.json"),
+        &ledger_path,
         vec![with_exec_session(
             record_with_terminal_state("background-worker", Some("session-a"), "stopped", 0, false, Some(ended_at)),
             "exec-cancelled-launch",
@@ -134,7 +131,7 @@ async fn a_failed_launch_does_not_settle_a_cancelled_record() {
     )
     .await
     .expect("controller");
-    let before = std::fs::read(state_dir.join("background_subagents.json")).expect("read ledger before settlement");
+    let before = std::fs::read(&ledger_path).expect("read ledger before settlement");
 
     controller
         .settle_failed_background_run(&stale_launch_plan("exec-cancelled-launch"), &anyhow::anyhow!("spawn failed"))
@@ -154,7 +151,7 @@ async fn a_failed_launch_does_not_settle_a_cancelled_record() {
         "the stop keeps the instant it ended"
     );
     assert_eq!(
-        std::fs::read(state_dir.join("background_subagents.json")).expect("read ledger after settlement"),
+        std::fs::read(&ledger_path).expect("read ledger after settlement"),
         before,
         "a settlement that does not own the record must not write the ledger"
     );

@@ -1,9 +1,9 @@
 //! Attach-time publication of the lifecycle snapshots a client has not seen.
 
-use super::super::lody::owned_child_ids;
 use super::queue_accounting::{LifecycleQueueDropKind, LifecycleQueueTracker};
 use super::{LifecycleUpdate, QueuedLifecycleUpdate, bounded_session_correlation};
 use crate::acp;
+use diapason_core::subagents::owned_child_ids;
 use hashbrown::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
@@ -46,7 +46,7 @@ pub(super) async fn publish_initial_task_snapshots(
     let elapsed_ms = u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
     let _elapsed_ms_recorded = span.record("elapsed_ms", elapsed_ms);
     if published > 0 {
-        metrics.record_acp_initial_snapshots_published(published);
+        metrics.record_acp_initial_snapshots_enqueued(published);
         let _published_recorded = span.record("snapshots_published", u64::try_from(published).unwrap_or(u64::MAX));
     }
     match failure {
@@ -55,7 +55,7 @@ pub(super) async fn publish_initial_task_snapshots(
         }
         Some(kind) => {
             let cumulative_count = queue.record_drop(kind);
-            metrics.record_acp_initial_snapshot_publish_failure();
+            metrics.record_acp_initial_snapshot_rejected();
             let _outcome_recorded = span.record("outcome", "queue_closed");
             let _failures_recorded = span.record("publish_failures", 1_u64);
             warn!(

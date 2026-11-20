@@ -504,16 +504,41 @@ and `[history]` settings do not control ACP audit output.
   Diapason does not require a non-standard notification type for lifecycle.
   Forwarding is best-effort: queued updates may be dropped if the bounded
   notification queue is full or the connection closes.
+- **Background sub-agent ownership on resume** – A background sub-agent record
+  written before session ownership was tracked names the ACP session that
+  launched it in `parent_session_id` but carries no owner. `session/load` and
+  `session/resume` migrate such a row to the resuming session before that
+  session's subagent controller loads the ledger, so the session adopts the
+  existing launch instead of the workspace controller restoring it as its own
+  work. The migration rewrites only `owner_session_id`, and only where
+  `parent_session_id` is exactly the resuming session; it keeps the record id,
+  the launch's exec session and every other field, holds the ledger's
+  inter-process lock, and is idempotent, so a second resume changes nothing. A
+  missing ledger migrates nothing.
+
+  If the migration fails, the resume continues but the row stays ownerless. The
+  session controller adopts nothing, and that attach defers the workspace
+  restore so nothing relaunches the row under the wrong scope; a later resume
+  retries the migration. The launch workspace runtime is created before any
+  session resumes, so its controller may still hold an ownerless copy of a row
+  the migration has since given to a session. A resume therefore also
+  reconciles that controller: it adopts the migrated rows and persists the
+  adoption before either scope restores work. The ledger merge is the backstop
+  — it refuses to write an ownerless copy over a copy of the same launch that
+  records an owner, so a stale copy cannot bring back a launch a session has
+  stopped.
 - **Provider request capacity** – For a custom provider with
   `max_in_flight_requests` configured, each ACP session's subagent controller
-  caps its own child concurrency at the remaining slots, so the children it
-  launches cannot occupy every permit and the session's parent request can
-  still be admitted. The cap is per controller while the permit gate is shared
-  by every request routed through that provider in the process, so concurrent
-  ACP sessions, or other in-process work using the same provider, draw from the
-  same slots; the reservation protects the session whose controller enforces
-  it, not every session at once. A limit of `1` therefore disables ACP
-  sub-agents so the parent retains its slot. See
+  caps its own child concurrency at one fewer than the provider limit, computed
+  when that controller is created. The cap is per controller, while the permit
+  gate is shared by every request routed through that provider in the process,
+  so concurrent ACP sessions, or other in-process work using the same provider,
+  draw from the same permits. Two sessions whose controllers each leave one
+  slot free can together occupy every permit, and a request may then wait for
+  another to return. The cap limits how much one controller adds; it sets no
+  permit aside for its session, and no request is guaranteed admission. A limit
+  of `1` (or `0`) leaves no room for children, so ACP sub-agents are disabled
+  for that provider. See
   [custom provider request policy](../development/CUSTOM_PROVIDER_REQUEST_POLICY.md)
   for the related timeout, retry, and admission settings.
 - **Provider diagnostics** – Debug logs record queue depth, active and

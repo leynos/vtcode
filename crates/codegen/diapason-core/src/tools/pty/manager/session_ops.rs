@@ -1,3 +1,7 @@
+//! Session-facing `PtyManager` operations: listing, snapshots, output reads and
+//! writes, resizing, completion polling, termination, and syncing terminal
+//! buffers to files for dynamic context discovery.
+
 use super::super::formatting::{format_terminal_file, sanitize_session_id};
 use super::super::manager_utils::exit_status_code;
 use super::super::session::{CommandEchoState, PtySessionHandle};

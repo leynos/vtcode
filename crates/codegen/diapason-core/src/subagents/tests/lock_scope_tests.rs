@@ -81,6 +81,16 @@ async fn injected_lock_scopes_are_isolated_and_a_shared_scope_excludes() {
         "one scope must exclude a second controller using it"
     );
     drop(persistence);
+
+    // The same isolation applies to the tree-wide attachment guard that makes
+    // a cycle check and its publication one critical section.
+    let attachment = first.lock_scope().attachment().try_lock().expect("fresh attachment guard");
+    assert!(second.lock_scope().attachment().try_lock().is_ok(), "a distinct scope must not block attachment");
+    assert!(
+        third.lock_scope().attachment().try_lock().is_err(),
+        "one scope must exclude a second controller attaching to it"
+    );
+    drop(attachment);
 }
 
 /// A child-scoped controller joins its parent's locks, exactly as it joins the

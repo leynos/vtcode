@@ -69,6 +69,21 @@ async fn attaching_a_controller_with_another_lock_scope_is_rejected() {
         .expect("insert after the rejected attachment");
     assert_eq!(foreign_id, candidate, "the rejected controller keeps its own allocator");
 
+    // A rejection that redirected the foreign slot before failing would leave
+    // the reservation above in the root's allocator, so the root would have to
+    // suffix the same candidate here. The root allocator must still be empty.
+    let root_id = root
+        .insert_child_with_candidate_id(
+            candidate,
+            test_child_record(candidate, "root-candidate", "parent-session", &spec, SubagentStatus::Queued, 1, None),
+        )
+        .await
+        .expect("insert after the rejected attachment");
+    assert_eq!(
+        root_id, candidate,
+        "a rejected attachment must not move the foreign reservation into the root allocator"
+    );
+
     foreign.signal_shutdown().await;
     root.signal_shutdown().await;
 }

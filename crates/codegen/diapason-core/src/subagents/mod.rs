@@ -27,6 +27,7 @@ mod controller_locks;
 mod controller_persistence;
 mod discovery;
 mod model;
+mod ownership;
 mod prompt;
 mod types;
 
@@ -49,6 +50,7 @@ pub use model::{
     agent_type_for_spec, load_memory_appendix, load_memory_appendix_async, load_primary_memory_appendix,
     load_primary_memory_appendix_async,
 };
+pub use ownership::{TaskOwner, owned_background_ids, owned_child_ids, resolve_owned_background_id};
 pub use prompt::{
     contains_explicit_delegation_request, contains_explicit_model_request, delegated_task_requires_clarification,
     extract_explicit_agent_mentions, normalize_requested_model_override, request_prompt, sanitize_subagent_input_items,
@@ -149,6 +151,17 @@ fn current_subagent_invocation_context() -> Option<SubagentInvocationContext> {
     SUBAGENT_INVOCATION_CONTEXT.try_with(Clone::clone).ok()
 }
 
+/// Returns the session that owns the running tool invocation, if there is one.
+///
+/// A provider tool executes inside the invocation that called it, so it can
+/// name the session it acts for without the controller consulting the ambient
+/// context itself. Returning an owned id keeps the borrow independent of the
+/// task-local scope, which a `TaskOwner<'_>` cannot otherwise outlive.
+#[must_use]
+pub fn current_subagent_owner_session_id() -> Option<String> {
+    current_subagent_invocation_context().map(|context| context.parent_session_id)
+}
+
 /// Central controller that manages spawning, lifecycle, and state of all subagents.
 #[derive(Clone)]
 pub struct SubagentController {
@@ -167,12 +180,11 @@ pub struct SubagentController {
     /// state. Set only while `close_tree`/`signal_shutdown` are tearing a
     /// subtree down.
     closing: Arc<AtomicBool>,
-    progress_observers: Arc<controller_observers::ProgressObserverRegistry>,
-    /// Observer key inherited from the owning controller. Child-scoped
-    /// controllers serve exactly one parent session, so their lifecycle
-    /// events are published under that session's observer key even though the
-    /// tasks' immediate `parent_thread_id` is the child's own session.
-    progress_observer_scope: Option<String>,
+    /// Where this controller publishes its lifecycle snapshots, and under which
+    /// observer key. Interior-mutable so an independently constructed
+    /// controller can adopt the route of the tree it is attached to, even
+    /// though attachment only holds a shared `Arc` of it.
+    progress_route: controller_observers::ProgressObserverRoute,
     /// Child task ids allocated anywhere in this controller's tree. A
     /// controller-local check cannot see an id a sibling allocated, so the
     /// root owns one scope and the whole tree shares one slot pointing at it.
@@ -283,8 +295,7 @@ impl SubagentController {
                 })),
                 shutdown_requested: Arc::new(AtomicBool::new(false)),
                 closing: Arc::new(AtomicBool::new(false)),
-                progress_observers: Arc::default(),
-                progress_observer_scope: None,
+                progress_route: Default::default(),
                 child_id_scope: Arc::new(std::sync::RwLock::new(Arc::new(
                     controller_spawn_run::ChildIdScopeSlot::with_lock_scope(Arc::clone(&lock_scope)),
                 ))),

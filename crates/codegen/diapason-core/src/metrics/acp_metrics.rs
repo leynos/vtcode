@@ -24,8 +24,13 @@ pub struct AcpExtensionMetrics {
     pub management_total_duration_ms: u64,
     pub usage_notifications_enqueued: u64,
     pub usage_notifications_failed: u64,
-    pub initial_snapshots_published: u64,
-    pub initial_snapshot_publish_failures: u64,
+    /// Initial task snapshots accepted onto the lifecycle queue.
+    ///
+    /// The forwarder can still discard a queued snapshot as stale, so this
+    /// counts queue acceptance rather than client delivery.
+    pub initial_snapshots_enqueued: u64,
+    /// Initial task snapshots the lifecycle queue rejected.
+    pub initial_snapshots_rejected: u64,
 }
 
 /// Tracks one Lody ACP management RPC from entry to completion.
@@ -84,8 +89,8 @@ pub(super) struct AcpExtensionState {
     management_total_duration: Duration,
     usage_notifications_enqueued: u64,
     usage_notifications_failed: u64,
-    initial_snapshots_published: u64,
-    initial_snapshot_publish_failures: u64,
+    initial_snapshots_enqueued: u64,
+    initial_snapshots_rejected: u64,
 }
 
 impl AcpExtensionState {
@@ -99,8 +104,8 @@ impl AcpExtensionState {
             management_total_duration_ms: u64::try_from(self.management_total_duration.as_millis()).unwrap_or(u64::MAX),
             usage_notifications_enqueued: self.usage_notifications_enqueued,
             usage_notifications_failed: self.usage_notifications_failed,
-            initial_snapshots_published: self.initial_snapshots_published,
-            initial_snapshot_publish_failures: self.initial_snapshot_publish_failures,
+            initial_snapshots_enqueued: self.initial_snapshots_enqueued,
+            initial_snapshots_rejected: self.initial_snapshots_rejected,
         }
     }
 }
@@ -163,17 +168,21 @@ impl MetricsCollector {
         }
     }
 
-    /// Record snapshots queued by one attach-time initial publication pass.
-    pub fn record_acp_initial_snapshots_published(&self, snapshots: usize) {
+    /// Record snapshots accepted onto the lifecycle queue by one attach-time
+    /// initial publication pass.
+    ///
+    /// The forwarder may discard a queued snapshot as stale, so this measures
+    /// queue acceptance, not that the client received the snapshot.
+    pub fn record_acp_initial_snapshots_enqueued(&self, snapshots: usize) {
         let mut metrics = self.acp_extension.lock();
         let snapshots = u64::try_from(snapshots).unwrap_or(u64::MAX);
-        metrics.initial_snapshots_published = metrics.initial_snapshots_published.saturating_add(snapshots);
+        metrics.initial_snapshots_enqueued = metrics.initial_snapshots_enqueued.saturating_add(snapshots);
     }
 
-    /// Record an initial task snapshot that could not be queued.
-    pub fn record_acp_initial_snapshot_publish_failure(&self) {
+    /// Record an initial task snapshot the lifecycle queue rejected.
+    pub fn record_acp_initial_snapshot_rejected(&self) {
         let mut metrics = self.acp_extension.lock();
-        metrics.initial_snapshot_publish_failures = metrics.initial_snapshot_publish_failures.saturating_add(1);
+        metrics.initial_snapshots_rejected = metrics.initial_snapshots_rejected.saturating_add(1);
     }
 
     /// Get the bounded aggregate Lody ACP extension metrics snapshot.
@@ -212,12 +221,12 @@ fn append_acp_extension_prometheus(output: &mut String, metrics: &AcpExtensionMe
          # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notification publication failures, including serialization before enqueue\n\
          # TYPE diapason_acp_usage_notifications_failed_total counter\n\
          diapason_acp_usage_notifications_failed_total {}\n\n\
-         # HELP diapason_acp_initial_snapshots_published_total Lody ACP initial task snapshots published\n\
-         # TYPE diapason_acp_initial_snapshots_published_total counter\n\
-         diapason_acp_initial_snapshots_published_total {}\n\n\
-         # HELP diapason_acp_initial_snapshot_publish_failures_total Lody ACP initial task snapshots that failed to publish\n\
-         # TYPE diapason_acp_initial_snapshot_publish_failures_total counter\n\
-         diapason_acp_initial_snapshot_publish_failures_total {}\n\n",
+         # HELP diapason_acp_initial_snapshots_enqueued_total Lody ACP initial task snapshots accepted onto the lifecycle queue\n\
+         # TYPE diapason_acp_initial_snapshots_enqueued_total counter\n\
+         diapason_acp_initial_snapshots_enqueued_total {}\n\n\
+         # HELP diapason_acp_initial_snapshots_rejected_total Lody ACP initial task snapshots rejected by the lifecycle queue\n\
+         # TYPE diapason_acp_initial_snapshots_rejected_total counter\n\
+         diapason_acp_initial_snapshots_rejected_total {}\n\n",
         metrics.management_requests_started,
         metrics.management_requests_succeeded,
         metrics.management_requests_failed,
@@ -225,8 +234,8 @@ fn append_acp_extension_prometheus(output: &mut String, metrics: &AcpExtensionMe
         metrics.management_total_duration_ms,
         metrics.usage_notifications_enqueued,
         metrics.usage_notifications_failed,
-        metrics.initial_snapshots_published,
-        metrics.initial_snapshot_publish_failures,
+        metrics.initial_snapshots_enqueued,
+        metrics.initial_snapshots_rejected,
     );
 }
 
@@ -246,8 +255,8 @@ mod tests {
         collector.begin_acp_management().finish(false);
         collector.record_acp_usage_notification(true);
         collector.record_acp_usage_notification(false);
-        collector.record_acp_initial_snapshots_published(2);
-        collector.record_acp_initial_snapshot_publish_failure();
+        collector.record_acp_initial_snapshots_enqueued(2);
+        collector.record_acp_initial_snapshot_rejected();
 
         let series = collector
             .export_prometheus()
@@ -283,12 +292,12 @@ mod tests {
         # HELP diapason_acp_usage_notifications_failed_total Lody ACP usage notification publication failures, including serialization before enqueue
         # TYPE diapason_acp_usage_notifications_failed_total counter
         diapason_acp_usage_notifications_failed_total 1
-        # HELP diapason_acp_initial_snapshots_published_total Lody ACP initial task snapshots published
-        # TYPE diapason_acp_initial_snapshots_published_total counter
-        diapason_acp_initial_snapshots_published_total 2
-        # HELP diapason_acp_initial_snapshot_publish_failures_total Lody ACP initial task snapshots that failed to publish
-        # TYPE diapason_acp_initial_snapshot_publish_failures_total counter
-        diapason_acp_initial_snapshot_publish_failures_total 1
+        # HELP diapason_acp_initial_snapshots_enqueued_total Lody ACP initial task snapshots accepted onto the lifecycle queue
+        # TYPE diapason_acp_initial_snapshots_enqueued_total counter
+        diapason_acp_initial_snapshots_enqueued_total 2
+        # HELP diapason_acp_initial_snapshots_rejected_total Lody ACP initial task snapshots rejected by the lifecycle queue
+        # TYPE diapason_acp_initial_snapshots_rejected_total counter
+        diapason_acp_initial_snapshots_rejected_total 1
         "###);
 
         // The guard measures real elapsed time, so the duration value is not

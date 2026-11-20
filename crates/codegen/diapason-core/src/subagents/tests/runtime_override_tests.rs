@@ -27,7 +27,7 @@ async fn spawn_honours_model_override_when_user_explicitly_requests_it() {
         .await
         .expect("effective model");
     assert_eq!(effective_model, models::openai::GPT_5_6_LUNA);
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }
 
 #[tokio::test]
@@ -58,17 +58,20 @@ async fn resume_preserves_captured_runtime_overrides() {
         .expect("initial effective model");
     assert_eq!(initial_model, models::openai::GPT_5_6_LUNA);
 
-    let closed = controller.close(&spawned.id).await.expect("close");
+    let closed = controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
     assert_eq!(closed.status, SubagentStatus::Closed);
 
     controller.resume(&spawned.id).await.expect("resume");
 
     for _ in 0..100 {
-        let status = controller.status_for(&spawned.id).await.expect("status");
+        let status = controller.status_for(TaskOwner::Workspace, &spawned.id).await.expect("status");
         if status.updated_at > closed.updated_at && status.status != SubagentStatus::Closed {
-            let snapshot = controller.snapshot_for_thread(&spawned.id).await.expect("snapshot");
+            let snapshot = controller
+                .snapshot_for_thread(TaskOwner::Workspace, &spawned.id)
+                .await
+                .expect("snapshot");
             assert_eq!(snapshot.effective_config.agent.default_model, models::openai::GPT_5_6_LUNA);
-            controller.close(&spawned.id).await.expect("final close");
+            controller.close(TaskOwner::Workspace, &spawned.id).await.expect("final close");
             return;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -96,10 +99,13 @@ async fn spawn_captures_runtime_config_before_first_child_turn() {
         .await
         .expect("spawn");
 
-    let snapshot = controller.snapshot_for_thread(&spawned.id).await.expect("snapshot");
+    let snapshot = controller
+        .snapshot_for_thread(TaskOwner::Workspace, &spawned.id)
+        .await
+        .expect("snapshot");
 
     assert_eq!(snapshot.id, spawned.id);
     assert!(!snapshot.effective_config.agent.default_model.trim().is_empty());
 
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }

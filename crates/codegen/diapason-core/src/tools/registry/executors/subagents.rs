@@ -1,3 +1,8 @@
+//! Executors for the subagent, task, and background-session tools.
+//!
+//! Each executor decodes the provider's arguments and forwards the call to the
+//! shared `SubagentController`, so ownership, admission, and lifecycle policy
+//! stay in the core domain rather than being re-derived in the tool layer.
 use super::ToolRegistry;
 use super::exec_support::sanitize_subagent_tool_output_paths;
 use anyhow::{Context, Result, anyhow};
@@ -167,8 +172,18 @@ impl ToolRegistry {
                 .and_then(Value::as_str)
                 .ok_or_else(|| anyhow!("close_agent requires id"))?
                 .to_string();
-            self.execute_subagent_call(move |controller| async move { controller.close(&target).await })
-                .await
+            // A tool runs inside the invocation that called it, so the
+            // invoking session is the authority it presents. A tool invoked
+            // outside any session, such as the local CLI, presents the
+            // workspace operator's authority.
+            let owner_session_id = crate::subagents::current_subagent_owner_session_id();
+            self.execute_subagent_call(move |controller| async move {
+                let owner = owner_session_id
+                    .as_deref()
+                    .map_or(crate::subagents::TaskOwner::Workspace, crate::subagents::TaskOwner::Session);
+                controller.close(owner, &target).await
+            })
+            .await
         })
     }
 }

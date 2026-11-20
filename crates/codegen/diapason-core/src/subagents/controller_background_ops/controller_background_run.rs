@@ -2,24 +2,42 @@
 
 use super::*;
 
-use super::controller_background_query::{resolve_background_target, resolve_background_target_mut};
-use super::controller_background_settlement::mark_background_ledger_write_pending;
+use super::controller_background_query::resolve_background_target;
+use super::controller_background_settlement::{
+    clear_background_ledger_write_pending, mark_background_ledger_write_pending,
+};
 
-use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Returns the next number in this process's background-launch sequence.
+///
+/// Every launch consumes one number, so identifiers built from it are unique
+/// even when two launches share a millisecond timestamp. The process id keeps
+/// one process's sequence from colliding with another's.
+fn next_background_launch_sequence() -> u64 {
+    static LAUNCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    LAUNCH_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Builds a session id that no other launch in this process can repeat.
+///
+/// The base already carries a millisecond timestamp, but two launches of one
+/// record in the same millisecond derived the same session id. The archive
+/// attachment identifies a launch by its session id, so a repeat would let the
+/// earlier run's archive paths attach to its replacement. A process-wide
+/// sequence makes every launch distinct.
+pub(super) fn background_launch_session_id(session_base: &str) -> String {
+    format!("{session_base}-{:x}-{:x}", std::process::id(), next_background_launch_sequence())
+}
 
 /// Builds an exec-session id that no other launch in this process can repeat.
 ///
-/// The session component already carries a millisecond timestamp, but two
-/// launches of one record in the same millisecond derived the same id, and the
-/// second spawn then failed on the duplicate-session check while the first was
-/// still starting — a failure settlement could blame on the winner's live
-/// record. A process-wide counter makes every launch distinct, and the process
-/// id keeps one process's sequence from colliding with another's.
+/// Two launches of one record in the same millisecond must not share a session
+/// id, or the second spawn fails on the duplicate-session check while the
+/// first is still starting — a failure settlement could blame on the winner's
+/// live record. A process-wide counter makes every launch distinct.
 pub(super) fn background_exec_session_id(session_id: &str) -> String {
-    static LAUNCH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-    let sequence = LAUNCH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    format!("exec-{session_id}-{:x}-{sequence:x}", std::process::id())
+    format!("exec-{session_id}-{:x}-{:x}", std::process::id(), next_background_launch_sequence())
 }
 
 struct BackgroundRunIdentity {
@@ -35,7 +53,7 @@ struct BackgroundRunIdentity {
 impl SubagentController {
     pub(super) async fn background_status_for(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
         let state = self.state.read().await;
-        let record = resolve_background_target(&state, target)
+        let record = resolve_background_target(&state, TaskOwner::Workspace, target)
             .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
         Ok(record.build_status_entry())
     }
@@ -43,21 +61,28 @@ impl SubagentController {
     /// Publishes the projection of one background record and returns it.
     ///
     /// The snapshot and the session that routes it are read under one state
-    /// lock, so a concurrent restart that changes the record's owner cannot
-    /// deliver a stale projection to the new owner's observers.
+    /// lock, so a concurrent restart that moves the record to another parent
+    /// cannot deliver a stale projection to the new parent's observers.
     ///
     /// Ownership rule: a record whose id encodes its owner keeps that owner
-    /// for life. An owner-scoped id cannot be re-created for a different
-    /// session, so only a record addressed by a legacy or caller-supplied id
-    /// can change owner, and only when the launch supplies a parent-session
-    /// override. That case is deliberate — the caller is re-attaching the
-    /// record to the session that now drives it — and routing follows the
-    /// owner observed with the published snapshot rather than whichever
-    /// owner a later call happens to read.
+    /// for life. `prepare_background_run` takes a record's owner from the
+    /// record it replaces and never from a launch override, and an
+    /// owner-scoped id cannot be re-created for a different session. A launch
+    /// override therefore re-attaches the record — deliberately, because the
+    /// caller names the session that now drives it — by changing its
+    /// `parent_session_id`, not its owner.
+    ///
+    /// Routing follows that `parent_session_id`, not the owner.
+    /// `observed_background_status` reads the record's parent session together
+    /// with its projection under one state lock, and
+    /// `publish_background_progress` delivers the snapshot to the observers
+    /// registered for that parent. A snapshot therefore reaches the parent the
+    /// record named when it was published, not whichever parent a later call
+    /// happens to read.
     pub(super) async fn settle_background_status_and_publish(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
         let record_id = {
             let state = self.state.read().await;
-            resolve_background_target(&state, target)
+            resolve_background_target(&state, TaskOwner::Workspace, target)
                 .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
                 .id
                 .clone()
@@ -73,9 +98,25 @@ impl SubagentController {
     ) -> Result<BackgroundSubprocessEntry> {
         let mut plan = self.prepare_background_run(request).await?;
         loop {
-            self.record_background_run_starting(&plan).await;
+            match self.reserve_background_run(&plan).await? {
+                BackgroundRunReservation::Reserved => {}
+                // An active launch already runs this work; its projection is
+                // the caller's answer, and a second process would duplicate it.
+                BackgroundRunReservation::Reused(entry) => return Ok(*entry),
+                // Another launch owns the record. It answers for itself, so the
+                // caller receives what that launch has committed.
+                BackgroundRunReservation::Declined => return self.background_status_for(&plan.record_id).await,
+            }
             let metadata = match self.spawn_background_exec_session(&plan).await {
-                Ok(metadata) => metadata,
+                Ok(metadata) => {
+                    // The commit runs after the spawn returns, without the
+                    // state lock, so a cancellation or replacement can land in
+                    // that window. It is otherwise only reachable by racing a
+                    // real process, so a test can hold it here.
+                    #[cfg(test)]
+                    pass_background_commit_gate(&self.state).await;
+                    metadata
+                }
                 Err(error) => {
                     self.settle_failed_background_run(&plan, &error).await;
                     // A spawn failure is the only thing that spends the
@@ -95,7 +136,16 @@ impl SubagentController {
                         error = %error,
                         "Background launch failed; retrying once"
                     );
-                    plan = self.prepare_background_run(retry).await?;
+                    plan = match self.prepare_background_run(retry).await {
+                        Ok(prepared) => prepared,
+                        Err(prepare_error) => {
+                            // Nothing else drives a record once its replacement
+                            // cannot even be prepared, so settle it rather than
+                            // report a launch that will never run.
+                            self.settle_failed_background_run(&plan, &prepare_error).await;
+                            return Err(prepare_error);
+                        }
+                    };
                     continue;
                 }
             };
@@ -103,17 +153,28 @@ impl SubagentController {
                 // The record stopped wanting this launch while the spawn was in
                 // flight. The session exists now and nothing records it, so
                 // close it rather than leave an untracked process running.
-                self.close_background_exec_session(&plan.exec_session_id).await;
+                if let Err(error) = self.close_background_exec_session(&plan.exec_session_id).await {
+                    tracing::warn!(
+                        exec_session_id = plan.exec_session_id.as_str(),
+                        error = %error,
+                        "Failed to close a declined background launch's exec session"
+                    );
+                }
                 return self.background_status_for(&plan.record_id).await;
             }
             // The record is committed in memory but the ledger is not. A
             // caller told the launch failed must not later have that record
-            // reused as if it were durable, so the failure is remembered and
-            // the next refresh retries the write before reuse can observe it.
-            if let Err(error) = self.save_background_state().await {
-                mark_background_ledger_write_pending(&self.state);
-                return Err(error);
-            }
+            // reused as if it were durable, so the obligation is recorded
+            // before the save is awaited. Marking after the save would leave
+            // the whole write window unmarked: a concurrent identical request
+            // could refresh, see no obligation and no persisted record, and
+            // reuse the in-memory `Running` record before this launch knows
+            // whether its write succeeded.
+            let generation = mark_background_ledger_write_pending(&self.state);
+            // `?` leaves the obligation owed when the save fails; only a
+            // successful write clears the generation this call observed.
+            self.save_background_state().await?;
+            clear_background_ledger_write_pending(&self.state, generation);
             return self.background_status_for(&plan.record_id).await;
         }
     }
@@ -145,9 +206,23 @@ impl SubagentController {
             stable_id: Some(plan.record_id.clone()),
             restart_attempts: next_restart_attempt,
             overrides: None,
+            // The retry replaces the launch that just failed. Binding it to
+            // that exec session stops a late retry from overwriting a newer
+            // launch that has since taken the record.
+            expected_exec_session_id: Some(plan.exec_session_id.clone()),
         })
     }
 
+    /// Resolves the spec, record and session identity for one launch request.
+    ///
+    /// A parent-session override is accepted: when the request names one, that
+    /// session becomes the launch's `parent_session_id`. An existing record
+    /// keeps its `owner_session_id` for life regardless.
+    /// `prepare_background_run` takes the owner from the record being
+    /// replaced, never from the override, and an owner-encoding id cannot
+    /// name a different owner anyway. Observers therefore route the new
+    /// snapshot to the override session while the record still belongs to its
+    /// original owner.
     async fn resolve_background_run_identity(&self, request: &BackgroundRunRequest) -> Result<BackgroundRunIdentity> {
         let spec = self
             .resolve_requested_spec(Some(request.agent_name.as_str()))
@@ -156,12 +231,16 @@ impl SubagentController {
         let requested_record_id = request.stable_id.clone().unwrap_or_else(|| {
             background_record_id_for_owner(request.agent_name.as_str(), self.background_owner_session_id.as_deref())
         });
-        // A client can address an existing record by the legacy id an older
-        // release persisted, and a relaunch must update that record rather than
-        // create a second one under the id the client sent.
+        // Every in-tree caller passes a canonical id: the launch paths derive
+        // it from the agent and owner, and restore paths take it from the map
+        // key. The legacy alias fallback in `resolve_background_target` exists
+        // for client lookups; applying it here let an unscoped controller
+        // resolve another owner's `agent@session` record and then rewrite it
+        // under this controller's view. An exact lookup keeps a launch bound
+        // to the record its caller named.
         let previous_record = {
             let state = self.state.read().await;
-            resolve_background_target(&state, &requested_record_id).cloned()
+            state.background_children.get(&requested_record_id).cloned()
         };
         let record_id = previous_record.as_ref().map_or(requested_record_id, |record| record.id.clone());
         let previous_parent_session_id = usable_background_parent_session_id(
@@ -177,12 +256,13 @@ impl SubagentController {
         let parent_session_id = requested_parent_session_id
             .or(previous_parent_session_id)
             .unwrap_or(current_parent_session_id);
-        let session_id = format!(
+        let session_base = format!(
             "{}-{}-{}",
             sanitize_component(parent_session_id.as_str()),
             sanitize_component(record_id.as_str()),
             Utc::now().format("%Y%m%dT%H%M%S%3fZ")
         );
+        let session_id = background_launch_session_id(&session_base);
         let exec_session_id = background_exec_session_id(&session_id);
         let created_at = previous_record.as_ref().map_or_else(Utc::now, |record| record.created_at);
         Ok(BackgroundRunIdentity {
@@ -197,6 +277,19 @@ impl SubagentController {
     }
 
     async fn prepare_background_run(&self, request: BackgroundRunRequest) -> Result<BackgroundRunPlan> {
+        // A replacement preparation is fallible only through spec resolution,
+        // and the discovered spec snapshot is fixed at construction. A test
+        // cannot otherwise make the first preparation succeed and the retry's
+        // fail, so the seam drops the bound attempt's spec before it resolves.
+        #[cfg(test)]
+        if request.expected_exec_session_id.is_some() && take_background_retry_spec_removal(&self.state) {
+            self.state
+                .write()
+                .await
+                .discovered
+                .effective
+                .retain(|spec| !spec.matches_name(request.agent_name.as_str()));
+        }
         let identity = self.resolve_background_run_identity(&request).await?;
         let previous_record = identity.previous_record.as_ref();
         let previous_prompt = previous_record.map_or_else(String::new, |record| record.prompt.clone());
@@ -264,45 +357,8 @@ impl SubagentController {
             model_override,
             reasoning_override,
             restart_attempts: request.restart_attempts,
+            expected_exec_session_id: request.expected_exec_session_id,
         })
-    }
-
-    async fn record_background_run_starting(&self, plan: &BackgroundRunPlan) {
-        {
-            let mut state = self.state.write().await;
-            state.background_children.insert(
-                plan.record_id.clone(),
-                BackgroundRecord {
-                    owner_session_id: plan.owner_session_id.clone(),
-                    id: plan.record_id.clone(),
-                    agent_name: plan.spec.name.clone(),
-                    display_label: subagent_display_label(&plan.spec),
-                    description: plan.spec.description.clone(),
-                    source: plan.spec.source.label(),
-                    colour: plan.spec.colour.clone(),
-                    session_id: plan.session_id.clone(),
-                    parent_session_id: plan.parent_session_id.clone(),
-                    exec_session_id: plan.exec_session_id.clone(),
-                    desired_enabled: true,
-                    status: BackgroundSubprocessStatus::Starting,
-                    created_at: plan.created_at,
-                    updated_at: Utc::now(),
-                    started_at: None,
-                    ended_at: None,
-                    pid: None,
-                    prompt: plan.prompt.clone(),
-                    summary: Some("Starting background subagent".to_string()),
-                    error: None,
-                    archive_path: None,
-                    transcript_path: None,
-                    max_turns: plan.max_turns,
-                    model_override: plan.model_override.clone(),
-                    reasoning_override: plan.reasoning_override.clone(),
-                    restart_attempts: plan.restart_attempts,
-                },
-            );
-        }
-        self.publish_background_status(&plan.record_id).await;
     }
 
     async fn spawn_background_exec_session(
@@ -386,40 +442,98 @@ impl SubagentController {
         )
         .await
     }
-
-    pub(super) async fn refresh_background_archive_metadata(&self, target: &str) -> Result<()> {
-        let session_id = {
-            let state = self.state.read().await;
-            resolve_background_target(&state, target)
-                .map(|record| record.session_id.clone())
-                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
-        };
-
-        if let Some(listing) = find_session_by_identifier(&session_id).await? {
-            let mut state = self.state.write().await;
-            attach_background_archive_paths(&mut state, target, &session_id, &listing.path);
-        }
-
-        Ok(())
-    }
 }
 
-/// Attaches resolved archive paths to the launch that named `session_id`.
+/// A test gate between a successful spawn and the commit that records it.
 ///
-/// The lookup ran without the state lock, and a restart can replace the
-/// record's session meanwhile. These paths belong to the launch that named the
-/// session the lookup resolved, so they are attached only while the record still
-/// names it; the replacement records its own.
-pub(super) fn attach_background_archive_paths(
-    state: &mut ControllerState,
-    target: &str,
-    session_id: &str,
-    archive_path: &Path,
-) {
-    if let Some(record) = resolve_background_target_mut(state, target)
-        && record.session_id == session_id
-    {
-        record.archive_path = Some(archive_path.to_path_buf());
-        record.transcript_path = Some(archive_path.to_path_buf());
-    }
+/// The commit runs without the state lock, so a cancellation or replacement can
+/// land between the spawn and the record write. No real process schedules that
+/// race deterministically, so a test arms this gate to land the change and then
+/// observe the close the declined commit owes.
+#[cfg(test)]
+struct BackgroundCommitGate {
+    state: Weak<RwLock<ControllerState>>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[cfg(test)]
+fn background_commit_gates() -> &'static Mutex<Vec<BackgroundCommitGate>> {
+    static GATES: std::sync::OnceLock<Mutex<Vec<BackgroundCommitGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that holds the next launch of `state` before its commit.
+///
+/// Returns the signal that the launch reached the window and the signal that
+/// releases it, so the test can land a concurrent change in between.
+#[cfg(test)]
+pub(super) fn gate_next_background_commit(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut gates = background_commit_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.state.strong_count() > 0);
+    gates.push(BackgroundCommitGate {
+        state: Arc::downgrade(state),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+#[cfg(test)]
+async fn pass_background_commit_gate(state: &Arc<RwLock<ControllerState>>) {
+    let gate = {
+        let mut gates = background_commit_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.state.strong_count() > 0);
+        let index = gates
+            .iter()
+            .position(|gate| std::ptr::eq(gate.state.as_ptr(), Arc::as_ptr(state)));
+        index.map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
+}
+
+/// Marks that the next bound (replacement) preparation of `state` must fail.
+///
+/// The seam only affects a request carrying `expected_exec_session_id`, because
+/// that is the retry the inline launch path prepares after a spent allowance;
+/// the first, unbound preparation still resolves as usual.
+#[cfg(test)]
+fn pending_background_retry_spec_removals() -> &'static Mutex<Vec<Weak<RwLock<ControllerState>>>> {
+    static PENDING: std::sync::OnceLock<Mutex<Vec<Weak<RwLock<ControllerState>>>>> = std::sync::OnceLock::new();
+    PENDING.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+#[cfg(test)]
+pub(super) fn remove_spec_before_next_background_retry(state: &Arc<RwLock<ControllerState>>) {
+    let mut pending = pending_background_retry_spec_removals()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    pending.retain(|entry| entry.strong_count() > 0);
+    pending.push(Arc::downgrade(state));
+}
+
+#[cfg(test)]
+fn take_background_retry_spec_removal(state: &Arc<RwLock<ControllerState>>) -> bool {
+    let mut pending = pending_background_retry_spec_removals()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    pending.retain(|entry| entry.strong_count() > 0);
+    let Some(index) = pending
+        .iter()
+        .position(|entry| std::ptr::eq(entry.as_ptr(), Arc::as_ptr(state)))
+    else {
+        return false;
+    };
+    pending.remove(index);
+    true
 }

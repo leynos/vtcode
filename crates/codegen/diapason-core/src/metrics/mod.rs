@@ -126,8 +126,6 @@ pub struct MetricsSummary {
     #[serde(default)]
     pub task_lifecycle_notification_queue: TaskLifecycleNotificationQueueMetrics,
     #[serde(default)]
-    pub acp_extension: AcpExtensionMetrics,
-    #[serde(default)]
     pub workspace_runtime_cache_entries: u64,
 }
 

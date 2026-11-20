@@ -34,7 +34,7 @@ async fn spawn_defaults_to_single_explicit_mention() {
         .expect("spawn");
 
     assert_eq!(spawned.agent_name, "explorer");
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }
 
 #[tokio::test]
@@ -59,7 +59,7 @@ async fn spawn_defaults_to_single_natural_language_selection() {
         .expect("spawn");
 
     assert_eq!(spawned.agent_name, "explorer");
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }
 
 #[tokio::test]
@@ -122,7 +122,7 @@ async fn spawn_allows_write_capable_agent_with_explicit_agent_type() {
         .await
         .expect("explicit agent_type should allow write-capable agent");
 
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }
 
 #[tokio::test]
@@ -172,7 +172,7 @@ async fn spawn_accepts_background_flag_outside_managed_background_runtime() {
         .expect("background child spawn should succeed");
 
     assert!(spawned.background);
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }
 
 #[tokio::test]
@@ -200,7 +200,7 @@ async fn spawn_allows_background_capable_spec_as_foreground_child() {
 
     assert_eq!(spawned.agent_name, "background-demo");
     assert!(!spawned.background);
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }
 
 #[tokio::test]
@@ -249,7 +249,7 @@ async fn spawn_defaults_to_write_capable_run_subagent_selection() {
         .expect("spawn");
 
     assert_eq!(spawned.agent_name, "worker");
-    controller.close(&spawned.id).await.expect("close");
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }
 
 #[tokio::test]

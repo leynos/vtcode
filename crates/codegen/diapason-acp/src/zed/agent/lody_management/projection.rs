@@ -38,7 +38,11 @@ pub(super) fn managed_child_task(entry: &SubagentStatusEntry) -> ManagedTask {
         agent_id: Some(entry.session_id.clone()),
         subagent_type: Some(entry.agent_name.clone()),
         started_at_epoch_seconds: epoch_seconds(entry.created_at),
-        ended_at_epoch_seconds: entry.completed_at.map(epoch_seconds),
+        // Admission to a new run sets `Queued` without clearing the previous
+        // run's completion instant, so a completed-then-resumed child would
+        // otherwise report a live task that already has an end. The wire
+        // contract allows an end instant only for a terminal task.
+        ended_at_epoch_seconds: entry.completed_at.filter(|_| entry.status.is_terminal()).map(epoch_seconds),
         stop_reason: entry.error.clone(),
     }
 }
@@ -127,6 +131,13 @@ mod tests {
             ("queued", "running", None),
             ("running", "running", None),
             ("waiting", "running", None),
+            // A completed child that was sent new input is queued again but
+            // keeps the previous run's completion instant until the new run
+            // settles. The wire contract allows an end only for a terminal
+            // task, so the stale instant must not be projected.
+            ("queued", "running", Some(ENDED)),
+            ("running", "running", Some(ENDED)),
+            ("waiting", "running", Some(ENDED)),
             ("completed", "completed", Some(ENDED)),
             ("failed", "failed", Some(ENDED)),
             ("closed", "killed", Some(ENDED)),
@@ -140,13 +151,14 @@ mod tests {
                 json!(CREATED_EPOCH_SECONDS),
                 "a subagent {record_status} record starts at its creation instant"
             );
-            match completed_at {
-                Some(_) => assert_eq!(
+            let terminal = matches!(record_status, "completed" | "failed" | "closed");
+            match (completed_at, terminal) {
+                (Some(_), true) => assert_eq!(
                     wire["endedAtEpochSeconds"],
                     json!(ENDED_EPOCH_SECONDS),
-                    "a subagent {record_status} record ends at its completion instant"
+                    "a terminal subagent {record_status} record ends at its completion instant"
                 ),
-                None => assert_eq!(
+                _ => assert_eq!(
                     wire["endedAtEpochSeconds"],
                     Value::Null,
                     "an unfinished subagent {record_status} record reports no end instant"

@@ -17,7 +17,7 @@ async fn close_marks_child_closed() {
         })
         .await
         .expect("spawn");
-    let closed = controller.close(&spawned.id).await.expect("close");
+    let closed = controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
     assert_eq!(closed.status, SubagentStatus::Closed);
 }
 
@@ -38,8 +38,8 @@ async fn close_is_idempotent_for_closed_agents() {
         .await
         .expect("spawn");
 
-    let closed = controller.close(&spawned.id).await.expect("first close");
-    let closed_again = controller.close(&spawned.id).await.expect("second close");
+    let closed = controller.close(TaskOwner::Workspace, &spawned.id).await.expect("first close");
+    let closed_again = controller.close(TaskOwner::Workspace, &spawned.id).await.expect("second close");
 
     assert_eq!(closed_again.status, SubagentStatus::Closed);
     assert_eq!(closed_again.updated_at, closed.updated_at);
@@ -75,10 +75,24 @@ async fn close_and_resume_cascade_through_spawn_tree() {
         );
     }
 
-    let closed = controller.close("parent").await.expect("close");
+    let closed = controller.close(TaskOwner::Workspace, "parent").await.expect("close");
     assert_eq!(closed.status, SubagentStatus::Closed);
-    assert_eq!(controller.status_for("child").await.expect("child").status, SubagentStatus::Closed);
-    assert_eq!(controller.status_for("grandchild").await.expect("grandchild").status, SubagentStatus::Closed);
+    assert_eq!(
+        controller
+            .status_for(TaskOwner::Workspace, "child")
+            .await
+            .expect("child")
+            .status,
+        SubagentStatus::Closed
+    );
+    assert_eq!(
+        controller
+            .status_for(TaskOwner::Workspace, "grandchild")
+            .await
+            .expect("grandchild")
+            .status,
+        SubagentStatus::Closed
+    );
 
     let subtree_ids = controller.collect_spawn_subtree_ids("parent").await.expect("collect subtree");
     assert_eq!(subtree_ids, vec!["parent".to_string(), "child".to_string(), "grandchild".to_string()]);
@@ -91,7 +105,28 @@ async fn close_and_resume_cascade_through_spawn_tree() {
     }
 
     assert_eq!(restart_ids, vec!["parent".to_string(), "child".to_string(), "grandchild".to_string()]);
-    assert_eq!(controller.status_for("parent").await.expect("parent").status, SubagentStatus::Queued);
-    assert_eq!(controller.status_for("child").await.expect("child").status, SubagentStatus::Queued);
-    assert_eq!(controller.status_for("grandchild").await.expect("grandchild").status, SubagentStatus::Queued);
+    assert_eq!(
+        controller
+            .status_for(TaskOwner::Workspace, "parent")
+            .await
+            .expect("parent")
+            .status,
+        SubagentStatus::Queued
+    );
+    assert_eq!(
+        controller
+            .status_for(TaskOwner::Workspace, "child")
+            .await
+            .expect("child")
+            .status,
+        SubagentStatus::Queued
+    );
+    assert_eq!(
+        controller
+            .status_for(TaskOwner::Workspace, "grandchild")
+            .await
+            .expect("grandchild")
+            .status,
+        SubagentStatus::Queued
+    );
 }

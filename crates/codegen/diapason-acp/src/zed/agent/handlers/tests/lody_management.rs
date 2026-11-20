@@ -8,7 +8,9 @@ use super::lody_support::{
 };
 use super::*;
 use agent_client_protocol::schema::v1::{CloseSessionRequest, InitializeRequest, NewSessionRequest};
-use diapason_core::subagents::{BackgroundSubprocessStatus, SpawnBackgroundSubprocessRequest};
+use diapason_core::subagents::{
+    BackgroundSubprocessStatus, SpawnBackgroundSubprocessRequest, TaskOwner, background_record_id,
+};
 use std::time::Duration;
 
 #[tokio::test]
@@ -133,7 +135,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let active_entry = tokio::time::timeout(Duration::from_secs(10), async {
                 loop {
                     let entry = controller
-                        .refresh_then_background_snapshot(&background.id)
+                        .refresh_then_background_snapshot(TaskOwner::Workspace, &background.id)
                         .await
                         .expect("read the owned background snapshot")
                         .entry;
@@ -225,6 +227,20 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             }
             assert_eq!(output["output"], "lody-output-two");
 
+            // A client may still hold the pre-owner-scoping id. The management
+            // layer resolves it to the canonical record the session owns, so
+            // the read lands on the same task rather than failing as unknown.
+            let legacy_id = background_record_id("background-demo");
+            assert_ne!(
+                legacy_id, background.id,
+                "the fixture must exercise an owner-scoped canonical id for this regression"
+            );
+            let legacy_output = lody_output_tail(&cx, &session.session_id, &legacy_id, 1).await?;
+            assert_eq!(
+                legacy_output["output"], "lody-output-two",
+                "a legacy id must resolve to the owning session's record: {legacy_output}"
+            );
+
             let oversized_tail = lody_ext(
                 &cx,
                 crate::zed::agent::lody::LODY_SUBAGENTS_OUTPUT_METHOD,
@@ -280,7 +296,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             assert_eq!(foreign_cancel.data, Some(serde_json::json!({ "reason": "unknown_task" })));
             assert!(
                 controller
-                    .refresh_then_background_snapshot(&background.id)
+                    .refresh_then_background_snapshot(TaskOwner::Workspace, &background.id)
                     .await
                     .expect("read the owned background snapshot")
                     .entry
@@ -292,8 +308,16 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let unknown_error = lody_output_error(&cx, &session.session_id, "unknown-task").await;
             assert_eq!(foreign_error, unknown_error);
             assert_eq!(foreign_error.data, Some(serde_json::json!({ "reason": "unknown_task" })));
+            let foreign_legacy_error = lody_output_error(&cx, &foreign_session.session_id, &legacy_id).await;
+            assert_eq!(
+                foreign_legacy_error.data,
+                Some(serde_json::json!({ "reason": "unknown_task" })),
+                "a legacy id must not widen ownership to another session: {foreign_legacy_error:?}"
+            );
 
-            let cancelled = lody_cancel_with_reason(&cx, &session.session_id, &background.id, "test complete").await?;
+            // Cancelling by the legacy id resolves to the same canonical
+            // record, so a client that retained the old id can still stop it.
+            let cancelled = lody_cancel_with_reason(&cx, &session.session_id, &legacy_id, "test complete").await?;
             assert_eq!(cancelled, serde_json::json!({}));
 
             // The cancelled task records its end asynchronously; wait for the
@@ -301,7 +325,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let ended_entry = tokio::time::timeout(Duration::from_secs(10), async {
                 loop {
                     let entry = controller
-                        .refresh_then_background_snapshot(&background.id)
+                        .refresh_then_background_snapshot(TaskOwner::Workspace, &background.id)
                         .await
                         .expect("read the owned background snapshot")
                         .entry;
@@ -405,7 +429,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let recorded_output = tokio::time::timeout(Duration::from_secs(10), async {
                 loop {
                     let output = controller
-                        .background_output_tail(&stale.id, 20)
+                        .background_output_tail(TaskOwner::Workspace, &stale.id, 20)
                         .await
                         .expect("read the second task's live output");
                     if output.contains("lody-output-two") {
@@ -518,7 +542,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             // The child is already gone, so cleanup only settles the record and
             // releases its exec session.
             let settled = controller
-                .force_cancel_background(&stale.id)
+                .force_cancel_background(TaskOwner::Workspace, &stale.id)
                 .await
                 .expect("settle the second background task");
             assert!(!settled.status.is_active(), "the second task must be settled during cleanup");
@@ -615,7 +639,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             );
             assert!(
                 foreign_controller
-                    .refresh_then_background_snapshot(&sibling.id)
+                    .refresh_then_background_snapshot(TaskOwner::Workspace, &sibling.id)
                     .await
                     .expect("read the sibling background snapshot")
                     .entry
@@ -629,7 +653,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 crate::zed::agent::session_workspace::WorkspaceRuntimeLifecycleState::Open
             );
             let cancelled_sibling = foreign_controller
-                .force_cancel_background(&sibling.id)
+                .force_cancel_background(TaskOwner::Workspace, &sibling.id)
                 .await
                 .expect("cancel the sibling background task");
             assert!(!cancelled_sibling.status.is_active(), "the sibling process must be stopped during test cleanup");

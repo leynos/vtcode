@@ -32,6 +32,7 @@ use self::config::*;
 use self::constants::*;
 use self::discovery::discover_controller_subagents;
 use self::model::*;
+use super::TaskOwner;
 use super::types::ChildRunRequest;
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
@@ -256,7 +257,7 @@ impl SubagentController {
         if let Some((controller, session_id)) = nested {
             let ids = controller.spawn_child_ids_for_parent(&session_id).await;
             for id in ids {
-                if let Err(err) = controller.close(&id).await {
+                if let Err(err) = controller.close(TaskOwner::Workspace, &id).await {
                     tracing::warn!(child_id, node_id = id.as_str(), error = %err, "Failed to close nested subagent subtree on child completion");
                 }
             }

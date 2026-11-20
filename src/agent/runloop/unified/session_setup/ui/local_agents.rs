@@ -1,8 +1,15 @@
+//! Builds the TUI local-agent sidebar rows for delegated subagents and
+//! background subprocesses.
+//!
+//! Rows are ordered by most recent update, prefer a cached controller snapshot
+//! over refresh metadata, and hide delegated tasks that are completed or
+//! closed.
+
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use diapason_core::subagents::{
     BackgroundSubprocessEntry, BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, SubagentController,
-    SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot,
+    SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot, TaskOwner,
 };
 use diapason_core::{CommandExecutionStatus, ThreadEvent, ThreadItemDetails, ToolCallStatus};
 use diapason_ui::tui::app::{InlineHandle, LocalAgentEntry, LocalAgentKind};
@@ -24,7 +31,7 @@ async fn build_local_agent_entries(
     let mut entries = Vec::new();
 
     for entry in visible_delegated_local_agents(delegated_entries) {
-        let snapshot = match controller.snapshot_for_thread(&entry.id).await {
+        let snapshot = match controller.snapshot_for_thread(TaskOwner::Workspace, &entry.id).await {
             Ok(snapshot) => Some(snapshot),
             Err(err) => {
                 tracing::debug!(
@@ -62,7 +69,7 @@ async fn build_local_agent_entries(
         // `refresh_background_processes` already ran once above; a cached
         // snapshot is enough for a per-row preview and avoids reloading the
         // ledger for every background entry.
-        let snapshot = match controller.background_snapshot(&entry.id).await {
+        let snapshot = match controller.background_snapshot(TaskOwner::Workspace, &entry.id).await {
             Ok(snapshot) => Some(snapshot),
             Err(err) => {
                 tracing::debug!(

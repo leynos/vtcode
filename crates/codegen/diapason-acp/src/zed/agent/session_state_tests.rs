@@ -163,6 +163,9 @@ fn session_listing(
 #[path = "session_state_tests/archive.rs"]
 mod archive;
 
+#[path = "session_state_tests/background_ownership.rs"]
+mod background_ownership;
+
 #[path = "session_state_tests/checkpoint_categories.rs"]
 mod checkpoint_categories;
 

@@ -160,17 +160,27 @@ impl MetricsCollector {
             provider_requests: self.get_provider_request_metrics(),
             mcp_startup: self.get_service_startup_metrics(),
             task_lifecycle_notification_queue: self.get_task_lifecycle_notification_queue_metrics(),
-            acp_extension: self.get_acp_extension_metrics(),
             workspace_runtime_cache_entries: self.get_runtime_cache_entries(RuntimeCacheKind::Workspace),
         }
     }
 
     // ========== Export ==========
 
-    /// Export metrics as JSON
+    /// Export metrics as JSON.
+    ///
+    /// The Lody ACP extension metrics are attached to the exported document
+    /// rather than carried on [`MetricsSummary`]. Callers that build or
+    /// destructure the typed summary therefore keep the struct's previous
+    /// source-compatible shape, while the JSON export still publishes the
+    /// extension family as a top-level `acp_extension` member.
     pub fn export_json(&self) -> anyhow::Result<serde_json::Value> {
         let summary = self.get_summary();
-        Ok(serde_json::to_value(summary)?)
+        let mut document = serde_json::to_value(summary)?;
+        let object = document
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("metrics summary must serialize as a JSON object"))?;
+        object.insert("acp_extension".to_string(), serde_json::to_value(self.get_acp_extension_metrics())?);
+        Ok(document)
     }
 }
 

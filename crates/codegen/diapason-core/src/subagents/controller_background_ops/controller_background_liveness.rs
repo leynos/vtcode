@@ -15,22 +15,14 @@ pub(super) enum BackgroundExecSessionObservation {
     Unobserved,
 }
 
-/// Reports whether a liveness read failed because the session is genuinely gone.
+/// Re-exports the exec-session missing classifier under this module's name.
 ///
-/// Only a typed not-found cause counts, from either storage layer. The
-/// exec-session record is removed before its PTY handle is released, so a read
-/// that races the close finds the record and misses the handle; that is the
-/// same expected exit as a read that misses the record, and classifying it as
-/// a fault would report an unobserved entry for a session that has simply
-/// ended. Any other fault — a backend inconsistency or an I/O failure — is a
-/// read that told the caller nothing about the process, so the projection must
-/// not treat it as an exit.
-pub(super) fn exec_session_is_missing(error: &anyhow::Error) -> bool {
-    error.chain().any(|cause| {
-        cause.is::<crate::tools::exec_session::ExecSessionNotFound>()
-            || cause.is::<crate::tools::pty::PtySessionNotFound>()
-    })
-}
+/// The predicate is defined once in `tools::exec_session`, next to the typed
+/// cause it classifies, so the liveness projection and the background-output
+/// adapter cannot drift apart on what counts as an exit. The alias keeps the
+/// `exec_session_is_missing` import path stable for the cancellation,
+/// lifecycle, query and test-support modules that already use it.
+pub(super) use crate::tools::exec_session::is_missing_exec_session as exec_session_is_missing;
 
 /// Renders a bounded, non-sensitive reason for an unobserved entry.
 ///

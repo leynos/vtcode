@@ -45,7 +45,7 @@ async fn closing_a_terminal_child_still_aborts_its_task() {
         state.children.insert("child".to_string(), record);
     }
 
-    let closed = controller.close("child").await.expect("close the child");
+    let closed = controller.close(TaskOwner::Workspace, "child").await.expect("close the child");
 
     // The abort is observed first: the settled outcome must be untouched, and
     // the task must be gone even though the record already looked terminal.

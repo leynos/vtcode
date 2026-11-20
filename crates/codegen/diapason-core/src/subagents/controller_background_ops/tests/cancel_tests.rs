@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use crate::config::DiapasonConfig;
-use crate::subagents::BackgroundSubprocessStatus;
-use crate::subagents::background::background_state_path_for_tests;
+use crate::subagents::background::{background_state_path_for_tests, load_background_state};
+use crate::subagents::{BackgroundSubprocessStatus, TaskOwner};
 use tempfile::TempDir;
 
 use super::support::RecordingObserver;
@@ -43,7 +43,7 @@ async fn a_failed_save_republishes_the_stopped_state_on_retry() {
     std::fs::create_dir_all(&ledger).expect("the ledger path blocks the write");
 
     controller
-        .force_cancel_background("background-worker")
+        .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
         .expect_err("the first cancellation cannot persist its stop");
 
@@ -52,7 +52,7 @@ async fn a_failed_save_republishes_the_stopped_state_on_retry() {
     let registration = controller.register_progress_observer("parent-session", observer.clone());
 
     let entry = controller
-        .force_cancel_background("background-worker")
+        .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
         .expect("the retry persists the stop");
 
@@ -67,6 +67,22 @@ async fn a_failed_save_republishes_the_stopped_state_on_retry() {
         "a retried cancellation must publish the state it just committed"
     );
     assert!(!last.desired_enabled, "the published stop must clear the desired flag");
+
+    // The snapshots above describe in-memory state the first attempt already
+    // settled, so the retry's save could be deleted with them still green. The
+    // ledger is the durable contract: the retry is the only publication of the
+    // stop, so a resumed session must find it committed.
+    let persisted = load_background_state(temp.path())
+        .await
+        .expect("reload the ledger after the retry");
+    let persisted_entry = persisted
+        .records
+        .into_iter()
+        .find(|record| record.id == "background-worker")
+        .map(crate::subagents::types::BackgroundRecord::from_persisted)
+        .expect("the retry commits the record its first attempt settled");
+    assert_eq!(persisted_entry.status, BackgroundSubprocessStatus::Stopped);
+    assert!(!persisted_entry.desired_enabled, "the committed stop must clear the desired flag");
 
     drop(registration);
     controller.signal_shutdown().await;
@@ -104,7 +120,7 @@ async fn force_cancel_closes_the_session_of_an_already_settled_record() {
     }
 
     let entry = controller
-        .force_cancel_background("background-worker")
+        .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
         .expect("force cancel");
 
@@ -147,7 +163,7 @@ async fn force_cancel_tolerates_a_session_that_already_exited() {
     }
 
     let entry = controller
-        .force_cancel_background("background-worker")
+        .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
         .expect("a missing session must not fail the cancellation");
 
@@ -186,7 +202,7 @@ async fn a_recorded_stop_is_terminated_even_on_a_graceful_cancel() {
     }
 
     let entry = controller
-        .graceful_stop_background("background-worker")
+        .graceful_stop_background(TaskOwner::Workspace, "background-worker")
         .await
         .expect("an already-recorded stop is idempotent");
 

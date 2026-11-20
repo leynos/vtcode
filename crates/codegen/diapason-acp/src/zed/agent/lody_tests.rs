@@ -8,7 +8,7 @@ use diapason_core::subagents::{
 };
 use proptest::prelude::*;
 
-use super::lody::{owned_background_ids, owned_child_ids};
+use diapason_core::subagents::{owned_background_ids, owned_child_ids};
 
 /// Upper bound from the `SESSION-ISOLATION` verification domain.
 const MAX_FOREST_TASKS: usize = 32;

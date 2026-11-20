@@ -1,10 +1,13 @@
 //! Exercises restore, refresh, and the authority those paths act under.
 
+use std::sync::Arc;
+
 use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
 use crate::subagents::BackgroundSubprocessStatus;
 
+use super::support::RecordingObserver;
 use super::support::background_record;
 use super::support::background_test_controller;
 #[cfg(unix)]
@@ -106,6 +109,72 @@ async fn a_persisted_stop_for_the_observed_launch_is_carried_into_the_restart() 
     controller.signal_shutdown().await;
 }
 
+/// The claim reconciles the ledger, not a read taken before it.
+///
+/// The restart's fast path can see no stop and then lose the race: another
+/// controller persists one before the replacement is claimed. The claim reads
+/// the ledger as part of taking the record, so a stop that lands in that window
+/// still prevents the launch instead of being overridden by a newer start.
+#[tokio::test]
+async fn a_stop_persisted_before_the_claim_prevents_the_replacement() {
+    use crate::subagents::controller_background_ops::{BackgroundRunPlan, BackgroundRunReservation};
+
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), restoring_config()).await;
+    write_ledger(temp.path(), "background-worker", None, "worker", "exec-observed", false, "stopped");
+    let record = background_record(
+        "background-worker",
+        None,
+        "worker",
+        "exec-observed",
+        BackgroundSubprocessStatus::Running,
+        true,
+    );
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+    let plan = BackgroundRunPlan {
+        owner_session_id: None,
+        spec: diapason_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == "worker")
+            .expect("worker spec"),
+        record_id: "background-worker".to_string(),
+        parent_session_id: "parent-session".to_string(),
+        session_id: "child-session".to_string(),
+        exec_session_id: "exec-replacement".to_string(),
+        created_at: chrono::Utc::now(),
+        prompt: "work".to_string(),
+        max_turns: None,
+        model_override: None,
+        reasoning_override: None,
+        restart_attempts: 0,
+        expected_exec_session_id: Some("exec-observed".to_string()),
+    };
+
+    let reservation = controller
+        .reserve_background_run(&plan)
+        .await
+        .expect("the claim reconciles the ledger");
+
+    assert!(
+        matches!(reservation, BackgroundRunReservation::Declined),
+        "a stop persisted before the claim must prevent the replacement"
+    );
+    let state = controller.state.read().await;
+    let record = state.background_children.get("background-worker").expect("record");
+    assert!(!record.desired_enabled, "the stop must be adopted into the record");
+    assert_eq!(record.status, BackgroundSubprocessStatus::Stopped);
+    assert_eq!(
+        record.exec_session_id, "exec-observed",
+        "no replacement launch may claim a record another controller stopped"
+    );
+    drop(state);
+
+    controller.signal_shutdown().await;
+}
+
 /// A stop naming a replaced session does not cancel this launch.
 #[tokio::test]
 async fn a_persisted_stop_for_another_launch_does_not_block_the_restart() {
@@ -191,6 +260,148 @@ async fn refresh_does_not_settle_another_sessions_record() {
         "the owner's record must not be settled from a controller that cannot see its process"
     );
     assert!(entry.desired_enabled);
+
+    controller.signal_shutdown().await;
+}
+
+/// Adopting a persisted stop publishes the outcome it adopted.
+///
+/// The adopted record is already terminal, so refresh will not settle it and
+/// restore filters it out of the relaunch set. If the adoption does not
+/// publish, an observer is never told the task stopped and keeps reporting it
+/// as running.
+#[tokio::test]
+async fn an_adopted_cancellation_publishes_its_terminal_status() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), restoring_config()).await;
+    let record = background_record(
+        "background-worker",
+        None,
+        "worker",
+        "exec-adopted",
+        BackgroundSubprocessStatus::Running,
+        true,
+    );
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+    write_ledger(temp.path(), "background-worker", None, "worker", "exec-adopted", false, "stopped");
+    let observer = Arc::new(RecordingObserver::default());
+    let registration = controller.register_progress_observer("parent-session", observer.clone());
+
+    controller
+        .restore_background_subagents()
+        .await
+        .expect("restore adopts the persisted stop");
+
+    let published = observer.background_entries();
+    let adopted = published
+        .iter()
+        .find(|entry| entry.id == "background-worker")
+        .expect("the adopted stop is published to observers");
+    assert_eq!(
+        adopted.status,
+        BackgroundSubprocessStatus::Stopped,
+        "the published entry carries the status the stop adopted"
+    );
+    assert!(!adopted.desired_enabled, "the published stop clears the desired flag");
+
+    drop(registration);
+    controller.signal_shutdown().await;
+}
+
+/// A scheduled restart that cannot prepare settles `Error`.
+///
+/// The missing-session path leaves the record `Starting` so refresh treats it
+/// as an active launch, and `handle_missing_background_snapshot` exempts
+/// `Starting` from settlement. If the replacement cannot even be prepared,
+/// nothing else drives that state, so the failure must be settled here rather
+/// than report a task that is starting forever.
+#[tokio::test]
+async fn a_restart_that_cannot_prepare_settles_error() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), restoring_config()).await;
+    let record = background_record(
+        "background-worker",
+        None,
+        "no-such-agent",
+        "exec-vanished",
+        BackgroundSubprocessStatus::Running,
+        true,
+    );
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+
+    let respawn = controller
+        .update_background_record_state("background-worker", Some("exec-vanished"), None)
+        .await
+        .expect("the missing session schedules a restart");
+    let Some((agent_name, record_id, restart_attempts)) = respawn else {
+        panic!("an automatic restore must schedule a replacement");
+    };
+
+    let error = controller
+        .restart_after_background_observation(&record_id, agent_name, restart_attempts, Some("exec-vanished"))
+        .await
+        .expect_err("the replacement cannot resolve its agent");
+
+    assert!(format!("{error:#}").contains("no-such-agent"), "{error:#}");
+    let state = controller.state.read().await;
+    let record = state.background_children.get("background-worker").expect("record");
+    assert_eq!(
+        record.status,
+        BackgroundSubprocessStatus::Error,
+        "a restart that cannot prepare must not stay Starting"
+    );
+    assert!(record.error.as_deref().is_some_and(|error| error.contains("no-such-agent")), "{:?}", record.error);
+    assert!(record.ended_at.is_some(), "a settled restart failure has ended");
+    drop(state);
+
+    controller.signal_shutdown().await;
+}
+
+/// A stop persisted after the load is not resurrected by a legacy restore.
+///
+/// The ACP workspace controller restores ownerless records. Another
+/// controller can persist a stop for one of them after this controller loaded
+/// its copy, and relaunching that stale copy would undo the stop. The restore
+/// must reconcile the persisted ledger before it relaunches anything.
+#[tokio::test]
+async fn a_stop_persisted_after_load_is_not_resurrected_by_a_legacy_restore() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), restoring_config()).await;
+    // The fixture agent does not exist, so any relaunch attempt would fail:
+    // only adopting the persisted stop lets this restore succeed.
+    let record = background_record(
+        "background-worker",
+        None,
+        "no-such-agent",
+        "exec-stopped",
+        BackgroundSubprocessStatus::Running,
+        true,
+    );
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+    // The ledger's agent must canonicalize back to the id the map is keyed by,
+    // while the in-memory copy keeps a nonexistent agent so a relaunch attempt
+    // fails loudly instead of starting a real process.
+    write_ledger(temp.path(), "background-worker", None, "worker", "exec-stopped", false, "stopped");
+
+    controller
+        .restore_legacy_background_subagents()
+        .await
+        .expect("the persisted stop is adopted instead of relaunched");
+
+    let state = controller.state.read().await;
+    let record = state.background_children.get("background-worker").expect("record");
+    assert!(!record.desired_enabled, "a persisted stop must survive the legacy restore");
+    assert_eq!(record.status, BackgroundSubprocessStatus::Stopped);
+    drop(state);
 
     controller.signal_shutdown().await;
 }

@@ -19,9 +19,11 @@ use crate::subagents::constants::SUBAGENT_PREVIEW_LINES;
 mod cancel_tests;
 mod lifecycle_tests;
 mod pending_write_tests;
+mod query_tests;
 mod resolver_tests;
 mod run_tests;
 mod settlement_tests;
+mod stop_close_tests;
 mod support;
 
 const TARGET: &str = "background-worker";

@@ -4,7 +4,7 @@ use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
 use crate::subagents::background::background_state_path_for_tests;
-use crate::subagents::{BackgroundSubprocessStatus, SubagentController};
+use crate::subagents::{BackgroundSubprocessStatus, SubagentController, TaskOwner};
 
 use super::support::{background_test_controller, test_controller_config, write_ledger};
 
@@ -48,7 +48,7 @@ async fn a_legacy_record_id_cancels_the_canonical_record() {
     let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
 
     let entry = controller
-        .force_cancel_background("background-worker")
+        .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
         .expect("a legacy id resolves for cancellation");
 

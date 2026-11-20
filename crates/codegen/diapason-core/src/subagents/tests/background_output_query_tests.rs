@@ -66,7 +66,10 @@ async fn background_output_tail_reads_without_refreshing_background_state() {
         .find(|entry| entry.id == task_id)
         .expect("owned background record");
 
-    let output = controller.background_output_tail(task_id, 10).await.expect("output tail");
+    let output = controller
+        .background_output_tail(TaskOwner::Workspace, task_id, 10)
+        .await
+        .expect("output tail");
 
     assert_eq!(output, "");
     let after = controller

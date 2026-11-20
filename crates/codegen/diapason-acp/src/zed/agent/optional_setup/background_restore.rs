@@ -15,9 +15,18 @@
 //! running. A failed restore therefore rolls back exactly the launches it made
 //! whose identity did not reach the ledger; a persisted launch, and a restore
 //! that succeeded, are left running.
+//!
+//! Rollback selects only a record the launch commit marked `Running`. A spawn
+//! that failed keeps its newly assigned exec session and `desired_enabled` but
+//! is settled `Error`; it never had a process, so force-cancelling it would
+//! permanently clear the desire to run a task nothing started.
+//!
+//! Rollback also requires a ledger it can verify. A ledger that cannot be read
+//! or parsed may still record a launch this pass cannot see, so no rollback is
+//! attempted; the in-memory controller remains the record of the live process.
 
 use anyhow::Context;
-use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentController};
+use diapason_core::subagents::{BackgroundSubprocessEntry, BackgroundSubprocessStatus, SubagentController, TaskOwner};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -139,19 +148,44 @@ fn launch_snapshot(entries: Vec<BackgroundSubprocessEntry>) -> HashMap<String, S
 /// not record.
 ///
 /// A record whose exec session is unchanged cannot name a process this pass
-/// started, and a launch the ledger already names is recoverable, so both are
-/// left running. Only a changed, unrecorded launch is stopped; its stop also
-/// marks the record terminal, so a retried attach cannot relaunch the process
-/// behind the failure.
+/// started, a launch the ledger already names is recoverable, and a record the
+/// commit did not mark `Running` has no process to stop, so each is left
+/// running. Only a changed, running, unrecorded launch is stopped; its stop
+/// also marks the record terminal, so a retried attach cannot relaunch the
+/// process behind the failure. When the ledger cannot be verified nothing is
+/// rolled back: an unverifiable ledger must not authorise destroying a launch
+/// that may be durable, while the in-memory controller still tracks the live
+/// process.
 async fn rollback_unpersisted_launches(
     controller: &SubagentController,
     workspace_root: &Path,
     before: &HashMap<String, String>,
 ) {
     let after = controller.background_status_entries().await;
-    let persisted = persisted_exec_session_ids(workspace_root).await;
+    let persisted = persisted_launches(workspace_root).await;
+    if matches!(persisted, PersistedLaunches::Unknown) {
+        tracing::warn!(
+            operation = "background_restore_rollback",
+            error_category = "background_ledger_unverifiable",
+            "Skipping background launch rollback because the persisted ledger could not be verified"
+        );
+        return;
+    }
+    // The cancellation presents the record's own owner, so a session controller
+    // may stop only a launch it owns while a workspace controller stops the
+    // ownerless rows it restored. Nothing here can reach a foreign session's
+    // record.
+    let owners = after
+        .iter()
+        .map(|entry| (entry.id.as_str(), entry.owner_session_id.as_deref()))
+        .collect::<HashMap<_, _>>();
     for record_id in unpersisted_launches(before, &after, &persisted) {
-        if let Err(error) = controller.force_cancel_background(&record_id).await {
+        let owner = owners
+            .get(record_id.as_str())
+            .copied()
+            .flatten()
+            .map_or(TaskOwner::Workspace, TaskOwner::Session);
+        if let Err(error) = controller.force_cancel_background(owner, &record_id).await {
             tracing::warn!(
                 record_id = record_id.as_str(),
                 operation = "background_restore_rollback",
@@ -166,37 +200,72 @@ async fn rollback_unpersisted_launches(
 /// Selects the record ids a failed restore must roll back.
 ///
 /// The snapshot and the post-restore view are keyed by the canonical record id
-/// core uses, and only a non-empty exec session that differs from the snapshot
-/// and is absent from the ledger is selected.
+/// core uses. Only a launch the commit marked `Running` whose exec session is
+/// non-empty, differs from the snapshot, and is absent from a verifiable ledger
+/// is selected. An unverifiable ledger selects nothing.
 fn unpersisted_launches(
     before: &HashMap<String, String>,
     after: &[BackgroundSubprocessEntry],
-    persisted: &HashSet<String>,
+    persisted: &PersistedLaunches,
 ) -> Vec<String> {
+    if matches!(persisted, PersistedLaunches::Unknown) {
+        return Vec::new();
+    }
     after
         .iter()
+        .filter(|entry| matches!(entry.status, BackgroundSubprocessStatus::Running))
         .filter(|entry| !entry.exec_session_id.is_empty())
         .filter(|entry| before.get(&entry.id) != Some(&entry.exec_session_id))
-        .filter(|entry| !persisted.contains(&entry.exec_session_id))
+        .filter(|entry| !persisted.records(&entry.exec_session_id))
         .map(|entry| entry.id.clone())
         .collect()
 }
 
-/// Collects the exec sessions the ledger records as launched.
+/// What the persisted ledger proves about the launches a restore made.
 ///
-/// A ledger that cannot be read or parsed yields an empty set. That is the safe
-/// reading for a caller that already knows the launch's save failed: stopping a
-/// process whose record may be missing is recoverable, whereas leaving an
-/// untracked process running is not.
-async fn persisted_exec_session_ids(workspace_root: &Path) -> HashSet<String> {
+/// An empty set and "could not tell" are different facts: treating a failed
+/// read as "records nothing" would authorise stopping a launch that the ledger
+/// may still record, so the caller must distinguish them.
+#[derive(Debug, PartialEq, Eq)]
+enum PersistedLaunches {
+    /// No ledger exists, so no launch is recorded.
+    Absent,
+    /// The ledger was read and parsed; these are its recorded exec sessions.
+    Known(HashSet<String>),
+    /// The ledger exists but could not be read or parsed.
+    Unknown,
+}
+
+impl PersistedLaunches {
+    /// Whether the ledger verifiably records this exec session as launched.
+    ///
+    /// [`PersistedLaunches::Unknown`] is rejected before selection, so its
+    /// answer here is only a fail-safe default.
+    fn records(&self, exec_session_id: &str) -> bool {
+        match self {
+            Self::Known(exec_session_ids) => exec_session_ids.contains(exec_session_id),
+            Self::Absent | Self::Unknown => false,
+        }
+    }
+}
+
+/// Reads which exec sessions the ledger records as launched.
+///
+/// A missing ledger is [`PersistedLaunches::Absent`]. A read or parse failure
+/// is [`PersistedLaunches::Unknown`] rather than an empty set: the ledger may
+/// still record a launch this pass cannot see, and degrading that to "records
+/// nothing" would authorise destroying a durable process.
+async fn persisted_launches(workspace_root: &Path) -> PersistedLaunches {
     let path = ledger_path(workspace_root);
-    let Ok(raw) = fs::read_to_string(&path).await else {
-        return HashSet::new();
+    let raw = match fs::read_to_string(&path).await {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return PersistedLaunches::Absent,
+        Err(_) => return PersistedLaunches::Unknown,
     };
     let Ok(state) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return HashSet::new();
+        return PersistedLaunches::Unknown;
     };
-    state
+    let exec_session_ids = state
         .get("records")
         .and_then(serde_json::Value::as_array)
         .map(|records| {
@@ -205,9 +274,10 @@ async fn persisted_exec_session_ids(workspace_root: &Path) -> HashSet<String> {
                 .filter_map(|record| record.get("exec_session_id").and_then(serde_json::Value::as_str))
                 .filter(|exec_session_id| !exec_session_id.is_empty())
                 .map(str::to_owned)
-                .collect()
+                .collect::<HashSet<String>>()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+    PersistedLaunches::Known(exec_session_ids)
 }
 
 /// Regressions for owner migration and launch rollback.
@@ -233,6 +303,12 @@ mod tests {
     }
 
     fn entry(id: &str, exec_session_id: &str) -> BackgroundSubprocessEntry {
+        entry_with_status(id, exec_session_id, "running")
+    }
+
+    /// Builds a status fixture, so a failed spawn that keeps its newly assigned
+    /// exec session can be represented as the `error` record core settles.
+    fn entry_with_status(id: &str, exec_session_id: &str, status: &str) -> BackgroundSubprocessEntry {
         serde_json::from_value(json!({
             "id": id,
             "session_id": format!("session-{id}"),
@@ -241,7 +317,7 @@ mod tests {
             "display_label": id,
             "description": id,
             "source": "test",
-            "status": "running",
+            "status": status,
             "desired_enabled": true,
             "created_at": "2026-08-14T12:00:00Z",
             "updated_at": "2026-08-14T12:00:00Z",
@@ -336,9 +412,10 @@ mod tests {
         assert!(!ledger_path(temp.path()).exists(), "a no-op migration must not create the ledger");
     }
 
-    /// Only a changed, unrecorded launch may be rolled back. An unchanged
-    /// record predates the pass, a recorded launch is recoverable, and a
-    /// record whose exec session was cleared names no process.
+    /// Only a changed, running, unrecorded launch may be rolled back. An
+    /// unchanged record predates the pass, a recorded launch is recoverable, a
+    /// record whose exec session was cleared names no process, and a record a
+    /// failed spawn settled `Error` never had a process to stop.
     #[test]
     fn rollback_selects_only_launches_the_ledger_does_not_record() {
         let before = HashMap::from([
@@ -346,19 +423,49 @@ mod tests {
             ("background-b".to_string(), "exec-old-b".to_string()),
             ("background-c".to_string(), "exec-old-c".to_string()),
             ("background-d".to_string(), "exec-old-d".to_string()),
+            ("background-e".to_string(), "exec-old-e".to_string()),
         ]);
         let after = vec![
             entry("background-a", "exec-new-a"),
             entry("background-b", "exec-old-b"),
             entry("background-c", ""),
             entry("background-d", "exec-new-d"),
+            entry_with_status("background-e", "exec-new-e", "error"),
         ];
-        let persisted = HashSet::from(["exec-new-d".to_string()]);
+        let persisted = PersistedLaunches::Known(HashSet::from(["exec-new-d".to_string()]));
 
         assert_eq!(
             unpersisted_launches(&before, &after, &persisted),
             vec!["background-a".to_string()],
-            "only the launch that changed and was not persisted may be stopped"
+            "only the running launch that changed and was not persisted may be stopped"
+        );
+    }
+
+    /// An unverifiable ledger must not authorise stopping anything: a launch it
+    /// might still record could be durable, and the in-memory controller still
+    /// tracks the live process.
+    #[test]
+    fn rollback_selects_nothing_when_the_ledger_is_unverifiable() {
+        let before = HashMap::from([("background-a".to_string(), "exec-old-a".to_string())]);
+        let after = vec![entry("background-a", "exec-new-a")];
+
+        assert!(
+            unpersisted_launches(&before, &after, &PersistedLaunches::Unknown).is_empty(),
+            "an unverifiable ledger must leave a possibly durable launch running"
+        );
+    }
+
+    /// A missing ledger still means no launch is recorded, so the launch this
+    /// pass made is rolled back.
+    #[test]
+    fn rollback_selects_a_launch_when_no_ledger_exists() {
+        let before = HashMap::from([("background-a".to_string(), "exec-old-a".to_string())]);
+        let after = vec![entry("background-a", "exec-new-a")];
+
+        assert_eq!(
+            unpersisted_launches(&before, &after, &PersistedLaunches::Absent),
+            vec!["background-a".to_string()],
+            "an absent ledger records no launch"
         );
     }
 
@@ -377,17 +484,51 @@ mod tests {
         .await;
 
         assert_eq!(
-            persisted_exec_session_ids(temp.path()).await,
-            HashSet::from(["exec-a".to_string()]),
+            persisted_launches(temp.path()).await,
+            PersistedLaunches::Known(HashSet::from(["exec-a".to_string()])),
             "empty and absent exec sessions are not persisted launches"
         );
     }
 
-    /// A ledger that cannot be read records no launch, so every new launch is
-    /// rolled back rather than left untracked.
+    /// A workspace with no ledger records no launch.
     #[tokio::test]
-    async fn an_unreadable_ledger_records_no_persisted_launch() {
+    async fn a_missing_ledger_records_no_persisted_launch() {
         let temp = TempDir::new().expect("temporary workspace");
-        assert!(persisted_exec_session_ids(temp.path()).await.is_empty());
+        assert_eq!(persisted_launches(temp.path()).await, PersistedLaunches::Absent);
+    }
+
+    /// A ledger that cannot be read is unverifiable, not empty: the launch may
+    /// still be durable, so rollback must not treat it as unrecorded.
+    #[tokio::test]
+    async fn a_faulting_ledger_makes_launches_unverifiable() {
+        let temp = TempDir::new().expect("temporary workspace");
+        let path = ledger_path(temp.path());
+        fs::create_dir_all(path.parent().expect("ledger parent"))
+            .await
+            .expect("state directory");
+        fs::create_dir(&path).await.expect("occupy the ledger path with a directory");
+
+        assert_eq!(
+            persisted_launches(temp.path()).await,
+            PersistedLaunches::Unknown,
+            "an unreadable ledger must not be degraded to an empty set"
+        );
+    }
+
+    /// A ledger whose contents cannot be parsed is likewise unverifiable.
+    #[tokio::test]
+    async fn a_malformed_ledger_makes_launches_unverifiable() {
+        let temp = TempDir::new().expect("temporary workspace");
+        let path = ledger_path(temp.path());
+        fs::create_dir_all(path.parent().expect("ledger parent"))
+            .await
+            .expect("state directory");
+        fs::write(&path, b"{ not json").await.expect("write malformed ledger");
+
+        assert_eq!(
+            persisted_launches(temp.path()).await,
+            PersistedLaunches::Unknown,
+            "a parse failure must not be degraded to an empty set"
+        );
     }
 }

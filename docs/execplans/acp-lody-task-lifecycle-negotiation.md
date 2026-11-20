@@ -1618,8 +1618,7 @@ assessment reply (2026-11-02T00:15:39Z) are now closed:
   `_vtcode/taskLifecycle` extension; it points at the standard `session/update`
   contract already described in the same guide.
 - `publish_initial_task_snapshots` records the snapshots queued before a
-  partial queue rejection, so `initial_snapshots_published` no longer drops
-  them.
+  partial queue rejection, so `initial_snapshots_enqueued` no longer drops them.
 - The Docstring Coverage rebuttal now states that both crates allow
   `missing_docs`, so `-D warnings` does not enforce public-item documentation.
 

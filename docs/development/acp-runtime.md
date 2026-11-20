@@ -284,8 +284,10 @@ not reported as an exited process. A failed archive read is returned as
 
 `background_output_tail` applies the line bound to whichever output the reader
 returns and fails with the target in its context on any read fault. The bounded
-preview in a background snapshot uses the same rule, except that an unreadable
-archive yields an empty preview rather than failing the snapshot.
+preview in a background snapshot follows the same rule: a failed live or
+archive read fails the snapshot with the target in its context. An empty
+preview is returned only for `BackgroundOutput::NotReady`, which means the task
+has not written output yet.
 
 ### Lock scope and ledger persistence
 

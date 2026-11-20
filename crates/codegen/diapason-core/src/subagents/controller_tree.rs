@@ -169,36 +169,68 @@ impl SubagentController {
     /// this tree would no longer reach, so a running grandchild would be
     /// stranded. Re-attaching the controller the record already names remains
     /// valid.
+    ///
+    /// The disjointness checks and the publication run under the tree's
+    /// attachment guard, so they are one critical section. Without that, two
+    /// attachments in opposite directions could each pass its check before
+    /// either published their link, which creates an `Arc` cycle that leaks the
+    /// subtree and never terminates a traversal. A controller bound to a
+    /// different lock scope can never be published (the child-id adoption
+    /// rejects it), so this tree's guard serialises every attachment that can
+    /// succeed.
     pub async fn attach_child_controller(&self, child_id: &str, controller: Arc<SubagentController>) -> Result<()> {
-        let attached = {
+        let (attached, owning_session_id) = {
             let state = self.state.read().await;
             let record = state
                 .children
                 .get(child_id)
                 .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
-            record.child_controller.as_ref().map(|attached| Arc::clone(&attached.state))
+            (
+                record.child_controller.as_ref().map(|attached| Arc::clone(&attached.state)),
+                record.parent_thread_id.clone(),
+            )
         };
-        let idempotent = attached
-            .as_ref()
-            .is_some_and(|attached| Arc::ptr_eq(attached, &controller.state));
-        match attached {
-            Some(_) if !idempotent => {
-                bail!("Subagent {child_id} is already attached to another controller");
+        if let Some(attached) = attached.as_ref()
+            && !Arc::ptr_eq(attached, &controller.state)
+        {
+            bail!("Subagent {child_id} is already attached to another controller");
+        }
+        // The observer key is resolved before the attachment guard, because it
+        // may await the parent controller's session lock. The guard must not be
+        // held across that wait: another attachment in the tree could depend on
+        // this controller making progress.
+        let observer_scope = self.observer_scope_for(&owning_session_id).await;
+        // Everything from the cycle check to the published link is one critical
+        // section, so no opposing attachment can pass the check in between.
+        let _attachment_guard = self.lock_scope().attachment().lock().await;
+        // The record is re-checked under the guard: it may have been attached
+        // between the fast rejection above and this point. An idempotent
+        // re-attachment skips the cycle check for the same reason it does
+        // below: the record already names the controller, so the two subtrees
+        // necessarily overlap.
+        let already_attached = {
+            let state = self.state.read().await;
+            let record = state
+                .children
+                .get(child_id)
+                .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+            match record.child_controller.as_ref() {
+                Some(attached) if Arc::ptr_eq(&attached.state, &controller.state) => true,
+                Some(_) => bail!("Subagent {child_id} is already attached to another controller"),
+                None => false,
             }
-            Some(_) => {}
-            None => {
-                let incoming = Self::reachable_controller_states(&controller).await;
-                let tree = Self::reachable_controller_states(self).await;
-                if !incoming.is_disjoint(&tree) {
-                    bail!("Subagent {child_id} cannot be attached: the controller is already part of this tree");
-                }
+        };
+        if !already_attached {
+            let incoming = Self::reachable_controller_states(&controller).await;
+            let tree = Self::reachable_controller_states(self).await;
+            if !incoming.is_disjoint(&tree) {
+                bail!("Subagent {child_id} cannot be attached: the controller is already part of this tree");
             }
         }
-        // The record is re-checked and the incoming allocator adopted while the
-        // state write lock is held, so two attachments cannot both observe an
-        // empty record and then publish over one another. The adoption takes
-        // only the tree's adoption lock, so this order matches every other
-        // path that holds a controller state lock before adopting.
+        // The record is re-checked once more and the incoming allocator adopted
+        // while the state write lock is held. The adoption takes only the
+        // tree's adoption lock, so this order matches every other path that
+        // holds a controller state lock before adopting.
         let mut state = self.state.write().await;
         {
             let record = state
@@ -214,9 +246,24 @@ impl SubagentController {
         if let Err(rejection) = controller.child_id_slot().adopt_into(&self.child_id_slot()) {
             bail!("Subagent {child_id} cannot join the tree allocator: {rejection}");
         }
+        // The joining subtree must publish through this tree's registry: an
+        // independently constructed controller otherwise keeps its own, and
+        // observers registered here would never see its later transitions.
+        controller.adopt_progress_observers(self, observer_scope);
         Self::attach_child_controller_to_state(&mut state, child_id, controller)
     }
 
+    /// Publishes `controller` on a tracked child record, refusing to replace one.
+    ///
+    /// Every attachment path shares this rule: a record that already names a
+    /// different controller must keep it. The displaced controller owns the
+    /// children it tracks, and this tree would no longer reach them, so a
+    /// running grandchild would be stranded. Re-publishing the controller the
+    /// record already names is idempotent, matching [`Self::attach_child_controller`].
+    ///
+    /// The comparison uses the shared controller-state `Arc`, not the outer
+    /// `Arc`, because [`SubagentController`] is `Clone`: two outer handles can
+    /// wrap clones of one controller.
     pub(super) fn attach_child_controller_to_state(
         state: &mut ControllerState,
         child_id: &str,
@@ -226,6 +273,11 @@ impl SubagentController {
             .children
             .get_mut(child_id)
             .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+        match record.child_controller.as_ref() {
+            Some(attached) if Arc::ptr_eq(&attached.state, &controller.state) => return Ok(()),
+            Some(_) => bail!("Subagent {child_id} is already attached to another controller"),
+            None => {}
+        }
         record.child_controller = Some(controller);
         Ok(())
     }

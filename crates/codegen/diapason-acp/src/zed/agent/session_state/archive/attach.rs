@@ -46,7 +46,10 @@ impl ZedAgent {
             let listing = find_session_by_identifier(identifier)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("unknown archived session '{identifier}'"))?;
-            self.attach_thread_from_listing_locked(session_id, workspace, listing).await
+            // The attach path carries the whole resumed session (controller,
+            // history repair and background ownership) in its future, which is
+            // far too large to keep inline in every caller's frame.
+            Box::pin(self.attach_thread_from_listing_locked(session_id, workspace, listing)).await
         })
         .await
     }
@@ -68,7 +71,9 @@ impl ZedAgent {
         if let Some(existing) = self.session_handle(session_id)? {
             return Ok(existing);
         }
-        self.attach_thread_from_listing_locked(session_id, workspace, listing).await
+        // Boxed for the same reason as the archive path: the resumed-session
+        // future is far too large to keep inline in every caller's frame.
+        Box::pin(self.attach_thread_from_listing_locked(session_id, workspace, listing)).await
     }
 
     /// Attaches a listing while the caller already holds the per-session lock.
@@ -105,22 +110,40 @@ impl ZedAgent {
         // and that restore takes only ownerless rows. A row this session
         // launched must carry its owner before that load, or it is relaunched
         // here as workspace work instead of being adopted by this session.
-        if self.vt_config.as_deref().is_some_and(|config| config.subagents.enabled)
-            && let Err(error) = crate::zed::agent::optional_setup::migrate_resumed_session_background_owners(
-                workspace.path(),
-                session_id.0.as_ref(),
-            )
-            .await
-        {
-            log_suppressed_error(&error, "archive_attach", "background_owner_migration_failed");
-        }
+        let background_owner_migration_failed =
+            if self.vt_config.as_deref().is_some_and(|config| config.subagents.enabled) {
+                match crate::zed::agent::optional_setup::migrate_resumed_session_background_owners(
+                    workspace.path(),
+                    session_id.0.as_ref(),
+                )
+                .await
+                {
+                    Ok(_) => false,
+                    Err(error) => {
+                        log_suppressed_error(&error, "archive_attach", "background_owner_migration_failed");
+                        true
+                    }
+                }
+            } else {
+                false
+            };
+        // A failed migration can leave rows ownerless that this session may yet
+        // adopt when its controller retries the migration. The workspace
+        // controller restores ownerless rows, so letting it run would relaunch
+        // the same record the session controller may restore too. Deferring it
+        // keeps attach working without risking a duplicate process; when the
+        // retry also fails, no restore happens, which is the fail-safe outcome.
         let workspace_lease = self
-            .workspace_runtime_for(workspace)
+            .workspace_runtime_for(workspace, background_owner_migration_failed)
             .await
             .context("Failed to initialize archived ACP session workspace")?;
         let subagent_controller = self
             .build_session_subagent_controller(workspace_lease.runtime(), session_id, true)
             .await;
+        if subagent_controller.is_some() {
+            self.adopt_workspace_background_owner(workspace_lease.runtime(), session_id)
+                .await;
+        }
         let handle = self.build_session_handle(
             thread,
             SessionHandleBootstrap {
@@ -218,6 +241,46 @@ impl ZedAgent {
             return Ok(existing);
         }
         Ok(handle)
+    }
+
+    /// Reconciles the workspace controller with the owner migration this attach
+    /// just wrote.
+    ///
+    /// The workspace runtime can be built before any session resumes — the
+    /// launch runtime built by `ZedAgent::new` always is — so its controller may
+    /// hold ownerless copies of rows the migration has since given to
+    /// `session_id`. Left alone, that controller would restore a row the
+    /// session now owns, and its next save would write the ownerless copy back
+    /// beside the migrated record, leaving a restorable duplicate of a launch
+    /// the session may already have cancelled. The same controller then adopts
+    /// the rows it still holds ownerless, which makes the migrated ownership
+    /// durable before either scope restores anything.
+    ///
+    /// Best effort: a failure is logged and the attach continues. The ledger
+    /// merge still refuses to write an ownerless copy over an owned record of
+    /// the same launch, so the duplicate cannot reappear even when this step
+    /// does not run.
+    async fn adopt_workspace_background_owner(
+        &self,
+        runtime: &crate::zed::agent::session_workspace::SessionWorkspaceRuntime,
+        session_id: &acp::SessionId,
+    ) {
+        let Some(controller) = runtime.local_tool_registry.subagent_controller() else {
+            return;
+        };
+        let adopted = match controller.adopt_persisted_background_owner(session_id.0.as_ref()).await {
+            Ok(adopted) => adopted,
+            Err(error) => {
+                log_suppressed_error(&error, "archive_attach", "background_owner_adoption_failed");
+                return;
+            }
+        };
+        if adopted == 0 {
+            return;
+        }
+        if let Err(error) = controller.save_background_ledger().await {
+            log_suppressed_error(&error, "archive_attach", "background_owner_adoption_save_failed");
+        }
     }
 
     /// Publish a resumed session, returning any handle registered concurrently.

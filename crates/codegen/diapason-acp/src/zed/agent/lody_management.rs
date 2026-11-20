@@ -5,18 +5,15 @@ use agent_client_protocol::Error as SdkError;
 #[cfg(test)]
 use diapason_core::subagents::BackgroundSubprocessStatus;
 use diapason_core::subagents::{
-    BackgroundLiveness, BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry,
+    BackgroundLiveness, BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry, TaskOwner,
+    owned_background_ids, owned_child_ids, resolve_owned_background_id,
 };
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
 use super::super::types::SessionHandle;
-use super::{
-    ZedAgent,
-    lody::{owned_background_ids, owned_child_ids},
-    task_lifecycle::bounded_session_correlation,
-};
+use super::{ZedAgent, task_lifecycle::bounded_session_correlation};
 
 mod observability;
 mod output_tail;
@@ -288,15 +285,24 @@ async fn controller_tracking_child(
     None
 }
 
+/// Finds the session controller tracking an owned background task and resolves
+/// the requested id to its canonical owner-scoped form.
+///
+/// The controller's map and the listed projection are keyed by canonical ids.
+/// A client may still hold the pre-owner-scoping id, so the request is resolved
+/// through [`resolve_owned_background_id`] before the ownership comparison; the
+/// resolved id is returned so the caller can address the record directly. The
+/// fallback only matches records this session owns, so it never reaches another
+/// session's task.
 async fn controller_tracking_background(
     controllers: &[Arc<SubagentController>],
     session_id: &str,
     task_id: &str,
-) -> Option<Arc<SubagentController>> {
+) -> Option<(Arc<SubagentController>, String)> {
     for controller in controllers {
         let entries = controller.background_status_entries().await;
-        if owned_background_ids(session_id, &entries).contains(task_id) {
-            return Some(Arc::clone(controller));
+        if let Some(resolved_task_id) = resolve_owned_background_id(session_id, &entries, task_id) {
+            return Some((Arc::clone(controller), resolved_task_id.to_owned()));
         }
     }
     None
@@ -328,18 +334,28 @@ async fn list_subagents(agent: &ZedAgent, request: ListSubagentsRequest) -> Resu
 async fn cancel_subagent(agent: &ZedAgent, request: CancelSubagentRequest) -> Result<Value, SdkError> {
     let (_session, controllers) = session_controllers(agent, &request.session_id).await?;
     let children = child_status_entries(&controllers).await;
-    if owned_child_ids(&request.session_id, &children).contains(request.task_id.as_str()) {
+    let owned_children = owned_child_ids(&request.session_id, &children);
+    if owned_children.contains(request.task_id.as_str()) {
         let controller = controller_tracking_child(&controllers, &request.task_id)
             .await
             .ok_or_else(unknown_task_error)?;
-        drop(controller.close(&request.task_id).await.map_err(internal_management_error)?);
+        // A grandchild lives in the child-scoped controller, which cannot prove
+        // this session's ancestry from its own records, so the set resolved
+        // over the whole tree above is the authority the command presents.
+        drop(
+            controller
+                .close(TaskOwner::SessionTree(&owned_children), &request.task_id)
+                .await
+                .map_err(internal_management_error)?,
+        );
         return Ok(serde_json::json!({}));
     }
-    if let Some(controller) = controller_tracking_background(&controllers, &request.session_id, &request.task_id).await
+    if let Some((controller, resolved_task_id)) =
+        controller_tracking_background(&controllers, &request.session_id, &request.task_id).await
     {
         drop(
             controller
-                .force_cancel_background(&request.task_id)
+                .force_cancel_background(TaskOwner::Session(&request.session_id), &resolved_task_id)
                 .await
                 .map_err(internal_management_error)?,
         );
@@ -358,17 +374,18 @@ async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Re
         }))
     })?;
     let children = child_status_entries(&controllers).await;
-    let output = if owned_child_ids(&request.session_id, &children).contains(request.task_id.as_str()) {
+    let owned_children = owned_child_ids(&request.session_id, &children);
+    let output = if owned_children.contains(request.task_id.as_str()) {
         let controller = controller_tracking_child(&controllers, &request.task_id)
             .await
             .ok_or_else(unknown_task_error)?;
         let snapshot = controller
-            .snapshot_for_thread(&request.task_id)
+            .snapshot_for_thread(TaskOwner::SessionTree(&owned_children), &request.task_id)
             .await
             .map_err(internal_management_error)?;
         foreground_output_tail(&snapshot.snapshot.messages, tail)
     } else {
-        let Some(controller) =
+        let Some((controller, resolved_task_id)) =
             controller_tracking_background(&controllers, &request.session_id, &request.task_id).await
         else {
             return Err(unknown_task_error());
@@ -378,7 +395,7 @@ async fn subagent_output(agent: &ZedAgent, request: SubagentOutputRequest) -> Re
         // archive once it is gone. Refreshing here would turn a read into a
         // command that can respawn processes and fail on unrelated records.
         controller
-            .background_output_tail(&request.task_id, tail)
+            .background_output_tail(TaskOwner::Session(&request.session_id), &resolved_task_id, tail)
             .await
             .map_err(internal_management_error)?
     };

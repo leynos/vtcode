@@ -36,7 +36,6 @@ use diapason_core::metrics::TaskLifecycleNotificationQueueMetricsObserver;
 use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentProgressObserver, SubagentStatusEntry};
 use hashbrown::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -56,14 +55,15 @@ pub(super) fn bounded_session_correlation(session_id: &acp::SessionId) -> String
 /// One queued lifecycle item, tagged with its position in the session's
 /// transition order.
 ///
-/// The initial-snapshot publisher runs concurrently with live observer
-/// delivery, and the controller stamps both from `Utc::now()`, so a snapshot
-/// captured before a transition can share that transition's `updated_at` and
-/// still be queued after it. Timestamps are therefore not an ordering key. The
-/// adapter assigns a monotonic revision when the item enters the queue: the
-/// snapshot pass reserves one base revision before the observer is registered,
-/// and every live transition takes a strictly higher revision. The forwarder
-/// orders by that revision and keeps `updated_at` only for the wire contract.
+/// The controller stamps both `Utc::now()` and the lifecycle revision when it
+/// records a state change, so two transitions recorded in one tick share
+/// `updated_at` and timestamps are not an ordering key. The controller
+/// allocates the revision under the state lock that captured the snapshot and
+/// delivers it with the entry, which is what keeps a stale capture delivered
+/// late from overwriting a newer state. The snapshot pass reserves its base
+/// revision from the same controller clock before the observer is registered,
+/// so every live capture outranks the initial snapshots. The forwarder orders
+/// by that revision and keeps `updated_at` only for the wire contract.
 struct QueuedLifecycleUpdate {
     update: LifecycleUpdate,
     revision: u64,
@@ -122,11 +122,15 @@ fn task_lifecycle_forwarder_outcome(send_failures: u64) -> &'static str {
 
 /// Ordering key for one task snapshot.
 ///
-/// The adapter owns this counter, not the controller: the controller's
-/// `updated_at` is a wall-clock timestamp for the wire contract and two
-/// transitions recorded in the same tick share it, so it cannot order them.
-/// A revision taken as the item is queued is monotonic across the snapshot
-/// pass and the live observer alike.
+/// The controller owns this clock: its `updated_at` is a wall-clock timestamp
+/// for the wire contract and two transitions recorded in the same tick share
+/// it, so it cannot order them. The controller allocates the revision while it
+/// holds the state lock that captured the snapshot, then delivers it with the
+/// entry, so revision order and capture order are the same total order across
+/// the snapshot pass and the live observer alike. Allocating a revision here,
+/// as the item reaches the queue, would instead order deliveries: a stale
+/// capture delivered late would take the higher revision and overwrite the
+/// newer state it lost to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct LifecycleRevision(u64);
 
@@ -211,17 +215,17 @@ impl ZedAgent {
         // substitute a counting double, so the collector Arc is coerced here.
         let queue_metrics = Arc::clone(&metrics) as Arc<dyn TaskLifecycleNotificationQueueMetricsObserver>;
         let queue = Arc::new(LifecycleQueueTracker::new(queue_metrics));
-        let next_revision = Arc::new(AtomicU64::new(0));
         // Reserve the snapshot pass's revision before the observer exists, so
         // every live transition registered from here takes a strictly newer
         // revision than the snapshots. A snapshot captured from the same state
-        // a transition reports must not overwrite the transition.
-        let snapshot_revision = next_revision.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // a transition reports must not overwrite the transition. The base
+        // comes from the controller's clock, so it is comparable with the
+        // revisions the controller stamps on live snapshots.
+        let snapshot_revision = controller.reserve_lifecycle_revision();
         let observer = Arc::new(AcpTaskLifecycleObserver {
             sender: sender.clone(),
             queue: Arc::clone(&queue),
             session_id: session_id.to_string(),
-            next_revision: Arc::clone(&next_revision),
         });
         let registration = controller.register_progress_observer(session_id.0.to_string(), observer);
         let forwarder = spawn_task_lifecycle_forwarder(receiver, session_id.clone(), client, Arc::clone(&queue));
@@ -249,6 +253,12 @@ impl ZedAgent {
             .await;
         });
 
+        // Installing the handles is serialized with teardown: both take the
+        // session-data lock, so a close cannot stop the lifecycle between
+        // spawning these tasks and publishing their handles. The closing state
+        // is read under that same lock, so a close that already ran teardown
+        // first is observed here and aborts the install instead of leaving a
+        // forwarder publishing into a session that has stopped draining it.
         let mut data = match session
             .data
             .lock()
@@ -261,7 +271,7 @@ impl ZedAgent {
                 return Err(error);
             }
         };
-        if data.task_lifecycle_forwarder.as_ref().is_some_and(|task| !task.is_finished()) {
+        if session.is_closing() || data.task_lifecycle_forwarder.as_ref().is_some_and(|task| !task.is_finished()) {
             initial_snapshot_task.abort();
             forwarder.abort();
         } else {
@@ -279,30 +289,51 @@ struct AcpTaskLifecycleObserver {
     session_id: String,
     sender: mpsc::Sender<QueuedLifecycleUpdate>,
     queue: Arc<LifecycleQueueTracker>,
-    /// Shared with the initial-snapshot pass: every live transition takes a
-    /// revision newer than the pass's reserved base.
-    next_revision: Arc<AtomicU64>,
 }
 
 impl SubagentProgressObserver for AcpTaskLifecycleObserver {
+    /// Unordered fallback for a caller that delivers without a controller
+    /// capture. The controller always publishes through
+    /// [`SubagentProgressObserver::subagent_status_published`], so this path
+    /// carries revision zero and can never override an ordered capture.
     fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
-        self.try_send(LifecycleUpdate::Subagent {
-            parent_session_id: self.session_id.clone(),
-            task: entry,
-        });
+        self.subagent_status_published(entry, 0);
     }
 
+    /// Unordered fallback; see [`Self::subagent_status_changed`].
     fn background_status_changed(&self, entry: BackgroundSubprocessEntry) {
-        self.try_send(LifecycleUpdate::BackgroundProcess {
-            parent_session_id: self.session_id.clone(),
-            task: entry,
-        });
+        self.background_status_published(entry, 0);
+    }
+
+    fn subagent_status_published(&self, entry: SubagentStatusEntry, lifecycle_revision: u64) {
+        self.try_send(
+            LifecycleUpdate::Subagent {
+                parent_session_id: self.session_id.clone(),
+                task: entry,
+            },
+            lifecycle_revision,
+        );
+    }
+
+    fn background_status_published(&self, entry: BackgroundSubprocessEntry, lifecycle_revision: u64) {
+        self.try_send(
+            LifecycleUpdate::BackgroundProcess {
+                parent_session_id: self.session_id.clone(),
+                task: entry,
+            },
+            lifecycle_revision,
+        );
     }
 }
 
 impl AcpTaskLifecycleObserver {
-    fn try_send(&self, update: LifecycleUpdate) {
-        let revision = self.next_revision.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    /// Queues one transition under the revision its capture was stamped with.
+    ///
+    /// The revision is carried, never allocated here: a capture taken before a
+    /// later state change must keep the lower revision even when it reaches
+    /// the queue second, or the delayed stale entry would overwrite the newer
+    /// state.
+    fn try_send(&self, update: LifecycleUpdate, revision: u64) {
         let queued = QueuedLifecycleUpdate { update, revision };
         if let Err(kind) = self.queue.try_send(&self.sender, queued) {
             let cumulative_count = self.queue.record_drop(kind);

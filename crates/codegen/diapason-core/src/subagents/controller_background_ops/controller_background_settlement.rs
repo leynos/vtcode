@@ -2,6 +2,33 @@
 
 use super::*;
 
+use super::controller_background_cancel::background_stop_close_is_pending;
+
+/// Reports whether a background record may still be given another attempt.
+///
+/// The single-attempt allowance is domain policy shared by restart settlement
+/// and by the retry of a stop whose exec session could not be closed. Both
+/// spend the same `restart_attempts` counter, so a record that already spent
+/// its attempt cannot keep retrying under a second, unrelated budget.
+pub(super) const fn retry_attempt_available(restart_attempts: u8) -> bool {
+    restart_attempts < 1
+}
+
+/// Reports whether a background record may still be given a replacement run.
+///
+/// The single restart allowance is domain policy shared by two units: the
+/// read-only liveness projection predicts a restart from it, and the settlement
+/// path spends it. Both must answer identically, because a list that predicted
+/// a restart the settlement path refuses — or the reverse — would report a task
+/// as restarting that has really finished, or as finished while a replacement
+/// is on its way. Keeping the rule in one function makes the budget a single
+/// edit. Automatic restore is an additional condition on top of the shared
+/// attempt allowance: a stop close has no such switch, because a stop the
+/// caller asked for must always be finished.
+pub(super) const fn restart_allowed(auto_restore: bool, restart_attempts: u8) -> bool {
+    auto_restore && retry_attempt_available(restart_attempts)
+}
+
 /// Controller trees whose last background-ledger write failed.
 ///
 /// A launch commits its record in memory before it saves the ledger, and the
@@ -22,6 +49,15 @@ struct PendingLedgerWrite {
     /// Keeps the key bound to a live state allocation so a dropped tree's entry
     /// can be pruned before its address is reused.
     state: Weak<RwLock<ControllerState>>,
+    /// Counts the failed saves this tree has not yet recovered from.
+    ///
+    /// A retry reads this before it writes and passes the value back when it
+    /// clears the flag. A save that fails while the retry is in flight bumps
+    /// the generation, so the retry's clear no longer matches and the newer
+    /// obligation survives. Without it, the clear would discard a mark that
+    /// arrived after the retry began, and the next reuse could report an
+    /// unwritten record as durable.
+    generation: u64,
 }
 
 /// Applies `update` to the registry, pruning dropped trees first.
@@ -33,32 +69,47 @@ fn with_pending_ledger_writes<R>(update: impl FnOnce(&mut Vec<PendingLedgerWrite
     update(&mut registry)
 }
 
-/// Reports whether `state` is one of the trees in `registry`.
-fn tree_has_pending_ledger_write(registry: &[PendingLedgerWrite], state: &Arc<RwLock<ControllerState>>) -> bool {
-    registry
-        .iter()
-        .any(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
-}
-
-/// Marks a controller tree as having a record its last save did not write.
-pub(super) fn mark_background_ledger_write_pending(state: &Arc<RwLock<ControllerState>>) {
+/// Marks a controller tree as having a record its latest save has not written.
+///
+/// Returns the generation of the obligation this call created. The marker is
+/// raised before the save is awaited, so a concurrent reuse sees the owed
+/// write for the whole window in which the in-memory record and the ledger can
+/// disagree. A caller that then saves successfully clears exactly the
+/// generation it observed.
+pub(super) fn mark_background_ledger_write_pending(state: &Arc<RwLock<ControllerState>>) -> u64 {
     with_pending_ledger_writes(|registry| {
-        if tree_has_pending_ledger_write(registry, state) {
-            return;
+        if let Some(entry) = registry
+            .iter_mut()
+            .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
+        {
+            entry.generation = entry.generation.saturating_add(1);
+            return entry.generation;
         }
-        registry.push(PendingLedgerWrite { state: Arc::downgrade(state) });
-    });
+        registry.push(PendingLedgerWrite { state: Arc::downgrade(state), generation: 1 });
+        1
+    })
 }
 
-/// Reports whether a controller tree still owes the ledger a write.
-pub(super) fn background_ledger_write_pending(state: &Arc<RwLock<ControllerState>>) -> bool {
-    with_pending_ledger_writes(|registry| tree_has_pending_ledger_write(registry, state))
+/// Returns the obligation a retry is about to discharge, if any.
+pub(super) fn pending_background_ledger_write_generation(state: &Arc<RwLock<ControllerState>>) -> Option<u64> {
+    with_pending_ledger_writes(|registry| {
+        registry
+            .iter()
+            .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
+            .map(|entry| entry.generation)
+    })
 }
 
 /// Clears the flag after the owed write succeeded.
-pub(super) fn clear_background_ledger_write_pending(state: &Arc<RwLock<ControllerState>>) {
+///
+/// Only the obligation the caller observed is cleared. A failed save that
+/// arrives while the retry is writing bumps the generation, and the newer
+/// obligation must survive this clear.
+pub(super) fn clear_background_ledger_write_pending(state: &Arc<RwLock<ControllerState>>, observed_generation: u64) {
     with_pending_ledger_writes(|registry| {
-        registry.retain(|entry| !std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)));
+        registry.retain(|entry| {
+            !std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)) || entry.generation != observed_generation
+        });
     });
 }
 
@@ -71,11 +122,11 @@ impl SubagentController {
     /// first step of reuse and of restore, so the owed write is retried here
     /// before a caller can observe a record the ledger never received.
     pub(super) async fn retry_owed_background_ledger_write(&self) -> Result<bool> {
-        if !background_ledger_write_pending(&self.state) {
+        let Some(generation) = pending_background_ledger_write_generation(&self.state) else {
             return Ok(false);
-        }
+        };
         self.save_background_state().await?;
-        clear_background_ledger_write_pending(&self.state);
+        clear_background_ledger_write_pending(&self.state, generation);
         Ok(true)
     }
 
@@ -133,6 +184,14 @@ impl SubagentController {
         let Some(record) = state.background_children.get_mut(record_id) else {
             return Ok(None);
         };
+        // A stop that is still owed the close of its exec session has already
+        // settled its intent, and the reconcile path owns its outcome. Settling
+        // it here from a liveness observation would either report the stop
+        // complete before the close was attempted or clear the error that makes
+        // the pending close visible.
+        if background_stop_close_is_pending(&self.state, record_id, &record.exec_session_id) {
+            return Ok(None);
+        }
         // The observation was made against the session the record named when
         // the refresh read it, outside this lock. A launch that replaced the
         // session in between answers for a run that no longer exists, so its
@@ -168,8 +227,7 @@ impl SubagentController {
             Some(crate::tools::types::DiapasonSessionLifecycleState::Exited) | None => {
                 record.ended_at.get_or_insert(Utc::now());
                 if record.desired_enabled
-                    && self.config.vt_cfg.subagents.background.auto_restore
-                    && record.restart_attempts < 1
+                    && restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, record.restart_attempts)
                 {
                     let next_restart_attempt = record.restart_attempts.saturating_add(1);
                     record.restart_attempts = next_restart_attempt;
@@ -212,7 +270,7 @@ impl SubagentController {
         if !record.desired_enabled {
             record.status = BackgroundSubprocessStatus::Stopped;
             record.ended_at.get_or_insert(Utc::now());
-        } else if config.vt_cfg.subagents.background.auto_restore && record.restart_attempts < 1 {
+        } else if restart_allowed(config.vt_cfg.subagents.background.auto_restore, record.restart_attempts) {
             let next_restart_attempt = record.restart_attempts.saturating_add(1);
             record.restart_attempts = next_restart_attempt;
             record.status = BackgroundSubprocessStatus::Starting;

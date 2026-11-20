@@ -1,3 +1,11 @@
+//! Regressions for the child launch path.
+//!
+//! These cases pin three contracts: a waiter created before `notify_waiters()`
+//! still observes the broadcast even though it has not been polled; an
+//! explicitly closed child refuses new input while keeping its settled outcome;
+//! and a save merges with records other owners of the same ledger committed
+//! after this controller loaded its snapshot instead of dropping them.
+
 use super::super::background::load_background_state;
 use super::*;
 use std::time::Duration;
@@ -156,19 +164,27 @@ async fn ledger_ids(workspace_root: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
-/// A registered waiter must retain a wakeup delivered before its first poll.
+/// A waiter created before a broadcast retains the wakeup before its first poll.
+///
+/// Tokio's `notify_waiters()` is not lossy for a `Notified` future that already
+/// exists: the future snapshots the broadcast counter at creation and reports
+/// the wakeup on its first poll. The wait path relies on that, because it
+/// creates its waiters, publishes a status change from another task, and only
+/// then polls `select_all`. What matters is creation before the broadcast, not
+/// whether the future was polled or enabled first.
 #[tokio::test]
-async fn registered_waiter_observes_notify_waiters_before_first_wait_poll() {
+async fn waiter_created_before_notify_waiters_retains_the_wakeup() {
     let notify = Arc::new(Notify::new());
     let notifies = [Arc::clone(&notify)];
     let waiters = register_notify_waiters(&notifies);
 
-    // notify_waiters() is lossy for futures that have not registered.
-    // Deliver it after enable() but before select_all first polls a waiter.
+    // Every waiter above was created before this broadcast. None has been
+    // polled, and the broadcast must still be visible when `select_all` first
+    // polls them.
     notify.notify_waiters();
 
     let outcome = tokio::time::timeout(Duration::from_millis(50), select_all(waiters)).await;
-    assert!(outcome.is_ok(), "registered waiter should retain the wakeup");
+    assert!(outcome.is_ok(), "a waiter created before the broadcast should retain the wakeup");
 }
 
 /// An explicitly closed child must refuse input even when it completed.
@@ -190,7 +206,7 @@ async fn send_input_rejects_a_completed_child_that_was_closed() {
         .await
         .expect("insert child");
 
-    let closed = controller.close(&id).await.expect("close child");
+    let closed = controller.close(TaskOwner::Workspace, &id).await.expect("close child");
     assert_eq!(closed.status, SubagentStatus::Completed, "closing a settled child must preserve its outcome");
     assert!(is_child_closed(&controller.state, &id), "the explicit closure must be remembered");
 
@@ -207,7 +223,7 @@ async fn send_input_rejects_a_completed_child_that_was_closed() {
         Err(error) => error,
     };
     assert!(format!("{error:#}").contains("closed"), "the rejection must name the closure: {error:#}");
-    let status = controller.status_for(&id).await.expect("status");
+    let status = controller.status_for(TaskOwner::Workspace, &id).await.expect("status");
     assert_eq!(status.status, SubagentStatus::Completed, "no new run may start");
     assert!(
         controller

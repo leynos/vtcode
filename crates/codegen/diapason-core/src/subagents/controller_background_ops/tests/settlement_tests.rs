@@ -1,6 +1,7 @@
 //! Exercises how a refresh settles a background record.
 
 use chrono::Utc;
+use rstest::rstest;
 use tempfile::TempDir;
 
 use crate::config::DiapasonConfig;
@@ -200,4 +201,68 @@ async fn a_missing_process_after_the_restart_allowance_settles_error() {
     let record = state.background_children.get("background-worker").expect("record");
     assert_eq!(record.status, BackgroundSubprocessStatus::Error);
     assert_eq!(record.restart_attempts, 1, "a failed settle must not spend another attempt");
+}
+
+/// The restart allowance is one rule, not two copies of a comparison.
+///
+/// The read-only projection predicts a replacement from this budget and the
+/// settlement path spends it. The table pins both boundaries — automatic
+/// restore off, and the single attempt already spent — so a divergence between
+/// the two units shows up here rather than as a task that a listing reports as
+/// restarting while settlement has already given up (or the reverse).
+#[rstest]
+#[case::first_attempt_available(true, 0, true)]
+#[case::allowance_spent(true, 1, false)]
+#[case::several_attempts_spent(true, 2, false)]
+#[case::restore_disabled_for_the_first_attempt(false, 0, false)]
+#[case::restore_disabled_after_an_attempt(false, 1, false)]
+fn the_restart_budget_is_a_single_shared_allowance(
+    #[case] auto_restore: bool,
+    #[case] restart_attempts: u8,
+    #[case] expected: bool,
+) {
+    assert_eq!(
+        super::super::controller_background_settlement::restart_allowed(auto_restore, restart_attempts),
+        expected
+    );
+}
+
+/// A retry clears only the failure it set out to repair.
+///
+/// The retry saves and then clears, but a second launch can fail its own save
+/// while that write is in flight. That newer failure must not be discarded
+/// with the one the retry discharged: the next reuse would otherwise report a
+/// record the ledger never received as durable. The generation makes the clear
+/// a compare-and-clear instead of an unconditional removal.
+#[tokio::test]
+async fn a_retry_keeps_an_obligation_that_arrived_while_it_was_writing() {
+    use super::super::controller_background_settlement::{
+        clear_background_ledger_write_pending, mark_background_ledger_write_pending,
+        pending_background_ledger_write_generation,
+    };
+
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+
+    mark_background_ledger_write_pending(&controller.state);
+    let observed = pending_background_ledger_write_generation(&controller.state);
+    assert_eq!(observed, Some(1), "the first failure creates the obligation");
+
+    // A concurrent launch fails its save while the retry is writing.
+    mark_background_ledger_write_pending(&controller.state);
+    clear_background_ledger_write_pending(&controller.state, 1);
+    assert_eq!(
+        pending_background_ledger_write_generation(&controller.state),
+        Some(2),
+        "the retry must not discharge a failure it did not observe"
+    );
+
+    clear_background_ledger_write_pending(&controller.state, 2);
+    assert_eq!(
+        pending_background_ledger_write_generation(&controller.state),
+        None,
+        "the next retry discharges the newer obligation"
+    );
+
+    controller.signal_shutdown().await;
 }

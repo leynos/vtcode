@@ -244,8 +244,10 @@ fn task_content_prefers_error_then_summary_then_description() {
 fn pre_epoch_timestamps_are_clamped_to_zero() {
     for previously_emitted in [false, true] {
         // Subagent: both the creation and completion instants are pre-epoch.
+        // The end instant is reported only for a terminal task, so the clamp
+        // is exercised through a completed record.
         let update = lody_task_session_update(
-            subagent_event_state("running", "1960-01-01T00:00:00Z", Some("1960-01-01T00:00:00Z")),
+            subagent_event_state("completed", "1960-01-01T00:00:00Z", Some("1960-01-01T00:00:00Z")),
             previously_emitted,
         )
         .expect("subagent task update");
@@ -260,10 +262,11 @@ fn pre_epoch_timestamps_are_clamped_to_zero() {
             "a pre-epoch completion must clamp to zero (previously_emitted={previously_emitted})"
         );
 
-        // Background: creation, start and end are all pre-epoch.
+        // Background: creation, start and end are all pre-epoch, and the end
+        // is reported only for a terminal record.
         let update = lody_task_session_update(
             background_event_state(
-                "starting",
+                "stopped",
                 "1960-01-01T00:00:00Z",
                 Some("1960-01-01T00:00:00Z"),
                 Some("1960-01-01T00:00:00Z"),
@@ -329,6 +332,12 @@ fn every_lifecycle_state_reports_its_own_start_and_end_instants() {
         ("queued", "pending", None),
         ("running", "in_progress", None),
         ("waiting", "in_progress", None),
+        // A completed child sent new input is queued again while still
+        // carrying the previous run's completion instant; the wire contract
+        // allows an end only for a terminal task.
+        ("queued", "pending", Some(ENDED_AT)),
+        ("running", "in_progress", Some(ENDED_AT)),
+        ("waiting", "in_progress", Some(ENDED_AT)),
         ("completed", "completed", Some(ENDED_AT)),
         ("failed", "failed", Some(ENDED_AT)),
         ("closed", "failed", Some(ENDED_AT)),
@@ -343,13 +352,14 @@ fn every_lifecycle_state_reports_its_own_start_and_end_instants() {
             json!(CREATED_EPOCH_SECONDS),
             "a subagent {record_status} record starts at its creation instant"
         );
-        match completed_at {
-            Some(_) => assert_eq!(
+        let terminal = matches!(record_status, "completed" | "failed" | "closed");
+        match (completed_at, terminal) {
+            (Some(_), true) => assert_eq!(
                 meta["endedAtEpochSeconds"],
                 json!(ENDED_EPOCH_SECONDS),
-                "a subagent {record_status} record ends at its completion instant"
+                "a terminal subagent {record_status} record ends at its completion instant"
             ),
-            None => assert!(
+            _ => assert!(
                 meta.get("endedAtEpochSeconds").is_none(),
                 "an unfinished subagent {record_status} record carries no end instant"
             ),

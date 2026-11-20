@@ -50,6 +50,7 @@ impl SubagentController {
             stable_id: Some(record_id),
             restart_attempts: 0,
             overrides: Some(launch_overrides),
+            expected_exec_session_id: None,
         })
         .await
     }
@@ -145,19 +146,12 @@ impl SubagentController {
         record: &BackgroundRecord,
         launch: &PreparedBackgroundSubprocess,
     ) -> Vec<&'static str> {
-        let mut conflicts = Vec::new();
-        if record.prompt != launch.prompt {
-            conflicts.push("prompt");
-        }
-        if record.max_turns != launch.desired_max_turns {
-            conflicts.push("max_turns");
-        }
-        if record.model_override.as_deref() != launch.desired_model_override.as_deref() {
-            conflicts.push("model");
-        }
-        if record.reasoning_override.as_deref() != launch.desired_reasoning_override.as_deref() {
-            conflicts.push("reasoning_effort");
-        }
-        conflicts
+        background_launch_conflicts(
+            record,
+            launch.prompt.as_str(),
+            launch.desired_max_turns,
+            launch.desired_model_override.as_deref(),
+            launch.desired_reasoning_override.as_deref(),
+        )
     }
 }

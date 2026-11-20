@@ -119,9 +119,7 @@ async fn stopped_liveness_projection_carries_the_terminal_instant() {
 #[tokio::test]
 async fn liveness_projection_does_not_mutate_the_ledger() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
-    let ledger_path = state_dir.join("background_subagents.json");
+    let ledger_path = background_ledger_path(temp.path());
     write_ledger(
         &ledger_path,
         vec![record_with_restart_state(
@@ -170,9 +168,7 @@ async fn liveness_projection_does_not_mutate_the_ledger() {
 #[tokio::test]
 async fn background_snapshot_is_pure_and_refresh_is_explicit() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
-    let ledger_path = state_dir.join("background_subagents.json");
+    let ledger_path = background_ledger_path(temp.path());
     write_ledger(
         &ledger_path,
         vec![record_with_terminal_state(
@@ -193,7 +189,7 @@ async fn background_snapshot_is_pure_and_refresh_is_explicit() {
     let ledger_before = std::fs::read(&ledger_path).expect("read ledger before snapshot");
 
     let cached = controller
-        .background_snapshot("background-worker@session-a")
+        .background_snapshot(TaskOwner::Workspace, "background-worker@session-a")
         .await
         .expect("cached snapshot");
     assert_eq!(
@@ -209,7 +205,7 @@ async fn background_snapshot_is_pure_and_refresh_is_explicit() {
     );
 
     let refreshed = controller
-        .refresh_then_background_snapshot("background-worker@session-a")
+        .refresh_then_background_snapshot(TaskOwner::Workspace, "background-worker@session-a")
         .await
         .expect("refreshed snapshot");
     assert_eq!(

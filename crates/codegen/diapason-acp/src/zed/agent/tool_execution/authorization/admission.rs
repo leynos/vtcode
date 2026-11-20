@@ -2,12 +2,40 @@
 //!
 //! The advertised tool list can come from the workspace registry, which knows
 //! the workspace controller, while a call must execute through the session's
-//! controller. These checks reject a call the session cannot own before it is
-//! resolved, authorized or executed.
+//! controller. These checks reject a call the session cannot own.
+//!
+//! Admission runs twice on purpose. The early check runs before any hook,
+//! prompt or resolution and fails closed only when the session has no
+//! controller: the model's raw arguments may name an obsolete target, and a
+//! `PermissionRequest` hook may replace them before dispatch. The second check
+//! runs after the permission stages and judges per-target ownership on the
+//! arguments that will actually execute; without it a rewrite could name a
+//! target this session does not own and only core would later refuse the call.
 
 use diapason_core::config::constants::tools;
 use serde_json::Value;
 use std::sync::Arc;
+
+/// Rejects a subagent tool call when the session has no controller.
+///
+/// This is the early, pre-hook admission check. It deliberately does not judge
+/// the targets the model named: a `PermissionRequest` hook may replace those
+/// arguments before dispatch, so ownership is judged only on the arguments that
+/// will actually execute. A non-subagent tool is never tied to a controller.
+pub(super) fn session_subagent_controller_error(
+    tool_name: &str,
+    controller: Option<&Arc<diapason_core::subagents::SubagentController>>,
+) -> Option<String> {
+    if !diapason_core::subagents::is_subagent_tool(tool_name) || controller.is_some() {
+        return None;
+    }
+    // The session controller's absence is reported with the core registry's
+    // established wording, so the client and model see the same fail-closed
+    // reason on both enforcement paths.
+    Some(format!(
+        "Subagent controller is not active in this session: tool '{tool_name}' has no session-owned controller"
+    ))
+}
 
 /// Rejects a subagent tool call this session cannot own.
 ///
@@ -19,6 +47,11 @@ use std::sync::Arc;
 /// target-less call (`spawn`) needs only the session controller; a call that
 /// names `id`/`ids` additionally needs every named target among the records
 /// this controller tree holds.
+///
+/// This is the post-rewrite check. The caller runs it on the arguments a
+/// permission hook installed, so a rewrite cannot smuggle in a foreign target;
+/// [`session_subagent_controller_error`] is the early check that runs before a
+/// hook can replace the raw arguments.
 pub(super) async fn session_subagent_admission_error(
     tool_name: &str,
     controller: Option<&Arc<diapason_core::subagents::SubagentController>>,
@@ -28,12 +61,7 @@ pub(super) async fn session_subagent_admission_error(
         return None;
     }
     let Some(controller) = controller else {
-        // The session controller's absence is reported with the core
-        // registry's established wording, so the client and model see the
-        // same fail-closed reason on both enforcement paths.
-        return Some(format!(
-            "Subagent controller is not active in this session: tool '{tool_name}' has no session-owned controller"
-        ));
+        return session_subagent_controller_error(tool_name, None);
     };
     for target in subagent_call_targets(tool_name, arguments) {
         if !session_owns_subagent(controller, target.as_str()).await {
@@ -125,6 +153,12 @@ mod tests {
     #[tokio::test]
     async fn subagent_tools_are_rejected_without_a_session_controller() {
         for tool in [tools::AGENT, tools::SEND_INPUT, tools::WAIT_AGENT] {
+            let early = session_subagent_controller_error(tool, None)
+                .expect("the early check must fail closed without a session controller");
+            assert!(
+                early.contains("Subagent controller is not active in this session"),
+                "the early rejection must carry the established fail-closed reason: {early}"
+            );
             let rejection = session_subagent_admission_error(tool, None, "{}")
                 .await
                 .expect("a subagent tool must not run without a session controller");
@@ -169,13 +203,16 @@ mod tests {
         .expect("session-scoped controller");
         let controller = Arc::new(controller);
 
-        let rejection = session_subagent_admission_error(
-            tools::AGENT,
-            Some(&controller),
-            r#"{"action":"send_input","id":"not-mine"}"#,
-        )
-        .await
-        .expect("a target the session does not own must be rejected");
+        let unowned = r#"{"action":"send_input","id":"not-mine"}"#;
+        // The pre-hook check only requires the controller: the raw target may
+        // be obsolete, and a permission hook may replace it before dispatch.
+        assert!(
+            session_subagent_controller_error(tools::AGENT, Some(&controller)).is_none(),
+            "the early check must not reject an unowned raw target"
+        );
+        let rejection = session_subagent_admission_error(tools::AGENT, Some(&controller), unowned)
+            .await
+            .expect("the post-rewrite check must reject a target the session does not own");
         assert!(rejection.contains("not-mine"), "the rejection must name the target: {rejection}");
     }
 

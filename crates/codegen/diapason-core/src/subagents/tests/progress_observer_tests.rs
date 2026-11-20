@@ -17,6 +17,34 @@ impl SubagentProgressObserver for RecordingObserver {
     }
 }
 
+/// Records each publication with the lifecycle revision that ordered it.
+#[derive(Default)]
+struct RevisionRecordingObserver {
+    children: Mutex<Vec<(SubagentStatusEntry, u64)>>,
+    background: Mutex<Vec<(BackgroundSubprocessEntry, u64)>>,
+}
+
+impl SubagentProgressObserver for RevisionRecordingObserver {
+    fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
+        self.subagent_status_published(entry, 0);
+    }
+
+    fn background_status_changed(&self, entry: BackgroundSubprocessEntry) {
+        self.background_status_published(entry, 0);
+    }
+
+    fn subagent_status_published(&self, entry: SubagentStatusEntry, lifecycle_revision: u64) {
+        self.children.lock().expect("children lock").push((entry, lifecycle_revision));
+    }
+
+    fn background_status_published(&self, entry: BackgroundSubprocessEntry, lifecycle_revision: u64) {
+        self.background
+            .lock()
+            .expect("background lock")
+            .push((entry, lifecycle_revision));
+    }
+}
+
 async fn progress_controller() -> (TempDir, SubagentController) {
     let temp = TempDir::new().expect("tempdir");
     let controller =
@@ -142,4 +170,102 @@ async fn background_status_progress_is_scoped_to_parent_session() {
     assert_eq!(parent_update.status, BackgroundSubprocessStatus::Running);
     assert_eq!(parent_ids, ["background-1"]);
     assert_eq!(other_ids, ["background-2"]);
+}
+
+/// A capture taken before a state change keeps the lower revision, so a
+/// delayed delivery of it cannot overwrite the newer state.
+///
+/// Reversing the publication order is what matters: when the revision was
+/// allocated as the adapter enqueued the item, the older capture delivered
+/// last took the higher revision and won. Assigning it under the state lock
+/// that captured the entry makes revision order and capture order the same
+/// total order, whatever order the deliveries arrive in.
+#[tokio::test]
+async fn a_child_capture_taken_before_a_transition_keeps_the_lower_revision() {
+    let (_temp, controller) = progress_controller().await;
+    let observer = Arc::new(RevisionRecordingObserver::default());
+    let _registration = controller.register_progress_observer("parent-session", observer.clone());
+    seed_child_records(&controller).await;
+
+    controller.publish_child_status("child-1").await;
+    {
+        let mut state = controller.state.write().await;
+        let record = state.children.get_mut("child-1").expect("seeded child record");
+        record.status = SubagentStatus::Completed;
+        record.completed_at = Some(Utc::now());
+    }
+    controller.publish_child_status("child-1").await;
+
+    let observed = observer.children.lock().expect("children lock").clone();
+    assert_eq!(observed.len(), 2, "each capture must publish once");
+    let (older, older_revision) = &observed[0];
+    let (newer, newer_revision) = &observed[1];
+    assert_eq!(older.status, SubagentStatus::Running, "the first capture must observe the running state");
+    assert_eq!(newer.status, SubagentStatus::Completed, "the second capture must observe the later state");
+    assert!(
+        older_revision < newer_revision,
+        "the capture taken first must keep the lower revision, got {older_revision} then {newer_revision}"
+    );
+}
+
+/// The background path stamps under the same lock and keeps the same order.
+#[tokio::test]
+async fn a_background_capture_taken_before_a_transition_keeps_the_lower_revision() {
+    let (_temp, controller) = progress_controller().await;
+    let observer = Arc::new(RevisionRecordingObserver::default());
+    let _registration = controller.register_progress_observer("parent-session", observer.clone());
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(
+            "background-1".to_string(),
+            background_record("background-1", "owner-a", "parent-session", Utc::now()),
+        );
+    }
+
+    controller.publish_background_status("background-1").await;
+    {
+        let mut state = controller.state.write().await;
+        let record = state
+            .background_children
+            .get_mut("background-1")
+            .expect("seeded background record");
+        record.status = BackgroundSubprocessStatus::Stopped;
+        record.ended_at = Some(Utc::now());
+    }
+    controller.publish_background_status("background-1").await;
+
+    let observed = observer.background.lock().expect("background lock").clone();
+    assert_eq!(observed.len(), 2, "each capture must publish once");
+    let (older, older_revision) = &observed[0];
+    let (newer, newer_revision) = &observed[1];
+    assert_eq!(older.status, BackgroundSubprocessStatus::Running);
+    assert_eq!(newer.status, BackgroundSubprocessStatus::Stopped);
+    assert!(
+        older_revision < newer_revision,
+        "the capture taken first must keep the lower revision, got {older_revision} then {newer_revision}"
+    );
+}
+
+/// The snapshot pass's base revision and live captures share one clock.
+///
+/// The adapter reserves the base before it registers its observer, so a
+/// snapshot taken from the same state a transition reports must not tie with
+/// that transition: every live capture has to carry a strictly higher
+/// revision or the forwarder would drop one of the two.
+#[tokio::test]
+async fn a_reserved_snapshot_base_is_older_than_every_later_capture() {
+    let (_temp, controller) = progress_controller().await;
+    let observer = Arc::new(RevisionRecordingObserver::default());
+    let snapshot_revision = controller.reserve_lifecycle_revision();
+    let _registration = controller.register_progress_observer("parent-session", observer.clone());
+    seed_child_records(&controller).await;
+
+    controller.publish_child_status("child-1").await;
+
+    let observed = observer.children.lock().expect("children lock").clone();
+    let (_, live_revision) = observed.first().expect("the live capture must be published");
+    assert!(
+        *live_revision > snapshot_revision,
+        "a live capture must outrank the reserved snapshot base, got {live_revision} against {snapshot_revision}"
+    );
 }

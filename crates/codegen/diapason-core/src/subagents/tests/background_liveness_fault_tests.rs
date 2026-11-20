@@ -15,18 +15,20 @@ use super::*;
 #[tokio::test]
 async fn liveness_read_failure_keeps_the_cached_status_and_is_unobserved() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
     write_ledger(
-        &state_dir.join("background_subagents.json"),
-        vec![record_with_terminal_state(
-            "background-worker",
-            Some("session-a"),
-            "running",
-            1,
-            true,
-            None,
-        )],
+        &background_ledger_path(temp.path()),
+        vec![
+            record_with_terminal_state("background-worker", Some("session-a"), "running", 1, true, None),
+            // A settled record bypasses the liveness read entirely. Seeding one
+            // is what proves the failed read of its sibling does not abort the
+            // listing or drop the records after it. It needs its own agent: the
+            // canonical id is derived from the agent, so a second record that
+            // keeps the default agent would collapse into its sibling.
+            with_agent_name(
+                record_with_terminal_state("background-settled", Some("session-a"), "stopped", 1, false, None),
+                "settled",
+            ),
+        ],
     );
     let config = auto_restore_config(temp.path().to_path_buf(), true);
     config.exec_sessions.fail_snapshot_reads("exec session store is unavailable");
@@ -35,7 +37,7 @@ async fn liveness_read_failure_keeps_the_cached_status_and_is_unobserved() {
         .expect("controller");
 
     let observed = controller.background_status_entries_with_liveness().await;
-    assert_eq!(observed.len(), 1, "one unobserved record must not abort the list");
+    assert_eq!(observed.len(), 2, "one unobserved record must not abort the list");
     let entry = observed
         .iter()
         .find(|observed| observed.entry.id == "background-worker@session-a")
@@ -57,6 +59,21 @@ async fn liveness_read_failure_keeps_the_cached_status_and_is_unobserved() {
         }
         BackgroundLiveness::Observed => panic!("a failed liveness read must be reported as unobserved"),
     }
+
+    let settled = observed
+        .iter()
+        .find(|observed| observed.entry.id == "background-settled@session-a")
+        .expect("the settled record survives the failed read of its sibling");
+    assert_eq!(
+        settled.entry.status,
+        BackgroundSubprocessStatus::Stopped,
+        "a failed read of one record must not disturb another settled record"
+    );
+    assert_eq!(
+        settled.liveness,
+        BackgroundLiveness::Observed,
+        "a terminal record needs no liveness read, so it stays observed"
+    );
 }
 
 /// A restore must not respawn a record whose exec session could not be read.
@@ -69,9 +86,7 @@ async fn liveness_read_failure_keeps_the_cached_status_and_is_unobserved() {
 #[tokio::test]
 async fn restore_does_not_respawn_when_the_exec_session_read_fails() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
-    let ledger_path = state_dir.join("background_subagents.json");
+    let ledger_path = background_ledger_path(temp.path());
     write_ledger(
         &ledger_path,
         vec![record_with_restart_state(
@@ -117,9 +132,7 @@ async fn restore_does_not_respawn_when_the_exec_session_read_fails() {
 #[tokio::test]
 async fn refresh_leaves_the_record_unchanged_when_the_exec_session_read_fails() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
-    let ledger_path = state_dir.join("background_subagents.json");
+    let ledger_path = background_ledger_path(temp.path());
     write_ledger(
         &ledger_path,
         vec![record_with_terminal_state(
@@ -173,10 +186,8 @@ async fn refresh_leaves_the_record_unchanged_when_the_exec_session_read_fails() 
 #[tokio::test]
 async fn liveness_reason_redacts_the_exec_session_identifier() {
     let temp = TempDir::new().expect("tempdir");
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
     write_ledger(
-        &state_dir.join("background_subagents.json"),
+        &background_ledger_path(temp.path()),
         vec![record_with_terminal_state(
             "background-worker",
             Some("session-a"),

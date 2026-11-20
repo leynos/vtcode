@@ -1,5 +1,10 @@
+//! Runtime helpers behind the agent slash commands.
+//!
+//! Renders the thread list, the active-agent inspector, and the background
+//! subprocess inspector, and forwards the wait, resume, and close actions those
+//! views expose to the workspace-owned `SubagentController`.
 use anyhow::{Result, anyhow};
-use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentStatusEntry};
+use diapason_core::subagents::{BackgroundSubprocessEntry, SubagentStatusEntry, TaskOwner};
 use diapason_core::utils::ansi::MessageStyle;
 #[cfg(test)]
 use diapason_core::{CommandExecutionStatus, ThreadEvent, ThreadItemDetails, ToolCallStatus};
@@ -25,7 +30,7 @@ pub(super) async fn close_subagent_entry(
     id: &str,
     display_label: &str,
 ) -> Result<SlashCommandControl> {
-    controller.close(id).await?;
+    controller.close(TaskOwner::Workspace, id).await?;
     refresh_local_agents(ctx.handle, controller).await?;
     ctx.renderer
         .line(MessageStyle::Info, &format!("Closed delegated agent {display_label}."))?;
@@ -39,9 +44,9 @@ pub(super) async fn apply_background_subprocess_action(
     force: bool,
 ) -> Result<BackgroundSubprocessEntry> {
     let entry = if force {
-        controller.force_cancel_background(id).await?
+        controller.force_cancel_background(TaskOwner::Workspace, id).await?
     } else {
-        controller.graceful_stop_background(id).await?
+        controller.graceful_stop_background(TaskOwner::Workspace, id).await?
     };
     refresh_local_agents(ctx.handle, controller).await?;
     Ok(entry)
@@ -137,7 +142,7 @@ pub(super) async fn show_threads_modal(mut ctx: SlashCommandContext<'_>) -> Resu
                     return show_active_agent_inspector(&mut ctx, entry).await;
                 }
                 if confirm_subagent_cancellation(&mut ctx, entry.display_label.as_str()).await? {
-                    controller.close(&entry.id).await?;
+                    controller.close(TaskOwner::Workspace, &entry.id).await?;
                     refresh_local_agents(ctx.handle, &controller).await?;
                     ctx.renderer
                         .line(MessageStyle::Info, &format!("Closed delegated agent {}.", entry.display_label))?;
@@ -255,8 +260,8 @@ pub(super) async fn show_active_agent_inspector(
     let agent_id = entry.id.clone();
     let mut selected_override = None;
     loop {
-        let current_entry = controller.status_for(&agent_id).await?;
-        let snapshot = controller.snapshot_for_thread(&agent_id).await?;
+        let current_entry = controller.status_for(TaskOwner::Workspace, &agent_id).await?;
+        let snapshot = controller.snapshot_for_thread(TaskOwner::Workspace, &agent_id).await?;
         let summary = active_agent_summary(&current_entry, &snapshot);
         let refresh_after = active_agent_inspector_refresh_after(&current_entry, &snapshot);
 
@@ -340,7 +345,7 @@ pub(super) async fn show_active_agent_inspector(
             InspectorActionKind::Reload => continue,
             InspectorActionKind::GracefulStop | InspectorActionKind::ForceCancel => {
                 if confirm_subagent_cancellation(ctx, current_entry.display_label.as_str()).await? {
-                    controller.close(&agent_id).await?;
+                    controller.close(TaskOwner::Workspace, &agent_id).await?;
                     refresh_local_agents(ctx.handle, &controller).await?;
                     ctx.renderer.line(
                         MessageStyle::Info,
@@ -358,7 +363,7 @@ pub(super) async fn show_active_agent_inspector(
                 if selection_config_action(action.selection.as_ref(), THREAD_CANCEL_PREFIX).is_some()
                     && confirm_subagent_cancellation(ctx, current_entry.display_label.as_str()).await?
                 {
-                    controller.close(&agent_id).await?;
+                    controller.close(TaskOwner::Workspace, &agent_id).await?;
                     refresh_local_agents(ctx.handle, &controller).await?;
                     ctx.renderer.line(
                         MessageStyle::Info,
@@ -381,16 +386,29 @@ pub(super) async fn show_background_subprocess_inspector(
     let record_id = entry.id.clone();
     let mut selected_override = None;
     loop {
-        let snapshot = controller.refresh_then_background_snapshot(&record_id).await?;
-        let current_entry = &snapshot.entry;
+        // Refresh the lifecycle state first, exactly as the combined snapshot
+        // did, but keep the preview read separate. A preview fault is a
+        // storage fault in one field: propagating it here would remove the
+        // graceful-stop, force-cancel and archive actions from the inspector
+        // for a task whose lifecycle is still perfectly controllable.
+        let entries = controller.refresh_background_processes().await?;
+        let current_entry = entries
+            .into_iter()
+            .find(|entry| entry.id == record_id)
+            .ok_or_else(|| anyhow!("Unknown background subprocess {record_id}"))?;
+        let preview = controller
+            .background_snapshot(TaskOwner::Workspace, &record_id)
+            .await
+            .map(|snapshot| snapshot.preview);
+        let preview_text = inspector_preview_text(current_entry.status, preview);
         let refresh_after = background_subprocess_refresh_after(
-            current_entry,
+            &current_entry,
             ctx.vt_cfg
                 .as_ref()
                 .map(|cfg| cfg.subagents.background.refresh_interval_ms)
                 .unwrap_or(2_000),
         );
-        let items = background_subprocess_inspector_items(current_entry);
+        let items = background_subprocess_inspector_items(&current_entry);
         let selected = selected_override
             .clone()
             .or_else(|| items.first().and_then(|item| item.selection.clone()));
@@ -417,21 +435,14 @@ pub(super) async fn show_background_subprocess_inspector(
                         "Uptime: {}",
                         format_uptime(current_entry.started_at.unwrap_or(current_entry.created_at))
                     ),
-                    format!("Summary: {}", background_subprocess_summary(current_entry)),
+                    format!("Summary: {}", background_subprocess_summary(&current_entry)),
                     format!("Live updates: {}", inspector_live_updates_label(refresh_after)),
                     if let Some(error) = current_entry.error.as_deref() {
                         format!("Error: {error}")
                     } else {
                         "Error: none".to_string()
                     },
-                    format!(
-                        "Preview:\n{}",
-                        if snapshot.preview.trim().is_empty() {
-                            background_subprocess_preview_placeholder(current_entry)
-                        } else {
-                            snapshot.preview.clone()
-                        }
-                    ),
+                    format!("Preview:\n{preview_text}"),
                 ],
                 footer_hint: Some(
                     if refresh_after.is_some() {
@@ -479,7 +490,7 @@ pub(super) async fn show_background_subprocess_inspector(
             InspectorActionKind::Reload => continue,
             InspectorActionKind::GracefulStop => {
                 if confirm_subprocess_action(ctx, current_entry.display_label.as_str(), false).await? {
-                    let updated = controller.graceful_stop_background(&record_id).await?;
+                    let updated = controller.graceful_stop_background(TaskOwner::Workspace, &record_id).await?;
                     refresh_local_agents(ctx.handle, &controller).await?;
                     render_subprocess_status(ctx, &updated)?;
                 }
@@ -487,7 +498,7 @@ pub(super) async fn show_background_subprocess_inspector(
             }
             InspectorActionKind::ForceCancel => {
                 if confirm_subprocess_action(ctx, current_entry.display_label.as_str(), true).await? {
-                    let updated = controller.force_cancel_background(&record_id).await?;
+                    let updated = controller.force_cancel_background(TaskOwner::Workspace, &record_id).await?;
                     refresh_local_agents(ctx.handle, &controller).await?;
                     render_subprocess_status(ctx, &updated)?;
                 }
@@ -509,14 +520,14 @@ pub(super) async fn show_background_subprocess_inspector(
                 if selection_config_action(action.selection.as_ref(), SUBPROCESS_STOP_PREFIX).is_some()
                     && confirm_subprocess_action(ctx, current_entry.display_label.as_str(), false).await?
                 {
-                    let updated = controller.graceful_stop_background(&record_id).await?;
+                    let updated = controller.graceful_stop_background(TaskOwner::Workspace, &record_id).await?;
                     refresh_local_agents(ctx.handle, &controller).await?;
                     render_subprocess_status(ctx, &updated)?;
                 }
                 if selection_config_action(action.selection.as_ref(), SUBPROCESS_CANCEL_PREFIX).is_some()
                     && confirm_subprocess_action(ctx, current_entry.display_label.as_str(), true).await?
                 {
-                    let updated = controller.force_cancel_background(&record_id).await?;
+                    let updated = controller.force_cancel_background(TaskOwner::Workspace, &record_id).await?;
                     refresh_local_agents(ctx.handle, &controller).await?;
                     render_subprocess_status(ctx, &updated)?;
                 }
@@ -592,8 +603,8 @@ pub(super) fn background_subprocess_summary(entry: &BackgroundSubprocessEntry) -
         })
 }
 
-fn background_subprocess_preview_placeholder(entry: &BackgroundSubprocessEntry) -> String {
-    match entry.status {
+fn background_subprocess_preview_placeholder(status: diapason_core::subagents::BackgroundSubprocessStatus) -> String {
+    match status {
         diapason_core::subagents::BackgroundSubprocessStatus::Starting => {
             "Waiting for the subprocess to emit output...".to_string()
         }
@@ -602,6 +613,24 @@ fn background_subprocess_preview_placeholder(entry: &BackgroundSubprocessEntry) 
         }
         diapason_core::subagents::BackgroundSubprocessStatus::Stopped
         | diapason_core::subagents::BackgroundSubprocessStatus::Error => "No recent output yet.".to_string(),
+    }
+}
+
+/// Renders the inspector's preview line, tolerating an unreadable archive.
+///
+/// The preview is the only field of the inspector that touches storage, so its
+/// fault must be rendered rather than propagated: the graceful-stop,
+/// force-cancel and archive actions stay available for a task whose output
+/// cannot be read. The fault replaces the preview text, and it is rendered with
+/// its context chain so the cause is not lost.
+fn inspector_preview_text(
+    status: diapason_core::subagents::BackgroundSubprocessStatus,
+    preview: Result<String>,
+) -> String {
+    match preview {
+        Ok(preview) if !preview.trim().is_empty() => preview,
+        Ok(_) => background_subprocess_preview_placeholder(status),
+        Err(error) => format!("Preview unavailable: {error:#}"),
     }
 }
 
@@ -920,7 +949,7 @@ pub(super) fn render_background_subprocess_status_text(
             .line(MessageStyle::Info, &format!("Transcript: {}", path.display()))?;
     }
     let preview = if snapshot.preview.trim().is_empty() {
-        background_subprocess_preview_placeholder(&snapshot.entry)
+        background_subprocess_preview_placeholder(snapshot.entry.status)
     } else {
         snapshot.preview.clone()
     };
@@ -1025,4 +1054,35 @@ pub(super) async fn handle_list_threads_text(ctx: &mut SlashCommandContext<'_>) 
         )?;
     }
     Ok(SlashCommandControl::Continue)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::inspector_preview_text;
+    use anyhow::anyhow;
+    use diapason_core::subagents::BackgroundSubprocessStatus;
+
+    /// A preview fault is rendered as one line instead of aborting the inspector.
+    ///
+    /// The graceful-stop, force-cancel and archive actions must survive an
+    /// unreadable archive: only the preview line is affected, so the fault is
+    /// rendered in place of the preview text.
+    #[test]
+    fn an_unreadable_preview_is_rendered_without_losing_the_inspector() {
+        let rendered = inspector_preview_text(
+            BackgroundSubprocessStatus::Running,
+            Err(anyhow!("read archived background output")),
+        );
+
+        assert_eq!(rendered, "Preview unavailable: read archived background output");
+    }
+
+    /// An empty preview still uses the placeholder for the task's status.
+    #[test]
+    fn an_empty_preview_keeps_the_status_placeholder() {
+        assert_eq!(
+            inspector_preview_text(BackgroundSubprocessStatus::Starting, Ok(String::new())),
+            "Waiting for the subprocess to emit output..."
+        );
+    }
 }

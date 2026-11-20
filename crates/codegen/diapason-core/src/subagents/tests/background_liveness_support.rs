@@ -63,7 +63,23 @@ pub(super) fn stale_launch_plan(exec_session_id: &str) -> BackgroundRunPlan {
         model_override: None,
         reasoning_override: None,
         restart_attempts: 0,
+        expected_exec_session_id: None,
     }
+}
+
+/// Resolves the ledger path for `workspace_root`, creating the state directory.
+///
+/// The ledger lives under the shared workspace-directory helper, which honours
+/// an override, so building fixtures from a hard-coded `.diapason/state` path
+/// would desynchronise them from the loader whenever a test or the harness
+/// points the workspace directory somewhere else. Every fixture that writes the
+/// ledger must therefore resolve it here.
+pub(super) fn background_ledger_path(workspace_root: &std::path::Path) -> PathBuf {
+    let path = background_state_path_for_tests(workspace_root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create the background state directory");
+    }
+    path
 }
 
 pub(super) fn write_ledger(path: &std::path::Path, records: Vec<PersistedBackgroundRecord>) {
@@ -84,9 +100,7 @@ pub(super) async fn projected_liveness_entry(
     record: PersistedBackgroundRecord,
     auto_restore: bool,
 ) -> BackgroundSubprocessEntry {
-    let state_dir = temp.path().join(".diapason/state");
-    std::fs::create_dir_all(&state_dir).expect("state dir");
-    write_ledger(&state_dir.join("background_subagents.json"), vec![record]);
+    write_ledger(&background_ledger_path(temp.path()), vec![record]);
     let controller = SubagentController::new_with_background_owner(
         auto_restore_config(temp.path().to_path_buf(), auto_restore),
         Some("session-a"),
@@ -111,6 +125,20 @@ pub(super) async fn projected_liveness_status(
     auto_restore: bool,
 ) -> BackgroundSubprocessStatus {
     projected_liveness_entry(temp, record, auto_restore).await.status
+}
+
+/// Rewrites the agent a persisted record names.
+///
+/// The agent is what decides the record's canonical id, so two fixture records
+/// that keep the default agent join into one entry however distinct the ids
+/// they were built with. A test that needs two records must therefore give
+/// them different agents, not just different ids.
+pub(super) fn with_agent_name(record: PersistedBackgroundRecord, agent_name: &str) -> PersistedBackgroundRecord {
+    let mut value = serde_json::to_value(record).expect("serialize fixture record");
+    value["agent_name"] = serde_json::json!(agent_name);
+    value["display_label"] = serde_json::json!(agent_name);
+    value["description"] = serde_json::json!(agent_name);
+    serde_json::from_value(value).expect("deserialize record")
 }
 
 /// Rewrites one persisted record with an explicit exec session.

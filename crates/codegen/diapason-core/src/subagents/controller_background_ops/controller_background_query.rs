@@ -2,42 +2,70 @@
 
 use self::controller_background_liveness::{bounded_liveness_reason, exec_session_is_missing};
 
+use super::controller_background_settlement::restart_allowed;
+
 use super::*;
 
 /// Resolves a caller-supplied background record id to the loaded map key.
 ///
 /// The map is keyed by canonical owner-scoped id, while a client can still hold
 /// the workspace-global id an older release persisted. An exact lookup then
-/// misses a running record, so the pre-owner-scoping id is tried next; an
-/// ownerless match wins, otherwise the first in key order does.
-fn resolve_background_key(state: &ControllerState, target: &str) -> Option<String> {
-    if state.background_children.contains_key(target) {
+/// misses a running record, so the pre-owner-scoping id is tried next. The
+/// caller's authority decides which candidate that fallback may select:
+///
+/// - An exact key must be addressable by `owner`; a foreign exact match is not
+///   the caller's record, so the alias search runs instead.
+/// - An alias candidate is considered only when `owner` may address it. This is
+///   the precedence rule: a session's own record always beats another's, and
+///   an ownerless legacy row can neither shadow nor precede it. Candidates are
+///   examined in map key order.
+/// - [`TaskOwner::Workspace`] may address every record, so the first alias
+///   match in key order wins, preserving the permissive operator view.
+/// - [`TaskOwner::SessionTree`] proves nothing about a background record (see
+///   [`TaskOwner::background_owned`]), so it resolves nothing here.
+///
+/// The ownership rejection each call site applies after resolution stays in
+/// place. Narrowing the fallback keeps a foreign or ownerless row from
+/// shadowing the caller's own record; it does not replace that check.
+fn resolve_background_key(state: &ControllerState, owner: TaskOwner<'_>, target: &str) -> Option<String> {
+    if state
+        .background_children
+        .get(target)
+        .is_some_and(|record| owner.background_owned(record.owner_session_id.as_deref()))
+    {
         return Some(target.to_owned());
     }
-    let mut owned_match = None;
-    for (key, record) in &state.background_children {
-        if background_record_id(record.agent_name.as_str()) != target {
-            continue;
-        }
-        if record.owner_session_id.is_none() {
-            return Some(key.clone());
-        }
-        owned_match.get_or_insert_with(|| key.clone());
-    }
-    owned_match
+    state
+        .background_children
+        .iter()
+        .find(|(_, record)| {
+            background_record_id(record.agent_name.as_str()) == target
+                && owner.background_owned(record.owner_session_id.as_deref())
+        })
+        .map(|(key, _)| key.clone())
 }
 
-/// Resolves a caller-supplied id to the record it names.
-pub(super) fn resolve_background_target<'a>(state: &'a ControllerState, target: &str) -> Option<&'a BackgroundRecord> {
-    state.background_children.get(&resolve_background_key(state, target)?)
+/// Resolves a caller-supplied id to the record it names for `owner`.
+///
+/// Only a record `owner` may address is selected; see
+/// [`resolve_background_key`] for the precedence rule.
+pub(super) fn resolve_background_target<'a>(
+    state: &'a ControllerState,
+    owner: TaskOwner<'_>,
+    target: &str,
+) -> Option<&'a BackgroundRecord> {
+    state.background_children.get(&resolve_background_key(state, owner, target)?)
 }
 
-/// Resolves a caller-supplied id to the record it names, for mutation.
+/// Resolves a caller-supplied id to the record it names for `owner`, for mutation.
 pub(super) fn resolve_background_target_mut<'a>(
     state: &'a mut ControllerState,
+    owner: TaskOwner<'_>,
     target: &str,
 ) -> Option<&'a mut BackgroundRecord> {
-    state.background_children.get_mut(&resolve_background_key(state, target)?)
+    state
+        .background_children
+        .get_mut(&resolve_background_key(state, owner, target)?)
 }
 
 struct CapturedSubagentThread {
@@ -143,7 +171,7 @@ impl SubagentController {
             // `auto_restore` is disabled, because nothing has failed yet.
             entry.status = if *desired_enabled
                 && (entry.status == BackgroundSubprocessStatus::Starting
-                    || (self.config.vt_cfg.subagents.background.auto_restore && *restart_attempts < 1))
+                    || restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, *restart_attempts))
             {
                 BackgroundSubprocessStatus::Starting
             } else if *desired_enabled {
@@ -175,14 +203,16 @@ impl SubagentController {
     /// persists the ledger. Callers that need exit detection must call
     /// [`Self::refresh_then_background_snapshot`] or
     /// [`Self::refresh_background_processes`] explicitly.
-    pub async fn background_snapshot(&self, target: &str) -> Result<BackgroundSubprocessSnapshot> {
+    pub async fn background_snapshot(
+        &self,
+        owner: TaskOwner<'_>,
+        target: &str,
+    ) -> Result<BackgroundSubprocessSnapshot> {
         let entry = {
             let state = self.state.read().await;
-            let record = resolve_background_target(&state, target)
+            let record = resolve_background_target(&state, owner, target)
                 .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
-            if current_subagent_invocation_context()
-                .is_some_and(|context| context.parent_session_id != record.parent_session_id)
-            {
+            if !owner.background_owned(record.owner_session_id.as_deref()) {
                 bail!("Unknown background subprocess {target}");
             }
             record.build_status_entry()
@@ -200,9 +230,13 @@ impl SubagentController {
     /// respawn a process whose restart budget allows it. Use this when the
     /// caller needs the current exit state; use [`Self::background_snapshot`]
     /// when a cached read is enough.
-    pub async fn refresh_then_background_snapshot(&self, target: &str) -> Result<BackgroundSubprocessSnapshot> {
+    pub async fn refresh_then_background_snapshot(
+        &self,
+        owner: TaskOwner<'_>,
+        target: &str,
+    ) -> Result<BackgroundSubprocessSnapshot> {
         let _ = self.refresh_background_processes().await?;
-        self.background_snapshot(target).await
+        self.background_snapshot(owner, target).await
     }
 
     /// Returns a caller-selected tail of background output.
@@ -221,12 +255,15 @@ impl SubagentController {
     /// Storage access and archive fallback are delegated to the controller's
     /// [`BackgroundOutputReader`]; the controller keeps the line bound and the
     /// error mapping.
-    pub async fn background_output_tail(&self, target: &str, max_lines: usize) -> Result<String> {
+    pub async fn background_output_tail(&self, owner: TaskOwner<'_>, target: &str, max_lines: usize) -> Result<String> {
         let entry = {
             let state = self.state.read().await;
-            resolve_background_target(&state, target)
-                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?
-                .build_status_entry()
+            let record = resolve_background_target(&state, owner, target)
+                .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
+            if !owner.background_owned(record.owner_session_id.as_deref()) {
+                bail!("Unknown background subprocess {target}");
+            }
+            record.build_status_entry()
         };
 
         read_output_tail(self.output_reader.as_ref(), &entry, target, max_lines).await
@@ -254,8 +291,8 @@ impl SubagentController {
 
 impl SubagentController {
     /// Returns a thread snapshot for a tracked child subagent by its target id.
-    pub async fn snapshot_for_thread(&self, target: &str) -> Result<SubagentThreadSnapshot> {
-        self.ensure_child_owned_by_invocation(target).await?;
+    pub async fn snapshot_for_thread(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentThreadSnapshot> {
+        self.ensure_child_owned(owner, target).await?;
         let captured = self.capture_subagent_thread(target).await?;
         let snapshot = self.materialize_thread_snapshot(&captured).await;
         Ok(SubagentThreadSnapshot {

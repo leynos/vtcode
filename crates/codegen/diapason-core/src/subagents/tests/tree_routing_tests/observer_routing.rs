@@ -107,7 +107,7 @@ async fn nested_controller_publishes_under_the_root_observer_scope() {
     let parent = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
         .await
         .expect("parent controller");
-    let mut nested = SubagentController::new({
+    let nested = SubagentController::new({
         let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
         config.parent_session_id = "child-session".to_string();
         config.depth = 1;
@@ -165,7 +165,7 @@ async fn nested_scope_is_inherited_through_more_than_one_level() {
     let parent = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
         .await
         .expect("parent controller");
-    let mut first = SubagentController::new({
+    let first = SubagentController::new({
         let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
         config.parent_session_id = "first-child-session".to_string();
         config.depth = 1;
@@ -174,7 +174,7 @@ async fn nested_scope_is_inherited_through_more_than_one_level() {
     .await
     .expect("first nested controller");
     first.inherit_progress_observers(&parent, "parent-session").await;
-    let mut second = SubagentController::new({
+    let second = SubagentController::new({
         let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
         config.parent_session_id = "second-child-session".to_string();
         config.depth = 2;
@@ -234,7 +234,7 @@ async fn a_shared_controller_routes_each_sessions_delegations_to_its_own_observe
     let parent = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
         .await
         .expect("parent controller");
-    let mut for_session_a = SubagentController::new({
+    let for_session_a = SubagentController::new({
         let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
         config.parent_session_id = "controller-default-session".to_string();
         config.depth = 1;
@@ -243,7 +243,7 @@ async fn a_shared_controller_routes_each_sessions_delegations_to_its_own_observe
     .await
     .expect("controller for session a");
     for_session_a.inherit_progress_observers(&parent, "session-a").await;
-    let mut for_session_b = SubagentController::new({
+    let for_session_b = SubagentController::new({
         let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
         config.parent_session_id = "controller-default-session".to_string();
         config.depth = 1;
@@ -313,4 +313,74 @@ async fn a_shared_controller_routes_each_sessions_delegations_to_its_own_observe
     parent.signal_shutdown().await;
     for_session_a.signal_shutdown().await;
     for_session_b.signal_shutdown().await;
+}
+
+/// An independently constructed controller must publish through the registry
+/// of the tree it joins, not through the one it was created with.
+///
+/// `inherit_progress_observers` is only called by native child construction, so
+/// this exercises the attachment seam on its own: the incoming controller has
+/// never inherited anything, and its grandchild's immediate parent session is
+/// its own. Only the route adopted at attachment can reach the observer
+/// registered on the root.
+#[tokio::test]
+async fn an_attached_controller_publishes_through_the_joining_trees_observers() {
+    let temp = TempDir::new().expect("tempdir");
+    let parent = SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
+        .await
+        .expect("parent controller");
+    let incoming = Arc::new(
+        SubagentController::new({
+            let mut config = test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default());
+            config.parent_session_id = "child-session".to_string();
+            config.depth = 1;
+            config
+        })
+        .await
+        .expect("incoming controller"),
+    );
+    let spec = explorer_spec();
+    {
+        let mut state = parent.state.write().await;
+        state.children.insert(
+            "child".to_string(),
+            test_child_record("child", "child-session", "parent-session", &spec, SubagentStatus::Running, 1, None),
+        );
+    }
+
+    let root_observer = Arc::new(RecordingObserver::default());
+    let _registration = parent.register_progress_observer("parent-session", root_observer.clone());
+
+    parent
+        .attach_child_controller("child", Arc::clone(&incoming))
+        .await
+        .expect("attach the independently constructed controller");
+
+    {
+        let mut state = incoming.state.write().await;
+        state.children.insert(
+            "grandchild".to_string(),
+            test_child_record(
+                "grandchild",
+                "grandchild-session",
+                "child-session",
+                &spec,
+                SubagentStatus::Running,
+                2,
+                None,
+            ),
+        );
+    }
+    incoming.publish_child_status("grandchild").await;
+
+    {
+        let updates = root_observer.children.lock().expect("children lock");
+        assert_eq!(
+            updates.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>(),
+            vec!["grandchild"],
+            "the attached subtree must publish through the root's observers"
+        );
+    }
+
+    parent.signal_shutdown().await;
 }

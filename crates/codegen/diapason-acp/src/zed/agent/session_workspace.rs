@@ -45,6 +45,11 @@ struct SessionWorkspaceRuntimeSetup<'a> {
     workspace: &'a AcpSessionWorkspace,
     runtime_config: &'a SessionWorkspaceRuntimeConfig,
     vt_config: Option<&'a DiapasonConfig>,
+    /// Skips the workspace controller's restore of ownerless background
+    /// records. A resumed attach sets this when owner migration failed, so the
+    /// workspace scope cannot relaunch a row the session controller may yet
+    /// adopt.
+    defer_background_restore: bool,
 }
 
 struct PreparedWorkspace<'a> {
@@ -56,6 +61,9 @@ struct PreparedWorkspace<'a> {
     primary_agents: PrimaryAgentCatalogue,
     workspace_hooks_gated: bool,
     file_ops_tool: Option<FileOpsTool>,
+    /// Forwarded to the workspace controller so this runtime can skip
+    /// restoring ownerless background records.
+    defer_background_restore: bool,
 }
 
 struct AcpWorkspaceToolSurface {
@@ -75,6 +83,8 @@ struct OptionalWorkspaceComponentsSetup<'a> {
     vt_config: Option<&'a DiapasonConfig>,
     workspace_gated: bool,
     workspace_root: &'a Path,
+    /// See [`SessionWorkspaceRuntimeSetup::defer_background_restore`].
+    defer_background_restore: bool,
 }
 
 /// Port for discovering the primary agents associated with one ACP workspace.
@@ -306,9 +316,25 @@ fn build_session_workspace_runtime<'a>(
 }
 
 impl ZedAgent {
+    /// Returns the workspace runtime leased to this session.
+    ///
+    /// `defer_background_restore` skips the workspace controller's restore of
+    /// ownerless background records while this runtime is first built. A
+    /// resumed attach sets it after a failed owner migration, so the workspace
+    /// scope cannot relaunch a row the session controller may yet adopt. A
+    /// cached runtime keeps the choice it was built with: a later attach that
+    /// reuses it does not restore on its behalf, which leaves ownerless rows
+    /// unlaunched rather than risking a duplicate process.
+    ///
+    /// The launch runtime is returned as-is for its own workspace root, so it
+    /// has already made that choice; `defer_background_restore` cannot undo a
+    /// restore the launch controller ran before the session attached. A resume
+    /// therefore reconciles that controller with its owner migration instead of
+    /// relying on the deferral for the launch root.
     pub(super) async fn workspace_runtime_for(
         &self,
         workspace: &AcpSessionWorkspace,
+        defer_background_restore: bool,
     ) -> anyhow::Result<SessionWorkspaceLease> {
         let workspace_root = workspace.path().to_path_buf();
         if self.launch_workspace_runtime.workspace_root == workspace_root {
@@ -330,6 +356,7 @@ impl ZedAgent {
                                     workspace,
                                     runtime_config: &self.workspace_runtime_config,
                                     vt_config: self.vt_config.as_deref(),
+                                    defer_background_restore,
                                 },
                                 &self.workspace_setup_ports,
                             )
@@ -390,6 +417,14 @@ fn prepare_launch_workspace<'a>(
         primary_agents: setup.primary_agents.clone(),
         workspace_hooks_gated,
         file_ops_tool,
+        // The launch runtime restores ownerless rows as the process starts; it
+        // is not the resumed-session scope the deferral protects. It is built
+        // before any session resumes, so it can restore, or hold in memory, a
+        // row a resumed session later migrates to itself. A resume therefore
+        // reconciles this controller with the migration before it restores its
+        // own rows, and the ledger merge refuses to write an ownerless copy
+        // over the owned record of the same launch.
+        defer_background_restore: false,
     })
 }
 
@@ -397,7 +432,13 @@ async fn prepare_session_workspace<'a>(
     setup: SessionWorkspaceRuntimeSetup<'a>,
     ports: &WorkspaceSetupPorts,
 ) -> anyhow::Result<PreparedWorkspace<'a>> {
-    let SessionWorkspaceRuntimeSetup { base_config, workspace, runtime_config, vt_config } = setup;
+    let SessionWorkspaceRuntimeSetup {
+        base_config,
+        workspace,
+        runtime_config,
+        vt_config,
+        defer_background_restore,
+    } = setup;
     let workspace_root = workspace.path().to_path_buf();
     let mut session_config = base_config.clone();
     session_config.workspace = workspace_root.clone();
@@ -427,6 +468,7 @@ async fn prepare_session_workspace<'a>(
         primary_agents,
         workspace_hooks_gated,
         file_ops_tool,
+        defer_background_restore,
     })
 }
 
@@ -469,6 +511,7 @@ async fn initialize_workspace_tool_registry(
             vt_config: prepared.vt_config,
             workspace_gated: prepared.workspace_hooks_gated,
             workspace_root: &prepared.workspace_root,
+            defer_background_restore: prepared.defer_background_restore,
         },
         ports,
     )
@@ -530,7 +573,7 @@ async fn attach_optional_workspace_components(
             custom_providers: setup.custom_providers,
             vt_config: setup.vt_config,
             workspace_gated: setup.workspace_gated,
-            defer_background_restore: false,
+            defer_background_restore: setup.defer_background_restore,
         })
         .await;
     let mcp_outcome = ports

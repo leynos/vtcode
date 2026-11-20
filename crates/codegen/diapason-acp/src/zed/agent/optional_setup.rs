@@ -42,7 +42,7 @@ pub(super) struct DefaultAcpSubagentControllerAttacher;
 
 impl AcpSubagentControllerAttacher for DefaultAcpSubagentControllerAttacher {
     fn attach<'a>(&'a self, setup: AcpSubagentControllerSetup<'a>) -> BoxFuture<'a, OptionalSetupOutcome> {
-        Box::pin(attach_acp_subagent_controller(setup))
+        attach_acp_subagent_controller(setup)
     }
 }
 
@@ -210,78 +210,96 @@ pub(super) fn report_optional_workspace_setup_outcomes(outcomes: &OptionalWorksp
     report_optional_setup_outcome("MCP client", &outcomes.mcp_client);
 }
 
-pub(super) async fn attach_acp_subagent_controller(setup: AcpSubagentControllerSetup<'_>) -> OptionalSetupOutcome {
-    let AcpSubagentControllerSetup {
-        owner_session_id,
-        registry,
-        agent_config,
-        custom_providers,
-        vt_config,
-        workspace_gated,
-        defer_background_restore,
-    } = setup;
-    let controller_vt_cfg = match configure_acp_subagents(vt_config, agent_config, custom_providers) {
-        AcpSubagentConfiguration::DisabledByConfiguration => return OptionalSetupOutcome::DisabledByConfiguration,
-        AcpSubagentConfiguration::DisabledByPolicy => return OptionalSetupOutcome::DisabledByPolicy,
-        AcpSubagentConfiguration::Ready(config) => *config,
-    };
+/// Attaches the optional ACP sub-agent controller.
+///
+/// The future is boxed at the source because the background-restore path makes
+/// this async body large enough that every caller's `.await` would trip
+/// `clippy::large_futures`. Boxing it once here mirrors the
+/// [`AcpSubagentControllerAttacher`] and [`AcpMcpClientAttacher`] adapters and
+/// keeps each caller's future small without changing behaviour.
+pub(super) fn attach_acp_subagent_controller<'a>(
+    setup: AcpSubagentControllerSetup<'a>,
+) -> BoxFuture<'a, OptionalSetupOutcome> {
+    Box::pin(async move {
+        let AcpSubagentControllerSetup {
+            owner_session_id,
+            registry,
+            agent_config,
+            custom_providers,
+            vt_config,
+            workspace_gated,
+            defer_background_restore,
+        } = setup;
+        let controller_vt_cfg = match configure_acp_subagents(vt_config, agent_config, custom_providers) {
+            AcpSubagentConfiguration::DisabledByConfiguration => {
+                return OptionalSetupOutcome::DisabledByConfiguration;
+            }
+            AcpSubagentConfiguration::DisabledByPolicy => return OptionalSetupOutcome::DisabledByPolicy,
+            AcpSubagentConfiguration::Ready(config) => *config,
+        };
 
-    let controller_config = SubagentControllerConfig {
-        workspace_root: agent_config.workspace.clone(),
-        parent_session_id: owner_session_id.unwrap_or("diapason-acp").to_string(),
-        parent_model: agent_config.model.clone(),
-        parent_provider: agent_config.provider.clone(),
-        parent_reasoning_effort: agent_config.reasoning_effort,
-        api_key: agent_config.api_key.clone(),
-        vt_cfg: controller_vt_cfg.clone(),
-        openai_chatgpt_auth: agent_config.openai_chatgpt_auth.clone(),
-        depth: 0,
-        workspace_gated,
-        exec_sessions: registry.exec_session_manager(),
-        output_reader: None,
-        pty_manager: registry.pty_manager().clone(),
-        managed_background_runtime: false,
-        lock_scope: None,
-    };
-    // The controller loads the ledger at construction, so a row this session
-    // launched must carry its owner before that load. Otherwise the resumed
-    // session's controller never adopts it and the workspace restore takes it
-    // as ownerless work.
-    let migration_failed = match owner_session_id {
-        Some(owner) => match background_restore::migrate_legacy_owner_rows(&agent_config.workspace, owner).await {
-            Ok(_) => false,
+        let controller_config = SubagentControllerConfig {
+            workspace_root: agent_config.workspace.clone(),
+            parent_session_id: owner_session_id.unwrap_or("diapason-acp").to_string(),
+            parent_model: agent_config.model.clone(),
+            parent_provider: agent_config.provider.clone(),
+            parent_reasoning_effort: agent_config.reasoning_effort,
+            api_key: agent_config.api_key.clone(),
+            vt_cfg: controller_vt_cfg.clone(),
+            openai_chatgpt_auth: agent_config.openai_chatgpt_auth.clone(),
+            depth: 0,
+            workspace_gated,
+            exec_sessions: registry.exec_session_manager(),
+            output_reader: None,
+            pty_manager: registry.pty_manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        };
+        // The controller loads the ledger at construction, so a row this
+        // session launched must carry its owner before that load. Otherwise the
+        // resumed session's controller never adopts it and the workspace
+        // restore takes it as ownerless work.
+        let migration_failed = match owner_session_id {
+            Some(owner) => match background_restore::migrate_legacy_owner_rows(&agent_config.workspace, owner).await {
+                Ok(_) => false,
+                Err(error) => {
+                    log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "background_owner_migration_failed");
+                    true
+                }
+            },
+            None => false,
+        };
+        let controller = match SubagentController::new_with_background_owner(controller_config, owner_session_id).await
+        {
+            Ok(controller) => Arc::new(controller),
             Err(error) => {
-                log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "background_owner_migration_failed");
-                true
+                log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "subagent_controller_unavailable");
+                return OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable);
             }
-        },
-        None => false,
-    };
-    let controller = match SubagentController::new_with_background_owner(controller_config, owner_session_id).await {
-        Ok(controller) => Arc::new(controller),
-        Err(error) => {
-            log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "subagent_controller_unavailable");
-            return OptionalSetupOutcome::Failed(OptionalSetupFailure::SubagentControllerUnavailable);
-        }
-    };
-    let mut failures = if defer_background_restore {
-        Vec::new()
-    } else {
-        match owner_session_id {
-            Some(_) => {
-                restore_configured_background_subagents(&controller, &controller_vt_cfg, &agent_config.workspace).await
+        };
+        let mut failures = if defer_background_restore {
+            Vec::new()
+        } else {
+            match owner_session_id {
+                Some(_) => {
+                    restore_configured_background_subagents(&controller, &controller_vt_cfg, &agent_config.workspace)
+                        .await
+                }
+                // A legacy record has no owner, so no session controller may
+                // adopt it. The workspace controller is therefore the only
+                // scope that can bring it back, and it restores only those
+                // ownerless records.
+                None => {
+                    restore_legacy_background_subagents(&controller, &controller_vt_cfg, &agent_config.workspace).await
+                }
             }
-            // A legacy record has no owner, so no session controller may adopt
-            // it. The workspace controller is therefore the only scope that
-            // can bring it back, and it restores only those ownerless records.
-            None => restore_legacy_background_subagents(&controller, &controller_vt_cfg, &agent_config.workspace).await,
+        };
+        if migration_failed {
+            failures.push(OptionalSetupFailure::BackgroundOwnerMigrationFailed);
         }
-    };
-    if migration_failed {
-        failures.push(OptionalSetupFailure::BackgroundOwnerMigrationFailed);
-    }
-    registry.set_subagent_controller(controller);
-    OptionalSetupOutcome::attached_with_degradation(failures)
+        registry.set_subagent_controller(controller);
+        OptionalSetupOutcome::attached_with_degradation(failures)
+    })
 }
 
 /// Migrates ledger rows a resumed ACP session launched to that session's

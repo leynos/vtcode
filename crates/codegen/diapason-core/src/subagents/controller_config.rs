@@ -52,11 +52,12 @@ pub struct SubagentControllerConfig {
     /// Whether this controller is forbidden to own background work.
     ///
     /// `true` marks a controller that must not own background subprocesses: it
-    /// neither loads nor saves the background ledger, and it rejects a
-    /// background launch. A background runtime owns the ledger instead, and a
-    /// nested controller inside one inherits that restriction through the same
-    /// flag. Set it on the controller that runs *inside* a managed runtime, not
-    /// on the controller that manages one.
+    /// adopts no background work, neither loads nor saves the background
+    /// ledger, and it rejects a background launch. The controller that manages
+    /// the background runtime owns its background records and persists them to
+    /// the workspace ledger; a nested controller inside that runtime inherits
+    /// the restriction through this same flag. Set it on the controller that
+    /// runs *inside* a managed runtime, not on the controller that manages one.
     pub managed_background_runtime: bool,
     /// Adoption and persistence locks shared by this controller tree.
     ///

@@ -207,6 +207,7 @@ fn workspace_runtime_cache_size_is_exported_as_a_gauge() {
     assert!(json.get("acp_workspace_runtime_cache_entries").is_none());
     let prometheus = collector.export_prometheus();
     assert_exact_sample_line(&prometheus, "diapason_workspace_runtime_cache_entries 3");
+    assert_exact_sample_line(&prometheus, "# TYPE diapason_workspace_runtime_cache_entries gauge");
     assert!(!prometheus.contains("diapason_acp_workspace_runtime_cache_entries"));
 }
 
@@ -276,4 +277,27 @@ fn test_json_export() {
     let json = collector.export_json().unwrap();
     assert!(json.get("timestamp").is_some());
     assert!(json.get("discovery").is_some());
+}
+
+/// The ACP extension metrics ride on the JSON export, not on the typed summary.
+///
+/// [`MetricsSummary`] keeps its previous Rust shape so exhaustive struct
+/// literals and patterns in dependent code still compile; the extension family
+/// is attached only to the exported document.
+#[test]
+fn acp_extension_metrics_are_exported_without_changing_the_summary_shape() {
+    let collector = MetricsCollector::new();
+    collector.record_acp_initial_snapshot_rejected();
+
+    let summary = serde_json::to_value(collector.get_summary()).expect("summary should serialize");
+    assert!(
+        summary.get("acp_extension").is_none(),
+        "the typed summary must not carry an acp_extension member: {summary}"
+    );
+
+    let json = collector.export_json().expect("metrics JSON should serialize");
+    assert_eq!(
+        json["acp_extension"]["initial_snapshots_rejected"], 1,
+        "the exported document must carry the ACP extension metrics"
+    );
 }

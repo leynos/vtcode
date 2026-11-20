@@ -188,6 +188,27 @@ pub trait SubagentProgressObserver: Send + Sync {
 
     /// Receives an updated managed-background-process status snapshot.
     fn background_status_changed(&self, entry: BackgroundSubprocessEntry);
+
+    /// Receives a delegated-child snapshot with the revision that orders it.
+    ///
+    /// The controller assigns `lifecycle_revision` under the state lock that
+    /// captured `entry`, so two publications of one task are ordered exactly
+    /// as the states they observed: a capture taken before a later state
+    /// change keeps the lower revision even when it is delivered after the
+    /// newer capture. An adapter that buffers snapshots must compare this
+    /// revision instead of `updated_at`, because several transitions can be
+    /// recorded within one clock tick.
+    ///
+    /// The default delivers inline through [`Self::subagent_status_changed`]
+    /// for observers that need no ordering.
+    fn subagent_status_published(&self, entry: SubagentStatusEntry, _lifecycle_revision: u64) {
+        self.subagent_status_changed(entry);
+    }
+
+    /// Background counterpart of [`Self::subagent_status_published`].
+    fn background_status_published(&self, entry: BackgroundSubprocessEntry, _lifecycle_revision: u64) {
+        self.background_status_changed(entry);
+    }
 }
 
 /// Session-specific parent data for one model tool-execution task.
@@ -352,7 +373,8 @@ pub struct PersistedBackgroundRecord {
     /// predate owner tracking and deserialize to an empty owner.
     #[serde(default)]
     parent_session_id: String,
-    exec_session_id: String,
+    /// Read by the persistence join, which groups a record's copies by launch.
+    pub(crate) exec_session_id: String,
     desired_enabled: bool,
     status: BackgroundSubprocessStatus,
     created_at: DateTime<Utc>,
@@ -643,20 +665,37 @@ impl PersistedBackgroundRecord {
     /// Returns `false` when this record is not a cancellation of that launch:
     /// it is still desired, the cached copy is already stopped, or the two
     /// name different exec sessions, which means a restart has replaced the
-    /// session this record stopped. Adoption clears the cached desire and, for
-    /// a copy that still looks active, takes the settled outcome so refresh
-    /// cannot relaunch it.
+    /// session this record stopped. Adoption clears the cached desire so
+    /// refresh cannot relaunch it.
+    ///
+    /// The adopted status is terminal only when there is no exec session left
+    /// to close. A live session means the process may still be running, so the
+    /// copy keeps an active status with a stopping summary: the caller must
+    /// attempt the close and let it settle `Stopped` on success. Writing the
+    /// persisted terminal status here would hide a running process from the
+    /// liveness projection, because that projection skips non-active records.
     pub(crate) fn adopt_cancellation_into(&self, record: &mut BackgroundRecord) -> bool {
         if self.desired_enabled || !record.desired_enabled || self.exec_session_id != record.exec_session_id {
             return false;
         }
         record.desired_enabled = false;
-        if record.status.is_active() {
-            record.status = self.status;
-            record.error = self.error.clone();
-            record.ended_at = self.ended_at.or(record.ended_at);
-            record.updated_at = record.updated_at.max(self.updated_at);
+        if record.exec_session_id.is_empty() {
+            // Nothing can be running under the record, so the persisted
+            // outcome is already final.
+            if record.status.is_active() {
+                record.status = self.status;
+                record.error = self.error.clone();
+                record.ended_at = self.ended_at.or(record.ended_at);
+            }
+        } else if record.status.is_active() {
+            // The close has not been attempted yet, so the process may still be
+            // live. Keep the record active and carry the stop intent; the
+            // close settles the terminal outcome only after it succeeds.
+            record.status = BackgroundSubprocessStatus::Running;
+            record.summary = Some("Background subagent is stopping".to_string());
+            record.ended_at = None;
         }
+        record.updated_at = record.updated_at.max(self.updated_at);
         true
     }
 }

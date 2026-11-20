@@ -9,7 +9,6 @@ use diapason_core::subagents::{
 };
 use serde::Serialize;
 use serde_json::{Map, Value};
-use std::collections::HashSet;
 
 const LODY_EXTENSION_VERSION: u8 = 1;
 pub(super) const LODY_SUBAGENTS_LIST_METHOD: &str = "_lody/subagents/list";
@@ -121,38 +120,6 @@ pub(super) fn add_lody_subagent_management_capability(
     }
 }
 
-pub(super) fn owned_child_ids<'a>(session_id: &str, entries: &'a [SubagentStatusEntry]) -> HashSet<&'a str> {
-    let mut owned_sessions = HashSet::from([session_id]);
-    let mut owned_ids = HashSet::new();
-    loop {
-        let before = owned_ids.len();
-        for entry in entries {
-            if owned_sessions.contains(entry.parent_thread_id.as_str()) {
-                let _ = owned_ids.insert(entry.id.as_str());
-                let _ = owned_sessions.insert(entry.session_id.as_str());
-            }
-        }
-        if owned_ids.len() == before {
-            break;
-        }
-    }
-    owned_ids
-}
-
-/// Selects the managed background records this session owns.
-///
-/// Managed background processes carry an explicit `owner_session_id`, so
-/// unlike child agents their ownership neither follows `parent_thread_id` nor
-/// transitions through a child's session. A record with no owner belongs to no
-/// ACP session and stays invisible to every caller.
-pub(super) fn owned_background_ids<'a>(session_id: &str, entries: &'a [BackgroundSubprocessEntry]) -> HashSet<&'a str> {
-    entries
-        .iter()
-        .filter(|entry| entry.owner_session_id.as_deref() == Some(session_id))
-        .map(|entry| entry.id.as_str())
-        .collect()
-}
-
 fn subagent_snapshot(entry: &SubagentStatusEntry) -> TaskSnapshot<'_> {
     let (lody_status, acp_status) = match entry.status {
         SubagentStatus::Queued => ("pending", acp::ToolCallStatus::Pending),
@@ -172,7 +139,10 @@ fn subagent_snapshot(entry: &SubagentStatusEntry) -> TaskSnapshot<'_> {
             description: &entry.description,
             actor: &entry.agent_name,
             started_at_epoch_seconds: epoch_seconds(entry.created_at),
-            ended_at_epoch_seconds: entry.completed_at.map(epoch_seconds),
+            // A resumed child is `Queued` again but keeps the previous run's
+            // completion instant until the new run settles, so the end is
+            // reported only for a terminal task.
+            ended_at_epoch_seconds: entry.completed_at.filter(|_| entry.status.is_terminal()).map(epoch_seconds),
             summary: entry.summary.as_deref(),
             error: entry.error.as_deref(),
         },

@@ -53,7 +53,7 @@ async fn close_preserves_settled_foreground_outcomes() {
             state.children.insert(id.to_string(), record);
         }
 
-        let entry = controller.close(id).await.expect("close settled child");
+        let entry = controller.close(TaskOwner::Workspace, id).await.expect("close settled child");
 
         assert_eq!(entry.status, status, "closing {id} must preserve its settled outcome");
         assert_eq!(entry.completed_at, Some(settled_at), "closing {id} must preserve its completion time");
@@ -70,7 +70,10 @@ async fn close_preserves_settled_foreground_outcomes() {
             test_child_record("active", "session-active", "parent-session", &spec, SubagentStatus::Running, 1, None),
         );
     }
-    let active = controller.close("active").await.expect("close active child");
+    let active = controller
+        .close(TaskOwner::Workspace, "active")
+        .await
+        .expect("close active child");
     assert_eq!(active.status, SubagentStatus::Closed);
 
     controller.signal_shutdown().await;
@@ -96,7 +99,7 @@ async fn cancel_preserves_settled_background_outcomes() {
         }
 
         let entry = controller
-            .force_cancel_background(id)
+            .force_cancel_background(TaskOwner::Workspace, id)
             .await
             .expect("cancel settled background task");
 
@@ -135,7 +138,7 @@ async fn cancelling_a_settled_background_record_keeps_it_out_of_restore() {
     }
 
     let entry = controller
-        .force_cancel_background(&record_id)
+        .force_cancel_background(TaskOwner::Workspace, &record_id)
         .await
         .expect("cancel errored background task");
     assert_eq!(entry.status, BackgroundSubprocessStatus::Error, "the settled error must survive the cancel");
@@ -208,10 +211,10 @@ async fn legacy_restore_ignores_records_owned_by_a_session() {
     );
 
     // Contrast: an ownerless record naming a different agent is selected by
-    // the unfiltered restore, so the exclusion above comes from the owner
-    // filter rather than an empty ledger. The assertion names the selected
-    // record, and the two records carry different agent names, so a fault
-    // caused by the owned record would not satisfy it.
+    // the legacy restore, so the exclusion above comes from the owner filter
+    // rather than an empty ledger. The assertion names the selected record, and
+    // the two records carry different agent names, so a fault caused by the
+    // owned record would not satisfy it.
     let legacy_id = background_record_id_for_owner("watcher", None);
     let mut legacy = settled_background_record(&legacy_id, "legacy-session", BackgroundSubprocessStatus::Running, None);
     legacy.owner_session_id = None;
@@ -223,12 +226,12 @@ async fn legacy_restore_ignores_records_owned_by_a_session() {
     }
 
     let error = controller
-        .restore_background_subagents()
+        .restore_legacy_background_subagents()
         .await
-        .expect_err("the unfiltered restore selects the ownerless record");
+        .expect_err("the legacy restore selects the ownerless record");
     assert!(
         format!("{error:#}").contains("Failed to resolve background subagent 'watcher'"),
-        "the unfiltered restore must fail on the ownerless record, not on another fault: {error:#}"
+        "the legacy restore must fail on the ownerless record, not on another fault: {error:#}"
     );
 
     let owned_after = controller
@@ -278,7 +281,7 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
 
     // Cancelling through the owner settles the one authoritative entry.
     let cancelled = root
-        .force_cancel_background(&record_id)
+        .force_cancel_background(TaskOwner::Workspace, &record_id)
         .await
         .expect("cancel root background task");
     assert_eq!(cancelled.status, BackgroundSubprocessStatus::Stopped);

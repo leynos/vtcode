@@ -144,6 +144,7 @@ mod lock_scope_tests;
 mod memory_appendix_tests;
 mod model_resolution_tests;
 mod owner_scope_tests;
+mod ownership_tests;
 mod progress_observer_tests;
 mod runtime_override_tests;
 mod spawn_background_process_tests;
@@ -230,7 +231,7 @@ Inspect the repository.
 
 async fn wait_for_effective_model(controller: &SubagentController, target: &str) -> Result<String> {
     for _ in 0..50 {
-        if let Ok(snapshot) = controller.snapshot_for_thread(target).await {
+        if let Ok(snapshot) = controller.snapshot_for_thread(TaskOwner::Workspace, target).await {
             return Ok(snapshot.effective_config.agent.default_model);
         }
         tokio::time::sleep(Duration::from_millis(10)).await;

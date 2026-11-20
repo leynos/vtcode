@@ -276,14 +276,17 @@ def test_render_markdown_keeps_the_state_locations_section() -> None:
         "| Logs, audit records and global sessions |",
         "| Repository-local agent data |",
     )
-    missing = [row for row in essential_rows if row not in rendered]
-    assert not missing, f"the generated reference dropped hand-written location rows: {missing!r}"
-
     field_table_header = "| Field | Type | Required | Default | Description |"
     assert field_table_header in rendered, "the generated reference dropped its field table"
-    assert rendered.index(heading) < rendered.index(field_table_header), (
-        "the state-location guidance must precede the generated field table"
-    )
+    section_start = rendered.index(heading)
+    section_end = rendered.index(field_table_header)
+    assert section_start < section_end, "the state-location guidance must precede the generated field table"
+
+    # Search only the section itself: a row emitted after the field table
+    # belongs to some other part of the document and must not satisfy this.
+    state_locations = rendered[section_start:section_end]
+    missing = [row for row in essential_rows if row not in state_locations]
+    assert not missing, f"the generated reference dropped hand-written location rows: {missing!r}"
 
 
 def test_render_markdown_escapes_pipes_inside_backtick_safe_code_span() -> None:

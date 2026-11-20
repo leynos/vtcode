@@ -1,6 +1,8 @@
 //! Concurrent grafting and allocation: one graft must never repeat a task id.
 use super::*;
 
+use crate::subagents::controller_child_ids::AllocationRendezvous;
+
 /// A graft and an allocation that run at the same time never repeat a task id.
 ///
 /// The graft moves the joining subtree's reserved ids into the tree's allocator
@@ -119,6 +121,18 @@ async fn concurrent_graft_and_allocation_never_repeat_a_task_id() {
             ),
         );
 
+        // Park the racer's first reservation between resolving its terminal
+        // scope and recording its id. The allocation already holds the
+        // adoption lock at that point, so a graft cannot merge until the id is
+        // recorded. The gate removes the scheduling race this test used to
+        // rely on: without it, the racer's first poll could happen only after
+        // the graft had already completed.
+        let rendezvous = Arc::new(AllocationRendezvous::default());
+        descendant
+            .child_id_slot()
+            .install_allocation_rendezvous(Arc::clone(&rendezvous));
+        joining.child_id_slot().install_allocation_rendezvous(Arc::clone(&rendezvous));
+
         // A second worker thread reserves ids through the descendant while the
         // graft reconciles the two allocators.
         let racing = {
@@ -151,9 +165,33 @@ async fn concurrent_graft_and_allocation_never_repeat_a_task_id() {
             })
         };
 
-        root.attach_child_controller("joining", Arc::clone(&joining))
+        rendezvous.wait_until_parked().await;
+        // Drive the graft's merge directly. The async attachment path first
+        // walks the joining subtree's state, and the parked allocation holds
+        // the descendant's state write lock, so that walk would block before
+        // reaching the adoption lock and would not isolate the reservation
+        // window. `adopt_into` is the operation whose exclusion of that window
+        // this test is about, and the blocking pool keeps both the parked
+        // allocation and the blocked merge from starving runtime workers.
+        let mut graft = {
+            let joining_slot = joining.child_id_slot();
+            let root_slot = root.child_id_slot();
+            tokio::task::spawn_blocking(move || joining_slot.adopt_into(&root_slot))
+        };
+        rendezvous.wait_for_merge_attempt().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), &mut graft).await.is_err(),
+            "round {round}: the graft must block behind the in-flight reservation"
+        );
+        rendezvous.release();
+        graft
             .await
+            .expect("the graft task must finish")
             .expect("the joining subtree shares the tree's adoption lock");
+        assert!(
+            rendezvous.reserved_before_merge(),
+            "round {round}: the reservation must be recorded before the graft merges"
+        );
         let racing_ids = racing.await.expect("the racing allocator must finish");
         let mut issued = racing_ids.clone();
 

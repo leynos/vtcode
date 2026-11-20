@@ -7,6 +7,7 @@ use anyhow::{Result, anyhow, bail};
 use diapason_commons::DiapasonPaths;
 use diapason_commons::fs::write_private_file_atomic;
 use diapason_core::constants::tools;
+use diapason_core::subagents::TaskOwner;
 use diapason_core::utils::ansi::MessageStyle;
 use diapason_ui::tui::app::{AgentPaletteItem, InlineListItem, InlineListSearchConfig, InlineListSelection};
 use std::path::PathBuf;
@@ -94,12 +95,12 @@ pub(crate) async fn handle_manage_agents(
             let Some(controller) = ctx.tool_registry.subagent_controller() else {
                 return render_missing_subagent_controller(&mut ctx);
             };
-            let entry = controller.status_for(&id).await?;
+            let entry = controller.status_for(TaskOwner::Workspace, &id).await?;
             if ctx.renderer.supports_inline_ui() {
                 let mut ctx = ctx;
                 show_active_agent_inspector(&mut ctx, entry).await
             } else {
-                let snapshot = controller.snapshot_for_thread(&id).await?;
+                let snapshot = controller.snapshot_for_thread(TaskOwner::Workspace, &id).await?;
                 render_active_agent_status_text(&mut ctx, &entry, &snapshot)?;
                 Ok(SlashCommandControl::Continue)
             }
@@ -108,7 +109,7 @@ pub(crate) async fn handle_manage_agents(
             let Some(controller) = ctx.tool_registry.subagent_controller() else {
                 return render_missing_subagent_controller(&mut ctx);
             };
-            let entry = controller.status_for(&id).await?;
+            let entry = controller.status_for(TaskOwner::Workspace, &id).await?;
             close_subagent_entry(&mut ctx, &controller, &entry.id, &entry.display_label).await
         }
         AgentManagerAction::Edit { name } => authoring::handle_edit_agent(ctx, name.as_deref()).await,
@@ -159,10 +160,20 @@ pub(crate) async fn handle_manage_subprocesses(
             handle_list_subprocesses_text(&mut ctx).await
         }
         SubprocessManagerAction::Inspect { id } => {
-            let entry = controller.refresh_then_background_snapshot(&id).await?;
             if ctx.renderer.supports_inline_ui() {
-                show_background_subprocess_inspector(&mut ctx, entry.entry).await
+                // Resolve the entry without reading the preview. The inspector
+                // reads it itself and renders a fault in place, so a task whose
+                // archive cannot be read still opens with its graceful-stop,
+                // force-cancel and archive actions available.
+                let entry = controller
+                    .refresh_background_processes()
+                    .await?
+                    .into_iter()
+                    .find(|entry| entry.id == id)
+                    .ok_or_else(|| anyhow!("Unknown background subprocess {id}"))?;
+                show_background_subprocess_inspector(&mut ctx, entry).await
             } else {
+                let entry = controller.refresh_then_background_snapshot(TaskOwner::Workspace, &id).await?;
                 render_background_subprocess_status_text(&mut ctx, &entry)?;
                 Ok(SlashCommandControl::Continue)
             }

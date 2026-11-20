@@ -87,7 +87,7 @@ pub(super) fn with_task_id(mut event: LifecycleUpdate, task_id: String) -> Lifec
 /// queue several transitions in a known order without inventing revisions by
 /// hand. Tests that need to replay an older transition use [`live_at`].
 pub(super) fn live(update: LifecycleUpdate) -> QueuedLifecycleUpdate {
-    static NEXT_REVISION: AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static NEXT_REVISION: AtomicU64 = AtomicU64::new(0);
     let revision = NEXT_REVISION.fetch_add(1, Ordering::Relaxed);
     live_at(revision, update)
 }

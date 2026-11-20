@@ -28,13 +28,14 @@ impl SubagentController {
         };
 
         if should_stop {
-            self.graceful_stop_background(&target_id).await
+            self.graceful_stop_background(TaskOwner::Workspace, &target_id).await
         } else {
             self.ensure_background_record_running(BackgroundRunRequest {
                 agent_name,
                 stable_id: Some(target_id),
                 restart_attempts: 0,
                 overrides: None,
+                expected_exec_session_id: None,
             })
             .await
         }
@@ -85,6 +86,7 @@ impl SubagentController {
     /// Restarts background subagents that were previously enabled but are no longer running.
     pub async fn restore_background_subagents(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
         self.reconcile_persisted_background_cancellations().await?;
+        self.retry_pending_background_stop_closes().await?;
         let desired_records = {
             let state = self.state.read().await;
             state
@@ -139,6 +141,11 @@ impl SubagentController {
     /// ledger, because that would settle and respawn records owned by live
     /// sessions.
     pub async fn restore_legacy_background_subagents(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
+        // A stop another controller persisted after this one loaded its copy is
+        // not in memory yet, and relaunching from the stale copy would
+        // resurrect it. Reconcile first, as the whole-ledger restore does.
+        self.reconcile_persisted_background_cancellations().await?;
+        self.retry_pending_background_stop_closes().await?;
         if !self.config.vt_cfg.subagents.background.auto_restore {
             return Ok(Vec::new());
         }
@@ -174,15 +181,18 @@ impl SubagentController {
                 record_id = record_id.as_str(),
                 "Restoring legacy background subagent subprocess"
             );
-            restored.push(
-                self.ensure_background_record_running(BackgroundRunRequest {
-                    agent_name,
-                    stable_id: Some(record_id),
-                    restart_attempts,
-                    overrides: None,
-                })
-                .await?,
-            );
+            // A relaunch replaces the launch this round observed, so it goes
+            // through the same path as a refresh restart: the persisted copy is
+            // re-read, and the replacement is bound to the observed session
+            // instead of overwriting whatever launch has taken the record.
+            self.restart_after_background_observation(
+                &record_id,
+                agent_name,
+                restart_attempts,
+                Some(exec_session_id.as_str()),
+            )
+            .await?;
+            restored.push(self.background_status_for(&record_id).await?);
         }
         Ok(restored)
     }
@@ -206,7 +216,12 @@ impl SubagentController {
     /// cancellation that lands after this read is preserved by the save merge,
     /// which also refuses to let a refreshed copy undo a stop for the same
     /// session.
-    async fn reconcile_persisted_background_cancellations(&self) -> Result<()> {
+    ///
+    /// Adoption only clears the intent; the exec session is closed afterwards
+    /// and settles `Stopped` on success. The close is never reported before it
+    /// has been attempted, because a live process behind a terminal record is
+    /// hidden from the liveness projection.
+    pub(super) async fn reconcile_persisted_background_cancellations(&self) -> Result<()> {
         if self.config.managed_background_runtime {
             // A nested scope owns no background records, so its empty view
             // carries no intent to reconcile.
@@ -218,7 +233,7 @@ impl SubagentController {
         if persisted.is_empty() {
             return Ok(());
         }
-        let mut adopted_sessions = Vec::new();
+        let mut adopted_launches = Vec::new();
         {
             let mut state = self.state.write().await;
             for (id, record) in state.background_children.iter_mut() {
@@ -232,7 +247,7 @@ impl SubagentController {
                         "Adopted a background cancellation persisted by another controller"
                     );
                     if !record.exec_session_id.is_empty() {
-                        adopted_sessions.push(record.exec_session_id.clone());
+                        adopted_launches.push((id.clone(), record.exec_session_id.clone()));
                     }
                 }
             }
@@ -241,19 +256,37 @@ impl SubagentController {
         // process, because an unscoped controller cannot reach a session in
         // another process, so adopting the stop terminates it here. Closing runs
         // without the state lock, and a session that already exited is expected.
-        for exec_session_id in adopted_sessions {
-            self.close_background_exec_session(&exec_session_id).await;
+        // Adoption leaves the record active, so a successful close is what
+        // settles `Stopped`. A close fault is kept as the stop's obligation: the
+        // record stays visibly pending, and a later reconcile retries the close
+        // instead of reporting a live process as stopped.
+        for (record_id, exec_session_id) in adopted_launches {
+            self.attempt_background_stop_close(&record_id, &exec_session_id).await;
+            // The close decides the outcome, so publish afterwards. Without
+            // this, an observer would never learn that the task stopped (or
+            // that its close is still owed): refresh skips a pending close and
+            // restore filters the record out once it is no longer desired.
+            let still_names_session = {
+                let state = self.state.read().await;
+                state
+                    .background_children
+                    .get(&record_id)
+                    .is_some_and(|record| record.exec_session_id == exec_session_id)
+            };
+            if still_names_session {
+                self.publish_background_status(&record_id).await;
+            }
         }
         Ok(())
     }
 
-    /// Re-reads the persisted copy of one record under the persistence lock.
+    /// Reads the persisted copy of one record under the persistence lock.
     ///
-    /// Refresh reads the ledger once, before it observes any exec session, so a
-    /// cancellation another controller persists in between would be missed:
-    /// the local copy still says the task is wanted, settlement schedules a
-    /// replacement, and the relaunch would resurrect it. Re-reading under the
-    /// in-process lock that serialises saves closes that window.
+    /// This is the restart path's cheap pre-check: a launch another controller
+    /// had already stopped is skipped without preparing a plan at all. It is
+    /// only a fast path, so it need not be atomic with the claim — the
+    /// authoritative reconciliation is [`SubagentController::reserve_background_run`],
+    /// which reads the ledger and writes the claim as one transition.
     ///
     /// The copy is returned unfiltered. Whether it is a stop for this launch is
     /// decided by [`PersistedBackgroundRecord::adopt_cancellation_into`], which
@@ -274,10 +307,13 @@ impl SubagentController {
     /// Restarts one record after refresh observed its exec session end.
     ///
     /// The observation names the launch this round examined. Another controller
-    /// may persist a stop for that launch before the restart begins, so the
-    /// ledger is re-read first. A matching stop is adopted instead of
-    /// overridden: the replacement would resurrect a task its owner stopped,
-    /// and the following save would race that owner's intent.
+    /// may persist a stop for that launch before the replacement is claimed, so
+    /// the claim itself reconciles the ledger: `reserve_background_run` reads
+    /// the persisted copy and writes the claim as one transition under the
+    /// ledger's file lock, and adopts a matching stop instead of overriding it.
+    /// The replacement would otherwise resurrect a task its owner stopped, and
+    /// the following save would race that owner's intent. The read here only
+    /// short-circuits a plan that is already known to be unwanted.
     pub(super) async fn restart_after_background_observation(
         &self,
         record_id: &str,
@@ -301,22 +337,44 @@ impl SubagentController {
                     exec_session_id,
                     "Skipped a background restart; another controller stopped this launch"
                 );
+                // Nothing else closes this launch: the restart is skipped and
+                // the record is no longer desired, so restore will not select
+                // it. The close settles `Stopped` (an already missing session
+                // counts as closed); a fault keeps the obligation for a later
+                // reconcile instead of reporting a live process as stopped.
+                self.attempt_background_stop_close(record_id, stop.exec_session_id.as_str())
+                    .await;
+                self.publish_background_status(record_id).await;
                 return Ok(());
             }
         }
-        self.ensure_background_record_running(BackgroundRunRequest {
+        let request = BackgroundRunRequest {
             agent_name,
             stable_id: Some(record_id.to_string()),
             restart_attempts,
             overrides: None,
-        })
-        .await?;
-        Ok(())
+            expected_exec_session_id: observed_exec_session_id.map(str::to_owned),
+        };
+        match self.ensure_background_record_running(request).await {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                // Refresh scheduled this replacement, so its record is
+                // `Starting`, which `handle_missing_background_snapshot`
+                // deliberately exempts. If the replacement cannot even be
+                // prepared, nothing else drives that state; settle the failure
+                // here so the task is not reported as starting forever.
+                if let Some(exec_session_id) = observed_exec_session_id {
+                    self.settle_failed_background_restart(record_id, exec_session_id, &error).await;
+                }
+                Err(error)
+            }
+        }
     }
 
     /// Refreshes the state of all background subprocesses and respawns as needed.
     pub async fn refresh_background_processes(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
         self.reconcile_persisted_background_cancellations().await?;
+        self.retry_pending_background_stop_closes().await?;
         let record_ids = {
             let state = self.state.read().await;
             state.background_children.keys().cloned().collect::<Vec<_>>()

@@ -167,6 +167,7 @@ fn prepared_workspace<'a>(
         primary_agents: PrimaryAgentCatalogue::from_specs_with_default(&[], "duck"),
         workspace_hooks_gated: false,
         file_ops_tool: None,
+        defer_background_restore: false,
     }
 }
 
@@ -256,6 +257,7 @@ async fn optional_workspace_attachments_preserve_degraded_and_disabled_outcomes(
             vt_config: None,
             workspace_gated: false,
             workspace_root: temp.path(),
+            defer_background_restore: false,
         },
         &ports,
     )

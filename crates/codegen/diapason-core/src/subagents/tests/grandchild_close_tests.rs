@@ -54,10 +54,13 @@ async fn close_cascades_to_child_scoped_grandchildren() {
         );
     }
 
-    let closed = parent.close("child").await.expect("close child");
+    let closed = parent.close(TaskOwner::Workspace, "child").await.expect("close child");
     assert!(closed.status.is_terminal());
 
-    let grandchild_status = child_controller.status_for("grandchild").await.expect("grandchild status");
+    let grandchild_status = child_controller
+        .status_for(TaskOwner::Workspace, "grandchild")
+        .await
+        .expect("grandchild status");
     assert_eq!(
         grandchild_status.status,
         SubagentStatus::Closed,
@@ -147,14 +150,20 @@ async fn close_does_not_affect_sibling_grandchildren() {
         );
     }
 
-    parent.close("a").await.expect("close a");
+    parent.close(TaskOwner::Workspace, "a").await.expect("close a");
 
-    let b_grandchild = controller_b.status_for("b-grandchild").await.expect("b-grandchild status");
+    let b_grandchild = controller_b
+        .status_for(TaskOwner::Workspace, "b-grandchild")
+        .await
+        .expect("b-grandchild status");
     assert_eq!(
         b_grandchild.status,
         SubagentStatus::Running,
         "closing sibling 'a' must not affect sibling 'b''s grandchildren"
     );
-    let a_grandchild = controller_a.status_for("a-grandchild").await.expect("a-grandchild status");
+    let a_grandchild = controller_a
+        .status_for(TaskOwner::Workspace, "a-grandchild")
+        .await
+        .expect("a-grandchild status");
     assert_eq!(a_grandchild.status, SubagentStatus::Closed, "closing 'a' must cascade to its own grandchildren");
 }
