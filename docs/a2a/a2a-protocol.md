@@ -349,32 +349,31 @@ a2a-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:tokio-stream"]
 
 ### Create and Query Task
 
+The following client round trip needs a running `diapason a2a serve` instance;
+the server prints the bearer token this example uses.
+
 ```rust
-use diapason_core::a2a::types::FileContent;
-use diapason_core::a2a::{Artefact, Message, Task, TaskState};
+use diapason_core::a2a::rpc::MessageSendParams;
+use diapason_core::a2a::{A2aClient, A2aResult, Message};
 
-fn main() {
-    // Create task
-    let mut task = Task::with_id("conversation-1");
-    println!("Created task: {}", task.id);
+#[tokio::main]
+async fn main() -> A2aResult<()> {
+    // A running `diapason a2a serve` prints the bearer token.
+    let client = A2aClient::new("http://127.0.0.1:8080")?
+        .with_bearer_token("token-from-diapason-a2a-serve");
 
-    // Update status
-    task.status.state = TaskState::Working;
-    task.add_message(Message::user_text("Processing the request..."));
+    // Sending the first message creates the task
+    let message = Message::user_text("Refactor src/lib.rs");
+    let created = client
+        .send_message(MessageSendParams::new(message))
+        .await?;
+    println!("Created task: {}", created.id);
 
-    // Add artefact
-    let artefact = Artefact::file(
-        "result-1",
-        FileContent::Uri {
-            uri: "file:///tmp/refactored.rs".to_string(),
-            mime_type: Some("text/rust".to_string()),
-        },
-    );
-    task.add_artefact(artefact);
-
-    // Get task
+    // Query the same task by ID
+    let task = client.get_task(created.id.clone()).await?;
     println!("Task state: {:?}", task.status.state);
-    println!("Artefacts: {}", task.artefacts.len());
+
+    Ok(())
 }
 ```
 

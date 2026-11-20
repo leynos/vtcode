@@ -11,7 +11,7 @@ Visual diagrams and architectural details for the anstyle integration.
   Git Config            LS_COLORS Env Var     Custom Config   
   .git/config           "di=01;34:ln=01:36"  .diapasonrc
                                                               
- [colour "diff"]                              ---
+ [color "diff"]                               ---
  new = green bold                                             
  old = red                                                    
 
@@ -269,7 +269,7 @@ When styling a file or element, resolve colours in this order:
    ↓ (not specified)
 2. LS_COLORS (if available on system)
    ↓ (not available or key not found)
-3. Git config [colour] section
+3. Git config [color] section
    ↓ (not configured)
 4. Diapason theme (ThemePalette)
    ↓ (missing)

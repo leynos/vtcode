@@ -133,15 +133,15 @@ ______________________________________________________________________
 From `.git/config`:
 
 ```ini
-[colour "diff"]
+[color "diff"]
     new = green
     old = red
     context = default
 
-[colour "diff"]
+[color "diff"]
     meta = bold yellow
     
-[colour "branch"]
+[color "branch"]
     current = green bold
     local = green
     remote = red
@@ -162,16 +162,16 @@ ______________________________________________________________________
 ### 1. Theme Parser (Phase 1)
 
 ```rust
-use diapason_core::ui::tui::ThemeConfigParser;
+use diapason_ui::tui::core::ThemeConfigParser;
 
+let parser = ThemeConfigParser::default();
+
+// `parse_flexible` tries Git syntax first, then LS_COLORS as the fallback.
 // Parse Git style
-let style = ThemeConfigParser::parse_git_style("bold red")?;
+let style = parser.parse_flexible("bold red")?;
 
 // Parse LS_COLORS style
-let style = ThemeConfigParser::parse_ls_colours("01;34")?;
-
-// Flexible parsing (try both)
-let style = ThemeConfigParser::parse_flexible("bold red")?;
+let style = parser.parse_flexible("01;34")?;
 ```
 
 ### 2. InlineTextStyle (Phase 1 - After Update)
@@ -195,7 +195,7 @@ let style = InlineTextStyle::default()
 ### 3. File Colourizer (Phase 3 Future)
 
 ```rust
-use diapason_core::ui::tui::FileColourizer;
+use diapason_ui::tui::ui::FileColourizer;
 
 let colourizer = FileColourizer::new();  // Reads LS_COLORS
 let style = colourizer.style_for_file(&path)?;
@@ -215,7 +215,7 @@ ______________________________________________________________________
 "01;31"                 // Bold (01) + red (31)
 
 // In Diapason
-let error_style = ThemeConfigParser::parse_git_style("bold red")?;
+let error_style = ThemeConfigParser::default().parse_flexible("bold red")?;
 ```
 
 ### Highlighting Success Messages
@@ -228,7 +228,7 @@ let error_style = ThemeConfigParser::parse_git_style("bold red")?;
 "32"                    // Green foreground
 
 // In Diapason
-let success_style = ThemeConfigParser::parse_git_style("green")?;
+let success_style = ThemeConfigParser::default().parse_flexible("green")?;
 ```
 
 ### Dim/Secondary Text
@@ -241,29 +241,37 @@ let success_style = ThemeConfigParser::parse_git_style("green")?;
 "02;37"                 // Dim (02) + white (37)
 
 // In Diapason
-let dim_style = ThemeConfigParser::parse_git_style("dim white")?;
+let dim_style = ThemeConfigParser::default().parse_flexible("dim white")?;
 ```
 
 ### Directory Listing Colours
 
 ```rust
+use diapason_ui::tui::core::ThemeConfigParser;
+
+let parser = ThemeConfigParser::default();
+
 // From environment LS_COLORS
-let dir_style = ThemeConfigParser::parse_ls_colours("01;34")?;  // bold blue
+let dir_style = parser.parse_flexible("01;34")?;  // bold blue
 
-let sym_style = ThemeConfigParser::parse_ls_colours("01;36")?;  // bold cyan
+let sym_style = parser.parse_flexible("01;36")?;  // bold cyan
 
-let exec_style = ThemeConfigParser::parse_ls_colours("01;32")?; // bold green
+let exec_style = parser.parse_flexible("01;32")?; // bold green
 ```
 
 ### Git Diff Colours
 
 ```rust
-// From .git/config [colour "diff"]
-let added_style = ThemeConfigParser::parse_git_style("green")?;
+use diapason_ui::tui::core::ThemeConfigParser;
 
-let removed_style = ThemeConfigParser::parse_git_style("red")?;
+let parser = ThemeConfigParser::default();
 
-let context_style = ThemeConfigParser::parse_git_style("default")?;
+// From .git/config [color "diff"]
+let added_style = parser.parse_flexible("green")?;
+
+let removed_style = parser.parse_flexible("red")?;
+
+let context_style = parser.parse_flexible("default")?;
 ```
 
 ______________________________________________________________________
@@ -280,10 +288,10 @@ echo $LS_COLORS
 ### Check Git Colours
 
 ```bash
-git config --list | grep colour
-# colour.ui=auto
-# colour.diff.new=green
-# colour.diff.old=red
+git config --list | grep color
+# color.ui=auto
+# color.diff.new=green
+# color.diff.old=red
 ```
 
 ### Test Parsing in Rust

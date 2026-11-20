@@ -6,7 +6,7 @@ the workflows in the extension, the participant system, and the tool approval
 mechanisms available in the application.
 
 Diapason uses a configuration file named `config.toml` that can be placed at
-the root of your project workspace to customize behaviour. Interactive sessions
+the root of the project workspace to customize behaviour. Interactive sessions
 poll the active workspace, project, user, and explicit config layers and apply
 safe changes without restarting.
 
@@ -111,8 +111,7 @@ back to the first available item.
 ## Feature flags
 
 Optional and experimental capabilities are toggled via the `[features]` table in
-`config.toml`. These allow you to customize the behaviour of various Diapason
-features.
+`config.toml`. These customize the behaviour of various Diapason features.
 
 ```toml
 [features]
@@ -255,7 +254,7 @@ experimental_features = false
 - In the interactive UI you can open this section directly with `/config codex`
   or `/config agent.codex_app_server`.
 
-You can also enable the experimental Codex behaviour for a single run:
+The experimental Codex behaviour can also be enabled for a single run:
 
 ```bash
 diapason --codex-experimental
@@ -522,7 +521,7 @@ Matching is case-insensitive.
 
 ### Model-specific settings
 
-You can also configure model-specific behaviour:
+Model-specific behaviour can also be configured:
 
 ```toml
 [agent.model_settings]

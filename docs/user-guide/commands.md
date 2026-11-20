@@ -171,6 +171,9 @@ Configure the behaviour under **Settings › Extensions › Diapason**:
 - The `/name` form remains the compatibility alias. You can also inspect or
   execute the same behaviour through `/skills info cmd-name` and
   `/skills use cmd-name ...`.
+- `/analyse` is the one exception to that mapping: its skill is registered as
+  `cmd-analyze`, so `/skills info cmd-analyze` and `/skills use cmd-analyze`
+  are the correct forms. The `analyze` alias resolves to the same skill.
 - Prompt-oriented slash commands such as `/review`, `/analyse`, and `/command`
   are shipped as bundled system skills in the release binary.
 - To keep the default prompt lean, command skills are not injected into the

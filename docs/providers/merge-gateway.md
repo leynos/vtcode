@@ -127,7 +127,7 @@ conservative capabilities. Deprecated catalogue routes are not added to the
 picker.
 
 The supplied
-[`models/catalogue/llms.txt`](https://docs.merge.dev/merge-gateway/models/catalog/llms.txt)
+[`models/catalog/llms.txt`](https://docs.merge.dev/merge-gateway/models/catalog/llms.txt)
 file is a documentation index, not a runtime model dataset. Runtime discovery
 uses the authenticated `/v1/models` endpoint.
 

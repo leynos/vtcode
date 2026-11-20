@@ -288,9 +288,9 @@ impl GitColourConfig {
         let content = std::fs::read_to_string(config_path)?;
         
         // Parse colour sections
-        // [colour "diff"] new = green
-        // [colour "diff"] old = red
-        // [colour "diff"] context = default
+        // [color "diff"] new = green
+        // [color "diff"] old = red
+        // [color "diff"] context = default
         
         let diff_new = Self::extract_git_colour(&content, "diff", "new")?;
         let diff_old = Self::extract_git_colour(&content, "diff", "old")?;
@@ -308,7 +308,7 @@ impl GitColourConfig {
         section: &str,
         key: &str,
     ) -> anyhow::Result<anstyle::Style> {
-        // Find pattern: [colour "section"] key = value
+        // Find pattern: [color "section"] key = value
         // Parse value with anstyle_git::parse()
         todo!()
     }
@@ -320,7 +320,7 @@ impl GitColourConfig {
 **Location**: `crates/codegen/diapason-core/src/ui/tui/style.rs`
 
 ```rust
-use anstyle::{AnsiColor, Colour as AnsiColourEnum, Effects, RgbColor, Style as AnsiStyle};
+use anstyle::{AnsiColor, Color as AnsiColourEnum, Effects, RgbColor, Style as AnsiStyle};
 
 fn convert_style_colour(style: &AnsiStyle) -> Option<AnsiColourEnum> {
     style.get_fg_color().and_then(convert_ansi_colour)
@@ -347,7 +347,7 @@ pub fn convert_style(style: AnsiStyle) -> InlineTextStyle {
 
 ```rust
 use anstyle::Effects;
-use ratatui::style::{Colour, Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 pub fn ratatui_style_from_inline(
     style: &InlineTextStyle,

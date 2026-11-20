@@ -19,7 +19,7 @@ Added three new convenience functions to support common styling patterns:
 Combines foreground and background colours in a single style.
 
 ```rust
-use anstyle::{Colour, AnsiColor};
+use anstyle::{Color, AnsiColor};
 use diapason_core::utils::ratatui_styles::fg_bg_colors;
 
 let style = fg_bg_colors(
@@ -34,7 +34,7 @@ Applies effects to a background colour (complements `colored_with_effects` for
 foreground).
 
 ```rust
-use anstyle::{Colour, AnsiColor, Effects};
+use anstyle::{Color, AnsiColor, Effects};
 use diapason_core::utils::ratatui_styles::bg_colored_with_effects;
 
 let style = bg_colored_with_effects(
@@ -48,7 +48,7 @@ let style = bg_colored_with_effects(
 Creates a complete style from all three components in one call.
 
 ```rust
-use anstyle::{Colour, AnsiColor, Effects};
+use anstyle::{Color, AnsiColor, Effects};
 use diapason_core::utils::ratatui_styles::full_style;
 
 let style = full_style(
