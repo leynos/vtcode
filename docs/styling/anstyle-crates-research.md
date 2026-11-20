@@ -373,6 +373,7 @@ pub fn ratatui_style_from_inline(
 3. Update tests for new styling capabilities
 
 ### Phase 3: Features (Lower Risk, High Value)
+
 1. Extend `FileColourizer` for LS_COLORS support
 2. Add environment variable parsing for system colours
 3. Support custom theme files with Git/LS syntax

@@ -208,6 +208,8 @@ ______________________________________________________________________
 ### Highlighting Error Messages
 
 ```rust
+use diapason_ui::tui::core::ThemeConfigParser;
+
 // Git style
 "bold red"              // Bold red foreground
 
@@ -221,6 +223,8 @@ let error_style = ThemeConfigParser::default().parse_flexible("bold red")?;
 ### Highlighting Success Messages
 
 ```rust
+use diapason_ui::tui::core::ThemeConfigParser;
+
 // Git style
 "green"                 // Green foreground
 
@@ -234,6 +238,8 @@ let success_style = ThemeConfigParser::default().parse_flexible("green")?;
 ### Dim/Secondary Text
 
 ```rust
+use diapason_ui::tui::core::ThemeConfigParser;
+
 // Git style
 "dim white"             // Dim white
 
