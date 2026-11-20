@@ -16,7 +16,7 @@ Diapason discovers skills in this order:
 If multiple skills share the same name, the nearest repository skill wins, then
 user, then admin, then system.
 
-Diapason also honors disabled entries from `~/.codex/config.toml`:
+Diapason also honours disabled entries from `~/.codex/config.toml`:
 
 ```toml
 [[skills.config]]
@@ -42,7 +42,7 @@ my-skill/
 
 Diapason accepts the core Agent Skills frontmatter fields plus the client-side
 `disable-model-invocation` flag used to hide a skill from the model-facing
-startup catalog while keeping it available for explicit harness activation:
+startup catalogue while keeping it available for explicit harness activation:
 
 ```yaml
 ---
@@ -76,7 +76,7 @@ Legacy Diapason frontmatter such as `version`, `author`, `when-to-use`,
 Diapason does not support `agents/openai.yaml`. That file is Codex-specific and
 ignored by design.
 
-## Prompting Behavior
+## Prompting Behaviour
 
 - Explicit mention wins: `Use the my-skill skill`
 - Implicit matching uses `description`

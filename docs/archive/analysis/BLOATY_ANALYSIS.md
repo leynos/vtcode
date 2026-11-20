@@ -3,7 +3,7 @@
 ## Overview
 
 [Bloaty](https://github.com/google/bloaty) is a size profiler for binaries that
-helps understand what's making the binary large. This report analyzes the
+helps understand what's making the binary large. This report analyses the
 diapason project binary size composition.
 
 ## Binary Size Summary

@@ -434,7 +434,7 @@ Update `docs/ANSTYLE_PARSE_REVIEW.md` with:
 
 ## Future Enhancements
 
-### Color-Preserving Output
+### Colour-Preserving Output
 
 ```rust
 use ratatui::style::{Style, Color as RatColour};

@@ -13,7 +13,7 @@ For the full specification, see the
 ## Overview
 
 When enabled, Diapason exports an `atif-trajectory.json` file under the
-canonical session's derived artifacts at session end. The file captures the
+canonical session's derived artefacts at session end. The file captures the
 complete session: user messages, agent responses, tool executions,
 observations, and per-step/aggregate LLM metrics.
 
