@@ -49,7 +49,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
       - name: Set up Rust with the compiler cache
-        uses: leynos/shared-actions/.github/actions/setup-rust@6cec89bac47a21cf756d68d638a9a510998e57f8
+        uses: leynos/shared-actions/.github/actions/setup-rust@cfd51f3d5423cb16155b94e020cdd7eaeebd0833
 
       - name: Build
         run: cargo build --locked --workspace --quiet
