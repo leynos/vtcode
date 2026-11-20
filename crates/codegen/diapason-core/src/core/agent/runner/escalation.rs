@@ -361,7 +361,7 @@ mod tests {
             category: None,
         });
         let confidence = ConfidenceEstimator::estimate("write_file", &state, false);
-        // 1.0 - 0.15 = 0.85, then * 0.9 (write penality) = 0.765
+        // 1.0 - 0.15 = 0.85, then * 0.9 (write penalty) = 0.765
         assert!(confidence < 0.9);
         assert!(confidence > 0.0);
     }

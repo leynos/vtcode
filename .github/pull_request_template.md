@@ -49,7 +49,7 @@ test configuration.
 - [ ] I have run `cargo fmt` to ensure proper formatting
 - [ ] Any dependent changes have been merged and published in downstream modules
 - [ ] I have updated the `CHANGELOG.md` if this change affects the user-facing
-      behavior
+      behaviour
 - [ ] I have checked my code and corrected any misspellings
 
 ## Additional Context

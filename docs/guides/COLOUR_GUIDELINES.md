@@ -48,7 +48,7 @@ minimum_contrast = 4.5  # WCAG AA (default)
 ### Safe ANSI Colour Palette
 
 Based on
-[terminal colour portability research](https://blog.xoria.org/terminal-colors/),
+[terminal colour portability research](https://blog.xoria.org/terminal-colours/),
 only **11 of 32** ANSI colours are safe across common terminal themes (Basic,
 Tango, Solarized).
 
@@ -93,7 +93,7 @@ minimum_contrast = 4.5
 # Legacy terminal compatibility: avoid bold (may map to bright)
 bold_is_bright = false
 
-# Restrict to 11 portable ANSI colors
+# Restrict to 11 portable ANSI colours
 safe_colors_only = false
 
 # Auto-detect light/dark terminal: "auto", "light", "dark"
@@ -116,7 +116,7 @@ color_scheme_mode = "auto"
 # Force light mode
 # color_scheme_mode = "light"
 
-# Force dark mode (default behavior)
+# Force dark mode (default behaviour)
 # color_scheme_mode = "dark"
 ```
 
@@ -189,5 +189,5 @@ use diapason_core::utils::ansi_capabilities::{
 
 - [NO_COLOR Standard](https://no-color.org/)
 - [Ghostty minimum-contrast](https://ghostty.org/docs/config/reference#minimum-contrast)
-- [Terminal Colours Research](https://blog.xoria.org/terminal-colors/)
+- [Terminal Colours Research](https://blog.xoria.org/terminal-colours/)
 - [WCAG 2.1 Contrast Requirements](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html)

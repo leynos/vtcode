@@ -1,4 +1,4 @@
-# Rust Build Artifacts
+# Rust Build Artefacts
 target/
 Cargo.lock
 
@@ -61,7 +61,7 @@ benches/results/
 criterion/
 *.profraw
 
-# Testing Artifacts
+# Testing Artefacts
 coverage/
 *.profraw
 *.profdata
