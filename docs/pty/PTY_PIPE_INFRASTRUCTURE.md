@@ -105,7 +105,7 @@ The `process_group` module provides utilities for reliable process cleanup:
 
 ### Kill Signal Types
 
-The `KillSignal` enum provides control over termination behavior:
+The `KillSignal` enum provides control over termination behaviour:
 
 ```rust
 use diapason_bash_runner::KillSignal;
@@ -206,7 +206,7 @@ match result {
 }
 ```
 
-### Platform-Specific Behavior
+### Platform-Specific Behaviour
 
 **Unix (Linux/macOS):**
 
@@ -291,7 +291,7 @@ pub(super) struct PtySessionHandle {
 }
 ```
 
-### Drop Behavior
+### Drop Behaviour
 
 When a `PtySessionHandle` is dropped:
 
@@ -308,7 +308,7 @@ This ensures that:
 - Child processes have a chance to clean up (handlers, temp files, etc.)
 - Grandchild processes are also terminated (entire process group)
 - No orphaned processes are left running
-- Consistent behavior across Unix and Windows
+- Consistent behaviour across Unix and Windows
 
 ## Architecture
 

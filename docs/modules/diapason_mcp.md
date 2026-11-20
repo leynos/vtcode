@@ -33,7 +33,7 @@ reducing overhead for repeated requests.
 
 ### Tool Discovery
 
-Tool discovery automatically finds and catalogs available tools from MCP
+Tool discovery automatically finds and catalogues available tools from MCP
 servers:
 
 - `tool_discovery.rs` — discovers tools from connected servers

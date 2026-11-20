@@ -89,7 +89,7 @@ ______________________________________________________________________
 
 **File**: `crates/common/diapason-commons/src/thread_safety.rs`
 
-**Problem**: Documentation was contradictory about atomic ordering behavior.
+**Problem**: Documentation was contradictory about atomic ordering behaviour.
 
 **Solution**: Rewrote documentation to accurately describe that `fetch_add` with
 `Relaxed` ordering does emit `LOCK`-prefixed instructions on x86_64.
@@ -263,8 +263,8 @@ ______________________________________________________________________
 
 **File**: `crates/codegen/diapason-core/src/ui/diff_renderer.rs`
 
-**Problem**: Operator precedence bug caused ANSI color codes to be inserted
-even when colors were disabled, producing garbage characters in non-color
+**Problem**: Operator precedence bug caused ANSI colour codes to be inserted
+even when colours were disabled, producing garbage characters in non-colour
 terminal output.
 
 **Before**:
@@ -277,7 +277,7 @@ if check.total_additions > 0 || check.total_deletions > 0 && self.diff_renderer.
 
 ```rust
 if check.total_additions > 0 || check.total_deletions > 0 {
-    // Always show numbers, but only add color codes when use_colors is true
+    // Always show numbers, but only add colour codes when use_colors is true
     if self.diff_renderer.use_colors {
         output.push_str(&self.diff_renderer.cached_styles.stat_added);
     }

@@ -115,7 +115,7 @@ can observe interfaces, rendered results, and interaction feedback and
 iteratively improve. Use cases highlighted by Z.AI include:
 
 - **Vision-driven UI coding:** Transform screenshots, multi-page images, URLs,
-  or screen recordings into polished Next.js / frontend apps. Analyze design
+  or screen recordings into polished Next.js / frontend apps. Analyse design
   system, page relationships, shared components, navigation, interaction
   states, and animation logic, then build and iteratively refine against
   rendered screenshots.

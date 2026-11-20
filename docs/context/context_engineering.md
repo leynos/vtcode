@@ -92,7 +92,7 @@ When an eval fails, classify the issue before changing the stack:
 - **Context problem**: The model is missing domain knowledge, using stale
     facts, or needs proprietary information. Improve context selection,
     retrieval, or source quality.
-- **Behavior problem**: The model has the right facts but formats
+- **Behaviour problem**: The model has the right facts but formats
     inconsistently, ignores instructions, uses the wrong tone, or reasons
     unreliably. Improve instructions, examples, decomposition, or training.
 
@@ -235,7 +235,7 @@ Our tools are designed with context efficiency in mind:
 
 - **exec_command**: Shell file inspection and fast text matching through
     `rg`, with `grep` as a fallback when `rg` is unavailable
-- **code_search**: Advanced bounded search for recognised definitions, exact
+- **code_search**: Advanced bounded search for recognized definitions, exact
     syntactic usages, literal text, and matching paths
 - Return metadata first (file paths, line numbers) before content
 

@@ -133,7 +133,7 @@ PushKeyboardEnhancementFlags / PopKeyboardEnhancementFlags
 
 ## Configuration
 
-### Default Behavior
+### Default Behaviour
 
 By default, the keyboard protocol is:
 

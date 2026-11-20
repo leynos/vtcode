@@ -2,7 +2,7 @@
 
 This document describes Diapason's sandboxing architecture, following the
 principles from the AI sandbox field guide. The system implements
-defense-in-depth through multiple layers of isolation.
+defence-in-depth through multiple layers of isolation.
 
 ## The Three-Question Model
 

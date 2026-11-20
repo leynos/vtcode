@@ -52,7 +52,7 @@ This guide covers common issues and solutions when using Diapason with your IDE.
 
 ## Slow Performance
 
-**Issue**: Diapason is taking a long time to respond or analyze code.
+**Issue**: Diapason is taking a long time to respond or analyse code.
 
 **Solution**:
 

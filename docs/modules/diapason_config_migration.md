@@ -91,7 +91,7 @@ during the extraction effort.
     )?;
     ```
 
-- The helper now ensures parent directories exist, reports created artifacts,
+- The helper now ensures parent directories exist, reports created artefacts,
     and respects provider-driven path overrides.
 
 ### 5. Refresh Tests & Automation
@@ -116,7 +116,7 @@ during the extraction effort.
 ## Rolling Adoption Strategy
 
 - **Pilot phase:** migrate internal services first to validate defaults
-    provider behavior and identify additional adapters needed.
+    provider behaviour and identify additional adapters needed.
 - **General availability:** once documentation and examples stabilize, publish
     `diapason-config` to crates.io and update top-level README references.
 - **Deprecation window:** keep the legacy `diapason-core` re-exports available
