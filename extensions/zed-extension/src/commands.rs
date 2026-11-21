@@ -267,6 +267,157 @@ fn attach_ide_context(
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    use std::ffi::OsString;
+    #[cfg(unix)]
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
+    use std::path::{Path, PathBuf};
+    #[cfg(unix)]
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[cfg(unix)]
+    fn unique_identifier() -> String {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+        format!(
+            "{}_{}",
+            std::process::id(),
+            NEXT_ID.fetch_add(1, Ordering::Relaxed)
+        )
+    }
+
+    /// Temporary directory holding a fake `diapason` program.
+    #[cfg(unix)]
+    struct FakeProgram {
+        directory: PathBuf,
+        record_variable: String,
+        argv_path: PathBuf,
+    }
+
+    #[cfg(unix)]
+    impl FakeProgram {
+        fn new(label: &str) -> Self {
+            let directory = std::env::temp_dir().join(format!(
+                "diapason-commands-{label}-{}",
+                unique_identifier()
+            ));
+            fs::create_dir_all(&directory)
+                .expect("fake executable directory should be creatable");
+            let record_variable = format!("DIAPASON_FAKE_ARGV_{}", unique_identifier());
+            let argv_path = directory.join("argv.txt");
+            Self {
+                directory,
+                record_variable,
+                argv_path,
+            }
+        }
+
+        fn directory(&self) -> &Path {
+            &self.directory
+        }
+
+        /// Write an executable shell script that records its arguments.
+        fn write(&self, exit_code: i32, stdout: &str, stderr: &str) {
+            let path = self.directory.join("diapason");
+            let script = format!(
+                "#!/bin/sh\n\
+                 printf '%s\\n' \"$@\" > \"${{{record_variable}}}\"\n\
+                 printf '%s' '{stdout}'\n\
+                 printf '%s' '{stderr}' >&2\n\
+                 exit {exit_code}\n",
+                record_variable = self.record_variable.as_str(),
+            );
+            fs::write(&path, script).expect("fake executable should be writable");
+            let mut permissions = fs::metadata(&path)
+                .expect("fake executable should have metadata")
+                .permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&path, permissions)
+                .expect("fake executable should be made executable");
+        }
+
+        fn recorded_argv(&self) -> Vec<String> {
+            fs::read_to_string(&self.argv_path)
+                .expect("fake executable should record its arguments")
+                .lines()
+                .map(str::to_owned)
+                .collect()
+        }
+
+        fn record_environment(&self) -> EnvironmentGuard {
+            EnvironmentGuard::set(&self.record_variable, self.argv_path.as_os_str())
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for FakeProgram {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.directory);
+        }
+    }
+
+    /// Restore an environment variable when dropped.
+    #[cfg(unix)]
+    struct EnvironmentGuard {
+        key: String,
+        previous: Option<OsString>,
+    }
+
+    #[cfg(unix)]
+    impl EnvironmentGuard {
+        fn set(key: &str, value: &std::ffi::OsStr) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self {
+                key: key.to_owned(),
+                previous,
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for EnvironmentGuard {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var(&self.key, value),
+                None => std::env::remove_var(&self.key),
+            }
+        }
+    }
+
+    /// Prepend a directory to `PATH` and restore the previous value on drop.
+    #[cfg(unix)]
+    struct PathGuard {
+        previous: Option<OsString>,
+    }
+
+    #[cfg(unix)]
+    impl PathGuard {
+        fn prepend(directory: &Path) -> Self {
+            let previous = std::env::var_os("PATH");
+            let mut entries = vec![directory.to_path_buf()];
+            if let Some(existing) = &previous {
+                entries.extend(std::env::split_paths(existing));
+            }
+            let path = std::env::join_paths(entries)
+                .expect("fake executable directory should be a valid PATH entry");
+            std::env::set_var("PATH", path);
+            Self { previous }
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for PathGuard {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var("PATH", value),
+                None => std::env::remove_var("PATH"),
+            }
+        }
+    }
+
     #[test]
     fn test_command_response_ok() {
         let response = CommandResponse::ok("Success".to_string());
@@ -317,5 +468,49 @@ mod tests {
         let response = search_files("component", "dist/**");
         // Verify response structure
         assert!(response.success || response.error.is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_analyse_workspace_dispatches_analyse_to_cli() {
+        let fake = FakeProgram::new("success");
+        fake.write(0, "workspace analysed", "");
+        let _path = PathGuard::prepend(fake.directory());
+        let _record = fake.record_environment();
+
+        let response = analyse_workspace();
+
+        assert!(response.success, "expected success, got: {response:?}");
+        assert!(
+            response.output.contains("workspace analysed"),
+            "unexpected output: {:?}",
+            response.output
+        );
+        assert_eq!(
+            fake.recorded_argv().first().map(String::as_str),
+            Some("analyse")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_analyse_workspace_reports_command_failure() {
+        let fake = FakeProgram::new("failure");
+        fake.write(2, "", "boom");
+        let _path = PathGuard::prepend(fake.directory());
+        let _record = fake.record_environment();
+
+        let response = analyse_workspace();
+
+        assert!(!response.success);
+        let error = response
+            .error
+            .as_deref()
+            .expect("failed analysis should report an error");
+        assert!(
+            error.contains("Workspace analysis failed:"),
+            "unexpected error: {error}"
+        );
+        assert!(error.contains("boom"), "unexpected error: {error}");
     }
 }
