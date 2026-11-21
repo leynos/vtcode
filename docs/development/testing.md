@@ -420,11 +420,11 @@ async fn test_exec_command_lists_files() {
 ### Tree-sitter Testing
 
 Tree-sitter runtime coverage lives with
-`crates/codegen/vtcode-core/src/tools/tree_sitter_runtime.rs`; there is no
+`crates/codegen/diapason-core/src/tools/tree_sitter_runtime.rs`; there is no
 `create_test_analyser` helper. Run a focused current test with:
 
 ```bash
-cargo nextest run -p vtcode-core tree_sitter_usage_allowlist_is_frozen
+cargo nextest run -p diapason-core tree_sitter_usage_allowlist_is_frozen
 ```
 
 ### Search Functionality Testing

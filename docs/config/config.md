@@ -1434,9 +1434,11 @@ configuration:
 
 ### Command System Integration
 
-The extension registers its commands with VS Code. It does not currently expose
-a `[commands]` section in the Diapason configuration schema; use the VS Code
-Command Palette to invoke these commands.
+The VS Code extension registers its commands with VS Code and does not read a
+`[commands]` settings block from the extension configuration, so those commands
+are invoked from the Command Palette. The Diapason configuration schema still
+has a separate `[commands]` section, which configures shell-command permissions
+(`allow_list`, `deny_list`), not extension commands.
 
 ### Workspace Trust
 

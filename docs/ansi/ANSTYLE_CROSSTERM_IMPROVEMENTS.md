@@ -12,7 +12,9 @@ This document outlines improvements made to Diapason's use of
 
 ### 1. Current Style Helpers (`crates/codegen/diapason-ui/src/design/style.rs`)
 
-The internal helper module provides focused conversion and style builders:
+The internal helper module provides focused conversion and style builders.
+`fg_bg_style` and `bg_style` are module-private builders and `with_effects` is
+crate-visible; the snippets below are written from inside `diapason-ui`.
 
 #### `fg_bg_style(fg, bg)`
 
@@ -20,7 +22,7 @@ Combines foreground and background colours in a single style.
 
 ```rust
 use anstyle::{Color, AnsiColor};
-use diapason_core::utils::ratatui_styles::fg_bg_colors;
+// The `fg_bg_style` builder is module-private in `design/style.rs`.
 
 let style = fg_bg_style(
     Color::Ansi(AnsiColor::Black),
@@ -34,8 +36,8 @@ Creates a background style. Apply effects with `Style::add_modifier` when
 needed.
 
 ```rust
-use anstyle::{Color, AnsiColor, Effects};
-use diapason_core::utils::ratatui_styles::bg_colored_with_effects;
+use anstyle::{Color, AnsiColor};
+// The `bg_style` builder is module-private in `design/style.rs`.
 
 let style = bg_style(Color::Ansi(AnsiColor::Blue));
 ```
@@ -46,7 +48,7 @@ Creates a style with ratatui modifiers derived from `anstyle::Effects`.
 
 ```rust
 use anstyle::{Color, AnsiColor, Effects};
-use diapason_core::utils::ratatui_styles::full_style;
+use crate::design::style::with_effects;
 
 let style = with_effects(Effects::BOLD | Effects::ITALIC);
 ```

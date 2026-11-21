@@ -48,7 +48,7 @@ minimum_contrast = 4.5  # WCAG AA (default)
 ### Safe ANSI Colour Palette
 
 Based on
-[terminal colour portability research](https://blog.xoria.org/terminal-colours/),
+[terminal colour portability research](https://blog.xoria.org/terminal-colors/),
 only **11 of 32** ANSI colours are safe across common terminal themes (Basic,
 Tango, Solarized).
 
@@ -189,5 +189,5 @@ use diapason_core::utils::ansi_capabilities::{
 
 - [NO_COLOR Standard](https://no-color.org/)
 - [Ghostty minimum-contrast](https://ghostty.org/docs/config/reference#minimum-contrast)
-- [Terminal Colours Research](https://blog.xoria.org/terminal-colours/)
+- [Terminal Colours Research](https://blog.xoria.org/terminal-colors/)
 - [WCAG 2.1 Contrast Requirements](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html)
