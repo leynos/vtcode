@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use diapason_config::core::{AnthropicConfig, CustomProviderApiFormat, CustomProviderConfig};
-use diapason_llm::provider::{LLMProvider, LLMRequest, LLMStreamEvent, Message};
+use diapason_llm::provider::{LLMProvider, LLMRequest, LLMStreamEvent, Message, Usage};
 use diapason_llm::providers::CustomProviderBackendRouter;
 use futures::StreamExt;
 
@@ -81,6 +81,7 @@ struct StreamObservation {
     output_times: Vec<Duration>,
     content: String,
     completed: bool,
+    usage: Option<Usage>,
     error: Option<String>,
 }
 
@@ -107,6 +108,7 @@ fn provider(base_url: &str) -> CustomProviderBackendRouter {
         display_name: "VidaiMock Arli".to_owned(),
         base_url: base_url.to_owned(),
         api_format: CustomProviderApiFormat::OpenAIChat,
+        supports_stream_usage: Some(true),
         model: MODEL.to_owned(),
         models: vec![MODEL.to_owned()],
         ..Default::default()
@@ -144,6 +146,7 @@ async fn observe_stream(scenario: &str) -> Result<StreamObservation> {
                 output_times: Vec::new(),
                 content: String::new(),
                 completed: false,
+                usage: None,
                 error: Some(error.to_string()),
             });
         }
@@ -153,6 +156,7 @@ async fn observe_stream(scenario: &str) -> Result<StreamObservation> {
         output_times: Vec::new(),
         content: String::new(),
         completed: false,
+        usage: None,
         error: None,
     };
 
@@ -161,7 +165,10 @@ async fn observe_stream(scenario: &str) -> Result<StreamObservation> {
             Ok(LLMStreamEvent::Token { delta }) | Ok(LLMStreamEvent::Reasoning { delta }) => {
                 record_stream_output(&mut observation, started_at, &delta);
             }
-            Ok(LLMStreamEvent::Completed { .. }) => observation.completed = true,
+            Ok(LLMStreamEvent::Completed { response }) => {
+                observation.completed = true;
+                observation.usage = response.usage;
+            }
             Ok(_) => {}
             Err(error) => {
                 observation.error = Some(error.to_string());
@@ -180,6 +187,17 @@ async fn vidaimock_baseline_stream_completes_through_the_adapter() -> Result<()>
     assert!(observation.error.is_none(), "unexpected stream failure: {observation:?}");
     assert!(observation.completed, "stream should complete: {observation:?}");
     assert_eq!(observation.content, "one two three four ");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires the pinned VidaiMock executable and real wall-clock streaming physics"]
+async fn vidaimock_baseten_terminal_usage_reaches_the_adapter() -> Result<()> {
+    let observation = observe_stream("success.toml").await?;
+
+    assert!(observation.error.is_none(), "unexpected stream failure: {observation:?}");
+    let usage = observation.usage.context("terminal usage should be retained")?;
+    assert_eq!((usage.prompt_tokens, usage.completion_tokens, usage.total_tokens), (13, 5, 18));
     Ok(())
 }
 
@@ -235,4 +253,37 @@ async fn vidaimock_provider_drop_surfaces_before_completion() -> Result<()> {
     assert!(!observation.completed, "dropped request must not complete: {observation:?}");
     assert!(observation.error.is_some(), "provider drop should surface as an error: {observation:?}");
     Ok(())
+}
+
+/// VidaiMock prefixes only the first line of a rendered `on_stop` payload with
+/// `data:`, so every later event has to carry its own prefix or the SSE
+/// extractor drops it.
+///
+/// The adapter's finish reason defaults to `Stop`, so an assertion on the
+/// streamed response cannot tell a delivered finish chunk from a dropped one.
+/// This checks the template itself: the finish chunk leads, the usage chunk is
+/// framed explicitly, blank lines separate each SSE event, and `[DONE]` still
+/// terminates the payload.
+#[test]
+fn arli_stop_template_frames_every_event_after_the_first() {
+    let template =
+        std::fs::read_to_string(fixture_root().join("templates").join("arli").join("physics_stream_stop.j2"))
+            .expect("read the Arli stop template");
+    let lines: Vec<&str> = template.lines().collect();
+
+    assert_eq!(lines.len(), 5, "the payload is three events separated by blank lines: {lines:?}");
+
+    let finish = lines[0];
+    assert!(
+        finish.starts_with('{') && finish.contains(r#""finish_reason":"stop""#),
+        "the first line is the unprefixed finish chunk VidaiMock delivers: {finish}"
+    );
+    assert_eq!(lines[1], "", "the finish chunk must be followed by a blank SSE event separator");
+
+    let usage = lines[2];
+    assert!(usage.starts_with("data: {"), "the usage event carries its own data: prefix: {usage}");
+    assert!(usage.contains(r#""usage""#), "the framed event is the usage chunk: {usage}");
+    assert_eq!(lines[3], "", "the usage event must be followed by a blank SSE event separator");
+
+    assert_eq!(lines[4], "data: [DONE]", "the payload still terminates with [DONE]");
 }

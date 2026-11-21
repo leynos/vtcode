@@ -332,7 +332,7 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
     // distinct from the agent manufacturing a replacement runtime for the same
     // workspace.
     let lease = agent
-        .workspace_runtime_for(&approved_workspace)
+        .workspace_runtime_for(&approved_workspace, false)
         .await
         .expect("the agent must create a workspace runtime");
     let runtime = Arc::clone(lease.runtime());
@@ -355,7 +355,7 @@ async fn workspace_lease_accounting_matches_the_reference_model() {
     );
 
     let replacement = agent
-        .workspace_runtime_for(&approved_workspace)
+        .workspace_runtime_for(&approved_workspace, false)
         .await
         .expect("the agent must replace a terminal runtime");
     assert!(
@@ -621,7 +621,7 @@ async fn workspace_runtime_reservation_survives_close_before_session_registratio
     let first_session = agent.session_handle(&first.session_id).unwrap().unwrap();
     let runtime = first_session.workspace_runtime().unwrap().unwrap();
     let selected_workspace = AcpSessionWorkspace::from_client_cwd(session_workspace.path()).await.unwrap();
-    let reservation = agent.workspace_runtime_for(&selected_workspace).await.unwrap();
+    let reservation = agent.workspace_runtime_for(&selected_workspace, false).await.unwrap();
     assert!(Arc::ptr_eq(&runtime, reservation.runtime()));
 
     let _close_response = agent.close_session(&first.session_id).await.unwrap();
@@ -744,4 +744,59 @@ async fn resume_archive_is_disabled_when_history_persistence_is_disabled() {
         .await;
 
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn new_session_does_not_restore_a_background_record_owned_by_another_session() {
+    let temp = TempDir::new().unwrap();
+    let state_dir = temp.path().join(".diapason/state");
+    fs::create_dir_all(&state_dir).unwrap();
+    fs::write(
+        state_dir.join("background_subagents.json"),
+        serde_json::json!({
+            "records": [{
+                "id": "foreign-worker",
+                "agent_name": "worker",
+                "display_label": "worker",
+                "description": "worker",
+                "source": "builtin",
+                "color": null,
+                "owner_session_id": "prior-session",
+                "session_id": "child-session",
+                "exec_session_id": "exec-session",
+                "desired_enabled": true,
+                "status": "stopped",
+                "created_at": "2026-08-28T00:00:00Z",
+                "updated_at": "2026-08-28T00:00:00Z",
+                "started_at": null,
+                "ended_at": null,
+                "pid": null,
+                "prompt": "work",
+                "summary": null,
+                "error": null,
+                "archive_path": null,
+                "transcript_path": null,
+                "max_turns": null,
+                "model_override": null,
+                "reasoning_override": null,
+                "restart_attempts": 0
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let mut vt_config = diapason_core::config::DiapasonConfig::default();
+    vt_config.subagents.enabled = true;
+    vt_config.subagents.background.enabled = true;
+    vt_config.subagents.background.auto_restore = true;
+    let agent = build_agent_with_vt_config(temp.path(), "duck", Some(&vt_config)).await;
+    let response = agent.new_session(acp::NewSessionRequest::new(temp.path())).await.unwrap();
+    let session = agent.session_handle(&response.session_id).unwrap().unwrap();
+    let controller = agent
+        .session_subagent_controller(&session)
+        .unwrap()
+        .expect("per-session subagent controller");
+
+    assert!(controller.background_status_entries().await.is_empty());
 }

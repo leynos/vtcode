@@ -150,9 +150,40 @@ When the ACP connection shuts down, Diapason cancels and drains its registered
 sessions and runs their cleanup within the bounded shutdown wait. If that wait
 expires, cleanup continues in the background. Notification hooks are not
 invented for ACP protocol messages; they run only for real Diapason
-notification events. The current ACP subagent controller does not expose child
-lifecycle callbacks, so ACP does not currently emit `SubagentStart` or
-`SubagentStop`.
+notification events.
+
+### ACP capability negotiation and Lody extensions
+
+During `initialize`, Diapason always advertises the Lody usage capability at
+version 1 (`result.agentCapabilities._meta.lody.usage`). If the launch
+workspace has a subagent controller, it also advertises version-1 subagent
+lifecycle and management capabilities under
+`result.agentCapabilities._meta.lody.subagents`: `lifecycle`, `list`, `cancel`,
+and `output`. `result.agentCapabilities._meta.lody.tasks.background` is
+advertised only when background subagents are enabled. These capabilities
+reflect the launch workspace configuration, not the workspace selected by an
+individual session. Diapason builds a session-scoped controller for the
+selected session workspace, and if that setup fails, Lody management requests
+for the session return `subagent_management_unavailable` even though the
+handshake advertised the capability. Clients should inspect the handshake
+before using any conditional extension and handle that error response.
+
+Subagent and background-process lifecycle is represented with standard ACP
+`session/update` tool calls and tool-call updates. Their standard title, kind,
+content, and status fields are accompanied by `_meta.lody.task`, which carries
+the Diapason/Lody task snapshot and its additional identifiers, actor, timing,
+summary, or error fields. Diapason does not require non-standard
+`SubagentStart` or `SubagentStop` update types.
+
+When subagent management is advertised, the following Lody requests are
+available: `_lody/subagents/list`, `_lody/subagents/cancel`, and
+`_lody/subagents/output`. They list owned tasks, request cancellation, and
+return a bounded output tail respectively.
+
+Provider usage is sent as the `_lody/session/usage_update` extension
+notification. Its parameters contain `sessionId`, a per-response `usage` delta
+(input, output, and cache token counts), and `modelUsage` keyed by model name.
+No usage notification is sent when the provider response contains no usage data.
 
 MCP connections are scoped to the session that declares them. A subagent does
 not implicitly inherit its parent's MCP connections; declare the required MCP
@@ -466,39 +497,48 @@ and `[history]` settings do not control ACP audit output.
   permissions still apply; delegation does not bypass its allowed or disallowed
   tools.
 - **Task lifecycle notifications** – When the session has an ACP sub-agent
-  controller, Diapason forwards sub-agent and background-process status changes
-  through the `_diapason/taskLifecycle` extension notification. Clients that do
-  not use this extension can ignore it. Its parameters contain the parent
-  session ID in both `sessionId` and `acpSessionId`, plus a `message` with a
-  `task_id`, `task_type` (`subagent` or `background_process`), `subagent_type`,
-  and the source status snapshot in `details`. Queued or starting tasks use
-  `task_started` with `status: "pending"`; running and waiting tasks use
-  `task_progress` with `status: "in_progress"`. Terminal changes use
-  `task_updated` with `patch.status` set to `completed`, `failed`, or `killed`
-  and the updated snapshot in `patch.details`. For example:
-
-  ```json
-  {
-    "sessionId": "parent-session-id",
-    "acpSessionId": "parent-session-id",
-    "message": {
-      "type": "task_progress",
-      "task_id": "child-task-id",
-      "task_type": "subagent",
-      "subagent_type": "worker",
-      "status": "in_progress",
-      "details": { "status": "running" }
-    }
-  }
-  ```
-
+  controller, sub-agent and background-process status changes are forwarded as
+  standard ACP `session/update` tool calls and tool-call updates carrying
+  `_meta.lody.task`, as described under
+  [ACP capability negotiation and Lody extensions](#acp-capability-negotiation-and-lody-extensions).
+  Diapason does not require a non-standard notification type for lifecycle.
   Forwarding is best-effort: queued updates may be dropped if the bounded
   notification queue is full or the connection closes.
+- **Background sub-agent ownership on resume** – A background sub-agent record
+  written before session ownership was tracked names the ACP session that
+  launched it in `parent_session_id` but carries no owner. `session/load` and
+  `session/resume` migrate such a row to the resuming session before that
+  session's subagent controller loads the ledger, so the session adopts the
+  existing launch instead of the workspace controller restoring it as its own
+  work. The migration rewrites only `owner_session_id`, and only where
+  `parent_session_id` is exactly the resuming session; it keeps the record id,
+  the launch's exec session and every other field, holds the ledger's
+  inter-process lock, and is idempotent, so a second resume changes nothing. A
+  missing ledger migrates nothing.
+
+  If the migration fails, the resume continues but the row stays ownerless. The
+  session controller adopts nothing, and that attach defers the workspace
+  restore so nothing relaunches the row under the wrong scope; a later resume
+  retries the migration. The launch workspace runtime is created before any
+  session resumes, so its controller may still hold an ownerless copy of a row
+  the migration has since given to a session. A resume therefore also
+  reconciles that controller: it adopts the migrated rows and persists the
+  adoption before either scope restores work. The ledger merge is the backstop
+  — it refuses to write an ownerless copy over a copy of the same launch that
+  records an owner, so a stale copy cannot bring back a launch a session has
+  stopped.
 - **Provider request capacity** – For a custom provider with
-  `max_in_flight_requests` configured, one request slot is reserved for the
-  parent ACP request and child concurrency is capped at the remaining slots. A
-  limit of `1` therefore disables ACP sub-agents so the parent retains its
-  slot. See
+  `max_in_flight_requests` configured, each ACP session's subagent controller
+  caps its own child concurrency at one fewer than the provider limit, computed
+  when that controller is created. The cap is per controller, while the permit
+  gate is shared by every request routed through that provider in the process,
+  so concurrent ACP sessions, or other in-process work using the same provider,
+  draw from the same permits. Two sessions whose controllers each leave one
+  slot free can together occupy every permit, and a request may then wait for
+  another to return. The cap limits how much one controller adds; it sets no
+  permit aside for its session, and no request is guaranteed admission. A limit
+  of `1` (or `0`) leaves no room for children, so ACP sub-agents are disabled
+  for that provider. See
   [custom provider request policy](../development/CUSTOM_PROVIDER_REQUEST_POLICY.md)
   for the related timeout, retry, and admission settings.
 - **Provider diagnostics** – Debug logs record queue depth, active and

@@ -15,6 +15,16 @@ use std::path::{Path, PathBuf};
 use super::super::constants::*;
 use super::super::types::{RunTerminalMode, SessionHandle, ToolRuntime};
 
+/// Reports whether one local tool may be offered to the model.
+///
+/// Subagent tools are advertised only when the session owns a controller. The
+/// workspace catalogue can hold them because the launch workspace has its own
+/// controller, which is exactly the fallback a session without one must not
+/// inherit.
+pub(super) fn subagent_tool_is_advertised(controller_attached: bool, tool_name: &str) -> bool {
+    controller_attached || !diapason_core::subagents::is_subagent_tool(tool_name)
+}
+
 fn is_acp_session_tool(tool_name: &str) -> bool {
     // Task tracking belongs to the ACP session rather than to a selected
     // primary agent's filesystem/tool policy. Runtime permission and safety
@@ -102,14 +112,20 @@ impl ZedAgent {
         if enabled_tools.is_empty() && !include_local {
             return Ok(None);
         }
+        // A subagent tool is offered from the session's own controller, never
+        // from the cached workspace catalogue: the executor admits those calls
+        // against the same controller, so advertising one the session cannot
+        // own would hand the model a call that is settled as a failure.
+        let subagent_tools_advertised = self.session_subagent_controller(session)?.is_some();
         Ok(Some(runtime.acp_tool_registry.definitions_for_filtered(
             enabled_tools,
             include_local,
             |tool_name| {
-                is_acp_session_tool(tool_name)
-                    || runtime
-                        .primary_agents
-                        .allows_tool(primary_agent, tool_name, &runtime.workspace_root)
+                subagent_tool_is_advertised(subagent_tools_advertised, tool_name)
+                    && (is_acp_session_tool(tool_name)
+                        || runtime
+                            .primary_agents
+                            .allows_tool(primary_agent, tool_name, &runtime.workspace_root))
             },
         )))
     }

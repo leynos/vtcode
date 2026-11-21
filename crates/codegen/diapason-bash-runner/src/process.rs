@@ -192,21 +192,67 @@ impl ProcessHandle {
 
     /// Attempts to kill the child and abort helper tasks.
     ///
+    /// Best-effort wrapper around [`Self::try_terminate`]. A termination fault
+    /// is reported to standard error using this module's `[diapason]` logging
+    /// convention and then swallowed, because `terminate()` is infallible for
+    /// its existing callers. The crate has no logging dependency, so the
+    /// swallow is deliberate and documented here rather than delegated to a
+    /// logger.
+    ///
     /// This is idempotent and safe to call multiple times.
     pub fn terminate(&self) {
-        self.terminate_internal();
+        if let Err(error) = self.try_terminate() {
+            eprintln!(
+                "[diapason] failed to terminate process (exited={}, exit_code={:?}): {error}",
+                self.has_exited(),
+                self.exit_code()
+            );
+        }
     }
 
-    /// Internal termination that aborts all tasks.
-    fn terminate_internal(&self) {
-        // Kill the child process
-        if let Ok(mut killer_opt) = self.killer.lock()
-            && let Some(mut killer) = killer_opt.take()
-        {
-            let _ = killer.kill();
-        }
-
+    /// Terminates the child process and aborts helper tasks, reporting a kill
+    /// fault.
+    ///
+    /// The killer is taken out of its lock so that termination cannot race a
+    /// second call. If the child was already terminated, or a previous call
+    /// already consumed the killer, this returns `Ok(())` exactly as the
+    /// best-effort path did. A kill that reports the child is already gone is
+    /// also success: the terminal state is what the caller asked for.
+    ///
+    /// A failed [`ChildTerminator::kill`] restores the killer and returns the
+    /// error, so a caller that keeps a handle (for example a session record)
+    /// can retry instead of stranding a process it can no longer signal. Helper
+    /// tasks are aborted on both the success and the error path; a retry still
+    /// reaches the child because signaling does not depend on those tasks.
+    ///
+    /// This is idempotent: once the child has been terminated, later calls
+    /// observe an absent killer and succeed without signaling again.
+    pub fn try_terminate(&self) -> io::Result<()> {
+        let result = self.kill_child();
         self.abort_tasks();
+        result
+    }
+
+    /// Signals the child, restoring the killer if signaling fails.
+    fn kill_child(&self) -> io::Result<()> {
+        let mut killer_opt = self.killer.lock().unwrap_or_else(|error| error.into_inner());
+        let Some(mut killer) = killer_opt.take() else {
+            return Ok(());
+        };
+
+        match killer.kill() {
+            Ok(()) => Ok(()),
+            Err(error) if is_already_gone(&error) => Ok(()),
+            Err(error) => {
+                // Restore the killer so a later retry can still reach the
+                // child. A failed signal must not leave an unrecorded process
+                // alive with no handle left to terminate it.
+                if killer_opt.is_none() {
+                    *killer_opt = Some(killer);
+                }
+                Err(error)
+            }
+        }
     }
 
     /// Abort all background tasks associated with this process.
@@ -258,6 +304,20 @@ impl ProcessHandle {
     pub fn is_writer_closed(&self) -> bool {
         self.writer_tx.is_closed()
     }
+}
+
+/// Reports whether a kill failed because the child is already gone.
+///
+/// `killpg` reports `ESRCH` when the target group no longer exists. Current
+/// toolchains classify that number as `ErrorKind::Uncategorized` rather than
+/// `NotFound`, so the raw OS error is matched explicitly on Unix. A missing
+/// child is the terminal state termination asks for, not a fault.
+fn is_already_gone(error: &io::Error) -> bool {
+    #[cfg(unix)]
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        return true;
+    }
+    error.kind() == io::ErrorKind::NotFound
 }
 
 impl Drop for ProcessHandle {
@@ -432,11 +492,121 @@ pub type SpawnedPty = SpawnedProcess;
 mod tests {
     use super::*;
 
+    use std::sync::atomic::AtomicUsize;
+
     struct NoopTerminator;
     impl ChildTerminator for NoopTerminator {
         fn kill(&mut self) -> io::Result<()> {
             Ok(())
         }
+    }
+
+    /// Fails the first `failures_remaining` kill attempts.
+    struct FailingTerminator {
+        failures_remaining: usize,
+        attempts: Arc<AtomicUsize>,
+    }
+
+    impl ChildTerminator for FailingTerminator {
+        fn kill(&mut self) -> io::Result<()> {
+            self.attempts.fetch_add(1, Ordering::SeqCst);
+            if self.failures_remaining > 0 {
+                self.failures_remaining -= 1;
+                return Err(io::Error::other("simulated kill failure"));
+            }
+            Ok(())
+        }
+    }
+
+    /// Reports the child as already gone, as `killpg` does for a reaped group.
+    struct GoneTerminator;
+
+    impl ChildTerminator for GoneTerminator {
+        fn kill(&mut self) -> io::Result<()> {
+            #[cfg(unix)]
+            {
+                Err(io::Error::from_raw_os_error(libc::ESRCH))
+            }
+            #[cfg(not(unix))]
+            {
+                Err(io::Error::from(io::ErrorKind::NotFound))
+            }
+        }
+    }
+
+    fn test_handle(killer: Box<dyn ChildTerminator>) -> ProcessHandle {
+        let (writer_tx, _writer_rx) = mpsc::channel(1);
+        let (output_tx, initial_rx) = broadcast::channel(1);
+        ProcessHandle::new(
+            writer_tx,
+            output_tx,
+            initial_rx,
+            killer,
+            tokio::spawn(async {}),
+            vec![tokio::spawn(async {}).abort_handle()],
+            tokio::spawn(async {}),
+            tokio::spawn(async {}),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(StdMutex::new(None)),
+            None,
+        )
+        .0
+    }
+
+    fn assert_helper_tasks_aborted(handle: &ProcessHandle) {
+        assert!(handle.reader_handle.lock().unwrap().is_none(), "reader handle must be aborted");
+        assert!(handle.reader_abort_handles.lock().unwrap().is_empty(), "reader abort handles must be drained");
+        assert!(handle.writer_handle.lock().unwrap().is_none(), "writer handle must be aborted");
+        assert!(handle.wait_handle.lock().unwrap().is_none(), "wait handle must be aborted");
+    }
+
+    #[tokio::test]
+    async fn try_terminate_reports_a_kill_fault_and_keeps_the_killer_for_retry() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let handle = test_handle(Box::new(FailingTerminator {
+            failures_remaining: 1,
+            attempts: Arc::clone(&attempts),
+        }));
+
+        let error = handle.try_terminate().expect_err("a kill fault must propagate");
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(attempts.load(Ordering::SeqCst), 1, "the first attempt must reach the killer");
+        assert_helper_tasks_aborted(&handle);
+
+        // The failed kill restored the killer, so the retry reaches the child
+        // instead of reporting a process it can no longer signal as gone.
+        handle.try_terminate().expect("the retry after the fault must signal the child");
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+        handle.try_terminate().expect("termination must stay idempotent");
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn terminate_swallows_a_kill_fault_and_stays_infallible() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let handle = test_handle(Box::new(FailingTerminator {
+            failures_remaining: 2,
+            attempts: Arc::clone(&attempts),
+        }));
+
+        handle.terminate();
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        assert_helper_tasks_aborted(&handle);
+
+        // A retry remains available and stays infallible.
+        handle.terminate();
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn try_terminate_treats_an_already_gone_child_as_success() {
+        let handle = test_handle(Box::new(GoneTerminator));
+
+        handle
+            .try_terminate()
+            .expect("a child that is already gone must count as terminated");
+        assert_helper_tasks_aborted(&handle);
     }
 
     #[tokio::test]

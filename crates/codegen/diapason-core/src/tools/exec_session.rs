@@ -37,6 +37,26 @@ impl ExecSessionNotFound {
     }
 }
 
+/// Reports whether a read of an exec session failed because the session is
+/// genuinely gone.
+///
+/// Only a typed not-found cause counts, from either storage layer. A close
+/// terminates and releases the backend record before it removes the dispatch
+/// record, so a read that races the close can find the dispatch record and
+/// miss the backend handle; that is the same expected end as a read that misses
+/// the record, and treating it as a fault would report a fault for a session
+/// that has simply exited. Any other failure — a backend inconsistency or an
+/// I/O fault — told the caller nothing about the process, so it must stay
+/// distinguishable from an exit.
+///
+/// This lives next to the typed cause so the liveness projection and the
+/// background-output adapter cannot drift apart on what counts as an exit.
+pub(crate) fn is_missing_exec_session(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.is::<ExecSessionNotFound>() || cause.is::<crate::tools::pty::PtySessionNotFound>())
+}
+
 /// A `write_stdin` continuation lost its session after the input bytes were
 /// already handed to the session, so the effect of that input is uncertain.
 #[derive(Debug, thiserror::Error)]
@@ -251,6 +271,14 @@ impl PipeSessionRecord {
 struct PipeSessionManager {
     workspace_root: PathBuf,
     sessions: Arc<RwLock<HashMap<ExecSessionId, Arc<PipeSessionRecord>>>>,
+    /// A scripted fault for the close-path termination.
+    ///
+    /// The record-retention rule for a failed kill is only observable when the
+    /// backend cannot signal the child, which a live manager cannot produce on
+    /// demand. The seam is `#[cfg(test)]`-only, so a production build neither
+    /// compiles the field nor the branch that reads it.
+    #[cfg(test)]
+    termination_failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl PipeSessionManager {
@@ -258,6 +286,8 @@ impl PipeSessionManager {
         Self {
             workspace_root: canonicalize_workspace(&workspace_root),
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(test)]
+            termination_failure: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -481,15 +511,23 @@ impl PipeSessionManager {
 
     /// Removes and terminates a pipe-backed session.
     ///
+    /// Termination runs before the record is removed, so a kill fault leaves
+    /// the session resolvable and retryable instead of dropping the only handle
+    /// to a process that may still be running. Termination is idempotent: a
+    /// retry after an earlier successful kill observes an absent killer and
+    /// succeeds, so a close that fails after the child was signalled cannot
+    /// kill it twice.
+    ///
     /// A missing identifier is reported through [`missing_session`]; callers
     /// surface that as a precise, non-mutating recovery hint.
     async fn close_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
+        let record = self.session_record(session_id).await?;
+        self.terminate_record(session_id, &record)?;
+
         let record = {
             let mut sessions = self.sessions.write().await;
             sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?
         };
-
-        record.handle.terminate();
         if let Some(task) = record.output_task.lock().await.take() {
             task.abort();
         }
@@ -498,6 +536,34 @@ impl PipeSessionManager {
         }
 
         Ok(record.metadata.clone())
+    }
+
+    /// Signals the session's child, reporting a kill fault.
+    fn terminate_record(&self, session_id: &str, record: &PipeSessionRecord) -> Result<()> {
+        #[cfg(test)]
+        if let Some(message) = self
+            .termination_failure
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+        {
+            return Err(anyhow!("failed to terminate exec session '{session_id}': {message}"));
+        }
+
+        record
+            .handle
+            .try_terminate()
+            .with_context(|| format!("failed to terminate exec session '{session_id}'"))
+    }
+
+    /// Arms a one-shot kill fault for the next close-path termination.
+    ///
+    /// Test-only: it proves the close path keeps a session record retryable
+    /// when the backend cannot signal the child. Its only caller spawns a real
+    /// shell, so it is gated with that caller.
+    #[cfg(all(test, unix))]
+    fn fail_next_termination(&self, message: impl Into<String>) {
+        *self.termination_failure.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.into());
     }
 
     async fn activity_receiver(&self, session_id: &str) -> Result<watch::Receiver<u64>> {
@@ -571,6 +637,14 @@ pub struct ExecSessionManager {
     pipe_sessions: PipeSessionManager,
     pty_sessions: PtySessionManager,
     sessions: Arc<RwLock<HashMap<ExecSessionId, Arc<ExecSessionRecord>>>>,
+    /// A scripted fault for the liveness read path.
+    ///
+    /// The background liveness projection must distinguish a genuinely absent
+    /// session from any other read fault, and a live manager has no natural way
+    /// to fail on demand. The seam exists only for this crate's tests and for
+    /// the `test-support` feature, so production reads are unchanged.
+    #[cfg(any(test, feature = "test-support"))]
+    snapshot_failure: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl ExecSessionManager {
@@ -580,7 +654,21 @@ impl ExecSessionManager {
             pipe_sessions: PipeSessionManager::new(workspace_root),
             pty_sessions,
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(any(test, feature = "test-support"))]
+            snapshot_failure: Arc::new(std::sync::Mutex::new(None)),
         }
+    }
+
+    /// Makes every subsequent snapshot read fail with `message`.
+    ///
+    /// Test-only: it lets a regression exercise the liveness projection's
+    /// "read failed for another reason" branch without a real storage fault.
+    /// A dependent crate's tests reach it through the `test-support` feature;
+    /// a production build compiles neither this method nor the branch it arms.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn fail_snapshot_reads(&self, message: impl Into<String>) {
+        *self.snapshot_failure.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.into());
     }
 
     pub(crate) async fn create_pipe_session(
@@ -654,6 +742,15 @@ impl ExecSessionManager {
     }
 
     pub(crate) async fn snapshot_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(message) = self
+            .snapshot_failure
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+        {
+            return Err(anyhow!("{message}"));
+        }
         let record = self.session_record(session_id).await?;
         match record.backend {
             ExecSessionBackend::Pipe => self.pipe_sessions.session_record(session_id).await.map(|r| {
@@ -763,22 +860,54 @@ impl ExecSessionManager {
 
     /// Removes and terminates a session, whatever its backend.
     ///
+    /// The dispatch record is released only after the backend has terminated,
+    /// so a kill fault leaves the session resolvable and retryable rather than
+    /// dropping the dispatch entry for a process that may still be running.
+    /// Termination is idempotent, so a retry after an earlier successful kill
+    /// cannot kill the child twice.
+    ///
+    /// A backend that no longer holds a handle is equally complete. A close
+    /// that is cancelled between closing the backend and removing the dispatch
+    /// record leaves the record behind, and failing the retry on the backend's
+    /// typed not-found would strand it — and the PTY guard it owns — forever.
+    /// The typed missing cause is therefore the one fault that proceeds to the
+    /// removal; every other fault keeps the record so the close stays
+    /// retryable.
+    ///
+    /// The removal is identity-checked against the record read here, so a
+    /// session that was closed and re-created under the same id in the
+    /// meantime is never taken by a stale close.
+    ///
     /// A missing identifier is reported through [`missing_session`] rather
     /// than being treated as a successful no-op.
     pub(crate) async fn close_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
-        let record = {
-            let mut sessions = self.sessions.write().await;
-            sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?
-        };
+        let record = self.session_record(session_id).await?;
 
-        let metadata = match record.backend {
-            ExecSessionBackend::Pipe => self.pipe_sessions.close_session(session_id).await?,
+        let closed_metadata = match record.backend {
+            ExecSessionBackend::Pipe => self.pipe_sessions.close_session(session_id).await,
             ExecSessionBackend::Pty => self
                 .pty_sessions
                 .manager()
                 .close_session(session_id)
-                .map(DiapasonExecSession::from)?,
+                .map(DiapasonExecSession::from),
         };
+        let metadata = match closed_metadata {
+            Ok(metadata) => metadata,
+            // The backend handle is already gone: that is where an interrupted
+            // close stops, so finish the removal the retry is here for.
+            Err(error) if is_missing_exec_session(&error) => record.metadata.clone(),
+            Err(error) => return Err(error),
+        };
+
+        {
+            let mut sessions = self.sessions.write().await;
+            // Only the record read above may be released: a session that was
+            // closed and re-created under the same id keeps its own guard.
+            if !sessions.get(session_id).is_some_and(|current| Arc::ptr_eq(current, &record)) {
+                return Err(missing_session(session_id));
+            }
+            sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?;
+        }
 
         Ok(metadata)
     }
@@ -857,7 +986,7 @@ mod tests {
         ExecSessionLostAfterInput, ExecSessionManager, ExecSessionNotFound, ExecSessionWriterClosed, write_failure,
     };
     use crate::config::PtyConfig;
-    use crate::tools::pty::PtySize;
+    use crate::tools::pty::{PtySessionNotFound, PtySize};
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
 
@@ -1013,6 +1142,114 @@ mod tests {
             )
             .await?;
         manager.close_session("run-3").await?;
+
+        Ok(())
+    }
+
+    /// A close interrupted after the backend released its handle still
+    /// finishes, releasing the PTY guard the dispatch record owns.
+    ///
+    /// The close terminates the backend first and removes the dispatch record
+    /// second. A cancellation in that window leaves the record behind, and a
+    /// retry that stopped at the backend's typed not-found would report a fault
+    /// for a session that is already closed and hold the PTY slot forever.
+    #[tokio::test]
+    #[cfg(all(unix, feature = "tui"))]
+    async fn close_session_finishes_after_the_backend_released_its_handle() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        let size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        manager
+            .create_pty_session(
+                "close-interrupted".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                size,
+                HashMap::new(),
+                None,
+            )
+            .await?;
+        assert_eq!(pty_sessions.active_sessions(), 1, "the open session holds one PTY guard");
+
+        // Release only the backend handle, exactly the window `close_session`
+        // opens between closing the backend and removing the dispatch record.
+        pty_sessions.manager().close_session("close-interrupted")?;
+        assert_eq!(
+            pty_sessions.active_sessions(),
+            1,
+            "the interrupted close leaves the dispatch record, and its guard, behind"
+        );
+
+        let metadata = manager.close_session("close-interrupted").await?;
+        assert_eq!(metadata.id.as_str(), "close-interrupted");
+        assert_eq!(metadata.backend, "pty", "the recovered close must keep the session's backend");
+        assert_eq!(
+            pty_sessions.active_sessions(),
+            0,
+            "the retried close must release the PTY guard the dispatch record owned"
+        );
+        assert!(manager.list_sessions().await.is_empty(), "the retried close must remove the record");
+        Ok(())
+    }
+
+    /// Classifies a backend that dropped its handle after the record was read.
+    ///
+    /// Closing a session terminates and releases the backend handle first and
+    /// removes the dispatch record second, so a concurrent read can find the
+    /// record and still miss the handle. That race must surface as the typed
+    /// missing-session cause, so the background liveness projection treats it
+    /// as an expected exit rather than logging an unobserved fault that quotes
+    /// the session id.
+    #[tokio::test]
+    #[cfg(all(unix, feature = "tui"))]
+    async fn snapshot_after_the_backend_dropped_the_handle_reports_a_missing_session() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        let size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        manager
+            .create_pty_session(
+                "run-race".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                size,
+                HashMap::new(),
+                None,
+            )
+            .await?;
+
+        // Release only the backend handle, exactly the window `close_session`
+        // opens between terminating the process and removing the dispatch
+        // record.
+        pty_sessions.manager().close_session("run-race")?;
+
+        let error = manager
+            .snapshot_session("run-race")
+            .await
+            .expect_err("a record whose backend handle is gone must not read as alive");
+        assert!(
+            error.chain().any(|cause| cause.is::<PtySessionNotFound>()),
+            "the race must retain the typed missing-session cause: {error}"
+        );
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_none(),
+            "the dispatch record still exists, so the failure must not claim the record is missing"
+        );
 
         Ok(())
     }
@@ -1198,5 +1435,92 @@ mod tests {
         let (total_bytes, truncated) = buffer.stats().await;
         assert_eq!(total_bytes, chunk.len() as u64);
         assert!(truncated);
+    }
+
+    /// A normal close terminates the child, removes the record and returns its
+    /// metadata.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn close_session_removes_the_record_and_returns_metadata() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions);
+
+        manager
+            .create_pipe_session(
+                "close-normal".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                HashMap::new(),
+            )
+            .await?;
+
+        let metadata = manager.close_session("close-normal").await?;
+        assert_eq!(metadata.id.as_str(), "close-normal");
+        assert_eq!(metadata.backend, "pipe");
+
+        let error = manager
+            .snapshot_session("close-normal")
+            .await
+            .expect_err("a closed session must no longer resolve");
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_some(),
+            "the removed record must report the typed missing-session cause: {error}"
+        );
+        assert!(manager.list_sessions().await.is_empty(), "the closed record must not be listed");
+        Ok(())
+    }
+
+    /// A failed kill must keep the record reachable so a retry can finish the
+    /// close instead of abandoning a live process.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn close_session_keeps_the_record_when_termination_fails() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions);
+
+        manager
+            .create_pipe_session(
+                "close-fault".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                HashMap::new(),
+            )
+            .await?;
+
+        manager.pipe_sessions.fail_next_termination("simulated kill failure");
+
+        let error = manager
+            .close_session("close-fault")
+            .await
+            .expect_err("a kill fault must surface from close_session");
+        assert!(
+            format!("{error:#}").contains("simulated kill failure"),
+            "the injected fault must be reported: {error:#}"
+        );
+
+        // The dispatch and backend records must both survive so a retry can
+        // still reach the process.
+        manager.session_record("close-fault").await?;
+        manager.pipe_sessions.session_record("close-fault").await?;
+        let retained = manager.snapshot_session("close-fault").await?;
+        assert_eq!(retained.id.as_str(), "close-fault");
+
+        // The one-shot fault has cleared, so the retry completes the close.
+        let metadata = manager.close_session("close-fault").await?;
+        assert_eq!(metadata.id.as_str(), "close-fault");
+
+        let error = manager
+            .snapshot_session("close-fault")
+            .await
+            .expect_err("the retried close must remove the record");
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_some(),
+            "the retried close must report the typed missing-session cause: {error}"
+        );
+        Ok(())
     }
 }

@@ -15,7 +15,7 @@ use crate::zed::connection::ConnectionHandle;
 use anyhow::Result;
 use diapason_core::config::constants::tools;
 use diapason_core::llm::provider::MessageRole;
-use diapason_core::tools::registry::{ExecutionPolicySnapshot, ToolExecutionRequest};
+use diapason_core::tools::registry::{ExecutionPolicySnapshot, ToolExecutionRequest, ToolRegistry};
 use diapason_core::utils::ansi_parser::strip_ansi;
 use serde_json::{Value, json};
 use tracing::warn;
@@ -32,6 +32,13 @@ pub(super) struct LocalToolInvocation<'a> {
 
 pub(super) struct SessionLocalToolRequest<'a> {
     pub(super) session: &'a SessionHandle,
+    /// Registry already scoped to this session's own subagent controller.
+    ///
+    /// The caller must pass the registry it resolved for the call rather than
+    /// letting execution re-derive one, or a prompt-driven `agent` call would
+    /// run through the workspace's ownerless controller and escape session
+    /// ownership.
+    pub(super) registry: &'a ToolRegistry,
     pub(super) invocation: LocalToolInvocation<'a>,
 }
 
@@ -50,24 +57,16 @@ impl ZedAgent {
     }
 
     pub(super) async fn execute_session_local_tool(&self, request: SessionLocalToolRequest<'_>) -> ToolExecutionReport {
-        self.execute_session_local_invocation(request.session, request.invocation).await
+        self.execute_session_local_invocation(request.session, request.registry, request.invocation)
+            .await
     }
 
     async fn execute_session_local_invocation(
         &self,
         session: &SessionHandle,
+        registry: &ToolRegistry,
         invocation: LocalToolInvocation<'_>,
     ) -> ToolExecutionReport {
-        let runtime = match session.workspace_runtime() {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                let message = super::report_session_runtime_failure(&error);
-                return ToolExecutionReport::failure(invocation.tool_name, &message);
-            }
-        };
-        let registry = runtime
-            .as_ref()
-            .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
         let execution = self.execute_local_tool_with_registry(registry, invocation);
         if !diapason_core::subagents::is_subagent_tool(invocation.tool_name) {
             return execution.await;
@@ -105,7 +104,7 @@ impl ZedAgent {
     /// Admit and execute one public tool call, mapping the outcome into an ACP report.
     async fn execute_local_tool_with_registry(
         &self,
-        registry: &diapason_core::tools::registry::ToolRegistry,
+        registry: &ToolRegistry,
         invocation: LocalToolInvocation<'_>,
     ) -> ToolExecutionReport {
         if RESTRICTED_LOCAL_TOOLS.contains(&invocation.tool_name) {

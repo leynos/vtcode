@@ -72,8 +72,8 @@ async fn verify_session_scoped_visibility(
         } else {
             "child-alpha"
         };
-        assert!(controller.status_for(other_child).await.is_err());
-        assert!(controller.close(other_child).await.is_err());
+        assert!(controller.status_for(TaskOwner::Session(owner), other_child).await.is_err());
+        assert!(controller.close(TaskOwner::Session(owner), other_child).await.is_err());
         assert!(controller.wait(&[other_child.to_string()], Some(0)).await.is_err());
     })
     .await;
@@ -87,6 +87,20 @@ async fn shared_controller_scopes_parent_context_and_child_visibility_per_invoca
         verify_session_scoped_visibility(controller.clone(), rendezvous.clone(), "session-alpha", "child-alpha"),
         verify_session_scoped_visibility(controller.clone(), rendezvous, "session-beta", "child-beta"),
     );
-    assert_eq!(controller.status_for("child-alpha").await.expect("alpha status").status, SubagentStatus::Running);
-    assert_eq!(controller.status_for("child-beta").await.expect("beta status").status, SubagentStatus::Running);
+    assert_eq!(
+        controller
+            .status_for(TaskOwner::Workspace, "child-alpha")
+            .await
+            .expect("alpha status")
+            .status,
+        SubagentStatus::Running
+    );
+    assert_eq!(
+        controller
+            .status_for(TaskOwner::Workspace, "child-beta")
+            .await
+            .expect("beta status")
+            .status,
+        SubagentStatus::Running
+    );
 }

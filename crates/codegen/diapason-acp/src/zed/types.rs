@@ -117,6 +117,14 @@ impl SessionActivity {
         self.closing.store(true, Ordering::SeqCst);
     }
 
+    /// Reports whether the session has begun closing.
+    ///
+    /// Closing is sticky, and it stays observable on the shared activity so a
+    /// clone of the handle can still tell that the session is going away.
+    fn is_closing(&self) -> bool {
+        self.closing.load(Ordering::SeqCst)
+    }
+
     async fn wait_for_prompts(&self) {
         loop {
             let notified = self.prompts_idle.notified();
@@ -138,7 +146,7 @@ impl SessionActivity {
 
 impl SessionPromptGuard {
     pub(crate) fn is_closing(&self) -> bool {
-        self.activity.closing.load(Ordering::SeqCst)
+        self.activity.is_closing()
     }
 }
 
@@ -172,9 +180,25 @@ impl SessionHandle {
     pub(crate) async fn wait_for_prompts(&self) {
         self.activity.wait_for_prompts().await;
     }
+
+    /// Reports whether the session has begun closing.
+    ///
+    /// This flag marks the start of the close sequence, not its completion: the
+    /// session's workspace runtime is still held and is released later by the
+    /// cleanup path (`finish_closed_session` releases the lease after waiting
+    /// for in-flight prompts). The flag is the authority a management request
+    /// uses to tell that it lost the race: `resolve_open_session_controller`
+    /// checks it before and after resolving a controller and reports
+    /// `unknown_session` when it is set. It is not evidence that the runtime
+    /// has already been released, so a caller that has another use for the
+    /// runtime must not read it as one; a management request must.
+    pub(crate) fn is_closing(&self) -> bool {
+        self.activity.is_closing()
+    }
 }
 
 pub(crate) struct SessionData {
+    pub(in crate::zed) subagent_controller: Option<Arc<diapason_core::subagents::SubagentController>>,
     pub(crate) session_id: acp::SessionId,
     pub(crate) thread: ThreadRuntimeHandle,
     pub(crate) archive: Option<diapason_core::utils::session_archive::SessionArchive>,
@@ -193,6 +217,11 @@ pub(crate) struct SessionData {
     pub(crate) session_started: bool,
     pub(crate) session_ended: bool,
     pub(crate) task_lifecycle_forwarder: Option<tokio::task::JoinHandle<()>>,
+    /// The one-shot publisher of the initial task snapshots for this
+    /// forwarder. It writes into the forwarder's queue, so it must be aborted
+    /// with the forwarder; otherwise it outlives the receiver and keeps
+    /// enqueueing into a queue that nothing drains.
+    pub(crate) task_lifecycle_snapshot_publisher: Option<tokio::task::JoinHandle<()>>,
     pub(crate) task_lifecycle_registration: Option<diapason_core::subagents::SubagentProgressObserverRegistration>,
 }
 
@@ -239,6 +268,9 @@ pub(crate) fn lock_poison_error(context: &str, error: impl std::fmt::Display) ->
 
 impl Drop for SessionData {
     fn drop(&mut self) {
+        if let Some(snapshot_publisher) = self.task_lifecycle_snapshot_publisher.take() {
+            snapshot_publisher.abort();
+        }
         if let Some(forwarder) = self.task_lifecycle_forwarder.take() {
             forwarder.abort();
         }
@@ -256,13 +288,16 @@ impl SessionHandle {
     }
 
     pub(crate) async fn release_workspace_lease(&self) -> anyhow::Result<()> {
-        let (lease, runtime) = {
+        let (lease, runtime, controller) = {
             let mut data = self
                 .data
                 .lock()
                 .map_err(|error| lock_poison_error("releasing ACP session workspace lease", error))?;
-            (data.workspace_lease.take(), data.workspace_runtime.take())
+            (data.workspace_lease.take(), data.workspace_runtime.take(), data.subagent_controller.take())
         };
+        if let Some(controller) = controller {
+            controller.signal_shutdown().await;
+        }
         drop(runtime);
         if let Some(lease) = lease {
             lease.release().await;
@@ -271,16 +306,36 @@ impl SessionHandle {
     }
 
     pub(crate) async fn stop_task_lifecycle_forwarder(&self) -> anyhow::Result<()> {
-        let (forwarder, registration) = {
+        let (forwarder, snapshot_publisher, registration) = {
             let mut data = self
                 .data
                 .lock()
                 .map_err(|error| lock_poison_error("stopping ACP task lifecycle forwarding", error))?;
-            (data.task_lifecycle_forwarder.take(), data.task_lifecycle_registration.take())
+            (
+                data.task_lifecycle_forwarder.take(),
+                data.task_lifecycle_snapshot_publisher.take(),
+                data.task_lifecycle_registration.take(),
+            )
         };
         drop(registration);
-        if let Some(forwarder) = forwarder {
+        // Abort the publisher before the forwarder so it cannot enqueue while
+        // the receiver is being awaited to completion. Both are aborted before
+        // either is awaited, so a publisher failure cannot leave the forwarder
+        // detached and still running.
+        if let Some(snapshot_publisher) = &snapshot_publisher {
+            snapshot_publisher.abort();
+        }
+        if let Some(forwarder) = &forwarder {
             forwarder.abort();
+        }
+        if let Some(snapshot_publisher) = snapshot_publisher {
+            match snapshot_publisher.await {
+                Ok(()) => {}
+                Err(error) if error.is_cancelled() => {}
+                Err(error) => return Err(error).context("waiting for ACP task lifecycle snapshot publisher to stop"),
+            }
+        }
+        if let Some(forwarder) = forwarder {
             match forwarder.await {
                 Ok(()) => {}
                 Err(error) if error.is_cancelled() => {}

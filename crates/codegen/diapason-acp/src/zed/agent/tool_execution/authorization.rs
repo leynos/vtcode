@@ -1,23 +1,24 @@
 //! Resolve ACP tool calls and apply lifecycle and permission authorization.
+
+mod admission;
+mod prompting;
+
+use self::admission::{session_subagent_admission_error, session_subagent_controller_error};
 use super::super::ZedAgent;
 use super::super::warn_hook_message;
-use super::cancelable_session_request;
 use super::data::{
     PermissionResolutionInput, ResolvedToolCall, ToolAuthorization, ToolAuthorizationInput, ToolCallInvocation,
     ToolExecutionContext, ToolPermissionPrompt,
 };
 use crate::acp;
 use crate::acp::Error as SdkError;
-use crate::permissions::PermissionToolContext;
 use crate::reports::ToolExecutionReport;
 use crate::tooling::{AcpToolRegistry, ToolDescriptor};
 use crate::zed::agent::log_suppressed_error;
 use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 use crate::zed::types::ToolCallResult;
-use diapason_core::config::constants::tools;
 use diapason_core::hooks::PreToolHookDecision;
 use diapason_core::llm::provider::ToolCall as ProviderToolCall;
-use diapason_core::permissions::build_permission_request;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -40,19 +41,55 @@ impl ZedAgent {
         let local_tool_registry = workspace_runtime
             .as_ref()
             .map_or(&self.local_tool_registry, |runtime| &runtime.local_tool_registry);
+        // Subagent work runs through the session's controller, never the
+        // workspace's ownerless one; without one, core rejects the call.
+        let session_controller = if workspace_runtime.is_some() {
+            self.session_subagent_controller(invocation.session).map_err(|error| {
+                log_suppressed_error(&error, "session_subagent_controller_read", "session_lock_unavailable");
+                SdkError::internal_error()
+            })?
+        } else {
+            None
+        };
+        let scoped_registry = local_tool_registry.with_subagent_controller(session_controller.clone());
         let Some(func_ref) = invocation.call.function.as_ref() else {
             return Ok(Self::tool_call_result_from_report(
                 invocation.call,
                 ToolExecutionReport::failure("unknown", "Malformed tool call: missing function payload"),
             ));
         };
+        let tool_name = func_ref.name.as_str();
         let context = ToolExecutionContext {
             invocation,
             acp_tool_registry,
             permission_prompter,
-            local_tool_registry,
+            local_tool_registry: &scoped_registry,
         };
+        // Resolve before admission so a rejection can announce the call it is
+        // about to fail. `run_pre_tool_stage` publishes the initial tool call
+        // on the executing path; without the same publication here the client
+        // would receive a terminal update for a call id it never saw start.
         let resolved = Self::resolve_tool_call(invocation.call.id.as_str(), func_ref, context.acp_tool_registry);
+        // Fail closed on a missing session controller before any hook or
+        // prompt runs, but do not judge target ownership here: the raw target
+        // may be obsolete, and an approved `PermissionRequest` hook may replace
+        // it. Ownership is re-checked on the dispatched arguments after any
+        // rewrite in `authorize_tool_call`.
+        let admission = session_subagent_controller_error(tool_name, session_controller.as_ref());
+        if let Some(rejection) = admission {
+            // The call is settled here rather than executed, so it must report
+            // the resolved call followed by the same terminal update a refused
+            // call reports through the authorization path; otherwise the client
+            // sees a call that never starts and never finishes even though the
+            // model received the tool failure.
+            self.send_update(invocation.session_id, acp::SessionUpdate::ToolCall(resolved.initial_call.clone()))
+                .await?;
+            let report = ToolExecutionReport::failure(resolved.tool_name, &rejection);
+            let update = acp::ToolCallUpdate::new(resolved.call_id.clone(), Self::update_fields_from_report(&report));
+            self.send_update(invocation.session_id, acp::SessionUpdate::ToolCallUpdate(update))
+                .await?;
+            return Ok(Self::tool_call_result_from_report(invocation.call, report));
+        }
         let pre_tool_decision = self.run_pre_tool_stage(&context, &resolved).await?;
 
         if matches!(pre_tool_decision, PreToolHookDecision::Deny) {
@@ -64,9 +101,14 @@ impl ZedAgent {
         }
 
         let authorization = self
-            .authorize_tool_call(&context, &resolved, ToolAuthorizationInput { pre_tool_decision, audit_arguments })
+            .authorize_tool_call(
+                &context,
+                &resolved,
+                session_controller.as_ref(),
+                ToolAuthorizationInput { pre_tool_decision, audit_arguments },
+            )
             .await?;
-        let execution = self.execute_authorized_tool(&context, &resolved, authorization).await?;
+        let execution = Box::pin(self.execute_authorized_tool(&context, &resolved, authorization)).await?;
         self.finish_tool_call(&context, &resolved, execution).await
     }
 
@@ -140,6 +182,7 @@ impl ZedAgent {
         &self,
         context: &ToolExecutionContext<'_>,
         resolved: &ResolvedToolCall<'_>,
+        session_controller: Option<&Arc<diapason_core::subagents::SubagentController>>,
         input: ToolAuthorizationInput<'_>,
     ) -> Result<ToolAuthorization, SdkError> {
         let was_cancelled_before_permission = context.invocation.session.cancellation.is_cancelled();
@@ -164,6 +207,22 @@ impl ZedAgent {
 
         authorization.cancel_after_permission = context.invocation.session.cancellation.is_cancelled();
         *input.audit_arguments = authorization.audit_arguments.clone();
+        // A PermissionRequest hook may rewrite the dispatched arguments, so the
+        // admission decision taken before the hook no longer describes the call
+        // that would run. Re-admit the final arguments before the call is
+        // marked approved or announced as in progress; a rewrite must not
+        // smuggle in a target this session cannot own. A call already refused
+        // or cancelled will not execute, so it needs no second decision.
+        let re_admission_rejection =
+            if authorization.permission_override.is_none() && !authorization.cancel_after_permission {
+                let final_arguments = dispatched_arguments(resolved, &authorization);
+                session_subagent_admission_error(resolved.tool_name, session_controller, final_arguments.as_str()).await
+            } else {
+                None
+            };
+        if let Some(rejection) = re_admission_rejection {
+            authorization.permission_override = Some(ToolExecutionReport::failure(resolved.tool_name, &rejection));
+        }
         self.mark_local_tool_preapproved(context, resolved, &authorization).await;
         self.send_tool_call_in_progress(context, resolved, &authorization).await?;
         Ok(authorization)
@@ -235,140 +294,18 @@ impl ZedAgent {
             context.local_tool_registry.mark_tool_preapproved(resolved.tool_name).await;
         }
     }
+}
 
-    async fn send_tool_call_in_progress(
-        &self,
-        context: &ToolExecutionContext<'_>,
-        resolved: &ResolvedToolCall<'_>,
-        authorization: &ToolAuthorization,
-    ) -> Result<(), SdkError> {
-        if resolved.descriptor.is_none() {
-            return Ok(());
-        }
-        if authorization.permission_override.is_some() {
-            return Ok(());
-        }
-        if authorization.cancel_after_permission {
-            return Ok(());
-        }
-        let fields = acp::ToolCallUpdateFields::default().status(acp::ToolCallStatus::InProgress);
-        let update = acp::ToolCallUpdate::new(resolved.call_id.clone(), fields);
-        self.send_update(context.invocation.session_id, acp::SessionUpdate::ToolCallUpdate(update))
-            .await
-    }
-
-    async fn request_tool_permission_for_call(
-        &self,
-        context: &ToolExecutionContext<'_>,
-        resolved: &ResolvedToolCall<'_>,
-        request: ToolPermissionPrompt<'_>,
-    ) -> Result<Option<ToolExecutionReport>, SdkError> {
-        let permission_result = cancelable_session_request(&context.invocation.session.cancellation, async {
-            match (request.descriptor, request.force_prompt) {
-                (ToolDescriptor::Acp(tool), true) => {
-                    context
-                        .permission_prompter
-                        .request_tool_permission_forced(
-                            context.invocation.client,
-                            context.invocation.session_id,
-                            &resolved.initial_call,
-                            tool,
-                            request.args,
-                        )
-                        .await
-                }
-                (ToolDescriptor::Acp(tool), false) => {
-                    context
-                        .permission_prompter
-                        .request_tool_permission(
-                            context.invocation.client,
-                            context.invocation.session_id,
-                            &resolved.initial_call,
-                            tool,
-                            request.args,
-                        )
-                        .await
-                }
-                (ToolDescriptor::Local, true) => {
-                    context
-                        .permission_prompter
-                        .request_named_tool_permission_forced(
-                            context.invocation.client,
-                            context.invocation.session_id,
-                            &resolved.initial_call,
-                            PermissionToolContext::new(
-                                resolved.tool_name,
-                                resolved.kind,
-                                resolved.initial_call.title.as_str(),
-                            ),
-                            request.args,
-                        )
-                        .await
-                }
-                (ToolDescriptor::Local, false) => {
-                    context
-                        .permission_prompter
-                        .request_named_tool_permission(
-                            context.invocation.client,
-                            context.invocation.session_id,
-                            &resolved.initial_call,
-                            PermissionToolContext::new(
-                                resolved.tool_name,
-                                resolved.kind,
-                                resolved.initial_call.title.as_str(),
-                            ),
-                            request.args,
-                        )
-                        .await
-                }
-            }
-        })
-        .await;
-        permission_result.unwrap_or_else(|| Ok(Some(ToolExecutionReport::cancelled(resolved.tool_name))))
-    }
-
-    async fn run_permission_hook(
-        &self,
-        context: &ToolExecutionContext<'_>,
-        resolved: &ResolvedToolCall<'_>,
-        args: &Value,
-    ) -> Result<Option<diapason_core::hooks::PermissionRequestHookDecision>, SdkError> {
-        let Some(hooks) = context.invocation.session.lifecycle_hooks().map_err(|error| {
-            SdkError::internal_error()
-                .data(format!("Failed to read lifecycle hooks for ACP permission hook: {error:#}"))
-        })?
-        else {
-            return Ok(None);
-        };
-        let workspace = context
-            .invocation
-            .session
-            .workspace_runtime()
-            .map_err(|error| {
-                log_suppressed_error(&error, "session_workspace_runtime_read", "session_lock_unavailable");
-                SdkError::internal_error().data(SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE)
-            })?
-            .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
-        let request = build_permission_request(&workspace, &workspace, resolved.tool_name, Some(args));
-        let Some(descriptor) = resolved.descriptor else {
-            return Ok(None);
-        };
-        let suggestions = match descriptor {
-            ToolDescriptor::Acp(tool) => context
-                .permission_prompter
-                .permission_options(tool, Some(args))
-                .into_iter()
-                .filter_map(|option| serde_json::to_value(option).ok())
-                .collect::<Vec<_>>(),
-            ToolDescriptor::Local => Vec::new(),
-        };
-        let outcome = hooks
-            .run_permission_request(resolved.tool_name, Some(args), &request, &suggestions)
-            .await
-            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
-        for message in outcome.messages {
-            warn_hook_message("PermissionRequest", &message);
-        }
-        Ok(outcome.decision)
-    }
+/// Renders the arguments the call would actually dispatch.
+///
+/// Admission runs before resolution on the call's raw text and again after the
+/// permission stages, where a hook may have replaced the arguments. Both checks
+/// must judge the same input the executor will receive, so the second check
+/// renders the installed `effective_args` rather than re-reading the model's
+/// original text.
+fn dispatched_arguments(resolved: &ResolvedToolCall<'_>, authorization: &ToolAuthorization) -> String {
+    authorization
+        .effective_args
+        .as_ref()
+        .map_or_else(|| resolved.raw_arguments.to_owned(), |arguments| arguments.to_string())
 }

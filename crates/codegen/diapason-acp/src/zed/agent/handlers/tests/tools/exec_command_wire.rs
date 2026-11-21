@@ -23,6 +23,7 @@ async fn run_exec_command_wire_case(arguments: serde_json::Value) -> ExecCommand
         "wire-test",
         Arc::new(move || {
             Box::new(StreamToolThenAnswerProvider {
+                emit_usage: false,
                 calls: Arc::clone(&factory_calls),
                 requests: Arc::clone(&factory_requests),
                 tool_name: "exec_command",

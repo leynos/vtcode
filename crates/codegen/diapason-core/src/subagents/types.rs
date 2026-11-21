@@ -108,6 +108,8 @@ pub struct SubagentStatusEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackgroundSubprocessEntry {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_session_id: Option<String>,
     pub session_id: String,
     pub exec_session_id: String,
     pub agent_name: String,
@@ -144,6 +146,36 @@ pub struct BackgroundSubprocessSnapshot {
     pub preview: String,
 }
 
+/// How one background record's liveness was obtained.
+///
+/// A listing that overlays liveness must not invent a terminal status when the
+/// exec-session manager cannot answer: "the process exited" and "the read
+/// failed" are different facts. This outcome carries that distinction to the
+/// caller without changing the wire shape of a background entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BackgroundLiveness {
+    /// The exec-session manager answered, or no read was needed because the
+    /// record is already settled; the entry reflects the observation.
+    Observed,
+    /// The liveness read failed for a reason other than the session being
+    /// absent. The entry keeps its cached status, and `reason` is a short,
+    /// bounded diagnostic that contains no paths or secrets.
+    Unobserved { reason: String },
+}
+
+/// One background status projection paired with how it was observed.
+///
+/// The entry is exactly the projection a caller would serve; the outcome only
+/// qualifies it, so an adapter can log an unobserved record and still return
+/// the list.
+#[derive(Debug, Clone)]
+pub struct BackgroundLivenessEntry {
+    /// The status projection, with liveness overlaid only when observed.
+    pub entry: BackgroundSubprocessEntry,
+    /// Whether the projection's liveness was actually observed.
+    pub liveness: BackgroundLiveness,
+}
+
 /// Receives domain status snapshots when a delegated child or managed
 /// background process changes state.
 ///
@@ -156,11 +188,32 @@ pub trait SubagentProgressObserver: Send + Sync {
 
     /// Receives an updated managed-background-process status snapshot.
     fn background_status_changed(&self, entry: BackgroundSubprocessEntry);
+
+    /// Receives a delegated-child snapshot with the revision that orders it.
+    ///
+    /// The controller assigns `lifecycle_revision` under the state lock that
+    /// captured `entry`, so two publications of one task are ordered exactly
+    /// as the states they observed: a capture taken before a later state
+    /// change keeps the lower revision even when it is delivered after the
+    /// newer capture. An adapter that buffers snapshots must compare this
+    /// revision instead of `updated_at`, because several transitions can be
+    /// recorded within one clock tick.
+    ///
+    /// The default delivers inline through [`Self::subagent_status_changed`]
+    /// for observers that need no ordering.
+    fn subagent_status_published(&self, entry: SubagentStatusEntry, _lifecycle_revision: u64) {
+        self.subagent_status_changed(entry);
+    }
+
+    /// Background counterpart of [`Self::subagent_status_published`].
+    fn background_status_published(&self, entry: BackgroundSubprocessEntry, _lifecycle_revision: u64) {
+        self.background_status_changed(entry);
+    }
 }
 
 /// Session-specific parent data for one model tool-execution task.
 ///
-/// ACP sessions can share a subagent controller, so this snapshot must travel
+/// Host sessions can share a subagent controller, so this snapshot must travel
 /// with the invocation rather than being stored as mutable controller state.
 #[derive(Clone)]
 pub struct SubagentInvocationContext {
@@ -294,6 +347,17 @@ pub struct ChildRecord {
     /// so grandchildren spawned by this child remain reachable for the child's
     /// lifetime.
     pub(crate) child_controller: Option<Arc<super::SubagentController>>,
+    /// Whether the user explicitly closed this child.
+    ///
+    /// [`SubagentStatus::Closed`] cannot carry this by itself: `close_single`
+    /// deliberately keeps a settled `Completed` or `Failed` outcome visible,
+    /// because a transport projects `Closed` as a failure and a user closure
+    /// must not turn a successful task into a visible failure. The closure is
+    /// therefore recorded beside the outcome, so `send_input` still refuses a
+    /// task the user closed and `reopen_single` releases it again. Every access
+    /// already holds the controller state lock, so the record is the one
+    /// authority for it.
+    pub(crate) closed: bool,
 }
 
 pub(crate) struct ChildRunRequest {
@@ -306,6 +370,8 @@ pub(crate) struct ChildRunRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedBackgroundRecord {
     pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) owner_session_id: Option<String>,
     agent_name: String,
     display_label: String,
     description: String,
@@ -314,11 +380,12 @@ pub struct PersistedBackgroundRecord {
     #[serde(rename = "color", alias = "colour")]
     colour: Option<String>,
     session_id: String,
-    /// ACP/terminal parent that owns this long-lived task. Older state files
+    /// Session parent that owns this long-lived task. Older state files
     /// predate owner tracking and deserialize to an empty owner.
     #[serde(default)]
     parent_session_id: String,
-    exec_session_id: String,
+    /// Read by the persistence join, which groups a record's copies by launch.
+    pub(crate) exec_session_id: String,
     desired_enabled: bool,
     status: BackgroundSubprocessStatus,
     created_at: DateTime<Utc>,
@@ -346,6 +413,7 @@ pub struct PersistedBackgroundState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackgroundRecord {
     pub(crate) id: String,
+    pub(crate) owner_session_id: Option<String>,
     pub(crate) agent_name: String,
     pub(crate) display_label: String,
     pub(crate) description: String,
@@ -388,6 +456,7 @@ impl StatusEntryBuilder for BackgroundRecord {
     fn build_status_entry(&self) -> BackgroundSubprocessEntry {
         BackgroundSubprocessEntry {
             id: self.id.clone(),
+            owner_session_id: self.owner_session_id.clone(),
             session_id: self.session_id.clone(),
             exec_session_id: self.exec_session_id.clone(),
             agent_name: self.agent_name.clone(),
@@ -507,6 +576,7 @@ impl BackgroundRecord {
     pub(crate) fn into_persisted(self) -> PersistedBackgroundRecord {
         PersistedBackgroundRecord {
             id: self.id,
+            owner_session_id: self.owner_session_id,
             agent_name: self.agent_name,
             display_label: self.display_label,
             description: self.description,
@@ -537,6 +607,7 @@ impl BackgroundRecord {
     pub(crate) fn from_persisted(record: PersistedBackgroundRecord) -> Self {
         Self {
             id: record.id,
+            owner_session_id: record.owner_session_id,
             agent_name: record.agent_name,
             display_label: record.display_label,
             description: record.description,
@@ -562,6 +633,81 @@ impl BackgroundRecord {
             reasoning_override: record.reasoning_override,
             restart_attempts: record.restart_attempts,
         }
+    }
+}
+
+impl PersistedBackgroundRecord {
+    /// Rewrites the persisted id into its canonical owner-scoped form.
+    ///
+    /// State written before ids were owner-scoped stored the
+    /// workspace-global id for records that carry an owner. Canonicalizing on
+    /// load keeps a relaunch looking at the same record instead of creating a
+    /// second one, and keeps every id derivation identical to the launch path.
+    pub(crate) fn canonicalize_id(&mut self) {
+        self.id = super::background::background_record_id_for_owner(
+            self.agent_name.as_str(),
+            self.owner_session_id.as_deref(),
+        );
+    }
+
+    /// Whether this record was written at or after `other`.
+    ///
+    /// A merge of two copies of the same ledger entry keeps the newer one, so
+    /// a local refresh or cancellation is not overwritten by the stale copy
+    /// the controller loaded.
+    pub(crate) fn is_at_least_as_new_as(&self, other: &Self) -> bool {
+        self.updated_at >= other.updated_at
+    }
+
+    /// Whether this record's stop outranks `snapshot` regardless of timestamps.
+    ///
+    /// A stop is one-way until a restart replaces the launch: an explicit
+    /// restart writes a fresh exec session, whereas a controller that merely
+    /// refreshed its stale copy keeps the session this record stopped and
+    /// advances `updated_at` without changing intent. Timestamp order alone
+    /// therefore cannot decide this case, or a refresh would resurrect a
+    /// cancelled task.
+    pub(crate) fn cancellation_outranks(&self, snapshot: &Self) -> bool {
+        !self.desired_enabled && snapshot.desired_enabled && self.exec_session_id == snapshot.exec_session_id
+    }
+
+    /// Applies this record's stop to a cached copy of the same launch.
+    ///
+    /// Returns `false` when this record is not a cancellation of that launch:
+    /// it is still desired, the cached copy is already stopped, or the two
+    /// name different exec sessions, which means a restart has replaced the
+    /// session this record stopped. Adoption clears the cached desire so
+    /// refresh cannot relaunch it.
+    ///
+    /// The adopted status is terminal only when there is no exec session left
+    /// to close. A live session means the process may still be running, so the
+    /// copy keeps an active status with a stopping summary: the caller must
+    /// attempt the close and let it settle `Stopped` on success. Writing the
+    /// persisted terminal status here would hide a running process from the
+    /// liveness projection, because that projection skips non-active records.
+    pub(crate) fn adopt_cancellation_into(&self, record: &mut BackgroundRecord) -> bool {
+        if self.desired_enabled || !record.desired_enabled || self.exec_session_id != record.exec_session_id {
+            return false;
+        }
+        record.desired_enabled = false;
+        if record.exec_session_id.is_empty() {
+            // Nothing can be running under the record, so the persisted
+            // outcome is already final.
+            if record.status.is_active() {
+                record.status = self.status;
+                record.error = self.error.clone();
+                record.ended_at = self.ended_at.or(record.ended_at);
+            }
+        } else if record.status.is_active() {
+            // The close has not been attempted yet, so the process may still be
+            // live. Keep the record active and carry the stop intent; the
+            // close settles the terminal outcome only after it succeeds.
+            record.status = BackgroundSubprocessStatus::Running;
+            record.summary = Some("Background subagent is stopping".to_string());
+            record.ended_at = None;
+        }
+        record.updated_at = record.updated_at.max(self.updated_at);
+        true
     }
 }
 
@@ -666,6 +812,7 @@ mod tests {
             description: "A background wire fixture".to_string(),
             source: "project".to_string(),
             colour: Some("orchid".to_string()),
+            owner_session_id: None,
             status: BackgroundSubprocessStatus::Running,
             desired_enabled: true,
             created_at: now,
@@ -715,6 +862,7 @@ mod tests {
             description: "A persistence wire fixture".to_string(),
             source: "project".to_string(),
             colour: Some("orchid".to_string()),
+            owner_session_id: None,
             session_id: "session-1".to_string(),
             parent_session_id: "parent-session".to_string(),
             exec_session_id: "exec-1".to_string(),

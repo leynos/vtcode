@@ -32,6 +32,7 @@ use self::config::*;
 use self::constants::*;
 use self::discovery::discover_controller_subagents;
 use self::model::*;
+use super::TaskOwner;
 use super::types::ChildRunRequest;
 use diapason_config::subagents::SUBAGENT_HARD_CONCURRENCY_LIMIT;
 
@@ -105,23 +106,59 @@ struct SubagentStopHookContext {
     transcript_path: Option<PathBuf>,
 }
 
+/// The runtime a prepared child run publishes onto its record.
+///
+/// These fields describe a runner that has started, so they travel together
+/// and are published only once the run's controller attachment has been
+/// accepted.
+struct ChildRuntimePublication {
+    archive_metadata: SessionArchiveMetadata,
+    archive_path: PathBuf,
+    effective_config: DiapasonConfig,
+    thread_handle: ThreadRuntimeHandle,
+    child_controller: Option<Arc<SubagentController>>,
+}
+
 impl SubagentController {
     pub(super) async fn launch_child(&self, child_id: &str) -> Result<()> {
-        // Acquire the lock first to set up the record state, then release it
-        // before spawning the task. This avoids the spawned task immediately
-        // contending on the write lock.
+        // Publish the queued state first, so an observer sees the position the
+        // run is waiting in before the run can report itself running.
         {
             let mut state = self.state.write().await;
             let record = state
                 .children
                 .get_mut(child_id)
                 .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+            // A record a close already settled must not be resurrected. The
+            // explicit closure outlives a settled `Completed`/`Failed` status,
+            // so starting the task here would undo a cancellation whose caller
+            // was already told it had succeeded.
+            if record.status.is_terminal() {
+                bail!("Subagent {child_id} is closed; refusing to launch it");
+            }
             record.status = SubagentStatus::Queued;
             record.updated_at = Utc::now();
         }
         self.publish_child_status(child_id).await;
 
-        // Spawn the task after releasing the lock.
+        // Spawn the task and publish its handle in one state-lock section. A
+        // cancel takes the same lock, so it either lands before this section —
+        // leaving the record closed, which refuses the launch — or after it,
+        // where the handle is already published and is aborted with the
+        // record. Releasing the lock in between would let a cancel find no
+        // handle, mark the record closed and return success while the launcher
+        // then started the task and dequeued the prompt back into `Running`.
+        let mut state = self.state.write().await;
+        let status = state
+            .children
+            .get(child_id)
+            .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?
+            .status;
+        if status.is_terminal() {
+            bail!("Subagent {child_id} was closed before it could start");
+        }
+        // The loop's first act is to take this same lock, so the task cannot
+        // dequeue its prompt before its handle is published below.
         let controller = self.clone();
         let target = child_id.to_string();
         let handle = tokio::spawn(async move {
@@ -144,12 +181,11 @@ impl SubagentController {
                 controller.run_worktree_reconciliation(&target, &wt_path, &wt_name).await;
             }
         });
-
-        // Store the handle in the record.
-        let mut state = self.state.write().await;
-        if let Some(record) = state.children.get_mut(child_id) {
-            record.handle = Some(handle);
-        }
+        let record = state
+            .children
+            .get_mut(child_id)
+            .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+        record.handle = Some(handle);
         Ok(())
     }
 
@@ -256,7 +292,7 @@ impl SubagentController {
         if let Some((controller, session_id)) = nested {
             let ids = controller.spawn_child_ids_for_parent(&session_id).await;
             for id in ids {
-                if let Err(err) = controller.close(&id).await {
+                if let Err(err) = controller.close(TaskOwner::Workspace, &id).await {
                     tracing::warn!(child_id, node_id = id.as_str(), error = %err, "Failed to close nested subagent subtree on child completion");
                 }
             }
@@ -303,7 +339,7 @@ impl SubagentController {
         Box::pin(async move {
             let context = self.begin_child_run(child_id).await?;
             let mut execution = self.prepare_child_execution(context, request).await?;
-            self.attach_child_controller(child_id, &mut execution).await;
+            self.attach_nested_controller(child_id, &mut execution).await;
             let thread_handle = self.record_child_runtime(child_id, &execution).await?;
             self.run_child_start_hook(child_id, &execution, &thread_handle).await;
             self.execute_child_task(execution).await
@@ -435,13 +471,27 @@ impl SubagentController {
         Ok(PreparedChildArchive { metadata, bootstrap, archive })
     }
 
-    async fn attach_child_controller(&self, child_id: &str, execution: &mut PreparedChildExecution) {
+    async fn attach_nested_controller(&self, child_id: &str, execution: &mut PreparedChildExecution) {
         let child_controller = self.child_controller_for(child_id, execution).await;
         execution.child_controller = child_controller;
         if let Some(controller) = execution.child_controller.as_ref() {
             controller.set_parent_messages(&execution.bootstrap_messages).await;
             execution.runner.set_subagent_controller(controller.clone());
         }
+    }
+
+    /// Gives a newly created child controller the context it shares with its
+    /// parent tree.
+    ///
+    /// The three inheritances are one unit: a child controller that adopted the
+    /// parent's observers but kept its own allocator or locks would publish
+    /// through one tree while reserving ids and ledger access through another.
+    /// Production's only creator is [`Self::child_controller_for`], and tests
+    /// exercise this same sequence rather than repeating it.
+    pub(super) async fn inherit_tree_context(&mut self, parent: &SubagentController, parent_session_id: &str) {
+        self.inherit_progress_observers(parent, parent_session_id).await;
+        self.inherit_child_id_scope(parent);
+        self.inherit_lock_scope(parent);
     }
 
     async fn child_controller_for(
@@ -470,11 +520,18 @@ impl SubagentController {
             depth: self.config.depth.saturating_add(1),
             workspace_gated: self.config.workspace_gated,
             exec_sessions: self.config.exec_sessions.clone(),
+            output_reader: None,
             pty_manager: self.config.pty_manager.clone(),
             managed_background_runtime: true,
+            lock_scope: None,
         };
         match SubagentController::new(nested_config).await {
-            Ok(controller) => Some(Arc::new(controller)),
+            Ok(mut controller) => {
+                controller
+                    .inherit_tree_context(self, execution.parent_session_id.as_str())
+                    .await;
+                Some(Arc::new(controller))
+            }
             Err(err) => {
                 // Fail closed: without a controller the child keeps the current
                 // non-nested toolset and cannot delegate.
@@ -488,28 +545,68 @@ impl SubagentController {
         }
     }
 
+    /// Returns how many child runtime captures this controller tree published.
+    ///
+    /// A test that must observe the capture itself cannot wait on the status
+    /// change: the record is reopened and stamped before the resumed execution
+    /// publishes its runtime, so the earlier configuration would satisfy a
+    /// status-only wait.
+    #[cfg(test)]
+    pub(super) fn runtime_capture_count(&self) -> u64 {
+        runtime_capture_witness::capture_count(&self.state)
+    }
+
     async fn record_child_runtime(
         &self,
         child_id: &str,
         execution: &PreparedChildExecution,
     ) -> Result<ThreadRuntimeHandle> {
         let thread_handle = execution.runner.thread_handle();
-        let archive_path = execution.archive.path().to_path_buf();
-        {
-            let mut state = self.state.write().await;
-            let record = state
-                .children
-                .get_mut(child_id)
-                .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
-            record.archive_metadata = Some(execution.archive_metadata.clone());
-            record.archive_path = Some(archive_path.clone());
-            record.effective_config = Some(execution.child_cfg.clone());
-            record.thread_handle = Some(thread_handle.clone());
-            if let Some(controller) = execution.child_controller.clone() {
-                record.child_controller = Some(controller);
-            }
-        }
+        let mut state = self.state.write().await;
+        Self::publish_child_runtime(
+            &mut state,
+            child_id,
+            ChildRuntimePublication {
+                archive_metadata: execution.archive_metadata.clone(),
+                archive_path: execution.archive.path().to_path_buf(),
+                effective_config: execution.child_cfg.clone(),
+                thread_handle: thread_handle.clone(),
+                child_controller: execution.child_controller.clone(),
+            },
+        )?;
+        // A test that must observe this capture itself cannot rely on the
+        // status change that precedes it: the record is reopened and stamped
+        // before the resumed execution publishes its runtime, so the earlier
+        // configuration would satisfy a status-only wait.
+        #[cfg(test)]
+        runtime_capture_witness::observe_capture(&self.state);
         Ok(thread_handle)
+    }
+
+    /// Publishes a child run's runtime onto its record.
+    ///
+    /// The controller attachment is validated first. A record that already
+    /// names a different controller rejects it, and recording the archive and
+    /// thread handle before that check would leave the record describing a
+    /// runner that never started: the call fails, yet the record claims an
+    /// archive path, an effective config and a live thread.
+    fn publish_child_runtime(
+        state: &mut ControllerState,
+        child_id: &str,
+        runtime: ChildRuntimePublication,
+    ) -> Result<()> {
+        if let Some(controller) = runtime.child_controller {
+            Self::attach_child_controller_to_state(state, child_id, controller)?;
+        }
+        let record = state
+            .children
+            .get_mut(child_id)
+            .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+        record.archive_metadata = Some(runtime.archive_metadata);
+        record.archive_path = Some(runtime.archive_path);
+        record.effective_config = Some(runtime.effective_config);
+        record.thread_handle = Some(runtime.thread_handle);
+        Ok(())
     }
 
     async fn run_child_start_hook(
@@ -589,5 +686,241 @@ impl SubagentController {
                 transcript_path,
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::threads::ThreadManager;
+    use crate::tools::registry::PtySessionManager;
+    use tempfile::TempDir;
+
+    /// The built-in explorer spec a child record needs.
+    fn explorer_spec() -> SubagentSpec {
+        diapason_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == "explorer")
+            .expect("explorer spec")
+    }
+
+    fn test_controller_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "test-model".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    fn nested_controller_config(workspace_root: PathBuf, parent_session_id: &str) -> SubagentControllerConfig {
+        let mut config = test_controller_config(workspace_root);
+        config.parent_session_id = parent_session_id.to_string();
+        config.depth = 1;
+        // Mirror `child_controller_for`: a nested scope runs under the managed
+        // background runtime and therefore never owns background work.
+        config.managed_background_runtime = true;
+        config
+    }
+
+    fn child_record(
+        id: &str,
+        parent_thread_id: &str,
+        spec: &SubagentSpec,
+        status: SubagentStatus,
+        depth: usize,
+    ) -> ChildRecord {
+        ChildRecord {
+            id: id.to_string(),
+            session_id: format!("{id}-session"),
+            parent_thread_id: parent_thread_id.to_string(),
+            spec: spec.clone(),
+            display_label: subagent_display_label(spec),
+            status,
+            background: false,
+            depth,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            completed_at: status.is_terminal().then_some(Utc::now()),
+            summary: None,
+            error: None,
+            archive_metadata: None,
+            archive_path: None,
+            transcript_path: None,
+            effective_config: None,
+            stored_messages: Vec::new(),
+            last_prompt: Some(format!("prompt-{id}")),
+            queued_prompts: VecDeque::new(),
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            thread_handle: None,
+            handle: None,
+            notify: Arc::new(Notify::new()),
+            worktree_path: None,
+            child_controller: None,
+            closed: false,
+        }
+    }
+
+    /// A rejected attachment must not publish the runtime of a runner that
+    /// never started.
+    ///
+    /// The record is written under the same state lock that validates the
+    /// attachment, so the rejection has to happen first. Recording the archive
+    /// path, the effective config and the thread handle before the check
+    /// leaves a record that claims a live run even though the run failed to
+    /// attach its controller and will not continue.
+    #[tokio::test]
+    async fn a_rejected_attachment_publishes_no_child_runtime() {
+        let temp = TempDir::new().expect("tempdir");
+        let workspace_root = temp.path().to_path_buf();
+        let controller = SubagentController::new(test_controller_config(workspace_root.clone()))
+            .await
+            .expect("controller");
+        let spec = explorer_spec();
+        let existing = Arc::new(
+            SubagentController::new(nested_controller_config(workspace_root.clone(), "child-session"))
+                .await
+                .expect("existing controller"),
+        );
+        let replacement = Arc::new(
+            SubagentController::new(nested_controller_config(workspace_root, "replacement-session"))
+                .await
+                .expect("replacement controller"),
+        );
+
+        let mut record = child_record("child", "parent-session", &spec, SubagentStatus::Running, 1);
+        record.child_controller = Some(Arc::clone(&existing));
+        controller.state.write().await.children.insert("child".to_string(), record);
+
+        let threads = ThreadManager::new();
+        let publication = ChildRuntimePublication {
+            archive_metadata: build_subagent_archive_metadata(
+                Path::new("/workspace"),
+                "test-model",
+                "openai",
+                "default",
+                "medium",
+                "parent-session",
+                false,
+            ),
+            archive_path: PathBuf::from("child-archive.json"),
+            effective_config: DiapasonConfig::default(),
+            thread_handle: threads.start_thread_with_identifier("child", ThreadBootstrap::new(None)),
+            child_controller: Some(Arc::clone(&replacement)),
+        };
+        let mut state = controller.state.write().await;
+        let rejection = SubagentController::publish_child_runtime(&mut state, "child", publication);
+        let rejection = rejection.expect_err("an occupied record must reject the attachment");
+        assert!(format!("{rejection}").contains("already attached"), "{rejection}");
+
+        let record = state.children.get("child").expect("the record survives the rejection");
+        assert!(record.archive_metadata.is_none(), "a rejected attachment published metadata");
+        assert!(record.archive_path.is_none(), "a rejected attachment published an archive path");
+        assert!(record.effective_config.is_none(), "a rejected attachment published a config");
+        assert!(record.thread_handle.is_none(), "a rejected attachment published a thread handle");
+        let tracked = match record.child_controller.as_ref() {
+            Some(attached) => Arc::ptr_eq(attached, &existing),
+            None => false,
+        };
+        assert!(tracked, "the rejected attachment must keep the tracked controller");
+        drop(state);
+
+        existing.signal_shutdown().await;
+        replacement.signal_shutdown().await;
+    }
+
+    /// A cancel that succeeds while a child is queued must stop it starting.
+    ///
+    /// `launch_child` publishes `Queued` and then starts the run. If the launch
+    /// resurrects the record after the cancel — or publishes its handle without
+    /// re-checking the record it is about to run — the cancelled task starts
+    /// anyway and takes its prompt back out of the queue, so the cancel's
+    /// success no longer means the task stopped.
+    #[tokio::test]
+    async fn a_cancelled_queued_child_is_not_launched() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        let spec = explorer_spec();
+        let mut record = child_record("child", "parent-session", &spec, SubagentStatus::Queued, 1);
+        record.queued_prompts.push_back("delegated work".to_string());
+        controller.state.write().await.children.insert("child".to_string(), record);
+
+        let closed = controller.close(TaskOwner::Workspace, "child").await;
+        let closed = closed.expect("cancelling the queued child must succeed");
+        assert_eq!(closed.status, SubagentStatus::Closed);
+
+        let launch = controller.launch_child("child").await;
+        assert!(launch.is_err(), "a cancelled child must not be launched: {launch:?}");
+
+        let state = controller.state.read().await;
+        let record = state.children.get("child").expect("the record survives the refused launch");
+        assert_eq!(record.status, SubagentStatus::Closed, "the launch must not resurrect a closed record");
+        assert!(record.handle.is_none(), "a refused launch must not publish a task handle");
+        assert_eq!(record.queued_prompts.len(), 1, "a refused launch must not consume the prompt");
+    }
+}
+
+/// Counts each controller tree's runtime captures for tests that must observe
+/// the capture rather than a status change that precedes it.
+///
+/// Keyed by the tree's shared state allocation, pruned when a tree is dropped,
+/// so every clone of one controller observes the same count and a test cannot
+/// read another test's progress.
+#[cfg(test)]
+mod runtime_capture_witness {
+    use super::*;
+    use std::sync::{Mutex, OnceLock, Weak};
+
+    struct CaptureCount {
+        state: Weak<RwLock<ControllerState>>,
+        captures: u64,
+    }
+
+    fn captures() -> &'static Mutex<Vec<CaptureCount>> {
+        static CAPTURES: OnceLock<Mutex<Vec<CaptureCount>>> = OnceLock::new();
+        CAPTURES.get_or_init(|| Mutex::new(Vec::new()))
+    }
+
+    fn with_captures<R>(state: &Arc<RwLock<ControllerState>>, update: impl FnOnce(&mut u64) -> R) -> R {
+        let mut registry = captures().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        registry.retain(|entry| entry.state.strong_count() > 0);
+        if let Some(entry) = registry
+            .iter_mut()
+            .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
+        {
+            return update(&mut entry.captures);
+        }
+        let mut count = 0;
+        let result = update(&mut count);
+        registry.push(CaptureCount { state: Arc::downgrade(state), captures: count });
+        result
+    }
+
+    /// Records that `state`'s tree published one child runtime capture.
+    pub(super) fn observe_capture(state: &Arc<RwLock<ControllerState>>) {
+        with_captures(state, |captures| *captures = captures.saturating_add(1));
+    }
+
+    /// Returns how many runtime captures `state`'s tree has published.
+    pub(super) fn capture_count(state: &Arc<RwLock<ControllerState>>) -> u64 {
+        with_captures(state, |captures| *captures)
     }
 }
