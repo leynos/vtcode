@@ -187,4 +187,21 @@ mod tests {
         assert!(config.human_in_the_loop);
         assert!(config.allowed_tools.is_empty());
     }
+
+    #[test]
+    fn test_analyse_on_startup_serialization_compatibility() {
+        let config: Config = toml::from_str("[workspace]\nanalyze_on_startup = true\n")
+            .expect("legacy config should deserialize");
+        assert!(config.workspace.analyse_on_startup);
+
+        let serialized = toml::to_string(&config).expect("config should serialize");
+        assert!(
+            serialized.contains("analyze_on_startup"),
+            "serialized config should keep the legacy key, got: {serialized}"
+        );
+        assert!(
+            !serialized.contains("analyse_on_startup"),
+            "serialized config should not expose the Rust field name, got: {serialized}"
+        );
+    }
 }
