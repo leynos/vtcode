@@ -87,8 +87,10 @@ names are removed rather than deprecated:
 
 `WorkspaceConfig` keeps the serialized TOML key `analyze_on_startup` through
 `#[serde(rename = "analyze_on_startup")]`, so existing `config.toml` files need
-no edit. `execute_command` still accepts the legacy `analyze` command and gives
-it the same 60-second workspace-analysis timeout as `analyse`. See the
+no edit. `execute_command` still accepts the legacy `analyze` command and
+selects the same 60-second workspace-analysis duration for both spellings.
+Command execution does not yet enforce a deadline, a limitation that predates
+this layer. See the
 [Zed extension quick start](../extensions/zed-extension/docs/QUICK_START.md).
 
 ## ACP interrupted tool recovery
