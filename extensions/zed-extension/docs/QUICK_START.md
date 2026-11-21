@@ -51,6 +51,12 @@ max_context_tokens = 8000
 human_in_the_loop = true
 ```
 
+The TOML key stays `analyze_on_startup`, as shown above, while the Rust field
+is now `analyse_on_startup`. The command is now `analyse`, and the `analyze`
+value in `allowed_tools` is still accepted. See the
+[0.157.0 release notes](../../../docs/releases/0.157.0.md) for the native
+spelling renames.
+
 ### Configure Your AI Provider
 
 Get API credentials from your chosen provider:
