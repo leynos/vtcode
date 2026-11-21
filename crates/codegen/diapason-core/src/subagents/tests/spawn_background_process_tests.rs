@@ -1,8 +1,10 @@
 //! Managed background subprocess spawn guards.
 use super::*;
+#[cfg(unix)]
 use rstest::rstest;
 
 /// The exec session a reused record names in these tests.
+#[cfg(unix)]
 const LIVE_BACKGROUND_SESSION: &str = "exec-session-background-demo";
 
 /// Builds a controller with an active record whose exec session is alive.
@@ -15,6 +17,10 @@ const LIVE_BACKGROUND_SESSION: &str = "exec-session-background-demo";
 ///
 /// The caller owns both the controller and the session manager and must close
 /// the session, even when an assertion fails.
+///
+/// Unix only: the fixture launches a POSIX shell, which this suite has no
+/// native Windows equivalent for.
+#[cfg(unix)]
 async fn live_reusable_background_record(temp: &TempDir) -> (SubagentController, ExecSessionManager, String) {
     write_test_background_subagent(temp.path());
     let mut cfg = DiapasonConfig::default();
@@ -106,6 +112,7 @@ async fn spawn_background_subprocess_rejects_non_background_agent() {
 /// The two cases differ only in the requested prompt and the outcome, so they
 /// share one fixture and one body: a change to the record contract cannot leave
 /// one case building a fixture the other never exercises.
+#[cfg(unix)]
 #[rstest]
 #[case::matching_settings(None, None)]
 #[case::conflicting_settings(Some("Run a different task."), Some("different prompt"))]

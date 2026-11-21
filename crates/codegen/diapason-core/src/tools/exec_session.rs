@@ -866,22 +866,46 @@ impl ExecSessionManager {
     /// Termination is idempotent, so a retry after an earlier successful kill
     /// cannot kill the child twice.
     ///
+    /// A backend that no longer holds a handle is equally complete. A close
+    /// that is cancelled between closing the backend and removing the dispatch
+    /// record leaves the record behind, and failing the retry on the backend's
+    /// typed not-found would strand it — and the PTY guard it owns — forever.
+    /// The typed missing cause is therefore the one fault that proceeds to the
+    /// removal; every other fault keeps the record so the close stays
+    /// retryable.
+    ///
+    /// The removal is identity-checked against the record read here, so a
+    /// session that was closed and re-created under the same id in the
+    /// meantime is never taken by a stale close.
+    ///
     /// A missing identifier is reported through [`missing_session`] rather
     /// than being treated as a successful no-op.
     pub(crate) async fn close_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
         let record = self.session_record(session_id).await?;
 
-        let metadata = match record.backend {
-            ExecSessionBackend::Pipe => self.pipe_sessions.close_session(session_id).await?,
+        let closed_metadata = match record.backend {
+            ExecSessionBackend::Pipe => self.pipe_sessions.close_session(session_id).await,
             ExecSessionBackend::Pty => self
                 .pty_sessions
                 .manager()
                 .close_session(session_id)
-                .map(DiapasonExecSession::from)?,
+                .map(DiapasonExecSession::from),
+        };
+        let metadata = match closed_metadata {
+            Ok(metadata) => metadata,
+            // The backend handle is already gone: that is where an interrupted
+            // close stops, so finish the removal the retry is here for.
+            Err(error) if is_missing_exec_session(&error) => record.metadata.clone(),
+            Err(error) => return Err(error),
         };
 
         {
             let mut sessions = self.sessions.write().await;
+            // Only the record read above may be released: a session that was
+            // closed and re-created under the same id keeps its own guard.
+            if !sessions.get(session_id).is_some_and(|current| Arc::ptr_eq(current, &record)) {
+                return Err(missing_session(session_id));
+            }
             sessions.remove(session_id).ok_or_else(|| missing_session(session_id))?;
         }
 
@@ -1119,6 +1143,60 @@ mod tests {
             .await?;
         manager.close_session("run-3").await?;
 
+        Ok(())
+    }
+
+    /// A close interrupted after the backend released its handle still
+    /// finishes, releasing the PTY guard the dispatch record owns.
+    ///
+    /// The close terminates the backend first and removes the dispatch record
+    /// second. A cancellation in that window leaves the record behind, and a
+    /// retry that stopped at the backend's typed not-found would report a fault
+    /// for a session that is already closed and hold the PTY slot forever.
+    #[tokio::test]
+    #[cfg(all(unix, feature = "tui"))]
+    async fn close_session_finishes_after_the_backend_released_its_handle() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        let size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+
+        manager
+            .create_pty_session(
+                "close-interrupted".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
+                workspace_root,
+                size,
+                HashMap::new(),
+                None,
+            )
+            .await?;
+        assert_eq!(pty_sessions.active_sessions(), 1, "the open session holds one PTY guard");
+
+        // Release only the backend handle, exactly the window `close_session`
+        // opens between closing the backend and removing the dispatch record.
+        pty_sessions.manager().close_session("close-interrupted")?;
+        assert_eq!(
+            pty_sessions.active_sessions(),
+            1,
+            "the interrupted close leaves the dispatch record, and its guard, behind"
+        );
+
+        let metadata = manager.close_session("close-interrupted").await?;
+        assert_eq!(metadata.id.as_str(), "close-interrupted");
+        assert_eq!(metadata.backend, "pty", "the recovered close must keep the session's backend");
+        assert_eq!(
+            pty_sessions.active_sessions(),
+            0,
+            "the retried close must release the PTY guard the dispatch record owned"
+        );
+        assert!(manager.list_sessions().await.is_empty(), "the retried close must remove the record");
         Ok(())
     }
 

@@ -1,6 +1,6 @@
 //! Shared guarded setup for the Lody prompt-delegation wire tests.
 
-use super::lody_prompt_delegation::install_agent_tool_provider;
+use super::lody_prompt_delegation_support::install_agent_tool_provider;
 use super::*;
 use rstest::fixture;
 

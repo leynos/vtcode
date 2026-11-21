@@ -79,10 +79,25 @@ pub(crate) async fn lock_background_state(workspace_root: &Path) -> Result<Backg
     lock_background_state_within(workspace_root, BACKGROUND_STATE_LOCK_TIMEOUT).await
 }
 
+/// Builds the error a waiter reports once its deadline has passed.
+///
+/// The message names the wait and the sidecar so a caller can tell a deadline
+/// from an ordinary lock failure it should not retry.
+fn lock_timeout_error(path: &Path, timeout: Duration) -> anyhow::Error {
+    anyhow::anyhow!(
+        "Timed out after {}ms waiting for the background state lock {}",
+        timeout.as_millis(),
+        path.display()
+    )
+}
+
 /// Acquires the ledger lock, giving up after `timeout`.
 ///
 /// Production saves use [`BACKGROUND_STATE_LOCK_TIMEOUT`]. A test supplies a
 /// short deadline so it can observe the expiry without waiting in real time.
+/// Every retry is made before the deadline: the backoff is capped at the
+/// remaining budget and the deadline is re-checked after sleeping, so a timed
+/// out wait reports the timeout instead of acquiring the lock late.
 pub(crate) async fn lock_background_state_within(
     workspace_root: &Path,
     timeout: Duration,
@@ -111,21 +126,70 @@ pub(crate) async fn lock_background_state_within(
         match fs2::FileExt::try_lock_exclusive(&file) {
             Ok(()) => return Ok(BackgroundStateLock { file }),
             Err(error) if is_lock_contention(&error) => {
-                if tokio::time::Instant::now() >= deadline {
-                    return Err(error).with_context(|| {
-                        format!(
-                            "Timed out after {}ms waiting for the background state lock {}",
-                            timeout.as_millis(),
-                            path.display()
-                        )
-                    });
+                #[cfg(test)]
+                notify_lock_contention(&path);
+                // The wait is capped at the remaining budget, and the deadline
+                // is re-checked before the next attempt. Checking only before
+                // an uncapped sleep let a backoff outlive the deadline and then
+                // acquire the lock on the retry after it.
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                if remaining.is_zero() {
+                    return Err(lock_timeout_error(&path, timeout));
                 }
-                tokio::time::sleep(backoff).await;
+                tokio::time::sleep(backoff.min(remaining)).await;
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(lock_timeout_error(&path, timeout));
+                }
                 backoff = (backoff * 2).min(BACKGROUND_STATE_LOCK_MAX_BACKOFF);
             }
             Err(error) => {
                 return Err(error).with_context(|| format!("Failed to lock {}", path.display()));
             }
+        }
+    }
+}
+
+/// One test witness watching a workspace's ledger lock.
+#[cfg(test)]
+type ContentionWitness = (PathBuf, std::sync::Weak<tokio::sync::Notify>);
+
+/// The witnesses notified when a waiter observes the ledger lock held.
+///
+/// The contention branch is otherwise unobservable from a test: a fixed sleep
+/// before asserting can race the waiter's own start-up, so the assertion would
+/// pass without the waiter ever reaching the branch. A witness is notified from
+/// that branch, so a test releases its holder only after a real contention
+/// attempt.
+#[cfg(test)]
+fn lock_contention_witnesses() -> &'static std::sync::Mutex<Vec<ContentionWitness>> {
+    static WITNESSES: std::sync::OnceLock<std::sync::Mutex<Vec<ContentionWitness>>> = std::sync::OnceLock::new();
+    WITNESSES.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+/// Registers a witness for the next contention on `workspace_root`'s lock.
+#[cfg(test)]
+fn observe_lock_contention(workspace_root: &Path) -> std::sync::Arc<tokio::sync::Notify> {
+    let witness = std::sync::Arc::new(tokio::sync::Notify::new());
+    let lock_path = background_state_lock_path(workspace_root);
+    let mut witnesses = lock_contention_witnesses()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    witnesses.retain(|(_, registered)| registered.strong_count() > 0);
+    witnesses.push((lock_path, std::sync::Arc::downgrade(&witness)));
+    witness
+}
+
+/// Notifies every test witness watching `lock_path`.
+#[cfg(test)]
+fn notify_lock_contention(lock_path: &Path) {
+    let witnesses = lock_contention_witnesses()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    for (watched_path, witness) in witnesses.iter() {
+        if watched_path == lock_path
+            && let Some(witness) = witness.upgrade()
+        {
+            witness.notify_one();
         }
     }
 }
@@ -158,22 +222,61 @@ mod tests {
     /// The sidecar lock is held by another process in production, so the
     /// save's `try_lock` reports contention. It must retry until the holder
     /// releases and then acquire, or a concurrent save would fail instead of
-    /// serialising behind the other writer.
+    /// serialising behind the other writer. The witness proves the waiter
+    /// really reached the contention branch before the holder is released; a
+    /// fixed sleep raced the waiter's start-up and asserted nothing.
     #[tokio::test]
     async fn lock_retries_after_the_holder_releases() {
         let workspace = tempfile::tempdir().expect("workspace");
         let held = lock_background_state_within(workspace.path(), Duration::from_secs(1))
             .await
             .expect("first lock");
+        let witness = observe_lock_contention(workspace.path());
         let waiting_path = workspace.path().to_path_buf();
         let waiter =
             tokio::spawn(async move { lock_background_state_within(&waiting_path, Duration::from_secs(5)).await });
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        assert!(!waiter.is_finished(), "the waiter must not acquire a held lock");
+        tokio::time::timeout(Duration::from_secs(5), witness.notified())
+            .await
+            .expect("the waiter must observe the held lock before the holder is released");
+        assert!(!waiter.is_finished(), "a waiter that observed contention must not have acquired the lock");
 
         drop(held);
         let acquired = waiter.await.expect("waiter task").expect("second lock");
         drop(acquired);
+    }
+
+    /// A retry must not acquire the lock after its deadline has passed.
+    ///
+    /// Backoff doubles past the remaining deadline, so a sleep that is not
+    /// capped can wake after the holder released and still succeed. The
+    /// caller asked for a bounded wait and cannot tell that guard arrived
+    /// late, so the retry must be refused and the wait reported as a timeout.
+    #[tokio::test]
+    async fn lock_does_not_acquire_after_its_deadline() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let held = lock_background_state_within(workspace.path(), Duration::from_secs(1))
+            .await
+            .expect("first lock");
+        // The holder outlives the waiter's deadline but releases before the
+        // uncapped backoff would wake, which is exactly the late-acquire race.
+        let releaser = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(70)).await;
+            drop(held);
+        });
+
+        let started = tokio::time::Instant::now();
+        let error = match lock_background_state_within(workspace.path(), Duration::from_millis(60)).await {
+            Ok(_) => panic!("a retry must not acquire the lock after the deadline"),
+            Err(error) => error,
+        };
+        assert!(format!("{error:#}").contains("Timed out"), "a late retry must report the deadline: {error:#}");
+        assert!(
+            started.elapsed() >= Duration::from_millis(60),
+            "the wait must last for its deadline instead of failing early: {:?}",
+            started.elapsed()
+        );
+
+        releaser.await.expect("the holder releases");
     }
 
     /// A lock that never becomes available fails with the deadline error.

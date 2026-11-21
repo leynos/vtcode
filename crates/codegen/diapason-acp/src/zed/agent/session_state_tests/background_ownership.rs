@@ -8,12 +8,16 @@
 //!
 //! These regressions pin that ordering at the ACP boundary. Deterministic
 //! fixtures only: the seeded row names an agent that resolves to no subagent
-//! spec, so any restore attempt fails before spawning a process.
+//! spec, so any restore attempt fails before spawning a process. The same
+//! fixture pins that a new session never migrates: its fresh owner can match
+//! no persisted row, so the migration may not take the ledger lock at all.
 use super::archive::archived_listing;
 use super::*;
+use crate::zed::agent::test_log_capture::capturing_async;
 use crate::zed::session::AcpSessionWorkspace;
 use assert_fs::TempDir;
-use diapason_core::subagents::background_record_id_for_owner;
+use diapason_core::subagents::{BackgroundSubprocessStatus, background_record_id_for_owner};
+use tracing_subscriber::filter::LevelFilter;
 
 /// The agent the seeded legacy row names.
 ///
@@ -160,6 +164,85 @@ async fn resumed_session_owns_the_legacy_row_the_launch_workspace_loaded() {
     assert_eq!(session_view[0].exec_session_id, LEGACY_EXEC_SESSION);
 }
 
+/// A resumed session must reuse the migrated launch: the launch scope may not
+/// restore or refresh it into a replacement.
+///
+/// The workspace runtime can be built before any session resumes, so its
+/// controller may hold an ownerless copy of a row the migration has since
+/// given to this session. Adoption must finish before the session controller
+/// is built, so neither scope can act on the stale copy and start a second
+/// process under the same record.
+#[tokio::test]
+async fn resumed_session_reuses_the_migrated_launch_instead_of_spawning_a_replacement() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let temp = TempDir::new().expect("temporary workspace for the launch-reuse test");
+    let session_id = acp::SessionId::new("resumed-launch-reuse");
+    let owner = session_id.0.as_ref();
+    seed_legacy_ledger(temp.path(), owner);
+    let vt_config = auto_restore_config();
+    let agent = build_agent_with_vt_config(temp.path(), "duck", Some(&vt_config)).await;
+    let launch_controller = agent
+        .local_tool_registry
+        .subagent_controller()
+        .expect("the launch workspace controller");
+
+    let listing = archived_listing("resumed-launch-reuse-archive", temp.path(), "continue");
+    let workspace = AcpSessionWorkspace::from_client_cwd(temp.path())
+        .await
+        .expect("build the ACP session workspace from the temporary directory");
+    drop(
+        agent
+            .attach_thread_from_listing(&session_id, &workspace, listing)
+            .await
+            .expect("resume the session that launched the legacy row"),
+    );
+
+    let owned_id = background_record_id_for_owner(LEGACY_AGENT, Some(owner));
+    let launch_view = launch_controller.background_status_entries().await;
+    assert_eq!(launch_view.len(), 1, "the launch scope must hold one record for the migrated launch");
+    assert_eq!(launch_view[0].id, owned_id, "the launch scope adopts the migrated record");
+    assert_eq!(launch_view[0].owner_session_id.as_deref(), Some(owner));
+    assert_eq!(
+        launch_view[0].exec_session_id, LEGACY_EXEC_SESSION,
+        "adoption must keep the launch the ledger already records"
+    );
+    assert!(
+        launch_controller
+            .restore_legacy_background_subagents()
+            .await
+            .expect("a row the resumed session owns must not fail the launch scope's restore")
+            .is_empty(),
+        "the launch scope must not restore the launch the resumed session owns"
+    );
+    let after_refresh = launch_controller
+        .refresh_background_processes()
+        .await
+        .expect("refreshing the launch scope must not replace a launch the resumed session owns");
+    assert_eq!(after_refresh.len(), 1, "a refresh must not add a replacement launch");
+    assert_eq!(
+        after_refresh[0].exec_session_id, LEGACY_EXEC_SESSION,
+        "the migrated launch identity must survive a launch-scope refresh"
+    );
+
+    let records = read_ledger_records(temp.path());
+    assert_eq!(records.len(), 1, "the resumed session must reuse the launch the ledger already records");
+    assert_eq!(records[0]["owner_session_id"], owner);
+    assert_eq!(records[0]["exec_session_id"], LEGACY_EXEC_SESSION, "no replacement launch may be persisted");
+
+    let session = agent
+        .session_handle(&session_id)
+        .expect("look up the resumed session")
+        .expect("the resumed session must be registered");
+    let session_controller = agent
+        .session_subagent_controller(&session)
+        .expect("select the session controller")
+        .expect("the resumed session owns a subagent controller");
+    let session_view = session_controller.background_status_entries().await;
+    assert_eq!(session_view.len(), 1, "the session controller adopts the migrated launch");
+    assert_eq!(session_view[0].exec_session_id, LEGACY_EXEC_SESSION);
+}
+
 /// A migration that fails must leave the row ownerless and restore nothing
 /// under either scope, so a retried attach can still migrate it once.
 #[tokio::test]
@@ -196,6 +279,10 @@ async fn a_failed_owner_migration_restores_nothing() {
         "a failed migration must not attribute the row to the session"
     );
     assert_eq!(records[0]["exec_session_id"], LEGACY_EXEC_SESSION, "a failed migration must not relaunch the row");
+    assert_eq!(
+        records[0]["status"], "running",
+        "a failed migration must not settle the row a skipped restore would have settled"
+    );
 
     let session = agent
         .session_handle(&session_id)
@@ -227,5 +314,56 @@ async fn a_failed_owner_migration_restores_nothing() {
     assert_eq!(
         workspace_view[0].exec_session_id, LEGACY_EXEC_SESSION,
         "the deferred restore must not relaunch the ownerless row"
+    );
+    assert_eq!(
+        workspace_view[0].status,
+        BackgroundSubprocessStatus::Running,
+        "a restore attempt would settle this row Error while keeping its launch id"
+    );
+}
+
+/// A new session must not attempt the owner migration.
+///
+/// Its owner is a fresh identifier, so no persisted row can carry it, and the
+/// resume path migrates before it restores. Migrating anyway would take the
+/// ledger's inter-process lock on every `session/new`, so a workspace whose
+/// lock sidecar is unavailable would report a degraded setup for a session that
+/// owns nothing.
+#[tokio::test]
+async fn a_new_session_opens_with_the_ledger_lock_unavailable() {
+    let _history_test_lock = HISTORY_TEST_LOCK.lock().await;
+    let _history_settings = HistorySettingsGuard::set(HistoryPersistence::File, None);
+    let launch_workspace = TempDir::new().expect("launch workspace for the new-session test");
+    let session_workspace = TempDir::new().expect("session workspace for the new-session test");
+    // The deterministic pattern from the failed-migration test: occupying the
+    // sidecar path with a directory makes any acquisition fail for every user.
+    fs::create_dir_all(session_workspace.path().join(".diapason/state"))
+        .expect("create the background state directory");
+    fs::create_dir(session_workspace.path().join(".diapason/state/background_subagents.lock"))
+        .expect("occupy the ledger lock path with a directory");
+    let vt_config = auto_restore_config();
+    let agent = build_agent_with_vt_config(launch_workspace.path(), "duck", Some(&vt_config)).await;
+
+    let (response, events) =
+        capturing_async(LevelFilter::DEBUG, agent.new_session(acp::NewSessionRequest::new(session_workspace.path())))
+            .await;
+    let response = response.expect("a new session must open even when the ledger lock is unavailable");
+
+    let captured = events.join("\n");
+    assert!(
+        !captured.contains("background_owner_migration_failed"),
+        "a fresh session owns no persisted row, so it must not attempt the owner migration: {captured}"
+    );
+    let session = agent
+        .session_handle(&response.session_id)
+        .expect("look up the new session")
+        .expect("the new session must be registered");
+    let controller = agent
+        .session_subagent_controller(&session)
+        .expect("select the session controller")
+        .expect("the new session still owns a subagent controller");
+    assert!(
+        controller.background_status_entries().await.is_empty(),
+        "a fresh session has no background work to report"
     );
 }

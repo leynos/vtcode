@@ -6,7 +6,7 @@
 //! fails closed while a shared workspace controller remains able to spawn.
 
 use super::lody_delegation_fixtures::{DelegationTestGuards, delegation_test_guards};
-use super::lody_prompt_delegation::{
+use super::lody_prompt_delegation_support::{
     FAIL_CLOSED_MESSAGE, assert_tool_reached_the_model, assert_tool_response_contains, delegation_prompt,
     terminal_tool_update, tool_update_text,
 };

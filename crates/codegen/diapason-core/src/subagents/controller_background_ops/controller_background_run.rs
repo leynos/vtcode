@@ -149,32 +149,25 @@ impl SubagentController {
                     continue;
                 }
             };
-            if !self.record_background_run_started(&plan, metadata).await? {
+            let Some(write_generation) = self.record_background_run_started(&plan, metadata).await? else {
                 // The record stopped wanting this launch while the spawn was in
                 // flight. The session exists now and nothing records it, so
-                // close it rather than leave an untracked process running.
-                if let Err(error) = self.close_background_exec_session(&plan.exec_session_id).await {
-                    tracing::warn!(
-                        exec_session_id = plan.exec_session_id.as_str(),
-                        error = %error,
-                        "Failed to close a declined background launch's exec session"
-                    );
-                }
+                // close it rather than leave an untracked process running. A
+                // failed close stays owed under the launch's own exec session:
+                // the record names another launch (or none), so a close keyed
+                // to the record's current session could never be retried.
+                self.close_declined_background_session(&plan.record_id, &plan.exec_session_id)
+                    .await;
                 return self.background_status_for(&plan.record_id).await;
-            }
-            // The record is committed in memory but the ledger is not. A
-            // caller told the launch failed must not later have that record
-            // reused as if it were durable, so the obligation is recorded
-            // before the save is awaited. Marking after the save would leave
-            // the whole write window unmarked: a concurrent identical request
-            // could refresh, see no obligation and no persisted record, and
-            // reuse the in-memory `Running` record before this launch knows
-            // whether its write succeeded.
-            let generation = mark_background_ledger_write_pending(&self.state);
-            // `?` leaves the obligation owed when the save fails; only a
-            // successful write clears the generation this call observed.
+            };
+            // The record is committed in memory but the ledger is not. The
+            // commit raised the owed-write obligation under the lock that made
+            // the record reusable, so no concurrent request can treat it as
+            // durable before the save is attempted. `?` leaves the obligation
+            // owed when the save fails; only a successful write clears the
+            // generation this call observed.
             self.save_background_state().await?;
-            clear_background_ledger_write_pending(&self.state, generation);
+            clear_background_ledger_write_pending(&self.state, write_generation);
             return self.background_status_for(&plan.record_id).await;
         }
     }
@@ -433,7 +426,7 @@ impl SubagentController {
         &self,
         plan: &BackgroundRunPlan,
         metadata: crate::tools::types::DiapasonExecSession,
-    ) -> Result<bool> {
+    ) -> Result<Option<u64>> {
         self.commit_background_run_started(
             &plan.record_id,
             &plan.exec_session_id,

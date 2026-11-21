@@ -25,11 +25,18 @@ use super::types::{ControllerState, PersistedBackgroundRecord};
 /// no longer carries only when that id is in the set, so an owner-side removal
 /// still reaches disk without letting a stale snapshot delete a record another
 /// live controller of the same owner persisted.
+///
+/// `expected_stops` names the launches the snapshot is stopping, keyed by
+/// canonical id and carrying the exec session each stop applies to. A stop
+/// only governs the launch it names, so the merge keeps a persisted row for a
+/// different exec session under the same id: that row is a replacement launch,
+/// not a stale copy of the stopped one.
 pub(super) async fn persist_background_records(
     workspace_root: &Path,
     owner_session_id: Option<&str>,
     records: Vec<PersistedBackgroundRecord>,
     removable_owner_ids: &BTreeSet<String>,
+    expected_stops: &BTreeMap<String, String>,
 ) -> Result<()> {
     let persisted_records = load_background_state(workspace_root).await?.records;
     let merged = match owner_session_id {
@@ -39,14 +46,18 @@ pub(super) async fn persist_background_records(
         // controller shares the ledger and can cancel one of this owner's
         // tasks, persisting a cancellation newer than the stale copy this
         // controller loaded.
-        Some(owner_session_id) => {
-            merge_background_records(persisted_records, records, Some(owner_session_id), removable_owner_ids)
-        }
+        Some(owner_session_id) => merge_background_records(
+            persisted_records,
+            records,
+            Some(owner_session_id),
+            removable_owner_ids,
+            expected_stops,
+        ),
         // An unscoped controller loads other owners' records so it can list and
         // route them, and it owns none of them. Replacing the file with its own
         // snapshot would delete a record another owner created after this
         // controller loaded, or restore that owner's record from its stale copy.
-        None => merge_unscoped_background_records(persisted_records, records),
+        None => merge_unscoped_background_records(persisted_records, records, expected_stops),
     };
     persist_background_state(workspace_root, merged).await
 }
@@ -130,7 +141,73 @@ pub(super) fn record_committed_owner_ids(state: &Arc<RwLock<ControllerState>>, i
 pub(super) fn collect_by_canonical_id(
     records: impl IntoIterator<Item = PersistedBackgroundRecord>,
 ) -> BTreeMap<String, PersistedBackgroundRecord> {
-    join_by_canonical_id(records, std::iter::empty())
+    join_by_canonical_id(records, std::iter::empty(), &BTreeMap::new())
+}
+
+/// One copy of a canonical record together with the merge side it came from.
+///
+/// The provenance is what lets a tie keep the snapshot copy, and what keeps a
+/// stopped snapshot copy from erasing a different launch that another
+/// controller has since persisted under the same canonical id.
+struct LaunchCandidate {
+    record: PersistedBackgroundRecord,
+    /// Whether this copy arrived on the snapshot side of the merge.
+    from_snapshot: bool,
+}
+
+impl LaunchCandidate {
+    /// Whether `candidate` replaces `chosen` as `id`'s survivor.
+    ///
+    /// Freshness decides by `updated_at`, and a tie keeps the snapshot copy:
+    /// an untouched snapshot equals the copy this controller loaded while any
+    /// local change is newer than it. Without the provenance a tie fell to the
+    /// lexicographically later exec session, which is not the documented rule.
+    ///
+    /// A stop only applies to the launch it names, so a stopped snapshot copy
+    /// never displaces a persisted row that names a different exec session
+    /// under the same canonical id, whatever their timestamps. That row is a
+    /// replacement launch rather than a stale copy of the stopped one, and
+    /// deleting it would erase a process no other controller can restore. The
+    /// caller applies the answer in both directions, which makes the rule
+    /// independent of the order the two copies are reduced in.
+    fn candidate_outranks(
+        id: &str,
+        chosen: &Self,
+        candidate: &Self,
+        expected_stops: &BTreeMap<String, String>,
+    ) -> bool {
+        if stop_does_not_name_other_launch(id, chosen, candidate, expected_stops) {
+            return true;
+        }
+        if stop_does_not_name_other_launch(id, candidate, chosen, expected_stops) {
+            return false;
+        }
+        // Equal timestamps are a tie in both directions, so the snapshot
+        // provenance decides it rather than the exec session's map order.
+        candidate.record.is_at_least_as_new_as(&chosen.record)
+            && (!chosen.record.is_at_least_as_new_as(&candidate.record)
+                || (candidate.from_snapshot && !chosen.from_snapshot))
+    }
+}
+
+/// Whether `stop` is an expected stop that must not displace `other`.
+///
+/// `expected_stops` names the launches this save is stopping and the exec
+/// session each stop applies to. When `other` is a persisted copy of a
+/// different exec session under the same canonical id, it is a replacement
+/// launch rather than a stale copy of the stopped one, so the stop yields to
+/// it.
+fn stop_does_not_name_other_launch(
+    id: &str,
+    stop: &LaunchCandidate,
+    other: &LaunchCandidate,
+    expected_stops: &BTreeMap<String, String>,
+) -> bool {
+    expected_stops
+        .get(id)
+        .is_some_and(|exec_session_id| exec_session_id == &stop.record.exec_session_id)
+        && !other.from_snapshot
+        && stop.record.exec_session_id != other.record.exec_session_id
 }
 
 /// Joins copies of each canonical record by launch, then by ownership and
@@ -142,8 +219,11 @@ pub(super) fn collect_by_canonical_id(
 /// Only the surviving copy of each launch is then compared by `updated_at`,
 /// which is what lets an explicit restart supersede the launch it replaced: a
 /// restart writes a new exec session, so it is never mistaken for a stale copy
-/// of the stopped one. A tie keeps the later entry, so a snapshot copy wins
-/// over the persisted copy it equals.
+/// of the stopped one. A tie keeps the snapshot copy over the persisted copy
+/// it equals. `expected_stops` names the launches the snapshot is stopping, so
+/// a stop may only replace a persisted row that names its own exec session: a
+/// stale stop cannot erase a replacement launch another controller has already
+/// written under the same canonical id.
 ///
 /// A copy that records an owner then outranks an ownerless copy of the same
 /// launch, whatever their timestamps. Ownerless and owned copies of one launch
@@ -172,31 +252,41 @@ pub(super) fn collect_by_canonical_id(
 fn join_by_canonical_id(
     persisted: impl IntoIterator<Item = PersistedBackgroundRecord>,
     snapshot: impl IntoIterator<Item = PersistedBackgroundRecord>,
+    expected_stops: &BTreeMap<String, String>,
 ) -> BTreeMap<String, PersistedBackgroundRecord> {
-    type LaunchCopies = BTreeMap<String, PersistedBackgroundRecord>;
+    type LaunchCopies = BTreeMap<String, LaunchCandidate>;
     let mut launches: BTreeMap<String, LaunchCopies> = BTreeMap::new();
-    for mut record in persisted.into_iter().chain(snapshot) {
-        record.canonicalize_id();
-        let id = record.id.clone();
-        let exec_session_id = record.exec_session_id.clone();
+    let persisted = persisted
+        .into_iter()
+        .map(|record| LaunchCandidate { record, from_snapshot: false });
+    let snapshot = snapshot
+        .into_iter()
+        .map(|record| LaunchCandidate { record, from_snapshot: true });
+    for mut candidate in persisted.chain(snapshot) {
+        candidate.record.canonicalize_id();
+        let id = candidate.record.id.clone();
+        let exec_session_id = candidate.record.exec_session_id.clone();
         let sessions = launches.entry(id).or_default();
         match sessions.entry(exec_session_id) {
             std::collections::btree_map::Entry::Occupied(mut entry) => {
                 // Cancellation dominance decides within one launch; freshness
                 // only decides between launches, or between two copies that
                 // agree on intent. A stopped current copy must survive a newer
-                // active copy, so it is checked before freshness.
+                // active copy, so it is checked before freshness. A tie keeps
+                // the later entry, which is the snapshot copy when the two
+                // sides agree.
                 let replace = {
                     let current = entry.get();
-                    !current.cancellation_outranks(&record)
-                        && (record.cancellation_outranks(current) || record.is_at_least_as_new_as(current))
+                    !current.record.cancellation_outranks(&candidate.record)
+                        && (candidate.record.cancellation_outranks(&current.record)
+                            || candidate.record.is_at_least_as_new_as(&current.record))
                 };
                 if replace {
-                    entry.insert(record);
+                    entry.insert(candidate);
                 }
             }
             std::collections::btree_map::Entry::Vacant(entry) => {
-                entry.insert(record);
+                entry.insert(candidate);
             }
         }
     }
@@ -211,13 +301,13 @@ fn join_by_canonical_id(
             sessions
                 .into_values()
                 .reduce(|chosen, candidate| {
-                    if candidate.is_at_least_as_new_as(&chosen) {
+                    if LaunchCandidate::candidate_outranks(&id, &chosen, &candidate, expected_stops) {
                         candidate
                     } else {
                         chosen
                     }
                 })
-                .map(|chosen| (id, chosen))
+                .map(|chosen| (id, chosen.record))
         })
         .collect::<BTreeMap<_, _>>();
     let unowned = survivors
@@ -253,8 +343,9 @@ fn ownerless_launch(record: &PersistedBackgroundRecord) -> (String, String) {
 fn merge_unscoped_background_records(
     persisted: Vec<PersistedBackgroundRecord>,
     snapshot: Vec<PersistedBackgroundRecord>,
+    expected_stops: &BTreeMap<String, String>,
 ) -> Vec<PersistedBackgroundRecord> {
-    merge_background_records(persisted, snapshot, None, &BTreeSet::new())
+    merge_background_records(persisted, snapshot, None, &BTreeSet::new(), expected_stops)
 }
 
 /// Merges one controller's snapshot into the persisted ledger.
@@ -265,10 +356,13 @@ fn merge_unscoped_background_records(
 /// each launch then competes on `updated_at`, and finally an owned copy of a
 /// launch outranks an ownerless copy of it. A tie keeps the snapshot, because
 /// an untouched snapshot equals the copy this controller loaded while a local
-/// refresh or cancellation is newer than it. A record only one side holds is
-/// kept, so no controller discards a record another owner created after it
-/// loaded, except that the ownerless copy of a launch another copy records an
-/// owner for is dropped.
+/// refresh or cancellation is newer than it. `expected_stops` names the
+/// launches the snapshot is stopping: such a stop never replaces a persisted
+/// row of a different exec session under the same canonical id, because that
+/// row is a replacement launch another controller wrote after this one loaded
+/// its stale copy. A record only one side holds is kept, so no controller
+/// discards a record another owner created after it loaded, except that the
+/// ownerless copy of a launch another copy records an owner for is dropped.
 ///
 /// Both stages are required. A stop outranks a refresh of the same launch in
 /// either direction and even when the refresh was written later, because a
@@ -312,6 +406,7 @@ fn merge_background_records(
     snapshot: Vec<PersistedBackgroundRecord>,
     removed_owner: Option<&str>,
     removable_owner_ids: &BTreeSet<String>,
+    expected_stops: &BTreeMap<String, String>,
 ) -> Vec<PersistedBackgroundRecord> {
     let mut carried_verbatim: Vec<PersistedBackgroundRecord> = Vec::new();
     let mut owned: Vec<PersistedBackgroundRecord> = Vec::new();
@@ -330,7 +425,7 @@ fn merge_background_records(
         })
         .collect::<Vec<_>>();
     let snapshot_ids = snapshot.iter().map(|record| record.id.clone()).collect::<BTreeSet<_>>();
-    let mut merged = join_by_canonical_id(owned, snapshot);
+    let mut merged = join_by_canonical_id(owned, snapshot, expected_stops);
     if let Some(owner) = removed_owner {
         merged.retain(|id, record| {
             record.owner_session_id.as_deref() != Some(owner)
@@ -353,12 +448,17 @@ impl SubagentController {
     /// would write them back as ownerless duplicates beside the owned records.
     ///
     /// A copy is adopted only when the ledger now records that launch under
-    /// `owner_session_id` *and* the copy's own verified `parent_session_id` is
-    /// exactly that owner. A failed migration therefore adopts nothing: the
-    /// ledger still names the row ownerless, and this controller must not
-    /// invent an owner the migration did not write. Only the record's owner
-    /// changes; its launch and every other field stay as loaded, and it is
-    /// rekeyed to the canonical id the new owner gives it.
+    /// `owner_session_id` *and* names the same exec session *and* the copy's
+    /// own verified `parent_session_id` is exactly that owner. The exec
+    /// session is part of the identity: a canonical id alone also matches a
+    /// different launch of the same agent that the session has since
+    /// persisted, and rekeying the stale copy onto it would overwrite the
+    /// launch the session actually owns on this controller's next save. A
+    /// failed migration therefore adopts nothing: the ledger still names the
+    /// row ownerless, and this controller must not invent an owner the
+    /// migration did not write. Only the record's owner changes; its launch
+    /// and every other field stay as loaded, and it is rekeyed to the
+    /// canonical id the new owner gives it.
     ///
     /// Returns the number of records adopted. A `managed_background_runtime`
     /// controller owns nothing and adopts nothing, and an empty owner names
@@ -374,7 +474,7 @@ impl SubagentController {
             .filter(|record| record.owner_session_id.as_deref() == Some(owner_session_id))
             .map(|mut record| {
                 record.canonicalize_id();
-                record.id
+                (record.id, record.exec_session_id)
             })
             .collect::<BTreeSet<_>>();
         if owned_launches.is_empty() {
@@ -386,9 +486,12 @@ impl SubagentController {
         for mut record in std::mem::take(&mut state.background_children).into_values() {
             let launched_here = record.owner_session_id.is_none()
                 && record.parent_session_id == owner_session_id
-                && owned_launches.contains(&super::background::background_record_id_for_owner(
-                    record.agent_name.as_str(),
-                    Some(owner_session_id),
+                && owned_launches.contains(&(
+                    super::background::background_record_id_for_owner(
+                        record.agent_name.as_str(),
+                        Some(owner_session_id),
+                    ),
+                    record.exec_session_id.clone(),
                 ));
             if launched_here {
                 adopted += 1;

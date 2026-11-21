@@ -137,13 +137,17 @@ impl ZedAgent {
             .workspace_runtime_for(workspace, background_owner_migration_failed)
             .await
             .context("Failed to initialize archived ACP session workspace")?;
+        // Reconcile the workspace controller before the session controller
+        // exists. The session controller loads the ledger at construction and
+        // restores from its own copy later, so building it first would leave it
+        // observing a ledger the workspace controller still holds an ownerless
+        // copy of, and that copy may be what a launch or refresh of this
+        // attach's scope then acts on.
+        self.adopt_workspace_background_owner(workspace_lease.runtime(), session_id)
+            .await;
         let subagent_controller = self
             .build_session_subagent_controller(workspace_lease.runtime(), session_id, true)
             .await;
-        if subagent_controller.is_some() {
-            self.adopt_workspace_background_owner(workspace_lease.runtime(), session_id)
-                .await;
-        }
         let handle = self.build_session_handle(
             thread,
             SessionHandleBootstrap {
@@ -255,6 +259,13 @@ impl ZedAgent {
     /// the session may already have cancelled. The same controller then adopts
     /// the rows it still holds ownerless, which makes the migrated ownership
     /// durable before either scope restores anything.
+    ///
+    /// It runs before this attach builds the session controller, so that
+    /// controller is built from a ledger the workspace controller can no longer
+    /// add an ownerless copy to. Adoption happens whether or not this session
+    /// ends up with a controller: the stale copy belongs to the workspace
+    /// scope, and leaving it ownerless would let that scope restore a launch
+    /// the ledger already attributes to this session.
     ///
     /// Best effort: a failure is logged and the attach continues. The ledger
     /// merge still refuses to write an ownerless copy over an owned record of

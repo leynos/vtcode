@@ -147,21 +147,21 @@ impl SubagentController {
         exec_session_id: &str,
         child_pid: Option<u32>,
         started_at: Option<chrono::DateTime<Utc>>,
-    ) -> Result<bool> {
-        {
+    ) -> Result<Option<u64>> {
+        let write_generation = {
             let mut state = self.state.write().await;
             let duplicate_session = state
                 .background_children
                 .iter()
                 .any(|(id, other)| id.as_str() != record_id && other.exec_session_id == exec_session_id);
             if duplicate_session {
-                return Ok(false);
+                return Ok(None);
             }
             let Some(record) = state.background_children.get_mut(record_id) else {
-                return Ok(false);
+                return Ok(None);
             };
             if !record.desired_enabled || record.exec_session_id != exec_session_id {
-                return Ok(false);
+                return Ok(None);
             }
             record.pid = child_pid;
             record.started_at = started_at;
@@ -170,9 +170,14 @@ impl SubagentController {
             record.ended_at = None;
             record.error = None;
             record.summary = Some("Background subagent is running".to_string());
-        }
+            // The record becomes reusable the moment this lock is released, so
+            // the owed-write marker is raised here, under the same lock that
+            // stores it. Raising it after the lock let a concurrent reuse
+            // answer from memory for a record no other process could see yet.
+            Some(mark_background_ledger_write_pending(&self.state))
+        };
         self.publish_background_status(record_id).await;
-        Ok(true)
+        Ok(write_generation)
     }
     pub(super) async fn update_background_record_state(
         &self,

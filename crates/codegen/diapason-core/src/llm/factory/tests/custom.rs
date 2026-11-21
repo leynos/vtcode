@@ -5,6 +5,21 @@ use crate::llm::factory::{
 };
 use diapason_config::core::{AnthropicConfig, CustomProviderConfig, OpenAIConfig};
 
+/// The request config every mixed-profile case builds against.
+///
+/// The profile decides the backend, so each case passes only the model it wants
+/// resolved; the key, both provider sections and the shared defaults are the
+/// same everywhere.
+fn mixed_request(model: &str) -> ProviderConfig {
+    ProviderConfig {
+        api_key: Some("test-key".to_string()),
+        model: Some(model.to_string()),
+        openai: Some(OpenAIConfig::default()),
+        anthropic: Some(AnthropicConfig::default()),
+        ..base_provider_config()
+    }
+}
+
 #[test]
 #[serial_test::serial(global_llm_factory)]
 fn custom_openai_compatible_provider_uses_configured_display_name() {
@@ -66,17 +81,8 @@ fn custom_openai_compatible_provider_uses_configured_context_window() {
 fn custom_provider_backend_kind_and_identity_follow_selected_default_model() {
     register_custom_providers(&[mixed_profile_provider_config()]);
 
-    let provider = create_provider_with_config(
-        "mixed",
-        ProviderConfig {
-            api_key: Some("test-key".to_string()),
-            model: Some("claude-sonnet-5".to_string()),
-            openai: Some(OpenAIConfig::default()),
-            anthropic: Some(AnthropicConfig::default()),
-            ..base_provider_config()
-        },
-    )
-    .expect("mixed provider should build");
+    let provider =
+        create_provider_with_config("mixed", mixed_request("claude-sonnet-5")).expect("mixed provider should build");
 
     assert_eq!(provider.name(), "mixed");
     assert_eq!(provider.backend_kind(), diapason_commons::llm::BackendKind::Anthropic);
@@ -89,17 +95,8 @@ fn custom_provider_backend_kind_and_identity_follow_selected_default_model() {
 fn custom_provider_profile_overrides_context_and_capabilities() {
     register_custom_providers(&[mixed_profile_provider_config()]);
 
-    let provider = create_provider_with_config(
-        "mixed",
-        ProviderConfig {
-            api_key: Some("test-key".to_string()),
-            model: Some("gpt-5-mini".to_string()),
-            openai: Some(OpenAIConfig::default()),
-            anthropic: Some(AnthropicConfig::default()),
-            ..base_provider_config()
-        },
-    )
-    .expect("mixed provider should build");
+    let provider =
+        create_provider_with_config("mixed", mixed_request("gpt-5-mini")).expect("mixed provider should build");
 
     assert!(!provider.supports_tools("gpt-5-mini"));
     assert_eq!(provider.effective_context_size("gpt-5-mini"), 256_000);
@@ -114,17 +111,8 @@ fn custom_provider_profile_overrides_context_and_capabilities() {
 fn custom_provider_validation_errors_use_custom_display_name() {
     register_custom_providers(&[mixed_profile_provider_config()]);
 
-    let provider = create_provider_with_config(
-        "mixed",
-        ProviderConfig {
-            api_key: Some("test-key".to_string()),
-            model: Some("gpt-5-mini".to_string()),
-            openai: Some(OpenAIConfig::default()),
-            anthropic: Some(AnthropicConfig::default()),
-            ..base_provider_config()
-        },
-    )
-    .expect("mixed provider should build");
+    let provider =
+        create_provider_with_config("mixed", mixed_request("gpt-5-mini")).expect("mixed provider should build");
 
     let error = provider
         .validate_request(&crate::llm::provider::LLMRequest {

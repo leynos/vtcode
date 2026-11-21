@@ -153,11 +153,13 @@ event with `MetricsCollector::record_tool_recovery`, or a batch with
 
 ACP extension activity is counted separately in the `acp_extension` object of
 the same summary: management requests started, succeeded, failed and in flight,
-their total duration, usage notifications sent and failed, and initial snapshot
-publications and failures. `list`, `cancel` and `output` are all counted,
-because the counters measure use of the management surface rather than state
-mutation. The same counters are exported as `diapason_acp_*` series in the
-Prometheus snapshot.
+their total duration, usage notifications enqueued for delivery and failed, and
+initial snapshots enqueued or rejected. These are queue outcomes rather than
+delivery outcomes: a notification counted as enqueued may still be dropped by a
+later transport failure. `list`, `cancel` and `output` are all counted, because
+the counters measure use of the management surface rather than state mutation.
+The same counters are exported as `diapason_acp_*` series in the Prometheus
+snapshot.
 
 Both snapshot families are read from a `MetricsCollector` through
 `ToolRegistry::metrics_collector()`. The running `diapason acp` process does

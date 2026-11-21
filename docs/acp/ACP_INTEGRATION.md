@@ -122,8 +122,10 @@ A task id the session does not own fails with error data
 `{"reason": "unknown_task"}`.
 
 `_lody/subagents/output` requires `sessionId` and `taskId` and accepts an
-optional `tail` (default 200 lines, hard maximum 10,000). It returns the
-bounded output tail:
+optional `tail` (default 200 lines, hard maximum 10,000). It returns the last
+`tail` lines: `tail` limits the line count only, not the byte size, so each
+selected line is returned unchanged and one very long line can exceed any
+expected size:
 
 <!-- tested-example: acp-integration-subagent-output-request -->
 ```json

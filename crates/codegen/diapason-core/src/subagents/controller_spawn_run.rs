@@ -6,11 +6,11 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
 use futures::future::{BoxFuture, select_all};
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::sync::{Arc, Mutex};
 use tokio::sync::{Notify, RwLock};
 
 use crate::config::DiapasonConfig;
@@ -187,7 +187,7 @@ impl SubagentController {
             // transport does not project success as failure, so the status
             // alone cannot tell a closed task from one that merely finished.
             // `reopen_single` clears this flag.
-            if record.status == SubagentStatus::Closed || is_child_closed(&self.state, &request.target) {
+            if record.status == SubagentStatus::Closed || record.closed {
                 bail!("Subagent {} is closed", request.target);
             }
 
@@ -493,7 +493,7 @@ impl SubagentController {
             }
             // Reopening releases the explicit closure, so input can reach the
             // task again even if its last outcome was terminal.
-            clear_child_closed(&self.state, target);
+            record.closed = false;
             let prompt = record
                 .last_prompt
                 .clone()
@@ -528,21 +528,34 @@ impl SubagentController {
         // must still stop the task, or it would go on to close its nested
         // subagents and reconcile its worktree after being cancelled. Aborting
         // a finished handle is a no-op, so the settled outcome is untouched.
-        if let Some(handle) = record.handle.take() {
+        let aborted_live_handle = record.handle.take();
+        if let Some(handle) = aborted_live_handle.as_ref() {
             handle.abort();
         }
         // Record the explicit closure before the terminal short-circuit below.
         // A settled `Completed`/`Failed` child keeps its outcome, so this flag
         // is what still makes `send_input` refuse it until the subtree is
         // reopened.
-        mark_child_closed(&self.state, target);
+        record.closed = true;
         // Cancellation must not rewrite a settled outcome. `Completed` and
         // `Failed` children already stopped running, and a transport projects
         // `Closed` as a failure, so closing them again would turn a
         // successful task into a visibly failed one and overwrite its
         // completion timestamp.
         if record.status.is_terminal() {
-            return Ok(record.build_status_entry());
+            // A child records its terminal status before it awaits the
+            // publication of that outcome, so the abort above may have stopped
+            // the only publisher. The outcome is already recorded and the
+            // caller of `close` does not consume it (the ACP caller discards
+            // the returned entry), so publish it here once the state lock is
+            // released rather than leave observers showing a running task.
+            let entry = record.build_status_entry();
+            let owes_publication = aborted_live_handle.is_some();
+            drop(state);
+            if owes_publication {
+                self.publish_subagent_progress(entry.clone()).await;
+            }
+            return Ok(entry);
         }
         record.status = SubagentStatus::Closed;
         record.updated_at = Utc::now();
@@ -667,7 +680,7 @@ impl SubagentController {
             // out another process's file lock.
             let _ledger_guard = lock_background_state(&workspace_root).await?;
             let _persistence_guard = lock_scope.persistence().lock().await;
-            let (mut records, removable) = {
+            let (mut records, expected_stops, removable) = {
                 let guard = state.read().await;
                 let records = guard
                     .background_children
@@ -675,7 +688,26 @@ impl SubagentController {
                     .cloned()
                     .map(BackgroundRecord::into_persisted)
                     .collect::<Vec<_>>();
-                (records, removable_owner_ids(&state))
+                // A stop only governs the launch it names. The expectation is
+                // read from the in-memory records, whose fields this module can
+                // see, and keyed by the canonical id the merge will use, so a
+                // stopped copy whose exec session has since been replaced in
+                // the ledger keeps that replacement.
+                let expected_stops = guard
+                    .background_children
+                    .values()
+                    .filter(|record| !record.desired_enabled)
+                    .map(|record| {
+                        (
+                            background_record_id_for_owner(
+                                record.agent_name.as_str(),
+                                record.owner_session_id.as_deref(),
+                            ),
+                            record.exec_session_id.clone(),
+                        )
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                (records, expected_stops, removable_owner_ids(&state))
             };
             // The merge rekeys legacy ids, so authority to remove a record must
             // name the same canonical id the retained record carries.
@@ -683,7 +715,14 @@ impl SubagentController {
                 record.canonicalize_id();
             }
             let committed_ids = records.iter().map(|record| record.id.clone()).collect::<Vec<_>>();
-            persist_background_records(&workspace_root, owner_session_id.as_deref(), records, &removable).await?;
+            persist_background_records(
+                &workspace_root,
+                owner_session_id.as_deref(),
+                records,
+                &removable,
+                &expected_stops,
+            )
+            .await?;
             record_committed_owner_ids(&state, committed_ids);
             Ok(())
         })
@@ -1008,6 +1047,7 @@ impl SubagentController {
             notify,
             worktree_path,
             child_controller: None,
+            closed: false,
         };
         QueuedChildRecord { id, record }
     }
@@ -1092,77 +1132,297 @@ impl SubagentController {
     }
 }
 
-/// Tracks the child ids this controller tree has explicitly closed.
-///
-/// [`SubagentStatus::Closed`] cannot carry this by itself: `close_single`
-/// deliberately keeps a settled `Completed` or `Failed` outcome visible, because
-/// a transport projects `Closed` as a failure and a user closure must not turn
-/// a successful task into a visible failure. The closure is therefore
-/// remembered by id, separately from the outcome, so `send_input` still refuses
-/// a task the user closed and `reopen_single` releases it again.
-///
-/// The child record shape lives in `types.rs`, which this module does not
-/// change, so the flag is kept out of band. Entries are keyed by the tree's
-/// shared state allocation, so every clone observes one history; a dropped
-/// tree's entry is pruned on the next access, and the weak key keeps a stale
-/// entry from outliving its state.
-fn closed_child_ids() -> &'static Mutex<Vec<ClosedChildIds>> {
-    static CLOSED: OnceLock<Mutex<Vec<ClosedChildIds>>> = OnceLock::new();
-    CLOSED.get_or_init(|| Mutex::new(Vec::new()))
-}
-
-/// One controller tree's explicitly closed child ids.
-struct ClosedChildIds {
-    /// Keeps the key bound to a live state allocation so a dropped tree's entry
-    /// can be pruned before its address is reused.
-    state: Weak<RwLock<ControllerState>>,
-    ids: BTreeSet<String>,
-}
-
-/// Applies `update` to the closed ids of the controller tree that owns `state`.
-fn with_closed_child_ids<R>(
-    state: &Arc<RwLock<ControllerState>>,
-    update: impl FnOnce(&mut BTreeSet<String>) -> R,
-) -> R {
-    let mut registry = closed_child_ids().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    registry.retain(|entry| entry.state.strong_count() > 0);
-    if let Some(entry) = registry
-        .iter_mut()
-        .find(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
-    {
-        return update(&mut entry.ids);
-    }
-    let mut ids = BTreeSet::new();
-    let result = update(&mut ids);
-    registry.push(ClosedChildIds { state: Arc::downgrade(state), ids });
-    result
-}
-
-/// Marks `target` as explicitly closed until the subtree is reopened.
-fn mark_child_closed(state: &Arc<RwLock<ControllerState>>, target: &str) {
-    with_closed_child_ids(state, |ids| {
-        ids.insert(target.to_string());
-    });
-}
-
-/// Releases the explicit-closure flag on `target` when it is reopened.
-fn clear_child_closed(state: &Arc<RwLock<ControllerState>>, target: &str) {
-    with_closed_child_ids(state, |ids| {
-        ids.remove(target);
-    });
-}
-
-/// Returns whether `target` was explicitly closed and not since reopened.
-fn is_child_closed(state: &Arc<RwLock<ControllerState>>, target: &str) -> bool {
-    with_closed_child_ids(state, |ids| ids.contains(target))
-}
-
 fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync::futures::Notified<'_>>>> {
     let mut waiters = notifies.iter().map(|notify| Box::pin(notify.notified())).collect::<Vec<_>>();
     for waiter in &mut waiters {
         waiter.as_mut().enable();
     }
     waiters
+}
+
+#[cfg(test)]
+mod spawn_run_regression_tests {
+    //! Pins close publication and the exec-session identity a stale stop save
+    //! carries into the ledger merge.
+
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use crate::tools::registry::PtySessionManager;
+
+    use super::*;
+
+    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    fn test_spec() -> SubagentSpec {
+        diapason_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == "explorer")
+            .expect("the builtin explorer spec")
+    }
+
+    fn child_record(id: &str, status: SubagentStatus) -> ChildRecord {
+        let spec = test_spec();
+        ChildRecord {
+            id: id.to_string(),
+            session_id: format!("parent-session-{id}"),
+            parent_thread_id: "parent-session".to_string(),
+            display_label: subagent_display_label(&spec),
+            spec,
+            status,
+            background: false,
+            depth: 1,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            completed_at: status.is_terminal().then_some(Utc::now()),
+            summary: None,
+            error: None,
+            archive_metadata: None,
+            archive_path: None,
+            transcript_path: None,
+            effective_config: Some(DiapasonConfig::default()),
+            stored_messages: Vec::new(),
+            last_prompt: Some(format!("prompt-{id}")),
+            queued_prompts: VecDeque::new(),
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            thread_handle: None,
+            handle: None,
+            notify: Arc::new(Notify::new()),
+            worktree_path: None,
+            child_controller: None,
+            closed: false,
+        }
+    }
+
+    /// Builds a background record in `status` with the supplied launch identity.
+    fn background_record(
+        id: &str,
+        agent_name: &str,
+        exec_session_id: &str,
+        status: BackgroundSubprocessStatus,
+        desired_enabled: bool,
+    ) -> BackgroundRecord {
+        BackgroundRecord {
+            id: id.to_string(),
+            owner_session_id: None,
+            agent_name: agent_name.to_string(),
+            display_label: agent_name.to_string(),
+            description: agent_name.to_string(),
+            source: "builtin".to_string(),
+            colour: None,
+            session_id: format!("session-{id}"),
+            parent_session_id: "parent-session".to_string(),
+            exec_session_id: exec_session_id.to_string(),
+            desired_enabled,
+            status,
+            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
+            updated_at: "2026-08-28T00:00:00Z".parse().expect("updated_at"),
+            started_at: None,
+            ended_at: None,
+            pid: None,
+            prompt: "work".to_string(),
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+        }
+    }
+
+    /// Builds one ownerless ledger row for `exec_session_id`.
+    fn persisted_background_record(
+        id: &str,
+        agent_name: &str,
+        exec_session_id: &str,
+        desired_enabled: bool,
+    ) -> PersistedBackgroundRecord {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "owner_session_id": null,
+            "agent_name": agent_name,
+            "display_label": agent_name,
+            "description": agent_name,
+            "source": "builtin",
+            "color": null,
+            "session_id": format!("session-{id}"),
+            "exec_session_id": exec_session_id,
+            "desired_enabled": desired_enabled,
+            "status": "running",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }))
+        .expect("persisted background record")
+    }
+
+    /// Records the child snapshots one controller publishes.
+    #[derive(Default)]
+    struct ChildStatusObserver {
+        entries: Mutex<Vec<SubagentStatusEntry>>,
+    }
+
+    impl SubagentProgressObserver for ChildStatusObserver {
+        fn subagent_status_changed(&self, entry: SubagentStatusEntry) {
+            self.entries
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(entry);
+        }
+
+        fn background_status_changed(&self, _entry: BackgroundSubprocessEntry) {}
+    }
+
+    /// Closing a settled child must publish the outcome its abort interrupted.
+    ///
+    /// The child loop records `Completed` and wakes its waiters before it
+    /// awaits the publication of that outcome. A close that lands in that
+    /// window takes the still-live handle and aborts the only publisher, so
+    /// without publishing here observers keep reporting a running task the
+    /// caller was already told had finished.
+    #[tokio::test]
+    async fn close_publishes_a_terminal_outcome_its_abort_interrupted() {
+        let workspace = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
+            .await
+            .expect("controller");
+        let mut record = child_record("agent-worker", SubagentStatus::Running);
+        // A pending task gives the close a live handle to abort; it can never
+        // finish on its own and race the close.
+        record.handle = Some(tokio::spawn(std::future::pending::<()>()));
+        let id = controller
+            .insert_child_with_candidate_id("agent-worker", record)
+            .await
+            .expect("insert child");
+
+        let observer = Arc::new(ChildStatusObserver::default());
+        let registration = controller.register_progress_observer("parent-session", observer.clone());
+        controller.publish_child_status(&id).await;
+
+        // The status is terminal while the handle is still live: the exact
+        // window in which the child has recorded its outcome but not published
+        // it.
+        {
+            let mut state = controller.state.write().await;
+            let record = state.children.get_mut(&id).expect("child record");
+            record.status = SubagentStatus::Completed;
+            record.completed_at = Some(Utc::now());
+        }
+
+        let closed = controller
+            .close(TaskOwner::Workspace, &id)
+            .await
+            .expect("close the settled child");
+        assert_eq!(closed.status, SubagentStatus::Completed, "a settled outcome survives the close");
+
+        let published = observer
+            .entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(
+            published.first().map(|entry| entry.status),
+            Some(SubagentStatus::Running),
+            "the observer first sees the running task"
+        );
+        assert_eq!(
+            published.last().map(|entry| entry.status),
+            Some(SubagentStatus::Completed),
+            "the close must publish the terminal outcome its abort interrupted: {published:?}"
+        );
+
+        drop(registration);
+    }
+
+    /// A stale stop's save must keep a replacement launch another controller
+    /// wrote.
+    ///
+    /// The ledger row names `exec-replacement`, while this controller still
+    /// holds a stopped copy of `exec-stopped` with the newer `updated_at`. The
+    /// save must carry the stopped launch's exec session into the merge, so
+    /// stop precedence applies only to the launch it names instead of
+    /// overwriting the replacement row.
+    #[tokio::test]
+    async fn a_stale_stop_save_keeps_a_replacement_launch_in_the_ledger() {
+        let workspace = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
+            .await
+            .expect("controller");
+        persist_background_state(
+            workspace.path(),
+            vec![persisted_background_record(
+                "background-worker",
+                "worker",
+                "exec-replacement",
+                true,
+            )],
+        )
+        .await
+        .expect("seed the replacement launch");
+
+        let mut record = background_record(
+            "background-worker",
+            "worker",
+            "exec-stopped",
+            BackgroundSubprocessStatus::Stopped,
+            false,
+        );
+        // The stale stop must outrank the persisted row by timestamp, or the
+        // merge would keep the replacement for the wrong reason.
+        record.updated_at = "2030-01-01T00:00:00Z".parse().expect("stale stop timestamp");
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(record.id.clone(), record);
+        }
+
+        controller.save_background_state().await.expect("save the stale stop");
+
+        let ledger = load_background_state(workspace.path()).await.expect("read the ledger");
+        assert_eq!(ledger.records.len(), 1, "the merge keeps one row per canonical id");
+        assert_eq!(
+            ledger.records[0].exec_session_id, "exec-replacement",
+            "the stale stop must not replace a launch it does not name"
+        );
+        let persisted = serde_json::to_value(&ledger.records[0]).expect("render the persisted row");
+        assert_eq!(persisted["desired_enabled"], serde_json::json!(true), "the replacement launch stays wanted");
+    }
 }
 
 #[cfg(test)]

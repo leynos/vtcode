@@ -68,25 +68,6 @@ pub(super) fn resolve_background_target_mut<'a>(
         .get_mut(&resolve_background_key(state, owner, target)?)
 }
 
-struct CapturedSubagentThread {
-    id: String,
-    session_id: String,
-    parent_thread_id: String,
-    agent_name: String,
-    display_label: String,
-    status: SubagentStatus,
-    background: bool,
-    created_at: chrono::DateTime<Utc>,
-    updated_at: chrono::DateTime<Utc>,
-    archive_path: Option<PathBuf>,
-    transcript_path: Option<PathBuf>,
-    effective_config: DiapasonConfig,
-    thread_handle: Option<ThreadRuntimeHandle>,
-    archive_metadata: Option<crate::utils::session_archive::SessionArchiveMetadata>,
-    stored_messages: Vec<Message>,
-    recent_events: Vec<crate::exec::events::ThreadEvent>,
-}
-
 impl SubagentController {
     /// Returns status entries for all tracked background subprocesses.
     pub async fn background_status_entries(&self) -> Vec<BackgroundSubprocessEntry> {
@@ -223,6 +204,26 @@ impl SubagentController {
         Ok(BackgroundSubprocessSnapshot { entry, preview })
     }
 
+    /// Returns a cached status entry without reading its preview.
+    ///
+    /// The caller supplies the authority it presents, exactly as the other
+    /// background commands do, so an id is resolved by the same owner-aware
+    /// rule: a legacy `background-<agent>` alias opens the record it names
+    /// rather than only an id that happens to match a map key.
+    pub async fn background_status_entry(
+        &self,
+        owner: TaskOwner<'_>,
+        target: &str,
+    ) -> Result<BackgroundSubprocessEntry> {
+        let state = self.state.read().await;
+        let record = resolve_background_target(&state, owner, target)
+            .ok_or_else(|| anyhow!("Unknown background subprocess {target}"))?;
+        if !owner.background_owned(record.owner_session_id.as_deref()) {
+            bail!("Unknown background subprocess {target}");
+        }
+        Ok(record.build_status_entry())
+    }
+
     /// Refreshes background state, then returns the snapshot.
     ///
     /// The name states the side effect: [`Self::refresh_background_processes`]
@@ -289,93 +290,127 @@ impl SubagentController {
     }
 }
 
-impl SubagentController {
-    /// Returns a thread snapshot for a tracked child subagent by its target id.
-    pub async fn snapshot_for_thread(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentThreadSnapshot> {
-        self.ensure_child_owned(owner, target).await?;
-        let captured = self.capture_subagent_thread(target).await?;
-        let snapshot = self.materialize_thread_snapshot(&captured).await;
-        Ok(SubagentThreadSnapshot {
-            id: captured.id,
-            session_id: captured.session_id,
-            parent_thread_id: captured.parent_thread_id,
-            agent_name: captured.agent_name,
-            display_label: captured.display_label,
-            status: captured.status,
-            background: captured.background,
-            created_at: captured.created_at,
-            updated_at: captured.updated_at,
-            archive_path: captured.archive_path,
-            transcript_path: captured.transcript_path,
-            effective_config: captured.effective_config,
-            snapshot,
-            recent_events: captured.recent_events,
-        })
+/// Foreground-only thread snapshot projection for one tracked child.
+///
+/// The query surface above reads background state and output; a foreground
+/// child snapshot instead joins its captured runtime configuration, thread
+/// handle, session archive and stored messages. Keeping that projection in a
+/// private child module leaves the public method and every other query
+/// unchanged while the background module stays focused.
+mod thread_snapshot {
+    use super::*;
+
+    /// The child state one snapshot projection reads under a single lock.
+    struct CapturedSubagentThread {
+        id: String,
+        session_id: String,
+        parent_thread_id: String,
+        agent_name: String,
+        display_label: String,
+        status: SubagentStatus,
+        background: bool,
+        created_at: chrono::DateTime<Utc>,
+        updated_at: chrono::DateTime<Utc>,
+        archive_path: Option<PathBuf>,
+        transcript_path: Option<PathBuf>,
+        effective_config: DiapasonConfig,
+        thread_handle: Option<ThreadRuntimeHandle>,
+        archive_metadata: Option<crate::utils::session_archive::SessionArchiveMetadata>,
+        stored_messages: Vec<Message>,
+        recent_events: Vec<crate::exec::events::ThreadEvent>,
     }
 
-    async fn capture_subagent_thread(&self, target: &str) -> Result<CapturedSubagentThread> {
-        let state = self.state.read().await;
-        let record = state
-            .children
-            .get(target)
-            .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
-        let effective_config = record
-            .effective_config
-            .clone()
-            .ok_or_else(|| anyhow!("Subagent {target} does not have a captured runtime configuration yet"))?;
-        Ok(CapturedSubagentThread {
-            id: record.id.clone(),
-            session_id: record.session_id.clone(),
-            parent_thread_id: record.parent_thread_id.clone(),
-            agent_name: record.spec.name.clone(),
-            display_label: record.display_label.clone(),
-            status: record.status,
-            background: record.background,
-            created_at: record.created_at,
-            updated_at: record.updated_at,
-            archive_path: record.archive_path.clone(),
-            transcript_path: record.transcript_path.clone(),
-            effective_config,
-            thread_handle: record.thread_handle.clone(),
-            archive_metadata: record.archive_metadata.clone(),
-            stored_messages: record.stored_messages.clone(),
-            recent_events: record
-                .thread_handle
-                .as_ref()
-                .map(ThreadRuntimeHandle::recent_events)
-                .unwrap_or_default(),
-        })
-    }
-
-    async fn materialize_thread_snapshot(&self, captured: &CapturedSubagentThread) -> ThreadSnapshot {
-        if let Some(handle) = captured.thread_handle.as_ref() {
-            return handle.snapshot();
+    impl SubagentController {
+        /// Returns a thread snapshot for a tracked child subagent by its target id.
+        pub async fn snapshot_for_thread(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentThreadSnapshot> {
+            self.ensure_child_owned(owner, target).await?;
+            let captured = self.capture_subagent_thread(target).await?;
+            let snapshot = self.materialize_thread_snapshot(&captured).await;
+            Ok(SubagentThreadSnapshot {
+                id: captured.id,
+                session_id: captured.session_id,
+                parent_thread_id: captured.parent_thread_id,
+                agent_name: captured.agent_name,
+                display_label: captured.display_label,
+                status: captured.status,
+                background: captured.background,
+                created_at: captured.created_at,
+                updated_at: captured.updated_at,
+                archive_path: captured.archive_path,
+                transcript_path: captured.transcript_path,
+                effective_config: captured.effective_config,
+                snapshot,
+                recent_events: captured.recent_events,
+            })
         }
 
-        let archive_listing = match captured.archive_path.as_ref() {
-            Some(path) if tokio::fs::metadata(path).await.is_ok() => load_session_listing(path).await.ok(),
-            _ => None,
-        };
-        let metadata = archive_listing
-            .as_ref()
-            .map(|listing| listing.snapshot.metadata.clone())
-            .or_else(|| captured.archive_metadata.clone())
-            .or_else(|| {
-                Some(crate::core::threads::build_thread_archive_metadata(
-                    &self.config.workspace_root,
-                    captured.effective_config.agent.default_model.as_str(),
-                    captured.effective_config.agent.provider.as_str(),
-                    captured.effective_config.agent.theme.as_str(),
-                    captured.effective_config.agent.reasoning_effort.as_str(),
-                ))
-            });
-        ThreadSnapshot {
-            thread_id: ThreadId::new(captured.session_id.clone()),
-            metadata,
-            archive_listing,
-            messages: captured.stored_messages.clone(),
-            loaded_skills: Vec::new(),
-            turn_in_flight: false,
+        /// Reads the child record and the runtime state one snapshot needs.
+        async fn capture_subagent_thread(&self, target: &str) -> Result<CapturedSubagentThread> {
+            let state = self.state.read().await;
+            let record = state
+                .children
+                .get(target)
+                .ok_or_else(|| anyhow!("Unknown subagent id {target}"))?;
+            let effective_config = record
+                .effective_config
+                .clone()
+                .ok_or_else(|| anyhow!("Subagent {target} does not have a captured runtime configuration yet"))?;
+            Ok(CapturedSubagentThread {
+                id: record.id.clone(),
+                session_id: record.session_id.clone(),
+                parent_thread_id: record.parent_thread_id.clone(),
+                agent_name: record.spec.name.clone(),
+                display_label: record.display_label.clone(),
+                status: record.status,
+                background: record.background,
+                created_at: record.created_at,
+                updated_at: record.updated_at,
+                archive_path: record.archive_path.clone(),
+                transcript_path: record.transcript_path.clone(),
+                effective_config,
+                thread_handle: record.thread_handle.clone(),
+                archive_metadata: record.archive_metadata.clone(),
+                stored_messages: record.stored_messages.clone(),
+                recent_events: record
+                    .thread_handle
+                    .as_ref()
+                    .map(ThreadRuntimeHandle::recent_events)
+                    .unwrap_or_default(),
+            })
+        }
+
+        /// Builds the snapshot from the live handle, the archive, or the
+        /// captured configuration, in that order.
+        async fn materialize_thread_snapshot(&self, captured: &CapturedSubagentThread) -> ThreadSnapshot {
+            if let Some(handle) = captured.thread_handle.as_ref() {
+                return handle.snapshot();
+            }
+
+            let archive_listing = match captured.archive_path.as_ref() {
+                Some(path) if tokio::fs::metadata(path).await.is_ok() => load_session_listing(path).await.ok(),
+                _ => None,
+            };
+            let metadata = archive_listing
+                .as_ref()
+                .map(|listing| listing.snapshot.metadata.clone())
+                .or_else(|| captured.archive_metadata.clone())
+                .or_else(|| {
+                    Some(crate::core::threads::build_thread_archive_metadata(
+                        &self.config.workspace_root,
+                        captured.effective_config.agent.default_model.as_str(),
+                        captured.effective_config.agent.provider.as_str(),
+                        captured.effective_config.agent.theme.as_str(),
+                        captured.effective_config.agent.reasoning_effort.as_str(),
+                    ))
+                });
+            ThreadSnapshot {
+                thread_id: ThreadId::new(captured.session_id.clone()),
+                metadata,
+                archive_listing,
+                messages: captured.stored_messages.clone(),
+                loaded_skills: Vec::new(),
+                turn_in_flight: false,
+            }
         }
     }
 }

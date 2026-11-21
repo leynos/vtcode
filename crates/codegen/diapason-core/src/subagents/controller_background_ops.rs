@@ -14,6 +14,7 @@ mod tests;
 
 use super::*;
 
+pub use self::controller_background_cancel::BackgroundStopOutcome;
 use self::controller_background_cancel::background_stop_close_is_pending;
 use self::controller_background_liveness::exec_session_is_missing;
 use self::controller_background_query::{read_output_tail, read_preview};
@@ -240,19 +241,32 @@ impl SubagentController {
         }
     }
 
-    /// Reads one record's persisted copy.
+    /// Reads one record's persisted copy and whether the same launch moved.
     ///
-    /// The caller holds the ledger's file lock, so the copy cannot change
+    /// The caller holds the ledger's file lock, so neither answer can change
     /// between this read and the state write that acts on it. Every save takes
     /// that lock, in this process and in any other that shares the workspace.
-    async fn persisted_record_for(&self, record_id: &str) -> Result<Option<PersistedBackgroundRecord>> {
+    ///
+    /// A launch whose row was migrated to its owner is persisted under that
+    /// owner's canonical id, so a bound plan still addressing the ownerless id
+    /// finds no copy here. The launch has not disappeared, it has moved, and
+    /// reading that separately is what stops the reservation from replacing a
+    /// migrated record with a second process beside it.
+    async fn persisted_record_for(
+        &self,
+        record_id: &str,
+        exec_session_id: &str,
+    ) -> Result<(Option<PersistedBackgroundRecord>, bool)> {
         if self.config.managed_background_runtime {
-            return Ok(None);
+            return Ok((None, false));
         }
         let mut persisted = controller_persistence::collect_by_canonical_id(
             load_background_state(&self.config.workspace_root).await?.records,
         );
-        Ok(persisted.remove(record_id))
+        let moved = persisted
+            .iter()
+            .any(|(id, record)| id != record_id && record.exec_session_id == exec_session_id);
+        Ok((persisted.remove(record_id), moved))
     }
 
     /// Claims the record for `plan`, deciding and writing under one lock.
@@ -289,10 +303,11 @@ impl SubagentController {
         } else {
             None
         };
-        let persisted = if ledger_guard.is_some() {
-            self.persisted_record_for(&plan.record_id).await?
+        let (persisted, launch_moved) = if ledger_guard.is_some() {
+            self.persisted_record_for(&plan.record_id, plan.exec_session_id.as_str())
+                .await?
         } else {
-            None
+            (None, false)
         };
         let (reservation, adopted_stop) = {
             let mut state = self.state.write().await;
@@ -301,7 +316,12 @@ impl SubagentController {
                     .background_children
                     .get(&plan.record_id)
                     .is_some_and(|record| record.exec_session_id == expected_exec_session_id && record.desired_enabled);
-                if !still_owns_launch {
+                // The launch this plan observed is no longer here under this
+                // id, or it was migrated to its owner and is now persisted
+                // elsewhere. Either way it is not this controller's to
+                // replace: spawning now would put a second process beside the
+                // migrated record.
+                if !still_owns_launch || launch_moved {
                     (BackgroundRunReservation::Declined, false)
                 } else {
                     // `adopt_cancellation_into` is the one place that decides

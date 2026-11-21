@@ -113,6 +113,95 @@ async fn opposing_concurrent_attachments_publish_exactly_once() {
     left.signal_shutdown().await;
 }
 
+/// The attachment guard, not an earlier check, keeps opposing edges apart.
+///
+/// The existing opposing test parks the first attachment before its cycle
+/// check. This one parks it after the check and while the guard is held, so the
+/// second attachment has already passed every pre-guard test and can only be
+/// stopped by the guard itself. Without the guard both attachments pass their
+/// checks and publish, forming a cycle.
+#[tokio::test]
+async fn an_attachment_holds_the_guard_from_its_cycle_check_to_publication() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let scope = Arc::new(SubagentLockScope::new());
+    let mut left_config = test_controller_config(workspace_root.clone(), DiapasonConfig::default());
+    left_config.lock_scope = Some(Arc::clone(&scope));
+    let left = Arc::new(SubagentController::new(left_config).await.expect("left controller"));
+    let mut right_config = test_controller_config(workspace_root, DiapasonConfig::default());
+    right_config.lock_scope = Some(Arc::clone(&scope));
+    let right = Arc::new(SubagentController::new(right_config).await.expect("right controller"));
+    let spec = explorer_spec();
+
+    left.state.write().await.children.insert(
+        "right".to_string(),
+        test_child_record("right", "right-session", "parent-session", &spec, SubagentStatus::Running, 1, None),
+    );
+    right.state.write().await.children.insert(
+        "left".to_string(),
+        test_child_record("left", "left-session", "parent-session", &spec, SubagentStatus::Running, 1, None),
+    );
+
+    let (entered, release) = controller_tree::attachment_checkpoints::arm(&left.state);
+    let first = tokio::spawn({
+        let left = Arc::clone(&left);
+        let right = Arc::clone(&right);
+        async move { left.attach_child_controller("right", right).await }
+    });
+    tokio::time::timeout(Duration::from_secs(5), entered.notified())
+        .await
+        .expect("the first attachment must reach the checkpoint after its cycle check");
+
+    // The opposite attachment has passed no guard yet; it must block on the
+    // guard the parked attachment still holds rather than publish.
+    let second =
+        tokio::time::timeout(Duration::from_millis(100), right.attach_child_controller("left", Arc::clone(&left)))
+            .await;
+    assert!(second.is_err(), "the second attachment must wait for the guard the first still holds");
+
+    release.notify_one();
+    first
+        .await
+        .expect("the first attachment task must not panic")
+        .expect("the first attachment publishes");
+    let rejection = right
+        .attach_child_controller("left", Arc::clone(&left))
+        .await
+        .expect_err("the second attachment must reject the cycle once the guard is released");
+    assert!(
+        format!("{rejection}").contains("already part of this tree"),
+        "the rejection must name the cycle: {rejection}"
+    );
+
+    assert!(
+        left.state
+            .read()
+            .await
+            .children
+            .get("right")
+            .expect("the accepted record is published")
+            .child_controller
+            .as_ref()
+            .is_some_and(|attached| Arc::ptr_eq(&attached.state, &right.state)),
+        "exactly the first edge must be published"
+    );
+    assert!(
+        right
+            .state
+            .read()
+            .await
+            .children
+            .get("left")
+            .expect("the rejected record survives")
+            .child_controller
+            .is_none(),
+        "the rejected attachment must not publish the opposite edge"
+    );
+
+    right.signal_shutdown().await;
+    left.signal_shutdown().await;
+}
+
 /// Every attachment path shares the occupied-record rule.
 ///
 /// `record_child_runtime` calls the shared helper after `begin_child_run`

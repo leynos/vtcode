@@ -60,12 +60,20 @@ async fn resume_preserves_captured_runtime_overrides() {
 
     let closed = controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
     assert_eq!(closed.status, SubagentStatus::Closed);
+    // The resumed execution must capture its own runtime. Waiting only on the
+    // status change is not enough: `reopen_single` stamps the record before the
+    // resumed execution publishes anything, so the pre-close configuration
+    // would satisfy that wait.
+    let captures_before_resume = controller.runtime_capture_count();
 
     controller.resume(&spawned.id).await.expect("resume");
 
     for _ in 0..100 {
         let status = controller.status_for(TaskOwner::Workspace, &spawned.id).await.expect("status");
-        if status.updated_at > closed.updated_at && status.status != SubagentStatus::Closed {
+        if status.updated_at > closed.updated_at
+            && status.status != SubagentStatus::Closed
+            && controller.runtime_capture_count() > captures_before_resume
+        {
             let snapshot = controller
                 .snapshot_for_thread(TaskOwner::Workspace, &spawned.id)
                 .await

@@ -164,13 +164,12 @@ pub(crate) async fn handle_manage_subprocesses(
                 // Resolve the entry without reading the preview. The inspector
                 // reads it itself and renders a fault in place, so a task whose
                 // archive cannot be read still opens with its graceful-stop,
-                // force-cancel and archive actions available.
-                let entry = controller
-                    .refresh_background_processes()
-                    .await?
-                    .into_iter()
-                    .find(|entry| entry.id == id)
-                    .ok_or_else(|| anyhow!("Unknown background subprocess {id}"))?;
+                // force-cancel and archive actions available. The id is
+                // resolved by the same owner-aware rule as the text, stop and
+                // cancel paths, so a legacy `background-<agent>` id opens the
+                // record it names instead of missing the map key.
+                let _ = controller.refresh_background_processes().await?;
+                let entry = controller.background_status_entry(TaskOwner::Workspace, &id).await?;
                 show_background_subprocess_inspector(&mut ctx, entry).await
             } else {
                 let entry = controller.refresh_then_background_snapshot(TaskOwner::Workspace, &id).await?;

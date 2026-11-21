@@ -45,7 +45,8 @@ async fn a_close_fault_keeps_the_stop_owed_until_a_retry_succeeds() {
     let entry = controller
         .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
-        .expect("a close fault is reported on the record, not dropped");
+        .expect("a close fault is reported on the record, not dropped")
+        .into_entry();
 
     assert!(!entry.desired_enabled, "the stop is still intended");
     assert_ne!(
@@ -120,7 +121,8 @@ async fn an_aborted_reconcile_keeps_the_stop_close_obligation() {
     let entry = controller
         .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
-        .expect("the failing close leaves a record, not an error");
+        .expect("the failing close leaves a record, not an error")
+        .into_entry();
     assert_ne!(entry.status, BackgroundSubprocessStatus::Stopped);
     assert!(background_stop_close_is_pending(&controller.state, "background-worker", exec_session_id));
 
@@ -265,7 +267,8 @@ async fn a_close_fault_preserves_a_terminal_error() {
     let entry = controller
         .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
-        .expect("the close fault is recorded on the terminal record");
+        .expect("the close fault is recorded on the terminal record")
+        .into_entry();
 
     assert_eq!(
         entry.status,

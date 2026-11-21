@@ -152,6 +152,15 @@ async fn close_does_not_affect_sibling_grandchildren() {
 
     parent.close(TaskOwner::Workspace, "a").await.expect("close a");
 
+    // A status read alone cannot prove 'b' stayed open: closing it marks the
+    // controller itself, which only a spawn admission observes. This module is
+    // a descendant of the controller's own, so read the close flag directly and
+    // assert the controller that owns 'b' was left open to delegation.
+    assert!(
+        !controller_b.closing.load(Ordering::Relaxed),
+        "closing sibling 'a' must leave sibling 'b' open to delegation"
+    );
+
     let b_grandchild = controller_b
         .status_for(TaskOwner::Workspace, "b-grandchild")
         .await

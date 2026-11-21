@@ -2,6 +2,7 @@
 
 use super::*;
 
+use self::controller_background_cancel::mark_background_stop_close_pending;
 use self::controller_background_liveness::{
     BackgroundExecSessionObservation, bounded_liveness_reason, exec_session_is_missing,
 };
@@ -247,6 +248,15 @@ impl SubagentController {
                         "Adopted a background cancellation persisted by another controller"
                     );
                     if !record.exec_session_id.is_empty() {
+                        // Raise the obligation for every adopted launch now,
+                        // while the write lock still covers the whole
+                        // collection, and before any close is awaited. The
+                        // record is already no longer desired, so a reconcile
+                        // cancelled partway through the closes below would
+                        // leave nothing else to retry: `adopt_cancellation_into`
+                        // refuses an already-disabled record, refresh skips a
+                        // pending close, and restore filters the record out.
+                        mark_background_stop_close_pending(&self.state, id.as_str(), record.exec_session_id.as_str());
                         adopted_launches.push((id.clone(), record.exec_session_id.clone()));
                     }
                 }
@@ -321,31 +331,45 @@ impl SubagentController {
         restart_attempts: u8,
         observed_exec_session_id: Option<&str>,
     ) -> Result<()> {
-        if let Some(exec_session_id) = observed_exec_session_id
-            && let Some(stop) = self.persisted_stop_for_launch(record_id).await?
-        {
-            let adopted = {
-                let mut state = self.state.write().await;
-                state
-                    .background_children
-                    .get_mut(record_id)
-                    .is_some_and(|record| stop.adopt_cancellation_into(record))
+        if let Some(exec_session_id) = observed_exec_session_id {
+            // The record was already moved to `Starting` with its restart
+            // allowance spent when refresh scheduled this replacement, and the
+            // missing-snapshot path deliberately exempts `Starting`. A fault
+            // reading the ledger must therefore not abandon that state: settle
+            // the failed restart for the launch this round observed and report
+            // the fault, exactly as a preparation failure is settled below.
+            let persisted_stop = match self.persisted_stop_for_launch(record_id).await {
+                Ok(persisted_stop) => persisted_stop,
+                Err(error) => {
+                    self.settle_failed_background_restart(record_id, exec_session_id, &error).await;
+                    return Err(error);
+                }
             };
-            if adopted {
-                tracing::info!(
-                    record_id,
-                    exec_session_id,
-                    "Skipped a background restart; another controller stopped this launch"
-                );
-                // Nothing else closes this launch: the restart is skipped and
-                // the record is no longer desired, so restore will not select
-                // it. The close settles `Stopped` (an already missing session
-                // counts as closed); a fault keeps the obligation for a later
-                // reconcile instead of reporting a live process as stopped.
-                self.attempt_background_stop_close(record_id, stop.exec_session_id.as_str())
-                    .await;
-                self.publish_background_status(record_id).await;
-                return Ok(());
+            if let Some(stop) = persisted_stop {
+                let adopted = {
+                    let mut state = self.state.write().await;
+                    state
+                        .background_children
+                        .get_mut(record_id)
+                        .is_some_and(|record| stop.adopt_cancellation_into(record))
+                };
+                if adopted {
+                    tracing::info!(
+                        record_id,
+                        exec_session_id,
+                        "Skipped a background restart; another controller stopped this launch"
+                    );
+                    // Nothing else closes this launch: the restart is skipped
+                    // and the record is no longer desired, so restore will not
+                    // select it. The close settles `Stopped` (an already
+                    // missing session counts as closed); a fault keeps the
+                    // obligation for a later reconcile instead of reporting a
+                    // live process as stopped.
+                    self.attempt_background_stop_close(record_id, stop.exec_session_id.as_str())
+                        .await;
+                    self.publish_background_status(record_id).await;
+                    return Ok(());
+                }
             }
         }
         let request = BackgroundRunRequest {
@@ -448,5 +472,250 @@ impl SubagentController {
         // that record as durable.
         self.retry_owed_background_ledger_write().await?;
         Ok(self.background_status_entries().await)
+    }
+}
+
+#[cfg(test)]
+mod cancellation_reconcile_tests {
+    //! Regressions for adopting a persisted stop and settling a failed restart.
+
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use crate::config::DiapasonConfig;
+    use crate::config::types::ReasoningEffortLevel;
+    use crate::subagents::background::{background_state_path_for_tests, persist_background_state};
+    use crate::tools::exec_session::ExecSessionManager;
+    use crate::tools::registry::PtySessionManager;
+
+    use super::super::controller_background_cancel::{background_stop_close_is_pending, gate_next_background_close};
+    use super::*;
+
+    /// The first adopted record the reconcile closes, in map-key order.
+    const REVIEWER: &str = "background-reviewer";
+    const REVIEWER_AGENT: &str = "reviewer";
+    const REVIEWER_EXEC: &str = "exec-reviewer";
+    /// The adopted record whose close a later retry must still owe.
+    const WORKER: &str = "background-worker";
+    const WORKER_AGENT: &str = "worker";
+    const WORKER_EXEC: &str = "exec-worker";
+
+    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    fn background_record(
+        id: &str,
+        agent_name: &str,
+        exec_session_id: &str,
+        status: BackgroundSubprocessStatus,
+        desired_enabled: bool,
+    ) -> BackgroundRecord {
+        BackgroundRecord {
+            id: id.to_string(),
+            owner_session_id: None,
+            agent_name: agent_name.to_string(),
+            display_label: agent_name.to_string(),
+            description: agent_name.to_string(),
+            source: "builtin".to_string(),
+            colour: None,
+            session_id: format!("session-{id}"),
+            parent_session_id: "parent-session".to_string(),
+            exec_session_id: exec_session_id.to_string(),
+            desired_enabled,
+            status,
+            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
+            updated_at: "2026-08-28T00:00:00Z".parse().expect("updated_at"),
+            started_at: None,
+            ended_at: None,
+            pid: None,
+            prompt: "work".to_string(),
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+        }
+    }
+
+    fn persisted_stop(id: &str, agent_name: &str, exec_session_id: &str) -> PersistedBackgroundRecord {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "owner_session_id": null,
+            "agent_name": agent_name,
+            "display_label": agent_name,
+            "description": agent_name,
+            "source": "builtin",
+            "color": null,
+            "session_id": format!("session-{id}"),
+            "exec_session_id": exec_session_id,
+            "desired_enabled": false,
+            "status": "stopped",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }))
+        .expect("persisted background record")
+    }
+
+    /// Every adopted launch is owed its close before the first one is awaited.
+    ///
+    /// Adoption has already cleared `desired_enabled`, and
+    /// `adopt_cancellation_into` refuses an already-disabled record, so a
+    /// reconcile cancelled inside the first close could never retry a later
+    /// adopted launch left behind. Each adopted launch must register its
+    /// obligation while the whole set is collected, before any close is
+    /// awaited, and a later retry must finish them all.
+    #[tokio::test]
+    async fn an_aborted_reconcile_still_owes_every_adopted_close() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        let records = [
+            background_record(REVIEWER, REVIEWER_AGENT, REVIEWER_EXEC, BackgroundSubprocessStatus::Running, true),
+            background_record(WORKER, WORKER_AGENT, WORKER_EXEC, BackgroundSubprocessStatus::Running, true),
+        ];
+        {
+            let mut state = controller.state.write().await;
+            for record in records {
+                state.background_children.insert(record.id.clone(), record);
+            }
+        }
+        persist_background_state(
+            temp.path(),
+            vec![
+                persisted_stop(REVIEWER, REVIEWER_AGENT, REVIEWER_EXEC),
+                persisted_stop(WORKER, WORKER_AGENT, WORKER_EXEC),
+            ],
+        )
+        .await
+        .expect("seed the stopped ledger");
+
+        // The map is keyed in id order, so the reviewer's close runs first.
+        let (entered, _release) = gate_next_background_close(&controller.state, REVIEWER_EXEC);
+        {
+            let reconcile = controller.reconcile_persisted_background_cancellations();
+            tokio::pin!(reconcile);
+            tokio::select! {
+                result = &mut reconcile => {
+                    panic!("the gated close settled before the reconcile was aborted: {result:?}")
+                },
+                () = entered.notified() => {}
+            }
+        }
+
+        assert!(
+            background_stop_close_is_pending(&controller.state, REVIEWER, REVIEWER_EXEC),
+            "the close that was in flight must stay owed"
+        );
+        assert!(
+            background_stop_close_is_pending(&controller.state, WORKER, WORKER_EXEC),
+            "a launch whose close was never attempted must still be owed"
+        );
+
+        controller
+            .retry_pending_background_stop_closes()
+            .await
+            .expect("the later reconcile closes both launches");
+        {
+            let state = controller.state.read().await;
+            for id in [REVIEWER, WORKER] {
+                let record = state.background_children.get(id).expect("record");
+                assert_eq!(
+                    record.status,
+                    BackgroundSubprocessStatus::Stopped,
+                    "{id} must be settled by its retried close"
+                );
+            }
+        }
+        let state = &controller.state;
+        let reviewer_owed = background_stop_close_is_pending(state, REVIEWER, REVIEWER_EXEC);
+        let worker_owed = background_stop_close_is_pending(state, WORKER, WORKER_EXEC);
+        assert!(!reviewer_owed && !worker_owed, "a successful retry discharges both close obligations");
+
+        controller.signal_shutdown().await;
+    }
+
+    /// A ledger fault while checking for a persisted stop settles the restart.
+    ///
+    /// The record has already been moved to `Starting` with its allowance
+    /// spent, and the missing-snapshot path exempts `Starting`, so leaving it
+    /// there after a pre-check fault would report an active launch forever.
+    #[tokio::test]
+    async fn a_restart_whose_ledger_pre_check_fails_settles_error() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        let record = background_record(WORKER, WORKER_AGENT, WORKER_EXEC, BackgroundSubprocessStatus::Starting, true);
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(record.id.clone(), record);
+        }
+        let ledger_path = background_state_path_for_tests(temp.path());
+        std::fs::create_dir_all(ledger_path.parent().expect("ledger parent")).expect("state dir");
+        std::fs::write(&ledger_path, "{ this is not a valid background ledger").expect("write corrupt ledger");
+
+        let error = controller
+            .restart_after_background_observation(WORKER, WORKER_AGENT.to_string(), 1, Some(WORKER_EXEC))
+            .await
+            .expect_err("a ledger fault must reach the caller");
+
+        assert!(format!("{error:#}").contains("Failed to parse"), "the caller sees the ledger fault: {error:#}");
+        {
+            let state = controller.state.read().await;
+            let record = state.background_children.get(WORKER).expect("record");
+            assert_eq!(
+                record.status,
+                BackgroundSubprocessStatus::Error,
+                "a restart whose pre-check could not read the ledger must not stay Starting"
+            );
+            assert!(
+                record
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains("Failed to start background subagent")),
+                "{:?}",
+                record.error
+            );
+            assert!(record.ended_at.is_some(), "a settled restart failure has ended");
+        }
+
+        controller.signal_shutdown().await;
     }
 }

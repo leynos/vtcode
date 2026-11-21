@@ -44,6 +44,7 @@ pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
     normalize_background_child_max_turns, normalize_child_max_turns, prepare_child_runtime_config,
 };
+pub use controller_background_ops::BackgroundStopOutcome;
 pub use controller_config::SubagentControllerConfig;
 pub use controller_locks::SubagentLockScope;
 pub use model::{

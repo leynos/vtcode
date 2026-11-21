@@ -544,7 +544,8 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let settled = controller
                 .force_cancel_background(TaskOwner::Workspace, &stale.id)
                 .await
-                .expect("settle the second background task");
+                .expect("settle the second background task")
+                .into_entry();
             assert!(!settled.status.is_active(), "the second task must be settled during cleanup");
 
             // Exercise the registry route itself: a detached session view must
@@ -655,7 +656,8 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             let cancelled_sibling = foreign_controller
                 .force_cancel_background(TaskOwner::Workspace, &sibling.id)
                 .await
-                .expect("cancel the sibling background task");
+                .expect("cancel the sibling background task")
+                .into_entry();
             assert!(!cancelled_sibling.status.is_active(), "the sibling process must be stopped during test cleanup");
             drop(
                 cx.send_request(CloseSessionRequest::new(foreign_session.session_id.clone()))

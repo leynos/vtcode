@@ -23,6 +23,7 @@ mod query_tests;
 mod resolver_tests;
 mod run_tests;
 mod settlement_tests;
+mod stop_close_outcome_tests;
 mod stop_close_tests;
 mod support;
 

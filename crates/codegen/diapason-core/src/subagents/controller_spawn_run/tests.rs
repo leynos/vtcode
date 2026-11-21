@@ -107,6 +107,7 @@ fn child_record(id: &str, status: SubagentStatus) -> ChildRecord {
         notify: Arc::new(Notify::new()),
         worktree_path: None,
         child_controller: None,
+        closed: false,
     }
 }
 
@@ -208,7 +209,16 @@ async fn send_input_rejects_a_completed_child_that_was_closed() {
 
     let closed = controller.close(TaskOwner::Workspace, &id).await.expect("close child");
     assert_eq!(closed.status, SubagentStatus::Completed, "closing a settled child must preserve its outcome");
-    assert!(is_child_closed(&controller.state, &id), "the explicit closure must be remembered");
+    assert!(
+        controller
+            .state
+            .read()
+            .await
+            .children
+            .get(&id)
+            .is_some_and(|record| record.closed),
+        "the explicit closure must be remembered on the record"
+    );
 
     let error = match controller
         .send_input(SendInputRequest {
@@ -237,7 +247,16 @@ async fn send_input_rejects_a_completed_child_that_was_closed() {
     );
 
     assert!(controller.reopen_single(&id).await.expect("reopen"));
-    assert!(!is_child_closed(&controller.state, &id), "reopening must clear the closure");
+    assert!(
+        controller
+            .state
+            .read()
+            .await
+            .children
+            .get(&id)
+            .is_some_and(|record| !record.closed),
+        "reopening must clear the closure"
+    );
 }
 
 /// A save must not delete a record another controller of the same owner wrote.

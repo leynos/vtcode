@@ -1,16 +1,24 @@
 //! Child runtime configuration, hooks, model view and turn budgets.
 use super::*;
 
+/// The built-in `worker` sub-agent, which every case below adjusts in place.
+///
+/// Each test overrides only the fields it exercises, so the shared lookup lives
+/// here rather than being repeated in every case.
+fn worker_spec() -> SubagentSpec {
+    diapason_config::builtin_subagents()
+        .into_iter()
+        .find(|spec| spec.name == "worker")
+        .expect("the built-in worker sub-agent")
+}
+
 #[test]
 fn build_child_config_intersects_allowed_tools_and_preserves_global_denies() {
     let mut parent = DiapasonConfig::default();
     parent.permissions.allow = vec![tools::READ_FILE.to_string(), tools::CODE_SEARCH.to_string()];
     parent.permissions.deny = vec![tools::UNIFIED_EXEC.to_string()];
 
-    let mut spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let mut spec = worker_spec();
     spec.permissions = AgentPermissionsConfig {
         auto: vec!["Bash(*)".to_string()],
         ..AgentPermissionsConfig::new(PermissionDefault::Auto)
@@ -37,10 +45,7 @@ fn build_child_config_allows_nested_delegation_keeps_agent_tools_out_of_deny() {
         tools::CODE_SEARCH.to_string(),
     ];
 
-    let mut spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let mut spec = worker_spec();
     spec.tools = Some(parent.permissions.allow.clone());
 
     let child = build_child_config(&parent, &spec, models::openai::GPT_5_6_SOL, None, true);
@@ -71,10 +76,7 @@ fn build_child_config_allows_nested_delegation_keeps_agent_tools_out_of_deny() {
 #[test]
 fn build_child_config_default_denies_all_subagent_tools() {
     let parent = DiapasonConfig::default();
-    let spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let spec = worker_spec();
 
     let child = build_child_config(&parent, &spec, models::openai::GPT_5_6_SOL, None, false);
 
@@ -96,10 +98,7 @@ fn build_child_config_preserves_subagent_lifecycle_stripping_and_hook_merging() 
         tools::UNIFIED_EXEC.to_string(),
     ];
 
-    let mut spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let mut spec = worker_spec();
     spec.tools = Some(parent.permissions.allow.clone());
     let mut hooks = HooksConfig::default();
     hooks.lifecycle.pre_tool_use.push(HookGroupConfig {
@@ -122,10 +121,7 @@ fn build_child_config_preserves_subagent_lifecycle_stripping_and_hook_merging() 
 #[test]
 fn prepare_child_runtime_config_uses_shared_view_for_model_and_reasoning() {
     let parent = DiapasonConfig::default();
-    let mut spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let mut spec = worker_spec();
     spec.model = Some(models::openai::GPT_5_6_LUNA.to_string());
     spec.reasoning_effort = Some(ReasoningEffortLevel::High);
 
@@ -158,10 +154,7 @@ fn prepare_child_runtime_config_uses_shared_view_for_model_and_reasoning() {
 
 #[test]
 fn subagent_instruction_composition_uses_shared_runtime_prompt_and_skill_appendix() {
-    let mut spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let mut spec = worker_spec();
     spec.prompt = "Worker instructions".to_string();
     spec.skills = vec!["rust".to_string(), "repo".to_string()];
 
@@ -182,10 +175,7 @@ fn build_child_config_preserves_matching_rule_and_exact_tool_ids() {
         tools::READ_FILE.to_string(),
     ];
 
-    let mut spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let mut spec = worker_spec();
     spec.tools = Some(vec![
         "mcp::context7::search".to_string(),
         tools::UNIFIED_EXEC.to_string(),
@@ -209,10 +199,7 @@ fn build_child_config_preserves_parent_rule_shaped_allowlist() {
     let mut parent = DiapasonConfig::default();
     parent.permissions.allow = vec!["Read".to_string()];
 
-    let mut spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let mut spec = worker_spec();
     spec.tools = Some(vec![
         tools::READ_FILE.to_string(),
         tools::CODE_SEARCH.to_string(),
@@ -227,10 +214,7 @@ fn build_child_config_preserves_parent_rule_shaped_allowlist() {
 #[test]
 fn build_child_config_promotes_single_turn_budget_to_recovery_budget() {
     let parent = DiapasonConfig::default();
-    let spec = diapason_config::builtin_subagents()
-        .into_iter()
-        .find(|spec| spec.name == "worker")
-        .expect("worker");
+    let spec = worker_spec();
 
     let child = build_child_config(&parent, &spec, models::openai::GPT_5_6_SOL, Some(1), false);
 

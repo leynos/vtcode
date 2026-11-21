@@ -18,9 +18,10 @@ async fn colliding_child_ids_stay_distinct_across_sibling_controllers() {
         .await
         .expect("root controller");
 
-    // Build the siblings the way `child_controller_for` does, including the
-    // scope inheritance that gives them one shared allocator.
-    let first = SubagentController::new({
+    // Build the siblings through the same inheritance `child_controller_for`
+    // applies to every child-scoped controller, so this covers the production
+    // path rather than a test-only approximation of it.
+    let mut first = SubagentController::new({
         let mut config = test_controller_config(workspace_root.clone(), DiapasonConfig::default());
         config.parent_session_id = "first-child-session".to_string();
         config.depth = 1;
@@ -29,8 +30,8 @@ async fn colliding_child_ids_stay_distinct_across_sibling_controllers() {
     })
     .await
     .expect("first sibling controller");
-    first.inherit_child_id_scope(&root);
-    let second = SubagentController::new({
+    first.inherit_tree_context(&root, "parent-session").await;
+    let mut second = SubagentController::new({
         let mut config = test_controller_config(workspace_root, DiapasonConfig::default());
         config.parent_session_id = "second-child-session".to_string();
         config.depth = 1;
@@ -39,7 +40,7 @@ async fn colliding_child_ids_stay_distinct_across_sibling_controllers() {
     })
     .await
     .expect("second sibling controller");
-    second.inherit_child_id_scope(&root);
+    second.inherit_tree_context(&root, "parent-session").await;
 
     let spec = explorer_spec();
     let candidate = "agent-explorer-20261113T060819731Z";

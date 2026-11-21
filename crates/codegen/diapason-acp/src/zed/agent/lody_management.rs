@@ -128,13 +128,11 @@ pub(super) async fn handle_lody_subagent_management(
 ) -> Result<Value, SdkError> {
     let session_correlation = request_session_correlation(&params);
     let metrics = agent.local_tool_registry.metrics_collector();
-    observe_management_request(
-        metrics.as_ref(),
-        method,
-        &session_correlation,
-        dispatch_management_request(agent, method, params),
-    )
-    .await
+    // The dispatch future holds the snapshot and output payloads for all three
+    // operations, which is far too large to keep inline in every caller's
+    // frame; boxing it here keeps the whole management surface cheap to call.
+    let dispatch = Box::pin(dispatch_management_request(agent, method, params));
+    observe_management_request(metrics.as_ref(), method, &session_correlation, dispatch).await
 }
 
 /// Routes a management method to its query or command helper.
@@ -353,12 +351,18 @@ async fn cancel_subagent(agent: &ZedAgent, request: CancelSubagentRequest) -> Re
     if let Some((controller, resolved_task_id)) =
         controller_tracking_background(&controllers, &request.session_id, &request.task_id).await
     {
-        drop(
-            controller
-                .force_cancel_background(TaskOwner::Session(&request.session_id), &resolved_task_id)
-                .await
-                .map_err(internal_management_error)?,
-        );
+        let outcome = controller
+            .force_cancel_background(TaskOwner::Session(&request.session_id), &resolved_task_id)
+            .await
+            .map_err(internal_management_error)?;
+        // A stop is complete only once the exec session is closed. Reporting
+        // success for a close the runtime could not confirm told the client a
+        // task had stopped while its process might still be running.
+        if outcome.is_close_pending() {
+            let detail = outcome.entry().error.clone().unwrap_or_default();
+            return Err(SdkError::internal_error()
+                .data(serde_json::json!({ "reason": "subagent_close_pending", "detail": detail })));
+        }
         return Ok(serde_json::json!({}));
     }
     let _ = request.reason;

@@ -101,7 +101,8 @@ async fn cancel_preserves_settled_background_outcomes() {
         let entry = controller
             .force_cancel_background(TaskOwner::Workspace, id)
             .await
-            .expect("cancel settled background task");
+            .expect("cancel settled background task")
+            .into_entry();
 
         assert_eq!(entry.status, status, "cancelling {id} must preserve its settled outcome");
         assert_eq!(entry.ended_at, Some(settled_at), "cancelling {id} must preserve its end time");
@@ -140,7 +141,8 @@ async fn cancelling_a_settled_background_record_keeps_it_out_of_restore() {
     let entry = controller
         .force_cancel_background(TaskOwner::Workspace, &record_id)
         .await
-        .expect("cancel errored background task");
+        .expect("cancel errored background task")
+        .into_entry();
     assert_eq!(entry.status, BackgroundSubprocessStatus::Error, "the settled error must survive the cancel");
     assert_eq!(entry.error.as_deref(), Some("exited with status 3"));
     assert!(!entry.desired_enabled, "cancel must clear the restore flag");
@@ -283,7 +285,8 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
     let cancelled = root
         .force_cancel_background(TaskOwner::Workspace, &record_id)
         .await
-        .expect("cancel root background task");
+        .expect("cancel root background task")
+        .into_entry();
     assert_eq!(cancelled.status, BackgroundSubprocessStatus::Stopped);
     let root_entries = root.background_status_entries().await;
     assert_eq!(root_entries.len(), 1, "the root must report exactly one entry");

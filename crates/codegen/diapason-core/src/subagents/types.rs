@@ -347,6 +347,17 @@ pub struct ChildRecord {
     /// so grandchildren spawned by this child remain reachable for the child's
     /// lifetime.
     pub(crate) child_controller: Option<Arc<super::SubagentController>>,
+    /// Whether the user explicitly closed this child.
+    ///
+    /// [`SubagentStatus::Closed`] cannot carry this by itself: `close_single`
+    /// deliberately keeps a settled `Completed` or `Failed` outcome visible,
+    /// because a transport projects `Closed` as a failure and a user closure
+    /// must not turn a successful task into a visible failure. The closure is
+    /// therefore recorded beside the outcome, so `send_input` still refuses a
+    /// task the user closed and `reopen_single` releases it again. Every access
+    /// already holds the controller state lock, so the record is the one
+    /// authority for it.
+    pub(crate) closed: bool,
 }
 
 pub(crate) struct ChildRunRequest {

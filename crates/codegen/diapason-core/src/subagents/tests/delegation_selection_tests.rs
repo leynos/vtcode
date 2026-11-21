@@ -1,5 +1,6 @@
 //! Explicit delegation and model-selection request parsing.
 use super::*;
+use rstest::rstest;
 
 #[test]
 fn request_prompt_prefers_message() {
@@ -27,30 +28,20 @@ fn explicit_delegation_request_detects_mentions_and_keywords() {
     assert!(!contains_explicit_delegation_request("review the repository", empty_mentions.as_slice()));
 }
 
-#[test]
-fn explicit_agent_mentions_detect_natural_language_selection() {
-    let rust_engineer = read_only_test_spec("rust-engineer");
+/// The three phrasings the natural-language selection accepts.
+///
+/// Each case names the agent exactly once and expects that mention to win, so a
+/// regression in one phrasing is reported by its own case name.
+#[rstest]
+#[case::natural_language("rust-engineer", "use rust-engineer agent to review current code")]
+#[case::looser_subagent("background-demo", "use background-demo and run the subagent")]
+#[case::run_subagent("rust-engineer", "run rust-engineer subagent and review changes")]
+fn explicit_agent_mentions_detect_natural_language_selection(#[case] agent_name: &str, #[case] prompt: &str) {
+    let spec = read_only_test_spec(agent_name);
     assert_eq!(
-        extract_explicit_agent_mentions("use rust-engineer agent to review current code", &[rust_engineer]),
-        vec!["rust-engineer".to_string()]
-    );
-}
-
-#[test]
-fn explicit_agent_mentions_detect_looser_subagent_selection() {
-    let background_demo = read_only_test_spec("background-demo");
-    assert_eq!(
-        extract_explicit_agent_mentions("use background-demo and run the subagent", &[background_demo]),
-        vec!["background-demo".to_string()]
-    );
-}
-
-#[test]
-fn explicit_agent_mentions_detect_run_subagent_selection() {
-    let rust_engineer = read_only_test_spec("rust-engineer");
-    assert_eq!(
-        extract_explicit_agent_mentions("run rust-engineer subagent and review changes", &[rust_engineer]),
-        vec!["rust-engineer".to_string()]
+        extract_explicit_agent_mentions(prompt, &[spec]),
+        vec![agent_name.to_string()],
+        "the mention in {prompt:?} must select {agent_name}"
     );
 }
 

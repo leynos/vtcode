@@ -50,7 +50,8 @@ async fn a_legacy_record_id_cancels_the_canonical_record() {
     let entry = controller
         .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
-        .expect("a legacy id resolves for cancellation");
+        .expect("a legacy id resolves for cancellation")
+        .into_entry();
 
     assert_eq!(entry.id, "background-worker@session-viewer");
     assert!(!entry.desired_enabled);

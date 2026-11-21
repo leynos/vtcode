@@ -54,7 +54,8 @@ async fn a_failed_save_republishes_the_stopped_state_on_retry() {
     let entry = controller
         .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
-        .expect("the retry persists the stop");
+        .expect("the retry persists the stop")
+        .into_entry();
 
     assert_eq!(entry.status, BackgroundSubprocessStatus::Stopped);
     assert!(!entry.desired_enabled);
@@ -122,7 +123,8 @@ async fn force_cancel_closes_the_session_of_an_already_settled_record() {
     let entry = controller
         .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
-        .expect("force cancel");
+        .expect("force cancel")
+        .into_entry();
 
     assert_eq!(
         entry.status,
@@ -165,7 +167,8 @@ async fn force_cancel_tolerates_a_session_that_already_exited() {
     let entry = controller
         .force_cancel_background(TaskOwner::Workspace, "background-worker")
         .await
-        .expect("a missing session must not fail the cancellation");
+        .expect("a missing session must not fail the cancellation")
+        .into_entry();
 
     assert_eq!(entry.status, BackgroundSubprocessStatus::Stopped);
     assert!(!entry.desired_enabled);

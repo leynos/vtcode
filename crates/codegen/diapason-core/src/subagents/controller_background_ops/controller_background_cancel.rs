@@ -14,13 +14,29 @@ use super::controller_background_settlement::{mark_background_ledger_write_pendi
 /// (which skips non-active records) nor restore (which selects only desired
 /// records) ever retries it. The obligation is kept outside the record so it
 /// survives a refresh that is cancelled or aborted between the close and its
-/// settlement; only a successful close, or a spent retry allowance, clears it.
+/// settlement. A record-owned stop is cleared by a successful close or a spent
+/// retry allowance; a close no record names is kept until it succeeds.
 struct PendingStopClose {
     /// Keeps the key bound to a live state allocation so a dropped tree's entry
     /// can be pruned before its address is reused.
     state: Weak<RwLock<ControllerState>>,
     record_id: String,
     exec_session_id: String,
+    /// Whether the close belongs to the record's current launch.
+    ///
+    /// A stop of the record is retried only while the record still names the
+    /// session and no longer wants it. A declined launch's session is named by
+    /// no record: the launch spawned it, then the record refused the commit,
+    /// so the obligation must outlive the record moving to another launch or
+    /// disappearing. Such a close is retried without consulting the record.
+    record_owned: bool,
+}
+
+/// One close a reconcile still owes, with how it is retried.
+struct PendingStopCloseSnapshot {
+    record_id: String,
+    exec_session_id: String,
+    record_owned: bool,
 }
 
 fn pending_stop_closes() -> &'static Mutex<Vec<PendingStopClose>> {
@@ -41,6 +57,35 @@ pub(super) fn mark_background_stop_close_pending(
     record_id: &str,
     exec_session_id: &str,
 ) {
+    insert_pending_stop_close(state, record_id, exec_session_id, true);
+}
+
+/// Records that a declined launch owes the close of its own exec session.
+///
+/// The launch spawned a session before the record refused the commit, so no
+/// record names it. Keying the obligation by the launch's own session lets a
+/// reconcile retry it after the record has moved to another launch or gone.
+pub(super) fn mark_detached_background_stop_close_pending(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+) {
+    insert_pending_stop_close(state, record_id, exec_session_id, false);
+}
+
+/// Adds one close obligation unless the same launch already owes it.
+///
+/// The first marker decides how the close is retried. A record-owned stop that
+/// is already owed is never weakened to a detached one, and a detached close
+/// stays retryable even if the same launch is later marked again: retrying it
+/// without the record is always safe, because the session it names is the
+/// launch's own.
+fn insert_pending_stop_close(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+    record_owned: bool,
+) {
     with_pending_stop_closes(|registry| {
         let already_pending = registry.iter().any(|entry| {
             std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state))
@@ -54,6 +99,7 @@ pub(super) fn mark_background_stop_close_pending(
             state: Arc::downgrade(state),
             record_id: record_id.to_owned(),
             exec_session_id: exec_session_id.to_owned(),
+            record_owned,
         });
     });
 }
@@ -89,13 +135,126 @@ pub(super) fn background_stop_close_is_pending(
 }
 
 /// Returns every launch this controller still owes a close.
-fn pending_background_stop_closes(state: &Arc<RwLock<ControllerState>>) -> Vec<(String, String)> {
+fn pending_background_stop_closes(state: &Arc<RwLock<ControllerState>>) -> Vec<PendingStopCloseSnapshot> {
     with_pending_stop_closes(|registry| {
         registry
             .iter()
             .filter(|entry| std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
-            .map(|entry| (entry.record_id.clone(), entry.exec_session_id.clone()))
+            .map(|entry| PendingStopCloseSnapshot {
+                record_id: entry.record_id.clone(),
+                exec_session_id: entry.exec_session_id.clone(),
+                record_owned: entry.record_owned,
+            })
             .collect()
+    })
+}
+
+/// The ordered close attempts made for one stop, and its last confirmed close.
+///
+/// A stop's close can be attempted more than once at a time: a cancellation,
+/// an adopted stop and a reconcile retry all reach
+/// [`SubagentController::attempt_background_stop_close`] independently. Each
+/// attempt takes a token when it starts, in order. When an attempt confirms
+/// the close, a slower attempt's later failure must not act on the record, so
+/// a failure whose token predates the confirmed token is rejected. Without
+/// that ordering the late failure rewound `Stopped` to `Running` and re-armed
+/// an obligation the confirmed close had already discharged.
+struct StopCloseAttempt {
+    /// Keeps the key bound to a live state allocation so a dropped tree's entry
+    /// can be pruned before its address is reused.
+    state: Weak<RwLock<ControllerState>>,
+    record_id: String,
+    exec_session_id: String,
+    /// The token the most recent attempt took.
+    latest_token: u64,
+    /// The token of the attempt whose close succeeded, if any.
+    confirmed_token: Option<u64>,
+}
+
+fn stop_close_attempts() -> &'static Mutex<Vec<StopCloseAttempt>> {
+    static ATTEMPTS: std::sync::OnceLock<Mutex<Vec<StopCloseAttempt>>> = std::sync::OnceLock::new();
+    ATTEMPTS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Applies `update` to the attempt registry, pruning dropped trees first.
+fn with_stop_close_attempts<R>(update: impl FnOnce(&mut Vec<StopCloseAttempt>) -> R) -> R {
+    let mut attempts = stop_close_attempts().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    attempts.retain(|entry| entry.state.strong_count() > 0);
+    update(&mut attempts)
+}
+
+/// Reports whether `entry` belongs to the stop identified by the arguments.
+fn stop_close_attempt_matches(
+    entry: &StopCloseAttempt,
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+) -> bool {
+    std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state))
+        && entry.record_id == record_id
+        && entry.exec_session_id == exec_session_id
+}
+
+/// Starts one close attempt and returns the token that identifies it.
+fn begin_background_stop_close_attempt(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+) -> u64 {
+    with_stop_close_attempts(|attempts| {
+        if let Some(entry) = attempts
+            .iter_mut()
+            .find(|entry| stop_close_attempt_matches(entry, state, record_id, exec_session_id))
+        {
+            entry.latest_token = entry.latest_token.saturating_add(1);
+            return entry.latest_token;
+        }
+        attempts.push(StopCloseAttempt {
+            state: Arc::downgrade(state),
+            record_id: record_id.to_owned(),
+            exec_session_id: exec_session_id.to_owned(),
+            latest_token: 1,
+            confirmed_token: None,
+        });
+        1
+    })
+}
+
+/// Records that the attempt identified by `token` confirmed the close.
+///
+/// The caller holds the state write lock, so a slower failure for the same
+/// stop either observes this before it settles the record or is rejected as
+/// stale; it can never rewind the record past the confirmation.
+fn confirm_background_stop_close_attempt(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+    token: u64,
+) {
+    with_stop_close_attempts(|attempts| {
+        let Some(entry) = attempts
+            .iter_mut()
+            .find(|entry| stop_close_attempt_matches(entry, state, record_id, exec_session_id))
+        else {
+            return;
+        };
+        entry.confirmed_token = Some(entry.confirmed_token.map_or(token, |confirmed| confirmed.max(token)));
+    });
+}
+
+/// Reports whether a confirmed close overtook the attempt identified by `token`.
+fn background_stop_close_failure_is_stale(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+    token: u64,
+) -> bool {
+    with_stop_close_attempts(|attempts| {
+        attempts
+            .iter()
+            .find(|entry| stop_close_attempt_matches(entry, state, record_id, exec_session_id))
+            .and_then(|entry| entry.confirmed_token)
+            .is_some_and(|confirmed| token < confirmed)
     })
 }
 
@@ -143,6 +302,30 @@ pub(super) fn gate_next_background_close(
     state: &Arc<RwLock<ControllerState>>,
     exec_session_id: &str,
 ) -> (Arc<Notify>, Arc<Notify>) {
+    script_gated_background_close(state, exec_session_id, None)
+}
+
+/// Scripts the next close to stall until released, then fail.
+///
+/// A failure that has to overlap another attempt needs both halves on one
+/// scripted close: the stall holds the older attempt inside its close while a
+/// newer one runs, and the fault makes it fail after that newer attempt has
+/// already confirmed closure.
+#[cfg(test)]
+pub(super) fn fail_after_gated_background_close(
+    state: &Arc<RwLock<ControllerState>>,
+    exec_session_id: &str,
+    message: &str,
+) -> (Arc<Notify>, Arc<Notify>) {
+    script_gated_background_close(state, exec_session_id, Some(message.to_owned()))
+}
+
+#[cfg(test)]
+fn script_gated_background_close(
+    state: &Arc<RwLock<ControllerState>>,
+    exec_session_id: &str,
+    fault: Option<String>,
+) -> (Arc<Notify>, Arc<Notify>) {
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
     let mut scripted = scripted_closes().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -150,7 +333,7 @@ pub(super) fn gate_next_background_close(
     scripted.push(ScriptedClose {
         state: Arc::downgrade(state),
         exec_session_id: exec_session_id.to_owned(),
-        fault: None,
+        fault,
         entered: Some(Arc::clone(&entered)),
         release: Some(Arc::clone(&release)),
     });
@@ -214,6 +397,60 @@ fn record_background_close_fault(record: &mut BackgroundRecord, error: &anyhow::
     record.summary = Some("Background subagent is stopping".to_string());
 }
 
+/// The result of a stop request.
+///
+/// A stop is complete only once its exec session is closed, and the record
+/// alone cannot express that: a close fault leaves the record pending (or
+/// settles it `Error` once the retry allowance is spent) while the entry is
+/// still a perfectly valid value. Reporting that entry as a successful stop
+/// let an adapter announce a finished task whose process may still be live.
+/// The outcome keeps the distinction so a caller can report the fault instead
+/// of discarding it.
+#[derive(Debug)]
+pub enum BackgroundStopOutcome {
+    /// The exec session is confirmed closed, or the record named none.
+    Closed(BackgroundSubprocessEntry),
+    /// The close could not be confirmed; the record's `error` names the fault.
+    ClosePending(BackgroundSubprocessEntry),
+}
+
+impl BackgroundStopOutcome {
+    /// Pairs a record with whether its close is confirmed.
+    fn from_close(entry: BackgroundSubprocessEntry, close_confirmed: bool) -> Self {
+        if close_confirmed {
+            Self::Closed(entry)
+        } else {
+            Self::ClosePending(entry)
+        }
+    }
+
+    /// Returns the record this stop settled or left pending.
+    #[must_use]
+    pub const fn entry(&self) -> &BackgroundSubprocessEntry {
+        match self {
+            Self::Closed(entry) | Self::ClosePending(entry) => entry,
+        }
+    }
+
+    /// Consumes the outcome and returns the record it carries.
+    #[must_use]
+    pub fn into_entry(self) -> BackgroundSubprocessEntry {
+        match self {
+            Self::Closed(entry) | Self::ClosePending(entry) => entry,
+        }
+    }
+
+    /// Reports whether the stop's exec session close is still unconfirmed.
+    ///
+    /// A caller that reports success to its client must inspect this: `true`
+    /// means the process may still be live, and the record's `error` names the
+    /// close fault.
+    #[must_use]
+    pub const fn is_close_pending(&self) -> bool {
+        matches!(self, Self::ClosePending(_))
+    }
+}
+
 impl SubagentController {
     /// Gracefully stops a background subprocess by setting its desired state to disabled.
     ///
@@ -224,19 +461,20 @@ impl SubagentController {
         owner: TaskOwner<'_>,
         target: &str,
     ) -> Result<BackgroundSubprocessEntry> {
-        self.cancel_background(owner, target, BackgroundCancellationMode::Graceful)
-            .await
+        Ok(self
+            .cancel_background(owner, target, BackgroundCancellationMode::Graceful)
+            .await?
+            .into_entry())
     }
 
     /// Force-cancels a background subprocess, closing its exec session immediately.
     ///
     /// `owner` is the authority the caller presents; a session may cancel only
     /// a record it owns, while the workspace operator may cancel any record.
-    pub async fn force_cancel_background(
-        &self,
-        owner: TaskOwner<'_>,
-        target: &str,
-    ) -> Result<BackgroundSubprocessEntry> {
+    ///
+    /// The outcome distinguishes a confirmed close from one that is still owed,
+    /// so a caller cannot report a failed force close as a completed stop.
+    pub async fn force_cancel_background(&self, owner: TaskOwner<'_>, target: &str) -> Result<BackgroundStopOutcome> {
         self.cancel_background(owner, target, BackgroundCancellationMode::Force).await
     }
 
@@ -245,7 +483,7 @@ impl SubagentController {
         owner: TaskOwner<'_>,
         target: &str,
         mode: BackgroundCancellationMode,
-    ) -> Result<BackgroundSubprocessEntry> {
+    ) -> Result<BackgroundStopOutcome> {
         let cancellation = self.begin_background_cancellation(owner, target).await?;
         if cancellation.already_terminal {
             // A stopped or errored record is already settled. Preserve its
@@ -260,23 +498,27 @@ impl SubagentController {
             // persisted may never have reached the process. The close is the
             // stop's obligation, so it is attempted for either mode and its
             // failure is recorded rather than dropped.
-            if !cancellation.exec_session_id.is_empty() {
+            let close_confirmed = if cancellation.exec_session_id.is_empty() {
+                true
+            } else {
                 self.attempt_background_stop_close(&cancellation.record_id, &cancellation.exec_session_id)
-                    .await;
-            }
+                    .await
+            };
             // The cleared `desired_enabled` flag still has to reach disk so a
             // resumed session does not restore the cancelled record. The save
             // comes first: a first attempt can settle the record and then fail
             // here, leaving this retry as the only publisher of the terminal
             // state, so the snapshot is published only once it is committed.
             self.save_background_state().await?;
-            return self.settle_background_status_and_publish(&cancellation.record_id).await;
+            let entry = self.settle_background_status_and_publish(&cancellation.record_id).await?;
+            return Ok(BackgroundStopOutcome::from_close(entry, close_confirmed));
         }
         self.log_background_cancellation(&cancellation, &mode);
-        if cancellation.exec_session_id.is_empty() {
+        let close_confirmed = if cancellation.exec_session_id.is_empty() {
             // No session was recorded, so the stop has nothing left to close.
-            self.settle_background_stop_closed(&cancellation.record_id, &cancellation.exec_session_id)
+            self.settle_background_stop_closed(&cancellation.record_id, &cancellation.exec_session_id, None)
                 .await;
+            true
         } else {
             if matches!(mode, BackgroundCancellationMode::Graceful) {
                 // Signal first so a cooperative process can leave on its own.
@@ -285,9 +527,10 @@ impl SubagentController {
                 let _ = self.config.exec_sessions.terminate_session(&cancellation.exec_session_id).await;
             }
             self.attempt_background_stop_close(&cancellation.record_id, &cancellation.exec_session_id)
-                .await;
-        }
-        self.finish_background_cancellation(&cancellation.record_id).await
+                .await
+        };
+        let entry = self.finish_background_cancellation(&cancellation.record_id).await?;
+        Ok(BackgroundStopOutcome::from_close(entry, close_confirmed))
     }
 
     /// Closes a background exec session, tolerating one that is already gone.
@@ -329,10 +572,18 @@ impl SubagentController {
     /// record visibly pending. The single-attempt retry budget shared with
     /// restart settlement is spent here, so a second failure settles `Error`
     /// naming the close fault instead of retrying forever.
-    pub(super) async fn attempt_background_stop_close(&self, record_id: &str, exec_session_id: &str) {
+    ///
+    /// Returns whether the close is confirmed. Overlapping attempts are
+    /// ordered: an attempt that starts after another has confirmed the close
+    /// and then succeeds itself reports confirmed closure, while a failure
+    /// from an attempt the confirmed close overtook is discarded here instead
+    /// of rewinding the record.
+    pub(super) async fn attempt_background_stop_close(&self, record_id: &str, exec_session_id: &str) -> bool {
         if exec_session_id.is_empty() {
-            self.settle_background_stop_closed(record_id, exec_session_id).await;
-            return;
+            // Nothing can be running under the record, so there is no close to
+            // order against another attempt.
+            self.settle_background_stop_closed(record_id, exec_session_id, None).await;
+            return true;
         }
         // The obligation is raised before the close is awaited, not after it
         // fails. An adopt or cancel that is interrupted inside the close has
@@ -340,19 +591,33 @@ impl SubagentController {
         // would ever look at the record again; only an obligation recorded
         // beforehand can make the next reconcile finish the stop.
         mark_background_stop_close_pending(&self.state, record_id, exec_session_id);
+        let token = begin_background_stop_close_attempt(&self.state, record_id, exec_session_id);
         match self.close_background_exec_session(exec_session_id).await {
-            Ok(()) => self.settle_background_stop_closed(record_id, exec_session_id).await,
+            Ok(()) => {
+                self.settle_background_stop_closed(record_id, exec_session_id, Some(token))
+                    .await;
+                true
+            }
             Err(error) => {
-                self.settle_background_stop_close_failed(record_id, exec_session_id, &error)
+                self.settle_background_stop_close_failed(record_id, exec_session_id, token, &error)
                     .await
             }
         }
     }
 
     /// Applies a successful close to the record it stopped.
-    async fn settle_background_stop_closed(&self, record_id: &str, exec_session_id: &str) {
+    ///
+    /// `token` identifies the attempt whose close succeeded; `None` is the
+    /// empty-session case, which has no competing attempt to order against.
+    async fn settle_background_stop_closed(&self, record_id: &str, exec_session_id: &str, token: Option<u64>) {
         {
             let mut state = self.state.write().await;
+            // The confirmation is recorded under the same lock that settles the
+            // record, so an overlapping failure either sees it before it acts
+            // or is rejected as stale.
+            if let Some(token) = token {
+                confirm_background_stop_close_attempt(&self.state, record_id, exec_session_id, token);
+            }
             let Some(record) = state.background_children.get_mut(record_id) else {
                 clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
                 return;
@@ -378,46 +643,107 @@ impl SubagentController {
     }
 
     /// Keeps a failed close owed, or settles `Error` when its retry is spent.
-    async fn settle_background_stop_close_failed(&self, record_id: &str, exec_session_id: &str, error: &anyhow::Error) {
-        {
+    ///
+    /// A failure is rejected outright when a confirmed close overtook its
+    /// attempt. A slower attempt can fail after another one closed the same
+    /// session, and acting on it would undo `Stopped`, re-arm an obligation the
+    /// confirmed close discharged, and report a stopped task as running again.
+    ///
+    /// Returns whether the close is nevertheless confirmed: `true` when a
+    /// newer attempt's confirmed close overtook this failure. A caller that
+    /// answers a stop request reports that as a completed stop, because the
+    /// process it names is gone even though this attempt did not close it.
+    async fn settle_background_stop_close_failed(
+        &self,
+        record_id: &str,
+        exec_session_id: &str,
+        token: u64,
+        error: &anyhow::Error,
+    ) -> bool {
+        let close_confirmed = {
             let mut state = self.state.write().await;
             let Some(record) = state.background_children.get_mut(record_id) else {
                 clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
-                return;
+                return false;
             };
             if record.exec_session_id != exec_session_id {
                 clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
-                return;
+                return false;
             }
             if record.desired_enabled {
                 // A replacement launch has taken the record since the stop
                 // began, so this close no longer belongs to it.
                 clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
-                return;
+                return false;
             }
-            record_background_close_fault(record, error);
-            record.updated_at = Utc::now();
-            if retry_attempt_available(record.restart_attempts) {
-                record.restart_attempts = record.restart_attempts.saturating_add(1);
-                // `Stopped` was written by an adopted stop before its close was
-                // attempted. A live process is not stopped, so report the
-                // pending state until the retry succeeds.
-                if record.status == BackgroundSubprocessStatus::Stopped {
-                    record.status = BackgroundSubprocessStatus::Running;
-                }
-                mark_background_stop_close_pending(&self.state, record_id, exec_session_id);
+            if background_stop_close_failure_is_stale(&self.state, record_id, exec_session_id, token) {
+                // A newer attempt already confirmed the close. Leave the record
+                // and the obligation that close settled untouched; a newer
+                // attempt that has since re-armed the obligation owns it.
+                true
             } else {
-                record.status = BackgroundSubprocessStatus::Error;
-                record.ended_at.get_or_insert_with(Utc::now);
+                record_background_close_fault(record, error);
+                record.updated_at = Utc::now();
+                if retry_attempt_available(record.restart_attempts) {
+                    record.restart_attempts = record.restart_attempts.saturating_add(1);
+                    // `Stopped` was written by an adopted stop before its close
+                    // was attempted. A live process is not stopped, so report
+                    // the pending state until the retry succeeds.
+                    if record.status == BackgroundSubprocessStatus::Stopped {
+                        record.status = BackgroundSubprocessStatus::Running;
+                    }
+                    mark_background_stop_close_pending(&self.state, record_id, exec_session_id);
+                } else {
+                    record.status = BackgroundSubprocessStatus::Error;
+                    record.ended_at.get_or_insert_with(Utc::now);
+                    clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
+                }
+                false
+            }
+        };
+        if close_confirmed {
+            tracing::debug!(
+                record_id,
+                exec_session_id,
+                "Ignored a close fault another attempt's confirmed close overtook"
+            );
+        } else {
+            tracing::warn!(
+                record_id,
+                exec_session_id,
+                error = %error,
+                "Failed to close a background subprocess's exec session; the stop remains owed"
+            );
+        }
+        close_confirmed
+    }
+
+    /// Closes a declined launch's exec session.
+    ///
+    /// The launch spawned this session and then found its record no longer
+    /// wanted the commit, so no record names the session and no reconcile
+    /// selects it. The obligation is recorded first and keyed by the launch's
+    /// own session, so a close fault is retried by the next reconcile rather
+    /// than reported as a warning and forgotten.
+    pub(super) async fn close_declined_background_session(&self, record_id: &str, exec_session_id: &str) -> bool {
+        mark_detached_background_stop_close_pending(&self.state, record_id, exec_session_id);
+        match self.close_background_exec_session(exec_session_id).await {
+            Ok(()) => {
                 clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
+                true
+            }
+            Err(error) => {
+                // No record carries this fault, so the warning is its only
+                // report; the obligation keeps the retry alive.
+                tracing::warn!(
+                    record_id,
+                    exec_session_id,
+                    error = %error,
+                    "Failed to close a declined background launch's exec session; the close remains owed"
+                );
+                false
             }
         }
-        tracing::warn!(
-            record_id,
-            exec_session_id,
-            error = %error,
-            "Failed to close a background subprocess's exec session; the stop remains owed"
-        );
     }
 
     /// Retries every stop this controller still owes a close.
@@ -425,14 +751,23 @@ impl SubagentController {
     /// Refresh and restore call this so an aborted or failed close is driven to
     /// a durable outcome. The obligation is cleared only after the close
     /// succeeds or its retry budget is spent, so an interrupted reconcile
-    /// leaves it intact for the next one.
+    /// leaves it intact for the next one. A close a declined launch owes is
+    /// retried without consulting the record, because no record names that
+    /// launch any more.
     pub(super) async fn retry_pending_background_stop_closes(&self) -> Result<()> {
         let pending = pending_background_stop_closes(&self.state);
         if pending.is_empty() {
             return Ok(());
         }
         let mut changed = Vec::new();
-        for (record_id, exec_session_id) in pending {
+        for close in pending {
+            let PendingStopCloseSnapshot { record_id, exec_session_id, record_owned } = close;
+            if !record_owned {
+                // No record names this launch's session, so nothing observable
+                // changes and there is nothing to publish for it.
+                self.close_declined_background_session(&record_id, &exec_session_id).await;
+                continue;
+            }
             let still_owed = {
                 let state = self.state.read().await;
                 state

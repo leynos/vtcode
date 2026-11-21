@@ -44,7 +44,10 @@ pub(super) async fn apply_background_subprocess_action(
     force: bool,
 ) -> Result<BackgroundSubprocessEntry> {
     let entry = if force {
-        controller.force_cancel_background(TaskOwner::Workspace, id).await?
+        // The operator sees the record the stop settled or left pending: a
+        // pending close keeps its fault and its non-terminal status, so the
+        // rendered entry reports that the process may still be live.
+        controller.force_cancel_background(TaskOwner::Workspace, id).await?.into_entry()
     } else {
         controller.graceful_stop_background(TaskOwner::Workspace, id).await?
     };
@@ -498,7 +501,10 @@ pub(super) async fn show_background_subprocess_inspector(
             }
             InspectorActionKind::ForceCancel => {
                 if confirm_subprocess_action(ctx, current_entry.display_label.as_str(), true).await? {
-                    let updated = controller.force_cancel_background(TaskOwner::Workspace, &record_id).await?;
+                    let updated = controller
+                        .force_cancel_background(TaskOwner::Workspace, &record_id)
+                        .await?
+                        .into_entry();
                     refresh_local_agents(ctx.handle, &controller).await?;
                     render_subprocess_status(ctx, &updated)?;
                 }
@@ -527,7 +533,10 @@ pub(super) async fn show_background_subprocess_inspector(
                 if selection_config_action(action.selection.as_ref(), SUBPROCESS_CANCEL_PREFIX).is_some()
                     && confirm_subprocess_action(ctx, current_entry.display_label.as_str(), true).await?
                 {
-                    let updated = controller.force_cancel_background(TaskOwner::Workspace, &record_id).await?;
+                    let updated = controller
+                        .force_cancel_background(TaskOwner::Workspace, &record_id)
+                        .await?
+                        .into_entry();
                     refresh_local_agents(ctx.handle, &controller).await?;
                     render_subprocess_status(ctx, &updated)?;
                 }

@@ -21,8 +21,12 @@ pub(super) struct ProgressObserverRegistry {
 
 /// The registry a controller publishes through, the observer key it
 /// publishes under, and the clock that orders its publications.
+///
+/// A route is snapshotted as one value so a controller joining a tree adopts
+/// the registry, the clock and the key of the same observation, never a mix of
+/// two.
 #[derive(Clone, Default)]
-struct ProgressObserverRouteState {
+pub(super) struct ProgressObserverRouteState {
     registry: Arc<ProgressObserverRegistry>,
     scope: Option<String>,
     /// Monotonic lifecycle-revision clock shared by every controller that
@@ -61,9 +65,36 @@ impl ProgressObserverRoute {
         self.state.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
 
-    fn replace(&self, registry: Arc<ProgressObserverRegistry>, scope: Option<String>, lifecycle_clock: Arc<AtomicU64>) {
-        *self.state.write().unwrap_or_else(std::sync::PoisonError::into_inner) =
-            ProgressObserverRouteState { registry, scope, lifecycle_clock };
+    /// Takes the next lifecycle revision while holding the route's read guard.
+    ///
+    /// The guard is what makes a reservation and a handoff mutually exclusive.
+    /// Reading the clock and then incrementing it after the guard was released
+    /// would let a handoff copy the value this reservation is about to take, so
+    /// the tree would publish that revision twice and the adapter would drop
+    /// one of the two snapshots as non-increasing.
+    fn reserve(&self) -> u64 {
+        let route = self.state.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        route.lifecycle_clock.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Carries this route's clock forward into `lifecycle_clock` and adopts it.
+    ///
+    /// Reading this route's clock, raising the adopted clock to it and
+    /// replacing the route all happen under one write guard. A reservation
+    /// therefore either already happened — and is copied by `fetch_max` — or
+    /// reads the adopted clock, which already covers it. Splitting the copy
+    /// from the replacement would let a reservation take the copied value from
+    /// the retired clock after the tree had handed the same value out again.
+    pub(super) fn adopt(
+        &self,
+        registry: Arc<ProgressObserverRegistry>,
+        scope: Option<String>,
+        lifecycle_clock: Arc<AtomicU64>,
+    ) {
+        let mut route = self.state.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let own_revision = route.lifecycle_clock.load(Ordering::Relaxed);
+        lifecycle_clock.fetch_max(own_revision, Ordering::Relaxed);
+        *route = ProgressObserverRouteState { registry, scope, lifecycle_clock };
     }
 }
 
@@ -134,23 +165,39 @@ impl SubagentController {
     }
 
     /// Publishes this controller's snapshots through `parent`'s registry under
-    /// `scope`.
+    /// the key of the route it currently publishes through.
     ///
     /// This is split from [`Self::inherit_progress_observers`] so a caller that
     /// has already resolved the key can adopt the route without awaiting while
     /// it holds a controller state lock.
-    pub(super) fn adopt_progress_observers(&self, parent: &SubagentController, scope: String) {
+    pub(super) fn adopt_progress_observers(&self, parent: &SubagentController, fallback_scope: String) {
         let parent_route = parent.progress_route.snapshot();
-        // Adoption moves the controller onto the tree's clock. Carry this
-        // controller's own clock forward first, so a record it already stamped
-        // cannot later receive a lower revision than one it already published.
-        let own_clock = self.progress_route.snapshot().lifecycle_clock.load(Ordering::Relaxed);
-        parent_route.lifecycle_clock.fetch_max(own_clock, Ordering::Relaxed);
-        self.progress_route.replace(
-            Arc::clone(&parent_route.registry),
-            Some(scope),
-            Arc::clone(&parent_route.lifecycle_clock),
-        );
+        self.adopt_progress_route(&parent_route, fallback_scope.as_str());
+    }
+
+    /// Snapshots the route this controller publishes through.
+    ///
+    /// A caller that adopts a route on behalf of several controllers takes one
+    /// snapshot and hands it to each of them, so every controller of a grafted
+    /// subtree publishes through the same registry, clock and key.
+    pub(super) fn progress_route_snapshot(&self) -> ProgressObserverRouteState {
+        self.progress_route.snapshot()
+    }
+
+    /// Publishes this controller's snapshots through `route`.
+    ///
+    /// The route's own key wins over `fallback_scope`: a controller that has
+    /// already joined a tree publishes under that tree's session, and a
+    /// caller's earlier resolution may predate the join. Only a route with no
+    /// inherited key falls back, and taking the registry, the clock and the key
+    /// from one snapshot keeps all three consistent.
+    pub(super) fn adopt_progress_route(&self, route: &ProgressObserverRouteState, fallback_scope: &str) {
+        let scope = match route.scope.clone() {
+            Some(scope) => scope,
+            None => fallback_scope.to_owned(),
+        };
+        self.progress_route
+            .adopt(Arc::clone(&route.registry), Some(scope), Arc::clone(&route.lifecycle_clock));
     }
 
     /// Allocates the next lifecycle revision for this controller tree.
@@ -164,7 +211,7 @@ impl SubagentController {
     /// observer, so every later capture outranks the snapshots.
     #[must_use]
     pub fn reserve_lifecycle_revision(&self) -> u64 {
-        self.progress_route.snapshot().lifecycle_clock.fetch_add(1, Ordering::Relaxed)
+        self.progress_route.reserve()
     }
 
     /// Registers an observer for lifecycle snapshots belonging to one parent

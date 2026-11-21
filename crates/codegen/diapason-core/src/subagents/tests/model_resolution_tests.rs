@@ -35,17 +35,19 @@ fn resolve_subagent_model_falls_back_to_copilot_default_for_unsupported_inherit_
 
 #[test]
 fn resolve_effective_subagent_model_uses_explicit_inherit_override() {
+    // The spec names a different model, so an implementation that ignored
+    // `inherit` and used the spec model would fail this assertion.
     let cfg = DiapasonConfig::default();
     let resolved = resolve_effective_subagent_model(
         &cfg,
-        models::anthropic::CLAUDE_SONNET_5,
-        "anthropic",
+        models::openai::GPT_5_6_SOL,
+        "openai",
         Some("inherit"),
-        Some("haiku"),
+        Some(models::openai::GPT_5_6_LUNA),
         "worker",
     )
     .expect("resolve model");
-    assert_eq!(resolved.as_str(), models::anthropic::CLAUDE_SONNET_5);
+    assert_eq!(resolved.as_str(), models::openai::GPT_5_6_SOL);
 }
 
 #[test]
@@ -160,17 +162,19 @@ fn resolve_subagent_small_model_rejects_cross_provider_configured_lightweight_mo
 
 #[test]
 fn resolve_effective_subagent_model_falls_back_to_spec_model_on_invalid_override() {
+    // The spec model differs from the parent, so a recovery that kept the parent
+    // or dropped the spec value would fail this assertion.
     let cfg = DiapasonConfig::default();
     let resolved = resolve_effective_subagent_model(
         &cfg,
-        models::anthropic::CLAUDE_SONNET_5,
-        "anthropic",
+        models::openai::GPT_5_6_SOL,
+        "openai",
         Some("not-a-real-model"),
-        Some("haiku"),
+        Some(models::openai::GPT_5_6_LUNA),
         "reviewer",
     )
     .expect("resolve model");
-    assert_eq!(resolved.as_str(), models::anthropic::CLAUDE_SONNET_5);
+    assert_eq!(resolved.as_str(), models::openai::GPT_5_6_LUNA);
 }
 
 #[test]

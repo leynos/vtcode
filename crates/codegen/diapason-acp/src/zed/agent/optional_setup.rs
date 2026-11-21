@@ -28,7 +28,13 @@ pub(super) struct AcpSubagentControllerSetup<'a> {
     pub(super) workspace_gated: bool,
     /// Builds the controller without restoring its background sub-agents, so
     /// a caller can run a durability checkpoint before any child is launched.
-    /// Only meaningful for an owner-scoped controller.
+    ///
+    /// It applies to both controller scopes. A resumed session defers its own
+    /// restore so a failed attach cannot leave a restored child behind, and
+    /// workspace initialisation defers the workspace controller's restore of
+    /// ownerless rows so it cannot relaunch a row a session may yet adopt. The
+    /// resumed attach is the only owner-scoped caller that sets it, which is
+    /// also what selects the owner-migration retry below.
     pub(super) defer_background_restore: bool,
 }
 
@@ -256,18 +262,23 @@ pub(super) fn attach_acp_subagent_controller<'a>(
             lock_scope: None,
         };
         // The controller loads the ledger at construction, so a row this
-        // session launched must carry its owner before that load. Otherwise the
-        // resumed session's controller never adopts it and the workspace
-        // restore takes it as ownerless work.
+        // session launched must carry its owner before that load. Only the
+        // resumed attach can have such a row, and it is the only owner-scoped
+        // caller that defers its restore: it migrates before building its
+        // workspace runtime, so this run is the retry after a failed
+        // migration. A new session's fresh owner can never match a persisted
+        // row, so migrating for it would take the ledger's lock for nothing.
         let migration_failed = match owner_session_id {
-            Some(owner) => match background_restore::migrate_legacy_owner_rows(&agent_config.workspace, owner).await {
-                Ok(_) => false,
-                Err(error) => {
-                    log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "background_owner_migration_failed");
-                    true
+            Some(owner) if defer_background_restore => {
+                match background_restore::migrate_legacy_owner_rows(&agent_config.workspace, owner).await {
+                    Ok(_) => false,
+                    Err(error) => {
+                        log_suppressed_error(&error, OPTIONAL_SETUP_OPERATION, "background_owner_migration_failed");
+                        true
+                    }
                 }
-            },
-            None => false,
+            }
+            _ => false,
         };
         let controller = match SubagentController::new_with_background_owner(controller_config, owner_session_id).await
         {
@@ -306,7 +317,9 @@ pub(super) fn attach_acp_subagent_controller<'a>(
 /// owner.
 ///
 /// A resumed attach runs this before its workspace runtime loads the ledger,
-/// because the workspace restore takes ownerless rows. See
+/// because the workspace restore takes ownerless rows. The session controller's
+/// own construction retries the migration, because its restore stays deferred
+/// until the attach's required checkpoint has succeeded. See
 /// [`background_restore::migrate_legacy_owner_rows`].
 pub(in crate::zed::agent) async fn migrate_resumed_session_background_owners(
     workspace_root: &std::path::Path,

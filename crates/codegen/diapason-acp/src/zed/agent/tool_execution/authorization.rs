@@ -1,18 +1,17 @@
 //! Resolve ACP tool calls and apply lifecycle and permission authorization.
 
 mod admission;
+mod prompting;
 
 use self::admission::{session_subagent_admission_error, session_subagent_controller_error};
 use super::super::ZedAgent;
 use super::super::warn_hook_message;
-use super::cancelable_session_request;
 use super::data::{
     PermissionResolutionInput, ResolvedToolCall, ToolAuthorization, ToolAuthorizationInput, ToolCallInvocation,
     ToolExecutionContext, ToolPermissionPrompt,
 };
 use crate::acp;
 use crate::acp::Error as SdkError;
-use crate::permissions::PermissionToolContext;
 use crate::reports::ToolExecutionReport;
 use crate::tooling::{AcpToolRegistry, ToolDescriptor};
 use crate::zed::agent::log_suppressed_error;
@@ -20,7 +19,6 @@ use crate::zed::constants::SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE;
 use crate::zed::types::ToolCallResult;
 use diapason_core::hooks::PreToolHookDecision;
 use diapason_core::llm::provider::ToolCall as ProviderToolCall;
-use diapason_core::permissions::build_permission_request;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -295,142 +293,6 @@ impl ZedAgent {
             // local `prompt` policy does not fail closed a second time.
             context.local_tool_registry.mark_tool_preapproved(resolved.tool_name).await;
         }
-    }
-
-    async fn send_tool_call_in_progress(
-        &self,
-        context: &ToolExecutionContext<'_>,
-        resolved: &ResolvedToolCall<'_>,
-        authorization: &ToolAuthorization,
-    ) -> Result<(), SdkError> {
-        if resolved.descriptor.is_none() {
-            return Ok(());
-        }
-        if authorization.permission_override.is_some() {
-            return Ok(());
-        }
-        if authorization.cancel_after_permission {
-            return Ok(());
-        }
-        let fields = acp::ToolCallUpdateFields::default().status(acp::ToolCallStatus::InProgress);
-        let update = acp::ToolCallUpdate::new(resolved.call_id.clone(), fields);
-        self.send_update(context.invocation.session_id, acp::SessionUpdate::ToolCallUpdate(update))
-            .await
-    }
-
-    async fn request_tool_permission_for_call(
-        &self,
-        context: &ToolExecutionContext<'_>,
-        resolved: &ResolvedToolCall<'_>,
-        request: ToolPermissionPrompt<'_>,
-    ) -> Result<Option<ToolExecutionReport>, SdkError> {
-        let permission_result = cancelable_session_request(&context.invocation.session.cancellation, async {
-            match (request.descriptor, request.force_prompt) {
-                (ToolDescriptor::Acp(tool), true) => {
-                    context
-                        .permission_prompter
-                        .request_tool_permission_forced(
-                            context.invocation.client,
-                            context.invocation.session_id,
-                            &resolved.initial_call,
-                            tool,
-                            request.args,
-                        )
-                        .await
-                }
-                (ToolDescriptor::Acp(tool), false) => {
-                    context
-                        .permission_prompter
-                        .request_tool_permission(
-                            context.invocation.client,
-                            context.invocation.session_id,
-                            &resolved.initial_call,
-                            tool,
-                            request.args,
-                        )
-                        .await
-                }
-                (ToolDescriptor::Local, true) => {
-                    context
-                        .permission_prompter
-                        .request_named_tool_permission_forced(
-                            context.invocation.client,
-                            context.invocation.session_id,
-                            &resolved.initial_call,
-                            PermissionToolContext::new(
-                                resolved.tool_name,
-                                resolved.kind,
-                                resolved.initial_call.title.as_str(),
-                            ),
-                            request.args,
-                        )
-                        .await
-                }
-                (ToolDescriptor::Local, false) => {
-                    context
-                        .permission_prompter
-                        .request_named_tool_permission(
-                            context.invocation.client,
-                            context.invocation.session_id,
-                            &resolved.initial_call,
-                            PermissionToolContext::new(
-                                resolved.tool_name,
-                                resolved.kind,
-                                resolved.initial_call.title.as_str(),
-                            ),
-                            request.args,
-                        )
-                        .await
-                }
-            }
-        })
-        .await;
-        permission_result.unwrap_or_else(|| Ok(Some(ToolExecutionReport::cancelled(resolved.tool_name))))
-    }
-
-    async fn run_permission_hook(
-        &self,
-        context: &ToolExecutionContext<'_>,
-        resolved: &ResolvedToolCall<'_>,
-        args: &Value,
-    ) -> Result<Option<diapason_core::hooks::PermissionRequestHookDecision>, SdkError> {
-        let Some(hooks) = context.invocation.session.lifecycle_hooks().map_err(|error| {
-            SdkError::internal_error()
-                .data(format!("Failed to read lifecycle hooks for ACP permission hook: {error:#}"))
-        })?
-        else {
-            return Ok(None);
-        };
-        let workspace = context
-            .invocation
-            .session
-            .workspace_runtime()
-            .map_err(|error| {
-                log_suppressed_error(&error, "session_workspace_runtime_read", "session_lock_unavailable");
-                SdkError::internal_error().data(SESSION_WORKSPACE_RUNTIME_UNAVAILABLE_FAILURE)
-            })?
-            .map_or_else(|| self.config.workspace.clone(), |runtime| runtime.workspace_root.clone());
-        let request = build_permission_request(&workspace, &workspace, resolved.tool_name, Some(args));
-        let Some(descriptor) = resolved.descriptor else {
-            return Ok(None);
-        };
-        let suggestions = match descriptor {
-            ToolDescriptor::Acp(tool) => context
-                .permission_prompter
-                .permission_options(tool, Some(args))
-                .into_iter()
-                .filter_map(|option| serde_json::to_value(option).ok())
-                .collect::<Vec<_>>(),
-            ToolDescriptor::Local => Vec::new(),
-        };
-        let outcome = hooks
-            .run_permission_request(resolved.tool_name, Some(args), &request, &suggestions)
-            .await
-            .map_err(|error| SdkError::internal_error().data(error.to_string()))?;
-        for message in outcome.messages {
-            warn_hook_message("PermissionRequest", &message);
-        }
-        Ok(outcome.decision)
     }
 }
 
