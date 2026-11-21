@@ -202,17 +202,22 @@ fn join_by_canonical_id(
     }
     let survivors = launches
         .into_iter()
-        .map(|(id, sessions)| {
-            let mut representatives = sessions.into_values();
-            let mut chosen = representatives
-                .next()
-                .expect("a canonical id is recorded with at least one launch");
-            for candidate in representatives {
-                if candidate.is_at_least_as_new_as(&chosen) {
-                    chosen = candidate;
-                }
-            }
-            (id, chosen)
+        .filter_map(|(id, sessions)| {
+            // An id is only inserted into `launches` together with at least one
+            // launch copy, so the empty group this skips is unreachable. It is
+            // still skipped rather than unwrapped: a merge of persisted state
+            // must never panic, and dropping an id it cannot represent loses at
+            // most one launch record.
+            sessions
+                .into_values()
+                .reduce(|chosen, candidate| {
+                    if candidate.is_at_least_as_new_as(&chosen) {
+                        candidate
+                    } else {
+                        chosen
+                    }
+                })
+                .map(|chosen| (id, chosen))
         })
         .collect::<BTreeMap<_, _>>();
     let unowned = survivors

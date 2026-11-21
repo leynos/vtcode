@@ -467,7 +467,7 @@ fn background_commit_gates() -> &'static Mutex<Vec<BackgroundCommitGate>> {
 ///
 /// Returns the signal that the launch reached the window and the signal that
 /// releases it, so the test can land a concurrent change in between.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(super) fn gate_next_background_commit(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
@@ -513,7 +513,7 @@ fn pending_background_retry_spec_removals() -> &'static Mutex<Vec<Weak<RwLock<Co
     PENDING.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(super) fn remove_spec_before_next_background_retry(state: &Arc<RwLock<ControllerState>>) {
     let mut pending = pending_background_retry_spec_removals()
         .lock()

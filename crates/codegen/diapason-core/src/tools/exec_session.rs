@@ -559,8 +559,9 @@ impl PipeSessionManager {
     /// Arms a one-shot kill fault for the next close-path termination.
     ///
     /// Test-only: it proves the close path keeps a session record retryable
-    /// when the backend cannot signal the child.
-    #[cfg(test)]
+    /// when the backend cannot signal the child. Its only caller spawns a real
+    /// shell, so it is gated with that caller.
+    #[cfg(all(test, unix))]
     fn fail_next_termination(&self, message: impl Into<String>) {
         *self.termination_failure.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.into());
     }
