@@ -1,6 +1,14 @@
+//! Cached skill discovery and metadata resolution for [`SkillsManager`].
+//!
+//! Wraps the filesystem loader with per-workspace and per-instruction caches,
+//! and resolves persisted skill names against the discovered set. The
+//! `cmd-analyse`/`cmd-analyze` compatibility pair is resolved through
+//! `diapason-skills::command_skills::select_by_name_or_alias`, which ranks
+//! matches by [`crate::skills::SkillScope`] so the highest-precedence spelling
+//! wins.
+
 use crate::skills::SkillMetadata;
-use crate::skills::SkillScope;
-use crate::skills::command_skills::command_skill_id_alias;
+use crate::skills::command_skills::{command_skill_id_alias, select_by_name_or_alias};
 #[cfg(test)]
 use crate::skills::loader::discover_skill_metadata_lightweight_hermetic;
 use crate::skills::loader::{
@@ -347,29 +355,10 @@ impl SkillsManager {
     }
 }
 
-/// Discovery precedence of a skill scope, lowest first.
-///
-/// `load_skills` searches repository roots before user, admin, and bundled
-/// system roots, but `dedup_and_sort` then sorts by name. Rank by scope so an
-/// alias lookup still selects the higher-precedence skill when the spellings
-/// sort the other way.
-fn skill_scope_rank(scope: SkillScope) -> u8 {
-    match scope {
-        SkillScope::Repo => 0,
-        SkillScope::User => 1,
-        SkillScope::Admin => 2,
-        SkillScope::System => 3,
-    }
-}
-
-/// Find a skill by its requested name, preferring the highest-precedence scope
-/// for the `cmd-analyse`/`cmd-analyze` persisted-name compatibility pair.
+/// Find a skill by its requested name or command-skill alias, preferring the
+/// highest-precedence scope and the first-discovered entry on a tie.
 fn skill_metadata_by_name<'a>(skills: &'a [SkillMetadata], name: &str) -> Option<&'a SkillMetadata> {
-    let alias = command_skill_id_alias(name);
-    skills
-        .iter()
-        .filter(|skill| skill.name == name || alias.is_some_and(|alias| skill.name == alias))
-        .min_by_key(|skill| skill_scope_rank(skill.scope))
+    select_by_name_or_alias(skills, name, |skill| skill.name.as_str(), |skill| skill.scope)
 }
 
 /// Resolve metadata for persisted preload configuration without changing the
@@ -403,6 +392,9 @@ fn find_git_root(path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::skills::SkillScope;
+    use crate::skills::command_skills::skill_scope_rank;
+    use proptest::prelude::*;
     use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
@@ -524,6 +516,155 @@ mod tests {
             PathBuf::from("/second/review"),
             "preload lookup retains the HashMap last-duplicate selection for unrelated IDs",
         );
+    }
+
+    fn arbitrary_scope() -> impl Strategy<Value = SkillScope> {
+        prop_oneof![
+            Just(SkillScope::Repo),
+            Just(SkillScope::User),
+            Just(SkillScope::Admin),
+            Just(SkillScope::System),
+        ]
+    }
+
+    fn arbitrary_analyse_family_entry() -> impl Strategy<Value = (String, SkillScope)> {
+        (
+            prop_oneof![
+                Just("cmd-analyse".to_string()),
+                Just("cmd-analyze".to_string()),
+                Just("review".to_string()),
+                Just("status".to_string()),
+            ],
+            arbitrary_scope(),
+        )
+    }
+
+    proptest! {
+        #[test]
+        fn skill_metadata_lookup_selects_the_minimum_scope_rank(
+            entries in prop::collection::vec(arbitrary_analyse_family_entry(), 0..=6),
+        ) {
+            let skills: Vec<SkillMetadata> = entries
+                .iter()
+                .enumerate()
+                .map(|(index, (name, scope))| {
+                    let mut skill = skill_metadata(name, &format!("/fixture/{index}/{name}"));
+                    skill.scope = *scope;
+                    skill
+                })
+                .collect();
+
+            for requested in ["cmd-analyse", "cmd-analyze"] {
+                let matching: Vec<&SkillMetadata> = skills
+                    .iter()
+                    .filter(|skill| {
+                        skill.name == requested
+                            || command_skill_id_alias(requested).is_some_and(|alias| skill.name == alias)
+                    })
+                    .collect();
+
+                let selected = skill_metadata_by_name(&skills, requested);
+                if matching.is_empty() {
+                    prop_assert!(selected.is_none(), "no matching entry may resolve for {requested}");
+                    continue;
+                }
+
+                let minimum_rank = matching
+                    .iter()
+                    .map(|skill| skill_scope_rank(skill.scope))
+                    .min()
+                    .expect("non-empty match set");
+                let expected = matching
+                    .iter()
+                    .find(|skill| skill_scope_rank(skill.scope) == minimum_rank)
+                    .expect("minimum rank entry");
+                let selected = selected.expect("matching entries must resolve");
+
+                prop_assert_eq!(skill_scope_rank(selected.scope), minimum_rank);
+                prop_assert_eq!(
+                    selected.path.as_path(),
+                    expected.path.as_path(),
+                    "the first entry of the minimum rank must win",
+                );
+
+                if matching
+                    .iter()
+                    .filter(|skill| skill_scope_rank(skill.scope) == minimum_rank)
+                    .count()
+                    == 1
+                {
+                    let mut reversed = skills.clone();
+                    reversed.reverse();
+                    let selected_reversed = skill_metadata_by_name(&reversed, requested)
+                        .expect("a unique minimum-rank entry must resolve in any order");
+
+                    prop_assert_eq!(
+                        selected_reversed.path.as_path(),
+                        expected.path.as_path(),
+                        "a unique minimum-rank entry must win in any input order",
+                    );
+                }
+            }
+        }
+    }
+
+    fn install_analyse_override_fixture(workspace: &TempDir, codex_home: &TempDir) -> PathBuf {
+        fs::create_dir(workspace.path().join(".git")).unwrap();
+        install_system_skills(codex_home.path()).unwrap();
+
+        let override_dir = workspace.path().join(".agents/skills/cmd-analyze");
+        fs::create_dir_all(&override_dir).unwrap();
+        fs::write(
+            override_dir.join("SKILL.md"),
+            "---\nname: cmd-analyze\ndescription: workspace analyse override\n---\n\n# Override\n",
+        )
+        .unwrap();
+
+        let system_skill = crate::skills::system::system_cache_root_dir(codex_home.path()).join("cmd-analyse");
+        assert!(system_skill.join("SKILL.md").exists(), "bundled system skill fixture must exist");
+
+        dunce::canonicalize(override_dir.join("SKILL.md")).unwrap()
+    }
+
+    #[test]
+    #[serial]
+    fn resolve_skill_by_name_prefers_repo_override_across_analyse_aliases() {
+        let workspace = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let codex_home = TempDir::new().unwrap();
+        let expected_path = install_analyse_override_fixture(&workspace, &codex_home);
+
+        let manager = SkillsManager::new(codex_home.path().to_path_buf());
+        temp_env::with_vars([("HOME", Some(home.path()))], || {
+            for requested in ["cmd-analyse", "cmd-analyze"] {
+                let resolved = manager
+                    .resolve_skill_by_name(workspace.path(), requested)
+                    .unwrap_or_else(|error| panic!("failed to resolve {requested}: {error}"));
+
+                assert_eq!(resolved.path, expected_path, "{requested} must resolve to the repository override",);
+                assert_eq!(resolved.scope, SkillScope::Repo);
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn loop_skills_prefers_repo_override_across_analyse_aliases() {
+        let workspace = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let codex_home = TempDir::new().unwrap();
+        let expected_path = install_analyse_override_fixture(&workspace, &codex_home);
+
+        let manager = SkillsManager::new(codex_home.path().to_path_buf());
+        let requested = vec!["cmd-analyse".to_string(), "cmd-analyze".to_string()];
+        let loaded =
+            temp_env::with_vars([("HOME", Some(home.path()))], || manager.loop_skills(workspace.path(), &requested));
+
+        assert_eq!(loaded.len(), 2, "both alias spellings should preload");
+        for skill in &loaded {
+            assert_eq!(skill.path, expected_path, "preload must select the repository override");
+            assert_eq!(skill.scope, SkillScope::Repo);
+        }
     }
 
     #[test]

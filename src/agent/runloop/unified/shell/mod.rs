@@ -1,3 +1,11 @@
+//! Shell-request detection and normalization for the unified run loop.
+//!
+//! Classifies user input as an explicit shell request, strips conversational
+//! prefixes, normalizes common command phrasings, and quotes path operands
+//! before the run loop hands the command to the shell execution path. The
+//! `classify`, `detect`, `normalize`, and `paths` submodules keep each stage
+//! independently testable.
+
 mod classify;
 mod detect;
 mod normalize;

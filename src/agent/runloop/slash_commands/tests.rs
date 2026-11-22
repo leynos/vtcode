@@ -1,3 +1,9 @@
+//! Unit tests for slash-command parsing and dispatch.
+//!
+//! Exercises `handle_slash_command`, the built-in argument parsers, and the
+//! command-skill catalogue behind `/skills`, using the current directory as
+//! the workspace root and an ANSI test renderer.
+
 use super::builtins::{CheckupCommand, parse_checkup_args, parse_effort_args, parse_update_args};
 use super::{
     AgentManagerAction, CompactConversationCommand, SecretCommandAction, SessionLogExportFormat, SlashCommandOutcome,

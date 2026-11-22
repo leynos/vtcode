@@ -1,6 +1,17 @@
+//! Skill discovery and loading for the Diapason runtime.
+//!
+//! Walks repository, user, administrator, and bundled system skill roots,
+//! deduplicates and orders the results, and resolves a requested skill to an
+//! enhanced representation. Name lookups for the `cmd-analyse`/`cmd-analyze`
+//! compatibility pair delegate to
+//! `diapason-skills::command_skills::select_by_name_or_alias`, which ranks
+//! matches by scope so the bundled canonical spelling cannot shadow a
+//! higher-precedence user or repository override.
+
 use crate::skills::cli_bridge::{CliToolBridge, CliToolConfig, discover_cli_tools};
 use crate::skills::command_skills::{
     BuiltInCommandSkill, built_in_command_skill, command_skill_id_alias, merge_built_in_command_skill_contexts,
+    select_by_name_or_alias,
 };
 use crate::skills::container_validation::{
     ContainerSkillsValidator, ContainerValidationReport, ContainerValidationResult,
@@ -221,8 +232,8 @@ fn dedup_and_sort(outcome: &mut SkillLoadOutcome) {
     outcome.skills.retain(|skill| seen.insert(skill.name.clone()));
     // Sort by the alias-normalised skill ID so the two `cmd-analyse` spellings
     // compare as one family. Rust's sort is stable, so skills in one family
-    // keep discovery order, which encodes precedence; the manager's
-    // `min_by_key` then selects the first-discovered skill within a scope.
+    // keep discovery order; the shared `select_by_name_or_alias` selector then
+    // ranks by scope and keeps the first-discovered skill within a rank.
     outcome
         .skills
         .sort_by(|a, b| skill_sort_key(&a.name).cmp(skill_sort_key(&b.name)));
@@ -812,24 +823,25 @@ fn discovery_config_for_codex_home(workspace_root: &Path, codex_home: &Path) -> 
     }
 }
 
+/// Resolve a traditional skill context by name or command-skill alias.
+///
+/// Each candidate is classified with [`infer_scope_from_skill_path`] so the
+/// shared [`select_by_name_or_alias`] rank applies to both spellings of the
+/// analyse command skill. There is no separate fallback: every path the loader
+/// discovers classifies into a scope, so a bundled system skill still matches,
+/// merely ranked last.
 fn traditional_skill_context_by_name<'a>(
     skills: &'a [SkillContext],
     name: &str,
-    system_skills_root: &Path,
+    workspace_root: &Path,
+    codex_home: &Path,
 ) -> Option<&'a SkillContext> {
-    if let Some(alias) = command_skill_id_alias(name) {
-        let is_requested_or_alias =
-            |skill: &SkillContext| skill.manifest().name == name || skill.manifest().name == alias;
-
-        // Discovery order encodes repository, user, administrator, and system
-        // precedence. Keep that order while considering only the two known IDs.
-        return skills
-            .iter()
-            .find(|skill| !skill.path().starts_with(system_skills_root) && is_requested_or_alias(skill))
-            .or_else(|| skills.iter().find(|skill| is_requested_or_alias(skill)));
-    }
-
-    skills.iter().find(|skill| skill.manifest().name == name)
+    select_by_name_or_alias(
+        skills,
+        name,
+        |skill| skill.manifest().name.as_str(),
+        |skill| infer_scope_from_skill_path(skill.path(), workspace_root, codex_home),
+    )
 }
 
 impl EnhancedSkillLoader {
@@ -866,14 +878,14 @@ impl EnhancedSkillLoader {
         let result = self.discovery.discover_all(&self.workspace_root).await?;
 
         if let Some(skill_ctx) =
-            traditional_skill_context_by_name(&result.skills, name, &system_cache_root_dir(&self.codex_home))
+            traditional_skill_context_by_name(&result.skills, name, &self.workspace_root, &self.codex_home)
         {
             let path = skill_ctx.path();
             let (manifest, instructions) = crate::skills::manifest::parse_skill_file(path)?;
             let skill = Skill::with_scope(
                 manifest,
                 path.clone(),
-                infer_scope_from_skill_path(path, &self.workspace_root),
+                infer_scope_from_skill_path(path, &self.workspace_root, &self.codex_home),
                 instructions,
             )?;
             return Ok(EnhancedSkill::Traditional(Box::new(skill)));
@@ -933,15 +945,25 @@ impl EnhancedSkillLoader {
     fn load_full_skill_from_ctx(&self, ctx: &SkillContext) -> Result<Skill> {
         let path = ctx.path();
         let (manifest, instructions) = crate::skills::manifest::parse_skill_file(path)?;
-        Skill::with_scope(manifest, path.clone(), infer_scope_from_skill_path(path, &self.workspace_root), instructions)
+        Skill::with_scope(
+            manifest,
+            path.clone(),
+            infer_scope_from_skill_path(path, &self.workspace_root, &self.codex_home),
+            instructions,
+        )
     }
 }
 
-fn infer_scope_from_skill_path(path: &Path, workspace_root: &Path) -> SkillScope {
+/// Classify a discovered skill path into its [`SkillScope`].
+///
+/// `codex_home` is the loader's configured Diapason home, so the bundled
+/// system root is `<codex_home>/skills/.system` rather than whatever
+/// `CODEX_HOME` or the real home directory currently resolve to.
+fn infer_scope_from_skill_path(path: &Path, workspace_root: &Path, codex_home: &Path) -> SkillScope {
     if path.starts_with(Path::new("/etc/codex/skills")) {
         return SkillScope::Admin;
     }
-    if path.starts_with(system_cache_root_dir(&default_codex_home())) {
+    if path.starts_with(system_cache_root_dir(codex_home)) {
         return SkillScope::System;
     }
     if let Some(home) = dirs::home_dir()
@@ -1101,8 +1123,9 @@ pub fn discover_skill_metadata_lightweight_hermetic(config: &SkillLoaderConfig) 
 mod tests {
     use super::*;
     use crate::skills::CommandSkillBackend;
-    use crate::skills::command_skills::command_skill_specs;
+    use crate::skills::command_skills::{command_skill_specs, skill_scope_rank};
     use crate::skills::system::{install_system_skills, system_cache_root_dir};
+    use proptest::prelude::*;
     use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
@@ -1133,16 +1156,17 @@ mod tests {
 
     #[test]
     fn command_skill_id_alias_preserves_legacy_user_override_for_both_ids() {
-        let system_root = Path::new("/hermetic/codex/skills/.system");
+        let workspace_root = Path::new("/hermetic/workspace");
+        let codex_home = Path::new("/hermetic/codex");
         let legacy_override = Path::new("/hermetic/workspace/.agents/skills/cmd-analyze");
-        let bundled_canonical = system_root.join("cmd-analyse");
+        let bundled_canonical = system_cache_root_dir(codex_home).join("cmd-analyse");
         let skills = vec![
             skill_context("cmd-analyze", legacy_override),
             skill_context("cmd-analyse", &bundled_canonical),
         ];
 
         for requested_name in ["cmd-analyse", "cmd-analyze"] {
-            let selected = traditional_skill_context_by_name(&skills, requested_name, system_root)
+            let selected = traditional_skill_context_by_name(&skills, requested_name, workspace_root, codex_home)
                 .expect("known command skill ID should resolve");
             assert_eq!(selected.manifest().name, "cmd-analyze");
             assert_eq!(selected.path(), legacy_override);
@@ -1151,7 +1175,8 @@ mod tests {
 
     #[test]
     fn command_skill_id_alias_uses_first_discovered_user_override() {
-        let system_root = Path::new("/hermetic/codex/skills/.system");
+        let workspace_root = Path::new("/hermetic/workspace");
+        let codex_home = Path::new("/hermetic/codex");
         let legacy_override = Path::new("/hermetic/workspace/.agents/skills/cmd-analyze");
         let canonical_override = Path::new("/hermetic/workspace/.agents/skills/cmd-analyse");
         let skills = vec![
@@ -1159,7 +1184,7 @@ mod tests {
             skill_context("cmd-analyze", legacy_override),
         ];
 
-        let selected = traditional_skill_context_by_name(&skills, "cmd-analyse", system_root)
+        let selected = traditional_skill_context_by_name(&skills, "cmd-analyse", workspace_root, codex_home)
             .expect("canonical command skill ID should resolve");
         assert_eq!(selected.manifest().name, "cmd-analyse");
         assert_eq!(selected.path(), canonical_override);
@@ -1167,15 +1192,16 @@ mod tests {
 
     #[test]
     fn command_skill_id_alias_preserves_discovery_precedence_across_spellings() {
-        let system_root = Path::new("/hermetic/codex/skills/.system");
+        let workspace_root = Path::new("/hermetic/workspace");
+        let codex_home = Path::new("/hermetic/codex");
         let higher_priority_legacy = Path::new("/hermetic/workspace/.agents/skills/cmd-analyze");
-        let lower_priority_canonical = Path::new("/hermetic/user/.agents/skills/cmd-analyse");
+        let lower_priority_canonical = Path::new("/etc/codex/skills/cmd-analyse");
         let skills = vec![
             skill_context("cmd-analyze", higher_priority_legacy),
             skill_context("cmd-analyse", lower_priority_canonical),
         ];
 
-        let selected = traditional_skill_context_by_name(&skills, "cmd-analyse", system_root)
+        let selected = traditional_skill_context_by_name(&skills, "cmd-analyse", workspace_root, codex_home)
             .expect("canonical command skill ID should resolve");
         assert_eq!(selected.path(), higher_priority_legacy);
     }
@@ -1226,13 +1252,230 @@ mod tests {
 
     #[test]
     fn traditional_skill_lookup_keeps_exact_matching_for_unaliased_skills() {
-        let system_root = Path::new("/hermetic/codex/skills/.system");
+        let workspace_root = Path::new("/hermetic/workspace");
+        let codex_home = Path::new("/hermetic/codex");
         let skill_path = Path::new("/hermetic/workspace/.agents/skills/release-helper");
         let skills = vec![skill_context("release-helper", skill_path)];
 
-        let selected = traditional_skill_context_by_name(&skills, "release-helper", system_root)
+        let selected = traditional_skill_context_by_name(&skills, "release-helper", workspace_root, codex_home)
             .expect("ordinary traditional skill should resolve");
         assert_eq!(selected.path(), skill_path);
+    }
+
+    #[test]
+    fn traditional_skill_lookup_returns_none_when_nothing_matches() {
+        let skills = vec![skill_context(
+            "review",
+            Path::new("/hermetic/workspace/.agents/skills/review"),
+        )];
+
+        let selected = traditional_skill_context_by_name(
+            &skills,
+            "cmd-analyse",
+            Path::new("/hermetic/workspace"),
+            Path::new("/hermetic/codex"),
+        );
+
+        assert!(selected.is_none(), "an unmatched alias family must not resolve");
+    }
+
+    #[test]
+    fn traditional_skill_lookup_keeps_a_bundled_system_skill_when_it_is_the_only_match() {
+        // The former path-prefix branch needed an `or_else` fallback to reach a
+        // system skill; ranking makes the fallback unreachable because a
+        // system skill always matches, merely ranked last.
+        let workspace_root = Path::new("/hermetic/workspace");
+        let codex_home = Path::new("/hermetic/codex");
+        let bundled = system_cache_root_dir(codex_home).join("cmd-analyse");
+        let skills = vec![
+            skill_context("cmd-analyse", &bundled),
+            skill_context("cmd-status", Path::new("/hermetic/workspace/.agents/skills/cmd-status")),
+        ];
+
+        for requested in ["cmd-analyse", "cmd-analyze"] {
+            let selected = traditional_skill_context_by_name(&skills, requested, workspace_root, codex_home)
+                .expect("bundled system skill should resolve");
+            assert_eq!(selected.path(), &bundled, "{requested} must resolve to the bundled skill");
+        }
+    }
+
+    #[test]
+    fn infer_scope_uses_the_configured_codex_home() {
+        let workspace = tempdir().expect("workspace");
+        let configured_home = tempdir().expect("configured codex home");
+        let default_home = default_codex_home();
+
+        let configured_system_skill = system_cache_root_dir(configured_home.path()).join("cmd-analyse");
+        assert_eq!(
+            infer_scope_from_skill_path(&configured_system_skill, workspace.path(), configured_home.path()),
+            SkillScope::System,
+            "the configured codex home must define the system root",
+        );
+
+        let default_system_skill = system_cache_root_dir(&default_home).join("cmd-analyse");
+        assert_ne!(
+            infer_scope_from_skill_path(&default_system_skill, workspace.path(), configured_home.path()),
+            SkillScope::System,
+            "a path under the default home must not be classified by the configured home",
+        );
+    }
+
+    fn arbitrary_analyse_or_ordinary_name() -> impl Strategy<Value = String> {
+        prop_oneof![
+            Just("cmd-analyse".to_string()),
+            Just("cmd-analyze".to_string()),
+            Just("review".to_string()),
+            Just("status".to_string()),
+        ]
+    }
+
+    fn arbitrary_scope() -> impl Strategy<Value = SkillScope> {
+        prop_oneof![
+            Just(SkillScope::Repo),
+            Just(SkillScope::User),
+            Just(SkillScope::Admin),
+            Just(SkillScope::System),
+        ]
+    }
+
+    fn scope_fixture_path(scope: SkillScope, index: usize, name: &str) -> PathBuf {
+        match scope {
+            SkillScope::Repo => Path::new("/hermetic/workspace/.agents/skills").join(format!("{index}-{name}")),
+            // The user fixture deliberately avoids a `.agents/skills` ancestor:
+            // that shape is classified as repository scope by the non-canonical
+            // path fallback.
+            SkillScope::User => Path::new("/hermetic/user").join(format!("{index}-{name}")),
+            SkillScope::Admin => Path::new("/etc/codex/skills").join(format!("{index}-{name}")),
+            SkillScope::System => Path::new("/hermetic/codex/skills/.system").join(format!("{index}-{name}")),
+        }
+    }
+
+    /// Build a context list plus the scope each fixture path is meant to
+    /// represent. The label is checked against the classifier so the property
+    /// cannot silently degrade into asking the selector to re-derive its own
+    /// expectation.
+    fn classify_fixture_scopes(
+        entries: &[(String, SkillScope)],
+        workspace_root: &Path,
+        codex_home: &Path,
+    ) -> (Vec<SkillContext>, Vec<SkillScope>) {
+        let skills: Vec<SkillContext> = entries
+            .iter()
+            .enumerate()
+            .map(|(index, (name, scope))| skill_context(name, &scope_fixture_path(*scope, index, name)))
+            .collect();
+        let scopes: Vec<SkillScope> = skills
+            .iter()
+            .map(|skill| infer_scope_from_skill_path(skill.path(), workspace_root, codex_home))
+            .collect();
+        (skills, scopes)
+    }
+
+    fn matching_analyse_indices(skills: &[SkillContext], requested: &str) -> Vec<usize> {
+        let alias = command_skill_id_alias(requested);
+        skills
+            .iter()
+            .enumerate()
+            .filter(|(_, skill)| {
+                let skill_name = skill.manifest().name.as_str();
+                skill_name == requested || alias.is_some_and(|alias| skill_name == alias)
+            })
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    proptest! {
+        #[test]
+        fn traditional_skill_lookup_returns_the_first_entry_of_the_minimum_rank(
+            entries in prop::collection::vec((arbitrary_analyse_or_ordinary_name(), arbitrary_scope()), 0..=6),
+        ) {
+            let workspace_root = Path::new("/hermetic/workspace");
+            let codex_home = Path::new("/hermetic/codex");
+            let (skills, fixture_scopes) = classify_fixture_scopes(&entries, workspace_root, codex_home);
+            for (index, (_, intended_scope)) in entries.iter().enumerate() {
+                prop_assert_eq!(
+                    fixture_scopes[index],
+                    *intended_scope,
+                    "fixture {} must classify as its labelled scope",
+                    index,
+                );
+            }
+
+            for requested in ["cmd-analyse", "cmd-analyze", "review", "status"] {
+                let matching = matching_analyse_indices(&skills, requested);
+                let selected = traditional_skill_context_by_name(&skills, requested, workspace_root, codex_home);
+                if matching.is_empty() {
+                    prop_assert!(selected.is_none(), "no matching context may resolve for {requested}");
+                    continue;
+                }
+
+                let minimum_rank = matching
+                    .iter()
+                    .map(|index| skill_scope_rank(fixture_scopes[*index]))
+                    .min()
+                    .expect("non-empty match set");
+                let expected_index = *matching
+                    .iter()
+                    .find(|index| skill_scope_rank(fixture_scopes[**index]) == minimum_rank)
+                    .expect("minimum rank context");
+                let selected = selected.expect("matching contexts must resolve");
+
+                prop_assert_eq!(
+                    selected.path(),
+                    skills[expected_index].path(),
+                    "{} must return the first-discovered minimum-rank entry",
+                    requested,
+                );
+                prop_assert_eq!(skill_scope_rank(fixture_scopes[expected_index]), minimum_rank);
+            }
+        }
+
+        #[test]
+        fn traditional_skill_lookup_selects_the_same_entry_under_permutation(
+            entries in prop::collection::vec((arbitrary_analyse_or_ordinary_name(), arbitrary_scope()), 1..=6),
+        ) {
+            let workspace_root = Path::new("/hermetic/workspace");
+            let codex_home = Path::new("/hermetic/codex");
+            let (skills, fixture_scopes) = classify_fixture_scopes(&entries, workspace_root, codex_home);
+
+            let requested = "cmd-analyse";
+            let matching = matching_analyse_indices(&skills, requested);
+            if matching.is_empty() {
+                return Ok(());
+            }
+
+            let minimum_rank = matching
+                .iter()
+                .map(|index| skill_scope_rank(fixture_scopes[*index]))
+                .min()
+                .expect("non-empty match set");
+            let minima: Vec<usize> = matching
+                .into_iter()
+                .filter(|index| skill_scope_rank(fixture_scopes[*index]) == minimum_rank)
+                .collect();
+            if minima.len() != 1 {
+                // With a tied minimum, reordering may legitimately change which
+                // tie-break winner is selected; only a unique minimum pins the
+                // result for every permutation.
+                return Ok(());
+            }
+            let unique_path = skills[minima[0]].path().clone();
+
+            for rotation in 0..skills.len() {
+                let mut rotated = Vec::with_capacity(skills.len());
+                rotated.extend_from_slice(&skills[rotation..]);
+                rotated.extend_from_slice(&skills[..rotation]);
+
+                let selected = traditional_skill_context_by_name(&rotated, requested, workspace_root, codex_home)
+                    .expect("matching contexts must resolve after rotation");
+                prop_assert_eq!(
+                    selected.path(),
+                    &unique_path,
+                    "rotation {} must not change a unique minimum-rank result",
+                    rotation,
+                );
+            }
+        }
     }
 
     #[test]
@@ -1379,6 +1622,71 @@ mod tests {
 
         let skill = loader.get_skill("cmd-review").await.expect("load cmd-review");
         assert!(matches!(skill, EnhancedSkill::Traditional(_)));
+    }
+
+    fn run_loader_lookup(workspace_root: PathBuf, codex_home: PathBuf, requested: &str) -> EnhancedSkill {
+        let mut loader = EnhancedSkillLoader::with_codex_home(workspace_root, codex_home);
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(loader.get_skill(requested))
+            .unwrap_or_else(|error| panic!("failed to load {requested}: {error}"))
+    }
+
+    #[test]
+    #[serial]
+    fn enhanced_loader_get_skill_prefers_user_override_across_analyse_aliases() {
+        let workspace = TempDir::new().expect("workspace");
+        let home = TempDir::new().expect("home");
+        let codex_home = TempDir::new().expect("codex home");
+        install_system_skills(codex_home.path()).expect("install bundled system skills");
+
+        let override_dir = home.path().join(".agents/skills/cmd-analyze");
+        write_skill(&override_dir, "cmd-analyze", "user analyse override");
+        let override_dir = dunce::canonicalize(&override_dir).expect("canonicalize override");
+
+        temp_env::with_vars([("HOME", Some(home.path()))], || {
+            for requested in ["cmd-analyse", "cmd-analyze"] {
+                let skill =
+                    run_loader_lookup(workspace.path().to_path_buf(), codex_home.path().to_path_buf(), requested);
+
+                match skill {
+                    EnhancedSkill::Traditional(skill) => {
+                        assert_eq!(skill.path, override_dir, "{requested} must load the user override");
+                        assert_eq!(skill.scope, SkillScope::User);
+                    }
+                    other => panic!("expected a traditional skill for {requested}, got {other:?}"),
+                }
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn enhanced_loader_get_skill_keeps_a_bundled_system_skill_when_it_is_the_only_match() {
+        // Covers the former `or_else` fallback: with ranked scopes a bundled
+        // system skill is selected directly, just ranked last.
+        let workspace = TempDir::new().expect("workspace");
+        let home = TempDir::new().expect("home");
+        let codex_home = TempDir::new().expect("codex home");
+        install_system_skills(codex_home.path()).expect("install bundled system skills");
+        let system_dir = system_cache_root_dir(codex_home.path()).join("cmd-analyse");
+
+        temp_env::with_vars([("HOME", Some(home.path()))], || {
+            for requested in ["cmd-analyse", "cmd-analyze"] {
+                let skill =
+                    run_loader_lookup(workspace.path().to_path_buf(), codex_home.path().to_path_buf(), requested);
+
+                match skill {
+                    EnhancedSkill::Traditional(skill) => {
+                        assert_eq!(skill.path, system_dir, "{requested} must load the bundled system skill");
+                        assert_eq!(skill.scope, SkillScope::System);
+                    }
+                    other => panic!("expected a traditional skill for {requested}, got {other:?}"),
+                }
+            }
+        });
     }
 
     #[tokio::test]

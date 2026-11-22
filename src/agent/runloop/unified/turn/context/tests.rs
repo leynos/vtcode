@@ -1,3 +1,9 @@
+//! Unit tests for turn-context history shaping and continuation helpers.
+//!
+//! Covers diff-recap suppression, reasoning-detail merging, interim
+//! continuation decisions, and clarifying-question detection used while the
+//! unified run loop prepares and follows up assistant turns.
+
 use super::*;
 
 #[test]

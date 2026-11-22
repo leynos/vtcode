@@ -458,6 +458,41 @@ pub fn command_skill_id_alias(name: &str) -> Option<&'static str> {
     }
 }
 
+/// Discovery precedence of a skill scope, lowest first.
+///
+/// Skill roots are searched repository first, then user, administrator, and
+/// bundled system roots. Name and alias lookups cite this rank so a
+/// higher-precedence skill wins even when its spelling sorts later.
+pub fn skill_scope_rank(scope: SkillScope) -> u8 {
+    match scope {
+        SkillScope::Repo => 0,
+        SkillScope::User => 1,
+        SkillScope::Admin => 2,
+        SkillScope::System => 3,
+    }
+}
+
+/// Select the entry whose name matches `name` or its command-skill alias.
+///
+/// Matching entries are ranked with [`skill_scope_rank`]. The first entry of
+/// the minimum rank wins, so callers that preserve discovery order also keep
+/// their first-discovered tie-break. Returns `None` when nothing matches.
+pub fn select_by_name_or_alias<'a, T>(
+    items: &'a [T],
+    name: &str,
+    name_of: impl Fn(&T) -> &str,
+    scope_of: impl Fn(&T) -> SkillScope,
+) -> Option<&'a T> {
+    let alias = command_skill_id_alias(name);
+    items
+        .iter()
+        .filter(|item| {
+            let item_name = name_of(item);
+            item_name == name || alias.is_some_and(|alias| item_name == alias)
+        })
+        .min_by_key(|item| skill_scope_rank(scope_of(item)))
+}
+
 fn is_command_skill_name(name: &str) -> bool {
     find_command_skill_by_skill_name(name).is_some()
 }

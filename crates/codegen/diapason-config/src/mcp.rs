@@ -1,3 +1,11 @@
+//! MCP configuration model.
+//!
+//! Defines the `mcp` configuration section: configured providers and their
+//! transport-identity requirements, the server Diapason exposes, UI and
+//! allow-list settings, and connection limits. Transport-specific provider
+//! types live in the `transport` submodule, and the runtime MCP subsystem
+//! consumes these values after layered configuration is resolved.
+
 use hashbrown::HashMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,10 @@
+//! Transcript review overlay for the TUI session.
+//!
+//! Renders the bounded transcript snapshot as a scrollable, searchable list of
+//! core messages and tool-output blocks, with rich and raw render modes. It
+//! reads session state supplied by the parent session module and consults
+//! [`Action`] bindings for navigation, copying, and export.
+
 use std::collections::{HashMap, HashSet};
 
 use ratatui::{
