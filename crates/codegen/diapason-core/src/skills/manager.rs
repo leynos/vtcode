@@ -437,6 +437,35 @@ mod tests {
     }
 
     #[test]
+    fn manager_lookups_keep_discovery_order_within_the_analyse_alias_family() {
+        // `dedup_and_sort` returns the family in discovery order: the nested
+        // `cmd-analyze` fixture is discovered before the project-root
+        // `cmd-analyse` fixture, so the first equal-ranked entry must win.
+        let skills = vec![
+            skill_metadata("cmd-analyze", "/nested/cmd-analyze"),
+            skill_metadata("cmd-analyse", "/project-root/cmd-analyse"),
+        ];
+        let available = skills.iter().map(|skill| (skill.name.clone(), skill)).collect();
+
+        for requested in ["cmd-analyse", "cmd-analyze"] {
+            let selected = skill_metadata_by_name(&skills, requested).expect("alias match");
+            assert_eq!(
+                selected.path,
+                PathBuf::from("/nested/cmd-analyze"),
+                "skill_metadata_by_name must keep the first-discovered family entry for {requested}",
+            );
+
+            let selected =
+                preloaded_skill_metadata_by_name(&skills, &available, requested).expect("preloaded alias match");
+            assert_eq!(
+                selected.path,
+                PathBuf::from("/nested/cmd-analyze"),
+                "preloaded lookup must keep the first-discovered family entry for {requested}",
+            );
+        }
+    }
+
+    #[test]
     fn skill_metadata_lookup_prefers_higher_scope_over_sorted_order() {
         // `skills_for_cwd` returns a name-sorted list, so the bundled canonical
         // spelling sorts before a user legacy override.

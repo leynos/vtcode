@@ -219,7 +219,19 @@ fn add_system_cli_tools(outcome: &mut SkillLoadOutcome) {
 fn dedup_and_sort(outcome: &mut SkillLoadOutcome) {
     let mut seen: HashSet<String> = HashSet::new();
     outcome.skills.retain(|skill| seen.insert(skill.name.clone()));
-    outcome.skills.sort_by(|a, b| a.name.cmp(&b.name));
+    // Sort by the alias-normalised skill ID so the two `cmd-analyse` spellings
+    // compare as one family. Rust's sort is stable, so skills in one family
+    // keep discovery order, which encodes precedence; the manager's
+    // `min_by_key` then selects the first-discovered skill within a scope.
+    outcome
+        .skills
+        .sort_by(|a, b| skill_sort_key(&a.name).cmp(skill_sort_key(&b.name)));
+}
+
+/// Sort key that folds the legacy `cmd-analyze` spelling onto the canonical
+/// `cmd-analyse` ID; every other name is returned unchanged.
+fn skill_sort_key(name: &str) -> &str {
+    command_skill_id_alias(name).unwrap_or(name)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -262,7 +274,9 @@ fn filter_disabled_skills(outcome: &mut SkillLoadOutcome, home_dir: Option<&Path
 
     outcome.skills.retain(|skill| {
         let canonical = dunce::canonicalize(&skill.path).unwrap_or_else(|_| skill.path.clone());
-        !disabled.paths.contains(&canonical) && !disabled.names.contains(&skill.name)
+        !disabled.paths.contains(&canonical)
+            && !disabled.names.contains(&skill.name)
+            && !command_skill_id_alias(&skill.name).is_some_and(|alias| disabled.names.contains(alias))
     });
 }
 
@@ -1106,6 +1120,17 @@ mod tests {
         SkillContext::MetadataOnly(manifest(name, "command skill test fixture"), path.to_path_buf())
     }
 
+    fn skill_metadata(name: &str, path: &Path) -> SkillMetadata {
+        SkillMetadata {
+            name: name.to_string(),
+            description: "disabled selector test fixture".to_string(),
+            short_description: None,
+            path: path.to_path_buf(),
+            scope: SkillScope::Repo,
+            manifest: None,
+        }
+    }
+
     #[test]
     fn command_skill_id_alias_preserves_legacy_user_override_for_both_ids() {
         let system_root = Path::new("/hermetic/codex/skills/.system");
@@ -1153,6 +1178,50 @@ mod tests {
         let selected = traditional_skill_context_by_name(&skills, "cmd-analyse", system_root)
             .expect("canonical command skill ID should resolve");
         assert_eq!(selected.path(), higher_priority_legacy);
+    }
+
+    #[test]
+    fn dedup_and_sort_keeps_discovery_order_within_the_analyse_alias_family() {
+        let project_root = tempdir().expect("project root");
+        let nested = project_root.path().join("nested");
+        let canonical_dir = project_root.path().join(".agents/skills/cmd-analyse");
+        let legacy_dir = nested.join(".agents/skills/cmd-analyze");
+        write_skill(&canonical_dir, "cmd-analyse", "lower precedence canonical fixture");
+        write_skill(&legacy_dir, "cmd-analyze", "higher precedence legacy fixture");
+
+        let config = SkillLoaderConfig {
+            codex_home: project_root.path().join("codex-home"),
+            cwd: nested.clone(),
+            project_root: Some(project_root.path().to_path_buf()),
+            include_bundled_system_skills: false,
+        };
+
+        let outcome = load_skills_hermetic(&config);
+
+        let family: Vec<_> = outcome
+            .skills
+            .iter()
+            .filter(|skill| command_skill_id_alias(&skill.name).is_some())
+            .collect();
+        assert_eq!(family.len(), 2, "expected exactly the two alias-family fixtures");
+        assert_eq!(family[0].name, "cmd-analyze");
+        assert_eq!(
+            family[0].path,
+            dunce::canonicalize(legacy_dir.join("SKILL.md")).expect("canonicalize legacy skill"),
+            "the nested working directory is discovered first and must keep precedence",
+        );
+        assert_eq!(family[1].name, "cmd-analyse");
+        assert_eq!(
+            family[1].path,
+            dunce::canonicalize(canonical_dir.join("SKILL.md")).expect("canonicalize canonical skill"),
+        );
+        assert!(
+            outcome
+                .skills
+                .windows(2)
+                .all(|pair| skill_sort_key(&pair[0].name) <= skill_sort_key(&pair[1].name)),
+            "the skills vector must remain sorted by the alias-normalised key",
+        );
     }
 
     #[test]
@@ -1466,6 +1535,30 @@ mod tests {
             outcome.skills.iter().all(|skill| skill.name != "path-disabled"),
             "expected path-disabled to remain filtered by legacy path config"
         );
+    }
+
+    #[test]
+    fn disabled_skill_name_matches_the_analyse_alias_family() {
+        for (selector, skill_name) in [("cmd-analyze", "cmd-analyse"), ("cmd-analyse", "cmd-analyze")] {
+            let home = tempdir().expect("home");
+            write_codex_skill_config(
+                home.path(),
+                &format!("[[skills.config]]\nname = \"{selector}\"\nenabled = false\n"),
+            );
+
+            let mut outcome = SkillLoadOutcome::default();
+            outcome
+                .skills
+                .push(skill_metadata(skill_name, &Path::new("/hermetic/skills").join(skill_name)));
+            outcome
+                .skills
+                .push(skill_metadata("review", Path::new("/hermetic/skills/review")));
+
+            filter_disabled_skills(&mut outcome, Some(home.path()));
+
+            assert_eq!(outcome.skills.len(), 1, "selector {selector} must disable the {skill_name} spelling",);
+            assert_eq!(outcome.skills[0].name, "review", "unrelated skills must stay enabled");
+        }
     }
 
     #[test]
