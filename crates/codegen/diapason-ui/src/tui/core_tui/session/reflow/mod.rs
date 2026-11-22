@@ -313,7 +313,7 @@ impl Session {
             _ => "",
         };
 
-        // Render as a ratatui-cheese Fieldset: a center-aligned label on a
+        // Render as a ratatui-cheese Fieldset: a centre-aligned label on a
         // horizontal rule, content with no vertical sides, and a closing rule.
         // The fill pattern is chosen per message kind (Error → Slash, Info →
         // Dash, Warning → Thick) and respects terminal Unicode capabilities.
@@ -328,7 +328,7 @@ impl Session {
             return into_transcript_lines(grouped_lines, self.workspace_root.as_deref());
         }
 
-        // Top rule with a center-aligned label, e.g. `──── Info ─────`.
+        // Top rule with a centre-aligned label, e.g. `──── Info ─────`.
         let top = if label.is_empty() {
             format!("{}{}", rule_indent, dash.repeat(rule_width))
         } else {

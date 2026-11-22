@@ -219,5 +219,5 @@ Run them with:
 
 ```bash
 cargo nextest run -p diapason-core emitted_model_tool_schema_fits_within_first_request_budget
-cargo nextest run -p diapason-core -E 'test(session_tool_catalog)'
+cargo nextest run -p diapason-core -E 'test(session_tool_catalogue)'
 ```

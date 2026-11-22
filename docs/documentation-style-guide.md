@@ -20,9 +20,13 @@ consistent, and easy to maintain across projects.
   - suffix -ogue in words such as _analogue_ and _catalogue_,
   - and so forth.
 - The words **"outwith"** and **"caveat"** are acceptable.
-- Keep United States (US) spelling when used in an API, for example, `color`.
-  Wrap such API names in backticks: the spelling gate ignores backticked spans,
-  so quoting an identifier both documents its origin and exempts it from the
+- Diapason-authored identifiers use the native spelling rather than the United
+  States (US) one: Rust items say `colour`, `catalogue`, `analyse` and
+  `cancelled`.
+- Fixed foreign API names, such as `anstyle::Color`, and fixed external keys,
+  such as Git's `color.*` configuration, keep their published spelling. Wrap
+  such names in backticks: the spelling gate ignores backticked spans, so
+  quoting an identifier both documents its origin and exempts it from the
   Oxford-spelling check.
 - The project uses the filename `LICENSE` for community consistency.
 - Markdown prose is checked against this spelling policy with

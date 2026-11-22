@@ -12,7 +12,7 @@ use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTh
 fn main() -> Result<()> {
     println!("=== dialoguer Example ===");
 
-    // Use a colorful theme for better appearance
+    // Use a colourful theme for better appearance
     let theme = ColorfulTheme::default();
 
     // Confirm prompt

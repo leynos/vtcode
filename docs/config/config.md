@@ -1434,21 +1434,11 @@ configuration:
 
 ### Command System Integration
 
-The Diapason extension uses a command system that can be configured through the
-settings:
-
-```toml
-# Configure which commands are available
-[commands]
-# Whether to enable the ask agent command
-ask_agent_enabled = true
-
-# Whether to enable the analyse workspace command
-analyze_enabled = true
-
-# Timeout for command execution (in seconds)
-command_timeout = 300
-```
+The VS Code extension registers its commands with VS Code and does not read a
+`[commands]` settings block from the extension configuration, so those commands
+are invoked from the Command Palette. The Diapason configuration schema still
+has a separate `[commands]` section, which configures shell-command permissions
+(`allow_list`, `deny_list`), not extension commands.
 
 ### Workspace Trust
 
@@ -1562,9 +1552,6 @@ context reuse for long-running exec sessions.
 | `logging.level`                         | `error` \| `warn` \| `info` \| `debug` \| `trace`                      | Log level.                                                                                                                                                                                                          |
 | `auth.secure_storage`                   | boolean                                                                | Store credentials securely (default: true).                                                                                                                                                                         |
 | `auth.validate_keys`                    | boolean                                                                | Validate API keys on startup.                                                                                                                                                                                       |
-| `commands.ask_agent_enabled`            | boolean                                                                | Enable the ask agent command.                                                                                                                                                                                       |
-| `commands.analyze_enabled`              | boolean                                                                | Enable the analyse command.                                                                                                                                                                                         |
-| `commands.command_timeout`              | number                                                                 | Command execution timeout (seconds).                                                                                                                                                                                |
 | `profiles.*.agent.provider`             | string                                                                 | Provider override for a profile.                                                                                                                                                                                    |
 | `profiles.*.security.human_in_the_loop` | boolean                                                                | Security setting override for a profile.                                                                                                                                                                            |
 | `profiles.*.tools.policies.*`           | `ask` \| `allow` \| `deny`                                             | Tool policy override for a profile.                                                                                                                                                                                 |

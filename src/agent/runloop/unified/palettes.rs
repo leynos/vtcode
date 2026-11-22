@@ -116,7 +116,7 @@ pub(crate) fn show_theme_palette(renderer: &mut AnsiRenderer, mode: ThemePalette
 }
 
 fn theme_search_value(theme_id: &str, theme_label: &str) -> String {
-    format!("{theme_label} {theme_id} theme appearance colors")
+    format!("{theme_label} {theme_id} theme appearance colours colors")
 }
 
 pub(crate) fn show_mode_palette(
@@ -689,5 +689,15 @@ mod tests {
         assert!(value.contains("5m 0s"));
         assert!(value.contains("12 messages"));
         assert!(value.contains("2 tools"));
+    }
+
+    #[test]
+    fn theme_search_value_matches_both_colour_spellings() {
+        let value = theme_search_value("apple-system-colors", "Apple System Colors");
+        assert!(value.contains("colours"));
+        assert!(value.contains("colors"));
+
+        let value = theme_search_value("sunrise", "Sunrise");
+        assert!(value.contains("colors"));
     }
 }

@@ -52,6 +52,10 @@ Compatibility applies only to spellings that leave the Rust API:
 - Configuration keys, wire protocol fields and telemetry metric names keep
   their canonical `catalog` spelling. Rename the Rust item, not the serialized
   name, and keep an explicit `#[serde(rename = "...")]` where a field moves.
+- `ThreadCompactBoundaryEvent` has the Rust fields `previous_catalogue_hash`
+  and `new_catalogue_hash`. The serde wire keys stay `previous_catalog_hash` and
+  `new_catalog_hash`, pinned by `#[serde(rename = "...")]`, so the event
+  schema is unchanged.
 - The pod store keeps reading and writing `catalog.json`. Only the accessor
   name changes, so existing deployment profiles continue to load.
 - Runtime prompt metadata uses the `[Runtime Tool Catalogue]` header.
@@ -61,6 +65,33 @@ Compatibility applies only to spellings that leave the Rust API:
 
 Do not add aliases for the old Rust names, and do not rewrite persisted data to
 match the new spelling.
+
+The skill-installer sample follows the same rule inside its helper script:
+`fetch_catalogue` and `EMBEDDED_CATALOGUE` replace the American spellings.
+Those names are internals of
+`crates/codegen/diapason-skills/src/skills/assets/samples/skill-installer/scripts/list-curated-skills.py`,
+not a published reuse API, so no external caller depends on them.
+
+## Zed extension API
+
+The Zed extension uses the native `analyse` spelling in its Rust API. The old
+names are removed rather than deprecated:
+
+- `CommandBuilder::analyze()` is now `CommandBuilder::analyse()`, which builds
+  the `analyse` command.
+- `analyze_workspace` and `analyze_workspace_with_context` are now
+  `analyse_workspace` and `analyse_workspace_with_context`.
+- `analyze_workspace_command` is now `analyse_workspace_command`.
+- `WorkspaceConfig::analyze_on_startup` is now
+  `WorkspaceConfig::analyse_on_startup`.
+
+`WorkspaceConfig` keeps the serialized TOML key `analyze_on_startup` through
+`#[serde(rename = "analyze_on_startup")]`, so existing `config.toml` files need
+no edit. `execute_command` still accepts the legacy `analyze` command and
+selects the same 60-second workspace-analysis duration for both spellings.
+Command execution does not yet enforce a deadline, a limitation that predates
+this layer. See the
+[Zed extension quick start](../extensions/zed-extension/docs/QUICK_START.md).
 
 ## ACP interrupted tool recovery
 

@@ -93,7 +93,7 @@ minimum_contrast = 4.5
 # Legacy terminal compatibility: avoid bold (may map to bright)
 bold_is_bright = false
 
-# Restrict to 11 portable ANSI colors
+# Restrict to 11 portable ANSI colours
 safe_colors_only = false
 
 # Auto-detect light/dark terminal: "auto", "light", "dark"
@@ -116,7 +116,7 @@ color_scheme_mode = "auto"
 # Force light mode
 # color_scheme_mode = "light"
 
-# Force dark mode (default behavior)
+# Force dark mode (default behaviour)
 # color_scheme_mode = "dark"
 ```
 

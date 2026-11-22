@@ -115,7 +115,7 @@ fn clarifying_question_detected_with_trailing_whitespace() {
 #[test]
 fn clarifying_question_detected_with_preamble_and_blank_lines() {
     assert!(looks_like_clarifying_question(
-        "I analyzed the module.\n\nNext open decision: Do you want a unified branch or a reviewable exec-plan document?\n"
+        "I analysed the module.\n\nNext open decision: Do you want a unified branch or a reviewable exec-plan document?\n"
     ));
 }
 

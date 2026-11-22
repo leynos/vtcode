@@ -298,7 +298,7 @@ impl ComObjectAnalyser {
             .unwrap_or(ComRiskLevel::Safe)
     }
 
-    /// Check if COM usage is dangerous (has critical objects or ivocation patterns)
+    /// Check if COM usage is dangerous (has critical objects or invocation patterns)
     pub fn is_dangerous_com_usage(script: &str) -> bool {
         let contexts = Self::analyse_instantiation(script);
         contexts.iter().any(|ctx| {

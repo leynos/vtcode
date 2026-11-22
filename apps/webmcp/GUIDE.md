@@ -160,7 +160,7 @@ page effect:
 
 The repository's deterministic version of these checks is in
 `evals/webmcp-evals.ts` and runs as part of `bun run test`. It validates the
-tool contract and failure behavior; the Chrome inspector pass is still needed
+tool contract and failure behaviour; the Chrome inspector pass is still needed
 to measure probabilistic tool selection.
 
 ## Edit and apply a change
