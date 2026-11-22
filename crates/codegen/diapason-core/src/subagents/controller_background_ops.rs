@@ -16,6 +16,8 @@ use super::*;
 
 pub use self::controller_background_cancel::BackgroundStopOutcome;
 use self::controller_background_cancel::background_stop_close_is_pending;
+pub(in crate::subagents) use self::controller_background_cancel::rekey_pending_background_stop_close;
+use self::controller_background_lifecycle::{clear_background_launch_owed, mark_background_launch_owed};
 use self::controller_background_liveness::exec_session_is_missing;
 use self::controller_background_query::{read_output_tail, read_preview};
 use self::controller_background_settlement::{pending_background_ledger_write_generation, restart_allowed};
@@ -59,6 +61,7 @@ pub(super) struct BackgroundRunPlan {
 }
 
 /// How the reservation step answered one prepared launch.
+#[derive(Debug)]
 enum BackgroundRunReservation {
     /// The plan now owns the record at `Starting`, so it may spawn.
     Reserved,
@@ -184,10 +187,10 @@ impl SubagentController {
     /// The restart allowance was already spent when refresh scheduled the
     /// replacement, so a preparation failure cannot be retried. Leaving the
     /// record `Starting` would report an active launch that nothing will ever
-    /// drive, and `handle_missing_background_snapshot` deliberately exempts
-    /// `Starting` from settlement, so the failure is settled here. The
-    /// observation's exec session still identifies the launch, so only a record
-    /// that still names it is settled.
+    /// drive, and refresh exempts a `Starting` record only while it still owes
+    /// a launch, so the failure is settled here and its obligation discharged.
+    /// The observation's exec session still identifies the launch, so only a
+    /// record that still names it is settled.
     pub(super) async fn settle_failed_background_restart(
         &self,
         record_id: &str,
@@ -210,6 +213,11 @@ impl SubagentController {
         error: &anyhow::Error,
         honour_restart_allowance: bool,
     ) {
+        // This launch is finished. Whether it settles `Error` or leaves a
+        // remaining allowance for an inline retry, the claim it reserved no
+        // longer owes a launch; a replacement records its own key, so clearing
+        // this session's obligation cannot hide one.
+        clear_background_launch_owed(&self.state, record_id, exec_session_id);
         {
             let mut state = self.state.write().await;
             let Some(record) = state.background_children.get_mut(record_id) else {
@@ -309,7 +317,7 @@ impl SubagentController {
         } else {
             (None, false)
         };
-        let (reservation, adopted_stop) = {
+        let (reservation, adopted_exec_session_id) = {
             let mut state = self.state.write().await;
             if let Some(expected_exec_session_id) = plan.expected_exec_session_id.as_deref() {
                 let still_owns_launch = state
@@ -322,21 +330,40 @@ impl SubagentController {
                 // replace: spawning now would put a second process beside the
                 // migrated record.
                 if !still_owns_launch || launch_moved {
-                    (BackgroundRunReservation::Declined, false)
+                    (BackgroundRunReservation::Declined, None)
                 } else {
                     // `adopt_cancellation_into` is the one place that decides
                     // whether a persisted copy is a stop of this launch.
                     let adopted = match (state.background_children.get_mut(&plan.record_id), persisted.as_ref()) {
-                        (Some(record), Some(stop)) => stop.adopt_cancellation_into(record),
-                        _ => false,
+                        (Some(record), Some(stop)) => {
+                            if stop.adopt_cancellation_into(record) {
+                                Some(record.exec_session_id.clone())
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
                     };
-                    if adopted {
-                        (BackgroundRunReservation::Declined, true)
+                    if let Some(exec_session_id) = adopted {
+                        // Capture the adopted launch's session here, while the
+                        // record still names it. A concurrent start can replace
+                        // the record before the close below, and closing
+                        // whatever the record names then would close the
+                        // replacement instead.
+                        (BackgroundRunReservation::Declined, Some(exec_session_id))
                     } else {
                         state
                             .background_children
                             .insert(plan.record_id.clone(), starting_background_record(plan));
-                        (BackgroundRunReservation::Reserved, false)
+                        mark_background_launch_owed(
+                            &self.state,
+                            plan.record_id.as_str(),
+                            plan.spec.name.as_str(),
+                            plan.restart_attempts,
+                            plan.exec_session_id.as_str(),
+                            false,
+                        );
+                        (BackgroundRunReservation::Reserved, None)
                     }
                 }
             } else if state.background_children.get(&plan.record_id).is_some_and(|record| {
@@ -346,7 +373,7 @@ impl SubagentController {
                 // the record now would publish a new launch over a process no
                 // record names, and clear the obligation that a later reconcile
                 // still needs to discharge.
-                (BackgroundRunReservation::Declined, false)
+                (BackgroundRunReservation::Declined, None)
             } else {
                 let active = state.background_children.get(&plan.record_id).and_then(|record| {
                     (record.desired_enabled && record.status.is_active()).then(|| {
@@ -375,29 +402,33 @@ impl SubagentController {
                         state
                             .background_children
                             .insert(plan.record_id.clone(), starting_background_record(plan));
+                        mark_background_launch_owed(
+                            &self.state,
+                            plan.record_id.as_str(),
+                            plan.spec.name.as_str(),
+                            plan.restart_attempts,
+                            plan.exec_session_id.as_str(),
+                            false,
+                        );
                         BackgroundRunReservation::Reserved
                     }
                 };
-                (reservation, false)
+                (reservation, None)
             }
         };
         // The ledger lock is released before publishing: observers run user
         // code, which must not hold a lock every save in the workspace needs.
         drop(ledger_guard);
-        if adopted_stop {
+        let adopted_stop = adopted_exec_session_id.is_some();
+        if let Some(adopted_exec_session_id) = adopted_exec_session_id {
             // Adoption only clears the intent; the record stays active until
-            // its close succeeds. Close here so an adopted stop does not leave
-            // a live process behind a claim that was already declined.
-            let exec_session_id = {
-                let state = self.state.read().await;
-                state
-                    .background_children
-                    .get(&plan.record_id)
-                    .map(|record| record.exec_session_id.clone())
-            };
-            if let Some(exec_session_id) = exec_session_id {
-                self.attempt_background_stop_close(&plan.record_id, &exec_session_id).await;
-            }
+            // its close succeeds. Close the launch whose stop was adopted, not
+            // whatever the record names by now: another start can take the
+            // record while the ledger lock is released.
+            #[cfg(test)]
+            pass_adopted_background_stop_close_gate(&self.state).await;
+            self.attempt_background_stop_close(&plan.record_id, &adopted_exec_session_id)
+                .await;
         }
         if adopted_stop || matches!(reservation, BackgroundRunReservation::Reserved) {
             // An adopted stop changes the record's outcome, so observers need
@@ -405,5 +436,268 @@ impl SubagentController {
             self.publish_background_status(&plan.record_id).await;
         }
         Ok(reservation)
+    }
+}
+
+/// A test gate between adopting a persisted stop and closing its launch.
+///
+/// The adopted launch's id is captured under the state lock, but the close runs
+/// after that lock (and the ledger lock) is released. A concurrent start can
+/// take the record in that window, and no real scheduling makes the race
+/// deterministic, so a test arms this gate to land the replacement start and
+/// then observe which session the close addresses.
+#[cfg(test)]
+struct AdoptedStopCloseGate {
+    state: Weak<RwLock<ControllerState>>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[cfg(test)]
+fn adopted_stop_close_gates() -> &'static Mutex<Vec<AdoptedStopCloseGate>> {
+    static GATES: std::sync::OnceLock<Mutex<Vec<AdoptedStopCloseGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that holds the next adopted-stop close of `state`.
+#[cfg(test)]
+fn gate_next_adopted_background_stop_close(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut gates = adopted_stop_close_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.state.strong_count() > 0);
+    gates.push(AdoptedStopCloseGate {
+        state: Arc::downgrade(state),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+#[cfg(test)]
+async fn pass_adopted_background_stop_close_gate(state: &Arc<RwLock<ControllerState>>) {
+    let gate = {
+        let mut gates = adopted_stop_close_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.state.strong_count() > 0);
+        let index = gates
+            .iter()
+            .position(|gate| std::ptr::eq(gate.state.as_ptr(), Arc::as_ptr(state)));
+        index.map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
+}
+
+#[cfg(test)]
+mod reserve_tests {
+    //! Pins the adopted-stop close to the launch whose stop was adopted.
+
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use tempfile::TempDir;
+
+    use crate::config::DiapasonConfig;
+    use crate::config::types::ReasoningEffortLevel;
+    use crate::subagents::background::persist_background_state;
+    use crate::tools::exec_session::ExecSessionManager;
+    use crate::tools::registry::PtySessionManager;
+
+    use super::controller_background_cancel::gate_next_background_close;
+    use super::*;
+
+    const WORKER: &str = "background-worker";
+    const WORKER_AGENT: &str = "worker";
+    const OBSERVED_EXEC: &str = "exec-observed";
+
+    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    fn background_record(desired_enabled: bool) -> BackgroundRecord {
+        BackgroundRecord {
+            id: WORKER.to_string(),
+            owner_session_id: None,
+            agent_name: WORKER_AGENT.to_string(),
+            display_label: WORKER_AGENT.to_string(),
+            description: WORKER_AGENT.to_string(),
+            source: "builtin".to_string(),
+            colour: None,
+            session_id: format!("session-{WORKER}"),
+            parent_session_id: "parent-session".to_string(),
+            exec_session_id: OBSERVED_EXEC.to_string(),
+            desired_enabled,
+            status: BackgroundSubprocessStatus::Running,
+            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
+            updated_at: "2026-08-28T00:00:00Z".parse().expect("updated_at"),
+            started_at: None,
+            ended_at: None,
+            pid: None,
+            prompt: "work".to_string(),
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+        }
+    }
+
+    fn persisted_stop() -> PersistedBackgroundRecord {
+        serde_json::from_value(serde_json::json!({
+            "id": WORKER,
+            "owner_session_id": null,
+            "agent_name": WORKER_AGENT,
+            "display_label": WORKER_AGENT,
+            "description": WORKER_AGENT,
+            "source": "builtin",
+            "color": null,
+            "session_id": format!("session-{WORKER}"),
+            "exec_session_id": OBSERVED_EXEC,
+            "desired_enabled": false,
+            "status": "stopped",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": "2026-08-28T00:00:00Z",
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }))
+        .expect("persisted background record")
+    }
+
+    fn plan(spec: SubagentSpec, exec_session_id: &str, expected: Option<&str>) -> BackgroundRunPlan {
+        BackgroundRunPlan {
+            owner_session_id: None,
+            spec,
+            record_id: WORKER.to_string(),
+            parent_session_id: "parent-session".to_string(),
+            session_id: format!("session-{exec_session_id}"),
+            exec_session_id: exec_session_id.to_string(),
+            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
+            prompt: "work".to_string(),
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+            expected_exec_session_id: expected.map(str::to_owned),
+        }
+    }
+
+    /// An adopted stop closes the launch it adopted, not a replacement.
+    ///
+    /// The stop is adopted under the state lock, but the close runs after that
+    /// lock is released. A concurrent explicit start can take the record in
+    /// between; re-reading the record then would close the replacement's
+    /// session and settle a launch that never owed the stop. The gate lands
+    /// the concurrent start in that window.
+    #[tokio::test]
+    async fn an_adopted_stop_closes_the_launch_it_adopted_after_a_concurrent_start() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(WORKER.to_string(), background_record(true));
+        }
+        persist_background_state(temp.path(), vec![persisted_stop()])
+            .await
+            .expect("seed the persisted stop");
+
+        let spec = diapason_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == WORKER_AGENT)
+            .expect("worker spec");
+        let bound_plan = plan(spec.clone(), OBSERVED_EXEC, Some(OBSERVED_EXEC));
+        let replacement_plan = plan(spec, "exec-replacement", None);
+
+        let (close_entered, close_release) = gate_next_background_close(&controller.state, OBSERVED_EXEC);
+        let (reservation_entered, reservation_release) = gate_next_adopted_background_stop_close(&controller.state);
+        let reserve = controller.reserve_background_run(&bound_plan);
+        tokio::pin!(reserve);
+        tokio::select! {
+            result = &mut reserve => {
+                panic!("the adopted stop closed before the concurrent start landed: {result:?}")
+            },
+            () = reservation_entered.notified() => {}
+        }
+
+        // A concurrent explicit start takes the record now that the adopted
+        // stop has cleared its intent, and names a different exec session.
+        let concurrent = controller
+            .reserve_background_run(&replacement_plan)
+            .await
+            .expect("the replacement launch reserves the record");
+        assert!(matches!(concurrent, BackgroundRunReservation::Reserved));
+
+        reservation_release.notify_one();
+        // The reservation future is only polled while something awaits it, so
+        // drive it here: the close gate can only be reached from inside that
+        // future, and waiting on the gate alone would wait on a future nobody
+        // polls.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::select! {
+                () = close_entered.notified() => {}
+                result = &mut reserve => {
+                    panic!("the adopted stop answered before it closed its launch: {result:?}")
+                }
+            }
+        })
+        .await
+        .expect("the adopted stop must close the launch whose stop it adopted");
+        close_release.notify_one();
+
+        let reservation = reserve.await.expect("the adopted stop still answers the caller");
+        assert!(matches!(reservation, BackgroundRunReservation::Declined));
+
+        let state = controller.state.read().await;
+        let record = state.background_children.get(WORKER).expect("record");
+        assert_eq!(record.exec_session_id, "exec-replacement", "the replacement launch keeps the record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Starting,
+            "the adopted stop's close must not settle the replacement launch"
+        );
+        assert!(record.desired_enabled, "the replacement launch is still wanted");
+        drop(state);
+
+        controller.signal_shutdown().await;
     }
 }

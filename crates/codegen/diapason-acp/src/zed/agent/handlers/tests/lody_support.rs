@@ -6,6 +6,7 @@ use super::*;
 use agent_client_protocol::schema::v1::{
     CloseSessionRequest, InitializeRequest, NewSessionRequest, NewSessionResponse, SetSessionConfigOptionRequest,
 };
+use diapason_core::subagents::TaskOwner;
 
 // ─── Duplex connection plumbing ─────────────────────────────────────────────
 
@@ -250,10 +251,11 @@ pub(super) struct ObservedBackgroundState {
 /// samples can only come from the request under test.
 pub(super) async fn background_record_state(
     controller: &diapason_core::subagents::SubagentController,
+    owner: TaskOwner<'_>,
     task_id: &str,
 ) -> Option<ObservedBackgroundState> {
     controller
-        .background_status_entries()
+        .background_status_entries(owner)
         .await
         .into_iter()
         .find(|entry| entry.id == task_id)
@@ -293,11 +295,12 @@ pub(super) struct ObservableBackgroundSnapshot {
 /// Samples the observable controller state without refreshing it.
 pub(super) async fn observable_background_snapshot(
     controller: &diapason_core::subagents::SubagentController,
+    owner: TaskOwner<'_>,
     workspace_root: &std::path::Path,
     notifications: usize,
 ) -> ObservableBackgroundSnapshot {
     let entries = controller
-        .background_status_entries()
+        .background_status_entries(owner)
         .await
         .into_iter()
         .map(|entry| {

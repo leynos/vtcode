@@ -38,6 +38,11 @@ pub(super) async fn persist_background_records(
     removable_owner_ids: &BTreeSet<String>,
     expected_stops: &BTreeMap<String, String>,
 ) -> Result<()> {
+    // A test parks a save here so it can prove reuse waited for the owed write
+    // instead of answering from the in-memory record; see the
+    // `ledger_write_checkpoints` test module below.
+    #[cfg(all(test, unix))]
+    ledger_write_checkpoints::pass(workspace_root).await;
     let persisted_records = load_background_state(workspace_root).await?.records;
     let merged = match owner_session_id {
         // An owner-scoped controller supplies the authoritative set of records
@@ -225,20 +230,26 @@ fn stop_does_not_name_other_launch(
 /// stale stop cannot erase a replacement launch another controller has already
 /// written under the same canonical id.
 ///
-/// A copy that records an owner then outranks an ownerless copy of the same
+/// A copy that records an owner outranks an ownerless copy of the same
 /// launch, whatever their timestamps. Ownerless and owned copies of one launch
 /// canonicalize to different keys, because the key is derived from the owner,
-/// so this cannot be decided inside a group: after each key's launch is
-/// reduced, an ownerless survivor is dropped when an owned survivor names the
-/// same launch (`agent_name` and `exec_session_id`). That is what stops a
-/// controller that loaded a row before its owner was recorded — the ACP launch
-/// workspace, which restores ownerless rows before any session resumes — from
-/// saving the ownerless copy back alongside the migrated record and leaving a
-/// restorable duplicate of a launch a session now owns. Dropping the ownerless
-/// copy is the conservative choice whenever the two exist at once: the owned
-/// copy is the one every scope agrees on, an ownerless copy in memory is not
-/// authoritatively ownerless, and dropping it loses at most a refresh that
-/// cannot be persisted deterministically.
+/// so this cannot be decided inside a group: an ownerless copy is dropped when
+/// any input copy of the same launch (`agent_name` and `exec_session_id`)
+/// records an owner. That is what stops a controller that loaded a row before
+/// its owner was recorded — the ACP launch workspace, which restores ownerless
+/// rows before any session resumes — from saving the ownerless copy back
+/// alongside the migrated record and leaving a restorable duplicate of a
+/// launch a session now owns.
+///
+/// The ownership evidence is taken from every input copy, not only from the
+/// launches that survived the reduction. A newer owned launch supersedes the
+/// older owned launch it replaces, so the older launch may have no owned
+/// survivor for an ownerless copy to match against; reading only the survivors
+/// would let that ownerless copy survive beside the replacement. Dropping the
+/// ownerless copy is the conservative choice whenever an owned copy exists in
+/// the merge: the owned copy is the one every scope agrees on, an ownerless
+/// copy in memory is not authoritatively ownerless, and dropping it loses at
+/// most a refresh that cannot be persisted deterministically.
 ///
 /// Reducing per launch before comparing launches is what makes the choice
 /// independent of input order. A single comparator over every copy of the key
@@ -246,9 +257,10 @@ fn stop_does_not_name_other_launch(
 /// an active `exec-1` copy at t3, a cancelled `exec-1` copy at t1 and an active
 /// `exec-2` copy at t2, file order `[cancelled, exec-2, active]` keeps the
 /// active `exec-1` copy and resurrects the stopped launch, while
-/// `[active, cancelled, exec-2]` keeps `exec-2`. The ownership filter runs on
-/// the reduced survivors for the same reason: it depends only on which
-/// launches survived, not on where their copies appeared.
+/// `[active, cancelled, exec-2]` keeps `exec-2`. The ownership filter is also
+/// independent of input order: it depends only on which launches the inputs
+/// attribute to an owner, not on where their copies appeared or which of them
+/// the reduction kept.
 fn join_by_canonical_id(
     persisted: impl IntoIterator<Item = PersistedBackgroundRecord>,
     snapshot: impl IntoIterator<Item = PersistedBackgroundRecord>,
@@ -256,6 +268,10 @@ fn join_by_canonical_id(
 ) -> BTreeMap<String, PersistedBackgroundRecord> {
     type LaunchCopies = BTreeMap<String, LaunchCandidate>;
     let mut launches: BTreeMap<String, LaunchCopies> = BTreeMap::new();
+    // Every launch an input copy attributes to an owner. Collected before the
+    // reduction because a newer owned launch supersedes an older owned one, so
+    // the superseded launch's ownerless copy has no owned survivor to match.
+    let mut owned_launches = BTreeSet::new();
     let persisted = persisted
         .into_iter()
         .map(|record| LaunchCandidate { record, from_snapshot: false });
@@ -264,6 +280,9 @@ fn join_by_canonical_id(
         .map(|record| LaunchCandidate { record, from_snapshot: true });
     for mut candidate in persisted.chain(snapshot) {
         candidate.record.canonicalize_id();
+        if candidate.record.owner_session_id.is_some() {
+            owned_launches.insert(ownerless_launch(&candidate.record));
+        }
         let id = candidate.record.id.clone();
         let exec_session_id = candidate.record.exec_session_id.clone();
         let sessions = launches.entry(id).or_default();
@@ -310,14 +329,9 @@ fn join_by_canonical_id(
                 .map(|chosen| (id, chosen.record))
         })
         .collect::<BTreeMap<_, _>>();
-    let unowned = survivors
-        .values()
-        .filter(|record| record.owner_session_id.is_some())
-        .map(ownerless_launch)
-        .collect::<BTreeSet<_>>();
     survivors
         .into_iter()
-        .filter(|(_, record)| record.owner_session_id.is_some() || !unowned.contains(&ownerless_launch(record)))
+        .filter(|(_, record)| record.owner_session_id.is_some() || !owned_launches.contains(&ownerless_launch(record)))
         .collect()
 }
 
@@ -495,10 +509,20 @@ impl SubagentController {
                 ));
             if launched_here {
                 adopted += 1;
+                let previous_id = record.id.clone();
                 record.owner_session_id = Some(owner_session_id.to_string());
                 record.id = super::background::background_record_id_for_owner(
                     record.agent_name.as_str(),
                     Some(owner_session_id),
+                );
+                // A close this launch still owes was registered under the id it
+                // had before adoption. Move it with the launch, or the retry
+                // would miss it and discharge an obligation it never attempted.
+                super::controller_background_ops::rekey_pending_background_stop_close(
+                    &self.state,
+                    previous_id.as_str(),
+                    record.id.as_str(),
+                    record.exec_session_id.as_str(),
                 );
             }
             // Every later lookup keys on the canonical id, so a record that
@@ -519,6 +543,150 @@ impl SubagentController {
     /// been requested.
     pub async fn save_background_ledger(&self) -> Result<()> {
         self.save_background_state().await
+    }
+}
+
+/// Test-only rendezvous inside a background-ledger save.
+///
+/// A launch commits its record in memory before the ledger write, and reuse
+/// must not answer from that record until the owed write has run. Parking the
+/// save makes the ordering observable: a test can prove reuse has not returned
+/// before the write reached the ledger, instead of treating a timeout that did
+/// not elapse as evidence. The module mirrors
+/// `controller_tree::attachment_checkpoints`: a checkpoint is keyed by the
+/// workspace whose save it holds, and a dropped test's entry is pruned before
+/// its path can be reused.
+#[cfg(all(test, unix))]
+pub(crate) mod ledger_write_checkpoints {
+    use super::*;
+    use std::path::PathBuf;
+
+    struct Checkpoint {
+        workspace_root: PathBuf,
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    fn checkpoints() -> &'static Mutex<Vec<Checkpoint>> {
+        static CHECKPOINTS: OnceLock<Mutex<Vec<Checkpoint>>> = OnceLock::new();
+        CHECKPOINTS.get_or_init(|| Mutex::new(Vec::new()))
+    }
+
+    /// Arms a checkpoint that parks the next save of `workspace_root`.
+    ///
+    /// Returns the signal that a save reached the checkpoint and the signal
+    /// that releases it.
+    pub(crate) fn arm(workspace_root: &Path) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        registry.retain(|checkpoint| Arc::strong_count(&checkpoint.entered) > 1);
+        registry.push(Checkpoint {
+            workspace_root: workspace_root.to_path_buf(),
+            entered: Arc::clone(&entered),
+            release: Arc::clone(&release),
+        });
+        (entered, release)
+    }
+
+    /// Parks here when `workspace_root` has an armed checkpoint.
+    pub(super) async fn pass(workspace_root: &Path) {
+        let checkpoint = {
+            let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            registry.retain(|checkpoint| Arc::strong_count(&checkpoint.entered) > 1);
+            registry
+                .iter()
+                .position(|checkpoint| checkpoint.workspace_root.as_path() == workspace_root)
+                .map(|index| registry.remove(index))
+        };
+        let Some(checkpoint) = checkpoint else {
+            return;
+        };
+        checkpoint.entered.notify_one();
+        checkpoint.release.notified().await;
+    }
+}
+
+#[cfg(test)]
+mod ownership_supersession_tests {
+    //! Pins that a superseded owned launch leaves no ownerless copy behind.
+
+    use super::super::background::background_record_id_for_owner;
+    use super::*;
+
+    /// Builds one persisted record with the canonical id for its agent/owner.
+    fn persisted(
+        agent: &str,
+        owner_session_id: Option<&str>,
+        exec_session_id: &str,
+        updated_at: &str,
+    ) -> PersistedBackgroundRecord {
+        serde_json::from_value(serde_json::json!({
+            "id": background_record_id_for_owner(agent, owner_session_id),
+            "agent_name": agent,
+            "display_label": agent,
+            "description": agent,
+            "source": "builtin",
+            "color": null,
+            "owner_session_id": owner_session_id,
+            "session_id": format!("session-{exec_session_id}"),
+            "parent_session_id": owner_session_id.unwrap_or("parent-session"),
+            "exec_session_id": exec_session_id,
+            "desired_enabled": true,
+            "status": "running",
+            "created_at": "2026-08-28T00:00:00Z",
+            "updated_at": updated_at,
+            "started_at": null,
+            "ended_at": null,
+            "pid": null,
+            "prompt": "work",
+            "summary": null,
+            "error": null,
+            "archive_path": null,
+            "transcript_path": null,
+            "max_turns": null,
+            "model_override": null,
+            "reasoning_override": null,
+            "restart_attempts": 0
+        }))
+        .expect("persisted background record")
+    }
+
+    /// A newer owned launch supersedes an older owned launch of the same agent.
+    ///
+    /// The older launch's ownerless copy has no owned survivor left to match,
+    /// so collecting ownership evidence only from the reduced launches kept it
+    /// beside the replacement. The unrelated ownerless record is not evidence
+    /// of a migrated launch and must survive.
+    #[test]
+    fn an_ownerless_copy_of_a_superseded_owned_launch_is_dropped() {
+        let ledger = vec![
+            persisted("worker", None, "exec-1", "2026-08-28T00:00:00Z"),
+            persisted("worker", Some("session-a"), "exec-1", "2026-08-28T00:00:00Z"),
+            persisted("outside", None, "exec-outside", "2026-08-28T00:00:00Z"),
+        ];
+        let snapshot = vec![persisted("worker", Some("session-a"), "exec-2", "2026-08-29T00:00:00Z")];
+
+        let merged = join_by_canonical_id(ledger, snapshot, &BTreeMap::new());
+
+        assert!(
+            merged
+                .values()
+                .all(|record| !(record.owner_session_id.is_none() && record.exec_session_id == "exec-1")),
+            "the ownerless copy of the superseded launch must not survive: {merged:?}"
+        );
+        assert!(
+            merged
+                .values()
+                .any(|record| record.owner_session_id.is_none() && record.exec_session_id == "exec-outside"),
+            "an ownerless record no owned copy names must survive: {merged:?}"
+        );
+        let owned = merged
+            .values()
+            .filter(|record| record.owner_session_id.as_deref() == Some("session-a"))
+            .collect::<Vec<_>>();
+        assert_eq!(owned.len(), 1, "the newer owned launch is the only owned survivor");
+        assert_eq!(owned[0].exec_session_id, "exec-2");
     }
 }
 

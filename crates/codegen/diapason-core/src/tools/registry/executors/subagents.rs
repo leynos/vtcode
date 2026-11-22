@@ -13,6 +13,20 @@ use serde_json::{Value, json};
 use std::future::Future;
 use std::sync::Arc;
 
+/// Translates the invocation a provider tool runs in into the explicit
+/// authority the controller requires.
+///
+/// The tool executor is an adapter boundary. A tool executes inside the
+/// invocation that called it, so its session is the authority it presents; a
+/// tool invoked outside any session, such as the local CLI, presents the
+/// workspace operator's authority. The controller itself never consults the
+/// ambient task-local context.
+fn invocation_task_owner(owner_session_id: &Option<String>) -> crate::subagents::TaskOwner<'_> {
+    owner_session_id
+        .as_deref()
+        .map_or(crate::subagents::TaskOwner::Workspace, crate::subagents::TaskOwner::Session)
+}
+
 impl ToolRegistry {
     fn require_subagent_controller(&self) -> Result<Arc<crate::subagents::SubagentController>> {
         self.subagent_controller()
@@ -66,19 +80,7 @@ impl ToolRegistry {
     )]
     pub(crate) fn agent_executor(&self, mut args: Value) -> BoxFuture<'_, Result<Value>> {
         Box::pin(async move {
-            let action = args
-                .get("action")
-                .and_then(Value::as_str)
-                .map(str::to_ascii_lowercase)
-                .unwrap_or_else(|| {
-                    let has_id = args.get("id").is_some();
-                    let has_input = args.get("message").is_some() || args.get("items").is_some();
-                    match (has_id, has_input) {
-                        (true, true) => "send_input".to_string(),
-                        (true, false) => "resume".to_string(),
-                        _ => "spawn".to_string(),
-                    }
-                });
+            let action = crate::subagents::agent_call_action(&args);
             if let Some(obj) = args.as_object_mut() {
                 obj.remove("action");
             }
@@ -122,10 +124,14 @@ impl ToolRegistry {
 
     fn send_input_executor(&self, args: Value) -> BoxFuture<'_, Result<Value>> {
         Box::pin(async move {
+            let owner_session_id = crate::subagents::current_subagent_owner_session_id();
             self.execute_subagent_request::<crate::subagents::SendInputRequest, _, _, _>(
                 args,
                 "Invalid send_input arguments",
-                |controller, request| async move { controller.send_input(request).await },
+                move |controller, request| async move {
+                    let owner = invocation_task_owner(&owner_session_id);
+                    controller.send_input(owner, request).await
+                },
             )
             .await
         })
@@ -142,8 +148,10 @@ impl ToolRegistry {
                 .map(ToOwned::to_owned)
                 .collect::<Vec<_>>();
             let timeout_ms = args.get("timeout_ms").and_then(Value::as_u64);
+            let owner_session_id = crate::subagents::current_subagent_owner_session_id();
             self.execute_subagent_call(move |controller| async move {
-                let entry = controller.wait(&targets, timeout_ms).await?;
+                let owner = invocation_task_owner(&owner_session_id);
+                let entry = controller.wait(owner, &targets, timeout_ms).await?;
                 Ok(json!({
                     "completed": entry.is_some(),
                     "entry": entry,
@@ -160,8 +168,12 @@ impl ToolRegistry {
                 .and_then(Value::as_str)
                 .ok_or_else(|| anyhow!("resume_agent requires id"))?
                 .to_string();
-            self.execute_subagent_call(move |controller| async move { controller.resume(&target).await })
-                .await
+            let owner_session_id = crate::subagents::current_subagent_owner_session_id();
+            self.execute_subagent_call(move |controller| async move {
+                let owner = invocation_task_owner(&owner_session_id);
+                controller.resume(owner, &target).await
+            })
+            .await
         })
     }
 
@@ -172,15 +184,9 @@ impl ToolRegistry {
                 .and_then(Value::as_str)
                 .ok_or_else(|| anyhow!("close_agent requires id"))?
                 .to_string();
-            // A tool runs inside the invocation that called it, so the
-            // invoking session is the authority it presents. A tool invoked
-            // outside any session, such as the local CLI, presents the
-            // workspace operator's authority.
             let owner_session_id = crate::subagents::current_subagent_owner_session_id();
             self.execute_subagent_call(move |controller| async move {
-                let owner = owner_session_id
-                    .as_deref()
-                    .map_or(crate::subagents::TaskOwner::Workspace, crate::subagents::TaskOwner::Session);
+                let owner = invocation_task_owner(&owner_session_id);
                 controller.close(owner, &target).await
             })
             .await

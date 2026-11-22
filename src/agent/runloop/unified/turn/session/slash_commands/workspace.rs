@@ -179,7 +179,7 @@ async fn wait_for_init_grounding(
     spawned: &SubagentStatusEntry,
 ) -> Result<Option<GuidedInitGrounding>> {
     let Some(status) = controller
-        .wait(std::slice::from_ref(&spawned.id), Some(INIT_GROUNDING_TIMEOUT_MS))
+        .wait(TaskOwner::Workspace, std::slice::from_ref(&spawned.id), Some(INIT_GROUNDING_TIMEOUT_MS))
         .await?
     else {
         ctx.renderer.line(

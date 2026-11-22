@@ -1,3 +1,8 @@
+//! Archive attachment for background launches.
+//!
+//! Declared by `run_tests/mod.rs`. Pins that an archive is attached only to the
+//! launch that named its session, using the shared fixtures from
+//! `controller_background_ops/tests/support.rs`.
 use super::*;
 
 /// Archive paths attach only to the launch that named the resolved session.

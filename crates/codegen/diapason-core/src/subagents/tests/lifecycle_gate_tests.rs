@@ -58,7 +58,7 @@ async fn resume_rejected_after_shutdown() {
     controller.signal_shutdown().await;
 
     let err = controller
-        .resume("some-agent")
+        .resume(TaskOwner::Workspace, "some-agent")
         .await
         .expect_err("resume after shutdown must be rejected");
 

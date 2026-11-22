@@ -13,6 +13,7 @@
 //! target this session does not own and only core would later refuse the call.
 
 use diapason_core::config::constants::tools;
+use diapason_core::subagents::TaskOwner;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -79,42 +80,10 @@ fn subagent_call_targets(tool_name: &str, arguments: &str) -> Vec<String> {
         // target to admit or reject here.
         return Vec::new();
     };
-    match tool_name {
-        tools::SEND_INPUT | tools::RESUME_AGENT | tools::CLOSE_AGENT => {
-            args.get("id").and_then(Value::as_str).map(str::to_owned).into_iter().collect()
-        }
-        tools::WAIT_AGENT => string_array(&args, "ids"),
-        tools::AGENT => {
-            let action = args
-                .get("action")
-                .and_then(Value::as_str)
-                .map(str::to_ascii_lowercase)
-                .unwrap_or_else(|| {
-                    let has_id = args.get("id").is_some();
-                    let has_input = args.get("message").is_some() || args.get("items").is_some();
-                    match (has_id, has_input) {
-                        (true, true) => "send_input".to_string(),
-                        (true, false) => "resume".to_string(),
-                        _ => "spawn".to_string(),
-                    }
-                });
-            match action.as_str() {
-                "send_input" | "resume" | "resume_agent" | "close" => {
-                    args.get("id").and_then(Value::as_str).map(str::to_owned).into_iter().collect()
-                }
-                "wait" => string_array(&args, "ids"),
-                _ => Vec::new(),
-            }
-        }
-        _ => Vec::new(),
-    }
-}
-
-fn string_array(args: &Value, key: &str) -> Vec<String> {
-    args.get(key)
-        .and_then(Value::as_array)
-        .map(|values| values.iter().filter_map(Value::as_str).map(str::to_owned).collect())
-        .unwrap_or_default()
+    // The core executor reads the same call through the same parser, so an
+    // admission decision cannot be made about a different task than the one
+    // the executor then addresses.
+    diapason_core::subagents::agent_call_targets(tool_name, &args)
 }
 
 /// Whether `target` belongs to this controller tree.
@@ -131,7 +100,7 @@ async fn session_owns_subagent(controller: &Arc<diapason_core::subagents::Subage
             return true;
         }
         if controller
-            .background_status_entries()
+            .background_status_entries(TaskOwner::Workspace)
             .await
             .iter()
             .any(|entry| entry.id == target)

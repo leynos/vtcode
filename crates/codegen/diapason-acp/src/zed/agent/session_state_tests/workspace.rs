@@ -5,6 +5,7 @@ use crate::zed::agent::optional_setup::{OptionalSetupOutcome, OptionalWorkspaceS
 use crate::zed::agent::session_workspace::{WorkspaceRuntimeLifecycle, WorkspaceRuntimeLifecycleState};
 use assert_fs::TempDir;
 use diapason_core::config::WorkspaceTrustLevel;
+use diapason_core::subagents::TaskOwner;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -798,5 +799,5 @@ async fn new_session_does_not_restore_a_background_record_owned_by_another_sessi
         .unwrap()
         .expect("per-session subagent controller");
 
-    assert!(controller.background_status_entries().await.is_empty());
+    assert!(controller.background_status_entries(TaskOwner::Workspace).await.is_empty());
 }

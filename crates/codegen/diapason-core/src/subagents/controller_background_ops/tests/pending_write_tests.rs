@@ -1,15 +1,14 @@
 //! Exercises a launch whose record could not be saved and is then reused.
 
 #[cfg(unix)]
-use std::time::Duration;
-
-#[cfg(unix)]
 use tempfile::TempDir;
 
 #[cfg(unix)]
 use crate::config::DiapasonConfig;
 #[cfg(unix)]
-use crate::subagents::background::{background_state_path_for_tests, lock_background_state};
+use crate::subagents::background::background_state_path_for_tests;
+#[cfg(unix)]
+use crate::subagents::controller_persistence::ledger_write_checkpoints;
 #[cfg(unix)]
 use crate::subagents::{BackgroundSubprocessStatus, SpawnBackgroundSubprocessRequest};
 #[cfg(unix)]
@@ -131,9 +130,18 @@ async fn a_launch_whose_save_failed_is_persisted_before_reuse_returns_it() {
     let stored = std::fs::read_to_string(&ledger_path).expect("the retried save writes the ledger");
     let ledger: serde_json::Value = serde_json::from_str(&stored).expect("the ledger is valid JSON");
     let records = ledger["records"].as_array().expect("records are an array");
-    assert!(
-        records.iter().any(|record| record["id"] == "background-background-demo"),
-        "the reused record is the one the ledger now holds"
+    let stored_row = records
+        .iter()
+        .find(|record| record["id"].as_str() == Some("background-background-demo"))
+        .expect("the reused record is the one the ledger now holds");
+    assert_eq!(
+        stored_row["exec_session_id"],
+        spawned_exec_session_id.as_str(),
+        "the ledger row must name the session the failed launch spawned"
+    );
+    assert_eq!(
+        stored_row["status"], "running",
+        "the reused record must be persisted as the active launch it reports"
     );
     assert!(
         records
@@ -146,20 +154,22 @@ async fn a_launch_whose_save_failed_is_persisted_before_reuse_returns_it() {
     controller.signal_shutdown().await;
 }
 
-/// Reuse must not answer from memory while the launch's write is in flight.
+/// Reuse must not answer from memory while the launch's write is owed.
 ///
-/// The launch commits its record in memory and then waits for the ledger lock.
-/// The obligation has to be raised before that wait: raised only after the
-/// save fails, the whole window is unmarked, and a concurrent identical
-/// request can refresh, see no pending obligation and no persisted record, and
-/// return the in-memory `Running` record as `Reused` before durability is
-/// known. The test holds the ledger lock to widen that window, then attempts
-/// reuse inside it.
+/// The launch commits its record in memory and then discovers that the ledger
+/// cannot be written. The obligation has to be raised before that save is
+/// attempted: raised only after the failure, the whole window is unmarked, and
+/// a concurrent identical request can refresh, see no pending obligation and no
+/// persisted record, and return the in-memory `Running` record as `Reused`
+/// before durability is known. The first launch fails its save by blocking the
+/// ledger lock's path, which leaves the process running and the obligation
+/// owed. The test then starts the reuse request, whose own retry save parks at
+/// the persistence checkpoint: the request future is awaited directly, so an
+/// unelapsed timeout says nothing about where it waited. The record it returns
+/// must be the durable one.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_reuse_in_the_save_window_waits_for_the_owed_write() {
-    use std::time::Duration as StdDuration;
-
     let temp = TempDir::new().expect("tempdir");
     write_background_demo_agent(temp.path());
     write_sleeping_demo_script(temp.path());
@@ -167,49 +177,74 @@ async fn a_reuse_in_the_save_window_waits_for_the_owed_write() {
     vt_cfg.subagents.background.enabled = true;
     let controller = background_test_controller(temp.path(), vt_cfg).await;
 
-    let ledger_guard = lock_background_state(temp.path())
+    let lock_path = block_ledger_lock(temp.path());
+    let error = controller
+        .spawn_background_subprocess(demo_request())
         .await
-        .expect("the test holds the ledger lock");
-
-    let first = controller.spawn_background_subprocess(demo_request());
-    tokio::pin!(first);
-    let mut first_result = None;
-    for _ in 0..500 {
-        tokio::select! {
-            result = &mut first, if first_result.is_none() => first_result = Some(result),
-            () = tokio::time::sleep(StdDuration::from_millis(10)) => {}
-        }
-        if pending_background_ledger_write_generation(&controller.state).is_some() {
-            break;
-        }
-        if first_result.is_some() {
-            break;
-        }
-    }
-
-    assert!(first_result.is_none(), "the launch must still be waiting for the ledger lock, not settled");
+        .expect_err("the launch cannot save its record while the lock path is blocked");
+    assert!(
+        format!("{error:#}").contains("background_subagents.lock"),
+        "the launch fails on the ledger lock: {error:#}"
+    );
+    // The row is committed in memory even though its write failed, so the
+    // spawned session is still running and only the ledger obligation failed.
+    let spawned_exec_session_id = {
+        let state = controller.state.read().await;
+        let record = state
+            .background_children
+            .get("background-background-demo")
+            .expect("the failed save leaves the committed record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Running,
+            "the failed save must not settle or discard the launch it started"
+        );
+        record.exec_session_id.clone()
+    };
     assert!(
         pending_background_ledger_write_generation(&controller.state).is_some(),
         "the obligation must be recorded before the save is awaited, not only after it fails"
     );
+    std::fs::remove_dir(&lock_path).expect("the lock path is writable again");
 
-    let reuse = tokio::time::timeout(
-        Duration::from_millis(300),
-        Box::pin(controller.spawn_background_subprocess(demo_request())),
-    )
-    .await;
-    assert!(reuse.is_err(), "reuse must wait for the owed write rather than report the unsaved record as Reused");
+    let (write_entered, write_release) = ledger_write_checkpoints::arm(temp.path());
+    let reuse_controller = controller.clone();
+    let mut reuse = tokio::spawn(async move { reuse_controller.spawn_background_subprocess(demo_request()).await });
 
-    drop(ledger_guard);
+    // The reuse request's own retry save is parked at the ledger checkpoint.
+    // It may not answer before that write has taken the record to disk.
+    tokio::select! {
+        result = &mut reuse => panic!("reuse answered before the owed write reached the ledger: {result:?}"),
+        () = write_entered.notified() => {}
+    }
+    assert!(!reuse.is_finished(), "reuse must not answer while the owed write is parked");
+    write_release.notify_one();
 
-    let first_entry = first.await.expect("the launch saves once the ledger lock is released");
-    assert_eq!(first_entry.status, BackgroundSubprocessStatus::Running);
-    let reuse_entry = controller
-        .spawn_background_subprocess(demo_request())
+    let reuse_entry = reuse
         .await
+        .expect("the reuse task joins")
         .expect("reuse succeeds once the record is durable");
-    assert_eq!(reuse_entry.id, first_entry.id, "reuse answers for the same record");
-    assert_eq!(reuse_entry.exec_session_id, first_entry.exec_session_id);
+    assert_eq!(reuse_entry.id, "background-background-demo");
+    assert_eq!(
+        reuse_entry.exec_session_id, spawned_exec_session_id,
+        "reuse answers for the session the failed launch already started"
+    );
+    assert_eq!(reuse_entry.status, BackgroundSubprocessStatus::Running);
+
+    let ledger_path = background_state_path_for_tests(temp.path());
+    let stored = std::fs::read_to_string(&ledger_path).expect("the owed write reaches the ledger");
+    let ledger: serde_json::Value = serde_json::from_str(&stored).expect("the ledger is valid JSON");
+    let records = ledger["records"].as_array().expect("records are an array");
+    let stored_row = records
+        .iter()
+        .find(|record| record["id"].as_str() == Some(reuse_entry.id.as_str()))
+        .expect("the record reuse reported must be durable");
+    assert_eq!(
+        stored_row["exec_session_id"],
+        reuse_entry.exec_session_id.as_str(),
+        "the durable row must name the launch reuse reported"
+    );
+    assert_eq!(stored_row["status"], "running", "reuse may only answer for an active durable record");
 
     let _ = controller
         .config

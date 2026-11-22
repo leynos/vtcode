@@ -1,5 +1,12 @@
 //! Default [`ExecSessionOutputReader`] adapter over live exec sessions and the
 //! session archive.
+//!
+//! A task's archive is resolved from its session identifier only when this
+//! process recorded that identifier when it launched the task's exec session.
+//! A record restored from the persisted ledger carries its identifiers as
+//! stored data, so a row naming another task's session is refused as an archive
+//! fault rather than served. The recorded-path check remains as an additional
+//! safeguard for the file the store resolves.
 use anyhow::Result;
 use futures::future::BoxFuture;
 use std::path::Path;
@@ -32,10 +39,56 @@ impl ExecSessionOutputReader {
         }
         match self.exec_sessions.read_session_output(source.exec_session_id, false).await {
             Ok(Some(output)) => Ok(BackgroundOutput::Live(output)),
-            Ok(None) => read_archived_output(source).await,
-            Err(error) if is_missing_exec_session(&error) => read_archived_output(source).await,
+            Ok(None) => self.read_archived_output(source).await,
+            Err(error) if is_missing_exec_session(&error) => self.read_archived_output(source).await,
             Err(error) => Err(BackgroundOutputError::Live(error)),
         }
+    }
+
+    /// Reads the transcript or archive for a task whose live output is
+    /// unavailable.
+    ///
+    /// A record only carries a recorded path once a refresh has resolved its
+    /// archive, and a client may read the output of a task that has already
+    /// finished before any refresh has run. The task's own session identifier
+    /// names that archive, so it is resolved here rather than reported as no
+    /// output: an empty tail would claim the finished task never wrote anything.
+    ///
+    /// The identifier is stored data once the row is restored, so it can name
+    /// another task's session. It is therefore used for the lookup only when
+    /// this process recorded it when it launched the task's exec session; a row
+    /// that cannot be verified fails closed as an archive fault.
+    async fn read_archived_output(
+        &self,
+        source: BackgroundOutputSource<'_>,
+    ) -> Result<BackgroundOutput, BackgroundOutputError> {
+        if !self.exec_sessions.is_launched_task_session(source.session_id) {
+            return Err(unverified_session(source.session_id));
+        }
+        let recorded = source.transcript_path.or(source.archive_path).map(Path::to_path_buf);
+        // The store is the only authority for which file is this task's archive,
+        // so its fault decides the read even when the record names a path.
+        let trusted = find_session_by_identifier(source.session_id)
+            .await
+            .map_err(BackgroundOutputError::Archived)?;
+        let trusted_path = trusted.as_ref().map(|listing| listing.path.as_path());
+        let resolved = match recorded {
+            Some(recorded) => Some(authorised_archive_path(&recorded, trusted_path).await?),
+            None => trusted_path.map(Path::to_path_buf),
+        };
+        let Some(path) = resolved else {
+            return Ok(BackgroundOutput::NotReady);
+        };
+        // The store already returned this archive's transcript when it resolved the
+        // task's identifier, so reuse it rather than reading and parsing the same
+        // file a second time.
+        if let Some(listing) = trusted.filter(|listing| listing.path == path) {
+            return Ok(BackgroundOutput::Archived(listing.snapshot.transcript.join("\n")));
+        }
+        load_archive_transcript(&path)
+            .await
+            .map(BackgroundOutput::Archived)
+            .map_err(BackgroundOutputError::Archived)
     }
 }
 
@@ -50,38 +103,15 @@ impl BackgroundOutputReader for ExecSessionOutputReader {
     }
 }
 
-/// Reads the transcript or archive for a task whose live output is unavailable.
+/// The refusal for a session identifier this process did not launch.
 ///
-/// A record only carries a recorded path once a refresh has resolved its
-/// archive, and a client may read the output of a task that has already
-/// finished before any refresh has run. The task's own session identifier names
-/// that archive, so it is resolved here rather than reported as no output: an
-/// empty tail would claim the finished task never wrote anything.
-async fn read_archived_output(source: BackgroundOutputSource<'_>) -> Result<BackgroundOutput, BackgroundOutputError> {
-    let recorded = source.transcript_path.or(source.archive_path).map(Path::to_path_buf);
-    // The store is the only authority for which file is this task's archive,
-    // so its fault decides the read even when the record names a path.
-    let trusted = find_session_by_identifier(source.session_id)
-        .await
-        .map_err(BackgroundOutputError::Archived)?;
-    let trusted_path = trusted.as_ref().map(|listing| listing.path.as_path());
-    let resolved = match recorded {
-        Some(recorded) => Some(authorised_archive_path(&recorded, trusted_path).await?),
-        None => trusted_path.map(Path::to_path_buf),
-    };
-    let Some(path) = resolved else {
-        return Ok(BackgroundOutput::NotReady);
-    };
-    // The store already returned this archive's transcript when it resolved the
-    // task's identifier, so reuse it rather than reading and parsing the same
-    // file a second time.
-    if let Some(listing) = trusted.filter(|listing| listing.path == path) {
-        return Ok(BackgroundOutput::Archived(listing.snapshot.transcript.join("\n")));
-    }
-    load_archive_transcript(&path)
-        .await
-        .map(BackgroundOutput::Archived)
-        .map_err(BackgroundOutputError::Archived)
+/// A restored row carries its session identifier as stored data, so resolving
+/// it against the session store could return another task's archive. Refusing
+/// the lookup before it runs keeps a row from naming any session it likes.
+fn unverified_session(session_id: &str) -> BackgroundOutputError {
+    BackgroundOutputError::Archived(anyhow::anyhow!(
+        "refusing to resolve an archive for a session this process did not launch: {session_id}"
+    ))
 }
 
 /// Returns the recorded archive path only when it is this task's own archive.
@@ -116,23 +146,34 @@ async fn authorised_archive_path(
             recorded.display()
         )));
     }
-    let canonical = dunce::canonicalize(recorded).map_err(|error| {
-        BackgroundOutputError::Archived(
-            anyhow::Error::new(error).context(format!("resolve session archive {}", recorded.display())),
-        )
-    })?;
+    let canonical = canonicalize_archive_path(recorded).await?;
     let Some(trusted) = trusted else {
         return Err(outside_task_scope(recorded));
     };
-    let trusted_canonical = dunce::canonicalize(trusted).map_err(|error| {
-        BackgroundOutputError::Archived(
-            anyhow::Error::new(error).context(format!("resolve session archive {}", trusted.display())),
-        )
-    })?;
+    let trusted_canonical = canonicalize_archive_path(trusted).await?;
     if canonical == trusted_canonical {
         return Ok(canonical);
     }
     Err(outside_task_scope(recorded))
+}
+
+/// Resolves an archive path off the async worker.
+///
+/// `dunce::canonicalize` performs synchronous filesystem work, so it runs on
+/// the blocking pool rather than stalling an executor worker. A blocking task
+/// that cannot be joined or a resolution failure is reported as the same
+/// archive fault, with the path that could not be resolved.
+async fn canonicalize_archive_path(path: &Path) -> Result<std::path::PathBuf, BackgroundOutputError> {
+    let owned = path.to_path_buf();
+    tokio::task::spawn_blocking(move || dunce::canonicalize(&owned))
+        .await
+        .map_err(|error| resolve_fault(path, anyhow::Error::new(error)))?
+        .map_err(|error| resolve_fault(path, anyhow::Error::new(error)))
+}
+
+/// The archive fault for a path that could not be resolved.
+fn resolve_fault(path: &Path, error: anyhow::Error) -> BackgroundOutputError {
+    BackgroundOutputError::Archived(error.context(format!("resolve session archive {}", path.display())))
 }
 
 /// The refusal for a recorded path that is not this task's resolved archive.

@@ -169,6 +169,12 @@ async fn controller_with_ownerless_background() -> (TempDir, SubagentController)
             .await
             .expect("controller");
     let record = persisted_background_record_for_owner("background-worker", None);
+    // The reader serves only a session this process launched; the fixture
+    // record stands in for that launch.
+    controller
+        .config
+        .exec_sessions
+        .register_launched_task_session("session-background-worker");
     controller
         .state
         .write()

@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use diapason_core::cli::args::BackgroundSubagentArgs;
-use diapason_core::subagents::{SpawnAgentRequest, SubagentController, SubagentControllerConfig};
+use diapason_core::subagents::{SpawnAgentRequest, SubagentController, SubagentControllerConfig, TaskOwner};
 use diapason_core::tools::exec_session::ExecSessionManager;
 use diapason_core::tools::registry::PtySessionManager;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -91,7 +91,9 @@ pub(crate) async fn handle_background_subagent_command(
         })
         .await?;
 
-    let status = controller.wait(std::slice::from_ref(&spawned.id), Some(300_000)).await?;
+    let status = controller
+        .wait(TaskOwner::Workspace, std::slice::from_ref(&spawned.id), Some(300_000))
+        .await?;
     if let Some(status) = status {
         if let Some(summary) = status.summary.as_deref() {
             println!("background-subagent-summary: {}", summary.trim());

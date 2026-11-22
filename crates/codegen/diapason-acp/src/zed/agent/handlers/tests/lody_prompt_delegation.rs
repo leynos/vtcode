@@ -44,6 +44,7 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task(
             owner_session_id: None,
             workspace_gated: false,
             defer_background_restore: false,
+            owner_migration_failed: false,
         },
     )
     .await;
@@ -74,7 +75,10 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task(
                 .expect("resolve the session controller")
                 .expect("session has a subagent controller");
             assert!(
-                controller.background_status_entries().await.is_empty(),
+                controller
+                    .background_status_entries(TaskOwner::Session(session.session_id.0.as_ref()))
+                    .await
+                    .is_empty(),
                 "the session controller must start with no managed task"
             );
             let response = cx
@@ -97,7 +101,11 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task(
             // snapshot command is used once the record exists.
             let started = tokio::time::timeout(POLL_TIMEOUT, async {
                 loop {
-                    let cached = controller.background_status_entries().await.into_iter().next();
+                    let cached = controller
+                        .background_status_entries(TaskOwner::Session(session.session_id.0.as_ref()))
+                        .await
+                        .into_iter()
+                        .next();
                     if let Some(entry) = cached {
                         if entry.started_at.is_some() {
                             break entry;
@@ -120,7 +128,7 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task(
                 Err(_) => {
                     let elsewhere = match inspected_agent.local_tool_registry.subagent_controller() {
                         Some(launch) => launch
-                            .background_status_entries()
+                            .background_status_entries(TaskOwner::Workspace)
                             .await
                             .into_iter()
                             .map(|entry| (entry.id, entry.owner_session_id, entry.started_at))
@@ -139,7 +147,9 @@ async fn prompt_driven_agent_tool_spawns_an_owned_background_task(
                 "the spawned task must be owned by the prompting session"
             );
             assert!(
-                background_record_state(&controller, &entry.id).await.is_some(),
+                background_record_state(&controller, TaskOwner::Session(session.session_id.0.as_ref()), &entry.id)
+                    .await
+                    .is_some(),
                 "the owning session controller must track the spawned task"
             );
             let listed = lody_list(&cx, &session.session_id, false).await?;

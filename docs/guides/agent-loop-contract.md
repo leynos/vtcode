@@ -468,4 +468,27 @@ The subagent layer now supports loop-engineering primitives:
   limits and reports `BudgetStatus`
   (Ok/TokenLimitReached/CostLimitReached/StepLimitReached).
 
+### Subagent task authority
+
+Every task-addressing subagent command takes the caller's authority as an
+explicit `TaskOwner`; the controller never consults the ambient invocation
+context. `send_input`, `resume`, `wait`, `close` and `status_for` therefore
+require their adapter to translate the calling session before dispatch:
+
+- `TaskOwner::Session(session_id)` is a session acting for itself. It may
+  address only a child inside its own delegation tree; a foreign or absent
+  target is refused with the same `Unknown subagent id <target>` error, so a
+  transport cannot use the error to probe for tasks it does not own.
+- `TaskOwner::SessionTree(&owned)` is the same authority after the transport
+  has resolved the session's tasks across the whole delegation tree. ACP uses
+  it for a grandchild held in a child-scoped controller.
+- `TaskOwner::Workspace` is the local workspace operator — the TUI, the CLI, or
+  a controller acting on a task it just created itself. It may address every
+  task the controller holds.
+
+The provider tool executor is the adapter boundary for tool calls: it presents
+the invoking session's authority, or `TaskOwner::Workspace` when the tool runs
+outside any session. Keeping the translation at that boundary is what lets a
+session that owns the child act on it even when no invocation context is active.
+
 See [Loop Engineering](../loop-engineering.md) for the full design.

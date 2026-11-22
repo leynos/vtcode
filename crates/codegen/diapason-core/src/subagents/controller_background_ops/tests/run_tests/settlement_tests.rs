@@ -1,3 +1,8 @@
+//! Launch settlement, retry settlement and conflicting launches.
+//!
+//! Declared by `run_tests/mod.rs`. Pins what a launch commit does to a record it
+//! owns or no longer owns, when a failed launch settles `Error`, and when a
+//! stale or conflicting launch must not replace the current record.
 use super::*;
 
 /// A launch that a cancellation overtook must not revive the record, and the
@@ -78,6 +83,64 @@ async fn a_launch_does_not_revive_a_record_that_stopped_wanting_it() {
         "a declined commit must close the session it spawned; no record names it"
     );
 
+    controller.signal_shutdown().await;
+}
+
+/// A launch with no parent override adopts the controller's current parent.
+///
+/// The planner treats an empty stored parent as absent and falls back to the
+/// controller's current parent. Calling the fallback helper directly and
+/// applying `unwrap_or` in the test proved only that `Option::unwrap_or`
+/// works; this drives the production chain through a real launch and reads the
+/// parent the committed record carries.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_launch_without_a_parent_override_uses_the_controllers_current_parent() {
+    let temp = TempDir::new().expect("tempdir");
+    write_background_demo_agent(temp.path());
+    write_sleeping_demo_script(temp.path());
+    let mut vt_cfg = DiapasonConfig::default();
+    vt_cfg.subagents.background.enabled = true;
+    let controller = background_test_controller(temp.path(), vt_cfg).await;
+    controller.set_parent_session_id("current-parent").await;
+    let mut record = background_record(
+        "background-worker",
+        None,
+        "background-demo",
+        "exec-previous",
+        BackgroundSubprocessStatus::Stopped,
+        false,
+    );
+    record.parent_session_id = String::new();
+    {
+        let mut state = controller.state.write().await;
+        state.background_children.insert(record.id.clone(), record);
+    }
+
+    let entry = controller
+        .ensure_background_record_running(BackgroundRunRequest {
+            agent_name: "background-demo".to_string(),
+            stable_id: Some("background-worker".to_string()),
+            restart_attempts: 0,
+            overrides: None,
+            expected_exec_session_id: None,
+        })
+        .await
+        .expect("the launch starts with the controller's current parent");
+
+    let state = controller.state.read().await;
+    let record = state.background_children.get("background-worker").expect("record");
+    assert_eq!(
+        record.parent_session_id, "current-parent",
+        "an empty stored parent must yield to the controller's current parent, not its configured one"
+    );
+    assert_eq!(
+        record.exec_session_id, entry.exec_session_id,
+        "the committed record names the launch the plan started"
+    );
+    drop(state);
+
+    let _ = controller.config.exec_sessions.close_session(&entry.exec_session_id).await;
     controller.signal_shutdown().await;
 }
 
@@ -231,7 +294,7 @@ async fn a_failed_launch_settles_after_the_retry_is_spent() {
     );
 
     let entry = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.agent_name == "background-demo")

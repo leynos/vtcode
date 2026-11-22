@@ -19,6 +19,7 @@
 mod background;
 mod background_lock;
 mod background_output;
+mod call_action;
 mod config;
 mod constants;
 mod controller_child_ids;
@@ -40,6 +41,7 @@ pub use background::{
 pub use background_output::{
     BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundTaskRef, ExecSessionOutputReader,
 };
+pub use call_action::{agent_call_action, agent_call_targets};
 pub use config::{
     ResolvedAgentRuntimeView, build_child_config, compose_subagent_instructions, filter_child_tools,
     normalize_background_child_max_turns, normalize_child_max_turns, prepare_child_runtime_config,

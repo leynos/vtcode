@@ -3,7 +3,7 @@
 use super::queue_accounting::{LifecycleQueueDropKind, LifecycleQueueTracker};
 use super::{LifecycleUpdate, QueuedLifecycleUpdate, bounded_session_correlation};
 use crate::acp;
-use diapason_core::subagents::owned_child_ids;
+use diapason_core::subagents::{TaskOwner, owned_child_ids};
 use hashbrown::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
@@ -106,7 +106,10 @@ async fn queue_initial_task_snapshots(
     }
 
     for controller in &controllers {
-        for entry in controller.background_status_entries().await {
+        for entry in controller
+            .background_status_entries(TaskOwner::Session(session_id.0.as_ref()))
+            .await
+        {
             let owned = entry.owner_session_id.as_deref() == Some(session_id.0.as_ref());
             if !owned || !entry.status.is_active() {
                 continue;

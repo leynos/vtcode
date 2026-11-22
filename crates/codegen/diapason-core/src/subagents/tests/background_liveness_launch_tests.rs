@@ -43,7 +43,7 @@ async fn failed_background_spawn_settles_the_record_as_an_error() {
     );
 
     let entry = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.agent_name == "background-demo")
@@ -93,7 +93,7 @@ async fn a_failed_launch_does_not_settle_the_record_a_replacement_owns() {
         .await;
 
     let entry = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.id == "background-worker@session-a")
@@ -138,7 +138,7 @@ async fn a_failed_launch_does_not_settle_a_cancelled_record() {
         .await;
 
     let entry = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.id == "background-worker@session-a")

@@ -321,10 +321,14 @@ impl ZedAgent {
     /// `defer_background_restore` skips the workspace controller's restore of
     /// ownerless background records while this runtime is first built. A
     /// resumed attach sets it after a failed owner migration, so the workspace
-    /// scope cannot relaunch a row the session controller may yet adopt. A
-    /// cached runtime keeps the choice it was built with: a later attach that
-    /// reuses it does not restore on its behalf, which leaves ownerless rows
-    /// unlaunched rather than risking a duplicate process.
+    /// scope cannot relaunch a row the session controller may yet adopt.
+    ///
+    /// Runtimes are cached by workspace root alone, so a later attach that
+    /// reuses one keeps the policy of the build that created it. A resume can
+    /// therefore reuse a runtime built with `defer_background_restore = false`.
+    /// That does not risk a duplicate process: the resumed attach reconciles
+    /// the workspace controller with its owner migration, adopting the rows it
+    /// still holds ownerless before the session controller is built.
     ///
     /// The launch runtime is returned as-is for its own workspace root, so it
     /// has already made that choice; `defer_background_restore` cannot undo a
@@ -574,6 +578,9 @@ async fn attach_optional_workspace_components(
             vt_config: setup.vt_config,
             workspace_gated: setup.workspace_gated,
             defer_background_restore: setup.defer_background_restore,
+            // The workspace controller has no owner, so it has no owner
+            // migration to retry.
+            owner_migration_failed: false,
         })
         .await;
     let mcp_outcome = ports

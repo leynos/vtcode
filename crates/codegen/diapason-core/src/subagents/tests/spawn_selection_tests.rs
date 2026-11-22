@@ -121,6 +121,10 @@ async fn spawn_allows_write_capable_agent_with_explicit_agent_type() {
         })
         .await
         .expect("explicit agent_type should allow write-capable agent");
+    assert_eq!(
+        spawned.agent_name, "worker",
+        "an explicit agent_type must launch that agent, not the policy default"
+    );
 
     controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }

@@ -43,7 +43,7 @@ async fn wait_returns_first_terminal_child() {
         let controller = controller.clone();
         tokio::spawn(async move {
             let targets = ["first".to_string(), "second".to_string()];
-            let wait = controller.wait(&targets, Some(500));
+            let wait = controller.wait(TaskOwner::Workspace, &targets, Some(500));
             let mut wait = std::pin::pin!(wait);
             let first = futures::poll!(wait.as_mut());
             let _ = ready_tx.send(());

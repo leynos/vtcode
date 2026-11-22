@@ -138,14 +138,14 @@ async fn liveness_projection_does_not_mutate_the_ledger() {
     .expect("controller");
     let ledger_before = std::fs::read(&ledger_path).expect("read ledger before query");
 
-    let projected = controller.background_status_entries_with_liveness().await;
+    let projected = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
     assert_eq!(
         projected.iter().map(|observed| observed.entry.status).collect::<Vec<_>>(),
         [BackgroundSubprocessStatus::Error],
         "the projection reports the settled outcome of an exhausted restart budget"
     );
 
-    let cached = controller.background_status_entries().await;
+    let cached = controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(
         cached.iter().map(|entry| entry.status).collect::<Vec<_>>(),
         [BackgroundSubprocessStatus::Running],
@@ -186,6 +186,12 @@ async fn background_snapshot_is_pure_and_refresh_is_explicit() {
     )
     .await
     .expect("controller");
+    // The reader serves only a session this process launched; the fixture row
+    // stands in for that launch.
+    controller
+        .config
+        .exec_sessions
+        .register_launched_task_session("session-background-worker");
     let ledger_before = std::fs::read(&ledger_path).expect("read ledger before snapshot");
 
     let cached = controller

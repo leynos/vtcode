@@ -68,15 +68,42 @@ pub(super) fn resolve_background_target_mut<'a>(
         .get_mut(&resolve_background_key(state, owner, target)?)
 }
 
+/// Whether a non-live liveness observation still describes the record it was
+/// taken for.
+///
+/// The query captures the record, releases the state lock for the exec-session
+/// read, then projects an exit from the captured flags. A cancellation, a
+/// restart or a replacement can land in that window. The launch id, the
+/// desired flag and the restart budget are the facts the projection consults,
+/// so a change to any of them makes the observation stale; the caller then
+/// keeps the record's current projection instead of relabelling it from
+/// outdated flags.
+pub(super) fn liveness_observation_is_current(
+    record: &BackgroundRecord,
+    exec_session_id: &str,
+    desired_enabled: bool,
+    restart_attempts: u8,
+) -> bool {
+    record.exec_session_id == exec_session_id
+        && record.desired_enabled == desired_enabled
+        && record.restart_attempts == restart_attempts
+}
+
 impl SubagentController {
-    /// Returns status entries for all tracked background subprocesses.
-    pub async fn background_status_entries(&self) -> Vec<BackgroundSubprocessEntry> {
+    /// Returns status entries for the tracked background subprocesses `owner`
+    /// may address.
+    ///
+    /// `owner` is the authority the caller presents, exactly as the other
+    /// background queries require: a session sees only the records it owns, and
+    /// the workspace operator sees every record the controller holds. A
+    /// session-tree set proves nothing about a background record (see
+    /// [`TaskOwner::background_owned`]), so it selects none.
+    pub async fn background_status_entries(&self, owner: TaskOwner<'_>) -> Vec<BackgroundSubprocessEntry> {
         let state = self.state.read().await;
-        let invocation_owner = current_subagent_invocation_context().map(|context| context.parent_session_id);
         state
             .background_children
             .values()
-            .filter(|record| invocation_owner.as_ref().is_none_or(|owner| &record.parent_session_id == owner))
+            .filter(|record| owner.background_owned(record.owner_session_id.as_deref()))
             .map(BackgroundRecord::build_status_entry)
             .collect()
     }
@@ -96,14 +123,25 @@ impl SubagentController {
     /// cached status and marks the entry [`BackgroundLiveness::Unobserved`], so
     /// a listing never fabricates a terminal outcome it did not observe. One
     /// unobserved record does not abort the list.
-    pub async fn background_status_entries_with_liveness(&self) -> Vec<BackgroundLivenessEntry> {
+    ///
+    /// The record is captured under one read lock and the exec session is read
+    /// without it, so a cancellation or replacement can land in between. Before
+    /// projecting a non-live observation the record is re-read: when its launch,
+    /// its flags or its restart budget changed, the entry keeps the record's
+    /// current projection rather than the captured outcome, which would
+    /// otherwise report a task that a cancellation has since settled as a
+    /// failure.
+    ///
+    /// `owner` is the authority the caller presents: only the records it may
+    /// address are projected, under the same rule as
+    /// [`Self::background_status_entries`].
+    pub async fn background_status_entries_with_liveness(&self, owner: TaskOwner<'_>) -> Vec<BackgroundLivenessEntry> {
         let mut entries = {
             let state = self.state.read().await;
-            let invocation_owner = current_subagent_invocation_context().map(|context| context.parent_session_id);
             state
                 .background_children
                 .values()
-                .filter(|record| invocation_owner.as_ref().is_none_or(|owner| &record.parent_session_id == owner))
+                .filter(|record| owner.background_owned(record.owner_session_id.as_deref()))
                 .map(|record| {
                     (
                         record.build_status_entry(),
@@ -142,6 +180,41 @@ impl SubagentController {
             };
             if alive {
                 continue;
+            }
+            // The observation was taken outside the state lock, so the record
+            // it describes may have moved since it was captured. Re-read it by
+            // id and keep the record's own projection when the launch, its
+            // flags or its restart budget changed: projecting the captured
+            // flags would report a cancellation that already settled `Stopped`
+            // as a failure, or settle a launch another caller has replaced.
+            let current = {
+                let state = self.state.read().await;
+                state.background_children.get(&entry.id).map(|record| {
+                    (
+                        record.build_status_entry(),
+                        liveness_observation_is_current(
+                            record,
+                            exec_session_id.as_str(),
+                            *desired_enabled,
+                            *restart_attempts,
+                        ),
+                    )
+                })
+            };
+            match current {
+                Some((mut current_entry, false)) => {
+                    // The record's own outcome is authoritative, including the
+                    // wire contract's terminal instant.
+                    if !current_entry.status.is_active() {
+                        current_entry.ended_at.get_or_insert(current_entry.updated_at);
+                    }
+                    *entry = current_entry;
+                    continue;
+                }
+                // The record no longer exists, so there is no current outcome to
+                // project. Keeping the captured entry invents nothing.
+                None => continue,
+                Some((_, true)) => {}
             }
             // A refresh settles an exited process as `Error` once its single
             // restart allowance is spent. A cached `Starting` status means the

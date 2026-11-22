@@ -1,3 +1,9 @@
+//! Shared fixtures for the exec-session output-reader tests.
+//!
+//! Declared by `exec_session/tests/mod.rs`; used by the sibling `live` and
+//! `archive` modules. It builds a manager plus reader over a temporary
+//! workspace, writes fixture archives, and provides the PTY handle helper and
+//! the session-directory override guard.
 use super::super::super::{BackgroundOutput, BackgroundOutputSource};
 use super::super::ExecSessionOutputReader;
 use crate::config::PtyConfig;
@@ -18,6 +24,16 @@ pub(super) fn reader_environment(root: &Path) -> (ExecSessionManager, PtySession
     let manager = ExecSessionManager::new(root.to_path_buf(), pty_sessions.clone());
     let reader = ExecSessionOutputReader::new(manager.clone());
     (manager, pty_sessions, reader)
+}
+
+/// Records the launch the controller would have registered for a fixture task.
+///
+/// A read resolves a task's archive only for a session identifier this process
+/// launched, so a fixture that expects an archive to be served records the
+/// identifier the exec-session creation path would have recorded. Without it
+/// the reader treats the identifier as restored stored data and fails closed.
+pub(super) fn register_launch(manager: &ExecSessionManager, session_id: &str) {
+    manager.register_launched_task_session(session_id);
 }
 
 /// Writes a session archive with the given transcript lines at `path`.

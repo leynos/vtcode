@@ -1,3 +1,8 @@
+//! Launch and exec-session identity generation.
+//!
+//! Declared by `run_tests/mod.rs`. Pins that every generated launch session id
+//! and exec-session id is unique, which is what lets an archive and a close be
+//! attributed to one launch.
 use super::*;
 
 /// Two launches of one record in one process never reuse an exec-session id.

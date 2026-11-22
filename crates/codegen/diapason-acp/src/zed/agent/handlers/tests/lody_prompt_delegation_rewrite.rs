@@ -91,6 +91,15 @@ async fn prompt_driven_agent_tool_re_admits_arguments_rewritten_by_a_permission_
             assert_tool_response_contains(&provider_requests, "not owned by this session");
             let notifications = tool_notifications_through_terminal(&mut updates_rx).await;
             assert_call_announced_before_terminal_update(&notifications, "call-tool");
+            assert!(
+                !notifications.iter().any(|notification| matches!(
+                    &notification.update,
+                    acp::SessionUpdate::ToolCallUpdate(update)
+                        if update.tool_call_id.to_string() == "call-tool"
+                            && update.fields.status == Some(acp::ToolCallStatus::InProgress)
+                )),
+                "a rejected rewrite must fail before the call is announced as in progress"
+            );
             let update = terminal_update_in(&notifications);
             assert_eq!(
                 update.fields.status,
@@ -103,7 +112,10 @@ async fn prompt_driven_agent_tool_re_admits_arguments_rewritten_by_a_permission_
                 tool_update_text(&update)
             );
             assert!(
-                controller.background_status_entries().await.is_empty(),
+                controller
+                    .background_status_entries(TaskOwner::Session(session.session_id.0.as_ref()))
+                    .await
+                    .is_empty(),
                 "a rejected rewrite must not start a managed task"
             );
             close_session(&cx, session.session_id).await?;

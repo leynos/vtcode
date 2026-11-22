@@ -170,8 +170,12 @@ impl SubagentController {
     }
 
     /// Sends additional input to a running or queued subagent.
-    pub async fn send_input(&self, request: SendInputRequest) -> Result<SubagentStatusEntry> {
-        self.ensure_child_owned_by_invocation(&request.target).await?;
+    ///
+    /// `owner` is the authority the caller presents: a session may address
+    /// only a task inside its own delegation tree, while the workspace
+    /// operator may address any task the controller holds.
+    pub async fn send_input(&self, owner: TaskOwner<'_>, request: SendInputRequest) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned(owner, &request.target).await?;
         let prompt = request_prompt(&request.message, &request.items)
             .ok_or_else(|| anyhow!("send_input requires a message or items"))?;
 
@@ -228,8 +232,12 @@ impl SubagentController {
     /// their prompts. Cascades recursively through child-scoped controllers so
     /// grandchildren closed by `close_tree` are resumed too, not merely
     /// un-gated.
-    pub async fn resume(&self, target: &str) -> Result<SubagentStatusEntry> {
-        self.ensure_child_owned_by_invocation(target).await?;
+    ///
+    /// `owner` is the authority the caller presents: a session may resume only
+    /// a task inside its own delegation tree, while the workspace operator may
+    /// resume any task the controller holds.
+    pub async fn resume(&self, owner: TaskOwner<'_>, target: &str) -> Result<SubagentStatusEntry> {
+        self.ensure_child_owned(owner, target).await?;
         self.resume_tree(target).await
     }
 
@@ -349,9 +357,20 @@ impl SubagentController {
     }
 
     /// Blocks until one of the target subagents reaches a terminal state or the timeout expires.
-    pub async fn wait(&self, targets: &[String], timeout_ms: Option<u64>) -> Result<Option<SubagentStatusEntry>> {
+    ///
+    /// `owner` is the authority the caller presents: a session may wait on only
+    /// a task inside its own delegation tree, while the workspace operator may
+    /// wait on any task the controller holds. Every target is checked before
+    /// the wait begins, so a session's foreign or absent target is refused
+    /// rather than silently treated as one that never becomes terminal.
+    pub async fn wait(
+        &self,
+        owner: TaskOwner<'_>,
+        targets: &[String],
+        timeout_ms: Option<u64>,
+    ) -> Result<Option<SubagentStatusEntry>> {
         for target in targets {
-            self.ensure_child_owned_by_invocation(target).await?;
+            self.ensure_child_owned(owner, target).await?;
         }
         if let Some(entry) = self.first_terminal_wait_target(targets).await {
             return Ok(Some(entry));

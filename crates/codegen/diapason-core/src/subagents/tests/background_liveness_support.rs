@@ -20,6 +20,10 @@ pub(super) fn record_with_restart_state(
     value["status"] = serde_json::json!(status);
     value["desired_enabled"] = serde_json::json!(true);
     value["restart_attempts"] = serde_json::json!(restart_attempts);
+    // The base fixture describes an ended run; every record built here is
+    // active by construction, and an active record must not carry an end
+    // instant. `record_with_terminal_state` re-applies its explicit value.
+    value["ended_at"] = serde_json::Value::Null;
     serde_json::from_value(value).expect("deserialize record")
 }
 
@@ -109,7 +113,7 @@ pub(super) async fn projected_liveness_entry(
     .expect("controller");
 
     controller
-        .background_status_entries_with_liveness()
+        .background_status_entries_with_liveness(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|observed| observed.entry.id == "background-worker@session-a")

@@ -16,7 +16,7 @@ use super::*;
 use crate::zed::agent::test_log_capture::capturing_async;
 use crate::zed::session::AcpSessionWorkspace;
 use assert_fs::TempDir;
-use diapason_core::subagents::{BackgroundSubprocessStatus, background_record_id_for_owner};
+use diapason_core::subagents::{BackgroundSubprocessStatus, TaskOwner, background_record_id_for_owner};
 use tracing_subscriber::filter::LevelFilter;
 
 /// The agent the seeded legacy row names.
@@ -105,7 +105,7 @@ async fn resumed_session_owns_the_legacy_row_the_launch_workspace_loaded() {
         .local_tool_registry
         .subagent_controller()
         .expect("the launch workspace controller");
-    let launch_view = launch_controller.background_status_entries().await;
+    let launch_view = launch_controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(launch_view.len(), 1, "the launch runtime loads the ownerless row");
     assert_eq!(launch_view[0].owner_session_id, None, "the loaded copy is ownerless before the resume");
     assert_eq!(launch_view[0].exec_session_id, LEGACY_EXEC_SESSION, "loading the row must not replace its launch");
@@ -128,7 +128,7 @@ async fn resumed_session_owns_the_legacy_row_the_launch_workspace_loaded() {
         "the session must adopt the existing launch instead of starting another"
     );
 
-    let launch_view = launch_controller.background_status_entries().await;
+    let launch_view = launch_controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(launch_view.len(), 1, "adoption rekeys the stale copy rather than adding one");
     assert_eq!(launch_view[0].id, owned_id, "the adopted record takes its owned canonical id");
     assert_eq!(
@@ -158,7 +158,7 @@ async fn resumed_session_owns_the_legacy_row_the_launch_workspace_loaded() {
         .session_subagent_controller(&session)
         .expect("select the session controller")
         .expect("the resumed session owns a subagent controller");
-    let session_view = session_controller.background_status_entries().await;
+    let session_view = session_controller.background_status_entries(TaskOwner::Session(owner)).await;
     assert_eq!(session_view.len(), 1, "the session controller adopts the migrated row");
     assert_eq!(session_view[0].id, owned_id);
     assert_eq!(session_view[0].exec_session_id, LEGACY_EXEC_SESSION);
@@ -199,7 +199,7 @@ async fn resumed_session_reuses_the_migrated_launch_instead_of_spawning_a_replac
     );
 
     let owned_id = background_record_id_for_owner(LEGACY_AGENT, Some(owner));
-    let launch_view = launch_controller.background_status_entries().await;
+    let launch_view = launch_controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(launch_view.len(), 1, "the launch scope must hold one record for the migrated launch");
     assert_eq!(launch_view[0].id, owned_id, "the launch scope adopts the migrated record");
     assert_eq!(launch_view[0].owner_session_id.as_deref(), Some(owner));
@@ -238,7 +238,7 @@ async fn resumed_session_reuses_the_migrated_launch_instead_of_spawning_a_replac
         .session_subagent_controller(&session)
         .expect("select the session controller")
         .expect("the resumed session owns a subagent controller");
-    let session_view = session_controller.background_status_entries().await;
+    let session_view = session_controller.background_status_entries(TaskOwner::Session(owner)).await;
     assert_eq!(session_view.len(), 1, "the session controller adopts the migrated launch");
     assert_eq!(session_view[0].exec_session_id, LEGACY_EXEC_SESSION);
 }
@@ -294,7 +294,10 @@ async fn a_failed_owner_migration_restores_nothing() {
         .expect("select the session controller")
         .expect("the resumed session owns a subagent controller");
     assert!(
-        session_controller.background_status_entries().await.is_empty(),
+        session_controller
+            .background_status_entries(TaskOwner::Session(owner))
+            .await
+            .is_empty(),
         "the session controller must adopt nothing the migration did not attribute"
     );
     let runtime = session
@@ -305,7 +308,7 @@ async fn a_failed_owner_migration_restores_nothing() {
         .local_tool_registry
         .subagent_controller()
         .expect("the resumed workspace controller");
-    let workspace_view = workspace_controller.background_status_entries().await;
+    let workspace_view = workspace_controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(workspace_view.len(), 1, "the workspace controller still sees the ownerless row");
     assert_eq!(
         workspace_view[0].owner_session_id, None,
@@ -363,7 +366,10 @@ async fn a_new_session_opens_with_the_ledger_lock_unavailable() {
         .expect("select the session controller")
         .expect("the new session still owns a subagent controller");
     assert!(
-        controller.background_status_entries().await.is_empty(),
+        controller
+            .background_status_entries(TaskOwner::Session(response.session_id.0.as_ref()))
+            .await
+            .is_empty(),
         "a fresh session has no background work to report"
     );
 }

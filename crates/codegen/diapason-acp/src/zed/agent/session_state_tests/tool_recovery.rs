@@ -11,6 +11,7 @@ use crate::zed::session::AcpSessionWorkspace;
 use assert_fs::TempDir;
 use diapason_core::core::threads::messages_from_session_listing;
 use diapason_core::llm::provider::{MessageContent, MessageRole, ToolCall};
+use diapason_core::subagents::TaskOwner;
 
 /// Closes a legacy tool call with an incomplete result before a later user
 /// message.
@@ -409,7 +410,7 @@ async fn failed_background_owner_migration_defers_workspace_restore() {
         .local_tool_registry
         .subagent_controller()
         .expect("the workspace runtime must retain its subagent controller");
-    let entries = controller.background_status_entries().await;
+    let entries = controller.background_status_entries(TaskOwner::Workspace).await;
     let record = entries
         .iter()
         .find(|entry| entry.id == "background-background-demo")

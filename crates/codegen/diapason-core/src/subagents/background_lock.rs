@@ -251,21 +251,39 @@ mod tests {
     /// capped can wake after the holder released and still succeed. The
     /// caller asked for a bounded wait and cannot tell that guard arrived
     /// late, so the retry must be refused and the wait reported as a timeout.
+    ///
+    /// The holder is released only once the waiter has really reached the
+    /// contention branch, and the release is timed to land inside the waiter's
+    /// final capped backoff. Releasing on a timer started before the waiter's
+    /// deadline let a slow start-up release the lock before the waiter even
+    /// contended, so a correct guard acquired on the first attempt and the
+    /// test failed without exercising the race it names.
     #[tokio::test]
     async fn lock_does_not_acquire_after_its_deadline() {
         let workspace = tempfile::tempdir().expect("workspace");
         let held = lock_background_state_within(workspace.path(), Duration::from_secs(1))
             .await
             .expect("first lock");
-        // The holder outlives the waiter's deadline but releases before the
-        // uncapped backoff would wake, which is exactly the late-acquire race.
-        let releaser = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(70)).await;
-            drop(held);
-        });
-
+        let witness = observe_lock_contention(workspace.path());
         let started = tokio::time::Instant::now();
-        let error = match lock_background_state_within(workspace.path(), Duration::from_millis(60)).await {
+        let waiting_path = workspace.path().to_path_buf();
+        let waiter =
+            tokio::spawn(async move { lock_background_state_within(&waiting_path, Duration::from_millis(60)).await });
+        tokio::time::timeout(Duration::from_secs(5), witness.notified())
+            .await
+            .expect("the waiter must observe the held lock before the holder is released");
+        // Retries happen at roughly 0, 5, 15 and 35 ms, and the last sleep is
+        // capped at the 60 ms deadline. Releasing the holder partway through
+        // that final backoff leaves a lock an uncapped backoff would still be
+        // asleep for when it woke and acquired after the deadline.
+        tokio::time::sleep(Duration::from_millis(45)).await;
+        drop(held);
+
+        let finished = tokio::time::timeout(Duration::from_secs(5), waiter)
+            .await
+            .expect("the waiter must finish once its deadline passes")
+            .expect("waiter task");
+        let error = match finished {
             Ok(_) => panic!("a retry must not acquire the lock after the deadline"),
             Err(error) => error,
         };
@@ -275,8 +293,6 @@ mod tests {
             "the wait must last for its deadline instead of failing early: {:?}",
             started.elapsed()
         );
-
-        releaser.await.expect("the holder releases");
     }
 
     /// A lock that never becomes available fails with the deadline error.

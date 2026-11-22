@@ -318,31 +318,7 @@ impl SessionHandle {
             )
         };
         drop(registration);
-        // Abort the publisher before the forwarder so it cannot enqueue while
-        // the receiver is being awaited to completion. Both are aborted before
-        // either is awaited, so a publisher failure cannot leave the forwarder
-        // detached and still running.
-        if let Some(snapshot_publisher) = &snapshot_publisher {
-            snapshot_publisher.abort();
-        }
-        if let Some(forwarder) = &forwarder {
-            forwarder.abort();
-        }
-        if let Some(snapshot_publisher) = snapshot_publisher {
-            match snapshot_publisher.await {
-                Ok(()) => {}
-                Err(error) if error.is_cancelled() => {}
-                Err(error) => return Err(error).context("waiting for ACP task lifecycle snapshot publisher to stop"),
-            }
-        }
-        if let Some(forwarder) = forwarder {
-            match forwarder.await {
-                Ok(()) => {}
-                Err(error) if error.is_cancelled() => {}
-                Err(error) => return Err(error).context("waiting for ACP task lifecycle forwarder to stop"),
-            }
-        }
-        Ok(())
+        stop_task_lifecycle_tasks(forwarder, snapshot_publisher).await
     }
 
     pub(crate) fn lifecycle_hooks(&self) -> anyhow::Result<Option<LifecycleHookEngine>> {
@@ -392,6 +368,51 @@ impl SessionHandle {
     }
 }
 
+/// Stops the lifecycle forwarder and its initial-snapshot publisher.
+///
+/// Aborting the publisher first keeps it from enqueueing while the receiver is
+/// awaited to completion, and both are aborted before either is awaited. A
+/// non-cancellation join error from either task is saved and returned only
+/// after both have been awaited: returning at the publisher's panic would leave
+/// the forwarder detached and still running. The publisher's error is returned
+/// first because it was captured first.
+async fn stop_task_lifecycle_tasks(
+    forwarder: Option<tokio::task::JoinHandle<()>>,
+    snapshot_publisher: Option<tokio::task::JoinHandle<()>>,
+) -> anyhow::Result<()> {
+    if let Some(snapshot_publisher) = &snapshot_publisher {
+        snapshot_publisher.abort();
+    }
+    if let Some(forwarder) = &forwarder {
+        forwarder.abort();
+    }
+    let publisher_error = match snapshot_publisher {
+        Some(snapshot_publisher) => match snapshot_publisher.await {
+            Ok(()) => None,
+            Err(error) if error.is_cancelled() => None,
+            Err(error) => {
+                Some(anyhow::Error::new(error).context("waiting for ACP task lifecycle snapshot publisher to stop"))
+            }
+        },
+        None => None,
+    };
+    let forwarder_error = match forwarder {
+        Some(forwarder) => match forwarder.await {
+            Ok(()) => None,
+            Err(error) if error.is_cancelled() => None,
+            Err(error) => Some(anyhow::Error::new(error).context("waiting for ACP task lifecycle forwarder to stop")),
+        },
+        None => None,
+    };
+    if let Some(error) = publisher_error {
+        return Err(error);
+    }
+    if let Some(error) = forwarder_error {
+        return Err(error);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::future::Future;
@@ -400,7 +421,9 @@ mod tests {
     use std::task::{Context, Poll, Waker};
     use std::time::Duration;
 
-    use super::{SessionActivity, SessionCancellation, SessionPromptGuard};
+    use tokio::sync::oneshot;
+
+    use super::{SessionActivity, SessionCancellation, SessionPromptGuard, stop_task_lifecycle_tasks};
 
     /// Poll `future` once without installing a real waker.
     ///
@@ -411,6 +434,57 @@ mod tests {
         let waker = Waker::noop();
         let mut context = Context::from_waker(waker);
         future.as_mut().poll(&mut context)
+    }
+
+    /// A publisher that panics must not stop teardown before the forwarder is
+    /// awaited.
+    ///
+    /// Returning on the publisher's join error left the aborted forwarder
+    /// detached: its task was never driven to cancellation, so it could outlive
+    /// the session. Teardown must save the publisher's error, await the
+    /// forwarder too, and only then return the saved error.
+    #[tokio::test]
+    async fn a_panicking_publisher_does_not_skip_awaiting_the_forwarder() {
+        /// Signals that the forwarder's future was dropped, which aborting a
+        /// task and awaiting its handle guarantees.
+        struct SignalOnDrop(Option<oneshot::Sender<()>>);
+
+        impl Drop for SignalOnDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    // A closed receiver is the expected end of the test; the
+                    // signal has done its work either way, so both outcomes are
+                    // consumed deliberately.
+                    match sender.send(()) {
+                        Ok(()) | Err(()) => {}
+                    }
+                }
+            }
+        }
+
+        let (forwarder_dropped, mut dropped) = oneshot::channel();
+        let forwarder = tokio::spawn(async move {
+            let _signal = SignalOnDrop(Some(forwarder_dropped));
+            std::future::pending::<()>().await;
+        });
+        let publisher = tokio::spawn(async {
+            panic!("lifecycle publisher failed");
+        });
+        // Let the publisher settle with its panic before teardown starts;
+        // otherwise the abort could cancel it and mask the failure.
+        while !publisher.is_finished() {
+            tokio::task::yield_now().await;
+        }
+
+        let error = stop_task_lifecycle_tasks(Some(forwarder), Some(publisher))
+            .await
+            .expect_err("the publisher's panic must surface as a teardown error");
+
+        assert!(
+            format!("{error:#}").contains("snapshot publisher"),
+            "the saved error must name the publisher: {error:#}"
+        );
+        assert!(dropped.try_recv().is_ok(), "the forwarder must be awaited even after the publisher fails");
     }
 
     #[tokio::test]

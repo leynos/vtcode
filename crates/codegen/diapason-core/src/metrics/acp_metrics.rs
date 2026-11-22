@@ -4,8 +4,10 @@
 //! navigable. Every public item is re-exported from the parent module, which
 //! keeps the `diapason_core::metrics` paths stable for callers.
 
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Write};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::{MetricsCollector, PrometheusMetricsSnapshot};
@@ -40,7 +42,12 @@ pub struct AcpExtensionMetrics {
 /// a failure, so a cancelled or disconnected request cannot leave the gauge
 /// elevated.
 pub struct AcpManagementGuard {
-    metrics: MetricsCollector,
+    /// The ACP extension state this guard accounts against.
+    ///
+    /// The guard is held across a handler's awaits, so it retains the one
+    /// shared state handle it uses rather than a clone of the whole collector
+    /// and every metric family the collector owns.
+    state: Arc<Mutex<AcpExtensionState>>,
     started_at: Instant,
     finished: bool,
 }
@@ -62,14 +69,16 @@ impl AcpManagementGuard {
     /// Records the request outcome and elapsed time, then releases the gauge.
     pub fn finish(mut self, succeeded: bool) {
         self.finished = true;
-        self.metrics.record_acp_management_outcome(succeeded, self.started_at.elapsed());
+        self.state
+            .lock()
+            .record_management_outcome(succeeded, self.started_at.elapsed());
     }
 }
 
 impl Drop for AcpManagementGuard {
     fn drop(&mut self) {
         if !self.finished {
-            self.metrics.record_acp_management_outcome(false, self.started_at.elapsed());
+            self.state.lock().record_management_outcome(false, self.started_at.elapsed());
         }
     }
 }
@@ -94,6 +103,21 @@ pub(super) struct AcpExtensionState {
 }
 
 impl AcpExtensionState {
+    /// Record one management outcome and release its in-flight slot.
+    ///
+    /// This is the single accounting point shared by the guard's `finish` and
+    /// unfinished `Drop` paths and by the collector's direct-call seam, so a
+    /// request can record at most one outcome from either caller.
+    fn record_management_outcome(&mut self, succeeded: bool, duration: Duration) {
+        if succeeded {
+            self.management_requests_succeeded = self.management_requests_succeeded.saturating_add(1);
+        } else {
+            self.management_requests_failed = self.management_requests_failed.saturating_add(1);
+        }
+        self.management_total_duration = self.management_total_duration.saturating_add(duration);
+        self.management_requests_in_flight = self.management_requests_in_flight.saturating_sub(1);
+    }
+
     /// Convert the accumulated counters into the bounded public snapshot.
     fn snapshot(&self) -> AcpExtensionMetrics {
         AcpExtensionMetrics {
@@ -137,22 +161,19 @@ impl MetricsCollector {
         metrics.management_requests_in_flight = metrics.management_requests_in_flight.saturating_add(1);
         drop(metrics);
         AcpManagementGuard {
-            metrics: self.clone(),
+            state: Arc::clone(&self.acp_extension),
             started_at: Instant::now(),
             finished: false,
         }
     }
 
     /// Record one Lody ACP management RPC outcome and release its gauge slot.
+    ///
+    /// The guard accounts through the same shared state; this collector-level
+    /// entry point exists only for tests that record an outcome directly.
+    #[cfg(test)]
     fn record_acp_management_outcome(&self, succeeded: bool, duration: Duration) {
-        let mut metrics = self.acp_extension.lock();
-        if succeeded {
-            metrics.management_requests_succeeded = metrics.management_requests_succeeded.saturating_add(1);
-        } else {
-            metrics.management_requests_failed = metrics.management_requests_failed.saturating_add(1);
-        }
-        metrics.management_total_duration = metrics.management_total_duration.saturating_add(duration);
-        metrics.management_requests_in_flight = metrics.management_requests_in_flight.saturating_sub(1);
+        self.acp_extension.lock().record_management_outcome(succeeded, duration);
     }
 
     /// Record one attempt to enqueue a Lody ACP usage notification.

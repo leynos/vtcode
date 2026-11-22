@@ -63,7 +63,9 @@ async fn close_race_liveness_diagnostic_never_publishes_the_exec_session_id() {
     );
     let controllers = [Arc::clone(&controller)];
 
-    let (observed, events) = capturing_async(LevelFilter::DEBUG, observed_background_entries(&controllers)).await;
+    let (observed, events) =
+        capturing_async(LevelFilter::DEBUG, observed_background_entries(&controllers, TaskOwner::Session("session-a")))
+            .await;
 
     assert_eq!(
         observed.iter().map(|entry| entry.status).collect::<Vec<_>>(),
@@ -72,7 +74,9 @@ async fn close_race_liveness_diagnostic_never_publishes_the_exec_session_id() {
     );
     assert!(observed[0].ended_at.is_none(), "an unobserved record keeps its active terminal state");
 
-    let projected = controller.background_status_entries_with_liveness().await;
+    let projected = controller
+        .background_status_entries_with_liveness(TaskOwner::Session("session-a"))
+        .await;
     let reason = match &projected[0].liveness {
         BackgroundLiveness::Unobserved { reason } => reason,
         BackgroundLiveness::Observed => panic!("a failed liveness read must be reported as unobserved"),

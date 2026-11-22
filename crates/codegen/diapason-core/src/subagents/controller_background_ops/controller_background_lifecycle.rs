@@ -7,6 +7,196 @@ use self::controller_background_liveness::{
     BackgroundExecSessionObservation, bounded_liveness_reason, exec_session_is_missing,
 };
 
+/// A launch this controller owes but has not committed.
+///
+/// `update_background_record_state` spends the record's restart allowance and
+/// moves it to `Starting` before refresh awaits the restart's ledger
+/// pre-check. A refresh dropped inside that await would leave the record
+/// `Starting` with nothing left to drive it, so the scheduled restart is
+/// recorded here first. The next refresh drives every retryable entry, and a
+/// commit or a settlement clears it.
+///
+/// A fresh claim records the same kind of entry while its spawn is in flight.
+/// It is not retried from refresh — the launch that reserved it is already
+/// driving it — but it marks the `Starting` record as owned, so a concurrent
+/// refresh neither settles that launch nor starts a second process beside it.
+struct PendingBackgroundLaunch {
+    /// Keeps the key bound to a live state allocation so a dropped tree's entry
+    /// can be pruned before its address is reused.
+    state: Weak<RwLock<ControllerState>>,
+    record_id: String,
+    agent_name: String,
+    restart_attempts: u8,
+    /// The exec session the record named when the launch was scheduled.
+    exec_session_id: String,
+    /// Whether refresh drives this launch itself.
+    ///
+    /// A scheduled restart is retryable because the pass that recorded it may
+    /// never reach the launch. A fresh claim is not: its reservation is being
+    /// spawned by the call that recorded it, and a second launch from refresh
+    /// would only race it.
+    retry_from_refresh: bool,
+}
+
+/// The request fields a refresh retry needs from a [`PendingBackgroundLaunch`].
+struct PendingBackgroundRestart {
+    record_id: String,
+    agent_name: String,
+    restart_attempts: u8,
+    exec_session_id: String,
+}
+
+fn pending_background_launches() -> &'static Mutex<Vec<PendingBackgroundLaunch>> {
+    static PENDING: std::sync::OnceLock<Mutex<Vec<PendingBackgroundLaunch>>> = std::sync::OnceLock::new();
+    PENDING.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Applies `update` to the launch registry, pruning dropped trees first.
+fn with_pending_background_launches<R>(update: impl FnOnce(&mut Vec<PendingBackgroundLaunch>) -> R) -> R {
+    let mut registry = pending_background_launches()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    registry.retain(|entry| entry.state.strong_count() > 0);
+    update(&mut registry)
+}
+
+/// Reports whether `entry` belongs to the launch identified by the arguments.
+fn pending_background_launch_matches(
+    entry: &PendingBackgroundLaunch,
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+) -> bool {
+    std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state))
+        && entry.record_id == record_id
+        && entry.exec_session_id == exec_session_id
+}
+
+/// Records that `record_id` owes the launch of `exec_session_id`.
+///
+/// The first marker for a launch wins: a fresh claim is never promoted into a
+/// refresh-driven restart, and a scheduled restart keeps the request details
+/// the pass that recorded it resolved.
+pub(super) fn mark_background_launch_owed(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    agent_name: &str,
+    restart_attempts: u8,
+    exec_session_id: &str,
+    retry_from_refresh: bool,
+) {
+    with_pending_background_launches(|registry| {
+        if registry
+            .iter()
+            .any(|entry| pending_background_launch_matches(entry, state, record_id, exec_session_id))
+        {
+            return;
+        }
+        registry.push(PendingBackgroundLaunch {
+            state: Arc::downgrade(state),
+            record_id: record_id.to_owned(),
+            agent_name: agent_name.to_owned(),
+            restart_attempts,
+            exec_session_id: exec_session_id.to_owned(),
+            retry_from_refresh,
+        });
+    });
+}
+
+/// Clears the launch obligation for one record's exec session.
+pub(super) fn clear_background_launch_owed(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+) {
+    with_pending_background_launches(|registry| {
+        registry.retain(|entry| !pending_background_launch_matches(entry, state, record_id, exec_session_id));
+    });
+}
+
+/// Reports whether `record_id` still owes the launch of `exec_session_id`.
+pub(super) fn background_launch_is_owed(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+) -> bool {
+    with_pending_background_launches(|registry| {
+        registry
+            .iter()
+            .any(|entry| pending_background_launch_matches(entry, state, record_id, exec_session_id))
+    })
+}
+
+/// Returns the scheduled restarts this controller still owes.
+fn pending_background_launch_retries(state: &Arc<RwLock<ControllerState>>) -> Vec<PendingBackgroundRestart> {
+    with_pending_background_launches(|registry| {
+        registry
+            .iter()
+            .filter(|entry| entry.retry_from_refresh && std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state)))
+            .map(|entry| PendingBackgroundRestart {
+                record_id: entry.record_id.clone(),
+                agent_name: entry.agent_name.clone(),
+                restart_attempts: entry.restart_attempts,
+                exec_session_id: entry.exec_session_id.clone(),
+            })
+            .collect()
+    })
+}
+
+/// A test gate at the restart's ledger pre-check.
+///
+/// The pre-check is the restart's first await, so it is where a refresh can be
+/// dropped after the record was moved to `Starting` with its allowance spent.
+/// Arming this gate lets a test drop the restart there deterministically.
+#[cfg(test)]
+struct BackgroundRestartPreCheckGate {
+    state: Weak<RwLock<ControllerState>>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[cfg(test)]
+fn background_restart_pre_check_gates() -> &'static Mutex<Vec<BackgroundRestartPreCheckGate>> {
+    static GATES: std::sync::OnceLock<Mutex<Vec<BackgroundRestartPreCheckGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that holds the next restart of `state` at its pre-check.
+#[cfg(test)]
+fn gate_next_background_restart_pre_check(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut gates = background_restart_pre_check_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.state.strong_count() > 0);
+    gates.push(BackgroundRestartPreCheckGate {
+        state: Arc::downgrade(state),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+#[cfg(test)]
+async fn pass_background_restart_pre_check_gate(state: &Arc<RwLock<ControllerState>>) {
+    let gate = {
+        let mut gates = background_restart_pre_check_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.state.strong_count() > 0);
+        let index = gates
+            .iter()
+            .position(|gate| std::ptr::eq(gate.state.as_ptr(), Arc::as_ptr(state)));
+        index.map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
+}
+
 impl SubagentController {
     /// Toggles the default background subagent between running and stopped.
     pub async fn toggle_default_background_subagent(&self) -> Result<BackgroundSubprocessEntry> {
@@ -314,6 +504,46 @@ impl SubagentController {
         Ok(persisted.remove(record_id))
     }
 
+    /// Drives every restart a previous refresh scheduled but never started.
+    ///
+    /// [`Self::update_background_record_state`] records the restart before
+    /// refresh awaits its ledger pre-check, so a refresh dropped inside that
+    /// await leaves the obligation here with the record still `Starting`. The
+    /// next refresh runs the same restart instead of reporting a launch that
+    /// nothing will ever drive. A record that moved on or disappeared while the
+    /// obligation waited discharges it unrun: a later observation settles
+    /// whatever that record became.
+    async fn retry_pending_background_restarts(&self) -> Result<()> {
+        for restart in pending_background_launch_retries(&self.state) {
+            let still_owed = {
+                let state = self.state.read().await;
+                state.background_children.get(&restart.record_id).is_some_and(|record| {
+                    record.status == BackgroundSubprocessStatus::Starting
+                        && record.desired_enabled
+                        && record.exec_session_id == restart.exec_session_id
+                        && self.background_record_restart_is_authorised(record)
+                })
+            };
+            if !still_owed {
+                clear_background_launch_owed(&self.state, &restart.record_id, &restart.exec_session_id);
+                continue;
+            }
+            tracing::info!(
+                agent_name = restart.agent_name.as_str(),
+                record_id = restart.record_id.as_str(),
+                "Retrying a background restart a previous refresh scheduled"
+            );
+            self.restart_after_background_observation(
+                &restart.record_id,
+                restart.agent_name,
+                restart.restart_attempts,
+                Some(restart.exec_session_id.as_str()),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     /// Restarts one record after refresh observed its exec session end.
     ///
     /// The observation names the launch this round examined. Another controller
@@ -324,6 +554,11 @@ impl SubagentController {
     /// The replacement would otherwise resurrect a task its owner stopped, and
     /// the following save would race that owner's intent. The read here only
     /// short-circuits a plan that is already known to be unwanted.
+    ///
+    /// Every outcome clears the launch obligation the scheduling pass recorded
+    /// for the observed exec session. The replacement launch records its own
+    /// obligation under its new session, so clearing this one can never hide
+    /// the replacement from a concurrent refresh.
     pub(super) async fn restart_after_background_observation(
         &self,
         record_id: &str,
@@ -332,9 +567,10 @@ impl SubagentController {
         observed_exec_session_id: Option<&str>,
     ) -> Result<()> {
         if let Some(exec_session_id) = observed_exec_session_id {
+            #[cfg(test)]
+            pass_background_restart_pre_check_gate(&self.state).await;
             // The record was already moved to `Starting` with its restart
-            // allowance spent when refresh scheduled this replacement, and the
-            // missing-snapshot path deliberately exempts `Starting`. A fault
+            // allowance spent when refresh scheduled this replacement. A fault
             // reading the ledger must therefore not abandon that state: settle
             // the failed restart for the launch this round observed and report
             // the fault, exactly as a preparation failure is settled below.
@@ -342,6 +578,7 @@ impl SubagentController {
                 Ok(persisted_stop) => persisted_stop,
                 Err(error) => {
                     self.settle_failed_background_restart(record_id, exec_session_id, &error).await;
+                    clear_background_launch_owed(&self.state, record_id, exec_session_id);
                     return Err(error);
                 }
             };
@@ -368,6 +605,7 @@ impl SubagentController {
                     self.attempt_background_stop_close(record_id, stop.exec_session_id.as_str())
                         .await;
                     self.publish_background_status(record_id).await;
+                    clear_background_launch_owed(&self.state, record_id, exec_session_id);
                     return Ok(());
                 }
             }
@@ -379,26 +617,35 @@ impl SubagentController {
             overrides: None,
             expected_exec_session_id: observed_exec_session_id.map(str::to_owned),
         };
-        match self.ensure_background_record_running(request).await {
+        let result = match self.ensure_background_record_running(request).await {
             Ok(_) => Ok(()),
             Err(error) => {
                 // Refresh scheduled this replacement, so its record is
-                // `Starting`, which `handle_missing_background_snapshot`
-                // deliberately exempts. If the replacement cannot even be
-                // prepared, nothing else drives that state; settle the failure
-                // here so the task is not reported as starting forever.
+                // `Starting`. If the replacement cannot even be prepared,
+                // nothing else drives that state; settle the failure here so
+                // the task is not reported as starting forever.
                 if let Some(exec_session_id) = observed_exec_session_id {
                     self.settle_failed_background_restart(record_id, exec_session_id, &error).await;
                 }
                 Err(error)
             }
+        };
+        if let Some(exec_session_id) = observed_exec_session_id {
+            clear_background_launch_owed(&self.state, record_id, exec_session_id);
         }
+        result
     }
 
     /// Refreshes the state of all background subprocesses and respawns as needed.
     pub async fn refresh_background_processes(&self) -> Result<Vec<BackgroundSubprocessEntry>> {
         self.reconcile_persisted_background_cancellations().await?;
         self.retry_pending_background_stop_closes().await?;
+        // A previous refresh can have been dropped between scheduling a
+        // restart and awaiting its pre-check, leaving the record `Starting`
+        // with its allowance spent. Driving the obligation first gives the
+        // record a launch before this pass decides anything from a liveness
+        // observation of it.
+        self.retry_pending_background_restarts().await?;
         let record_ids = {
             let state = self.state.read().await;
             state.background_children.keys().cloned().collect::<Vec<_>>()
@@ -439,8 +686,17 @@ impl SubagentController {
                 BackgroundExecSessionObservation::Unobserved => continue,
             };
 
+            // The phase the record had when it was read above is handed to the
+            // settlement: the observation is made outside the lock, so the
+            // launch can commit `Running` before this write and make a missing
+            // session stale evidence.
             let respawn = self
-                .update_background_record_state(&record_id, snapshot_target.as_deref(), snapshot)
+                .update_background_record_state_observed(
+                    &record_id,
+                    snapshot_target.as_deref(),
+                    before_status,
+                    snapshot,
+                )
                 .await?;
             let respawning = respawn.is_some();
 
@@ -471,7 +727,12 @@ impl SubagentController {
         // refresh first, so the owed write is retried before reuse reports
         // that record as durable.
         self.retry_owed_background_ledger_write().await?;
-        Ok(self.background_status_entries().await)
+        // A refresh is the controller's own maintenance pass rather than one
+        // caller addressing one task: it already excludes a record another
+        // session owns from restart (`background_record_restart_is_authorised`),
+        // and it reports the full view it reconciled. It therefore presents
+        // the workspace operator's authority to the projection.
+        Ok(self.background_status_entries(TaskOwner::Workspace).await)
     }
 }
 
@@ -559,6 +820,13 @@ mod cancellation_reconcile_tests {
             reasoning_override: None,
             restart_attempts: 0,
         }
+    }
+
+    /// The same controller configuration with automatic restore enabled.
+    fn restarting_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let mut config = test_config(workspace_root);
+        config.vt_cfg.subagents.background.auto_restore = true;
+        config
     }
 
     fn persisted_stop(id: &str, agent_name: &str, exec_session_id: &str) -> PersistedBackgroundRecord {
@@ -674,8 +942,8 @@ mod cancellation_reconcile_tests {
     /// A ledger fault while checking for a persisted stop settles the restart.
     ///
     /// The record has already been moved to `Starting` with its allowance
-    /// spent, and the missing-snapshot path exempts `Starting`, so leaving it
-    /// there after a pre-check fault would report an active launch forever.
+    /// spent and owes the launch, so leaving it there after a pre-check fault
+    /// would report an active launch forever.
     #[tokio::test]
     async fn a_restart_whose_ledger_pre_check_fails_settles_error() {
         let temp = TempDir::new().expect("tempdir");
@@ -715,6 +983,76 @@ mod cancellation_reconcile_tests {
             );
             assert!(record.ended_at.is_some(), "a settled restart failure has ended");
         }
+
+        controller.signal_shutdown().await;
+    }
+
+    /// A refresh dropped at the restart's pre-check is retried by the next one.
+    ///
+    /// The record was already moved to `Starting` with its restart allowance
+    /// spent, and the restart's first await is the ledger pre-check. A refresh
+    /// dropped there leaves no launch, so without a recorded obligation the
+    /// record would stay `Starting` forever. The next refresh must drive the
+    /// restart from the obligation and settle its failure.
+    #[tokio::test]
+    async fn a_restart_dropped_at_the_pre_check_is_retried_by_the_next_refresh() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(restarting_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        // The fixture agent does not exist, so the retried restart cannot
+        // prepare a replacement: only driving the obligation settles the
+        // record instead of leaving it `Starting`.
+        let record = background_record(WORKER, "no-such-agent", WORKER_EXEC, BackgroundSubprocessStatus::Running, true);
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(record.id.clone(), record);
+        }
+
+        // The gated refresh observes the record `Running`, sees its session is
+        // missing, schedules the replacement and then reaches the restart's
+        // ledger pre-check. Dropping it there is the interrupted pass.
+        let (entered, _release) = gate_next_background_restart_pre_check(&controller.state);
+        {
+            let refresh = controller.refresh_background_processes();
+            tokio::pin!(refresh);
+            tokio::select! {
+                result = &mut refresh => {
+                    panic!("the gated refresh settled before it was dropped: {result:?}")
+                },
+                () = entered.notified() => {}
+            }
+        }
+
+        {
+            let state = controller.state.read().await;
+            let record = state.background_children.get(WORKER).expect("record");
+            assert_eq!(record.status, BackgroundSubprocessStatus::Starting);
+            assert_eq!(record.restart_attempts, 1, "the scheduled restart spent the allowance");
+        }
+        assert!(
+            background_launch_is_owed(&controller.state, WORKER, WORKER_EXEC),
+            "a restart dropped at its pre-check must stay owed"
+        );
+
+        let error = controller
+            .refresh_background_processes()
+            .await
+            .expect_err("the retried restart cannot resolve its agent");
+        assert!(format!("{error:#}").contains("no-such-agent"), "{error:#}");
+
+        let state = controller.state.read().await;
+        let record = state.background_children.get(WORKER).expect("record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Error,
+            "the retried restart must settle its failure instead of staying Starting"
+        );
+        assert!(
+            !background_launch_is_owed(&controller.state, WORKER, WORKER_EXEC),
+            "the retry discharges the obligation it drove"
+        );
+        drop(state);
 
         controller.signal_shutdown().await;
     }

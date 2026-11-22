@@ -210,8 +210,8 @@ impl ProcessHandle {
         }
     }
 
-    /// Terminates the child process and aborts helper tasks, reporting a kill
-    /// fault.
+    /// Terminates the child process, aborting its helper tasks once it is gone,
+    /// and reports a kill fault.
     ///
     /// The killer is taken out of its lock so that termination cannot race a
     /// second call. If the child was already terminated, or a previous call
@@ -220,17 +220,20 @@ impl ProcessHandle {
     /// also success: the terminal state is what the caller asked for.
     ///
     /// A failed [`ChildTerminator::kill`] restores the killer and returns the
-    /// error, so a caller that keeps a handle (for example a session record)
-    /// can retry instead of stranding a process it can no longer signal. Helper
-    /// tasks are aborted on both the success and the error path; a retry still
-    /// reaches the child because signaling does not depend on those tasks.
+    /// error without aborting the helper tasks, so a caller that keeps a handle
+    /// (for example a session record) can retry instead of stranding a process
+    /// it can no longer signal. The helpers stay running on that path because a
+    /// failed kill says nothing about the child: the wait task must still record
+    /// a later exit, and the reader and writer must still drain its streams.
+    /// Helper tasks are aborted only once termination succeeds or the child is
+    /// confirmed already gone.
     ///
     /// This is idempotent: once the child has been terminated, later calls
     /// observe an absent killer and succeed without signaling again.
     pub fn try_terminate(&self) -> io::Result<()> {
-        let result = self.kill_child();
+        self.kill_child()?;
         self.abort_tasks();
-        result
+        Ok(())
     }
 
     /// Signals the child, restoring the killer if signaling fails.
@@ -560,6 +563,22 @@ mod tests {
         assert!(handle.wait_handle.lock().unwrap().is_none(), "wait handle must be aborted");
     }
 
+    fn assert_helper_tasks_retained(handle: &ProcessHandle) {
+        assert!(
+            handle.reader_handle.lock().unwrap().is_some(),
+            "a failed kill must leave the reader handle running for a later exit"
+        );
+        assert!(
+            !handle.reader_abort_handles.lock().unwrap().is_empty(),
+            "a failed kill must not drain the reader abort handles"
+        );
+        assert!(handle.writer_handle.lock().unwrap().is_some(), "a failed kill must leave the writer handle running");
+        assert!(
+            handle.wait_handle.lock().unwrap().is_some(),
+            "a failed kill must leave the wait handle running so a later exit is observed"
+        );
+    }
+
     #[tokio::test]
     async fn try_terminate_reports_a_kill_fault_and_keeps_the_killer_for_retry() {
         let attempts = Arc::new(AtomicUsize::new(0));
@@ -571,12 +590,13 @@ mod tests {
         let error = handle.try_terminate().expect_err("a kill fault must propagate");
         assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(attempts.load(Ordering::SeqCst), 1, "the first attempt must reach the killer");
-        assert_helper_tasks_aborted(&handle);
+        assert_helper_tasks_retained(&handle);
 
         // The failed kill restored the killer, so the retry reaches the child
         // instead of reporting a process it can no longer signal as gone.
         handle.try_terminate().expect("the retry after the fault must signal the child");
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert_helper_tasks_aborted(&handle);
 
         handle.try_terminate().expect("termination must stay idempotent");
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
@@ -592,11 +612,56 @@ mod tests {
 
         handle.terminate();
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
-        assert_helper_tasks_aborted(&handle);
+        assert_helper_tasks_retained(&handle);
 
         // A retry remains available and stays infallible.
         handle.terminate();
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert_helper_tasks_retained(&handle);
+
+        // Once a kill succeeds, the helpers are released.
+        handle.terminate();
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+        assert_helper_tasks_aborted(&handle);
+    }
+
+    /// A failed kill must not hide a child that exits afterwards.
+    ///
+    /// The pipe backend's wait task is the only writer of `exit_status`, so
+    /// aborting it on a kill fault leaves a retained session reporting a live
+    /// process forever. The kill is made to fail against a real pipe-backed
+    /// child; the child then exits on its own and the still-running wait task
+    /// must record that exit.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_kill_keeps_the_wait_task_so_a_later_exit_is_observed() -> anyhow::Result<()> {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let options = crate::pipe::PipeSpawnOptions::new("/bin/sh", std::env::temp_dir()).args(["-c", "sleep 5"]);
+        let spawned = crate::pipe::spawn_process_with_options(options).await?;
+        let handle = spawned.session;
+        {
+            let mut killer = handle.killer.lock().unwrap();
+            *killer = Some(Box::new(FailingTerminator {
+                failures_remaining: 1,
+                attempts: Arc::clone(&attempts),
+            }));
+        }
+
+        let error = handle.try_terminate().expect_err("the injected kill fault must propagate");
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(attempts.load(Ordering::SeqCst), 1, "the injected killer must be reached");
+        assert_helper_tasks_retained(&handle);
+        assert!(!handle.has_exited(), "a failed kill must not report a live child as exited");
+
+        tokio::time::timeout(tokio::time::Duration::from_secs(15), async {
+            while !handle.has_exited() {
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the retained wait task must observe the child's own exit");
+        assert_eq!(handle.exit_code(), Some(0));
+        Ok(())
     }
 
     #[tokio::test]

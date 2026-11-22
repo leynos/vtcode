@@ -1,8 +1,15 @@
+//! Archive-authorisation, PTY-fallback and classifier contracts for output reads.
+//!
+//! Declared by `exec_session/tests/mod.rs`. These cases pin the store-authorised
+//! archive rule (a recorded path is served only when it resolves to the task's
+//! own session), the PTY-handle fallback and the shared missing-session
+//! classifier; they build their managers with the fixtures in
+//! `exec_session/tests/fixtures.rs`.
 use super::super::super::{BackgroundOutput, BackgroundOutputError, BackgroundOutputSource};
 #[cfg(feature = "tui")]
 use super::fixtures::close_pty_handle;
 use super::fixtures::{
-    SessionDirOverride, reader_environment, write_archive, write_archive_lines, write_stored_archive,
+    SessionDirOverride, reader_environment, register_launch, write_archive, write_archive_lines, write_stored_archive,
 };
 use crate::tools::exec_session::{ExecSessionNotFound, is_missing_exec_session};
 use crate::utils::path::canonicalize_workspace;
@@ -27,7 +34,8 @@ async fn a_session_store_fault_refuses_a_recorded_archive() -> anyhow::Result<()
     std::fs::write(sessions_dir.join("broken-session.json"), "{ not an archive")?;
 
     let root = canonicalize_workspace(temp.path());
-    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let (manager, _pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, "broken-session");
     let archive_path = write_archive(&root)?;
 
     let error = reader
@@ -69,7 +77,8 @@ async fn a_finished_task_resolves_its_archive_without_a_recorded_path() -> anyho
         .ok_or_else(|| anyhow::anyhow!("missing archive file stem"))?;
 
     let root = canonicalize_workspace(temp.path());
-    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let (manager, _pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, identifier);
     let output = reader
         .read_source(BackgroundOutputSource {
             exec_session_id: "finished-exec-session",
@@ -89,7 +98,8 @@ async fn a_finished_task_resolves_its_archive_without_a_recorded_path() -> anyho
 async fn an_unreadable_archive_is_an_archive_fault() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
-    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let (manager, _pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, "unreadable-archive-child");
     let archive_path = root.join("missing-session.json");
 
     let error = reader
@@ -120,7 +130,8 @@ async fn an_unreadable_archive_is_an_archive_fault() -> anyhow::Result<()> {
 async fn a_recorded_but_absent_archive_is_an_archive_fault() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
-    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let (manager, _pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, "absent-archive-child");
     let absent = root.join("absent-archive.json");
 
     let error = reader
@@ -163,6 +174,7 @@ async fn a_removed_pty_handle_falls_back_to_the_archive() -> anyhow::Result<()> 
     let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
     let (manager, pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, "pty-output-child");
     write_stored_archive(&sessions_dir, "pty-output-child")?;
     close_pty_handle(&manager, &pty_sessions, &root).await?;
     // Prove the fixture recreates the race the fallback exists for: the record
@@ -203,6 +215,7 @@ async fn a_removed_pty_handle_without_an_archive_stays_not_ready() -> anyhow::Re
     let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
     let (manager, pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, "pty-output-child");
     close_pty_handle(&manager, &pty_sessions, &root).await?;
 
     let output = reader
@@ -250,7 +263,8 @@ async fn a_recorded_archive_outside_the_task_scope_is_refused() -> anyhow::Resul
     let workspace = tempdir()?;
     let elsewhere = tempdir()?;
     let root = canonicalize_workspace(workspace.path());
-    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let (manager, _pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, "foreign-archive-child");
     let foreign_archive = write_archive(elsewhere.path())?;
 
     let error = reader
@@ -288,7 +302,8 @@ async fn a_record_naming_another_tasks_archive_is_refused() -> anyhow::Result<()
     override_sessions_dir_for_tests(&sessions_dir);
     let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
-    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let (manager, _pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, "own-child");
     write_stored_archive(&sessions_dir, "own-child")?;
     let foreign_archive = write_archive_lines(&sessions_dir.join("other-child.json"), &["another task's line"])?;
     assert!(
@@ -329,7 +344,8 @@ async fn the_archive_resolved_for_the_records_own_session_is_served() -> anyhow:
     override_sessions_dir_for_tests(&sessions_dir);
     let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
-    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let (manager, _pty_sessions, reader) = reader_environment(&root);
+    register_launch(&manager, "own-child");
     let own_archive = write_archive_lines(&sessions_dir.join("own-child.json"), &["own line"])?;
     write_archive_lines(&sessions_dir.join("other-child.json"), &["another task's line"])?;
 
@@ -344,5 +360,47 @@ async fn the_archive_resolved_for_the_records_own_session_is_served() -> anyhow:
         .map_err(anyhow::Error::new)?;
 
     assert_eq!(output, BackgroundOutput::Archived("own line".to_string()));
+    Ok(())
+}
+
+/// A restored row naming another task's session is refused, not served.
+///
+/// The record's session identifier is stored data once the ledger is restored,
+/// so it can name any session in the store. Resolving it would return another
+/// task's transcript when the row has no recorded path. Only a session this
+/// process launched is a trusted anchor for the lookup, and anything else fails
+/// closed as an archive fault rather than serving output the record has no
+/// claim to.
+#[tokio::test]
+#[serial_test::serial(session_dir_override)]
+async fn a_restored_row_naming_another_tasks_session_is_refused() -> anyhow::Result<()> {
+    let temp = tempdir()?;
+    let sessions_dir = temp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir)?;
+    override_sessions_dir_for_tests(&sessions_dir);
+    let _override = SessionDirOverride;
+    let root = canonicalize_workspace(temp.path());
+    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    // The archive exists and resolves for its own session, but the restored row
+    // was not launched by this process and must not be able to name it.
+    write_archive_lines(&sessions_dir.join("victim-child.json"), &["another task's line"])?;
+
+    let error = reader
+        .read_source(BackgroundOutputSource {
+            exec_session_id: "restored-exec-session",
+            session_id: "victim-child",
+            transcript_path: None,
+            archive_path: None,
+        })
+        .await
+        .expect_err("a restored row must not resolve another task's archive");
+
+    let BackgroundOutputError::Archived(error) = &error else {
+        panic!("an unverified session must be reported as an archive fault: {error}");
+    };
+    assert!(
+        error.to_string().contains("did not launch"),
+        "the refusal must name the missing launch anchor: {error}"
+    );
     Ok(())
 }

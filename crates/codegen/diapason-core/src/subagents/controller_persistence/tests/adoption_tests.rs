@@ -1,3 +1,9 @@
+//! Adopting ownerless ledger rows onto their owning session.
+//!
+//! Declared by `controller_persistence/tests/mod.rs`. Pins which rows a
+//! controller may adopt and rekey, including that an owned row for a different
+//! launch is never adopted and that a migrated launch is not revived by a
+//! workspace save. It reuses the record builders from `merge_oracle_tests.rs`.
 use super::super::*;
 use super::merge_oracle_tests::{merge_canonical_id, merge_launch_record, merge_state};
 use crate::config::DiapasonConfig;
@@ -97,7 +103,7 @@ async fn a_migrated_launch_is_adopted_and_never_revived_by_a_workspace_save() {
     let workspace_controller = SubagentController::new(ownership_controller_config(temp.path().to_path_buf()))
         .await
         .expect("workspace controller");
-    let before = workspace_controller.background_status_entries().await;
+    let before = workspace_controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(before.len(), 1, "the workspace controller loads the ownerless row");
     assert_eq!(before[0].owner_session_id, None, "the loaded copy is still ownerless");
     assert_eq!(before[0].exec_session_id, "exec-launch", "the launch must not be replaced");
@@ -118,7 +124,7 @@ async fn a_migrated_launch_is_adopted_and_never_revived_by_a_workspace_save() {
         .expect("save the adopted launch");
 
     let owned_id = background_record_id_for_owner("worker", Some(owner));
-    let entries = workspace_controller.background_status_entries().await;
+    let entries = workspace_controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(entries.len(), 1, "adoption rekeys the record rather than duplicating it");
     assert_eq!(entries[0].id, owned_id, "the record is keyed by its owned canonical id");
     assert_eq!(entries[0].owner_session_id.as_deref(), Some(owner));
@@ -184,7 +190,7 @@ async fn adoption_waits_for_a_ledger_that_records_the_owner() {
         0,
         "an ownerless ledger must not be attributed by the controller"
     );
-    let entries = workspace_controller.background_status_entries().await;
+    let entries = workspace_controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].owner_session_id, None, "the copy stays ownerless as the ledger says");
 }
@@ -208,7 +214,7 @@ async fn adoption_ignores_an_owned_row_for_a_different_launch() {
         .await
         .expect("workspace controller");
     assert_eq!(
-        workspace_controller.background_status_entries().await.len(),
+        workspace_controller.background_status_entries(TaskOwner::Workspace).await.len(),
         1,
         "the workspace controller loads the ownerless copy"
     );
@@ -232,7 +238,7 @@ async fn adoption_ignores_an_owned_row_for_a_different_launch() {
         0,
         "an owned row for another launch is not the launch this copy loaded"
     );
-    let entries = workspace_controller.background_status_entries().await;
+    let entries = workspace_controller.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].owner_session_id, None, "the copy keeps the owner the ledger gave it");
     assert_eq!(entries[0].exec_session_id, "exec-launch", "the copy keeps the launch it loaded");

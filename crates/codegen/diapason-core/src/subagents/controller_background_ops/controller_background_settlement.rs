@@ -3,6 +3,9 @@
 use super::*;
 
 use super::controller_background_cancel::background_stop_close_is_pending;
+use super::controller_background_lifecycle::{
+    background_launch_is_owed, clear_background_launch_owed, mark_background_launch_owed,
+};
 
 /// Reports whether a background record may still be given another attempt.
 ///
@@ -170,6 +173,9 @@ impl SubagentController {
             record.ended_at = None;
             record.error = None;
             record.summary = Some("Background subagent is running".to_string());
+            // The claim this launch reserved is fulfilled, so a concurrent
+            // refresh must no longer treat the record as owed a launch.
+            clear_background_launch_owed(&self.state, record_id, exec_session_id);
             // The record becomes reusable the moment this lock is released, so
             // the owed-write marker is raised here, under the same lock that
             // stores it. Raising it after the lock let a concurrent reuse
@@ -179,10 +185,38 @@ impl SubagentController {
         self.publish_background_status(record_id).await;
         Ok(write_generation)
     }
+
+    /// Settles a record from a liveness observation.
+    ///
+    /// Tests and callers with no record phase to report use this entry point.
+    /// A caller that read the record before it observed the session uses
+    /// [`Self::update_background_record_state_observed`], which can tell a
+    /// stale absence from a real one. Production refresh always passes the
+    /// phase, so this wrapper is test-only.
+    #[cfg(test)]
     pub(super) async fn update_background_record_state(
         &self,
         record_id: &str,
         observed_exec_session_id: Option<&str>,
+        snapshot: Option<crate::tools::types::DiapasonExecSession>,
+    ) -> Result<Option<(String, String, u8)>> {
+        self.update_background_record_state_observed(record_id, observed_exec_session_id, None, snapshot)
+            .await
+    }
+
+    /// Settles a record from an observation that carries the observed phase.
+    ///
+    /// `observed_status` is the phase the record had when the caller read it,
+    /// which precedes the session observation outside the state lock. A launch
+    /// can commit `Running` in between, so a missing session recorded while the
+    /// record was `Starting` is stale evidence: acting on it would fail a
+    /// launch that is really running, or spend its allowance on a duplicate
+    /// replacement. Without the phase the absence is taken at face value.
+    pub(super) async fn update_background_record_state_observed(
+        &self,
+        record_id: &str,
+        observed_exec_session_id: Option<&str>,
+        observed_status: Option<BackgroundSubprocessStatus>,
         snapshot: Option<crate::tools::types::DiapasonExecSession>,
     ) -> Result<Option<(String, String, u8)>> {
         let mut state = self.state.write().await;
@@ -214,10 +248,45 @@ impl SubagentController {
         if !record.status.is_active() {
             return Ok(None);
         }
+        // A `Starting` record that still owes a launch is driven by that
+        // launch, or by refresh's retry of a restart a previous pass
+        // scheduled. Settling it here would turn a launch still owed into a
+        // failure or start a second process beside it. A `Starting` record
+        // that owes nothing has no launch left to drive it, so it falls
+        // through to the settlement below.
+        if record.status == BackgroundSubprocessStatus::Starting
+            && background_launch_is_owed(&self.state, record_id, &record.exec_session_id)
+        {
+            return Ok(None);
+        }
+        // The absence was observed while the record was `Starting`, and the
+        // same launch has since committed `Running`. The session was not
+        // registered yet when it was observed, so the absence says nothing
+        // about the launch that now owns the record.
+        if snapshot.is_none()
+            && observed_status == Some(BackgroundSubprocessStatus::Starting)
+            && record.status == BackgroundSubprocessStatus::Running
+        {
+            return Ok(None);
+        }
         record.updated_at = Utc::now();
 
         let Some(snapshot) = snapshot else {
-            return Self::handle_missing_background_snapshot(record, &self.config);
+            let respawn = Self::handle_missing_background_snapshot(record, &self.config)?;
+            if let Some((agent_name, _, restart_attempts)) = respawn.as_ref() {
+                // The restart is recorded before the caller awaits its ledger
+                // pre-check, so a dropped refresh can be driven by the next
+                // one instead of leaving the record `Starting` forever.
+                mark_background_launch_owed(
+                    &self.state,
+                    record.id.as_str(),
+                    agent_name,
+                    *restart_attempts,
+                    record.exec_session_id.as_str(),
+                    true,
+                );
+            }
+            return Ok(respawn);
         };
 
         record.pid = snapshot.child_pid;
@@ -251,6 +320,16 @@ impl SubagentController {
                         attempt = next_restart_attempt,
                         "Background subprocess exited unexpectedly; scheduling restart"
                     );
+                    // Recorded under the state lock that moves the record to
+                    // `Starting`, before the caller's first await.
+                    mark_background_launch_owed(
+                        &self.state,
+                        record.id.as_str(),
+                        record.agent_name.as_str(),
+                        next_restart_attempt,
+                        record.exec_session_id.as_str(),
+                        true,
+                    );
                     return Ok(Some((record.agent_name.clone(), record.id.clone(), next_restart_attempt)));
                 }
                 Self::mark_background_record_stopped_or_error(record, &snapshot, &self.config);
@@ -264,14 +343,11 @@ impl SubagentController {
         record: &mut BackgroundRecord,
         config: &SubagentControllerConfig,
     ) -> Result<Option<(String, String, u8)>> {
-        // A record that is still `Starting` has no registered exec session yet:
-        // the launch is in flight, either the first one or a restart this
-        // refresh scheduled. Its absence is the expected state of a launch that
-        // has not registered, not evidence that the run failed, so the record
-        // is left for the launch to settle.
-        if record.status == BackgroundSubprocessStatus::Starting {
-            return Ok(None);
-        }
+        // A `Starting` record that still owes a launch is exempted by the
+        // caller before it reaches here. Getting here means nothing is left to
+        // drive that state: the session the record named never registered or
+        // has vanished, so the normal restart and settlement rules below apply
+        // instead of leaving the record starting forever.
         if !record.desired_enabled {
             record.status = BackgroundSubprocessStatus::Stopped;
             record.ended_at.get_or_insert(Utc::now());
@@ -316,5 +392,148 @@ impl SubagentController {
         } else {
             record.status = BackgroundSubprocessStatus::Stopped;
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod stale_observation_tests {
+    //! Pins the phase check that discards an absence observed before a commit.
+
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use crate::config::DiapasonConfig;
+    use crate::config::types::ReasoningEffortLevel;
+    use crate::tools::exec_session::ExecSessionManager;
+    use crate::tools::registry::PtySessionManager;
+
+    use super::super::BackgroundRunRequest;
+    use super::super::controller_background_run::gate_next_background_commit;
+    use super::*;
+
+    /// Writes the demo agent and a script that keeps its process alive.
+    fn write_demo_agent(workspace_root: &std::path::Path) {
+        let agent_dir = workspace_root.join(diapason_commons::workspace_dir_name()).join("agents");
+        std::fs::create_dir_all(&agent_dir).expect("agent dir");
+        std::fs::write(
+            agent_dir.join("background-demo.md"),
+            r#"---
+name: background-demo
+description: Minimal demo agent for the managed background subprocess flow.
+tools:
+  - command_session
+background: true
+maxTurns: 2
+initialPrompt: Report readiness once.
+---
+
+Run the managed background demo.
+"#,
+        )
+        .expect("write background agent");
+
+        let scripts_dir = workspace_root.join("scripts");
+        std::fs::create_dir_all(&scripts_dir).expect("scripts dir");
+        let script_path = scripts_dir.join("demo-background-subagent.sh");
+        std::fs::write(&script_path, "#!/bin/sh\nsleep 30\n").expect("write background script");
+        let mut permissions = std::fs::metadata(&script_path)
+            .expect("background script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&script_path, permissions).expect("background script permissions");
+    }
+
+    fn test_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentControllerConfig {
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    /// A missing session observed while `Starting` is discarded after the same
+    /// launch commits.
+    ///
+    /// Refresh reads the record and then observes its exec session outside the
+    /// lock. A spawn that has not registered yet reads as missing, and the
+    /// launch can commit `Running` before that observation is applied. Acting
+    /// on the stale absence would fail the launch, or spend its allowance on a
+    /// duplicate replacement. The committed launch is produced by the existing
+    /// commit gate, so the observation's phase is the one a refresh really sees
+    /// while the spawn is still in flight.
+    #[tokio::test]
+    async fn a_missing_observation_from_before_the_commit_does_not_settle_the_launch() {
+        let temp = TempDir::new().expect("tempdir");
+        write_demo_agent(temp.path());
+        let mut vt_cfg = DiapasonConfig::default();
+        vt_cfg.subagents.background.enabled = true;
+        vt_cfg.subagents.background.auto_restore = true;
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf(), vt_cfg))
+            .await
+            .expect("controller");
+
+        let (entered, release) = gate_next_background_commit(&controller.state);
+        let launch = controller.ensure_background_record_running(BackgroundRunRequest {
+            agent_name: "background-demo".to_string(),
+            stable_id: Some("background-worker".to_string()),
+            restart_attempts: 0,
+            overrides: None,
+            expected_exec_session_id: None,
+        });
+        tokio::pin!(launch);
+        let (exec_session_id, observed_status) = tokio::select! {
+            result = &mut launch => {
+                panic!("the gated launch settled before its observation: {result:?}")
+            },
+            () = entered.notified() => {
+                let state = controller.state.read().await;
+                let record = state.background_children.get("background-worker").expect("record");
+                assert_eq!(record.status, BackgroundSubprocessStatus::Starting);
+                (record.exec_session_id.clone(), record.status)
+            }
+        };
+
+        release.notify_one();
+        let entry = launch.await.expect("the launch commits");
+        assert_eq!(entry.status, BackgroundSubprocessStatus::Running);
+
+        let respawn = controller
+            .update_background_record_state_observed(
+                "background-worker",
+                Some(exec_session_id.as_str()),
+                Some(observed_status),
+                None,
+            )
+            .await
+            .expect("a stale absence is not a settlement failure");
+        assert!(respawn.is_none(), "a stale absence must not schedule a replacement");
+
+        let state = controller.state.read().await;
+        let record = state.background_children.get("background-worker").expect("record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Running,
+            "the launch that committed must not be settled from an absence observed before it"
+        );
+        assert_eq!(record.restart_attempts, 0, "a stale absence must not spend the restart allowance");
+        drop(state);
+
+        controller.signal_shutdown().await;
     }
 }

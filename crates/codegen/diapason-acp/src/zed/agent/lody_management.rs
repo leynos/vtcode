@@ -237,10 +237,13 @@ async fn child_status_entries(controllers: &[Arc<SubagentController>]) -> Vec<Su
     entries
 }
 
-async fn background_status_entries(controllers: &[Arc<SubagentController>]) -> Vec<BackgroundSubprocessEntry> {
+async fn background_status_entries(
+    controllers: &[Arc<SubagentController>],
+    owner: TaskOwner<'_>,
+) -> Vec<BackgroundSubprocessEntry> {
     let mut entries = Vec::new();
     for controller in controllers {
-        entries.extend(controller.background_status_entries().await);
+        entries.extend(controller.background_status_entries(owner).await);
     }
     entries
 }
@@ -251,10 +254,13 @@ async fn background_status_entries(controllers: &[Arc<SubagentController>]) -> V
 /// manager read-only. Listing must not call `refresh_background_processes`:
 /// that path mutates records, may respawn a process, publishes lifecycle
 /// updates and persists state, so a query could restart work.
-async fn observed_background_entries(controllers: &[Arc<SubagentController>]) -> Vec<BackgroundSubprocessEntry> {
+async fn observed_background_entries(
+    controllers: &[Arc<SubagentController>],
+    owner: TaskOwner<'_>,
+) -> Vec<BackgroundSubprocessEntry> {
     let mut entries = Vec::new();
     for controller in controllers {
-        for observed in controller.background_status_entries_with_liveness().await {
+        for observed in controller.background_status_entries_with_liveness(owner).await {
             if let BackgroundLiveness::Unobserved { reason } = &observed.liveness {
                 // The task keeps its cached status, but the operator needs to
                 // know the liveness read failed. The task id and reason are
@@ -298,7 +304,9 @@ async fn controller_tracking_background(
     task_id: &str,
 ) -> Option<(Arc<SubagentController>, String)> {
     for controller in controllers {
-        let entries = controller.background_status_entries().await;
+        // A background record is owned by the session that launched it, so the
+        // management surface presents that session's authority.
+        let entries = background_status_entries(std::slice::from_ref(controller), TaskOwner::Session(session_id)).await;
         if let Some(resolved_task_id) = resolve_owned_background_id(session_id, &entries, task_id) {
             return Some((Arc::clone(controller), resolved_task_id.to_owned()));
         }
@@ -316,7 +324,7 @@ async fn list_subagents(agent: &ZedAgent, request: ListSubagentsRequest) -> Resu
         .filter(|entry| !request.active_only || !entry.status.is_terminal())
         .map(managed_child_task)
         .collect::<Vec<_>>();
-    let backgrounds = observed_background_entries(&controllers).await;
+    let backgrounds = observed_background_entries(&controllers, TaskOwner::Session(request.session_id.as_str())).await;
     let owned_backgrounds = owned_background_ids(&request.session_id, &backgrounds);
     tasks.extend(
         backgrounds

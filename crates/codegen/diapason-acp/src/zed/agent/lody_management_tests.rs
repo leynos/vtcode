@@ -91,7 +91,7 @@ async fn listing_projects_liveness_without_mutating_records() {
     );
     let controllers = [Arc::clone(&controller)];
 
-    let cached = background_status_entries(&controllers).await;
+    let cached = background_status_entries(&controllers, TaskOwner::Session("session-a")).await;
     assert_eq!(
         cached.iter().map(|entry| entry.status).collect::<Vec<_>>(),
         [BackgroundSubprocessStatus::Running],
@@ -101,14 +101,14 @@ async fn listing_projects_liveness_without_mutating_records() {
     let ledger_path = state_dir.join("background_subagents.json");
     let ledger_before = std::fs::read_to_string(&ledger_path).expect("read ledger before list");
 
-    let observed = observed_background_entries(&controllers).await;
+    let observed = observed_background_entries(&controllers, TaskOwner::Session("session-a")).await;
     assert_eq!(
         observed.iter().map(|entry| entry.status).collect::<Vec<_>>(),
         [BackgroundSubprocessStatus::Stopped],
         "listing must observe the exit instead of reporting a stale running process"
     );
 
-    let after = background_status_entries(&controllers).await;
+    let after = background_status_entries(&controllers, TaskOwner::Session("session-a")).await;
     assert_eq!(
         after.iter().map(|entry| entry.status).collect::<Vec<_>>(),
         [BackgroundSubprocessStatus::Running],
@@ -143,6 +143,7 @@ fn agent_with_launch_subagent_controller(workspace: &std::path::Path) -> impl Fu
                 owner_session_id: None,
                 workspace_gated: false,
                 defer_background_restore: false,
+                owner_migration_failed: false,
             },
         )
         .await;

@@ -36,7 +36,7 @@ async fn liveness_read_failure_keeps_the_cached_status_and_is_unobserved() {
         .await
         .expect("controller");
 
-    let observed = controller.background_status_entries_with_liveness().await;
+    let observed = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
     assert_eq!(observed.len(), 2, "one unobserved record must not abort the list");
     let entry = observed
         .iter()
@@ -205,7 +205,7 @@ async fn liveness_reason_redacts_the_exec_session_identifier() {
         .await
         .expect("controller");
 
-    let observed = controller.background_status_entries_with_liveness().await;
+    let observed = controller.background_status_entries_with_liveness(TaskOwner::Workspace).await;
     let entry = observed
         .iter()
         .find(|observed| observed.entry.id == "background-worker@session-a")

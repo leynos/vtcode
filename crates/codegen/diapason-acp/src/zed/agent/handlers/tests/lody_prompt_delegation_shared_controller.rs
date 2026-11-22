@@ -14,6 +14,7 @@ use super::lody_support::{
     background_ledger_path, close_session, open_build_session, spawn_agent_connection, write_lody_background_fixture,
 };
 use super::*;
+use diapason_core::subagents::TaskOwner;
 use rstest::rstest;
 use std::time::Duration;
 
@@ -45,6 +46,7 @@ async fn prompt_driven_agent_tool_fails_closed_when_only_the_workspace_has_a_con
             owner_session_id: None,
             workspace_gated: false,
             defer_background_restore: false,
+            owner_migration_failed: false,
         },
     )
     .await;
@@ -99,7 +101,7 @@ async fn prompt_driven_agent_tool_fails_closed_when_only_the_workspace_has_a_con
                 .subagent_controller()
                 .expect("shared workspace controller");
             assert!(
-                controller.background_status_entries().await.is_empty(),
+                controller.background_status_entries(TaskOwner::Workspace).await.is_empty(),
                 "the shared controller must start with no managed task"
             );
             let response = cx
@@ -120,7 +122,7 @@ async fn prompt_driven_agent_tool_fails_closed_when_only_the_workspace_has_a_con
                 "the client must receive the fail-closed message: {}",
                 tool_update_text(&update)
             );
-            let entries = controller.background_status_entries().await;
+            let entries = controller.background_status_entries(TaskOwner::Workspace).await;
             assert!(entries.is_empty(), "fail-closed delegation must not record a shared background task: {entries:?}");
             assert!(
                 entries.iter().all(|entry| entry.pid.is_none()),

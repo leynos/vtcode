@@ -74,7 +74,12 @@ async fn verify_session_scoped_visibility(
         };
         assert!(controller.status_for(TaskOwner::Session(owner), other_child).await.is_err());
         assert!(controller.close(TaskOwner::Session(owner), other_child).await.is_err());
-        assert!(controller.wait(&[other_child.to_string()], Some(0)).await.is_err());
+        assert!(
+            controller
+                .wait(TaskOwner::Session(owner), &[other_child.to_string()], Some(0))
+                .await
+                .is_err()
+        );
     })
     .await;
 }
@@ -103,4 +108,87 @@ async fn shared_controller_scopes_parent_context_and_child_visibility_per_invoca
             .status,
         SubagentStatus::Running
     );
+}
+
+/// A session-scoped command must judge the authority it was given, not the
+/// ambient invocation context.
+///
+/// These calls run outside any `with_subagent_invocation_context` scope, so
+/// the old ambient lookup would have treated the foreign child as addressable.
+/// The explicit owner must reject it with the same not-found error every other
+/// command produces, which also keeps the task's existence unobservable.
+#[tokio::test]
+async fn session_scoped_commands_reject_a_foreign_child_without_an_invocation_context() {
+    let (_temp, controller) = shared_context_controller().await;
+    let foreign_owner = TaskOwner::Session("other-session");
+    let foreign_child = "child-alpha";
+
+    let resume_error = controller
+        .resume(foreign_owner, foreign_child)
+        .await
+        .expect_err("a session must not resume another session's child");
+    assert!(
+        resume_error.to_string().contains("Unknown subagent id child-alpha"),
+        "resume must reject the foreign child as unknown: {resume_error}"
+    );
+
+    let wait_error = controller
+        .wait(foreign_owner, &[foreign_child.to_string()], Some(0))
+        .await
+        .expect_err("a session must not wait on another session's child");
+    assert!(
+        wait_error.to_string().contains("Unknown subagent id child-alpha"),
+        "wait must reject the foreign child as unknown: {wait_error}"
+    );
+
+    let send_input_error = controller
+        .send_input(
+            foreign_owner,
+            SendInputRequest {
+                target: foreign_child.to_string(),
+                message: Some("do more work".to_string()),
+                items: Vec::new(),
+                interrupt: false,
+            },
+        )
+        .await
+        .expect_err("a session must not send input to another session's child");
+    assert!(
+        send_input_error.to_string().contains("Unknown subagent id child-alpha"),
+        "send_input must reject the foreign child as unknown: {send_input_error}"
+    );
+}
+
+/// The owning session still addresses its child with no invocation context.
+///
+/// The authority is the explicit owner, so dropping the ambient fallback must
+/// not narrow a session that genuinely owns the task.
+#[tokio::test]
+async fn session_scoped_commands_accept_a_child_the_session_owns() {
+    let (_temp, controller) = shared_context_controller().await;
+    let owner = TaskOwner::Session("session-alpha");
+
+    assert!(
+        controller.wait(owner, &["child-alpha".to_string()], Some(0)).await.is_ok(),
+        "the owning session must be able to wait on its own child"
+    );
+    let resumed = controller
+        .resume(owner, "child-alpha")
+        .await
+        .expect("the owning session must resume its own child");
+    assert_eq!(resumed.id, "child-alpha");
+
+    let sent = controller
+        .send_input(
+            owner,
+            SendInputRequest {
+                target: "child-alpha".to_string(),
+                message: Some("continue".to_string()),
+                items: Vec::new(),
+                interrupt: false,
+            },
+        )
+        .await
+        .expect("the owning session must send input to its own child");
+    assert_eq!(sent.id, "child-alpha");
 }

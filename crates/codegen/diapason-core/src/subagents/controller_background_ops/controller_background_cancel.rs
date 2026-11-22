@@ -119,6 +119,34 @@ pub(super) fn clear_background_stop_close_pending(
     });
 }
 
+/// Moves a pending close onto the canonical id a record was adopted under.
+///
+/// Adoption rekeys an ownerless record to its owner's id. The obligation was
+/// registered under the id the launch had then, so leaving it there would make
+/// `retry_pending_background_stop_closes` miss it and clear the obligation
+/// without ever retrying the close. Only the same launch moves: an entry naming
+/// a different exec session belongs to a replacement and stays with it.
+pub(in crate::subagents) fn rekey_pending_background_stop_close(
+    state: &Arc<RwLock<ControllerState>>,
+    previous_record_id: &str,
+    record_id: &str,
+    exec_session_id: &str,
+) {
+    if previous_record_id == record_id {
+        return;
+    }
+    with_pending_stop_closes(|registry| {
+        for entry in registry.iter_mut() {
+            if std::ptr::eq(entry.state.as_ptr(), Arc::as_ptr(state))
+                && entry.record_id == previous_record_id
+                && entry.exec_session_id == exec_session_id
+            {
+                entry.record_id = record_id.to_owned();
+            }
+        }
+    });
+}
+
 /// Reports whether this launch still owes the close of its exec session.
 pub(super) fn background_stop_close_is_pending(
     state: &Arc<RwLock<ControllerState>>,
@@ -169,6 +197,54 @@ struct StopCloseAttempt {
     latest_token: u64,
     /// The token of the attempt whose close succeeded, if any.
     confirmed_token: Option<u64>,
+    /// The attempts that have started and not yet returned.
+    ///
+    /// The entry orders overlapping attempts, so it must outlive every attempt
+    /// that can still consult a confirmed token. Once the last one returns,
+    /// nothing can read the entry again and it is removed.
+    in_flight: u32,
+}
+
+/// Keeps one close attempt counted until it returns.
+///
+/// Dropping the guard on every path — success, failure and cancellation — lets
+/// the registry remove an entry once the last attempt that could still consult
+/// its confirmed token has returned, instead of holding one entry per stopped
+/// launch until the controller tree drops.
+struct StopCloseAttemptToken {
+    state: Weak<RwLock<ControllerState>>,
+    record_id: String,
+    exec_session_id: String,
+    token: u64,
+}
+
+impl StopCloseAttemptToken {
+    /// The token identifying this attempt in the registry's ordering.
+    const fn token(&self) -> u64 {
+        self.token
+    }
+}
+
+impl Drop for StopCloseAttemptToken {
+    fn drop(&mut self) {
+        with_stop_close_attempts(|attempts| {
+            let Some(index) = attempts.iter().position(|entry| {
+                std::ptr::eq(entry.state.as_ptr(), self.state.as_ptr())
+                    && entry.record_id == self.record_id
+                    && entry.exec_session_id == self.exec_session_id
+            }) else {
+                return;
+            };
+            let remove = {
+                let entry = &mut attempts[index];
+                entry.in_flight = entry.in_flight.saturating_sub(1);
+                entry.in_flight == 0 && entry.confirmed_token.is_some()
+            };
+            if remove {
+                attempts.remove(index);
+            }
+        });
+    }
 }
 
 fn stop_close_attempts() -> &'static Mutex<Vec<StopCloseAttempt>> {
@@ -195,18 +271,22 @@ fn stop_close_attempt_matches(
         && entry.exec_session_id == exec_session_id
 }
 
-/// Starts one close attempt and returns the token that identifies it.
+/// Starts one close attempt and returns the guard keeping it counted.
+///
+/// The guard carries the attempt's token and removes the registry entry when
+/// the last in-flight attempt returns after a confirmed close.
 fn begin_background_stop_close_attempt(
     state: &Arc<RwLock<ControllerState>>,
     record_id: &str,
     exec_session_id: &str,
-) -> u64 {
-    with_stop_close_attempts(|attempts| {
+) -> StopCloseAttemptToken {
+    let token = with_stop_close_attempts(|attempts| {
         if let Some(entry) = attempts
             .iter_mut()
             .find(|entry| stop_close_attempt_matches(entry, state, record_id, exec_session_id))
         {
             entry.latest_token = entry.latest_token.saturating_add(1);
+            entry.in_flight = entry.in_flight.saturating_add(1);
             return entry.latest_token;
         }
         attempts.push(StopCloseAttempt {
@@ -215,9 +295,16 @@ fn begin_background_stop_close_attempt(
             exec_session_id: exec_session_id.to_owned(),
             latest_token: 1,
             confirmed_token: None,
+            in_flight: 1,
         });
         1
-    })
+    });
+    StopCloseAttemptToken {
+        state: Arc::downgrade(state),
+        record_id: record_id.to_owned(),
+        exec_session_id: exec_session_id.to_owned(),
+        token,
+    }
 }
 
 /// Records that the attempt identified by `token` confirmed the close.
@@ -255,6 +342,24 @@ fn background_stop_close_failure_is_stale(
             .find(|entry| stop_close_attempt_matches(entry, state, record_id, exec_session_id))
             .and_then(|entry| entry.confirmed_token)
             .is_some_and(|confirmed| token < confirmed)
+    })
+}
+
+/// Returns how many attempt entries are registered for one stop.
+///
+/// The registry is process-global, so a test asserting that an entry drained
+/// must count only the stop it exercised.
+#[cfg(test)]
+pub(super) fn background_stop_close_attempt_count(
+    state: &Arc<RwLock<ControllerState>>,
+    record_id: &str,
+    exec_session_id: &str,
+) -> usize {
+    with_stop_close_attempts(|attempts| {
+        attempts
+            .iter()
+            .filter(|entry| stop_close_attempt_matches(entry, state, record_id, exec_session_id))
+            .count()
     })
 }
 
@@ -591,15 +696,18 @@ impl SubagentController {
         // would ever look at the record again; only an obligation recorded
         // beforehand can make the next reconcile finish the stop.
         mark_background_stop_close_pending(&self.state, record_id, exec_session_id);
-        let token = begin_background_stop_close_attempt(&self.state, record_id, exec_session_id);
+        // The guard counts this attempt for its whole lifetime, including a
+        // cancellation, so the registry entry survives exactly as long as an
+        // attempt can still consult it.
+        let attempt = begin_background_stop_close_attempt(&self.state, record_id, exec_session_id);
         match self.close_background_exec_session(exec_session_id).await {
             Ok(()) => {
-                self.settle_background_stop_closed(record_id, exec_session_id, Some(token))
+                self.settle_background_stop_closed(record_id, exec_session_id, Some(attempt.token()))
                     .await;
                 true
             }
             Err(error) => {
-                self.settle_background_stop_close_failed(record_id, exec_session_id, token, &error)
+                self.settle_background_stop_close_failed(record_id, exec_session_id, attempt.token(), &error)
                     .await
             }
         }
@@ -878,5 +986,114 @@ impl SubagentController {
         self.refresh_background_archive_metadata(target).await?;
         self.save_background_state().await?;
         self.settle_background_status_and_publish(target).await
+    }
+}
+
+#[cfg(test)]
+mod attempt_registry_tests {
+    //! Pins that the stop-close attempt registry drains itself.
+
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use crate::config::DiapasonConfig;
+    use crate::config::types::ReasoningEffortLevel;
+    use crate::tools::exec_session::ExecSessionManager;
+    use crate::tools::registry::PtySessionManager;
+
+    use super::*;
+
+    const WORKER: &str = "background-worker";
+    const EXEC: &str = "exec-attempt";
+
+    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    fn background_record() -> BackgroundRecord {
+        BackgroundRecord {
+            id: WORKER.to_string(),
+            owner_session_id: None,
+            agent_name: "worker".to_string(),
+            display_label: "worker".to_string(),
+            description: "worker".to_string(),
+            source: "builtin".to_string(),
+            colour: None,
+            session_id: format!("session-{WORKER}"),
+            parent_session_id: "parent-session".to_string(),
+            exec_session_id: EXEC.to_string(),
+            desired_enabled: false,
+            status: BackgroundSubprocessStatus::Running,
+            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
+            updated_at: "2026-08-28T00:00:00Z".parse().expect("updated_at"),
+            started_at: None,
+            ended_at: None,
+            pid: None,
+            prompt: "work".to_string(),
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 0,
+        }
+    }
+
+    /// An entry survives only while an attempt can still consult it.
+    ///
+    /// The registry orders overlapping attempts by token, so a confirmed token
+    /// must outlive every attempt that began before the confirmation. Once the
+    /// last attempt returns, nothing can read the entry again; keeping it until
+    /// the controller tree drops leaks one entry per stopped launch.
+    #[tokio::test]
+    async fn a_confirmed_stop_close_drains_its_attempt_registry_entry() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(WORKER.to_string(), background_record());
+        }
+
+        fail_next_background_close(&controller.state, EXEC, "first close fault");
+        assert!(!controller.attempt_background_stop_close(WORKER, EXEC).await, "the scripted close fails");
+        assert_eq!(
+            background_stop_close_attempt_count(&controller.state, WORKER, EXEC),
+            1,
+            "an unconfirmed attempt must stay registered so a slower failure can be ordered against it"
+        );
+
+        assert!(controller.attempt_background_stop_close(WORKER, EXEC).await, "the missing session counts as closed");
+        assert_eq!(
+            background_stop_close_attempt_count(&controller.state, WORKER, EXEC),
+            0,
+            "the registry must drain once the last attempt returns after a confirmed close"
+        );
+        assert!(!background_stop_close_is_pending(&controller.state, WORKER, EXEC));
+
+        controller.signal_shutdown().await;
     }
 }

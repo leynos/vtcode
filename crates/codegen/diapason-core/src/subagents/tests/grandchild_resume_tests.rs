@@ -61,7 +61,7 @@ async fn resume_restores_closed_grandchildren() {
 
     // ...and resuming the child must reopen the grandchild too, not just clear
     // the close gate.
-    parent.resume("child").await.expect("resume child");
+    parent.resume(TaskOwner::Workspace, "child").await.expect("resume child");
     let resumed_grandchild = child_controller
         .status_for(TaskOwner::Workspace, "grandchild")
         .await
@@ -163,7 +163,7 @@ async fn resume_does_not_affect_sibling_grandchildren() {
     parent.close(TaskOwner::Workspace, "a").await.expect("close a");
     parent.close(TaskOwner::Workspace, "b").await.expect("close b");
 
-    parent.resume("a").await.expect("resume a");
+    parent.resume(TaskOwner::Workspace, "a").await.expect("resume a");
 
     let a_grandchild = controller_a
         .status_for(TaskOwner::Workspace, "a-grandchild")

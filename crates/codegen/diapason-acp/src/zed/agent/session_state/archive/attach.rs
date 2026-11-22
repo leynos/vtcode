@@ -145,8 +145,17 @@ impl ZedAgent {
         // attach's scope then acts on.
         self.adopt_workspace_background_owner(workspace_lease.runtime(), session_id)
             .await;
+        // The resume-site migration above already wrote every ownerless row
+        // this session launched. Only a failed migration leaves the controller
+        // construction to retry it; the restore still stays deferred until the
+        // required checkpoint below.
         let subagent_controller = self
-            .build_session_subagent_controller(workspace_lease.runtime(), session_id, true)
+            .build_session_subagent_controller_with_owner_migration(
+                workspace_lease.runtime(),
+                session_id,
+                true,
+                background_owner_migration_failed,
+            )
             .await;
         let handle = self.build_session_handle(
             thread,

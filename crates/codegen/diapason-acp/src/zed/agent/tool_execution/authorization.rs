@@ -223,6 +223,12 @@ impl ZedAgent {
         if let Some(rejection) = re_admission_rejection {
             authorization.permission_override = Some(ToolExecutionReport::failure(resolved.tool_name, &rejection));
         }
+        // A cancel can land while the ownership lookup above is awaited, and
+        // the snapshot taken before it only sees a cancellation that had
+        // already happened. Refresh it here, before the call is marked
+        // approved or announced as in progress; otherwise a cancelled call
+        // would still execute and only be noticed after completion.
+        refresh_cancellation_after_re_admission(&mut authorization, &context.invocation.session.cancellation);
         self.mark_local_tool_preapproved(context, resolved, &authorization).await;
         self.send_tool_call_in_progress(context, resolved, &authorization).await?;
         Ok(authorization)
@@ -308,4 +314,70 @@ fn dispatched_arguments(resolved: &ResolvedToolCall<'_>, authorization: &ToolAut
         .effective_args
         .as_ref()
         .map_or_else(|| resolved.raw_arguments.to_owned(), |arguments| arguments.to_string())
+}
+
+/// Re-reads the session's cancellation after the re-admission lookup.
+///
+/// The snapshot taken before the lookup misses a cancel that lands while it is
+/// awaited. Refreshing afterwards, before the call is announced as in progress,
+/// keeps an already-cancelled call from executing for its full duration and
+/// being noticed only once it completes.
+fn refresh_cancellation_after_re_admission(
+    authorization: &mut ToolAuthorization,
+    cancellation: &crate::zed::types::SessionCancellation,
+) {
+    authorization.cancel_after_permission |= cancellation.is_cancelled();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::zed::types::SessionCancellation;
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+
+    /// A cancel can land while the ownership lookup is awaited, after the
+    /// permission-stage snapshot has already been taken. The refresh that runs
+    /// once the lookup returns must observe it, so the call is not announced as
+    /// in progress and then executed despite the cancellation.
+    #[tokio::test]
+    async fn a_cancel_during_the_ownership_lookup_is_observed_after_re_admission() {
+        let cancellation = SessionCancellation::default();
+        let mut authorization = ToolAuthorization {
+            effective_args: None,
+            audit_arguments: Vec::new(),
+            permission_override: None,
+            cancel_after_permission: false,
+        };
+        // Stand in for `session_subagent_admission_error`: the lookup is pending
+        // while core searches the controller tree, exactly the window the
+        // permission snapshot cannot see.
+        let lookup_started = Arc::new(Notify::new());
+        let started = Arc::clone(&lookup_started);
+        let lookup_cancellation = cancellation.clone();
+        let lookup = async move {
+            started.notify_one();
+            lookup_cancellation.cancelled().await;
+            Option::<String>::None
+        };
+        let cancel = async {
+            lookup_started.notified().await;
+            cancellation.cancel();
+        };
+
+        let (rejection, ()) = tokio::join!(
+            async {
+                let rejection = lookup.await;
+                refresh_cancellation_after_re_admission(&mut authorization, &cancellation);
+                rejection
+            },
+            cancel
+        );
+
+        assert!(rejection.is_none(), "the lookup itself never observes the cancellation");
+        assert!(
+            authorization.cancel_after_permission,
+            "a cancellation that landed during re-admission must be refreshed before the in-progress notification"
+        );
+    }
 }

@@ -5,11 +5,13 @@
 //! bound, a not-ready or archived task serves the recorded output, a
 //! live-read fault is reported against its target instead of being masked
 //! by an empty result, the preview applies its fixed bound, an unreadable
-//! archive reaches the caller, an empty legacy owner falls back to the
-//! current session, and the reader resolves each task by task id.
+//! archive reaches the caller, and the reader resolves each task by task id.
+//! A liveness decision is pinned separately: an observation only applies to
+//! the launch it was taken from.
+use super::controller_background_query::liveness_observation_is_current;
 use super::{
-    BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundSubprocessEntry, BackgroundTaskRef,
-    exec_session_is_missing, read_output_tail, read_preview, usable_background_parent_session_id,
+    BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundSubprocessEntry,
+    BackgroundSubprocessStatus, BackgroundTaskRef, exec_session_is_missing, read_output_tail, read_preview,
 };
 use futures::future::BoxFuture;
 use rstest::rstest;
@@ -99,12 +101,37 @@ fn entry_with_id(id: &str, transcript_path: Option<&str>) -> BackgroundSubproces
     .expect("background subprocess entry")
 }
 
-#[test]
-fn empty_legacy_parent_owner_falls_back_to_the_current_session() {
-    let previous_owner = usable_background_parent_session_id(Some(String::new()));
-    let current_owner = "current-session".to_owned();
+/// A liveness observation only describes the launch it was taken from.
+///
+/// The projection consults the launch id, the desired flag and the restart
+/// budget after reading the exec session outside the state lock. A change to
+/// any of them means a cancellation, a restart or a replacement landed in that
+/// window, so the captured outcome must not be applied.
+#[rstest]
+#[case::unchanged("exec-launch", true, 0, true)]
+#[case::replaced_launch("exec-replacement", true, 0, false)]
+#[case::cancelled_launch("exec-launch", false, 0, false)]
+#[case::spent_restart("exec-launch", true, 1, false)]
+fn a_liveness_observation_is_stale_after_any_relevant_change(
+    #[case] exec_session_id: &str,
+    #[case] desired_enabled: bool,
+    #[case] restart_attempts: u8,
+    #[case] expected: bool,
+) {
+    let record = support::background_record(
+        "background-worker",
+        None,
+        "worker",
+        "exec-launch",
+        BackgroundSubprocessStatus::Running,
+        true,
+    );
 
-    assert_eq!(previous_owner.unwrap_or(current_owner), "current-session");
+    assert_eq!(
+        liveness_observation_is_current(&record, exec_session_id, desired_enabled, restart_attempts),
+        expected,
+        "the observation's relevance must follow the record it was taken from"
+    );
 }
 
 /// Both output sources are bounded by the caller's line count.

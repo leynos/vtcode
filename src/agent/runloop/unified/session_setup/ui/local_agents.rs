@@ -66,6 +66,14 @@ async fn build_local_agent_entries(
     }
 
     for entry in background_entries {
+        // A hidden record is discarded either way, so skip it before the
+        // snapshot lookup: that lookup reads the preview through the output
+        // reader, which is wasted work for a row this pass will not render.
+        // The projector still checks visibility against the snapshot entry, so
+        // a candidate that stops between observations stays hidden.
+        if !background_local_agent_is_visible(&entry) {
+            continue;
+        }
         // `refresh_background_processes` already ran once above; a cached
         // snapshot is enough for a per-row preview and avoids reloading the
         // ledger for every background entry.

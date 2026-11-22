@@ -132,7 +132,7 @@ async fn restore_with_rollback(
     workspace_root: &Path,
     restore: impl Future<Output = anyhow::Result<Vec<BackgroundSubprocessEntry>>>,
 ) -> anyhow::Result<Vec<BackgroundSubprocessEntry>> {
-    let before = launch_snapshot(controller.background_status_entries().await);
+    let before = launch_snapshot(controller.background_status_entries(TaskOwner::Workspace).await);
     match restore.await {
         Ok(restored) => Ok(restored),
         Err(error) => {
@@ -164,7 +164,7 @@ async fn rollback_unpersisted_launches(
     workspace_root: &Path,
     before: &HashMap<String, String>,
 ) {
-    let after = controller.background_status_entries().await;
+    let after = controller.background_status_entries(TaskOwner::Workspace).await;
     let persisted = persisted_launches(workspace_root).await;
     if matches!(persisted, PersistedLaunches::Unknown) {
         tracing::warn!(
@@ -188,14 +188,28 @@ async fn rollback_unpersisted_launches(
             .copied()
             .flatten()
             .map_or(TaskOwner::Workspace, TaskOwner::Session);
-        if let Err(error) = controller.force_cancel_background(owner, &record_id).await {
-            tracing::warn!(
-                record_id = record_id.as_str(),
-                operation = "background_restore_rollback",
-                error_category = "background_launch_cancel_failed",
-                error_chain_depth = error.chain().count(),
-                "Failed to roll back a background launch whose identity could not be persisted"
-            );
+        match controller.force_cancel_background(owner, &record_id).await {
+            Ok(outcome) if outcome.is_close_pending() => {
+                // The record is already terminal and saved, so a retried attach
+                // will not relaunch it. The exec session close is unconfirmed,
+                // though, so the process may still be live.
+                tracing::warn!(
+                    record_id = record_id.as_str(),
+                    operation = "background_restore_rollback",
+                    error_category = "background_launch_close_pending",
+                    "Rolled back a background launch whose identity could not be persisted, but its exec session close is unconfirmed"
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    record_id = record_id.as_str(),
+                    operation = "background_restore_rollback",
+                    error_category = "background_launch_cancel_failed",
+                    error_chain_depth = error.chain().count(),
+                    "Failed to roll back a background launch whose identity could not be persisted"
+                );
+            }
         }
     }
 }

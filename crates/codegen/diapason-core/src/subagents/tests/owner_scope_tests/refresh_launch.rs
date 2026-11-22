@@ -34,7 +34,7 @@ async fn refresh_adopts_a_cancellation_persisted_by_another_controller() {
         .expect("refresh must keep the persisted stop instead of respawning the task");
 
     let entry = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.id == "background-worker@session-a")
@@ -73,7 +73,7 @@ async fn refresh_does_not_adopt_a_cancellation_for_an_older_launch() {
     controller.refresh_background_processes().await.expect("refresh");
 
     let entry = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.id == "background-worker@session-a")

@@ -1,3 +1,9 @@
+//! Deterministic reconciliation of a controller snapshot with the ledger.
+//!
+//! Declared by `controller_persistence/tests/mod.rs`. Pins order independence,
+//! cancellation dominance, restart freshness, owner precedence and the
+//! per-canonical-id removal authority; it builds its inputs with the helpers in
+//! `merge_oracle_tests.rs`.
 use super::super::*;
 use super::merge_oracle_tests::{merge_canonical_id, merge_launch_record, merge_owner_record, merge_state};
 

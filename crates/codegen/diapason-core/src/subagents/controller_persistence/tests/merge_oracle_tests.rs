@@ -1,3 +1,9 @@
+//! The ledger merge oracle and canonical-id merge cases.
+//!
+//! Declared by `controller_persistence/tests/mod.rs`. Provides the record
+//! builders and the generated oracle over canonical ids, freshest-record
+//! selection and snapshot precedence; the sibling reconciliation and adoption
+//! modules reuse its builders.
 use super::super::*;
 use proptest::prelude::*;
 

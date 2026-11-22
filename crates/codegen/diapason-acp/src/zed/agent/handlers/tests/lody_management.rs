@@ -32,6 +32,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             owner_session_id: None,
             workspace_gated: false,
             defer_background_restore: false,
+            owner_migration_failed: false,
         },
     )
     .await;
@@ -208,10 +209,22 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             );
             for _ in 0..20 {
                 let _ = observer.take();
-                let before = observable_background_snapshot(&controller, &workspace_path, 0).await;
+                let before = observable_background_snapshot(
+                    &controller,
+                    TaskOwner::Session(session.session_id.0.as_ref()),
+                    &workspace_path,
+                    0,
+                )
+                .await;
                 output = lody_output_tail(&cx, &session.session_id, &background.id, 1).await?;
                 let published = observer.take();
-                let after = observable_background_snapshot(&controller, &workspace_path, 0).await;
+                let after = observable_background_snapshot(
+                    &controller,
+                    TaskOwner::Session(session.session_id.0.as_ref()),
+                    &workspace_path,
+                    0,
+                )
+                .await;
                 assert_eq!(
                     after, before,
                     "an output read must not change records, timestamps, ledger bytes, or process state"
@@ -392,10 +405,22 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 Arc::clone(&exited_observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
             );
             let _ = exited_observer.take();
-            let before = observable_background_snapshot(&controller, &workspace_path, 0).await;
+            let before = observable_background_snapshot(
+                &controller,
+                TaskOwner::Session(session.session_id.0.as_ref()),
+                &workspace_path,
+                0,
+            )
+            .await;
             let exited_output = lody_output_tail(&cx, &session.session_id, &background.id, 20).await?;
             let published = exited_observer.take();
-            let after = observable_background_snapshot(&controller, &workspace_path, 0).await;
+            let after = observable_background_snapshot(
+                &controller,
+                TaskOwner::Session(session.session_id.0.as_ref()),
+                &workspace_path,
+                0,
+            )
+            .await;
             assert_eq!(
                 after, before,
                 "an output read of an exited task must not change records, timestamps, ledger bytes, or process state"
@@ -446,7 +471,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             tokio::time::timeout(Duration::from_secs(10), async {
                 loop {
                     let projected = controller
-                        .background_status_entries_with_liveness()
+                        .background_status_entries_with_liveness(TaskOwner::Session(session.session_id.0.as_ref()))
                         .await
                         .into_iter()
                         .find(|observed| observed.entry.id == stale.id)
@@ -460,7 +485,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
             .await
             .expect("the second background task's exec session must end");
             let cached = controller
-                .background_status_entries()
+                .background_status_entries(TaskOwner::Session(session.session_id.0.as_ref()))
                 .await
                 .into_iter()
                 .find(|entry| entry.id == stale.id)
@@ -497,17 +522,29 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 Arc::clone(&observer) as Arc<dyn diapason_core::subagents::SubagentProgressObserver>,
             );
             let _ = observer.take();
-            let before = observable_background_snapshot(&controller, &workspace_path, 0).await;
+            let before = observable_background_snapshot(
+                &controller,
+                TaskOwner::Session(session.session_id.0.as_ref()),
+                &workspace_path,
+                0,
+            )
+            .await;
             let stale_output = lody_output_tail(&cx, &session.session_id, &stale.id, 20).await?;
             let published = observer.take();
-            let after = observable_background_snapshot(&controller, &workspace_path, 0).await;
+            let after = observable_background_snapshot(
+                &controller,
+                TaskOwner::Session(session.session_id.0.as_ref()),
+                &workspace_path,
+                0,
+            )
+            .await;
             assert_eq!(
                 after, before,
                 "an output read of an active record with an exited child must not refresh, settle, respawn, or persist"
             );
             assert!(published.is_empty(), "an output read must not publish a background status update: {published:?}");
             let still_cached = controller
-                .background_status_entries()
+                .background_status_entries(TaskOwner::Session(session.session_id.0.as_ref()))
                 .await
                 .into_iter()
                 .find(|entry| entry.id == stale.id)
@@ -564,7 +601,7 @@ async fn lody_subagent_management_extensions_round_trip_over_official_acp_duplex
                 .await
                 .expect("spawn through the session registry executor");
             let sibling = foreign_controller
-                .background_status_entries()
+                .background_status_entries(TaskOwner::Session(foreign_session.session_id.0.as_ref()))
                 .await
                 .into_iter()
                 .next()

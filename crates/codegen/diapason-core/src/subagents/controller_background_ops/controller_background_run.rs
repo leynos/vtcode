@@ -2,6 +2,7 @@
 
 use super::*;
 
+use super::controller_background_lifecycle::clear_background_launch_owed;
 use super::controller_background_query::resolve_background_target;
 use super::controller_background_settlement::{
     clear_background_ledger_write_pending, mark_background_ledger_write_pending,
@@ -98,7 +99,23 @@ impl SubagentController {
     ) -> Result<BackgroundSubprocessEntry> {
         let mut plan = self.prepare_background_run(request).await?;
         loop {
-            match self.reserve_background_run(&plan).await? {
+            let reservation = match self.reserve_background_run(&plan).await {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    // A bound plan is an automatic replacement whose allowance
+                    // was spent before this call prepared it. A reservation
+                    // fault (a contended ledger lock, an unreadable ledger)
+                    // therefore leaves the record `Starting` with nothing left
+                    // to drive it, so settle exactly the launch it replaced
+                    // and still report the fault to the caller.
+                    if let Some(expected_exec_session_id) = plan.expected_exec_session_id.as_deref() {
+                        self.settle_failed_background_restart(&plan.record_id, expected_exec_session_id, &error)
+                            .await;
+                    }
+                    return Err(error);
+                }
+            };
+            match reservation {
                 BackgroundRunReservation::Reserved => {}
                 // An active launch already runs this work; its projection is
                 // the caller's answer, and a second process would duplicate it.
@@ -122,10 +139,10 @@ impl SubagentController {
                     // A spawn failure is the only thing that spends the
                     // restart allowance, and `settle_failed_background_run`
                     // leaves the record `Starting` exactly when the allowance
-                    // remains. Nothing else observes that state as a launch to
-                    // drive, so the retry has to happen here; otherwise the
-                    // record stays `Starting` forever and is reported as an
-                    // active process that will never run.
+                    // remains. Its obligation was discharged by the settlement,
+                    // so the retry happens here as the fast path; a refresh
+                    // that runs first can schedule the same replacement from
+                    // the unchanged record and the retry then declines.
                     let Some(retry) = self.background_launch_retry_request(&plan).await else {
                         return Err(error);
                     };
@@ -158,6 +175,9 @@ impl SubagentController {
                 // to the record's current session could never be retried.
                 self.close_declined_background_session(&plan.record_id, &plan.exec_session_id)
                     .await;
+                // This launch owns no record now, so its claim obligation is
+                // dead. The launch that took the record recorded its own.
+                clear_background_launch_owed(&self.state, &plan.record_id, &plan.exec_session_id);
                 return self.background_status_for(&plan.record_id).await;
             };
             // The record is committed in memory but the ledger is not. The
@@ -175,15 +195,19 @@ impl SubagentController {
     /// Builds the single retry a failed launch is still allowed, if any.
     ///
     /// The allowance is spent here, under the write lock, so a concurrent
-    /// refresh cannot schedule the same replacement from an unchanged record.
-    /// The retry is offered only while the failed launch still owns the record:
-    /// once `settle_failed_background_run` has settled it, or a cancellation
-    /// has cleared `desired_enabled`, the failure is terminal and a retry would
-    /// undo that outcome.
+    /// refresh cannot hand out a second replacement once this retry has spent
+    /// it. The retry is offered only while the failed launch still owns the
+    /// record: once `settle_failed_background_run` has settled it, or a
+    /// cancellation has cleared `desired_enabled`, the failure is terminal and
+    /// a retry would undo that outcome.
     async fn background_launch_retry_request(&self, plan: &BackgroundRunPlan) -> Option<BackgroundRunRequest> {
         if !self.config.vt_cfg.subagents.background.auto_restore {
             return None;
         }
+        // The failed launch's settlement already discharged its claim, and a
+        // concurrent refresh may have recorded the replacement's obligation
+        // from the unchanged record. That obligation belongs to the pass that
+        // will drive it, so this retry must not clear it.
         let next_restart_attempt = {
             let mut state = self.state.write().await;
             let record = state.background_children.get_mut(&plan.record_id)?;
@@ -529,4 +553,164 @@ fn take_background_retry_spec_removal(state: &Arc<RwLock<ControllerState>>) -> b
     };
     pending.remove(index);
     true
+}
+
+#[cfg(test)]
+mod reservation_error_tests {
+    //! Pins the settlement of a bound restart whose reservation fails.
+
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use tempfile::TempDir;
+
+    use crate::config::DiapasonConfig;
+    use crate::config::types::ReasoningEffortLevel;
+    use crate::subagents::background::lock_background_state;
+    use crate::tools::exec_session::ExecSessionManager;
+    use crate::tools::registry::PtySessionManager;
+
+    use super::super::BackgroundRunRequest;
+    use super::*;
+
+    const WORKER: &str = "background-worker";
+    const WORKER_AGENT: &str = "worker";
+    const OBSERVED_EXEC: &str = "exec-observed";
+
+    fn test_config(workspace_root: PathBuf) -> SubagentControllerConfig {
+        let vt_cfg = DiapasonConfig::default();
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
+        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
+        SubagentControllerConfig {
+            workspace_root,
+            parent_session_id: "parent-session".to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: ReasoningEffortLevel::Medium,
+            api_key: "test-key".to_string(),
+            vt_cfg,
+            openai_chatgpt_auth: None,
+            depth: 0,
+            workspace_gated: false,
+            exec_sessions,
+            output_reader: None,
+            pty_manager: pty_sessions.manager().clone(),
+            managed_background_runtime: false,
+            lock_scope: None,
+        }
+    }
+
+    fn background_record() -> BackgroundRecord {
+        BackgroundRecord {
+            id: WORKER.to_string(),
+            owner_session_id: None,
+            agent_name: WORKER_AGENT.to_string(),
+            display_label: WORKER_AGENT.to_string(),
+            description: WORKER_AGENT.to_string(),
+            source: "builtin".to_string(),
+            colour: None,
+            session_id: format!("session-{WORKER}"),
+            parent_session_id: "parent-session".to_string(),
+            exec_session_id: OBSERVED_EXEC.to_string(),
+            desired_enabled: true,
+            status: BackgroundSubprocessStatus::Starting,
+            created_at: "2026-08-28T00:00:00Z".parse().expect("created_at"),
+            updated_at: "2026-08-28T00:00:00Z".parse().expect("updated_at"),
+            started_at: None,
+            ended_at: None,
+            pid: None,
+            prompt: "work".to_string(),
+            summary: None,
+            error: None,
+            archive_path: None,
+            transcript_path: None,
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            restart_attempts: 1,
+        }
+    }
+
+    /// A bound retry whose reservation fails settles instead of staying Starting.
+    ///
+    /// The failed launch spent the record's restart allowance before the retry
+    /// was prepared, so a reservation fault leaves a `Starting` record that
+    /// nothing else drives. The ledger lock is held for the reservation's whole
+    /// bounded wait, which is the fault the retry must settle. The fault must
+    /// settle exactly the launch the plan replaced and still reach the caller.
+    #[tokio::test]
+    async fn a_reservation_fault_settles_the_restart_that_spent_its_allowance() {
+        let temp = TempDir::new().expect("tempdir");
+        let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller");
+        {
+            let mut state = controller.state.write().await;
+            state.background_children.insert(WORKER.to_string(), background_record());
+        }
+
+        // Holding the ledger lock makes the reservation's first step wait out
+        // its whole deadline and then fail. The holder is released as soon as
+        // the settlement is visible in memory, so the settlement's own save can
+        // finish without waiting for the same deadline.
+        let held = lock_background_state(temp.path()).await.expect("hold the ledger lock");
+        let launch = tokio::spawn({
+            let controller = controller.clone();
+            async move {
+                controller
+                    .ensure_background_record_running(BackgroundRunRequest {
+                        agent_name: WORKER_AGENT.to_string(),
+                        stable_id: Some(WORKER.to_string()),
+                        restart_attempts: 1,
+                        overrides: None,
+                        expected_exec_session_id: Some(OBSERVED_EXEC.to_string()),
+                    })
+                    .await
+            }
+        });
+
+        tokio::time::timeout(Duration::from_secs(30), async {
+            loop {
+                {
+                    let state = controller.state.read().await;
+                    if state
+                        .background_children
+                        .get(WORKER)
+                        .is_some_and(|record| record.status == BackgroundSubprocessStatus::Error)
+                    {
+                        break;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the reservation must fail within its deadline");
+        drop(held);
+
+        let launched = launch.await.expect("launch task");
+        let error = launched.expect_err("the reservation fault reaches the caller");
+        assert!(format!("{error:#}").contains("Timed out"), "the caller sees the failed reservation: {error:#}");
+
+        let state = controller.state.read().await;
+        let record = state.background_children.get(WORKER).expect("record");
+        assert_eq!(
+            record.status,
+            BackgroundSubprocessStatus::Error,
+            "a bound retry whose reservation failed must not stay Starting"
+        );
+        assert_eq!(record.restart_attempts, 1, "the spent allowance stays spent");
+        assert!(
+            record
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("Failed to start background subagent")),
+            "{:?}",
+            record.error
+        );
+        assert!(record.ended_at.is_some(), "a settled reservation failure has ended");
+        drop(state);
+
+        controller.signal_shutdown().await;
+    }
 }

@@ -1,10 +1,11 @@
 //! Regressions for the child launch path.
 //!
-//! These cases pin three contracts: a waiter created before `notify_waiters()`
+//! These cases pin four contracts: a waiter created before `notify_waiters()`
 //! still observes the broadcast even though it has not been polled; an
 //! explicitly closed child refuses new input while keeping its settled outcome;
-//! and a save merges with records other owners of the same ledger committed
-//! after this controller loaded its snapshot instead of dropping them.
+//! a save merges with records other owners of the same ledger committed after
+//! this controller loaded its snapshot instead of dropping them; and an
+//! explicit `agent_type` launches the agent the caller named.
 
 use super::super::background::load_background_state;
 use super::*;
@@ -221,12 +222,15 @@ async fn send_input_rejects_a_completed_child_that_was_closed() {
     );
 
     let error = match controller
-        .send_input(SendInputRequest {
-            target: id.clone(),
-            message: Some("do more work".to_string()),
-            items: Vec::new(),
-            interrupt: false,
-        })
+        .send_input(
+            TaskOwner::Workspace,
+            SendInputRequest {
+                target: id.clone(),
+                message: Some("do more work".to_string()),
+                items: Vec::new(),
+                interrupt: false,
+            },
+        )
         .await
     {
         Ok(_) => panic!("input must be rejected while the child is closed"),
@@ -257,6 +261,33 @@ async fn send_input_rejects_a_completed_child_that_was_closed() {
             .is_some_and(|record| !record.closed),
         "reopening must clear the closure"
     );
+}
+
+/// An explicit `agent_type` launches the agent the caller named.
+///
+/// The write-capable policy only proves the request was accepted. The launch
+/// must also resolve that name to the worker spec instead of falling through
+/// to auto-selection, or a permitted request could run different work.
+#[tokio::test]
+async fn an_explicit_agent_type_launches_the_requested_worker() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let controller =
+        SubagentController::new_with_background_owner(test_config(workspace.path().to_path_buf()), Some("session-a"))
+            .await
+            .expect("controller");
+
+    let spawned = controller
+        .spawn(SpawnAgentRequest {
+            agent_type: Some("worker".to_string()),
+            message: Some("Implement the change.".to_string()),
+            ..SpawnAgentRequest::default()
+        })
+        .await
+        .expect("an explicit agent_type launches the worker");
+
+    assert_eq!(spawned.agent_name, "worker", "the launched record must name the agent the request selected");
+
+    controller.close(TaskOwner::Workspace, &spawned.id).await.expect("close");
 }
 
 /// A save must not delete a record another controller of the same owner wrote.

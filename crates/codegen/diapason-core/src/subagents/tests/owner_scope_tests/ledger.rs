@@ -94,7 +94,7 @@ async fn owner_scoped_controller_loads_only_exact_owner_and_cli_remains_unscoped
     )
     .await
     .expect("scoped controller");
-    let scoped_entries = scoped.background_status_entries().await;
+    let scoped_entries = scoped.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(
         scoped_entries.iter().map(|entry| entry.id.as_str()).collect::<Vec<_>>(),
         ["background-worker@session-a"]
@@ -129,7 +129,7 @@ async fn owner_scoped_controller_loads_only_exact_owner_and_cli_remains_unscoped
             .await
             .expect("unscoped controller");
     let unscoped_ids = unscoped
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .map(|entry| entry.id)
@@ -163,7 +163,7 @@ async fn sibling_owners_keep_distinct_records_for_the_same_agent() {
             .await
             .expect("unscoped controller");
     let ids = unscoped
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .map(|entry| entry.id)
@@ -207,7 +207,7 @@ async fn unscoped_save_preserves_records_written_by_other_owners_after_load() {
         SubagentController::new(test_controller_config(temp.path().to_path_buf(), DiapasonConfig::default()))
             .await
             .expect("unscoped controller");
-    assert_eq!(unscoped.background_status_entries().await.len(), 1);
+    assert_eq!(unscoped.background_status_entries(TaskOwner::Workspace).await.len(), 1);
 
     // Another process settles session-a's task and starts one for session-b
     // after this controller took its snapshot.

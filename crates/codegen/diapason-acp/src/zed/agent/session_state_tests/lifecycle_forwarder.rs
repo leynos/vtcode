@@ -67,6 +67,7 @@ async fn installation_after_teardown_does_not_restart_the_forwarder() {
             owner_session_id: None,
             workspace_gated: false,
             defer_background_restore: false,
+            owner_migration_failed: false,
         },
     )
     .await;

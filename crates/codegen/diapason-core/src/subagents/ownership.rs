@@ -4,10 +4,12 @@
 //! adapter, and provider tools. Each command that reads, stops, or resumes a
 //! task therefore has to answer one question before it acts: does the caller
 //! own this task? That decision is domain policy, not transport policy, so it
-//! lives here and every command takes the caller's authority as an explicit
-//! parameter. An ambient task-local context is not consulted: a command that
-//! happens to run outside an invocation would otherwise silently treat an
-//! unowned task as its own.
+//! lives here and every task-addressing command takes the caller's authority as
+//! an explicit parameter. An ambient task-local context is not consulted: a
+//! command that happens to run outside an invocation would otherwise silently
+//! treat an unowned task as its own. The projections that select a caller's
+//! tasks, such as the background status queries, take the same authority so
+//! their visibility rule cannot drift from the commands' rule.
 //!
 //! Two ownership shapes exist because the two task kinds are created
 //! differently. A managed background process records the session that
@@ -145,10 +147,10 @@ impl SubagentController {
     ///
     /// The workspace operator has no session to compare against, so it is
     /// allowed to address any task the controller holds; a missing task is
-    /// then reported by the command's own lookup. A session-scoped caller is
-    /// checked against the delegation tree, and a foreign or absent target
-    /// produces the same not-found error so a transport cannot use the error
-    /// text to probe for tasks it cannot see.
+    /// left to the command's own handling. A session-scoped caller is checked
+    /// against the delegation tree, and a foreign or absent target produces the
+    /// same not-found error so a transport cannot use the error text to probe
+    /// for tasks it cannot see.
     pub(super) async fn ensure_child_owned(&self, owner: TaskOwner<'_>, target: &str) -> Result<()> {
         let owned = match owner {
             // The workspace operator has no session to compare against.
@@ -217,11 +219,14 @@ mod tests {
     }
 
     /// Ownership follows the delegation tree, not a flat parent comparison.
+    ///
+    /// The grandchild is listed before the child that owns it, so one forward
+    /// pass over the entries cannot discover it: only the repeated walk does.
     #[test]
     fn a_session_owns_its_children_and_their_descendants() {
         let entries = vec![
-            child("child", "root-session", "child-session"),
             child("grandchild", "child-session", "grandchild-session"),
+            child("child", "root-session", "child-session"),
             child("sibling", "other-session", "sibling-session"),
         ];
 

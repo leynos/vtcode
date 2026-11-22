@@ -58,9 +58,15 @@ async fn background_output_tail_reads_without_refreshing_background_state() {
     )
     .await
     .expect("controller");
+    // The reader serves only a session this process launched; the fixture row
+    // stands in for that launch.
+    controller
+        .config
+        .exec_sessions
+        .register_launched_task_session("session-background-worker");
     let task_id = "background-worker@session-a";
     let before = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.id == task_id)
@@ -73,7 +79,7 @@ async fn background_output_tail_reads_without_refreshing_background_state() {
 
     assert_eq!(output, "");
     let after = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.id == task_id)

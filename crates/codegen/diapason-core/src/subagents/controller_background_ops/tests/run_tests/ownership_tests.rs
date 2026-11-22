@@ -1,3 +1,8 @@
+//! Owner-scoped resolution of background records.
+//!
+//! Declared by `run_tests/mod.rs`. Pins that a session resolves, reads and
+//! cancels only its own record past an ownerless legacy row, and that a parent
+//! override rebinds routing without stealing a record's owner.
 use super::*;
 
 /// A launch never reaches another owner's record through its legacy alias.

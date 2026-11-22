@@ -85,16 +85,35 @@ impl ProgressObserverRoute {
     /// reads the adopted clock, which already covers it. Splitting the copy
     /// from the replacement would let a reservation take the copied value from
     /// the retired clock after the tree had handed the same value out again.
+    ///
+    /// The retired state is released only after the write guard is dropped. It
+    /// owns the last reference to the previous registry when a controller joins
+    /// a tree, and dropping that registry drops the observers registered in it.
+    /// Those observers run user code, and `reserve` takes this route's read
+    /// guard, so dropping the retired state under the write guard would block
+    /// every lifecycle revision the tree hands out behind observer teardown.
     pub(super) fn adopt(
         &self,
         registry: Arc<ProgressObserverRegistry>,
         scope: Option<String>,
         lifecycle_clock: Arc<AtomicU64>,
     ) {
+        let adopted = ProgressObserverRouteState { registry, scope, lifecycle_clock };
         let mut route = self.state.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         let own_revision = route.lifecycle_clock.load(Ordering::Relaxed);
-        lifecycle_clock.fetch_max(own_revision, Ordering::Relaxed);
-        *route = ProgressObserverRouteState { registry, scope, lifecycle_clock };
+        adopted.lifecycle_clock.fetch_max(own_revision, Ordering::Relaxed);
+        let retired = std::mem::replace(&mut *route, adopted);
+        drop(route);
+        drop(retired);
+    }
+
+    /// Reports whether this route's write guard is currently held.
+    ///
+    /// A test calls this from an observer's `Drop` to prove the retired route
+    /// is released outside the guard that `reserve` contends with.
+    #[cfg(test)]
+    pub(super) fn write_guard_held(&self) -> bool {
+        self.state.try_read().is_err()
     }
 }
 
@@ -350,3 +369,6 @@ impl SubagentController {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

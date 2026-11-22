@@ -1,12 +1,12 @@
 //! Manages persistent command and PTY process sessions used by execution tools.
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, RwLock as StdRwLock};
 
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use diapason_bash_runner::{PipeSpawnOptions, ProcessHandle, spawn_pipe_process_with_options};
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, RwLock, watch};
 use tokio::task::JoinHandle;
@@ -22,6 +22,32 @@ use crate::zsh_exec_bridge::ZshExecBridgeSession;
 const PIPE_OUTPUT_HEAD_BYTES: usize = 8 * 1024;
 
 const PIPE_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
+
+/// The launch argument that carries the controller-generated task session id.
+const LAUNCH_SESSION_ID_FLAG: &str = "--session-id";
+
+/// Returns the task session identifier a launch created for `exec_session_id`.
+///
+/// The controller passes the identifier to a background child as
+/// `--session-id`. A demo launch runs a script instead, so its command carries
+/// no flag; the controller's exec-session identifier embeds the same task id as
+/// `exec-<task>-<pid>-<sequence>`, and its process component lets this process
+/// recognise its own launches. Identifiers a caller chose for a direct exec
+/// session match neither form and record nothing.
+fn launched_session_id(command: &[String], exec_session_id: &str) -> Option<String> {
+    if let Some(session_id) = command
+        .windows(2)
+        .find(|pair| pair.first().is_some_and(|flag| flag.as_str() == LAUNCH_SESSION_ID_FLAG))
+        .and_then(|pair| pair.get(1))
+    {
+        return Some(session_id.clone());
+    }
+    let suffix = exec_session_id.strip_prefix("exec-")?;
+    let (without_sequence, _sequence) = suffix.rsplit_once('-')?;
+    let (session_id, process) = without_sequence.rsplit_once('-')?;
+    let process_id = format!("{:x}", std::process::id());
+    (process == process_id.as_str()).then(|| session_id.to_string())
+}
 
 /// A continuation referenced an exec session that is no longer active.
 #[derive(Debug, thiserror::Error)]
@@ -637,6 +663,21 @@ pub struct ExecSessionManager {
     pipe_sessions: PipeSessionManager,
     pty_sessions: PtySessionManager,
     sessions: Arc<RwLock<HashMap<ExecSessionId, Arc<ExecSessionRecord>>>>,
+    /// Per-session mutexes serialising creation against close.
+    ///
+    /// A close must not signal a backend record that a later create inserted
+    /// under the same id, so both operations for one id hold this lock from the
+    /// check through the map update. Entries are retained for the process
+    /// lifetime: dropping one would let a waiter holding the old handle bypass a
+    /// create that installed a fresh handle.
+    operation_locks: Arc<std::sync::Mutex<HashMap<ExecSessionId, Arc<Mutex<()>>>>>,
+    /// Task session identifiers this process launched.
+    ///
+    /// A background record's session identifier is stored data once the ledger
+    /// is restored, so it can name any session. The controller generates the id
+    /// at launch and passes it to the child; recording it here gives the
+    /// archive reader the one trusted anchor it can verify a row against.
+    launched_task_sessions: Arc<StdRwLock<HashSet<String>>>,
     /// A scripted fault for the liveness read path.
     ///
     /// The background liveness projection must distinguish a genuinely absent
@@ -654,9 +695,43 @@ impl ExecSessionManager {
             pipe_sessions: PipeSessionManager::new(workspace_root),
             pty_sessions,
             sessions: Arc::new(RwLock::new(HashMap::new())),
+            operation_locks: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            launched_task_sessions: Arc::new(StdRwLock::new(HashSet::new())),
             #[cfg(any(test, feature = "test-support"))]
             snapshot_failure: Arc::new(std::sync::Mutex::new(None)),
         }
+    }
+
+    /// Records that this process launched a task under `session_id`.
+    ///
+    /// The identifier is written only after the exec session exists, so a
+    /// launch that failed to start records nothing. A later read treats the
+    /// identifier as proof that the record's session came from a launch this
+    /// process made rather than from a restored ledger row.
+    pub(crate) fn register_launched_task_session(&self, session_id: &str) {
+        self.launched_task_sessions
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(session_id.to_string());
+    }
+
+    /// Reports whether this process launched a task under `session_id`.
+    ///
+    /// A restored ledger row stores its identifier as data, so it can name any
+    /// session; only an identifier recorded when this process created the
+    /// task's exec session is a trusted anchor for the task's archive.
+    #[must_use]
+    pub(crate) fn is_launched_task_session(&self, session_id: &str) -> bool {
+        self.launched_task_sessions
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .contains(session_id)
+    }
+
+    /// Returns the per-session mutex that serialises create and close.
+    fn session_operation_lock(&self, session_id: &str) -> Arc<Mutex<()>> {
+        let mut locks = self.operation_locks.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        Arc::clone(locks.entry(session_id.to_string().into()).or_default())
     }
 
     /// Makes every subsequent snapshot read fail with `message`.
@@ -690,6 +765,12 @@ impl ExecSessionManager {
         env: HashMap<String, String>,
         sandbox_active: bool,
     ) -> Result<DiapasonExecSession> {
+        let launched_task_session = launched_session_id(&command, session_id.as_str());
+        // Hold the per-session lock across check, spawn and dispatch insert so a
+        // concurrent close cannot remove a record this create would replace, and
+        // cannot terminate the session this create installs.
+        let operation = self.session_operation_lock(session_id.as_str());
+        let _operation = operation.lock().await;
         self.ensure_session_absent(&session_id).await?;
         let env = if sandbox_active {
             filter_sensitive_env(&env)
@@ -698,6 +779,9 @@ impl ExecSessionManager {
         };
         let metadata = self.pipe_sessions.create_session(session_id, command, working_dir, env).await?;
         self.insert_session(metadata.clone(), ExecSessionBackend::Pipe, None).await?;
+        if let Some(task_session_id) = launched_task_session {
+            self.register_launched_task_session(&task_session_id);
+        }
         Ok(metadata)
     }
 
@@ -724,6 +808,12 @@ impl ExecSessionManager {
         zsh_exec_bridge: Option<ZshExecBridgeSession>,
         sandbox_active: bool,
     ) -> Result<DiapasonExecSession> {
+        let launched_task_session = launched_session_id(&command, session_id.as_str());
+        // Hold the per-session lock across check, spawn and dispatch insert so a
+        // concurrent close cannot remove a record this create would replace, and
+        // cannot terminate the session this create installs.
+        let operation = self.session_operation_lock(session_id.as_str());
+        let _operation = operation.lock().await;
         self.ensure_session_absent(&session_id).await?;
         let pty_guard = self.pty_sessions.start_session()?;
         let metadata = self.pty_sessions.manager().create_session_with_bridge_sandboxed(
@@ -738,6 +828,9 @@ impl ExecSessionManager {
         let exec_metadata = DiapasonExecSession::from(metadata);
         self.insert_session(exec_metadata.clone(), ExecSessionBackend::Pty, Some(pty_guard))
             .await?;
+        if let Some(task_session_id) = launched_task_session {
+            self.register_launched_task_session(&task_session_id);
+        }
         Ok(exec_metadata)
     }
 
@@ -874,14 +967,38 @@ impl ExecSessionManager {
     /// removal; every other fault keeps the record so the close stays
     /// retryable.
     ///
-    /// The removal is identity-checked against the record read here, so a
-    /// session that was closed and re-created under the same id in the
-    /// meantime is never taken by a stale close.
+    /// The record read here is the only one this close may terminate. Both
+    /// termination and removal run under the per-session lock that creation
+    /// also holds, and the record is revalidated under that lock before the
+    /// backend is touched. A close that read a record a concurrent close
+    /// removed — and a create replaced under the same id — therefore reports
+    /// the typed missing-session cause and leaves the replacement running
+    /// instead of signalling it.
     ///
     /// A missing identifier is reported through [`missing_session`] rather
     /// than being treated as a successful no-op.
     pub(crate) async fn close_session(&self, session_id: &str) -> Result<DiapasonExecSession> {
         let record = self.session_record(session_id).await?;
+        self.close_session_record(session_id, record).await
+    }
+
+    /// Closes the exact dispatch record the caller read.
+    ///
+    /// The record is revalidated under the session's create/close lock, so a
+    /// record that a concurrent close removed — or a same-id create replaced —
+    /// is refused without touching the backend. The caller receives
+    /// [`missing_session`] and the replacement keeps running.
+    async fn close_session_record(
+        &self,
+        session_id: &str,
+        record: Arc<ExecSessionRecord>,
+    ) -> Result<DiapasonExecSession> {
+        let operation = self.session_operation_lock(session_id);
+        let _operation = operation.lock().await;
+        let current = self.session_record(session_id).await?;
+        if !Arc::ptr_eq(&current, &record) {
+            return Err(missing_session(session_id));
+        }
 
         let closed_metadata = match record.backend {
             ExecSessionBackend::Pipe => self.pipe_sessions.close_session(session_id).await,
@@ -902,7 +1019,9 @@ impl ExecSessionManager {
         {
             let mut sessions = self.sessions.write().await;
             // Only the record read above may be released: a session that was
-            // closed and re-created under the same id keeps its own guard.
+            // closed and re-created under the same id keeps its own guard. The
+            // per-session lock already excludes a replacement, so this remains
+            // a last defence rather than the rule that enforces it.
             if !sessions.get(session_id).is_some_and(|current| Arc::ptr_eq(current, &record)) {
                 return Err(missing_session(session_id));
             }
@@ -983,12 +1102,35 @@ mod tests {
     use tokio::time::{Duration, timeout};
 
     use super::{
-        ExecSessionLostAfterInput, ExecSessionManager, ExecSessionNotFound, ExecSessionWriterClosed, write_failure,
+        ExecSessionLostAfterInput, ExecSessionManager, ExecSessionNotFound, ExecSessionWriterClosed,
+        launched_session_id, write_failure,
     };
     use crate::config::PtyConfig;
     use crate::tools::pty::{PtySessionNotFound, PtySize};
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
+
+    /// The launch anchor comes from the flag, or from the controller's own exec id.
+    #[test]
+    fn launched_session_id_reads_the_flag_and_the_controller_convention() {
+        let command = vec![
+            "diapason".to_string(),
+            "background-subagent".to_string(),
+            "--session-id".to_string(),
+            "session-task".to_string(),
+        ];
+        assert_eq!(launched_session_id(&command, "exec-ignored").as_deref(), Some("session-task"));
+
+        // A demo launch runs a script, so the task id is only in the exec id the
+        // controller generated for it.
+        let exec_session_id = format!("exec-session-task-{:x}-{:x}", std::process::id(), 7u64);
+        let script_command = vec!["/workspace/scripts/demo-background-subagent.sh".to_string()];
+        assert_eq!(launched_session_id(&script_command, &exec_session_id).as_deref(), Some("session-task"));
+
+        let foreign = format!("exec-session-task-{:x}-{:x}", std::process::id().wrapping_add(1), 7u64);
+        assert_eq!(launched_session_id(&script_command, &foreign), None, "another process's launch is not ours");
+        assert_eq!(launched_session_id(&script_command, "run-1"), None, "a direct exec session names no task");
+    }
 
     /// Polls the session's activity channel until output appears or times out.
     async fn wait_for_pipe_output(
@@ -1521,6 +1663,66 @@ mod tests {
             error.downcast_ref::<ExecSessionNotFound>().is_some(),
             "the retried close must report the typed missing-session cause: {error}"
         );
+        Ok(())
+    }
+
+    /// A close bound to a removed record must not kill its same-id replacement.
+    ///
+    /// A close reads its dispatch record before it terminates the backend. If
+    /// that record is closed and a replacement is launched under the same id in
+    /// the meantime, terminating by the textual id would signal the replacement
+    /// while the later identity check rejects the stale removal. Termination
+    /// now runs under the per-session lock and revalidates the record, so the
+    /// stale close reports the typed missing-session cause and the replacement
+    /// keeps running.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_stale_close_after_a_same_id_recreate_leaves_the_replacement_running() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let workspace_root = canonicalize_workspace(temp_dir.path());
+        let pty_sessions = PtySessionManager::new(workspace_root.clone(), PtyConfig::default());
+        let manager = ExecSessionManager::new(workspace_root.clone(), pty_sessions);
+
+        manager
+            .create_pipe_session(
+                "recreated".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 30".to_string()],
+                workspace_root.clone(),
+                HashMap::new(),
+            )
+            .await?;
+        // The record a close would have read before the replacement existed.
+        let stale = manager.session_record("recreated").await?;
+
+        manager.close_session("recreated").await?;
+        manager
+            .create_pipe_session(
+                "recreated".to_string().into(),
+                vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 30".to_string()],
+                workspace_root,
+                HashMap::new(),
+            )
+            .await?;
+
+        let error = manager
+            .close_session_record("recreated", stale)
+            .await
+            .expect_err("a close bound to the removed record must not touch the replacement");
+        assert!(
+            error.downcast_ref::<ExecSessionNotFound>().is_some(),
+            "the stale close must report the typed missing-session cause: {error}"
+        );
+
+        let replacement = manager.pipe_sessions.session_record("recreated").await?;
+        assert!(!replacement.handle.has_exited(), "the replacement process must keep running");
+        let snapshot = manager.snapshot_session("recreated").await?;
+        assert_eq!(
+            snapshot.lifecycle_state,
+            Some(crate::tools::types::DiapasonSessionLifecycleState::Running),
+            "the replacement must still be the live session under the id"
+        );
+
+        manager.close_session("recreated").await?;
         Ok(())
     }
 }

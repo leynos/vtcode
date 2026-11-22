@@ -201,7 +201,7 @@ async fn legacy_restore_ignores_records_owned_by_a_session() {
     assert!(restored.is_empty(), "no ownerless record exists to restore");
 
     let untouched = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.id == owned_id)
@@ -237,7 +237,7 @@ async fn legacy_restore_ignores_records_owned_by_a_session() {
     );
 
     let owned_after = controller
-        .background_status_entries()
+        .background_status_entries(TaskOwner::Workspace)
         .await
         .into_iter()
         .find(|entry| entry.id == owned_id)
@@ -271,13 +271,13 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
         );
     }
     root.save_background_state().await.expect("persist root ledger");
-    assert_eq!(root.background_status_entries().await.len(), 1);
+    assert_eq!(root.background_status_entries(TaskOwner::Workspace).await.len(), 1);
 
     // A nested scope in the same workspace cannot own background work, so it
     // must not adopt the root's record as a second, stale copy.
     let nested = nested_child_controller(workspace_root.clone(), "child-session").await;
     assert!(
-        nested.background_status_entries().await.is_empty(),
+        nested.background_status_entries(TaskOwner::Workspace).await.is_empty(),
         "nested scopes must not restore records owned by another controller"
     );
 
@@ -288,10 +288,10 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
         .expect("cancel root background task")
         .into_entry();
     assert_eq!(cancelled.status, BackgroundSubprocessStatus::Stopped);
-    let root_entries = root.background_status_entries().await;
+    let root_entries = root.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(root_entries.len(), 1, "the root must report exactly one entry");
     assert_eq!(root_entries[0].status, BackgroundSubprocessStatus::Stopped);
-    assert!(nested.background_status_entries().await.is_empty());
+    assert!(nested.background_status_entries(TaskOwner::Workspace).await.is_empty());
 
     // The nested scope's persistence guard must leave the ledger intact, not
     // merely preserve the records a round-trip would report: compare the raw
@@ -307,7 +307,7 @@ async fn nested_scope_never_restores_the_workspace_background_ledger() {
     let restored = SubagentController::new(test_controller_config(workspace_root, DiapasonConfig::default()))
         .await
         .expect("restoring controller");
-    let restored_entries = restored.background_status_entries().await;
+    let restored_entries = restored.background_status_entries(TaskOwner::Workspace).await;
     assert_eq!(restored_entries.len(), 1, "the workspace ledger must survive the nested scope");
     assert_eq!(restored_entries[0].id, record_id);
     assert_eq!(restored_entries[0].status, BackgroundSubprocessStatus::Stopped);
@@ -355,7 +355,7 @@ async fn an_empty_background_owner_loads_like_an_unscoped_controller() {
         empty_owner.background_owner_session_id.is_none(),
         "an empty owner must be dropped at construction rather than kept as a distinct owner"
     );
-    let listed = empty_owner.background_status_entries().await;
+    let listed = empty_owner.background_status_entries(TaskOwner::Workspace).await;
     assert!(
         listed.iter().any(|entry| entry.id == record_id),
         "an empty owner must load the ledger like an unscoped controller: {listed:?}"

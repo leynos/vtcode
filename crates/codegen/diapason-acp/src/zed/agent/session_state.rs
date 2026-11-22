@@ -76,6 +76,30 @@ impl ZedAgent {
         session_id: &acp::SessionId,
         defer_background_restore: bool,
     ) -> Option<Arc<diapason_core::subagents::SubagentController>> {
+        self.build_session_subagent_controller_with_owner_migration(
+            runtime,
+            session_id,
+            defer_background_restore,
+            false,
+        )
+        .await
+    }
+
+    /// Builds a session controller, deciding separately whether its owner
+    /// migration must be retried.
+    ///
+    /// `defer_background_restore` keeps the controller from restoring before a
+    /// resumed attach's durability checkpoint. `owner_migration_failed` selects
+    /// the migration retry, which is needed only when the resume-site migration
+    /// failed; retrying after a successful migration would take the ledger's
+    /// lock again for rows that already carry their owner.
+    async fn build_session_subagent_controller_with_owner_migration(
+        &self,
+        runtime: &SessionWorkspaceRuntime,
+        session_id: &acp::SessionId,
+        defer_background_restore: bool,
+        owner_migration_failed: bool,
+    ) -> Option<Arc<diapason_core::subagents::SubagentController>> {
         let registry = runtime.local_tool_registry.with_subagent_controller(None);
         let mut config = self.config.clone();
         config.workspace = runtime.workspace_root.clone();
@@ -89,6 +113,7 @@ impl ZedAgent {
                 owner_session_id: Some(session_id.0.as_ref()),
                 workspace_gated: runtime.workspace_hooks_gated,
                 defer_background_restore,
+                owner_migration_failed,
             })
             .await;
         // Only the subagent controller was set up here. Reporting through the

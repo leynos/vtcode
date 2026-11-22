@@ -66,7 +66,7 @@ async fn resume_preserves_captured_runtime_overrides() {
     // would satisfy that wait.
     let captures_before_resume = controller.runtime_capture_count();
 
-    controller.resume(&spawned.id).await.expect("resume");
+    controller.resume(TaskOwner::Workspace, &spawned.id).await.expect("resume");
 
     for _ in 0..100 {
         let status = controller.status_for(TaskOwner::Workspace, &spawned.id).await.expect("status");
