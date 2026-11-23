@@ -58,19 +58,13 @@ jobs:
           - aarch64-unknown-linux-gnu
 
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
+        with:
+          persist-credentials: false
+
       - name: Wait for tag to exist
         shell: bash
-        run: |
-          for _ in $(seq 1 12); do
-            if git ls-remote --exit-code --tags "https://github.com/leynos/vtcode.git" "${{ inputs.tag }}"; then
-              echo "Tag ${{ inputs.tag }} found"
-              exit 0
-            fi
-            echo "Tag ${{ inputs.tag }} not found yet (attempt ${attempt}/12), waiting 10s..."
-            sleep 10
-          done
-          echo "::error::Tag ${{ inputs.tag }} does not exist after 120s" >&2
-          exit 1
+        run: ./scripts/wait-for-tag.sh "${{ inputs.tag }}"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
@@ -172,13 +166,7 @@ jobs:
             echo "✓ Found Unix binary: diapason"
             # Report binary size for cold-start tracking (smaller binary = faster dyld load)
             binary_path="target/${{ matrix.target }}/release-fast/diapason"
-            if BINARY_SIZE="$(stat -c %s "${binary_path}" 2>/dev/null)"; then
-              :
-            elif BINARY_SIZE="$(stat -f %z "${binary_path}" 2>/dev/null)"; then
-              :
-            else
-              BINARY_SIZE="unknown"
-            fi
+            BINARY_SIZE="$(./scripts/binary-size.sh "${binary_path}")"
             BINARY_SIZE_H=$(du -h "target/${{ matrix.target }}/release-fast/diapason" 2>/dev/null | awk '{print $1}')
             echo "📦 Binary size: ${BINARY_SIZE_H} (${BINARY_SIZE} bytes)"
           else
@@ -222,19 +210,13 @@ jobs:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: -C target-cpu=x86-64
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
+        with:
+          persist-credentials: false
+
       - name: Wait for tag to exist
         shell: bash
-        run: |
-          for _ in $(seq 1 12); do
-            if git ls-remote --exit-code --tags "https://github.com/leynos/vtcode.git" "${{ inputs.tag }}"; then
-              echo "Tag ${{ inputs.tag }} found"
-              exit 0
-            fi
-            echo "Tag ${{ inputs.tag }} not found yet (attempt ${attempt}/12), waiting 10s..."
-            sleep 10
-          done
-          echo "::error::Tag ${{ inputs.tag }} does not exist after 120s" >&2
-          exit 1
+        run: ./scripts/wait-for-tag.sh "${{ inputs.tag }}"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
