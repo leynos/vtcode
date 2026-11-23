@@ -320,7 +320,7 @@ Modify the specification to include:
 {
   "title": "Report",
   "style": {
-    "primary_color": "#003366",
+    "primary_colour": "#003366",
     "font_family": "Arial",
     "header_size": 16
   }
@@ -340,7 +340,7 @@ import matplotlib.pyplot as plt
 "chart_config": {
   "type": "bar",
   "data": [10, 20, 30],
-  "colors": ["#003366", "#0066CC", "#0099FF"]
+  "colours": ["#003366", "#0066CC", "#0099FF"]
 }
 ```
 """)
@@ -368,15 +368,17 @@ complexity: moderate
 
 ## Quick Start
 
+The scripts below are project-provided placeholders for this illustrative example; this demonstration generates the skill instructions only.
+
 ```bash
 # Create analysis
-python -m diapason.skills.excel.analyze --file data.xlsx --config analysis.json
+python scripts/analyse.py --file data.xlsx --config analysis.json
 
 # Generate chart
-python -m diapason.skills.excel.chart --file data.xlsx --type bar --output chart.png
+python scripts/chart.py --file data.xlsx --type bar --output chart.png
 
 # Create pivot table
-python -m diapason.skills.excel.pivot --file data.xlsx --config pivot.json
+python scripts/pivot.py --file data.xlsx --config pivot.json
 ```
 
 ## Configuration
