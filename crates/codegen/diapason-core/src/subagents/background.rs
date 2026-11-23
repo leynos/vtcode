@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::fs;
 
+use super::background_ledger::{PersistedBackgroundRecord, PersistedBackgroundState};
 use super::constants::SUBAGENT_PREVIEW_LINES;
 use super::controller_helpers::sanitize_component;
-use super::types::{PersistedBackgroundRecord, PersistedBackgroundState};
 use crate::utils::file_utils::write_file_atomic_with_context;
 use crate::utils::session_archive::{SessionListing, SessionSnapshot};
 
@@ -85,6 +85,12 @@ pub(crate) async fn load_background_state(workspace_root: &Path) -> Result<Persi
     serde_json::from_str(&raw).with_context(|| format!("Failed to parse {}", path.display()))
 }
 
+/// Writes a records-only ledger file.
+///
+/// Production saves go through the controller's ledger write, which also
+/// carries the migration evidence; this writer exists for tests that seed a
+/// ledger without that evidence.
+#[cfg(test)]
 pub(crate) async fn persist_background_state(
     workspace_root: &Path,
     records: Vec<PersistedBackgroundRecord>,

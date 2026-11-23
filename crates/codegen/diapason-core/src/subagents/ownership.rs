@@ -143,6 +143,93 @@ pub fn owned_child_ids<'a>(session_id: &str, entries: &'a [SubagentStatusEntry])
 }
 
 impl SubagentController {
+    /// Reports whether `session_id` may address `child_id` on this controller.
+    ///
+    /// This is the question every session-scoped command asks before it acts.
+    /// The walk reads this controller's own `children` map, so a grandchild —
+    /// which lives in the child-scoped controller that spawned it — is not
+    /// owned here. A transport that presents [`TaskOwner::SessionTree`] resolves
+    /// the whole tree first; an admission check that must agree with execution
+    /// asks this question instead of walking descendants, because a target
+    /// admitted from a descendant would then be refused by the command it was
+    /// admitted for.
+    pub async fn owns_child(&self, session_id: &str, child_id: &str) -> bool {
+        let state = self.state.read().await;
+        let entries = state.children.values().map(ChildRecord::build_status_entry).collect::<Vec<_>>();
+        owned_child_ids(session_id, &entries).contains(child_id)
+    }
+
+    /// Returns the session this controller serves.
+    ///
+    /// A command executed through this controller presents this id as its
+    /// [`TaskOwner::Session`] authority: the ACP adapter resolves the
+    /// session's own controller and the executor names the invocation's parent
+    /// session, which is the value recorded here when the controller was
+    /// created for that session. Reading the live value keeps a controller
+    /// retargeted at runtime consistent with the records it spawns afterwards.
+    pub async fn served_session_id(&self) -> String {
+        self.parent_session_id.read().await.clone()
+    }
+
+    /// Test-support seam: records a fixture child without launching a run.
+    ///
+    /// Production only creates a child record from a real spawn, so a dependent
+    /// crate's admission regression for nested delegation needs a way to build a
+    /// tree in which the grandchild exists only in a child-scoped controller.
+    /// The inserted record is what a queued spawn would have produced: the same
+    /// id, owning session and parent thread.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub async fn insert_test_child_record(
+        &self,
+        id: &str,
+        session_id: &str,
+        parent_thread_id: &str,
+        depth: usize,
+        spec_name: &str,
+    ) -> Result<()> {
+        let Some(spec) = diapason_config::builtin_subagents()
+            .into_iter()
+            .find(|spec| spec.name == spec_name)
+        else {
+            bail!("Unknown builtin subagent spec {spec_name}");
+        };
+        let now = chrono::Utc::now();
+        let record = ChildRecord {
+            id: id.to_string(),
+            session_id: session_id.to_string(),
+            parent_thread_id: parent_thread_id.to_string(),
+            display_label: super::subagent_display_label(&spec),
+            spec,
+            status: super::SubagentStatus::Running,
+            background: false,
+            depth,
+            created_at: now,
+            updated_at: now,
+            completed_at: None,
+            summary: None,
+            error: None,
+            archive_metadata: None,
+            archive_path: None,
+            transcript_path: None,
+            effective_config: None,
+            stored_messages: Vec::new(),
+            last_prompt: Some(format!("fixture task for {id}")),
+            queued_prompts: std::collections::VecDeque::new(),
+            max_turns: None,
+            model_override: None,
+            reasoning_override: None,
+            thread_handle: None,
+            handle: None,
+            notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+            worktree_path: None,
+            child_controller: None,
+            closed: false,
+        };
+        let _previous = self.state.write().await.children.insert(id.to_string(), record);
+        Ok(())
+    }
+
     /// Rejects a child task the caller does not own.
     ///
     /// The workspace operator has no session to compare against, so it is
@@ -156,11 +243,10 @@ impl SubagentController {
             // The workspace operator has no session to compare against.
             TaskOwner::Workspace => true,
             TaskOwner::SessionTree(tasks) => tasks.contains(target),
-            TaskOwner::Session(session_id) => {
-                let state = self.state.read().await;
-                let entries = state.children.values().map(ChildRecord::build_status_entry).collect::<Vec<_>>();
-                owned_child_ids(session_id, &entries).contains(target)
-            }
+            // The same question [`Self::owns_child`] answers, so an admission
+            // check built on that helper cannot admit a target this command
+            // refuses.
+            TaskOwner::Session(session_id) => self.owns_child(session_id, target).await,
         };
         if owned {
             return Ok(());

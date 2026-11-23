@@ -60,3 +60,48 @@ pub(super) async fn observe_management_request(
     management.finish(result.is_ok());
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::{MANAGEMENT_FAILURE_CATEGORY, management_error_reason};
+    use agent_client_protocol::Error as SdkError;
+    use serde_json::json;
+
+    /// Builds the error a management helper returns for one bounded reason.
+    fn management_error(reason: &str) -> SdkError {
+        SdkError::internal_error().data(json!({ "reason": reason }))
+    }
+
+    /// Every bounded reason keeps its own category on the management span and
+    /// failure log.
+    ///
+    /// The mapping is the only translation from the helper's data payload to a
+    /// span field, so a reason that falls through to the generic category is
+    /// indistinguishable from an unexpected failure in the diagnostics. In
+    /// particular, a background stop that could not confirm its exec session
+    /// closed is retryable and must not be reported as a generic failure.
+    #[test]
+    fn management_failure_categories_are_bounded_and_distinct() {
+        for reason in [
+            "invalid_lody_subagent_params",
+            "unknown_session",
+            "subagent_management_unavailable",
+            "unknown_task",
+            "invalid_tail",
+            "subagent_management_failed",
+            "subagent_close_pending",
+        ] {
+            let category = management_error_reason(&management_error(reason));
+            assert_eq!(category, reason, "the bounded reason must keep its own category");
+            assert_ne!(
+                category, MANAGEMENT_FAILURE_CATEGORY,
+                "a bounded reason must not collapse into the generic failure category"
+            );
+        }
+
+        // An unrecognised payload and an error without one stay bounded: the
+        // client's data must never become a span field or log value.
+        assert_eq!(management_error_reason(&management_error("not_a_management_reason")), MANAGEMENT_FAILURE_CATEGORY);
+        assert_eq!(management_error_reason(&SdkError::internal_error()), MANAGEMENT_FAILURE_CATEGORY);
+    }
+}

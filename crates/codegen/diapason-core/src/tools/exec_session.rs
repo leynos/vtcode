@@ -1,12 +1,12 @@
 //! Manages persistent command and PTY process sessions used by execution tools.
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock as StdRwLock};
 
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use diapason_bash_runner::{PipeSpawnOptions, ProcessHandle, spawn_pipe_process_with_options};
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, RwLock, watch};
 use tokio::task::JoinHandle;
@@ -23,30 +23,56 @@ const PIPE_OUTPUT_HEAD_BYTES: usize = 8 * 1024;
 
 const PIPE_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 
-/// The launch argument that carries the controller-generated task session id.
-const LAUNCH_SESSION_ID_FLAG: &str = "--session-id";
+/// The prefix a controller-generated background exec-session id carries.
+const CONTROLLER_EXEC_SESSION_PREFIX: &str = "exec-";
 
-/// Returns the task session identifier a launch created for `exec_session_id`.
+/// Builds the exec-session id a controller background launch creates for
+/// `session_id`.
 ///
-/// The controller passes the identifier to a background child as
-/// `--session-id`. A demo launch runs a script instead, so its command carries
-/// no flag; the controller's exec-session identifier embeds the same task id as
-/// `exec-<task>-<pid>-<sequence>`, and its process component lets this process
-/// recognise its own launches. Identifiers a caller chose for a direct exec
-/// session match neither form and record nothing.
-fn launched_session_id(command: &[String], exec_session_id: &str) -> Option<String> {
-    if let Some(session_id) = command
-        .windows(2)
-        .find(|pair| pair.first().is_some_and(|flag| flag.as_str() == LAUNCH_SESSION_ID_FLAG))
-        .and_then(|pair| pair.get(1))
-    {
-        return Some(session_id.clone());
+/// The launch convention is `exec-<session>-<pid>-<sequence>`, with the process
+/// id and the launch sequence written as minimal lowercase hexadecimal. The
+/// session id may itself contain hyphens and may end in hexadecimal-looking
+/// components of its own, so the two trailing components are always the launch
+/// pair and [`controller_exec_session_task_id`] reads them off the right.
+///
+/// This is the producer half of the convention and
+/// [`controller_exec_session_task_id`] is the reader half; both are defined
+/// together so they cannot drift. The producer is
+/// `controller_background_run::background_exec_session_id`, which currently
+/// formats the same string inline and should call this constructor so the
+/// convention has one definition.
+#[must_use]
+pub(crate) fn controller_exec_session_id(session_id: &str, process_id: u32, sequence: u64) -> String {
+    format!("{CONTROLLER_EXEC_SESSION_PREFIX}{session_id}-{process_id:x}-{sequence:x}")
+}
+
+/// Returns the task session id a controller launch embedded in
+/// `exec_session_id`.
+///
+/// The rule is the launch convention `exec-<session>-<pid>-<sequence>`: strip
+/// the `exec-` prefix and the two trailing components, and accept the result
+/// only when rebuilding the id from it with [`controller_exec_session_id`]
+/// reproduces the input exactly. The round trip is what makes the rule strict:
+/// a non-hexadecimal, uppercase, zero-padded, over-width or extra component is
+/// refused rather than tolerated, and an id with no launch pair — every direct
+/// exec session, such as `run-1` — yields `None`.
+///
+/// The process component is deliberately not compared with this process's id. A
+/// row restored from the ledger keeps the pair a launch wrote, and a resumed
+/// session must still read its own settled task's archive after a restart, so
+/// the process that built the id is evidence of the launch rather than a
+/// requirement on the current process.
+#[must_use]
+pub(crate) fn controller_exec_session_task_id(exec_session_id: &str) -> Option<&str> {
+    let suffix = exec_session_id.strip_prefix(CONTROLLER_EXEC_SESSION_PREFIX)?;
+    let (without_sequence, sequence) = suffix.rsplit_once('-')?;
+    let (session_id, process_id) = without_sequence.rsplit_once('-')?;
+    let process_id = u32::from_str_radix(process_id, 16).ok()?;
+    let sequence = u64::from_str_radix(sequence, 16).ok()?;
+    if session_id.is_empty() {
+        return None;
     }
-    let suffix = exec_session_id.strip_prefix("exec-")?;
-    let (without_sequence, _sequence) = suffix.rsplit_once('-')?;
-    let (session_id, process) = without_sequence.rsplit_once('-')?;
-    let process_id = format!("{:x}", std::process::id());
-    (process == process_id.as_str()).then(|| session_id.to_string())
+    (controller_exec_session_id(session_id, process_id, sequence) == exec_session_id).then_some(session_id)
 }
 
 /// A continuation referenced an exec session that is no longer active.
@@ -671,13 +697,6 @@ pub struct ExecSessionManager {
     /// lifetime: dropping one would let a waiter holding the old handle bypass a
     /// create that installed a fresh handle.
     operation_locks: Arc<std::sync::Mutex<HashMap<ExecSessionId, Arc<Mutex<()>>>>>,
-    /// Task session identifiers this process launched.
-    ///
-    /// A background record's session identifier is stored data once the ledger
-    /// is restored, so it can name any session. The controller generates the id
-    /// at launch and passes it to the child; recording it here gives the
-    /// archive reader the one trusted anchor it can verify a row against.
-    launched_task_sessions: Arc<StdRwLock<HashSet<String>>>,
     /// A scripted fault for the liveness read path.
     ///
     /// The background liveness projection must distinguish a genuinely absent
@@ -696,36 +715,9 @@ impl ExecSessionManager {
             pty_sessions,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             operation_locks: Arc::new(std::sync::Mutex::new(HashMap::new())),
-            launched_task_sessions: Arc::new(StdRwLock::new(HashSet::new())),
             #[cfg(any(test, feature = "test-support"))]
             snapshot_failure: Arc::new(std::sync::Mutex::new(None)),
         }
-    }
-
-    /// Records that this process launched a task under `session_id`.
-    ///
-    /// The identifier is written only after the exec session exists, so a
-    /// launch that failed to start records nothing. A later read treats the
-    /// identifier as proof that the record's session came from a launch this
-    /// process made rather than from a restored ledger row.
-    pub(crate) fn register_launched_task_session(&self, session_id: &str) {
-        self.launched_task_sessions
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(session_id.to_string());
-    }
-
-    /// Reports whether this process launched a task under `session_id`.
-    ///
-    /// A restored ledger row stores its identifier as data, so it can name any
-    /// session; only an identifier recorded when this process created the
-    /// task's exec session is a trusted anchor for the task's archive.
-    #[must_use]
-    pub(crate) fn is_launched_task_session(&self, session_id: &str) -> bool {
-        self.launched_task_sessions
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .contains(session_id)
     }
 
     /// Returns the per-session mutex that serialises create and close.
@@ -765,7 +757,6 @@ impl ExecSessionManager {
         env: HashMap<String, String>,
         sandbox_active: bool,
     ) -> Result<DiapasonExecSession> {
-        let launched_task_session = launched_session_id(&command, session_id.as_str());
         // Hold the per-session lock across check, spawn and dispatch insert so a
         // concurrent close cannot remove a record this create would replace, and
         // cannot terminate the session this create installs.
@@ -779,9 +770,6 @@ impl ExecSessionManager {
         };
         let metadata = self.pipe_sessions.create_session(session_id, command, working_dir, env).await?;
         self.insert_session(metadata.clone(), ExecSessionBackend::Pipe, None).await?;
-        if let Some(task_session_id) = launched_task_session {
-            self.register_launched_task_session(&task_session_id);
-        }
         Ok(metadata)
     }
 
@@ -808,7 +796,6 @@ impl ExecSessionManager {
         zsh_exec_bridge: Option<ZshExecBridgeSession>,
         sandbox_active: bool,
     ) -> Result<DiapasonExecSession> {
-        let launched_task_session = launched_session_id(&command, session_id.as_str());
         // Hold the per-session lock across check, spawn and dispatch insert so a
         // concurrent close cannot remove a record this create would replace, and
         // cannot terminate the session this create installs.
@@ -828,9 +815,6 @@ impl ExecSessionManager {
         let exec_metadata = DiapasonExecSession::from(metadata);
         self.insert_session(exec_metadata.clone(), ExecSessionBackend::Pty, Some(pty_guard))
             .await?;
-        if let Some(task_session_id) = launched_task_session {
-            self.register_launched_task_session(&task_session_id);
-        }
         Ok(exec_metadata)
     }
 
@@ -1103,33 +1087,50 @@ mod tests {
 
     use super::{
         ExecSessionLostAfterInput, ExecSessionManager, ExecSessionNotFound, ExecSessionWriterClosed,
-        launched_session_id, write_failure,
+        controller_exec_session_id, controller_exec_session_task_id, write_failure,
     };
     use crate::config::PtyConfig;
     use crate::tools::pty::{PtySessionNotFound, PtySize};
     use crate::tools::registry::PtySessionManager;
     use crate::utils::path::canonicalize_workspace;
 
-    /// The launch anchor comes from the flag, or from the controller's own exec id.
+    /// The launch convention pairs a task session with the exec id built for it.
     #[test]
-    fn launched_session_id_reads_the_flag_and_the_controller_convention() {
-        let command = vec![
-            "diapason".to_string(),
-            "background-subagent".to_string(),
-            "--session-id".to_string(),
-            "session-task".to_string(),
-        ];
-        assert_eq!(launched_session_id(&command, "exec-ignored").as_deref(), Some("session-task"));
+    fn controller_exec_session_id_pairs_a_task_session_with_its_exec_session() {
+        // A session id shaped like the producer's own: a sanitized base followed
+        // by that launch's pid and sequence, both hexadecimal.
+        let session_id = "session-a-background-worker-20261122T000000000Z-1f2e-0";
+        let exec_session_id = controller_exec_session_id(session_id, 0xabc, 7);
+        assert_eq!(exec_session_id, "exec-session-a-background-worker-20261122T000000000Z-1f2e-0-abc-7");
+        assert_eq!(
+            controller_exec_session_task_id(&exec_session_id),
+            Some(session_id),
+            "the id must embed the task session it was built for, even when that session ends in hex components"
+        );
 
-        // A demo launch runs a script, so the task id is only in the exec id the
-        // controller generated for it.
-        let exec_session_id = format!("exec-session-task-{:x}-{:x}", std::process::id(), 7u64);
-        let script_command = vec!["/workspace/scripts/demo-background-subagent.sh".to_string()];
-        assert_eq!(launched_session_id(&script_command, &exec_session_id).as_deref(), Some("session-task"));
+        // The process component belongs to the launch, not to the reader: a row
+        // restored after a restart keeps an earlier process's id and stays
+        // readable here.
+        let restored = controller_exec_session_id(session_id, std::process::id(), 0);
+        assert_eq!(controller_exec_session_task_id(&restored), Some(session_id));
 
-        let foreign = format!("exec-session-task-{:x}-{:x}", std::process::id().wrapping_add(1), 7u64);
-        assert_eq!(launched_session_id(&script_command, &foreign), None, "another process's launch is not ours");
-        assert_eq!(launched_session_id(&script_command, "run-1"), None, "a direct exec session names no task");
+        // Another task's launch names that other task, never this one.
+        let foreign = controller_exec_session_id("other-session", 0xabc, 8);
+        assert_ne!(controller_exec_session_task_id(&foreign), Some(session_id));
+
+        // A direct exec session names no task.
+        assert_eq!(controller_exec_session_task_id("run-1"), None);
+        assert_eq!(controller_exec_session_task_id("exec-run-1"), None);
+
+        // Only the canonical spelling the constructor writes is accepted, so an
+        // uppercase, zero-padded, non-hexadecimal, empty or extra component is
+        // refused.
+        assert_eq!(controller_exec_session_task_id("exec-session-base-ABC-1"), None);
+        assert_eq!(controller_exec_session_task_id("exec-session-base-0abc-1"), None);
+        assert_eq!(controller_exec_session_task_id("exec-session-base-abc-nothex"), None);
+        assert_eq!(controller_exec_session_task_id("exec-session-base-abc"), None);
+        assert_eq!(controller_exec_session_task_id("exec--abc-1"), None);
+        assert_eq!(controller_exec_session_task_id("exec-"), None);
     }
 
     /// Polls the session's activity channel until output appears or times out.

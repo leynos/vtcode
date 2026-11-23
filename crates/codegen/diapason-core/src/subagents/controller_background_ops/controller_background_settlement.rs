@@ -32,6 +32,32 @@ pub(super) const fn restart_allowed(auto_restore: bool, restart_attempts: u8) ->
     auto_restore && retry_attempt_available(restart_attempts)
 }
 
+/// Reports whether a failed launch still owns the record it wrote.
+///
+/// A background record id is stable across restarts and shared with the
+/// workspace ledger, so the record a launch wrote at `Starting` may no longer
+/// describe that launch. A cancellation settles it with `desired_enabled`
+/// cleared, and a replacement launch takes the id with a new exec session. An
+/// older launch that fails afterwards must not settle either: marking a live
+/// replacement as `Error` also makes a later cancellation take the
+/// already-terminal branch and skip process termination. The exec session
+/// identifies the launch, so only the matching, still-desired, still-starting
+/// record may be settled.
+pub(super) fn failed_launch_still_owns_record(record: &BackgroundRecord, plan_exec_session_id: &str) -> bool {
+    record.exec_session_id == plan_exec_session_id
+        && matches!(record.status, BackgroundSubprocessStatus::Starting)
+        && record.desired_enabled
+}
+
+/// Reports whether a persisted row still wants the launch it names.
+///
+/// A ledger row naming another exec session is only a competing launch while it
+/// is still desired; a stopped copy of an older launch must not block a
+/// replacement.
+pub(super) fn persisted_background_row_is_desired(record: &PersistedBackgroundRecord) -> bool {
+    record.desired_enabled
+}
+
 /// Controller trees whose last background-ledger write failed.
 ///
 /// A launch commits its record in memory before it saves the ledger, and the
@@ -131,6 +157,100 @@ impl SubagentController {
         self.save_background_state().await?;
         clear_background_ledger_write_pending(&self.state, generation);
         Ok(true)
+    }
+
+    /// Settles a background record whose exec session could not be spawned
+    /// once no automatic restart remains.
+    ///
+    /// A record left at `Starting` is reported as an active process forever:
+    /// refresh treats `Starting` as active, and the read-only liveness overlay
+    /// preserves it while the launch is still desired. Settling it here makes
+    /// the failure visible to a management list and keeps the default toggle
+    /// from routing a graceful stop to a process that never started. A launch
+    /// that still has its restart allowance is left `Starting`, matching the
+    /// overlay's restart budget, and the original spawn error is returned
+    /// either way.
+    ///
+    /// Only the launch that failed may settle the record. A record id outlives
+    /// one launch: a cancellation can settle the record while its exec session
+    /// is still starting, and a replacement launch can take the same id. An
+    /// older launch that fails afterwards must not mark the replacement's live
+    /// process as failed, because a later cancellation would then take the
+    /// already-terminal branch and skip process termination.
+    pub(in crate::subagents) async fn settle_failed_background_run(
+        &self,
+        plan: &BackgroundRunPlan,
+        error: &anyhow::Error,
+    ) {
+        self.settle_background_launch_error(&plan.record_id, &plan.exec_session_id, error, true)
+            .await;
+    }
+
+    /// Settles a record whose scheduled replacement could not be prepared.
+    ///
+    /// The restart allowance was already spent when refresh scheduled the
+    /// replacement, so a preparation failure cannot be retried. Leaving the
+    /// record `Starting` would report an active launch that nothing will ever
+    /// drive, and refresh exempts a `Starting` record only while it still owes
+    /// a launch, so the failure is settled here and its obligation discharged.
+    /// The observation's exec session still identifies the launch, so only a
+    /// record that still names it is settled.
+    pub(in crate::subagents) async fn settle_failed_background_restart(
+        &self,
+        record_id: &str,
+        exec_session_id: &str,
+        error: &anyhow::Error,
+    ) {
+        self.settle_background_launch_error(record_id, exec_session_id, error, false)
+            .await;
+    }
+
+    /// Applies the settled failure shared by a spawn and a restart preparation.
+    ///
+    /// `honour_restart_allowance` keeps a first spawn failure `Starting` so the
+    /// caller can retry it, while a restart preparation failure is settled
+    /// straight away because its allowance is already spent.
+    async fn settle_background_launch_error(
+        &self,
+        record_id: &str,
+        exec_session_id: &str,
+        error: &anyhow::Error,
+        honour_restart_allowance: bool,
+    ) {
+        // This launch is finished. Whether it settles `Error` or leaves a
+        // remaining allowance for an inline retry, the claim it reserved no
+        // longer owes a launch; a replacement records its own key, so clearing
+        // this session's obligation cannot hide one.
+        clear_background_launch_owed(&self.state, record_id, exec_session_id);
+        {
+            let mut state = self.state.write().await;
+            let Some(record) = state.background_children.get_mut(record_id) else {
+                return;
+            };
+            if !failed_launch_still_owns_record(record, exec_session_id) {
+                return;
+            }
+            if honour_restart_allowance
+                && restart_allowed(self.config.vt_cfg.subagents.background.auto_restore, record.restart_attempts)
+            {
+                return;
+            }
+            record.status = BackgroundSubprocessStatus::Error;
+            record.error = Some(format!("Failed to start background subagent '{}': {error:#}", record.agent_name));
+            record.summary = Some("Background subagent failed to start".to_string());
+            record.updated_at = Utc::now();
+            record.ended_at.get_or_insert(Utc::now());
+        }
+        self.publish_background_status(record_id).await;
+        // The caller receives the original spawn error, so a persistence
+        // failure must not replace it; the ledger catches up on the next save.
+        if let Err(save_error) = self.save_background_state().await {
+            tracing::warn!(
+                record_id,
+                error = %save_error,
+                "Failed to persist the settled background launch failure"
+            );
+        }
     }
 
     /// Commits one launch to its record, unless the record no longer wants it.
@@ -396,144 +516,4 @@ impl SubagentController {
 }
 
 #[cfg(all(test, unix))]
-mod stale_observation_tests {
-    //! Pins the phase check that discards an absence observed before a commit.
-
-    use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
-
-    use tempfile::TempDir;
-
-    use crate::config::DiapasonConfig;
-    use crate::config::types::ReasoningEffortLevel;
-    use crate::tools::exec_session::ExecSessionManager;
-    use crate::tools::registry::PtySessionManager;
-
-    use super::super::BackgroundRunRequest;
-    use super::super::controller_background_run::gate_next_background_commit;
-    use super::*;
-
-    /// Writes the demo agent and a script that keeps its process alive.
-    fn write_demo_agent(workspace_root: &std::path::Path) {
-        let agent_dir = workspace_root.join(diapason_commons::workspace_dir_name()).join("agents");
-        std::fs::create_dir_all(&agent_dir).expect("agent dir");
-        std::fs::write(
-            agent_dir.join("background-demo.md"),
-            r#"---
-name: background-demo
-description: Minimal demo agent for the managed background subprocess flow.
-tools:
-  - command_session
-background: true
-maxTurns: 2
-initialPrompt: Report readiness once.
----
-
-Run the managed background demo.
-"#,
-        )
-        .expect("write background agent");
-
-        let scripts_dir = workspace_root.join("scripts");
-        std::fs::create_dir_all(&scripts_dir).expect("scripts dir");
-        let script_path = scripts_dir.join("demo-background-subagent.sh");
-        std::fs::write(&script_path, "#!/bin/sh\nsleep 30\n").expect("write background script");
-        let mut permissions = std::fs::metadata(&script_path)
-            .expect("background script metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&script_path, permissions).expect("background script permissions");
-    }
-
-    fn test_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentControllerConfig {
-        let pty_sessions = PtySessionManager::new(workspace_root.clone(), vt_cfg.pty.clone());
-        let exec_sessions = ExecSessionManager::new(workspace_root.clone(), pty_sessions.clone());
-        SubagentControllerConfig {
-            workspace_root,
-            parent_session_id: "parent-session".to_string(),
-            parent_model: "gpt-5.6-sol".to_string(),
-            parent_provider: "openai".to_string(),
-            parent_reasoning_effort: ReasoningEffortLevel::Medium,
-            api_key: "test-key".to_string(),
-            vt_cfg,
-            openai_chatgpt_auth: None,
-            depth: 0,
-            workspace_gated: false,
-            exec_sessions,
-            output_reader: None,
-            pty_manager: pty_sessions.manager().clone(),
-            managed_background_runtime: false,
-            lock_scope: None,
-        }
-    }
-
-    /// A missing session observed while `Starting` is discarded after the same
-    /// launch commits.
-    ///
-    /// Refresh reads the record and then observes its exec session outside the
-    /// lock. A spawn that has not registered yet reads as missing, and the
-    /// launch can commit `Running` before that observation is applied. Acting
-    /// on the stale absence would fail the launch, or spend its allowance on a
-    /// duplicate replacement. The committed launch is produced by the existing
-    /// commit gate, so the observation's phase is the one a refresh really sees
-    /// while the spawn is still in flight.
-    #[tokio::test]
-    async fn a_missing_observation_from_before_the_commit_does_not_settle_the_launch() {
-        let temp = TempDir::new().expect("tempdir");
-        write_demo_agent(temp.path());
-        let mut vt_cfg = DiapasonConfig::default();
-        vt_cfg.subagents.background.enabled = true;
-        vt_cfg.subagents.background.auto_restore = true;
-        let controller = SubagentController::new(test_config(temp.path().to_path_buf(), vt_cfg))
-            .await
-            .expect("controller");
-
-        let (entered, release) = gate_next_background_commit(&controller.state);
-        let launch = controller.ensure_background_record_running(BackgroundRunRequest {
-            agent_name: "background-demo".to_string(),
-            stable_id: Some("background-worker".to_string()),
-            restart_attempts: 0,
-            overrides: None,
-            expected_exec_session_id: None,
-        });
-        tokio::pin!(launch);
-        let (exec_session_id, observed_status) = tokio::select! {
-            result = &mut launch => {
-                panic!("the gated launch settled before its observation: {result:?}")
-            },
-            () = entered.notified() => {
-                let state = controller.state.read().await;
-                let record = state.background_children.get("background-worker").expect("record");
-                assert_eq!(record.status, BackgroundSubprocessStatus::Starting);
-                (record.exec_session_id.clone(), record.status)
-            }
-        };
-
-        release.notify_one();
-        let entry = launch.await.expect("the launch commits");
-        assert_eq!(entry.status, BackgroundSubprocessStatus::Running);
-
-        let respawn = controller
-            .update_background_record_state_observed(
-                "background-worker",
-                Some(exec_session_id.as_str()),
-                Some(observed_status),
-                None,
-            )
-            .await
-            .expect("a stale absence is not a settlement failure");
-        assert!(respawn.is_none(), "a stale absence must not schedule a replacement");
-
-        let state = controller.state.read().await;
-        let record = state.background_children.get("background-worker").expect("record");
-        assert_eq!(
-            record.status,
-            BackgroundSubprocessStatus::Running,
-            "the launch that committed must not be settled from an absence observed before it"
-        );
-        assert_eq!(record.restart_attempts, 0, "a stale absence must not spend the restart allowance");
-        drop(state);
-
-        controller.signal_shutdown().await;
-    }
-}
+mod stale_observation_tests;

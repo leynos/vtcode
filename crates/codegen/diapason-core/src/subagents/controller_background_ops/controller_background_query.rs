@@ -74,17 +74,22 @@ pub(super) fn resolve_background_target_mut<'a>(
 /// The query captures the record, releases the state lock for the exec-session
 /// read, then projects an exit from the captured flags. A cancellation, a
 /// restart or a replacement can land in that window. The launch id, the
-/// desired flag and the restart budget are the facts the projection consults,
-/// so a change to any of them makes the observation stale; the caller then
-/// keeps the record's current projection instead of relabelling it from
-/// outdated flags.
+/// status, the desired flag and the restart budget are the facts the
+/// projection consults, so a change to any of them makes the observation
+/// stale; the caller then keeps the record's current projection instead of
+/// relabelling it from outdated flags. The status is part of that set because
+/// a spawn committing `Running` changes what a captured `Starting` would mean:
+/// projecting the captured phase would report a launch that has since started
+/// as still starting, or settle it from an absence observed before the commit.
 pub(super) fn liveness_observation_is_current(
     record: &BackgroundRecord,
     exec_session_id: &str,
+    status: BackgroundSubprocessStatus,
     desired_enabled: bool,
     restart_attempts: u8,
 ) -> bool {
     record.exec_session_id == exec_session_id
+        && record.status == status
         && record.desired_enabled == desired_enabled
         && record.restart_attempts == restart_attempts
 }
@@ -147,6 +152,7 @@ impl SubagentController {
                         record.build_status_entry(),
                         record.status.is_active(),
                         record.exec_session_id.clone(),
+                        record.status,
                         record.desired_enabled,
                         record.restart_attempts,
                         BackgroundLiveness::Observed,
@@ -155,7 +161,9 @@ impl SubagentController {
                 .collect::<Vec<_>>()
         };
 
-        for (entry, active, exec_session_id, desired_enabled, restart_attempts, liveness) in &mut entries {
+        for (entry, active, exec_session_id, observed_status, desired_enabled, restart_attempts, liveness) in
+            &mut entries
+        {
             if !*active {
                 continue;
             }
@@ -195,6 +203,7 @@ impl SubagentController {
                         liveness_observation_is_current(
                             record,
                             exec_session_id.as_str(),
+                            *observed_status,
                             *desired_enabled,
                             *restart_attempts,
                         ),
@@ -245,7 +254,7 @@ impl SubagentController {
 
         entries
             .into_iter()
-            .map(|(entry, _, _, _, _, liveness)| BackgroundLivenessEntry { entry, liveness })
+            .map(|(entry, _, _, _, _, _, liveness)| BackgroundLivenessEntry { entry, liveness })
             .collect()
     }
 

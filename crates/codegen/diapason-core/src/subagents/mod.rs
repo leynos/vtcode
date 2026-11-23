@@ -5,11 +5,17 @@
 //! background task and returns a domain result, so the controller keeps line
 //! bounds, transport limits, validation, and error mapping.
 //!
-//! Background records are addressed by their canonical, owner-scoped id once a
+//! Background records are keyed by their canonical, owner-scoped id once a
 //! controller has loaded them: the load path rewrites a legacy
-//! workspace-global id, so a caller holding the pre-canonicalization id cannot
-//! resolve it through an exact map lookup. That id rewrite is a breaking change
-//! for such callers; reads must use the canonical id.
+//! workspace-global id, so an exact map lookup must use the canonical id.
+//! Session resolution is the deliberate exception. A session that still holds
+//! an id from before owner scoping resolves it through
+//! [`resolve_owned_background_id`]: the exact canonical id wins, and otherwise
+//! the record whose pre-owner-scoping id matches is returned, but only when
+//! that record is one the resolving session owns. A legacy id therefore
+//! addresses the caller's own record and can never widen ownership to another
+//! session's. The rewrite remains a breaking change for callers that insist on
+//! an exact lookup of a legacy id.
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."
@@ -17,6 +23,7 @@
 // ─── Module Structure ───────────────────────────────────────────────────────
 
 mod background;
+mod background_ledger;
 mod background_lock;
 mod background_output;
 mod call_action;
@@ -38,6 +45,7 @@ pub use background::{
     BackgroundLedgerGuard, background_record_id, background_record_id_for_owner, build_background_subagent_command,
     extract_tail_lines, load_archive_preview, lock_background_ledger, subagent_display_label,
 };
+pub use background_ledger::{PersistedBackgroundRecord, PersistedBackgroundState};
 pub use background_output::{
     BackgroundOutput, BackgroundOutputError, BackgroundOutputReader, BackgroundTaskRef, ExecSessionOutputReader,
 };
@@ -61,9 +69,9 @@ pub use prompt::{
 pub use types::{
     BackgroundLiveness, BackgroundLivenessEntry, BackgroundRecord, BackgroundSubprocessEntry,
     BackgroundSubprocessSnapshot, BackgroundSubprocessStatus, ChildRecord, ChildRunResult, ControllerState,
-    PersistedBackgroundRecord, PersistedBackgroundState, SendInputRequest, SpawnAgentRequest,
-    SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem, SubagentInvocationContext,
-    SubagentProgressObserver, SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot, TurnDelegationHints,
+    SendInputRequest, SpawnAgentRequest, SpawnBackgroundSubprocessRequest, StatusEntryBuilder, SubagentInputItem,
+    SubagentInvocationContext, SubagentProgressObserver, SubagentStatus, SubagentStatusEntry, SubagentThreadSnapshot,
+    TurnDelegationHints,
 };
 
 // VerificationResult is defined in this module (below) and re-exported at the

@@ -1,18 +1,20 @@
 //! Default [`ExecSessionOutputReader`] adapter over live exec sessions and the
 //! session archive.
 //!
-//! A task's archive is resolved from its session identifier only when this
-//! process recorded that identifier when it launched the task's exec session.
-//! A record restored from the persisted ledger carries its identifiers as
-//! stored data, so a row naming another task's session is refused as an archive
-//! fault rather than served. The recorded-path check remains as an additional
-//! safeguard for the file the store resolves.
+//! A record's two identity fields must agree before its archive is resolved:
+//! the task's `exec_session_id` must embed its `session_id` under the
+//! controller's launch convention (`exec-<session>-<pid>-<sequence>`). A launch
+//! writes that pair, so a row restored from the ledger — including one a
+//! resumed session reads after a process restart — keeps its own archive
+//! readable, while a row naming another task's session with an unrelated exec
+//! id is refused as an archive fault. The recorded-path check remains as an
+//! independent safeguard for the file the store resolves.
 use anyhow::Result;
 use futures::future::BoxFuture;
 use std::path::Path;
 
 use crate::subagents::background::load_archive_transcript;
-use crate::tools::exec_session::{ExecSessionManager, is_missing_exec_session};
+use crate::tools::exec_session::{ExecSessionManager, controller_exec_session_task_id, is_missing_exec_session};
 use crate::utils::session_archive::find_session_by_identifier;
 
 use super::{
@@ -54,16 +56,20 @@ impl ExecSessionOutputReader {
     /// names that archive, so it is resolved here rather than reported as no
     /// output: an empty tail would claim the finished task never wrote anything.
     ///
-    /// The identifier is stored data once the row is restored, so it can name
-    /// another task's session. It is therefore used for the lookup only when
-    /// this process recorded it when it launched the task's exec session; a row
-    /// that cannot be verified fails closed as an archive fault.
+    /// Both identity fields are stored data once the row is restored, so either
+    /// can name another task's session. They are therefore used for the lookup
+    /// only while they agree under the controller's launch convention: the exec
+    /// session must embed this record's session id
+    /// ([`controller_exec_session_task_id`]). A launch writes that pair, so a
+    /// restored row keeps its own archive readable after a restart, while a row
+    /// naming another task's session with an unrelated exec id fails closed as
+    /// an archive fault.
     async fn read_archived_output(
         &self,
         source: BackgroundOutputSource<'_>,
     ) -> Result<BackgroundOutput, BackgroundOutputError> {
-        if !self.exec_sessions.is_launched_task_session(source.session_id) {
-            return Err(unverified_session(source.session_id));
+        if controller_exec_session_task_id(source.exec_session_id) != Some(source.session_id) {
+            return Err(unverified_session(source));
         }
         let recorded = source.transcript_path.or(source.archive_path).map(Path::to_path_buf);
         // The store is the only authority for which file is this task's archive,
@@ -103,14 +109,18 @@ impl BackgroundOutputReader for ExecSessionOutputReader {
     }
 }
 
-/// The refusal for a session identifier this process did not launch.
+/// The refusal for a record whose two identity fields disagree.
 ///
-/// A restored row carries its session identifier as stored data, so resolving
-/// it against the session store could return another task's archive. Refusing
-/// the lookup before it runs keeps a row from naming any session it likes.
-fn unverified_session(session_id: &str) -> BackgroundOutputError {
+/// A restored row carries both the session identifier and the exec-session
+/// identifier as stored data, so resolving the session against the session
+/// store could return another task's archive. A record written by a launch
+/// embeds its own session id in its exec id; refusing every other pair before
+/// the lookup runs keeps a row from naming any session it likes.
+fn unverified_session(source: BackgroundOutputSource<'_>) -> BackgroundOutputError {
     BackgroundOutputError::Archived(anyhow::anyhow!(
-        "refusing to resolve an archive for a session this process did not launch: {session_id}"
+        "refusing to resolve an archive for a record whose exec session id does not embed its session id: {} / {}",
+        source.session_id,
+        source.exec_session_id
     ))
 }
 

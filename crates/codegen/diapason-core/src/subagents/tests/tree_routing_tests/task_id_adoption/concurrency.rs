@@ -179,10 +179,15 @@ async fn concurrent_graft_and_allocation_never_repeat_a_task_id() {
             tokio::task::spawn_blocking(move || joining_slot.adopt_into(&root_slot))
         };
         rendezvous.wait_for_merge_attempt().await;
+        let contended = tokio::time::timeout(Duration::from_millis(100), &mut graft).await;
+        // An expired gate released the reservation without the test releasing
+        // it, so the contention check below would report a lock that was never
+        // held. Fail with the timeout that actually happened instead.
         assert!(
-            tokio::time::timeout(Duration::from_millis(100), &mut graft).await.is_err(),
-            "round {round}: the graft must block behind the in-flight reservation"
+            !rendezvous.expired(),
+            "round {round}: the reservation gate expired instead of holding the adoption lock"
         );
+        assert!(contended.is_err(), "round {round}: the graft must block behind the in-flight reservation");
         rendezvous.release();
         graft
             .await

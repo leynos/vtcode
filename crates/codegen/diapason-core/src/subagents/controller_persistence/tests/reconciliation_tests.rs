@@ -26,11 +26,13 @@ fn merged_state(records: impl IntoIterator<Item = PersistedBackgroundRecord>) ->
 #[test]
 fn reconciliation_is_order_independent_for_a_cancelled_and_restarted_launch() {
     // Shape 0 is `worker` owned by `session-a`.
-    let records = [
-        merge_launch_record(0, 3, true, "exec-1", "active-exec-1"),
-        merge_launch_record(0, 1, false, "exec-1", "cancelled-exec-1"),
-        merge_launch_record(0, 2, true, "exec-2", "active-exec-2"),
-    ];
+    let mut active_exec_1 = merge_launch_record(0, 3, true, "exec-1", "active-exec-1");
+    active_exec_1.started_at = Some("2026-08-28T00:00:00Z".parse().expect("exec-1 launch time"));
+    let mut cancelled_exec_1 = merge_launch_record(0, 1, false, "exec-1", "cancelled-exec-1");
+    cancelled_exec_1.started_at = Some("2026-08-28T00:00:00Z".parse().expect("exec-1 launch time"));
+    let mut active_exec_2 = merge_launch_record(0, 2, true, "exec-2", "active-exec-2");
+    active_exec_2.started_at = Some("2026-08-28T00:00:02Z".parse().expect("exec-2 launch time"));
+    let records = [active_exec_1, cancelled_exec_1, active_exec_2];
     let expected = ("active-exec-2".to_owned(), true, "running".to_owned());
 
     for order in [[0_usize, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
@@ -46,6 +48,7 @@ fn reconciliation_is_order_independent_for_a_cancelled_and_restarted_launch() {
             Some("session-a"),
             &BTreeSet::new(),
             &BTreeMap::new(),
+            &[],
         );
         assert_eq!(
             merged_state(merged),
@@ -56,7 +59,7 @@ fn reconciliation_is_order_independent_for_a_cancelled_and_restarted_launch() {
         let mut persisted = ordered;
         let snapshot = persisted.split_off(1);
         let merged =
-            merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+            merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
         assert_eq!(
             merged_state(merged),
             expected,
@@ -92,12 +95,13 @@ fn restart_reconciliation_is_order_independent() {
             Some("session-a"),
             &BTreeSet::new(),
             &BTreeMap::new(),
+            &[],
         );
         assert_eq!(merged_state(merged), expected, "the save merge must keep the newer restart for order {order:?}");
         let mut persisted = ordered;
         let snapshot = persisted.split_off(1);
         let merged =
-            merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+            merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
         assert_eq!(merged_state(merged), expected, "the restart must win whichever side carries it");
     }
 }
@@ -137,7 +141,7 @@ fn an_owned_copy_outranks_an_ownerless_copy_of_the_same_launch() {
         (vec![owned.clone(), ownerless.clone()], Vec::new()),
         (Vec::new(), vec![ownerless.clone(), owned.clone()]),
     ] {
-        let merged = merge_background_records(persisted, snapshot, None, &BTreeSet::new(), &BTreeMap::new());
+        let merged = merge_background_records(persisted, snapshot, None, &BTreeSet::new(), &BTreeMap::new(), &[]);
         assert_eq!(merged.len(), 1, "the ownerless copy must not survive beside the migrated record");
         assert_eq!(merge_state(&merged[0]).0, "owned");
     }
@@ -158,7 +162,7 @@ fn ownership_outranks_a_cancelled_ownerless_copy_of_the_same_launch() {
 
     let persisted = vec![ownerless_cancelled];
     let snapshot = vec![owned];
-    let merged = merge_background_records(persisted, snapshot, None, &BTreeSet::new(), &BTreeMap::new());
+    let merged = merge_background_records(persisted, snapshot, None, &BTreeSet::new(), &BTreeMap::new(), &[]);
 
     assert_eq!(merged.len(), 1);
     assert_eq!(merge_state(&merged[0]).0, "owned", "the launch keeps its owned copy");
@@ -176,7 +180,7 @@ fn an_ownerless_copy_of_a_different_launch_is_kept() {
     let owned = merge_launch_record(0, 1, true, "exec-1", "owned");
     let ownerless = merge_launch_record(2, 2, true, "exec-2", "ownerless");
 
-    let merged = merge_background_records(vec![owned], vec![ownerless], None, &BTreeSet::new(), &BTreeMap::new());
+    let merged = merge_background_records(vec![owned], vec![ownerless], None, &BTreeSet::new(), &BTreeMap::new(), &[]);
     let mut tags = merged.iter().map(|record| merge_state(record).0).collect::<Vec<_>>();
     tags.sort();
 
@@ -199,7 +203,7 @@ fn ownerless_shadowing_leaves_each_owners_copy_alone() {
         merge_owner_record(2, 3, true, "ownerless"),
     ];
 
-    let merged = merge_background_records(persisted, Vec::new(), None, &BTreeSet::new(), &BTreeMap::new());
+    let merged = merge_background_records(persisted, Vec::new(), None, &BTreeSet::new(), &BTreeMap::new(), &[]);
     let mut tags = merged.iter().map(|record| merge_state(record).0).collect::<Vec<_>>();
     tags.sort();
 
@@ -217,7 +221,8 @@ fn owner_merge_keeps_a_newer_cancellation() {
     let persisted = vec![merge_owner_record(0, 2, false, "cancelled")];
     let snapshot = vec![merge_owner_record(0, 1, true, "stale-active")];
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+    let merged =
+        merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
 
     assert_eq!(merged.len(), 1);
     assert_eq!(merge_state(&merged[0]), ("cancelled".to_owned(), false, "stopped".to_owned()));
@@ -234,7 +239,8 @@ fn owner_merge_keeps_a_cancellation_a_refresh_outdates() {
     let persisted = vec![merge_launch_record(0, 1, false, "exec-launch-1", "cancelled")];
     let snapshot = vec![merge_launch_record(0, 2, true, "exec-launch-1", "refreshed")];
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+    let merged =
+        merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
 
     assert_eq!(merged.len(), 1);
     assert_eq!(
@@ -255,7 +261,8 @@ fn owner_merge_keeps_a_snapshot_cancellation_over_a_newer_persisted_refresh() {
     let persisted = vec![merge_launch_record(0, 3, true, "exec-launch-1", "persisted-refresh")];
     let snapshot = vec![merge_launch_record(0, 2, false, "exec-launch-1", "snapshot-cancelled")];
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+    let merged =
+        merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
 
     assert_eq!(merged.len(), 1);
     assert_eq!(
@@ -275,7 +282,8 @@ fn owner_merge_accepts_a_restart_with_a_new_exec_session() {
     let persisted = vec![merge_launch_record(0, 2, false, "exec-launch-1", "cancelled")];
     let snapshot = vec![merge_launch_record(0, 3, true, "exec-launch-2", "restarted")];
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+    let merged =
+        merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
 
     assert_eq!(merged.len(), 1);
     assert_eq!(
@@ -300,7 +308,7 @@ fn owner_merge_removes_a_record_the_snapshot_dropped() {
     let snapshot = vec![merge_owner_record(3, 1, true, "kept-snapshot")];
     let removable = BTreeSet::from([merge_canonical_id(0)]);
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &removable, &BTreeMap::new());
+    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &removable, &BTreeMap::new(), &[]);
 
     assert_eq!(merged.len(), 1);
     assert_eq!(merge_state(&merged[0]).0, "kept-snapshot");
@@ -320,7 +328,8 @@ fn owner_merge_keeps_an_owner_record_it_never_committed() {
     ];
     let snapshot = vec![merge_owner_record(0, 1, true, "loaded")];
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+    let merged =
+        merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
     let mut tags = merged.iter().map(|record| merge_state(record).0).collect::<Vec<_>>();
     tags.sort();
 
@@ -346,7 +355,7 @@ fn removal_authority_is_per_canonical_id_not_per_launch() {
     ];
     let removable = BTreeSet::from([merge_canonical_id(0)]);
 
-    let merged = merge_background_records(persisted, Vec::new(), Some("session-a"), &removable, &BTreeMap::new());
+    let merged = merge_background_records(persisted, Vec::new(), Some("session-a"), &removable, &BTreeMap::new(), &[]);
 
     assert_eq!(
         merged.len(),
@@ -371,7 +380,8 @@ fn owner_merge_keeps_another_sessions_record() {
     ];
     let snapshot = vec![merge_owner_record(0, 1, true, "owner-record")];
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+    let merged =
+        merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new(), &[]);
     let mut tags = merged.iter().map(|record| merge_state(record).0).collect::<Vec<_>>();
     tags.sort();
 

@@ -6,7 +6,8 @@
 //! `exec_session/tests/fixtures.rs`.
 use super::super::super::{BackgroundOutput, BackgroundOutputSource};
 use super::fixtures::{
-    SessionDirOverride, reader_environment, register_launch, wait_for_live_output, write_archive, write_stored_archive,
+    SessionDirOverride, launched_exec_session_id, reader_environment, wait_for_live_output, write_archive,
+    write_stored_archive,
 };
 use crate::utils::path::canonicalize_workspace;
 use crate::utils::session_archive::override_sessions_dir_for_tests;
@@ -19,9 +20,10 @@ async fn live_output_is_returned_unchanged() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
     let (manager, _pty_sessions, reader) = reader_environment(&root);
+    let exec_session_id = launched_exec_session_id("live-output-child");
     manager
         .create_pipe_session(
-            "live-output".to_string().into(),
+            exec_session_id.clone().into(),
             vec![
                 "/bin/sh".to_string(),
                 "-c".to_string(),
@@ -31,12 +33,11 @@ async fn live_output_is_returned_unchanged() -> anyhow::Result<()> {
             HashMap::new(),
         )
         .await?;
-    register_launch(&manager, "live-output-child");
 
-    let output = wait_for_live_output(&reader, "live-output").await?;
+    let output = wait_for_live_output(&reader, exec_session_id.as_str()).await?;
 
     assert_eq!(output, "live text");
-    manager.close_session("live-output").await?;
+    manager.close_session(exec_session_id.as_str()).await?;
     Ok(())
 }
 
@@ -51,20 +52,20 @@ async fn not_ready_live_output_falls_back_to_the_archive() -> anyhow::Result<()>
     let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
     let (manager, _pty_sessions, reader) = reader_environment(&root);
+    let exec_session_id = launched_exec_session_id("quiet-output-child");
     manager
         .create_pipe_session(
-            "quiet-output".to_string().into(),
+            exec_session_id.clone().into(),
             vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
             root.clone(),
             HashMap::new(),
         )
         .await?;
-    register_launch(&manager, "quiet-output-child");
     let archive_path = write_stored_archive(&sessions_dir, "quiet-output-child")?;
 
     let output = reader
         .read_source(BackgroundOutputSource {
-            exec_session_id: "quiet-output",
+            exec_session_id: exec_session_id.as_str(),
             session_id: "quiet-output-child",
             transcript_path: Some(&archive_path),
             archive_path: None,
@@ -73,7 +74,7 @@ async fn not_ready_live_output_falls_back_to_the_archive() -> anyhow::Result<()>
         .map_err(anyhow::Error::new)?;
 
     assert_eq!(output, BackgroundOutput::Archived("first line\nsecond line".to_string()));
-    manager.close_session("quiet-output").await?;
+    manager.close_session(exec_session_id.as_str()).await?;
     Ok(())
 }
 
@@ -87,13 +88,13 @@ async fn missing_exec_session_falls_back_to_the_archive() -> anyhow::Result<()> 
     override_sessions_dir_for_tests(&sessions_dir);
     let _override = SessionDirOverride;
     let root = canonicalize_workspace(temp.path());
-    let (manager, _pty_sessions, reader) = reader_environment(&root);
-    register_launch(&manager, "archived-child");
+    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let exec_session_id = launched_exec_session_id("archived-child");
     let archive_path = write_stored_archive(&sessions_dir, "archived-child")?;
 
     let output = reader
         .read_source(BackgroundOutputSource {
-            exec_session_id: "absent-session",
+            exec_session_id: exec_session_id.as_str(),
             session_id: "archived-child",
             transcript_path: None,
             archive_path: Some(&archive_path),
@@ -110,12 +111,12 @@ async fn missing_exec_session_falls_back_to_the_archive() -> anyhow::Result<()> 
 async fn a_task_without_a_recorded_path_stays_not_ready() -> anyhow::Result<()> {
     let temp = tempdir()?;
     let root = canonicalize_workspace(temp.path());
-    let (manager, _pty_sessions, reader) = reader_environment(&root);
-    register_launch(&manager, "no-such-child-session");
+    let (_manager, _pty_sessions, reader) = reader_environment(&root);
+    let exec_session_id = launched_exec_session_id("no-such-child-session");
 
     let output = reader
         .read_source(BackgroundOutputSource {
-            exec_session_id: "absent-session",
+            exec_session_id: exec_session_id.as_str(),
             session_id: "no-such-child-session",
             transcript_path: None,
             archive_path: None,

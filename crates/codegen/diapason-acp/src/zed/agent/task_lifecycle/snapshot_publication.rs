@@ -70,6 +70,23 @@ pub(super) async fn publish_initial_task_snapshots(
 }
 
 /// Counts the snapshots this pass queued, plus the first queue rejection.
+///
+/// # Residual terminal-update drop
+///
+/// This pass waits for room on the same bounded queue live observers use with a
+/// non-blocking send. While it waits, and for every snapshot it wins a slot
+/// for, a live transition published in the same window can find the queue full
+/// and be dropped under the `full` queue-drop category. A dropped transition
+/// may be a task's terminal state, so the client can keep showing that task as
+/// active even though this pass did not replace its record.
+///
+/// The shared revision ordering does not prevent this: a snapshot carries the
+/// base revision reserved before the observer was registered, so a live capture
+/// still supersedes it whenever both are delivered. The loss is a delivery gap,
+/// not a reordering. Reserving headroom for live updates would need a delivery
+/// priority the single-channel forwarder does not have; the client reconciles
+/// with `_lody/subagents/list`, which is the same recovery the non-blocking
+/// live path already relies on.
 async fn queue_initial_task_snapshots(
     controller: &Arc<diapason_core::subagents::SubagentController>,
     session_id: &acp::SessionId,
@@ -98,6 +115,9 @@ async fn queue_initial_task_snapshots(
             task: entry,
         };
         let queued = QueuedLifecycleUpdate { update, revision };
+        // This awaited send waits for capacity rather than dropping, so a live
+        // terminal update can still be refused while the pass holds a slot; see
+        // the function documentation for the residual case.
         match queue.send(sender, queued).await {
             Ok(()) => {}
             Err(kind) => return (published, Some(kind)),

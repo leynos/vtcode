@@ -114,7 +114,7 @@ async fn restore_does_not_respawn_when_the_exec_session_read_fails() {
         "an unreadable exec session must not settle or restart the record"
     );
     assert_eq!(
-        restored[0].exec_session_id, "exec-background-worker",
+        restored[0].exec_session_id, "exec-session-background-worker-1-1",
         "a failed read must keep the record's own exec session, not start a replacement"
     );
     assert_eq!(
@@ -166,7 +166,7 @@ async fn refresh_leaves_the_record_unchanged_when_the_exec_session_read_fails() 
         "a record that never observed an exit must not gain a terminal instant"
     );
     assert_eq!(
-        refreshed[0].exec_session_id, "exec-background-worker",
+        refreshed[0].exec_session_id, "exec-session-background-worker-1-1",
         "a failed read must keep the record's own exec session, not start a replacement"
     );
     assert_eq!(
@@ -200,7 +200,7 @@ async fn liveness_reason_redacts_the_exec_session_identifier() {
     let config = auto_restore_config(temp.path().to_path_buf(), true);
     config
         .exec_sessions
-        .fail_snapshot_reads("PTY session 'exec-background-worker' not found");
+        .fail_snapshot_reads("PTY session 'exec-session-background-worker-1-1' not found");
     let controller = SubagentController::new_with_background_owner(config, Some("session-a"))
         .await
         .expect("controller");
@@ -213,7 +213,7 @@ async fn liveness_reason_redacts_the_exec_session_identifier() {
     match &entry.liveness {
         BackgroundLiveness::Unobserved { reason } => {
             assert!(
-                !reason.contains("exec-background-worker"),
+                !reason.contains("exec-session-background-worker-1-1"),
                 "the reason must not carry the exec-session id, got: {reason}"
             );
             assert!(

@@ -22,6 +22,9 @@ mod cancel_tests;
 mod lifecycle_tests;
 mod pending_write_tests;
 mod query_tests;
+mod replacement_tests;
+mod reserve_support;
+mod reserve_tests;
 mod resolver_tests;
 mod run_tests;
 mod settlement_tests;
@@ -87,7 +90,7 @@ fn entry_with_id(id: &str, transcript_path: Option<&str>) -> BackgroundSubproces
     serde_json::from_value(serde_json::json!({
         "id": id,
         "session_id": "session-background-worker",
-        "exec_session_id": "exec-background-worker",
+        "exec_session_id": "exec-session-background-worker-1-1",
         "agent_name": "worker",
         "display_label": "worker",
         "description": "worker",
@@ -103,17 +106,20 @@ fn entry_with_id(id: &str, transcript_path: Option<&str>) -> BackgroundSubproces
 
 /// A liveness observation only describes the launch it was taken from.
 ///
-/// The projection consults the launch id, the desired flag and the restart
-/// budget after reading the exec session outside the state lock. A change to
-/// any of them means a cancellation, a restart or a replacement landed in that
-/// window, so the captured outcome must not be applied.
+/// The projection consults the launch id, the status, the desired flag and the
+/// restart budget after reading the exec session outside the state lock. A
+/// change to any of them means a cancellation, a restart, a commit or a
+/// replacement landed in that window, so the captured outcome must not be
+/// applied.
 #[rstest]
-#[case::unchanged("exec-launch", true, 0, true)]
-#[case::replaced_launch("exec-replacement", true, 0, false)]
-#[case::cancelled_launch("exec-launch", false, 0, false)]
-#[case::spent_restart("exec-launch", true, 1, false)]
+#[case::unchanged("exec-launch", BackgroundSubprocessStatus::Running, true, 0, true)]
+#[case::replaced_launch("exec-replacement", BackgroundSubprocessStatus::Running, true, 0, false)]
+#[case::committed_status("exec-launch", BackgroundSubprocessStatus::Starting, true, 0, false)]
+#[case::cancelled_launch("exec-launch", BackgroundSubprocessStatus::Running, false, 0, false)]
+#[case::spent_restart("exec-launch", BackgroundSubprocessStatus::Running, true, 1, false)]
 fn a_liveness_observation_is_stale_after_any_relevant_change(
     #[case] exec_session_id: &str,
+    #[case] status: BackgroundSubprocessStatus,
     #[case] desired_enabled: bool,
     #[case] restart_attempts: u8,
     #[case] expected: bool,
@@ -128,7 +134,7 @@ fn a_liveness_observation_is_stale_after_any_relevant_change(
     );
 
     assert_eq!(
-        liveness_observation_is_current(&record, exec_session_id, desired_enabled, restart_attempts),
+        liveness_observation_is_current(&record, exec_session_id, status, desired_enabled, restart_attempts),
         expected,
         "the observation's relevance must follow the record it was taken from"
     );

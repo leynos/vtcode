@@ -231,7 +231,7 @@ proptest! {
         }
         remove_ownerless_shadowed(&mut expected);
 
-        let merged = merge_unscoped_background_records(persisted_records, snapshot_records, &BTreeMap::new());
+        let merged = merge_unscoped_background_records(persisted_records, snapshot_records, &BTreeMap::new(), &[]);
         let observed = merged
             .iter()
             .map(|record| {

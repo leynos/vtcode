@@ -208,6 +208,11 @@ default-target = "x86_64-unknown-linux-gnu"
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dev-dependencies]
+# Freezes the runtime clock for the lifecycle `wait` regression, so a missing
+# notification advances the deadline deterministically instead of racing a
+# scheduler delay. `test-util` is test-only; production builds use the feature
+# set declared in `[dependencies]`.
+tokio = { workspace = true, features = ["test-util"] }
 insta = { version = "1.39", features = ["json"] }
 temp-env = { workspace = true }
 filetime = { workspace = true }

@@ -307,7 +307,7 @@ impl SubagentController {
 }
 
 #[cfg(test)]
-mod launch_checkpoints;
+pub(in crate::subagents) mod launch_checkpoints;
 mod runner;
 
 /// Counts each controller tree's runtime captures for tests that must observe

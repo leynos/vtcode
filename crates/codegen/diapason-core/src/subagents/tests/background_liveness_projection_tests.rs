@@ -186,12 +186,6 @@ async fn background_snapshot_is_pure_and_refresh_is_explicit() {
     )
     .await
     .expect("controller");
-    // The reader serves only a session this process launched; the fixture row
-    // stands in for that launch.
-    controller
-        .config
-        .exec_sessions
-        .register_launched_task_session("session-background-worker");
     let ledger_before = std::fs::read(&ledger_path).expect("read ledger before snapshot");
 
     let cached = controller

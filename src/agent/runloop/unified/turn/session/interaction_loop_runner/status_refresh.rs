@@ -1,3 +1,9 @@
+//! Runtime counter and status refresh for the interactive session loop.
+//!
+//! The loop refreshes its displayed counters and workspace status between
+//! turns. This module performs that refresh, including the workspace-owner
+//! background status query, and hands the updated values back to the loop in
+//! `super::interaction_loop`.
 use std::path::Path;
 
 use super::super::interaction_loop::{InteractionLoopContext, InteractionState};

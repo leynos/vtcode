@@ -325,8 +325,12 @@ tool-call updates for that same id. The standard `title`, `kind` (`think`),
 `status`, and `content` fields carry the task state, and `_meta.lody.task`
 carries the Lody snapshot: `version`, `taskId`, `kind`, `status`, `description`,
 `actor`, start and end times, and optional `summary` or `error`. The adapter
-filters updates by parent session, drops superseded revisions by `updated_at`,
-and replays still-active tasks when the observer is registered.
+filters updates by parent session, drops a superseded revision by the
+controller-assigned lifecycle revision, and replays still-active tasks when the
+observer is registered. The revision is the ordering key, not `updated_at`: the
+controller stamps both when it records a change, so two transitions in one tick
+share the timestamp, while the revision is allocated under the state lock that
+captured the snapshot and is therefore a total order over captures.
 
 Forwarding is best-effort. Live observers publish with a bounded, non-blocking
 send, so if the lifecycle queue is full the snapshot is dropped rather than
@@ -336,6 +340,15 @@ visible in metrics but not retried. A client therefore cannot treat the update
 stream as a complete log: after a gap, or on first attach, it reconciles by
 listing its tasks with `_lody/subagents/list` and treating that response as the
 authoritative snapshot.
+
+The attach-time replay of still-active tasks waits for room instead of
+dropping, but it shares that same bounded queue. While the replay waits for, or
+occupies, a slot, a live transition published in the same window can still be
+refused under `full`, and that transition may be a task's terminal state. The
+task then stays shown as active until the client reconciles by listing. The
+shared revision ordering keeps every delivered state ordered—a replayed
+snapshot carries the base revision reserved before the observer was
+registered—so the residual case is a delivery gap, not a reordering.
 
 ### Management RPCs
 

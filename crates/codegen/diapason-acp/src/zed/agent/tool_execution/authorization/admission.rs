@@ -11,7 +11,17 @@
 //! runs after the permission stages and judges per-target ownership on the
 //! arguments that will actually execute; without it a rewrite could name a
 //! target this session does not own and only core would later refuse the call.
+//!
+//! Admission and execution must answer one question the same way. The command
+//! a call dispatches to runs through the session's controller with
+//! [`TaskOwner::Session`], which reads only that controller's own child records;
+//! a grandchild belongs to the child-scoped controller that spawned it. The
+//! ownership check here therefore asks the same controller-local question
+//! rather than walking the tree, so a target cannot be admitted and then
+//! refused, and one such target cannot fail a whole `wait` list after the call
+//! was already admitted.
 
+#[cfg(test)]
 use diapason_core::config::constants::tools;
 use diapason_core::subagents::TaskOwner;
 use serde_json::Value;
@@ -46,8 +56,13 @@ pub(super) fn session_subagent_controller_error(
 /// address a target that another session owns, or run through the workspace's
 /// ownerless controller on a session that has no controller of its own. A
 /// target-less call (`spawn`) needs only the session controller; a call that
-/// names `id`/`ids` additionally needs every named target among the records
-/// this controller tree holds.
+/// names `id`/`ids` additionally needs every named target to be one the command
+/// will accept, which is the controller-local set [`session_owns_subagent`]
+/// applies.
+///
+/// A target that is not admitted is refused before the call is resolved,
+/// authorized or announced, so a `wait` list naming one unaddressable task is
+/// rejected as a whole under this reason instead of failing later in core.
 ///
 /// This is the post-rewrite check. The caller runs it on the arguments a
 /// permission hook installed, so a rewrite cannot smuggle in a foreign target;
@@ -86,29 +101,31 @@ fn subagent_call_targets(tool_name: &str, arguments: &str) -> Vec<String> {
     diapason_core::subagents::agent_call_targets(tool_name, &args)
 }
 
-/// Whether `target` belongs to this controller tree.
+/// Whether `target` is a task this session can address through `controller`.
 ///
-/// A session controller holds only the records it owns, and nested delegation
-/// puts grandchildren in descendant controllers, so the whole tree is
-/// consulted. Reads are pure: `status_entries` and `background_status_entries`
-/// never refresh, respawn, persist or publish.
+/// The command the call dispatches to executes through this controller with
+/// [`TaskOwner::Session`] for the invoking session, and that check reads only
+/// this controller's own child records. Admission asks the same controller-local
+/// question: a grandchild lives in the child-scoped controller that spawned it,
+/// so walking descendants would admit a target the command then refuses, and one
+/// refused target inside a `wait` list would fail the whole call after it had
+/// been admitted. A direct child is addressable here; a grandchild is not.
+///
+/// A managed background record this session owns is also admitted. The record is
+/// not a child, so the child command reports its own domain error when it
+/// executes; admission only has to avoid claiming that a record of this
+/// session's is unowned. Reads are pure: `background_status_entries` never
+/// refreshes, respawns, persists or publishes.
 async fn session_owns_subagent(controller: &Arc<diapason_core::subagents::SubagentController>, target: &str) -> bool {
-    let mut controllers = vec![Arc::clone(controller)];
-    controllers.extend(controller.descendant_controllers().await);
-    for controller in controllers {
-        if controller.status_entries().await.iter().any(|entry| entry.id == target) {
-            return true;
-        }
-        if controller
-            .background_status_entries(TaskOwner::Workspace)
-            .await
-            .iter()
-            .any(|entry| entry.id == target)
-        {
-            return true;
-        }
+    let session_id = controller.served_session_id().await;
+    if controller.owns_child(&session_id, target).await {
+        return true;
     }
-    false
+    controller
+        .background_status_entries(TaskOwner::Session(session_id.as_str()))
+        .await
+        .iter()
+        .any(|entry| entry.id == target)
 }
 
 #[cfg(test)]
@@ -183,6 +200,153 @@ mod tests {
             .await
             .expect("the post-rewrite check must reject a target the session does not own");
         assert!(rejection.contains("not-mine"), "the rejection must name the target: {rejection}");
+    }
+
+    /// Builds a controller config for a fixture tree that never launches a run.
+    fn fixture_controller_config(
+        workspace: &std::path::Path,
+        vt_cfg: &diapason_core::config::DiapasonConfig,
+        parent_session_id: &str,
+        depth: usize,
+        managed_background_runtime: bool,
+        registry: &diapason_core::tools::registry::ToolRegistry,
+    ) -> diapason_core::subagents::SubagentControllerConfig {
+        diapason_core::subagents::SubagentControllerConfig {
+            workspace_root: workspace.to_path_buf(),
+            parent_session_id: parent_session_id.to_string(),
+            parent_model: "gpt-5.6-sol".to_string(),
+            parent_provider: "openai".to_string(),
+            parent_reasoning_effort: diapason_core::config::types::ReasoningEffortLevel::Low,
+            api_key: String::new(),
+            vt_cfg: vt_cfg.clone(),
+            openai_chatgpt_auth: None,
+            depth,
+            workspace_gated: false,
+            exec_sessions: registry.exec_session_manager(),
+            output_reader: None,
+            pty_manager: registry.pty_manager().clone(),
+            managed_background_runtime,
+            lock_scope: None,
+        }
+    }
+
+    /// Admission must judge a nested-delegation target exactly as the command
+    /// it guards does.
+    ///
+    /// A grandchild lives in the child-scoped controller that spawned it, while
+    /// the session-scoped commands read only the session controller's own
+    /// records. Admission used to walk `descendant_controllers()`, so it
+    /// admitted a grandchild that execution then refused, and one unaddressable
+    /// target in a mixed `wait` list failed the whole call. The controller-local
+    /// set now gives both layers the same answer.
+    ///
+    /// The fixture setup is boxed: it holds a whole controller configuration and
+    /// two controller constructions, so leaving it inline would make the test's
+    /// future large enough to trip `clippy::large_futures`.
+    #[tokio::test]
+    async fn nested_delegation_admission_matches_the_command_it_guards() {
+        Box::pin(nested_delegation_admission_scenario()).await;
+    }
+
+    /// The fixture body, kept out of the test's own future.
+    async fn nested_delegation_admission_scenario() {
+        let temp = assert_fs::TempDir::new().expect("nested delegation workspace");
+        let registry = diapason_core::tools::registry::ToolRegistry::new(temp.path().to_path_buf()).await;
+        let mut vt_cfg = diapason_core::config::DiapasonConfig::default();
+        vt_cfg.subagents.enabled = true;
+        // The fixture tree holds no managed task, so the session controller
+        // must not attempt a workspace-ledger restore.
+        vt_cfg.subagents.background.auto_restore = false;
+        let root = Arc::new(
+            diapason_core::subagents::SubagentController::new_with_background_owner(
+                fixture_controller_config(temp.path(), &vt_cfg, "session-a", 0, false, &registry),
+                Some("session-a"),
+            )
+            .await
+            .expect("session controller"),
+        );
+        let nested = Arc::new(
+            diapason_core::subagents::SubagentController::new(fixture_controller_config(
+                temp.path(),
+                &vt_cfg,
+                "child-session",
+                1,
+                true,
+                &registry,
+            ))
+            .await
+            .expect("child-scoped controller"),
+        );
+        root.insert_test_child_record("child-task", "child-session", "session-a", 1, "default")
+            .await
+            .expect("fixture child record");
+        nested
+            .insert_test_child_record("grandchild-task", "grandchild-session", "child-session", 2, "explorer")
+            .await
+            .expect("fixture grandchild record");
+        root.attach_child_controller("child-task", Arc::clone(&nested))
+            .await
+            .expect("the child-scoped controller joins the session tree");
+
+        // The tree really reaches the grandchild, which is exactly what the
+        // removed descendant walk admitted from.
+        assert!(
+            root.descendant_controllers()
+                .await
+                .iter()
+                .any(|controller| Arc::ptr_eq(controller, &nested)),
+            "the fixture must make the grandchild's controller reachable from the session tree"
+        );
+        assert!(
+            nested.status_entries().await.iter().any(|entry| entry.id == "grandchild-task"),
+            "the descendant controller must track the grandchild"
+        );
+
+        // A direct child is addressable by both layers.
+        assert!(
+            session_subagent_admission_error(
+                tools::AGENT,
+                Some(&root),
+                r#"{"action":"send_input","id":"child-task"}"#,
+            )
+            .await
+            .is_none(),
+            "a direct child of the session must be admitted"
+        );
+        assert!(
+            root.status_for(TaskOwner::Session("session-a"), "child-task").await.is_ok(),
+            "the command the admitted call reaches must accept the direct child"
+        );
+
+        // Admission refuses a grandchild exactly as the command does.
+        let rejection = session_subagent_admission_error(
+            tools::AGENT,
+            Some(&root),
+            r#"{"action":"send_input","id":"grandchild-task"}"#,
+        )
+        .await
+        .expect("a grandchild tracked by a descendant controller is not addressable here");
+        assert!(rejection.contains("grandchild-task"), "the rejection must name the target: {rejection}");
+        assert!(
+            root.status_for(TaskOwner::Session("session-a"), "grandchild-task")
+                .await
+                .is_err(),
+            "the command refuses a grandchild through the session controller, so admission must too"
+        );
+
+        // One unaddressable target refuses the whole list before execution,
+        // rather than after the call was announced and failed whole.
+        let mixed = session_subagent_admission_error(
+            tools::AGENT,
+            Some(&root),
+            r#"{"action":"wait","ids":["child-task","grandchild-task"]}"#,
+        )
+        .await
+        .expect("one unaddressable target must refuse the whole wait list");
+        assert!(mixed.contains("grandchild-task"), "the refusal must name the offending target: {mixed}");
+
+        nested.signal_shutdown().await;
+        root.signal_shutdown().await;
     }
 
     #[tokio::test]

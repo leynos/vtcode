@@ -9,7 +9,7 @@ use super::merge_oracle_tests::{merge_canonical_id, merge_launch_record, merge_s
 use crate::config::DiapasonConfig;
 use crate::config::types::ReasoningEffortLevel;
 use crate::subagents::background::{background_record_id_for_owner, load_background_state, persist_background_state};
-use crate::subagents::{SubagentController, SubagentControllerConfig, TaskOwner};
+use crate::subagents::{BackgroundRecord, SubagentController, SubagentControllerConfig, TaskOwner};
 use crate::tools::exec_session::ExecSessionManager;
 use crate::tools::registry::PtySessionManager;
 use std::path::{Path, PathBuf};
@@ -82,6 +82,26 @@ async fn migrate_ledger_to(workspace: &Path, owner: &str) {
     persist_background_state(workspace, state.records)
         .await
         .expect("write migrated ledger");
+}
+
+/// Writes a ledger together with the migration evidence the owner migration
+/// records for each `(base id, exec session)` pair.
+async fn write_ledger_with_migration_evidence(
+    workspace: &Path,
+    records: Vec<PersistedBackgroundRecord>,
+    migrated_launches: &[(&str, &str)],
+) {
+    let path = crate::subagents::background::background_state_path_for_tests(workspace);
+    let evidence = migrated_launches
+        .iter()
+        .map(|(base_id, exec_session_id)| serde_json::json!({ "base_id": base_id, "exec_session_id": exec_session_id }))
+        .collect::<Vec<_>>();
+    let state = serde_json::json!({ "records": records, "migrated_launches": evidence });
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create the ledger directory");
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(&state).expect("serialize the ledger"))
+        .expect("write the ledger");
 }
 
 /// A launch controller adopts a migrated launch, saves it once, and cannot
@@ -274,56 +294,98 @@ async fn only_an_unscoped_controller_adopts_rows() {
     );
 }
 
-/// An equal timestamp keeps the snapshot launch across launches too.
+/// A stale workspace copy of a migrated launch cannot come back after a
+/// replacement supersedes the migrated row.
 ///
-/// The tie rule is documented for two copies of one launch, but the same two
-/// sides compete when a restart leaves two launches under one canonical id.
-/// Without the snapshot's provenance the reduction kept whichever exec session
-/// sorted last, so a persisted `exec-z` displaced an equal snapshot `exec-a`.
-#[test]
-fn an_equal_timestamp_keeps_the_snapshot_launch() {
-    // Shape 0 is `worker` owned by `session-a`; both copies name the same
-    // `updated_at`, and the persisted side sorts last by exec session id.
-    let persisted = vec![merge_launch_record(0, 2, true, "exec-z", "persisted-exec-z")];
-    let snapshot = vec![merge_launch_record(0, 2, true, "exec-a", "snapshot-exec-a")];
+/// The workspace controller caches the ownerless launch before a session
+/// migrates it. The session then replaces that launch, so the ledger no longer
+/// holds any row naming the cached exec session, and a later save of the
+/// unchanged workspace snapshot would write an ownerless row the next workspace
+/// controller treats as its own work to restore. The migration evidence kept in
+/// the ledger is what identifies the launch once its owned row is gone.
+#[tokio::test]
+async fn a_migrated_launch_is_not_revived_by_a_workspace_save_after_a_replacement() {
+    let temp = TempDir::new().expect("temporary workspace");
+    let owner = "session-a";
+    persist_background_state(temp.path(), vec![legacy_row(owner)])
+        .await
+        .expect("seed the ownerless ledger");
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &BTreeMap::new());
+    // The workspace controller caches the ownerless copy, exactly as the ACP
+    // launch workspace does before any session attaches.
+    let workspace_controller = SubagentController::new(ownership_controller_config(temp.path().to_path_buf()))
+        .await
+        .expect("workspace controller");
+    assert_eq!(
+        workspace_controller.background_status_entries(TaskOwner::Workspace).await.len(),
+        1,
+        "the workspace controller loads the ownerless launch"
+    );
 
-    assert_eq!(merged.len(), 1, "the two copies describe one canonical record");
-    assert_eq!(
-        merged[0].exec_session_id, "exec-a",
-        "a tie must keep the snapshot launch instead of the later exec-session id"
-    );
-    assert_eq!(
-        merge_state(&merged[0]),
-        ("snapshot-exec-a".to_owned(), true, "running".to_owned()),
-        "the snapshot copy wins the tie"
-    );
+    // A session migrates the row and then replaces the launch it names, so the
+    // ledger holds only the replacement. The migration records the launch it
+    // attributed in the ledger's durable evidence, exactly as
+    // `migrate_legacy_owner_rows` does.
+    let mut replacement = legacy_row(owner);
+    replacement.owner_session_id = Some(owner.to_string());
+    replacement.exec_session_id = "exec-replacement".to_string();
+    replacement.canonicalize_id();
+    write_ledger_with_migration_evidence(temp.path(), vec![replacement], &[("background-worker", "exec-launch")]).await;
+
+    // The stale snapshot is saved again with nothing about it changed.
+    workspace_controller
+        .save_background_ledger()
+        .await
+        .expect("save the unchanged workspace snapshot");
+
+    let ledger = load_background_state(temp.path()).await.expect("read the ledger");
+    assert_eq!(ledger.records.len(), 1, "the stale ownerless alias must not reappear");
+    assert_eq!(ledger.records[0].exec_session_id, "exec-replacement", "the replacement keeps the ledger row");
+    assert_eq!(ledger.records[0].owner_session_id.as_deref(), Some(owner), "the row stays owned");
 }
 
-/// A stale stop must not erase a replacement launch another controller wrote.
+/// An independent ownerless launch of the same agent still survives.
 ///
-/// The stop names the launch it stopped, so stop precedence applies only on a
-/// matching exec session. A persisted row naming a different launch under the
-/// same canonical id is a replacement, and it survives even though the stale
-/// stop carries the newer `updated_at`; otherwise a save from a controller
-/// that never saw the replacement would delete the replacement launch from the
-/// ledger.
-#[test]
-fn a_stale_stop_does_not_replace_a_different_launch() {
-    // Shape 0 is `worker` owned by `session-a`.
-    let persisted = vec![merge_launch_record(0, 1, true, "exec-replacement", "replacement")];
-    let snapshot = vec![merge_launch_record(0, 3, false, "exec-stopped", "stale-stop")];
-    // The save is stopping `exec-stopped`, the launch the snapshot names.
-    let expected_stops = BTreeMap::from([(merge_canonical_id(0), "exec-stopped".to_string())]);
+/// Migration evidence names one launch by its exec session, so a second
+/// ownerless launch of the same agent is a different launch the workspace may
+/// restore, and the evidence must not suppress it.
+#[tokio::test]
+async fn migration_evidence_does_not_suppress_an_independent_ownerless_launch() {
+    let temp = TempDir::new().expect("temporary workspace");
+    let owner = "session-a";
+    let mut migrated = legacy_row(owner);
+    migrated.owner_session_id = Some(owner.to_string());
+    migrated.canonicalize_id();
+    // The independent launch carries the same ownerless base id and agent but a
+    // different exec session, which is what distinguishes it from the migrated
+    // launch.
+    let mut independent = legacy_row(owner);
+    independent.exec_session_id = "exec-independent".to_string();
+    persist_background_state(temp.path(), vec![migrated])
+        .await
+        .expect("seed the migrated ledger");
 
-    let merged = merge_background_records(persisted, snapshot, Some("session-a"), &BTreeSet::new(), &expected_stops);
+    let workspace_controller = SubagentController::new(ownership_controller_config(temp.path().to_path_buf()))
+        .await
+        .expect("workspace controller");
+    // Record the migration evidence, then save the independent launch.
+    workspace_controller
+        .save_background_ledger()
+        .await
+        .expect("save the migrated row");
+    let independent_id = independent.id.clone();
+    let independent_record = BackgroundRecord::from_persisted(independent);
+    let mut state = workspace_controller.state.write().await;
+    state.background_children.insert(independent_id, independent_record);
+    drop(state);
+    workspace_controller
+        .save_background_ledger()
+        .await
+        .expect("save the independent launch");
 
-    assert_eq!(merged.len(), 1);
-    assert_eq!(merged[0].exec_session_id, "exec-replacement", "the replacement launch keeps the ledger row");
-    assert_eq!(
-        merge_state(&merged[0]),
-        ("replacement".to_owned(), true, "running".to_owned()),
-        "the stale stop must not overwrite a launch it does not name"
+    let ledger = load_background_state(temp.path()).await.expect("read the ledger");
+    assert!(
+        ledger.records.iter().any(|record| record.exec_session_id == "exec-independent"),
+        "an independent ownerless launch must not be suppressed by migration evidence: {ledger:?}"
     );
 }

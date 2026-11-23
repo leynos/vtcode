@@ -42,6 +42,17 @@ async fn the_shared_state_helper_refuses_to_replace_a_published_controller() {
         format!("{rejection}").contains("already attached to another controller"),
         "the rejection must name the occupied record: {rejection}"
     );
+    // The rejection must leave the published link untouched. Re-attaching the
+    // same controller below is idempotent, so it would silently repair a helper
+    // that cleared the record on its way out.
+    let published = state
+        .children
+        .get("child")
+        .expect("the tracked record survives the rejection")
+        .child_controller
+        .as_ref()
+        .expect("a rejected replacement must not clear the published controller");
+    assert!(Arc::ptr_eq(published, &child), "the rejected replacement must leave the original controller linked");
     SubagentController::attach_child_controller_to_state(&mut state, "child", Arc::clone(&child))
         .expect("re-publishing the controller the record names is idempotent");
     drop(state);

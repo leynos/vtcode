@@ -1,7 +1,11 @@
 //! `wait` returns the first terminal child.
 use super::*;
 
-#[tokio::test]
+// The clock is paused so the 500 ms deadline is virtual. A regression that
+// stops waking the parked waiter through its notification then auto-advances to
+// the deadline and returns `None` immediately, instead of racing a real 500 ms
+// delay on a loaded scheduler.
+#[tokio::test(start_paused = true)]
 async fn wait_returns_first_terminal_child() {
     let temp = TempDir::new().expect("tempdir");
     let controller =

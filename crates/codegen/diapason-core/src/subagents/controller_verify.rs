@@ -1,3 +1,11 @@
+//! Verifier-proposal flow for subagents.
+//!
+//! A child may hand work to a verifier and wait for its verdict. The wait
+//! presents `TaskOwner::Workspace`, because the verifier is launched by the
+//! controller rather than by the calling session, and it is bounded by a
+//! 60-second timeout so a verifier that never answers cannot hold the caller.
+//! Sibling modules own spawning ([`super::controller_spawn_run`]) and the
+//! ownership rules this module relies on ([`super::ownership`]).
 #![allow(
     unused_imports,
     reason = "Intentional compatibility, platform, or test-only suppression."

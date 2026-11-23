@@ -7,7 +7,7 @@
 use super::super::super::{BackgroundOutput, BackgroundOutputSource};
 use super::super::ExecSessionOutputReader;
 use crate::config::PtyConfig;
-use crate::tools::exec_session::ExecSessionManager;
+use crate::tools::exec_session::{ExecSessionManager, controller_exec_session_id};
 #[cfg(feature = "tui")]
 use crate::tools::pty::PtySize;
 use crate::tools::registry::PtySessionManager;
@@ -26,14 +26,15 @@ pub(super) fn reader_environment(root: &Path) -> (ExecSessionManager, PtySession
     (manager, pty_sessions, reader)
 }
 
-/// Records the launch the controller would have registered for a fixture task.
+/// Builds the exec-session id a launch would have written for `session_id`.
 ///
-/// A read resolves a task's archive only for a session identifier this process
-/// launched, so a fixture that expects an archive to be served records the
-/// identifier the exec-session creation path would have recorded. Without it
-/// the reader treats the identifier as restored stored data and fails closed.
-pub(super) fn register_launch(manager: &ExecSessionManager, session_id: &str) {
-    manager.register_launched_task_session(session_id);
+/// The reader authorises a record's archive only while its exec-session id
+/// embeds its session id, so a fixture that expects an archive to be served
+/// pairs the two exactly as a controller launch does. The process component is
+/// a launch-side detail the reader does not compare, so any value works; this
+/// uses the current one only to look like a real launch.
+pub(super) fn launched_exec_session_id(session_id: &str) -> String {
+    controller_exec_session_id(session_id, std::process::id(), 0)
 }
 
 /// Writes a session archive with the given transcript lines at `path`.
@@ -105,11 +106,15 @@ impl Drop for SessionDirOverride {
 }
 
 /// Starts a PTY-backed exec session and closes its handle behind the record.
+///
+/// The session id is the one a launch would build for the task, so a record
+/// naming that task and this exec session agrees under the launch convention.
 #[cfg(feature = "tui")]
 pub(super) async fn close_pty_handle(
     manager: &ExecSessionManager,
     pty_sessions: &PtySessionManager,
     root: &Path,
+    exec_session_id: &str,
 ) -> anyhow::Result<()> {
     let size = PtySize {
         rows: 24,
@@ -119,7 +124,7 @@ pub(super) async fn close_pty_handle(
     };
     manager
         .create_pty_session(
-            "pty-output".to_string().into(),
+            exec_session_id.to_string().into(),
             vec!["/bin/sh".to_string(), "-c".to_string(), "sleep 5".to_string()],
             root.to_path_buf(),
             size,
@@ -127,6 +132,6 @@ pub(super) async fn close_pty_handle(
             None,
         )
         .await?;
-    pty_sessions.manager().close_session("pty-output")?;
+    pty_sessions.manager().close_session(exec_session_id)?;
     Ok(())
 }

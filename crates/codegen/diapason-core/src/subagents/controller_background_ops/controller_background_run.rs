@@ -5,7 +5,7 @@ use super::*;
 use super::controller_background_lifecycle::clear_background_launch_owed;
 use super::controller_background_query::resolve_background_target;
 use super::controller_background_settlement::{
-    clear_background_ledger_write_pending, mark_background_ledger_write_pending,
+    clear_background_ledger_write_pending, failed_launch_still_owns_record, mark_background_ledger_write_pending,
 };
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -38,7 +38,14 @@ pub(super) fn background_launch_session_id(session_base: &str) -> String {
 /// first is still starting — a failure settlement could blame on the winner's
 /// live record. A process-wide counter makes every launch distinct.
 pub(super) fn background_exec_session_id(session_id: &str) -> String {
-    format!("exec-{session_id}-{:x}-{:x}", std::process::id(), next_background_launch_sequence())
+    // The archive reader authorises a restored row by rebuilding this id from
+    // the record's own session id, so the pair is built through the shared
+    // helper rather than a second copy of the convention.
+    crate::tools::exec_session::controller_exec_session_id(
+        session_id,
+        std::process::id(),
+        next_background_launch_sequence(),
+    )
 }
 
 struct BackgroundRunIdentity {
@@ -163,6 +170,9 @@ impl SubagentController {
                             return Err(prepare_error);
                         }
                     };
+                    // The loop prepares a new plan, and that reservation arms
+                    // its own guard; this launch's claim was discharged by the
+                    // settlement above.
                     continue;
                 }
             };
@@ -500,6 +510,7 @@ pub(super) fn gate_next_background_commit(state: &Arc<RwLock<ControllerState>>) 
     (entered, release)
 }
 
+/// Parks the launch at the commit gate when one is armed for `state`.
 #[cfg(test)]
 async fn pass_background_commit_gate(state: &Arc<RwLock<ControllerState>>) {
     let gate = {

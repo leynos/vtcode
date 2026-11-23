@@ -26,7 +26,7 @@ async fn background_output_tail_reads_without_refreshing_background_state() {
         "color": null,
         "owner_session_id": "session-a",
         "session_id": "session-background-worker",
-        "exec_session_id": "exec-background-worker",
+        "exec_session_id": "exec-session-background-worker-1-1",
         "desired_enabled": false,
         "status": "running",
         "created_at": "2026-08-28T00:00:00Z",
@@ -58,12 +58,6 @@ async fn background_output_tail_reads_without_refreshing_background_state() {
     )
     .await
     .expect("controller");
-    // The reader serves only a session this process launched; the fixture row
-    // stands in for that launch.
-    controller
-        .config
-        .exec_sessions
-        .register_launched_task_session("session-background-worker");
     let task_id = "background-worker@session-a";
     let before = controller
         .background_status_entries(TaskOwner::Workspace)

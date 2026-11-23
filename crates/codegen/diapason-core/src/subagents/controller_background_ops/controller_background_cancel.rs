@@ -4,7 +4,10 @@ use super::*;
 
 use super::controller_background_liveness::exec_session_is_missing;
 use super::controller_background_query::resolve_background_target_mut;
-use super::controller_background_settlement::{mark_background_ledger_write_pending, retry_attempt_available};
+use super::controller_background_settlement::{
+    clear_background_ledger_write_pending, mark_background_ledger_write_pending,
+    pending_background_ledger_write_generation, retry_attempt_available,
+};
 
 /// A stop whose exec session has not been closed yet.
 ///
@@ -603,10 +606,14 @@ impl SubagentController {
             // persisted may never have reached the process. The close is the
             // stop's obligation, so it is attempted for either mode and its
             // failure is recorded rather than dropped.
-            let close_confirmed = if cancellation.exec_session_id.is_empty() {
-                true
+            let (close_confirmed, settled) = if cancellation.exec_session_id.is_empty() {
+                (
+                    true,
+                    self.settle_background_stop_closed(&cancellation.record_id, &cancellation.exec_session_id, None)
+                        .await,
+                )
             } else {
-                self.attempt_background_stop_close(&cancellation.record_id, &cancellation.exec_session_id)
+                self.attempt_background_stop_close_settling(&cancellation.record_id, &cancellation.exec_session_id)
                     .await
             };
             // The cleared `desired_enabled` flag still has to reach disk so a
@@ -614,16 +621,27 @@ impl SubagentController {
             // comes first: a first attempt can settle the record and then fail
             // here, leaving this retry as the only publisher of the terminal
             // state, so the snapshot is published only once it is committed.
+            // A previous attempt may have settled this stop in memory and then
+            // failed to write it. Its save is retried here, and the obligation
+            // it observed is discharged only once that write succeeds; a
+            // failure arriving during this save bumps the generation and
+            // survives the clear.
+            let owed_generation = pending_background_ledger_write_generation(&self.state);
             self.save_background_state().await?;
-            let entry = self.settle_background_status_and_publish(&cancellation.record_id).await?;
+            if let Some(generation) = owed_generation {
+                clear_background_ledger_write_pending(&self.state, generation);
+            }
+            let entry = self.publish_settled_background_stop(&cancellation.record_id, settled).await?;
             return Ok(BackgroundStopOutcome::from_close(entry, close_confirmed));
         }
         self.log_background_cancellation(&cancellation, &mode);
-        let close_confirmed = if cancellation.exec_session_id.is_empty() {
+        let (close_confirmed, settled) = if cancellation.exec_session_id.is_empty() {
             // No session was recorded, so the stop has nothing left to close.
-            self.settle_background_stop_closed(&cancellation.record_id, &cancellation.exec_session_id, None)
-                .await;
-            true
+            (
+                true,
+                self.settle_background_stop_closed(&cancellation.record_id, &cancellation.exec_session_id, None)
+                    .await,
+            )
         } else {
             if matches!(mode, BackgroundCancellationMode::Graceful) {
                 // Signal first so a cooperative process can leave on its own.
@@ -631,11 +649,33 @@ impl SubagentController {
                 // signal was delivered or that the process honoured it.
                 let _ = self.config.exec_sessions.terminate_session(&cancellation.exec_session_id).await;
             }
-            self.attempt_background_stop_close(&cancellation.record_id, &cancellation.exec_session_id)
+            self.attempt_background_stop_close_settling(&cancellation.record_id, &cancellation.exec_session_id)
                 .await
         };
-        let entry = self.finish_background_cancellation(&cancellation.record_id).await?;
+        let entry = self.finish_background_cancellation(&cancellation.record_id, settled).await?;
         Ok(BackgroundStopOutcome::from_close(entry, close_confirmed))
+    }
+
+    /// Publishes a stop's outcome and answers with the launch it settled.
+    ///
+    /// The record id is stable across restarts, so re-resolving it after the
+    /// close can find a replacement another caller has reserved and report that
+    /// launch as the one this stop settled. The entry captured under the state
+    /// lock that settled the matching exec session is the stop's own outcome;
+    /// the id-based projection is only the fallback for a launch that had
+    /// already moved on before it could be settled.
+    async fn publish_settled_background_stop(
+        &self,
+        record_id: &str,
+        settled: Option<BackgroundSubprocessEntry>,
+    ) -> Result<BackgroundSubprocessEntry> {
+        match settled {
+            Some(entry) => {
+                self.publish_background_status(record_id).await;
+                Ok(entry)
+            }
+            None => self.settle_background_status_and_publish(record_id).await,
+        }
     }
 
     /// Closes a background exec session, tolerating one that is already gone.
@@ -684,11 +724,25 @@ impl SubagentController {
     /// from an attempt the confirmed close overtook is discarded here instead
     /// of rewinding the record.
     pub(super) async fn attempt_background_stop_close(&self, record_id: &str, exec_session_id: &str) -> bool {
+        self.attempt_background_stop_close_settling(record_id, exec_session_id).await.0
+    }
+
+    /// Closes a stopped record's exec session and returns the launch it settled.
+    ///
+    /// The boolean says whether the close is confirmed; the entry is the record
+    /// as it stood when the close settled the matching exec session, and is
+    /// `None` when the record no longer named that launch. A caller answering a
+    /// stop must report this entry: re-resolving the record id afterwards can
+    /// find a replacement another caller has reserved and report it as stopped.
+    async fn attempt_background_stop_close_settling(
+        &self,
+        record_id: &str,
+        exec_session_id: &str,
+    ) -> (bool, Option<BackgroundSubprocessEntry>) {
         if exec_session_id.is_empty() {
             // Nothing can be running under the record, so there is no close to
             // order against another attempt.
-            self.settle_background_stop_closed(record_id, exec_session_id, None).await;
-            return true;
+            return (true, self.settle_background_stop_closed(record_id, exec_session_id, None).await);
         }
         // The obligation is raised before the close is awaited, not after it
         // fails. An adopt or cancel that is interrupted inside the close has
@@ -701,15 +755,16 @@ impl SubagentController {
         // attempt can still consult it.
         let attempt = begin_background_stop_close_attempt(&self.state, record_id, exec_session_id);
         match self.close_background_exec_session(exec_session_id).await {
-            Ok(()) => {
+            Ok(()) => (
+                true,
                 self.settle_background_stop_closed(record_id, exec_session_id, Some(attempt.token()))
-                    .await;
-                true
-            }
-            Err(error) => {
+                    .await,
+            ),
+            Err(error) => (
                 self.settle_background_stop_close_failed(record_id, exec_session_id, attempt.token(), &error)
-                    .await
-            }
+                    .await,
+                None,
+            ),
         }
     }
 
@@ -717,37 +772,45 @@ impl SubagentController {
     ///
     /// `token` identifies the attempt whose close succeeded; `None` is the
     /// empty-session case, which has no competing attempt to order against.
-    async fn settle_background_stop_closed(&self, record_id: &str, exec_session_id: &str, token: Option<u64>) {
-        {
-            let mut state = self.state.write().await;
-            // The confirmation is recorded under the same lock that settles the
-            // record, so an overlapping failure either sees it before it acts
-            // or is rejected as stale.
-            if let Some(token) = token {
-                confirm_background_stop_close_attempt(&self.state, record_id, exec_session_id, token);
-            }
-            let Some(record) = state.background_children.get_mut(record_id) else {
-                clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
-                return;
-            };
-            if record.exec_session_id != exec_session_id {
-                clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
-                return;
-            }
-            if record.status.is_active() {
-                record.status = BackgroundSubprocessStatus::Stopped;
-                record.error = None;
-                record.summary = Some("Background subagent stopped".to_string());
-                record.ended_at.get_or_insert_with(Utc::now);
-                record.updated_at = Utc::now();
-            } else if record.status == BackgroundSubprocessStatus::Stopped {
-                // A retried close may settle a stop whose record already
-                // reached a terminal outcome. Preserve that outcome; only the
-                // pending close's error text is cleared.
-                record.error = None;
-            }
-            clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
+    /// Returns the settled entry for the launch the close addressed, or `None`
+    /// when the record no longer names that exec session.
+    async fn settle_background_stop_closed(
+        &self,
+        record_id: &str,
+        exec_session_id: &str,
+        token: Option<u64>,
+    ) -> Option<BackgroundSubprocessEntry> {
+        let mut state = self.state.write().await;
+        // The confirmation is recorded under the same lock that settles the
+        // record, so an overlapping failure either sees it before it acts or is
+        // rejected as stale.
+        if let Some(token) = token {
+            confirm_background_stop_close_attempt(&self.state, record_id, exec_session_id, token);
         }
+        let Some(record) = state.background_children.get_mut(record_id) else {
+            clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
+            return None;
+        };
+        if record.exec_session_id != exec_session_id {
+            clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
+            return None;
+        }
+        if record.status.is_active() {
+            record.status = BackgroundSubprocessStatus::Stopped;
+            record.error = None;
+            record.summary = Some("Background subagent stopped".to_string());
+            record.ended_at.get_or_insert_with(Utc::now);
+            record.updated_at = Utc::now();
+        } else if record.status == BackgroundSubprocessStatus::Stopped {
+            // A retried close may settle a stop whose record already reached a
+            // terminal outcome. Preserve that outcome; only the pending close's
+            // error text is cleared.
+            record.error = None;
+        }
+        clear_background_stop_close_pending(&self.state, record_id, exec_session_id);
+        // Captured under the same lock that applied the close, while the record
+        // still names the launch this stop addressed.
+        Some(record.build_status_entry())
     }
 
     /// Keeps a failed close owed, or settles `Error` when its retry is spent.
@@ -982,11 +1045,81 @@ impl SubagentController {
         })
     }
 
-    async fn finish_background_cancellation(&self, target: &str) -> Result<BackgroundSubprocessEntry> {
+    async fn finish_background_cancellation(
+        &self,
+        target: &str,
+        settled: Option<BackgroundSubprocessEntry>,
+    ) -> Result<BackgroundSubprocessEntry> {
+        // The close has already discharged the stop's obligation, so between it
+        // and this save the settled record exists only in memory. The archive
+        // refresh is awaited in that window; an interrupted refresh would
+        // otherwise lose the save, and nothing would publish the stop again.
+        // Raising the owed-write marker first makes the next refresh retry the
+        // write before any caller can observe the record.
+        let generation = mark_background_ledger_write_pending(&self.state);
+        #[cfg(test)]
+        pass_background_cancellation_save_gate(&self.state).await;
         self.refresh_background_archive_metadata(target).await?;
         self.save_background_state().await?;
-        self.settle_background_status_and_publish(target).await
+        clear_background_ledger_write_pending(&self.state, generation);
+        self.publish_settled_background_stop(target, settled).await
     }
+}
+
+/// A test gate before a stop's archive refresh and save.
+///
+/// The close has already settled the record and raised the owed-write marker by
+/// the time the archive refresh is awaited. Parking here lets a test drop the
+/// caller in exactly that window and prove the stop is still retried.
+#[cfg(test)]
+struct BackgroundCancellationSaveGate {
+    state: Weak<RwLock<ControllerState>>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[cfg(test)]
+fn background_cancellation_save_gates() -> &'static Mutex<Vec<BackgroundCancellationSaveGate>> {
+    static GATES: std::sync::OnceLock<Mutex<Vec<BackgroundCancellationSaveGate>>> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Arms a gate that holds the next cancellation save of `state`.
+#[cfg(test)]
+pub(super) fn gate_next_background_cancellation_save(
+    state: &Arc<RwLock<ControllerState>>,
+) -> (Arc<Notify>, Arc<Notify>) {
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut gates = background_cancellation_save_gates()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    gates.retain(|gate| gate.state.strong_count() > 0);
+    gates.push(BackgroundCancellationSaveGate {
+        state: Arc::downgrade(state),
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    (entered, release)
+}
+
+#[cfg(test)]
+async fn pass_background_cancellation_save_gate(state: &Arc<RwLock<ControllerState>>) {
+    let gate = {
+        let mut gates = background_cancellation_save_gates()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gates.retain(|gate| gate.state.strong_count() > 0);
+        let index = gates
+            .iter()
+            .position(|gate| std::ptr::eq(gate.state.as_ptr(), Arc::as_ptr(state)));
+        index.map(|index| gates.remove(index))
+    };
+    let Some(gate) = gate else {
+        return;
+    };
+    gate.entered.notify_one();
+    gate.release.notified().await;
 }
 
 #[cfg(test)]

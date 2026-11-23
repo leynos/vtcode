@@ -300,3 +300,80 @@ async fn concurrent_reserves_across_a_clock_handoff_never_repeat_a_revision() {
         "the revisions must stay contiguous across every handoff"
     );
 }
+
+/// A lifecycle reservation parked in its read window excludes a clock handoff.
+///
+/// The stress loop above can pass without ever exercising a handoff: every
+/// reservation may finish before an adoption starts, so the test would not
+/// notice a handoff that stopped excluding the reservation window. This case
+/// parks one reservation inside the route's read guard, so the handoff must
+/// wait for the write guard, and then checks that the adopted clock carries the
+/// parked revision forward instead of handing it out a second time.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_parked_reservation_excludes_the_clock_handoff() {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
+
+    use crate::subagents::controller_observers::ReserveRendezvous;
+
+    let temp = TempDir::new().expect("tempdir");
+    let controller = Arc::new(
+        SubagentController::new(test_controller_config(temp.path().to_path_buf()))
+            .await
+            .expect("controller"),
+    );
+    let rendezvous = Arc::new(ReserveRendezvous::default());
+    controller
+        .progress_route
+        .install_lifecycle_reserve_rendezvous(Arc::clone(&rendezvous));
+
+    // The reservation parks after taking the route's read guard.
+    let reserver = {
+        let controller = Arc::clone(&controller);
+        tokio::task::spawn_blocking(move || controller.reserve_lifecycle_revision())
+    };
+    rendezvous.wait_until_parked().await;
+    assert!(!rendezvous.expired(), "the reservation gate expired before the handoff started");
+
+    // The handoff needs the write guard the parked reservation holds.
+    let registry = Arc::new(ProgressObserverRegistry::default());
+    let adopted_clock = Arc::new(AtomicU64::new(0));
+    let (attempted_tx, mut attempted_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (adopted_tx, mut adopted_rx) = tokio::sync::mpsc::unbounded_channel();
+    let handoff = {
+        let controller = Arc::clone(&controller);
+        let clock = Arc::clone(&adopted_clock);
+        tokio::task::spawn_blocking(move || {
+            let _ = attempted_tx.send(());
+            controller.progress_route.adopt(Arc::clone(&registry), None, clock);
+            let _ = adopted_tx.send(());
+        })
+    };
+    attempted_rx.recv().await.expect("the handoff must start");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), adopted_rx.recv())
+            .await
+            .is_err(),
+        "the handoff must block while a reservation holds the route's read guard"
+    );
+
+    rendezvous.release();
+    let parked = reserver.await.expect("the reservation must finish");
+    adopted_rx
+        .recv()
+        .await
+        .expect("the handoff must finish once the reservation is recorded");
+    handoff.await.expect("the handoff task must finish");
+
+    assert_eq!(parked, 0, "the parked reservation takes the first revision");
+    assert_eq!(
+        adopted_clock.load(Ordering::Relaxed),
+        parked + 1,
+        "the handoff must carry the parked revision into the adopted clock"
+    );
+    assert_eq!(
+        controller.reserve_lifecycle_revision(),
+        parked + 1,
+        "the next revision must follow the parked one exactly"
+    );
+}

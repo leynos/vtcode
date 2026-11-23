@@ -6,5 +6,8 @@
 //! state.
 
 mod adoption_tests;
+mod empty_launch_tests;
+mod launch_precedence_tests;
 mod merge_oracle_tests;
+mod ownership_supersession_tests;
 mod reconciliation_tests;

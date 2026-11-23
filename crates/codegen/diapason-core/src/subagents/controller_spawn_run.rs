@@ -898,7 +898,17 @@ impl SubagentController {
                     return Err(error);
                 }
             };
-            self.launch_child(&id).await?;
+            if let Err(error) = self.launch_child(&id).await {
+                // The record is visible but was never started: a close that
+                // landed between the insertion and the launch settled it, and
+                // the launcher refused to resurrect it. Nothing will ever run
+                // in the worktree this spawn created, so reclaim it rather
+                // than leak the checkout, and keep the original refusal.
+                if let Some(worktree_path) = self.take_unstarted_spawn_worktree(&id).await {
+                    self.remove_unused_spawn_worktree(worktree_path.as_path()).await;
+                }
+                return Err(error);
+            }
             // The record was inserted by this call, so no ownership check
             // applies to reading it back.
             self.status_for_unchecked(&id).await
@@ -944,6 +954,17 @@ impl SubagentController {
         } else {
             Ok(None)
         }
+    }
+
+    /// Takes the worktree checkout of a child whose launch was refused.
+    ///
+    /// A launch that fails after its record became visible leaves a checkout no
+    /// record will ever use, so the caller reclaims it. The path is cleared as
+    /// it is taken: the record stays as the launch left it, and a later resume
+    /// must not be handed a directory that is about to be removed.
+    async fn take_unstarted_spawn_worktree(&self, id: &str) -> Option<PathBuf> {
+        let mut state = self.state.write().await;
+        state.children.get_mut(id)?.worktree_path.take()
     }
 
     /// Best-effort removal of a worktree whose child record was never registered.
@@ -1446,3 +1467,5 @@ mod spawn_run_regression_tests {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod unstarted_worktree_tests;

@@ -103,7 +103,14 @@ pub(super) fn mark_background_launch_owed(
     });
 }
 
-/// Clears the launch obligation for one record's exec session.
+/// Makes an already-recorded launch claim drivable by the next refresh.
+///
+/// A fresh claim is recorded as not retryable because the call that reserved it
+/// is about to spawn the process itself. If that call is dropped before it
+/// spawns — its tool invocation is cancelled, or its claim could not be written
+/// — nothing remains to drive the record, and it would report an active launch
+/// forever. Promoting the claim in place hands it to refresh, which runs the
+/// same restart path a scheduled replacement uses. A claim that was already/// Clears the launch obligation for one record's exec session.
 pub(super) fn clear_background_launch_owed(
     state: &Arc<RwLock<ControllerState>>,
     record_id: &str,

@@ -1,0 +1,188 @@
+//! Pins how the reservation answers for a launch another caller replaced.
+
+use tempfile::TempDir;
+
+use crate::config::DiapasonConfig;
+use crate::subagents::BackgroundSubprocessStatus;
+use crate::subagents::background::{load_background_state, persist_background_state};
+
+use super::super::BackgroundRunReservation;
+use super::super::adopted_stop_gate::gate_next_adopted_background_stop_close;
+use super::super::controller_background_cancel::gate_next_background_close;
+use super::reserve_support::{
+    OBSERVED_EXEC, WORKER, WORKER_AGENT, insert_observed_record, persisted_row, plan, worker_spec,
+};
+use super::support::{RecordingObserver, background_test_controller};
+
+/// An adopted stop closes the launch it adopted, not a replacement.
+///
+/// The stop is adopted under the state lock, but the close runs after that
+/// lock is released. A concurrent explicit start can take the record in
+/// between; re-reading the record then would close the replacement's session
+/// and settle a launch that never owed the stop. The gate lands the concurrent
+/// start in that window.
+#[tokio::test]
+async fn an_adopted_stop_closes_the_launch_it_adopted_after_a_concurrent_start() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    insert_observed_record(&controller).await;
+    persist_background_state(temp.path(), vec![persisted_row(WORKER, None, WORKER_AGENT, OBSERVED_EXEC, false)])
+        .await
+        .expect("seed the persisted stop");
+
+    let bound_plan = plan(worker_spec(), "exec-replacement", Some(OBSERVED_EXEC));
+    let replacement_plan = plan(worker_spec(), "exec-replacement", None);
+
+    let (close_entered, close_release) = gate_next_background_close(&controller.state, OBSERVED_EXEC);
+    let (reservation_entered, reservation_release) = gate_next_adopted_background_stop_close(&controller.state);
+    let reserve = controller.reserve_background_run(&bound_plan);
+    tokio::pin!(reserve);
+    tokio::select! {
+        result = &mut reserve => {
+            panic!("the adopted stop closed before the concurrent start landed: {result:?}")
+        },
+        () = reservation_entered.notified() => {}
+    }
+
+    // A concurrent explicit start takes the record now that the adopted stop
+    // has cleared its intent, and names a different exec session.
+    let concurrent = controller
+        .reserve_background_run(&replacement_plan)
+        .await
+        .expect("the replacement launch reserves the record");
+    assert!(
+        matches!(concurrent, BackgroundRunReservation::Reserved),
+        "the explicit start claims the record after the adopted stop cleared it"
+    );
+
+    reservation_release.notify_one();
+    // The reservation future is only polled while something awaits it, so
+    // drive it here: the close gate can only be reached from inside that
+    // future, and waiting on the gate alone would wait on a future nobody
+    // polls.
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        tokio::select! {
+            () = close_entered.notified() => {}
+            result = &mut reserve => {
+                panic!("the adopted stop answered before it closed its launch: {result:?}")
+            }
+        }
+    })
+    .await
+    .expect("the adopted stop must close the launch whose stop it adopted");
+    close_release.notify_one();
+
+    let reservation = reserve.await.expect("the adopted stop still answers the caller");
+    assert!(matches!(reservation, BackgroundRunReservation::Declined));
+
+    let state = controller.state.read().await;
+    let record = state.background_children.get(WORKER).expect("record");
+    assert_eq!(record.exec_session_id, "exec-replacement", "the replacement launch keeps the record");
+    assert_eq!(
+        record.status,
+        BackgroundSubprocessStatus::Starting,
+        "the adopted stop's close must not settle the replacement launch"
+    );
+    assert!(record.desired_enabled, "the replacement launch is still wanted");
+    drop(state);
+
+    controller.signal_shutdown().await;
+}
+
+/// A claimed record is reported to its observers before the call answers.
+#[tokio::test]
+async fn a_reserved_claim_is_published() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    let observer = std::sync::Arc::new(RecordingObserver::default());
+    let registration = controller.register_progress_observer("parent-session", observer.clone());
+
+    let reservation = controller
+        .reserve_background_run(&plan(worker_spec(), "exec-published", None))
+        .await
+        .expect("the unbound plan claims the record");
+    assert!(matches!(reservation, BackgroundRunReservation::Reserved));
+
+    let published = observer.background_entries();
+    assert_eq!(
+        published.last().map(|entry| entry.status),
+        Some(BackgroundSubprocessStatus::Starting),
+        "the fresh claim must reach observers: {published:?}"
+    );
+
+    drop(registration);
+    controller.signal_shutdown().await;
+}
+
+/// The unbound reservation still reports a record it already runs.
+#[tokio::test]
+async fn an_active_record_with_matching_settings_is_reused() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    insert_observed_record(&controller).await;
+
+    let reservation = controller
+        .reserve_background_run(&plan(worker_spec(), "exec-replacement", None))
+        .await
+        .expect("a matching active record is reuse, not an error");
+
+    match reservation {
+        BackgroundRunReservation::Reused(entry) => {
+            assert_eq!(entry.exec_session_id, OBSERVED_EXEC, "reuse answers for the running launch");
+        }
+        other => panic!("a matching active record must be reused, got {other:?}"),
+    }
+
+    controller.signal_shutdown().await;
+}
+
+/// A stop of a replacement before its first save displaces its predecessor.
+///
+/// The replacement is claimed under a new exec session while the ledger still
+/// names the launch it replaced. A stop that lands before the replacement's
+/// first save must not leave the predecessor row in place: the merge compares a
+/// stop with the session it names, so a predecessor the stop never mentions
+/// would survive and a reattach would restore the launch that was replaced.
+#[tokio::test]
+async fn a_stop_of_a_replacement_displaces_the_launch_it_replaced() {
+    let temp = TempDir::new().expect("tempdir");
+    persist_background_state(temp.path(), vec![persisted_row(WORKER, None, WORKER_AGENT, OBSERVED_EXEC, true)])
+        .await
+        .expect("seed the observed launch");
+    let controller = background_test_controller(temp.path(), DiapasonConfig::default()).await;
+    insert_observed_record(&controller).await;
+
+    let reservation = controller
+        .reserve_background_run(&plan(worker_spec(), "exec-replacement", Some(OBSERVED_EXEC)))
+        .await
+        .expect("the bound plan claims the record");
+    assert!(matches!(reservation, BackgroundRunReservation::Reserved));
+
+    // The stop lands before the replacement's own launch snapshot is saved.
+    {
+        let mut state = controller.state.write().await;
+        let record = state.background_children.get_mut(WORKER).expect("the claimed record");
+        assert_eq!(record.exec_session_id, "exec-replacement", "the claim names the replacement");
+        record.desired_enabled = false;
+        record.status = BackgroundSubprocessStatus::Stopped;
+        record.ended_at = Some(chrono::Utc::now());
+        record.updated_at = chrono::Utc::now();
+    }
+    controller.save_background_state().await.expect("save the stop");
+
+    let ledger = load_background_state(temp.path()).await.expect("read the ledger");
+    assert_eq!(ledger.records.len(), 1, "the ledger keeps one row for the record");
+    let stored = &ledger.records[0];
+    assert_eq!(
+        stored.exec_session_id, "exec-replacement",
+        "the stopped row must name the replacement, not the launch it replaced"
+    );
+    let restored = crate::subagents::types::BackgroundRecord::from_persisted(stored.clone());
+    assert!(!restored.desired_enabled, "a reattach must not restore the launch this replacement replaced");
+    assert!(
+        ledger.records.iter().all(|record| record.exec_session_id != OBSERVED_EXEC),
+        "the predecessor row must not survive beside the launch that replaced it"
+    );
+
+    controller.signal_shutdown().await;
+}

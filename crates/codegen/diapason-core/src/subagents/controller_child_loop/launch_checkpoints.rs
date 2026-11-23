@@ -24,7 +24,7 @@ fn checkpoints() -> &'static Mutex<Vec<LaunchCheckpoint>> {
 ///
 /// Returns the signal that the launch reached the checkpoint and the signal
 /// that releases it.
-pub(super) fn arm(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+pub(in crate::subagents) fn arm(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
     let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);

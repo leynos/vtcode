@@ -15,10 +15,15 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 const BASETEN_MODEL: &str = "baseten/usage";
 const BASETEN_PROVIDER: &str = "baseten-fixture";
 
-/// One content delta followed by the terminal usage chunk Baseten streams when
-/// `stream_options.include_usage` is set.
+/// One content delta, the finish chunk, and then the terminal usage chunk
+/// Baseten streams when `stream_options.include_usage` is set.
+///
+/// The usage chunk stays last: it carries an empty `choices` array, so a
+/// reader that treats the last chunk as terminal must still see the finish
+/// reason before it.
 const TERMINAL_USAGE_STREAM: &str = concat!(
     "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
     "data: {\"id\":\"chatcmpl-baseten\",\"object\":\"chat.completion.chunk\",\"model\":\"baseten/usage\",\"choices\":[],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5,\"total_tokens\":18}}\n\n",
     "data: [DONE]\n\n",
 );

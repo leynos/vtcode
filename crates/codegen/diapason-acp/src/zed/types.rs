@@ -463,10 +463,24 @@ mod tests {
         }
 
         let (forwarder_dropped, mut dropped) = oneshot::channel();
+        let (ready_tx, ready_rx) = oneshot::channel();
         let forwarder = tokio::spawn(async move {
             let _signal = SignalOnDrop(Some(forwarder_dropped));
+            // The drop signal only exists once this future has been polled.
+            // Teardown must not start before then: an abort that lands first
+            // drops the future without ever creating the signal, and the test
+            // would report a missing signal it never armed rather than the
+            // teardown defect it is checking.
+            // The receiver is either waiting or already gone; the signal has
+            // done its work either way, so both outcomes are consumed.
+            match ready_tx.send(()) {
+                Ok(()) | Err(()) => {}
+            }
             std::future::pending::<()>().await;
         });
+        ready_rx
+            .await
+            .expect("the forwarder must install its drop signal before teardown starts");
         let publisher = tokio::spawn(async {
             panic!("lifecycle publisher failed");
         });

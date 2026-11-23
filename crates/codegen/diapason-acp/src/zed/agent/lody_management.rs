@@ -74,6 +74,10 @@ fn management_error_reason(error: &SdkError) -> &'static str {
         Some("unknown_task") => "unknown_task",
         Some("invalid_tail") => "invalid_tail",
         Some("subagent_management_failed") => "subagent_management_failed",
+        // A stop that could not confirm the exec session closed is retryable
+        // and distinct from an unexpected failure, so it keeps its own
+        // category instead of collapsing into the generic one.
+        Some("subagent_close_pending") => "subagent_close_pending",
         _ => MANAGEMENT_FAILURE_CATEGORY,
     }
 }

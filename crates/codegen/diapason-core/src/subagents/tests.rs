@@ -62,7 +62,7 @@ pub(super) fn persisted_background_record_for_owner(
         "color": null,
         "owner_session_id": owner_session_id,
         "session_id": format!("session-{id}"),
-        "exec_session_id": format!("exec-{id}"),
+        "exec_session_id": format!("exec-session-{id}-1-1"),
         "desired_enabled": false,
         "status": "stopped",
         "created_at": "2026-08-28T00:00:00Z",

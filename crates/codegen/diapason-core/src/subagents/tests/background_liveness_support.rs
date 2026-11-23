@@ -17,6 +17,10 @@ pub(super) fn record_with_restart_state(
 ) -> PersistedBackgroundRecord {
     let mut value = serde_json::to_value(persisted_background_record_for_owner(id, owner_session_id))
         .expect("serialize fixture record");
+    // The archive reader authorises a row by rebuilding its exec-session id
+    // from its own session id, so the shared fixture carries a launch-shaped
+    // pair rather than two unrelated identifiers.
+    value["exec_session_id"] = serde_json::json!(format!("exec-session-{id}-1-1"));
     value["status"] = serde_json::json!(status);
     value["desired_enabled"] = serde_json::json!(true);
     value["restart_attempts"] = serde_json::json!(restart_attempts);
