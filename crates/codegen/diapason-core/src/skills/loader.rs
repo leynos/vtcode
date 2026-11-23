@@ -7,6 +7,9 @@
 //! `diapason-skills::command_skills::select_by_name_or_alias`, which ranks
 //! matches by scope so the bundled canonical spelling cannot shadow a
 //! higher-precedence user or repository override.
+//!
+//! The enhanced loader applies disabled-skill selectors from its configured
+//! codex home to both discovery listings and single-skill lookups.
 
 use crate::skills::cli_bridge::{CliToolBridge, CliToolConfig, discover_cli_tools};
 use crate::skills::command_skills::{
@@ -278,25 +281,43 @@ fn default_skill_toggle_enabled() -> bool {
 }
 
 fn filter_disabled_skills(outcome: &mut SkillLoadOutcome, home_dir: Option<&Path>) {
-    let disabled = disabled_skill_selectors(home_dir);
+    let Some(home_dir) = home_dir else {
+        return;
+    };
+    filter_disabled_skills_from_codex_home(outcome, &home_dir.join(".codex"));
+}
+
+/// Remove skills disabled by the `config.toml` under an explicit codex home.
+fn filter_disabled_skills_from_codex_home(outcome: &mut SkillLoadOutcome, codex_home: &Path) {
+    let disabled = disabled_skill_selectors(codex_home);
     if disabled.paths.is_empty() && disabled.names.is_empty() {
         return;
     }
 
-    outcome.skills.retain(|skill| {
-        let canonical = dunce::canonicalize(&skill.path).unwrap_or_else(|_| skill.path.clone());
-        !disabled.paths.contains(&canonical)
-            && !disabled.names.contains(&skill.name)
-            && !command_skill_id_alias(&skill.name).is_some_and(|alias| disabled.names.contains(alias))
-    });
+    outcome.skills.retain(|skill| !disabled.selects(&skill.name, &skill.path));
 }
 
-fn disabled_skill_selectors(home_dir: Option<&Path>) -> DisabledSkillSelectors {
-    let Some(home_dir) = home_dir else {
-        return DisabledSkillSelectors::default();
-    };
+/// Remove disabled skills from a discovery result's traditional skill list.
+fn filter_disabled_skill_contexts_from_codex_home(skills: &mut Vec<SkillContext>, codex_home: &Path) {
+    let disabled = disabled_skill_selectors(codex_home);
+    if disabled.paths.is_empty() && disabled.names.is_empty() {
+        return;
+    }
 
-    let config_path = home_dir.join(".codex").join("config.toml");
+    skills.retain(|skill| !disabled.selects(skill.manifest().name.as_str(), skill.path()));
+}
+
+impl DisabledSkillSelectors {
+    fn selects(&self, name: &str, path: &Path) -> bool {
+        let canonical = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        self.paths.contains(&canonical)
+            || self.names.contains(name)
+            || command_skill_id_alias(name).is_some_and(|alias| self.names.contains(alias))
+    }
+}
+
+fn disabled_skill_selectors(codex_home: &Path) -> DisabledSkillSelectors {
+    let config_path = codex_home.join("config.toml");
     let Ok(content) = fs::read_to_string(&config_path) else {
         return DisabledSkillSelectors::default();
     };
@@ -869,13 +890,15 @@ impl EnhancedSkillLoader {
         self.ensure_system_skills_installed();
         let mut result = self.discovery.discover_all(&self.workspace_root).await?;
         merge_built_in_command_skill_contexts(&mut result.skills);
+        filter_disabled_skill_contexts_from_codex_home(&mut result.skills, &self.codex_home);
         Ok(result)
     }
 
     /// Get a specific skill by name
     pub async fn get_skill(&mut self, name: &str) -> Result<EnhancedSkill> {
         self.ensure_system_skills_installed();
-        let result = self.discovery.discover_all(&self.workspace_root).await?;
+        let mut result = self.discovery.discover_all(&self.workspace_root).await?;
+        filter_disabled_skill_contexts_from_codex_home(&mut result.skills, &self.codex_home);
 
         if let Some(skill_ctx) =
             traditional_skill_context_by_name(&result.skills, name, &self.workspace_root, &self.codex_home)
@@ -1685,6 +1708,63 @@ mod tests {
                     }
                     other => panic!("expected a traditional skill for {requested}, got {other:?}"),
                 }
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn enhanced_loader_respects_codex_home_disable_selectors_for_analyse_aliases() {
+        let home = TempDir::new().expect("home");
+
+        temp_env::with_vars([("HOME", Some(home.path()))], || {
+            for selector in ["cmd-analyse", "cmd-analyze"] {
+                let workspace = TempDir::new().expect("workspace");
+                let codex_home = TempDir::new().expect("codex home");
+                install_system_skills(codex_home.path()).expect("install bundled system skills");
+                let installed = system_cache_root_dir(codex_home.path()).join("cmd-analyse");
+                assert!(installed.join("SKILL.md").exists(), "expected bundled cmd-analyse at {}", installed.display());
+                fs::write(
+                    codex_home.path().join("config.toml"),
+                    format!("[[skills.config]]\nname = \"{selector}\"\nenabled = false\n"),
+                )
+                .expect("write codex home config");
+
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("test runtime");
+                let mut loader = EnhancedSkillLoader::with_codex_home(
+                    workspace.path().to_path_buf(),
+                    codex_home.path().to_path_buf(),
+                );
+
+                for requested in ["cmd-analyse", "cmd-analyze"] {
+                    let error = match runtime.block_on(loader.get_skill(requested)) {
+                        Ok(skill) => panic!("selector {selector} must disable {requested}, got {skill:?}"),
+                        Err(error) => error,
+                    };
+                    assert!(
+                        error.to_string().contains("not found"),
+                        "selector {selector} must make {requested} unavailable, got: {error}"
+                    );
+                }
+
+                let discovery = runtime.block_on(loader.discover_all_skills()).expect("discover skills");
+                assert!(
+                    discovery.skills.iter().all(|skill_ctx| {
+                        !matches!(skill_ctx.manifest().name.as_str(), "cmd-analyse" | "cmd-analyze")
+                    }),
+                    "selector {selector} must keep the analyse family out of the discovery listing"
+                );
+
+                let unrelated = runtime
+                    .block_on(loader.get_skill("cmd-review"))
+                    .expect("unrelated bundled skill must stay enabled");
+                assert!(
+                    matches!(unrelated, EnhancedSkill::Traditional(_)),
+                    "selector {selector} must not disable unrelated skills"
+                );
             }
         });
     }
