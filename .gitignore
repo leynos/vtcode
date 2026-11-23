@@ -767,6 +767,9 @@ benchmark_results/
 analysis_reports/
 debug_logs/
 performance_data/
+test_artefacts/
+build_artefacts/
+# Keep ignoring the pre-rename directories that existing tooling still creates.
 test_artifacts/
 build_artifacts/
 

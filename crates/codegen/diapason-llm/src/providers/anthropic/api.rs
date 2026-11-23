@@ -524,7 +524,7 @@ mod tests {
                 role: "user".to_string(),
                 content: AnthropicContent::Blocks(vec![
                     AnthropicContentBlock::Text {
-                        text: "Analyze this CSV".to_string(),
+                        text: "Analyse this CSV".to_string(),
                         citations: None,
                         cache_control: None,
                     },
@@ -550,7 +550,7 @@ mod tests {
             MessageContent::Parts(parts) => {
                 assert!(matches!(
                     &parts[0],
-                    ContentPart::Text { text } if text == "Analyze this CSV"
+                    ContentPart::Text { text } if text == "Analyse this CSV"
                 ));
                 assert!(matches!(
                     &parts[1],

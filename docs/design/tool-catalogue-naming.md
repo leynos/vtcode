@@ -89,6 +89,24 @@ The policy is **proposed** because it belongs to the proposed-policy train, and
 the spelling gate that would enforce it is not enabled yet. Authoring rules are
 in the [documentation style guide](../documentation-style-guide.md).
 
+## Analyse command-skill alias
+
+- Status: **proposed**
+- Applies to: the bundled analysis command skill
+
+The command skill has one canonical ID, `cmd-analyse`, which names the bundled
+path `.system/cmd-analyse`, and one legacy alias, `cmd-analyze`. Existing
+prompts, persisted preload names and saved disable selectors keep resolving
+through either spelling.
+
+Alias resolution has one precedence rule, expressed by skill scope: `Repo`
+outranks `User`, which outranks `Admin`, which outranks bundled `System`.
+Within one scope the first discovered root wins, so the pair is never resolved
+by sorted order. Both IDs stay out of the model-invocable catalogue, and
+unrelated exact-name duplicates keep the existing last-entry preload contract.
+
+See the [developer guide](../developers-guide.md) for the resolution paths.
+
 ## Alternatives considered
 
 - **Keep both spellings and add aliases.** Rejected: aliases hide stale call

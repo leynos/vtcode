@@ -9,6 +9,9 @@ use hashbrown::HashMap;
 use serde_json::json;
 use std::path::PathBuf;
 
+/// Legacy command-skill ID accepted for existing user and persisted references.
+pub const LEGACY_ANALYSE_COMMAND_SKILL_ID: &str = "cmd-analyze";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltInCommandExecutor {
     SlashAlias,
@@ -215,16 +218,14 @@ const COMMAND_SKILL_SPECS: &[CommandSkillSpec] = &[
     ),
     CommandSkillSpec {
         slash_name: "analyse",
-        // Retain the bundled traditional skill identifier until its authored
-        // asset can migrate with a compatible legacy alias.
-        skill_name: "cmd-analyze",
+        skill_name: "cmd-analyse",
         description: "Perform comprehensive codebase analysis and generate reports (usage: /analyse [full|security|performance])",
         usage: "/analyse [full|security|performance]",
         category: "tools",
         aliases: &["analyze"],
         backend: CommandSkillBackend::TraditionalSkill {
-            skill_name: "cmd-analyze",
-            skill_path: ".system/cmd-analyze",
+            skill_name: "cmd-analyse",
+            skill_path: ".system/cmd-analyse",
         },
     },
     traditional_command_spec!(
@@ -443,7 +444,53 @@ pub fn find_command_skill_by_slash_name(name: &str) -> Option<&'static CommandSk
 }
 
 pub fn find_command_skill_by_skill_name(name: &str) -> Option<&'static CommandSkillSpec> {
-    COMMAND_SKILL_SPECS.iter().find(|spec| spec.skill_name == name)
+    COMMAND_SKILL_SPECS.iter().find(|spec| {
+        spec.skill_name == name || command_skill_id_alias(name).is_some_and(|alias| spec.skill_name == alias)
+    })
+}
+
+/// Return the exact compatibility counterpart for the analyse command-skill ID.
+pub fn command_skill_id_alias(name: &str) -> Option<&'static str> {
+    match name {
+        LEGACY_ANALYSE_COMMAND_SKILL_ID => Some("cmd-analyse"),
+        "cmd-analyse" => Some(LEGACY_ANALYSE_COMMAND_SKILL_ID),
+        _ => None,
+    }
+}
+
+/// Discovery precedence of a skill scope, lowest first.
+///
+/// Skill roots are searched repository first, then user, administrator, and
+/// bundled system roots. Name and alias lookups cite this rank so a
+/// higher-precedence skill wins even when its spelling sorts later.
+pub fn skill_scope_rank(scope: SkillScope) -> u8 {
+    match scope {
+        SkillScope::Repo => 0,
+        SkillScope::User => 1,
+        SkillScope::Admin => 2,
+        SkillScope::System => 3,
+    }
+}
+
+/// Select the entry whose name matches `name` or its command-skill alias.
+///
+/// Matching entries are ranked with [`skill_scope_rank`]. The first entry of
+/// the minimum rank wins, so callers that preserve discovery order also keep
+/// their first-discovered tie-break. Returns `None` when nothing matches.
+pub fn select_by_name_or_alias<'a, T>(
+    items: &'a [T],
+    name: &str,
+    name_of: impl Fn(&T) -> &str,
+    scope_of: impl Fn(&T) -> SkillScope,
+) -> Option<&'a T> {
+    let alias = command_skill_id_alias(name);
+    items
+        .iter()
+        .filter(|item| {
+            let item_name = name_of(item);
+            item_name == name || alias.is_some_and(|alias| item_name == alias)
+        })
+        .min_by_key(|item| skill_scope_rank(scope_of(item)))
 }
 
 fn is_command_skill_name(name: &str) -> bool {
@@ -536,6 +583,24 @@ mod tests {
         let status = find_command_skill_by_slash_name("status").expect("status spec");
         assert!(status.is_built_in());
         assert_eq!(status.skill_name, "cmd-status");
+    }
+
+    #[test]
+    fn analyse_command_skill_accepts_the_legacy_id_without_entering_the_model_catalogue() {
+        for name in ["cmd-analyse", LEGACY_ANALYSE_COMMAND_SKILL_ID] {
+            let spec = find_command_skill_by_skill_name(name).expect("analyse command skill");
+            assert_eq!(spec.skill_name, "cmd-analyse");
+
+            let skill = SkillMetadata {
+                name: name.to_string(),
+                description: "Command skill fixture".to_string(),
+                short_description: None,
+                path: PathBuf::from("/hermetic/skills").join(name),
+                scope: SkillScope::User,
+                manifest: None,
+            };
+            assert!(!is_model_catalogue_eligible(&skill), "{name} must remain internal");
+        }
     }
 
     #[test]

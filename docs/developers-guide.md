@@ -93,6 +93,30 @@ Command execution does not yet enforce a deadline, a limitation that predates
 this layer. See the
 [Zed extension quick start](../extensions/zed-extension/docs/QUICK_START.md).
 
+## Analyse command skill compatibility
+
+The bundled analysis command skill has the canonical ID `cmd-analyse` and the
+bundled path `.system/cmd-analyse`. In
+`crates/codegen/diapason-skills/src/command_skills.rs`,
+`LEGACY_ANALYSE_COMMAND_SKILL_ID` holds the legacy ID `cmd-analyze`, and
+`command_skill_id_alias` maps either spelling to the other.
+`find_command_skill_by_skill_name` accepts both IDs, so `/skills info` and
+`/skills use` resolve the same skill from either spelling, and the `analyze`
+slash alias continues to route to it.
+
+Alias precedence is one rule, expressed by `SkillScope`: `Repo` outranks
+`User`, which outranks `Admin`, which outranks the bundled `System` scope.
+Within one scope the first discovered root wins, so the pair is never resolved
+by sorted order. Direct resolution by `skill_metadata_by_name` and the
+persisted preload lookup (`loop_skills` via `preloaded_skill_metadata_by_name`)
+in `crates/codegen/diapason-core/src/skills/manager.rs` share that rule.
+Unrelated exact-name duplicates keep their separate contract: the preload
+lookup keeps the last entry by design, not as a second precedence rule.
+
+Command skills never enter the model-invocable catalogue. Both IDs are excluded
+from the `## Skills` prompt section, so use slash completion or `/skills`
+discovery to reach them.
+
 ## ACP interrupted tool recovery
 
 `crates/codegen/diapason-acp/src/zed/agent/tool_recovery.rs` owns the history

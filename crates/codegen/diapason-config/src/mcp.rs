@@ -1,3 +1,11 @@
+//! MCP configuration model.
+//!
+//! Defines the `mcp` configuration section: configured providers and their
+//! transport-identity requirements, the server Diapason exposes, UI and
+//! allow-list settings, and connection limits. Transport-specific provider
+//! types live in the `transport` submodule, and the runtime MCP subsystem
+//! consumes these values after layered configuration is resolved.
+
 use hashbrown::HashMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -837,7 +845,7 @@ mod tests {
             Some(McpRendererProfile::SequentialThinking)
         );
         assert_eq!(
-            config.renderer_for_identifier("sequential-thinking-analyze"),
+            config.renderer_for_identifier("sequential-thinking-analyse"),
             Some(McpRendererProfile::SequentialThinking)
         );
         assert_eq!(config.renderer_for_tool("mcp_unknown"), None);
