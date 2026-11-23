@@ -368,15 +368,17 @@ complexity: moderate
 
 ## Quick Start
 
+The scripts below are project-provided placeholders for this illustrative example; this demonstration generates the skill instructions only.
+
 ```bash
 # Create analysis
-python -m diapason.skills.excel.analyse --file data.xlsx --config analysis.json
+python scripts/analyse.py --file data.xlsx --config analysis.json
 
 # Generate chart
-python -m diapason.skills.excel.chart --file data.xlsx --type bar --output chart.png
+python scripts/chart.py --file data.xlsx --type bar --output chart.png
 
 # Create pivot table
-python -m diapason.skills.excel.pivot --file data.xlsx --config pivot.json
+python scripts/pivot.py --file data.xlsx --config pivot.json
 ```
 
 ## Configuration
