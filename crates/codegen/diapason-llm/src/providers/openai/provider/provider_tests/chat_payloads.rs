@@ -214,7 +214,7 @@ fn chat_completions_applies_temperature_independent_of_max_tokens() {
 }
 
 #[test]
-fn chat_completions_omits_temperature_for_gpt_5_5_with_reasoning() {
+fn chat_completions_omits_temperature_for_gpt_5_6_sol_with_reasoning() {
     let provider = native_openai_provider(models::openai::GPT_5_6_SOL);
     let mut request = sample_request(models::openai::GPT_5_6_SOL);
     request.reasoning_effort = Some(diapason_config::types::ReasoningEffortLevel::Medium);
@@ -224,7 +224,7 @@ fn chat_completions_omits_temperature_for_gpt_5_5_with_reasoning() {
 }
 
 #[test]
-fn chat_completions_keeps_temperature_for_gpt_5_5_without_reasoning() {
+fn chat_completions_keeps_temperature_for_gpt_5_6_sol_without_reasoning() {
     let provider = native_openai_provider(models::openai::GPT_5_6_SOL);
     let mut request = sample_request(models::openai::GPT_5_6_SOL);
     request.reasoning_effort = Some(diapason_config::types::ReasoningEffortLevel::None);

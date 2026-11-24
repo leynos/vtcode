@@ -1,27 +1,12 @@
 //! Default and planning profile exposure regressions.
 
 use super::*;
+use rstest::rstest;
 
-#[test]
-fn default_profile_exposes_only_codex_baseline_tools() {
-    let registrations = vec![
-        registration(tools::EXEC_COMMAND)
-            .with_description("Run command")
-            .with_parameter_schema(empty_object_schema()),
-        registration(tools::WRITE_STDIN)
-            .with_description("Write stdin")
-            .with_parameter_schema(empty_object_schema()),
-        registration(tools::APPLY_PATCH)
-            .with_llm_visibility(false)
-            .with_description("Apply patch")
-            .with_parameter_schema(apply_patch_parameters())
-            .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true)),
-        registration(tools::CODE_SEARCH)
-            .with_description("Search code")
-            .with_parameter_schema(empty_object_schema()),
-        registration(tools::SEARCH_TOOLS)
-            .with_description("Discover deferred tools")
-            .with_parameter_schema(empty_object_schema()),
+#[rstest]
+fn default_profile_exposes_only_codex_baseline_tools(default_profile_registrations: Vec<ToolRegistration>) {
+    let mut registrations = default_profile_registrations;
+    registrations.extend([
         registration(tools::READ_FILE)
             .with_llm_visibility(false)
             .with_description("Read file")
@@ -57,7 +42,7 @@ fn default_profile_exposes_only_codex_baseline_tools() {
         registration("awk")
             .with_description("Process text")
             .with_parameter_schema(empty_object_schema()),
-    ];
+    ]);
 
     let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
     let mut config = SessionToolsConfig::full_public(
@@ -103,26 +88,10 @@ fn default_agent_runner_profile_hides_agent_tool() {
     assert!(names.is_empty(), "the Agent tool must stay out of the default AgentRunner profile");
 }
 
-#[test]
-fn default_profile_exposes_planning_tools_during_planning() {
-    let registrations = vec![
-        registration(tools::EXEC_COMMAND)
-            .with_description("Run command")
-            .with_parameter_schema(empty_object_schema()),
-        registration(tools::WRITE_STDIN)
-            .with_description("Write stdin")
-            .with_parameter_schema(empty_object_schema()),
-        registration(tools::APPLY_PATCH)
-            .with_llm_visibility(false)
-            .with_description("Apply patch")
-            .with_parameter_schema(apply_patch_parameters())
-            .with_behaviour(ToolBehaviour::apply_patch(ToolMutationModel::Mutating, false, true)),
-        registration(tools::SEARCH_TOOLS)
-            .with_description("Discover deferred tools")
-            .with_parameter_schema(empty_object_schema()),
-        registration(tools::CODE_SEARCH)
-            .with_description("Search code")
-            .with_parameter_schema(empty_object_schema()),
+#[rstest]
+fn default_profile_exposes_planning_tools_during_planning(default_profile_registrations: Vec<ToolRegistration>) {
+    let mut registrations = default_profile_registrations;
+    registrations.extend([
         registration(tools::READ_FILE)
             .with_description("Read file")
             .with_parameter_schema(empty_object_schema()),
@@ -135,7 +104,7 @@ fn default_profile_exposes_planning_tools_during_planning() {
         registration(tools::REQUEST_USER_INPUT)
             .with_description("Ask the user")
             .with_parameter_schema(empty_object_schema()),
-    ];
+    ]);
 
     let catalogue = SessionToolCatalogue::rebuild_from_registrations(registrations);
     let normal_names = catalogue.public_tool_names(SessionToolsConfig::full_public(

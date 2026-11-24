@@ -159,10 +159,136 @@ fn responses_validation_rejects_combined_inline_files_over_limit() {
     }
 }
 
-// NOTE: responses_function_tools_sanitize_openai_incompatible_parameter_keywords and
-// responses_function_tools_strip_openai_schema_combinators_from_builtin_tools were removed
-// because they required diapason-core::tools types which are not available in diapason-llm.
-// If this test coverage is needed, move them to diapason-core.
+// The original version of this test fed `diapason-core`'s generated
+// `unified_exec`/`unified_search` schemas through the Responses payload, which
+// this crate cannot import. This equivalent uses an inline schema carrying the
+// same OpenAI-incompatible keywords (`default`, `format`, `allOf`, `oneOf`,
+// `if`/`then`/`else`) and asserts the exact sanitized shape emitted by
+// `sanitize_openai_function_parameters`.
+#[test]
+fn responses_function_tools_sanitize_openai_incompatible_parameter_keywords() {
+    let provider = native_openai_provider(models::openai::GPT_5_CODEX);
+    let request = provider::LLMRequest {
+        messages: vec![provider::Message::user("Hello".to_owned())].into(),
+        tools: Some(Arc::new(vec![provider::ToolDefinition::function(
+            "unified_exec".to_owned(),
+            "Execute commands".to_owned(),
+            json!({
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "default": "ls", "format": "uri"},
+                    "selector": {"allOf": [{"type": "string"}]},
+                    "fallback": {"oneOf": [{"type": "string"}]},
+                    "mode": {
+                        "if": {"type": "string"},
+                        "then": {"type": "string"},
+                        "else": {"type": "string"}
+                    }
+                }
+            }),
+        )])),
+        model: models::openai::GPT_5_CODEX.to_string(),
+        ..Default::default()
+    };
+    let payload = provider
+        .convert_to_openai_responses_format(&request)
+        .expect("conversion should succeed");
+    let params = payload["tools"]
+        .as_array()
+        .expect("tool array")
+        .iter()
+        .find(|tool| tool.get("name").and_then(Value::as_str) == Some("unified_exec"))
+        .and_then(|tool| tool.get("parameters"))
+        .expect("unified_exec parameters");
+
+    // `sanitize_openai_function_parameters` removes OpenAI-incompatible
+    // keywords recursively; the emitted payload must match that shape.
+    assert_eq!(
+        params,
+        &json!({
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "selector": {"type": "string"},
+                "fallback": {"type": "string"},
+                "mode": {"type": "string"}
+            }
+        })
+    );
+}
+
+// The original version of this test used `diapason-core`'s apply-patch and
+// task-tracker schemas, which this crate cannot import. This equivalent drives
+// the same built-in-name policy with the same parameters on a built-in tool
+// and on a non-built-in function tool, so the differing `anyOf` outcome shows
+// the stripping is policy-driven rather than generic.
+#[test]
+fn responses_function_tools_strip_openai_schema_combinators_from_builtin_tools() {
+    let provider = native_openai_provider(models::openai::GPT_5_CODEX);
+    let parameters = json!({
+        "type": "object",
+        "properties": {
+            "target": {
+                "description": "Target selector",
+                "allOf": [{"type": "integer"}],
+                "oneOf": [{"type": "integer"}],
+                "anyOf": [{"type": "integer"}, {"type": "boolean"}]
+            }
+        }
+    });
+    let request = provider::LLMRequest {
+        messages: vec![provider::Message::user("Hello".to_owned())].into(),
+        tools: Some(Arc::new(vec![
+            provider::ToolDefinition::function(
+                diapason_config::constants::tools::EXEC_COMMAND.to_owned(),
+                "Run a command".to_owned(),
+                parameters.clone(),
+            ),
+            provider::ToolDefinition::function("unified_exec".to_owned(), "Execute commands".to_owned(), parameters),
+        ])),
+        model: models::openai::GPT_5_CODEX.to_string(),
+        ..Default::default()
+    };
+    let payload = provider
+        .convert_to_openai_responses_format(&request)
+        .expect("conversion should succeed");
+    let tools = payload["tools"].as_array().expect("tool array");
+    let builtin_parameters = tools
+        .iter()
+        .find(|tool| tool.get("name").and_then(Value::as_str) == Some(diapason_config::constants::tools::EXEC_COMMAND))
+        .and_then(|tool| tool.get("parameters"))
+        .expect("exec_command parameters");
+    let custom_parameters = tools
+        .iter()
+        .find(|tool| tool.get("name").and_then(Value::as_str) == Some("unified_exec"))
+        .and_then(|tool| tool.get("parameters"))
+        .expect("unified_exec parameters");
+
+    // Built-in tools have their `anyOf` combinators stripped outright.
+    assert_eq!(
+        builtin_parameters,
+        &json!({
+            "type": "object",
+            "properties": {
+                "target": {"description": "Target selector"}
+            }
+        })
+    );
+    // Non-built-in function tools keep a sanitized `anyOf`, which proves the
+    // stripping above comes from the built-in tool-name policy.
+    assert_eq!(
+        custom_parameters,
+        &json!({
+            "type": "object",
+            "properties": {
+                "target": {
+                    "description": "Target selector",
+                    "anyOf": [{"type": "integer"}, {"type": "boolean"}]
+                }
+            }
+        })
+    );
+}
 
 #[test]
 fn responses_function_tools_add_empty_properties_for_bare_object_schema() {

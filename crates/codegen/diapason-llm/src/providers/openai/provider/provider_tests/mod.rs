@@ -31,7 +31,6 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // ─── Test Fixtures ───────────────────────────────────────────────────────────
 
-mod schema_support;
 mod support;
 
 use support::*;

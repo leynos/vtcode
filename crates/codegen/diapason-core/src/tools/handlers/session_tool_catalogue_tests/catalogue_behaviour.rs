@@ -54,12 +54,18 @@ fn memory_tool_is_hidden_unless_anthropic_native_memory_is_enabled() {
         .with_parameter_schema(empty_object_schema());
     let catalogue = SessionToolCatalogue::rebuild_from_registrations(vec![registration]);
 
-    let hidden = catalogue.public_tool_names(SessionToolsConfig::full_public(
-        SessionSurface::Interactive,
-        CapabilityLevel::CodeSearch,
-        ToolDocumentationMode::Full,
-        ToolModelCapabilities::default(),
-    ));
+    // Pin the profile for both cases so the memory flag is the only input that
+    // changes; `full_public` alone defaults to `ToolProfile::Diapason`, which
+    // hides the tool regardless of the flag.
+    let hidden = catalogue.public_tool_names(
+        SessionToolsConfig::full_public(
+            SessionSurface::Interactive,
+            CapabilityLevel::CodeSearch,
+            ToolDocumentationMode::Full,
+            ToolModelCapabilities::default(),
+        )
+        .with_tool_profile(ToolProfile::AdvancedDiapason),
+    );
     assert!(hidden.is_empty());
 
     let visible = catalogue.public_tool_names(
