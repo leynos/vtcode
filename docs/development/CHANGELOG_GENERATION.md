@@ -16,7 +16,7 @@ Or use it via Docker without installation:
 
 ```bash
 docker run --rm -v "$(pwd):/app" -w /app \
-  ghcr.io/orhunp/git-cliff:latest --config cliff.toml
+  ghcr.io/orhun/git-cliff/git-cliff:latest --config cliff.toml
 ```
 
 ## Configuration
@@ -225,20 +225,23 @@ Edit the order in the template `body` section:
 
 ### Modify Output Format
 
-The template uses [Tera](https://keats.github.io/tera/) templating:
+The template uses [Tera](https://keats.github.io/tera/) templating. Keep each
+list item on one template line: a tag or filter split across lines keeps its
+newlines, which breaks the rendered list item. The excerpt below mirrors
+`cliff.toml`.
 
+<!-- markdownlint-disable MD013 -- literal copied from cliff.toml -->
 ```tera
-## {{ version }} - {{ timestamp | date(format="%Y-%m-%d") }}
+## {{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
 
 {% for group, commits in commits | group_by(attribute="group") %}
-    ### [{{ version | trim_start_matches(pat="v") }}] {{ group }}
-    {% for commit in commits %}
-        - {{ commit.message | upper_first }}
-          ({% if commit.remote.username %}
-          @{{ commit.remote.username }}{% endif %})
-    {% endfor %}
+### [{{ version | trim_start_matches(pat="v") }}] {{ group }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\n") | first | upper_first }} ({% if commit.id %}{{ commit.id | truncate(length=8, end="") }}{% else %}unknown{% endif %}) {% if commit.remote.username %}(@{{ commit.remote.username }}){% endif %}
+{% endfor %}
 {% endfor %}
 ```
+<!-- markdownlint-enable MD013 -->
 
 ## Troubleshooting
 

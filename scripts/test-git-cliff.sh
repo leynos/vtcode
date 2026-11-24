@@ -350,6 +350,25 @@ cat >"$TEST_ROOT/historical-headings.md" <<'EOF'
 ## scode-v0.7.0 - 2023-01-01
 EOF
 
+# Generated category headings name the release they belong to, but only at H3
+# and H4. `changelog_contains_version` anchors on H1 and H2, so it must not see
+# them: a match there would make the release skip every later insertion.
+cat >"$TEST_ROOT/category-headings.md" <<'EOF'
+# Changelog
+
+## 1.0.0 - 2026-01-01
+
+- Existing entry.
+
+### [1.2.0] Bug Fixes
+
+- Repair beta (f30c1cff)
+
+#### [1.2.0] Documentation
+
+- Explain gamma (f34a8d0d)
+EOF
+
 for library in release.sh release-lib.sh; do
 	(
 		source_release_library "$library"
@@ -358,6 +377,11 @@ for library in release.sh release-lib.sh; do
 		changelog_contains_version "$TEST_ROOT/historical-headings.md" 0.7.0
 		if changelog_contains_version "$TEST_ROOT/historical-headings.md" 9.9.9; then
 			echo "unexpected duplicate-version match in $library" >&2
+			exit 1
+		fi
+		changelog_contains_version "$TEST_ROOT/category-headings.md" 1.0.0
+		if changelog_contains_version "$TEST_ROOT/category-headings.md" 1.2.0; then
+			echo "H3/H4 category heading matched as a release heading in $library" >&2
 			exit 1
 		fi
 	)

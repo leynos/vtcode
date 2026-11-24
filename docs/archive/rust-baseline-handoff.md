@@ -1080,8 +1080,8 @@ this head.
 This layer follows test-module PR #72. It gives changelog sections unique
 version-qualified headings while preserving non-heading history. The generated
 release sections follow the same heading contract. Hermetic fixtures exercise
-both release-script generators and pinned git-cliff without network access or
-ambient Git configuration.
+both release-script generators and the installed git-cliff without network
+access or ambient Git configuration.
 
 The fixture exposed a release-script defect: plain read loops skipped the final
 Git log record when it lacked a trailing newline. Both loops now retain a

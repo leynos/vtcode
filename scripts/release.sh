@@ -557,6 +557,20 @@ update_changelog_from_commits() {
 			local version_section
 			version_section=$(echo "$changelog_content" | awk '/^## /{if(++n==2)exit} n==1' 2>/dev/null || true)
 
+			# An empty section is not a valid fallback. git-cliff still writes
+			# cliff.toml's header block when it emits no release heading (for
+			# example an empty commit range), so the whole document carries the
+			# H1 and preamble. Inserting it would duplicate the document header
+			# in CHANGELOG.md and put raw document text in the release notes.
+			# Treat the run as producing no usable section and let the built-in
+			# generator write both artefacts instead.
+			if [[ -z "$version_section" ]]; then
+				print_warning "git-cliff produced no release section for $version, falling back to built-in changelog generator"
+				rm -f "$temp_changelog"
+				update_changelog_builtin "$version" "$dry_run_flag"
+				return $?
+			fi
+
 			# Build Full Changelog URL
 			local full_changelog_url
 			if [[ -n "$previous_version" ]]; then
@@ -569,12 +583,7 @@ update_changelog_from_commits() {
 			{
 				echo "## What's Changed"
 				echo ""
-				if [[ -n "$version_section" ]]; then
-					echo "$version_section"
-				else
-					# Fallback: use full changelog if extraction failed
-					echo "$changelog_content"
-				fi
+				echo "$version_section"
 				echo ""
 				echo "**Full Changelog**: ${full_changelog_url}"
 			} >"$RELEASE_NOTES_FILE"
@@ -585,11 +594,7 @@ update_changelog_from_commits() {
 					print_warning "Version $version already exists in CHANGELOG.md, skipping update"
 				else
 					# Insert structurally after the document preamble.
-					if [[ -n "$version_section" ]]; then
-						insert_changelog_section CHANGELOG.md "$version_section" || return $?
-					else
-						insert_changelog_section CHANGELOG.md "$changelog_content" || return $?
-					fi
+					insert_changelog_section CHANGELOG.md "$version_section" || return $?
 				fi
 			else
 				# Create new changelog with git-cliff output
