@@ -6,6 +6,7 @@
 
 use super::*;
 
+use crate::subagents::controller_spawn_run::ensure_isolation_worktree;
 use crate::subagents::controller_tree::ChildRuntimePublication;
 
 struct PreparedChildExecution {
@@ -27,7 +28,7 @@ struct PreparedChildExecution {
     runner: Pin<Box<AgentRunner>>,
 }
 
-struct ResolvedChildRuntime {
+pub(super) struct ResolvedChildRuntime {
     effective_workspace: PathBuf,
     allow_nested_delegation: bool,
     parent_session_id: String,
@@ -135,12 +136,23 @@ impl SubagentController {
         })
     }
 
-    async fn resolve_child_runtime(
+    /// Resolves the workspace, model and configuration one child run executes
+    /// with.
+    ///
+    /// Visible to this module's tests so the isolation refusal can be pinned at
+    /// the resolution the run actually uses, rather than on a helper alone.
+    pub(super) async fn resolve_child_runtime(
         &self,
         context: &ChildExecutionContext,
         request: &ChildRunRequest,
     ) -> Result<ResolvedChildRuntime> {
         // A worktree-isolated child executes and archives against its own root.
+        // The record is read once when the run begins, so the checkout can
+        // still be reclaimed between that read and this point: a refused
+        // launch clears the path, and an operator can remove it. Falling back
+        // to the parent workspace would run the task outside the isolation its
+        // spec demands, so the run fails closed instead.
+        ensure_isolation_worktree(&context.spec, context.worktree_path.as_deref(), context.session_id.as_str())?;
         let effective_workspace = context
             .worktree_path
             .clone()

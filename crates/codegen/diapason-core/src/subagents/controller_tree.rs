@@ -195,6 +195,10 @@ impl SubagentController {
     /// stranded. Re-attaching the controller the record already names remains
     /// valid.
     ///
+    /// A closed record accepts no new controller at all. Its close walked the
+    /// subtree it could see at that moment, so a link published afterwards
+    /// would own a subtree nothing will ever close.
+    ///
     /// The disjointness checks and the publication run under the tree's
     /// attachment guard, so they are one critical section. Without that, two
     /// attachments in opposite directions could each pass its check before
@@ -278,6 +282,15 @@ impl SubagentController {
                 .children
                 .get(child_id)
                 .ok_or_else(|| anyhow!("Unknown subagent id {child_id}"))?;
+            // A record a close already settled must not gain a controller. The
+            // close ran its subtree cascade against a snapshot taken before
+            // this link existed, so a late link would own grandchildren no
+            // close will ever reach. A settled record cannot own a new subtree
+            // for the same reason, and a re-attachment of the controller the
+            // record already names stays idempotent.
+            if record.child_controller.is_none() && (record.closed || record.status.is_terminal()) {
+                bail!("Subagent {child_id} is closed; refusing to attach a controller");
+            }
             if let Some(attached) = record.child_controller.as_ref()
                 && !Arc::ptr_eq(&attached.state, &controller.state)
             {
@@ -370,6 +383,13 @@ impl SubagentController {
             Some(attached) if Arc::ptr_eq(&attached.state, &controller.state) => return Ok(()),
             Some(_) => bail!("Subagent {child_id} is already attached to another controller"),
             None => {}
+        }
+        // The record was settled before this link was published. Its close ran
+        // the subtree cascade against a snapshot taken without this
+        // controller, so the link would own descendants no close reaches. The
+        // rejection leaves the record unchanged.
+        if record.closed || record.status.is_terminal() {
+            bail!("Subagent {child_id} is closed; refusing to attach a controller");
         }
         record.child_controller = Some(controller);
         Ok(())

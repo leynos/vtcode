@@ -2,6 +2,13 @@
 
 use super::*;
 
+use std::collections::{BTreeMap, BTreeSet};
+
+use super::controller_background_lifecycle::clear_background_launch_owed;
+use super::controller_background_settlement::{
+    mark_background_ledger_write_pending, persisted_background_row_is_desired,
+};
+
 pub(in crate::subagents) struct BackgroundRunRequest {
     pub(in crate::subagents) agent_name: String,
     pub(in crate::subagents) stable_id: Option<String>,
@@ -70,8 +77,96 @@ pub(in crate::subagents) enum BackgroundRunReservation {
     Declined,
 }
 
+/// The bounded message a claim abandoned before its process started settles with.
+///
+/// The launch path's own guard reports the same text for the same outcome once
+/// it takes the claim over.
+const BACKGROUND_ABANDONED_CLAIM_ERROR: &str = "Background launch was abandoned before its process started";
+
+/// Settles a claim whose reservation never reached its launch.
+///
+/// The reservation writes the claim and then awaits its durable write and its
+/// publication. The launch arms its own guard only once `Reserved` is returned,
+/// so a caller dropped inside either of those awaits would leave a `Starting`
+/// record with a non-retryable launch obligation: refresh drives only retryable
+/// obligations, so nothing would ever settle it and the record would report an
+/// active launch that never spawns. This guard therefore covers the
+/// reservation's own awaits. It is disarmed at the end of the reservation; the
+/// launch path arms its own guard in the same synchronous stretch, with no
+/// await between them, so the claim is guarded continuously from its write to
+/// its spawn.
+pub(super) struct ReservedClaimGuard {
+    state: Arc<RwLock<ControllerState>>,
+    record_id: String,
+    exec_session_id: String,
+    armed: bool,
+}
+
+impl ReservedClaimGuard {
+    /// Arms the guard for one claim the reservation has just written.
+    pub(super) fn arm(state: &Arc<RwLock<ControllerState>>, record_id: &str, exec_session_id: &str) -> Self {
+        Self {
+            state: Arc::clone(state),
+            record_id: record_id.to_owned(),
+            exec_session_id: exec_session_id.to_owned(),
+            armed: true,
+        }
+    }
+
+    /// Reports that the reservation answered, so handing the claim to its launch owes nothing.
+    pub(super) fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ReservedClaimGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // The handler runs on the dropping thread, so it must never park the
+        // runtime by awaiting. If another task holds the state lock, the record
+        // keeps its `Starting` status; the obligation below is still cleared, so
+        // the next refresh can settle the orphaned claim instead of exempting it
+        // forever.
+        if let Ok(mut state) = self.state.try_write() {
+            let now = Utc::now();
+            if let Some(record) = state.background_children.get_mut(&self.record_id)
+                && record.exec_session_id == self.exec_session_id
+                && record.desired_enabled
+                && record.status == BackgroundSubprocessStatus::Starting
+            {
+                record.status = BackgroundSubprocessStatus::Error;
+                record.error = Some(BACKGROUND_ABANDONED_CLAIM_ERROR.to_string());
+                record.summary = Some("Background subagent failed to start".to_string());
+                record.updated_at = now;
+                record.ended_at.get_or_insert(now);
+                // The settlement exists only in memory, so the ledger is owed
+                // the write before the lock is released.
+                mark_background_ledger_write_pending(&self.state);
+            }
+        }
+        // The driver is gone, so no launch may keep exempting the record: a
+        // launch that took it recorded its own obligation under the exec session
+        // it minted, and a later refresh drives whatever this claim became.
+        clear_background_launch_owed(&self.state, &self.record_id, &self.exec_session_id);
+    }
+}
+
 pub(super) fn usable_background_parent_session_id(owner: Option<String>) -> Option<String> {
     owner.filter(|owner| !owner.is_empty())
+}
+
+/// Reports whether reuse would answer for a launch another parent session drives.
+///
+/// Reuse returns the existing launch as it is, so the parent a request resolved
+/// is dropped on that path: progress keeps routing to the record's parent. The
+/// rule must hold for every caller, not only those inside a tool invocation
+/// that names a parent, so the resolved parent is compared directly. A record
+/// that names no parent predates parent tracking and records no other session;
+/// the ambient invocation check still applies to it.
+pub(super) fn reuse_is_for_another_parent(record_parent_session_id: &str, requested_parent_session_id: &str) -> bool {
+    !record_parent_session_id.is_empty() && record_parent_session_id != requested_parent_session_id
 }
 
 /// Names the launch settings a record and a desired launch disagree on.
@@ -133,5 +228,89 @@ pub(in crate::subagents) fn starting_background_record(plan: &BackgroundRunPlan)
         model_override: plan.model_override.clone(),
         reasoning_override: plan.reasoning_override.clone(),
         restart_attempts: plan.restart_attempts,
+    }
+}
+
+impl SubagentController {
+    /// Reads one record's persisted copy and whether the same launch moved.
+    ///
+    /// The caller holds the ledger's file lock, so neither answer can change
+    /// between this read and the state write that acts on it. Every save takes
+    /// that lock, in this process and in any other that shares the workspace.
+    ///
+    /// A launch whose row was migrated to its owner is persisted under that
+    /// owner's canonical id, so a bound plan still addressing the ownerless id
+    /// finds no copy here. The launch has not disappeared, it has moved, and
+    /// reading that separately is what stops the reservation from replacing a
+    /// migrated record with a second process beside it.
+    pub(super) async fn persisted_record_for(
+        &self,
+        record_id: &str,
+        observed_exec_session_id: &str,
+    ) -> Result<(Option<PersistedBackgroundRecord>, bool)> {
+        if self.config.managed_background_runtime {
+            return Ok((None, false));
+        }
+        let mut persisted = controller_persistence::collect_by_canonical_id(
+            load_background_state(&self.config.workspace_root).await?.records,
+        );
+        // A row under another canonical id naming the observed launch means the
+        // launch was migrated to its owner. Its intent does not matter: a
+        // stopped migration is still not this controller's to replace.
+        let moved = persisted
+            .iter()
+            .any(|(id, record)| id != record_id && record.exec_session_id == observed_exec_session_id);
+        Ok((persisted.remove(record_id), moved))
+    }
+
+    /// Reports whether the ledger keeps a desired row naming `exec_session_id`.
+    ///
+    /// A claim is confirmed by its launch identity, not by the id it was
+    /// written under: a migrated row is stored under its owner's canonical id,
+    /// while the caller still addresses the ownerless one. The exec session is
+    /// minted per launch and every saved copy of the claim carries it.
+    pub(super) async fn persisted_claim_names(&self, exec_session_id: &str) -> Result<bool> {
+        if self.config.managed_background_runtime {
+            return Ok(true);
+        }
+        let persisted = controller_persistence::collect_by_canonical_id(
+            load_background_state(&self.config.workspace_root).await?.records,
+        );
+        Ok(persisted
+            .values()
+            .any(|row| row.exec_session_id == exec_session_id && persisted_background_row_is_desired(row)))
+    }
+
+    /// Writes the record now claiming one launch into the ledger.
+    ///
+    /// The caller holds the ledger's file lock, so this cannot go through
+    /// [`Self::save_background_state`], which takes the same lock in its
+    /// persistence task. The record is re-read under the state lock first: a
+    /// cancellation can land between the reservation and this write, and
+    /// writing the claim it observed would resurrect a stopped task in the
+    /// ledger. A record that has moved to another launch writes nothing, and
+    /// the caller's later save carries whatever it became.
+    pub(super) async fn persist_reserved_background_claim(&self, record_id: &str, exec_session_id: &str) -> Result<()> {
+        let claimed = {
+            let state = self.state.read().await;
+            let Some(record) = state.background_children.get(record_id) else {
+                return Ok(());
+            };
+            if record.exec_session_id != exec_session_id {
+                return Ok(());
+            }
+            record.clone()
+        };
+        let mut persisted = claimed.into_persisted();
+        persisted.canonicalize_id();
+        controller_persistence::persist_background_records(
+            &self.config.workspace_root,
+            self.background_owner_session_id.as_deref(),
+            vec![persisted],
+            &BTreeSet::new(),
+            &BTreeMap::new(),
+        )
+        .await
+        .with_context(|| format!("Failed to persist the background claim for {record_id}"))
     }
 }

@@ -7,7 +7,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
 use futures::future::{BoxFuture, select_all};
 use std::collections::{BTreeMap, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -430,6 +430,11 @@ impl SubagentController {
         if let Some(entry) = self.first_terminal_wait_target(targets).await {
             return ChildWaitOutcome::Terminal(Box::new(entry));
         }
+        // A test parks the waiter here, once its notification futures exist and
+        // its status recheck is complete. A completion signalled after this
+        // point can therefore only reach it through those futures.
+        #[cfg(test)]
+        wait_checkpoints::pass(&self.state).await;
 
         let sleep = tokio::time::sleep_until(deadline);
         tokio::pin!(sleep);
@@ -906,10 +911,15 @@ impl SubagentController {
             if let Err(error) = self.launch_child(&id).await {
                 // The record is visible but was never started: a close that
                 // landed between the insertion and the launch settled it, and
-                // the launcher refused to resurrect it. Nothing will ever run
-                // in the worktree this spawn created, so reclaim it rather
-                // than leak the checkout, and keep the original refusal.
-                if let Some(worktree_path) = self.take_unstarted_spawn_worktree(&id).await {
+                // the launcher refused to resurrect it. Nothing will run in the
+                // checkout this spawn created then, so reclaim it rather than
+                // leak it — but only while the record still shows that closure.
+                // A resume can reopen the record in the same window, and its
+                // run must keep the checkout.
+                if let Some(worktree_path) = self
+                    .take_unstarted_spawn_worktree(&id, worktree_path_for_cleanup.as_deref())
+                    .await
+                {
                     self.remove_unused_spawn_worktree(worktree_path.as_path()).await;
                 }
                 return Err(error);
@@ -961,22 +971,43 @@ impl SubagentController {
         }
     }
 
-    /// Takes the worktree checkout of a child whose launch was refused.
+    /// Takes the checkout this launch still owns after its launch was refused.
     ///
     /// A launch that fails after its record became visible leaves a checkout no
-    /// record will ever use, so the caller reclaims it. The path is cleared as
-    /// it is taken: the record stays as the launch left it, and a later resume
-    /// must not be handed a directory that is about to be removed.
-    async fn take_unstarted_spawn_worktree(&self, id: &str) -> Option<PathBuf> {
+    /// run will use, so the caller reclaims it. The record is only the launch's
+    /// own while it is still the record this spawn inserted, still settled and
+    /// still carries the path this spawn created: a close settles the record but
+    /// leaves it in place, so a resume that reopened it between the insertion
+    /// and the refusal has already claimed the checkout for the resumed run.
+    /// Reclaiming it then would remove the directory out from under that run.
+    /// Anything that does not match this launch's record is therefore left
+    /// untouched, and only an exact match is taken and cleared.
+    ///
+    /// The path is cleared as it is taken, so a later resume cannot be handed a
+    /// directory that is about to be removed.
+    async fn take_unstarted_spawn_worktree(&self, id: &str, created: Option<&Path>) -> Option<PathBuf> {
+        let created = created?;
         let mut state = self.state.write().await;
-        state.children.get_mut(id)?.worktree_path.take()
+        let record = state.children.get_mut(id)?;
+        // The refusal is only this launch's to clean up while the record is
+        // still settled. A resume reopens it into `Queued` and, once it starts,
+        // `Running`: either state means the resumed run has claimed the
+        // checkout and is about to execute in it.
+        if !record.status.is_terminal() {
+            return None;
+        }
+        let path = record.worktree_path.as_ref()?;
+        if path.as_path() != created {
+            return None;
+        }
+        record.worktree_path.take()
     }
 
     /// Best-effort removal of a worktree whose child record was never registered.
     ///
     /// Cleanup failures are logged rather than propagated so they cannot mask
     /// the registration error that caused the rollback.
-    async fn remove_unused_spawn_worktree(&self, worktree_path: &std::path::Path) {
+    async fn remove_unused_spawn_worktree(&self, worktree_path: &Path) {
         let Some(name) = worktree_path.file_name().and_then(|name| name.to_str()).map(str::to_owned) else {
             tracing::warn!(
                 path = %worktree_path.display(),
@@ -1180,23 +1211,30 @@ impl SubagentController {
     }
 }
 
-/// Refuses to resume a child whose isolation worktree has disappeared.
+/// Refuses to run a child whose isolation worktree has disappeared.
 ///
-/// A child whose spec requests `IsolationMode::Worktree` runs inside the
-/// checkout created for it, and the runner falls back to the
-/// parent workspace when the record carries no path. The checkout can disappear
-/// while the record is settled: a launch refused after insertion reclaims it,
-/// and an operator may remove it. Resuming without it would run the task
-/// outside the isolation its spec demands and outside the scope its archive was
-/// recorded in, so the resume fails closed instead.
-fn ensure_resume_worktree(record: &ChildRecord, target: &str) -> Result<()> {
-    if record.spec.isolation == Some(diapason_config::IsolationMode::Worktree) && record.worktree_path.is_none() {
+/// A child whose spec requests `IsolationMode::Worktree` must run inside the
+/// checkout created for it. The checkout can disappear while the record is
+/// settled: a launch refused after insertion reclaims it, and an operator may
+/// remove it. Any run started without it would execute outside the isolation
+/// its spec demands and outside the scope its archive was recorded in, so the
+/// run fails closed instead of falling back to the parent workspace.
+///
+/// The resume, restart and child-run paths all call this one rule, so the three
+/// entry points cannot drift into different answers.
+pub(super) fn ensure_isolation_worktree(spec: &SubagentSpec, worktree_path: Option<&Path>, target: &str) -> Result<()> {
+    if spec.isolation == Some(diapason_config::IsolationMode::Worktree) && worktree_path.is_none() {
         bail!(
             "Subagent {target} requests isolation=worktree, but its isolation worktree is gone; \
-             refusing to resume it in the parent workspace"
+             refusing to run it in the parent workspace"
         );
     }
     Ok(())
+}
+
+/// Applies [`ensure_isolation_worktree`] to a tracked child record.
+fn ensure_resume_worktree(record: &ChildRecord, target: &str) -> Result<()> {
+    ensure_isolation_worktree(&record.spec, record.worktree_path.as_deref(), target)
 }
 
 fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync::futures::Notified<'_>>>> {
@@ -1205,6 +1243,67 @@ fn register_notify_waiters(notifies: &[Arc<Notify>]) -> Vec<Pin<Box<tokio::sync:
         waiter.as_mut().enable();
     }
     waiters
+}
+
+/// A test-only rendezvous inside the child-wait path.
+///
+/// `wait_for_child_change` creates its notification futures and rechecks the
+/// target statuses before it selects. A test that must prove the wakeup
+/// travelled through those futures parks the waiter after the recheck: a
+/// completion published from there can no longer be observed by the recheck,
+/// so only a notification can end the wait.
+#[cfg(test)]
+pub(super) mod wait_checkpoints {
+    use std::sync::{Mutex, OnceLock, Weak};
+
+    use tokio::sync::Notify;
+
+    use super::*;
+
+    struct WaitCheckpoint {
+        state: Weak<RwLock<ControllerState>>,
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    fn checkpoints() -> &'static Mutex<Vec<WaitCheckpoint>> {
+        static CHECKPOINTS: OnceLock<Mutex<Vec<WaitCheckpoint>>> = OnceLock::new();
+        CHECKPOINTS.get_or_init(|| Mutex::new(Vec::new()))
+    }
+
+    /// Arms a checkpoint that holds the next wait over `state`'s children.
+    ///
+    /// Returns the signal that the waiter reached the checkpoint and the signal
+    /// that releases it.
+    pub(in crate::subagents) fn arm(state: &Arc<RwLock<ControllerState>>) -> (Arc<Notify>, Arc<Notify>) {
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        registry.retain(|checkpoint| checkpoint.state.strong_count() > 0);
+        registry.push(WaitCheckpoint {
+            state: Arc::downgrade(state),
+            entered: Arc::clone(&entered),
+            release: Arc::clone(&release),
+        });
+        (entered, release)
+    }
+
+    /// Parks here when `state` has an armed wait checkpoint.
+    pub(super) async fn pass(state: &Arc<RwLock<ControllerState>>) {
+        let checkpoint = {
+            let mut registry = checkpoints().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            registry.retain(|checkpoint| checkpoint.state.strong_count() > 0);
+            registry
+                .iter()
+                .position(|checkpoint| std::ptr::eq(checkpoint.state.as_ptr(), Arc::as_ptr(state)))
+                .map(|index| registry.remove(index))
+        };
+        let Some(checkpoint) = checkpoint else {
+            return;
+        };
+        checkpoint.entered.notify_one();
+        checkpoint.release.notified().await;
+    }
 }
 
 #[cfg(test)]

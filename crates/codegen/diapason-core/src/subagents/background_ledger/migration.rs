@@ -19,19 +19,17 @@ pub(crate) struct MigratedBackgroundLaunch {
     pub(crate) exec_session_id: String,
 }
 
-/// How many migration records are retained.
+/// Deduplicates migration evidence without ever evicting a launch.
 ///
-/// Evidence is only needed while a controller that cached the ownerless copy
-/// can still save, so a generous bound keeps the ledger small without dropping
-/// recent migrations. Entries are deduplicated and kept in encounter order.
-pub(super) const MIGRATED_LAUNCH_LIMIT: usize = 256;
-
-/// Deduplicates migration evidence and keeps the most recent entries.
-///
-/// Evidence is appended in encounter order, so the newest launches are the
-/// last entries; dropping the oldest keeps the window in which a stale
-/// controller can still save. A launch id is never reused, so a duplicate
-/// entry adds nothing and is collapsed.
+/// Evidence must be retained for as long as a controller that cached the
+/// ownerless copy can still save it. That window has no finite bound: a stale
+/// controller may save at any later time, however many migrations have run in
+/// between, so any fixed-size window eventually drops the evidence for a
+/// launch that can still reappear and lets it resurface as an ownerless
+/// duplicate beside its migrated row. Entries are therefore kept for the life
+/// of the ledger, in encounter order, and only exact duplicates collapse.
+/// Growth is bounded by the number of distinct launches ever migrated, because
+/// a launch's id and exec session are unique and never reused.
 pub(super) fn retained_migrated_launches(
     launches: impl IntoIterator<Item = MigratedBackgroundLaunch>,
 ) -> Vec<MigratedBackgroundLaunch> {
@@ -41,8 +39,7 @@ pub(super) fn retained_migrated_launches(
             retained.push(launch);
         }
     }
-    let keep_from = retained.len().saturating_sub(MIGRATED_LAUNCH_LIMIT);
-    retained.split_off(keep_from)
+    retained
 }
 
 #[cfg(test)]
@@ -56,18 +53,27 @@ mod tests {
         }
     }
 
-    /// Evidence is deduplicated and keeps the most recently encountered launches.
+    /// Evidence is deduplicated and never evicted.
+    ///
+    /// A stale controller can save its ownerless copy at any later time, so
+    /// dropping the oldest evidence would let an early launch reappear as an
+    /// ownerless duplicate beside its migrated row. Only the exact duplicate
+    /// collapses; every distinct launch survives, including the first.
     #[test]
-    fn evidence_is_deduplicated_and_bounded() {
-        let entries = (0..MIGRATED_LAUNCH_LIMIT + 3)
+    fn evidence_is_deduplicated_and_never_evicted() {
+        let entries = (0..5_000)
             .map(|index| launch("background-worker", &format!("exec-{index}")))
             .chain([launch("background-worker", "exec-0")])
             .collect::<Vec<_>>();
 
         let retained = retained_migrated_launches(entries);
 
-        assert_eq!(retained.len(), MIGRATED_LAUNCH_LIMIT);
-        assert_eq!(retained.first().map(|entry| entry.exec_session_id.as_str()), Some("exec-3"));
-        assert_eq!(retained.last().map(|entry| entry.exec_session_id.as_str()), Some("exec-258"));
+        assert_eq!(retained.len(), 5_000, "only the duplicate entry collapses");
+        assert_eq!(
+            retained.first().map(|entry| entry.exec_session_id.as_str()),
+            Some("exec-0"),
+            "the oldest evidence must survive the newest migrations"
+        );
+        assert_eq!(retained.last().map(|entry| entry.exec_session_id.as_str()), Some("exec-4999"));
     }
 }

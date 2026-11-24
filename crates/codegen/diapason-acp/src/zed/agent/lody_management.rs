@@ -5,15 +5,15 @@ use agent_client_protocol::Error as SdkError;
 #[cfg(test)]
 use diapason_core::subagents::BackgroundSubprocessStatus;
 use diapason_core::subagents::{
-    BackgroundLiveness, BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry, TaskOwner,
-    owned_background_ids, owned_child_ids, resolve_owned_background_id,
+    BackgroundLiveness, BackgroundOutputError, BackgroundSubprocessEntry, SubagentController, SubagentStatusEntry,
+    TaskOwner, owned_background_ids, owned_child_ids, resolve_owned_background_id,
 };
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
 use super::super::types::SessionHandle;
-use super::{ZedAgent, task_lifecycle::bounded_session_correlation};
+use super::{ZedAgent, log_suppressed_error, task_lifecycle::bounded_session_correlation};
 
 mod observability;
 mod output_tail;
@@ -54,6 +54,12 @@ impl ManagementOperation {
 
 /// Bounded failure categories recorded on the management span.
 const MANAGEMENT_FAILURE_CATEGORY: &str = "management_failed";
+
+/// The bounded detail reported for a stop whose exec-session close is owed.
+///
+/// The record's fault text names the exec session the close could not
+/// confirm, so the client receives this category instead.
+const CLOSE_PENDING_DETAIL: &str = "background_close_unconfirmed";
 
 /// Correlates a management request with its session without logging the ID.
 fn request_session_correlation(params: &Value) -> String {
@@ -371,9 +377,16 @@ async fn cancel_subagent(agent: &ZedAgent, request: CancelSubagentRequest) -> Re
         // success for a close the runtime could not confirm told the client a
         // task had stopped while its process might still be running.
         if outcome.is_close_pending() {
-            let detail = outcome.entry().error.clone().unwrap_or_default();
+            // The record's fault names the exec session the close could not
+            // confirm, so only the bounded category is returned; the fault
+            // itself stays in the debug-only suppressed detail.
+            if let Some(fault) = outcome.entry().error.as_deref() {
+                // The helper takes `&impl Display`; its implicit `Sized` bound
+                // excludes `str`, so the fault slice is passed by reference.
+                log_suppressed_error(&fault, "lody_subagent_management", CLOSE_PENDING_DETAIL);
+            }
             return Err(SdkError::internal_error()
-                .data(serde_json::json!({ "reason": "subagent_close_pending", "detail": detail })));
+                .data(serde_json::json!({ "reason": "subagent_close_pending", "detail": CLOSE_PENDING_DETAIL })));
         }
         return Ok(serde_json::json!({}));
     }
@@ -422,16 +435,100 @@ fn unknown_task_error() -> SdkError {
     SdkError::invalid_params().data(serde_json::json!({ "reason": "unknown_task" }))
 }
 
-/// Maps a management failure to an ACP error, keeping its whole cause chain.
+/// Reports an unexpected management failure as a bounded category.
 ///
-/// Domain errors expose their cause through [`std::error::Error::source`]
-/// rather than in their own `Display`, so the alternate selector is required
-/// for the client to see why a request failed.
+/// A domain error can carry an exec-session identifier or a recorded archive
+/// path in its own message or in a context frame, and the client did not ask
+/// for either, so the payload names a closed category instead of the cause.
+/// The categories are drawn from the failure the controller reports, keeping
+/// the distinction between a live-exec-session read fault, an unreadable
+/// transcript or archive, and any other failure. The full chain is logged at
+/// `debug`, where ACP keeps suppressed detail.
 fn internal_management_error(error: anyhow::Error) -> SdkError {
+    let category = management_failure_detail(&error);
+    log_suppressed_error(&error, "lody_subagent_management", category);
     SdkError::internal_error().data(serde_json::json!({
         "reason": "subagent_management_failed",
-        "detail": format!("{error:#}"),
+        "detail": category,
     }))
+}
+
+/// Classifies a management failure into one of its bounded detail categories.
+///
+/// A background output read reports its own [`BackgroundOutputError`], which
+/// separates a live exec-session fault from an unreadable transcript or
+/// archive. Anything else is an unexpected management failure, because the
+/// remaining errors a management request can hit are local lock or
+/// configuration faults rather than storage reads.
+fn management_failure_detail(error: &anyhow::Error) -> &'static str {
+    match error.downcast_ref::<BackgroundOutputError>() {
+        Some(BackgroundOutputError::Live(_)) => "background_output_unavailable",
+        Some(BackgroundOutputError::Archived(_)) => "background_output_unreadable",
+        None => MANAGEMENT_FAILURE_CATEGORY,
+    }
+}
+
+#[cfg(test)]
+mod bounded_failure_tests {
+    //! A management failure reports a bounded category, never its cause chain.
+    use super::*;
+
+    /// Extracts the client-visible `detail` of a mapped management failure.
+    fn detail_of(error: SdkError) -> String {
+        let data = error.data.expect("management failure data");
+        assert_eq!(
+            data.get("reason").and_then(Value::as_str),
+            Some("subagent_management_failed"),
+            "the bounded reason code must stay unchanged"
+        );
+        data.get("detail")
+            .and_then(Value::as_str)
+            .expect("bounded management detail")
+            .to_string()
+    }
+
+    /// An unreadable transcript or archive must not republish its path.
+    #[test]
+    fn archived_output_failure_reports_a_bounded_category_without_its_path() {
+        let cause = anyhow::anyhow!("failed to read /home/operator/.diapason/state/archive.jsonl");
+        let error = anyhow::Error::new(BackgroundOutputError::Archived(cause))
+            .context("read background output for background-worker@session-a");
+        let detail = detail_of(internal_management_error(error));
+        assert_eq!(detail, "background_output_unreadable", "the archive read failure keeps its category");
+        assert!(!detail.contains("archive.jsonl"), "the detail must not carry the recorded archive path: {detail}");
+        assert!(!detail.contains("session-a"), "the detail must not carry the task target: {detail}");
+    }
+
+    /// A live exec-session fault must not republish the session identifier.
+    #[test]
+    fn live_output_failure_reports_its_own_bounded_category() {
+        let cause = anyhow::anyhow!("PTY session 'exec-worker-1' closed while reading");
+        let error = anyhow::Error::new(BackgroundOutputError::Live(cause));
+        let detail = detail_of(internal_management_error(error));
+        assert_eq!(detail, "background_output_unavailable", "the live read failure keeps its own category");
+        assert!(!detail.contains("exec-worker-1"), "the detail must not carry the exec-session id: {detail}");
+    }
+
+    /// Any other management failure keeps the generic bounded category.
+    #[test]
+    fn other_management_failures_report_the_generic_category() {
+        let error = anyhow::anyhow!("failed to close /home/operator/.diapason/state/ledger.json");
+        let detail = detail_of(internal_management_error(error));
+        assert_eq!(detail, MANAGEMENT_FAILURE_CATEGORY, "an unclassified cause stays bounded");
+    }
+
+    /// A close the runtime could not confirm keeps its own bounded detail.
+    #[test]
+    fn close_pending_detail_stays_bounded() {
+        assert!(
+            !CLOSE_PENDING_DETAIL.contains("exec-"),
+            "the close-pending detail must not name the exec session it could not close"
+        );
+        assert!(
+            !CLOSE_PENDING_DETAIL.contains('/'),
+            "the close-pending detail must not name a path: {CLOSE_PENDING_DETAIL}"
+        );
+    }
 }
 
 #[cfg(test)]

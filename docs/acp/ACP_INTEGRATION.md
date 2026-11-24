@@ -149,7 +149,8 @@ affect another. When the live exec session for a background task is gone, the
 tail is served from the recorded transcript or archive instead. If there is no
 output to serve, the response carries an empty `output` string. If the
 transcript or archive cannot be read, the request fails with
-`subagent_management_failed` and the underlying cause in `detail`.
+`subagent_management_failed` and a bounded failure category in `detail`. The
+category never carries an exec-session identifier or a recorded path.
 
 ### Usage notification
 

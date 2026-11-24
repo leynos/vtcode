@@ -48,6 +48,22 @@ pub(super) fn persisted_row(
     exec_session_id: &str,
     desired_enabled: bool,
 ) -> crate::subagents::PersistedBackgroundRecord {
+    persisted_row_launched_at(id, owner_session_id, agent_name, exec_session_id, desired_enabled, None)
+}
+
+/// Builds one persisted row that records when its launch began.
+///
+/// `started_at` is the launch moment the merge compares, so a row seeded with a
+/// moment ahead of the wall clock is how a merge that keeps a persisted launch
+/// over a newer claim is reproduced without waiting for a clock step.
+pub(super) fn persisted_row_launched_at(
+    id: &str,
+    owner_session_id: Option<&str>,
+    agent_name: &str,
+    exec_session_id: &str,
+    desired_enabled: bool,
+    started_at: Option<&str>,
+) -> crate::subagents::PersistedBackgroundRecord {
     serde_json::from_value(serde_json::json!({
         "id": id,
         "owner_session_id": owner_session_id,
@@ -63,7 +79,7 @@ pub(super) fn persisted_row(
         "status": "running",
         "created_at": "2026-08-28T00:00:00Z",
         "updated_at": "2026-08-28T00:00:00Z",
-        "started_at": null,
+        "started_at": started_at,
         "ended_at": null,
         "pid": null,
         "prompt": "work",

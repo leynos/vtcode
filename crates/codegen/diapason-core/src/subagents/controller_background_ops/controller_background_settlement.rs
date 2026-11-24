@@ -545,7 +545,9 @@ mod terminal_failure_write_tests {
 
     use crate::config::DiapasonConfig;
     use crate::config::types::ReasoningEffortLevel;
-    use crate::subagents::background::{background_state_lock_path_for_tests, load_background_state};
+    use crate::subagents::background::{
+        background_state_lock_path_for_tests, load_background_state, persist_background_state,
+    };
     use crate::tools::exec_session::ExecSessionManager;
     use crate::tools::registry::PtySessionManager;
 
@@ -617,9 +619,18 @@ mod terminal_failure_write_tests {
     /// would keep the unfinished `Starting` claim forever. The settlement must
     /// register the write under the lock that stores the failure, and only a
     /// successful save may clear it.
+    ///
+    /// The claim is seeded durably first. A retry that can only insert a missing
+    /// row would pass this test without ever replacing the claim it exists to
+    /// replace, so the `Starting` row must already be in the ledger: the failed
+    /// save must leave it there, and the retry must replace it with the
+    /// settlement for the same launch.
     #[tokio::test]
     async fn a_terminal_failure_whose_save_fails_stays_owed_to_the_ledger() {
         let temp = TempDir::new().expect("tempdir");
+        persist_background_state(temp.path(), vec![starting_record().into_persisted()])
+            .await
+            .expect("seed the durable Starting claim");
         let controller = SubagentController::new(test_config(temp.path().to_path_buf()))
             .await
             .expect("controller");
@@ -627,6 +638,15 @@ mod terminal_failure_write_tests {
             let mut state = controller.state.write().await;
             state.background_children.insert(WORKER.to_string(), starting_record());
         }
+        let seeded = load_background_state(temp.path()).await.expect("read the seeded ledger");
+        assert_eq!(
+            seeded
+                .records
+                .first()
+                .map(|record| (record.exec_session_id.as_str(), record.status)),
+            Some((LAUNCH_EXEC, BackgroundSubprocessStatus::Starting)),
+            "the fixture seeds the unfinished claim the recovery must replace"
+        );
         // A directory at the lock path makes the save fail immediately.
         let lock_path = background_state_lock_path_for_tests(temp.path());
         std::fs::create_dir_all(&lock_path).expect("the lock path blocks the save");
@@ -652,6 +672,14 @@ mod terminal_failure_write_tests {
             pending_background_ledger_write_generation(&controller.state).is_some(),
             "the settlement must owe the ledger the failure it recorded"
         );
+        let after_failed_save = load_background_state(temp.path()).await.expect("read the ledger mid-recovery");
+        let unfinished = after_failed_save
+            .records
+            .iter()
+            .find(|record| record.id == WORKER)
+            .expect("the blocked save leaves the seeded claim in place");
+        assert_eq!(unfinished.status, BackgroundSubprocessStatus::Starting, "a failed save must not reach the ledger");
+        assert_eq!(unfinished.exec_session_id, LAUNCH_EXEC, "the ledger still names the launch that failed");
         std::fs::remove_dir(&lock_path).expect("the lock path is writable again");
 
         assert!(
@@ -671,7 +699,15 @@ mod terminal_failure_write_tests {
             .iter()
             .find(|record| record.id == WORKER)
             .expect("the settled failure reaches the ledger");
-        assert_eq!(stored.status, BackgroundSubprocessStatus::Error);
+        assert_eq!(
+            stored.exec_session_id, LAUNCH_EXEC,
+            "the settlement replaces the claim for the same launch, not another one"
+        );
+        assert_eq!(
+            stored.status,
+            BackgroundSubprocessStatus::Error,
+            "the retry replaces the seeded Starting claim with the settled failure"
+        );
 
         controller.signal_shutdown().await;
     }

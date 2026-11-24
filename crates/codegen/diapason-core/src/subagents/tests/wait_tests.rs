@@ -1,4 +1,5 @@
 //! `wait` returns the first terminal child.
+use super::super::controller_spawn_run::wait_checkpoints;
 use super::*;
 
 // The clock is paused so the 500 ms deadline is virtual. A regression that
@@ -35,27 +36,29 @@ async fn wait_returns_first_terminal_child() {
         }
     }
 
-    // Drive `wait` through its first poll inside the waiter and signal only
-    // after that poll returns `Pending`. The first poll is the readiness point:
-    // it only suspends once the child notifications are registered, so
-    // completing `second` afterwards must wake the waiter through them. A
-    // regression to a delay, or to a scheduling order that lets `wait` take its
-    // initial-scan fast path, no longer produces the `Pending` first poll this
-    // test requires.
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    // Park the waiter once it has created its notification futures and has
+    // rechecked both target statuses. Readiness comes from that checkpoint
+    // itself rather than from a delay or a first-poll assumption, so completing
+    // `second` afterwards can no longer be observed by the recheck: it must
+    // wake the waiter through its registered notifications.
+    let (entered, release) = wait_checkpoints::arm(&controller.state);
     let waiter = {
         let controller = controller.clone();
         tokio::spawn(async move {
             let targets = ["first".to_string(), "second".to_string()];
             let wait = controller.wait(TaskOwner::Workspace, &targets, Some(500));
             let mut wait = std::pin::pin!(wait);
+            // The checkpoint this test arms is reached inside this first poll,
+            // so the assertion also confirms the waiter did not finish on the
+            // initial scan.
             let first = futures::poll!(wait.as_mut());
-            let _ = ready_tx.send(());
             assert!(first.is_pending(), "wait must park until a wakeup, not take the fast path");
             wait.await
         })
     };
-    ready_rx.await.expect("the waiter reached its first suspension");
+    tokio::time::timeout(Duration::from_secs(5), entered.notified())
+        .await
+        .expect("the waiter must reach the checkpoint after registering its notifications");
 
     {
         let mut state = controller.state.write().await;
@@ -66,13 +69,14 @@ async fn wait_returns_first_terminal_child() {
         record.updated_at = Utc::now();
         record.notify.notify_waiters();
     }
+    release.notify_one();
 
     // Joining the waiter also fails the test if it only woke on the timeout:
     // the completion must reach it through the registered notification.
     let result = waiter
         .await
         .expect("waiter task")
-        .expect("wait result")
+        .expect("the wait must not fail")
         .expect("the notification must wake the parked waiter");
     assert_eq!(result.id, "second");
     assert_eq!(result.status, SubagentStatus::Completed);

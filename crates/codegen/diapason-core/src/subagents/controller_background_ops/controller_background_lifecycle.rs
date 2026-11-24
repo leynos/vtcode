@@ -761,7 +761,21 @@ impl SubagentController {
                 self.publish_background_status(&record_id).await;
             }
 
-            self.refresh_background_archive_metadata(&record_id).await?;
+            // One record's archive fault must not end the pass. The lookup reads
+            // an archive another process writes, so a corrupt or unreadable one
+            // keeps failing on every refresh while it is repaired; returning
+            // here would starve the owed write below and leave a confirmed stop
+            // unsaved for as long as that archive stays broken, across restarts.
+            // The paths it would have attached are a projection of the record,
+            // not the record's outcome, so the fault is reported and the pass
+            // carries on.
+            if let Err(error) = self.refresh_background_archive_metadata(&record_id).await {
+                tracing::warn!(
+                    record_id = record_id.as_str(),
+                    error = %error,
+                    "Could not refresh the background archive metadata; leaving the record as settled"
+                );
+            }
         }
 
         // A launch can commit a live record whose save failed; reuse runs

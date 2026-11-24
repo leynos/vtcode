@@ -228,6 +228,81 @@ async fn a_descendant_attached_before_the_graft_publishes_through_the_tree_obser
     leaf.signal_shutdown().await;
 }
 
+/// A closed record accepts no new controller.
+///
+/// A close walks the subtree it can see at that moment and then settles the
+/// record. A link published afterwards would own descendants that walk never
+/// reached, so no later close could release them and their controller would
+/// outlive the tree. The rejection must leave both sides unchanged, and
+/// re-attaching the controller a record already names stays idempotent.
+#[tokio::test]
+async fn a_closed_record_refuses_a_new_controller_link() {
+    let temp = TempDir::new().expect("tempdir");
+    let workspace_root = temp.path().to_path_buf();
+    let root = Arc::new(
+        SubagentController::new(test_controller_config(workspace_root.clone()))
+            .await
+            .expect("root controller"),
+    );
+    let nested = Arc::new(
+        SubagentController::new(nested_controller_config(workspace_root, "child-session"))
+            .await
+            .expect("nested controller"),
+    );
+    let spec = explorer_spec();
+
+    let mut closed = child_record("child", "parent-session", &spec, SubagentStatus::Closed, 1);
+    closed.closed = true;
+    root.state.write().await.children.insert("child".to_string(), closed);
+
+    let rejection = root
+        .attach_child_controller("child", Arc::clone(&nested))
+        .await
+        .expect_err("a closed record must not gain a controller");
+    assert!(format!("{rejection}").contains("is closed"), "the rejection must name the closure: {rejection}");
+    assert!(
+        root.state
+            .read()
+            .await
+            .children
+            .get("child")
+            .expect("the closed record survives the rejection")
+            .child_controller
+            .is_none(),
+        "a rejected attachment must not publish the controller"
+    );
+    assert!(
+        root.descendant_controllers().await.is_empty(),
+        "a rejected attachment must not make the closed record's subtree reachable"
+    );
+
+    // The shared helper is the other publication path, and it applies the same
+    // rule.
+    let mut state = root.state.write().await;
+    let helper_rejection =
+        SubagentController::attach_child_controller_to_state(&mut state, "child", Arc::clone(&nested))
+            .expect_err("the shared helper must refuse a closed record too");
+    assert!(
+        format!("{helper_rejection}").contains("is closed"),
+        "the shared helper must name the closure: {helper_rejection}"
+    );
+    drop(state);
+
+    // A record that already tracks a controller keeps it, closed or not: the
+    // link was published while the record was live and re-publishing it is
+    // idempotent.
+    let mut attached = child_record("attached", "parent-session", &spec, SubagentStatus::Closed, 1);
+    attached.closed = true;
+    attached.child_controller = Some(Arc::clone(&nested));
+    root.state.write().await.children.insert("attached".to_string(), attached);
+    root.attach_child_controller("attached", Arc::clone(&nested))
+        .await
+        .expect("re-attaching the controller the record names stays idempotent");
+
+    nested.signal_shutdown().await;
+    root.signal_shutdown().await;
+}
+
 /// A reservation that races the clock handoff never repeats a revision.
 ///
 /// The handoff copies the joining controller's clock into the tree's clock
@@ -337,17 +412,26 @@ async fn a_parked_reservation_excludes_the_clock_handoff() {
         .expect("the reservation must reach the parked checkpoint before the handoff starts");
     assert!(!rendezvous.expired(), "the reservation gate expired before the handoff started");
 
-    // The handoff needs the write guard the parked reservation holds.
+    // The handoff needs the write guard the parked reservation holds. "It had
+    // not finished after 100 ms" is weak evidence on its own: a descheduled
+    // thread looks the same. Three facts together are decisive. The gate is
+    // still parked, so no lock timeout released the reservation early; the
+    // handoff has not returned, so it cannot have taken the guard; and once
+    // released the handoff's `fetch_max` carries the parked revision, which it
+    // can only copy by acquiring the guard after that reservation recorded it.
     let registry = Arc::new(ProgressObserverRegistry::default());
     let adopted_clock = Arc::new(AtomicU64::new(0));
+    let completed = Arc::new(AtomicU64::new(0));
     let (attempted_tx, mut attempted_rx) = tokio::sync::mpsc::unbounded_channel();
     let (adopted_tx, mut adopted_rx) = tokio::sync::mpsc::unbounded_channel();
     let handoff = {
         let controller = Arc::clone(&controller);
         let clock = Arc::clone(&adopted_clock);
+        let completed = Arc::clone(&completed);
         tokio::task::spawn_blocking(move || {
             let _ = attempted_tx.send(());
             controller.progress_route.adopt(Arc::clone(&registry), None, clock);
+            let _ = completed.fetch_add(1, Ordering::SeqCst);
             let _ = adopted_tx.send(());
         })
     };
@@ -358,6 +442,12 @@ async fn a_parked_reservation_excludes_the_clock_handoff() {
             .is_err(),
         "the handoff must block while a reservation holds the route's read guard"
     );
+    assert!(!rendezvous.expired(), "the reservation gate must still be parked while the handoff waits");
+    assert_eq!(
+        completed.load(Ordering::SeqCst),
+        0,
+        "the handoff must not have reached the contested lock while the reservation holds its read guard"
+    );
 
     rendezvous.release();
     let parked = reserver.await.expect("the reservation must finish");
@@ -366,6 +456,11 @@ async fn a_parked_reservation_excludes_the_clock_handoff() {
         .await
         .expect("the handoff must finish once the reservation is recorded");
     handoff.await.expect("the handoff task must finish");
+    assert_eq!(
+        completed.load(Ordering::SeqCst),
+        1,
+        "the handoff must have returned once the reservation released the lock it contested"
+    );
 
     assert_eq!(parked, 0, "the parked reservation takes the first revision");
     assert_eq!(

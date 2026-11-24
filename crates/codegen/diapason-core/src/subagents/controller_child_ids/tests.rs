@@ -116,6 +116,26 @@ proptest! {
     }
 }
 
+/// Disjoint trees each keep their own id space.
+///
+/// A task id is only unique within the controller tree that routes it: two
+/// sessions never resolve each other's tasks, so the same generated id in two
+/// independent trees addresses one task in each. The graft regression above
+/// pins the per-tree check; this pins its complement, so a future change
+/// cannot make allocation reject a candidate another tree happens to hold.
+#[test]
+fn disjoint_trees_can_issue_the_same_base_id() {
+    let left = ChildIdScopeSlot::default();
+    let right = ChildIdScopeSlot::default();
+    let candidate = "agent-explorer-20261113T060819731Z";
+
+    let left_id = left.with_scope(|scope| scope.allocate(|_| false, candidate));
+    let right_id = right.with_scope(|scope| scope.allocate(|_| false, candidate));
+
+    assert_eq!(left_id, candidate, "an empty tree issues the bare candidate");
+    assert_eq!(right_id, candidate, "a disjoint tree must not reserve an id another tree issued");
+}
+
 /// Generated ids carry millisecond precision, so two spawns of the same
 /// kind in one millisecond propose the same id. The second must receive a
 /// distinct id: `BTreeMap::insert` on the shared key would replace the

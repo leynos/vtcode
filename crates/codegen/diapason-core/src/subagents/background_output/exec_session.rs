@@ -1,14 +1,15 @@
 //! Default [`ExecSessionOutputReader`] adapter over live exec sessions and the
 //! session archive.
 //!
-//! A record's two identity fields must agree before its archive is resolved:
+//! A record's two identity fields must agree before its output is read at all:
 //! the task's `exec_session_id` must embed its `session_id` under the
 //! controller's launch convention (`exec-<session>-<pid>-<sequence>`). A launch
 //! writes that pair, so a row restored from the ledger — including one a
 //! resumed session reads after a process restart — keeps its own archive
 //! readable, while a row naming another task's session with an unrelated exec
-//! id is refused as an archive fault. The recorded-path check remains as an
-//! independent safeguard for the file the store resolves.
+//! id is refused before its live session or archive is touched. The
+//! recorded-path check remains as an independent safeguard for the file the
+//! store resolves.
 use anyhow::Result;
 use futures::future::BoxFuture;
 use std::path::Path;
@@ -35,9 +36,18 @@ impl ExecSessionOutputReader {
     }
 
     /// Reads the output recorded for one resolved task source.
+    ///
+    /// The two identity fields are checked against each other before either
+    /// storage layer is read. They are stored data once a row is restored, so
+    /// a forged pair could otherwise reach another task's live exec session and
+    /// be served as this task's output; the archive lookup was the only path
+    /// that refused it, and a live read returned first.
     async fn read_source(&self, source: BackgroundOutputSource<'_>) -> Result<BackgroundOutput, BackgroundOutputError> {
         if source.exec_session_id.is_empty() {
             return Ok(BackgroundOutput::NotReady);
+        }
+        if controller_exec_session_task_id(source.exec_session_id) != Some(source.session_id) {
+            return Err(unverified_session(source));
         }
         match self.exec_sessions.read_session_output(source.exec_session_id, false).await {
             Ok(Some(output)) => Ok(BackgroundOutput::Live(output)),
@@ -56,21 +66,17 @@ impl ExecSessionOutputReader {
     /// names that archive, so it is resolved here rather than reported as no
     /// output: an empty tail would claim the finished task never wrote anything.
     ///
-    /// Both identity fields are stored data once the row is restored, so either
-    /// can name another task's session. They are therefore used for the lookup
-    /// only while they agree under the controller's launch convention: the exec
-    /// session must embed this record's session id
+    /// The caller has already verified that the record's two identity fields
+    /// agree under the controller's launch convention: the exec session embeds
+    /// this record's session id
     /// ([`controller_exec_session_task_id`]). A launch writes that pair, so a
     /// restored row keeps its own archive readable after a restart, while a row
-    /// naming another task's session with an unrelated exec id fails closed as
-    /// an archive fault.
+    /// naming another task's session with an unrelated exec id fails closed
+    /// before either storage layer is read.
     async fn read_archived_output(
         &self,
         source: BackgroundOutputSource<'_>,
     ) -> Result<BackgroundOutput, BackgroundOutputError> {
-        if controller_exec_session_task_id(source.exec_session_id) != Some(source.session_id) {
-            return Err(unverified_session(source));
-        }
         let recorded = source.transcript_path.or(source.archive_path).map(Path::to_path_buf);
         // The store is the only authority for which file is this task's archive,
         // so its fault decides the read even when the record names a path.

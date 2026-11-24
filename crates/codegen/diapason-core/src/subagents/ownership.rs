@@ -119,10 +119,20 @@ pub fn resolve_owned_background_id<'a>(
 
 /// The borrowed identity fields ownership follows for one child task.
 ///
-/// The order is `(child id, child session id, parent thread id)`. Ownership
-/// only needs these three borrowed strings, so the walk never clones a status
-/// entry's labels, timings or other presentation fields.
-type ChildIdentity<'a> = (&'a str, &'a str, &'a str);
+/// Ownership only needs these three borrowed strings, so the walk never clones
+/// a status entry's labels, timings or other presentation fields. The fields
+/// are named rather than positional: all three are strings, so a positional
+/// tuple let a caller swap the child session and parent thread without the
+/// compiler noticing.
+#[derive(Clone, Copy)]
+struct ChildIdentity<'a> {
+    /// The child task's own id.
+    id: &'a str,
+    /// The session the child's own descendants name as their parent thread.
+    session_id: &'a str,
+    /// The thread this child was delegated from.
+    parent_thread_id: &'a str,
+}
 
 /// Walks borrowed child identities and returns the ids the session owns.
 ///
@@ -135,10 +145,10 @@ fn owned_child_ids_in<'a>(session_id: &str, children: &[ChildIdentity<'a>]) -> H
     let mut owned_ids = HashSet::new();
     loop {
         let before = owned_ids.len();
-        for &(id, child_session_id, parent_thread_id) in children {
-            if owned_sessions.contains(parent_thread_id) {
-                let _ = owned_ids.insert(id);
-                let _ = owned_sessions.insert(child_session_id);
+        for child in children {
+            if owned_sessions.contains(child.parent_thread_id) {
+                let _ = owned_ids.insert(child.id);
+                let _ = owned_sessions.insert(child.session_id);
             }
         }
         if owned_ids.len() == before {
@@ -153,7 +163,11 @@ fn owned_child_ids_in<'a>(session_id: &str, children: &[ChildIdentity<'a>]) -> H
 pub fn owned_child_ids<'a>(session_id: &str, entries: &'a [SubagentStatusEntry]) -> HashSet<&'a str> {
     let children = entries
         .iter()
-        .map(|entry| (entry.id.as_str(), entry.session_id.as_str(), entry.parent_thread_id.as_str()))
+        .map(|entry| ChildIdentity {
+            id: entry.id.as_str(),
+            session_id: entry.session_id.as_str(),
+            parent_thread_id: entry.parent_thread_id.as_str(),
+        })
         .collect::<Vec<_>>();
     owned_child_ids_in(session_id, &children)
 }
@@ -176,7 +190,11 @@ impl SubagentController {
         let children = state
             .children
             .values()
-            .map(|record| (record.id.as_str(), record.session_id.as_str(), record.parent_thread_id.as_str()))
+            .map(|record| ChildIdentity {
+                id: record.id.as_str(),
+                session_id: record.session_id.as_str(),
+                parent_thread_id: record.parent_thread_id.as_str(),
+            })
             .collect::<Vec<_>>();
         owned_child_ids_in(session_id, &children).contains(child_id)
     }

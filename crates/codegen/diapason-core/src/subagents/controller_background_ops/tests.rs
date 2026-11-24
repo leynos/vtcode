@@ -18,7 +18,10 @@ use rstest::rstest;
 
 use crate::subagents::constants::SUBAGENT_PREVIEW_LINES;
 
+mod archive_fault_tests;
 mod cancel_tests;
+mod claim_conflict_tests;
+mod close_fault_state_tests;
 mod lifecycle_tests;
 mod pending_write_tests;
 mod query_tests;

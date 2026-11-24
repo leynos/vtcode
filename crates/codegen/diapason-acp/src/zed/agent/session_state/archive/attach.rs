@@ -113,10 +113,13 @@ impl ZedAgent {
         let background_owner_migration_failed = self.migrate_resumed_background_owners(workspace, session_id).await;
         // A failed migration can leave rows ownerless that this session may yet
         // adopt when its controller retries the migration. The workspace
-        // controller restores ownerless rows, so letting it run would relaunch
-        // the same record the session controller may restore too. Deferring it
-        // keeps attach working without risking a duplicate process; when the
-        // retry also fails, no restore happens, which is the fail-safe outcome.
+        // controller's restore takes ownerless rows, so letting that restore
+        // run would relaunch the same record the session controller may restore
+        // too. Deferring the workspace controller's restore keeps attach
+        // working without risking a duplicate process; when the retry also
+        // fails, no restore happens, which is the fail-safe outcome. The
+        // session controller's own restore is deferred separately, until the
+        // required checkpoint below has succeeded.
         let workspace_lease = self
             .workspace_runtime_for(workspace, background_owner_migration_failed)
             .await

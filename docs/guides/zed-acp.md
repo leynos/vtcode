@@ -516,17 +516,21 @@ and `[history]` settings do not control ACP audit output.
   inter-process lock, and is idempotent, so a second resume changes nothing. A
   missing ledger migrates nothing.
 
-  If the migration fails, the resume continues but the row stays ownerless. The
-  session controller adopts nothing, and that attach defers the workspace
-  restore so nothing relaunches the row under the wrong scope; a later resume
-  retries the migration. The launch workspace runtime is created before any
+  If the migration fails, the resume continues but the row stays ownerless.
+  When it builds a workspace runtime after that failure, the attach defers that
+  runtime's restore, so nothing relaunches the row under the wrong scope, and
+  the session controller retries the migration when it is built: a successful
+  retry makes the row this session's, while a failed retry leaves it ownerless
+  and restores nothing. The launch workspace runtime is created before any
   session resumes, so its controller may still hold an ownerless copy of a row
   the migration has since given to a session. A resume therefore also
-  reconciles that controller: it adopts the migrated rows and persists the
-  adoption before either scope restores work. The ledger merge is the backstop
-  — it refuses to write an ownerless copy over a copy of the same launch that
-  records an owner, so a stale copy cannot bring back a launch a session has
-  stopped.
+  reconciles that controller: the owner migration runs, then the workspace
+  controller adopts the migrated rows and persists that adoption, and only then
+  is the session controller built. The session controller therefore loads a
+  ledger the workspace controller can no longer add an ownerless copy to. The
+  ledger merge is the backstop — it refuses to write an ownerless copy over a
+  copy of the same launch that records an owner, so a stale copy cannot bring
+  back a launch a session has stopped.
 - **Provider request capacity** – For a custom provider with
   `max_in_flight_requests` configured, each ACP session's subagent controller
   caps its own child concurrency at one fewer than the provider limit, computed

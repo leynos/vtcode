@@ -227,13 +227,19 @@ async fn prompt_driven_agent_tool_admits_a_raw_unowned_target_rewritten_to_an_ow
             assert_tool_reached_the_model(&provider_calls, &provider_requests, true);
             // The call reached the core executor, which reports that a
             // background record is not a child. That is a later layer; the
-            // pre-hook ownership rejection must not appear.
-            assert_tool_response_contains(&provider_requests, "Unknown subagent id");
+            // pre-hook ownership rejection must not appear. The rejection names
+            // the target the executor addressed, so asserting the rewritten id
+            // pins that the hook's replacement, not the raw arguments, ran.
+            let executor_target = format!("Unknown subagent id {}", owned.id);
+            assert_tool_response_contains(&provider_requests, &executor_target);
             let notifications = tool_notifications_through_terminal(&mut updates_rx).await;
             assert_call_announced_before_terminal_update(&notifications, "call-tool");
             let update = terminal_update_in(&notifications);
             let text = tool_update_text(&update);
-            assert!(text.contains("Unknown subagent id"), "the rewritten call must reach execution: {text}");
+            assert!(
+                text.contains(&executor_target),
+                "the executor must receive the rewritten target identifier: {text}"
+            );
             assert!(
                 !text.contains("not owned by this session"),
                 "an approved rewrite to an owned target must not be rejected for ownership: {text}"

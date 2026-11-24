@@ -894,9 +894,14 @@ impl SubagentController {
                     record.restart_attempts = record.restart_attempts.saturating_add(1);
                     // `Stopped` was written by an adopted stop before its close
                     // was attempted. A live process is not stopped, so report
-                    // the pending state until the retry succeeds.
+                    // the pending state until the retry succeeds. The end
+                    // instant belongs to the settled state and must go with it:
+                    // the projection maps `ended_at` without checking status,
+                    // and the ACP contract reserves an end instant for terminal
+                    // tasks.
                     if record.status == BackgroundSubprocessStatus::Stopped {
                         record.status = BackgroundSubprocessStatus::Running;
+                        record.ended_at = None;
                     }
                     mark_background_stop_close_pending(&self.state, record_id, exec_session_id);
                 } else {

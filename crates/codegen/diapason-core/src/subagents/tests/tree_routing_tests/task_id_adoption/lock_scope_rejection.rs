@@ -8,6 +8,10 @@ use super::*;
 /// cannot be made exclusive that way: an allocation in the tree could run
 /// between the merge and the redirect. The attachment therefore fails closed,
 /// and the rejection is atomic like the duplicate-id case.
+///
+/// The joining subtree is seeded with a reservation before the graft is
+/// requested, so the atomicity asserted here is the real one: the reservoir
+/// exists, and both allocators must still disagree about it afterwards.
 #[tokio::test]
 async fn attaching_a_controller_with_another_lock_scope_is_rejected() {
     let temp = TempDir::new().expect("tempdir");
@@ -29,11 +33,38 @@ async fn attaching_a_controller_with_another_lock_scope_is_rejected() {
         "foreign".to_string(),
         test_child_record("foreign", "foreign-session", "parent-session", &spec, SubagentStatus::Running, 1, None),
     );
+
+    // Give the joining subtree a reservation the graft would have to carry
+    // over. Rejecting an empty allocator proves nothing: a graft that merged
+    // first and rejected afterwards would have nothing to lose. With a
+    // reservation in place, the rejection must leave it in the foreign
+    // allocator, and the root must still be free to issue the same id.
+    let seeded = "agent-explorer-20261118T041400000Z";
+    let foreign_child = foreign
+        .insert_child_with_candidate_id(
+            seeded,
+            test_child_record(seeded, "foreign-seeded", "foreign-session", &spec, SubagentStatus::Queued, 2, None),
+        )
+        .await
+        .expect("seed a reservation in the joining subtree");
+    assert_eq!(foreign_child, seeded, "the seeded reservation must be issued verbatim");
+
     let error = root
         .attach_child_controller("foreign", Arc::clone(&foreign))
         .await
         .expect_err("a controller bound to another adoption lock cannot be grafted");
     assert!(format!("{error}").contains("lock scope"), "the rejection must name the scope mismatch: {error}");
+
+    // The seeded reservation stayed in the foreign allocator, so the root can
+    // still issue the same id rather than suffixing it.
+    let root_seeded = root
+        .insert_child_with_candidate_id(
+            seeded,
+            test_child_record(seeded, "root-seeded", "parent-session", &spec, SubagentStatus::Queued, 1, None),
+        )
+        .await
+        .expect("insert into the root after the rejected attachment");
+    assert_eq!(root_seeded, seeded, "a rejected graft must not have moved the reservation into the root allocator");
 
     assert!(
         root.state
@@ -68,21 +99,6 @@ async fn attaching_a_controller_with_another_lock_scope_is_rejected() {
         .await
         .expect("insert after the rejected attachment");
     assert_eq!(foreign_id, candidate, "the rejected controller keeps its own allocator");
-
-    // A rejection that redirected the foreign slot before failing would leave
-    // the reservation above in the root's allocator, so the root would have to
-    // suffix the same candidate here. The root allocator must still be empty.
-    let root_id = root
-        .insert_child_with_candidate_id(
-            candidate,
-            test_child_record(candidate, "root-candidate", "parent-session", &spec, SubagentStatus::Queued, 1, None),
-        )
-        .await
-        .expect("insert after the rejected attachment");
-    assert_eq!(
-        root_id, candidate,
-        "a rejected attachment must not move the foreign reservation into the root allocator"
-    );
 
     foreign.signal_shutdown().await;
     root.signal_shutdown().await;

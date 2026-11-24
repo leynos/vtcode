@@ -9,6 +9,7 @@ use super::*;
 use crate::core::threads::ThreadManager;
 use crate::subagents::controller_tree::ChildRuntimePublication;
 use crate::subagents::controller_tree::attachment_checkpoints::{AttachmentStage, arm};
+use crate::subagents::types::ChildRunRequest;
 use crate::tools::registry::PtySessionManager;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -177,6 +178,53 @@ async fn a_rejected_attachment_publishes_no_child_runtime() {
     replacement.signal_shutdown().await;
 }
 
+/// An isolated child that lost its checkout before runtime capture is refused.
+///
+/// The record is read once when the run begins and the workspace is resolved
+/// later, so the checkout can be reclaimed in between. The resolver otherwise
+/// falls back to the parent workspace, which would run an
+/// `isolation = "worktree"` task outside its isolation and archive it against
+/// the wrong root. The run must fail closed instead.
+#[tokio::test]
+async fn an_isolated_child_without_its_checkout_is_refused_before_resolving_a_workspace() {
+    let temp = TempDir::new().expect("tempdir");
+    let controller = SubagentController::new(test_controller_config(temp.path().to_path_buf()))
+        .await
+        .expect("controller");
+    let mut spec = explorer_spec();
+    spec.isolation = Some(diapason_config::IsolationMode::Worktree);
+    let context = ChildExecutionContext {
+        spec,
+        session_id: "agent-explorer-session".to_string(),
+        parent_thread_id: "parent-session".to_string(),
+        bootstrap_messages: Vec::new(),
+        display_label: "Explorer".to_string(),
+        background: false,
+        // The checkout was reclaimed between `begin_child_run` and here.
+        worktree_path: None,
+        existing_child_controller: None,
+    };
+
+    let resolved = controller
+        .resolve_child_runtime(
+            &context,
+            &ChildRunRequest {
+                prompt: "Inspect the repository.".to_string(),
+                max_turns: None,
+                model_override: None,
+                reasoning_override: None,
+            },
+        )
+        .await;
+    let Err(error) = resolved else {
+        panic!("an isolated child without its checkout must not resolve a workspace");
+    };
+    assert!(
+        format!("{error:#}").contains("isolation worktree is gone"),
+        "the refusal must name the missing isolation checkout: {error:#}"
+    );
+}
+
 /// A cancel that succeeds while a child is queued must stop it starting.
 ///
 /// `launch_child` publishes `Queued` and then starts the run. If the launch
@@ -241,8 +289,12 @@ async fn a_close_between_the_queued_publication_and_the_launch_stops_the_start()
         .expect("the launch must reach the checkpoint after publishing the queued status");
 
     // The record is queued but no handle exists yet, so this is the close the
-    // launch's re-check has to observe.
-    let closed = controller.close(TaskOwner::Workspace, "child").await;
+    // launch's re-check has to observe. A close that waits on a lock the parked
+    // launch holds is a failure, not a hang: bound it so the test reports the
+    // broken ordering.
+    let closed = tokio::time::timeout(Duration::from_secs(5), controller.close(TaskOwner::Workspace, "child"))
+        .await
+        .expect("the close must not wait on the parked launch");
     let closed = closed.expect("cancelling the parked launch must succeed");
     assert_eq!(closed.status, SubagentStatus::Closed);
 
@@ -279,16 +331,18 @@ async fn a_child_link_published_during_a_graft_adopts_the_grafted_route() {
     let mut middle_config = nested_controller_config(workspace_root.clone(), "middle-session");
     middle_config.lock_scope = Some(Arc::clone(&scope));
     let middle = Arc::new(SubagentController::new(middle_config).await.expect("middle controller"));
-    let leaf = Arc::new(
-        SubagentController::new(nested_controller_config(workspace_root, "leaf-session"))
+    let leaf = {
+        let mut leaf = SubagentController::new(nested_controller_config(workspace_root, "leaf-session"))
             .await
-            .expect("leaf controller"),
-    );
+            .expect("leaf controller");
+        // The production creator is `child_controller_for`, which inherits the
+        // observers, the child-id scope and the lock scope as one unit. Building
+        // the leaf any other way would let this regression pass while a scope
+        // the production path also shares is left behind.
+        leaf.inherit_tree_context(&middle, "middle-session").await;
+        Arc::new(leaf)
+    };
     let spec = explorer_spec();
-
-    // The leaf controller inherited the middle controller's pre-graft route,
-    // exactly as a nested controller created by `child_controller_for` does.
-    leaf.inherit_progress_observers(&middle, "middle-session").await;
     middle
         .state
         .write()

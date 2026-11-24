@@ -1,13 +1,13 @@
 //! Regressions for the child launch path.
 //!
-//! These cases pin five contracts: a waiter created before `notify_waiters()`
+//! These cases pin four contracts: a waiter created before `notify_waiters()`
 //! still observes the broadcast even though it has not been polled; an
 //! explicitly closed child refuses new input while keeping its settled outcome;
 //! a save merges with records other owners of the same ledger committed after
-//! this controller loaded its snapshot instead of dropping them; an explicit
-//! `agent_type` launches the agent the caller named; and a resume refuses a
-//! record whose isolation worktree has disappeared rather than running it in
-//! the parent workspace.
+//! this controller loaded its snapshot instead of dropping them; and an
+//! explicit `agent_type` launches the agent the caller named. The isolation
+//! refusals that guard a resumed run live beside the launch tests in
+//! `unstarted_worktree_tests`.
 
 use super::super::background::load_background_state;
 use super::*;
@@ -177,7 +177,7 @@ async fn insert_background(controller: &SubagentController, record: PersistedBac
 }
 
 /// Returns the ids the shared ledger currently holds, in file order.
-async fn ledger_ids(workspace_root: &std::path::Path) -> Vec<String> {
+async fn ledger_ids(workspace_root: &Path) -> Vec<String> {
     load_background_state(workspace_root)
         .await
         .expect("load background ledger")
@@ -347,106 +347,4 @@ async fn owner_save_keeps_a_record_another_controller_persisted() {
     controller_a.state.write().await.background_children.clear();
     controller_a.save_background_state().await.expect("save a again");
     assert_eq!(ledger_ids(&root).await, vec![reviewer.id.clone()]);
-}
-
-/// A resume whose isolation worktree disappeared is refused.
-///
-/// The runner resolves a child's working directory from its record and falls
-/// back to the parent workspace when the record carries no path. For a record
-/// whose spec requested worktree isolation, that fallback would run the resumed
-/// task outside the isolation it was configured for, so the resume must fail
-/// closed instead of silently moving the task into the user's workspace.
-#[tokio::test]
-async fn resume_refuses_a_child_whose_isolation_worktree_is_gone() {
-    let workspace = tempfile::tempdir().expect("workspace");
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
-        .await
-        .expect("controller");
-    let mut record = child_record("agent-worker", SubagentStatus::Closed);
-    record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
-    record.worktree_path = None;
-    let id = controller
-        .insert_child_with_candidate_id("agent-worker", record)
-        .await
-        .expect("insert child");
-
-    let error = controller
-        .resume(TaskOwner::Workspace, &id)
-        .await
-        .expect_err("a record whose isolation checkout is gone must not be resumed");
-    assert!(
-        format!("{error:#}").contains("isolation worktree is gone"),
-        "the refusal must name the missing isolation checkout: {error:#}"
-    );
-
-    let state = controller.state.read().await;
-    let record = state.children.get(&id).expect("the record survives the refusal");
-    assert_eq!(record.status, SubagentStatus::Closed, "a refused resume must not reopen the record");
-    assert!(record.queued_prompts.is_empty(), "a refused resume must not queue work");
-    assert!(record.handle.is_none(), "a refused resume must not launch the task");
-}
-
-/// Sending input that would restart the same record is refused identically.
-///
-/// `send_input` restarts a settled child without passing through the reopen
-/// path, so the isolation check has to cover this entry point too.
-#[tokio::test]
-async fn send_input_refuses_a_child_whose_isolation_worktree_is_gone() {
-    let workspace = tempfile::tempdir().expect("workspace");
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
-        .await
-        .expect("controller");
-    let mut record = child_record("agent-worker", SubagentStatus::Completed);
-    record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
-    record.worktree_path = None;
-    let id = controller
-        .insert_child_with_candidate_id("agent-worker", record)
-        .await
-        .expect("insert child");
-
-    let error = controller
-        .send_input(
-            TaskOwner::Workspace,
-            SendInputRequest {
-                target: id.clone(),
-                message: Some("do more work".to_string()),
-                items: Vec::new(),
-                interrupt: false,
-            },
-        )
-        .await
-        .expect_err("a record whose isolation checkout is gone must not restart");
-    assert!(
-        format!("{error:#}").contains("isolation worktree is gone"),
-        "the refusal must name the missing isolation checkout: {error:#}"
-    );
-
-    let state = controller.state.read().await;
-    let record = state.children.get(&id).expect("the record survives the refusal");
-    assert_eq!(record.status, SubagentStatus::Completed, "a refused restart must not queue a run");
-    assert!(record.queued_prompts.is_empty(), "a refused restart must not queue the input");
-}
-
-/// The guard refuses a missing checkout, not every isolated record.
-#[tokio::test]
-async fn reopen_allows_a_child_that_keeps_its_isolation_worktree() {
-    let workspace = tempfile::tempdir().expect("workspace");
-    let controller = SubagentController::new(test_config(workspace.path().to_path_buf()))
-        .await
-        .expect("controller");
-    let mut record = child_record("agent-worker", SubagentStatus::Closed);
-    record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
-    record.worktree_path = Some(workspace.path().join("checkout"));
-    let id = controller
-        .insert_child_with_candidate_id("agent-worker", record)
-        .await
-        .expect("insert child");
-
-    assert!(
-        controller.reopen_single(&id).await.expect("a record with its checkout reopens"),
-        "a record whose isolation checkout is still attached must be reopenable"
-    );
-    let state = controller.state.read().await;
-    let record = state.children.get(&id).expect("the reopened record");
-    assert_eq!(record.status, SubagentStatus::Queued, "reopening queues the resumed run");
 }

@@ -140,10 +140,16 @@ fixtures and do not change the runtime dependency surface.
 fault-injection seams only that crate's own unit tests would otherwise reach,
 so a dependent crate's tests can script the same faults. It adds no dependency.
 Today it gates `ExecSessionManager::fail_snapshot_reads`, a `#[doc(hidden)]`
-method that makes the next snapshot read fail with a caller-supplied message,
-so a test can drive the "read failed for another reason" branch without a real
-storage fault. The backing field and the branch that reads it are compiled only
-under `cfg(test)` or this feature, so a production build omits both.
+method that arms a persistent snapshot-read failure with a caller-supplied
+message. The fault is not one-shot: every subsequent snapshot read through that
+manager fails for the rest of its lifetime, and no method disarms it. A test
+that arms it therefore cannot expect a clean read from that manager, or from
+any clone of it, for the rest of its scope: every later read that goes through
+it observes the fault, whether it is the background liveness projection, a
+restore's observation of a recorded exec session, or an exec-session poll. That
+is enough to drive the "read failed for another reason" branch without a real
+storage fault. Because the field and the branch that reads it are compiled only
+under `cfg(test)` or this feature, a production build omits both.
 
 `diapason-acp` enables the feature only on its `[dev-dependencies]` entry for
 `diapason-core`; the ordinary `[dependencies]` entry does not. That is what

@@ -1,4 +1,6 @@
-//! Pins the worktree a refused launch must not leave behind.
+//! Pins the worktree a refused launch must not leave behind, and the
+//! isolation refusals that keep a resumed or restarted run out of the parent
+//! workspace.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -13,6 +15,7 @@ use crate::tools::exec_session::ExecSessionManager;
 use crate::tools::registry::PtySessionManager;
 
 use super::super::controller_child_loop::launch_checkpoints;
+use super::tests::child_record;
 use super::*;
 
 /// Builds the controller configuration the launch tests run against.
@@ -43,7 +46,7 @@ fn test_config(workspace_root: PathBuf, vt_cfg: DiapasonConfig) -> SubagentContr
 /// Every command runs with an explicit identity and with signing and hooks
 /// disabled, so a developer's global or system Git configuration cannot change
 /// or block the seed commit.
-fn init_repository(root: &std::path::Path) {
+fn init_repository(root: &Path) {
     let hooks = TempDir::new().expect("isolated hooks directory");
     let hooks_path = hooks.path().to_path_buf();
     let run = |args: &[&str]| {
@@ -150,4 +153,141 @@ async fn a_launch_refused_after_insertion_reclaims_its_worktree() {
     let record = state.children.get(&child_id).expect("the record survives the refused launch");
     assert_eq!(record.status, SubagentStatus::Closed, "the close keeps its terminal outcome");
     assert!(record.worktree_path.is_none(), "the reclaimed checkout must not stay attached to the record");
+}
+
+/// A resume that reopened the record keeps the checkout the refusal would take.
+///
+/// The launch's refusal and a resume's reopen race for the same record. A
+/// resume that wins re-queues the task and hands the checkout to that run, so
+/// the refused launch must not reclaim a directory its own record no longer
+/// owns: doing so would delete the worktree out from under the resumed child.
+#[tokio::test]
+async fn a_refused_launch_keeps_a_checkout_the_resume_reopened() {
+    let workspace = TempDir::new().expect("workspace");
+    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
+        .await
+        .expect("controller");
+    let checkout = workspace.path().join("agent-worker-checkout");
+    std::fs::create_dir_all(&checkout).expect("checkout");
+    let mut record = child_record("agent-worker", SubagentStatus::Closed);
+    record.closed = true;
+    record.worktree_path = Some(checkout.clone());
+    let id = controller
+        .insert_child_with_candidate_id("agent-worker", record)
+        .await
+        .expect("insert child");
+
+    // The resume is the winner of the race: it clears the closure and queues
+    // the task, exactly as `reopen_single` does for a resumable record.
+    assert!(controller.reopen_single(&id).await.expect("reopen the record"));
+
+    let taken = controller.take_unstarted_spawn_worktree(&id, Some(checkout.as_path())).await;
+    assert!(taken.is_none(), "a resume has claimed the checkout, so the refusal must not reclaim it");
+
+    let state = controller.state.read().await;
+    let record = state.children.get(&id).expect("the reopened record survives");
+    assert_eq!(record.worktree_path.as_deref(), Some(checkout.as_path()), "the resumed run keeps its checkout");
+    assert!(checkout.is_dir(), "the checkout at {} must stay on disk for the resumed run", checkout.display());
+}
+
+/// A resume whose isolation worktree disappeared is refused.
+///
+/// The runner resolves a child's working directory from its record and falls
+/// back to the parent workspace when the record carries no path. For a record
+/// whose spec requested worktree isolation, that fallback would run the resumed
+/// task outside the isolation it was configured for, so the resume must fail
+/// closed instead of silently moving the task into the user's workspace.
+#[tokio::test]
+async fn resume_refuses_a_child_whose_isolation_worktree_is_gone() {
+    let workspace = TempDir::new().expect("workspace");
+    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
+        .await
+        .expect("controller");
+    let mut record = child_record("agent-worker", SubagentStatus::Closed);
+    record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
+    record.worktree_path = None;
+    let id = controller
+        .insert_child_with_candidate_id("agent-worker", record)
+        .await
+        .expect("insert child");
+
+    let error = controller
+        .resume(TaskOwner::Workspace, &id)
+        .await
+        .expect_err("a record whose isolation checkout is gone must not be resumed");
+    assert!(
+        format!("{error:#}").contains("isolation worktree is gone"),
+        "the refusal must name the missing isolation checkout: {error:#}"
+    );
+
+    let state = controller.state.read().await;
+    let record = state.children.get(&id).expect("the record survives the refusal");
+    assert_eq!(record.status, SubagentStatus::Closed, "a refused resume must not reopen the record");
+    assert!(record.queued_prompts.is_empty(), "a refused resume must not queue work");
+    assert!(record.handle.is_none(), "a refused resume must not launch the task");
+}
+
+/// Sending input that would restart the same record is refused identically.
+///
+/// `send_input` restarts a settled child without passing through the reopen
+/// path, so the isolation check has to cover this entry point too.
+#[tokio::test]
+async fn send_input_refuses_a_child_whose_isolation_worktree_is_gone() {
+    let workspace = TempDir::new().expect("workspace");
+    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
+        .await
+        .expect("controller");
+    let mut record = child_record("agent-worker", SubagentStatus::Completed);
+    record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
+    record.worktree_path = None;
+    let id = controller
+        .insert_child_with_candidate_id("agent-worker", record)
+        .await
+        .expect("insert child");
+
+    let error = controller
+        .send_input(
+            TaskOwner::Workspace,
+            SendInputRequest {
+                target: id.clone(),
+                message: Some("do more work".to_string()),
+                items: Vec::new(),
+                interrupt: false,
+            },
+        )
+        .await
+        .expect_err("a record whose isolation checkout is gone must not restart");
+    assert!(
+        format!("{error:#}").contains("isolation worktree is gone"),
+        "the refusal must name the missing isolation checkout: {error:#}"
+    );
+
+    let state = controller.state.read().await;
+    let record = state.children.get(&id).expect("the record survives the refusal");
+    assert_eq!(record.status, SubagentStatus::Completed, "a refused restart must not queue a run");
+    assert!(record.queued_prompts.is_empty(), "a refused restart must not queue the input");
+}
+
+/// The guard refuses a missing checkout, not every isolated record.
+#[tokio::test]
+async fn reopen_allows_a_child_that_keeps_its_isolation_worktree() {
+    let workspace = TempDir::new().expect("workspace");
+    let controller = SubagentController::new(test_config(workspace.path().to_path_buf(), DiapasonConfig::default()))
+        .await
+        .expect("controller");
+    let mut record = child_record("agent-worker", SubagentStatus::Closed);
+    record.spec.isolation = Some(diapason_config::IsolationMode::Worktree);
+    record.worktree_path = Some(workspace.path().join("checkout"));
+    let id = controller
+        .insert_child_with_candidate_id("agent-worker", record)
+        .await
+        .expect("insert child");
+
+    assert!(
+        controller.reopen_single(&id).await.expect("a record with its checkout reopens"),
+        "a record whose isolation checkout is still attached must be reopenable"
+    );
+    let state = controller.state.read().await;
+    let record = state.children.get(&id).expect("the reopened record");
+    assert_eq!(record.status, SubagentStatus::Queued, "reopening queues the resumed run");
 }

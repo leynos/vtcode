@@ -180,6 +180,18 @@ async fn assert_attachment_guard_spans_the_stage(stage: AttachmentStage, checkpo
         .await
         .unwrap_or_else(|_| panic!("the first attachment must reach the checkpoint {checkpoint}"));
 
+    // At `BeforePublication` the parked attachment already holds the state
+    // lock, so the opposite attachment would be blocked by that lock whether or
+    // not the attachment guard is still held. The observable block therefore
+    // proves nothing about the guard at this stage. Read the guard directly:
+    // it must be held now, and it must be free once the attach completes.
+    if stage == AttachmentStage::BeforePublication {
+        assert!(
+            left.lock_scope().attachment().try_lock().is_err(),
+            "the attachment guard must still be held at the point the link is published"
+        );
+    }
+
     // The opposite attachment has passed no guard yet; it must block on the
     // guard the parked attachment still holds rather than publish.
     let second =
@@ -192,6 +204,15 @@ async fn assert_attachment_guard_spans_the_stage(stage: AttachmentStage, checkpo
         .await
         .expect("the first attachment task must not panic")
         .expect("the first attachment publishes");
+    if stage == AttachmentStage::BeforePublication {
+        // The guard was held at the publication point and is released with the
+        // attachment: a guard that stayed held would serialise every later
+        // attachment in the tree forever.
+        assert!(
+            left.lock_scope().attachment().try_lock().is_ok(),
+            "the attachment guard must be released once the link is published"
+        );
+    }
     let rejection = right
         .attach_child_controller("left", Arc::clone(&left))
         .await
