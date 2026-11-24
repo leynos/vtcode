@@ -272,7 +272,10 @@ jobs:
           printf '%s  %s\n' "${ACTIONLINT_SHA256}" "${ACTIONLINT_ARCHIVE_PATH}" | sha256sum --check --
           bash "${ACTIONLINT_INSTALLER_PATH}" "${ACTIONLINT_VERSION}"
       - name: Lint
-        run: /usr/bin/make BUILD_JOBS="--jobs 4" ACTIONLINT="$GITHUB_WORKSPACE/actionlint" lint
+        env:
+          BUILD_JOBS: "--jobs 4"
+          ACTIONLINT: ${{ github.workspace }}/actionlint
+        run: /usr/bin/make lint
       - name: Validate GitHub Actions lint contract
         run: /usr/bin/make test-github-actions-validation
 

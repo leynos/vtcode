@@ -22,7 +22,7 @@ class WorkflowValidationCiTests(unittest.TestCase):
     """Assert provisioning, hardening, and trusted lint invocation as parsed YAML."""
 
     def setUp(self) -> None:
-        """Parse the CI workflow and isolate the ``lint-clippy`` job and steps."""
+        """Parse the CI workflow and isolate the lint-clippy job and steps."""
         self.workflow = load_workflow(CI_WORKFLOW_PATH)
         self.steps = job_steps(self.workflow, "lint-clippy")
         jobs = self.workflow["jobs"]
@@ -127,14 +127,19 @@ class WorkflowValidationCiTests(unittest.TestCase):
     def test_ci_uses_the_trusted_make_binary_and_cached_actionlint(self) -> None:
         """Check lint uses the system make and the cached actionlint binary.
 
-        The contract step must run through the Make target rather than a
-        repository-controlled script.
+        Both lint and the contract check must invoke the absolute make path
+        rather than a checkout-controlled binary. The job values travel as
+        environment variables, which make reads as ordinary defaults, because a
+        command-line assignment is exported through ``MAKEFLAGS`` into every
+        nested make run, including the build scripts Cargo launches.
         """
         lint = named_step(self.steps, "Lint")
-        self.assertEqual(
-            lint.get("run"),
-            '/usr/bin/make BUILD_JOBS="--jobs 4" ACTIONLINT="$GITHUB_WORKSPACE/actionlint" lint',
-        )
+        self.assertEqual(lint.get("run"), "/usr/bin/make lint")
+        environment = lint.get("env")
+        self.assertIsInstance(environment, dict)
+        assert isinstance(environment, dict)
+        self.assertEqual(environment.get("BUILD_JOBS"), "--jobs 4")
+        self.assertIn("actionlint", environment.get("ACTIONLINT", ""))
         contract = named_step(self.steps, "Validate GitHub Actions lint contract")
         self.assertEqual(contract.get("run"), "/usr/bin/make test-github-actions-validation")
 

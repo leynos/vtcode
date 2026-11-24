@@ -27,9 +27,10 @@ class WorkflowPolicyTests(unittest.TestCase):
     """Keep the repository YAML policy and workflow documents aligned."""
 
     def test_policy_keeps_github_actions_compatible_defaults(self) -> None:
-        """Check the policy extends the defaults and keeps quoted booleans only.
+        """Check the policy keeps GitHub Actions-compatible defaults.
 
-        The document-start, 120-column and unchecked-key rules must all hold.
+        The document-start, 120-column, quoted-boolean and unchecked-key rules
+        must all hold.
         """
         policy = yaml.safe_load(YAMLLINT_POLICY_PATH.read_text(encoding="utf-8"))
         rules = policy["rules"]
@@ -56,7 +57,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         )
 
     def test_every_workflow_starts_and_parses_as_a_mapping(self) -> None:
-        """Check every workflow declares one document start and parses cleanly.
+        """Check each workflow declares one document start and parses.
 
         Each file must stay within 120 columns and keep ``on`` as a string key.
         """
@@ -96,7 +97,7 @@ class WorkflowPolicyTests(unittest.TestCase):
                 self.assertIn("Makefile", paths)
 
     def test_makefile_wires_policy_before_actionlint(self) -> None:
-        """Check the lint target runs yamllint with the repository policy first."""
+        """Check lint depends on the target that runs yamllint first."""
         makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
         self.assertIn(
             "lint: lint-shell lint-policies github-actions-lint lint-clippy lint-docs",
@@ -132,7 +133,7 @@ class MakefileProcessTests(unittest.TestCase):
     def run_target(
         self, yamllint_status: int, actionlint_status: int
     ) -> subprocess.CompletedProcess[str]:
-        """Run the lint target with both linters faking the given exit statuses."""
+        """Run the target with the given fake linter exit statuses."""
         self.call_log.unlink(missing_ok=True)
         environment = {
             "FAKE_LINTER_CALL_LOG": str(self.call_log),
@@ -156,14 +157,18 @@ class MakefileProcessTests(unittest.TestCase):
         )
 
     def test_success_runs_linters_in_policy_first_order(self) -> None:
-        """Check a clean run exits zero and logs yamllint before actionlint."""
+        """Check a clean run exits zero, logging yamllint first."""
         result = self.run_target(0, 0)
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(read_call_log(self.call_log), ["yamllint", "actionlint"])
 
     def test_every_yamllint_exit_status_stops_actionlint(self) -> None:
-        """Check any yamllint failure aborts the target before actionlint runs."""
+        """Check a non-zero yamllint status aborts before actionlint runs.
+
+        The zero-status case still reaches actionlint, so both branches are
+        covered.
+        """
         for status in range(256):
             with self.subTest(status=status):
                 result = self.run_target(status, 0)
@@ -175,7 +180,10 @@ class MakefileProcessTests(unittest.TestCase):
                 self.assertEqual(read_call_log(self.call_log), expected_calls)
 
     def test_every_actionlint_exit_status_propagates_after_yamllint(self) -> None:
-        """Check an actionlint failure still surfaces after a clean yamllint run."""
+        """Check every actionlint status propagates once yamllint succeeds.
+
+        A non-zero status fails the target after both linters have run.
+        """
         for status in range(256):
             with self.subTest(status=status):
                 result = self.run_target(0, status)
@@ -233,7 +241,7 @@ class ActionlintDownloadTests(unittest.TestCase):
         return result, output, call_log, installer_log
 
     def test_installer_child_receives_the_verified_archive_without_a_second_fetch(self) -> None:
-        """Check the installer reads the verified archive and fetches nothing more."""
+        """Check the installer reads the verified archive, fetching no more."""
         with tempfile.TemporaryDirectory() as temporary:
             result, output, call_log, installer_log = self.run_actionlint_download(
                 Path(temporary)
@@ -258,7 +266,7 @@ class ActionlintDownloadTests(unittest.TestCase):
             )
 
     def test_checksum_failure_does_not_run_the_installer(self) -> None:
-        """Check a checksum mismatch exits non-zero before the installer runs."""
+        """Check a checksum mismatch exits early without running the installer."""
         with tempfile.TemporaryDirectory() as temporary:
             result, output, call_log, installer_log = self.run_actionlint_download(
                 Path(temporary), checksum_status=23
@@ -270,7 +278,7 @@ class ActionlintDownloadTests(unittest.TestCase):
             self.assertEqual(len(read_call_log(call_log)), 2)
 
     def test_installer_download_failure_is_fail_closed(self) -> None:
-        """Check a failed installer download installs nothing and runs nothing."""
+        """Check a failed installer download installs nothing."""
         with tempfile.TemporaryDirectory() as temporary:
             result, output, call_log, installer_log = self.run_actionlint_download(
                 Path(temporary), installer_download_status=24

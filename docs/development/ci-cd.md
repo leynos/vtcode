@@ -170,9 +170,11 @@ actionlint 1.7.12 from its pinned release URL, verifies archive SHA-256
 `8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`, then passes
 that verified archive to the reviewed installer revision
 `914e7df21a07ef503a81201c76d2b11c789d3fca`. The CI lint invocation uses
-`/usr/bin/make` with `BUILD_JOBS="--jobs 4"` and
-`ACTIONLINT="$GITHUB_WORKSPACE/actionlint"`. This preserves CI's four-job limit
-and prevents a checkout-controlled `make` from replacing the system binary.
+`/usr/bin/make` with `BUILD_JOBS` and `ACTIONLINT` set as environment variables
+rather than command-line assignments: a command-line assignment is exported
+through `MAKEFLAGS` into every nested make run, including the build scripts
+Cargo launches. This preserves CI's four-job limit and prevents a
+checkout-controlled `make` from replacing the system binary.
 
 Run `make test-github-actions-validation` to exercise the parsed workflow and
 controlled-linter contracts. It uses uv to provide PyYAML only for the test
