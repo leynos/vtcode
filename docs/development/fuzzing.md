@@ -62,6 +62,35 @@ Given an artifact like `fuzz/artifacts/shell_parser/crash-...`:
 cargo +nightly fuzz run shell_parser fuzz/artifacts/shell_parser/crash-...
 ```
 
+## Replaying a Coverage proptest failure
+
+The Coverage workflow records one random decimal `PROPTEST_RNG_SEED` in the job
+summary before it runs the tests. Read that value from the failed job's summary
+and replay the property with it. Leave `PROPTEST_CASES` unset so the replay uses
+the same case count as the hosted run.
+
+```bash
+export PROPTEST_RNG_SEED=<seed-from-the-job-summary>
+
+# Coverage arm, matching the hosted job.
+cargo llvm-cov nextest --locked -p vtcode-core --test core_fuzz_props \
+  -E 'test(fuzz_shell_parser_never_panics)' --lcov \
+  --output-path /tmp/replay.lcov
+
+# Ordinary arm, default and CI profiles.
+cargo nextest run --locked -p vtcode-core --test core_fuzz_props \
+  -E 'test(fuzz_shell_parser_never_panics)'
+cargo nextest run --locked -p vtcode-core --test core_fuzz_props \
+  -E 'test(fuzz_shell_parser_never_panics)' --cargo-profile ci
+```
+
+A native signal kills the process before proptest can shrink the input or write
+a `.proptest-regressions` entry. To recover the script, run a scratch harness
+that appends each generated script to a file and flushes it before calling
+`parse_shell_commands`; the last line is the crashing input. Keep the preceding
+scripts as well, because the crash may depend on parser state accumulated by
+earlier cases.
+
 ## Coverage (Optional)
 
 ```bash

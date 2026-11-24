@@ -824,7 +824,11 @@ mod tests {
 
     #[test]
     fn tree_sitter_issue_337_inputs_are_rejected_before_native_parsing() {
-        for script in ["{𱡀", "{echo; printf '💩'}"] {
+        // `{5𱡀` is the non-adjacent shape from tree-sitter-bash issue #337:
+        // the brace need not be byte-adjacent to the 4-byte character.
+        // `{\u{e0000}` is the deterministic Linux SIGSEGV reproducer for the
+        // locked tree-sitter 0.26.13 and tree-sitter-bash 0.25.1.
+        for script in ["{𱡀", "{5𱡀", "{\u{e0000}", "{echo; printf '💩'}"] {
             assert_eq!(
                 parse_shell_commands_tree_sitter(script),
                 Err("Shell script matches the tree-sitter-bash issue #337 crash pattern".to_string())
