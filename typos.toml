@@ -300,6 +300,31 @@ extend-ignore-re = [
     # spelling as their subject; match only those exact phrases.
     '`catalog` to `catalogue` rename',
     '"Tool Catalog Order"',
+    # The A2A specification fixes this event type name. The `canceled` wire
+    # literal is already covered by the quoted-value rules above.
+    'TaskArtifactUpdateEvent',
+    'serde_json::from_str\("\\"canceled\\""\)',
+    # These test identifiers name the historical wire values they pin; the
+    # wire key itself keeps its external spelling.
+    'test_tasks_cancel_rpc_returns_historical_canceled_state',
+    'test_message_correlation_keeps_intent_fulfillment_wire_key',
+    # The improvement event value is serialized exactly as named.
+    '"\\"FULFILLMENT_ASSESSED\\""',
+    # The persisted harness table keeps its external `skeptic_panel` key.
+    '\[skeptic_panel\]',
+    # The historical correlation key keeps its `intent_fulfillment` spelling in
+    # the wire literal; the assertion prose stays native.
+    'contains_key\("intent_fulfillment"\)',
+    # The Zed extension accepts the legacy `analyze` command value; these tests
+    # exercise that compatibility dispatch and must keep the accepted spelling.
+    'timeout_for_command\("analyze"\)',
+    'FakeProgram::new\("analyze"\)',
+    'run_diapason\(program\.as_os_str\(\), "analyze"',
+    'Some\("analyze"\)',
+    # The palette search keyword retains `colors` so legacy searches still
+    # match; only the keyword itself and its assertions are exempted.
+    'theme appearance colours colors',
+    '\.contains\("colors"\)',
 ]
 
 [type.md]
@@ -321,6 +346,21 @@ extend-ignore-re = [
     'used the American `catalog`',
     'Some `catalog` strings',
     'existing `catalog` spelling',
+    # Migration notes name the removed command and type spellings as their
+    # subject. Each expression matches only that exact backticked former name
+    # or the sentence that introduces it as the legacy spelling.
+    'legacy `analyze` command',
+    '`analyze` alias',
+    'accepts `analyze`',
+    '`analyze`, and the persisted',
+    '`analyze`\nvalue in `allowed_tools`',
+    '`analyze`\nslash alias',
+    '`CommandBuilder::analyze\(\)`',
+    '`analyze_workspace(?:_with_context|_command)?`',
+    # Fixed foreign configuration keys and the pre-rename plan vocabulary.
+    '`color\.\*`',
+    '`ToolCatalog(?:CacheMetrics|State)`',
+    'previously used `harbor`',
 ]
 
 [type.json]

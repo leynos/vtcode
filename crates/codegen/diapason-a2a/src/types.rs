@@ -450,8 +450,8 @@ mod tests {
         assert_eq!(serde_json::to_string(&TaskState::Cancelled).expect("serialize task state"), "\"canceled\"");
 
         let decoded: TaskState =
-            serde_json::from_str("\"canceled\"").expect("historical canceled state should deserialize");
-        assert_eq!(decoded, TaskState::Cancelled, "historical canceled wire value should map to TaskState::Cancelled");
+            serde_json::from_str("\"canceled\"").expect("the historical wire value should deserialize");
+        assert_eq!(decoded, TaskState::Cancelled, "the historical wire value should map to TaskState::Cancelled");
     }
 
     #[test]

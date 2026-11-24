@@ -48,11 +48,7 @@ class SpellingCiContractTests(unittest.TestCase):
             "\n  # Check for unmaintained", 1
         )[0]
 
-        self.assert_installs_typos_before(
-            clippy_job,
-            'run: /usr/bin/make BUILD_JOBS="--jobs 4" '
-            'ACTIONLINT="$GITHUB_WORKSPACE/actionlint" lint',
-        )
+        self.assert_installs_typos_before(clippy_job, "run: /usr/bin/make lint")
 
 
 if __name__ == "__main__":

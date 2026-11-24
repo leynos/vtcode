@@ -1,6 +1,6 @@
 //! MCP lifecycle updates during a turn.
 //!
-//! Attaches the MCP client once initialisation completes and defers tool-list
+//! Attaches the MCP client once initialization completes and defers tool-list
 //! refreshes to turn boundaries so the active turn's tool set stays stable.
 
 use anyhow::Result;

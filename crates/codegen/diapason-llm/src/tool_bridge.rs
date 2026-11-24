@@ -482,7 +482,7 @@ mod wire_compatibility_tests {
 
         assert!(
             object.contains_key("intent_fulfillment"),
-            "renamed field should keep the historical intent_fulfillment wire key: {encoded}"
+            "renamed field should keep its historical wire key: {encoded}"
         );
         assert!(
             !object.contains_key("intent_fulfilment"),

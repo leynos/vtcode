@@ -1,4 +1,4 @@
-//! Session initialisation for the unified run loop.
+//! Session initialization for the unified run loop.
 //!
 //! Builds provider clients, restores resume state, wires MCP and subagent
 //! controllers, and exposes the tool snapshot refresh used on setup.
