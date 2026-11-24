@@ -90,10 +90,10 @@ const CONFIG_KEY_ALIASES: &[(&str, &str, &str)] = &[
 /// merged as TOML before deserialization, which means a lower layer using the
 /// canonical name and a higher layer using the alias would otherwise produce
 /// exactly that duplicate and abort the load instead of applying precedence.
-/// Normalising each layer before the merge lets the higher layer override the
+/// Normalizing each layer before the merge lets the higher layer override the
 /// lower one under the canonical key. When a single layer sets both spellings,
 /// both keys are kept so deserialization still reports the conflict.
-fn normalise_config_aliases(config: &mut TomlValue) {
+fn normalize_config_aliases(config: &mut TomlValue) {
     let TomlValue::Table(root) = config else {
         return;
     };
@@ -128,7 +128,7 @@ pub struct ConfigLayerEntry {
 impl ConfigLayerEntry {
     /// Create a new configuration layer entry.
     pub(crate) fn new(source: ConfigLayerSource, mut config: TomlValue) -> Self {
-        normalise_config_aliases(&mut config);
+        normalize_config_aliases(&mut config);
         let metadata = ConfigLayerMetadata {
             name: source.label(),
             version: fingerprint_toml_value(&config),
@@ -295,13 +295,13 @@ mod tests {
     }
 
     #[test]
-    fn alias_only_layer_is_normalised_to_canonical_key() {
+    fn alias_only_layer_is_normalized_to_canonical_key() {
         let entry = workspace_layer("[ui]\nsafe_colours_only = true\ncolour_scheme_mode = \"dark\"");
         let ui = entry.config.get("ui").and_then(TomlValue::as_table).expect("ui table");
         assert!(ui.contains_key("safe_colors_only"), "the alias should be rewritten to the canonical key");
         assert!(ui.contains_key("color_scheme_mode"), "the alias should be rewritten to the canonical key");
-        assert!(!ui.contains_key("safe_colours_only"), "the alias key should not survive normalisation");
-        assert!(!ui.contains_key("colour_scheme_mode"), "the alias key should not survive normalisation");
+        assert!(!ui.contains_key("safe_colours_only"), "the alias key should not survive normalization");
+        assert!(!ui.contains_key("colour_scheme_mode"), "the alias key should not survive normalization");
     }
 
     #[test]

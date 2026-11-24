@@ -62,7 +62,7 @@ mod tests {
     use rstest::rstest;
 
     /// Every client outcome must be recorded in its own bucket and advance
-    /// both the in-flight and duration aggregates; a mis-mapped or missing arm
+    /// both the in-flight and duration aggregates; an incorrectly mapped or missing arm
     /// fails this assertion.
     #[rstest]
     #[case::succeeded(McpClientStartupOutcome::Succeeded, |m: &ServiceStartupMetrics| m.client_attempts_succeeded)]

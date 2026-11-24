@@ -1,0 +1,43 @@
+---
+name: Spelling
+
+permissions: {}
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # Check every tracked existing file against the explicit spelling policy.
+  # This workflow deliberately has no path filters: the gate reads every
+  # tracked file, so a filtered trigger would let unchecked file types through.
+  lint-typos:
+    name: Check Typos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install typos-cli
+        uses: taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df8190  # v2
+        with:
+          tool: typos-cli@1.50.1
+      - name: Check spelling
+        run: /usr/bin/make spelling

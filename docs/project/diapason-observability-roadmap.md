@@ -277,7 +277,7 @@ outcome informs the compatibility projection. See
   - See
     [design §4](../design/diapason-observability-design.md#4-identity-correlation-and-evidence).
 
-- [ ] 5.1.2. Add gate, review, candidate and artifact evidence adapters.
+- [ ] 5.1.2. Add gate, review, candidate and artefact evidence adapters.
   - Preserve issuer, observed time, candidate identity and source confidence;
     do not parse agent prose as a gate result.
   - Success: stale candidate evidence cannot be queried as current success;
@@ -289,7 +289,7 @@ outcome informs the compatibility projection. See
   - Build fixture projections from Dakar, df12-build and Corbusier business
     needs without runtime dependencies on those repositories.
   - Success: fixtures navigate task to attempt, model usage, tool/policy event,
-    gate result and artifact reference; estimated cost remains distinct.
+    gate result and artefact reference; estimated cost remains distinct.
   - Requires 5.1.1 and 5.1.2.
   - See [RFC 0002 §7](../rfcs/rfc-0002-diapason-observability.md).
 
@@ -411,7 +411,7 @@ Idea: if the metadata-first core is useful and its failure/privacy properties
 hold, broader storage and analytics can be assessed by adoption evidence
 without making the CLI responsible for an unreviewed data platform.
 
-### 8.1. Evaluate durable or specialised telemetry only against new requirements
+### 8.1. Evaluate durable or specialized telemetry only against new requirements
 
 These workstreams remain outside v1. Their outcome should be a separately
 reviewed decision, not implicit growth of the core exporter.

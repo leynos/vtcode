@@ -1,4 +1,4 @@
-//! Tests subagent configuration, execution, lifecycle, and background task behavior.
+//! Tests subagent configuration, execution, lifecycle, and background task behaviour.
 use super::*;
 use crate::config::constants::models;
 use crate::config::constants::tools;

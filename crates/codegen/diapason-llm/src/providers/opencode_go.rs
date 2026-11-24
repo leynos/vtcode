@@ -1,7 +1,7 @@
 //! The OpenCode Go provider.
 //!
 //! Routes each model to the Anthropic Messages or OpenAI-compatible protocol
-//! and normalises the curated `opencode-go/` prefix before dispatch.
+//! and normalizes the curated `opencode-go/` prefix before dispatch.
 
 use crate::client::LLMClient;
 use crate::provider::{LLMError, LLMProvider, LLMRequest, LLMResponse, LLMStream};

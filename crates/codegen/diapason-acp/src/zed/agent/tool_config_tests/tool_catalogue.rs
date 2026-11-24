@@ -1,4 +1,4 @@
-//! Tests ACP tool catalog exposure for built-in and advanced profiles.
+//! Tests ACP tool catalogue exposure for built-in and advanced profiles.
 use super::support::{build_agent, build_agent_with_tools_config, definition_names};
 use crate::zed::types::ToolRuntime;
 use assert_fs::TempDir;

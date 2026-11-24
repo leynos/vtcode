@@ -154,6 +154,21 @@ Cargo.toml so the size-optimized profiles are actually applied.
 - **Create Release**: Drafts GitHub Release with changelog
 - **Publish**: Publishes to crates.io and Homebrew
 
+### 6. Spelling (`spelling.yml`)
+
+**Triggers:**
+
+- Push and pull request to `main`, with no path filters
+- Manual `workflow_dispatch`
+
+**Jobs:**
+
+- **Check Typos**: Installs the pinned `typos-cli` and runs `make spelling`
+
+The workflow deliberately has no path filters. `make spelling` checks every
+tracked file, so a filtered trigger would skip file types such as HTML, CSS or
+Dockerfiles and let misspellings into the asserted baseline.
+
 ## Code Quality Tools
 
 ### GitHub Actions workflow validation

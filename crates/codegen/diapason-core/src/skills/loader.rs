@@ -233,7 +233,7 @@ fn add_system_cli_tools(outcome: &mut SkillLoadOutcome) {
 fn dedup_and_sort(outcome: &mut SkillLoadOutcome) {
     let mut seen: HashSet<String> = HashSet::new();
     outcome.skills.retain(|skill| seen.insert(skill.name.clone()));
-    // Sort by the alias-normalised skill ID so the two `cmd-analyse` spellings
+    // Sort by the alias-normalized skill ID so the two `cmd-analyse` spellings
     // compare as one family. Rust's sort is stable, so skills in one family
     // keep discovery order; the shared `select_by_name_or_alias` selector then
     // ranks by scope and keeps the first-discovered skill within a rank.
@@ -1269,7 +1269,7 @@ mod tests {
                 .skills
                 .windows(2)
                 .all(|pair| skill_sort_key(&pair[0].name) <= skill_sort_key(&pair[1].name)),
-            "the skills vector must remain sorted by the alias-normalised key",
+            "the skills vector must remain sorted by the alias-normalized key",
         );
     }
 

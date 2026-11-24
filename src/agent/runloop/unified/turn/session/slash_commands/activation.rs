@@ -1,6 +1,6 @@
 //! Lazy activation of skills and MCP for slash commands.
 //!
-//! Starts MCP initialisation on demand, attaches ready clients, and ensures the
+//! Starts MCP initialization on demand, attaches ready clients, and ensures the
 //! dynamic skills context is available before commands run.
 
 use anyhow::Result;
@@ -38,9 +38,9 @@ pub(super) async fn ensure_mcp_activated(ctx: &mut SlashCommandContext<'_>) -> R
     Ok(())
 }
 
-/// Attach the MCP client and refresh the tool snapshot if MCP initialisation has
+/// Attach the MCP client and refresh the tool snapshot if MCP initialization has
 /// completed. Returns `true` when a client is attached, and renders an error
-/// when initialisation failed.
+/// when initialization failed.
 pub(super) async fn try_attach_ready_mcp(ctx: &mut SlashCommandContext<'_>) -> Result<bool> {
     let Some(manager) = ctx.async_mcp_manager else {
         return Ok(false);

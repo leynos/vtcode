@@ -609,15 +609,15 @@ repeatedly waiting on the unavailable index.
 
 P1 starts with a bounded current-source check of every reported failure.
 Determine whether the Windows arguments can be scoped to their platform without
-changing behavior. Correct only those warnings; retain runtime invariant
+changing behaviour. Correct only those warnings; retain runtime invariant
 assertions. Update the documentation allowlist only if the handoff document is
 intentionally a stable top-level exception under existing policy.
 
 Read official cargo-llvm-cov guidance for a nextest-compatible coverage run.
 Replace the invalid pre-report step with the smallest supported workflow that
-actually executes tests and emits the existing lcov artifact. Install nextest
+actually executes tests and emits the existing lcov artefact. Install nextest
 if the workflow requires it. Preserve pinned action revisions, permissions,
-triggers and Codecov failure behavior. Do not use cargo test. Add a narrowly
+triggers and Codecov failure behaviour. Do not use cargo test. Add a narrowly
 useful workflow contract check only if an existing script-test pattern fits.
 
 Verify the h2 advisory and apply the minimum compatible locked update. Avoid

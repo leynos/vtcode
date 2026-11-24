@@ -1925,7 +1925,7 @@ mod tests {
                 models = ["evaluator-a"]
             "#,
         )
-        .expect("skeptic_panel wire key should deserialize");
+        .expect("the historical wire key should deserialize");
 
         assert!(parsed.sceptic_panel.enabled);
         assert_eq!(parsed.sceptic_panel.models, vec!["evaluator-a".to_owned()]);

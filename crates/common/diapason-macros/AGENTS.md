@@ -4,6 +4,6 @@
 
 - Keep procedural macros small, deterministic and diagnostic-rich.
 - Do not add runtime dependencies or silently change generated public APIs.
-- Cover emitted code and compile-failure behavior with focused tests.
+- Cover emitted code and compile-failure behaviour with focused tests.
 Detailed module guidance:
 [diapason-macros](../../../docs/development/module-guidance/diapason-macros.md).

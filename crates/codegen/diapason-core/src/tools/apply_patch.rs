@@ -95,7 +95,7 @@ pub fn patch_precondition_source_paths(patch: &Patch) -> Vec<&str> {
 ///
 /// The simulation uses [`crate::tools::editing::patch::render_patch_update_content_strict`],
 /// so only byte-exact, unique anchors count. A hunk that the apply path would
-/// resolve fuzzily (whitespace, Unicode normalisation, trailing empty-line
+/// resolve fuzzily (whitespace, Unicode normalization, trailing empty-line
 /// retry, or semantic fallback) is reported as unsafe, as is a hunk whose
 /// anchor occurs more than once. `false` never means "retry the same patch":
 /// the caller's `next_action` still tells the model to reread and regenerate.
@@ -603,7 +603,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rebase_assessment_rejects_unicode_normalised_anchor() {
+    async fn rebase_assessment_rejects_unicode_normalized_anchor() {
         let patch = single_removal_patch("\"quoted\"");
         let (can_rebase, failures) =
             super::assess_patch_rebase_with_content(&patch, std::path::Path::new("f.txt"), "\u{201C}quoted\u{201D}\n")

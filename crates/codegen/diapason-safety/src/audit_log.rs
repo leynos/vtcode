@@ -202,7 +202,7 @@ impl ToolAuditEntry {
     /// Build an entry from invocation metadata without retaining either body.
     ///
     /// The arguments and result are hashed immediately and are never included
-    /// in the serialised entry. Callers should perform the surrounding file
+    /// in the serialized entry. Callers should perform the surrounding file
     /// I/O on a blocking boundary.
     #[must_use]
     pub fn from_invocation(invocation: ToolAuditInvocation<'_>) -> Self {
