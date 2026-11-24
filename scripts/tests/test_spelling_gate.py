@@ -16,9 +16,19 @@ from spelling_gate_test_support import (
 
 
 class SpellingGateProcessTests(unittest.TestCase):
-    """Keep the spelling gate scoped to existing, tracked repository paths."""
+    """Keep the spelling gate scoped to existing, tracked repository paths.
+
+    Each test runs the real ``Makefile``, checker and policy in a temporary
+    repository whose Git and typos executables are supplied by the test.
+    """
 
     def setUp(self) -> None:
+        """Create an isolated repository and its controlled executables.
+
+        The temporary directory receives the copied gate inputs and the
+        fixture executables; the environment passed to ``run_target`` points
+        at the fixture logs and prepared output file.
+        """
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.directory = Path(self.temporary_directory.name)
         prepare_make_repository(self.directory)
@@ -33,12 +43,34 @@ class SpellingGateProcessTests(unittest.TestCase):
         }
 
     def tearDown(self) -> None:
+        """Remove the temporary repository created by ``setUp``."""
         self.temporary_directory.cleanup()
 
     def write_tracked_paths(self, *paths: str) -> None:
+        """Write the NUL-separated tracked paths reported by the fake Git.
+
+        Parameters
+        ----------
+        *paths : str
+            Repository-relative paths in the order the gate must pass them to
+            typos.
+        """
         self.git_output.write_bytes(b"".join(path.encode() + b"\0" for path in paths))
 
     def run_target(self, *, typos: Path | None = None):
+        """Run the make spelling target with the controlled fixtures.
+
+        Parameters
+        ----------
+        typos : Path | None, optional
+            Executable supplied as ``TYPOS``; ``None`` selects the fake typos
+            fixture.
+
+        Returns
+        -------
+        subprocess.CompletedProcess[str]
+            Completed process with captured standard output and error.
+        """
         return run_process(
             [
                 "make",
@@ -52,6 +84,7 @@ class SpellingGateProcessTests(unittest.TestCase):
         )
 
     def test_invokes_typos_once_with_the_explicit_policy_and_force_exclude(self) -> None:
+        """Pass the explicit policy and force-exclude to typos exactly once."""
         source = self.directory / "tracked file.txt"
         source.write_text("colour\n", encoding="utf-8")
         self.write_tracked_paths(source.name)
@@ -66,6 +99,7 @@ class SpellingGateProcessTests(unittest.TestCase):
         )
 
     def test_excludes_untracked_and_ignored_paths(self) -> None:
+        """Keep untracked and ignored paths out of the typos arguments."""
         tracked = self.directory / "tracked.txt"
         untracked = self.directory / "untracked.txt"
         ignored = self.directory / "ignored.txt"
@@ -82,6 +116,7 @@ class SpellingGateProcessTests(unittest.TestCase):
         )
 
     def test_preserves_spaces_and_newlines_in_tracked_paths(self) -> None:
+        """Preserve spaces and newlines when passing NUL-separated paths."""
         spaced = self.directory / "space name.txt"
         newline = self.directory / "line\nbreak.txt"
         for path in (spaced, newline):
@@ -106,6 +141,7 @@ class SpellingGateProcessTests(unittest.TestCase):
         )
 
     def test_skips_deleted_only_and_lexically_last_tracked_paths(self) -> None:
+        """Skip paths that no longer exist, including the lexically last one."""
         self.write_tracked_paths("deleted.txt")
 
         deleted_only = self.run_target()
@@ -127,6 +163,7 @@ class SpellingGateProcessTests(unittest.TestCase):
         )
 
     def test_skips_an_empty_tracked_set_without_requiring_typos(self) -> None:
+        """Succeed without invoking typos when no tracked path remains."""
         self.write_tracked_paths()
         result = self.run_target(typos=self.directory / "missing-typos")
 
@@ -134,6 +171,7 @@ class SpellingGateProcessTests(unittest.TestCase):
         self.assertEqual(read_json_lines(self.typos_log), [])
 
     def test_fails_closed_when_git_discovery_fails(self) -> None:
+        """Propagate a Git discovery failure instead of running typos."""
         self.environment["FAKE_GIT_STATUS"] = "23"
 
         result = self.run_target()
@@ -143,6 +181,7 @@ class SpellingGateProcessTests(unittest.TestCase):
         self.assertEqual(read_json_lines(self.typos_log), [])
 
     def test_propagates_typos_failure(self) -> None:
+        """Propagate the typos exit status through the spelling target."""
         source = self.directory / "tracked.txt"
         source.write_text("colour\n", encoding="utf-8")
         self.write_tracked_paths(source.name)

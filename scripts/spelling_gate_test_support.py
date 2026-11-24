@@ -25,7 +25,28 @@ def _write_executable(path: Path, source: str) -> Path:
 
 
 def write_fake_git(directory: Path) -> tuple[Path, Path, Path]:
-    """Write a Git fixture controlled by NUL output and an exit status."""
+    """Write a Git fixture controlled by NUL output and an exit status.
+
+    The fixture records every invocation as one JSON line, then either writes
+    the prepared NUL-separated output or exits with ``FAKE_GIT_STATUS``.
+
+    Parameters
+    ----------
+    directory : Path
+        Existing directory that receives the executable; it also holds the
+        output file and call log returned to the caller.
+
+    Returns
+    -------
+    tuple[Path, Path, Path]
+        The executable, the file holding the NUL-separated ``ls-files``
+        output, and the JSON-lines invocation log.
+
+    Raises
+    ------
+    OSError
+        If the fixture files cannot be written into ``directory``.
+    """
     executable = directory / "git"
     output = directory / "git-output.bin"
     call_log = directory / "git-calls.jsonl"
@@ -53,7 +74,27 @@ def write_fake_git(directory: Path) -> tuple[Path, Path, Path]:
 
 
 def write_fake_typos(directory: Path) -> tuple[Path, Path]:
-    """Write a typos fixture that records one exact invocation."""
+    """Write a typos fixture that records one exact invocation.
+
+    The fixture logs its arguments as one JSON line and exits with
+    ``FAKE_TYPOS_STATUS``.
+
+    Parameters
+    ----------
+    directory : Path
+        Existing directory that receives the executable and the returned call
+        log path.
+
+    Returns
+    -------
+    tuple[Path, Path]
+        The executable and the JSON-lines invocation log.
+
+    Raises
+    ------
+    OSError
+        If the fixture files cannot be written into ``directory``.
+    """
     executable = directory / "typos"
     call_log = directory / "typos-calls.jsonl"
     _write_executable(
@@ -76,7 +117,21 @@ def write_fake_typos(directory: Path) -> tuple[Path, Path]:
 
 
 def prepare_make_repository(directory: Path) -> None:
-    """Copy only spelling-gate inputs into a controlled process repository."""
+    """Copy only spelling-gate inputs into a controlled process repository.
+
+    Parameters
+    ----------
+    directory : Path
+        Existing directory that receives ``Makefile``, ``typos.toml`` and the
+        gate script under ``scripts/``.
+
+    Raises
+    ------
+    FileExistsError
+        If ``directory/scripts`` already exists.
+    OSError
+        If ``directory`` is missing or an input cannot be copied.
+    """
     scripts = directory / "scripts"
     scripts.mkdir()
     shutil.copy2(MAKEFILE, directory / MAKEFILE.name)
@@ -90,7 +145,28 @@ def run_process(
     cwd: Path,
     environment: Mapping[str, str],
 ) -> subprocess.CompletedProcess[str]:
-    """Run one controlled process and retain its diagnostics."""
+    """Run one controlled process and retain its diagnostics.
+
+    Parameters
+    ----------
+    arguments : list[str]
+        Program and arguments to execute.
+    cwd : Path
+        Working directory for the child process.
+    environment : Mapping[str, str]
+        Variables overlaid on the inherited environment.
+
+    Returns
+    -------
+    subprocess.CompletedProcess[str]
+        Completed process whose non-zero status is reported instead of
+        raised.
+
+    Raises
+    ------
+    OSError
+        If the program cannot be started.
+    """
     return subprocess.run(
         arguments,
         check=False,
@@ -102,7 +178,25 @@ def run_process(
 
 
 def read_json_lines(path: Path) -> list[list[str]]:
-    """Return JSON invocation records, treating no invocation as an empty list."""
+    """Return JSON invocation records, treating no invocation as an empty list.
+
+    Parameters
+    ----------
+    path : Path
+        JSON-lines call log; a missing file means no invocation was recorded.
+
+    Returns
+    -------
+    list[list[str]]
+        One decoded argument list per recorded invocation, in file order.
+
+    Raises
+    ------
+    OSError
+        If an existing log cannot be read.
+    json.JSONDecodeError
+        If a line is not a complete JSON value.
+    """
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

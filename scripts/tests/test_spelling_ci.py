@@ -13,10 +13,28 @@ INSTALL_ACTION = "taiki-e/install-action@fae525311e5e299134b606bf247d465dd0df819
 
 
 class SpellingCiContractTests(unittest.TestCase):
-    """Assert every spelling-dependent CI job installs the pinned tool first."""
+    """Assert every spelling-dependent CI job installs the pinned tool first.
+
+    The assertions inspect the committed workflow text directly; the spelling
+    job's test also pins its checkout action, timeout and permissions.
+    """
 
     def assert_installs_typos_before(self, job: str, command: str) -> None:
-        """Require the shared pinned installation before the Make invocation."""
+        """Require the shared pinned installation before the Make invocation.
+
+        Parameters
+        ----------
+        job : str
+            Workflow text for the job, beginning at its key.
+        command : str
+            Make invocation that depends on the installed typos binary.
+
+        Raises
+        ------
+        AssertionError
+            If the pinned action or tool version is absent, the command is
+            absent, or the installation follows the command.
+        """
         self.assertIn(INSTALL_ACTION, job)
         self.assertIn("tool: typos-cli@1.50.1", job)
         self.assertIn(command, job)
@@ -29,6 +47,7 @@ class SpellingCiContractTests(unittest.TestCase):
         self.assertNotIn("paths:", triggers)
 
     def test_spelling_check_installs_typos_before_make(self) -> None:
+        """Pin the spelling job's permissions, timeout and tool order."""
         workflow = SPELLING_WORKFLOW.read_text(encoding="utf-8")
         typos_job = workflow.split("  lint-typos:\n", 1)[1]
 
@@ -43,6 +62,7 @@ class SpellingCiContractTests(unittest.TestCase):
         self.assertNotIn("crate-ci/typos@master", typos_job)
 
     def test_clippy_job_installs_typos_before_make_lint(self) -> None:
+        """Pin the Clippy job's typos installation before ``make lint``."""
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
         clippy_job = workflow.split("  lint-clippy:\n", 1)[1].split(
             "\n  # Check for unmaintained", 1
