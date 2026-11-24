@@ -48,6 +48,10 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 FIXTURE_REPO="$TEST_ROOT/repository"
 mkdir -p "$FIXTURE_REPO"
 
+# Capture the caller's PATH once. Fixture subshells build shim PATHs from this
+# copy so none of them reads a PATH another subshell modified.
+BASE_PATH=$PATH
+
 file_mode() {
 	stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
@@ -385,6 +389,133 @@ for library in release.sh release-lib.sh; do
 			exit 1
 		fi
 	)
+done
+
+# git-cliff still writes cliff.toml's header block when it emits no release
+# heading, so the output is non-empty but carries no `^## ` section. Both
+# generators must treat that as no usable output and hand CHANGELOG.md and the
+# release notes to the built-in generator. Inserting the header-only document
+# instead would duplicate the H1 and preamble and leak raw document text into
+# the release notes.
+assert_header_only_git_cliff_falls_back() {
+	local library=$1
+	local stem=${library%.sh}-header-only
+	local changelog_dir="$TEST_ROOT/$stem"
+	local release_notes="$TEST_ROOT/$stem-release-notes.md"
+	local shim_dir="$TEST_ROOT/$stem-bin"
+	mkdir -p "$changelog_dir" "$shim_dir"
+	cat >"$changelog_dir/CHANGELOG.md" <<'EOF'
+# Changelog
+
+All notable changes to diapason will be documented in this file.
+
+## 1.0.0 - 2026-01-01
+
+- Existing entry.
+EOF
+	cat >"$shim_dir/git-cliff" <<'EOF'
+#!/bin/sh
+# Emit cliff.toml's header block only, as git-cliff does for an empty range.
+# Record the invocation so the fixture can prove this shim ran, not the real
+# git-cliff.
+: >"$(dirname "$0")/invoked"
+output=
+while [ "$#" -gt 0 ]; do
+	case $1 in
+	--output)
+		output=$2
+		shift 2
+		;;
+	--output=*)
+		output=${1#--output=}
+		shift
+		;;
+	*)
+		shift
+		;;
+	esac
+done
+if [ -n "$output" ]; then
+	printf '%s\n' '# Changelog' '' \
+		'All notable changes to diapason will be documented in this file.' >"$output"
+fi
+exit 0
+EOF
+	chmod +x "$shim_dir/git-cliff"
+	# Keep the fallback offline: `gh auth token` must not consult a real account.
+	printf '#!/bin/sh\nexit 1\n' >"$shim_dir/gh"
+	chmod +x "$shim_dir/gh"
+	(
+		cd "$changelog_dir"
+		git init --quiet
+		git config user.name "Fixture Author"
+		git config user.email "fixture@example.com"
+		git add CHANGELOG.md
+		git commit --quiet -m "chore: seed header-only fallback fixture"
+		git tag v1.0.0
+		printf '%s\n' "proof" >proof.txt
+		git add proof.txt
+		git commit --quiet -m "fix: exercise the built-in changelog generator"
+		source_release_library "$library"
+		# release.sh installs its own notes file and removes it on EXIT. The
+		# fixture supplies a stable path and asserts on it after the subshell.
+		if [[ -n ${RELEASE_NOTES_FILE:-} ]]; then
+			rm -f "$RELEASE_NOTES_FILE"
+		fi
+		trap - EXIT
+		PATH="$shim_dir:$BASE_PATH"
+		export PATH
+		RELEASE_NOTES_FILE="$release_notes"
+		export RELEASE_NOTES_FILE
+		local status
+		if update_changelog_from_commits 1.1.0 false; then
+			status=0
+		else
+			status=$?
+		fi
+		if [[ $status -ne 0 ]]; then
+			echo "header-only git-cliff fallback failed in $library (status $status)" >&2
+			exit 1
+		fi
+	)
+	if [[ ! -f "$shim_dir/invoked" ]]; then
+		echo "the header-only git-cliff stub never ran in $library" >&2
+		return 1
+	fi
+	local h1_count
+	h1_count=$(grep -c '^# Changelog$' "$changelog_dir/CHANGELOG.md" || true)
+	if [[ $h1_count -ne 1 ]]; then
+		echo "header-only git-cliff output duplicated the H1 in $library (found $h1_count)" >&2
+		return 1
+	fi
+	local preamble_count
+	preamble_count=$(grep -c 'All notable changes to diapason' "$changelog_dir/CHANGELOG.md" || true)
+	if [[ $preamble_count -ne 1 ]]; then
+		echo "header-only git-cliff output duplicated the preamble in $library (found $preamble_count)" >&2
+		return 1
+	fi
+	if ! grep -q '^## 1\.0\.0' "$changelog_dir/CHANGELOG.md"; then
+		echo "header-only git-cliff fallback dropped the existing release heading in $library" >&2
+		return 1
+	fi
+	if ! grep -q '^## 1\.1\.0' "$changelog_dir/CHANGELOG.md"; then
+		echo "header-only git-cliff fallback did not insert the new release heading in $library" >&2
+		return 1
+	fi
+	# Assert the notes exist before grepping them: a missing file would make the
+	# H1-leak check below pass without proving anything.
+	if [[ ! -s $release_notes ]]; then
+		echo "header-only git-cliff fallback wrote no release notes in $library" >&2
+		return 1
+	fi
+	if [[ $(grep -c '^# Changelog$' "$release_notes" || true) -ne 0 ]]; then
+		echo "header-only git-cliff output leaked the document H1 into the release notes in $library" >&2
+		return 1
+	fi
+}
+
+for library in release.sh release-lib.sh; do
+	assert_header_only_git_cliff_falls_back "$library"
 done
 
 echo "Changelog generator contracts passed."
