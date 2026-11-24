@@ -1,0 +1,5 @@
+# Upstream syntect ships no rustfmt configuration; its sources are formatted
+# with rustfmt's defaults. This file keeps the workspace's rustfmt.toml from
+# applying to the vendored tree, so these sources stay diffable against the
+# published archive and the only intended difference is the dump codec.
+edition = "2021"

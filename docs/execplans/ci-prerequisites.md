@@ -263,9 +263,13 @@ The current audit also reports yanked `chacha20 0.10.1` through `rand 0.10.2`.
 The crates.io index resolves the direct compatible replacement
 `chacha20 0.10.2` without a manifest change; Cargo updated only the lockfile
 version and checksum. The remaining unmaintained advisory paths are tracked
-separately: #120 owns `syntect 5.3.0`'s `bincode 1.3.3` and `yaml-rust 0.4.5`
-paths, and #119 owns `image 0.25.10`'s `paste 1.0.15` backend paths. Neither is
-suppressed or folded into #108's cargo-unmaintained baseline ratchet.
+separately: #119 owns `image 0.25.10`'s `paste 1.0.15` backend paths, and #120
+owned `syntect 5.3.0`'s `bincode 1.3.3` and `yaml-rust 0.4.5` paths. #120 has
+since removed both by narrowing `diapason-ui`'s syntect features and vendoring
+syntect with the maintained `bincode-next` codec; see
+[the #120 ExecPlan](issue-120-syntect-advisories.md). No advisory in this
+paragraph is suppressed or folded into #108's cargo-unmaintained baseline
+ratchet.
 
 The upstream EmbarkStudios cargo-about 0.9.1 release supplies an
 x86_64-unknown-linux-musl archive and SHA-256 sidecar. Its published checksum

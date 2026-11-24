@@ -45,7 +45,7 @@ ratatui-textarea = { version = "0.9", default-features = false, features = ["cro
 regex            = { workspace = true }
 serde            = { workspace = true }
 signal-hook      = "0.4"
-syntect          = { version = "5.2", default-features = false, features = ["default-fancy"] }
+syntect          = { version = "5.2", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
 terminal_size    = "0.4.4"
 thiserror        = { workspace = true }
 tokio            = { workspace = true }

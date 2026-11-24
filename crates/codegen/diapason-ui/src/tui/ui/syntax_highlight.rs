@@ -469,6 +469,50 @@ mod tests {
         assert_eq!(theme1.name, theme2.name);
     }
 
+    /// Every bundled grammar must decode, including its lazily loaded contexts.
+    ///
+    /// Lazy contexts live in a nested, individually compressed dump that
+    /// syntect decodes on first use. A codec incompatibility there would not
+    /// fail at load time, only when a grammar is first exercised. This walks
+    /// the whole bundled syntax set, highlights one line through every grammar,
+    /// and reconstructs the source text from the returned segments.
+    #[test]
+    fn every_bundled_syntax_highlights_a_sample() {
+        let sample = "let value = 1; // sample\n";
+        let bundled = syntax_set();
+        assert!(bundled.syntaxes().len() > 50, "expected the full bundled grammar set");
+        let theme = load_theme(DEFAULT_THEME_NAME, true);
+
+        for syntax in bundled.syntaxes() {
+            let mut highlighter = syntect::easy::HighlightLines::new(syntax, &theme);
+            let ranges = highlighter
+                .highlight_line(sample, bundled)
+                .unwrap_or_else(|error| panic!("{} did not highlight: {error}", syntax.name));
+            let rebuilt: String = ranges.into_iter().map(|(_, text)| text).collect();
+            assert_eq!(rebuilt, sample, "{} did not reproduce its input", syntax.name);
+        }
+    }
+
+    /// Every bundled theme must load by name under the vendored dump codec.
+    #[test]
+    fn every_bundled_theme_loads_by_name() {
+        let expected = [
+            "base16-ocean.dark",
+            "base16-eighties.dark",
+            "base16-mocha.dark",
+            "base16-ocean.light",
+            "InspiredGitHub",
+            "Solarized (dark)",
+            "Solarized (light)",
+        ];
+        let available = available_themes();
+        for name in expected {
+            assert!(available.iter().any(|candidate| candidate == name), "missing theme {name}");
+            assert_eq!(load_theme(name, false).name, load_theme(name, false).name);
+        }
+        assert_eq!(available.len(), expected.len(), "bundled theme count changed");
+    }
+
     #[test]
     fn convert_syntect_style_uses_named_ansi_for_low_palette_indexes() {
         let style = convert_syntect_style(syntect::highlighting::Style {
