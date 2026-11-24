@@ -210,15 +210,22 @@ Invariants and their discharge:
    everything could not pass. Discharged: `WIRE COMPATIBILITY: PASS`, 82
    checks, transcript below.
 2. Every bundled syntax's nested lazy-context blob decodes; every syntax
-   highlights a sample; every bundled theme loads by name. Method: two named
-   regression tests in the existing `tests` module of
+   highlights a sample; every bundled theme decodes into usable scope rules.
+   Method: two named regression tests in the existing `tests` module of
    `crates/codegen/diapason-ui/src/tui/ui/syntax_highlight.rs`. Non-vacuity: the
    syntax test reconstructs the source text from the returned segments, which
    fails if lazy contexts decode to an empty or wrong grammar, and asserts the
-   bundled set exceeds 50 grammars before iterating. The theme test asserts the
-   exact bundled theme count, so a dump that silently yielded fewer themes
-   would fail. Discharged: 18/18 tests pass, including `every_bundled_syntax_
-   highlights_a_sample` at 1.855 s, which is the cost of decoding all 75.
+   bundled set exceeds 50 grammars before iterating. Starting a parser at all
+   requires `SyntaxReference::context_ids()`, which decodes the nested blob
+   through `LazyContexts::deserialize`, so a broken nested codec fails the test
+   at the first line rather than passing quietly. The theme test asserts each
+   theme is present in the decoded dump and carries a non-empty rule list:
+   `load_theme` silently falls back on an unknown name, so the name alone was
+   not evidence, and an earlier draft comparing a value with itself was
+   vacuous. Discharged: 2/2 for the new tests (`every_bundled_theme_loads_by_
+   name` 0.022 s, `every_bundled_syntax_highlights_a_sample` 1.924 s — the cost
+   of decoding all 75 grammars), and 18/18 for the whole
+   `test(syntax_highlight)` filter.
 3. `cargo audit --file Cargo.lock` reports neither `RUSTSEC-2025-0141` nor
    `RUSTSEC-2024-0320`, and no new advisory. Method: direct command, compared
    against the recorded 12-warning baseline. Discharged: 10 warnings, the two
